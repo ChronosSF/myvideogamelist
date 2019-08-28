@@ -4,7 +4,6 @@ import { ExternalAuthService, ExternalAuthRedirectUrl, ExternalAuthProvider } fr
 import { GoogleProvider } from '../providers/google-provider';
 import { FacebookProvider } from '../providers/facebook-provider';
 import { MicrosoftProvider } from '../providers/microsoft-provider';
-import { BackendInterceptor } from './fake-backend.service';
 import { HttpResponse, HttpRequest, HttpHandler } from '@angular/common/http';
 import { take } from 'rxjs/operators';
 import msKeys from './microsoft-keys';

@@ -1,4 +1,4 @@
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { Injectable } from '@angular/core';
 
 import { User, LoginResult } from '../models/user';
@@ -21,7 +21,7 @@ export class AuthenticationService {
 
   /** Send user info from 3rd party provider to external login endpoint. */
   public async loginWith(userInfo: ExternalLogin): Promise<LoginResult> {
-    return this.loginPost('/extlogin', userInfo);
+    return this.loginPost('http://localhost:51137/ExternalLogin', userInfo);
   }
 
   /** Send user info to register endpoint. */
@@ -32,7 +32,7 @@ export class AuthenticationService {
   protected async loginPost(endpoint: string, userData: any): Promise<LoginResult> {
     let data: string;
     try {
-      data = <string> await this.http.post(endpoint, userData).toPromise();
+      data = <string> await this.http.post(endpoint, userData, {withCredentials: true}).toPromise();
     } catch (e) {
       return { error: e.message };
     }

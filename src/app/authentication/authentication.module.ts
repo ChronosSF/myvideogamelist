@@ -6,7 +6,6 @@ import { ReactiveFormsModule } from '@angular/forms';
 import { AuthGuard } from './auth.guard';
 import { LoginComponent } from './login/login.component';
 import { JwtInterceptor } from './services/jwt.interceptor';
-import { BackendProvider } from './services/fake-backend.service';
 import { LoginBarComponent } from './login-bar/login-bar.component';
 import { ProfileComponent } from './profile/profile.component';
 import { RegisterComponent } from './register/register.component';
@@ -48,9 +47,7 @@ import {
   providers: [
     AuthGuard,
     OidcConfigService,
-    { provide: HTTP_INTERCEPTORS, useClass: JwtInterceptor, multi: true },
-    // TODO: DELETE THIS BEFORE PRODUCTION!
-    BackendProvider
+    { provide: HTTP_INTERCEPTORS, useClass: JwtInterceptor, multi: true }
   ],
   exports: [
     LoginBarComponent,
