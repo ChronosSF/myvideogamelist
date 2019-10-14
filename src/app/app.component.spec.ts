@@ -5,25 +5,25 @@ import { IgxNavigationDrawerModule, IgxNavbarModule, IgxLayoutModule, IgxRippleM
 import { AuthenticationModule } from './authentication';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 describe('AppComponent', () => {
-  beforeEach(async(() => {
-    TestBed.configureTestingModule({
-      imports: [
-        NoopAnimationsModule,
-        RouterTestingModule,
-        IgxNavigationDrawerModule,
-        AuthenticationModule,
-        IgxNavbarModule,
-        IgxLayoutModule,
-        IgxRippleModule
-      ],
-      declarations: [
-        AppComponent
-      ],
-    }).compileComponents();
-  }));
-  it('should create the app', async(() => {
-    const fixture = TestBed.createComponent(AppComponent);
-    const app = fixture.debugElement.componentInstance;
-    expect(app).toBeTruthy();
-  }));
+	beforeEach(async(() => {
+		TestBed.configureTestingModule({
+			imports: [
+				NoopAnimationsModule,
+				RouterTestingModule,
+				IgxNavigationDrawerModule,
+				AuthenticationModule,
+				IgxNavbarModule,
+				IgxLayoutModule,
+				IgxRippleModule
+			],
+			declarations: [
+				AppComponent
+			],
+		}).compileComponents();
+	}));
+	it('should create the app', async(() => {
+		const fixture = TestBed.createComponent(AppComponent);
+		const app = fixture.debugElement.componentInstance;
+		expect(app).toBeTruthy();
+	}));
 });
