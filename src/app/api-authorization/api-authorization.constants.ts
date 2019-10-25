@@ -23,15 +23,15 @@ export const LoginActions = {
 
 let applicationPaths: ApplicationPathsType = {
 	DefaultLoginRedirectPath: '/',
-	ApiAuthorizationClientConfigurationUrl: `/_configuration/${ApplicationName}`,
-	Login: `authentication/${LoginActions.Login}`,
-	LoginFailed: `authentication/${LoginActions.LoginFailed}`,
-	LoginCallback: `authentication/${LoginActions.LoginCallback}`,
-	Register: `authentication/${LoginActions.Register}`,
-	Profile: `authentication/${LoginActions.Profile}`,
-	LogOut: `authentication/${LogoutActions.Logout}`,
-	LoggedOut: `authentication/${LogoutActions.LoggedOut}`,
-	LogOutCallback: `authentication/${LogoutActions.LogoutCallback}`,
+	ApiAuthorizationClientConfigurationUrl: `https://localhost:44369/_configuration/${ApplicationName}`,
+	Login: `https://localhost:44369/authentication/${LoginActions.Login}`,
+	LoginFailed: `https://localhost:44369/authentication/${LoginActions.LoginFailed}`,
+	LoginCallback: `https://localhost:44369/authentication/${LoginActions.LoginCallback}`,
+	Register: `https://localhost:44369/authentication/${LoginActions.Register}`,
+	Profile: `https://localhost:44369/authentication/${LoginActions.Profile}`,
+	LogOut: `https://localhost:44369/authentication/${LogoutActions.Logout}`,
+	LoggedOut: `https://localhost:44369/authentication/${LogoutActions.LoggedOut}`,
+	LogOutCallback: `https://localhost:44369/authentication/${LogoutActions.LogoutCallback}`,
 	LoginPathComponents: [],
 	LoginFailedPathComponents: [],
 	LoginCallbackPathComponents: [],
@@ -40,8 +40,8 @@ let applicationPaths: ApplicationPathsType = {
 	LogOutPathComponents: [],
 	LoggedOutPathComponents: [],
 	LogOutCallbackPathComponents: [],
-	IdentityRegisterPath: '/Identity/Account/Register',
-	IdentityManagePath: '/Identity/Account/Manage'
+	IdentityRegisterPath: 'https://localhost:44369/Identity/Account/Register',
+	IdentityManagePath: 'https://localhost:44369/Identity/Account/Manage'
 };
 
 applicationPaths = {

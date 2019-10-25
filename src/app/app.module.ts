@@ -11,6 +11,7 @@ import {
 import { AppComponent } from './app.component';
 import { HomeComponent } from './home/home.component';
 import { AppRoutingModule } from './app-routing.module';
+import { ApiAuthorizationModule } from './api-authorization/api-authorization.module';
 import { environment } from 'src/environments/environment';
 
 @NgModule({
@@ -24,6 +25,7 @@ import { environment } from 'src/environments/environment';
 		BrowserAnimationsModule,
 		// NOTE: `AuthenticationModule` defines child routes, must be imported before root `AppRoutingModule`
 		AppRoutingModule,
+		ApiAuthorizationModule,
 		IgxNavigationDrawerModule,
 		IgxNavbarModule,
 		IgxLayoutModule,
