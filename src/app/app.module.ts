@@ -21,8 +21,7 @@ import { HttpClientModule, HTTP_INTERCEPTORS } from '@angular/common/http';
 
 import { JwtInterceptor, ErrorInterceptor } from './helpers';
 import { LoginComponent } from './login';
-import { NavigationBarComponent } from './navigation-bar';
-import { TopBarComponent } from './top-bar';
+import { TopBarComponent, NavigationBarComponent } from './components';
 
 @NgModule({
 	imports: [

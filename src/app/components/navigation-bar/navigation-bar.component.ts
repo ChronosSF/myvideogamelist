@@ -3,14 +3,14 @@ import { Router, ActivatedRoute } from '@angular/router';
 import { FormBuilder, FormGroup, Validators } from '@angular/forms';
 import { first } from 'rxjs/operators';
 
-import { AuthenticationService } from '../services';
+import { AuthenticationService } from '../../services';
 
 @Component({
-	selector: 'app-top-bar',
-	templateUrl: 'top-bar.component.html',
-	styleUrls: ['./top-bar.component.scss']
+	selector: 'app-navigation-bar',
+	templateUrl: 'navigation-bar.component.html',
+	styleUrls: ['./navigation-bar.component.scss']
 })
-export class TopBarComponent implements OnInit {
+export class NavigationBarComponent implements OnInit {
 	ngOnInit() {
 	}
 }
