@@ -1,0 +1,11 @@
+<button igxButton="flat" igxButtonColor="#FFCD0F" igxButtonBackground="#000" igxRipple="#FFCD0F"
+	[routerLink]="['./login']" *ngIf="!auth.currentUserValue">Login</button>
+
+<div class="igx-navbar__right" *ngIf="auth.currentUserValue">
+	<igx-icon>format_list_bulleted</igx-icon>
+	<igx-icon>mail_outline</igx-icon>
+	<igx-icon>notifications_none</igx-icon>
+	<h4 class="igx-card-header__subtitle">{{ userName }}</h4>
+	<button igxButton="flat" igxButtonColor="#FFCD0F" igxButtonBackground="#000" igxRipple="#FFCD0F"
+		(click)="auth.logout()">Logout</button>
+</div>

@@ -10,7 +10,8 @@ import {
 	IgxIconModule,
 	IgxInputGroupModule,
 	IgxToggleModule,
-	IgxBadgeModule
+	IgxBadgeModule,
+	IgxButtonModule
 } from 'igniteui-angular';
 
 import { AppComponent } from './app.component';
@@ -20,17 +21,20 @@ import { AppRoutingModule } from './app-routing.module';
 import { HttpClientModule, HTTP_INTERCEPTORS } from '@angular/common/http';
 
 import { JwtInterceptor, ErrorInterceptor } from './helpers';
+import { TopBarComponent, NavigationBarComponent, UserBarComponent } from './components';
+import { BrowserAnimationsModule } from '@angular/platform-browser/animations';
 import { LoginComponent } from './login';
-import { TopBarComponent, NavigationBarComponent } from './components';
 
 @NgModule({
 	imports: [
+		BrowserAnimationsModule,
 		BrowserModule,
 		ReactiveFormsModule,
 		HttpClientModule,
 		AppRoutingModule,
 		IgxAvatarModule,
 		IgxBadgeModule,
+		IgxButtonModule,
 		IgxNavbarModule,
 		IgxLayoutModule,
 		IgxIconModule,
@@ -41,6 +45,7 @@ import { TopBarComponent, NavigationBarComponent } from './components';
 	declarations: [
 		AppComponent,
 		HomeComponent,
+		UserBarComponent,
 		LoginComponent,
 		TopBarComponent,
 		NavigationBarComponent,
