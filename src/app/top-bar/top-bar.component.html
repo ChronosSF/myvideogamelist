@@ -1,33 +1,10 @@
 <igx-navbar class="mvgl-topbar" [title]="title">
-	<igx-action-icon igxFlex>
-		<igx-avatar class="navigatable" [src]="'/assets/bg-avatar.webp'" [roundShape]="true" [routerLink]="'/home'">
-		</igx-avatar>
-	</igx-action-icon>
-	<igx-input-group igxFlex type="search" class="search-group" #searchGroup>
-		<igx-prefix>
-			<igx-icon>search</igx-icon>
-		</igx-prefix>
-		<label igxLabel for="searchInput">Search</label>
-		<input id="searchInput" #searchInput igxInput (focus)="advancedSearch.open()" class="search-input" />
-		<igx-suffix *ngIf="searchInput.value.length > 0" (click)="searchInput.value = ''">
-			<igx-icon>clear</igx-icon>
-		</igx-suffix>
-	</igx-input-group>
-	<div class="action-button-container" title="Strategies feed" routerLink="strategies">
-		<igx-icon>playlist_add_check</igx-icon>
-	</div>
-	<div class="action-button-container" [igxToggleAction]="myTeam" [overlaySettings]="overlaySettings"
-		*ngIf="authUser">
-		<igx-icon>people</igx-icon>
-		<igx-badge class="notifications-badge" *ngIf="authUser.teams?.length > 0" [value]="authUser.teams?.length"
-			type="info"></igx-badge>
-	</div>
-	<div class="action-button-container" [igxToggleAction]="notifications" [overlaySettings]="overlaySettings"
-		*ngIf="authUser">
-		<igx-icon>notifications</igx-icon>
-		<igx-badge class="notifications-badge" *ngIf="unreadNotifications > 0" [value]="unreadNotifications"
-			type="info"></igx-badge>
-	</div>
 
-	<!--<app-login [authUser]='authUser'></app-login>-->
+	<igx-action-icon class="active-icon-pointer" [routerLink]="'/home'">
+		<img src="../../assets/Logo.png">
+		<img src="../../assets/LogoText.png">
+	</igx-action-icon>
+	<igx-icon>format_list_bulleted</igx-icon>
+	<igx-icon>mail_outline</igx-icon>
+	<igx-icon>notifications_none</igx-icon>
 </igx-navbar>

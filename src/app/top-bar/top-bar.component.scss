@@ -5,7 +5,7 @@ $transparent-navbar: igx-navbar-theme(
 	$background: #FFFFFF00,
 	$idle-icon-color: #FFCD0F,
 	$hover-icon-color: gray,
-	$shadow: 0 0 0 0
+	$disable-shadow: true
 );
 
 :host {
@@ -16,4 +16,19 @@ $transparent-navbar: igx-navbar-theme(
 
 .mvgl-topbar {
 	width: 100%;
+}
+
+igx-icon {
+	font-size: 2rem;
+	width: 2rem;
+	height: 2rem;
+}
+
+img {
+	height: 50px;
+}
+
+.active-icon-pointer {
+	cursor: pointer;
+	outline: none;
 }
