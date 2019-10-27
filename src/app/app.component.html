@@ -1,14 +1,11 @@
-<div igxLayout>
-	<!-- nav -->
-	<nav class="navbar navbar-expand navbar-dark bg-dark" *ngIf="currentUser">
-		<div class="navbar-nav">
-			<a class="nav-item nav-link" routerLink="/">Home</a>
-			<a class="nav-item nav-link" (click)="logout()">Logout</a>
+<div igxLayout igxLayoutJustify="center">
+	<div igxFlex igxLayout igxLayoutDir="column" igxLayoutJustify="top-level-container" class="app-container">
+		<!-- nav -->
+		<app-top-bar></app-top-bar>
+		<app-navigation-bar></app-navigation-bar>
+		<!-- main app container -->
+		<div class="container">
+			<router-outlet></router-outlet>
 		</div>
-	</nav>
-
-	<!-- main app container -->
-	<div class="container">
-		<router-outlet></router-outlet>
 	</div>
 </div>

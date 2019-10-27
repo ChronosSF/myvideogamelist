@@ -1,0 +1,19 @@
+@import '~igniteui-angular/lib/core/styles/themes/index';
+
+$transparent-navbar: igx-navbar-theme(
+	$text-color: #FFCD0F,
+	$background: #FFFFFF00,
+	$idle-icon-color: #FFCD0F,
+	$hover-icon-color: gray,
+	$shadow: 0 0 0 0
+);
+
+:host {
+	::ng-deep {
+		@include igx-navbar($transparent-navbar);
+	}
+}
+
+.mvgl-topbar {
+	width: 100%;
+}

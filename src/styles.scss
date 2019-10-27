@@ -1,6 +1,21 @@
+@import "~igniteui-angular/lib/core/styles/themes/index";
+@import "~minireset.css/minireset";
+
+@include igx-core();
+@include igx-theme($default-palette);
+
+$background: #FFFFFF;
+$background-gradient: linear-gradient(to bottom, $background, #BBBBBB);
+
 html, body {
   height: 100%;
+  font-size: .8em;
+  min-width: 412px;
+  background-image: $background-gradient;
 }
-.content p {
-  margin: 15px;
+
+.app-container {
+	width: 100%;
+	max-width: 1280px;
 }
+
