@@ -1,0 +1,44 @@
+﻿<div igxLayout igxLayoutJustify="center">
+	<form [formGroup]="registerForm" (ngSubmit)="onSubmit()">
+		<igx-card type="outlined">
+			<igx-card-header>
+				Join MyVideoGameList to catalog your played games, share your thoughts on them with other gamers,
+				create your customized lists and much more, compare with your friends.<br />
+				It's Free!
+			</igx-card-header>
+
+			<igx-card-content>
+				<!-- EMAIL -->
+				<igx-input-group>
+					<igx-prefix>
+						<igx-icon>email</igx-icon>
+					</igx-prefix>
+					<label igxLabel for="email">E-mail</label>
+					<input igxInput formControlName="email" id="email" type="text" />
+				</igx-input-group>
+
+				<!-- USERNAME -->
+				<igx-input-group>
+					<igx-prefix>
+						<igx-icon>person</igx-icon>
+					</igx-prefix>
+					<label igxLabel for="username">Username</label>
+					<input igxInput formControlName="username" id="username" type="text" />
+				</igx-input-group>
+
+				<!-- PASSWORD -->
+				<igx-input-group>
+					<igx-prefix>
+						<igx-icon>lock</igx-icon>
+					</igx-prefix>
+					<label igxLabel for="password">Password</label>
+					<input igxInput formControlName="password" id="password" type="password" />
+				</igx-input-group>
+			</igx-card-content>
+
+			<igx-card-actions>
+				<button igxButton type="submit">Create Account</button>
+			</igx-card-actions>
+		</igx-card>
+	</form>
+</div>

@@ -1,5 +1,7 @@
-<button igxButton="flat" igxButtonColor="#FFCD0F" igxButtonBackground="#000" igxRipple="#FFCD0F"
+<button class="login-control-btn" igxButton="outlined" igxButtonColor="#000" igxRipple="#FFCD0F"
 	[routerLink]="['./login']" *ngIf="!auth.currentUserValue">Login</button>
+<button class="login-control-btn" igxButton="flat" igxButtonColor="#FFCD0F" igxButtonBackground="#000"
+	igxRipple="#FFCD0F" [routerLink]="['./register']" *ngIf="!auth.currentUserValue">Sign Up</button>
 
 <div class="igx-navbar__right" *ngIf="auth.currentUserValue">
 	<igx-icon>format_list_bulleted</igx-icon>
