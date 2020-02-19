@@ -2,19 +2,19 @@
 @import "~minireset.css/minireset";
 
 @include igx-core();
-@include igx-theme($default-palette);
 
-$background: #FFFFFF;
-$background-gradient: linear-gradient(to bottom, $background, #BBBBBB);
+.mvgl-theme {
+	$mvgl-palette: igx-palette($primary: #ffcd0f, $secondary: #333333, $surface: #fff, $grays: #000);
+	@include igx-theme($palette: $mvgl-palette, $schema: $light-schema);
 
-html, body {
-  height: 100%;
-  min-width: 412px;
-  background-image: $background-gradient;
+	$background: #FFFFFF;
+	$background-gradient: linear-gradient(to bottom, $background, #BBBBBB);
+	height: 100%;
+	min-width: 412px;
+	background-image: $background-gradient;
 }
 
 .app-container {
 	width: 100%;
 	max-width: 1280px;
 }
-

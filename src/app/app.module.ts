@@ -12,7 +12,8 @@ import {
 	IgxToggleModule,
 	IgxBadgeModule,
 	IgxButtonModule,
-	IgxCardModule
+	IgxCardModule,
+	IgxDividerModule
 } from 'igniteui-angular';
 
 import { AppComponent } from './app.component';
@@ -43,7 +44,8 @@ import { RegisterComponent } from './register';
 		IgxIconModule,
 		IgxRippleModule,
 		IgxInputGroupModule,
-		IgxToggleModule
+		IgxToggleModule,
+		IgxDividerModule,
 	],
 	declarations: [
 		AppComponent,
