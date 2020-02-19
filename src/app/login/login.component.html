@@ -1,18 +1,21 @@
-﻿<div igxLayout igxLayoutJustify="center">
+﻿<div>
+	<form [formGroup]="loginForm" (ngSubmit)="onSubmit()" igxLayout igxLayoutJustify="center" [style.width.%]="100">
+		<igx-card type="outlined">
+			<igx-card-header>
+				<h5 igxCardHeaderTitle>Login with</h5>
+			</igx-card-header>
 
-	<igx-card type="outlined">
-		<igx-card-content>
-			<h6>Login with</h6>
-			<div class="social-buttons">
-				<button>Facebook</button>
-				<button>Google</button>
-				<button>Twitter</button>
-			</div>
-		</igx-card-content>
+			<igx-card-content>
+				<div class="social-buttons">
+					<button>Facebook</button>
+					<button>Google</button>
+					<button>Twitter</button>
+				</div>
+			</igx-card-content>
 
-		<igx-divider [middle]="true" inset="5px"></igx-divider>
+			<igx-divider [middle]="true" inset="5px"></igx-divider>
 
-		<form [formGroup]="loginForm" (ngSubmit)="onSubmit()">
+
 
 			<igx-card-content>
 				<!-- EMAIL -->
@@ -38,7 +41,7 @@
 				<button igxButton type="submit">Login</button>
 			</igx-card-actions>
 
-		</form>
-	</igx-card>
 
+		</igx-card>
+	</form>
 </div>
