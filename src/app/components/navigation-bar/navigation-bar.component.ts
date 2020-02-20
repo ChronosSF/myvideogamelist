@@ -7,8 +7,7 @@ import { AuthenticationService } from '../../services';
 
 @Component({
 	selector: 'app-navigation-bar',
-	templateUrl: 'navigation-bar.component.html',
-	styleUrls: ['./navigation-bar.component.scss']
+	templateUrl: 'navigation-bar.component.html'
 })
 export class NavigationBarComponent implements OnInit {
 	ngOnInit() {

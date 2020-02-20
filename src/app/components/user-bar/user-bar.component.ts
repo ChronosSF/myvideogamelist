@@ -8,8 +8,7 @@ import { User } from '../../models';
 
 @Component({
 	selector: 'app-user-bar',
-	templateUrl: 'user-bar.component.html',
-	styleUrls: ['./user-bar.component.scss']
+	templateUrl: 'user-bar.component.html'
 })
 export class UserBarComponent implements OnInit {
 

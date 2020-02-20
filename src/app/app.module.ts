@@ -1,6 +1,8 @@
 import { NgModule } from '@angular/core';
 import { ReactiveFormsModule } from '@angular/forms';
 import { BrowserModule } from '@angular/platform-browser';
+import { HttpClientModule, HTTP_INTERCEPTORS } from '@angular/common/http';
+import { BrowserAnimationsModule } from '@angular/platform-browser/animations';
 
 import {
 	IgxAvatarModule,
@@ -20,13 +22,9 @@ import { AppComponent } from './app.component';
 import { HomeComponent } from './home/home.component';
 import { AppRoutingModule } from './app-routing.module';
 
-import { HttpClientModule, HTTP_INTERCEPTORS } from '@angular/common/http';
-
 import { JwtInterceptor, ErrorInterceptor } from './helpers';
-import { TopBarComponent, NavigationBarComponent, UserBarComponent } from './components';
-import { BrowserAnimationsModule } from '@angular/platform-browser/animations';
-import { LoginComponent } from './login';
-import { RegisterComponent } from './register';
+import { TopBarComponent, NavigationBarComponent, UserBarComponent, LoginComponent, RegisterComponent } from './components';
+
 
 @NgModule({
 	imports: [

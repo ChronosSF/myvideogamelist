@@ -3,11 +3,10 @@ import { Router, ActivatedRoute } from '@angular/router';
 import { FormBuilder, FormGroup, Validators } from '@angular/forms';
 import { first } from 'rxjs/operators';
 
-import { AuthenticationService } from '../services';
+import { AuthenticationService } from '../../services';
 
 @Component({
-	templateUrl: 'register.component.html',
-	styleUrls: ['./register.component.scss']
+	templateUrl: 'register.component.html'
 })
 export class RegisterComponent implements OnInit {
 	registerForm: FormGroup;

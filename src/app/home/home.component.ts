@@ -1,11 +1,11 @@
-import { Component } from '@angular/core';
+import { Component, OnInit } from '@angular/core';
 import { first } from 'rxjs/operators';
 
 import { User } from '../models';
 import { UserService, AuthenticationService } from '../services';
 
 @Component({ templateUrl: 'home.component.html' })
-export class HomeComponent {
+export class HomeComponent implements OnInit {
 	loading = false;
 	users: User[];
 
