@@ -25,7 +25,7 @@ export function HomePage() {
                         My<span className="text-blue-400">VideoGame</span>List
                     </h1>
                     <p className="text-slate-400 text-lg sm:text-xl mb-10 max-w-xl mx-auto leading-relaxed">
-                        Track your gaming journey. Discover, organise, and share every game you've played.
+                        Track your gaming journey. Discover, organize, and share every game you've played.
                     </p>
 
                     <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
@@ -58,7 +58,7 @@ export function HomePage() {
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 21l-4.35-4.35M17 11A6 6 0 115 11a6 6 0 0112 0z" />
                             ),
                             title: 'Discover',
-                            description: 'Browse our growing catalogue of games across all platforms.',
+                            description: 'Browse our growing catalog of games across all platforms.',
                         },
                         {
                             icon: (
