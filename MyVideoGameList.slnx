@@ -1,0 +1,7 @@
+<Solution>
+  <Project Path="myvideogamelist.client/myvideogamelist.client.esproj">
+    <Build />
+    <Deploy />
+  </Project>
+  <Project Path="MyVideoGameList.Server/MyVideoGameList.Server.csproj" />
+</Solution>
