@@ -1,0 +1,103 @@
+# ============================================================
+# .NET / ASP.NET Core
+# ============================================================
+## Build outputs
+bin/
+obj/
+out/
+publish/
+
+## NuGet
+*.nupkg
+*.snupkg
+.nuget/
+packages/
+project.lock.json
+project.fragment.lock.json
+artifacts/
+
+## User-specific files
+*.user
+*.userosscache
+*.suo
+*.userprefs
+
+## Rider / Resharper
+.idea/
+_ReSharper*/
+*.DotSettings.user
+
+## Test results
+TestResults/
+coverage/
+*.trx
+*.coverage
+*.coveragexml
+
+## Secret / config overrides (never commit secrets)
+appsettings.*.json
+!appsettings.json
+!appsettings.Development.json
+
+# ============================================================
+# Node / React / Vite
+# ============================================================
+node_modules/
+dist/
+dist-ssr/
+build/
+*.local
+
+## Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+## Lock files (keep these — remove lines if you want to ignore them)
+# package-lock.json
+# yarn.lock
+# pnpm-lock.yaml
+
+## Storybook
+storybook-static/
+
+# ============================================================
+# Visual Studio / VS Code
+# ============================================================
+.vs/
+.vscode/
+!.vscode/extensions.json
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+
+## Diagnostic Reports (https://nodejs.org/api/report.html)
+report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
+
+# ============================================================
+# Operating system
+# ============================================================
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# ============================================================
+# Environment / secrets
+# ============================================================
+.env
+.env.*
+!.env.example
+
+# ============================================================
+# Miscellaneous
+# ============================================================
+*.bak
+*.tmp
+*.swp
+*.sw?
