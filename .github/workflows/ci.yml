@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [master, develop]
+
+jobs:
+  build-client:
+    name: Build Client
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: myvideogamelist.client
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+          cache: npm
+          cache-dependency-path: myvideogamelist.client/package-lock.json
+
+      - run: npm ci
+      - run: npm run build
+
+  build-server:
+    name: Build Server
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      # --no-dependencies skips building the client .esproj reference,
+      # since the client is verified in its own job above.
+      - run: dotnet build MyVideoGameList.Server/MyVideoGameList.Server.csproj --no-dependencies
