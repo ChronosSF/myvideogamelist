@@ -8,6 +8,16 @@ MyVideoGameList.Server/out/
 MyVideoGameList.Server/publish/
 MyVideoGameList.Server/artifacts/
 
+## SQLite database (runtime data)
+*.db
+*.db-shm
+*.db-wal
+
+## MSBuild / SPA proxy generated files
+*.cache
+FileListAbsolute.txt
+myvideogamelist.client/obj/
+
 ## NuGet
 *.nupkg
 *.snupkg
