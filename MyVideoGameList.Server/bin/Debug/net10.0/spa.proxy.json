@@ -3,7 +3,7 @@
 "ServerUrl": "https://localhost:58546",
 "RedirectUrl": "",
 "LaunchCommand": "npm run dev",
-"WorkingDirectory": "C:\\Users\\SStoychev\\Documents\\Git\\myvideogamelist\\MyVideoGameList.Server\\..\\myvideogamelist.client",
+"WorkingDirectory": "/home/runner/work/myvideogamelist/myvideogamelist/MyVideoGameList.Server/../myvideogamelist.client",
 "MaxTimeoutInSeconds": "120",
 "KeepRunning": "false"
 }

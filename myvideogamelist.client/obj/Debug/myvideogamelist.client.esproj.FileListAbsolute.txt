@@ -1,1 +1,2 @@
-C:\Users\SStoychev\Documents\Git\myvideogamelist\myvideogamelist.client\obj\Debug\myvideogamelist.client.esproj.CoreCompileInputs.cache
+C:/Users/SStoychev/Documents/Git/myvideogamelist/myvideogamelist.client/obj/Debug/myvideogamelist.client.esproj.CoreCompileInputs.cache
+/home/runner/work/myvideogamelist/myvideogamelist/myvideogamelist.client/obj/Debug/myvideogamelist.client.esproj.CoreCompileInputs.cache

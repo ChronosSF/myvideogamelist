@@ -1,38 +1,26 @@
 {
   "format": 1,
   "restore": {
-    "C:\\Users\\SStoychev\\Documents\\Git\\myvideogamelist\\MyVideoGameList.Server\\MyVideoGameList.Server.csproj": {}
+    "/home/runner/work/myvideogamelist/myvideogamelist/MyVideoGameList.Server/MyVideoGameList.Server.csproj": {}
   },
   "projects": {
-    "C:\\Users\\SStoychev\\Documents\\Git\\myvideogamelist\\MyVideoGameList.Server\\MyVideoGameList.Server.csproj": {
+    "/home/runner/work/myvideogamelist/myvideogamelist/MyVideoGameList.Server/MyVideoGameList.Server.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "C:\\Users\\SStoychev\\Documents\\Git\\myvideogamelist\\MyVideoGameList.Server\\MyVideoGameList.Server.csproj",
+        "projectUniqueName": "/home/runner/work/myvideogamelist/myvideogamelist/MyVideoGameList.Server/MyVideoGameList.Server.csproj",
         "projectName": "MyVideoGameList.Server",
-        "projectPath": "C:\\Users\\SStoychev\\Documents\\Git\\myvideogamelist\\MyVideoGameList.Server\\MyVideoGameList.Server.csproj",
-        "packagesPath": "C:\\Users\\SStoychev\\.nuget\\packages\\",
-        "outputPath": "C:\\Users\\SStoychev\\Documents\\Git\\myvideogamelist\\MyVideoGameList.Server\\obj\\",
+        "projectPath": "/home/runner/work/myvideogamelist/myvideogamelist/MyVideoGameList.Server/MyVideoGameList.Server.csproj",
+        "packagesPath": "/home/runner/.nuget/packages/",
+        "outputPath": "/home/runner/work/myvideogamelist/myvideogamelist/MyVideoGameList.Server/obj/",
         "projectStyle": "PackageReference",
-        "fallbackFolders": [
-          "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages",
-          "C:\\Program Files\\dotnet\\sdk\\NuGetFallbackFolder"
-        ],
         "configFilePaths": [
-          "C:\\Users\\SStoychev\\AppData\\Roaming\\NuGet\\NuGet.Config",
-          "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.FallbackLocation.config",
-          "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.Offline.config"
+          "/home/runner/.nuget/NuGet/NuGet.Config"
         ],
         "originalTargetFrameworks": [
           "net10.0"
         ],
         "sources": {
-          "C:\\Program Files (x86)\\Infragistics\\NuGet\\": {},
-          "C:\\Program Files (x86)\\Microsoft SDKs\\NuGetPackages\\": {},
-          "C:\\Users\\Public\\Documents\\Infragistics\\NuGet\\": {},
-          "https://api.nuget.org/v3/index.json": {},
-          "https://infragistics.pkgs.visualstudio.com/CodeGen_InputModel/_packaging/InputModel/nuget/v3/index.json": {},
-          "https://infragistics.pkgs.visualstudio.com/_packaging/DesignSystem%40Local/nuget/v3/index.json": {},
-          "https://packages.infragistics.com/nuget/licensed/": {}
+          "https://api.nuget.org/v3/index.json": {}
         },
         "frameworks": {
           "net10.0": {
@@ -63,6 +51,22 @@
             "Microsoft.AspNetCore.SpaProxy": {
               "target": "Package",
               "version": "[10.*-*, )"
+            },
+            "Microsoft.EntityFrameworkCore.Design": {
+              "include": "Runtime, Build, Native, ContentFiles, Analyzers, BuildTransitive",
+              "suppressParent": "All",
+              "target": "Package",
+              "version": "[10.0.3, )"
+            },
+            "Microsoft.EntityFrameworkCore.Sqlite": {
+              "target": "Package",
+              "version": "[10.0.3, )"
+            },
+            "Microsoft.EntityFrameworkCore.Tools": {
+              "include": "Runtime, Build, Native, ContentFiles, Analyzers, BuildTransitive",
+              "suppressParent": "All",
+              "target": "Package",
+              "version": "[10.0.3, )"
             }
           },
           "imports": [
@@ -84,7 +88,7 @@
               "privateAssets": "all"
             }
           },
-          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\10.0.103/PortableRuntimeIdentifierGraph.json",
+          "runtimeIdentifierGraphPath": "/usr/share/dotnet/sdk/10.0.102/PortableRuntimeIdentifierGraph.json",
           "packagesToPrune": {
             "Microsoft.AspNetCore": "(,10.0.32767]",
             "Microsoft.AspNetCore.Antiforgery": "(,10.0.32767]",
