@@ -1,5 +1,18 @@
 @import "tailwindcss";
 
+/* ── Theme tokens ───────────────────────────────────────────── */
+:root {
+    /* Dark theme (default) */
+    --app-bg: #0f172a;          /* slate-900 */
+    --app-text: #f1f5f9;        /* slate-100 */
+}
+
+[data-theme='light'] {
+    --app-bg: #f8fafc;          /* slate-50  */
+    --app-text: #0f172a;        /* slate-900 */
+}
+/* ──────────────────────────────────────────────────────────── */
+
 :root {
   --text: #6b6375;
   --text-h: #08060d;

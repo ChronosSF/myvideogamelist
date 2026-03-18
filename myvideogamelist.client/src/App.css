@@ -1,0 +1,8 @@
+.app-root {
+    min-height: 100svh;
+    display: flex;
+    flex-direction: column;
+    background-color: var(--app-bg, #0f172a);
+    color: var(--app-text, #f1f5f9);
+    transition: background-color 0.2s ease, color 0.2s ease;
+}

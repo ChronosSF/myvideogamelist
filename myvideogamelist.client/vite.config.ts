@@ -55,6 +55,14 @@ export default defineConfig({
             '^/games': {
                 target,
                 secure: false
+            },
+            '^/auth': {
+                target,
+                secure: false
+            },
+            '^/user': {
+                target,
+                secure: false
             }
         },
         port: parseInt(env.DEV_SERVER_PORT || '58546'),
