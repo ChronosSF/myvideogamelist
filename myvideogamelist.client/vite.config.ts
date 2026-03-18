@@ -48,19 +48,7 @@ export default defineConfig({
     },
     server: {
         proxy: {
-            '^/weatherforecast': {
-                target,
-                secure: false
-            },
-            '^/games': {
-                target,
-                secure: false
-            },
-            '^/auth': {
-                target,
-                secure: false
-            },
-            '^/user': {
+            '^/api': {
                 target,
                 secure: false
             }

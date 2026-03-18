@@ -11,7 +11,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        fetch('/auth/me', { credentials: 'include' })
+        fetch('/api/auth/me', { credentials: 'include' })
             .then(res => (res.ok ? res.json() : null))
             .then((data: UserProfile | null) => {
                 setUser(data);
@@ -21,7 +21,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }, []);
 
     const login = async (email: string, password: string, rememberMe: boolean) => {
-        const res = await fetch('/auth/login', {
+        const res = await fetch('/api/auth/login', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             credentials: 'include',
@@ -37,7 +37,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
 
     const register = async (email: string, password: string) => {
-        const res = await fetch('/auth/register', {
+        const res = await fetch('/api/auth/register', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             credentials: 'include',
@@ -54,13 +54,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
 
     const logout = async () => {
-        await fetch('/auth/logout', { method: 'POST', credentials: 'include' });
+        await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
         setUser(null);
         applyTheme('dark');
     };
 
     const updateTheme = async (theme: 'dark' | 'light') => {
-        const res = await fetch('/user/theme', {
+        const res = await fetch('/api/user/theme', {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             credentials: 'include',

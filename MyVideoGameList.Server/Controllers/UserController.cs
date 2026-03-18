@@ -7,7 +7,7 @@ using MyVideoGameList.Server.Models;
 namespace MyVideoGameList.Server.Controllers;
 
 [ApiController]
-[Route("[controller]")]
+[Route("api/[controller]")]
 [Authorize]
 public class UserController(UserManager<ApplicationUser> userManager) : ControllerBase
 {
