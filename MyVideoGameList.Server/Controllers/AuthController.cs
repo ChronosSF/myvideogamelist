@@ -35,7 +35,8 @@ public class AuthController(
             return Unauthorized(new { message = "Invalid email or password." });
 
         var user = await userManager.FindByEmailAsync(dto.Email);
-        return Ok(new UserProfileDto(user!.Id, user.Email!, user.Theme));
+        if (user == null) return Problem("User not found after successful sign-in.");
+        return Ok(new UserProfileDto(user.Id, user.Email!, user.Theme));
     }
 
     [HttpPost("logout")]

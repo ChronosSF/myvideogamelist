@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import './UserPage.css';
@@ -5,6 +6,8 @@ import './UserPage.css';
 export function UserPage() {
     const { user, logout, updateTheme } = useAuth();
     const navigate = useNavigate();
+
+    const [themeError, setThemeError] = useState<string | null>(null);
 
     if (!user) {
         return (
@@ -17,7 +20,12 @@ export function UserPage() {
     }
 
     const handleThemeChange = async (checked: boolean) => {
-        await updateTheme(checked ? 'light' : 'dark');
+        setThemeError(null);
+        try {
+            await updateTheme(checked ? 'light' : 'dark');
+        } catch {
+            setThemeError('Failed to save theme. Please try again.');
+        }
     };
 
     const handleLogout = async () => {
@@ -49,7 +57,9 @@ export function UserPage() {
                             <div className="user-card-value">
                                 {isLight ? 'Light mode' : 'Dark mode'}
                             </div>
-                            <p className="theme-save-hint">Saved automatically</p>
+                            <p className="theme-save-hint">
+                                {themeError ?? 'Saved automatically'}
+                            </p>
                         </div>
 
                         <div className="theme-toggle-wrap" aria-label="Toggle theme">

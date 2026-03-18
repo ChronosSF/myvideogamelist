@@ -132,7 +132,6 @@
     font-size: 0.8125rem;
     color: var(--dd-email, #64748b);
     border-bottom: 1px solid var(--dd-sep, rgba(51, 65, 85, 0.5));
-    truncate: ellipsis;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;

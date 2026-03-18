@@ -60,12 +60,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
 
     const updateTheme = async (theme: 'dark' | 'light') => {
-        await fetch('/user/theme', {
+        const res = await fetch('/user/theme', {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             credentials: 'include',
             body: JSON.stringify({ theme }),
         });
+        if (!res.ok) throw new Error('Failed to update theme');
         setUser(prev => (prev ? { ...prev, theme } : null));
         applyTheme(theme);
     };
