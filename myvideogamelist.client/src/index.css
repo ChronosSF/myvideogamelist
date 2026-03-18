@@ -1,7 +1,7 @@
 @import "tailwindcss";
 
 /* ── Light-mode variant (data-theme='light' on <html>) ─────── */
-@custom-variant light (&:where([data-theme='light'], [data-theme='light'] *));
+@custom-variant light ([data-theme='light'] &);
 
 /* ── Theme tokens ───────────────────────────────────────────── */
 :root {
