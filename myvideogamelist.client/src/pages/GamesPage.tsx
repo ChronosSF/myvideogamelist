@@ -32,12 +32,12 @@ export function GamesPage() {
     );
 
     return (
-        <div className="min-h-screen bg-slate-900">
+        <div className="min-h-screen">
             {/* Page header */}
-            <div className="bg-gradient-to-b from-blue-950/60 to-slate-900 border-b border-slate-700/50">
+            <div className="bg-gradient-to-b from-blue-950/60 to-slate-900 light:from-blue-50/80 light:to-slate-50 border-b border-slate-700/50 light:border-slate-200">
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
-                    <h1 className="text-3xl sm:text-4xl font-bold text-white mb-2">Games</h1>
-                    <p className="text-slate-400 text-sm sm:text-base">
+                    <h1 className="text-3xl sm:text-4xl font-bold text-white light:text-slate-900 mb-2">Games</h1>
+                    <p className="text-slate-400 light:text-slate-600 text-sm sm:text-base">
                         {loading ? 'Loading...' : `${games.length} game${games.length !== 1 ? 's' : ''} in the database`}
                     </p>
 
@@ -57,7 +57,7 @@ export function GamesPage() {
                             placeholder="Search games…"
                             value={search}
                             onChange={e => setSearch(e.target.value)}
-                            className="w-full pl-9 pr-4 py-2 bg-slate-800 border border-slate-600 rounded-lg text-white placeholder-slate-500 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            className="w-full pl-9 pr-4 py-2 bg-slate-800 light:bg-white border border-slate-600 light:border-slate-300 rounded-lg text-white light:text-slate-900 placeholder-slate-500 light:placeholder-slate-400 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                             aria-label="Search games"
                         />
                     </div>
@@ -70,7 +70,7 @@ export function GamesPage() {
                     <div className="flex items-center justify-center py-24">
                         <div className="flex flex-col items-center gap-4">
                             <div className="w-10 h-10 border-4 border-blue-500/30 border-t-blue-500 rounded-full animate-spin" aria-label="Loading" />
-                            <p className="text-slate-400 text-sm">Loading games…</p>
+                            <p className="text-slate-400 light:text-slate-600 text-sm">Loading games…</p>
                         </div>
                     </div>
                 )}
@@ -93,7 +93,7 @@ export function GamesPage() {
                             <svg className="w-14 h-14 text-slate-700 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
                             </svg>
-                            <p className="text-slate-400 font-medium">
+                            <p className="text-slate-400 light:text-slate-600 font-medium">
                                 {search ? 'No games match your search.' : 'No games found.'}
                             </p>
                         </div>

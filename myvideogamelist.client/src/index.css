@@ -1,15 +1,30 @@
 @import "tailwindcss";
 
+/* ── Light-mode variant (data-theme='light' on <html>) ─────── */
+@custom-variant light (&:where([data-theme='light'], [data-theme='light'] *));
+
 /* ── Theme tokens ───────────────────────────────────────────── */
 :root {
     /* Dark theme (default) */
-    --app-bg: #0f172a;          /* slate-900 */
-    --app-text: #f1f5f9;        /* slate-100 */
+    --app-bg: #0f172a;                       /* slate-900  */
+    --app-text: #f1f5f9;                     /* slate-100  */
+    --app-surface: #1e293b;                  /* slate-800  */
+    --app-text-muted: #94a3b8;               /* slate-400  */
+    --app-text-faint: #64748b;               /* slate-500  */
+    --app-border: rgba(51, 65, 85, 0.6);     /* slate-700/60 */
+    --app-input-bg: #1e293b;
+    --app-input-border: rgba(71, 85, 105, 0.8);
 }
 
 [data-theme='light'] {
-    --app-bg: #f8fafc;          /* slate-50  */
-    --app-text: #0f172a;        /* slate-900 */
+    --app-bg: #f8fafc;                           /* slate-50  */
+    --app-text: #0f172a;                         /* slate-900 */
+    --app-surface: #ffffff;
+    --app-text-muted: #64748b;                   /* slate-500 */
+    --app-text-faint: #94a3b8;                   /* slate-400 */
+    --app-border: rgba(203, 213, 225, 0.7);      /* slate-300/70 */
+    --app-input-bg: #ffffff;
+    --app-input-border: rgba(148, 163, 184, 0.8);
 }
 /* ──────────────────────────────────────────────────────────── */
 
