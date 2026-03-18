@@ -6,7 +6,7 @@ using MyVideoGameList.Server.DTOs;
 namespace MyVideoGameList.Server.Controllers;
 
 [ApiController]
-[Route("[controller]")]
+[Route("api/[controller]")]
 public class GamesController(ApplicationDbContext db) : ControllerBase
 {
     [HttpGet]

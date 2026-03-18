@@ -7,6 +7,7 @@ MyVideoGameList.Server/obj/
 MyVideoGameList.Server/out/
 MyVideoGameList.Server/publish/
 MyVideoGameList.Server/artifacts/
+MyVideoGameList.Server/wwwroot/
 
 ## SQLite database (runtime data)
 *.db

@@ -2,9 +2,9 @@ import { Link } from 'react-router-dom';
 
 export function HomePage() {
     return (
-        <div className="min-h-screen bg-slate-900 flex flex-col">
+        <div className="min-h-screen flex flex-col">
             {/* Hero Section */}
-            <div className="flex-1 flex items-center justify-center bg-gradient-to-br from-blue-950 via-slate-900 to-slate-900 relative overflow-hidden">
+            <div className="flex-1 flex items-center justify-center bg-gradient-to-br from-blue-950 via-slate-900 to-slate-900 light:from-blue-50 light:via-slate-50 light:to-white relative overflow-hidden">
                 {/* Background decoration */}
                 <div className="absolute inset-0 overflow-hidden pointer-events-none" aria-hidden="true">
                     <div className="absolute -top-40 -right-40 w-96 h-96 bg-blue-600/10 rounded-full blur-3xl" />
@@ -21,10 +21,10 @@ export function HomePage() {
                         </div>
                     </div>
 
-                    <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-white mb-4 leading-tight">
+                    <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-white light:text-slate-900 mb-4 leading-tight">
                         My<span className="text-blue-400">VideoGame</span>List
                     </h1>
-                    <p className="text-slate-400 text-lg sm:text-xl mb-10 max-w-xl mx-auto leading-relaxed">
+                    <p className="text-slate-400 light:text-slate-600 text-lg sm:text-xl mb-10 max-w-xl mx-auto leading-relaxed">
                         Track your gaming journey. Discover, organize, and share every game you've played.
                     </p>
 
@@ -43,7 +43,7 @@ export function HomePage() {
             </div>
 
             {/* Features row */}
-            <div className="bg-slate-800/50 border-t border-slate-700/50">
+            <div className="bg-slate-800/50 light:bg-white border-t border-slate-700/50 light:border-slate-200">
                 <div className="max-w-5xl mx-auto px-4 sm:px-6 py-12 grid grid-cols-1 sm:grid-cols-3 gap-8 text-center">
                     {[
                         {
@@ -69,13 +69,13 @@ export function HomePage() {
                         },
                     ].map(feature => (
                         <div key={feature.title} className="flex flex-col items-center gap-3">
-                            <div className="w-12 h-12 bg-blue-900/40 border border-blue-700/30 rounded-xl flex items-center justify-center">
+                            <div className="w-12 h-12 bg-blue-900/40 light:bg-blue-100 border border-blue-700/30 light:border-blue-200 rounded-xl flex items-center justify-center">
                                 <svg className="w-6 h-6 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                                     {feature.icon}
                                 </svg>
                             </div>
-                            <h2 className="text-white font-semibold text-base">{feature.title}</h2>
-                            <p className="text-slate-400 text-sm leading-relaxed">{feature.description}</p>
+                            <h2 className="text-white light:text-slate-800 font-semibold text-base">{feature.title}</h2>
+                            <p className="text-slate-400 light:text-slate-600 text-sm leading-relaxed">{feature.description}</p>
                         </div>
                     ))}
                 </div>

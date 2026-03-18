@@ -10,6 +10,9 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
+# MSBuild / .NET obj output (plain or Windows-style path with backslash)
+obj
+obj\*/
 *.local
 
 # Editor directories and files
