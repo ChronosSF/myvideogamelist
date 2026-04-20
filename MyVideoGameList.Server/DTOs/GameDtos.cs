@@ -38,3 +38,5 @@ public record GameDto(
     IEnumerable<GenreDto> Genres,
     IEnumerable<DeveloperDto> Developers,
     IEnumerable<PublisherDto> Publishers);
+
+public record PagedGamesResponse(IEnumerable<GameDto> Items, bool HasMore);
