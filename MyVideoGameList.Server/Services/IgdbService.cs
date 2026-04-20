@@ -107,7 +107,6 @@ public class IgdbService(
         }
         else
         {
-            sb.AppendLine("where category = 0 & version_parent = null;");
             sb.AppendLine("sort aggregated_rating desc;");
         }
 
