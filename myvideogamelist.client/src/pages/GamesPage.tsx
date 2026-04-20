@@ -21,7 +21,8 @@ export function GamesPage() {
     const [offset, setOffset] = useState(0);
     const [loading, setLoading] = useState(true);
     const [loadingMore, setLoadingMore] = useState(false);
-    const loadingMoreRef = useRef(false);
+    const isLoadingMoreRef = useRef(false);
+    const loadMoreControllerRef = useRef<AbortController | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [search, setSearch] = useState('');
     const [debouncedSearch, setDebouncedSearch] = useState('');
@@ -46,7 +47,8 @@ export function GamesPage() {
         setError(null);
         setLoading(true);
         setLoadingMore(false);
-        loadingMoreRef.current = false;
+        isLoadingMoreRef.current = false;
+        loadMoreControllerRef.current?.abort();
 
         fetchGamesPage(0, debouncedSearch, controller.signal)
             .then(data => {
@@ -66,20 +68,27 @@ export function GamesPage() {
     }, [debouncedSearch]);
 
     const loadMore = useCallback(() => {
-        if (loadingMoreRef.current || !hasMore) return;
-        loadingMoreRef.current = true;
+        if (isLoadingMoreRef.current || !hasMore) return;
+        isLoadingMoreRef.current = true;
         setLoadingMore(true);
 
-        fetchGamesPage(offset, debouncedSearch)
+        const controller = new AbortController();
+        loadMoreControllerRef.current = controller;
+
+        fetchGamesPage(offset, debouncedSearch, controller.signal)
             .then(data => {
+                if (controller.signal.aborted) return;
                 setGames(prev => [...prev, ...data.items]);
                 setHasMore(data.hasMore);
                 setOffset(prev => prev + PAGE_SIZE);
             })
-            .catch(err => setError(err instanceof Error ? err.message : 'An unexpected error occurred.'))
+            .catch(err => {
+                if (controller.signal.aborted) return;
+                setError(err instanceof Error ? err.message : 'An unexpected error occurred.');
+            })
             .finally(() => {
-                loadingMoreRef.current = false;
-                setLoadingMore(false);
+                isLoadingMoreRef.current = false;
+                if (!controller.signal.aborted) setLoadingMore(false);
             });
     }, [offset, debouncedSearch, hasMore]);
 
