@@ -4,11 +4,11 @@ import type { GameDto, PagedGamesResponse } from '@/types/game';
 
 const PAGE_SIZE = 20;
 
-async function fetchGamesPage(offset: number, search: string): Promise<PagedGamesResponse> {
+async function fetchGamesPage(offset: number, search: string, signal?: AbortSignal): Promise<PagedGamesResponse> {
     const params = new URLSearchParams({ offset: String(offset) });
     if (search.trim()) params.set('search', search.trim());
 
-    const response = await fetch(`/api/games?${params}`);
+    const response = await fetch(`/api/games?${params}`, { signal });
     if (!response.ok) {
         throw new Error(`Failed to load games (${response.status})`);
     }
@@ -21,6 +21,7 @@ export function GamesPage() {
     const [offset, setOffset] = useState(0);
     const [loading, setLoading] = useState(true);
     const [loadingMore, setLoadingMore] = useState(false);
+    const loadingMoreRef = useRef(false);
     const [error, setError] = useState<string | null>(null);
     const [search, setSearch] = useState('');
     const [debouncedSearch, setDebouncedSearch] = useState('');
@@ -37,24 +38,36 @@ export function GamesPage() {
 
     // Reset and re-fetch when the search term changes
     useEffect(() => {
+        const controller = new AbortController();
+
         setGames([]);
         setOffset(0);
         setHasMore(false);
         setError(null);
         setLoading(true);
+        setLoadingMore(false);
+        loadingMoreRef.current = false;
 
-        fetchGamesPage(0, debouncedSearch)
+        fetchGamesPage(0, debouncedSearch, controller.signal)
             .then(data => {
                 setGames(data.items);
                 setHasMore(data.hasMore);
                 setOffset(PAGE_SIZE);
             })
-            .catch(err => setError(err instanceof Error ? err.message : 'An unexpected error occurred.'))
-            .finally(() => setLoading(false));
+            .catch(err => {
+                if (controller.signal.aborted) return;
+                setError(err instanceof Error ? err.message : 'An unexpected error occurred.');
+            })
+            .finally(() => {
+                if (!controller.signal.aborted) setLoading(false);
+            });
+
+        return () => controller.abort();
     }, [debouncedSearch]);
 
     const loadMore = useCallback(() => {
-        if (loadingMore || !hasMore) return;
+        if (loadingMoreRef.current || !hasMore) return;
+        loadingMoreRef.current = true;
         setLoadingMore(true);
 
         fetchGamesPage(offset, debouncedSearch)
@@ -64,8 +77,11 @@ export function GamesPage() {
                 setOffset(prev => prev + PAGE_SIZE);
             })
             .catch(err => setError(err instanceof Error ? err.message : 'An unexpected error occurred.'))
-            .finally(() => setLoadingMore(false));
-    }, [offset, debouncedSearch, hasMore, loadingMore]);
+            .finally(() => {
+                loadingMoreRef.current = false;
+                setLoadingMore(false);
+            });
+    }, [offset, debouncedSearch, hasMore]);
 
     // Intersection observer for automatic infinite scroll
     const sentinelRef = useRef<HTMLDivElement | null>(null);
