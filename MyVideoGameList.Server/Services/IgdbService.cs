@@ -13,6 +13,8 @@ public class IgdbService(
 {
     private const string TokenCacheKey = "igdb_access_token";
     private const string ImageBaseUrl = "https://images.igdb.com/igdb/image/upload";
+    // Buffer (in seconds) subtracted from the token's reported expiry so we refresh before it actually expires
+    private const int TokenExpiryBufferSeconds = 120;
 
     private static readonly JsonSerializerOptions SnakeCaseOptions = new()
     {
@@ -46,7 +48,7 @@ public class IgdbService(
         if (cache.TryGetValue(TokenCacheKey, out string? cached) && cached is not null)
             return cached;
 
-        var client = httpClientFactory.CreateClient();
+        var client = httpClientFactory.CreateClient("Igdb");
         var response = await client.PostAsync(
             $"https://id.twitch.tv/oauth2/token" +
             $"?client_id={ClientId}&client_secret={ClientSecret}&grant_type=client_credentials",
@@ -57,7 +59,7 @@ public class IgdbService(
         var tokenResponse = await response.Content.ReadFromJsonAsync<TwitchTokenResponse>(SnakeCaseOptions)
             ?? throw new InvalidOperationException("Failed to deserialize IGDB token response.");
 
-        var expiry = TimeSpan.FromSeconds(tokenResponse.ExpiresIn - 120);
+        var expiry = TimeSpan.FromSeconds(tokenResponse.ExpiresIn - TokenExpiryBufferSeconds);
         cache.Set(TokenCacheKey, tokenResponse.AccessToken, expiry);
 
         return tokenResponse.AccessToken;
@@ -99,7 +101,9 @@ public class IgdbService(
 
         if (!string.IsNullOrWhiteSpace(search))
         {
-            sb.AppendLine($"search \"{search}\";");
+            // Escape backslashes and double-quotes to prevent Apicalypse query injection
+            var safeSearch = search.Replace("\\", "\\\\").Replace("\"", "\\\"");
+            sb.AppendLine($"search \"{safeSearch}\";");
         }
         else
         {

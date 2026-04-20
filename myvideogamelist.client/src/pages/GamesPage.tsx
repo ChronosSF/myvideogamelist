@@ -75,7 +75,8 @@ export function GamesPage() {
 
         const observer = new IntersectionObserver(
             entries => {
-                if (entries[0]?.isIntersecting && hasMore && !loadingMore && !loading) {
+                const entry = entries.find(e => e.target === sentinel);
+                if (entry?.isIntersecting && hasMore && !loadingMore && !loading) {
                     loadMore();
                 }
             },
@@ -93,7 +94,7 @@ export function GamesPage() {
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
                     <h1 className="text-3xl sm:text-4xl font-bold text-white light:text-slate-900 mb-2">Games</h1>
                     <p className="text-slate-400 light:text-slate-600 text-sm sm:text-base">
-                        {loading ? 'Loading…' : `${games.length} game${games.length !== 1 ? 's' : ''} loaded`}
+                        {loading ? 'Loading…' : `${games.length} game${games.length !== 1 ? 's' : ''} loaded${hasMore ? ' so far' : ''}`}
                     </p>
 
                     {/* Search */}
