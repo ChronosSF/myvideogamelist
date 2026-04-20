@@ -49,3 +49,8 @@ export interface GameDto {
     developers: DeveloperDto[];
     publishers: PublisherDto[];
 }
+
+export interface PagedGamesResponse {
+    items: GameDto[];
+    hasMore: boolean;
+}

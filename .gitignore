@@ -18,6 +18,8 @@ MyVideoGameList.Server/wwwroot/
 *.cache
 FileListAbsolute.txt
 myvideogamelist.client/obj/
+# Windows-style backslash paths for the same obj directory
+myvideogamelist.client/obj[/\\]*
 
 ## NuGet
 *.nupkg

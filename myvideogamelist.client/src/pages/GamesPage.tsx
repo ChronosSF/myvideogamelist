@@ -1,35 +1,116 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { GameCard } from '@/components/GameCard';
-import type { GameDto } from '@/types/game';
+import type { GameDto, PagedGamesResponse } from '@/types/game';
+
+const PAGE_SIZE = 20;
+
+async function fetchGamesPage(offset: number, search: string, signal?: AbortSignal): Promise<PagedGamesResponse> {
+    const params = new URLSearchParams({ offset: String(offset) });
+    if (search.trim()) params.set('search', search.trim());
+
+    const response = await fetch(`/api/games?${params}`, { signal });
+    if (!response.ok) {
+        throw new Error(`Failed to load games (${response.status})`);
+    }
+    return response.json() as Promise<PagedGamesResponse>;
+}
 
 export function GamesPage() {
     const [games, setGames] = useState<GameDto[]>([]);
+    const [hasMore, setHasMore] = useState(false);
+    const [offset, setOffset] = useState(0);
     const [loading, setLoading] = useState(true);
+    const [loadingMore, setLoadingMore] = useState(false);
+    const isLoadingMoreRef = useRef(false);
+    const loadMoreControllerRef = useRef<AbortController | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [search, setSearch] = useState('');
+    const [debouncedSearch, setDebouncedSearch] = useState('');
 
+    // Debounce the search input so we don't fire a request on every keystroke
+    const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     useEffect(() => {
-        async function fetchGames() {
-            try {
-                const response = await fetch('/api/games');
-                if (!response.ok) {
-                    throw new Error(`Failed to load games (${response.status})`);
-                }
-                const data: GameDto[] = await response.json();
-                setGames(data);
-            } catch (err) {
+        if (debounceRef.current) clearTimeout(debounceRef.current);
+        debounceRef.current = setTimeout(() => setDebouncedSearch(search), 400);
+        return () => {
+            if (debounceRef.current) clearTimeout(debounceRef.current);
+        };
+    }, [search]);
+
+    // Reset and re-fetch when the search term changes
+    useEffect(() => {
+        const controller = new AbortController();
+
+        setGames([]);
+        setOffset(0);
+        setHasMore(false);
+        setError(null);
+        setLoading(true);
+        setLoadingMore(false);
+        isLoadingMoreRef.current = false;
+        loadMoreControllerRef.current?.abort();
+
+        fetchGamesPage(0, debouncedSearch, controller.signal)
+            .then(data => {
+                setGames(data.items);
+                setHasMore(data.hasMore);
+                setOffset(PAGE_SIZE);
+            })
+            .catch(err => {
+                if (controller.signal.aborted) return;
                 setError(err instanceof Error ? err.message : 'An unexpected error occurred.');
-            } finally {
-                setLoading(false);
-            }
-        }
+            })
+            .finally(() => {
+                if (!controller.signal.aborted) setLoading(false);
+            });
 
-        fetchGames();
-    }, []);
+        return () => controller.abort();
+    }, [debouncedSearch]);
 
-    const filteredGames = games.filter(game =>
-        game.title.toLowerCase().includes(search.toLowerCase())
-    );
+    const loadMore = useCallback(() => {
+        if (isLoadingMoreRef.current || !hasMore) return;
+        isLoadingMoreRef.current = true;
+        setLoadingMore(true);
+
+        const controller = new AbortController();
+        loadMoreControllerRef.current = controller;
+
+        fetchGamesPage(offset, debouncedSearch, controller.signal)
+            .then(data => {
+                if (controller.signal.aborted) return;
+                setGames(prev => [...prev, ...data.items]);
+                setHasMore(data.hasMore);
+                setOffset(prev => prev + PAGE_SIZE);
+            })
+            .catch(err => {
+                if (controller.signal.aborted) return;
+                setError(err instanceof Error ? err.message : 'An unexpected error occurred.');
+            })
+            .finally(() => {
+                isLoadingMoreRef.current = false;
+                if (!controller.signal.aborted) setLoadingMore(false);
+            });
+    }, [offset, debouncedSearch, hasMore]);
+
+    // Intersection observer for automatic infinite scroll
+    const sentinelRef = useRef<HTMLDivElement | null>(null);
+    useEffect(() => {
+        const sentinel = sentinelRef.current;
+        if (!sentinel) return;
+
+        const observer = new IntersectionObserver(
+            entries => {
+                const entry = entries.find(e => e.target === sentinel);
+                if (entry?.isIntersecting && hasMore && !loadingMore && !loading) {
+                    loadMore();
+                }
+            },
+            { rootMargin: '200px' }
+        );
+
+        observer.observe(sentinel);
+        return () => observer.disconnect();
+    }, [hasMore, loadingMore, loading, loadMore]);
 
     return (
         <div className="min-h-screen">
@@ -38,7 +119,7 @@ export function GamesPage() {
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
                     <h1 className="text-3xl sm:text-4xl font-bold text-white light:text-slate-900 mb-2">Games</h1>
                     <p className="text-slate-400 light:text-slate-600 text-sm sm:text-base">
-                        {loading ? 'Loading...' : `${games.length} game${games.length !== 1 ? 's' : ''} in the database`}
+                        {loading ? 'Loading…' : `${games.length} game${games.length !== 1 ? 's' : ''} loaded${hasMore ? ' so far' : ''}`}
                     </p>
 
                     {/* Search */}
@@ -87,7 +168,7 @@ export function GamesPage() {
                     </div>
                 )}
 
-                {!loading && !error && filteredGames.length === 0 && (
+                {!loading && !error && games.length === 0 && (
                     <div className="flex items-center justify-center py-24">
                         <div className="text-center">
                             <svg className="w-14 h-14 text-slate-700 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
@@ -100,14 +181,25 @@ export function GamesPage() {
                     </div>
                 )}
 
-                {!loading && !error && filteredGames.length > 0 && (
+                {!loading && !error && games.length > 0 && (
                     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
-                        {filteredGames.map(game => (
+                        {games.map(game => (
                             <GameCard key={game.id} game={game} />
                         ))}
                     </div>
                 )}
+
+                {/* Infinite-scroll sentinel / load-more indicator */}
+                <div ref={sentinelRef} className="mt-8 flex justify-center">
+                    {loadingMore && (
+                        <div className="flex items-center gap-3 text-slate-400 light:text-slate-600 text-sm">
+                            <div className="w-5 h-5 border-2 border-blue-500/30 border-t-blue-500 rounded-full animate-spin" aria-label="Loading more" />
+                            Loading more games…
+                        </div>
+                    )}
+                </div>
             </div>
         </div>
     );
 }
+
