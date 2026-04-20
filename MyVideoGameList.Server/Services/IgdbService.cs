@@ -35,13 +35,27 @@ public class IgdbService(
         "involved_companies.company.id,involved_companies.company.name," +
         "involved_companies.developer,involved_companies.publisher;";
 
-    private string ClientId =>
-        configuration["Igdb:ClientId"]
-        ?? throw new InvalidOperationException("IGDB ClientId is not configured.");
+    private string ClientId
+    {
+        get
+        {
+            var clientId = configuration["Igdb:ClientId"];
+            return string.IsNullOrWhiteSpace(clientId)
+                ? throw new InvalidOperationException("IGDB ClientId is not configured.")
+                : clientId;
+        }
+    }
 
-    private string ClientSecret =>
-        configuration["Igdb:ClientSecret"]
-        ?? throw new InvalidOperationException("IGDB ClientSecret is not configured.");
+    private string ClientSecret
+    {
+        get
+        {
+            var clientSecret = configuration["Igdb:ClientSecret"];
+            return string.IsNullOrWhiteSpace(clientSecret)
+                ? throw new InvalidOperationException("IGDB ClientSecret is not configured.")
+                : clientSecret;
+        }
+    }
 
     private async Task<string> GetAccessTokenAsync()
     {
@@ -49,17 +63,21 @@ public class IgdbService(
             return cached;
 
         var client = httpClientFactory.CreateClient("Igdb");
-        var response = await client.PostAsync(
-            $"https://id.twitch.tv/oauth2/token" +
-            $"?client_id={ClientId}&client_secret={ClientSecret}&grant_type=client_credentials",
-            content: null);
+        using var content = new FormUrlEncodedContent(
+            [
+                new KeyValuePair<string, string>("client_id", ClientId),
+                new KeyValuePair<string, string>("client_secret", ClientSecret),
+                new KeyValuePair<string, string>("grant_type", "client_credentials")
+            ]);
+        var response = await client.PostAsync("https://id.twitch.tv/oauth2/token", content);
 
         response.EnsureSuccessStatusCode();
 
         var tokenResponse = await response.Content.ReadFromJsonAsync<TwitchTokenResponse>(SnakeCaseOptions)
             ?? throw new InvalidOperationException("Failed to deserialize IGDB token response.");
 
-        var expiry = TimeSpan.FromSeconds(tokenResponse.ExpiresIn - TokenExpiryBufferSeconds);
+        var cacheLifetimeSeconds = Math.Max(30, tokenResponse.ExpiresIn - TokenExpiryBufferSeconds);
+        var expiry = TimeSpan.FromSeconds(cacheLifetimeSeconds);
         cache.Set(TokenCacheKey, tokenResponse.AccessToken, expiry);
 
         return tokenResponse.AccessToken;
