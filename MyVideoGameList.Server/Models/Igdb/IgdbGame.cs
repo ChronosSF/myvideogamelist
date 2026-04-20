@@ -7,7 +7,7 @@ public record IgdbGame(
     string Name,
     string? Summary,
     [property: JsonPropertyName("first_release_date")] long? FirstReleaseDate,
-    IgdbCover? Cover,
+    int? Cover,
     List<IgdbArtwork>? Artworks,
     List<IgdbVideo>? Videos,
     List<IgdbWebsite>? Websites,

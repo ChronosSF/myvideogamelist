@@ -24,7 +24,7 @@ public class IgdbService(
 
     private static readonly string GameFields =
         "fields id,name,summary,first_release_date," +
-        "cover.image_id," +
+        "cover," +
         "artworks.image_id," +
         "videos.video_id," +
         "websites.url,websites.category," +
@@ -86,12 +86,42 @@ public class IgdbService(
         var igdbGames = await response.Content.ReadFromJsonAsync<List<IgdbGame>>(SnakeCaseOptions)
             ?? [];
 
-        var games = igdbGames.Select(MapToGameDto).ToList();
+        var coverIds = igdbGames
+            .Where(g => g.Cover.HasValue)
+            .Select(g => g.Cover!.Value)
+            .Distinct()
+            .ToList();
+
+        var coverImageIds = coverIds.Count > 0
+            ? await FetchCoverImageIdsAsync(accessToken, coverIds)
+            : new Dictionary<int, string>();
+
+        var games = igdbGames.Select(g => MapToGameDto(g, coverImageIds)).ToList();
         var hasMore = igdbGames.Count == limit;
         var result = new PagedGamesResponse(games, hasMore);
 
         cache.Set(cacheKey, result, TimeSpan.FromMinutes(30));
         return result;
+    }
+
+    private async Task<Dictionary<int, string>> FetchCoverImageIdsAsync(string accessToken, List<int> coverIds)
+    {
+        var idsJoined = string.Join(",", coverIds);
+        var query = $"fields id,image_id; where id = ({idsJoined}); limit {coverIds.Count};";
+
+        var request = new HttpRequestMessage(HttpMethod.Post, "https://api.igdb.com/v4/covers");
+        request.Headers.Add("Client-ID", ClientId);
+        request.Headers.Add("Authorization", $"Bearer {accessToken}");
+        request.Content = new StringContent(query, Encoding.UTF8, "text/plain");
+
+        var client = httpClientFactory.CreateClient("Igdb");
+        var response = await client.SendAsync(request);
+        response.EnsureSuccessStatusCode();
+
+        var covers = await response.Content.ReadFromJsonAsync<List<IgdbCover>>(SnakeCaseOptions) ?? [];
+        return covers
+            .Where(c => c.ImageId is not null)
+            .ToDictionary(c => c.Id, c => c.ImageId!);
     }
 
     private static string BuildQuery(int offset, int limit, string? search)
@@ -117,9 +147,9 @@ public class IgdbService(
         return sb.ToString();
     }
 
-    private static GameDto MapToGameDto(IgdbGame g)
+    private static GameDto MapToGameDto(IgdbGame g, Dictionary<int, string> coverImageIds)
     {
-        var coverUrl = g.Cover?.ImageId is { } coverId
+        var coverUrl = g.Cover.HasValue && coverImageIds.TryGetValue(g.Cover.Value, out var coverId)
             ? $"{ImageBaseUrl}/t_cover_big/{coverId}.jpg"
             : null;
 
