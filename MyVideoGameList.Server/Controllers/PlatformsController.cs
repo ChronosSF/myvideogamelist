@@ -9,7 +9,7 @@ namespace MyVideoGameList.Server.Controllers;
 public class PlatformsController(IIgdbService igdbService) : ControllerBase
 {
     /// <summary>
-    /// Returns platforms from IGDB that were updated during the previous calendar year,
+    /// Returns the active platforms configured in app settings (ActivePlatforms),
     /// used to populate the platform preference settings for the upcoming releases timeline.
     /// </summary>
     [HttpGet("active")]

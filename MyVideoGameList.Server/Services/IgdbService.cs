@@ -193,42 +193,21 @@ public class IgdbService(
         return result;
     }
 
-    public async Task<IEnumerable<PlatformDto>> GetActivePlatformsAsync()
+    public Task<IEnumerable<PlatformDto>> GetActivePlatformsAsync()
     {
-        // Platforms updated since the start of the previous calendar year (e.g. 2025-01-01 if today is 2026)
-        var lastYearStart = new DateTimeOffset(DateTime.UtcNow.Year - 1, 1, 1, 0, 0, 0, TimeSpan.Zero);
-        var lastYearUnix = lastYearStart.ToUnixTimeSeconds();
+        var entries = configuration
+            .GetSection("ActivePlatforms")
+            .Get<List<ActivePlatformConfig>>() ?? [];
 
-        var cacheKey = $"igdb_active_platforms|{DateTime.UtcNow.Year}";
-        if (cache.TryGetValue(cacheKey, out IEnumerable<PlatformDto>? cached) && cached is not null)
-            return cached;
-
-        var accessToken = await GetAccessTokenAsync();
-
-        var query = new StringBuilder();
-        query.AppendLine("fields id,name,abbreviation;");
-        query.AppendLine($"where updated_at >= {lastYearUnix};");
-        query.AppendLine("sort name asc;");
-        query.AppendLine("limit 100;");
-
-        var request = new HttpRequestMessage(HttpMethod.Post, "https://api.igdb.com/v4/platforms");
-        request.Headers.Add("Client-ID", ClientId);
-        request.Headers.Add("Authorization", $"Bearer {accessToken}");
-        request.Content = new StringContent(query.ToString(), Encoding.UTF8, "text/plain");
-
-        var client = httpClientFactory.CreateClient("Igdb");
-        var response = await client.SendAsync(request);
-        response.EnsureSuccessStatusCode();
-
-        var igdbPlatforms = await response.Content.ReadFromJsonAsync<List<IgdbPlatform>>(SnakeCaseOptions) ?? [];
-        var result = igdbPlatforms
-            .Select(p => new PlatformDto(p.Id, p.Name, p.Abbreviation ?? p.Name, null, null))
+        IEnumerable<PlatformDto> result = entries
+            .Select(p => new PlatformDto(p.Id, p.Name, p.Abbreviation, null, null))
+            .OrderBy(p => p.Name)
             .ToList();
 
-        // Cache for the rest of the current day
-        cache.Set(cacheKey, result, TimeSpan.FromHours(24));
-        return result;
+        return Task.FromResult(result);
     }
+
+    private sealed record ActivePlatformConfig(int Id, string Name, string Abbreviation);
 
     private static string BuildQuery(int offset, int limit, string? search)
     {
