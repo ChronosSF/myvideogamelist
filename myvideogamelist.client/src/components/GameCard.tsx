@@ -1,4 +1,9 @@
+import { useState } from 'react';
 import type { GameDto } from '@/types/game';
+import { type ListId, LIST_IDS, LIST_NAMES } from '@/types/list';
+import { useLists } from '@/hooks/useLists';
+import { useAuth } from '@/hooks/useAuth';
+import './GameCard.css';
 
 interface GameCardProps {
     game: GameDto;
@@ -26,11 +31,35 @@ function StarRating({ rating }: { rating: number }) {
 
 export function GameCard({ game }: GameCardProps) {
     const releaseYear = game.releaseDate ? new Date(game.releaseDate).getFullYear() : null;
+    const { user } = useAuth();
+    const { addToList, removeFromList, isInList, isPending } = useLists();
+    const [overlayOpen, setOverlayOpen] = useState(false);
+
+    const handleListToggle = async (e: React.MouseEvent, listId: ListId) => {
+        e.stopPropagation();
+        if (isPending(game.id)) return;
+        if (isInList(listId, game.id)) {
+            await removeFromList(listId, game.id);
+        } else {
+            await addToList(listId, game);
+        }
+    };
 
     return (
-        <article className="bg-slate-800 light:bg-white rounded-xl overflow-hidden flex flex-col shadow-lg hover:shadow-blue-900/40 light:hover:shadow-slate-200/80 hover:shadow-xl transition-all duration-300 hover:-translate-y-1 border border-slate-700 light:border-slate-200 hover:border-blue-600/50">
+        <article
+            className="game-card-root bg-slate-800 light:bg-white rounded-xl overflow-hidden flex flex-col shadow-lg hover:shadow-blue-900/40 light:hover:shadow-slate-200/80 hover:shadow-xl transition-all duration-300 hover:-translate-y-1 border border-slate-700 light:border-slate-200 hover:border-blue-600/50"
+            onMouseLeave={() => setOverlayOpen(false)}
+        >
             {/* Cover Image */}
-            <div className="relative aspect-[3/4] bg-slate-900 light:bg-slate-100 overflow-hidden">
+            <div
+                className={`relative aspect-[3/4] bg-slate-900 light:bg-slate-100 overflow-hidden${user ? ' cursor-pointer' : ''}`}
+                onClick={user ? () => setOverlayOpen(o => !o) : undefined}
+                role={user ? 'button' : undefined}
+                tabIndex={user ? 0 : undefined}
+                aria-label={user ? `Open list options for ${game.title}` : undefined}
+                aria-expanded={user ? overlayOpen : undefined}
+                onKeyDown={user ? (e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setOverlayOpen(o => !o); } }) : undefined}
+            >
                 {game.coverImageUrl ? (
                     <img
                         src={game.coverImageUrl}
@@ -66,6 +95,48 @@ export function GameCard({ game }: GameCardProps) {
                 {game.esrbRating && (
                     <div className="absolute top-2 left-2 px-1.5 py-0.5 bg-slate-900/80 backdrop-blur-sm rounded text-xs font-mono text-slate-300 border border-slate-600">
                         {game.esrbRating}
+                    </div>
+                )}
+
+                {/* List selection overlay — only shown when authenticated; visible on hover (CSS) or tap (state) */}
+                {user && (
+                    <div
+                        className={`game-card-overlay${overlayOpen ? ' open' : ''}`}
+                        onClick={() => setOverlayOpen(false)}
+                        role="presentation"
+                    >
+                        <div
+                            className="game-card-list-btn-group"
+                            onClick={e => e.stopPropagation()}
+                            role="group"
+                            aria-label="Add to list"
+                        >
+                            {LIST_IDS.map(listId => {
+                                const active = isInList(listId, game.id);
+                                const pending = isPending(game.id);
+                                return (
+                                    <button
+                                        key={listId}
+                                        className={`game-card-list-btn${active ? ' active' : ''}`}
+                                        onClick={e => handleListToggle(e, listId)}
+                                        disabled={pending}
+                                        aria-pressed={active}
+                                        title={active ? `Remove from ${LIST_NAMES[listId]}` : `Add to ${LIST_NAMES[listId]}`}
+                                    >
+                                        <span>{LIST_NAMES[listId]}</span>
+                                        {active ? (
+                                            <svg className="game-card-list-check" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                                            </svg>
+                                        ) : (
+                                            <svg className="game-card-list-check" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v14m-7-7h14" />
+                                            </svg>
+                                        )}
+                                    </button>
+                                );
+                            })}
+                        </div>
                     </div>
                 )}
             </div>
@@ -128,3 +199,4 @@ export function GameCard({ game }: GameCardProps) {
         </article>
     );
 }
+

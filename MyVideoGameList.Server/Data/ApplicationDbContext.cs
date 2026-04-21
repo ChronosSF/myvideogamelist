@@ -16,6 +16,7 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
     public DbSet<GameGenre> GameGenres { get; set; }
     public DbSet<GameDeveloper> GameDevelopers { get; set; }
     public DbSet<GamePublisher> GamePublishers { get; set; }
+    public DbSet<UserGameList> UserGameLists { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -26,6 +27,14 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
         modelBuilder.Entity<GameGenre>().HasKey(gg => new { gg.GameId, gg.GenreId });
         modelBuilder.Entity<GameDeveloper>().HasKey(gd => new { gd.GameId, gd.DeveloperId });
         modelBuilder.Entity<GamePublisher>().HasKey(gp => new { gp.GameId, gp.PublisherId });
+
+        // UserGameList: composite PK on (UserId, GameId); cascade delete when user is deleted
+        modelBuilder.Entity<UserGameList>().HasKey(ul => new { ul.UserId, ul.GameId });
+        modelBuilder.Entity<UserGameList>()
+            .HasOne(ul => ul.User)
+            .WithMany()
+            .HasForeignKey(ul => ul.UserId)
+            .OnDelete(DeleteBehavior.Cascade);
 
         SeedData(modelBuilder);
     }

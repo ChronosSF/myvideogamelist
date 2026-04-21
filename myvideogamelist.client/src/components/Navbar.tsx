@@ -44,6 +44,7 @@ export function Navbar() {
                             <nav className="flex items-center gap-1" aria-label="Main navigation">
                                 <NavLink to="/" end className={navLinkClass}>Home</NavLink>
                                 <NavLink to="/games" className={navLinkClass}>Games</NavLink>
+                                <NavLink to="/lists" className={navLinkClass}>Lists</NavLink>
                             </nav>
 
                             {/* Auth section */}

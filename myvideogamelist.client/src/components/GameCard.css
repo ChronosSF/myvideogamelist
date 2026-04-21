@@ -1,0 +1,64 @@
+.game-card-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.55);
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    padding-bottom: 0.75rem;
+    opacity: 0;
+    transition: opacity 0.18s ease;
+    pointer-events: none;
+}
+
+.game-card-root:hover .game-card-overlay,
+.game-card-overlay.open {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.game-card-list-btn-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.375rem;
+    width: calc(100% - 1.5rem);
+}
+
+.game-card-list-btn {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    padding: 0.4rem 0.75rem;
+    border-radius: 0.5rem;
+    font-size: 0.78rem;
+    font-weight: 600;
+    border: none;
+    cursor: pointer;
+    background: rgba(30, 41, 59, 0.92);
+    color: #cbd5e1;
+    transition: background 0.12s, color 0.12s;
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+}
+
+.game-card-list-btn:hover {
+    background: rgba(59, 130, 246, 0.85);
+    color: #ffffff;
+}
+
+.game-card-list-btn.active {
+    background: rgba(37, 99, 235, 0.9);
+    color: #ffffff;
+}
+
+.game-card-list-btn.active:hover {
+    background: rgba(220, 38, 38, 0.8);
+    color: #ffffff;
+}
+
+.game-card-list-check {
+    width: 1rem;
+    height: 1rem;
+    flex-shrink: 0;
+}

@@ -1,5 +1,6 @@
 import { Outlet } from 'react-router-dom';
 import { AuthProvider } from '@/contexts/AuthProvider';
+import { ListsProvider } from '@/contexts/ListsProvider';
 import { Navbar } from '@/components/Navbar';
 import './App.css';
 
@@ -17,7 +18,9 @@ function AppLayout() {
 function App() {
     return (
         <AuthProvider>
-            <AppLayout />
+            <ListsProvider>
+                <AppLayout />
+            </ListsProvider>
         </AuthProvider>
     );
 }
