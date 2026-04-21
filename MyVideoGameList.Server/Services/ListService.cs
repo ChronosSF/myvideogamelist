@@ -13,6 +13,7 @@ public class ListService(ApplicationDbContext db, IIgdbService igdbService) : IL
     {
         var entries = await db.UserGameLists
             .Where(ul => ul.UserId == userId)
+            .OrderBy(ul => ul.GameId)
             .ToListAsync();
 
         if (entries.Count == 0)

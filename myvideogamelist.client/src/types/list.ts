@@ -1,4 +1,4 @@
-import type { GameDto } from './game';
+import type { GameDto } from '@/types/game';
 
 export type ListId = 'playing' | 'backlog' | 'finished';
 

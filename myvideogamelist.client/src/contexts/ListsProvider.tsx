@@ -1,4 +1,4 @@
-import { useEffect, useReducer, type ReactNode } from 'react';
+import { useEffect, useReducer, useState, type ReactNode } from 'react';
 import type { GameDto } from '@/types/game';
 import { type ListId, LIST_IDS } from '@/types/list';
 import { useAuth } from '@/hooks/useAuth';
@@ -13,28 +13,36 @@ interface ApiListsResponse {
 interface ListsState {
     lists: Record<ListId, GameDto[]>;
     loading: boolean;
+    /** Set only on the initial fetch failure — triggers the full-page error state. */
     error: string | null;
+    /** Set on per-card mutation failures — shown as a dismissible banner. */
+    mutationError: string | null;
 }
 
 type ListsAction =
+    | { type: 'RESET' }
     | { type: 'FETCH_START' }
     | { type: 'FETCH_SUCCESS'; data: ApiListsResponse }
     | { type: 'FETCH_ERROR'; error: string }
     | { type: 'SET_LIST'; listId: ListId; games: GameDto[] }
-    | { type: 'CLEAR_ERROR' };
+    | { type: 'MUTATION_ERROR'; error: string }
+    | { type: 'CLEAR_MUTATION_ERROR' };
 
 const EMPTY_LISTS: Record<ListId, GameDto[]> = { playing: [], backlog: [], finished: [] };
 
-const initialState: ListsState = { lists: EMPTY_LISTS, loading: false, error: null };
+const initialState: ListsState = { lists: EMPTY_LISTS, loading: false, error: null, mutationError: null };
 
 function reducer(state: ListsState, action: ListsAction): ListsState {
     switch (action.type) {
+        case 'RESET':
+            return initialState;
         case 'FETCH_START':
             return { ...state, loading: true, error: null };
         case 'FETCH_SUCCESS':
             return {
                 loading: false,
                 error: null,
+                mutationError: null,
                 lists: {
                     playing: action.data.playing,
                     backlog: action.data.backlog,
@@ -45,8 +53,10 @@ function reducer(state: ListsState, action: ListsAction): ListsState {
             return { ...state, loading: false, error: action.error };
         case 'SET_LIST':
             return { ...state, lists: { ...state.lists, [action.listId]: action.games } };
-        case 'CLEAR_ERROR':
-            return { ...state, error: null };
+        case 'MUTATION_ERROR':
+            return { ...state, mutationError: action.error };
+        case 'CLEAR_MUTATION_ERROR':
+            return { ...state, mutationError: null };
         default:
             return state;
     }
@@ -55,9 +65,16 @@ function reducer(state: ListsState, action: ListsAction): ListsState {
 export function ListsProvider({ children }: { children: ReactNode }) {
     const { user, loading: authLoading } = useAuth();
     const [state, dispatch] = useReducer(reducer, initialState);
+    // Track gameIds with in-flight mutations to prevent concurrent-update corruption
+    const [pendingIds, setPendingIds] = useState<Set<number>>(new Set());
 
     useEffect(() => {
-        if (authLoading || !user) return;
+        if (authLoading) return;
+
+        if (!user) {
+            dispatch({ type: 'RESET' });
+            return;
+        }
 
         const controller = new AbortController();
         dispatch({ type: 'FETCH_START' });
@@ -82,6 +99,11 @@ export function ListsProvider({ children }: { children: ReactNode }) {
     }, [user, authLoading]);
 
     const addToList = async (listId: ListId, game: GameDto): Promise<void> => {
+        if (pendingIds.has(game.id)) return;
+
+        // Mark as pending to prevent concurrent mutations
+        setPendingIds(prev => new Set(prev).add(game.id));
+
         // Capture previous state for rollback
         const prevLists = state.lists;
 
@@ -95,23 +117,31 @@ export function ListsProvider({ children }: { children: ReactNode }) {
             dispatch({ type: 'SET_LIST', listId: id, games: updated[id] });
         }
 
-        const res = await fetch(`/api/lists/${game.id}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify({ listType: listId }),
-        });
+        try {
+            const res = await fetch(`/api/lists/${game.id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({ listType: listId }),
+            });
 
-        if (!res.ok) {
-            // Roll back to previous state
-            for (const id of LIST_IDS) {
-                dispatch({ type: 'SET_LIST', listId: id, games: prevLists[id] });
+            if (!res.ok) {
+                for (const id of LIST_IDS) {
+                    dispatch({ type: 'SET_LIST', listId: id, games: prevLists[id] });
+                }
+                dispatch({ type: 'MUTATION_ERROR', error: 'Failed to update list. Please try again.' });
             }
-            dispatch({ type: 'FETCH_ERROR', error: 'Failed to update list. Please try again.' });
+        } finally {
+            setPendingIds(prev => { const s = new Set(prev); s.delete(game.id); return s; });
         }
     };
 
     const removeFromList = async (listId: ListId, gameId: number): Promise<void> => {
+        if (pendingIds.has(gameId)) return;
+
+        // Mark as pending to prevent concurrent mutations
+        setPendingIds(prev => new Set(prev).add(gameId));
+
         // Capture previous state for rollback
         const prevGames = state.lists[listId];
 
@@ -121,15 +151,18 @@ export function ListsProvider({ children }: { children: ReactNode }) {
             games: state.lists[listId].filter(g => g.id !== gameId),
         });
 
-        const res = await fetch(`/api/lists/${gameId}`, {
-            method: 'DELETE',
-            credentials: 'include',
-        });
+        try {
+            const res = await fetch(`/api/lists/${gameId}`, {
+                method: 'DELETE',
+                credentials: 'include',
+            });
 
-        if (!res.ok) {
-            // Roll back to previous state
-            dispatch({ type: 'SET_LIST', listId, games: prevGames });
-            dispatch({ type: 'FETCH_ERROR', error: 'Failed to remove from list. Please try again.' });
+            if (!res.ok) {
+                dispatch({ type: 'SET_LIST', listId, games: prevGames });
+                dispatch({ type: 'MUTATION_ERROR', error: 'Failed to remove from list. Please try again.' });
+            }
+        } finally {
+            setPendingIds(prev => { const s = new Set(prev); s.delete(gameId); return s; });
         }
     };
 
@@ -139,11 +172,15 @@ export function ListsProvider({ children }: { children: ReactNode }) {
     const getListFor = (gameId: number): ListId | null =>
         LIST_IDS.find(id => state.lists[id].some(g => g.id === gameId)) ?? null;
 
+    const isPending = (gameId: number): boolean => pendingIds.has(gameId);
+
     return (
         <ListsContext.Provider value={{
             lists: state.lists,
             loading: state.loading,
             error: state.error,
+            mutationError: state.mutationError,
+            isPending,
             addToList,
             removeFromList,
             isInList,

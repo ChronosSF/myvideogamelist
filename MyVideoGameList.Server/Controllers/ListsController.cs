@@ -27,6 +27,9 @@ public class ListsController(
     [HttpPut("{gameId:int}")]
     public async Task<IActionResult> SetListEntry(int gameId, [FromBody] SetListEntryDto dto)
     {
+        if (gameId <= 0)
+            return BadRequest(new { message = "gameId must be a positive integer." });
+
         if (!ListService.IsValidListType(dto.ListType))
             return BadRequest(new { message = "ListType must be 'playing', 'backlog', or 'finished'." });
 
@@ -40,6 +43,9 @@ public class ListsController(
     [HttpDelete("{gameId:int}")]
     public async Task<IActionResult> RemoveListEntry(int gameId)
     {
+        if (gameId <= 0)
+            return BadRequest(new { message = "gameId must be a positive integer." });
+
         var user = await userManager.GetUserAsync(User);
         if (user is null) return Unauthorized();
 

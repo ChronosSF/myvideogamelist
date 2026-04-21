@@ -6,6 +6,8 @@ export interface ListsContextValue {
     lists: Record<ListId, GameDto[]>;
     loading: boolean;
     error: string | null;
+    mutationError: string | null;
+    isPending: (gameId: number) => boolean;
     addToList: (listId: ListId, game: GameDto) => Promise<void>;
     removeFromList: (listId: ListId, gameId: number) => Promise<void>;
     isInList: (listId: ListId, gameId: number) => boolean;

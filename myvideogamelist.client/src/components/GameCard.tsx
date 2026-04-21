@@ -32,11 +32,12 @@ function StarRating({ rating }: { rating: number }) {
 export function GameCard({ game }: GameCardProps) {
     const releaseYear = game.releaseDate ? new Date(game.releaseDate).getFullYear() : null;
     const { user } = useAuth();
-    const { addToList, removeFromList, isInList } = useLists();
+    const { addToList, removeFromList, isInList, isPending } = useLists();
     const [overlayOpen, setOverlayOpen] = useState(false);
 
     const handleListToggle = async (e: React.MouseEvent, listId: ListId) => {
         e.stopPropagation();
+        if (isPending(game.id)) return;
         if (isInList(listId, game.id)) {
             await removeFromList(listId, game.id);
         } else {
@@ -56,6 +57,7 @@ export function GameCard({ game }: GameCardProps) {
                 role={user ? 'button' : undefined}
                 tabIndex={user ? 0 : undefined}
                 aria-label={user ? `Open list options for ${game.title}` : undefined}
+                aria-expanded={user ? overlayOpen : undefined}
                 onKeyDown={user ? (e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setOverlayOpen(o => !o); } }) : undefined}
             >
                 {game.coverImageUrl ? (
@@ -111,11 +113,13 @@ export function GameCard({ game }: GameCardProps) {
                         >
                             {LIST_IDS.map(listId => {
                                 const active = isInList(listId, game.id);
+                                const pending = isPending(game.id);
                                 return (
                                     <button
                                         key={listId}
                                         className={`game-card-list-btn${active ? ' active' : ''}`}
                                         onClick={e => handleListToggle(e, listId)}
+                                        disabled={pending}
                                         aria-pressed={active}
                                         title={active ? `Remove from ${LIST_NAMES[listId]}` : `Add to ${LIST_NAMES[listId]}`}
                                     >
