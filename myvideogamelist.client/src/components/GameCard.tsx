@@ -45,9 +45,17 @@ export function GameCard({ game }: GameCardProps) {
     return (
         <article
             className="game-card-root bg-slate-800 light:bg-white rounded-xl overflow-hidden flex flex-col shadow-lg hover:shadow-blue-900/40 light:hover:shadow-slate-200/80 hover:shadow-xl transition-all duration-300 hover:-translate-y-1 border border-slate-700 light:border-slate-200 hover:border-blue-600/50"
+            onMouseLeave={() => setOverlayOpen(false)}
         >
             {/* Cover Image */}
-            <div className="relative aspect-[3/4] bg-slate-900 light:bg-slate-100 overflow-hidden">
+            <div
+                className="relative aspect-[3/4] bg-slate-900 light:bg-slate-100 overflow-hidden cursor-pointer"
+                onClick={() => setOverlayOpen(o => !o)}
+                role="button"
+                tabIndex={0}
+                aria-label={`Open list options for ${game.title}`}
+                onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setOverlayOpen(o => !o); } }}
+            >
                 {game.coverImageUrl ? (
                     <img
                         src={game.coverImageUrl}
@@ -123,18 +131,6 @@ export function GameCard({ game }: GameCardProps) {
                         })}
                     </div>
                 </div>
-
-                {/* Tap trigger — small button visible on mobile when not hovering */}
-                <button
-                    className="absolute bottom-2 right-2 w-7 h-7 rounded-full bg-slate-900/80 text-slate-300 flex items-center justify-center opacity-0 focus:opacity-100 active:opacity-100 sm:hidden"
-                    onClick={e => { e.stopPropagation(); setOverlayOpen(o => !o); }}
-                    aria-label="Open list menu"
-                    aria-expanded={overlayOpen}
-                >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v14m-7-7h14" />
-                    </svg>
-                </button>
             </div>
 
             {/* Card Body */}

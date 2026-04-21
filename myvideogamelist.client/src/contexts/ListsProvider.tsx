@@ -5,10 +5,19 @@ import { ListsContext } from './ListsContext';
 
 const STORAGE_KEY = 'mvgl_lists';
 
+function isValidListsData(data: unknown): data is Record<ListId, GameDto[]> {
+    if (!data || typeof data !== 'object' || Array.isArray(data)) return false;
+    const record = data as Record<string, unknown>;
+    return LIST_IDS.every(id => Array.isArray(record[id]));
+}
+
 function loadFromStorage(): Record<ListId, GameDto[]> {
     try {
         const raw = localStorage.getItem(STORAGE_KEY);
-        if (raw) return JSON.parse(raw) as Record<ListId, GameDto[]>;
+        if (raw) {
+            const parsed: unknown = JSON.parse(raw);
+            if (isValidListsData(parsed)) return parsed;
+        }
     } catch {
         // ignore parse errors
     }
