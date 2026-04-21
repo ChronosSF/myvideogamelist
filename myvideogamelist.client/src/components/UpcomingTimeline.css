@@ -1,3 +1,23 @@
+.timeline-scroll-container {
+    max-height: 75vh;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: #334155 transparent;
+}
+
+.timeline-scroll-container::-webkit-scrollbar {
+    width: 4px;
+}
+
+.timeline-scroll-container::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.timeline-scroll-container::-webkit-scrollbar-thumb {
+    background: #334155;
+    border-radius: 2px;
+}
+
 .timeline-track {
     position: relative;
 }
@@ -33,6 +53,12 @@
     justify-content: center;
     z-index: 1;
     box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.15);
+    cursor: grab;
+    touch-action: none;
+}
+
+.timeline-dot:active {
+    cursor: grabbing;
 }
 
 .timeline-dot.today {
@@ -132,32 +158,5 @@
     border-top: none;
     border-left: none;
     transform: rotate(45deg);
-}
-
-/* Prev / Next pagination buttons */
-.timeline-nav-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.375rem;
-    padding: 0.4rem 0.875rem;
-    border-radius: 0.625rem;
-    border: 1px solid #334155;
-    background: #1e293b;
-    color: #94a3b8;
-    font-size: 0.8rem;
-    font-weight: 500;
-    cursor: pointer;
-    transition: background 0.15s, border-color 0.15s, color 0.15s;
-}
-
-.timeline-nav-btn:hover:not(:disabled) {
-    background: rgba(59, 130, 246, 0.15);
-    border-color: #3b82f6;
-    color: #93c5fd;
-}
-
-.timeline-nav-btn:disabled {
-    opacity: 0.35;
-    cursor: not-allowed;
 }
 

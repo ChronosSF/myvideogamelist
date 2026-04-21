@@ -159,23 +159,35 @@ public class IgdbService(
 
         var accessToken = await GetAccessTokenAsync();
 
-        var query = new StringBuilder();
-        query.AppendLine(GameFields);
-        query.AppendLine($"where first_release_date >= {nowUnix} & first_release_date <= {endUnix} & version_parent = null;");
-        query.AppendLine("sort first_release_date asc;");
-        query.AppendLine("limit 50;");
+        // Page through all results in batches (IGDB max is 500 per request)
+        const int batchSize = 500;
+        var allGames = new List<IgdbGame>();
+        var offset = 0;
+        while (true)
+        {
+            var query = new StringBuilder();
+            query.AppendLine(GameFields);
+            query.AppendLine($"where first_release_date >= {nowUnix} & first_release_date <= {endUnix} & version_parent = null;");
+            query.AppendLine("sort first_release_date asc;");
+            query.AppendLine($"limit {batchSize};");
+            query.AppendLine($"offset {offset};");
 
-        var request = new HttpRequestMessage(HttpMethod.Post, "https://api.igdb.com/v4/games");
-        request.Headers.Add("Client-ID", ClientId);
-        request.Headers.Add("Authorization", $"Bearer {accessToken}");
-        request.Content = new StringContent(query.ToString(), Encoding.UTF8, "text/plain");
+            var request = new HttpRequestMessage(HttpMethod.Post, "https://api.igdb.com/v4/games");
+            request.Headers.Add("Client-ID", ClientId);
+            request.Headers.Add("Authorization", $"Bearer {accessToken}");
+            request.Content = new StringContent(query.ToString(), Encoding.UTF8, "text/plain");
 
-        var client = httpClientFactory.CreateClient("Igdb");
-        var response = await client.SendAsync(request);
-        response.EnsureSuccessStatusCode();
+            var client = httpClientFactory.CreateClient("Igdb");
+            var response = await client.SendAsync(request);
+            response.EnsureSuccessStatusCode();
 
-        var igdbGames = await response.Content.ReadFromJsonAsync<List<IgdbGame>>(SnakeCaseOptions) ?? [];
-        var result = igdbGames.Select(MapToGameDto).ToList();
+            var batch = await response.Content.ReadFromJsonAsync<List<IgdbGame>>(SnakeCaseOptions) ?? [];
+            allGames.AddRange(batch);
+            if (batch.Count < batchSize) break;
+            offset += batchSize;
+        }
+
+        var result = allGames.Select(MapToGameDto).ToList();
 
         cache.Set(cacheKey, result, TimeSpan.FromHours(1));
         return result;
