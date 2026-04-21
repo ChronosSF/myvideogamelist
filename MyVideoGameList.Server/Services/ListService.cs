@@ -36,6 +36,9 @@ public class ListService(ApplicationDbContext db, IIgdbService igdbService) : IL
 
     public async Task SetListEntryAsync(string userId, int gameId, string listType)
     {
+        if (!IsValidListType(listType))
+            throw new ArgumentException($"Invalid list type: {listType}", nameof(listType));
+
         var existing = await db.UserGameLists
             .FirstOrDefaultAsync(ul => ul.UserId == userId && ul.GameId == gameId);
 

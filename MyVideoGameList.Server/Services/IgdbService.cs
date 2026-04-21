@@ -117,6 +117,7 @@ public class IgdbService(
         var idList = ids.ToList();
         if (idList.Count == 0) return [];
 
+        idList.Sort();
         var idsCsv = string.Join(',', idList);
         var cacheKey = $"igdb_games_by_ids|{idsCsv}";
         if (cache.TryGetValue(cacheKey, out IEnumerable<GameDto>? cached) && cached is not null)

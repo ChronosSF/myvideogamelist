@@ -82,6 +82,9 @@ export function ListsProvider({ children }: { children: ReactNode }) {
     }, [user, authLoading]);
 
     const addToList = async (listId: ListId, game: GameDto): Promise<void> => {
+        // Capture previous state for rollback
+        const prevLists = state.lists;
+
         // Optimistically update — a game lives in at most one list
         const updated: Record<ListId, GameDto[]> = { playing: [], backlog: [], finished: [] };
         for (const id of LIST_IDS) {
@@ -100,11 +103,18 @@ export function ListsProvider({ children }: { children: ReactNode }) {
         });
 
         if (!res.ok) {
+            // Roll back to previous state
+            for (const id of LIST_IDS) {
+                dispatch({ type: 'SET_LIST', listId: id, games: prevLists[id] });
+            }
             dispatch({ type: 'FETCH_ERROR', error: 'Failed to update list. Please try again.' });
         }
     };
 
     const removeFromList = async (listId: ListId, gameId: number): Promise<void> => {
+        // Capture previous state for rollback
+        const prevGames = state.lists[listId];
+
         dispatch({
             type: 'SET_LIST',
             listId,
@@ -117,6 +127,8 @@ export function ListsProvider({ children }: { children: ReactNode }) {
         });
 
         if (!res.ok) {
+            // Roll back to previous state
+            dispatch({ type: 'SET_LIST', listId, games: prevGames });
             dispatch({ type: 'FETCH_ERROR', error: 'Failed to remove from list. Please try again.' });
         }
     };
