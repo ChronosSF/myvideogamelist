@@ -1,4 +1,8 @@
+import { useState } from 'react';
 import type { GameDto } from '@/types/game';
+import { type ListId, LIST_IDS, LIST_NAMES } from '@/types/list';
+import { useLists } from '@/hooks/useLists';
+import './GameCard.css';
 
 interface GameCardProps {
     game: GameDto;
@@ -26,9 +30,22 @@ function StarRating({ rating }: { rating: number }) {
 
 export function GameCard({ game }: GameCardProps) {
     const releaseYear = game.releaseDate ? new Date(game.releaseDate).getFullYear() : null;
+    const { addToList, removeFromList, isInList } = useLists();
+    const [overlayOpen, setOverlayOpen] = useState(false);
+
+    const handleListToggle = (e: React.MouseEvent, listId: ListId) => {
+        e.stopPropagation();
+        if (isInList(listId, game.id)) {
+            removeFromList(listId, game.id);
+        } else {
+            addToList(listId, game);
+        }
+    };
 
     return (
-        <article className="bg-slate-800 light:bg-white rounded-xl overflow-hidden flex flex-col shadow-lg hover:shadow-blue-900/40 light:hover:shadow-slate-200/80 hover:shadow-xl transition-all duration-300 hover:-translate-y-1 border border-slate-700 light:border-slate-200 hover:border-blue-600/50">
+        <article
+            className="game-card-root bg-slate-800 light:bg-white rounded-xl overflow-hidden flex flex-col shadow-lg hover:shadow-blue-900/40 light:hover:shadow-slate-200/80 hover:shadow-xl transition-all duration-300 hover:-translate-y-1 border border-slate-700 light:border-slate-200 hover:border-blue-600/50"
+        >
             {/* Cover Image */}
             <div className="relative aspect-[3/4] bg-slate-900 light:bg-slate-100 overflow-hidden">
                 {game.coverImageUrl ? (
@@ -68,6 +85,56 @@ export function GameCard({ game }: GameCardProps) {
                         {game.esrbRating}
                     </div>
                 )}
+
+                {/* List selection overlay — visible on hover (CSS) or tap (state) */}
+                <div
+                    className={`game-card-overlay${overlayOpen ? ' open' : ''}`}
+                    onClick={() => setOverlayOpen(false)}
+                    role="presentation"
+                >
+                    <div
+                        className="game-card-list-btn-group"
+                        onClick={e => e.stopPropagation()}
+                        role="group"
+                        aria-label="Add to list"
+                    >
+                        {LIST_IDS.map(listId => {
+                            const active = isInList(listId, game.id);
+                            return (
+                                <button
+                                    key={listId}
+                                    className={`game-card-list-btn${active ? ' active' : ''}`}
+                                    onClick={e => handleListToggle(e, listId)}
+                                    aria-pressed={active}
+                                    title={active ? `Remove from ${LIST_NAMES[listId]}` : `Add to ${LIST_NAMES[listId]}`}
+                                >
+                                    <span>{LIST_NAMES[listId]}</span>
+                                    {active ? (
+                                        <svg className="game-card-list-check" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                                        </svg>
+                                    ) : (
+                                        <svg className="game-card-list-check" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v14m-7-7h14" />
+                                        </svg>
+                                    )}
+                                </button>
+                            );
+                        })}
+                    </div>
+                </div>
+
+                {/* Tap trigger — small button visible on mobile when not hovering */}
+                <button
+                    className="absolute bottom-2 right-2 w-7 h-7 rounded-full bg-slate-900/80 text-slate-300 flex items-center justify-center opacity-0 focus:opacity-100 active:opacity-100 sm:hidden"
+                    onClick={e => { e.stopPropagation(); setOverlayOpen(o => !o); }}
+                    aria-label="Open list menu"
+                    aria-expanded={overlayOpen}
+                >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v14m-7-7h14" />
+                    </svg>
+                </button>
             </div>
 
             {/* Card Body */}
@@ -128,3 +195,4 @@ export function GameCard({ game }: GameCardProps) {
         </article>
     );
 }
+
