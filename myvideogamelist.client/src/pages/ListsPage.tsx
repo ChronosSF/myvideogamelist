@@ -2,11 +2,13 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { GameCard } from '@/components/GameCard';
 import { useLists } from '@/hooks/useLists';
+import { useAuth } from '@/hooks/useAuth';
 import { type ListId, LIST_IDS, LIST_NAMES } from '@/types/list';
 import './ListsPage.css';
 
 export function ListsPage() {
-    const { lists } = useLists();
+    const { user } = useAuth();
+    const { lists, loading, error } = useLists();
     const [activeTab, setActiveTab] = useState<ListId>('playing');
 
     const games = lists[activeTab];
@@ -41,7 +43,41 @@ export function ListsPage() {
 
             {/* Content */}
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8" role="tabpanel">
-                {games.length === 0 ? (
+                {!user && (
+                    <div className="flex items-center justify-center py-24">
+                        <div className="text-center">
+                            <svg className="w-14 h-14 text-slate-700 light:text-slate-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                            </svg>
+                            <p className="text-slate-400 light:text-slate-600 font-medium mb-3">
+                                Sign in to manage your game lists.
+                            </p>
+                        </div>
+                    </div>
+                )}
+
+                {user && loading && (
+                    <div className="flex items-center justify-center py-24">
+                        <div className="flex flex-col items-center gap-4">
+                            <div className="w-10 h-10 border-4 border-blue-500/30 border-t-blue-500 rounded-full animate-spin" aria-label="Loading" />
+                            <p className="text-slate-400 light:text-slate-600 text-sm">Loading your lists…</p>
+                        </div>
+                    </div>
+                )}
+
+                {user && !loading && error && (
+                    <div className="flex items-center justify-center py-24">
+                        <div className="bg-red-900/20 border border-red-700/50 rounded-xl p-8 max-w-md text-center">
+                            <svg className="w-10 h-10 text-red-400 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M12 4a8 8 0 100 16 8 8 0 000-16z" />
+                            </svg>
+                            <p className="text-red-300 font-medium mb-1">Failed to load lists</p>
+                            <p className="text-red-400/70 text-sm">{error}</p>
+                        </div>
+                    </div>
+                )}
+
+                {user && !loading && !error && games.length === 0 && (
                     <div className="flex items-center justify-center py-24">
                         <div className="text-center">
                             <svg
@@ -67,7 +103,9 @@ export function ListsPage() {
                             </Link>
                         </div>
                     </div>
-                ) : (
+                )}
+
+                {user && !loading && !error && games.length > 0 && (
                     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
                         {games.map(game => (
                             <GameCard key={game.id} game={game} />

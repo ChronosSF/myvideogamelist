@@ -12,6 +12,7 @@ builder.Services.AddOpenApi();
 builder.Services.AddMemoryCache();
 builder.Services.AddHttpClient("Igdb");
 builder.Services.AddSingleton<IIgdbService, IgdbService>();
+builder.Services.AddScoped<IListService, ListService>();
 
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseSqlite(builder.Configuration.GetConnectionString("DefaultConnection")));

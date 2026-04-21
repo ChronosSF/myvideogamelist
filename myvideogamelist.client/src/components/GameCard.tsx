@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { GameDto } from '@/types/game';
 import { type ListId, LIST_IDS, LIST_NAMES } from '@/types/list';
 import { useLists } from '@/hooks/useLists';
+import { useAuth } from '@/hooks/useAuth';
 import './GameCard.css';
 
 interface GameCardProps {
@@ -30,15 +31,16 @@ function StarRating({ rating }: { rating: number }) {
 
 export function GameCard({ game }: GameCardProps) {
     const releaseYear = game.releaseDate ? new Date(game.releaseDate).getFullYear() : null;
+    const { user } = useAuth();
     const { addToList, removeFromList, isInList } = useLists();
     const [overlayOpen, setOverlayOpen] = useState(false);
 
-    const handleListToggle = (e: React.MouseEvent, listId: ListId) => {
+    const handleListToggle = async (e: React.MouseEvent, listId: ListId) => {
         e.stopPropagation();
         if (isInList(listId, game.id)) {
-            removeFromList(listId, game.id);
+            await removeFromList(listId, game.id);
         } else {
-            addToList(listId, game);
+            await addToList(listId, game);
         }
     };
 
@@ -49,12 +51,12 @@ export function GameCard({ game }: GameCardProps) {
         >
             {/* Cover Image */}
             <div
-                className="relative aspect-[3/4] bg-slate-900 light:bg-slate-100 overflow-hidden cursor-pointer"
-                onClick={() => setOverlayOpen(o => !o)}
-                role="button"
-                tabIndex={0}
-                aria-label={`Open list options for ${game.title}`}
-                onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setOverlayOpen(o => !o); } }}
+                className={`relative aspect-[3/4] bg-slate-900 light:bg-slate-100 overflow-hidden${user ? ' cursor-pointer' : ''}`}
+                onClick={user ? () => setOverlayOpen(o => !o) : undefined}
+                role={user ? 'button' : undefined}
+                tabIndex={user ? 0 : undefined}
+                aria-label={user ? `Open list options for ${game.title}` : undefined}
+                onKeyDown={user ? (e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setOverlayOpen(o => !o); } }) : undefined}
             >
                 {game.coverImageUrl ? (
                     <img
@@ -94,43 +96,45 @@ export function GameCard({ game }: GameCardProps) {
                     </div>
                 )}
 
-                {/* List selection overlay — visible on hover (CSS) or tap (state) */}
-                <div
-                    className={`game-card-overlay${overlayOpen ? ' open' : ''}`}
-                    onClick={() => setOverlayOpen(false)}
-                    role="presentation"
-                >
+                {/* List selection overlay — only shown when authenticated; visible on hover (CSS) or tap (state) */}
+                {user && (
                     <div
-                        className="game-card-list-btn-group"
-                        onClick={e => e.stopPropagation()}
-                        role="group"
-                        aria-label="Add to list"
+                        className={`game-card-overlay${overlayOpen ? ' open' : ''}`}
+                        onClick={() => setOverlayOpen(false)}
+                        role="presentation"
                     >
-                        {LIST_IDS.map(listId => {
-                            const active = isInList(listId, game.id);
-                            return (
-                                <button
-                                    key={listId}
-                                    className={`game-card-list-btn${active ? ' active' : ''}`}
-                                    onClick={e => handleListToggle(e, listId)}
-                                    aria-pressed={active}
-                                    title={active ? `Remove from ${LIST_NAMES[listId]}` : `Add to ${LIST_NAMES[listId]}`}
-                                >
-                                    <span>{LIST_NAMES[listId]}</span>
-                                    {active ? (
-                                        <svg className="game-card-list-check" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
-                                        </svg>
-                                    ) : (
-                                        <svg className="game-card-list-check" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v14m-7-7h14" />
-                                        </svg>
-                                    )}
-                                </button>
-                            );
-                        })}
+                        <div
+                            className="game-card-list-btn-group"
+                            onClick={e => e.stopPropagation()}
+                            role="group"
+                            aria-label="Add to list"
+                        >
+                            {LIST_IDS.map(listId => {
+                                const active = isInList(listId, game.id);
+                                return (
+                                    <button
+                                        key={listId}
+                                        className={`game-card-list-btn${active ? ' active' : ''}`}
+                                        onClick={e => handleListToggle(e, listId)}
+                                        aria-pressed={active}
+                                        title={active ? `Remove from ${LIST_NAMES[listId]}` : `Add to ${LIST_NAMES[listId]}`}
+                                    >
+                                        <span>{LIST_NAMES[listId]}</span>
+                                        {active ? (
+                                            <svg className="game-card-list-check" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                                            </svg>
+                                        ) : (
+                                            <svg className="game-card-list-check" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v14m-7-7h14" />
+                                            </svg>
+                                        )}
+                                    </button>
+                                );
+                            })}
+                        </div>
                     </div>
-                </div>
+                )}
             </div>
 
             {/* Card Body */}

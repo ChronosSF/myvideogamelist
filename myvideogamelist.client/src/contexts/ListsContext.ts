@@ -4,8 +4,10 @@ import type { GameDto } from '@/types/game';
 
 export interface ListsContextValue {
     lists: Record<ListId, GameDto[]>;
-    addToList: (listId: ListId, game: GameDto) => void;
-    removeFromList: (listId: ListId, gameId: number) => void;
+    loading: boolean;
+    error: string | null;
+    addToList: (listId: ListId, game: GameDto) => Promise<void>;
+    removeFromList: (listId: ListId, gameId: number) => Promise<void>;
     isInList: (listId: ListId, gameId: number) => boolean;
     getListFor: (gameId: number) => ListId | null;
 }
