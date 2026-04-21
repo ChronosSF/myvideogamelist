@@ -21,4 +21,11 @@ public class GamesController(IIgdbService igdbService) : ControllerBase
         var result = await igdbService.GetGamesAsync(offset, PageSize, search);
         return Ok(result);
     }
+
+    [HttpGet("upcoming")]
+    public async Task<ActionResult<IEnumerable<GameDto>>> GetUpcomingReleases()
+    {
+        var result = await igdbService.GetUpcomingReleasesAsync();
+        return Ok(result);
+    }
 }

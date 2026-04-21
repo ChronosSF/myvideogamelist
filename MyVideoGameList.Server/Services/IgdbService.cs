@@ -145,6 +145,42 @@ public class IgdbService(
         return result;
     }
 
+    public async Task<IEnumerable<GameDto>> GetUpcomingReleasesAsync()
+    {
+        var nowOffset = DateTimeOffset.UtcNow;
+        var endOffset = nowOffset.AddDays(14);
+        var nowUnix = nowOffset.ToUnixTimeSeconds();
+        var endUnix = endOffset.ToUnixTimeSeconds();
+
+        // Refresh every hour so the list stays current without hammering the API
+        var cacheKey = $"igdb_upcoming|{nowOffset:yyyyMMddHH}";
+        if (cache.TryGetValue(cacheKey, out IEnumerable<GameDto>? cached) && cached is not null)
+            return cached;
+
+        var accessToken = await GetAccessTokenAsync();
+
+        var query = new StringBuilder();
+        query.AppendLine(GameFields);
+        query.AppendLine($"where first_release_date >= {nowUnix} & first_release_date <= {endUnix} & version_parent = null;");
+        query.AppendLine("sort first_release_date asc;");
+        query.AppendLine("limit 50;");
+
+        var request = new HttpRequestMessage(HttpMethod.Post, "https://api.igdb.com/v4/games");
+        request.Headers.Add("Client-ID", ClientId);
+        request.Headers.Add("Authorization", $"Bearer {accessToken}");
+        request.Content = new StringContent(query.ToString(), Encoding.UTF8, "text/plain");
+
+        var client = httpClientFactory.CreateClient("Igdb");
+        var response = await client.SendAsync(request);
+        response.EnsureSuccessStatusCode();
+
+        var igdbGames = await response.Content.ReadFromJsonAsync<List<IgdbGame>>(SnakeCaseOptions) ?? [];
+        var result = igdbGames.Select(MapToGameDto).ToList();
+
+        cache.Set(cacheKey, result, TimeSpan.FromHours(1));
+        return result;
+    }
+
     private static string BuildQuery(int offset, int limit, string? search)
     {
         var sb = new StringBuilder();

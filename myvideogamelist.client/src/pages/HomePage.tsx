@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import { UpcomingTimeline } from '@/components/UpcomingTimeline';
 
 export function HomePage() {
     return (
@@ -80,6 +81,9 @@ export function HomePage() {
                     ))}
                 </div>
             </div>
+
+            {/* Upcoming releases timeline */}
+            <UpcomingTimeline />
         </div>
     );
 }
