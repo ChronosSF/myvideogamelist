@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import type { GameDto } from '@/types/game';
 import { type ListId, LIST_IDS, LIST_NAMES } from '@/types/list';
 import { useLists } from '@/hooks/useLists';
@@ -111,6 +112,17 @@ export function GameCard({ game }: GameCardProps) {
                             role="group"
                             aria-label="Add to list"
                         >
+                            <Link
+                                to={`/games/${game.id}`}
+                                className="game-card-list-btn"
+                                onClick={e => e.stopPropagation()}
+                                tabIndex={0}
+                            >
+                                <span>Details</span>
+                                <svg className="game-card-list-check" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M12 2a10 10 0 100 20A10 10 0 0012 2z" />
+                                </svg>
+                            </Link>
                             {LIST_IDS.map(listId => {
                                 const active = isInList(listId, game.id);
                                 const pending = isPending(game.id);
@@ -144,7 +156,11 @@ export function GameCard({ game }: GameCardProps) {
             {/* Card Body */}
             <div className="p-4 flex flex-col gap-2 flex-1">
                 <div className="flex items-start justify-between gap-2">
-                    <h3 className="text-white light:text-slate-900 font-semibold text-sm leading-snug line-clamp-2">{game.title}</h3>
+                    <h3 className="text-white light:text-slate-900 font-semibold text-sm leading-snug line-clamp-2">
+                        <Link to={`/games/${game.id}`} className="hover:text-blue-400 transition-colors">
+                            {game.title}
+                        </Link>
+                    </h3>
                     {releaseYear && (
                         <span className="text-slate-500 light:text-slate-400 text-xs shrink-0 mt-0.5">{releaseYear}</span>
                     )}
