@@ -7,3 +7,5 @@ public record LoginDto(string Email, string Password, bool RememberMe = false);
 public record UserProfileDto(string Id, string Email, string Theme);
 
 public record UpdateThemeDto(string Theme);
+
+public record UpdateHiddenPlatformsDto(IEnumerable<int> PlatformIds);

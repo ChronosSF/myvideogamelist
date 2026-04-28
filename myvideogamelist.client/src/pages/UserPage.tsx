@@ -1,13 +1,45 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
+import { useHiddenPlatforms } from '@/hooks/useHiddenPlatforms';
+import type { PlatformDto } from '@/types/game';
 import './UserPage.css';
+
+function useActivePlatforms() {
+    const [platforms, setPlatforms] = useState<PlatformDto[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
+
+    useEffect(() => {
+        const controller = new AbortController();
+        fetch('/api/platforms/active', { signal: controller.signal })
+            .then(r => {
+                if (!r.ok) throw new Error(`Failed to load platforms (${r.status})`);
+                return r.json() as Promise<PlatformDto[]>;
+            })
+            .then(data => setPlatforms(data))
+            .catch(err => {
+                if (controller.signal.aborted) return;
+                setError(err instanceof Error ? err.message : 'Unexpected error');
+            })
+            .finally(() => {
+                if (!controller.signal.aborted) setLoading(false);
+            });
+        return () => controller.abort();
+    }, []);
+
+    return { platforms, loading, error };
+}
 
 export function UserPage() {
     const { user, logout, updateTheme } = useAuth();
     const navigate = useNavigate();
 
     const [themeError, setThemeError] = useState<string | null>(null);
+
+    const { platforms: activePlatforms, loading: platformsLoading } = useActivePlatforms();
+    const { hiddenIds, loading: hiddenLoading, saving, error: hiddenError, setHiddenIds, save } = useHiddenPlatforms(user !== null);
+    const [saveSuccess, setSaveSuccess] = useState(false);
 
     if (!user) {
         return (
@@ -31,6 +63,24 @@ export function UserPage() {
     const handleLogout = async () => {
         await logout();
         navigate('/');
+    };
+
+    const togglePlatformHidden = (id: number, visible: boolean) => {
+        setSaveSuccess(false);
+        setHiddenIds(prev => {
+            const next = new Set(prev);
+            if (visible) next.delete(id); else next.add(id);
+            return next;
+        });
+    };
+
+    const handleSaveHiddenPlatforms = async () => {
+        try {
+            await save();
+            setSaveSuccess(true);
+        } catch {
+            setSaveSuccess(false);
+        }
     };
 
     const isLight = user.theme === 'light';
@@ -63,12 +113,10 @@ export function UserPage() {
                         </div>
 
                         <div className="theme-toggle-wrap" aria-label="Toggle theme">
-                            {/* Moon icon */}
                             <svg className="theme-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                                     d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z" />
                             </svg>
-
                             <label className="toggle">
                                 <input
                                     type="checkbox"
@@ -79,14 +127,64 @@ export function UserPage() {
                                 <span className="toggle-track" />
                                 <span className="toggle-thumb" />
                             </label>
-
-                            {/* Sun icon */}
                             <svg className="theme-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                                     d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364-6.364l-.707.707M6.343 17.657l-.707.707M17.657 17.657l-.707-.707M6.343 6.343l-.707-.707M12 8a4 4 0 100 8 4 4 0 000-8z" />
                             </svg>
                         </div>
                     </div>
+                </div>
+
+                {/* Upcoming Timeline — Platform Preferences */}
+                <div className="user-card">
+                    <div className="user-card-label">Upcoming Releases — Platform Visibility</div>
+                    <p className="theme-save-hint" style={{ marginBottom: '1rem' }}>
+                        Platforms unchecked here will be hidden from the filter row on the home page timeline.
+                        Games available only on hidden platforms will not appear.
+                    </p>
+
+                    {(platformsLoading || hiddenLoading) && (
+                        <p className="theme-save-hint">Loading platforms…</p>
+                    )}
+
+                    {!platformsLoading && !hiddenLoading && activePlatforms.length === 0 && (
+                        <p className="theme-save-hint">No active platforms found.</p>
+                    )}
+
+                    {!platformsLoading && !hiddenLoading && activePlatforms.length > 0 && (
+                        <div className="platform-prefs-grid">
+                            {activePlatforms.map(p => {
+                                const visible = !hiddenIds.has(p.id);
+                                return (
+                                    <label key={p.id} className={`platform-pref-label${visible ? ' checked' : ''}`}>
+                                        <input
+                                            type="checkbox"
+                                            checked={visible}
+                                            onChange={e => togglePlatformHidden(p.id, e.target.checked)}
+                                            aria-label={p.name}
+                                        />
+                                        <span className="platform-pref-name" title={p.name}>
+                                            {p.abbreviation || p.name}
+                                        </span>
+                                    </label>
+                                );
+                            })}
+                        </div>
+                    )}
+
+                    {hiddenError && (
+                        <p className="user-pref-error">{hiddenError}</p>
+                    )}
+
+                    {!platformsLoading && !hiddenLoading && activePlatforms.length > 0 && (
+                        <button
+                            className="user-save-btn"
+                            onClick={handleSaveHiddenPlatforms}
+                            disabled={saving}
+                        >
+                            {saving ? 'Saving…' : saveSuccess ? '✓ Saved' : 'Save preferences'}
+                        </button>
+                    )}
                 </div>
 
                 <button className="user-logout-btn" onClick={handleLogout}>

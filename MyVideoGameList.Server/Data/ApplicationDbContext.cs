@@ -17,6 +17,7 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
     public DbSet<GameDeveloper> GameDevelopers { get; set; }
     public DbSet<GamePublisher> GamePublishers { get; set; }
     public DbSet<UserGameList> UserGameLists { get; set; }
+    public DbSet<UserHiddenPlatform> UserHiddenPlatforms { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -34,6 +35,14 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
             .HasOne(ul => ul.User)
             .WithMany()
             .HasForeignKey(ul => ul.UserId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // UserHiddenPlatform: composite PK on (UserId, IgdbPlatformId); cascade delete when user is deleted
+        modelBuilder.Entity<UserHiddenPlatform>().HasKey(hp => new { hp.UserId, hp.IgdbPlatformId });
+        modelBuilder.Entity<UserHiddenPlatform>()
+            .HasOne(hp => hp.User)
+            .WithMany()
+            .HasForeignKey(hp => hp.UserId)
             .OnDelete(DeleteBehavior.Cascade);
 
         SeedData(modelBuilder);
