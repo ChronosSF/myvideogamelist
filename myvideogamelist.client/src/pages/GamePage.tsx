@@ -53,7 +53,12 @@ export function GamePage() {
     const { addToList, removeFromList, isInList, isPending } = useLists();
 
     useEffect(() => {
-        if (!id) return;
+        if (!id) {
+            setGame(null);
+            setError('Invalid game id.');
+            setLoading(false);
+            return;
+        }
         const controller = new AbortController();
         setLoading(true);
         setError(null);
@@ -138,7 +143,7 @@ export function GamePage() {
 
                 <div className="game-page-hero-content">
                     {/* Cover */}
-                    <div className="game-page-cover" aria-hidden="true">
+                    <div className="game-page-cover">
                         {game.coverImageUrl ? (
                             <img src={game.coverImageUrl} alt={`${game.title} cover`} />
                         ) : (
