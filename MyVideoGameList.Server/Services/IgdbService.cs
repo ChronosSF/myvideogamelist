@@ -136,8 +136,8 @@ public class IgdbService(
         var igdbGames = await response.Content.ReadFromJsonAsync<List<IgdbGame>>(SnakeCaseOptions) ?? [];
         var result = igdbGames.Select(MapToGameDto).FirstOrDefault();
 
-        if (result is not null)
-            cache.Set(cacheKey, result, TimeSpan.FromMinutes(30));
+        var ttl = result is not null ? TimeSpan.FromMinutes(30) : TimeSpan.FromMinutes(5);
+        cache.Set(cacheKey, result, ttl);
 
         return result;
     }
