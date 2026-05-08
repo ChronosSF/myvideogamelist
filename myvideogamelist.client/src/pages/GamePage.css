@@ -1,0 +1,159 @@
+.game-page-hero {
+    position: relative;
+    min-height: 340px;
+    display: flex;
+    align-items: flex-end;
+    overflow: hidden;
+    background: #0f172a;
+}
+
+.game-page-hero-bg {
+    position: absolute;
+    inset: 0;
+    background-size: cover;
+    background-position: center top;
+    filter: blur(2px) brightness(0.35);
+    transform: scale(1.04);
+    transition: opacity 0.4s ease;
+}
+
+.game-page-hero-gradient {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+        to bottom,
+        rgba(15, 23, 42, 0.1) 0%,
+        rgba(15, 23, 42, 0.55) 50%,
+        rgba(15, 23, 42, 0.95) 100%
+    );
+}
+
+[data-theme='light'] .game-page-hero-bg {
+    filter: blur(2px) brightness(0.55);
+}
+
+[data-theme='light'] .game-page-hero-gradient {
+    background: linear-gradient(
+        to bottom,
+        rgba(248, 250, 252, 0.1) 0%,
+        rgba(248, 250, 252, 0.55) 50%,
+        rgba(248, 250, 252, 0.97) 100%
+    );
+}
+
+.game-page-hero-content {
+    position: relative;
+    z-index: 1;
+    width: 100%;
+    max-width: 80rem;
+    margin: 0 auto;
+    padding: 2rem 1.5rem 2.5rem;
+    display: flex;
+    gap: 2rem;
+    align-items: flex-end;
+}
+
+@media (max-width: 640px) {
+    .game-page-hero-content {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 1.25rem;
+    }
+}
+
+.game-page-cover {
+    flex-shrink: 0;
+    width: 140px;
+    aspect-ratio: 3/4;
+    border-radius: 0.75rem;
+    overflow: hidden;
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
+    border: 2px solid rgba(255, 255, 255, 0.08);
+    background: #1e293b;
+}
+
+@media (min-width: 640px) {
+    .game-page-cover {
+        width: 180px;
+    }
+}
+
+.game-page-cover img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+.game-page-cover-placeholder {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #475569;
+}
+
+.game-page-trailer-embed {
+    position: relative;
+    width: 100%;
+    padding-top: 56.25%;
+    border-radius: 0.75rem;
+    overflow: hidden;
+    background: #0f172a;
+}
+
+.game-page-trailer-embed iframe {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    border: none;
+}
+
+.game-page-add-btn-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.375rem;
+}
+
+.game-page-add-btn {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 0.5rem 1rem;
+    border-radius: 0.5rem;
+    font-size: 0.8rem;
+    font-weight: 600;
+    border: 1px solid rgba(71, 85, 105, 0.6);
+    cursor: pointer;
+    background: rgba(30, 41, 59, 0.9);
+    color: #cbd5e1;
+    transition: background 0.12s, color 0.12s, border-color 0.12s;
+    text-align: left;
+    width: 100%;
+}
+
+.game-page-add-btn:hover {
+    background: rgba(59, 130, 246, 0.85);
+    border-color: transparent;
+    color: #ffffff;
+}
+
+.game-page-add-btn.active {
+    background: rgba(37, 99, 235, 0.9);
+    border-color: transparent;
+    color: #ffffff;
+}
+
+.game-page-add-btn.active:hover {
+    background: rgba(220, 38, 38, 0.8);
+    border-color: transparent;
+    color: #ffffff;
+}
+
+.game-page-add-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}

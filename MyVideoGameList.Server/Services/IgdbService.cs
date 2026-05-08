@@ -112,6 +112,36 @@ public class IgdbService(
         return result;
     }
 
+    public async Task<GameDto?> GetGameByIdAsync(int id)
+    {
+        var cacheKey = $"igdb_game|{id}";
+        if (cache.TryGetValue(cacheKey, out GameDto? cached))
+            return cached;
+
+        var accessToken = await GetAccessTokenAsync();
+        var query = new StringBuilder();
+        query.AppendLine(GameFields);
+        query.AppendLine($"where id = {id};");
+        query.AppendLine("limit 1;");
+
+        var request = new HttpRequestMessage(HttpMethod.Post, "https://api.igdb.com/v4/games");
+        request.Headers.Add("Client-ID", ClientId);
+        request.Headers.Add("Authorization", $"Bearer {accessToken}");
+        request.Content = new StringContent(query.ToString(), Encoding.UTF8, "text/plain");
+
+        var client = httpClientFactory.CreateClient("Igdb");
+        var response = await client.SendAsync(request);
+        response.EnsureSuccessStatusCode();
+
+        var igdbGames = await response.Content.ReadFromJsonAsync<List<IgdbGame>>(SnakeCaseOptions) ?? [];
+        var result = igdbGames.Select(MapToGameDto).FirstOrDefault();
+
+        var ttl = result is not null ? TimeSpan.FromMinutes(30) : TimeSpan.FromMinutes(5);
+        cache.Set(cacheKey, result, ttl);
+
+        return result;
+    }
+
     public async Task<IEnumerable<GameDto>> GetGamesByIdsAsync(IEnumerable<int> ids)
     {
         var idList = ids.ToList();

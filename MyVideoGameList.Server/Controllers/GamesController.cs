@@ -10,6 +10,19 @@ public class GamesController(IIgdbService igdbService) : ControllerBase
 {
     private const int PageSize = 20;
 
+    [HttpGet("{id:int}")]
+    public async Task<ActionResult<GameDto>> GetGame(int id)
+    {
+        if (id <= 0)
+            return BadRequest("Game ID must be a positive integer.");
+
+        var result = await igdbService.GetGameByIdAsync(id);
+        if (result is null)
+            return NotFound();
+
+        return Ok(result);
+    }
+
     [HttpGet]
     public async Task<ActionResult<PagedGamesResponse>> GetGames(
         [FromQuery] int offset = 0,
