@@ -11,19 +11,25 @@ export interface UseHiddenPlatformsResult {
 
 export function useHiddenPlatforms(authenticated: boolean): UseHiddenPlatformsResult {
     const [hiddenIds, setHiddenIds] = useState<Set<number>>(new Set());
-    const [loading, setLoading] = useState(false);
+    const [loading, setLoading] = useState(authenticated);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
+    // Reset when the auth state flips. Adjusting state during render rather than inside the
+    // effect avoids committing a render that still shows the previous user's preferences,
+    // and keeps the effect free of synchronous setState calls.
+    const [lastAuthenticated, setLastAuthenticated] = useState(authenticated);
+    if (lastAuthenticated !== authenticated) {
+        setLastAuthenticated(authenticated);
+        setHiddenIds(new Set());
+        setError(null);
+        setLoading(authenticated);
+    }
+
     useEffect(() => {
-        if (!authenticated) {
-            setHiddenIds(new Set());
-            return;
-        }
+        if (!authenticated) return;
 
         const controller = new AbortController();
-        setLoading(true);
-        setError(null);
 
         fetch('/api/user/hidden-platforms', { credentials: 'include', signal: controller.signal })
             .then(r => {

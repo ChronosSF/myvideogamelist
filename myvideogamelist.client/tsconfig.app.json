@@ -18,10 +18,12 @@
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
     "noUncheckedSideEffectImports": true,
-    "baseUrl": ".",
     "rootDirs": [".", "./.react-router/types"],
+    // No "baseUrl": it is deprecated in TypeScript 6 (TS5101) and stops working in 7.
+    // "paths" targets must therefore stay explicitly relative ("./src/*", not "src/*"),
+    // otherwise TS5090. Runtime resolution of "@/" comes from the Vite alias, not here.
     "paths": {
-      "@/*": ["src/*"]
+      "@/*": ["./src/*"]
     }
   },
   "include": ["src", ".react-router/types/**/*"]

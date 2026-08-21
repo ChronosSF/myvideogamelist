@@ -24,7 +24,7 @@ Keep track of every game you've played, build your wishlist, manage your backlog
 | [React 19](https://react.dev/) | UI framework |
 | [TypeScript](https://www.typescriptlang.org/) | Type-safe JavaScript |
 | [Vite](https://vitejs.dev/) | Build tool & dev server |
-| [React Router 7](https://reactrouter.com/) (framework mode) | Routing & server-side rendering |
+| [React Router 8](https://reactrouter.com/) (framework mode) | Routing & server-side rendering |
 
 ### Backend
 | Technology | Purpose |

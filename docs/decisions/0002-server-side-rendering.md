@@ -1,6 +1,6 @@
 # 0002. Server-side rendering via React Router 7 framework mode
 
-**Status:** Implemented
+**Status:** Implemented — the v7 version pin below is superseded by [0011](0011-react-router-8-upgrade.md)
 
 ## Context
 
@@ -21,7 +21,8 @@ step than migrating to Next.js. `appDirectory` is set to `src`, so existing impo
 
 **Pinned to the v7 line deliberately.** React Router 8 was current at the time, but taking a
 major upgrade and an architecture migration together would have made any failure hard to
-attribute. The v8 upgrade is a separate, later change.
+attribute. The v8 upgrade is a separate, later change — since done, see
+[0011](0011-react-router-8-upgrade.md).
 
 ## Consequences
 
