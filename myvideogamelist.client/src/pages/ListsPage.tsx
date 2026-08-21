@@ -5,6 +5,15 @@ import { useLists } from '@/hooks/useLists';
 import { useAuth } from '@/hooks/useAuth';
 import { type ListId, LIST_IDS, LIST_NAMES } from '@/types/list';
 import './ListsPage.css';
+import { PRIVATE_NO_STORE } from '@/lib/cache';
+
+/**
+ * This route's whole content is the signed-in user's lists. Stated explicitly rather than left to inherit the root default, so that changing the
+ * root's policy later cannot silently make this page shared.
+ */
+export function headers() {
+    return { 'Cache-Control': PRIVATE_NO_STORE };
+}
 
 export function meta() {
     return [

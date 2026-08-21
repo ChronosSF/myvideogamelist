@@ -38,9 +38,11 @@ attribute. The v8 upgrade is a separate, later change — since done, see
   upcoming timeline read `localStorage` in a `useState` initializer, which would have
   produced a hydration mismatch. Replaced with `useSyncExternalStore`
   (`@/lib/useStoredNumberSet`).
-- **Only the game route has a loader so far.** `GamesPage`, `ListsPage` and `UserPage` still
-  fetch client-side — fine for authenticated views, but anything meant to be indexed needs
-  a loader.
+- ~~**Only the game route has a loader so far.**~~ `HomePage` and `GamesPage` now have loaders
+  too. `ListsPage` and `UserPage` remain client-side, which is correct — they are authenticated
+  views with nothing to index. Adding a loader to `/games` also moved its search term into the
+  query string, since a result set has to be addressable by URL before it can be rendered
+  without a browser.
 - ASP.NET no longer serves the front end at all. See 0003.
 
 ## Result

@@ -62,6 +62,29 @@ ROADMAP.md                      Forward-looking plan
   tables; they were removed. `UserGameList.GameId` holds an IGDB id and has no foreign key.
   A local metadata cache is planned but must be keyed on IGDB ids.
 
+- **IGDB's `external_games.category` no longer exists.** Use `external_game_source` (Steam is
+  `1`). Filtering on the removed field returns zero rows *silently* rather than erroring, so the
+  symptom is an empty feature with a clean log. Suspect this whenever an IGDB filter returns
+  nothing — check the field still exists before debugging your own code.
+
+- **Steam news and the trending rail hold no database state**, deliberately, so the pending
+  PostgreSQL move stays as cheap as it is today. See `docs/decisions/0012-*`. Keep derived,
+  regenerable, TTL'd data in `IMemoryCache`; do not add a table for it.
+
+- **Every route must declare a `Cache-Control` via its `headers` export**, because CloudFront
+  applies its own default TTL when the origin sends none. The root default is `private,
+  no-store` so forgetting fails closed. Policies live together in `@/lib/cache`; see
+  `docs/decisions/0013-*`.
+
+- **A degraded or error response must never be cacheable.** Caching a failure outlives the
+  failure. Note two traps: a thrown `Response`'s headers are replaced by the boundary route's
+  (the root reads `errorHeaders` to honour them), and a loader that degrades to a 200 has to
+  attach `no-store` itself via `data()`.
+
+- **`fetch` rejects when the API is unreachable** — it does not return `!response.ok`. A loader
+  that only checks `response.ok` turns a dead upstream into an unhandled 500. Wrap it and throw
+  a deliberate 502.
+
 - **Loaders run on the server**, where a relative URL has no origin. Use `apiUrl()` from
   `@/lib/api` for any fetch that may run during SSR.
 

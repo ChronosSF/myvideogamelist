@@ -29,6 +29,8 @@ decision, write a new record and mark the old one superseded.
 | [0009](0009-itad-without-affiliate-revenue.md) | Integrate IsThereAnyDeal and forgo the affiliate revenue | Accepted |
 | [0010](0010-monetization-model.md) | Ad-supported free tier plus a paid subscription | Accepted |
 | [0011](0011-react-router-8-upgrade.md) | Upgrade to React Router 8 | Implemented |
+| [0012](0012-steam-news-without-a-database.md) | Steam news is cached in memory, not stored in the database | Implemented |
+| [0013](0013-http-caching-policy.md) | Every route declares its own `Cache-Control` | Implemented |
 
 **Status** — *Accepted*: decided, not yet built. *Implemented*: decided and in the code.
 *Superseded*: replaced by a later record.

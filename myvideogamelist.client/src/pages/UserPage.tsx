@@ -4,6 +4,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useHiddenPlatforms } from '@/hooks/useHiddenPlatforms';
 import type { PlatformDto } from '@/types/game';
 import './UserPage.css';
+import { PRIVATE_NO_STORE } from '@/lib/cache';
 
 function useActivePlatforms() {
     const [platforms, setPlatforms] = useState<PlatformDto[]>([]);
@@ -29,6 +30,14 @@ function useActivePlatforms() {
     }, []);
 
     return { platforms, loading, error };
+}
+
+/**
+ * This route renders the signed-in user's own profile and settings. Stated explicitly rather than left to inherit the root default, so that changing the
+ * root's policy later cannot silently make this page shared.
+ */
+export function headers() {
+    return { 'Cache-Control': PRIVATE_NO_STORE };
 }
 
 export function meta() {

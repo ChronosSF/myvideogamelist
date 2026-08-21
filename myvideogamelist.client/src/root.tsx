@@ -11,6 +11,7 @@ import type { Route } from './+types/root';
 import { AuthProvider } from '@/contexts/AuthProvider';
 import { ListsProvider } from '@/contexts/ListsProvider';
 import { Navbar } from '@/components/Navbar';
+import { PRIVATE_NO_STORE } from '@/lib/cache';
 import './index.css';
 import './App.css';
 
@@ -23,6 +24,22 @@ export function meta() {
                 + 'and see what is releasing next across every platform.',
         },
     ];
+}
+
+/**
+ * The default cache policy, and the one that governs every error response.
+ *
+ * Two jobs. For a route that declares no policy of its own it supplies the most restrictive
+ * one, so a new route inherits "do not cache" until someone decides otherwise — the failure
+ * mode of forgetting is a slow page, not one user seeing another's.
+ *
+ * For a thrown Response it is the boundary, and a boundary's headers replace the leaf's. The
+ * `Cache-Control` a loader put on its thrown Response would otherwise be silently dropped
+ * (verified: a 404 came back `no-store` despite asking for a short TTL), so `errorHeaders` is
+ * consulted and honoured here.
+ */
+export function headers({ errorHeaders }: Route.HeadersArgs) {
+    return { 'Cache-Control': errorHeaders?.get('Cache-Control') ?? PRIVATE_NO_STORE };
 }
 
 export const links: LinksFunction = () => [

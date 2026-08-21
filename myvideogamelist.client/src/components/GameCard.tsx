@@ -157,7 +157,7 @@ export function GameCard({ game }: GameCardProps) {
             <div className="p-4 flex flex-col gap-2 flex-1">
                 <div className="flex items-start justify-between gap-2">
                     <h3 className="text-white light:text-slate-900 font-semibold text-sm leading-snug line-clamp-2">
-                        <Link to={`/games/${game.id}`} className="hover:text-blue-400 transition-colors">
+                        <Link to={`/games/${game.id}`} className="hover:text-blue-400 light:hover:text-blue-700 transition-colors">
                             {game.title}
                         </Link>
                     </h3>
@@ -177,7 +177,7 @@ export function GameCard({ game }: GameCardProps) {
                         {game.genres.slice(0, 3).map(genre => (
                             <span
                                 key={genre.id}
-                                className="px-2 py-0.5 bg-blue-900/50 text-blue-300 text-xs rounded-full border border-blue-800/50"
+                                className="px-2 py-0.5 bg-blue-900/50 text-blue-300 border-blue-800/50 light:bg-blue-50 light:text-blue-800 light:border-blue-200 text-xs rounded-full border"
                             >
                                 {genre.name}
                             </span>

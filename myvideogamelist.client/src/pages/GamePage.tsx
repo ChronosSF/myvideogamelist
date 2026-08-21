@@ -1,10 +1,12 @@
 import { Link, useLoaderData } from 'react-router';
 import type { Route } from './+types/GamePage';
 import { apiUrl } from '@/lib/api';
+import { CACHE_GAME, CACHE_NOT_FOUND, PRIVATE_NO_STORE } from '@/lib/cache';
 import type { GameDto } from '@/types/game';
 import { type ListId, LIST_IDS, LIST_NAMES } from '@/types/list';
 import { useLists } from '@/hooks/useLists';
 import { useAuth } from '@/hooks/useAuth';
+import { GameNewsPanel } from '@/components/GameNewsPanel';
 import './GamePage.css';
 
 function StarRating({ rating }: { rating: number }) {
@@ -51,20 +53,44 @@ function SectionHeading({ children }: { children: React.ReactNode }) {
  */
 export async function loader({ params }: Route.LoaderArgs) {
     const id = Number(params.id);
-    if (!Number.isInteger(id) || id <= 0) {
-        throw new Response('Not Found', { status: 404, statusText: 'Not Found' });
+
+    // A thrown Response carries its own headers and bypasses the `headers` export below, so the
+    // error paths state their own caching. A 404 gets a short shared TTL; the 502 gets none,
+    // because caching an upstream failure at the edge outlives the failure itself.
+    const notFound = () => new Response('Not Found', {
+        status: 404,
+        statusText: 'Not Found',
+        headers: { 'Cache-Control': CACHE_NOT_FOUND },
+    });
+
+    if (!Number.isInteger(id) || id <= 0) throw notFound();
+
+    const badGateway = () => new Response('Failed to load game.', {
+        status: 502,
+        statusText: 'Bad Gateway',
+        headers: { 'Cache-Control': PRIVATE_NO_STORE },
+    });
+
+    let response: Response;
+    try {
+        response = await fetch(apiUrl(`/api/games/${id}`));
+    } catch {
+        // fetch rejects rather than returning !ok when the API is unreachable.
+        throw badGateway();
     }
 
-    const response = await fetch(apiUrl(`/api/games/${id}`));
-
-    if (response.status === 404) {
-        throw new Response('Not Found', { status: 404, statusText: 'Not Found' });
-    }
-    if (!response.ok) {
-        throw new Response('Failed to load game.', { status: 502, statusText: 'Bad Gateway' });
-    }
+    if (response.status === 404) throw notFound();
+    if (!response.ok) throw badGateway();
 
     return { game: await response.json() as GameDto };
+}
+
+/**
+ * Only applies to the 200 path. A thrown Response carries its own headers, so a 404 for an
+ * unknown id is not cached for an hour under this policy.
+ */
+export function headers() {
+    return { 'Cache-Control': CACHE_GAME };
 }
 
 export function meta({ loaderData }: Route.MetaArgs) {
@@ -281,6 +307,9 @@ export function GamePage() {
                                 </div>
                             </section>
                         )}
+
+                        {/* Hides itself when the game has no Steam presence (ROADMAP N7). */}
+                        <GameNewsPanel gameId={game.id} />
                     </div>
 
                     {/* Sidebar */}
@@ -365,7 +394,7 @@ export function GamePage() {
                                         href={game.website}
                                         target="_blank"
                                         rel="noopener noreferrer"
-                                        className="inline-flex items-center gap-1 text-sm text-blue-400 hover:text-blue-300 transition-colors break-all"
+                                        className="inline-flex items-center gap-1 text-sm text-blue-400 light:text-blue-700 hover:text-blue-300 light:hover:text-blue-800 transition-colors break-all"
                                     >
                                         Official Site
                                         <svg className="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
@@ -382,7 +411,7 @@ export function GamePage() {
                                         href={game.trailerUrl}
                                         target="_blank"
                                         rel="noopener noreferrer"
-                                        className="inline-flex items-center gap-1 text-sm text-blue-400 hover:text-blue-300 transition-colors"
+                                        className="inline-flex items-center gap-1 text-sm text-blue-400 light:text-blue-700 hover:text-blue-300 light:hover:text-blue-800 transition-colors"
                                     >
                                         Watch Trailer
                                         <svg className="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">

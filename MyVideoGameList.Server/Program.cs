@@ -14,7 +14,17 @@ builder.Services.AddControllers();
 builder.Services.AddOpenApi();
 builder.Services.AddMemoryCache();
 builder.Services.AddHttpClient("Igdb");
+
+// Steam's news API is public and needs no key, but it is a third party on the home page's
+// critical path, so it gets a short timeout of its own rather than the 100s default.
+builder.Services.AddHttpClient("Steam", client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(8);
+});
+
 builder.Services.AddSingleton<IIgdbService, IgdbService>();
+builder.Services.AddSingleton<ISteamNewsService, SteamNewsService>();
+builder.Services.AddSingleton<IHomeService, HomeService>();
 builder.Services.AddScoped<IListService, ListService>();
 
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
