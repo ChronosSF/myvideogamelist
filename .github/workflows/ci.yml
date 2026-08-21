@@ -14,11 +14,11 @@ jobs:
       run:
         working-directory: myvideogamelist.client
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
-          node-version: '22.x'
+          node-version: '24.x'
           cache: npm
           cache-dependency-path: myvideogamelist.client/package-lock.json
 
@@ -39,9 +39,9 @@ jobs:
     name: Server
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: '10.0.x'
 
@@ -55,7 +55,7 @@ jobs:
         run: dotnet test MyVideoGameList.Server.Tests/MyVideoGameList.Server.Tests.csproj --no-build --verbosity normal
 
   codeql:
-    name: CodeQL
+    name: CodeQL (${{ matrix.language }})
     runs-on: ubuntu-latest
     permissions:
       security-events: write
@@ -64,23 +64,25 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        language: ['csharp', 'javascript-typescript']
+        # "actions" scans the workflow files themselves. Autodetect was picking it
+        # up before; keep it now that languages are explicit.
+        language: [csharp, javascript-typescript, actions]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-dotnet@v4
-        if: matrix.language == 'csharp'
+      - uses: github/codeql-action/init@v4
         with:
-          dotnet-version: '10.0.x'
+          # NOTE: "languages", plural. An unknown input is silently ignored, and
+          # init then autodetects every language in the repo — which made both
+          # matrix legs build a C# database, and the JS leg fail finalizing one
+          # it never compiled.
+          languages: ${{ matrix.language }}
 
-      - uses: github/codeql-action/init@v3
-        with:
-          language: ${{ matrix.language }}
+          # Buildless analysis. Nothing is compiled here, so CodeQL cannot fail on
+          # build tracing, and the C# is already compiled and tested by the Server
+          # job above.
+          build-mode: none
 
-      - name: Build for analysis
-        if: matrix.language == 'csharp'
-        run: dotnet build MyVideoGameList.Server/MyVideoGameList.Server.csproj
-
-      - uses: github/codeql-action/analyze@v3
+      - uses: github/codeql-action/analyze@v4
         with:
           category: /language:${{ matrix.language }}

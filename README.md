@@ -39,7 +39,7 @@ Keep track of every game you've played, build your wishlist, manage your backlog
 ### Prerequisites
 
 - [.NET 10 SDK](https://dotnet.microsoft.com/en-us/download)
-- [Node.js 22+](https://nodejs.org/)
+- [Node.js 24+](https://nodejs.org/)
 
 ### Configure secrets
 
