@@ -30,7 +30,7 @@ public class UserController(
     }
 
     [HttpGet("hidden-platforms")]
-    public async Task<ActionResult<IEnumerable<int>>> GetHiddenPlatforms()
+    public async Task<ActionResult<IEnumerable<int>>> GetHiddenPlatforms(CancellationToken cancellationToken)
     {
         var user = await userManager.GetUserAsync(User);
         if (user == null) return Unauthorized();
@@ -38,20 +38,21 @@ public class UserController(
         var ids = await db.UserHiddenPlatforms
             .Where(hp => hp.UserId == user.Id)
             .Select(hp => hp.IgdbPlatformId)
-            .ToListAsync();
+            .ToListAsync(cancellationToken);
 
         return Ok(ids);
     }
 
     [HttpPut("hidden-platforms")]
-    public async Task<IActionResult> UpdateHiddenPlatforms([FromBody] UpdateHiddenPlatformsDto dto)
+    public async Task<IActionResult> UpdateHiddenPlatforms(
+        [FromBody] UpdateHiddenPlatformsDto dto, CancellationToken cancellationToken)
     {
         var user = await userManager.GetUserAsync(User);
         if (user == null) return Unauthorized();
 
         var existing = await db.UserHiddenPlatforms
             .Where(hp => hp.UserId == user.Id)
-            .ToListAsync();
+            .ToListAsync(cancellationToken);
 
         db.UserHiddenPlatforms.RemoveRange(existing);
 
@@ -59,8 +60,8 @@ public class UserController(
             .Distinct()
             .Select(id => new UserHiddenPlatform { UserId = user.Id, IgdbPlatformId = id });
 
-        await db.UserHiddenPlatforms.AddRangeAsync(newEntries);
-        await db.SaveChangesAsync();
+        await db.UserHiddenPlatforms.AddRangeAsync(newEntries, cancellationToken);
+        await db.SaveChangesAsync(cancellationToken);
 
         return NoContent();
     }

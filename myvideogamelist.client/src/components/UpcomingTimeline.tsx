@@ -1,9 +1,10 @@
-import { useMemo, useRef, useState } from 'react';
+import { useMemo, useRef } from 'react';
 import type { GameDto, PlatformDto } from '@/types/game';
 import { GameCard } from '@/components/GameCard';
 import { useUpcomingGames } from '@/hooks/useUpcomingGames';
 import { useAuth } from '@/hooks/useAuth';
 import { useHiddenPlatforms } from '@/hooks/useHiddenPlatforms';
+import { useStoredNumberSet } from '@/lib/useStoredNumberSet';
 import './UpcomingTimeline.css';
 
 const LS_KEY = 'mvgl_upcoming_disabled_platforms';
@@ -79,34 +80,22 @@ export function UpcomingTimeline() {
     }, [games, serverHiddenIds]);
 
     // Session-level filter (localStorage) — "disabled" IDs among the visible platforms
-    const [disabledIds, setDisabledIds] = useState<Set<number>>(() => {
-        try {
-            const saved = localStorage.getItem(LS_KEY);
-            if (!saved) return new Set<number>();
-            const arr = JSON.parse(saved) as unknown;
-            if (Array.isArray(arr)) return new Set(arr.filter((x): x is number => typeof x === 'number'));
-        } catch { /* ignore */ }
-        return new Set<number>();
-    });
+    // Session-level filter, persisted per browser. SSR-safe: empty on the server,
+    // the stored value on the client.
+    const [disabledIds, setDisabledIds] = useStoredNumberSet(LS_KEY);
 
     function togglePlatform(id: number, nowChecked: boolean) {
-        setDisabledIds(prev => {
-            const next = new Set(prev);
-            if (nowChecked) next.delete(id); else next.add(id);
-            localStorage.setItem(LS_KEY, JSON.stringify([...next]));
-            return next;
-        });
+        const next = new Set(disabledIds);
+        if (nowChecked) next.delete(id); else next.add(id);
+        setDisabledIds(next);
     }
 
     function selectAll() {
         setDisabledIds(new Set());
-        localStorage.setItem(LS_KEY, '[]');
     }
 
     function deselectAll() {
-        const all = new Set(visiblePlatforms.map(p => p.id));
-        setDisabledIds(all);
-        localStorage.setItem(LS_KEY, JSON.stringify([...all]));
+        setDisabledIds(new Set(visiblePlatforms.map(p => p.id)));
     }
 
     // All date groups across the full 14-day range (filtered by platform preferences)

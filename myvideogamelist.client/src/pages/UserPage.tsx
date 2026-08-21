@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import { useAuth } from '@/hooks/useAuth';
 import { useHiddenPlatforms } from '@/hooks/useHiddenPlatforms';
 import type { PlatformDto } from '@/types/game';
@@ -29,6 +29,13 @@ function useActivePlatforms() {
     }, []);
 
     return { platforms, loading, error };
+}
+
+export function meta() {
+    return [
+        { title: 'My profile - MyVideoGameList' },
+        { name: 'description', content: 'Manage your account settings and preferences.' },
+    ];
 }
 
 export function UserPage() {
@@ -194,3 +201,5 @@ export function UserPage() {
         </div>
     );
 }
+
+export default UserPage;

@@ -1,0 +1,33 @@
+# Architecture decision records
+
+Short records of decisions that shaped this codebase, and the reasoning behind them.
+
+`ROADMAP.md` is the plan and gets rewritten as phases land. These records are the *why*,
+and they outlive the plan. Read the relevant one before changing anything it covers.
+
+## Writing one
+
+Copy the shape of an existing record: **Context** (what forced a choice), **Decision**
+(what we picked), **Consequences** (what it costs and what it rules out). Keep it short.
+
+Add one when you make a call that future work would otherwise have to reverse-engineer,
+especially when you rejected a plausible alternative. Records are append-only: to change a
+decision, write a new record and mark the old one superseded.
+
+## Index
+
+| # | Decision | Status |
+|---|---|---|
+| [0001](0001-igdb-as-source-of-truth.md) | IGDB is the source of truth for game data | Implemented |
+| [0002](0002-server-side-rendering.md) | Server-side rendering via React Router 7 framework mode | Implemented |
+| [0003](0003-two-process-deployment.md) | Two processes; the SSR server does not proxy `/api` | Implemented |
+| [0004](0004-release-dates-for-calendar.md) | The upcoming calendar is built on `release_dates` | Implemented |
+| [0005](0005-secrets-handling.md) | Secrets come from user secrets and environment variables | Implemented |
+| [0006](0006-codeql-buildless.md) | CodeQL runs buildless (`build-mode: none`) | Implemented |
+| [0007](0007-aws-target-architecture.md) | ECS Fargate, Aurora Serverless v2, CloudFront | Accepted |
+| [0008](0008-postgresql-over-sqlite.md) | PostgreSQL replaces SQLite before deployment | Accepted |
+| [0009](0009-itad-without-affiliate-revenue.md) | Integrate IsThereAnyDeal and forgo the affiliate revenue | Accepted |
+| [0010](0010-monetization-model.md) | Ad-supported free tier plus a paid subscription | Accepted |
+
+**Status** — *Accepted*: decided, not yet built. *Implemented*: decided and in the code.
+*Superseded*: replaced by a later record.

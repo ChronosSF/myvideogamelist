@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
@@ -15,41 +16,40 @@ public class ListsController(
     UserManager<ApplicationUser> userManager) : ControllerBase
 {
     [HttpGet]
-    public async Task<ActionResult<ListsDto>> GetLists()
+    public async Task<ActionResult<ListsDto>> GetLists(CancellationToken cancellationToken)
     {
         var user = await userManager.GetUserAsync(User);
         if (user is null) return Unauthorized();
 
-        var lists = await listService.GetListsAsync(user.Id);
+        var lists = await listService.GetListsAsync(user.Id, cancellationToken);
         return Ok(lists);
     }
 
     [HttpPut("{gameId:int}")]
-    public async Task<IActionResult> SetListEntry(int gameId, [FromBody] SetListEntryDto dto)
+    public async Task<IActionResult> SetListEntry(
+        [Range(1, int.MaxValue)] int gameId,
+        [FromBody] SetListEntryDto dto,
+        CancellationToken cancellationToken)
     {
-        if (gameId <= 0)
-            return BadRequest(new { message = "gameId must be a positive integer." });
-
         if (!ListService.IsValidListType(dto.ListType))
             return BadRequest(new { message = "ListType must be 'playing', 'backlog', or 'finished'." });
 
         var user = await userManager.GetUserAsync(User);
         if (user is null) return Unauthorized();
 
-        await listService.SetListEntryAsync(user.Id, gameId, dto.ListType);
+        await listService.SetListEntryAsync(user.Id, gameId, dto.ListType, cancellationToken);
         return NoContent();
     }
 
     [HttpDelete("{gameId:int}")]
-    public async Task<IActionResult> RemoveListEntry(int gameId)
+    public async Task<IActionResult> RemoveListEntry(
+        [Range(1, int.MaxValue)] int gameId,
+        CancellationToken cancellationToken)
     {
-        if (gameId <= 0)
-            return BadRequest(new { message = "gameId must be a positive integer." });
-
         var user = await userManager.GetUserAsync(User);
         if (user is null) return Unauthorized();
 
-        var removed = await listService.RemoveListEntryAsync(user.Id, gameId);
+        var removed = await listService.RemoveListEntryAsync(user.Id, gameId, cancellationToken);
         return removed ? NoContent() : NotFound();
     }
 }

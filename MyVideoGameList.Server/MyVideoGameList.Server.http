@@ -1,6 +1,23 @@
 @MyVideoGameList.Server_HostAddress = http://localhost:5039
 
-GET {{MyVideoGameList.Server_HostAddress}}/weatherforecast/
+### Liveness probe
+GET {{MyVideoGameList.Server_HostAddress}}/healthz
+
+### Readiness probe (database + IGDB reachability)
+GET {{MyVideoGameList.Server_HostAddress}}/readyz
+
+### Browse games
+GET {{MyVideoGameList.Server_HostAddress}}/api/games?offset=0
 Accept: application/json
 
-###
+### Search games
+GET {{MyVideoGameList.Server_HostAddress}}/api/games?search=elden
+Accept: application/json
+
+### Upcoming releases
+GET {{MyVideoGameList.Server_HostAddress}}/api/games/upcoming
+Accept: application/json
+
+### Active platforms
+GET {{MyVideoGameList.Server_HostAddress}}/api/platforms/active
+Accept: application/json

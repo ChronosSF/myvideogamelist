@@ -15,6 +15,13 @@ async function fetchGamesPage(offset: number, search: string, signal?: AbortSign
     return response.json() as Promise<PagedGamesResponse>;
 }
 
+export function meta() {
+    return [
+        { title: 'Browse games - MyVideoGameList' },
+        { name: 'description', content: 'Search and browse games across PC, PlayStation, Xbox and Nintendo, and add them to your lists.' },
+    ];
+}
+
 export function GamesPage() {
     const [games, setGames] = useState<GameDto[]>([]);
     const [hasMore, setHasMore] = useState(false);
@@ -37,16 +44,25 @@ export function GamesPage() {
         };
     }, [search]);
 
-    // Reset and re-fetch when the search term changes
-    useEffect(() => {
-        const controller = new AbortController();
-
+    // Reset the results when the search term changes. Adjusting state during render is
+    // React's sanctioned alternative to resetting inside an effect, which would commit a
+    // throwaway render of the stale list first.
+    // https://react.dev/learn/you-might-not-need-an-effect
+    const [activeSearch, setActiveSearch] = useState(debouncedSearch);
+    if (activeSearch !== debouncedSearch) {
+        setActiveSearch(debouncedSearch);
         setGames([]);
         setOffset(0);
         setHasMore(false);
         setError(null);
         setLoading(true);
         setLoadingMore(false);
+    }
+
+    // Fetch the first page for the active search term.
+    useEffect(() => {
+        const controller = new AbortController();
+
         isLoadingMoreRef.current = false;
         loadMoreControllerRef.current?.abort();
 
@@ -203,3 +219,5 @@ export function GamesPage() {
     );
 }
 
+
+export default GamesPage;

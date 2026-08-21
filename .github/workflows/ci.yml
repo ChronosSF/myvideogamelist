@@ -3,36 +3,89 @@ name: CI
 on:
   pull_request:
     branches: [master, develop]
+  push:
+    branches: [master, develop]
+
+permissions:
+  contents: read
 
 jobs:
-  build-client:
-    name: Build Client
+  client:
+    name: Client
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: myvideogamelist.client
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
-          node-version: '22.x'
+          node-version: '24.x'
           cache: npm
           cache-dependency-path: myvideogamelist.client/package-lock.json
 
       - run: npm ci
-      - run: npm run build
 
-  build-server:
-    name: Build Server
+      - name: Lint
+        run: npm run lint
+
+      # Generates the React Router route types before type-checking, otherwise
+      # the ./+types/* imports in route modules cannot resolve.
+      - name: Type-check
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run build
+
+  server:
+    name: Server
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: '10.0.x'
 
-      # --no-dependencies skips building the client .esproj reference,
-      # since the client is verified in its own job above.
-      - run: dotnet build MyVideoGameList.Server/MyVideoGameList.Server.csproj --no-dependencies
+      - name: Restore
+        run: dotnet restore MyVideoGameList.Server.Tests/MyVideoGameList.Server.Tests.csproj
+
+      - name: Build
+        run: dotnet build MyVideoGameList.Server.Tests/MyVideoGameList.Server.Tests.csproj --no-restore
+
+      - name: Test
+        run: dotnet test MyVideoGameList.Server.Tests/MyVideoGameList.Server.Tests.csproj --no-build --verbosity normal
+
+  codeql:
+    name: CodeQL (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      actions: read
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        # "actions" scans the workflow files themselves. Autodetect was picking it
+        # up before; keep it now that languages are explicit.
+        language: [csharp, javascript-typescript, actions]
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: github/codeql-action/init@v4
+        with:
+          # NOTE: "languages", plural. An unknown input is silently ignored, and
+          # init then autodetects every language in the repo — which made both
+          # matrix legs build a C# database, and the JS leg fail finalizing one
+          # it never compiled.
+          languages: ${{ matrix.language }}
+
+          # Buildless analysis. Nothing is compiled here, so CodeQL cannot fail on
+          # build tracing, and the C# is already compiled and tested by the Server
+          # job above.
+          build-mode: none
+
+      - uses: github/codeql-action/analyze@v4
+        with:
+          category: /language:${{ matrix.language }}

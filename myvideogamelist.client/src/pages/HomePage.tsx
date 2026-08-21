@@ -1,5 +1,12 @@
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 import { UpcomingTimeline } from '@/components/UpcomingTimeline';
+
+export function meta() {
+    return [
+        { title: 'MyVideoGameList - Track every game you play' },
+        { name: 'description', content: 'Track the games you have played, build a backlog and wishlist, and see what is releasing next across every platform.' },
+    ];
+}
 
 export function HomePage() {
     return (
@@ -87,3 +94,5 @@ export function HomePage() {
         </div>
     );
 }
+
+export default HomePage;
