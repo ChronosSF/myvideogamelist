@@ -108,28 +108,30 @@ costs nothing to run.
 
 ## 3. Home page
 
-The home page currently renders the same thing for everyone: a full-viewport marketing hero, three
-static feature cards, then the upcoming timeline. A signed-in returning user scrolls past two screens
-of pitch to reach the one useful element. **One route, two pages** — fork on auth state.
+The home page used to render the same thing for everyone: a full-viewport marketing hero, three
+static feature cards, then the upcoming timeline. A signed-in returning user scrolled past two screens
+of pitch to reach the one useful element. The hero is now compact and the feature cards are gone,
+replaced by real trending covers and a live news rail (3.2, 3.4). **Still open: one route, two
+pages** — fork on auth state, so a returning user lands on their own data rather than the pitch.
 
 ### 3.1 Signed-in dashboard
 
 | ID | Item | Notes |
 |---|---|---|
 | H1 | Fork `HomePage.tsx` on `user` — dashboard when signed in, landing when not | Everything below hangs off this |
-| H2 | Drop or rewrite the "Rate" feature card | It advertises scoring and reviews that do not exist; ties to the Tier 1 per-entry score work |
+| ~~H2~~ | ~~Drop or rewrite the "Rate" feature card~~ **DONE** | All three feature cards removed with the home page redesign |
 | H3 | **Continue Playing rail** — horizontal scroll of the `playing` list with inline "log progress" and "mark finished" | Data already in `ListsProvider`; no new API needed. Highest-value single item on the page |
 | H4 | **Your week** — releases from the user's Wishlist/Backlog surfaced *above* the general timeline | "3 games you're waiting for drop this week" beats a firehose of every release |
 | H5 | **Play next picker** — one random backlog game, with a reroll button | Cheap to build, disproportionately sticky |
 | H6 | **Stats strip** — finished this year, hours logged, current streak | Blocked on Tier 1 per-entry tracking data |
-| H7 | **Trending rail** via IGDB `popularity_primitives` (PopScore) | First-party IGDB, refreshed every 24h, composable into a custom trend score. No new vendor |
+| ~~H7~~ | ~~**Trending rail** via IGDB `popularity_primitives`~~ **DONE** | Uses `popularity_type` 5 ("24hr Peak Players", Steam-sourced), cached hourly. See ADR [0012](docs/decisions/0012-steam-news-without-a-database.md) for why that type and not the IGDB-native ones |
 | H8 | **Events banner** via IGDB `events` | Showcases and conferences with start/end times and stream links. "Summer Game Fest starts in 2 days" — genuinely differentiated |
 | H9 | **News for your games rail** | See 3.4 |
 
-### 3.2 Signed-out landing
+### 3.2 Signed-out landing — MOSTLY DONE
 
-- Keep the hero, but replace the three abstract icon cards with **live proof**: real trending covers and the real calendar. Showing the catalogue is alive converts better than listing features.
-- A "sign up to track this" CTA on each rail.
+- ~~Keep the hero, but replace the three abstract icon cards with **live proof**: real trending covers and the real calendar.~~ Done. The hero is now compact with a spotlight game's artwork behind it, followed by a trending cover rail, a news rail and the calendar.
+- **Still open:** a "sign up to track this" CTA on each rail.
 
 ### 3.3 Fix the calendar's accuracy — DONE
 
@@ -144,13 +146,13 @@ Per-game news beats a generic industry feed, because it attaches to games the us
 
 | ID | Item | Notes |
 |---|---|---|
-| N1 | Map IGDB game → Steam AppID via the IGDB `external_games` endpoint (category 1 = Steam) | Store the mapping on the local game-metadata cache table from §5 |
-| N2 | Fetch via Steam `ISteamNews/GetNewsForApp` | Public, no API key required |
-| N3 | Background refresh job writing to cache | Never call Steam on the request path |
-| N4 | Surface on the **game page** as a "Latest news / patch notes" panel | The most valuable placement |
-| N5 | Surface as a **home page rail**, low on the page | Below Continue Playing and the calendar |
-| N6 | Dedicated **`/news` page** aggregating across everything the user tracks | The "what did I miss" view |
-| N7 | Degrade gracefully for games with no Steam presence | Console exclusives — hide the panel, never show an error |
+| ~~N1~~ | ~~Map IGDB game → Steam AppID via `external_games`~~ **DONE** | **Filter on `external_game_source = 1`, not `category = 1`.** IGDB removed `category`; the old filter matches zero rows silently rather than erroring. Cached in memory for 24h — *not* on a table, see ADR [0012](docs/decisions/0012-steam-news-without-a-database.md) |
+| ~~N2~~ | ~~Fetch via Steam `ISteamNews/GetNewsForApp`~~ **DONE** | Public, no API key required |
+| N3 | Background refresh job writing to cache | **Still open.** Currently a cache-on-miss, so the first request after expiry pays the Steam round trip. Belongs with the distributed cache in §5 — a per-instance background job would duplicate work across ECS tasks |
+| ~~N4~~ | ~~Surface on the **game page** as a "Latest news / patch notes" panel~~ **DONE** | `GameNewsPanel`, fetched client-side so a third party never blocks the game page's server render |
+| ~~N5~~ | ~~Surface as a **home page rail**~~ **DONE** | Server-rendered via `/api/home`. Capped at 2 items per game, or one game mid-tournament fills the rail |
+| N6 | Dedicated **`/news` page** aggregating across everything the user tracks | **Still open.** `ISteamNewsService.GetLatestNewsAsync` already takes an arbitrary set of game ids, so this is a page and a route, not new plumbing |
+| ~~N7~~ | ~~Degrade gracefully for games with no Steam presence~~ **DONE** | Console exclusives return 200 with an empty list and the panel hides itself. Verified against Zelda: Tears of the Kingdom |
 
 **Not available:** IGDB has no news endpoint. v3 had `pulse` / `pulse_groups` / `pulse_sources`; v4 removed
 them along with other endpoints IGDB judged below their quality bar, and they have not returned.
@@ -159,11 +161,17 @@ Optional later: RSS aggregation from outlets (Eurogamer, RPS, Push Square, Ninte
 industry feed. Link out with headline, thumbnail and source only — never reproduce article bodies. Do not
 try to fuzzy-match RSS headlines to game titles; it produces false positives. Let Steam handle per-game.
 
-### 3.5 Serve it as one endpoint
+### 3.5 Serve it as one endpoint — DONE
 
-Every item above adds an IGDB or Steam call to the highest-traffic page. Compose and cache server-side as a
-single `/api/home` response rather than five parallel client fetches. This makes the distributed cache and
-IGDB rate limiting in §5 load-bearing rather than nice-to-have.
+~~Every item above adds an IGDB or Steam call to the highest-traffic page. Compose and cache server-side as a
+single `/api/home` response rather than five parallel client fetches.~~ Built: `/api/home` returns the
+spotlight, the trending rail and the news rail in one payload, cached for 15 minutes (1 minute when
+degraded). Measured cold 3.7s / warm 16ms.
+
+Deliberately carries nothing user-specific so the whole response is cacheable once for every visitor. The
+upcoming timeline stays a separate client fetch because it is filtered by the viewer's hidden platforms.
+That split is what the distributed cache in §5 will need: `/api/home` is the shared entry, and per-user
+content must stay out of it.
 
 ---
 
@@ -329,8 +337,10 @@ The project owns **myvideogamelist.net**, which pins down several items that wou
 | D7 | Set the Identity cookie domain explicitly | Matters once `www` and apex both resolve, and for any future subdomain |
 | D8 | `robots.txt`, `sitemap.xml` (game pages + public profiles), canonical URLs | Public game pages and profiles are the organic acquisition channel — a real domain is what makes them worth indexing |
 | D9 | Open Graph and Twitter Card tags on game pages, profiles and shared lists | Also powers the Tier 3 "share card" feature |
-| D10 | Server-side rendering or prerendering for game pages | The SPA currently renders everything client-side, so crawlers see an empty shell. This is the single biggest SEO blocker and worth deciding on before investing in D8/D9 |
+| ~~D10~~ | ~~Server-side rendering or prerendering for game pages~~ **DONE** | Framework-mode SSR (ADR [0002](docs/decisions/0002-server-side-rendering.md)). `/`, `/games` and `/games/:id` all server-render real content; `/lists` and `/user` stay client-side by design |
 | D11 | Email deliverability monitoring — bounce and complaint handling via SNS | SES will throttle or suspend on high bounce rates |
+| D12 | **CloudFront cache behaviours matching the per-route `Cache-Control`** | The origin now states a policy per route (ADR [0013](docs/decisions/0013-http-caching-policy.md)). Two things the CDN config must get right: **include `search` in the cache key for `/games`**, and give `/lists` and `/user` a behaviour that forwards the auth cookie and caches nothing |
+| D13 | Write the behaviours against React Router **v8** `.data` URL formats | Trailing-slash routes request `/path/_.data` and the root is `/_.data`, not `/_root.data` (ADR [0011](docs/decisions/0011-react-router-8-upgrade.md)) |
 
 ---
 
@@ -348,10 +358,10 @@ SSR makes this a **two-process** deployment; the container and CDK work in §6 m
 PostgreSQL swap; Data Protection keys to S3; migrations out of startup; distributed cache; forwarded headers, HSTS, CSRF, lockout; Dockerfile; CDK stack; GitHub Actions OIDC deploy to a dev environment.
 
 **Phase 2 — Make it a real tracker (2–4 weeks)**
-Per-entry scores, dates, hours and notes; full list taxonomy plus Wishlist; profile stats; usernames and public profiles; email confirmation and password reset; local game-metadata cache table (which also unblocks the Steam AppID mapping in N1).
+Per-entry scores, dates, hours and notes; full list taxonomy plus Wishlist; profile stats; usernames and public profiles; email confirmation and password reset; local game-metadata cache table. (It is no longer a prerequisite for the Steam AppID mapping in N1, which shipped against an in-memory cache instead — see ADR [0012](docs/decisions/0012-steam-news-without-a-database.md).)
 
 **Phase 3 — Make the home page earn its place (1–2 weeks)**
-H1 and H3 first — fork on auth and ship Continue Playing, which needs no new API. Then H4 personalised calendar, H7 trending rail, H8 events banner. Fold them into the `/api/home` composite (3.5) as you go.
+H1 and H3 first — fork on auth and ship Continue Playing, which needs no new API. Then H4 personalised calendar and H8 events banner (H7's trending rail is already in). Fold them into the `/api/home` composite (3.5) as you go.
 
 **Phase 4 — Make it cool (ongoing)**
 Browse filters and sorting; game-page media; ITAD price tracking (P1–P11); Steam news (N1–N7); Steam import; export; recommendations; release notifications; reviews; mobile navigation and responsive polish; then the Tier 3 social layer.

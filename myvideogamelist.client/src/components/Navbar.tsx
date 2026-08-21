@@ -13,11 +13,14 @@ export function Navbar() {
     const [dialog, setDialog] = useState<DialogState>('none');
     const [menuOpen, setMenuOpen] = useState(false);
 
+    // Both states need explicit light: variants. Without them light mode inherited the dark
+    // palette against a near-white bar: 2.45:1 inactive and 1.84:1 active, well under AA.
     const navLinkClass = ({ isActive }: { isActive: boolean }) =>
         `px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
             isActive
-                ? 'bg-blue-600/20 text-blue-400'
-                : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                ? 'bg-blue-600/20 text-blue-400 light:bg-blue-100 light:text-blue-800'
+                : 'text-slate-400 hover:text-white hover:bg-slate-800 '
+                  + 'light:text-slate-600 light:hover:text-slate-900 light:hover:bg-slate-200'
         }`;
 
     const handleLogout = async () => {
@@ -60,7 +63,7 @@ export function Navbar() {
                                         <span className="navbar-avatar" aria-hidden="true">
                                             {user.email.charAt(0).toUpperCase()}
                                         </span>
-                                        <svg className="w-3.5 h-3.5 text-slate-400 ml-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                                        <svg className="w-3.5 h-3.5 text-slate-400 light:text-slate-500 ml-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                                         </svg>
                                     </button>

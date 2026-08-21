@@ -78,3 +78,35 @@ public record IgdbReleaseDate(
     long? Date,
     int? Game,
     int? Platform);
+
+/// <summary>
+/// A row from the IGDB <c>external_games</c> endpoint, which maps an IGDB game onto its
+/// identifier on another storefront. <see cref="Uid"/> is that store's own id — for Steam
+/// it is the AppID used by the Steam web API.
+/// </summary>
+/// <remarks>
+/// <para>
+/// The store is identified by <see cref="ExternalGameSource"/>, <em>not</em> by the older
+/// <c>category</c> field. IGDB has removed <c>category</c> from responses: asking for it returns
+/// no such key, and filtering <c>where category = 1</c> silently matches zero rows rather than
+/// erroring. Verified against live IGDB — Steam is source 1.
+/// </para>
+/// <para>
+/// The <c>uid</c> arrives as a string even for Steam, where it is numerically an AppID, so
+/// callers must parse it rather than assume it is well formed.
+/// </para>
+/// </remarks>
+public record IgdbExternalGame(
+    int Id,
+    int? Game,
+    string? Uid,
+    [property: JsonPropertyName("external_game_source")] int? ExternalGameSource);
+
+/// <summary>
+/// A row from the IGDB <c>popularity_primitives</c> endpoint: one popularity score for one game
+/// under one <c>popularity_type</c>.
+/// </summary>
+public record IgdbPopularityPrimitive(
+    int Id,
+    [property: JsonPropertyName("game_id")] int? GameId,
+    double? Value);

@@ -1,87 +1,165 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useNavigation, useSearchParams } from 'react-router';
 import { GameCard } from '@/components/GameCard';
 import type { GameDto, PagedGamesResponse } from '@/types/game';
+import { apiUrl } from '@/lib/api';
+import { CACHE_GAMES_LIST, PRIVATE_NO_STORE } from '@/lib/cache';
+import type { Route } from './+types/GamesPage';
 
 const PAGE_SIZE = 20;
 
-async function fetchGamesPage(offset: number, search: string, signal?: AbortSignal): Promise<PagedGamesResponse> {
+/** Debounce before a keystroke becomes a URL change, and therefore a loader run. */
+const SEARCH_DEBOUNCE_MS = 400;
+
+function gamesPagePath(offset: number, search: string): string {
     const params = new URLSearchParams({ offset: String(offset) });
     if (search.trim()) params.set('search', search.trim());
 
-    const response = await fetch(`/api/games?${params}`, { signal });
+    return `/api/games?${params}`;
+}
+
+async function fetchGamesPage(offset: number, search: string, signal?: AbortSignal): Promise<PagedGamesResponse> {
+    const response = await fetch(gamesPagePath(offset, search), { signal });
     if (!response.ok) {
         throw new Error(`Failed to load games (${response.status})`);
     }
     return response.json() as Promise<PagedGamesResponse>;
 }
 
-export function meta() {
+/**
+ * Server-renders the first page of results.
+ *
+ * The search term is read from the query string rather than component state, which is what
+ * makes this route server-renderable at all: a result set has to be addressable by URL before
+ * it can be rendered without a browser, shared, or indexed.
+ *
+ * Only the first page is loaded here. Infinite scroll continues on the client, because pages
+ * two onward exist only for someone who is already scrolling — a crawler never asks for them.
+ */
+export async function loader({ request }: Route.LoaderArgs) {
+    const search = new URL(request.url).searchParams.get('search')?.trim() ?? '';
+
+    // Unlike the home page, there is nothing left to show if this fails — the list *is* the
+    // page. A real 502 tells a crawler to come back rather than indexing an empty result set.
+    const badGateway = () => new Response('Failed to load games.', {
+        status: 502,
+        statusText: 'Bad Gateway',
+        headers: { 'Cache-Control': PRIVATE_NO_STORE },
+    });
+
+    let response: Response;
+    try {
+        response = await fetch(apiUrl(gamesPagePath(0, search)));
+    } catch {
+        // fetch rejects rather than returning !ok when the API is unreachable. Letting that
+        // propagate would surface as an unhandled 500, which misreports whose fault it is.
+        throw badGateway();
+    }
+
+    if (!response.ok) throw badGateway();
+
+    return { page: await response.json() as PagedGamesResponse, search };
+}
+
+export function headers() {
+    return { 'Cache-Control': CACHE_GAMES_LIST };
+}
+
+export function meta({ loaderData }: Route.MetaArgs) {
+    const search = loaderData?.search;
+
+    // A searched listing gets its own title, and is kept out of the index: these pages are
+    // near-infinite in number and thin in content, which is what search engines call
+    // "low-value add" and penalise. The unfiltered browse page stays indexable.
+    if (search) {
+        return [
+            { title: `${search} - Browse games - MyVideoGameList` },
+            { name: 'robots', content: 'noindex, follow' },
+        ];
+    }
+
     return [
         { title: 'Browse games - MyVideoGameList' },
         { name: 'description', content: 'Search and browse games across PC, PlayStation, Xbox and Nintendo, and add them to your lists.' },
     ];
 }
 
-export function GamesPage() {
-    const [games, setGames] = useState<GameDto[]>([]);
-    const [hasMore, setHasMore] = useState(false);
-    const [offset, setOffset] = useState(0);
-    const [loading, setLoading] = useState(true);
+export function GamesPage({ loaderData }: Route.ComponentProps) {
+    const { page, search: activeSearch } = loaderData;
+
+    const [searchParams, setSearchParams] = useSearchParams();
+    const navigation = useNavigation();
+
+    // The first page comes from the loader and is already in the HTML. Only pages beyond it are
+    // client state, so the server-rendered results are never re-fetched just to be re-displayed.
+    const [extraGames, setExtraGames] = useState<GameDto[]>([]);
+    const [hasMore, setHasMore] = useState(page.hasMore);
+    const [offset, setOffset] = useState(PAGE_SIZE);
     const [loadingMore, setLoadingMore] = useState(false);
+    const [error, setError] = useState<string | null>(null);
     const isLoadingMoreRef = useRef(false);
     const loadMoreControllerRef = useRef<AbortController | null>(null);
-    const [error, setError] = useState<string | null>(null);
-    const [search, setSearch] = useState('');
-    const [debouncedSearch, setDebouncedSearch] = useState('');
 
-    // Debounce the search input so we don't fire a request on every keystroke
-    const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-    useEffect(() => {
-        if (debounceRef.current) clearTimeout(debounceRef.current);
-        debounceRef.current = setTimeout(() => setDebouncedSearch(search), 400);
-        return () => {
-            if (debounceRef.current) clearTimeout(debounceRef.current);
-        };
-    }, [search]);
+    const [search, setSearch] = useState(activeSearch);
 
-    // Reset the results when the search term changes. Adjusting state during render is
-    // React's sanctioned alternative to resetting inside an effect, which would commit a
-    // throwaway render of the stale list first.
-    // https://react.dev/learn/you-might-not-need-an-effect
-    const [activeSearch, setActiveSearch] = useState(debouncedSearch);
-    if (activeSearch !== debouncedSearch) {
-        setActiveSearch(debouncedSearch);
-        setGames([]);
-        setOffset(0);
-        setHasMore(false);
+    // Which term this component last pushed into the URL. Used to tell our own navigation apart
+    // from an external one (back button, a shared link), so a slow loader response for "zel"
+    // cannot overwrite an input the user has already extended to "zelda".
+    //
+    // State rather than a ref because it is read during render, and a ref read during render is
+    // not guaranteed to hold the value that render should see.
+    const [pushedSearch, setPushedSearch] = useState(activeSearch);
+
+    // Reset pagination when the loader returns a different result set. Adjusting state during
+    // render rather than in an effect, which would commit a throwaway render of the previous
+    // search's results first.
+    const [lastSearch, setLastSearch] = useState(activeSearch);
+    if (lastSearch !== activeSearch) {
+        setLastSearch(activeSearch);
+        setExtraGames([]);
+        setHasMore(page.hasMore);
+        setOffset(PAGE_SIZE);
         setError(null);
-        setLoading(true);
         setLoadingMore(false);
+
+        if (pushedSearch !== activeSearch) setSearch(activeSearch);
     }
 
-    // Fetch the first page for the active search term.
+    // Push the debounced term into the URL. The loader re-runs on the resulting navigation, so
+    // the URL — not this component — owns which results are displayed.
     useEffect(() => {
-        const controller = new AbortController();
+        const trimmed = search.trim();
+        if (trimmed === activeSearch) return;
 
+        const timer = setTimeout(() => {
+            setPushedSearch(trimmed);
+
+            const next = new URLSearchParams(searchParams);
+            if (trimmed) next.set('search', trimmed);
+            else next.delete('search');
+
+            // replace, so typing does not add one history entry per debounce interval.
+            setSearchParams(next, { replace: true, preventScrollReset: true });
+        }, SEARCH_DEBOUNCE_MS);
+
+        return () => clearTimeout(timer);
+    }, [search, activeSearch, searchParams, setSearchParams]);
+
+    // Abandon an in-flight "load more" when the result set changes underneath it, so a late
+    // page of the previous search cannot append itself to the new one.
+    useEffect(() => () => {
         isLoadingMoreRef.current = false;
         loadMoreControllerRef.current?.abort();
+    }, [activeSearch]);
 
-        fetchGamesPage(0, debouncedSearch, controller.signal)
-            .then(data => {
-                setGames(data.items);
-                setHasMore(data.hasMore);
-                setOffset(PAGE_SIZE);
-            })
-            .catch(err => {
-                if (controller.signal.aborted) return;
-                setError(err instanceof Error ? err.message : 'An unexpected error occurred.');
-            })
-            .finally(() => {
-                if (!controller.signal.aborted) setLoading(false);
-            });
+    const games = extraGames.length > 0 ? [...page.items, ...extraGames] : page.items;
 
-        return () => controller.abort();
-    }, [debouncedSearch]);
+    // Only while the loader is fetching a *different* search. Without the comparison the list
+    // would blank out during any navigation, including leaving for a game page.
+    const pendingSearch = navigation.location
+        ? new URLSearchParams(navigation.location.search).get('search')?.trim() ?? ''
+        : null;
+    const loading = navigation.state === 'loading' && pendingSearch !== null && pendingSearch !== activeSearch;
 
     const loadMore = useCallback(() => {
         if (isLoadingMoreRef.current || !hasMore) return;
@@ -91,10 +169,10 @@ export function GamesPage() {
         const controller = new AbortController();
         loadMoreControllerRef.current = controller;
 
-        fetchGamesPage(offset, debouncedSearch, controller.signal)
+        fetchGamesPage(offset, activeSearch, controller.signal)
             .then(data => {
                 if (controller.signal.aborted) return;
-                setGames(prev => [...prev, ...data.items]);
+                setExtraGames(prev => [...prev, ...data.items]);
                 setHasMore(data.hasMore);
                 setOffset(prev => prev + PAGE_SIZE);
             })
@@ -106,7 +184,7 @@ export function GamesPage() {
                 isLoadingMoreRef.current = false;
                 if (!controller.signal.aborted) setLoadingMore(false);
             });
-    }, [offset, debouncedSearch, hasMore]);
+    }, [offset, activeSearch, hasMore]);
 
     // Intersection observer for automatic infinite scroll
     const sentinelRef = useRef<HTMLDivElement | null>(null);

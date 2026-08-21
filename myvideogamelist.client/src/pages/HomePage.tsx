@@ -1,95 +1,189 @@
-import { Link } from 'react-router';
+import { Link, data } from 'react-router';
 import { UpcomingTimeline } from '@/components/UpcomingTimeline';
+import { TrendingRail } from '@/components/TrendingRail';
+import { NewsCard } from '@/components/NewsCard';
+import { apiUrl } from '@/lib/api';
+import { CACHE_HOME, PRIVATE_NO_STORE } from '@/lib/cache';
+import type { HomeResponse } from '@/types/news';
+import type { Route } from './+types/HomePage';
+
+/**
+ * Normally the shared home policy, but the loader overrides it when it degrades.
+ *
+ * Without that override an IGDB outage would be cached: the page still answers 200, so the CDN
+ * would happily pin an empty home page for the full window and keep serving it long after the
+ * upstream recovered. Caching a failure outlives the failure.
+ */
+export function headers({ loaderHeaders }: Route.HeadersArgs) {
+    return { 'Cache-Control': loaderHeaders.get('Cache-Control') ?? CACHE_HOME };
+}
 
 export function meta() {
     return [
         { title: 'MyVideoGameList - Track every game you play' },
         { name: 'description', content: 'Track the games you have played, build a backlog and wishlist, and see what is releasing next across every platform.' },
+        { property: 'og:title', content: 'MyVideoGameList - Track every game you play' },
+        { property: 'og:description', content: 'Track the games you have played, build a backlog and wishlist, and see what is releasing next across every platform.' },
+        { property: 'og:type', content: 'website' },
     ];
 }
 
-export function HomePage() {
+/**
+ * One request for the whole shared page (ROADMAP §3.5).
+ *
+ * A failure here degrades rather than throws: the calendar below loads separately on the
+ * client and still works, so a dead IGDB should cost the rails and nothing more. That is the
+ * opposite of the game route, where an upstream failure genuinely means there is no page.
+ */
+export async function loader() {
+    // A degraded render must not be cached, so it carries its own no-store header. `data()` is
+    // how a loader attaches headers to an otherwise plain return value.
+    const degraded = () => data<HomeResponse>(
+        { spotlight: null, popular: [], news: [] },
+        { headers: { 'Cache-Control': PRIVATE_NO_STORE } });
+
+    try {
+        const response = await fetch(apiUrl('/api/home'));
+        if (!response.ok) return degraded();
+
+        return (await response.json()) as HomeResponse;
+    } catch {
+        // fetch rejects outright when the API is unreachable, rather than returning !ok.
+        return degraded();
+    }
+}
+
+function SectionHeading({ id, title, subtitle, action }: {
+    id: string;
+    title: string;
+    subtitle: string;
+    action?: { to: string; label: string };
+}) {
     return (
-        <div className="min-h-screen flex flex-col">
-            {/* Hero Section */}
-            <div className="flex-1 flex items-center justify-center bg-gradient-to-br from-blue-950 via-slate-900 to-slate-900 light:from-blue-50 light:via-slate-50 light:to-white relative overflow-hidden">
-                {/* Background decoration */}
-                <div className="absolute inset-0 overflow-hidden pointer-events-none" aria-hidden="true">
-                    <div className="absolute -top-40 -right-40 w-96 h-96 bg-blue-600/10 rounded-full blur-3xl" />
-                    <div className="absolute -bottom-20 -left-20 w-80 h-80 bg-blue-800/10 rounded-full blur-3xl" />
-                </div>
-
-                <div className="relative text-center px-4 sm:px-6 py-20 max-w-3xl mx-auto">
-                    {/* Icon */}
-                    <div className="flex justify-center mb-6">
-                        <div className="w-20 h-20 bg-blue-600/20 border border-blue-500/30 rounded-2xl flex items-center justify-center">
-                            <svg className="w-10 h-10 text-blue-400" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                                <path d="M21 6.5a2.5 2.5 0 00-2.5-2.5H5.5A2.5 2.5 0 003 6.5v11A2.5 2.5 0 005.5 20h13a2.5 2.5 0 002.5-2.5v-11zM8 15.5a.5.5 0 01-.5-.5V9a.5.5 0 011 0v6a.5.5 0 01-.5.5zm4 0a.5.5 0 01-.5-.5V9a.5.5 0 011 0v6a.5.5 0 01-.5.5zm4-3a.5.5 0 01-.5-.5v-3a.5.5 0 011 0v3a.5.5 0 01-.5.5z" />
-                            </svg>
-                        </div>
-                    </div>
-
-                    <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-white light:text-slate-900 mb-4 leading-tight">
-                        My<span className="text-blue-400">VideoGame</span>List
-                    </h1>
-                    <p className="text-slate-400 light:text-slate-600 text-lg sm:text-xl mb-10 max-w-xl mx-auto leading-relaxed">
-                        Track your gaming journey. Discover, organize, and share every game you've played.
-                    </p>
-
-                    <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-                        <Link
-                            to="/games"
-                            className="inline-flex items-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-xl transition-colors shadow-lg shadow-blue-900/40"
-                        >
-                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                            </svg>
-                            Browse Games
-                        </Link>
-                    </div>
-                </div>
+        <div className="flex items-end justify-between gap-4 mb-5">
+            <div>
+                <h2 id={id} className="text-xl sm:text-2xl font-bold text-white light:text-slate-900">{title}</h2>
+                <p className="text-sm text-slate-400 light:text-slate-600 mt-1">{subtitle}</p>
             </div>
 
-            {/* Features row */}
-            <div className="bg-slate-800/50 light:bg-white border-t border-slate-700/50 light:border-slate-200">
-                <div className="max-w-5xl mx-auto px-4 sm:px-6 py-12 grid grid-cols-1 sm:grid-cols-3 gap-8 text-center">
-                    {[
-                        {
-                            icon: (
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 6h16M4 10h16M4 14h10" />
-                            ),
-                            title: 'Track',
-                            description: 'Keep track of every game — playing, completed, backlog, and more.',
-                        },
-                        {
-                            icon: (
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 21l-4.35-4.35M17 11A6 6 0 115 11a6 6 0 0112 0z" />
-                            ),
-                            title: 'Discover',
-                            description: 'Browse our growing catalog of games across all platforms.',
-                        },
-                        {
-                            icon: (
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
-                            ),
-                            title: 'Rate',
-                            description: 'Score and review games to help the community find the best titles.',
-                        },
-                    ].map(feature => (
-                        <div key={feature.title} className="flex flex-col items-center gap-3">
-                            <div className="w-12 h-12 bg-blue-900/40 light:bg-blue-100 border border-blue-700/30 light:border-blue-200 rounded-xl flex items-center justify-center">
-                                <svg className="w-6 h-6 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                                    {feature.icon}
-                                </svg>
-                            </div>
-                            <h2 className="text-white light:text-slate-800 font-semibold text-base">{feature.title}</h2>
-                            <p className="text-slate-400 light:text-slate-600 text-sm leading-relaxed">{feature.description}</p>
+            {action && (
+                <Link
+                    to={action.to}
+                    className="shrink-0 text-sm font-medium text-blue-400 light:text-blue-600 hover:text-blue-300 light:hover:text-blue-700 transition-colors"
+                >
+                    {action.label} <span aria-hidden="true">→</span>
+                </Link>
+            )}
+        </div>
+    );
+}
+
+export function HomePage({ loaderData }: Route.ComponentProps) {
+    const { spotlight, popular, news } = loaderData;
+
+    return (
+        <div className="min-h-screen">
+            {/* ── Hero ────────────────────────────────────────────────
+                Compact by design. The old full-viewport hero pushed every piece of real
+                content below the fold; this keeps the pitch but lets the trending covers
+                start showing immediately. */}
+            <section className="relative overflow-hidden border-b border-slate-800 light:border-slate-200">
+                {spotlight?.backgroundImageUrl ? (
+                    <>
+                        <img
+                            src={spotlight.backgroundImageUrl}
+                            alt=""
+                            className="absolute inset-0 w-full h-full object-cover"
+                        />
+                        {/*
+                          * Two layers: a horizontal ramp keeps the left-hand text legible, and a
+                          * vertical one lands the section on the page background instead of an edge.
+                          *
+                          * The scrim inverts with the theme. Keeping it dark in light mode left a
+                          * slab of night beside a white page: the text passed contrast against the
+                          * scrim, but the eye adapts to the bright surroundings and the banner's
+                          * mid-tones read as murky anyway.
+                          */}
+                        <div className="absolute inset-0 bg-gradient-to-r from-slate-950 via-slate-950/90 to-slate-950/40 light:from-white light:via-white/92 light:to-white/50" />
+                        <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-transparent to-transparent light:from-slate-50" />
+                    </>
+                ) : (
+                    <div className="absolute inset-0 bg-gradient-to-br from-blue-950 via-slate-900 to-slate-900 light:from-blue-100 light:via-slate-50 light:to-white" />
+                )}
+
+                <div className="relative max-w-6xl mx-auto px-4 sm:px-6 py-14 sm:py-20">
+                    <div className="max-w-2xl">
+                        <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-white light:text-slate-900 mb-4 leading-tight">
+                            Every game you&apos;ve played,{' '}
+                            <span className="text-blue-400 light:text-blue-700">in one list</span>
+                        </h1>
+                        <p className="text-slate-300 light:text-slate-700 text-base sm:text-lg mb-8 leading-relaxed">
+                            Track what you&apos;re playing, park what you&apos;ll get to eventually, and
+                            never miss a release date again.
+                        </p>
+
+                        <div className="flex flex-wrap items-center gap-3">
+                            <Link
+                                to="/games"
+                                className="inline-flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-xl transition-colors shadow-lg shadow-blue-950/50"
+                            >
+                                Browse games
+                            </Link>
+                            <Link
+                                to="/lists"
+                                className="inline-flex items-center gap-2 px-5 py-2.5 bg-white/10 hover:bg-white/20 light:bg-slate-900/5 light:hover:bg-slate-900/10 backdrop-blur-sm text-white light:text-slate-900 font-semibold rounded-xl transition-colors border border-white/15 light:border-slate-900/15"
+                            >
+                                My lists
+                            </Link>
                         </div>
-                    ))}
+
+                        {spotlight && (
+                            <p className="mt-8 text-xs text-slate-400 light:text-slate-600">
+                                Pictured:{' '}
+                                <Link
+                                    to={`/games/${spotlight.id}`}
+                                    className="text-slate-300 light:text-slate-700 hover:text-blue-400 light:hover:text-blue-700 underline underline-offset-2 transition-colors"
+                                >
+                                    {spotlight.title}
+                                </Link>
+                            </p>
+                        )}
+                    </div>
                 </div>
+            </section>
+
+            <div className="max-w-6xl mx-auto px-4 sm:px-6">
+                {popular.length > 0 && (
+                    <section className="py-10 sm:py-12" aria-labelledby="trending-heading">
+                        <SectionHeading
+                            id="trending-heading"
+                            title="Trending right now"
+                            subtitle="The most-played games on Steam today"
+                            action={{ to: '/games', label: 'Browse all' }}
+                        />
+                        <TrendingRail games={popular} />
+                    </section>
+                )}
+
+                {news.length > 0 && (
+                    <section className="py-10 sm:py-12 border-t border-slate-800/60 light:border-slate-200" aria-labelledby="news-heading">
+                        <SectionHeading
+                            id="news-heading"
+                            title="Latest news"
+                            subtitle="Patch notes and announcements from the games people are playing"
+                        />
+
+                        <div className="grid gap-3 sm:grid-cols-2">
+                            {news.map(item => (
+                                <NewsCard key={item.id} item={item} />
+                            ))}
+                        </div>
+                    </section>
+                )}
             </div>
 
-            {/* Upcoming releases timeline */}
+            {/* Keeps its own client-side fetch: the calendar is filtered by the viewer's hidden
+                platforms, so unlike everything above it cannot be cached once for everyone. */}
             <UpcomingTimeline />
         </div>
     );

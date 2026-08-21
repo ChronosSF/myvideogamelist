@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Caching.Memory;
@@ -16,6 +17,8 @@ public class IgdbService(
     private const string ImageBaseUrl = "https://images.igdb.com/igdb/image/upload";
     private const string GamesEndpoint = "https://api.igdb.com/v4/games";
     private const string ReleaseDatesEndpoint = "https://api.igdb.com/v4/release_dates";
+    private const string ExternalGamesEndpoint = "https://api.igdb.com/v4/external_games";
+    private const string PopularityEndpoint = "https://api.igdb.com/v4/popularity_primitives";
 
     // Buffer (in seconds) subtracted from the token's reported expiry so we refresh before it actually expires
     private const int TokenExpiryBufferSeconds = 120;
@@ -31,6 +34,31 @@ public class IgdbService(
 
     /// <summary>How far ahead the upcoming-releases timeline looks.</summary>
     private const int UpcomingWindowDays = 30;
+
+    /// <summary>
+    /// The IGDB <c>external_game_source</c> identifying a Steam store entry. This replaced the
+    /// old <c>category</c> field, which no longer exists — filtering on it matches nothing.
+    /// </summary>
+    private const int SteamExternalSource = 1;
+
+    /// <summary>
+    /// IGDB <c>popularity_type</c> 5, "24hr Peak Players", sourced from Steam.
+    /// </summary>
+    /// <remarks>
+    /// Chosen over the IGDB-native types after comparing their live output. Type 1 ("Visits")
+    /// returns zero-valued rows mixed with junk and adult titles, and type 9 ("Global Top
+    /// Sellers") returns near-identical values whose ordering is not meaningful. Type 5 returns
+    /// well-separated values over recognisable titles, and — being Steam-sourced — every game in
+    /// it has a Steam feed, which is what makes the news rail reliably non-empty.
+    /// </remarks>
+    private const int SteamPeakPlayersPopularityType = 5;
+
+    /// <summary>
+    /// Games per <c>external_games</c> lookup. Deliberately well below <see cref="MaxBatchSize"/>:
+    /// a game can have several Steam rows (regional entries, demos), so asking for 500 games could
+    /// overflow the 500-row response cap and silently drop mappings.
+    /// </summary>
+    private const int ExternalGamesChunkSize = 200;
 
     private static readonly JsonSerializerOptions SnakeCaseOptions = new()
     {
@@ -293,6 +321,112 @@ public class IgdbService(
         }
 
         return composed.OrderBy(g => g.ReleaseDate).ThenBy(g => g.Title).ToList();
+    }
+
+    /// <summary>
+    /// The games with the highest current player counts, most popular first.
+    /// </summary>
+    /// <remarks>
+    /// Replaces sorting the catalogue by <c>aggregated_rating</c>, which is a poor proxy for
+    /// popularity: it surfaces obscure DLC and re-releases carrying a single perfect review
+    /// rather than games anyone recognises.
+    /// </remarks>
+    public async Task<IEnumerable<GameDto>> GetTrendingAsync(
+        int limit, CancellationToken cancellationToken = default)
+    {
+        if (limit <= 0) return [];
+
+        // Refresh hourly, on the same clock-hour key the upcoming timeline uses.
+        var cacheKey = $"igdb_trending|{limit}|{DateTimeOffset.UtcNow:yyyyMMddHH}";
+        if (cache.TryGetValue(cacheKey, out IEnumerable<GameDto>? cached) && cached is not null)
+            return cached;
+
+        // Over-fetch: a rail of cover art has to drop games that have no cover, and popularity
+        // rows sometimes point at entries that no longer resolve.
+        var fetchCount = Math.Min(limit * 3, MaxBatchSize);
+
+        var query = new StringBuilder()
+            .AppendLine("fields game_id,value;")
+            .AppendLine($"where popularity_type = {SteamPeakPlayersPopularityType};")
+            .AppendLine("sort value desc;")
+            .AppendLine($"limit {fetchCount};")
+            .ToString();
+
+        var primitives = await QueryAsync<IgdbPopularityPrimitive>(
+            PopularityEndpoint, query, cancellationToken);
+
+        // Distinct preserves first occurrence, which is the highest-scoring row for that game.
+        var rankedIds = primitives
+            .Where(p => p.GameId.HasValue)
+            .Select(p => p.GameId!.Value)
+            .Distinct()
+            .ToList();
+
+        if (rankedIds.Count == 0)
+        {
+            logger.LogWarning("IGDB returned no popularity primitives; the trending rail will be empty.");
+            return [];
+        }
+
+        var gamesById = (await FetchGamesByIdsAsync(rankedIds, cancellationToken))
+            .ToDictionary(g => g.Id);
+
+        // Re-impose the popularity order: the id lookup returns rows in IGDB's own order, not ours.
+        IEnumerable<GameDto> result = rankedIds
+            .Where(gamesById.ContainsKey)
+            .Select(id => gamesById[id])
+            .Where(g => !string.IsNullOrWhiteSpace(g.CoverImageUrl))
+            .Take(limit)
+            .ToList();
+
+        cache.Set(cacheKey, result, TimeSpan.FromHours(1));
+        return result;
+    }
+
+    /// <summary>
+    /// Resolves IGDB game ids onto Steam AppIDs via the <c>external_games</c> endpoint.
+    /// </summary>
+    /// <remarks>
+    /// Games with no Steam presence — console exclusives, most retro titles — are simply absent
+    /// from the returned map rather than mapped to a sentinel, so callers can treat a missing key
+    /// as "no news available here" and hide the panel entirely.
+    /// </remarks>
+    public async Task<IReadOnlyDictionary<int, int>> GetSteamAppIdsAsync(
+        IEnumerable<int> gameIds, CancellationToken cancellationToken = default)
+    {
+        var idList = gameIds.Distinct().ToList();
+        if (idList.Count == 0) return ReadOnlyDictionary<int, int>.Empty;
+
+        idList.Sort();
+        var cacheKey = $"igdb_steam_appids|{string.Join(',', idList)}";
+        if (cache.TryGetValue(cacheKey, out IReadOnlyDictionary<int, int>? cached) && cached is not null)
+            return cached;
+
+        var map = new Dictionary<int, int>();
+
+        foreach (var chunk in idList.Chunk(ExternalGamesChunkSize))
+        {
+            var query = new StringBuilder()
+                .AppendLine("fields game,uid,external_game_source;")
+                .AppendLine($"where game = ({string.Join(',', chunk)}) & external_game_source = {SteamExternalSource};")
+                .AppendLine($"limit {MaxBatchSize};")
+                .ToString();
+
+            var rows = await QueryAsync<IgdbExternalGame>(ExternalGamesEndpoint, query, cancellationToken);
+
+            foreach (var row in rows)
+            {
+                // uid is a string even though a Steam AppID is numeric, so parse rather than trust it.
+                if (row.Game is { } gameId && int.TryParse(row.Uid, out var appId) && appId > 0)
+                    map.TryAdd(gameId, appId);
+            }
+        }
+
+        // A game's storefront identity effectively never changes, so this caches for a day. Misses
+        // are cached with the hits: a console-only library would otherwise re-ask IGDB on every render.
+        IReadOnlyDictionary<int, int> result = map;
+        cache.Set(cacheKey, result, TimeSpan.FromHours(24));
+        return result;
     }
 
     public Task<IEnumerable<PlatformDto>> GetActivePlatformsAsync()

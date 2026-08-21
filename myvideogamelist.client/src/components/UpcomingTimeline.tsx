@@ -149,7 +149,7 @@ export function UpcomingTimeline() {
                 {/* Section header */}
                 <div className="flex items-center gap-3 mb-6">
                     <div className="w-9 h-9 bg-blue-900/40 border border-blue-700/40 rounded-lg flex items-center justify-center shrink-0">
-                        <svg className="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                        <svg className="w-5 h-5 text-blue-400 light:text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                         </svg>
                     </div>
@@ -166,9 +166,9 @@ export function UpcomingTimeline() {
                             <span className="text-slate-400 light:text-slate-500 text-xs uppercase tracking-wider font-medium">
                                 Filter by platform
                             </span>
-                            <button onClick={selectAll} className="text-xs text-blue-400 hover:text-blue-300 transition-colors">All</button>
-                            <span className="text-slate-600 text-xs">·</span>
-                            <button onClick={deselectAll} className="text-xs text-blue-400 hover:text-blue-300 transition-colors">None</button>
+                            <button onClick={selectAll} className="text-xs text-blue-400 light:text-blue-700 hover:text-blue-300 light:hover:text-blue-800 transition-colors">All</button>
+                            <span className="text-slate-600 light:text-slate-400 text-xs">·</span>
+                            <button onClick={deselectAll} className="text-xs text-blue-400 light:text-blue-700 hover:text-blue-300 light:hover:text-blue-800 transition-colors">None</button>
                         </div>
                         <div className="platform-filter-list">
                             {visiblePlatforms.map(platform => (
@@ -187,7 +187,7 @@ export function UpcomingTimeline() {
                 {loading && (
                     <div className="flex items-center gap-3 py-16 justify-center">
                         <div className="w-7 h-7 border-4 border-blue-500/30 border-t-blue-500 rounded-full animate-spin" aria-label="Loading" />
-                        <p className="text-slate-400 text-sm">Loading upcoming releases…</p>
+                        <p className="text-slate-400 light:text-slate-600 text-sm">Loading upcoming releases…</p>
                     </div>
                 )}
 
@@ -208,11 +208,11 @@ export function UpcomingTimeline() {
                 {noResults && (
                     <div className="flex items-center justify-center py-16">
                         <div className="text-center">
-                            <svg className="w-14 h-14 text-slate-700 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                            <svg className="w-14 h-14 text-slate-700 light:text-slate-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                             </svg>
-                            <p className="text-slate-400 font-medium">No upcoming releases found.</p>
-                            <p className="text-slate-500 text-sm mt-1">
+                            <p className="text-slate-400 light:text-slate-700 font-medium">No upcoming releases found.</p>
+                            <p className="text-slate-500 light:text-slate-600 text-sm mt-1">
                                 {disabledIds.size > 0 ? 'Try enabling more platforms above.' : 'Check back soon!'}
                             </p>
                         </div>
@@ -240,11 +240,11 @@ export function UpcomingTimeline() {
                                             {formatDateHeading(dateKey)}
                                         </h3>
                                         {isToday(dateKey) && (
-                                            <span className="px-1.5 py-0.5 text-xs font-medium bg-blue-600/30 text-blue-300 border border-blue-500/40 rounded-full">
+                                            <span className="px-1.5 py-0.5 text-xs font-medium bg-blue-600/30 text-blue-300 border-blue-500/40 light:bg-blue-100 light:text-blue-800 light:border-blue-300 border rounded-full">
                                                 today
                                             </span>
                                         )}
-                                        <span className="text-slate-500 text-xs">
+                                        <span className="text-slate-500 light:text-slate-600 text-xs">
                                             {dayGames.length} {dayGames.length === 1 ? 'game' : 'games'}
                                         </span>
                                     </div>

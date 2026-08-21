@@ -129,6 +129,31 @@
     color: #93c5fd;
 }
 
+/*
+ * Light mode. This file previously had no theme overrides, so the pills kept their dark
+ * palette against a near-white page — a dark slab, out of step with everything around it.
+ */
+[data-theme='light'] .platform-filter-label {
+    border-color: #cbd5e1;
+    background: #ffffff;
+    color: #475569;
+}
+
+[data-theme='light'] .platform-filter-label:hover {
+    border-color: #3b82f6;
+    color: #1e293b;
+}
+
+[data-theme='light'] .platform-filter-label.checked {
+    background: #dbeafe;
+    border-color: #3b82f6;
+    color: #1e40af;
+}
+
+[data-theme='light'] .platform-filter-label input[type='checkbox'] {
+    border-color: #94a3b8;
+}
+
 .platform-filter-label input[type='checkbox'] {
     appearance: none;
     width: 0.875rem;
