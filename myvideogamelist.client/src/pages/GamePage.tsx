@@ -67,10 +67,10 @@ export async function loader({ params }: Route.LoaderArgs) {
     return { game: await response.json() as GameDto };
 }
 
-export function meta({ data }: Route.MetaArgs) {
-    if (!data?.game) return [{ title: 'Game not found - MyVideoGameList' }];
+export function meta({ loaderData }: Route.MetaArgs) {
+    if (!loaderData?.game) return [{ title: 'Game not found - MyVideoGameList' }];
 
-    const { game } = data;
+    const { game } = loaderData;
     const year = game.releaseDate ? ` (${new Date(game.releaseDate).getFullYear()})` : '';
     const title = `${game.title}${year} - MyVideoGameList`;
     const description = game.description?.slice(0, 200)

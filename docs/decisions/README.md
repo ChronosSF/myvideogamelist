@@ -19,7 +19,7 @@ decision, write a new record and mark the old one superseded.
 | # | Decision | Status |
 |---|---|---|
 | [0001](0001-igdb-as-source-of-truth.md) | IGDB is the source of truth for game data | Implemented |
-| [0002](0002-server-side-rendering.md) | Server-side rendering via React Router 7 framework mode | Implemented |
+| [0002](0002-server-side-rendering.md) | Server-side rendering via React Router framework mode | Implemented |
 | [0003](0003-two-process-deployment.md) | Two processes; the SSR server does not proxy `/api` | Implemented |
 | [0004](0004-release-dates-for-calendar.md) | The upcoming calendar is built on `release_dates` | Implemented |
 | [0005](0005-secrets-handling.md) | Secrets come from user secrets and environment variables | Implemented |
@@ -28,6 +28,7 @@ decision, write a new record and mark the old one superseded.
 | [0008](0008-postgresql-over-sqlite.md) | PostgreSQL replaces SQLite before deployment | Accepted |
 | [0009](0009-itad-without-affiliate-revenue.md) | Integrate IsThereAnyDeal and forgo the affiliate revenue | Accepted |
 | [0010](0010-monetization-model.md) | Ad-supported free tier plus a paid subscription | Accepted |
+| [0011](0011-react-router-8-upgrade.md) | Upgrade to React Router 8 | Implemented |
 
 **Status** — *Accepted*: decided, not yet built. *Implemented*: decided and in the code.
 *Superseded*: replaced by a later record.

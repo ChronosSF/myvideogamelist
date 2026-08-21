@@ -22,7 +22,7 @@ polished game-tracking product that runs on AWS and ships safely on every commit
 - Three lists (`playing`, `backlog`, `finished`) with optimistic updates and rollback — `Services/ListService.cs`, `src/contexts/ListsProvider.tsx`
 - Game detail page (server-rendered), upcoming-releases timeline over a 30-day window, per-user hidden-platform filter
 - Server-persisted light/dark theme
-- Server-side rendering via React Router 7 framework mode, with real titles and Open Graph tags
+- Server-side rendering via React Router 8 framework mode, with real titles and Open Graph tags
 - CI: lint, type-check, build, unit tests and CodeQL on PRs and pushes to `master`
 
 **Structural issues**
@@ -340,7 +340,7 @@ The project owns **myvideogamelist.net**, which pins down several items that wou
 IGDB credentials moved to user secrets (rotation still outstanding, and only you can do it); WeatherForecast template and the dead `Developers`/`Publishers` controllers deleted; seed data dropped via migration; `CancellationToken` plumbed through every controller and service; `/healthz` and `/readyz` added; the unbounded IGDB paging loop bounded; the calendar rebuilt on `release_dates` (3.3); 33 server unit tests added; CI extended with lint, typecheck, tests and CodeQL on both PRs and pushes.
 
 **D10 — SSR — DONE (pulled forward from Phase 5)**
-Migrated the client to React Router 7 framework mode with SSR. Game pages now server-render real content plus `title`, `description` and Open Graph tags; 404s return a genuine 404 status. This unblocks D8 and D9, which were previously pointless. Remaining: only the game route has a loader — `GamesPage`, `ListsPage` and `UserPage` still fetch client-side, which is fine for the authenticated pages but should change for anything meant to be indexed.
+Migrated the client to React Router framework mode with SSR (now on v8, see [ADR 0011](docs/decisions/0011-react-router-8-upgrade.md)). Game pages now server-render real content plus `title`, `description` and Open Graph tags; 404s return a genuine 404 status. This unblocks D8 and D9, which were previously pointless. Remaining: only the game route has a loader — `GamesPage`, `ListsPage` and `UserPage` still fetch client-side, which is fine for the authenticated pages but should change for anything meant to be indexed.
 
 **Phase 1 — Make it deployable (1–2 weeks)**
 SSR makes this a **two-process** deployment; the container and CDK work in §6 must account for both, plus the layer that routes between them. See [ADR 0003](docs/decisions/0003-two-process-deployment.md) and [ADR 0007](docs/decisions/0007-aws-target-architecture.md).

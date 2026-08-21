@@ -1,7 +1,7 @@
 # MyVideoGameList
 
 A video game tracker. ASP.NET Core 10 REST API plus a React 19 front end that is
-server-rendered with React Router 7 in framework mode.
+server-rendered with React Router 8 in framework mode.
 
 ## Running locally
 
