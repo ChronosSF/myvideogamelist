@@ -5,6 +5,9 @@ polished game-tracking product that runs on AWS and ships safely on every commit
 
 ---
 
+> **Status:** Phase 0 is complete, and D10 (SSR) landed early because it gates the SEO items.
+> See §7 for what that covered and what is next.
+
 ## 1. Where the app stands today
 
 **Works end to end**
@@ -12,22 +15,26 @@ polished game-tracking product that runs on AWS and ships safely on every commit
 - Cookie-based auth (register / login / logout / `me`) on ASP.NET Core Identity — `Controllers/AuthController.cs`
 - Browse & search games backed live by IGDB, 20 per page with "load more" — `Controllers/GamesController.cs`, `Services/IgdbService.cs`
 - Three lists (`playing`, `backlog`, `finished`) with optimistic updates and rollback — `Services/ListService.cs`, `src/contexts/ListsProvider.tsx`
-- Game detail page, upcoming-releases timeline (next 14 days), per-user hidden-platform filter
+- Game detail page (server-rendered), upcoming-releases timeline over a 30-day window, per-user hidden-platform filter
 - Server-persisted light/dark theme
-- CI builds client and server on PRs
+- Server-side rendering via React Router 7 framework mode, with real titles and Open Graph tags
+- CI: lint, type-check, build, unit tests and CodeQL on PRs and pushes to `master`
 
-**Structural issues worth fixing before building on top**
+**Structural issues**
 
-| # | Issue | Where |
+| # | Issue | Status |
 |---|---|---|
-| 1 | The `Game` / `Developer` / `Publisher` / `Genre` tables are seeded with 5 hardcoded games and are effectively dead — `GamesController` reads IGDB only, while `DevelopersController` / `PublishersController` serve the stale seed rows. Two sources of truth. | `Data/ApplicationDbContext.cs`, `Controllers/DevelopersController.cs` |
-| 2 | No local cache of game metadata: every list load fans out to IGDB (`GetGamesByIdsAsync`). If IGDB is down or rate-limits, users cannot see their own lists. | `Services/ListService.cs` |
-| 3 | Lists are `playing` / `backlog` / `finished`, but the README and `.github/copilot-instructions.md` promise Playing, Completed, On Hold, Dropped, Plan to Play **and** a Wishlist. Docs and code disagree. | `src/types/list.ts` |
-| 4 | Google/Facebook auth is registered in `Program.cs` but has no challenge/callback endpoints and no UI — half-wired. | `Program.cs` |
-| 5 | Template leftovers still shipping as public API. | `Controllers/WeatherForecastController.cs`, `WeatherForecast.cs` |
-| 6 | IGDB credentials live in the tracked `appsettings.json`. They are blank in git but real values are sitting in the working tree — one `git add -A` leaks them. | `MyVideoGameList.Server/appsettings.json` |
-| 7 | No `CancellationToken` is plumbed through any controller or service, so aborted client requests keep IGDB calls alive. | all controllers |
-| 8 | Zero tests of any kind. CI compiles but never runs `npm run lint` or `dotnet test`. | `.github/workflows/ci.yml` |
+| 1 | The `Game` / `Developer` / `Publisher` / `Genre` tables were seeded with 5 hardcoded games and were effectively dead, while `GamesController` read IGDB only. Two sources of truth. | **Fixed** — they were UI scaffolding from before IGDB was wired up. Seed data, controllers, entity classes and all nine tables removed (`DropLocalGameCatalog`). The metadata cache will be designed fresh around IGDB ids |
+| 2 | No local cache of game metadata: every list load fans out to IGDB (`GetGamesByIdsAsync`). If IGDB is down or rate-limits, users cannot see their own lists. | Open — Phase 2. Build it keyed on IGDB ids; do not resurrect the old catalog schema, whose `Platform` ids collided with IGDB's (local 6 = Switch, IGDB 6 = PC) |
+| 3 | Lists are `playing` / `backlog` / `finished`, but the docs promised Playing, Completed, On Hold, Dropped, Plan to Play and a Wishlist. | Docs corrected to match the code; the taxonomy expansion itself is Phase 2 |
+| 4 | Google/Facebook auth is registered in `Program.cs` but has no challenge/callback endpoints and no UI — half-wired. | Open — blocked on OAuth app registration (D6) |
+| 5 | `WeatherForecastController` template leftovers shipping as public API. | **Fixed** — deleted |
+| 6 | IGDB credentials sitting in the tracked `appsettings.json`. | **Fixed** — moved to user secrets; `appsettings.json` documents the env-var names. **Rotation is still outstanding and only you can do it** |
+| 7 | No `CancellationToken` plumbed through any controller or service. | **Fixed** — plumbed through controllers, services and every IGDB call |
+| 8 | Zero tests. CI compiled but never ran lint or tests. | **Fixed** — 33 server unit tests; CI runs lint, typecheck, build, tests and CodeQL |
+| 9 | The upcoming timeline was built on `first_release_date`, so a game already out on one platform never appeared when it reached another. | **Fixed** — rebuilt on the `release_dates` endpoint. Measured against live IGDB, ~6% of entries in a 30-day window were previously invisible |
+| 10 | Crawlers saw an empty `<div id="root">`. | **Fixed** — SSR (D10) |
+| 11 | Two transitive packages carry known high-severity advisories: `Microsoft.OpenApi` 2.0.0 and `SQLitePCLRaw.lib.e_sqlite3` 2.1.11. | Open — surfaced by the build; both arrive through pinned direct dependencies, so they need an upstream bump |
 
 ---
 
@@ -58,7 +65,6 @@ polished game-tracking product that runs on AWS and ships safely on every commit
 - **Export** — CSV and JSON download of everything a user has entered.
 - **Empty and error states that teach** — the lists page already has good ones; extend the pattern to games and profile.
 - **Responsive navigation** — `Navbar.tsx` tracks `menuOpen` but always renders the full link row; there is no mobile hamburger.
-- **404 route and a router error boundary** — `main.tsx` has neither, so a bad URL renders a blank layout.
 - **Anonymous theme** — theme only persists server-side, so signed-out users are locked to dark and get a flash on load. Store it in `localStorage` and reconcile on login.
 - **Skeleton loaders** instead of spinners, plus `srcset` and lazy loading for cover art.
 
@@ -120,11 +126,11 @@ of pitch to reach the one useful element. **One route, two pages** — fork on a
 - Keep the hero, but replace the three abstract icon cards with **live proof**: real trending covers and the real calendar. Showing the catalogue is alive converts better than listing features.
 - A "sign up to track this" CTA on each rail.
 
-### 3.3 Fix the calendar's accuracy
+### 3.3 Fix the calendar's accuracy — DONE
 
-- `GetUpcomingReleasesAsync` keys off `first_release_date`, so **a game already out on PC but launching on Switch next week never appears**. Switch to the IGDB `release_dates` endpoint, which is per-platform and per-region. This is a bug, not an enhancement.
-- Extend past the hardcoded 14 days, and add a month view.
-- Bound the unbounded `while (true)` paging loop while you are in there.
+- ~~`GetUpcomingReleasesAsync` keys off `first_release_date`~~ Rebuilt on the IGDB `release_dates` endpoint, which is per-platform and per-region. Entries are now keyed on (game, date) and carry only the platforms releasing on that date.
+- ~~Extend past the hardcoded 14 days~~ Window widened to 30 days. **Still open:** a month/grid view rather than the single scrolling column.
+- ~~Bound the unbounded `while (true)` paging loop~~ Capped at 10 pages, with a warning logged when the ceiling is hit.
 
 ### 3.4 Steam news
 
@@ -325,10 +331,15 @@ The project owns **myvideogamelist.net**, which pins down several items that wou
 
 ## 7. Suggested sequencing
 
-**Phase 0 — Clean the foundation (days)**
-Rotate and externalise the IGDB secret; delete the WeatherForecast template and the dead seed data; align the list taxonomy with the docs; add `CancellationToken` plumbing; add health endpoints; wire lint and a first test project into CI. Fix the calendar to use `release_dates` (3.3) — it is a small change that corrects a visibly wrong feature.
+**Phase 0 — Clean the foundation — DONE**
+IGDB credentials moved to user secrets (rotation still outstanding, and only you can do it); WeatherForecast template and the dead `Developers`/`Publishers` controllers deleted; seed data dropped via migration; `CancellationToken` plumbed through every controller and service; `/healthz` and `/readyz` added; the unbounded IGDB paging loop bounded; the calendar rebuilt on `release_dates` (3.3); 33 server unit tests added; CI extended with lint, typecheck, tests and CodeQL on both PRs and pushes.
+
+**D10 — SSR — DONE (pulled forward from Phase 5)**
+Migrated the client to React Router 7 framework mode with SSR. Game pages now server-render real content plus `title`, `description` and Open Graph tags; 404s return a genuine 404 status. This unblocks D8 and D9, which were previously pointless. Remaining: only the game route has a loader — `GamesPage`, `ListsPage` and `UserPage` still fetch client-side, which is fine for the authenticated pages but should change for anything meant to be indexed.
 
 **Phase 1 — Make it deployable (1–2 weeks)**
+Note that SSR makes this a **two-process** deployment: the ASP.NET API and a Node SSR server. The container and CDK work in §6 must account for both, or put CloudFront in front of a Node origin that proxies `/api` to the API.
+
 PostgreSQL swap; Data Protection keys to S3; migrations out of startup; distributed cache; forwarded headers, HSTS, CSRF, lockout; Dockerfile; CDK stack; GitHub Actions OIDC deploy to a dev environment.
 
 **Phase 2 — Make it a real tracker (2–4 weeks)**

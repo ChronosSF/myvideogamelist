@@ -1,10 +1,17 @@
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 import { GameCard } from '@/components/GameCard';
 import { useLists } from '@/hooks/useLists';
 import { useAuth } from '@/hooks/useAuth';
 import { type ListId, LIST_IDS, LIST_NAMES } from '@/types/list';
 import './ListsPage.css';
+
+export function meta() {
+    return [
+        { title: 'My lists - MyVideoGameList' },
+        { name: 'description', content: 'Your games across Playing, Backlog and Finished.' },
+    ];
+}
 
 export function ListsPage() {
     const { user } = useAuth();
@@ -135,3 +142,5 @@ export function ListsPage() {
         </div>
     );
 }
+
+export default ListsPage;

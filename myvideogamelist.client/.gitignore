@@ -25,3 +25,7 @@ obj\*/
 *.njsproj
 *.sln
 *.sw?
+
+# React Router generated types
+.react-router/
+/build/

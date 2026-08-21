@@ -3,10 +3,12 @@ name: CI
 on:
   pull_request:
     branches: [master, develop]
+  push:
+    branches: [master, develop]
 
 jobs:
-  build-client:
-    name: Build Client
+  client:
+    name: Client
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -21,10 +23,20 @@ jobs:
           cache-dependency-path: myvideogamelist.client/package-lock.json
 
       - run: npm ci
-      - run: npm run build
 
-  build-server:
-    name: Build Server
+      - name: Lint
+        run: npm run lint
+
+      # Generates the React Router route types before type-checking, otherwise
+      # the ./+types/* imports in route modules cannot resolve.
+      - name: Type-check
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run build
+
+  server:
+    name: Server
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -33,6 +45,42 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
-      # --no-dependencies skips building the client .esproj reference,
-      # since the client is verified in its own job above.
-      - run: dotnet build MyVideoGameList.Server/MyVideoGameList.Server.csproj --no-dependencies
+      - name: Restore
+        run: dotnet restore MyVideoGameList.Server.Tests/MyVideoGameList.Server.Tests.csproj
+
+      - name: Build
+        run: dotnet build MyVideoGameList.Server.Tests/MyVideoGameList.Server.Tests.csproj --no-restore
+
+      - name: Test
+        run: dotnet test MyVideoGameList.Server.Tests/MyVideoGameList.Server.Tests.csproj --no-build --verbosity normal
+
+  codeql:
+    name: CodeQL
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      actions: read
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        language: ['csharp', 'javascript-typescript']
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        if: matrix.language == 'csharp'
+        with:
+          dotnet-version: '10.0.x'
+
+      - uses: github/codeql-action/init@v3
+        with:
+          language: ${{ matrix.language }}
+
+      - name: Build for analysis
+        if: matrix.language == 'csharp'
+        run: dotnet build MyVideoGameList.Server/MyVideoGameList.Server.csproj
+
+      - uses: github/codeql-action/analyze@v3
+        with:
+          category: /language:${{ matrix.language }}

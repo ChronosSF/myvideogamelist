@@ -3,5 +3,6 @@
     <Build />
     <Deploy />
   </Project>
+  <Project Path="MyVideoGameList.Server.Tests/MyVideoGameList.Server.Tests.csproj" />
   <Project Path="MyVideoGameList.Server/MyVideoGameList.Server.csproj" />
 </Solution>

@@ -1,6 +1,9 @@
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 using MyVideoGameList.Server.Data;
+using MyVideoGameList.Server.HealthChecks;
 using MyVideoGameList.Server.Models;
 using MyVideoGameList.Server.Services;
 using Scalar.AspNetCore;
@@ -16,6 +19,12 @@ builder.Services.AddScoped<IListService, ListService>();
 
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseSqlite(builder.Configuration.GetConnectionString("DefaultConnection")));
+
+// Readiness checks. Liveness (/healthz) deliberately runs no checks - it answers
+// "is the process up", not "are its dependencies well".
+builder.Services.AddHealthChecks()
+    .AddCheck<DatabaseHealthCheck>("database", tags: ["ready"])
+    .AddCheck<IgdbHealthCheck>("igdb", tags: ["ready"]);
 
 // ASP.NET Core Identity with EF Core store
 builder.Services.AddIdentity<ApplicationUser, IdentityRole>(options =>
@@ -93,22 +102,38 @@ using (var scope = app.Services.CreateScope())
     db.Database.Migrate();
 }
 
-app.UseDefaultFiles();
-app.MapStaticAssets();
-
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
     app.MapScalarApiReference();
 }
 
-app.UseHttpsRedirection();
+// Only redirect browser traffic. The React Router SSR server calls this API over
+// plain HTTP from the same machine, and a 307 to HTTPS would fail on the dev cert.
+if (!app.Environment.IsDevelopment())
+{
+    app.UseHttpsRedirection();
+}
 
 app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
 
-app.MapFallbackToFile("/index.html");
+// Liveness: the process is running and can serve a request.
+app.MapHealthChecks("/healthz", new HealthCheckOptions { Predicate = _ => false });
+
+// Readiness: dependencies are reachable. Degraded still returns 200 so a degraded IGDB
+// does not take the instance out of the load balancer.
+app.MapHealthChecks("/readyz", new HealthCheckOptions
+{
+    Predicate = check => check.Tags.Contains("ready"),
+    ResultStatusCodes =
+    {
+        [HealthStatus.Healthy] = StatusCodes.Status200OK,
+        [HealthStatus.Degraded] = StatusCodes.Status200OK,
+        [HealthStatus.Unhealthy] = StatusCodes.Status503ServiceUnavailable
+    }
+});
 
 app.Run();

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, NavLink, useNavigate } from 'react-router-dom';
+import { Link, NavLink, useNavigate } from 'react-router';
 import { useAuth } from '@/hooks/useAuth';
 import { LoginDialog } from '@/components/LoginDialog';
 import { SignupDialog } from '@/components/SignupDialog';

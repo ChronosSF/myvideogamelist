@@ -5,7 +5,8 @@ import reactRefresh from 'eslint-plugin-react-refresh'
 import tseslint from 'typescript-eslint'
 
 export default tseslint.config(
-  { ignores: ['dist'] },
+  // "build" is the React Router output; ".react-router" is its generated route types.
+  { ignores: ['dist', 'build', '.react-router'] },
   {
     extends: [
       js.configs.recommended,
@@ -20,6 +21,25 @@ export default tseslint.config(
     },
     rules: {
       '@typescript-eslint/no-unused-vars': ['error', { varsIgnorePattern: '^[A-Z_]' }],
+
+      // React Router route modules export data/config alongside the component by
+      // design, so fast refresh has to treat those names as expected.
+      'react-refresh/only-export-components': ['error', {
+        allowExportNames: [
+          'meta',
+          'links',
+          'headers',
+          'handle',
+          'loader',
+          'clientLoader',
+          'action',
+          'clientAction',
+          'shouldRevalidate',
+          'ErrorBoundary',
+          'HydrateFallback',
+          'Layout',
+        ],
+      }],
     },
   },
 )

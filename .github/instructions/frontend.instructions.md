@@ -19,8 +19,15 @@ applyTo: "myvideogamelist.client/src/**"
 
 ## State & Data Fetching
 
-- Use `useState` / `useEffect` for local state. Migrate to a data-fetching library (e.g. TanStack Query) if introduced.
-- Always handle loading and error states explicitly — never leave the UI in a silent broken state.
+- Prefer a route `loader` over `useEffect` fetching for anything that should be server-rendered or indexed. Loaders run on the server, so use `apiUrl()` from `@/lib/api` rather than a bare relative path.
+- Throw a `Response` from a loader for not-found and upstream failures; the root `ErrorBoundary` renders it and the correct HTTP status reaches crawlers.
+- Use `useState` / `useEffect` for local, client-only state. Always handle loading and error states explicitly.
+- Do not call `setState` synchronously inside an effect — adjust state during render, or use `useSyncExternalStore` for external/browser state.
+
+## SSR Safety
+
+- `window`, `document` and `localStorage` do not exist on the server. Never touch them during render or in a `useState` initializer.
+- For persisted browser-only state, follow `@/lib/useStoredNumberSet`: `useSyncExternalStore` with an empty server snapshot.
 
 ## Styling
 

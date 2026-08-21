@@ -63,3 +63,18 @@ public record TwitchTokenResponse(
     [property: JsonPropertyName("access_token")] string AccessToken,
     [property: JsonPropertyName("expires_in")] long ExpiresIn,
     [property: JsonPropertyName("token_type")] string TokenType);
+
+/// <summary>
+/// A single row from the IGDB <c>release_dates</c> endpoint, with <c>game</c> and <c>platform</c>
+/// left as raw IDs rather than expanded objects — deep field traversal is unreliable, so the game
+/// details are fetched separately and joined in memory.
+/// </summary>
+/// <remarks>
+/// Unlike <see cref="IgdbGame.FirstReleaseDate"/> this is per-platform and per-region, so a title
+/// that already launched on one platform still surfaces when it reaches another.
+/// </remarks>
+public record IgdbReleaseDate(
+    int Id,
+    long? Date,
+    int? Game,
+    int? Platform);

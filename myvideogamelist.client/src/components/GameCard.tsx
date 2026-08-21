@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 import type { GameDto } from '@/types/game';
 import { type ListId, LIST_IDS, LIST_NAMES } from '@/types/list';
 import { useLists } from '@/hooks/useLists';

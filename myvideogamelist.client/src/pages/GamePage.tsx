@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useLoaderData } from 'react-router';
+import type { Route } from './+types/GamePage';
+import { apiUrl } from '@/lib/api';
 import type { GameDto } from '@/types/game';
 import { type ListId, LIST_IDS, LIST_NAMES } from '@/types/list';
 import { useLists } from '@/hooks/useLists';
@@ -43,45 +44,57 @@ function SectionHeading({ children }: { children: React.ReactNode }) {
     );
 }
 
+/**
+ * Fetched on the server so crawlers and social unfurlers see the real game, not an
+ * empty shell. A missing or malformed id throws a 404 Response, which the root
+ * ErrorBoundary renders and which returns a genuine 404 status.
+ */
+export async function loader({ params }: Route.LoaderArgs) {
+    const id = Number(params.id);
+    if (!Number.isInteger(id) || id <= 0) {
+        throw new Response('Not Found', { status: 404, statusText: 'Not Found' });
+    }
+
+    const response = await fetch(apiUrl(`/api/games/${id}`));
+
+    if (response.status === 404) {
+        throw new Response('Not Found', { status: 404, statusText: 'Not Found' });
+    }
+    if (!response.ok) {
+        throw new Response('Failed to load game.', { status: 502, statusText: 'Bad Gateway' });
+    }
+
+    return { game: await response.json() as GameDto };
+}
+
+export function meta({ data }: Route.MetaArgs) {
+    if (!data?.game) return [{ title: 'Game not found - MyVideoGameList' }];
+
+    const { game } = data;
+    const year = game.releaseDate ? ` (${new Date(game.releaseDate).getFullYear()})` : '';
+    const title = `${game.title}${year} - MyVideoGameList`;
+    const description = game.description?.slice(0, 200)
+        ?? `Track ${game.title} on MyVideoGameList.`;
+
+    return [
+        { title },
+        { name: 'description', content: description },
+        { property: 'og:type', content: 'video.game' },
+        { property: 'og:title', content: title },
+        { property: 'og:description', content: description },
+        ...(game.coverImageUrl ? [{ property: 'og:image', content: game.coverImageUrl }] : []),
+        { name: 'twitter:card', content: game.coverImageUrl ? 'summary_large_image' : 'summary' },
+    ];
+}
+
 export function GamePage() {
-    const { id } = useParams<{ id: string }>();
-    const [game, setGame] = useState<GameDto | null>(null);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
+    const { game } = useLoaderData<typeof loader>();
 
     const { user } = useAuth();
     const { addToList, removeFromList, isInList, isPending } = useLists();
 
-    useEffect(() => {
-        if (!id) {
-            setGame(null);
-            setError('Invalid game id.');
-            setLoading(false);
-            return;
-        }
-        const controller = new AbortController();
-        setLoading(true);
-        setError(null);
-
-        fetch(`/api/games/${id}`, { signal: controller.signal })
-            .then(res => {
-                if (!res.ok) throw new Error(res.status === 404 ? 'Game not found.' : `Failed to load game (${res.status})`);
-                return res.json() as Promise<GameDto>;
-            })
-            .then(data => { setGame(data); })
-            .catch(err => {
-                if (controller.signal.aborted) return;
-                setError(err instanceof Error ? err.message : 'An unexpected error occurred.');
-            })
-            .finally(() => {
-                if (!controller.signal.aborted) setLoading(false);
-            });
-
-        return () => controller.abort();
-    }, [id]);
-
     const handleListToggle = async (listId: ListId) => {
-        if (!game || isPending(game.id)) return;
+        if (isPending(game.id)) return;
         if (isInList(listId, game.id)) {
             await removeFromList(listId, game.id);
         } else {
@@ -89,44 +102,15 @@ export function GamePage() {
         }
     };
 
-    const releaseYear = game?.releaseDate ? new Date(game.releaseDate).getFullYear() : null;
-    const releaseDate = game?.releaseDate
+    const releaseYear = game.releaseDate ? new Date(game.releaseDate).getFullYear() : null;
+    const releaseDate = game.releaseDate
         ? new Date(game.releaseDate).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
         : null;
 
-    const youtubeEmbedId = game?.trailerUrl
+    const youtubeEmbedId = game.trailerUrl
         ? new URLSearchParams(new URL(game.trailerUrl).search).get('v')
         : null;
 
-    if (loading) {
-        return (
-            <div className="min-h-screen flex items-center justify-center">
-                <div className="flex flex-col items-center gap-4">
-                    <div className="w-10 h-10 border-4 border-blue-500/30 border-t-blue-500 rounded-full animate-spin" aria-label="Loading" />
-                    <p className="text-slate-400 light:text-slate-600 text-sm">Loading game…</p>
-                </div>
-            </div>
-        );
-    }
-
-    if (error || !game) {
-        return (
-            <div className="min-h-screen flex items-center justify-center">
-                <div className="bg-red-900/20 border border-red-700/50 rounded-xl p-8 max-w-md text-center">
-                    <svg className="w-10 h-10 text-red-400 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M12 4a8 8 0 100 16 8 8 0 000-16z" />
-                    </svg>
-                    <p className="text-red-300 font-medium mb-1">{error ?? 'Game not found.'}</p>
-                    <Link to="/games" className="mt-4 inline-flex items-center gap-1.5 text-sm text-blue-400 hover:text-blue-300 transition-colors">
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                        </svg>
-                        Back to Games
-                    </Link>
-                </div>
-            </div>
-        );
-    }
 
     return (
         <div className="min-h-screen">
@@ -414,3 +398,5 @@ export function GamePage() {
         </div>
     );
 }
+
+export default GamePage;

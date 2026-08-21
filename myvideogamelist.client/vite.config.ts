@@ -1,7 +1,7 @@
 import { fileURLToPath, URL } from 'node:url';
 
 import { defineConfig } from 'vite';
-import plugin from '@vitejs/plugin-react';
+import { reactRouter } from '@react-router/dev/vite';
 import tailwindcss from '@tailwindcss/vite';
 import fs from 'fs';
 import path from 'path';
@@ -35,12 +35,20 @@ if (!fs.existsSync(certFilePath) || !fs.existsSync(keyFilePath)) {
     }
 }
 
-const target = env.ASPNETCORE_HTTPS_PORT ? `https://localhost:${env.ASPNETCORE_HTTPS_PORT}` :
-    env.ASPNETCORE_URLS ? env.ASPNETCORE_URLS.split(';')[0] : 'https://localhost:7136';
+// The ASP.NET API. In framework mode the React Router dev server is what the browser
+// talks to, and it forwards /api to the backend.
+//
+// Defaults to the backend's plain-HTTP endpoint, which both launch profiles bind, so it
+// matches the base that server-side loaders use (see src/lib/api.ts). Keeping the two in
+// step matters: a loader and a browser fetch hitting different origins would produce
+// different results for the same page.
+const target = env.API_BASE_URL
+    ?? (env.ASPNETCORE_URLS ? env.ASPNETCORE_URLS.split(';').at(-1) : undefined)
+    ?? 'http://localhost:5039';
 
 // https://vitejs.dev/config/
 export default defineConfig({
-    plugins: [plugin(), tailwindcss()],
+    plugins: [reactRouter(), tailwindcss()],
     resolve: {
         alias: {
             '@': fileURLToPath(new URL('./src', import.meta.url))

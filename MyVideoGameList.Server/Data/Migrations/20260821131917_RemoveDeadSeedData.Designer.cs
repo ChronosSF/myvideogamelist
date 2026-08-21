@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using MyVideoGameList.Server.Data;
 
@@ -10,9 +11,11 @@ using MyVideoGameList.Server.Data;
 namespace MyVideoGameList.Server.Data.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260821131917_RemoveDeadSeedData")]
+    partial class RemoveDeadSeedData
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.3");
@@ -213,6 +216,211 @@ namespace MyVideoGameList.Server.Data.Migrations
                     b.ToTable("AspNetUsers", (string)null);
                 });
 
+            modelBuilder.Entity("MyVideoGameList.Server.Models.Developer", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Country")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Description")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("FoundedYear")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("LogoUrl")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Website")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("Developers");
+                });
+
+            modelBuilder.Entity("MyVideoGameList.Server.Models.Game", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("BackgroundImageUrl")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("CoverImageUrl")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Description")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("EsrbRating")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("MetacriticScore")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<float?>("Rating")
+                        .HasColumnType("REAL");
+
+                    b.Property<DateOnly?>("ReleaseDate")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("TrailerUrl")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Website")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("Games");
+                });
+
+            modelBuilder.Entity("MyVideoGameList.Server.Models.GameDeveloper", b =>
+                {
+                    b.Property<int>("GameId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("DeveloperId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("GameId", "DeveloperId");
+
+                    b.HasIndex("DeveloperId");
+
+                    b.ToTable("GameDevelopers");
+                });
+
+            modelBuilder.Entity("MyVideoGameList.Server.Models.GameGenre", b =>
+                {
+                    b.Property<int>("GameId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("GenreId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("GameId", "GenreId");
+
+                    b.HasIndex("GenreId");
+
+                    b.ToTable("GameGenres");
+                });
+
+            modelBuilder.Entity("MyVideoGameList.Server.Models.GamePlatform", b =>
+                {
+                    b.Property<int>("GameId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("PlatformId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("GameId", "PlatformId");
+
+                    b.HasIndex("PlatformId");
+
+                    b.ToTable("GamePlatforms");
+                });
+
+            modelBuilder.Entity("MyVideoGameList.Server.Models.GamePublisher", b =>
+                {
+                    b.Property<int>("GameId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("PublisherId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("GameId", "PublisherId");
+
+                    b.HasIndex("PublisherId");
+
+                    b.ToTable("GamePublishers");
+                });
+
+            modelBuilder.Entity("MyVideoGameList.Server.Models.Genre", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Description")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("Genres");
+                });
+
+            modelBuilder.Entity("MyVideoGameList.Server.Models.Platform", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Abbreviation")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("LogoUrl")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Manufacturer")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("Platforms");
+                });
+
+            modelBuilder.Entity("MyVideoGameList.Server.Models.Publisher", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Country")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Description")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("FoundedYear")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("LogoUrl")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Website")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("Publishers");
+                });
+
             modelBuilder.Entity("MyVideoGameList.Server.Models.UserGameList", b =>
                 {
                     b.Property<string>("UserId")
@@ -294,6 +502,82 @@ namespace MyVideoGameList.Server.Data.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("MyVideoGameList.Server.Models.GameDeveloper", b =>
+                {
+                    b.HasOne("MyVideoGameList.Server.Models.Developer", "Developer")
+                        .WithMany("GameDevelopers")
+                        .HasForeignKey("DeveloperId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("MyVideoGameList.Server.Models.Game", "Game")
+                        .WithMany("GameDevelopers")
+                        .HasForeignKey("GameId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Developer");
+
+                    b.Navigation("Game");
+                });
+
+            modelBuilder.Entity("MyVideoGameList.Server.Models.GameGenre", b =>
+                {
+                    b.HasOne("MyVideoGameList.Server.Models.Game", "Game")
+                        .WithMany("GameGenres")
+                        .HasForeignKey("GameId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("MyVideoGameList.Server.Models.Genre", "Genre")
+                        .WithMany("GameGenres")
+                        .HasForeignKey("GenreId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Game");
+
+                    b.Navigation("Genre");
+                });
+
+            modelBuilder.Entity("MyVideoGameList.Server.Models.GamePlatform", b =>
+                {
+                    b.HasOne("MyVideoGameList.Server.Models.Game", "Game")
+                        .WithMany("GamePlatforms")
+                        .HasForeignKey("GameId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("MyVideoGameList.Server.Models.Platform", "Platform")
+                        .WithMany("GamePlatforms")
+                        .HasForeignKey("PlatformId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Game");
+
+                    b.Navigation("Platform");
+                });
+
+            modelBuilder.Entity("MyVideoGameList.Server.Models.GamePublisher", b =>
+                {
+                    b.HasOne("MyVideoGameList.Server.Models.Game", "Game")
+                        .WithMany("GamePublishers")
+                        .HasForeignKey("GameId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("MyVideoGameList.Server.Models.Publisher", "Publisher")
+                        .WithMany("GamePublishers")
+                        .HasForeignKey("PublisherId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Game");
+
+                    b.Navigation("Publisher");
+                });
+
             modelBuilder.Entity("MyVideoGameList.Server.Models.UserGameList", b =>
                 {
                     b.HasOne("MyVideoGameList.Server.Models.ApplicationUser", "User")
@@ -314,6 +598,37 @@ namespace MyVideoGameList.Server.Data.Migrations
                         .IsRequired();
 
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("MyVideoGameList.Server.Models.Developer", b =>
+                {
+                    b.Navigation("GameDevelopers");
+                });
+
+            modelBuilder.Entity("MyVideoGameList.Server.Models.Game", b =>
+                {
+                    b.Navigation("GameDevelopers");
+
+                    b.Navigation("GameGenres");
+
+                    b.Navigation("GamePlatforms");
+
+                    b.Navigation("GamePublishers");
+                });
+
+            modelBuilder.Entity("MyVideoGameList.Server.Models.Genre", b =>
+                {
+                    b.Navigation("GameGenres");
+                });
+
+            modelBuilder.Entity("MyVideoGameList.Server.Models.Platform", b =>
+                {
+                    b.Navigation("GamePlatforms");
+                });
+
+            modelBuilder.Entity("MyVideoGameList.Server.Models.Publisher", b =>
+                {
+                    b.Navigation("GamePublishers");
                 });
 #pragma warning restore 612, 618
         }
