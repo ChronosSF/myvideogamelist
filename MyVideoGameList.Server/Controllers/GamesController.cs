@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations;
 using Microsoft.AspNetCore.Mvc;
 using MyVideoGameList.Server.DTOs;
 using MyVideoGameList.Server.Services;
@@ -11,11 +12,10 @@ public class GamesController(IIgdbService igdbService) : ControllerBase
     private const int PageSize = 20;
 
     [HttpGet("{id:int}")]
-    public async Task<ActionResult<GameDto>> GetGame(int id, CancellationToken cancellationToken)
+    public async Task<ActionResult<GameDto>> GetGame(
+        [Range(1, int.MaxValue)] int id,
+        CancellationToken cancellationToken)
     {
-        if (id <= 0)
-            return BadRequest("Game ID must be a positive integer.");
-
         var result = await igdbService.GetGameByIdAsync(id, cancellationToken);
         if (result is null)
             return NotFound();
@@ -26,12 +26,9 @@ public class GamesController(IIgdbService igdbService) : ControllerBase
     [HttpGet]
     public async Task<ActionResult<PagedGamesResponse>> GetGames(
         CancellationToken cancellationToken,
-        [FromQuery] int offset = 0,
+        [FromQuery][Range(0, int.MaxValue)] int offset = 0,
         [FromQuery] string? search = null)
     {
-        if (offset < 0)
-            return BadRequest("Offset must be non-negative.");
-
         var result = await igdbService.GetGamesAsync(offset, PageSize, search, cancellationToken);
         return Ok(result);
     }

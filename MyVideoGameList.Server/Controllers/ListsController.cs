@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
@@ -26,11 +27,10 @@ public class ListsController(
 
     [HttpPut("{gameId:int}")]
     public async Task<IActionResult> SetListEntry(
-        int gameId, [FromBody] SetListEntryDto dto, CancellationToken cancellationToken)
+        [Range(1, int.MaxValue)] int gameId,
+        [FromBody] SetListEntryDto dto,
+        CancellationToken cancellationToken)
     {
-        if (gameId <= 0)
-            return BadRequest(new { message = "gameId must be a positive integer." });
-
         if (!ListService.IsValidListType(dto.ListType))
             return BadRequest(new { message = "ListType must be 'playing', 'backlog', or 'finished'." });
 
@@ -42,11 +42,10 @@ public class ListsController(
     }
 
     [HttpDelete("{gameId:int}")]
-    public async Task<IActionResult> RemoveListEntry(int gameId, CancellationToken cancellationToken)
+    public async Task<IActionResult> RemoveListEntry(
+        [Range(1, int.MaxValue)] int gameId,
+        CancellationToken cancellationToken)
     {
-        if (gameId <= 0)
-            return BadRequest(new { message = "gameId must be a positive integer." });
-
         var user = await userManager.GetUserAsync(User);
         if (user is null) return Unauthorized();
 
