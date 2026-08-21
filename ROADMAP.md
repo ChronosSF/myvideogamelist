@@ -7,6 +7,11 @@ polished game-tracking product that runs on AWS and ships safely on every commit
 
 > **Status:** Phase 0 is complete, and D10 (SSR) landed early because it gates the SEO items.
 > See §7 for what that covered and what is next.
+>
+> This file is the **plan**, and it gets rewritten as phases land. For *why* the code is the
+> way it is — the decisions and the alternatives rejected — see [`docs/decisions/`](docs/decisions/).
+> When a decision here is made and built, graduate the reasoning into a record there rather
+> than leaving it buried in a plan that will be rewritten around it.
 
 ## 1. Where the app stands today
 
@@ -338,7 +343,7 @@ IGDB credentials moved to user secrets (rotation still outstanding, and only you
 Migrated the client to React Router 7 framework mode with SSR. Game pages now server-render real content plus `title`, `description` and Open Graph tags; 404s return a genuine 404 status. This unblocks D8 and D9, which were previously pointless. Remaining: only the game route has a loader — `GamesPage`, `ListsPage` and `UserPage` still fetch client-side, which is fine for the authenticated pages but should change for anything meant to be indexed.
 
 **Phase 1 — Make it deployable (1–2 weeks)**
-Note that SSR makes this a **two-process** deployment: the ASP.NET API and a Node SSR server. The container and CDK work in §6 must account for both, or put CloudFront in front of a Node origin that proxies `/api` to the API.
+SSR makes this a **two-process** deployment; the container and CDK work in §6 must account for both, plus the layer that routes between them. See [ADR 0003](docs/decisions/0003-two-process-deployment.md) and [ADR 0007](docs/decisions/0007-aws-target-architecture.md).
 
 PostgreSQL swap; Data Protection keys to S3; migrations out of startup; distributed cache; forwarded headers, HSTS, CSRF, lockout; Dockerfile; CDK stack; GitHub Actions OIDC deploy to a dev environment.
 

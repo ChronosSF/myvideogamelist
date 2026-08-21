@@ -1,0 +1,31 @@
+# 0008. PostgreSQL replaces SQLite before deployment
+
+**Status:** Accepted — not yet built
+
+## Context
+
+The app uses SQLite with a file database (`myvideogamelist.db`). That is fine for local
+development and is deliberately kept for now, while the app is being built out locally.
+
+It cannot survive deployment. A file database on an ephemeral container filesystem loses
+every user on redeploy, and cannot be shared between the multiple tasks that 0007 assumes.
+
+## Decision
+
+Move to **PostgreSQL**, targeting Aurora Serverless v2, before the first real deployment.
+Aurora Serverless v2 scales to near-zero cost at low traffic while remaining managed
+PostgreSQL; plain RDS PostgreSQL is an acceptable simpler alternative.
+
+SQLite stays for local development in the meantime.
+
+## Consequences
+
+- The provider swap is contained to `Program.cs`, but the **migration set must be
+  regenerated** — the existing migrations carry SQLite-specific column types.
+- Verifying the regenerated migrations needs a running PostgreSQL, which needs Docker.
+  Docker is not currently installed on the development machine, so this is blocked on that.
+- Installing Docker also unblocks Testcontainers-based integration tests, which is the other
+  half of the same prerequisite.
+- Local development may end up on a different engine from production unless developers run
+  PostgreSQL in Docker too. Divergence between the two is a real risk worth closing once
+  Docker is available.
