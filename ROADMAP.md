@@ -250,7 +250,7 @@ change, grandfather existing subscribers rather than repricing them.
 
 ### Data & state
 
-- **Move off SQLite to PostgreSQL.** A file database on an ephemeral container filesystem loses every user on redeploy and cannot be shared between instances. Target Aurora Serverless v2 (PostgreSQL) or RDS PostgreSQL. The provider swap is contained to `Program.cs` plus a regenerated migration set.
+- **Move off SQLite to PostgreSQL.** A file database on an ephemeral container filesystem loses every user on redeploy and cannot be shared between instances. **Target: RDS for PostgreSQL, `db.t4g.micro`, Single-AZ, inside the VPC** — Aurora Serverless v2 costs roughly 4× as much at this load and its scale-to-zero does not apply to an always-on task holding a connection pool (ADR [0014](docs/decisions/0014-rds-postgresql-over-aurora.md)). The provider swap is contained to `Program.cs` plus a regenerated migration set. Local development moves to PostgreSQL in Docker at the same time, so local and production stop diverging.
 - **Stop migrating on startup.** `db.Database.Migrate()` in `Program.cs` races when more than one task boots at once. Run migrations as a discrete pipeline step (a one-off ECS task, or a `dotnet ef bundle` executable) before the new revision takes traffic.
 - **Persist Data Protection keys.** Identity cookies are encrypted with keys that currently live on the local filesystem, so every deploy or scale-out silently signs everyone out. Persist to S3 or DynamoDB with a KMS-backed key. This is the classic ASP.NET-on-AWS gotcha and it must be fixed before the first multi-task deploy.
 - **Distributed cache.** `AddMemoryCache` means each instance fetches its own IGDB token and duplicates every query. Move to Redis (ElastiCache Serverless) behind `IDistributedCache`.
@@ -298,29 +298,31 @@ Route 53 → CloudFront ─┬─ /assets/*  → S3 (hashed SPA bundles, long-li
                                                    │
                                    ┌───────────────┼────────────────┐
                                    ▼               ▼                ▼
-                        Aurora Serverless v2   ElastiCache      Secrets Manager
+                        RDS for PostgreSQL     ElastiCache      Secrets Manager
                             PostgreSQL       Serverless Redis   (IGDB, OAuth, DB)
                                                    │
                                        S3/DynamoDB + KMS (Data Protection keys)
 ```
 
-**Why this shape:** ECS Fargate keeps the existing single-container ASP.NET + static-SPA model intact with no code restructuring, gives zero-downtime rolling or blue/green deploys, and scales horizontally once the state issues in §5 are fixed. Aurora Serverless v2 scales to near-zero cost at low traffic while remaining a real managed PostgreSQL.
+**Why this shape:** ECS Fargate handles the two-process split from ADR 0003 naturally, gives zero-downtime rolling or blue/green deploys, and scales horizontally once the state issues in §5 are fixed. RDS for PostgreSQL is predictable and cheap at this load; Aurora is a later step, reachable by restoring an RDS snapshot (ADR [0014](docs/decisions/0014-rds-postgresql-over-aurora.md)).
 
-**Cheaper starting point:** AWS App Runner + RDS PostgreSQL. It deploys straight from an ECR image with far less networking to own; move to ECS when you need finer control over networking, scheduled tasks, or blue/green.
+**Cheaper starting point:** ~~AWS App Runner + RDS PostgreSQL~~ — **withdrawn, App Runner is in maintenance mode.** The cost lever instead is topology: run the Fargate tasks in public subnets with public IPs and skip the NAT Gateway, which is otherwise the largest line on the bill at ~$32/month per AZ. The database stays private. See ADR [0015](docs/decisions/0015-fargate-confirmed-and-nat-less-networking.md).
+
+**Baseline at that shape:** roughly **$40/month** idle — RDS 12, storage 2, ALB 17, one Fargate task 9, hosted zone 0.50, NAT 0. New AWS accounts get **$100 in credits plus up to $100 more** for five onboarding tasks, on a Free plan lasting **six months or until the credits run out** — the old 12-month free tier no longer applies to new accounts. That is about five months of runway at ~$40; the Aurora-plus-NAT shape would have consumed it in about two.
 
 **Not recommended here:** Lambda + API Gateway. Cookie auth, Data Protection key management, and the IGDB token cache all fight the model, and cold starts hurt an interactive SPA backend.
 
 ### Deployment features to build
 
 - **Multi-stage Dockerfile** — `node:22` builds the SPA, `dotnet/sdk:10` publishes the API, `dotnet/aspnet:10` runs it. Non-root user, no SDK in the final layer.
-- **Infrastructure as code** — AWS CDK (in C#, so the repo stays one language) covering VPC, ECS, ALB, Aurora, ElastiCache, CloudFront, IAM, and alarms. Nothing created by hand in the console.
+- **Infrastructure as code** — AWS CDK (in C#, so the repo stays one language) covering VPC, ECS, ALB, RDS, ElastiCache, CloudFront, IAM, and alarms. Nothing created by hand in the console.
 - **GitHub Actions OIDC** — the deploy role is assumed via OIDC. No long-lived AWS keys in repository secrets.
 - **Environments** — `dev` and `prod` accounts (or at minimum separate stacks), with prod gated behind a GitHub environment approval.
 - **Pipeline shape on merge to `master`:** test → build image → push to ECR tagged with the git SHA → run the migration task → deploy the new ECS revision → wait for target-group health → smoke-test → auto-rollback on alarm.
 - **Immutable, SHA-tagged images.** Never deploy `:latest`.
 - **Migration safety** — expand/contract only, so an old and a new revision can run against the same schema during a rollout.
 - **Configuration via environment** — everything environment-specific currently in `appsettings.json` comes from SSM Parameter Store or Secrets Manager, injected as ECS task secrets. Rotate the IGDB credentials sitting in the working tree now.
-- **Cost controls** — Fargate Spot for dev, Aurora auto-pause on dev, a budget alarm, and CloudWatch log retention limits.
+- **Cost controls** — a budget alarm **first** (it is also one of the five credit-earning onboarding tasks), Fargate Spot for dev, stopping the RDS instance when idle (up to 7 days before it auto-starts), and CloudWatch log retention limits.
 
 ### Domain, email and SEO
 
@@ -328,6 +330,7 @@ The project owns **myvideogamelist.net**, which pins down several items that wou
 
 | ID | Item | Notes |
 |---|---|---|
+| D0 | **Manual, before anything: MFA on the root account, then stop using it; create an admin via IAM Identity Center; set a budget alarm; install Docker Desktop and the AWS CLI; `cdk bootstrap`** | Docker alone unblocks the whole PostgreSQL migration — none of the AWS items block it |
 | D1 | Route 53 hosted zone for `myvideogamelist.net`, managed in CDK | Apex + `www`, with `www` redirecting to apex (or the reverse — pick one and be consistent) |
 | D2 | ACM certificate **in `us-east-1`** | CloudFront only accepts certificates from `us-east-1` regardless of where the rest of the stack lives. Easy to get wrong once and then be stuck |
 | D3 | `dev.myvideogamelist.net` for the dev environment, with `noindex` and basic auth | Never let a staging environment get indexed alongside production |

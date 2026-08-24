@@ -1,6 +1,7 @@
 # 0008. PostgreSQL replaces SQLite before deployment
 
-**Status:** Accepted — not yet built
+**Status:** Accepted — not yet built. The *service* is settled by
+[0014](0014-rds-postgresql-over-aurora.md): RDS for PostgreSQL rather than Aurora Serverless v2.
 
 ## Context
 
@@ -12,9 +13,13 @@ every user on redeploy, and cannot be shared between the multiple tasks that 000
 
 ## Decision
 
-Move to **PostgreSQL**, targeting Aurora Serverless v2, before the first real deployment.
-Aurora Serverless v2 scales to near-zero cost at low traffic while remaining managed
-PostgreSQL; plain RDS PostgreSQL is an acceptable simpler alternative.
+Move to **PostgreSQL** before the first real deployment.
+
+~~Targeting Aurora Serverless v2, which scales to near-zero cost at low traffic.~~ That premise
+did not survive checking: Aurora's scale-to-zero pauses on *database connections*, which an
+always-on task with a connection pool would keep open, and its 0.5 ACU floor costs roughly 4×
+a `db.t4g.micro`. The "simpler alternative" mentioned here — plain RDS for PostgreSQL — is now
+the decision. See [0014](0014-rds-postgresql-over-aurora.md).
 
 SQLite stays for local development in the meantime.
 

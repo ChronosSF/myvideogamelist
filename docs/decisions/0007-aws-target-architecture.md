@@ -1,6 +1,9 @@
 # 0007. ECS Fargate, Aurora Serverless v2, CloudFront
 
-**Status:** Accepted — not yet built
+**Status:** Accepted — not yet built. Two parts are superseded: the database engine by
+[0014](0014-rds-postgresql-over-aurora.md), and the App Runner fallback plus the unstated
+network topology by [0015](0015-fargate-confirmed-and-nat-less-networking.md). The Fargate,
+CloudFront, CDK and OIDC decisions stand.
 
 ## Context
 
@@ -14,7 +17,8 @@ target must route between them.
 Route 53 → CloudFront ─┬─ /api/*  → ALB → ECS Fargate (ASP.NET API)
                        └─ /*      → ALB → ECS Fargate (Node SSR server)
                                               │
-                          Aurora Serverless v2 (PostgreSQL, see 0008)
+                          RDS for PostgreSQL (see 0008 and 0014;
+                          Aurora Serverless v2 deferred, not the starting point)
                           ElastiCache Serverless (Redis)
                           Secrets Manager
                           S3/DynamoDB + KMS (Data Protection keys)
@@ -28,10 +32,9 @@ secrets. Images are SHA-tagged and immutable; never `:latest`.
 
 ## Alternatives rejected
 
-- **AWS App Runner + RDS** — materially less to operate and a reasonable starting point.
-  Rejected for the target architecture because it gives less control over networking,
-  scheduled tasks and blue/green deploys, but it remains a sensible first step if ECS proves
-  heavy early on.
+- ~~**AWS App Runner + RDS**~~ — originally kept as a sensible first step if ECS proved
+  heavy. **Withdrawn: App Runner is now in maintenance mode**, so it is not a safe place to
+  start. See [0015](0015-fargate-confirmed-and-nat-less-networking.md).
 - **Lambda + API Gateway** — cookie authentication, Data Protection key management and the
   IGDB token cache all fight the execution model, and cold starts hurt an interactive SPA
   backend.
