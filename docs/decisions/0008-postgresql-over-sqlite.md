@@ -1,7 +1,8 @@
 # 0008. PostgreSQL replaces SQLite before deployment
 
-**Status:** Accepted — not yet built. The *service* is settled by
-[0014](0014-rds-postgresql-over-aurora.md): RDS for PostgreSQL rather than Aurora Serverless v2.
+**Status:** Implemented locally — the application now runs on PostgreSQL, with a container for
+development. The *hosted* half is still pending: the service is settled by
+[0014](0014-rds-postgresql-over-aurora.md) as RDS for PostgreSQL, but nothing is provisioned yet.
 
 ## Context
 
@@ -27,10 +28,10 @@ SQLite stays for local development in the meantime.
 
 - The provider swap is contained to `Program.cs`, but the **migration set must be
   regenerated** — the existing migrations carry SQLite-specific column types.
-- Verifying the regenerated migrations needs a running PostgreSQL, which needs Docker.
-  Docker is not currently installed on the development machine, so this is blocked on that.
-- Installing Docker also unblocks Testcontainers-based integration tests, which is the other
-  half of the same prerequisite.
-- Local development may end up on a different engine from production unless developers run
-  PostgreSQL in Docker too. Divergence between the two is a real risk worth closing once
-  Docker is available.
+- ~~Verifying the regenerated migrations needs a running PostgreSQL, which needs Docker.~~
+  Done. Docker is installed and `compose.yaml` provides the database; the migration set was
+  regenerated and verified against a real server, including from an empty database.
+- ~~Installing Docker also unblocks Testcontainers-based integration tests.~~ Still unblocked,
+  still unwritten — the test suite remains on EF Core InMemory.
+- ~~Local development may end up on a different engine from production.~~ Closed: local runs
+  PostgreSQL in Docker, so there is no engine divergence.

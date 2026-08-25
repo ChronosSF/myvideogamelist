@@ -25,7 +25,7 @@ decision, write a new record and mark the old one superseded.
 | [0005](0005-secrets-handling.md) | Secrets come from user secrets and environment variables | Implemented |
 | [0006](0006-codeql-buildless.md) | CodeQL runs buildless (`build-mode: none`) | Implemented |
 | [0007](0007-aws-target-architecture.md) | ECS Fargate, Aurora Serverless v2, CloudFront | Partly superseded by 0014, 0015 |
-| [0008](0008-postgresql-over-sqlite.md) | PostgreSQL replaces SQLite before deployment | Accepted (service chosen in 0014) |
+| [0008](0008-postgresql-over-sqlite.md) | PostgreSQL replaces SQLite before deployment | Implemented locally; hosting pending |
 | [0009](0009-itad-without-affiliate-revenue.md) | Integrate IsThereAnyDeal and forgo the affiliate revenue | Accepted |
 | [0010](0010-monetization-model.md) | Ad-supported free tier plus a paid subscription | Accepted |
 | [0011](0011-react-router-8-upgrade.md) | Upgrade to React Router 8 | Implemented |

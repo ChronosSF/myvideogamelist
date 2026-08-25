@@ -28,7 +28,7 @@ builder.Services.AddSingleton<IHomeService, HomeService>();
 builder.Services.AddScoped<IListService, ListService>();
 
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
-    options.UseSqlite(builder.Configuration.GetConnectionString("DefaultConnection")));
+    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
 
 // Readiness checks. Liveness (/healthz) deliberately runs no checks - it answers
 // "is the process up", not "are its dependencies well".
@@ -105,9 +105,14 @@ if (!string.IsNullOrEmpty(facebookAppId) && !string.IsNullOrEmpty(facebookAppSec
 
 var app = builder.Build();
 
-// Apply any pending migrations and seed the database on startup
-using (var scope = app.Services.CreateScope())
+// Migrations run automatically in Development only.
+//
+// Outside Development they must be a discrete deployment step, run before the new revision
+// takes traffic: several ECS tasks booting at once would otherwise race each other through
+// the same migration. See docs/decisions/0007-aws-target-architecture.md.
+if (app.Environment.IsDevelopment())
 {
+    using var scope = app.Services.CreateScope();
     var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
     db.Database.Migrate();
 }
