@@ -17,7 +17,8 @@ public class ListServiceTests
             .Options);
 
     private static GameDto Game(int id, string title = "Game") =>
-        new(id, title, null, null, null, null, null, null, null, null, null, [], [], [], []);
+        new(id, title, null, null, null, null, null, null, null, null, null, null, null,
+            Platforms: [], Genres: [], Developers: [], Publishers: [], Details: null);
 
     /// <summary>Returns the given games for any ID lookup, so list composition can be asserted.</summary>
     private static IIgdbService IgdbReturning(params GameDto[] games)

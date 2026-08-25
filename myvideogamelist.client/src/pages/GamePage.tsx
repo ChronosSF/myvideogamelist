@@ -7,12 +7,18 @@ import { type ListId, LIST_IDS, LIST_NAMES } from '@/types/list';
 import { useLists } from '@/hooks/useLists';
 import { useAuth } from '@/hooks/useAuth';
 import { GameNewsPanel } from '@/components/GameNewsPanel';
+import { CompletionTimes } from '@/components/CompletionTimes';
+import { GameRefRail } from '@/components/GameRefRail';
+import { MultiplayerSummary } from '@/components/MultiplayerSummary';
+import { ScreenshotGallery } from '@/components/ScreenshotGallery';
+import { criticScoreColors, criticScoreTitle, hasCriticScore } from '@/lib/score';
 import './GamePage.css';
 
-function StarRating({ rating }: { rating: number }) {
+function StarRating({ rating, count }: { rating: number; count: number | null }) {
     const stars = Math.round(rating / 2);
+    const from = count !== null ? ` from ${count.toLocaleString()} ratings` : '';
     return (
-        <div className="flex items-center gap-1" aria-label={`Rating: ${rating.toFixed(1)} out of 10`}>
+        <div className="flex items-center gap-1" aria-label={`Rating: ${rating.toFixed(1)} out of 10${from}`}>
             {Array.from({ length: 5 }, (_, i) => (
                 <svg
                     key={i}
@@ -26,6 +32,11 @@ function StarRating({ rating }: { rating: number }) {
             ))}
             <span className="text-slate-300 light:text-slate-600 text-sm font-semibold ml-1">{rating.toFixed(1)}</span>
             <span className="text-slate-500 light:text-slate-400 text-xs">/&nbsp;10</span>
+            {count !== null && (
+                <span className="text-slate-500 light:text-slate-400 text-xs ml-1.5" aria-hidden="true">
+                    ({count.toLocaleString()})
+                </span>
+            )}
         </div>
     );
 }
@@ -128,6 +139,15 @@ export function GamePage() {
         }
     };
 
+    // Null on the listing endpoints by design; this page is the one that asks IGDB for it.
+    const details = game.details;
+
+    // Collections and franchises both mean "series" to a reader and frequently repeat each
+    // other, so they are merged and deduplicated rather than shown as two identical rows.
+    const series = details
+        ? [...new Set([...details.collections, ...details.franchises])]
+        : [];
+
     const releaseYear = game.releaseDate ? new Date(game.releaseDate).getFullYear() : null;
     const releaseDate = game.releaseDate
         ? new Date(game.releaseDate).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
@@ -185,6 +205,20 @@ export function GamePage() {
                             )}
                         </h1>
 
+                        {/* A DLC or expansion page that does not say what it belongs to reads as a
+                            standalone game with a strangely narrow scope. */}
+                        {details?.parentGame && (
+                            <p className="text-sm text-slate-400 light:text-slate-500 mb-2">
+                                Add-on for{' '}
+                                <Link
+                                    to={`/games/${details.parentGame.id}`}
+                                    className="text-blue-400 light:text-blue-700 hover:text-blue-300 light:hover:text-blue-800 font-medium transition-colors"
+                                >
+                                    {details.parentGame.name}
+                                </Link>
+                            </p>
+                        )}
+
                         {/* Badges row */}
                         <div className="flex flex-wrap items-center gap-2 mb-3">
                             {game.esrbRating && (
@@ -192,18 +226,12 @@ export function GamePage() {
                                     {game.esrbRating}
                                 </span>
                             )}
-                            {game.metacriticScore !== null && (
+                            {hasCriticScore(game) && (
                                 <span
-                                    className={`px-2.5 py-0.5 rounded text-xs font-bold ${
-                                        game.metacriticScore >= 75
-                                            ? 'bg-green-500 text-white'
-                                            : game.metacriticScore >= 50
-                                            ? 'bg-yellow-500 text-slate-900'
-                                            : 'bg-red-500 text-white'
-                                    }`}
-                                    title="Metacritic score"
+                                    className={`px-2.5 py-0.5 rounded text-xs font-bold ${criticScoreColors(game.criticScore!)}`}
+                                    title={criticScoreTitle(game.criticScore!, game.criticScoreCount!)}
                                 >
-                                    MC {game.metacriticScore}
+                                    {game.criticScore} critics
                                 </span>
                             )}
                             {releaseDate && (
@@ -212,7 +240,9 @@ export function GamePage() {
                         </div>
 
                         {/* Star rating */}
-                        {game.rating !== null && <StarRating rating={game.rating} />}
+                        {game.rating !== null && (
+                            <StarRating rating={game.rating} count={game.ratingCount} />
+                        )}
                     </div>
                 </div>
             </div>
@@ -229,6 +259,15 @@ export function GamePage() {
                                 <p className="text-slate-300 light:text-slate-700 text-sm leading-relaxed whitespace-pre-line">
                                     {game.description}
                                 </p>
+                            </section>
+                        )}
+
+                        {/* The headline answer to "should I start this?", so it sits above the
+                            taxonomy rather than below it. */}
+                        {details?.timeToBeat && (
+                            <section>
+                                <SectionHeading>How long to beat</SectionHeading>
+                                <CompletionTimes timeToBeat={details.timeToBeat} />
                             </section>
                         )}
 
@@ -249,6 +288,19 @@ export function GamePage() {
                             </section>
                         )}
 
+                        {/* Themes read as a second axis on genre — "Open world", "Horror" — so they
+                            sit next to it rather than in the sidebar with the trivia. */}
+                        {details && details.themes.length > 0 && (
+                            <section>
+                                <SectionHeading>Themes</SectionHeading>
+                                <div className="flex flex-wrap gap-2">
+                                    {details.themes.map(theme => (
+                                        <InfoChip key={theme} label={theme} />
+                                    ))}
+                                </div>
+                            </section>
+                        )}
+
                         {/* Platforms */}
                         {game.platforms.length > 0 && (
                             <section>
@@ -257,6 +309,25 @@ export function GamePage() {
                                     {game.platforms.map(platform => (
                                         <InfoChip key={platform.id} label={platform.name} />
                                     ))}
+                                </div>
+                            </section>
+                        )}
+
+                        {/* How to play: solo, together, and with how many. */}
+                        {details && (details.gameModes.length > 0 || details.multiplayerModes) && (
+                            <section>
+                                <SectionHeading>How to play</SectionHeading>
+                                <div className="space-y-3">
+                                    {details.gameModes.length > 0 && (
+                                        <div className="flex flex-wrap gap-2">
+                                            {details.gameModes.map(mode => (
+                                                <InfoChip key={mode} label={mode} />
+                                            ))}
+                                        </div>
+                                    )}
+                                    {details.multiplayerModes && (
+                                        <MultiplayerSummary modes={details.multiplayerModes} />
+                                    )}
                                 </div>
                             </section>
                         )}
@@ -308,8 +379,40 @@ export function GamePage() {
                             </section>
                         )}
 
+                        {/* Screenshots */}
+                        {details && details.screenshots.length > 0 && (
+                            <section>
+                                <SectionHeading>Screenshots</SectionHeading>
+                                <ScreenshotGallery screenshots={details.screenshots} gameTitle={game.title} />
+                            </section>
+                        )}
+
+                        {/* Expansions and DLC are the same thing to a reader deciding what else to
+                            buy, so they share one rail. */}
+                        {details && (details.expansions.length > 0 || details.dlcs.length > 0) && (
+                            <section>
+                                <SectionHeading>Expansions &amp; DLC</SectionHeading>
+                                <GameRefRail
+                                    games={[...details.expansions, ...details.dlcs]}
+                                    label={`Expansions and DLC for ${game.title}`}
+                                />
+                            </section>
+                        )}
+
                         {/* Hides itself when the game has no Steam presence (ROADMAP N7). */}
                         <GameNewsPanel gameId={game.id} />
+
+                        {/* Last in the column: it sends people away from this page, so everything
+                            about the game itself gets read first. */}
+                        {details && details.similarGames.length > 0 && (
+                            <section>
+                                <SectionHeading>Similar games</SectionHeading>
+                                <GameRefRail
+                                    games={details.similarGames}
+                                    label={`Games similar to ${game.title}`}
+                                />
+                            </section>
+                        )}
                     </div>
 
                     {/* Sidebar */}
@@ -361,19 +464,16 @@ export function GamePage() {
                                 </div>
                             )}
 
-                            {game.metacriticScore !== null && (
+                            {hasCriticScore(game) && (
                                 <div>
-                                    <p className="text-xs text-slate-500 light:text-slate-400 uppercase tracking-wider mb-1">Metacritic</p>
+                                    <p className="text-xs text-slate-500 light:text-slate-400 uppercase tracking-wider mb-1">Critic Score</p>
                                     <span
-                                        className={`inline-block px-2.5 py-0.5 rounded text-sm font-bold ${
-                                            game.metacriticScore >= 75
-                                                ? 'bg-green-500 text-white'
-                                                : game.metacriticScore >= 50
-                                                ? 'bg-yellow-500 text-slate-900'
-                                                : 'bg-red-500 text-white'
-                                        }`}
+                                        className={`inline-block px-2.5 py-0.5 rounded text-sm font-bold ${criticScoreColors(game.criticScore!)}`}
                                     >
-                                        {game.metacriticScore}
+                                        {game.criticScore}
+                                    </span>
+                                    <span className="ml-2 text-xs text-slate-500 light:text-slate-400">
+                                        from {game.criticScoreCount} reviews
                                     </span>
                                 </div>
                             )}
@@ -385,6 +485,59 @@ export function GamePage() {
                                         {game.esrbRating}
                                     </span>
                                 </div>
+                            )}
+
+                            {series.length > 0 && (
+                                <div>
+                                    <p className="text-xs text-slate-500 light:text-slate-400 uppercase tracking-wider mb-1">Series</p>
+                                    <p className="text-sm text-slate-200 light:text-slate-800 font-medium">
+                                        {series.join(', ')}
+                                    </p>
+                                </div>
+                            )}
+
+                            {details && details.playerPerspectives.length > 0 && (
+                                <div>
+                                    <p className="text-xs text-slate-500 light:text-slate-400 uppercase tracking-wider mb-1">Perspective</p>
+                                    <p className="text-sm text-slate-200 light:text-slate-800 font-medium">
+                                        {details.playerPerspectives.join(', ')}
+                                    </p>
+                                </div>
+                            )}
+
+                            {details && details.gameEngines.length > 0 && (
+                                <div>
+                                    <p className="text-xs text-slate-500 light:text-slate-400 uppercase tracking-wider mb-1">
+                                        Engine{details.gameEngines.length > 1 ? 's' : ''}
+                                    </p>
+                                    <p className="text-sm text-slate-200 light:text-slate-800 font-medium">
+                                        {details.gameEngines.join(', ')}
+                                    </p>
+                                </div>
+                            )}
+
+                            {/* A dozen-plus languages would dominate the sidebar, so they collapse.
+                                A native <details> needs no JavaScript and so survives SSR intact. */}
+                            {details && details.languages.length > 0 && (
+                                <details className="group">
+                                    <summary className="text-xs text-slate-500 light:text-slate-400 uppercase tracking-wider cursor-pointer hover:text-slate-300 light:hover:text-slate-600 transition-colors">
+                                        Languages ({details.languages.length})
+                                    </summary>
+                                    <ul className="mt-2 space-y-1.5">
+                                        {details.languages.map(entry => (
+                                            <li key={entry.language} className="text-xs">
+                                                <span className="text-slate-200 light:text-slate-800 font-medium">
+                                                    {entry.language}
+                                                </span>
+                                                {entry.supportTypes.length > 0 && (
+                                                    <span className="text-slate-500 light:text-slate-400">
+                                                        {' '}— {entry.supportTypes.join(', ')}
+                                                    </span>
+                                                )}
+                                            </li>
+                                        ))}
+                                    </ul>
+                                </details>
                             )}
 
                             {game.website && (

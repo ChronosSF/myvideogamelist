@@ -1,4 +1,4 @@
-using System.Collections.ObjectModel;
+﻿using System.Collections.ObjectModel;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Caching.Memory;
@@ -19,6 +19,7 @@ public class IgdbService(
     private const string ReleaseDatesEndpoint = "https://api.igdb.com/v4/release_dates";
     private const string ExternalGamesEndpoint = "https://api.igdb.com/v4/external_games";
     private const string PopularityEndpoint = "https://api.igdb.com/v4/popularity_primitives";
+    private const string TimeToBeatEndpoint = "https://api.igdb.com/v4/game_time_to_beats";
 
     // Buffer (in seconds) subtracted from the token's reported expiry so we refresh before it actually expires
     private const int TokenExpiryBufferSeconds = 120;
@@ -54,6 +55,13 @@ public class IgdbService(
     private const int SteamPeakPlayersPopularityType = 5;
 
     /// <summary>
+    /// Critics a game needs before its <c>aggregated_rating</c> is treated as a ranking signal for
+    /// the browse listing. Eight is low enough to keep the catalogue deep and high enough to drop
+    /// the single-review entries that would otherwise fill the first pages with perfect scores.
+    /// </summary>
+    private const int MinAggregatedRatingCount = 8;
+
+    /// <summary>
     /// Games per <c>external_games</c> lookup. Deliberately well below <see cref="MaxBatchSize"/>:
     /// a game can have several Steam rows (regional entries, demos), so asking for 500 games could
     /// overflow the 500-row response cap and silently drop mappings.
@@ -66,18 +74,44 @@ public class IgdbService(
         PropertyNameCaseInsensitive = true
     };
 
-    private static readonly string GameFields =
-        "fields id,name,summary,first_release_date," +
+    /// <summary>
+    /// What every game query asks for. Both score fields come with their counts, since a score
+    /// without a sample size cannot be displayed honestly.
+    /// </summary>
+    private const string GameListFieldList =
+        "id,name,summary,first_release_date," +
         "cover.image_id," +
         "artworks.image_id," +
         "videos.video_id," +
         "websites.url,websites.category," +
-        "rating,aggregated_rating," +
+        "rating,aggregated_rating,aggregated_rating_count," +
+        "total_rating,total_rating_count," +
         "age_ratings.category,age_ratings.rating," +
         "genres.id,genres.name," +
         "platforms.id,platforms.name,platforms.abbreviation," +
         "involved_companies.company.id,involved_companies.company.name," +
-        "involved_companies.developer,involved_companies.publisher;";
+        "involved_companies.developer,involved_companies.publisher";
+
+    /// <summary>
+    /// The extra fields only the detail page uses. Kept out of the listing queries on purpose:
+    /// screenshots, language tables and three sets of related games multiply by the page size,
+    /// and a grid of cover art has no use for any of them.
+    /// </summary>
+    private const string GameDetailFieldList =
+        "screenshots.image_id," +
+        "themes.name,player_perspectives.name,game_modes.name,game_engines.name," +
+        "collections.name,franchises.name," +
+        "multiplayer_modes.*," +
+        "language_supports.language.name,language_supports.language_support_type.name," +
+        "similar_games.name,similar_games.cover.image_id," +
+        "dlcs.name,dlcs.cover.image_id," +
+        "expansions.name,expansions.cover.image_id," +
+        "parent_game.name,parent_game.cover.image_id";
+
+    private static readonly string GameFields = $"fields {GameListFieldList};";
+
+    private static readonly string GameDetailFields =
+        $"fields {GameListFieldList},{GameDetailFieldList};";
 
     private string ClientId
     {
@@ -171,13 +205,20 @@ public class IgdbService(
             return cached;
 
         var query = new StringBuilder()
-            .AppendLine(GameFields)
+            .AppendLine(GameDetailFields)
             .AppendLine($"where id = {id};")
             .AppendLine("limit 1;")
             .ToString();
 
         var igdbGames = await QueryAsync<IgdbGame>(GamesEndpoint, query, cancellationToken);
-        var result = igdbGames.Select(MapToGameDto).FirstOrDefault();
+        var igdbGame = igdbGames.FirstOrDefault();
+
+        GameDto? result = null;
+        if (igdbGame is not null)
+        {
+            var timeToBeat = await FetchTimeToBeatAsync(id, cancellationToken);
+            result = MapToGameDto(igdbGame) with { Details = MapToDetailsDto(igdbGame, timeToBeat) };
+        }
 
         // Cache misses briefly too, so a bad ID cannot hammer IGDB on repeat requests
         var ttl = result is not null ? TimeSpan.FromMinutes(30) : TimeSpan.FromMinutes(5);
@@ -472,6 +513,12 @@ public class IgdbService(
         }
         else
         {
+            // Sorting the whole catalogue by aggregated_rating puts the long tail first: obscure
+            // DLC, special editions and console re-releases carrying a single perfect review all
+            // score exactly 100. Requiring a minimum number of contributing critics is what makes
+            // the sort mean anything. This applies to the browse listing only — a search must
+            // still reach every game, however thinly reviewed.
+            sb.AppendLine($"where aggregated_rating_count >= {MinAggregatedRatingCount};");
             sb.AppendLine("sort aggregated_rating desc;");
         }
 
@@ -479,6 +526,31 @@ public class IgdbService(
         sb.AppendLine($"offset {offset};");
 
         return sb.ToString();
+    }
+
+    /// <summary>
+    /// Community completion times for one game. Supplementary to the page, so a failure here
+    /// degrades to no completion-time section rather than taking the whole game down with it.
+    /// </summary>
+    private async Task<IgdbGameTimeToBeat?> FetchTimeToBeatAsync(
+        int gameId, CancellationToken cancellationToken)
+    {
+        var query = new StringBuilder()
+            .AppendLine("fields game_id,hastily,normally,completely,count;")
+            .AppendLine($"where game_id = {gameId};")
+            .AppendLine("limit 1;")
+            .ToString();
+
+        try
+        {
+            var rows = await QueryAsync<IgdbGameTimeToBeat>(TimeToBeatEndpoint, query, cancellationToken);
+            return rows.FirstOrDefault();
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogWarning(ex, "Completion times unavailable for game {GameId}.", gameId);
+            return null;
+        }
     }
 
     private static GameDto MapToGameDto(IgdbGame g)
@@ -498,8 +570,15 @@ public class IgdbService(
         var website = g.Websites?.FirstOrDefault(w => w.Category == 3)?.Url
             ?? g.Websites?.FirstOrDefault()?.Url;
 
-        float? rating = g.Rating.HasValue ? (float)Math.Round(g.Rating.Value / 10.0, 1) : null;
-        int? metacriticScore = g.AggregatedRating.HasValue ? (int)Math.Round(g.AggregatedRating.Value) : null;
+        // The headline score is total_rating - IGDB's blend of critic and user scores - because it
+        // is backed by orders of magnitude more opinions than aggregated_rating alone. Falls back
+        // to the raw user rating when IGDB has published no blend. Both arrive 0-100 and are shown
+        // out of 10.
+        var ratingSource = g.TotalRating ?? g.Rating;
+        float? rating = ratingSource.HasValue ? (float)Math.Round(ratingSource.Value / 10.0, 1) : null;
+        var ratingCount = g.TotalRating.HasValue ? g.TotalRatingCount : null;
+
+        int? criticScore = g.AggregatedRating.HasValue ? (int)Math.Round(g.AggregatedRating.Value) : null;
 
         var esrbRating = g.AgeRatings?.FirstOrDefault(r => r.Category == 1) is { } esrb
             ? MapEsrbRating(esrb.Rating)
@@ -538,12 +617,127 @@ public class IgdbService(
             trailerUrl,
             website,
             rating,
-            metacriticScore,
+            ratingCount,
+            criticScore,
+            g.AggregatedRatingCount,
             esrbRating,
             platforms,
             genres,
             developers,
-            publishers);
+            publishers,
+            Details: null);
+    }
+
+    /// <summary>
+    /// Builds the detail-only half of a game. Named entities are flattened to their names - the
+    /// page renders them as chips and the ids are not linkable anywhere yet.
+    /// </summary>
+    internal static GameDetailsDto MapToDetailsDto(IgdbGame g, IgdbGameTimeToBeat? timeToBeat)
+    {
+        var screenshots = g.Screenshots?
+                .Where(sc => sc.ImageId is not null)
+                .Select(sc => $"{ImageBaseUrl}/t_screenshot_big/{sc.ImageId}.jpg")
+                .ToList()
+            ?? [];
+
+        return new GameDetailsDto(
+            MapTimeToBeat(timeToBeat),
+            screenshots,
+            MapRelatedGames(g.SimilarGames),
+            MapRelatedGames(g.Dlcs),
+            MapRelatedGames(g.Expansions),
+            MapRelatedGame(g.ParentGame),
+            Names(g.GameModes),
+            FoldMultiplayerModes(g.MultiplayerModes),
+            Names(g.Themes),
+            Names(g.PlayerPerspectives),
+            Names(g.GameEngines),
+            Names(g.Collections),
+            Names(g.Franchises),
+            MapLanguages(g.LanguageSupports));
+    }
+
+    private static List<string> Names(List<IgdbNamedEntity>? entities) =>
+        entities?.Select(e => e.Name).OfType<string>().ToList() ?? [];
+
+    /// <summary>
+    /// Drops rows with no submissions behind them: a zero-count average is not an average.
+    /// </summary>
+    internal static TimeToBeatDto? MapTimeToBeat(IgdbGameTimeToBeat? t)
+    {
+        if (t is null) return null;
+
+        var count = t.Count ?? 0;
+        if (count <= 0) return null;
+        if (t.Hastily is null && t.Normally is null && t.Completely is null) return null;
+
+        return new TimeToBeatDto(t.Hastily, t.Normally, t.Completely, count);
+    }
+
+    private static List<GameRefDto> MapRelatedGames(List<IgdbRelatedGame>? related) =>
+        related?.Select(MapRelatedGame).OfType<GameRefDto>().ToList() ?? [];
+
+    private static GameRefDto? MapRelatedGame(IgdbRelatedGame? r)
+    {
+        // A related game with no name can be neither rendered nor linked usefully, so it is
+        // dropped rather than shown as a blank card.
+        if (r is null || string.IsNullOrWhiteSpace(r.Name)) return null;
+
+        var coverUrl = r.Cover?.ImageId is { } coverId
+            ? $"{ImageBaseUrl}/t_cover_big/{coverId}.jpg"
+            : null;
+
+        return new GameRefDto(r.Id, r.Name, coverUrl);
+    }
+
+    /// <summary>
+    /// Collapses IGDB's per-platform multiplayer rows into one summary: a capability counts if any
+    /// platform offers it, and each ceiling is the most generous on offer. A single summary is what
+    /// the page needs; per-platform differences are noise at this altitude.
+    /// </summary>
+    internal static MultiplayerModesDto? FoldMultiplayerModes(List<IgdbMultiplayerMode>? modes)
+    {
+        if (modes is null || modes.Count == 0) return null;
+
+        // IGDB uses 0 and 1 to mean "not applicable" as often as a real ceiling, so anything at or
+        // below 1 is treated as unknown rather than reported as a one-player maximum.
+        static int? BestMax(List<IgdbMultiplayerMode> rows, Func<IgdbMultiplayerMode, int?> select) =>
+            rows.Select(select).Where(v => v > 1).DefaultIfEmpty(null).Max();
+
+        return new MultiplayerModesDto(
+            modes.Any(m => m.OnlineCoop),
+            modes.Any(m => m.OfflineCoop),
+            modes.Any(m => m.CampaignCoop),
+            modes.Any(m => m.LanCoop),
+            modes.Any(m => m.SplitScreen || m.SplitScreenOnline),
+            modes.Any(m => m.DropIn),
+            BestMax(modes, m => m.OnlineMax),
+            BestMax(modes, m => m.OnlineCoopMax),
+            BestMax(modes, m => m.OfflineMax),
+            BestMax(modes, m => m.OfflineCoopMax));
+    }
+
+    /// <summary>
+    /// Groups IGDB's one-row-per-combination language table into one entry per language. Elden
+    /// Ring returns 29 rows covering roughly a dozen languages, which is unreadable ungrouped.
+    /// </summary>
+    internal static List<LanguageSupportDto> MapLanguages(List<IgdbLanguageSupport>? supports)
+    {
+        if (supports is null || supports.Count == 0) return [];
+
+        return supports
+            .Where(sup => !string.IsNullOrWhiteSpace(sup.Language?.Name))
+            .GroupBy(sup => sup.Language!.Name!)
+            .Select(group => new LanguageSupportDto(
+                group.Key,
+                group
+                    .Select(sup => sup.LanguageSupportType?.Name)
+                    .OfType<string>()
+                    .Distinct()
+                    .OrderBy(name => name, StringComparer.Ordinal)
+                    .ToList()))
+            .OrderBy(l => l.Language, StringComparer.Ordinal)
+            .ToList();
     }
 
     internal static string? MapEsrbRating(int ratingValue) => ratingValue switch
