@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 64" width="320" height="64" role="img" aria-label="MyVideoGameList">
+  <title>MyVideoGameList</title>
+  <defs>
+    <mask id="mvgl-wm-gap">
+      <rect width="320" height="64" fill="#fff"/>
+      <rect x="37" y="-3" width="30" height="30" rx="11" fill="#000"/>
+    </mask>
+  </defs>
+  <g mask="url(#mvgl-wm-gap)">
+    <rect y="8" width="56" height="56" rx="15" fill="#182B4D"/>
+    <path d="M21 26 40 36 21 46Z" fill="#F8FAFC" stroke="#F8FAFC" stroke-width="6" stroke-linejoin="round"/>
+  </g>
+  <rect x="40" width="24" height="24" rx="8" fill="#A3E635"/>
+  <path d="M45.5 12 49.5 16 58 7" fill="none" stroke="#182B4D" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Set in the viewer's UI font. Convert to outlines before using this off-site. -->
+  <text x="78" y="43" font-family="system-ui, 'Segoe UI', Roboto, sans-serif" font-size="27" font-weight="700" letter-spacing="-0.6">
+    <tspan fill="#F8FAFC">MyVideoGame</tspan><tspan fill="#A3E635">List</tspan>
+  </text>
+</svg>

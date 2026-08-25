@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" fill="currentColor" role="img" aria-label="MyVideoGameList">
+  <title>MyVideoGameList</title>
+  <defs>
+    <mask id="mvgl-mono-cut">
+      <rect width="64" height="64" fill="#fff"/>
+      <rect x="37" y="-3" width="30" height="30" rx="11" fill="#000"/>
+      <path d="M21 26 40 36 21 46Z" fill="#000" stroke="#000" stroke-width="6" stroke-linejoin="round"/>
+    </mask>
+    <mask id="mvgl-mono-check">
+      <rect x="40" width="24" height="24" rx="8" fill="#fff"/>
+      <path d="M45.5 12 49.5 16 58 7" fill="none" stroke="#000" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+    </mask>
+  </defs>
+  <rect y="8" width="56" height="56" rx="15" mask="url(#mvgl-mono-cut)"/>
+  <rect x="40" width="24" height="24" rx="8" mask="url(#mvgl-mono-check)"/>
+</svg>

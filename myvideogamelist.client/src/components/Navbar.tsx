@@ -3,6 +3,7 @@ import { Link, NavLink, useNavigate } from 'react-router';
 import { useAuth } from '@/hooks/useAuth';
 import { LoginDialog } from '@/components/LoginDialog';
 import { SignupDialog } from '@/components/SignupDialog';
+import { Logo } from '@/components/Logo';
 import './Navbar.css';
 
 type DialogState = 'none' | 'login' | 'signup';
@@ -35,11 +36,9 @@ export function Navbar() {
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                     <div className="flex items-center justify-between h-14">
                         {/* Logo / Brand */}
-                        <Link to="/" className="flex items-center gap-2 text-slate-100 light:text-slate-900 font-bold text-lg hover:text-blue-400 light:hover:text-blue-500 transition-colors">
-                            <svg className="w-7 h-7 text-blue-500" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                                <path d="M21 6.5a2.5 2.5 0 00-2.5-2.5H5.5A2.5 2.5 0 003 6.5v11A2.5 2.5 0 005.5 20h13a2.5 2.5 0 002.5-2.5v-11zM8 15.5a.5.5 0 01-.5-.5V9a.5.5 0 011 0v6a.5.5 0 01-.5.5zm4 0a.5.5 0 01-.5-.5V9a.5.5 0 011 0v6a.5.5 0 01-.5.5zm4-3a.5.5 0 01-.5-.5v-3a.5.5 0 011 0v3a.5.5 0 01-.5.5z" />
-                            </svg>
-                            <span>MyVideoGameList</span>
+                        <Link to="/" className="flex items-center gap-2.5 text-slate-100 light:text-slate-900 font-bold text-lg hover:opacity-80 transition-opacity">
+                            <Logo className="w-7 h-7" />
+                            <span>MyVideoGame<span className="text-lime-400 light:text-lime-600">List</span></span>
                         </Link>
 
                         <div className="flex items-center gap-2">
