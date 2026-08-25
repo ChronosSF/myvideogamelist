@@ -1,13 +1,16 @@
 import { useEffect, useReducer, useState, type ReactNode } from 'react';
 import type { GameDto } from '@/types/game';
-import { type ListId, LIST_IDS } from '@/types/list';
+import { type ListId, LIST_IDS, emptyLists } from '@/types/list';
 import { useAuth } from '@/hooks/useAuth';
 import { ListsContext } from './ListsContext';
 
+/**
+ * `/api/lists` returns every status keyed by its stable key, always including the ones that are
+ * empty. Keyed rather than a property per list: five statuses already make that unwieldy, and
+ * custom lists would break the shape outright.
+ */
 interface ApiListsResponse {
-    playing: GameDto[];
-    backlog: GameDto[];
-    finished: GameDto[];
+    lists: Record<ListId, GameDto[]>;
 }
 
 interface ListsState {
@@ -28,9 +31,7 @@ type ListsAction =
     | { type: 'MUTATION_ERROR'; error: string }
     | { type: 'CLEAR_MUTATION_ERROR' };
 
-const EMPTY_LISTS: Record<ListId, GameDto[]> = { playing: [], backlog: [], finished: [] };
-
-const initialState: ListsState = { lists: EMPTY_LISTS, loading: false, error: null, mutationError: null };
+const initialState: ListsState = { lists: emptyLists(), loading: false, error: null, mutationError: null };
 
 function reducer(state: ListsState, action: ListsAction): ListsState {
     switch (action.type) {
@@ -43,11 +44,9 @@ function reducer(state: ListsState, action: ListsAction): ListsState {
                 loading: false,
                 error: null,
                 mutationError: null,
-                lists: {
-                    playing: action.data.playing,
-                    backlog: action.data.backlog,
-                    finished: action.data.finished,
-                },
+                // Spread over a complete empty set, so a status the server has not sent yet
+                // still resolves to [] rather than undefined.
+                lists: { ...emptyLists(), ...action.data.lists },
             };
         case 'FETCH_ERROR':
             return { ...state, loading: false, error: action.error };
@@ -108,7 +107,7 @@ export function ListsProvider({ children }: { children: ReactNode }) {
         const prevLists = state.lists;
 
         // Optimistically update — a game lives in at most one list
-        const updated: Record<ListId, GameDto[]> = { playing: [], backlog: [], finished: [] };
+        const updated: Record<ListId, GameDto[]> = emptyLists();
         for (const id of LIST_IDS) {
             updated[id] = state.lists[id].filter(g => g.id !== game.id);
         }
@@ -122,7 +121,7 @@ export function ListsProvider({ children }: { children: ReactNode }) {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 credentials: 'include',
-                body: JSON.stringify({ listType: listId }),
+                body: JSON.stringify({ status: listId }),
             });
 
             if (!res.ok) {

@@ -47,11 +47,11 @@ polished game-tracking product that runs on AWS and ships safely on every commit
 
 ### Tier 1 — Core tracking (required for the product to make sense)
 
-- **Full list taxonomy** — Playing, Completed, On Hold, Dropped, Plan to Play, plus a separate **Wishlist** a game can sit in alongside any list. Replace the hardcoded `ValidListTypes` set with a proper enum + lookup table.
+- ~~**Full list taxonomy**~~ **DONE for the five statuses.** Backlog, Playing, On Hold, Finished and Dropped ship as a seeded `ListStatuses` lookup carrying semantic flags, replacing the hardcoded `ValidListTypes` set. Keys are `backlog` / `finished` rather than "Plan to Play" / "Completed", which is what made the expansion a no-migration change. **Still open:** the separate **Wishlist** axis a game can sit in alongside any status, and per-user renaming (`UserListSettings`). See ADR [0018](docs/decisions/0018-append-only-status-event-log.md).
 - **Per-entry tracking data** — user score (1–10), start date, finish date, hours played, platform played on, replay count, "own it / subscription / borrowed", personal notes. This is the heart of a tracker and it is entirely absent today.
 - **Completion states** — for Playing entries: percent complete, or "main story / main + extras / completionist".
 - **Favourites** — star a game independent of list membership.
-- **Activity history** — an append-only log of status changes and scores, so the profile can show "finished 12 games in 2026".
+- ~~**Activity history**~~ **DONE for status changes.** `UserGameEvents` records every transition append-only, including first adds and removals, and is the one thing in the schema that could not have been backfilled later (ADR [0018](docs/decisions/0018-append-only-status-event-log.md)). **Still open:** scores and playthroughs, and the profile UI that reads the log.
 - **User profile stats** — total games, total hours, mean score, score distribution, completion rate, games-per-month chart, most-played platform, most-played genre. Today `UserPage.tsx` shows only an email and a theme toggle.
 - **Public profiles** — real usernames (`ApplicationUser` currently only has an email), a shareable `/u/{username}` route, and per-user privacy settings (public / friends / private).
 - **Account lifecycle** — email confirmation, password reset, email change, and self-service account deletion with data export. `SignIn.RequireConfirmedAccount` is off and there is no email sender at all.

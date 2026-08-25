@@ -27,6 +27,9 @@ builder.Services.AddSingleton<ISteamNewsService, SteamNewsService>();
 builder.Services.AddSingleton<IHomeService, HomeService>();
 builder.Services.AddScoped<IListService, ListService>();
 
+// The clock, injected so the event log's timestamps are controllable in tests.
+builder.Services.AddSingleton(TimeProvider.System);
+
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
 

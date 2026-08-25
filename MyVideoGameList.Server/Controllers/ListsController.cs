@@ -31,13 +31,12 @@ public class ListsController(
         [FromBody] SetListEntryDto dto,
         CancellationToken cancellationToken)
     {
-        if (!ListService.IsValidListType(dto.ListType))
-            return BadRequest(new { message = "ListType must be 'playing', 'backlog', or 'finished'." });
-
+        // No guard here: SetListEntryDto validates the status by attribute, so [ApiController]
+        // has already returned a 400 for anything unrecognised.
         var user = await userManager.GetUserAsync(User);
         if (user is null) return Unauthorized();
 
-        await listService.SetListEntryAsync(user.Id, gameId, dto.ListType, cancellationToken);
+        await listService.SetListEntryAsync(user.Id, gameId, dto.Status, cancellationToken);
         return NoContent();
     }
 

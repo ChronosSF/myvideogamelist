@@ -13,10 +13,12 @@ has to be persisted**, because the two views miss different things. Read it alon
 |---|---|---|
 | `AspNet*` | ASP.NET Identity, unmodified | Auth |
 | `ApplicationUser` | Identity plus a single `Theme` column | Theme persistence |
-| `UserGameLists` | PK `(UserId, GameId)`, one `ListType` string | All three lists |
+| `UserGameLists` | PK `(UserId, GameId)`, `StatusId` FK | The five status lists |
+| `ListStatuses` | Seeded lookup, five rows, semantic flags | The taxonomy |
+| `UserGameEvents` | Append-only status transitions | Activity, streaks, trends |
 | `UserHiddenPlatforms` | PK `(UserId, IgdbPlatformId)` | Platform filter |
 
-One migration exists, `20260824085503_InitialCreate`. There is no production deployment and no
+Two migrations exist: `20260824085503_InitialCreate` and `20260825140638_AddListStatusesAndEventLog`. There is no production deployment and no
 user data to preserve, which means **breaking shape changes are currently free**. Every
 structural decision below gets harder the day real accounts exist, so the ones marked
 *structural* are worth making now even if the feature that needs them is phases away.
@@ -235,8 +237,11 @@ detect it afterwards. Rename changes the label; it never changes what the list m
 
 Order by what is irrecoverable, then by what unblocks the most.
 
-1. **`ListStatuses` seeded with all five, the `ListType` string migrated to that foreign key, and
-   `UserGameEvents` written from `SetListEntryAsync` and `RemoveListEntryAsync`.** The event log is
+1. ~~**`ListStatuses` seeded with all five, the `ListType` string migrated to that foreign key, and
+   `UserGameEvents` written from `SetListEntryAsync` and `RemoveListEntryAsync`.**~~ **Shipped** —
+   see ADR [0018](decisions/0018-append-only-status-event-log.md). `UserListSettings` was left out
+   deliberately: it is additive, nothing is lost by waiting, and it only matters once there is a
+   settings UI to rename from. The event log is
    the only item whose lateness costs data rather than effort, and the lookup rides along because
    the string-to-key change is trivial today and tedious later. Guard the writes so a move to the
    status a game already holds records nothing — the optimistic-update UI will send those, and

@@ -11,10 +11,32 @@ public class ListServiceTests
 {
     private const string UserId = "user-1";
 
-    private static ApplicationDbContext NewDb() =>
-        new(new DbContextOptionsBuilder<ApplicationDbContext>()
-            .UseInMemoryDatabase(Guid.NewGuid().ToString())
-            .Options);
+    /// <summary>
+    /// A controllable clock, so the event log's timestamps can be asserted. Hand-rolled rather
+    /// than pulling in <c>Microsoft.Extensions.TimeProvider.Testing</c> for four lines.
+    /// </summary>
+    private sealed class FixedClock(DateTimeOffset now) : TimeProvider
+    {
+        private DateTimeOffset _now = now;
+        public override DateTimeOffset GetUtcNow() => _now;
+        public void Advance(TimeSpan by) => _now = _now.Add(by);
+    }
+
+    private static readonly DateTimeOffset Midday = new(2026, 3, 14, 12, 0, 0, TimeSpan.Zero);
+
+    /// <summary>
+    /// <c>EnsureCreated</c> is what applies the <c>ListStatuses</c> seed on the in-memory
+    /// provider. Without it every status lookup misses and the service throws.
+    /// </summary>
+    private static ApplicationDbContext NewDb()
+    {
+        var db = new ApplicationDbContext(
+            new DbContextOptionsBuilder<ApplicationDbContext>()
+                .UseInMemoryDatabase(Guid.NewGuid().ToString())
+                .Options);
+        db.Database.EnsureCreated();
+        return db;
+    }
 
     private static GameDto Game(int id, string title = "Game") =>
         new(id, title, null, null, null, null, null, null, null, null, null, null, null,
@@ -29,66 +51,114 @@ public class ListServiceTests
         return igdb;
     }
 
+    private static ListService NewService(
+        ApplicationDbContext db, IIgdbService? igdb = null, TimeProvider? clock = null) =>
+        new(db, igdb ?? Substitute.For<IIgdbService>(), clock ?? new FixedClock(Midday));
+
+    private static short StatusId(ApplicationDbContext db, string key) =>
+        db.ListStatuses.Single(s => s.Key == key).Id;
+
+    // ---------------------------------------------------------------- reading
+
     [Fact]
-    public async Task GetListsAsync_WithNoEntries_ReturnsEmptyListsWithoutCallingIgdb()
+    public async Task GetListsAsync_WithNoEntries_ReturnsEveryStatusEmptyWithoutCallingIgdb()
     {
         using var db = NewDb();
         var igdb = Substitute.For<IIgdbService>();
-        var service = new ListService(db, igdb);
+        var service = NewService(db, igdb);
 
         var result = await service.GetListsAsync(UserId);
 
-        Assert.Empty(result.Playing);
-        Assert.Empty(result.Backlog);
-        Assert.Empty(result.Finished);
+        // Every status present even when empty, so the client never guards a missing key.
+        Assert.Equal(5, result.Lists.Count);
+        Assert.All(result.Lists.Values, games => Assert.Empty(games));
         await igdb.DidNotReceive()
             .GetGamesByIdsAsync(Arg.Any<IEnumerable<int>>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
+    public async Task GetListsAsync_KeysEveryListByItsStatusKey()
+    {
+        using var db = NewDb();
+        var service = NewService(db, IgdbReturning(Game(10)));
+
+        await service.SetListEntryAsync(UserId, 10, ListStatusKeys.OnHold);
+
+        var lists = (await service.GetListsAsync(UserId)).Lists;
+
+        Assert.Equal(10, Assert.Single(lists[ListStatusKeys.OnHold]).Id);
+        Assert.Empty(lists[ListStatusKeys.Playing]);
+    }
+
+    [Fact]
+    public async Task GetListsAsync_SkipsEntriesIgdbCannotResolve()
+    {
+        using var db = NewDb();
+        // IGDB knows about 10 but not 11 — a stale or delisted ID must not produce a null hole.
+        var service = NewService(db, IgdbReturning(Game(10)));
+
+        await service.SetListEntryAsync(UserId, 10, ListStatusKeys.Backlog);
+        db.UserGameLists.Add(new UserGameList
+        {
+            UserId = UserId,
+            GameId = 11,
+            StatusId = StatusId(db, ListStatusKeys.Backlog)
+        });
+        await db.SaveChangesAsync();
+
+        var backlog = (await service.GetListsAsync(UserId)).Lists[ListStatusKeys.Backlog];
+
+        Assert.Equal(10, Assert.Single(backlog).Id);
+    }
+
+    // ---------------------------------------------------------------- writing
+
+    [Fact]
     public async Task SetListEntryAsync_AddsNewEntry()
     {
         using var db = NewDb();
-        var service = new ListService(db, IgdbReturning(Game(10)));
+        var service = NewService(db, IgdbReturning(Game(10)));
 
-        await service.SetListEntryAsync(UserId, 10, "playing");
+        await service.SetListEntryAsync(UserId, 10, ListStatusKeys.Playing);
 
-        var lists = await service.GetListsAsync(UserId);
-        Assert.Single(lists.Playing);
-        Assert.Equal(10, lists.Playing.Single().Id);
+        var playing = (await service.GetListsAsync(UserId)).Lists[ListStatusKeys.Playing];
+        Assert.Equal(10, Assert.Single(playing).Id);
     }
 
     [Fact]
     public async Task SetListEntryAsync_CalledTwice_MovesRatherThanDuplicates()
     {
         using var db = NewDb();
-        var service = new ListService(db, IgdbReturning(Game(10)));
+        var service = NewService(db, IgdbReturning(Game(10)));
 
-        await service.SetListEntryAsync(UserId, 10, "playing");
-        await service.SetListEntryAsync(UserId, 10, "finished");
+        await service.SetListEntryAsync(UserId, 10, ListStatusKeys.Playing);
+        await service.SetListEntryAsync(UserId, 10, ListStatusKeys.Finished);
 
         Assert.Equal(1, await db.UserGameLists.CountAsync());
 
-        var lists = await service.GetListsAsync(UserId);
-        Assert.Empty(lists.Playing);
-        Assert.Single(lists.Finished);
+        var lists = (await service.GetListsAsync(UserId)).Lists;
+        Assert.Empty(lists[ListStatusKeys.Playing]);
+        Assert.Single(lists[ListStatusKeys.Finished]);
     }
 
-    [Fact]
-    public async Task SetListEntryAsync_WithInvalidListType_Throws()
+    [Theory]
+    [InlineData("wishlist")]
+    [InlineData("Playing")]
+    [InlineData("")]
+    public async Task SetListEntryAsync_WithUnknownStatus_Throws(string status)
     {
         using var db = NewDb();
-        var service = new ListService(db, Substitute.For<IIgdbService>());
+        var service = NewService(db);
 
         await Assert.ThrowsAsync<ArgumentException>(
-            () => service.SetListEntryAsync(UserId, 10, "wishlist"));
+            () => service.SetListEntryAsync(UserId, 10, status));
     }
 
     [Fact]
     public async Task RemoveListEntryAsync_ReturnsFalseWhenAbsent()
     {
         using var db = NewDb();
-        var service = new ListService(db, Substitute.For<IIgdbService>());
+        var service = NewService(db);
 
         Assert.False(await service.RemoveListEntryAsync(UserId, 999));
     }
@@ -97,41 +167,200 @@ public class ListServiceTests
     public async Task RemoveListEntryAsync_RemovesOnlyTheCallersEntry()
     {
         using var db = NewDb();
-        var service = new ListService(db, IgdbReturning(Game(10)));
+        var service = NewService(db, IgdbReturning(Game(10)));
 
-        await service.SetListEntryAsync(UserId, 10, "playing");
-        await service.SetListEntryAsync("someone-else", 10, "playing");
+        await service.SetListEntryAsync(UserId, 10, ListStatusKeys.Playing);
+        await service.SetListEntryAsync("someone-else", 10, ListStatusKeys.Playing);
 
         Assert.True(await service.RemoveListEntryAsync(UserId, 10));
 
-        Assert.Empty((await service.GetListsAsync(UserId)).Playing);
-        Assert.Single((await service.GetListsAsync("someone-else")).Playing);
+        Assert.Empty((await service.GetListsAsync(UserId)).Lists[ListStatusKeys.Playing]);
+        Assert.Single((await service.GetListsAsync("someone-else")).Lists[ListStatusKeys.Playing]);
+    }
+
+    // ---------------------------------------------------------------- the event log
+
+    [Fact]
+    public async Task SetListEntryAsync_OnFirstAdd_RecordsAnArrivalFromNothing()
+    {
+        using var db = NewDb();
+        var service = NewService(db, clock: new FixedClock(Midday));
+
+        await service.SetListEntryAsync(UserId, 10, ListStatusKeys.Backlog);
+
+        var logged = Assert.Single(await db.UserGameEvents.ToListAsync());
+        Assert.Equal(UserId, logged.UserId);
+        Assert.Equal(10, logged.GameId);
+        Assert.Null(logged.FromStatusId);
+        Assert.Equal(StatusId(db, ListStatusKeys.Backlog), logged.ToStatusId);
+        Assert.Equal(Midday, logged.OccurredAt);
     }
 
     [Fact]
-    public async Task GetListsAsync_SkipsEntriesIgdbCannotResolve()
+    public async Task SetListEntryAsync_OnMove_RecordsBothEndsOfTheTransition()
     {
         using var db = NewDb();
-        // IGDB knows about 10 but not 11 — a stale or delisted ID must not produce a null hole.
-        var service = new ListService(db, IgdbReturning(Game(10)));
+        var clock = new FixedClock(Midday);
+        var service = NewService(db, clock: clock);
 
-        await service.SetListEntryAsync(UserId, 10, "backlog");
-        db.UserGameLists.Add(new UserGameList { UserId = UserId, GameId = 11, ListType = "backlog" });
-        await db.SaveChangesAsync();
+        await service.SetListEntryAsync(UserId, 10, ListStatusKeys.Playing);
+        clock.Advance(TimeSpan.FromDays(30));
+        await service.SetListEntryAsync(UserId, 10, ListStatusKeys.Finished);
 
-        var lists = await service.GetListsAsync(UserId);
+        var events = await db.UserGameEvents.OrderBy(e => e.OccurredAt).ToListAsync();
 
-        Assert.Single(lists.Backlog);
-        Assert.Equal(10, lists.Backlog.Single().Id);
+        Assert.Equal(2, events.Count);
+        Assert.Equal(StatusId(db, ListStatusKeys.Playing), events[1].FromStatusId);
+        Assert.Equal(StatusId(db, ListStatusKeys.Finished), events[1].ToStatusId);
+        Assert.Equal(Midday.AddDays(30), events[1].OccurredAt);
     }
 
-    [Theory]
-    [InlineData("playing", true)]
-    [InlineData("backlog", true)]
-    [InlineData("finished", true)]
-    [InlineData("Playing", false)]
-    [InlineData("wishlist", false)]
-    [InlineData("", false)]
-    public void IsValidListType_AcceptsOnlyTheThreeKnownLists(string listType, bool expected)
-        => Assert.Equal(expected, ListService.IsValidListType(listType));
+    [Fact]
+    public async Task SetListEntryAsync_ToTheStatusAlreadyHeld_RecordsNothing()
+    {
+        // The optimistic-update UI and ordinary double-clicks both send these. Recording them
+        // would inflate every count later derived from the log.
+        using var db = NewDb();
+        var service = NewService(db);
+
+        await service.SetListEntryAsync(UserId, 10, ListStatusKeys.Playing);
+        await service.SetListEntryAsync(UserId, 10, ListStatusKeys.Playing);
+        await service.SetListEntryAsync(UserId, 10, ListStatusKeys.Playing);
+
+        Assert.Equal(1, await db.UserGameEvents.CountAsync());
+        Assert.Equal(1, await db.UserGameLists.CountAsync());
+    }
+
+    [Fact]
+    public async Task RemoveListEntryAsync_RecordsADepartureToNothing()
+    {
+        using var db = NewDb();
+        var service = NewService(db);
+
+        await service.SetListEntryAsync(UserId, 10, ListStatusKeys.Dropped);
+        await service.RemoveListEntryAsync(UserId, 10);
+
+        var last = await db.UserGameEvents.OrderBy(e => e.Id).LastAsync();
+        Assert.Equal(StatusId(db, ListStatusKeys.Dropped), last.FromStatusId);
+        Assert.Null(last.ToStatusId);
+    }
+
+    [Fact]
+    public async Task RemoveListEntryAsync_LeavesTheHistoryIntact()
+    {
+        // The reason the log carries UserId and GameId rather than a key to the entry: a cascade
+        // from the entry would delete exactly the history being kept.
+        using var db = NewDb();
+        var service = NewService(db);
+
+        await service.SetListEntryAsync(UserId, 10, ListStatusKeys.Backlog);
+        await service.SetListEntryAsync(UserId, 10, ListStatusKeys.Playing);
+        await service.SetListEntryAsync(UserId, 10, ListStatusKeys.Finished);
+        await service.RemoveListEntryAsync(UserId, 10);
+
+        Assert.Empty(await db.UserGameLists.ToListAsync());
+        Assert.Equal(4, await db.UserGameEvents.CountAsync(e => e.GameId == 10));
+    }
+
+    [Fact]
+    public async Task TheEventLog_IsScopedToTheUserWhoActed()
+    {
+        using var db = NewDb();
+        var service = NewService(db);
+
+        await service.SetListEntryAsync(UserId, 10, ListStatusKeys.Playing);
+        await service.SetListEntryAsync("someone-else", 10, ListStatusKeys.Finished);
+
+        Assert.Equal(1, await db.UserGameEvents.CountAsync(e => e.UserId == UserId));
+        Assert.Equal(1, await db.UserGameEvents.CountAsync(e => e.UserId == "someone-else"));
+    }
+
+    [Fact]
+    public async Task CompletionsForAMonth_AreCountableFromTheLogAlone()
+    {
+        // The query the whole table exists for, and the one a current-state table cannot answer.
+        using var db = NewDb();
+        var clock = new FixedClock(Midday);
+        var service = NewService(db, clock: clock);
+
+        await service.SetListEntryAsync(UserId, 10, ListStatusKeys.Playing);
+        await service.SetListEntryAsync(UserId, 10, ListStatusKeys.Finished);
+        clock.Advance(TimeSpan.FromDays(60));
+        await service.SetListEntryAsync(UserId, 20, ListStatusKeys.Finished);
+
+        var finished = StatusId(db, ListStatusKeys.Finished);
+        var inMarch = await db.UserGameEvents.CountAsync(e =>
+            e.ToStatusId == finished
+            && e.OccurredAt >= Midday
+            && e.OccurredAt < Midday.AddDays(31));
+
+        Assert.Equal(1, inMarch);
+    }
+}
+
+public class ListStatusSeedTests
+{
+    private static ApplicationDbContext NewDb()
+    {
+        var db = new ApplicationDbContext(
+            new DbContextOptionsBuilder<ApplicationDbContext>()
+                .UseInMemoryDatabase(Guid.NewGuid().ToString())
+                .Options);
+        db.Database.EnsureCreated();
+        return db;
+    }
+
+    [Fact]
+    public void SeedsTheFivePredefinedStatusesInLifecycleOrder()
+    {
+        using var db = NewDb();
+
+        var keys = db.ListStatuses.OrderBy(s => s.SortOrder).Select(s => s.Key).ToList();
+
+        Assert.Equal(
+            [
+                ListStatusKeys.Backlog,
+                ListStatusKeys.Playing,
+                ListStatusKeys.OnHold,
+                ListStatusKeys.Finished,
+                ListStatusKeys.Dropped
+            ],
+            keys);
+    }
+
+    [Fact]
+    public void OnlyFinishedCountsAsACompletion()
+    {
+        using var db = NewDb();
+
+        var counting = db.ListStatuses.Where(s => s.CountsAsCompletion).Select(s => s.Key).ToList();
+
+        Assert.Equal([ListStatusKeys.Finished], counting);
+    }
+
+    [Fact]
+    public void FinishedAndDroppedAreTheTerminalStatuses()
+    {
+        // Both resolve a game, which is why terminality alone cannot tell a completion from an
+        // abandonment — the completion rate needs both flags.
+        using var db = NewDb();
+
+        var terminal = db.ListStatuses
+            .Where(s => s.IsTerminal)
+            .OrderBy(s => s.SortOrder)
+            .Select(s => s.Key)
+            .ToList();
+
+        Assert.Equal([ListStatusKeys.Finished, ListStatusKeys.Dropped], terminal);
+    }
+
+    [Fact]
+    public void BacklogIsTheOnlyStatusThatIsNotStarted()
+    {
+        using var db = NewDb();
+
+        var notStarted = db.ListStatuses.Where(s => !s.IsStarted).Select(s => s.Key).ToList();
+
+        Assert.Equal([ListStatusKeys.Backlog], notStarted);
+    }
 }
