@@ -5,16 +5,24 @@ server-rendered with React Router 8 in framework mode.
 
 ## Running locally
 
-**Two processes, two terminals.** ASP.NET serves the API only — it does not serve the
-front end.
+**A database container, then two processes in two terminals.** ASP.NET serves the API only —
+it does not serve the front end.
 
 ```bash
-# Terminal 1 — the API
+# Once, and whenever it is not already running — local PostgreSQL
+docker compose up -d --wait
+
+# Terminal 1 — the API (applies migrations on startup, in Development only)
 cd MyVideoGameList.Server && dotnet run
 
 # Terminal 2 — the SSR front end (this is the URL you open)
 cd myvideogamelist.client && npm run dev
 ```
+
+The database runs in Docker so local matches production; the app itself is deliberately not
+containerised, because that would cost hot reload on both sides. Credentials for the local
+container are committed in `compose.yaml` and `appsettings.Development.json` on purpose, so a
+fresh checkout runs with no setup — they reach nothing beyond this machine.
 
 Open `https://localhost:58546`.
 
@@ -32,6 +40,9 @@ Open `https://localhost:58546`.
 | `npm run build` | Production build |
 | `dotnet test MyVideoGameList.Server.Tests/MyVideoGameList.Server.Tests.csproj` | Server unit tests |
 | `dotnet ef migrations add <Name>` | From `MyVideoGameList.Server/` |
+| `dotnet ef database update` | Applies migrations by hand; only needed outside Development |
+| `docker compose up -d --wait` | Local PostgreSQL. `--wait` blocks until it accepts connections |
+| `docker compose down` | Stops it, keeping data. **`down -v` destroys the data volume** |
 
 Health endpoints: `/healthz` (liveness, no dependency checks) and `/readyz` (database and
 IGDB reachability). A degraded IGDB returns 200, not 503 — browsing breaks but stored lists
@@ -53,6 +64,15 @@ ROADMAP.md                      Forward-looking plan
 ```
 
 ## Things that will bite you
+
+- **Migrations auto-apply in Development only.** Everywhere else they are a deliberate
+  deployment step, because several ECS tasks booting at once would race each other through the
+  same migration. A deployed instance will start against an un-migrated database and fail on
+  first query rather than silently migrating.
+
+- **The PostgreSQL container volume mounts at `/var/lib/postgresql`, not `.../data`.**
+  PostgreSQL 18 images changed this and refuse to start if they find data at the old path. The
+  symptom is a container that restart-loops with an error about `pg_ctlcluster`.
 
 - **Secrets never go in `appsettings.json`.** Local: `dotnet user-secrets set "Igdb:ClientId" "…"`.
   Deployed: `Igdb__ClientId` / `Igdb__ClientSecret` environment variables. User secrets load

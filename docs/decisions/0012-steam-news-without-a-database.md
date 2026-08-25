@@ -2,6 +2,12 @@
 
 **Status:** Implemented
 
+> **Later note.** The Context below describes the PostgreSQL move as pending, which it was when
+> this was written. PostgreSQL has since landed locally ([0008](0008-postgresql-over-sqlite.md),
+> [0014](0014-rds-postgresql-over-aurora.md)), so the "one fewer migration to regenerate"
+> argument has expired. The decision stands on its other reason, which was always the stronger
+> one: this data is derived, regenerable and TTL'd — cache-shaped, not table-shaped.
+
 ## Context
 
 ROADMAP §3.4 specified Steam news with two storage assumptions: N1 would "store the mapping on

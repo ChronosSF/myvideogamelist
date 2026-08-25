@@ -1,0 +1,40 @@
+# Local development database.
+#
+# The app itself is not containerised here on purpose: the two-process workflow in CLAUDE.md
+# (`dotnet run` plus `npm run dev`) gives hot reload on both sides, which a container would
+# take away. This file exists only so local development runs the same database engine as
+# production — see docs/decisions/0014-rds-postgresql-over-aurora.md. Running SQLite locally
+# and PostgreSQL in production produces bugs that only appear in production.
+#
+# The credentials below are local-container-only and deliberately committed, so a checkout
+# runs with no setup. Nothing here is reachable off this machine, and deployed environments
+# take their connection string from ConnectionStrings__DefaultConnection instead (ADR 0005).
+
+services:
+    db:
+        image: postgres:18-alpine
+        container_name: mvgl-postgres
+        restart: unless-stopped
+        environment:
+            POSTGRES_DB: myvideogamelist
+            POSTGRES_USER: mvgl
+            POSTGRES_PASSWORD: localdev
+        ports:
+            # Published so `dotnet run` on the host can reach it without joining the network.
+            - '5432:5432'
+        volumes:
+            # Mounted at /var/lib/postgresql, NOT .../data. PostgreSQL 18 images changed this:
+            # they now keep data in a major-version subdirectory so pg_upgrade can work across
+            # the mount, and they refuse to start if they find data at the old path.
+            - pgdata:/var/lib/postgresql
+        healthcheck:
+            # Lets `docker compose up --wait` block until the server actually accepts
+            # connections. Without it the container reports ready while PostgreSQL is still
+            # starting, and the first `dotnet ef` command races it.
+            test: ['CMD-SHELL', 'pg_isready -U mvgl -d myvideogamelist']
+            interval: 5s
+            timeout: 5s
+            retries: 12
+
+volumes:
+    pgdata:
