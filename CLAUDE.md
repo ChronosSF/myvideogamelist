@@ -60,6 +60,7 @@ myvideogamelist.client/
   src/pages/                    Route modules (default export + optional loader/meta)
   src/lib/                      apiUrl(), useStoredNumberSet()
 docs/decisions/                 Architecture decision records
+docs/data-model-plan.md         Schema the roadmap implies, by table, with sequencing
 ROADMAP.md                      Forward-looking plan
 ```
 
@@ -90,6 +91,19 @@ ROADMAP.md                      Forward-looking plan
 - **Steam news and the trending rail hold no database state**, deliberately, so the pending
   PostgreSQL move stays as cheap as it is today. See `docs/decisions/0012-*`. Keep derived,
   regenerable, TTL'd data in `IMemoryCache`; do not add a table for it.
+
+- **A score without its review count is not shippable.** IGDB's `aggregated_rating` is an
+  unweighted mean with no minimum, so a game with one perfect review scores 100. Every score in
+  `GameDto` travels with its count, the browse query requires
+  `aggregated_rating_count >= 8`, and the client suppresses badges below
+  `MIN_CRITIC_REVIEWS`. Search is deliberately *not* filtered this way. See
+  `docs/decisions/0016-*`.
+
+- **Two game field lists, and putting a field in the wrong one fails quietly.**
+  `GameListFieldList` feeds every query; `GameDetailFieldList` is concatenated onto it only by
+  `GetGameByIdAsync`, which is why `GameDto.Details` is null everywhere else. A field a *listing*
+  needs that lands in the detail list is null in every grid and populated on exactly one page.
+  See `docs/decisions/0017-*`.
 
 - **Every route must declare a `Cache-Control` via its `headers` export**, because CloudFront
   applies its own default TTL when the origin sends none. The root default is `private,

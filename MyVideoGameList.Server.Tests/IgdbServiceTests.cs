@@ -1,4 +1,4 @@
-using MyVideoGameList.Server.DTOs;
+﻿using MyVideoGameList.Server.DTOs;
 using MyVideoGameList.Server.Models.Igdb;
 using MyVideoGameList.Server.Services;
 
@@ -18,6 +18,24 @@ public class BuildQueryTests
     }
 
     [Fact]
+    public void WithoutSearch_RequiresEnoughCriticsForTheSortToMeanAnything()
+    {
+        var query = IgdbService.BuildQuery(offset: 0, limit: 20, search: null);
+
+        Assert.Contains("where aggregated_rating_count >= 8;", query);
+    }
+
+    [Fact]
+    public void WithSearch_DoesNotFilterOnCriticCount()
+    {
+        // A search must reach the whole catalogue, including thinly reviewed games. The count is
+        // still requested as a field — it is the `where` clause that must be absent.
+        var query = IgdbService.BuildQuery(0, 20, "undertale");
+
+        Assert.DoesNotContain("where aggregated_rating_count", query);
+    }
+
+    [Fact]
     public void WithSearch_UsesSearchAndDropsTheSort()
     {
         var query = IgdbService.BuildQuery(0, 20, "elden ring");
@@ -32,6 +50,7 @@ public class BuildQueryTests
         var query = IgdbService.BuildQuery(0, 20, "   ");
 
         Assert.Contains("sort aggregated_rating desc;", query);
+        Assert.Contains("where aggregated_rating_count >= 8;", query);
         Assert.DoesNotContain("search ", query);
     }
 
@@ -61,6 +80,212 @@ public class MapEsrbRatingTests
         => Assert.Null(IgdbService.MapEsrbRating(value));
 }
 
+public class MapTimeToBeatTests
+{
+    private static IgdbGameTimeToBeat Row(int? hastily, int? normally, int? completely, int? count) =>
+        new(1, 100, hastily, normally, completely, count);
+
+    [Fact]
+    public void WithSubmissions_KeepsTheRawSeconds()
+    {
+        var result = IgdbService.MapTimeToBeat(Row(37 * 3600, 92 * 3600, 246 * 3600, 20));
+
+        Assert.NotNull(result);
+        Assert.Equal(37 * 3600, result.Hastily);
+        Assert.Equal(92 * 3600, result.Normally);
+        Assert.Equal(246 * 3600, result.Completely);
+        Assert.Equal(20, result.Count);
+    }
+
+    [Fact]
+    public void WithNoRow_ReturnsNull()
+        => Assert.Null(IgdbService.MapTimeToBeat(null));
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(null)]
+    public void WithoutSubmissions_ReturnsNullBecauseAZeroCountAverageIsNotAnAverage(int? count)
+        => Assert.Null(IgdbService.MapTimeToBeat(Row(3600, 7200, 10800, count)));
+
+    [Fact]
+    public void WithACountButNoTimes_ReturnsNull()
+        => Assert.Null(IgdbService.MapTimeToBeat(Row(null, null, null, 5)));
+}
+
+public class FoldMultiplayerModesTests
+{
+    private static IgdbMultiplayerMode Mode(
+        bool campaignCoop = false,
+        bool dropIn = false,
+        bool lanCoop = false,
+        bool offlineCoop = false,
+        bool onlineCoop = false,
+        bool splitScreen = false,
+        bool splitScreenOnline = false,
+        int? offlineCoopMax = null,
+        int? offlineMax = null,
+        int? onlineCoopMax = null,
+        int? onlineMax = null) =>
+        new(1, campaignCoop, dropIn, lanCoop, offlineCoop, onlineCoop, splitScreen,
+            splitScreenOnline, offlineCoopMax, offlineMax, onlineCoopMax, onlineMax);
+
+    [Fact]
+    public void WithNoRows_ReturnsNull()
+    {
+        Assert.Null(IgdbService.FoldMultiplayerModes(null));
+        Assert.Null(IgdbService.FoldMultiplayerModes([]));
+    }
+
+    [Fact]
+    public void AcrossPlatforms_ACapabilityCountsIfAnyPlatformOffersIt()
+    {
+        var result = IgdbService.FoldMultiplayerModes([
+            Mode(onlineCoop: true),
+            Mode(splitScreen: true)
+        ]);
+
+        Assert.NotNull(result);
+        Assert.True(result.OnlineCoop);
+        Assert.True(result.SplitScreen);
+        Assert.False(result.LanCoop);
+    }
+
+    [Fact]
+    public void AcrossPlatforms_TakesTheMostGenerousCeiling()
+    {
+        var result = IgdbService.FoldMultiplayerModes([
+            Mode(onlineMax: 4),
+            Mode(onlineMax: 16)
+        ]);
+
+        Assert.Equal(16, result!.OnlineMax);
+    }
+
+    [Fact]
+    public void OnlineSplitScreenAlsoCountsAsSplitScreen()
+        => Assert.True(IgdbService.FoldMultiplayerModes([Mode(splitScreenOnline: true)])!.SplitScreen);
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(null)]
+    public void ACeilingOfOneOrLessIsTreatedAsUnknown(int? max)
+    {
+        // IGDB uses 0 and 1 for "not applicable" as often as for a real limit, and reporting
+        // "up to 1 player" as a multiplayer ceiling is worse than saying nothing.
+        var result = IgdbService.FoldMultiplayerModes([Mode(onlineMax: max)]);
+
+        Assert.Null(result!.OnlineMax);
+    }
+}
+
+public class MapLanguagesTests
+{
+    private static IgdbLanguageSupport Row(int id, string language, string supportType) =>
+        new(id, new IgdbNamedEntity(id, language), new IgdbNamedEntity(id, supportType));
+
+    [Fact]
+    public void GroupsTheOneRowPerCombinationTableByLanguage()
+    {
+        var result = IgdbService.MapLanguages([
+            Row(1, "French", "Interface"),
+            Row(2, "French", "Subtitles"),
+            Row(3, "Korean", "Interface")
+        ]);
+
+        Assert.Equal(2, result.Count);
+        Assert.Equal("French", result[0].Language);
+        Assert.Equal(["Interface", "Subtitles"], result[0].SupportTypes);
+        Assert.Equal("Korean", result[1].Language);
+    }
+
+    [Fact]
+    public void DropsRowsWithNoLanguageName()
+    {
+        var result = IgdbService.MapLanguages([
+            new(1, null, new IgdbNamedEntity(1, "Audio")),
+            Row(2, "German", "Audio")
+        ]);
+
+        Assert.Single(result);
+        Assert.Equal("German", result[0].Language);
+    }
+
+    [Fact]
+    public void WithNoRows_ReturnsEmpty()
+    {
+        Assert.Empty(IgdbService.MapLanguages(null));
+        Assert.Empty(IgdbService.MapLanguages([]));
+    }
+}
+
+public class MapToDetailsDtoTests
+{
+    private static IgdbGame Game(
+        List<IgdbScreenshot>? screenshots = null,
+        List<IgdbRelatedGame>? similar = null,
+        IgdbRelatedGame? parent = null,
+        List<IgdbNamedEntity>? themes = null) =>
+        new(119133, "Elden Ring", null, null, null, null, screenshots, null, null,
+            null, null, null, null, null, null, null, null, null,
+            themes, null, null, null, null, null, null, null, similar, null, null, parent);
+
+    [Fact]
+    public void BuildsScreenshotUrlsFromImageIds()
+    {
+        var result = IgdbService.MapToDetailsDto(Game(screenshots: [new(1, "scagdo")]), null);
+
+        Assert.Equal(
+            ["https://images.igdb.com/igdb/image/upload/t_screenshot_big/scagdo.jpg"],
+            result.Screenshots);
+    }
+
+    [Fact]
+    public void CarriesRelatedGamesWithTheirCovers()
+    {
+        var result = IgdbService.MapToDetailsDto(
+            Game(similar: [new(2155, "Dark Souls", new IgdbCover(1, "co1x78"))]), null);
+
+        var similar = Assert.Single(result.SimilarGames);
+        Assert.Equal(2155, similar.Id);
+        Assert.Equal("Dark Souls", similar.Name);
+        Assert.Equal("https://images.igdb.com/igdb/image/upload/t_cover_big/co1x78.jpg", similar.CoverImageUrl);
+    }
+
+    [Fact]
+    public void DropsRelatedGamesWithNoName()
+    {
+        // An unnamed related game renders as a blank card and links nowhere useful.
+        var result = IgdbService.MapToDetailsDto(Game(similar: [new(1, null, null)]), null);
+
+        Assert.Empty(result.SimilarGames);
+    }
+
+    [Fact]
+    public void WithNothingFromIgdb_ReturnsEmptyCollectionsRatherThanNulls()
+    {
+        var result = IgdbService.MapToDetailsDto(Game(), null);
+
+        Assert.Empty(result.Screenshots);
+        Assert.Empty(result.SimilarGames);
+        Assert.Empty(result.Dlcs);
+        Assert.Empty(result.Themes);
+        Assert.Empty(result.Languages);
+        Assert.Null(result.ParentGame);
+        Assert.Null(result.TimeToBeat);
+        Assert.Null(result.MultiplayerModes);
+    }
+
+    [Fact]
+    public void FlattensNamedEntitiesToTheirNames()
+    {
+        var result = IgdbService.MapToDetailsDto(
+            Game(themes: [new(1, "Fantasy"), new(2, null), new(3, "Open world")]), null);
+
+        Assert.Equal(["Fantasy", "Open world"], result.Themes);
+    }
+}
+
 public class ComposeUpcomingTests
 {
     private static readonly PlatformDto Pc = new(6, "PC", "PC", null, null);
@@ -69,7 +294,7 @@ public class ComposeUpcomingTests
 
     private static GameDto Game(int id, string title, params PlatformDto[] platforms) =>
         new(id, title, null, new DateOnly(2020, 1, 1), null, null, null, null, null, null, null,
-            platforms, [], [], []);
+            null, null, platforms, Genres: [], Developers: [], Publishers: [], Details: null);
 
     private static long Unix(int year, int month, int day) =>
         new DateTimeOffset(new DateTime(year, month, day, 0, 0, 0, DateTimeKind.Utc)).ToUnixTimeSeconds();

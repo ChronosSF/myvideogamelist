@@ -59,10 +59,10 @@ polished game-tracking product that runs on AWS and ships safely on every commit
 
 ### Tier 2 — Discovery and daily-use polish
 
-- **Real browse filters** — genre, platform, release year, score range, ESRB, and sort by rating / release date / name / popularity. Today the only options are a text search and an implicit rating sort in `BuildQuery`.
+- **Real browse filters** — genre, platform, release year, score range, ESRB, and sort by rating / release date / name / popularity. Today the only options are a text search and a critic-score sort in `BuildQuery`, which now requires a minimum review count (ADR [0016](docs/decisions/0016-scores-carry-their-sample-size.md)) and so no longer reaches thinly reviewed games at all. IGDB's own popularity types 2 ("Want to Play") and 3 ("Playing") are platform-agnostic, unlike the Steam-sourced type 5 behind the trending rail, and are the better basis for a popularity sort.
 - **List views** — grid *and* compact table view, sort within a list, multi-select bulk actions (move, remove, tag), and drag-to-reorder for a manual backlog priority.
 - **Search everywhere** — a global search in the navbar with typeahead, not just on `/games`.
-- **Game page depth** — screenshot gallery, embedded trailer, similar games, "where to play" store links, franchise/series grouping, DLC listing. The IGDB DTO already carries artwork and video IDs the UI never surfaces.
+- **Game page depth** — *mostly done*: screenshot gallery, embedded trailer, similar games, franchise/series grouping, DLC and expansions, completion times, how-to-play modes and language support all ship (ADR [0017](docs/decisions/0017-detail-data-off-the-listing.md)). Still open: "where to play" store links.
 - **Community signal** — site-wide average score, score histogram, review text with spoiler tags, helpful-votes on reviews.
 - **Release notifications** — email or in-app alerts when a wishlist game gets a date or launches. The upcoming timeline already computes this data.
 - **Recommendations** — "because you finished X" using IGDB genre/theme similarity; a "what should I play next" backlog picker.
@@ -249,6 +249,10 @@ change, grandfather existing subscribers rather than repricing them.
 ## 5. Platform features — what production readiness needs
 
 ### Data & state
+
+> The schema this roadmap implies, cross-cut by table rather than by feature, with a sequencing
+> order and the two ways a data model quietly goes wrong: [`docs/data-model-plan.md`](docs/data-model-plan.md).
+
 
 - ~~**Move off SQLite to PostgreSQL.**~~ **Done locally; hosting still pending.** The app now runs on PostgreSQL, with `compose.yaml` providing the database for development, migrations regenerated and verified from an empty database, and migrations gated to Development so deployed instances cannot race. A file database on an ephemeral container filesystem loses every user on redeploy and cannot be shared between instances. **Remaining — provision: RDS for PostgreSQL, `db.t4g.micro`, Single-AZ, inside the VPC** — Aurora Serverless v2 costs roughly 4× as much at this load and its scale-to-zero does not apply to an always-on task holding a connection pool (ADR [0014](docs/decisions/0014-rds-postgresql-over-aurora.md)). The provider swap is contained to `Program.cs` plus a regenerated migration set. Local development moves to PostgreSQL in Docker at the same time, so local and production stop diverging.
 - **Stop migrating on startup.** `db.Database.Migrate()` in `Program.cs` races when more than one task boots at once. Run migrations as a discrete pipeline step (a one-off ECS task, or a `dotnet ef bundle` executable) before the new revision takes traffic.

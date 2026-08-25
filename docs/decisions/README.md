@@ -33,6 +33,8 @@ decision, write a new record and mark the old one superseded.
 | [0013](0013-http-caching-policy.md) | Every route declares its own `Cache-Control` | Implemented |
 | [0014](0014-rds-postgresql-over-aurora.md) | Managed PostgreSQL on RDS, not Aurora Serverless v2 | Accepted |
 | [0015](0015-fargate-confirmed-and-nat-less-networking.md) | ECS Fargate confirmed, with NAT-less networking | Accepted |
+| [0016](0016-scores-carry-their-sample-size.md) | A score is never shown without its sample size | Implemented |
+| [0017](0017-detail-data-off-the-listing.md) | Detail-only game data stays out of the listing payload | Implemented |
 
 **Status** — *Accepted*: decided, not yet built. *Implemented*: decided and in the code.
 *Superseded*: replaced by a later record.

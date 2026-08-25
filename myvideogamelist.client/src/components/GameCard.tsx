@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router';
 import type { GameDto } from '@/types/game';
+import { criticScoreColors, criticScoreTitle, hasCriticScore } from '@/lib/score';
 import { type ListId, LIST_IDS, LIST_NAMES } from '@/types/list';
 import { useLists } from '@/hooks/useLists';
 import { useAuth } from '@/hooks/useAuth';
@@ -76,19 +77,14 @@ export function GameCard({ game }: GameCardProps) {
                     </div>
                 )}
 
-                {/* Metacritic badge */}
-                {game.metacriticScore !== null && (
+                {/* Critic score. Suppressed below MIN_CRITIC_REVIEWS: IGDB averages with no floor,
+                    so a lone perfect review would otherwise sit here as a green 100. */}
+                {hasCriticScore(game) && (
                     <div
-                        className={`absolute top-2 right-2 w-9 h-9 rounded-lg flex items-center justify-center text-xs font-bold shadow-lg ${
-                            game.metacriticScore >= 75
-                                ? 'bg-green-500 text-white'
-                                : game.metacriticScore >= 50
-                                ? 'bg-yellow-500 text-slate-900'
-                                : 'bg-red-500 text-white'
-                        }`}
-                        title={`Metacritic: ${game.metacriticScore}`}
+                        className={`absolute top-2 right-2 w-9 h-9 rounded-lg flex items-center justify-center text-xs font-bold shadow-lg ${criticScoreColors(game.criticScore!)}`}
+                        title={criticScoreTitle(game.criticScore!, game.criticScoreCount!)}
                     >
-                        {game.metacriticScore}
+                        {game.criticScore}
                     </div>
                 )}
 

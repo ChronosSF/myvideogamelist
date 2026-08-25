@@ -107,7 +107,8 @@ public class MapToDtoTests
 {
     private static readonly GameDto Game = new(
         1020, "Grand Theft Auto V", null, null, "https://img/cover.jpg", null, null, null,
-        null, null, null, [], [], [], []);
+        null, null, null, null, null,
+        Platforms: [], Genres: [], Developers: [], Publishers: [], Details: null);
 
     private static SteamNewsItem Item(
         string? gid = "g1",
