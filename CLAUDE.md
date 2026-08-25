@@ -92,6 +92,12 @@ ROADMAP.md                      Forward-looking plan
   PostgreSQL move stays as cheap as it is today. See `docs/decisions/0012-*`. Keep derived,
   regenerable, TTL'd data in `IMemoryCache`; do not add a table for it.
 
+- **Never change a game's status without recording an event.** `UserGameEvents` is append-only
+  and is the only record that a transition happened — `UserGameLists` holds current state and is
+  overwritten on every move. A direct `UPDATE` to `StatusId` leaves a permanent hole in a history
+  no migration can reconstruct. Go through `ListService`, and note that a move to the status a
+  game already holds must record nothing. See `docs/decisions/0018-*`.
+
 - **A score without its review count is not shippable.** IGDB's `aggregated_rating` is an
   unweighted mean with no minimum, so a game with one perfect review scores 100. Every score in
   `GameDto` travels with its count, the browse query requires
