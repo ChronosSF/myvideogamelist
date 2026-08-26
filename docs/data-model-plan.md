@@ -12,7 +12,7 @@ has to be persisted**, because the two views miss different things. Read it alon
 | Table | Shape | Serves |
 |---|---|---|
 | `AspNet*` | ASP.NET Identity, unmodified | Auth |
-| `ApplicationUser` | Identity plus a single `Theme` column | Theme persistence |
+| `ApplicationUser` | Identity plus `Theme` and `ListView` columns | Presentation preferences |
 | `UserGameEntries` | PK `(UserId, GameId)`, nullable `StatusId` FK, `Score`, `AddedAt`, `StatusChangedAt` | The user's record of a game |
 | `ListStatuses` | Seeded lookup, five rows, semantic flags | The taxonomy |
 | `UserGameEvents` | Append-only status transitions | Activity, streaks, trends |
@@ -97,6 +97,7 @@ flagged as a decision is now moot. `ROADMAP.md` should be amended to match these
 | `PlaythroughTypes` | Lookup: Rushed, Normally, Completionist — **the same three tiers IGDB reports**, so MVGL averages bucket into the same shape and the two sources sit side by side on the game page | Tier 1 completion states |
 | `ListStatuses` | **Ship with the event log.** System-owned lookup, seeded with all five at P0 and never deleted from. Carries semantic flags, not just names — see [the five statuses](#the-five-statuses). Replaces the hardcoded `ValidListTypes` set in `ListService` | Tier 1 taxonomy |
 | `UserListSettings` | `(UserId, StatusId, DisplayName)`. Lazily created: no row means "use `DefaultName`". This is what makes the defaults renameable without any statistic having to care, because everything else keys on `StatusId` | Tier 1 taxonomy |
+| `UserListSortPreferences` | **Shipped.** `(UserId, StatusId, SortKey, Descending)`, one row per list the user has actually re-sorted. The same lazily-created shape `UserListSettings` will use, and the reason a sixth status needs no migration (ADR [0020](decisions/0020-list-view-preferences-in-the-database.md)) | Tier 2 list views |
 | `UserWishlist` | **Structural consequence.** A separate axis, not a status — the roadmap requires a game to sit in the wishlist *alongside* any list, which today's `(UserId, GameId)` primary key forbids outright | Tier 1, H4, ITAD P5/P7 |
 | `Reviews` | `(Id, UserGameEntryId, Body, HasSpoilers, Visibility, PlaythroughId?, CreatedAt, UpdatedAt)`. One per user per game, hung off the entry rather than the playthrough, with an optional pointer to the playthrough it is about. The **score is not here** — it lives on the entry, because a score with no prose is the common case and must not require a review row | Tier 1 per-entry, Tier 2 community signal |
 | `UserFavourites` | `(UserId, GameId)`. A separate table because a favourite is explicitly independent of list membership, so it must be expressible with no entry at all | Tier 1 favourites |

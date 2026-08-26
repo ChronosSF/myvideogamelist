@@ -1,9 +1,13 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Link } from 'react-router';
 import { GameCard } from '@/components/GameCard';
+import { ListTable } from '@/components/ListTable';
+import { ListToolbar } from '@/components/ListToolbar';
 import { useLists } from '@/hooks/useLists';
 import { useAuth } from '@/hooks/useAuth';
 import { type ListId, LIST_IDS, LIST_NAMES } from '@/types/list';
+import type { PlatformDto } from '@/types/game';
+import { sortEntries } from '@/lib/listSort';
 import './ListsPage.css';
 import { PRIVATE_NO_STORE } from '@/lib/cache';
 
@@ -18,16 +22,48 @@ export function headers() {
 export function meta() {
     return [
         { title: 'My lists - MyVideoGameList' },
-        { name: 'description', content: 'Your games across Playing, Backlog and Finished.' },
+        {
+            name: 'description',
+            content: 'Your games across Backlog, Playing, On Hold, Finished and Dropped.',
+        },
     ];
 }
 
 export function ListsPage() {
     const { user } = useAuth();
-    const { lists, loading, error, mutationError } = useLists();
+    const {
+        lists, loading, error, mutationError, isPending,
+        view, setView, sortFor, setSort, setScore, removeFromList,
+    } = useLists();
     const [activeTab, setActiveTab] = useState<ListId>('playing');
 
-    const games = lists[activeTab];
+    // Transient and deliberately not persisted, unlike the sort and the layout. An empty
+    // selection means "everything", so the filter starts inert.
+    const [platformIds, setPlatformIds] = useState<number[]>([]);
+
+    const entries = lists[activeTab];
+    const sort = sortFor(activeTab);
+
+    // Options come from the platforms actually present across the user's lists, so the filter
+    // never offers a choice that would match nothing.
+    const platforms = useMemo<PlatformDto[]>(() => {
+        const seen = new Map<number, PlatformDto>();
+        for (const id of LIST_IDS) {
+            for (const entry of lists[id]) {
+                for (const platform of entry.game.platforms) {
+                    if (!seen.has(platform.id)) seen.set(platform.id, platform);
+                }
+            }
+        }
+        return [...seen.values()].sort((a, b) => a.name.localeCompare(b.name));
+    }, [lists]);
+
+    const visible = useMemo(() => {
+        const filtered = platformIds.length === 0
+            ? entries
+            : entries.filter(entry => entry.game.platforms.some(p => platformIds.includes(p.id)));
+        return sortEntries(filtered, sort);
+    }, [entries, platformIds, sort]);
 
     return (
         <div className="min-h-screen">
@@ -112,7 +148,34 @@ export function ListsPage() {
                     </div>
                 )}
 
-                {user && !loading && !error && games.length === 0 && (
+                {user && !loading && !error && entries.length > 0 && (
+                    <ListToolbar
+                        view={view}
+                        onViewChange={setView}
+                        sort={sort}
+                        onSortChange={next => setSort(activeTab, next)}
+                        platforms={platforms}
+                        selectedPlatformIds={platformIds}
+                        onPlatformsChange={setPlatformIds}
+                    />
+                )}
+
+                {user && !loading && !error && entries.length > 0 && visible.length === 0 && (
+                    <div className="text-center py-16">
+                        <p className="text-slate-400 light:text-slate-600 text-sm mb-3">
+                            No games in {LIST_NAMES[activeTab]} match the platform filter.
+                        </p>
+                        <button
+                            type="button"
+                            className="text-blue-400 light:text-blue-700 text-sm font-semibold hover:underline"
+                            onClick={() => setPlatformIds([])}
+                        >
+                            Clear the filter
+                        </button>
+                    </div>
+                )}
+
+                {user && !loading && !error && entries.length === 0 && (
                     <div className="flex items-center justify-center py-24">
                         <div className="text-center">
                             <svg
@@ -140,12 +203,24 @@ export function ListsPage() {
                     </div>
                 )}
 
-                {user && !loading && !error && games.length > 0 && (
+                {user && !loading && !error && visible.length > 0 && view === 'tiles' && (
                     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
-                        {games.map(game => (
-                            <GameCard key={game.id} game={game} />
+                        {visible.map(entry => (
+                            <GameCard key={entry.game.id} game={entry.game} />
                         ))}
                     </div>
+                )}
+
+                {user && !loading && !error && visible.length > 0 && view === 'table' && (
+                    <ListTable
+                        entries={visible}
+                        sort={sort}
+                        listName={LIST_NAMES[activeTab]}
+                        isPending={isPending}
+                        onSortChange={next => setSort(activeTab, next)}
+                        onScoreChange={(gameId, score) => void setScore(gameId, score)}
+                        onRemove={gameId => void removeFromList(activeTab, gameId)}
+                    />
                 )}
             </div>
         </div>

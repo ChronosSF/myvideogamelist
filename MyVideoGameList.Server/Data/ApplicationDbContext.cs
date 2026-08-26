@@ -21,6 +21,7 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
     public DbSet<UserGameEntry> UserGameEntries { get; set; }
     public DbSet<UserGameEvent> UserGameEvents { get; set; }
     public DbSet<UserHiddenPlatform> UserHiddenPlatforms { get; set; }
+    public DbSet<UserListSortPreference> UserListSortPreferences { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -56,6 +57,20 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
         modelBuilder.Entity<UserGameEntry>().HasIndex(e => new { e.UserId, e.StatusChangedAt });
 
         ConfigureUserGameEvents(modelBuilder);
+
+        // UserListSortPreference: one row per (user, status); no row means the default sort
+        modelBuilder.Entity<UserListSortPreference>().HasKey(p => new { p.UserId, p.StatusId });
+        modelBuilder.Entity<UserListSortPreference>().Property(p => p.SortKey).HasMaxLength(32);
+        modelBuilder.Entity<UserListSortPreference>()
+            .HasOne(p => p.User)
+            .WithMany()
+            .HasForeignKey(p => p.UserId)
+            .OnDelete(DeleteBehavior.Cascade);
+        modelBuilder.Entity<UserListSortPreference>()
+            .HasOne(p => p.Status)
+            .WithMany()
+            .HasForeignKey(p => p.StatusId)
+            .OnDelete(DeleteBehavior.Restrict);
 
         // UserHiddenPlatform: composite PK on (UserId, IgdbPlatformId); cascade delete when user is deleted
         modelBuilder.Entity<UserHiddenPlatform>().HasKey(hp => new { hp.UserId, hp.IgdbPlatformId });

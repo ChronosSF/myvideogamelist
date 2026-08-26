@@ -37,6 +37,7 @@ decision, write a new record and mark the old one superseded.
 | [0017](0017-detail-data-off-the-listing.md) | Detail-only game data stays out of the listing payload | Implemented |
 | [0018](0018-append-only-status-event-log.md) | Status changes are recorded in an append-only event log | Amended by 0019 |
 | [0019](0019-entry-survives-leaving-every-list.md) | A user's entry survives the game leaving every list | Implemented |
+| [0020](0020-list-view-preferences-in-the-database.md) | List view preferences live in the database; sorting is client-side | Implemented |
 
 **Status** — *Accepted*: decided, not yet built. *Implemented*: decided and in the code.
 *Superseded*: replaced by a later record.

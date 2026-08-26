@@ -23,6 +23,11 @@ export interface ListEntryDto {
     statusChangedAt: string | null;
 }
 
+/** Layout of the list views. Global, unlike the sort order which is per status list. */
+export type ViewMode = 'tiles' | 'table';
+
+export const VIEW_MODES: ViewMode[] = ['tiles', 'table'];
+
 export interface GameList {
     id: ListId;
     name: string;
@@ -44,8 +49,8 @@ export const LIST_NAMES: Record<ListId, string> = {
  * An empty list per status, so callers never have to guard a missing key. Built from
  * `LIST_IDS` rather than written out, so adding a status cannot leave a hole here.
  */
-export function emptyLists(): Record<ListId, GameDto[]> {
-    const lists = {} as Record<ListId, GameDto[]>;
+export function emptyLists<T = ListEntryDto>(): Record<ListId, T[]> {
+    const lists = {} as Record<ListId, T[]>;
     for (const id of LIST_IDS) lists[id] = [];
     return lists;
 }

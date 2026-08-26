@@ -3,10 +3,9 @@ import type { Route } from './+types/GamePage';
 import { apiUrl } from '@/lib/api';
 import { CACHE_GAME, CACHE_NOT_FOUND, PRIVATE_NO_STORE } from '@/lib/cache';
 import type { GameDto } from '@/types/game';
-import { type ListId, LIST_IDS, LIST_NAMES } from '@/types/list';
-import { useLists } from '@/hooks/useLists';
 import { useAuth } from '@/hooks/useAuth';
 import { GameNewsPanel } from '@/components/GameNewsPanel';
+import { GameUserPanel } from '@/components/GameUserPanel';
 import { CompletionTimes } from '@/components/CompletionTimes';
 import { GameRefRail } from '@/components/GameRefRail';
 import { MultiplayerSummary } from '@/components/MultiplayerSummary';
@@ -128,16 +127,6 @@ export function GamePage() {
     const { game } = useLoaderData<typeof loader>();
 
     const { user } = useAuth();
-    const { addToList, removeFromList, isInList, isPending } = useLists();
-
-    const handleListToggle = async (listId: ListId) => {
-        if (isPending(game.id)) return;
-        if (isInList(listId, game.id)) {
-            await removeFromList(listId, game.id);
-        } else {
-            await addToList(listId, game);
-        }
-    };
 
     // Null on the listing endpoints by design; this page is the one that asks IGDB for it.
     const details = game.details;
@@ -417,38 +406,9 @@ export function GamePage() {
 
                     {/* Sidebar */}
                     <aside className="lg:w-64 xl:w-72 space-y-6">
-                        {/* Add to list */}
+                        {/* Lists, score and the one control that erases both. */}
                         {user ? (
-                            <div className="bg-slate-800/60 light:bg-white border border-slate-700/50 light:border-slate-200 rounded-xl p-5">
-                                <h2 className="text-sm font-semibold text-white light:text-slate-900 mb-3">Add to List</h2>
-                                <div className="game-page-add-btn-group">
-                                    {LIST_IDS.map(listId => {
-                                        const active = isInList(listId, game.id);
-                                        const pending = isPending(game.id);
-                                        return (
-                                            <button
-                                                key={listId}
-                                                className={`game-page-add-btn${active ? ' active' : ''}`}
-                                                onClick={() => handleListToggle(listId)}
-                                                disabled={pending}
-                                                aria-pressed={active}
-                                                title={active ? `Remove from ${LIST_NAMES[listId]}` : `Add to ${LIST_NAMES[listId]}`}
-                                            >
-                                                <span>{LIST_NAMES[listId]}</span>
-                                                {active ? (
-                                                    <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
-                                                    </svg>
-                                                ) : (
-                                                    <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v14m-7-7h14" />
-                                                    </svg>
-                                                )}
-                                            </button>
-                                        );
-                                    })}
-                                </div>
-                            </div>
+                            <GameUserPanel game={game} />
                         ) : (
                             <div className="bg-slate-800/60 light:bg-white border border-slate-700/50 light:border-slate-200 rounded-xl p-5 text-center">
                                 <p className="text-slate-400 light:text-slate-600 text-xs mb-3">Sign in to track this game.</p>
