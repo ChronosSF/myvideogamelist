@@ -13,12 +13,12 @@ has to be persisted**, because the two views miss different things. Read it alon
 |---|---|---|
 | `AspNet*` | ASP.NET Identity, unmodified | Auth |
 | `ApplicationUser` | Identity plus a single `Theme` column | Theme persistence |
-| `UserGameLists` | PK `(UserId, GameId)`, `StatusId` FK | The five status lists |
+| `UserGameEntries` | PK `(UserId, GameId)`, nullable `StatusId` FK, `Score`, `AddedAt`, `StatusChangedAt` | The user's record of a game |
 | `ListStatuses` | Seeded lookup, five rows, semantic flags | The taxonomy |
 | `UserGameEvents` | Append-only status transitions | Activity, streaks, trends |
 | `UserHiddenPlatforms` | PK `(UserId, IgdbPlatformId)` | Platform filter |
 
-Two migrations exist: `20260824085503_InitialCreate` and `20260825140638_AddListStatusesAndEventLog`. There is no production deployment and no
+Three migrations exist, the latest being `20260826084035_AddScoreAndEntryTimestamps`. There is no production deployment and no
 user data to preserve, which means **breaking shape changes are currently free**. Every
 structural decision below gets harder the day real accounts exist, so the ones marked
 *structural* are worth making now even if the feature that needs them is phases away.
@@ -29,11 +29,14 @@ Two failure modes, and only one of them is about forgetting a column.
 
 **Data that cannot be backfilled.** Most schema gaps are recoverable: add a column, ship a
 migration, users fill it in. History is not. If a status change is applied as an in-place
-`UPDATE`, the fact that it happened is never written anywhere, and no future migration can
-recover it. Today `ListService.SetListEntryAsync` does exactly that — `existing.ListType =
-listType` — so "finished 12 games in 2026" is unanswerable for every month before the event log
-ships. This is the only category where being late costs data rather than effort, and it is
-cheap, so it goes first.
+`UPDATE`, the fact that it happened is never written anywhere, and no future migration can recover
+it. `ListService` used to do exactly that, so "finished 12 games in 2026" was unanswerable for
+every month before `UserGameEvents` shipped — which is why it went first, and why the window on it
+had already partly closed. Being late in this category costs data rather than effort.
+
+The log then paid for itself immediately in an unplanned way: when `AddedAt` and `StatusChangedAt`
+were added to the entry table, both could be **backfilled from the events** rather than invented.
+Nothing else in this document has that property.
 
 **Cross-cutting constraints.** Tier 1 requires self-service account deletion with data export.
 That is not a feature of one table; it is an obligation on *every* user-owned table, forever,
@@ -89,7 +92,7 @@ flagged as a decision is now moot. `ROADMAP.md` should be amended to match these
 | Table / change | Notes | Roadmap |
 |---|---|---|
 | `UserGameEvents` | **Ship first.** Append-only: `(Id, UserId, GameId, FromStatusId, ToStatusId, OccurredAt)`. Both status ids are nullable FKs — null *from* means the game was not tracked before, null *to* means it was removed. **No FK to the entry**, because removals are events and the log has to outlive the row it describes. **Status transitions only** — no custom-list column and no event-type discriminator, see decision 7. Indexes on `(UserId, OccurredAt)`, `(GameId, OccurredAt)`, `(ToStatusId, OccurredAt)` | Tier 1 activity history, H6, Tier 3 feed and wrapped |
-| `UserGameEntries` | **Structural**, replaces `UserGameLists`. Surrogate `Id` plus a unique index on `(UserId, GameId)`. Columns: `StatusId`, `Score` (1–10), `Ownership`, `Notes`, `CreatedAt`, `UpdatedAt`. Deliberately holds **no playtime, platform or dates** — see the next row | Tier 1 per-entry tracking |
+| `UserGameEntries` | **Partly shipped** — the rename, a nullable `StatusId`, `Score`, `AddedAt` and `StatusChangedAt` are in (ADR [0019](decisions/0019-entry-survives-leaving-every-list.md)). Still open: the surrogate `Id`, `Ownership`, `Notes`. Deliberately holds **no playtime or platform** — those belong to a playthrough | Tier 1 per-entry tracking |
 | `UserGamePlaythroughs` | `(Id, UserGameEntryId, TypeId, PlatformId, MinutesPlayed, StartedOn, FinishedOn, Notes, CreatedAt)`. One row per time through the game, so a replay on a different platform is a second row rather than an overwrite. This is where playtime, platform and dates live | Tier 1 per-entry tracking, completion states, profile stats |
 | `PlaythroughTypes` | Lookup: Rushed, Normally, Completionist — **the same three tiers IGDB reports**, so MVGL averages bucket into the same shape and the two sources sit side by side on the game page | Tier 1 completion states |
 | `ListStatuses` | **Ship with the event log.** System-owned lookup, seeded with all five at P0 and never deleted from. Carries semantic flags, not just names — see [the five statuses](#the-five-statuses). Replaces the hardcoded `ValidListTypes` set in `ListService` | Tier 1 taxonomy |

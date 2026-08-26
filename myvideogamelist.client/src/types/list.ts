@@ -11,6 +11,18 @@ import type { GameDto } from '@/types/game';
  */
 export type ListId = 'backlog' | 'playing' | 'on_hold' | 'finished' | 'dropped';
 
+/**
+ * One game plus what this user has recorded about it. `statusChangedAt` is null for an entry that
+ * has never been in a list, and `score` is independent of list membership entirely — a game keeps
+ * its score after it leaves every list.
+ */
+export interface ListEntryDto {
+    game: GameDto;
+    score: number | null;
+    addedAt: string;
+    statusChangedAt: string | null;
+}
+
 export interface GameList {
     id: ListId;
     name: string;

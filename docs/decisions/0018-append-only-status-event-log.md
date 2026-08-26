@@ -35,11 +35,15 @@ Id · UserId · GameId · FromStatusId? · ToStatusId? · OccurredAt
 ```
 
 Both ends are nullable: a null `FromStatusId` means the game was not tracked before, and a null
-`ToStatusId` means it was removed from tracking entirely. Both are real events.
+`ToStatusId` means it left every list. Both are real events.
 
-**There is no foreign key to `UserGameLists`.** A removal is an event, so a cascade from the entry
-would delete exactly the history being kept. The row carries `UserId` and `GameId` directly and
-outlives the entry it describes.
+**There is no foreign key to the entry table.** The row carries `UserId` and `GameId` directly and
+outlives the entry it describes, so deleting an entry cannot take its history with it.
+
+> **Amended by [0019](0019-entry-survives-leaving-every-list.md).** This record originally had a
+> removal *delete* the entry row, and described a null `ToStatusId` as leaving tracking entirely.
+> Leaving every list now clears the status and keeps the row, because the score on it has nothing
+> to do with list membership. The event shape is unchanged.
 
 **The event and the state change share one `SaveChangesAsync`,** so they land in the same
 transaction or neither does. A recorded transition that did not happen is as bad as a missing one.

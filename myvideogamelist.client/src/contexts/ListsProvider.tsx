@@ -1,6 +1,6 @@
 import { useEffect, useReducer, useState, type ReactNode } from 'react';
 import type { GameDto } from '@/types/game';
-import { type ListId, LIST_IDS, emptyLists } from '@/types/list';
+import { type ListId, type ListEntryDto, LIST_IDS, emptyLists } from '@/types/list';
 import { useAuth } from '@/hooks/useAuth';
 import { ListsContext } from './ListsContext';
 
@@ -10,7 +10,7 @@ import { ListsContext } from './ListsContext';
  * custom lists would break the shape outright.
  */
 interface ApiListsResponse {
-    lists: Record<ListId, GameDto[]>;
+    lists: Record<ListId, ListEntryDto[]>;
 }
 
 interface ListsState {
@@ -33,6 +33,17 @@ type ListsAction =
 
 const initialState: ListsState = { lists: emptyLists(), loading: false, error: null, mutationError: null };
 
+/** Peels the games out of the entry payload, for consumers that only need the game. */
+function unwrapEntries(
+    lists: Record<ListId, ListEntryDto[]>,
+): Partial<Record<ListId, GameDto[]>> {
+    const unwrapped: Partial<Record<ListId, GameDto[]>> = {};
+    for (const [id, entries] of Object.entries(lists) as [ListId, ListEntryDto[]][]) {
+        unwrapped[id] = entries.map(entry => entry.game);
+    }
+    return unwrapped;
+}
+
 function reducer(state: ListsState, action: ListsAction): ListsState {
     switch (action.type) {
         case 'RESET':
@@ -45,8 +56,9 @@ function reducer(state: ListsState, action: ListsAction): ListsState {
                 error: null,
                 mutationError: null,
                 // Spread over a complete empty set, so a status the server has not sent yet
-                // still resolves to [] rather than undefined.
-                lists: { ...emptyLists(), ...action.data.lists },
+                // still resolves to [] rather than undefined. The per-entry fields the response
+                // now carries are dropped here until the sortable list views consume them.
+                lists: { ...emptyLists(), ...unwrapEntries(action.data.lists) },
             };
         case 'FETCH_ERROR':
             return { ...state, loading: false, error: action.error };

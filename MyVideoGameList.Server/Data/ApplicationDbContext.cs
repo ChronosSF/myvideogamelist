@@ -6,7 +6,7 @@ namespace MyVideoGameList.Server.Data;
 
 /// <summary>
 /// Stores user-owned data only. Game metadata is not modelled here: IGDB is the source of
-/// truth, and <see cref="UserGameList.GameId"/> holds an IGDB id rather than a local key.
+/// truth, and <see cref="UserGameEntry.GameId"/> holds an IGDB id rather than a local key.
 /// A local metadata cache is planned (see ROADMAP §5) but will be designed around IGDB ids
 /// rather than the local catalog schema this context used to carry.
 /// </summary>
@@ -18,7 +18,7 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
     : IdentityDbContext<ApplicationUser>(options)
 {
     public DbSet<ListStatus> ListStatuses { get; set; }
-    public DbSet<UserGameList> UserGameLists { get; set; }
+    public DbSet<UserGameEntry> UserGameEntries { get; set; }
     public DbSet<UserGameEvent> UserGameEvents { get; set; }
     public DbSet<UserHiddenPlatform> UserHiddenPlatforms { get; set; }
 
@@ -28,21 +28,32 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
 
         ConfigureListStatuses(modelBuilder);
 
-        // UserGameList: composite PK on (UserId, GameId); cascade delete when user is deleted
-        modelBuilder.Entity<UserGameList>().HasKey(ul => new { ul.UserId, ul.GameId });
-        modelBuilder.Entity<UserGameList>()
-            .HasOne(ul => ul.User)
+        // UserGameEntry: composite PK on (UserId, GameId); cascade delete when user is deleted
+        modelBuilder.Entity<UserGameEntry>().HasKey(e => new { e.UserId, e.GameId });
+        modelBuilder.Entity<UserGameEntry>()
+            .HasOne(e => e.User)
             .WithMany()
-            .HasForeignKey(ul => ul.UserId)
+            .HasForeignKey(e => e.UserId)
             .OnDelete(DeleteBehavior.Cascade);
 
         // Restrict, not cascade: statuses are seeded reference data and deleting one would take
         // every entry using it with it. Adding a status is fine; removing one should fail loudly.
-        modelBuilder.Entity<UserGameList>()
-            .HasOne(ul => ul.Status)
+        modelBuilder.Entity<UserGameEntry>()
+            .HasOne(e => e.Status)
             .WithMany()
-            .HasForeignKey(ul => ul.StatusId)
+            .HasForeignKey(e => e.StatusId)
             .OnDelete(DeleteBehavior.Restrict);
+
+        // A score out of 10, enforced by the database as well as by the API — the column outlives
+        // any one validation attribute.
+        modelBuilder.Entity<UserGameEntry>()
+            .ToTable(t => t.HasCheckConstraint(
+                "CK_UserGameEntries_Score_Range", "\"Score\" IS NULL OR (\"Score\" >= 1 AND \"Score\" <= 10)"));
+
+        // Sorting a list by "recently added" or "recently moved" is the default view, so both
+        // sort keys are indexed per user.
+        modelBuilder.Entity<UserGameEntry>().HasIndex(e => new { e.UserId, e.AddedAt });
+        modelBuilder.Entity<UserGameEntry>().HasIndex(e => new { e.UserId, e.StatusChangedAt });
 
         ConfigureUserGameEvents(modelBuilder);
 
@@ -105,7 +116,7 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
             .HasForeignKey(e => e.UserId)
             .OnDelete(DeleteBehavior.Cascade);
 
-        // No foreign key to UserGameList on purpose — a removal is an event, so the log has to
+        // No foreign key to UserGameEntry on purpose — a removal is an event, so the log has to
         // survive the deletion of the entry it describes.
         events.HasOne(e => e.FromStatus)
             .WithMany()
