@@ -52,6 +52,22 @@ Tailwind utilities inline, plus a scoped `ComponentName.css` per component where
 Global styles in `src/index.css`, app shell in `src/App.css` — both imported from
 `src/root.tsx`, since there is no `index.html` in framework mode.
 
+## Tests
+
+Vitest with jsdom and Testing Library, in `*.test.ts(x)` files beside the code they cover.
+`npm run test` runs once; `npm run test:watch` iterates. `vitest.config.ts` is deliberately
+separate from `vite.config.ts`, which exports the HTTPS dev certificate at module load.
+
+- **Query by role and accessible name**, not by class or test id. A test that finds a button by
+  its label breaks when the label stops making sense, which is the point.
+- **Build DTOs with the factories in `src/test/factories.ts`.** `GameDto` has eighteen fields;
+  spelling it out inline turns a test about sort order into a test about DTO shape.
+- **A hook mock must return a stable object.** `vi.mock('@/hooks/useAuth', () => ({ useAuth: () =>
+  ({ ... }) }))` hands back a fresh object per render, and any effect depending on it re-runs
+  forever — the symptom is a heap-exhaustion crash, not a failed assertion. Hoist the value.
+- **Wait for a component's own fetch before asserting**, or React reports a state update outside
+  `act(...)`. Those warnings mask real ones once there are a few.
+
 ## ESLint
 
 `react-refresh/only-export-components` is configured with `allowExportNames` for the route

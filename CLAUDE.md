@@ -37,6 +37,7 @@ Open `https://localhost:58546`.
 | `npm run dev` | Dev server: SSR plus the `/api` proxy to ASP.NET |
 | `npm run lint` | ESLint |
 | `npm run typecheck` | `react-router typegen && tsc -b` — use this, never bare `tsc` |
+| `npm run test` | Vitest, jsdom + Testing Library. `npm run test:watch` to iterate |
 | `npm run build` | Production build |
 | `dotnet test MyVideoGameList.Server.Tests/MyVideoGameList.Server.Tests.csproj` | Server unit tests |
 | `dotnet ef migrations add <Name>` | From `MyVideoGameList.Server/` |

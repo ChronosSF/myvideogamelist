@@ -284,7 +284,7 @@ change, grandfather existing subscribers rather than repricing them.
 
 - **Unit tests** for `ListService`, the `IgdbService` DTO mapping, and the Apicalypse query builder
 - **Integration tests** with `WebApplicationFactory` + Testcontainers PostgreSQL, covering auth and list flows
-- **Frontend tests** — Vitest + Testing Library for the `ListsProvider` optimistic-update and rollback logic
+- ~~**Frontend tests**~~ **Started.** Vitest with jsdom and Testing Library, 107 tests over the list views: the sort comparators, the table, the toolbar and platform filter, the per-game user panel, and `ListsProvider`'s optimistic updates and rollback. Runs in CI before the build. **Still open:** coverage for the rest of the client — the browse page, the game page, auth flows.
 - **E2E smoke** — Playwright: sign up, add a game to a list, reload, still there
 - **CI must run** `npm run lint`, `dotnet test`, `dotnet format --verify-no-changes`, and build on pushes to `master` — not only on PRs
 - **Security scanning** — CodeQL, `dotnet list package --vulnerable`, `npm audit`, and a secret scanner (Dependabot is already active)

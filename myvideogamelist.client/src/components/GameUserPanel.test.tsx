@@ -1,0 +1,265 @@
+import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { GameUserPanel } from '@/components/GameUserPanel';
+import { ListsContext, type ListsContextValue } from '@/contexts/ListsContext';
+import { DEFAULT_SORT } from '@/lib/listSort';
+import type { ListId } from '@/types/list';
+import { entry, game } from '@/test/factories';
+
+const CELESTE = game({ id: 1, title: 'Celeste' });
+
+/** A context whose behaviour each test can steer, without the provider's fetches in the way. */
+function contextValue(overrides: Partial<ListsContextValue> = {}): ListsContextValue {
+    return {
+        lists: { backlog: [], playing: [], on_hold: [], finished: [], dropped: [] },
+        loading: false,
+        error: null,
+        mutationError: null,
+        isPending: () => false,
+        addToList: vi.fn(async () => {}),
+        removeFromList: vi.fn(async () => {}),
+        isInList: () => false,
+        getListFor: () => null,
+        scoreFor: () => null,
+        setScore: vi.fn(async () => true),
+        deleteEntry: vi.fn(async () => {}),
+        view: 'tiles',
+        setView: vi.fn(),
+        sortFor: () => DEFAULT_SORT,
+        setSort: vi.fn(),
+        ...overrides,
+    };
+}
+
+function renderPanel(overrides: Partial<ListsContextValue> = {}) {
+    const value = contextValue(overrides);
+    render(
+        <ListsContext.Provider value={value}>
+            <GameUserPanel game={CELESTE} />
+        </ListsContext.Provider>,
+    );
+    return value;
+}
+
+/** The entry the panel fetches for itself, since the provider only knows about listed games. */
+function stubEntryFetch(score: number | null, status = 200) {
+    // The parameter is declared, unused, so `fetchMock.mock.calls` is typed and the URL can be
+    // asserted rather than just the fact that something was fetched.
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL) =>
+        status === 200
+            ? new Response(JSON.stringify(entry({ game: { id: 1, title: 'Celeste' }, score })), { status })
+            : new Response('not found', { status }));
+    vi.stubGlobal('fetch', fetchMock);
+    return fetchMock;
+}
+
+/**
+ * Waits for the panel's own entry fetch to land.
+ *
+ * Without this, a synchronous assertion races the fetch and React reports a state update outside
+ * `act(...)` — a warning that would go on to mask real ones. The score control is disabled until
+ * the entry has loaded, either way, so it doubles as the "settled" signal.
+ */
+async function settled() {
+    await waitFor(() => expect(screen.getByLabelText('Your score for Celeste')).toBeEnabled());
+}
+
+beforeEach(() => {
+    vi.unstubAllGlobals();
+});
+
+describe('GameUserPanel list placement', () => {
+    it('offers all five statuses', async () => {
+        stubEntryFetch(null, 404);
+        renderPanel();
+        await settled();
+
+        for (const name of ['Backlog', 'Playing', 'On Hold', 'Finished', 'Dropped']) {
+            expect(screen.getByRole('button', { name }), name).toBeInTheDocument();
+        }
+    });
+
+    it('marks the status the game is in', async () => {
+        stubEntryFetch(null, 404);
+        renderPanel({ isInList: (listId: ListId) => listId === 'on_hold', getListFor: () => 'on_hold' });
+        await settled();
+
+        expect(screen.getByRole('button', { name: 'On Hold' })).toHaveAttribute('aria-pressed', 'true');
+        expect(screen.getByRole('button', { name: 'Playing' })).toHaveAttribute('aria-pressed', 'false');
+    });
+
+    it('says so when the game is in no list', async () => {
+        stubEntryFetch(null, 404);
+        renderPanel();
+        await settled();
+
+        expect(screen.getByText('Not in any of your lists.')).toBeInTheDocument();
+    });
+
+    it('moves the game when an inactive status is clicked', async () => {
+        stubEntryFetch(null, 404);
+        const ctx = renderPanel();
+        await settled();
+
+        await userEvent.click(screen.getByRole('button', { name: 'Finished' }));
+
+        expect(ctx.addToList).toHaveBeenCalledWith('finished', CELESTE);
+    });
+
+    it('takes the game out when the active status is clicked again', async () => {
+        stubEntryFetch(null, 404);
+        const ctx = renderPanel({ isInList: (listId: ListId) => listId === 'playing', getListFor: () => 'playing' });
+        await settled();
+
+        await userEvent.click(screen.getByRole('button', { name: 'Playing' }));
+
+        expect(ctx.removeFromList).toHaveBeenCalledWith('playing', 1);
+    });
+});
+
+describe('GameUserPanel scoring', () => {
+    it('loads the score for a game that is in no list', async () => {
+        // The whole reason the panel fetches its own entry: the provider only carries listed games.
+        stubEntryFetch(8);
+        renderPanel();
+
+        await waitFor(() =>
+            expect((screen.getByLabelText('Your score for Celeste') as HTMLSelectElement).value).toBe('8'));
+    });
+
+    it('asks the entry endpoint for it', async () => {
+        const fetchMock = stubEntryFetch(8);
+        renderPanel();
+
+        await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+        expect(String(fetchMock.mock.calls[0][0])).toBe('/api/entries/1');
+    });
+
+    it('stays usable when the game has never been touched', async () => {
+        stubEntryFetch(null, 404);
+        renderPanel();
+
+        await settled();
+    });
+
+    it('says that the score outlives list membership', async () => {
+        // The opposite of what most trackers do, so the panel states it rather than assuming.
+        stubEntryFetch(null, 404);
+        renderPanel();
+        await settled();
+
+        expect(screen.getByText(/kept whatever list this is in, or none/i)).toBeInTheDocument();
+    });
+
+    it('saves a chosen score', async () => {
+        stubEntryFetch(null, 404);
+        const ctx = renderPanel();
+
+        await settled();
+        await userEvent.selectOptions(screen.getByLabelText('Your score for Celeste'), '9');
+
+        expect(ctx.setScore).toHaveBeenCalledWith(1, 9);
+    });
+
+    it('reverts the shown score when the save fails', async () => {
+        stubEntryFetch(6);
+        renderPanel({ setScore: vi.fn(async () => false) });
+
+        const select = screen.getByLabelText('Your score for Celeste') as HTMLSelectElement;
+        await waitFor(() => expect(select.value).toBe('6'));
+
+        await userEvent.selectOptions(select, '2');
+
+        await waitFor(() => expect(select.value).toBe('6'));
+    });
+
+    it('keeps the shown score when the save succeeds', async () => {
+        stubEntryFetch(6);
+        renderPanel({ setScore: vi.fn(async () => true) });
+
+        const select = screen.getByLabelText('Your score for Celeste') as HTMLSelectElement;
+        await waitFor(() => expect(select.value).toBe('6'));
+
+        await userEvent.selectOptions(select, '2');
+
+        await waitFor(() => expect(select.value).toBe('2'));
+    });
+});
+
+describe('GameUserPanel deleting everything', () => {
+    it('offers no delete for a game with nothing recorded', async () => {
+        stubEntryFetch(null, 404);
+        renderPanel();
+
+        await settled();
+        expect(screen.queryByRole('button', { name: /delete my data/i })).not.toBeInTheDocument();
+    });
+
+    it('offers it for a game that is only scored, with no list', async () => {
+        stubEntryFetch(7);
+        renderPanel();
+
+        await waitFor(() =>
+            expect(screen.getByRole('button', { name: /delete my data/i })).toBeInTheDocument());
+    });
+
+    it('offers it for a game that is only listed, with no score', async () => {
+        stubEntryFetch(null, 404);
+        renderPanel({ getListFor: () => 'backlog', isInList: (id: ListId) => id === 'backlog' });
+        await settled();
+
+        expect(screen.getByRole('button', { name: /delete my data/i })).toBeInTheDocument();
+    });
+
+    it('asks before deleting', async () => {
+        stubEntryFetch(7);
+        const ctx = renderPanel();
+
+        await userEvent.click(await screen.findByRole('button', { name: /delete my data/i }));
+
+        expect(screen.getByRole('button', { name: 'Delete' })).toBeInTheDocument();
+        expect(ctx.deleteEntry).not.toHaveBeenCalled();
+    });
+
+    it('says that the status history is kept', async () => {
+        stubEntryFetch(7);
+        renderPanel();
+
+        await userEvent.click(await screen.findByRole('button', { name: /delete my data/i }));
+
+        expect(screen.getByText(/history of moving it between lists is kept/i)).toBeInTheDocument();
+    });
+
+    it('deletes once confirmed', async () => {
+        stubEntryFetch(7);
+        const ctx = renderPanel();
+
+        await userEvent.click(await screen.findByRole('button', { name: /delete my data/i }));
+        await userEvent.click(screen.getByRole('button', { name: 'Delete' }));
+
+        expect(ctx.deleteEntry).toHaveBeenCalledWith(1);
+    });
+
+    it('clears the shown score after deleting', async () => {
+        stubEntryFetch(7);
+        renderPanel();
+
+        await userEvent.click(await screen.findByRole('button', { name: /delete my data/i }));
+        await userEvent.click(screen.getByRole('button', { name: 'Delete' }));
+
+        await waitFor(() =>
+            expect((screen.getByLabelText('Your score for Celeste') as HTMLSelectElement).value).toBe(''));
+    });
+
+    it('backs out on cancel without deleting', async () => {
+        stubEntryFetch(7);
+        const ctx = renderPanel();
+
+        await userEvent.click(await screen.findByRole('button', { name: /delete my data/i }));
+        await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+
+        expect(ctx.deleteEntry).not.toHaveBeenCalled();
+        expect(screen.getByRole('button', { name: /delete my data/i })).toBeInTheDocument();
+    });
+});

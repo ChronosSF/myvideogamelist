@@ -35,6 +35,10 @@ jobs:
       - name: Type-check
         run: npm run typecheck
 
+      # Before the build, so a failing behavioural test stops the job at the cheaper step.
+      - name: Test
+        run: npm run test
+
       - name: Build
         run: npm run build
 
