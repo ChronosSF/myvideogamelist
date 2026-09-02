@@ -44,6 +44,7 @@ Open `https://localhost:58546`.
 | `dotnet ef database update` | Applies migrations by hand; only needed outside Development |
 | `docker compose up -d --wait` | Local PostgreSQL. `--wait` blocks until it accepts connections |
 | `docker compose down` | Stops it, keeping data. **`down -v` destroys the data volume** |
+| `node scripts/seed-demo-history.mjs --email <account>` | Months of demo tracking history, so the profile stats have something to show. Prints SQL — pipe it to psql. `--email` is mandatory and **replaces that account's lists**, so use a `@test.local` one |
 
 Health endpoints: `/healthz` (liveness, no dependency checks) and `/readyz` (database and
 IGDB reachability). A degraded IGDB returns 200, not 503 — browsing breaks but stored lists
@@ -62,6 +63,8 @@ myvideogamelist.client/
   src/lib/                      apiUrl(), useStoredNumberSet()
 docs/decisions/                 Architecture decision records
 docs/data-model-plan.md         Schema the roadmap implies, by table, with sequencing
+scripts/                        Dev-only tools. These print SQL to stdout and never open a
+                                database connection — piping to psql stays a deliberate act
 ROADMAP.md                      Forward-looking plan
 ```
 
@@ -98,6 +101,13 @@ ROADMAP.md                      Forward-looking plan
   construction; wanting a game is not exclusive with playing it, so a game sits on the wishlist
   *and* in a list. `AddedAt` is its entire history — do not reach for `UserGameEvents`, and do not
   add a foreign key to `UserGameEntries`, because a wishlisted game usually has no entry at all.
+
+- **A statistic about the user must not depend on IGDB being up.** `/api/user/stats` reads only
+  our own tables, derives everything at read time, and is deliberately uncached — every figure
+  changes the moment a game moves. The platform and genre breakdowns are the one part that needs
+  game metadata, so they are counted on the client from the lists already loaded; an outage costs
+  those two rows and nothing else. Note there are no hours anywhere in the schema, so no stat may
+  say "played". See `docs/decisions/0023-*`.
 
 - **Never change a game's status without recording an event.** `UserGameEvents` is append-only
   and is the only record that a transition happened — `UserGameLists` holds current state and is
