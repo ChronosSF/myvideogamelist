@@ -10,6 +10,7 @@ import {
 import type { Route } from './+types/root';
 import { AuthProvider } from '@/contexts/AuthProvider';
 import { ListsProvider } from '@/contexts/ListsProvider';
+import { WishlistProvider } from '@/contexts/WishlistProvider';
 import { Navbar } from '@/components/Navbar';
 import { PRIVATE_NO_STORE } from '@/lib/cache';
 import './index.css';
@@ -73,12 +74,14 @@ export default function Root() {
     return (
         <AuthProvider>
             <ListsProvider>
-                <div className="app-root">
-                    <Navbar />
-                    <main className="flex-1">
-                        <Outlet />
-                    </main>
-                </div>
+                <WishlistProvider>
+                    <div className="app-root">
+                        <Navbar />
+                        <main className="flex-1">
+                            <Outlet />
+                        </main>
+                    </div>
+                </WishlistProvider>
             </ListsProvider>
         </AuthProvider>
     );

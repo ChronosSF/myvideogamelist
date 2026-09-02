@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import type { GameDto } from '@/types/game';
 import { type ListId, type ListEntryDto, LIST_IDS, LIST_NAMES } from '@/types/list';
 import { useLists } from '@/hooks/useLists';
+import { useWishlist } from '@/hooks/useWishlist';
 import { ScoreInput } from '@/components/ScoreInput';
 import './GameUserPanel.css';
 
@@ -20,6 +21,7 @@ interface GameUserPanelProps {
  */
 export function GameUserPanel({ game }: GameUserPanelProps) {
     const { isInList, getListFor, addToList, removeFromList, setScore, deleteEntry, isPending } = useLists();
+    const wishlist = useWishlist();
 
     // The provider only knows about games that are in a list. A game that was scored and then
     // taken out of every list still has an entry, so the panel asks for it directly.
@@ -41,6 +43,7 @@ export function GameUserPanel({ game }: GameUserPanelProps) {
 
     const currentList = getListFor(game.id);
     const pending = isPending(game.id);
+    const wishlisted = wishlist.isWishlisted(game.id);
 
     useEffect(() => {
         const controller = new AbortController();
@@ -72,6 +75,11 @@ export function GameUserPanel({ game }: GameUserPanelProps) {
         setConfirmingDelete(false);
         await deleteEntry(game.id);
         setLocalScore(null);
+    };
+
+    const handleWishlistToggle = async () => {
+        if (wishlisted) await wishlist.remove(game.id);
+        else await wishlist.add(game);
     };
 
     const handleListClick = async (listId: ListId) => {
@@ -108,6 +116,32 @@ export function GameUserPanel({ game }: GameUserPanelProps) {
                 </div>
                 {currentList === null && (
                     <p className="game-user-panel-hint">Not in any of your lists.</p>
+                )}
+            </div>
+
+            {/* Its own section, not a sixth button above: the five statuses are exclusive and the
+                wishlist is not, so a game can sit here and in Backlog at the same time. */}
+            <div className="game-user-panel-section">
+                <p className="game-user-panel-label">Wishlist</p>
+                <button
+                    type="button"
+                    className={`game-user-panel-wishlist${wishlisted ? ' active' : ''}`}
+                    onClick={() => void handleWishlistToggle()}
+                    disabled={wishlist.isPending(game.id)}
+                    aria-pressed={wishlisted}
+                >
+                    <svg
+                        fill={wishlisted ? 'currentColor' : 'none'}
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                        aria-hidden="true"
+                    >
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+                    </svg>
+                    {wishlisted ? 'On your wishlist' : 'Add to wishlist'}
+                </button>
+                {wishlist.error && (
+                    <p className="game-user-panel-hint" role="alert">{wishlist.error}</p>
                 )}
             </div>
 

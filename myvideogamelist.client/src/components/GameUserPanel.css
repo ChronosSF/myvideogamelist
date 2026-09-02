@@ -168,3 +168,55 @@
 .game-user-panel-confirm button.danger:hover {
     background: #b91c1c;
 }
+
+/*
+ * Pink rather than the statuses' blue, and a heart rather than a word, so the wishlist reads as a
+ * different kind of thing from the five exclusive statuses above it.
+ */
+.game-user-panel-wishlist {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.35rem 0.7rem;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: #cbd5e1;
+    background: rgba(51, 65, 85, 0.6);
+    border: 1px solid rgba(71, 85, 105, 0.7);
+    border-radius: 0.45rem;
+    cursor: pointer;
+    transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+
+[data-theme='light'] .game-user-panel-wishlist {
+    color: #475569;
+    background: #ffffff;
+    border-color: #e2e8f0;
+}
+
+.game-user-panel-wishlist svg {
+    width: 0.95rem;
+    height: 0.95rem;
+}
+
+.game-user-panel-wishlist:hover:not(:disabled) {
+    color: #ffffff;
+    background: rgba(219, 39, 119, 0.75);
+    border-color: rgba(219, 39, 119, 0.9);
+}
+
+.game-user-panel-wishlist.active {
+    color: #ffffff;
+    background: rgba(190, 24, 93, 0.9);
+    border-color: rgba(190, 24, 93, 0.9);
+}
+
+.game-user-panel-wishlist:focus-visible {
+    outline: 2px solid #3b82f6;
+    outline-offset: 2px;
+}
+
+.game-user-panel-wishlist:disabled {
+    cursor: default;
+    opacity: 0.55;
+}
