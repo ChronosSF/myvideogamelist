@@ -78,11 +78,53 @@ wishlist, on the strength of a list that never arrived. Since that leaves the fe
 error state carries a retry; disabling with no way out would be worse than the wrong label.
 
 **8. A rollback belongs to the session that started it.** A mutation can still be in flight when
-one account logs out and another logs in. Every mutation records whose wishlist it began against
-and abandons its own rollback if that is no longer the session in play. Without it, a delayed
-failure writes the previous account's row into the new account's list — one user seeing another
-user's game, which is a leak rather than a glitch, and the reason this is a decision and not a
-detail.
+one account logs out and another logs in. Without a guard, the delayed failure writes the previous
+account's row into the new account's list — one user seeing another user's game, which is a leak
+rather than a glitch, and the reason this is a decision and not a detail.
+
+It takes two things, and neither is sufficient alone.
+
+**The account lives in reducer state**, is stamped on every action a mutation raises, and
+mismatched actions are dropped by the reducer. The first attempt used a ref written from the fetch
+effect, which is wrong in a way worth recording: a passive effect runs *after* the commit, so there
+is a window in which the new account is already on screen while the marker still names the old one,
+and a completion landing inside it passes the guard. Writing the ref during render closes that
+window but opens another — React can discard a render it never commits, moving the marker for an
+account that never arrived. State compared inside the reducer cannot drift from the data it guards,
+which is the property the ref never had.
+
+**And the state is cleared when the account changes**, on `FETCH_START` rather than when the fetch
+succeeds. This one is independent of any mutation: `FETCH_ERROR` keeps the items it already has, so
+a *failed* load for the new account left the previous account's data on screen underneath the error
+message. Clearing on the transition means a fetch that never succeeds cannot strand anything.
+
+**And the transition is applied during render**, not from the effect. Dispatching it from the
+effect still leaves the frame between commit and effect, in which the new account is on screen
+while both the lists and the session guarding them belong to the previous one. Nothing about
+rollbacks fixes that frame: no mutation need be in flight for it to render one user's games under
+another.
+
+Both of the first two were found by review after the first fix shipped, and the tests meant to
+cover the first could not have caught either: they signed the second account in through a helper
+that exits its own `act` and therefore flushes effects, so the marker was always current by the
+time the rollback ran.
+
+**The third has no test at all, and the reason is worth recording** so nobody assumes it is an
+oversight. Under jsdom, `act` flushes render, commit and passive effects together on the way out —
+a `rerender` inside an `act` block does not even commit until the block exits — so the frame this
+guards does not occur in the test environment. Removing the render-phase dispatch leaves the entire
+suite green. It stays because it is correct in a browser, and it is commented in the provider as
+reasoned rather than covered.
+
+The same caveat applies to session-stamping `FETCH_SUCCESS`, `FETCH_ERROR` and
+`PREFERENCES_LOADED`. Every case a test can reach is already stopped by the request's
+`AbortController`; the stamps only matter in that same unobservable frame, before the effect
+cleanup aborts anything. They are belt-and-braces, and the test that looks like it covers them
+says in its own comment that it does not — it survives having the stamp removed.
+
+`CLEAR_MUTATION_ERROR` is the exception: it is raised from a mutation continuation rather than from
+an abortable fetch, so a late success from the previous account really could wipe the new one's
+error banner. That one is stamped and tested.
 
 **9. Load errors and mutation errors are separate fields.** A wishlist that failed to load has
 nothing trustworthy to show and takes the whole page. A toggle that failed has already been rolled
@@ -141,11 +183,19 @@ overlay, because a message that vanishes when the pointer moves is not one.
 A shared notification would be the better answer and is the natural follow-up: the five list
 buttons on the same card have exactly this gap, and it predates the wishlist.
 
-**`ListsProvider` still rolls back wholesale**, and is untouched here. Its mutations are guarded by
-one pending set across all five statuses, so two of them cannot overlap for the same game — but
-they can for two different games, and `setScore` takes no pending lock at all. The same
-resurrection is therefore reachable there. It predates this work and fixing it belongs in its own
-change, not smuggled into this one.
+**`ListsProvider` has since had decision 8 applied to it** — all four of its mutations
+(`addToList`, `removeFromList`, `setScore`, `deleteEntry`) stamp the session on every action they
+raise, and it clears its lists *and* its per-user preferences when the account changes. Both
+providers now use the same two mechanisms, and the wishlist one was moved off the ref it originally
+shipped with.
+
+**It still rolls back wholesale, though.** Its mutations share one pending set across all five
+statuses, so two cannot overlap for the same game — but they can for two different games, and
+`setScore` takes no pending lock at all, so the resurrection described in decision 6 is still
+reachable there. Separately, `addToList`, `removeFromList` and `deleteEntry` wrap their fetch in
+`try`/`finally` with no `catch`, so an unreachable API rejects into an unhandled promise rather
+than the deliberate rollback — which is the trap `CLAUDE.md` warns about for loaders. Both predate
+this work and belong in their own change.
 
 **The wishlist page is tiles only.** No table view and no toolbar: a wishlist item has no score and
 no status, so four of the table's columns would be empty and its sort options meaningless. "When

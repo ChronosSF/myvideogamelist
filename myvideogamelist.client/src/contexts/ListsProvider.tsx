@@ -24,20 +24,36 @@ interface ListsState {
     error: string | null;
     /** Set on per-card mutation failures — shown as a dismissible banner. */
     mutationError: string | null;
+    /**
+     * Whose lists these are, as the user id, or null when nobody is signed in.
+     *
+     * It lives here rather than in a ref so that the check and the data it protects move together.
+     * A mutation can still be in flight when one account signs out and another signs in; its
+     * rollback closes over entries captured from the first account, and every action that would
+     * write them carries the session it was captured under. The reducer drops any that no longer
+     * matches, so the guard is one place instead of a check at each call site — and, unlike a ref
+     * written from an effect, it can never disagree with the state it is guarding.
+     *
+     * Only local state was ever at risk: a request already carries whichever cookie was current
+     * when it was sent, so nothing crosses accounts on the server.
+     */
+    session: string | null;
 }
 
 type ListsAction =
     | { type: 'RESET' }
-    | { type: 'FETCH_START' }
-    | { type: 'FETCH_SUCCESS'; lists: Record<ListId, ListEntryDto[]> }
-    | { type: 'FETCH_ERROR'; error: string }
-    | { type: 'PREFERENCES_LOADED'; view: ViewMode; sorts: Partial<Record<ListId, SortState>> }
-    | { type: 'SET_LIST'; listId: ListId; entries: ListEntryDto[] }
-    | { type: 'SET_ENTRIES'; lists: Record<ListId, ListEntryDto[]> }
+    | { type: 'FETCH_START'; session: string | null }
+    | { type: 'FETCH_SUCCESS'; session: string | null; lists: Record<ListId, ListEntryDto[]> }
+    | { type: 'FETCH_ERROR'; session: string | null; error: string }
+    | { type: 'PREFERENCES_LOADED'; session: string | null; view: ViewMode; sorts: Partial<Record<ListId, SortState>> }
+    | { type: 'SET_LIST'; session: string | null; listId: ListId; entries: ListEntryDto[] }
+    | { type: 'SET_ENTRIES'; session: string | null; lists: Record<ListId, ListEntryDto[]> }
     | { type: 'SET_VIEW'; view: ViewMode }
     | { type: 'SET_SORT'; listId: ListId; sort: SortState }
-    | { type: 'MUTATION_ERROR'; error: string }
-    | { type: 'CLEAR_MUTATION_ERROR' };
+    | { type: 'MUTATION_ERROR'; session: string | null; error: string }
+    // Stamped like the rest even though nothing dispatches it yet: a mutation is the only
+    // plausible caller, and an unstamped action in that vocabulary is a trap for whoever adds one.
+    | { type: 'CLEAR_MUTATION_ERROR'; session: string | null };
 
 const initialState: ListsState = {
     lists: emptyLists(),
@@ -46,16 +62,36 @@ const initialState: ListsState = {
     loading: false,
     error: null,
     mutationError: null,
+    session: null,
 };
+
+/** Drops an action that was raised against an account other than the one on screen. */
+function ifCurrent(
+    state: ListsState,
+    session: string | null,
+    next: () => ListsState,
+): ListsState {
+    return session === state.session ? next() : state;
+}
 
 function reducer(state: ListsState, action: ListsAction): ListsState {
     switch (action.type) {
         case 'RESET':
             return initialState;
         case 'FETCH_START':
-            return { ...state, loading: true, error: null };
+            // A different account means none of the current state belongs to it — not the lists,
+            // and not the per-user preferences either. Cleared here rather than waiting for the
+            // fetch to land, because a fetch that *fails* would otherwise leave the previous
+            // account's lists on screen under the new account's error message.
+            return action.session === state.session
+                ? { ...state, loading: true, error: null }
+                : { ...initialState, session: action.session, loading: true };
+        // The fetch results are session-stamped too, and not only because the request is aborted
+        // on an account change: the abort runs in the effect cleanup, which is one more thing
+        // that happens after the commit. A result resolving before that cleanup would otherwise
+        // land on the account that has already replaced it.
         case 'FETCH_SUCCESS':
-            return {
+            return ifCurrent(state, action.session, () => ({
                 ...state,
                 loading: false,
                 error: null,
@@ -63,23 +99,28 @@ function reducer(state: ListsState, action: ListsAction): ListsState {
                 // Spread over a complete empty set, so a status the server has not sent yet
                 // still resolves to [] rather than undefined.
                 lists: { ...emptyLists(), ...action.lists },
-            };
+            }));
         case 'FETCH_ERROR':
-            return { ...state, loading: false, error: action.error };
+            return ifCurrent(state, action.session, () =>
+                ({ ...state, loading: false, error: action.error }));
         case 'PREFERENCES_LOADED':
-            return { ...state, view: action.view, sorts: action.sorts };
+            return ifCurrent(state, action.session, () =>
+                ({ ...state, view: action.view, sorts: action.sorts }));
+        // The three that a mutation raises, and therefore the three that can arrive late. Each
+        // carries the session it was captured under; ifCurrent drops it when that has moved on.
         case 'SET_LIST':
-            return { ...state, lists: { ...state.lists, [action.listId]: action.entries } };
+            return ifCurrent(state, action.session, () => (
+                { ...state, lists: { ...state.lists, [action.listId]: action.entries } }));
         case 'SET_ENTRIES':
-            return { ...state, lists: action.lists };
+            return ifCurrent(state, action.session, () => ({ ...state, lists: action.lists }));
         case 'SET_VIEW':
             return { ...state, view: action.view };
         case 'SET_SORT':
             return { ...state, sorts: { ...state.sorts, [action.listId]: action.sort } };
         case 'MUTATION_ERROR':
-            return { ...state, mutationError: action.error };
+            return ifCurrent(state, action.session, () => ({ ...state, mutationError: action.error }));
         case 'CLEAR_MUTATION_ERROR':
-            return { ...state, mutationError: null };
+            return ifCurrent(state, action.session, () => ({ ...state, mutationError: null }));
         default:
             return state;
     }
@@ -100,6 +141,39 @@ export function ListsProvider({ children }: { children: ReactNode }) {
     // Track gameIds with in-flight mutations to prevent concurrent-update corruption
     const [pendingIds, setPendingIds] = useState<Set<number>>(new Set());
 
+    /**
+     * The account every mutation below stamps its actions with — see `ListsState.session` for what
+     * that protects against.
+     *
+     * Read from this render rather than from a ref at completion time. A ref has to be written
+     * somewhere and both options are wrong: from an effect it lags the commit, leaving a window
+     * where the new account is on screen while the marker still names the old one, and during
+     * render it can be moved by a render React then throws away.
+     */
+    const session = user?.id ?? null;
+
+    // The account transition is applied *during render*, not in the effect below.
+    //
+    // An effect runs after the commit, which leaves a frame where the new account is on screen
+    // while the state — the lists themselves and the session that guards them — still belongs to
+    // the previous one. That frame renders one user's games under another, and judges anything
+    // completing inside it against the account that has already been replaced.
+    //
+    // Adjusting state during render is React's documented answer to a changed prop, and it is
+    // what the rest of this codebase uses for the same reason. The condition makes it idempotent:
+    // React re-renders immediately, `state.session` then matches, and nothing loops. The effect
+    // still dispatches `FETCH_START` for the fetch itself, which is a no-op on the same session.
+    //
+    // **This is reasoned, not covered by a test, and that is not for want of trying.** Under
+    // jsdom every render, commit and passive effect inside an `act` block is flushed together on
+    // the way out, so the frame this exists to fix does not occur: a `rerender` inside `act` does
+    // not even commit until the block exits. Removing these three lines leaves the whole suite
+    // green. The tests below cover what happens *after* the transition, on either side of it;
+    // the timing of the transition itself needs a real browser to observe.
+    if (!authLoading && state.session !== session) {
+        dispatch(session === null ? { type: 'RESET' } : { type: 'FETCH_START', session });
+    }
+
     useEffect(() => {
         if (authLoading) return;
 
@@ -109,7 +183,8 @@ export function ListsProvider({ children }: { children: ReactNode }) {
         }
 
         const controller = new AbortController();
-        dispatch({ type: 'FETCH_START' });
+        const fetchSession = user.id;
+        dispatch({ type: 'FETCH_START', session: fetchSession });
 
         fetch('/api/lists', { credentials: 'include', signal: controller.signal })
             .then(res => {
@@ -117,12 +192,13 @@ export function ListsProvider({ children }: { children: ReactNode }) {
                 return res.json() as Promise<ApiListsResponse>;
             })
             .then(data => {
-                if (!controller.signal.aborted) dispatch({ type: 'FETCH_SUCCESS', lists: data.lists });
+                if (!controller.signal.aborted) dispatch({ type: 'FETCH_SUCCESS', session: fetchSession, lists: data.lists });
             })
             .catch(err => {
                 if (controller.signal.aborted) return;
                 dispatch({
                     type: 'FETCH_ERROR',
+                    session: fetchSession,
                     error: err instanceof Error ? err.message : 'Failed to load lists.',
                 });
             });
@@ -137,7 +213,7 @@ export function ListsProvider({ children }: { children: ReactNode }) {
                 for (const [id, sort] of Object.entries(data.sorts) as [ListId, { sortKey: SortState['key']; descending: boolean }][]) {
                     sorts[id] = { key: sort.sortKey, descending: sort.descending };
                 }
-                dispatch({ type: 'PREFERENCES_LOADED', view: data.view, sorts });
+                dispatch({ type: 'PREFERENCES_LOADED', session: fetchSession, view: data.view, sorts });
             })
             .catch(() => {
                 // Swallowed by design — the defaults are a perfectly good fallback and a failed
@@ -196,7 +272,7 @@ export function ListsProvider({ children }: { children: ReactNode }) {
             updated[id] = prevLists[id].filter(entry => entry.game.id !== game.id);
         }
         updated[listId] = [...updated[listId], moved];
-        dispatch({ type: 'SET_ENTRIES', lists: updated });
+        dispatch({ type: 'SET_ENTRIES', session, lists: updated });
 
         try {
             const res = await fetch(`/api/lists/${game.id}`, {
@@ -207,8 +283,8 @@ export function ListsProvider({ children }: { children: ReactNode }) {
             });
 
             if (!res.ok) {
-                dispatch({ type: 'SET_ENTRIES', lists: prevLists });
-                dispatch({ type: 'MUTATION_ERROR', error: 'Failed to update list. Please try again.' });
+                dispatch({ type: 'SET_ENTRIES', session, lists: prevLists });
+                dispatch({ type: 'MUTATION_ERROR', session, error: 'Failed to update list. Please try again.' });
             }
         } finally {
             setPendingIds(prev => { const s = new Set(prev); s.delete(game.id); return s; });
@@ -223,6 +299,7 @@ export function ListsProvider({ children }: { children: ReactNode }) {
 
         dispatch({
             type: 'SET_LIST',
+            session,
             listId,
             entries: prevEntries.filter(entry => entry.game.id !== gameId),
         });
@@ -234,8 +311,8 @@ export function ListsProvider({ children }: { children: ReactNode }) {
             });
 
             if (!res.ok) {
-                dispatch({ type: 'SET_LIST', listId, entries: prevEntries });
-                dispatch({ type: 'MUTATION_ERROR', error: 'Failed to remove from list. Please try again.' });
+                dispatch({ type: 'SET_LIST', session, listId, entries: prevEntries });
+                dispatch({ type: 'MUTATION_ERROR', session, error: 'Failed to remove from list. Please try again.' });
             }
         } finally {
             setPendingIds(prev => { const s = new Set(prev); s.delete(gameId); return s; });
@@ -252,7 +329,7 @@ export function ListsProvider({ children }: { children: ReactNode }) {
             updated[id] = prevLists[id].map(entry =>
                 entry.game.id === gameId ? { ...entry, score } : entry);
         }
-        dispatch({ type: 'SET_ENTRIES', lists: updated });
+        dispatch({ type: 'SET_ENTRIES', session, lists: updated });
 
         try {
             const res = await fetch(`/api/entries/${gameId}/score`, {
@@ -262,15 +339,18 @@ export function ListsProvider({ children }: { children: ReactNode }) {
                 body: JSON.stringify({ score }),
             });
 
+            // Nothing was saved for whoever is signed in now, so the caller is told so — but the
+            // rollback is skipped, because these entries belong to the previous account.
+
             if (!res.ok) {
-                dispatch({ type: 'SET_ENTRIES', lists: prevLists });
-                dispatch({ type: 'MUTATION_ERROR', error: 'Failed to save your score. Please try again.' });
+                dispatch({ type: 'SET_ENTRIES', session, lists: prevLists });
+                dispatch({ type: 'MUTATION_ERROR', session, error: 'Failed to save your score. Please try again.' });
                 return false;
             }
             return true;
         } catch {
-            dispatch({ type: 'SET_ENTRIES', lists: prevLists });
-            dispatch({ type: 'MUTATION_ERROR', error: 'Failed to save your score. Please try again.' });
+            dispatch({ type: 'SET_ENTRIES', session, lists: prevLists });
+            dispatch({ type: 'MUTATION_ERROR', session, error: 'Failed to save your score. Please try again.' });
             return false;
         }
     };
@@ -285,7 +365,7 @@ export function ListsProvider({ children }: { children: ReactNode }) {
         for (const id of LIST_IDS) {
             updated[id] = prevLists[id].filter(entry => entry.game.id !== gameId);
         }
-        dispatch({ type: 'SET_ENTRIES', lists: updated });
+        dispatch({ type: 'SET_ENTRIES', session, lists: updated });
 
         try {
             const res = await fetch(`/api/entries/${gameId}`, {
@@ -295,8 +375,8 @@ export function ListsProvider({ children }: { children: ReactNode }) {
 
             // 404 means there was nothing recorded, which is the state the caller wanted anyway.
             if (!res.ok && res.status !== 404) {
-                dispatch({ type: 'SET_ENTRIES', lists: prevLists });
-                dispatch({ type: 'MUTATION_ERROR', error: 'Failed to remove your data. Please try again.' });
+                dispatch({ type: 'SET_ENTRIES', session, lists: prevLists });
+                dispatch({ type: 'MUTATION_ERROR', session, error: 'Failed to remove your data. Please try again.' });
             }
         } finally {
             setPendingIds(prev => { const s = new Set(prev); s.delete(gameId); return s; });

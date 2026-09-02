@@ -52,6 +52,22 @@ that are easy to get wrong and were got wrong once (`docs/decisions/0022-*`):
   nothing trustworthy to show. A failed mutation has already been rolled back, so the data beside
   it is fine — sharing one field makes a failed toggle render as "failed to load" and hide a
   perfectly good list. Clear the mutation error on the next success.
+- **A rollback belongs to the session that started it.** A mutation can still be in flight when one
+  account signs out and another signs in, and the rollback closes over data captured from the
+  first — so an unguarded one writes one user's games into another user's lists. Only local state
+  is at risk; the request itself already carries whichever cookie was current when it was sent.
+
+  Two things together, and neither is sufficient alone:
+
+  1. **Hold the account in reducer state, not a ref**, stamp it on every action a mutation raises,
+     and drop mismatched ones in the reducer. A ref has to be written somewhere and both places
+     are wrong: from an effect it lags the commit, leaving a window where the new account is on
+     screen while the marker still names the old one; during render it can be moved by a render
+     React then throws away. State compared inside the reducer cannot drift from the data it
+     guards.
+  2. **Clear the state when the account changes**, on `FETCH_START`, not when the fetch succeeds.
+     Otherwise a fetch that *fails* leaves the previous account's data on screen under the new
+     account's error — which needs no mutation in flight at all to happen.
 
 ## State & effects
 

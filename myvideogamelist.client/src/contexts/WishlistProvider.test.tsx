@@ -46,8 +46,8 @@ function item(id: number, title: string, addedAt: string): WishlistItemDto {
 
 interface StubOptions {
     initial?: WishlistItemDto[];
-    /** Successive GET payloads, for tests that reload or switch accounts. */
-    loads?: WishlistItemDto[][];
+    /** Successive GET payloads, for tests that reload or switch accounts. 'fail' returns a 500. */
+    loads?: (WishlistItemDto[] | 'fail')[];
     /** Status for the initial GET, so a load failure can be asserted. */
     loadStatus?: number;
     /** Status for every mutation, so rollback can be asserted. */
@@ -64,7 +64,7 @@ function stubFetch(options: StubOptions = {}) {
     const loads = [...(options.loads ?? [])];
     let getCount = 0;
 
-    const nextLoad = (): WishlistItemDto[] => {
+    const nextLoad = (): WishlistItemDto[] | 'fail' => {
         if (loads.length === 0) return options.initial ?? [];
         return loads[Math.min(getCount++, loads.length - 1)];
     };
@@ -72,9 +72,11 @@ function stubFetch(options: StubOptions = {}) {
     const respond = (url: string, method: string, statusOverride?: number): Response => {
         if (method === 'GET') {
             const status = statusOverride ?? options.loadStatus ?? 200;
-            return status === 200
-                ? new Response(JSON.stringify(nextLoad()), { status })
-                : new Response('nope', { status });
+            if (status !== 200) return new Response('nope', { status });
+            const load = nextLoad();
+            return load === 'fail'
+                ? new Response('nope', { status: 500 })
+                : new Response(JSON.stringify(load), { status });
         }
         const status = statusOverride
             ?? (options.failing?.includes(url) ? 500 : options.mutationStatus ?? 204);
@@ -102,7 +104,16 @@ function stubFetch(options: StubOptions = {}) {
             await Promise.resolve();
         });
 
-    return { calls, release };
+    /**
+     * Settles a held request without an `act` of its own, for the one test that has to interleave
+     * the completion with a re-render inside a single `act` block.
+     */
+    const settle = (url: string, status: number) => {
+        const method = url === '/api/wishlist' ? 'GET' : 'PUT';
+        held.get(url)!(respond(url, method, status));
+    };
+
+    return { calls, release, settle };
 }
 
 /** Surfaces the context as text and buttons, so assertions read off the rendered output. */
@@ -450,6 +461,109 @@ describe('WishlistProvider across a session change', () => {
         await release('/api/wishlist/1', 500);
 
         expect(titles()).toBe('Hades');
+    });
+
+    it('rejects a stale completion that lands before the account effect has run', async () => {
+        /*
+         * The window the test above cannot reach: it flushes effects on the way out of its own
+         * `act`, so the session in state is always up to date by the time the rollback happens.
+         * Re-rendering and settling the request inside one `act` block reproduces the real
+         * ordering, because a nested `act` does not flush passive effects — the outermost one does.
+         *
+         * The second load is made to fail on purpose. A successful one would replace the leaked
+         * row a moment later and hide the bug behind a race.
+         */
+        const { settle } = stubFetch({
+            loads: [[item(1, 'Celeste', JANUARY)], 'fail'],
+            deferred: ['/api/wishlist/1'],
+        });
+        const view = renderProvider();
+        await settled();
+        expect(titles()).toBe('Celeste');
+
+        await click('remove celeste');
+        expect(titles()).toBe('');
+
+        auth.user = BOB;
+        await act(async () => {
+            // Commits with BOB. The provider effect has not run yet.
+            view.rerender(
+                <WishlistProvider>
+                    <Probe />
+                </WishlistProvider>,
+            );
+            settle('/api/wishlist/1', 500);
+            await Promise.resolve();
+        });
+        await settled();
+
+        expect(titles()).toBe('');
+    });
+
+    it('shows the next account nothing when its own load fails', async () => {
+        /*
+         * No mutation involved, which makes this its own bug rather than a variant: FETCH_ERROR
+         * keeps the items, so a failed load for the new account left the previous account's
+         * wishlist on screen underneath the error. State is cleared when the account changes
+         * instead of when the fetch succeeds, so a fetch that never succeeds strands nothing.
+         */
+        stubFetch({ loads: [[item(1, 'Celeste', JANUARY)], 'fail'] });
+        const view = renderProvider();
+        await settled();
+        expect(titles()).toBe('Celeste');
+
+        auth.user = BOB;
+        await act(async () => {
+            view.rerender(
+                <WishlistProvider>
+                    <Probe />
+                </WishlistProvider>,
+            );
+        });
+        await settled();
+
+        expect(titles()).toBe('');
+        expect(screen.getByTestId('error')).toHaveTextContent(/failed to load your wishlist/i);
+    });
+
+    it('does not let a late success from the previous account clear the next one banner', async () => {
+        /*
+         * CLEAR_MUTATION_ERROR is raised from a mutation continuation rather than from the fetch
+         * the effect aborts, so nothing else stops it arriving late. Unstamped, a success from the
+         * account that has just signed out wipes an error belonging to the one that signed in.
+         */
+        const { release } = stubFetch({
+            loads: [[item(1, 'Celeste', JANUARY)], []],
+            deferred: ['/api/wishlist/2'],
+            failing: ['/api/wishlist/1'],
+        });
+        const view = renderProvider();
+        await settled();
+
+        // Alice starts an add that stays in flight.
+        await click('add hades');
+        expect(titles()).toBe('Hades,Celeste');
+
+        auth.user = BOB;
+        await act(async () => {
+            view.rerender(
+                <WishlistProvider>
+                    <Probe />
+                </WishlistProvider>,
+            );
+        });
+        await settled();
+        expect(titles()).toBe('');
+
+        // Bob then fails an add of his own and is told so.
+        await click('add celeste');
+        await waitFor(() =>
+            expect(screen.getByTestId('mutation-error')).toHaveTextContent(/failed to update/i));
+
+        // Alice's add finally succeeds. Bob keeps his error.
+        await release('/api/wishlist/2', 204);
+
+        expect(screen.getByTestId('mutation-error')).toHaveTextContent(/failed to update/i);
     });
 
     it('clears the wishlist on sign-out', async () => {

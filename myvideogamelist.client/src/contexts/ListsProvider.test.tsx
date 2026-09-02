@@ -1,29 +1,32 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ListsProvider } from '@/contexts/ListsProvider';
 import { useLists } from '@/hooks/useLists';
 import type { ListId, ListEntryDto } from '@/types/list';
 import { entry, game } from '@/test/factories';
 
+const ALICE = { id: 'u1', email: 'alice@test.local', theme: 'dark' };
+const BOB = { id: 'u2', email: 'bob@test.local', theme: 'dark' };
+
 // The provider only reads `user` and `loading`, and going through the real AuthProvider would
 // mean mocking its fetches too.
 //
-// The returned object is a module-level constant, not a fresh literal per call. The provider's
+// One module-level object handed back every time, not a fresh literal per call. The provider's
 // fetch effect depends on `user`, so returning a new object each render would re-run the effect
 // on every render it caused — an unbounded loop that ends in an out-of-memory crash rather than
-// a failed assertion.
-vi.mock('@/hooks/useAuth', () => {
-    const value = {
-        user: { id: 'u1', email: 'alice@test.local', theme: 'dark' },
-        loading: false,
-        login: vi.fn(),
-        register: vi.fn(),
-        logout: vi.fn(),
-        updateTheme: vi.fn(),
-    };
-    return { useAuth: () => value };
-});
+// a failed assertion. `user` is reassigned on purpose by the session tests, which is exactly the
+// dependency change a sign-in produces.
+const auth = {
+    user: ALICE as typeof ALICE | null,
+    loading: false,
+    login: vi.fn(),
+    register: vi.fn(),
+    logout: vi.fn(),
+    updateTheme: vi.fn(),
+};
+
+vi.mock('@/hooks/useAuth', () => ({ useAuth: () => auth }));
 
 type ListsPayload = Partial<Record<ListId, ListEntryDto[]>>;
 
@@ -106,6 +109,7 @@ const CELESTE = entry({ game: { id: 1, title: 'Celeste' }, score: 7 });
 
 beforeEach(() => {
     vi.unstubAllGlobals();
+    auth.user = ALICE;
 });
 
 describe('loading', () => {
@@ -345,5 +349,339 @@ describe('preferences', () => {
             view: 'table',
             sorts: [{ status: 'finished', sortKey: 'score', descending: true }],
         });
+    });
+});
+
+describe('across a session change', () => {
+    const HADES = entry({ game: { id: 2, title: 'Hades' } });
+
+    /**
+     * A stub that can hold one request open across a sign-in.
+     *
+     * Keyed by method and URL together, because adding to a list and removing from one are a PUT
+     * and a DELETE to the same path.
+     */
+    function sessionStub(options: {
+        loads: (ListsPayload | 'fail')[];
+        deferred: string;
+        /** Fails the preference fetch too, so only a state reset can explain a default. */
+        preferences?: 'fail';
+        /** Successive preference payloads, so one account can answer differently from the next. */
+        prefs?: { view: string }[];
+    }) {
+        let settle!: (status: number) => void;
+        let loadIndex = 0;
+        let prefCount = 0;
+        // Only the first matching request is held, so a later account can answer normally.
+        let heldOnce = false;
+
+        const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+            const url = String(input);
+            const method = init?.method ?? 'GET';
+
+            if (method === 'GET' && url === '/api/lists') {
+                const lists = options.loads[Math.min(loadIndex++, options.loads.length - 1)];
+                return Promise.resolve(lists === 'fail'
+                    ? new Response('nope', { status: 500 })
+                    : new Response(JSON.stringify({ lists }), { status: 200 }));
+            }
+            if (method === 'GET' && url === '/api/user/list-preferences') {
+                if (options.preferences === 'fail') {
+                    return Promise.resolve(new Response('nope', { status: 500 }));
+                }
+                const seq = options.prefs;
+                const view = seq === undefined
+                    ? 'tiles'
+                    : seq[Math.min(prefCount++, seq.length - 1)].view;
+                const body = JSON.stringify({ view, sorts: {} });
+                if (`${method} ${url}` === options.deferred && !heldOnce) {
+                    heldOnce = true;
+                    return new Promise<Response>(resolve => {
+                        settle = () => resolve(new Response(body, { status: 200 }));
+                    });
+                }
+                return Promise.resolve(new Response(body, { status: 200 }));
+            }
+            if (`${method} ${url}` === options.deferred && !heldOnce) {
+                heldOnce = true;
+                return new Promise<Response>(resolve => {
+                    settle = (status: number) =>
+                        resolve(new Response(status === 204 ? null : 'nope', { status }));
+                });
+            }
+            return Promise.resolve(new Response(null, { status: 204 }));
+        });
+
+        vi.stubGlobal('fetch', fetchMock);
+
+        return {
+            /** Settles the held request and flushes everything it causes. */
+            release: (status: number) => act(async () => {
+                settle(status);
+                await Promise.resolve();
+            }),
+            /**
+             * Settles it without an `act` of its own, for the one test that has to interleave the
+             * completion with a re-render inside a single `act` block.
+             */
+            settle: (status: number) => settle(status),
+        };
+    }
+
+    function mount() {
+        return render(<ListsProvider><Probe /></ListsProvider>);
+    }
+
+    /** Signs a different account in, which is the dependency change the real provider sees. */
+    async function signIn(user: typeof ALICE | null, view: ReturnType<typeof mount>) {
+        auth.user = user;
+        await act(async () => {
+            view.rerender(<ListsProvider><Probe /></ListsProvider>);
+        });
+    }
+
+    const playing = () => screen.getByTestId('list-playing');
+
+    /*
+     * Each of these holds one mutation open, signs a second account in, and then fails the
+     * mutation. Every rollback closes over entries captured from the first account, so an
+     * unguarded one writes them into the second account’s lists — one user seeing another
+     * user’s games. All four mutations carry their own rollback, hence four tests.
+     */
+    it('does not put a failed move back into the next account', async () => {
+        const { release } = sessionStub({
+            loads: [{ playing: [CELESTE] }, { playing: [HADES] }],
+            deferred: 'PUT /api/lists/1',
+        });
+        const view = mount();
+        await waitFor(() => expect(playing()).toHaveTextContent('Celeste(7)'));
+
+        await userEvent.click(screen.getByRole('button', { name: 'move to finished' }));
+        expect(screen.getByTestId('list-finished')).toHaveTextContent('Celeste(7)');
+
+        await signIn(BOB, view);
+        await waitFor(() => expect(playing()).toHaveTextContent('Hades'));
+
+        await release(500);
+
+        expect(playing()).toHaveTextContent('Hades');
+        expect(playing()).not.toHaveTextContent('Celeste');
+        expect(screen.getByTestId('list-finished')).toBeEmptyDOMElement();
+    });
+
+    it('does not put a failed removal back into the next account', async () => {
+        const { release } = sessionStub({
+            loads: [{ playing: [CELESTE] }, { playing: [HADES] }],
+            deferred: 'DELETE /api/lists/1',
+        });
+        const view = mount();
+        await waitFor(() => expect(playing()).toHaveTextContent('Celeste(7)'));
+
+        await userEvent.click(screen.getByRole('button', { name: 'remove' }));
+        expect(playing()).toBeEmptyDOMElement();
+
+        await signIn(BOB, view);
+        await waitFor(() => expect(playing()).toHaveTextContent('Hades'));
+
+        await release(500);
+
+        expect(playing()).toHaveTextContent('Hades');
+        expect(playing()).not.toHaveTextContent('Celeste');
+    });
+
+    it('does not put a failed score back into the next account', async () => {
+        // setScore takes no pending lock at all, so it is the likeliest of the four to still be
+        // in flight when something else happens.
+        const { release } = sessionStub({
+            loads: [{ playing: [CELESTE] }, { playing: [HADES] }],
+            deferred: 'PUT /api/entries/1/score',
+        });
+        const view = mount();
+        await waitFor(() => expect(playing()).toHaveTextContent('Celeste(7)'));
+
+        await userEvent.click(screen.getByRole('button', { name: 'score 9' }));
+        expect(playing()).toHaveTextContent('Celeste(9)');
+
+        await signIn(BOB, view);
+        await waitFor(() => expect(playing()).toHaveTextContent('Hades'));
+
+        await release(500);
+
+        expect(playing()).toHaveTextContent('Hades');
+        expect(playing()).not.toHaveTextContent('Celeste');
+    });
+
+    it('does not put a failed delete back into the next account', async () => {
+        const { release } = sessionStub({
+            loads: [{ playing: [CELESTE] }, { playing: [HADES] }],
+            deferred: 'DELETE /api/entries/1',
+        });
+        const view = mount();
+        await waitFor(() => expect(playing()).toHaveTextContent('Celeste(7)'));
+
+        await userEvent.click(screen.getByRole('button', { name: 'delete entry' }));
+        expect(playing()).toBeEmptyDOMElement();
+
+        await signIn(BOB, view);
+        await waitFor(() => expect(playing()).toHaveTextContent('Hades'));
+
+        await release(500);
+
+        expect(playing()).toHaveTextContent('Hades');
+        expect(playing()).not.toHaveTextContent('Celeste');
+    });
+
+    it('does not show the next account the failure banner either', async () => {
+        // The rollback and the banner are dispatched together, so the guard has to cover both.
+        // An error about a game the new user never touched is its own small confusion.
+        const { release } = sessionStub({
+            loads: [{ playing: [CELESTE] }, { playing: [HADES] }],
+            deferred: 'DELETE /api/lists/1',
+        });
+        const view = mount();
+        await waitFor(() => expect(playing()).toHaveTextContent('Celeste(7)'));
+
+        await userEvent.click(screen.getByRole('button', { name: 'remove' }));
+        await signIn(BOB, view);
+        await waitFor(() => expect(playing()).toHaveTextContent('Hades'));
+
+        await release(500);
+
+        expect(screen.getByTestId('error')).toHaveTextContent('');
+    });
+
+    it('shows the next account nothing when its own load fails, not the previous account lists', async () => {
+        /*
+         * No mutation involved, which is what makes this its own bug rather than a variant of the
+         * ones above: FETCH_ERROR keeps state.lists, so a failed load for the new account left the
+         * previous account entries on screen underneath the error. The state is cleared when the
+         * account changes instead of when the fetch succeeds, so a fetch that never succeeds
+         * cannot strand anything.
+         */
+        sessionStub({
+            loads: [{ playing: [CELESTE] }, 'fail'],
+            deferred: 'DELETE /api/lists/never-called',
+        });
+        const view = mount();
+        await waitFor(() => expect(playing()).toHaveTextContent('Celeste(7)'));
+
+        await signIn(BOB, view);
+        await waitFor(() => expect(screen.getByTestId('loading')).toHaveTextContent('false'));
+
+        expect(playing()).toBeEmptyDOMElement();
+        expect(playing()).not.toHaveTextContent('Celeste');
+    });
+
+    it('does not carry the previous account preferences over either', async () => {
+        // The sort and layout are per-user rows on the server, so they belong to the account that
+        // loaded them and have to go with it.
+        //
+        // Both fetches are made to fail: with the preference fetch succeeding, the default it
+        // returns would explain the assertion just as well as the reset does, and the test would
+        // pass whether or not the reset happened at all.
+        sessionStub({
+            loads: [{ playing: [CELESTE] }, 'fail'],
+            deferred: 'DELETE /api/lists/never-called',
+            preferences: 'fail',
+        });
+        const view = mount();
+        await waitFor(() => expect(playing()).toHaveTextContent('Celeste(7)'));
+
+        await userEvent.click(screen.getByRole('button', { name: 'use table' }));
+        expect(screen.getByTestId('view')).toHaveTextContent('table');
+
+        await signIn(BOB, view);
+        await waitFor(() => expect(screen.getByTestId('loading')).toHaveTextContent('false'));
+
+        expect(screen.getByTestId('view')).toHaveTextContent('tiles');
+    });
+
+    it('rejects a stale completion that lands before the account effect has run', async () => {
+        /*
+         * The window the other tests in this block cannot reach.
+         *
+         * They call `signIn`, which exits its own `act` and therefore flushes the provider effect
+         * before the request is released — so the session marker is always up to date by the time
+         * the rollback happens, whether it was written during render or in the effect. That made
+         * them pass against a marker updated in a passive effect, which is wrong: an effect runs
+         * after the commit, so the new account is on screen while the marker still names the old
+         * one, and a completion arriving in between is exactly the leak.
+         *
+         * Re-rendering and settling the request inside one `act` block reproduces it. A nested
+         * `act` does not flush passive effects; the outermost one does, on exit.
+         *
+         * The second load is made to fail on purpose. A successful one would overwrite the leaked
+         * entries a moment later and hide the bug behind a race.
+         */
+        const { settle } = sessionStub({
+            loads: [{ playing: [CELESTE] }, 'fail'],
+            deferred: 'DELETE /api/lists/1',
+        });
+        const view = mount();
+        await waitFor(() => expect(playing()).toHaveTextContent('Celeste(7)'));
+
+        await userEvent.click(screen.getByRole('button', { name: 'remove' }));
+        expect(playing()).toBeEmptyDOMElement();
+
+        auth.user = BOB;
+        await act(async () => {
+            // Commits with BOB. The provider effect has not run yet.
+            view.rerender(<ListsProvider><Probe /></ListsProvider>);
+            settle(500);
+            await Promise.resolve();
+        });
+
+        await waitFor(() => expect(screen.getByTestId('loading')).toHaveTextContent('false'));
+
+        expect(playing()).toBeEmptyDOMElement();
+        expect(playing()).not.toHaveTextContent('Celeste');
+    });
+
+    it('drops the previous account preference response when it arrives late', async () => {
+        /*
+         * What this actually pins is the AbortController: by the time a response arrives this
+         * late, the effect cleanup has aborted it and the handler returns before dispatching.
+         * Verified by removing the session stamp from PREFERENCES_LOADED — the test still passes,
+         * so it is the abort doing the work, not the stamp.
+         *
+         * The stamp is still there, and is deliberately belt-and-braces: the abort runs in the
+         * effect cleanup, which happens after the commit, so a response resolving in between
+         * would slip past it. That window cannot be reproduced here — see the note in
+         * ListsProvider on why — so the stamp is reasoned, not covered.
+         */
+        const { release } = sessionStub({
+            loads: [{ playing: [CELESTE] }, { playing: [HADES] }],
+            deferred: 'GET /api/user/list-preferences',
+            prefs: [{ view: 'table' }, { view: 'tiles' }],
+        });
+        const view = mount();
+        await waitFor(() => expect(playing()).toHaveTextContent('Celeste(7)'));
+
+        await signIn(BOB, view);
+        await waitFor(() => expect(playing()).toHaveTextContent('Hades'));
+        expect(screen.getByTestId('view')).toHaveTextContent('tiles');
+
+        // Alice asked for table; it arrives now, after Bob is on screen.
+        await release(200);
+
+        expect(screen.getByTestId('view')).toHaveTextContent('tiles');
+    });
+
+    it('still rolls back normally when the account has not changed', async () => {
+        // The guard must not swallow the ordinary failure it sits in front of.
+        const { release } = sessionStub({
+            loads: [{ playing: [CELESTE] }],
+            deferred: 'DELETE /api/lists/1',
+        });
+        mount();
+        await waitFor(() => expect(playing()).toHaveTextContent('Celeste(7)'));
+
+        await userEvent.click(screen.getByRole('button', { name: 'remove' }));
+        expect(playing()).toBeEmptyDOMElement();
+
+        await release(500);
+
+        expect(playing()).toHaveTextContent('Celeste(7)');
+        expect(screen.getByTestId('error')).toHaveTextContent(/failed to remove from list/i);
     });
 });
