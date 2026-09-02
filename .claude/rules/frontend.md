@@ -46,6 +46,20 @@ component plus optional `loader`, `meta`, `links`, `headers` and `ErrorBoundary`
 - Always handle loading and error states explicitly. Never leave a silent broken UI.
 - One component per file; filename matches the export.
 
+## Showing a score
+
+One control, one display, and they mean different things (`docs/decisions/0021-*`):
+
+- **`ScoreInput`** — five stars at half-star steps — is the *only* way a user enters a score, and
+  stars are used for nothing else. It is a radio group under a `<fieldset>`, so arrow keys,
+  per-value accessible names and a propagating `disabled` come for free; keep it that way rather
+  than reaching for a div with click handlers.
+- **`ScoreBadge`** shows a score somebody else produced, always out of 100. Put IGDB's 0–10 player
+  rating through `ratingPercent` first. Its three variants are `square` (over cover art, the only
+  solid fill), `pill` (a metadata row) and `plain` (a table cell).
+- **Colour bands come from `@/lib/score`.** Never inline a threshold — a score that is green on a
+  card and amber in a table is worse than either colour alone.
+
 ## Styling
 
 Tailwind utilities inline, plus a scoped `ComponentName.css` per component where needed.

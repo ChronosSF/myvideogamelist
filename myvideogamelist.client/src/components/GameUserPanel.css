@@ -103,8 +103,9 @@
 
 .game-user-panel-score {
     display: flex;
-    align-items: center;
-    gap: 0.6rem;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
 }
 
 /* ---- the one destructive control ---- */

@@ -1,7 +1,8 @@
 import { Link } from 'react-router';
 import type { ListEntryDto } from '@/types/list';
 import { type SortKey, type SortState, SORT_OPTIONS, sortOption } from '@/lib/listSort';
-import { MIN_CRITIC_REVIEWS } from '@/lib/score';
+import { hasCriticScore, ratingPercent } from '@/lib/score';
+import { ScoreBadge } from '@/components/ScoreBadge';
 import { ScoreInput } from '@/components/ScoreInput';
 import './ListTable.css';
 
@@ -92,9 +93,6 @@ export function ListTable({
                     {entries.map(entry => {
                         const { game } = entry;
                         const pending = isPending(game.id);
-                        const showCritic = game.criticScore !== null
-                            && game.criticScoreCount !== null
-                            && game.criticScoreCount >= MIN_CRITIC_REVIEWS;
 
                         return (
                             <tr key={game.id} className={pending ? 'pending' : undefined}>
@@ -114,6 +112,7 @@ export function ListTable({
 
                                 <td className="col-score">
                                     <ScoreInput
+                                        size="sm"
                                         score={entry.score}
                                         gameTitle={game.title}
                                         disabled={pending}
@@ -122,11 +121,25 @@ export function ListTable({
                                 </td>
 
                                 <td className="col-rating num">
-                                    {game.rating === null ? '—' : game.rating.toFixed(1)}
+                                    {game.rating === null ? '—' : (
+                                        <ScoreBadge
+                                            variant="plain"
+                                            kind="players"
+                                            percent={ratingPercent(game.rating)}
+                                            count={game.ratingCount}
+                                        />
+                                    )}
                                 </td>
 
                                 <td className="col-critic num">
-                                    {showCritic ? game.criticScore : '—'}
+                                    {hasCriticScore(game) ? (
+                                        <ScoreBadge
+                                            variant="plain"
+                                            kind="critics"
+                                            percent={game.criticScore!}
+                                            count={game.criticScoreCount}
+                                        />
+                                    ) : '—'}
                                 </td>
 
                                 <td className="col-released num">{year(game.releaseDate)}</td>

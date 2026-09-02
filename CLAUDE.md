@@ -106,6 +106,12 @@ ROADMAP.md                      Forward-looking plan
   `MIN_CRITIC_REVIEWS`. Search is deliberately *not* filtered this way. See
   `docs/decisions/0016-*`.
 
+- **Stars mean the user's own score and nothing else.** One `ScoreInput` — five stars, half-star
+  steps, which is exactly the 1–10 the database stores. Everything averaged from other people
+  (critic score, IGDB player rating) is a number out of 100 in a `ScoreBadge`. Do not add a second
+  score control, and do not put stars on an aggregate: that mix-up is what
+  `docs/decisions/0021-*` exists to prevent.
+
 - **Two game field lists, and putting a field in the wrong one fails quietly.**
   `GameListFieldList` feeds every query; `GameDetailFieldList` is concatenated onto it only by
   `GetGameByIdAsync`, which is why `GameDto.Details` is null everywhere else. A field a *listing*

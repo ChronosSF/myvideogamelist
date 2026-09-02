@@ -75,7 +75,6 @@ That is what made "date added" require the two timestamp columns from
 [0019](0019-entry-survives-leaving-every-list.md) rather than a query: the client cannot sort by
 something the payload does not carry.
 
-The comparators have no automated tests, because there is still no client test runner — Vitest
-remains an open roadmap item. They were verified by driving the live UI through every sort option
-and reading back the rendered order, which is a check rather than a regression test. They are pure
-functions in `@/lib/listSort` specifically so that tests can be added later without rework.
+The comparators are pure functions in `@/lib/listSort` specifically so that they could be tested
+without rework, and they now are: `listSort.test.ts` covers both rules above, in both directions,
+under Vitest.

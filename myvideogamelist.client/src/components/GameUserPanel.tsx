@@ -115,6 +115,7 @@ export function GameUserPanel({ game }: GameUserPanelProps) {
                 <p className="game-user-panel-label">Your score</p>
                 <div className="game-user-panel-score">
                     <ScoreInput
+                        size="md"
                         score={score}
                         gameTitle={game.title}
                         disabled={!loaded || pending}

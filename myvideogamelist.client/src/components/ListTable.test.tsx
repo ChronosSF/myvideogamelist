@@ -52,10 +52,12 @@ describe('ListTable contents', () => {
         expect(within(row('Hades')).getByText('2020')).toBeInTheDocument();
     });
 
-    it('shows the blended rating to one decimal', () => {
+    it('shows the player rating out of 100, like the critic score beside it', () => {
+        // IGDB sends it on a 0-10 scale; ADR 0021 puts every aggregate on one scale so that the
+        // two numbers in a row can be compared without the reader converting in their head.
         renderTable({ entries: [entry({ game: { title: 'Hades', rating: 9.25 } })] });
 
-        expect(within(row('Hades')).getByText('9.3')).toBeInTheDocument();
+        expect(within(row('Hades')).getByText('93')).toBeInTheDocument();
     });
 
     it('abbreviates the platforms', () => {
@@ -170,7 +172,7 @@ describe('ListTable actions', () => {
             entries: [entry({ game: { id: 7, title: 'Celeste' }, score: null })],
         });
 
-        await userEvent.selectOptions(screen.getByLabelText('Your score for Celeste'), '10');
+        await userEvent.click(screen.getByRole('radio', { name: '10 out of 10' }));
 
         expect(onScoreChange).toHaveBeenCalledWith(7, 10);
     });

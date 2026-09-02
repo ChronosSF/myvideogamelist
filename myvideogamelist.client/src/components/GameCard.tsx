@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { Link } from 'react-router';
 import type { GameDto } from '@/types/game';
-import { criticScoreColors, criticScoreTitle, hasCriticScore } from '@/lib/score';
+import { hasCriticScore, ratingPercent } from '@/lib/score';
+import { ScoreBadge } from '@/components/ScoreBadge';
 import { type ListId, LIST_IDS, LIST_NAMES } from '@/types/list';
 import { useLists } from '@/hooks/useLists';
 import { useAuth } from '@/hooks/useAuth';
@@ -9,26 +10,6 @@ import './GameCard.css';
 
 interface GameCardProps {
     game: GameDto;
-}
-
-function StarRating({ rating }: { rating: number }) {
-    const stars = Math.round(rating / 2);
-    return (
-        <div className="flex items-center gap-1" aria-label={`Rating: ${rating.toFixed(1)} out of 10`}>
-            {Array.from({ length: 5 }, (_, i) => (
-                <svg
-                    key={i}
-                    className={`w-3.5 h-3.5 ${i < stars ? 'text-yellow-400' : 'text-slate-600 light:text-slate-300'}`}
-                    fill="currentColor"
-                    viewBox="0 0 20 20"
-                    aria-hidden="true"
-                >
-                    <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
-                </svg>
-            ))}
-            <span className="text-slate-400 light:text-slate-600 text-xs ml-1">{rating.toFixed(1)}</span>
-        </div>
-    );
 }
 
 export function GameCard({ game }: GameCardProps) {
@@ -80,11 +61,13 @@ export function GameCard({ game }: GameCardProps) {
                 {/* Critic score. Suppressed below MIN_CRITIC_REVIEWS: IGDB averages with no floor,
                     so a lone perfect review would otherwise sit here as a green 100. */}
                 {hasCriticScore(game) && (
-                    <div
-                        className={`absolute top-2 right-2 w-9 h-9 rounded-lg flex items-center justify-center text-xs font-bold shadow-lg ${criticScoreColors(game.criticScore!)}`}
-                        title={criticScoreTitle(game.criticScore!, game.criticScoreCount!)}
-                    >
-                        {game.criticScore}
+                    <div className="absolute top-2 right-2">
+                        <ScoreBadge
+                            variant="square"
+                            kind="critics"
+                            percent={game.criticScore!}
+                            count={game.criticScoreCount}
+                        />
                     </div>
                 )}
 
@@ -162,9 +145,16 @@ export function GameCard({ game }: GameCardProps) {
                     )}
                 </div>
 
-                {/* Rating */}
+                {/* The player rating, out of 100 like the critic score above it. Stars on a card
+                    would be a score nobody on this page gave — see ADR 0021. */}
                 {game.rating !== null && (
-                    <StarRating rating={game.rating} />
+                    <div>
+                        <ScoreBadge
+                            kind="players"
+                            percent={ratingPercent(game.rating)}
+                            count={game.ratingCount}
+                        />
+                    </div>
                 )}
 
                 {/* Genres */}

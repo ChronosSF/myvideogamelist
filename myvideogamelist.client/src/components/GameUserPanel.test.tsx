@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { GameUserPanel } from '@/components/GameUserPanel';
 import { ListsContext, type ListsContextValue } from '@/contexts/ListsContext';
@@ -65,6 +65,19 @@ async function settled() {
     await waitFor(() => expect(screen.getByLabelText('Your score for Celeste')).toBeEnabled());
 }
 
+/** The score the star control is showing, or null when no star is selected. */
+function shownScore(): number | null {
+    const checked = screen.getAllByRole('radio').find(radio => (radio as HTMLInputElement).checked);
+    return checked === undefined ? null : Number((checked as HTMLInputElement).value);
+}
+
+/** A `setScore` whose promise the test resolves, so the optimistic state is observable. */
+function deferredSetScore() {
+    let settle!: (saved: boolean) => void;
+    const setScore = vi.fn(() => new Promise<boolean>(resolve => { settle = resolve; }));
+    return { setScore, finish: (saved: boolean) => act(async () => { settle(saved); }) };
+}
+
 beforeEach(() => {
     vi.unstubAllGlobals();
 });
@@ -124,8 +137,7 @@ describe('GameUserPanel scoring', () => {
         stubEntryFetch(8);
         renderPanel();
 
-        await waitFor(() =>
-            expect((screen.getByLabelText('Your score for Celeste') as HTMLSelectElement).value).toBe('8'));
+        await waitFor(() => expect(shownScore()).toBe(8));
     });
 
     it('asks the entry endpoint for it', async () => {
@@ -157,33 +169,62 @@ describe('GameUserPanel scoring', () => {
         const ctx = renderPanel();
 
         await settled();
-        await userEvent.selectOptions(screen.getByLabelText('Your score for Celeste'), '9');
+        await userEvent.click(screen.getByRole('radio', { name: '9 out of 10' }));
 
         expect(ctx.setScore).toHaveBeenCalledWith(1, 9);
     });
 
+    it('shows a half-star score, which the old dropdown could not', async () => {
+        // Nine is a whole star and a half. Half-star steps exist so the odd scores the API has
+        // always accepted are actually reachable — see ADR 0021.
+        stubEntryFetch(null, 404);
+        const ctx = renderPanel();
+
+        await settled();
+        await userEvent.click(screen.getByRole('radio', { name: '9 out of 10' }));
+
+        expect(ctx.setScore).toHaveBeenCalledWith(1, 9);
+        await waitFor(() => expect(shownScore()).toBe(9));
+    });
+
     it('reverts the shown score when the save fails', async () => {
         stubEntryFetch(6);
-        renderPanel({ setScore: vi.fn(async () => false) });
+        const { setScore, finish } = deferredSetScore();
+        renderPanel({ setScore });
 
-        const select = screen.getByLabelText('Your score for Celeste') as HTMLSelectElement;
-        await waitFor(() => expect(select.value).toBe('6'));
+        await waitFor(() => expect(shownScore()).toBe(6));
+        await userEvent.click(screen.getByRole('radio', { name: '2 out of 10' }));
 
-        await userEvent.selectOptions(select, '2');
+        // Optimistic first, so the control never feels laggy...
+        expect(shownScore()).toBe(2);
 
-        await waitFor(() => expect(select.value).toBe('6'));
+        await finish(false);
+
+        // ...and back to what the server still holds once the save is refused.
+        expect(shownScore()).toBe(6);
     });
 
     it('keeps the shown score when the save succeeds', async () => {
         stubEntryFetch(6);
-        renderPanel({ setScore: vi.fn(async () => true) });
+        const { setScore, finish } = deferredSetScore();
+        renderPanel({ setScore });
 
-        const select = screen.getByLabelText('Your score for Celeste') as HTMLSelectElement;
-        await waitFor(() => expect(select.value).toBe('6'));
+        await waitFor(() => expect(shownScore()).toBe(6));
+        await userEvent.click(screen.getByRole('radio', { name: '2 out of 10' }));
 
-        await userEvent.selectOptions(select, '2');
+        await finish(true);
 
-        await waitFor(() => expect(select.value).toBe('2'));
+        expect(shownScore()).toBe(2);
+    });
+
+    it('takes the score off when the star already given is clicked again', async () => {
+        stubEntryFetch(7);
+        const ctx = renderPanel();
+
+        await waitFor(() => expect(shownScore()).toBe(7));
+        await userEvent.click(screen.getByRole('radio', { name: '7 out of 10' }));
+
+        expect(ctx.setScore).toHaveBeenCalledWith(1, null);
     });
 });
 
@@ -248,8 +289,7 @@ describe('GameUserPanel deleting everything', () => {
         await userEvent.click(await screen.findByRole('button', { name: /delete my data/i }));
         await userEvent.click(screen.getByRole('button', { name: 'Delete' }));
 
-        await waitFor(() =>
-            expect((screen.getByLabelText('Your score for Celeste') as HTMLSelectElement).value).toBe(''));
+        await waitFor(() => expect(shownScore()).toBeNull());
     });
 
     it('backs out on cancel without deleting', async () => {
