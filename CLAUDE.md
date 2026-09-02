@@ -99,6 +99,13 @@ ROADMAP.md                      Forward-looking plan
   *and* in a list. `AddedAt` is its entire history — do not reach for `UserGameEvents`, and do not
   add a foreign key to `UserGameEntries`, because a wishlisted game usually has no entry at all.
 
+- **A statistic about the user must not depend on IGDB being up.** `/api/user/stats` reads only
+  our own tables, derives everything at read time, and is deliberately uncached — every figure
+  changes the moment a game moves. The platform and genre breakdowns are the one part that needs
+  game metadata, so they are counted on the client from the lists already loaded; an outage costs
+  those two rows and nothing else. Note there are no hours anywhere in the schema, so no stat may
+  say "played". See `docs/decisions/0023-*`.
+
 - **Never change a game's status without recording an event.** `UserGameEvents` is append-only
   and is the only record that a transition happened — `UserGameLists` holds current state and is
   overwritten on every move. A direct `UPDATE` to `StatusId` leaves a permanent hole in a history

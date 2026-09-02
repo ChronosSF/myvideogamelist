@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { useAuth } from '@/hooks/useAuth';
+import { ProfileStats } from '@/components/ProfileStats';
 import { useHiddenPlatforms } from '@/hooks/useHiddenPlatforms';
 import type { PlatformDto } from '@/types/game';
 import './UserPage.css';
@@ -113,6 +114,13 @@ export function UserPage() {
                 <div className="user-card">
                     <div className="user-card-label">Email</div>
                     <div className="user-card-value">{user.email}</div>
+                </div>
+
+                {/* Above the settings, because what the user has done is the reason they came here
+                    and the theme toggle is not. Mounted only in this signed-in branch, which is
+                    what lets its hook skip an account-change guard. */}
+                <div className="user-card">
+                    <ProfileStats />
                 </div>
 
                 {/* Theme preference */}
