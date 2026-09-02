@@ -583,4 +583,38 @@ describe('WishlistProvider across a session change', () => {
 
         expect(titles()).toBe('');
     });
+
+    it('does not leave the next account holding the previous one lock', async () => {
+        /*
+         * The pending set disables a game's toggle while its own request is out. Kept in its own
+         * `useState` it was the one piece of state the account change did not clear, so a game the
+         * previous account had left in flight stayed locked for the new one — and stayed locked
+         * indefinitely if that request never settled, which is the case nothing else recovers from.
+         *
+         * `ListsProvider` had the identical bug and the identical fix; neither was found by review
+         * of the other, because each looked only at the file that had changed.
+         */
+        stubFetch({
+            loads: [[item(1, 'Celeste', JANUARY)], [item(1, 'Celeste', MARCH)]],
+            deferred: ['/api/wishlist/1'],
+        });
+        const view = renderProvider();
+        await settled();
+
+        // Alice starts a removal that never comes back.
+        await click('remove celeste');
+        expect(screen.getByTestId('pending-celeste')).toHaveTextContent('true');
+
+        auth.user = BOB;
+        await act(async () => {
+            view.rerender(
+                <WishlistProvider>
+                    <Probe />
+                </WishlistProvider>,
+            );
+        });
+        await settled();
+
+        expect(screen.getByTestId('pending-celeste')).toHaveTextContent('false');
+    });
 });

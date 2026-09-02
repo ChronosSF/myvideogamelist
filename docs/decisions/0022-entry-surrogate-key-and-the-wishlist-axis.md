@@ -189,13 +189,57 @@ raise, and it clears its lists *and* its per-user preferences when the account c
 providers now use the same two mechanisms, and the wishlist one was moved off the ref it originally
 shipped with.
 
-**It still rolls back wholesale, though.** Its mutations share one pending set across all five
-statuses, so two cannot overlap for the same game — but they can for two different games, and
-`setScore` takes no pending lock at all, so the resurrection described in decision 6 is still
-reachable there. Separately, `addToList`, `removeFromList` and `deleteEntry` wrap their fetch in
-`try`/`finally` with no `catch`, so an unreachable API rejects into an unhandled promise rather
-than the deliberate rollback — which is the trap `CLAUDE.md` warns about for loaders. Both predate
-this work and belong in their own change.
+**And decision 6 has since been applied to it as well**, which was the last thing this record
+listed as outstanding. Its four mutations used to roll back by putting every list back as it was
+before the request, so the resurrection decision 6 describes was reachable for any two games at
+once — and `setScore` took no pending lock at all, which made it reachable twice over. All four now
+capture one `EntryPosition` for the game they are about, which is the whole of what an undo needs
+and says nothing about any other game. `setScore` takes the same per-game lock as a status change,
+because it writes the same entry row: without it two scores set in quick succession could both be
+in flight, and the first to fail would roll the second back to a value neither had asked for.
+
+**A rollback owes membership and the score, and not a position.** The first attempt had the entry
+carry the index it came from, on the same reasoning decision 6 gives for the wishlist — and it was
+wrong on both counts. An index captured before a request is stale by the time it is used, because
+another game may have left the list from in front of it: with `[Celeste, Hades, Cuphead]`, holding
+Hades' move and then removing Celeste leaves `[Cuphead]`, where index 1 puts Hades *after* Cuphead
+rather than before. More to the point, nothing renders it. `ListsPage` puts every list through
+`sortEntries`, which is a total order — title breaks the tie for every key, deliberately, so that
+the result cannot depend on the order the API happened to return.
+
+So the position was dropped rather than anchored to a surviving neighbour, which is the other way
+to fix it: the property was never observable, and machinery to preserve it would have cost more
+than it protects. The wishlist is the case that looks similar and is not — `WishlistPage` renders
+its array as it stands, so order there is real, and it comes from `addedAt`, a value rather than a
+position, which is why it cannot go stale in the first place.
+
+**A rejected `fetch` is now handled, and it is the same trap `CLAUDE.md` records for loaders.**
+`addToList`, `removeFromList` and `deleteEntry` wrapped their fetch in `try`/`finally` with no
+`catch`, so they handled a request that was refused but not one that never arrived — `fetch`
+rejects when the API is unreachable rather than returning `!res.ok`. The optimistic change stood as
+though it had been saved, and the rejection escaped as an unhandled promise, since every caller
+fires these with `void`.
+
+**The mutation error clears on the next success**, which it did not before. There is no dismiss
+control on the banner, so nothing else would ever take it down: it sat there describing a failure
+the user had already retried successfully, until the lists happened to be refetched. `CLEAR_MUTATION_ERROR`
+existed and was session-stamped but had no caller, which is what made the omission easy to miss.
+
+**The pending set is part of the account's state, so it lives in the reducer too.** It was the one
+piece both providers kept in its own `useState`, and therefore the one piece the account change did
+not clear. A game the previous account had left in flight stayed locked for the next one: its
+controls disabled until a request that account has nothing to do with settles, or indefinitely if
+that request hangs, since nothing else recovers it. Both `START_PENDING` and `END_PENDING` are
+session-stamped like everything else a mutation raises.
+
+`WishlistProvider` had the identical bug, and it is worth recording *why* it was missed twice.
+Review looks at the file that changed: decision 8 was applied to the wishlist first and to the
+lists second, and both times the set sitting outside the reducer went unexamined because it was not
+in the diff. When one provider gains a guard, the other needs the same one applied by hand.
+
+Twelve tests cover this work. Nine fail against the implementation before it; one fails against a
+rollback that restores the whole set of lists with a third game present; and the two pending-lock
+tests fail against a set that survives the account change.
 
 **The wishlist page is tiles only.** No table view and no toolbar: a wishlist item has no score and
 no status, so four of the table's columns would be empty and its sort options meaningless. "When
