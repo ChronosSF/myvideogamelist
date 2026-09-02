@@ -48,7 +48,7 @@ polished game-tracking product that runs on AWS and ships safely on every commit
 ### Tier 1 — Core tracking (required for the product to make sense)
 
 - ~~**Full list taxonomy**~~ **DONE for the five statuses.** Backlog, Playing, On Hold, Finished and Dropped ship as a seeded `ListStatuses` lookup carrying semantic flags, replacing the hardcoded `ValidListTypes` set. Keys are `backlog` / `finished` rather than "Plan to Play" / "Completed", which is what made the expansion a no-migration change. **Still open:** the separate **Wishlist** axis a game can sit in alongside any status, and per-user renaming (`UserListSettings`). See ADR [0018](docs/decisions/0018-append-only-status-event-log.md).
-- **Per-entry tracking data** — user score (1–10), start date, finish date, hours played, platform played on, replay count, "own it / subscription / borrowed", personal notes. This is the heart of a tracker and it is entirely absent today.
+- **Per-entry tracking data** — ~~user score (1–10)~~ **done**, independent of list membership (ADR [0019](docs/decisions/0019-entry-survives-leaving-every-list.md)). **Still open:** start date, finish date, hours played, platform played on, replay count, "own it / subscription / borrowed", personal notes — most of which belong to a playthrough rather than the entry, see `docs/data-model-plan.md`.
 - **Completion states** — for Playing entries: percent complete, or "main story / main + extras / completionist".
 - **Favourites** — star a game independent of list membership.
 - ~~**Activity history**~~ **DONE for status changes.** `UserGameEvents` records every transition append-only, including first adds and removals, and is the one thing in the schema that could not have been backfilled later (ADR [0018](docs/decisions/0018-append-only-status-event-log.md)). **Still open:** scores and playthroughs, and the profile UI that reads the log.
@@ -60,7 +60,7 @@ polished game-tracking product that runs on AWS and ships safely on every commit
 ### Tier 2 — Discovery and daily-use polish
 
 - **Real browse filters** — genre, platform, release year, score range, ESRB, and sort by rating / release date / name / popularity. Today the only options are a text search and a critic-score sort in `BuildQuery`, which now requires a minimum review count (ADR [0016](docs/decisions/0016-scores-carry-their-sample-size.md)) and so no longer reaches thinly reviewed games at all. IGDB's own popularity types 2 ("Want to Play") and 3 ("Playing") are platform-agnostic, unlike the Steam-sourced type 5 behind the trending rail, and are the better basis for a popularity sort.
-- **List views** — grid *and* compact table view, sort within a list, multi-select bulk actions (move, remove, tag), and drag-to-reorder for a manual backlog priority.
+- ~~**List views**~~ **Partly done.** Tiles and a condensed table view, switchable and remembered per account, with a sort order remembered per status list and a transient platform filter (ADR [0020](docs/decisions/0020-list-view-preferences-in-the-database.md)). Scores are settable inline in the table. **Still open:** multi-select bulk actions (move, remove, tag) and drag-to-reorder for a manual backlog priority.
 - **Search everywhere** — a global search in the navbar with typeahead, not just on `/games`.
 - **Game page depth** — *mostly done*: screenshot gallery, embedded trailer, similar games, franchise/series grouping, DLC and expansions, completion times, how-to-play modes and language support all ship (ADR [0017](docs/decisions/0017-detail-data-off-the-listing.md)). Still open: "where to play" store links.
 - **Community signal** — site-wide average score, score histogram, review text with spoiler tags, helpful-votes on reviews.
@@ -284,7 +284,7 @@ change, grandfather existing subscribers rather than repricing them.
 
 - **Unit tests** for `ListService`, the `IgdbService` DTO mapping, and the Apicalypse query builder
 - **Integration tests** with `WebApplicationFactory` + Testcontainers PostgreSQL, covering auth and list flows
-- **Frontend tests** — Vitest + Testing Library for the `ListsProvider` optimistic-update and rollback logic
+- ~~**Frontend tests**~~ **Started.** Vitest with jsdom and Testing Library, 107 tests over the list views: the sort comparators, the table, the toolbar and platform filter, the per-game user panel, and `ListsProvider`'s optimistic updates and rollback. Runs in CI before the build. **Still open:** coverage for the rest of the client — the browse page, the game page, auth flows.
 - **E2E smoke** — Playwright: sign up, add a game to a list, reload, still there
 - **CI must run** `npm run lint`, `dotnet test`, `dotnet format --verify-no-changes`, and build on pushes to `master` — not only on PRs
 - **Security scanning** — CodeQL, `dotnet list package --vulnerable`, `npm audit`, and a secret scanner (Dependabot is already active)

@@ -37,6 +37,7 @@ Open `https://localhost:58546`.
 | `npm run dev` | Dev server: SSR plus the `/api` proxy to ASP.NET |
 | `npm run lint` | ESLint |
 | `npm run typecheck` | `react-router typegen && tsc -b` — use this, never bare `tsc` |
+| `npm run test` | Vitest, jsdom + Testing Library. `npm run test:watch` to iterate |
 | `npm run build` | Production build |
 | `dotnet test MyVideoGameList.Server.Tests/MyVideoGameList.Server.Tests.csproj` | Server unit tests |
 | `dotnet ef migrations add <Name>` | From `MyVideoGameList.Server/` |
@@ -104,6 +105,12 @@ ROADMAP.md                      Forward-looking plan
   `aggregated_rating_count >= 8`, and the client suppresses badges below
   `MIN_CRITIC_REVIEWS`. Search is deliberately *not* filtered this way. See
   `docs/decisions/0016-*`.
+
+- **Stars mean the user's own score and nothing else.** One `ScoreInput` — five stars, half-star
+  steps, which is exactly the 1–10 the database stores. Everything averaged from other people
+  (critic score, IGDB player rating) is a number out of 100 in a `ScoreBadge`. Do not add a second
+  score control, and do not put stars on an aggregate: that mix-up is what
+  `docs/decisions/0021-*` exists to prevent.
 
 - **Two game field lists, and putting a field in the wrong one fails quietly.**
   `GameListFieldList` feeds every query; `GameDetailFieldList` is concatenated onto it only by

@@ -20,7 +20,13 @@ export default tseslint.config(
       globals: globals.browser,
     },
     rules: {
-      '@typescript-eslint/no-unused-vars': ['error', { varsIgnorePattern: '^[A-Z_]' }],
+      // An underscore prefix marks a deliberately unused binding. Needed for arguments as well
+      // as variables: a test double often has to declare a parameter it does not read, so that
+      // its `mock.calls` are typed.
+      '@typescript-eslint/no-unused-vars': ['error', {
+        varsIgnorePattern: '^[A-Z_]',
+        argsIgnorePattern: '^_',
+      }],
 
       // React Router route modules export data/config alongside the component by
       // design, so fast refresh has to treat those names as expected.

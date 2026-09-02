@@ -3,43 +3,16 @@ import type { Route } from './+types/GamePage';
 import { apiUrl } from '@/lib/api';
 import { CACHE_GAME, CACHE_NOT_FOUND, PRIVATE_NO_STORE } from '@/lib/cache';
 import type { GameDto } from '@/types/game';
-import { type ListId, LIST_IDS, LIST_NAMES } from '@/types/list';
-import { useLists } from '@/hooks/useLists';
 import { useAuth } from '@/hooks/useAuth';
 import { GameNewsPanel } from '@/components/GameNewsPanel';
+import { GameUserPanel } from '@/components/GameUserPanel';
 import { CompletionTimes } from '@/components/CompletionTimes';
 import { GameRefRail } from '@/components/GameRefRail';
 import { MultiplayerSummary } from '@/components/MultiplayerSummary';
 import { ScreenshotGallery } from '@/components/ScreenshotGallery';
-import { criticScoreColors, criticScoreTitle, hasCriticScore } from '@/lib/score';
+import { hasCriticScore, ratingPercent } from '@/lib/score';
+import { ScoreBadge } from '@/components/ScoreBadge';
 import './GamePage.css';
-
-function StarRating({ rating, count }: { rating: number; count: number | null }) {
-    const stars = Math.round(rating / 2);
-    const from = count !== null ? ` from ${count.toLocaleString()} ratings` : '';
-    return (
-        <div className="flex items-center gap-1" aria-label={`Rating: ${rating.toFixed(1)} out of 10${from}`}>
-            {Array.from({ length: 5 }, (_, i) => (
-                <svg
-                    key={i}
-                    className={`w-5 h-5 ${i < stars ? 'text-yellow-400' : 'text-slate-600 light:text-slate-300'}`}
-                    fill="currentColor"
-                    viewBox="0 0 20 20"
-                    aria-hidden="true"
-                >
-                    <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
-                </svg>
-            ))}
-            <span className="text-slate-300 light:text-slate-600 text-sm font-semibold ml-1">{rating.toFixed(1)}</span>
-            <span className="text-slate-500 light:text-slate-400 text-xs">/&nbsp;10</span>
-            {count !== null && (
-                <span className="text-slate-500 light:text-slate-400 text-xs ml-1.5" aria-hidden="true">
-                    ({count.toLocaleString()})
-                </span>
-            )}
-        </div>
-    );
-}
 
 function InfoChip({ label }: { label: string }) {
     return (
@@ -128,16 +101,6 @@ export function GamePage() {
     const { game } = useLoaderData<typeof loader>();
 
     const { user } = useAuth();
-    const { addToList, removeFromList, isInList, isPending } = useLists();
-
-    const handleListToggle = async (listId: ListId) => {
-        if (isPending(game.id)) return;
-        if (isInList(listId, game.id)) {
-            await removeFromList(listId, game.id);
-        } else {
-            await addToList(listId, game);
-        }
-    };
 
     // Null on the listing endpoints by design; this page is the one that asks IGDB for it.
     const details = game.details;
@@ -226,23 +189,27 @@ export function GamePage() {
                                     {game.esrbRating}
                                 </span>
                             )}
+                            {/* Both aggregates, on the one scale, side by side: they answer the
+                                same question and used to be shown in two different languages.
+                                Stars are the user's own score only — see ADR 0021. */}
                             {hasCriticScore(game) && (
-                                <span
-                                    className={`px-2.5 py-0.5 rounded text-xs font-bold ${criticScoreColors(game.criticScore!)}`}
-                                    title={criticScoreTitle(game.criticScore!, game.criticScoreCount!)}
-                                >
-                                    {game.criticScore} critics
-                                </span>
+                                <ScoreBadge
+                                    kind="critics"
+                                    percent={game.criticScore!}
+                                    count={game.criticScoreCount}
+                                />
+                            )}
+                            {game.rating !== null && (
+                                <ScoreBadge
+                                    kind="players"
+                                    percent={ratingPercent(game.rating)}
+                                    count={game.ratingCount}
+                                />
                             )}
                             {releaseDate && (
                                 <span className="text-slate-400 light:text-slate-500 text-xs">{releaseDate}</span>
                             )}
                         </div>
-
-                        {/* Star rating */}
-                        {game.rating !== null && (
-                            <StarRating rating={game.rating} count={game.ratingCount} />
-                        )}
                     </div>
                 </div>
             </div>
@@ -417,38 +384,9 @@ export function GamePage() {
 
                     {/* Sidebar */}
                     <aside className="lg:w-64 xl:w-72 space-y-6">
-                        {/* Add to list */}
+                        {/* Lists, score and the one control that erases both. */}
                         {user ? (
-                            <div className="bg-slate-800/60 light:bg-white border border-slate-700/50 light:border-slate-200 rounded-xl p-5">
-                                <h2 className="text-sm font-semibold text-white light:text-slate-900 mb-3">Add to List</h2>
-                                <div className="game-page-add-btn-group">
-                                    {LIST_IDS.map(listId => {
-                                        const active = isInList(listId, game.id);
-                                        const pending = isPending(game.id);
-                                        return (
-                                            <button
-                                                key={listId}
-                                                className={`game-page-add-btn${active ? ' active' : ''}`}
-                                                onClick={() => handleListToggle(listId)}
-                                                disabled={pending}
-                                                aria-pressed={active}
-                                                title={active ? `Remove from ${LIST_NAMES[listId]}` : `Add to ${LIST_NAMES[listId]}`}
-                                            >
-                                                <span>{LIST_NAMES[listId]}</span>
-                                                {active ? (
-                                                    <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
-                                                    </svg>
-                                                ) : (
-                                                    <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v14m-7-7h14" />
-                                                    </svg>
-                                                )}
-                                            </button>
-                                        );
-                                    })}
-                                </div>
-                            </div>
+                            <GameUserPanel game={game} />
                         ) : (
                             <div className="bg-slate-800/60 light:bg-white border border-slate-700/50 light:border-slate-200 rounded-xl p-5 text-center">
                                 <p className="text-slate-400 light:text-slate-600 text-xs mb-3">Sign in to track this game.</p>
@@ -464,17 +402,35 @@ export function GamePage() {
                                 </div>
                             )}
 
+                            {/* The one place the sample size is on the page rather than in a
+                                tooltip. ADR 0016: a score without its count is not shippable. */}
                             {hasCriticScore(game) && (
                                 <div>
                                     <p className="text-xs text-slate-500 light:text-slate-400 uppercase tracking-wider mb-1">Critic Score</p>
-                                    <span
-                                        className={`inline-block px-2.5 py-0.5 rounded text-sm font-bold ${criticScoreColors(game.criticScore!)}`}
-                                    >
-                                        {game.criticScore}
-                                    </span>
+                                    <ScoreBadge
+                                        kind="critics"
+                                        percent={game.criticScore!}
+                                        count={game.criticScoreCount}
+                                    />
                                     <span className="ml-2 text-xs text-slate-500 light:text-slate-400">
-                                        from {game.criticScoreCount} reviews
+                                        from {game.criticScoreCount!.toLocaleString()} reviews
                                     </span>
+                                </div>
+                            )}
+
+                            {game.rating !== null && (
+                                <div>
+                                    <p className="text-xs text-slate-500 light:text-slate-400 uppercase tracking-wider mb-1">Player Rating</p>
+                                    <ScoreBadge
+                                        kind="players"
+                                        percent={ratingPercent(game.rating)}
+                                        count={game.ratingCount}
+                                    />
+                                    {game.ratingCount !== null && (
+                                        <span className="ml-2 text-xs text-slate-500 light:text-slate-400">
+                                            from {game.ratingCount.toLocaleString()} ratings
+                                        </span>
+                                    )}
                                 </div>
                             )}
 

@@ -1,0 +1,170 @@
+.game-user-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 1.15rem;
+    padding: 1.25rem;
+    background: rgba(30, 41, 59, 0.6);
+    border: 1px solid rgba(51, 65, 85, 0.5);
+    border-radius: 0.75rem;
+}
+
+[data-theme='light'] .game-user-panel {
+    background: #ffffff;
+    border-color: #e2e8f0;
+}
+
+.game-user-panel-title {
+    margin: 0;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: #ffffff;
+}
+
+[data-theme='light'] .game-user-panel-title {
+    color: #0f172a;
+}
+
+.game-user-panel-section {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.game-user-panel-label {
+    margin: 0;
+    font-size: 0.68rem;
+    font-weight: 600;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: #64748b;
+}
+
+[data-theme='light'] .game-user-panel-label {
+    color: #94a3b8;
+}
+
+.game-user-panel-hint {
+    margin: 0;
+    font-size: 0.72rem;
+    line-height: 1.45;
+    color: #64748b;
+}
+
+/* Five statuses wrap as chips rather than stacking as full-width rows — the sidebar is narrow
+   and a five-high stack of buttons dominates it. */
+.game-user-panel-lists {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+}
+
+.game-user-panel-list-btn {
+    padding: 0.3rem 0.6rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #cbd5e1;
+    background: rgba(51, 65, 85, 0.7);
+    border: 1px solid transparent;
+    border-radius: 0.4rem;
+    cursor: pointer;
+    transition: background 0.12s, color 0.12s;
+}
+
+[data-theme='light'] .game-user-panel-list-btn {
+    color: #475569;
+    background: #f1f5f9;
+}
+
+.game-user-panel-list-btn:hover:not(:disabled) {
+    color: #ffffff;
+    background: rgba(59, 130, 246, 0.8);
+}
+
+.game-user-panel-list-btn.active {
+    color: #ffffff;
+    background: rgba(37, 99, 235, 0.9);
+}
+
+.game-user-panel-list-btn.active:hover:not(:disabled) {
+    background: rgba(220, 38, 38, 0.8);
+}
+
+.game-user-panel-list-btn:focus-visible,
+.game-user-panel-delete:focus-visible,
+.game-user-panel-confirm button:focus-visible {
+    outline: 2px solid #3b82f6;
+    outline-offset: 2px;
+}
+
+.game-user-panel-list-btn:disabled {
+    cursor: default;
+    opacity: 0.5;
+}
+
+.game-user-panel-score {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+}
+
+/* ---- the one destructive control ---- */
+
+.game-user-panel-danger {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    padding-top: 0.9rem;
+    border-top: 1px solid rgba(51, 65, 85, 0.5);
+}
+
+[data-theme='light'] .game-user-panel-danger {
+    border-top-color: #e2e8f0;
+}
+
+.game-user-panel-delete {
+    align-self: flex-start;
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: #94a3b8;
+    background: none;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+}
+
+.game-user-panel-delete:hover:not(:disabled) {
+    color: #f87171;
+}
+
+.game-user-panel-confirm {
+    display: flex;
+    gap: 0.4rem;
+}
+
+.game-user-panel-confirm button {
+    padding: 0.3rem 0.7rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #cbd5e1;
+    background: rgba(51, 65, 85, 0.7);
+    border: none;
+    border-radius: 0.4rem;
+    cursor: pointer;
+}
+
+[data-theme='light'] .game-user-panel-confirm button {
+    color: #475569;
+    background: #f1f5f9;
+}
+
+.game-user-panel-confirm button.danger {
+    color: #ffffff;
+    background: #dc2626;
+}
+
+.game-user-panel-confirm button.danger:hover {
+    background: #b91c1c;
+}

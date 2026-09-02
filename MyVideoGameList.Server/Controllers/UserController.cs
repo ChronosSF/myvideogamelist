@@ -29,6 +29,68 @@ public class UserController(
         return NoContent();
     }
 
+    /// <summary>
+    /// The list-view preferences, fetched by the lists page alongside the lists themselves.
+    /// Deliberately not folded into the profile endpoint, which is called on every page load and
+    /// has no use for them.
+    /// </summary>
+    [HttpGet("list-preferences")]
+    public async Task<ActionResult<ListPreferencesDto>> GetListPreferences(CancellationToken cancellationToken)
+    {
+        var user = await userManager.GetUserAsync(User);
+        if (user == null) return Unauthorized();
+
+        // Only the lists the user has actually changed have rows; the rest fall back to the
+        // client's default.
+        var sorts = await db.UserListSortPreferences
+            .Where(p => p.UserId == user.Id)
+            .Join(db.ListStatuses, p => p.StatusId, s => s.Id, (p, s) => new { s.Key, p.SortKey, p.Descending })
+            .ToListAsync(cancellationToken);
+
+        return Ok(new ListPreferencesDto(
+            user.ListView,
+            sorts.ToDictionary(x => x.Key, x => new ListSortDto(x.SortKey, x.Descending))));
+    }
+
+    [HttpPut("list-preferences")]
+    public async Task<IActionResult> UpdateListPreferences(
+        [FromBody] UpdateListPreferencesDto dto, CancellationToken cancellationToken)
+    {
+        var user = await userManager.GetUserAsync(User);
+        if (user == null) return Unauthorized();
+
+        user.ListView = dto.View;
+        await userManager.UpdateAsync(user);
+
+        // Replace wholesale, the same way hidden platforms are handled: the client owns the full
+        // set and sends it, so there is no partial-update ambiguity.
+        var existing = await db.UserListSortPreferences
+            .Where(p => p.UserId == user.Id)
+            .ToListAsync(cancellationToken);
+
+        db.UserListSortPreferences.RemoveRange(existing);
+
+        var statusIds = await db.ListStatuses
+            .ToDictionaryAsync(s => s.Key, s => s.Id, cancellationToken);
+
+        var rows = (dto.Sorts ?? [])
+            .Where(sort => statusIds.ContainsKey(sort.Status))
+            .GroupBy(sort => sort.Status)
+            .Select(group => group.Last())
+            .Select(sort => new UserListSortPreference
+            {
+                UserId = user.Id,
+                StatusId = statusIds[sort.Status],
+                SortKey = sort.SortKey,
+                Descending = sort.Descending
+            });
+
+        await db.UserListSortPreferences.AddRangeAsync(rows, cancellationToken);
+        await db.SaveChangesAsync(cancellationToken);
+
+        return NoContent();
+    }
+
     [HttpGet("hidden-platforms")]
     public async Task<ActionResult<IEnumerable<int>>> GetHiddenPlatforms(CancellationToken cancellationToken)
     {

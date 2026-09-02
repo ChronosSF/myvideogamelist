@@ -1,0 +1,170 @@
+/*
+ * Five stars at half-star steps over a radio group of ten.
+ *
+ * The stars are painted by the .score-stars-glyphs layer and the clicks are taken by ten
+ * transparent .score-stars-zone labels laid over it, each a tenth of the track wide. Keeping the
+ * two layers separate is what allows a half star to be both drawn and clicked; it also means the
+ * stars themselves sit flush with no gap, since a gap would put the zones out of step with them.
+ */
+
+.score-stars {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+}
+
+.score-stars-sm {
+    --star: 0.95rem;
+}
+
+.score-stars-md {
+    --star: 1.6rem;
+}
+
+.score-stars:disabled {
+    opacity: 0.5;
+}
+
+.score-stars-track {
+    position: relative;
+    display: block;
+    width: calc(var(--star) * 5);
+    height: var(--star);
+    flex: none;
+}
+
+.score-stars-glyphs {
+    display: flex;
+}
+
+.score-star {
+    position: relative;
+    display: block;
+    width: var(--star);
+    height: var(--star);
+}
+
+.score-star-outline {
+    display: block;
+    width: var(--star);
+    height: var(--star);
+    color: rgba(71, 85, 105, 0.9);
+}
+
+[data-theme='light'] .score-star-outline {
+    color: #cbd5e1;
+}
+
+/* Clipped to the filled fraction: 0%, 50% or 100% of one star. */
+.score-star-fill {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    overflow: hidden;
+    color: #facc15;
+}
+
+.score-star-solid {
+    display: block;
+    width: var(--star);
+    height: var(--star);
+}
+
+/*
+ * The zones extend past the stars vertically, so the row is still comfortable to hit on a touch
+ * screen even though a half star is narrow. Left and width come from the component.
+ */
+.score-stars-zone {
+    position: absolute;
+    top: -0.4rem;
+    bottom: -0.4rem;
+    display: block;
+    margin: 0;
+    cursor: pointer;
+}
+
+.score-stars:disabled .score-stars-zone {
+    cursor: default;
+}
+
+.score-stars-zone input {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    opacity: 0;
+    cursor: inherit;
+}
+
+.score-stars-zone:has(input:focus-visible) {
+    outline: 2px solid #3b82f6;
+    outline-offset: 0;
+    border-radius: 2px;
+}
+
+/* Half a star is genuinely hard to read at a glance, so the number is always there too. */
+.score-stars-readout {
+    min-width: 1.1rem;
+    font-size: 0.8rem;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+    color: #e2e8f0;
+}
+
+.score-stars-md .score-stars-readout {
+    min-width: 1.5rem;
+    font-size: 1rem;
+}
+
+[data-theme='light'] .score-stars-readout {
+    color: #0f172a;
+}
+
+.score-stars.empty .score-stars-readout {
+    font-weight: 400;
+    color: #64748b;
+}
+
+.score-stars-clear {
+    display: inline-flex;
+    flex: none;
+    padding: 0.15rem;
+    color: #64748b;
+    background: none;
+    border: none;
+    border-radius: 0.3rem;
+    cursor: pointer;
+    transition: color 0.12s, background 0.12s;
+}
+
+.score-stars-clear svg {
+    width: 0.8rem;
+    height: 0.8rem;
+}
+
+.score-stars-md .score-stars-clear svg {
+    width: 1rem;
+    height: 1rem;
+}
+
+.score-stars-clear:hover:not(:disabled) {
+    color: #ffffff;
+    background: rgba(100, 116, 139, 0.6);
+}
+
+.score-stars-clear:focus-visible {
+    outline: 2px solid #3b82f6;
+    outline-offset: 1px;
+}
+
+.score-stars-clear:disabled {
+    cursor: default;
+    opacity: 0.4;
+}
