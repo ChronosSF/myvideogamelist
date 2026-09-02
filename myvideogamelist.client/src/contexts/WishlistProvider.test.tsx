@@ -526,6 +526,46 @@ describe('WishlistProvider across a session change', () => {
         expect(screen.getByTestId('error')).toHaveTextContent(/failed to load your wishlist/i);
     });
 
+    it('does not let a late success from the previous account clear the next one banner', async () => {
+        /*
+         * CLEAR_MUTATION_ERROR is raised from a mutation continuation rather than from the fetch
+         * the effect aborts, so nothing else stops it arriving late. Unstamped, a success from the
+         * account that has just signed out wipes an error belonging to the one that signed in.
+         */
+        const { release } = stubFetch({
+            loads: [[item(1, 'Celeste', JANUARY)], []],
+            deferred: ['/api/wishlist/2'],
+            failing: ['/api/wishlist/1'],
+        });
+        const view = renderProvider();
+        await settled();
+
+        // Alice starts an add that stays in flight.
+        await click('add hades');
+        expect(titles()).toBe('Hades,Celeste');
+
+        auth.user = BOB;
+        await act(async () => {
+            view.rerender(
+                <WishlistProvider>
+                    <Probe />
+                </WishlistProvider>,
+            );
+        });
+        await settled();
+        expect(titles()).toBe('');
+
+        // Bob then fails an add of his own and is told so.
+        await click('add celeste');
+        await waitFor(() =>
+            expect(screen.getByTestId('mutation-error')).toHaveTextContent(/failed to update/i));
+
+        // Alice's add finally succeeds. Bob keeps his error.
+        await release('/api/wishlist/2', 204);
+
+        expect(screen.getByTestId('mutation-error')).toHaveTextContent(/failed to update/i);
+    });
+
     it('clears the wishlist on sign-out', async () => {
         stubFetch({ initial: [item(1, 'Celeste', JANUARY)] });
         const view = renderProvider();

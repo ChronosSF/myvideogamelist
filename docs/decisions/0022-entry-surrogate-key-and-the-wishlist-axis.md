@@ -98,11 +98,33 @@ succeeds. This one is independent of any mutation: `FETCH_ERROR` keeps the items
 a *failed* load for the new account left the previous account's data on screen underneath the error
 message. Clearing on the transition means a fetch that never succeeds cannot strand anything.
 
-Both were found by review after the first fix shipped, and the tests that were meant to cover the
-first one could not have caught either: they signed the second account in through a helper that
-exits its own `act` and therefore flushes effects, so the marker was always current by the time the
-rollback ran. Reproducing the window needs the re-render and the completion inside a single `act`
-block, since a nested `act` does not flush passive effects.
+**And the transition is applied during render**, not from the effect. Dispatching it from the
+effect still leaves the frame between commit and effect, in which the new account is on screen
+while both the lists and the session guarding them belong to the previous one. Nothing about
+rollbacks fixes that frame: no mutation need be in flight for it to render one user's games under
+another.
+
+Both of the first two were found by review after the first fix shipped, and the tests meant to
+cover the first could not have caught either: they signed the second account in through a helper
+that exits its own `act` and therefore flushes effects, so the marker was always current by the
+time the rollback ran.
+
+**The third has no test at all, and the reason is worth recording** so nobody assumes it is an
+oversight. Under jsdom, `act` flushes render, commit and passive effects together on the way out —
+a `rerender` inside an `act` block does not even commit until the block exits — so the frame this
+guards does not occur in the test environment. Removing the render-phase dispatch leaves the entire
+suite green. It stays because it is correct in a browser, and it is commented in the provider as
+reasoned rather than covered.
+
+The same caveat applies to session-stamping `FETCH_SUCCESS`, `FETCH_ERROR` and
+`PREFERENCES_LOADED`. Every case a test can reach is already stopped by the request's
+`AbortController`; the stamps only matter in that same unobservable frame, before the effect
+cleanup aborts anything. They are belt-and-braces, and the test that looks like it covers them
+says in its own comment that it does not — it survives having the stamp removed.
+
+`CLEAR_MUTATION_ERROR` is the exception: it is raised from a mutation continuation rather than from
+an abortable fetch, so a late success from the previous account really could wipe the new one's
+error banner. That one is stamped and tested.
 
 **9. Load errors and mutation errors are separate fields.** A wishlist that failed to load has
 nothing trustworthy to show and takes the whole page. A toggle that failed has already been rolled

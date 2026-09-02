@@ -366,9 +366,14 @@ describe('across a session change', () => {
         deferred: string;
         /** Fails the preference fetch too, so only a state reset can explain a default. */
         preferences?: 'fail';
+        /** Successive preference payloads, so one account can answer differently from the next. */
+        prefs?: { view: string }[];
     }) {
         let settle!: (status: number) => void;
         let loadIndex = 0;
+        let prefCount = 0;
+        // Only the first matching request is held, so a later account can answer normally.
+        let heldOnce = false;
 
         const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
             const url = String(input);
@@ -381,11 +386,24 @@ describe('across a session change', () => {
                     : new Response(JSON.stringify({ lists }), { status: 200 }));
             }
             if (method === 'GET' && url === '/api/user/list-preferences') {
-                return Promise.resolve(options.preferences === 'fail'
-                    ? new Response('nope', { status: 500 })
-                    : new Response(JSON.stringify({ view: 'tiles', sorts: {} }), { status: 200 }));
+                if (options.preferences === 'fail') {
+                    return Promise.resolve(new Response('nope', { status: 500 }));
+                }
+                const seq = options.prefs;
+                const view = seq === undefined
+                    ? 'tiles'
+                    : seq[Math.min(prefCount++, seq.length - 1)].view;
+                const body = JSON.stringify({ view, sorts: {} });
+                if (`${method} ${url}` === options.deferred && !heldOnce) {
+                    heldOnce = true;
+                    return new Promise<Response>(resolve => {
+                        settle = () => resolve(new Response(body, { status: 200 }));
+                    });
+                }
+                return Promise.resolve(new Response(body, { status: 200 }));
             }
-            if (`${method} ${url}` === options.deferred) {
+            if (`${method} ${url}` === options.deferred && !heldOnce) {
+                heldOnce = true;
                 return new Promise<Response>(resolve => {
                     settle = (status: number) =>
                         resolve(new Response(status === 204 ? null : 'nope', { status }));
@@ -617,6 +635,36 @@ describe('across a session change', () => {
 
         expect(playing()).toBeEmptyDOMElement();
         expect(playing()).not.toHaveTextContent('Celeste');
+    });
+
+    it('drops the previous account preference response when it arrives late', async () => {
+        /*
+         * What this actually pins is the AbortController: by the time a response arrives this
+         * late, the effect cleanup has aborted it and the handler returns before dispatching.
+         * Verified by removing the session stamp from PREFERENCES_LOADED — the test still passes,
+         * so it is the abort doing the work, not the stamp.
+         *
+         * The stamp is still there, and is deliberately belt-and-braces: the abort runs in the
+         * effect cleanup, which happens after the commit, so a response resolving in between
+         * would slip past it. That window cannot be reproduced here — see the note in
+         * ListsProvider on why — so the stamp is reasoned, not covered.
+         */
+        const { release } = sessionStub({
+            loads: [{ playing: [CELESTE] }, { playing: [HADES] }],
+            deferred: 'GET /api/user/list-preferences',
+            prefs: [{ view: 'table' }, { view: 'tiles' }],
+        });
+        const view = mount();
+        await waitFor(() => expect(playing()).toHaveTextContent('Celeste(7)'));
+
+        await signIn(BOB, view);
+        await waitFor(() => expect(playing()).toHaveTextContent('Hades'));
+        expect(screen.getByTestId('view')).toHaveTextContent('tiles');
+
+        // Alice asked for table; it arrives now, after Bob is on screen.
+        await release(200);
+
+        expect(screen.getByTestId('view')).toHaveTextContent('tiles');
     });
 
     it('still rolls back normally when the account has not changed', async () => {

@@ -43,15 +43,17 @@ interface ListsState {
 type ListsAction =
     | { type: 'RESET' }
     | { type: 'FETCH_START'; session: string | null }
-    | { type: 'FETCH_SUCCESS'; lists: Record<ListId, ListEntryDto[]> }
-    | { type: 'FETCH_ERROR'; error: string }
-    | { type: 'PREFERENCES_LOADED'; view: ViewMode; sorts: Partial<Record<ListId, SortState>> }
+    | { type: 'FETCH_SUCCESS'; session: string | null; lists: Record<ListId, ListEntryDto[]> }
+    | { type: 'FETCH_ERROR'; session: string | null; error: string }
+    | { type: 'PREFERENCES_LOADED'; session: string | null; view: ViewMode; sorts: Partial<Record<ListId, SortState>> }
     | { type: 'SET_LIST'; session: string | null; listId: ListId; entries: ListEntryDto[] }
     | { type: 'SET_ENTRIES'; session: string | null; lists: Record<ListId, ListEntryDto[]> }
     | { type: 'SET_VIEW'; view: ViewMode }
     | { type: 'SET_SORT'; listId: ListId; sort: SortState }
     | { type: 'MUTATION_ERROR'; session: string | null; error: string }
-    | { type: 'CLEAR_MUTATION_ERROR' };
+    // Stamped like the rest even though nothing dispatches it yet: a mutation is the only
+    // plausible caller, and an unstamped action in that vocabulary is a trap for whoever adds one.
+    | { type: 'CLEAR_MUTATION_ERROR'; session: string | null };
 
 const initialState: ListsState = {
     lists: emptyLists(),
@@ -84,8 +86,12 @@ function reducer(state: ListsState, action: ListsAction): ListsState {
             return action.session === state.session
                 ? { ...state, loading: true, error: null }
                 : { ...initialState, session: action.session, loading: true };
+        // The fetch results are session-stamped too, and not only because the request is aborted
+        // on an account change: the abort runs in the effect cleanup, which is one more thing
+        // that happens after the commit. A result resolving before that cleanup would otherwise
+        // land on the account that has already replaced it.
         case 'FETCH_SUCCESS':
-            return {
+            return ifCurrent(state, action.session, () => ({
                 ...state,
                 loading: false,
                 error: null,
@@ -93,11 +99,13 @@ function reducer(state: ListsState, action: ListsAction): ListsState {
                 // Spread over a complete empty set, so a status the server has not sent yet
                 // still resolves to [] rather than undefined.
                 lists: { ...emptyLists(), ...action.lists },
-            };
+            }));
         case 'FETCH_ERROR':
-            return { ...state, loading: false, error: action.error };
+            return ifCurrent(state, action.session, () =>
+                ({ ...state, loading: false, error: action.error }));
         case 'PREFERENCES_LOADED':
-            return { ...state, view: action.view, sorts: action.sorts };
+            return ifCurrent(state, action.session, () =>
+                ({ ...state, view: action.view, sorts: action.sorts }));
         // The three that a mutation raises, and therefore the three that can arrive late. Each
         // carries the session it was captured under; ifCurrent drops it when that has moved on.
         case 'SET_LIST':
@@ -112,7 +120,7 @@ function reducer(state: ListsState, action: ListsAction): ListsState {
         case 'MUTATION_ERROR':
             return ifCurrent(state, action.session, () => ({ ...state, mutationError: action.error }));
         case 'CLEAR_MUTATION_ERROR':
-            return { ...state, mutationError: null };
+            return ifCurrent(state, action.session, () => ({ ...state, mutationError: null }));
         default:
             return state;
     }
@@ -144,6 +152,28 @@ export function ListsProvider({ children }: { children: ReactNode }) {
      */
     const session = user?.id ?? null;
 
+    // The account transition is applied *during render*, not in the effect below.
+    //
+    // An effect runs after the commit, which leaves a frame where the new account is on screen
+    // while the state — the lists themselves and the session that guards them — still belongs to
+    // the previous one. That frame renders one user's games under another, and judges anything
+    // completing inside it against the account that has already been replaced.
+    //
+    // Adjusting state during render is React's documented answer to a changed prop, and it is
+    // what the rest of this codebase uses for the same reason. The condition makes it idempotent:
+    // React re-renders immediately, `state.session` then matches, and nothing loops. The effect
+    // still dispatches `FETCH_START` for the fetch itself, which is a no-op on the same session.
+    //
+    // **This is reasoned, not covered by a test, and that is not for want of trying.** Under
+    // jsdom every render, commit and passive effect inside an `act` block is flushed together on
+    // the way out, so the frame this exists to fix does not occur: a `rerender` inside `act` does
+    // not even commit until the block exits. Removing these three lines leaves the whole suite
+    // green. The tests below cover what happens *after* the transition, on either side of it;
+    // the timing of the transition itself needs a real browser to observe.
+    if (!authLoading && state.session !== session) {
+        dispatch(session === null ? { type: 'RESET' } : { type: 'FETCH_START', session });
+    }
+
     useEffect(() => {
         if (authLoading) return;
 
@@ -153,7 +183,8 @@ export function ListsProvider({ children }: { children: ReactNode }) {
         }
 
         const controller = new AbortController();
-        dispatch({ type: 'FETCH_START', session: user.id });
+        const fetchSession = user.id;
+        dispatch({ type: 'FETCH_START', session: fetchSession });
 
         fetch('/api/lists', { credentials: 'include', signal: controller.signal })
             .then(res => {
@@ -161,12 +192,13 @@ export function ListsProvider({ children }: { children: ReactNode }) {
                 return res.json() as Promise<ApiListsResponse>;
             })
             .then(data => {
-                if (!controller.signal.aborted) dispatch({ type: 'FETCH_SUCCESS', lists: data.lists });
+                if (!controller.signal.aborted) dispatch({ type: 'FETCH_SUCCESS', session: fetchSession, lists: data.lists });
             })
             .catch(err => {
                 if (controller.signal.aborted) return;
                 dispatch({
                     type: 'FETCH_ERROR',
+                    session: fetchSession,
                     error: err instanceof Error ? err.message : 'Failed to load lists.',
                 });
             });
@@ -181,7 +213,7 @@ export function ListsProvider({ children }: { children: ReactNode }) {
                 for (const [id, sort] of Object.entries(data.sorts) as [ListId, { sortKey: SortState['key']; descending: boolean }][]) {
                     sorts[id] = { key: sort.sortKey, descending: sort.descending };
                 }
-                dispatch({ type: 'PREFERENCES_LOADED', view: data.view, sorts });
+                dispatch({ type: 'PREFERENCES_LOADED', session: fetchSession, view: data.view, sorts });
             })
             .catch(() => {
                 // Swallowed by design — the defaults are a perfectly good fallback and a failed

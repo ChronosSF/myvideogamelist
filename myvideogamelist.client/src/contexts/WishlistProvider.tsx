@@ -31,13 +31,13 @@ interface WishlistState {
 type WishlistAction =
     | { type: 'RESET' }
     | { type: 'FETCH_START'; session: string | null }
-    | { type: 'FETCH_SUCCESS'; items: WishlistItemDto[] }
-    | { type: 'FETCH_ERROR'; error: string }
+    | { type: 'FETCH_SUCCESS'; session: string | null; items: WishlistItemDto[] }
+    | { type: 'FETCH_ERROR'; session: string | null; error: string }
     | { type: 'PREPEND_ITEM'; session: string | null; item: WishlistItemDto }
     | { type: 'RESTORE_ITEM'; session: string | null; item: WishlistItemDto }
     | { type: 'DROP_ITEM'; session: string | null; gameId: number }
     | { type: 'MUTATION_ERROR'; session: string | null; error: string }
-    | { type: 'CLEAR_MUTATION_ERROR' };
+    | { type: 'CLEAR_MUTATION_ERROR'; session: string | null };
 
 const initialState: WishlistState = {
     items: [],
@@ -72,10 +72,16 @@ function reducer(state: WishlistState, action: WishlistAction): WishlistState {
             return action.session === state.session
                 ? { ...state, loading: true, error: null }
                 : { ...initialState, session: action.session, loading: true };
+        // Session-stamped too, and not only because the request is aborted on an account change:
+        // the abort runs in the effect cleanup, which is one more thing that happens after the
+        // commit. A result resolving before that cleanup would otherwise land on the account that
+        // has already replaced it.
         case 'FETCH_SUCCESS':
-            return { ...state, items: action.items, loading: false, error: null, mutationError: null };
+            return ifCurrent(state, action.session, () =>
+                ({ ...state, items: action.items, loading: false, error: null, mutationError: null }));
         case 'FETCH_ERROR':
-            return { ...state, loading: false, error: action.error };
+            return ifCurrent(state, action.session, () =>
+                ({ ...state, loading: false, error: action.error }));
 
         // A newly wanted game goes to the front because it *is* the newest, and saying so beats
         // sorting on a timestamp this client invented: a browser clock running behind the server
@@ -111,7 +117,7 @@ function reducer(state: WishlistState, action: WishlistAction): WishlistState {
         case 'MUTATION_ERROR':
             return ifCurrent(state, action.session, () => ({ ...state, mutationError: action.error }));
         case 'CLEAR_MUTATION_ERROR':
-            return { ...state, mutationError: null };
+            return ifCurrent(state, action.session, () => ({ ...state, mutationError: null }));
         default:
             return state;
     }
@@ -146,6 +152,15 @@ export function WishlistProvider({ children }: { children: ReactNode }) {
      */
     const session = user?.id ?? null;
 
+    // The account transition is applied *during render*, not in the effect below. An effect runs
+    // after the commit, which leaves a frame where the new account is on screen while the state —
+    // the items and the session that guards them — still belongs to the previous one. Adjusting
+    // state during render is React's documented answer to a changed prop; the condition makes it
+    // idempotent, so nothing loops.
+    if (!authLoading && state.session !== session) {
+        dispatch(session === null ? { type: 'RESET' } : { type: 'FETCH_START', session });
+    }
+
     useEffect(() => {
         if (authLoading) return;
 
@@ -155,7 +170,8 @@ export function WishlistProvider({ children }: { children: ReactNode }) {
         }
 
         const controller = new AbortController();
-        dispatch({ type: 'FETCH_START', session: user.id });
+        const fetchSession = user.id;
+        dispatch({ type: 'FETCH_START', session: fetchSession });
 
         fetch('/api/wishlist', { credentials: 'include', signal: controller.signal })
             .then(res => {
@@ -163,7 +179,7 @@ export function WishlistProvider({ children }: { children: ReactNode }) {
                 return res.json() as Promise<WishlistItemDto[]>;
             })
             .then(items => {
-                if (!controller.signal.aborted) dispatch({ type: 'FETCH_SUCCESS', items });
+                if (!controller.signal.aborted) dispatch({ type: 'FETCH_SUCCESS', session: fetchSession, items });
             })
             .catch(err => {
                 if (controller.signal.aborted) return;
@@ -171,6 +187,7 @@ export function WishlistProvider({ children }: { children: ReactNode }) {
                 // look identical on screen, and the second must not read as the first.
                 dispatch({
                     type: 'FETCH_ERROR',
+                    session: fetchSession,
                     error: err instanceof Error ? err.message : 'Failed to load your wishlist.',
                 });
             });
@@ -208,7 +225,7 @@ export function WishlistProvider({ children }: { children: ReactNode }) {
             });
 
             if (res.ok) {
-                dispatch({ type: 'CLEAR_MUTATION_ERROR' });
+                dispatch({ type: 'CLEAR_MUTATION_ERROR', session });
                 return true;
             }
             dispatch({ type: 'DROP_ITEM', session, gameId: game.id });
@@ -241,7 +258,7 @@ export function WishlistProvider({ children }: { children: ReactNode }) {
 
             // 404 means it was not on the wishlist, which is the state the caller asked for.
             if (res.ok || res.status === 404) {
-                dispatch({ type: 'CLEAR_MUTATION_ERROR' });
+                dispatch({ type: 'CLEAR_MUTATION_ERROR', session });
                 return true;
             }
             if (removed) dispatch({ type: 'RESTORE_ITEM', session, item: removed });
