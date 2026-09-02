@@ -304,6 +304,265 @@ describe('deleting everything about a game', () => {
     });
 });
 
+describe('two mutations at once', () => {
+    const HADES = entry({ game: { id: 2, title: 'Hades' } });
+
+    /**
+     * A stub that can hold chosen requests open, so a second mutation can complete while a first
+     * is still in flight — which is the whole subject of this block.
+     *
+     * Keyed by method and URL together, because adding to a list and removing from one are a PUT
+     * and a DELETE to the same path.
+     */
+    function concurrencyStub(options: {
+        lists?: ListsPayload;
+        /** Requests held open until `release`. */
+        hold?: string[];
+        /** Requests that never arrive at all — see `reject` in the tests below. */
+        reject?: string[];
+        /** Requests answered with a 500. */
+        failing?: string[];
+    }) {
+        const calls: Recorded[] = [];
+        const settlers = new Map<string, (status: number) => void>();
+
+        const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+            const url = String(input);
+            const method = init?.method ?? 'GET';
+            const key = `${method} ${url}`;
+            calls.push({ method, url, body: init?.body ? JSON.parse(String(init.body)) : undefined });
+
+            if (key === 'GET /api/lists') {
+                const body = JSON.stringify({ lists: options.lists ?? {} });
+                return Promise.resolve(new Response(body, { status: 200 }));
+            }
+            if (key === 'GET /api/user/list-preferences') {
+                const body = JSON.stringify({ view: 'tiles', sorts: {} });
+                return Promise.resolve(new Response(body, { status: 200 }));
+            }
+            if (options.reject?.includes(key)) {
+                // What the browser actually does when the API is unreachable: it rejects. It does
+                // not hand back a response with a status for the code to check.
+                return Promise.reject(new TypeError('Failed to fetch'));
+            }
+            if (options.hold?.includes(key)) {
+                return new Promise<Response>(resolve => {
+                    settlers.set(key, status =>
+                        resolve(new Response(status === 204 ? null : 'nope', { status })));
+                });
+            }
+            if (options.failing?.includes(key)) {
+                return Promise.resolve(new Response('nope', { status: 500 }));
+            }
+            return Promise.resolve(new Response(null, { status: 204 }));
+        });
+
+        vi.stubGlobal('fetch', fetchMock);
+
+        return {
+            calls,
+            /** Settles a held request and flushes everything it causes. */
+            release: (key: string, status: number) => act(async () => {
+                const settle = settlers.get(key);
+                if (!settle) throw new Error(`${key} was never held`);
+                settle(status);
+                await Promise.resolve();
+            }),
+        };
+    }
+
+    /** Two games, so a mutation for one can be caught undoing the other. */
+    function PairProbe() {
+        const lists = useLists();
+        const titles = { 1: 'Celeste', 2: 'Hades' } as Record<number, string>;
+
+        return (
+            <div>
+                <span data-testid="loading">{String(lists.loading)}</span>
+                <span data-testid="error">{lists.mutationError ?? ''}</span>
+                {(['playing', 'finished'] as ListId[]).map(id => (
+                    <span key={id} data-testid={`list-${id}`}>
+                        {lists.lists[id].map(e => `${e.game.title}(${e.score ?? '-'})`).join(',')}
+                    </span>
+                ))}
+                {[1, 2].map(id => (
+                    <span key={id}>
+                        <button onClick={() => void lists.addToList('finished', game({ id, title: titles[id] }))}>
+                            {`move ${id}`}
+                        </button>
+                        <button onClick={() => void lists.removeFromList('playing', id)}>{`remove ${id}`}</button>
+                        <button onClick={() => void lists.setScore(id, 9)}>{`score ${id}`}</button>
+                        <button onClick={() => void lists.deleteEntry(id)}>{`delete ${id}`}</button>
+                    </span>
+                ))}
+            </div>
+        );
+    }
+
+    async function mountPair(options: Parameters<typeof concurrencyStub>[0]) {
+        const stub = concurrencyStub(options);
+        render(<ListsProvider><PairProbe /></ListsProvider>);
+        await waitFor(() => expect(screen.getByTestId('loading')).toHaveTextContent('false'));
+        return stub;
+    }
+
+    const playing = () => screen.getByTestId('list-playing');
+    const press = (name: string) => userEvent.click(screen.getByRole('button', { name }));
+
+    /*
+     * The pending set is per game id, so mutations for two different games overlap by design.
+     * Rolling one back by restoring the lists as they were before *its* request therefore undoes
+     * whatever the other one did in the meantime, and the symptom is a game the user removed
+     * coming back on its own. Each of these fails the removed game and checks that the game
+     * nobody touched stays gone.
+     */
+
+    it('undoes only the game it was about when a removal fails', async () => {
+        const { release } = await mountPair({
+            lists: { playing: [CELESTE, HADES] },
+            hold: ['DELETE /api/lists/2'],
+        });
+
+        await press('remove 2');
+        await press('remove 1');
+        await waitFor(() => expect(playing()).toBeEmptyDOMElement());
+
+        await release('DELETE /api/lists/2', 500);
+
+        expect(playing()).toHaveTextContent('Hades');
+        expect(playing()).not.toHaveTextContent('Celeste');
+    });
+
+    it('undoes only the game it was about when a score fails', async () => {
+        // Scoring is the one with no rollback of its own to speak of: it used to put back every
+        // list as it found them, which is every other game's state as well.
+        const { release } = await mountPair({
+            lists: { playing: [CELESTE, HADES] },
+            hold: ['PUT /api/entries/1/score'],
+        });
+
+        await press('score 1');
+        await press('delete 2');
+        await waitFor(() => expect(playing()).not.toHaveTextContent('Hades'));
+
+        await release('PUT /api/entries/1/score', 500);
+
+        expect(playing()).toHaveTextContent('Celeste(7)');
+        expect(playing()).not.toHaveTextContent('Hades');
+    });
+
+    it('undoes only the game it was about when a delete fails', async () => {
+        const { release } = await mountPair({
+            lists: { playing: [CELESTE, HADES] },
+            hold: ['DELETE /api/entries/2'],
+        });
+
+        await press('delete 2');
+        await press('remove 1');
+        await waitFor(() => expect(playing()).toBeEmptyDOMElement());
+
+        await release('DELETE /api/entries/2', 500);
+
+        expect(playing()).toHaveTextContent('Hades');
+        expect(playing()).not.toHaveTextContent('Celeste');
+    });
+
+    it('undoes only the game it was about when a move fails', async () => {
+        const { release } = await mountPair({
+            lists: { playing: [CELESTE, HADES] },
+            hold: ['PUT /api/lists/2'],
+        });
+
+        await press('move 2');
+        await press('remove 1');
+        await waitFor(() => expect(playing()).toBeEmptyDOMElement());
+
+        await release('PUT /api/lists/2', 500);
+
+        expect(playing()).toHaveTextContent('Hades');
+        expect(playing()).not.toHaveTextContent('Celeste');
+        expect(screen.getByTestId('list-finished')).toBeEmptyDOMElement();
+    });
+
+    it('puts a game back where it was, not on the end of the list', async () => {
+        // Undoing a move is not the same operation as making one. A game moved to a list belongs
+        // at its end, but a game put back belongs at the position it was taken from — otherwise a
+        // failed move silently re-orders a list the user was not changing.
+        await mountPair({
+            lists: { playing: [CELESTE, HADES] },
+            failing: ['PUT /api/lists/1'],
+        });
+
+        await press('move 1');
+
+        await waitFor(() => expect(playing()).toHaveTextContent('Celeste'));
+        expect(playing().textContent).toBe('Celeste(7),Hades(-)');
+    });
+
+    it('refuses a second score while the first is still saving', async () => {
+        // Two scores in flight for one game is the same-game version of the bug above: the first
+        // to fail rolls back to a value the second one has already replaced.
+        const { calls } = await mountPair({
+            lists: { playing: [CELESTE] },
+            hold: ['PUT /api/entries/1/score'],
+        });
+
+        await press('score 1');
+        await press('score 1');
+
+        expect(calls.filter(c => c.url === '/api/entries/1/score')).toHaveLength(1);
+    });
+
+    /*
+     * `fetch` rejects when the API is unreachable rather than returning a response with a status
+     * — the trap `CLAUDE.md` records for loaders, and these three had it too. Only `!res.ok` was
+     * handled, so a dead API left the optimistic change on screen as though it had been saved,
+     * and the rejection escaped as an unhandled promise because every caller fires these with
+     * `void`.
+     */
+
+    it('rolls a move back when the request never arrives', async () => {
+        await mountPair({ lists: { playing: [CELESTE] }, reject: ['PUT /api/lists/1'] });
+
+        await press('move 1');
+
+        await waitFor(() => expect(playing()).toHaveTextContent('Celeste(7)'));
+        expect(screen.getByTestId('list-finished')).toBeEmptyDOMElement();
+        expect(screen.getByTestId('error')).toHaveTextContent('Failed to update list');
+    });
+
+    it('rolls a removal back when the request never arrives', async () => {
+        await mountPair({ lists: { playing: [CELESTE] }, reject: ['DELETE /api/lists/1'] });
+
+        await press('remove 1');
+
+        await waitFor(() => expect(playing()).toHaveTextContent('Celeste(7)'));
+        expect(screen.getByTestId('error')).toHaveTextContent('Failed to remove from list');
+    });
+
+    it('rolls a delete back when the request never arrives', async () => {
+        await mountPair({ lists: { playing: [CELESTE] }, reject: ['DELETE /api/entries/1'] });
+
+        await press('delete 1');
+
+        await waitFor(() => expect(playing()).toHaveTextContent('Celeste(7)'));
+        expect(screen.getByTestId('error')).toHaveTextContent('Failed to remove your data');
+    });
+
+    it('clears the banner once a change succeeds', async () => {
+        // There is no dismiss control, so nothing else would ever take it down: the banner would
+        // sit there describing a failure the user has already retried successfully.
+        await mountPair({ lists: { playing: [CELESTE] }, failing: ['DELETE /api/lists/1'] });
+
+        await press('remove 1');
+        await waitFor(() => expect(screen.getByTestId('error')).toHaveTextContent('Failed to remove'));
+
+        await press('move 1');
+
+        await waitFor(() => expect(screen.getByTestId('error')).toBeEmptyDOMElement());
+    });
+});
+
 describe('preferences', () => {
     it('applies a layout change immediately and persists it', async () => {
         const calls = await renderProvider();

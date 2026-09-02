@@ -189,13 +189,34 @@ raise, and it clears its lists *and* its per-user preferences when the account c
 providers now use the same two mechanisms, and the wishlist one was moved off the ref it originally
 shipped with.
 
-**It still rolls back wholesale, though.** Its mutations share one pending set across all five
-statuses, so two cannot overlap for the same game — but they can for two different games, and
-`setScore` takes no pending lock at all, so the resurrection described in decision 6 is still
-reachable there. Separately, `addToList`, `removeFromList` and `deleteEntry` wrap their fetch in
-`try`/`finally` with no `catch`, so an unreachable API rejects into an unhandled promise rather
-than the deliberate rollback — which is the trap `CLAUDE.md` warns about for loaders. Both predate
-this work and belong in their own change.
+**And decision 6 has since been applied to it as well**, which was the last thing this record
+listed as outstanding. Its four mutations used to roll back by putting every list back as it was
+before the request, so the resurrection decision 6 describes was reachable for any two games at
+once — and `setScore` took no pending lock at all, which made it reachable twice over. All four now
+capture one `EntryPosition` for the game they are about, which is the whole of what an undo needs
+and says nothing about any other game. `setScore` takes the same per-game lock as a status change,
+because it writes the same entry row: without it two scores set in quick succession could both be
+in flight, and the first to fail would roll the second back to a value neither had asked for.
+
+Undoing a move is deliberately not the same operation as making one, for the reason decision 6
+gives for the wishlist. A game moved to a list is appended, because it is the most recent thing in
+it; a game put back carries the index it was taken from, or a failed move quietly re-orders a list
+the user was not changing.
+
+**A rejected `fetch` is now handled, and it is the same trap `CLAUDE.md` records for loaders.**
+`addToList`, `removeFromList` and `deleteEntry` wrapped their fetch in `try`/`finally` with no
+`catch`, so they handled a request that was refused but not one that never arrived — `fetch`
+rejects when the API is unreachable rather than returning `!res.ok`. The optimistic change stood as
+though it had been saved, and the rejection escaped as an unhandled promise, since every caller
+fires these with `void`.
+
+**The mutation error clears on the next success**, which it did not before. There is no dismiss
+control on the banner, so nothing else would ever take it down: it sat there describing a failure
+the user had already retried successfully, until the lists happened to be refetched. `CLEAR_MUTATION_ERROR`
+existed and was session-stamped but had no caller, which is what made the omission easy to miss.
+
+Nine of the ten tests covering this fail against the previous implementation; the tenth fails
+against a rollback that appends instead of restoring the position.
 
 **The wishlist page is tiles only.** No table view and no toolbar: a wishlist item has no score and
 no status, so four of the table's columns would be empty and its sort options meaningless. "When

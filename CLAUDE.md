@@ -136,7 +136,8 @@ ROADMAP.md                      Forward-looking plan
 
 - **`fetch` rejects when the API is unreachable** — it does not return `!response.ok`. A loader
   that only checks `response.ok` turns a dead upstream into an unhandled 500. Wrap it and throw
-  a deliberate 502.
+  a deliberate 502. The same trap catches an optimistic mutation: with no `catch`, the change
+  stays on screen as though it saved, and the rejection escapes unhandled.
 
 - **Loaders run on the server**, where a relative URL has no origin. Use `apiUrl()` from
   `@/lib/api` for any fetch that may run during SSR.

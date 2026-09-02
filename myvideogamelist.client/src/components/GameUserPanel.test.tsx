@@ -395,6 +395,11 @@ describe('GameUserPanel wishlist', () => {
         // because an unrelated status change happened to be in flight.
         stubEntryFetch(null, 404);
         renderPanel({ isPending: () => true });
+        // Not `settled()`: the score control stays disabled for as long as a list mutation is
+        // pending, so there is nothing here that becomes enabled to wait for. The panel's own
+        // entry fetch still has to land before the test ends, or React reports its state update
+        // outside `act(...)` — a warning that goes on to mask real ones.
+        await act(async () => {});
 
         expect(screen.getByRole('button', { name: 'Add to wishlist' })).toBeEnabled();
         expect(screen.getByRole('button', { name: 'Playing' })).toBeDisabled();

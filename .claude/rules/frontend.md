@@ -47,11 +47,19 @@ that are easy to get wrong and were got wrong once (`docs/decisions/0022-*`):
   design — the pending set is per game id — so putting back the list as it was before *this*
   request also undoes whichever other request succeeded meanwhile. The visible symptom is a removed
   game reappearing. Dispatch an action that touches only the affected item, computed from current
-  state.
+  state. Capture the position it came from too: undoing a move is not the same operation as making
+  one, and appending instead re-orders a list nobody was changing.
+- **Take the per-game lock for every mutation that writes the entry**, scoring included. Two
+  requests in flight for one game means the first to fail rolls back over what the second saved.
+  The lock is also what makes the captured position safe to trust while the request is out.
+- **Handle a rejected `fetch`, not only `!res.ok`.** An unreachable API makes `fetch` reject, so a
+  `try`/`finally` with no `catch` leaves the optimistic change on screen as though it had been
+  saved — and, because these are fired with `void`, the rejection escapes unhandled.
 - **Keep the load error and the mutation error in separate fields.** A failed fetch means there is
   nothing trustworthy to show. A failed mutation has already been rolled back, so the data beside
   it is fine — sharing one field makes a failed toggle render as "failed to load" and hide a
-  perfectly good list. Clear the mutation error on the next success.
+  perfectly good list. Clear the mutation error on the next success: neither banner is dismissible,
+  so nothing else ever takes it down.
 - **A rollback belongs to the session that started it.** A mutation can still be in flight when one
   account signs out and another signs in, and the rollback closes over data captured from the
   first — so an unguarded one writes one user's games into another user's lists. Only local state
