@@ -140,8 +140,10 @@ export function GameUserPanel({ game }: GameUserPanelProps) {
                     </svg>
                     {wishlisted ? 'On your wishlist' : 'Add to wishlist'}
                 </button>
-                {wishlist.error && (
-                    <p className="game-user-panel-hint" role="alert">{wishlist.error}</p>
+                {/* The mutation error, not the load error: a wishlist that failed to load is a
+                    whole-page condition, and this panel is about one game. */}
+                {wishlist.mutationError && (
+                    <p className="game-user-panel-hint" role="alert">{wishlist.mutationError}</p>
                 )}
             </div>
 

@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Metadata;
 using MyVideoGameList.Server.Data;
 using MyVideoGameList.Server.Models;
 
@@ -40,13 +41,30 @@ public class UserOwnedDataTests
         var missing = db.Model.GetEntityTypes()
             .Where(entity => !SystemOwned.Contains(entity.ClrType))
             .Where(entity => entity.FindProperty("UserId") is not null)
-            .Where(entity => !entity.GetForeignKeys().Any(fk =>
-                fk.PrincipalEntityType.ClrType == typeof(ApplicationUser)
-                && fk.DeleteBehavior == DeleteBehavior.Cascade))
+            .Where(entity => !CascadesFromItsUserIdColumn(entity))
             .Select(entity => entity.ClrType.Name)
             .ToList();
 
         Assert.Empty(missing);
+    }
+
+    /// <summary>
+    /// Whether the entity is deleted with its user <em>through the <c>UserId</c> column</em>.
+    /// </summary>
+    /// <remarks>
+    /// The property has to be tied to the foreign key, not merely present alongside one. An
+    /// entity carrying an orphaned <c>UserId</c> plus an unrelated cascading <c>OwnerId</c> would
+    /// otherwise satisfy the guard while leaving rows behind on account deletion, which is the one
+    /// thing it exists to prevent.
+    /// </remarks>
+    private static bool CascadesFromItsUserIdColumn(IEntityType entity)
+    {
+        var userId = entity.FindProperty("UserId")!;
+
+        return entity.GetForeignKeys().Any(fk =>
+            fk.PrincipalEntityType.ClrType == typeof(ApplicationUser)
+            && fk.DeleteBehavior == DeleteBehavior.Cascade
+            && fk.Properties.Contains(userId));
     }
 
     [Fact]

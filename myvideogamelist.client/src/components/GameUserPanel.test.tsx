@@ -39,6 +39,7 @@ function wishlistValue(overrides: Partial<WishlistContextValue> = {}): WishlistC
         items: [],
         loading: false,
         error: null,
+        mutationError: null,
         isWishlisted: () => false,
         isPending: () => false,
         add: vi.fn(async () => {}),
@@ -398,11 +399,21 @@ describe('GameUserPanel wishlist', () => {
         expect(screen.getByRole('button', { name: 'Playing' })).toBeDisabled();
     });
 
-    it('surfaces a wishlist failure', async () => {
+    it('surfaces a failed toggle', async () => {
         stubEntryFetch(null, 404);
-        renderPanel({}, { error: 'Failed to update your wishlist. Please try again.' });
+        renderPanel({}, { mutationError: 'Failed to update your wishlist. Please try again.' });
         await settled();
 
         expect(screen.getByRole('alert')).toHaveTextContent(/failed to update your wishlist/i);
+    });
+
+    it('leaves a wishlist that failed to load to the page, not to this panel', async () => {
+        // A load failure is a whole-page condition. This panel is about one game, and repeating
+        // it here would put the same message in two places on the game page.
+        stubEntryFetch(null, 404);
+        renderPanel({}, { error: 'Failed to load your wishlist (500)' });
+        await settled();
+
+        expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     });
 });

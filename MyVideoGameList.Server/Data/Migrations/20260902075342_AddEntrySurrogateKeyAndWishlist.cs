@@ -37,8 +37,7 @@ namespace MyVideoGameList.Server.Data.Migrations
                 name: "Id",
                 table: "UserGameEntries",
                 type: "integer",
-                nullable: false,
-                defaultValue: 0)
+                nullable: false)
                 .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn);
 
             migrationBuilder.AddPrimaryKey(

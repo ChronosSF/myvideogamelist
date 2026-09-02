@@ -7,7 +7,10 @@ import { WishlistContext } from './WishlistContext';
 interface WishlistState {
     items: WishlistItemDto[];
     loading: boolean;
+    /** Initial fetch failure only — the page has nothing trustworthy to show. */
     error: string | null;
+    /** Add or remove failure — shown next to the items, not instead of them. */
+    mutationError: string | null;
 }
 
 type WishlistAction =
@@ -15,10 +18,22 @@ type WishlistAction =
     | { type: 'FETCH_START' }
     | { type: 'FETCH_SUCCESS'; items: WishlistItemDto[] }
     | { type: 'FETCH_ERROR'; error: string }
-    | { type: 'SET_ITEMS'; items: WishlistItemDto[] }
-    | { type: 'MUTATION_ERROR'; error: string };
+    | { type: 'ADD_ITEM'; item: WishlistItemDto }
+    | { type: 'DROP_ITEM'; gameId: number }
+    | { type: 'MUTATION_ERROR'; error: string }
+    | { type: 'CLEAR_MUTATION_ERROR' };
 
-const initialState: WishlistState = { items: [], loading: false, error: null };
+const initialState: WishlistState = {
+    items: [],
+    loading: false,
+    error: null,
+    mutationError: null,
+};
+
+/** Most recently wanted first, the invariant the server's ordering also follows. */
+function newestFirst(items: WishlistItemDto[]): WishlistItemDto[] {
+    return [...items].sort((a, b) => Date.parse(b.addedAt) - Date.parse(a.addedAt));
+}
 
 function reducer(state: WishlistState, action: WishlistAction): WishlistState {
     switch (action.type) {
@@ -27,17 +42,32 @@ function reducer(state: WishlistState, action: WishlistAction): WishlistState {
         case 'FETCH_START':
             return { ...state, loading: true, error: null };
         case 'FETCH_SUCCESS':
-            return { items: action.items, loading: false, error: null };
+            return { items: action.items, loading: false, error: null, mutationError: null };
         case 'FETCH_ERROR':
             return { ...state, loading: false, error: action.error };
-        case 'SET_ITEMS':
-            return { ...state, items: action.items };
+        // ADD_ITEM and DROP_ITEM both work off whatever the current state is, rather than
+        // restoring a snapshot taken before the request. Mutations for different games run
+        // concurrently by design, so replacing the whole list on rollback would undo whichever
+        // of them happened to succeed in the meantime.
+        case 'ADD_ITEM':
+            return state.items.some(item => item.game.id === action.item.game.id)
+                ? state
+                : { ...state, items: newestFirst([...state.items, action.item]) };
+        case 'DROP_ITEM':
+            return {
+                ...state,
+                items: state.items.filter(item => item.game.id !== action.gameId),
+            };
         case 'MUTATION_ERROR':
-            return { ...state, error: action.error };
+            return { ...state, mutationError: action.error };
+        case 'CLEAR_MUTATION_ERROR':
+            return { ...state, mutationError: null };
         default:
             return state;
     }
 }
+
+const MUTATION_FAILED = 'Failed to update your wishlist. Please try again.';
 
 /**
  * Holds the user's wishlist.
@@ -48,7 +78,7 @@ function reducer(state: WishlistState, action: WishlistAction): WishlistState {
  * and a pending-mutation set shared between two independent axes — so a status change in flight
  * would have blocked a wishlist click on the same game for no reason.
  *
- * The state is a reducer rather than four `useState` calls because the fetch effect has to set
+ * The state is a reducer rather than several `useState` calls because the fetch effect has to set
  * state synchronously, and `react-hooks/set-state-in-effect` forbids that for a setter while
  * allowing a `dispatch`. `ListsProvider` is shaped the same way for the same reason.
  */
@@ -91,21 +121,22 @@ export function WishlistProvider({ children }: { children: ReactNode }) {
         return () => controller.abort();
     }, [user, authLoading]);
 
+    /**
+     * Membership is not known until the initial fetch lands, so nothing may be toggled before
+     * then: a write that succeeded during the fetch would be silently overwritten when the older
+     * response arrived and replaced the list.
+     */
+    const isPending = (gameId: number): boolean => state.loading || pendingIds.has(gameId);
+
     const startPending = (gameId: number) => setPendingIds(prev => new Set(prev).add(gameId));
     const endPending = (gameId: number) =>
         setPendingIds(prev => { const next = new Set(prev); next.delete(gameId); return next; });
 
     const add = async (game: GameDto): Promise<void> => {
-        if (pendingIds.has(game.id) || state.items.some(item => item.game.id === game.id)) return;
+        if (isPending(game.id) || state.items.some(item => item.game.id === game.id)) return;
         startPending(game.id);
 
-        const previous = state.items;
-        // Newest first, matching the server's order, so the optimistic row lands where the real
-        // one will after the next load.
-        dispatch({
-            type: 'SET_ITEMS',
-            items: [{ game, addedAt: new Date().toISOString() }, ...previous],
-        });
+        dispatch({ type: 'ADD_ITEM', item: { game, addedAt: new Date().toISOString() } });
 
         try {
             const res = await fetch(`/api/wishlist/${game.id}`, {
@@ -113,24 +144,27 @@ export function WishlistProvider({ children }: { children: ReactNode }) {
                 credentials: 'include',
             });
 
-            if (!res.ok) {
-                dispatch({ type: 'SET_ITEMS', items: previous });
-                dispatch({ type: 'MUTATION_ERROR', error: 'Failed to update your wishlist. Please try again.' });
+            if (res.ok) dispatch({ type: 'CLEAR_MUTATION_ERROR' });
+            else {
+                dispatch({ type: 'DROP_ITEM', gameId: game.id });
+                dispatch({ type: 'MUTATION_ERROR', error: MUTATION_FAILED });
             }
         } catch {
-            dispatch({ type: 'SET_ITEMS', items: previous });
-            dispatch({ type: 'MUTATION_ERROR', error: 'Failed to update your wishlist. Please try again.' });
+            dispatch({ type: 'DROP_ITEM', gameId: game.id });
+            dispatch({ type: 'MUTATION_ERROR', error: MUTATION_FAILED });
         } finally {
             endPending(game.id);
         }
     };
 
     const remove = async (gameId: number): Promise<void> => {
-        if (pendingIds.has(gameId)) return;
+        if (isPending(gameId)) return;
         startPending(gameId);
 
-        const previous = state.items;
-        dispatch({ type: 'SET_ITEMS', items: previous.filter(item => item.game.id !== gameId) });
+        // Only the one row is remembered, so putting it back cannot disturb anything else. Its
+        // AddedAt is what returns it to its original position rather than the top of the list.
+        const removed = state.items.find(item => item.game.id === gameId);
+        dispatch({ type: 'DROP_ITEM', gameId });
 
         try {
             const res = await fetch(`/api/wishlist/${gameId}`, {
@@ -139,13 +173,14 @@ export function WishlistProvider({ children }: { children: ReactNode }) {
             });
 
             // 404 means it was not on the wishlist, which is the state the caller asked for.
-            if (!res.ok && res.status !== 404) {
-                dispatch({ type: 'SET_ITEMS', items: previous });
-                dispatch({ type: 'MUTATION_ERROR', error: 'Failed to update your wishlist. Please try again.' });
+            if (res.ok || res.status === 404) dispatch({ type: 'CLEAR_MUTATION_ERROR' });
+            else {
+                if (removed) dispatch({ type: 'ADD_ITEM', item: removed });
+                dispatch({ type: 'MUTATION_ERROR', error: MUTATION_FAILED });
             }
         } catch {
-            dispatch({ type: 'SET_ITEMS', items: previous });
-            dispatch({ type: 'MUTATION_ERROR', error: 'Failed to update your wishlist. Please try again.' });
+            if (removed) dispatch({ type: 'ADD_ITEM', item: removed });
+            dispatch({ type: 'MUTATION_ERROR', error: MUTATION_FAILED });
         } finally {
             endPending(gameId);
         }
@@ -154,13 +189,12 @@ export function WishlistProvider({ children }: { children: ReactNode }) {
     const isWishlisted = (gameId: number): boolean =>
         state.items.some(item => item.game.id === gameId);
 
-    const isPending = (gameId: number): boolean => pendingIds.has(gameId);
-
     return (
         <WishlistContext.Provider value={{
             items: state.items,
             loading: state.loading,
             error: state.error,
+            mutationError: state.mutationError,
             isWishlisted,
             isPending,
             add,

@@ -28,7 +28,7 @@ export function meta() {
  */
 export function WishlistPage() {
     const { user } = useAuth();
-    const { items, loading, error } = useWishlist();
+    const { items, loading, error, mutationError } = useWishlist();
 
     return (
         <div className="min-h-screen">
@@ -49,6 +49,19 @@ export function WishlistPage() {
                     )}
                 </div>
             </div>
+
+            {/* A failed toggle is shown beside the wishlist, never instead of it: the rollback has
+                already put the list back, so hiding it would discard something perfectly good. */}
+            {mutationError && (
+                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-4" role="alert">
+                    <div className="flex items-center gap-3 bg-red-900/20 border border-red-700/50 rounded-lg px-4 py-3 text-sm text-red-300">
+                        <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M12 4a8 8 0 100 16 8 8 0 000-16z" />
+                        </svg>
+                        {mutationError}
+                    </div>
+                </div>
+            )}
 
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
                 {!user && (

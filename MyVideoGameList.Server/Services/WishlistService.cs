@@ -54,15 +54,35 @@ public class WishlistService(
         // wanting a game, and a double-click should not reorder their list.
         if (exists) return false;
 
-        db.UserWishlistItems.Add(new UserWishlistItem
+        var item = new UserWishlistItem
         {
             UserId = userId,
             GameId = gameId,
             AddedAt = timeProvider.GetUtcNow()
-        });
+        };
+        db.UserWishlistItems.Add(item);
 
-        await db.SaveChangesAsync(cancellationToken);
-        return true;
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+            return true;
+        }
+        catch (DbUpdateException)
+        {
+            // Two requests can both pass the check above — a double-click, or two tabs — and only
+            // one insert can win the composite primary key. A PUT is idempotent, so losing that
+            // race is success, not a 500.
+            //
+            // Confirmed by re-reading rather than by matching a provider-specific SQL state, so
+            // this stays correct on any provider and rethrows anything that is not this race.
+            db.Entry(item).State = EntityState.Detached;
+
+            var wonByAnotherRequest = await db.UserWishlistItems
+                .AnyAsync(w => w.UserId == userId && w.GameId == gameId, cancellationToken);
+
+            if (wonByAnotherRequest) return false;
+            throw;
+        }
     }
 
     public async Task<bool> RemoveAsync(
@@ -74,7 +94,21 @@ public class WishlistService(
         if (item is null) return false;
 
         db.UserWishlistItems.Remove(item);
-        await db.SaveChangesAsync(cancellationToken);
-        return true;
+
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+            return true;
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            // Another request deleted the same row between the read and the write. The game is
+            // off the wishlist either way, which is exactly what the caller asked for, so this
+            // reports "there was nothing to remove" rather than a 500.
+            //
+            // Safe to swallow only because the delete is keyed and carries no other change: there
+            // is no lost update to worry about, just a row that is already gone.
+            return false;
+        }
     }
 }
