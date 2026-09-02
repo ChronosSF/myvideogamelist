@@ -141,11 +141,18 @@ overlay, because a message that vanishes when the pointer moves is not one.
 A shared notification would be the better answer and is the natural follow-up: the five list
 buttons on the same card have exactly this gap, and it predates the wishlist.
 
-**`ListsProvider` still rolls back wholesale**, and is untouched here. Its mutations are guarded by
-one pending set across all five statuses, so two of them cannot overlap for the same game — but
-they can for two different games, and `setScore` takes no pending lock at all. The same
-resurrection is therefore reachable there. It predates this work and fixing it belongs in its own
-change, not smuggled into this one.
+**`ListsProvider` has since had decision 8 applied to it** — all four of its mutations
+(`addToList`, `removeFromList`, `setScore`, `deleteEntry`) record the session they began in and
+skip their rollback when it no longer matches, so the cross-account case is closed on both
+providers.
+
+**It still rolls back wholesale, though.** Its mutations share one pending set across all five
+statuses, so two cannot overlap for the same game — but they can for two different games, and
+`setScore` takes no pending lock at all, so the resurrection described in decision 6 is still
+reachable there. Separately, `addToList`, `removeFromList` and `deleteEntry` wrap their fetch in
+`try`/`finally` with no `catch`, so an unreachable API rejects into an unhandled promise rather
+than the deliberate rollback — which is the trap `CLAUDE.md` warns about for loaders. Both predate
+this work and belong in their own change.
 
 **The wishlist page is tiles only.** No table view and no toolbar: a wishlist item has no score and
 no status, so four of the table's columns would be empty and its sort options meaningless. "When

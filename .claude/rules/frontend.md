@@ -52,6 +52,12 @@ that are easy to get wrong and were got wrong once (`docs/decisions/0022-*`):
   nothing trustworthy to show. A failed mutation has already been rolled back, so the data beside
   it is fine — sharing one field makes a failed toggle render as "failed to load" and hide a
   perfectly good list. Clear the mutation error on the next success.
+- **A rollback belongs to the session that started it.** A mutation can still be in flight when one
+  account signs out and another signs in, and the rollback closes over data captured from the
+  first — so an unguarded one writes one user's games into another user's lists. Capture the user
+  id in a ref at the start of every mutation and skip the rollback if it no longer matches. Only
+  local state is at risk; the request itself already carries whichever cookie was current when it
+  was sent.
 
 ## State & effects
 

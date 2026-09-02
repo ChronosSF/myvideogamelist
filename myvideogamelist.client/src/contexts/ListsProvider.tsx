@@ -1,4 +1,4 @@
-import { useEffect, useReducer, useState, type ReactNode } from 'react';
+import { useEffect, useReducer, useRef, useState, type ReactNode } from 'react';
 import type { GameDto } from '@/types/game';
 import { type ListId, type ListEntryDto, type ViewMode, LIST_IDS, emptyLists } from '@/types/list';
 import { type SortState, DEFAULT_SORT } from '@/lib/listSort';
@@ -100,8 +100,27 @@ export function ListsProvider({ children }: { children: ReactNode }) {
     // Track gameIds with in-flight mutations to prevent concurrent-update corruption
     const [pendingIds, setPendingIds] = useState<Set<number>>(new Set());
 
+    /**
+     * Whose lists the state currently describes.
+     *
+     * A mutation can still be in flight when one account signs out and another signs in. Its
+     * rollback closes over entries captured from the first account, so without this it would
+     * write them into the second account's lists — one user seeing another user's games, which
+     * is a leak rather than a glitch. Every mutation records the session it began in and
+     * abandons its own rollback if that is no longer the session in play.
+     *
+     * Only local state is at risk: the request itself already carries whichever cookie was
+     * current when it was sent, so nothing crosses accounts on the server.
+     */
+    const sessionRef = useRef<string | null>(null);
+
+    /** False when the account changed while a mutation was in flight. */
+    const stillCurrent = (session: string | null): boolean => sessionRef.current === session;
+
     useEffect(() => {
         if (authLoading) return;
+
+        sessionRef.current = user?.id ?? null;
 
         if (!user) {
             dispatch({ type: 'RESET' });
@@ -183,6 +202,7 @@ export function ListsProvider({ children }: { children: ReactNode }) {
         if (pendingIds.has(game.id)) return;
         setPendingIds(prev => new Set(prev).add(game.id));
 
+        const session = sessionRef.current;
         const prevLists = state.lists;
 
         // A move carries the existing entry across so the score does not blink out and back.
@@ -206,7 +226,7 @@ export function ListsProvider({ children }: { children: ReactNode }) {
                 body: JSON.stringify({ status: listId }),
             });
 
-            if (!res.ok) {
+            if (!res.ok && stillCurrent(session)) {
                 dispatch({ type: 'SET_ENTRIES', lists: prevLists });
                 dispatch({ type: 'MUTATION_ERROR', error: 'Failed to update list. Please try again.' });
             }
@@ -219,6 +239,7 @@ export function ListsProvider({ children }: { children: ReactNode }) {
         if (pendingIds.has(gameId)) return;
         setPendingIds(prev => new Set(prev).add(gameId));
 
+        const session = sessionRef.current;
         const prevEntries = state.lists[listId];
 
         dispatch({
@@ -233,7 +254,7 @@ export function ListsProvider({ children }: { children: ReactNode }) {
                 credentials: 'include',
             });
 
-            if (!res.ok) {
+            if (!res.ok && stillCurrent(session)) {
                 dispatch({ type: 'SET_LIST', listId, entries: prevEntries });
                 dispatch({ type: 'MUTATION_ERROR', error: 'Failed to remove from list. Please try again.' });
             }
@@ -243,6 +264,7 @@ export function ListsProvider({ children }: { children: ReactNode }) {
     };
 
     const setScore = async (gameId: number, score: number | null): Promise<boolean> => {
+        const session = sessionRef.current;
         const prevLists = state.lists;
 
         // The entry may be in no list at all, in which case there is nothing on screen to update
@@ -262,6 +284,10 @@ export function ListsProvider({ children }: { children: ReactNode }) {
                 body: JSON.stringify({ score }),
             });
 
+            // Nothing was saved for whoever is signed in now, so the caller is told so — but the
+            // rollback is skipped, because these entries belong to the previous account.
+            if (!stillCurrent(session)) return false;
+
             if (!res.ok) {
                 dispatch({ type: 'SET_ENTRIES', lists: prevLists });
                 dispatch({ type: 'MUTATION_ERROR', error: 'Failed to save your score. Please try again.' });
@@ -269,6 +295,7 @@ export function ListsProvider({ children }: { children: ReactNode }) {
             }
             return true;
         } catch {
+            if (!stillCurrent(session)) return false;
             dispatch({ type: 'SET_ENTRIES', lists: prevLists });
             dispatch({ type: 'MUTATION_ERROR', error: 'Failed to save your score. Please try again.' });
             return false;
@@ -279,6 +306,7 @@ export function ListsProvider({ children }: { children: ReactNode }) {
         if (pendingIds.has(gameId)) return;
         setPendingIds(prev => new Set(prev).add(gameId));
 
+        const session = sessionRef.current;
         const prevLists = state.lists;
 
         const updated: Record<ListId, ListEntryDto[]> = emptyLists();
@@ -294,7 +322,7 @@ export function ListsProvider({ children }: { children: ReactNode }) {
             });
 
             // 404 means there was nothing recorded, which is the state the caller wanted anyway.
-            if (!res.ok && res.status !== 404) {
+            if (!res.ok && res.status !== 404 && stillCurrent(session)) {
                 dispatch({ type: 'SET_ENTRIES', lists: prevLists });
                 dispatch({ type: 'MUTATION_ERROR', error: 'Failed to remove your data. Please try again.' });
             }
