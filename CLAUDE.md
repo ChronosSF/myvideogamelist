@@ -93,6 +93,12 @@ ROADMAP.md                      Forward-looking plan
   PostgreSQL move stays as cheap as it is today. See `docs/decisions/0012-*`. Keep derived,
   regenerable, TTL'd data in `IMemoryCache`; do not add a table for it.
 
+- **The wishlist is not a sixth status, and it writes no events.** Its own table, service,
+  controller, context and provider (`docs/decisions/0022-*`). The five statuses are exclusive by
+  construction; wanting a game is not exclusive with playing it, so a game sits on the wishlist
+  *and* in a list. `AddedAt` is its entire history — do not reach for `UserGameEvents`, and do not
+  add a foreign key to `UserGameEntries`, because a wishlisted game usually has no entry at all.
+
 - **Never change a game's status without recording an event.** `UserGameEvents` is append-only
   and is the only record that a transition happened — `UserGameLists` holds current state and is
   overwritten on every move. A direct `UPDATE` to `StatusId` leaves a permanent hole in a history

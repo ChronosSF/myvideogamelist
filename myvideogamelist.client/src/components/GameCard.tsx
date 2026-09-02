@@ -5,6 +5,7 @@ import { hasCriticScore, ratingPercent } from '@/lib/score';
 import { ScoreBadge } from '@/components/ScoreBadge';
 import { type ListId, LIST_IDS, LIST_NAMES } from '@/types/list';
 import { useLists } from '@/hooks/useLists';
+import { useWishlist } from '@/hooks/useWishlist';
 import { useAuth } from '@/hooks/useAuth';
 import './GameCard.css';
 
@@ -16,7 +17,30 @@ export function GameCard({ game }: GameCardProps) {
     const releaseYear = game.releaseDate ? new Date(game.releaseDate).getFullYear() : null;
     const { user } = useAuth();
     const { addToList, removeFromList, isInList, isPending } = useLists();
+    const wishlist = useWishlist();
     const [overlayOpen, setOverlayOpen] = useState(false);
+
+    const wishlisted = wishlist.isWishlisted(game.id);
+
+    /**
+     * Cards appear on Games, Home and the timeline, and none of those render the provider's
+     * `mutationError` — so without something here a failed toggle would just quietly snap the
+     * heart back. Read off the return value rather than the shared error, because that error
+     * belongs to whichever card was clicked last and not necessarily to this one.
+     *
+     * A shared notification would be the better answer, and would also cover the list buttons
+     * below, which have the same gap and predate this.
+     */
+    const [wishlistFailed, setWishlistFailed] = useState(false);
+
+    const handleWishlistToggle = async (e: React.MouseEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setWishlistFailed(false);
+
+        const saved = wishlisted ? await wishlist.remove(game.id) : await wishlist.add(game);
+        setWishlistFailed(!saved);
+    };
 
     const handleListToggle = async (e: React.MouseEvent, listId: ListId) => {
         e.stopPropagation();
@@ -127,6 +151,27 @@ export function GameCard({ game }: GameCardProps) {
                                     </button>
                                 );
                             })}
+
+                            {/* Set apart from the statuses above, because it is not one of them:
+                                a game can be wishlisted while sitting in any list. */}
+                            <button
+                                className={`game-card-list-btn game-card-wishlist-btn${wishlisted ? ' active' : ''}`}
+                                onClick={e => void handleWishlistToggle(e)}
+                                disabled={wishlist.isPending(game.id)}
+                                aria-pressed={wishlisted}
+                                title={wishlisted ? 'Take off your wishlist' : 'Add to your wishlist'}
+                            >
+                                <span>Wishlist</span>
+                                <svg
+                                    className="game-card-list-check"
+                                    fill={wishlisted ? 'currentColor' : 'none'}
+                                    stroke="currentColor"
+                                    viewBox="0 0 24 24"
+                                    aria-hidden="true"
+                                >
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+                                </svg>
+                            </button>
                         </div>
                     </div>
                 )}
@@ -134,6 +179,14 @@ export function GameCard({ game }: GameCardProps) {
 
             {/* Card Body */}
             <div className="p-4 flex flex-col gap-2 flex-1">
+                {/* In the body rather than the overlay, which is only visible on hover — a
+                    message that disappears when the pointer moves away is no message. */}
+                {wishlistFailed && (
+                    <p className="game-card-wishlist-error" role="alert">
+                        Could not update your wishlist.
+                    </p>
+                )}
+
                 <div className="flex items-start justify-between gap-2">
                     <h3 className="text-white light:text-slate-900 font-semibold text-sm leading-snug line-clamp-2">
                         <Link to={`/games/${game.id}`} className="hover:text-blue-400 light:hover:text-blue-700 transition-colors">

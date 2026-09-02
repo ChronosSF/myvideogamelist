@@ -47,6 +47,10 @@ export function Navbar() {
                                 <NavLink to="/" end className={navLinkClass}>Home</NavLink>
                                 <NavLink to="/games" className={navLinkClass}>Games</NavLink>
                                 <NavLink to="/lists" className={navLinkClass}>Lists</NavLink>
+                                {/* Gated on auth, unlike Lists: the wishlist has no signed-out
+                                    story to tell, so an anonymous visitor would land on a page
+                                    that only asks them to sign in. */}
+                                {user && <NavLink to="/wishlist" className={navLinkClass}>Wishlist</NavLink>}
                             </nav>
 
                             {/* Auth section */}

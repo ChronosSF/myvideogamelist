@@ -72,3 +72,32 @@
     height: 1rem;
     flex-shrink: 0;
 }
+
+/*
+ * The wishlist button sits in the same stack as the five statuses but must not read as a sixth
+ * one — a rule above it and a pink active state, rather than the statuses' blue.
+ */
+.game-card-wishlist-btn {
+    margin-top: 0.3rem;
+    border-top: 1px solid rgba(148, 163, 184, 0.25);
+    border-top-left-radius: 0;
+    border-top-right-radius: 0;
+}
+
+.game-card-wishlist-btn:hover {
+    background: rgba(219, 39, 119, 0.85);
+}
+
+.game-card-wishlist-btn.active {
+    background: rgba(190, 24, 93, 0.9);
+}
+
+.game-card-wishlist-error {
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: #fca5a5;
+}
+
+[data-theme='light'] .game-card-wishlist-error {
+    color: #b91c1c;
+}

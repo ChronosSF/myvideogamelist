@@ -23,6 +23,13 @@ namespace MyVideoGameList.Server.Models;
 /// </remarks>
 public class UserGameEntry
 {
+    /// <summary>
+    /// Surrogate key. Uniqueness is still <c>(UserId, GameId)</c>, enforced by a unique index —
+    /// this exists so that playthroughs, reviews and tags can point at one column instead of
+    /// carrying both of those in their own key and in every join.
+    /// </summary>
+    public int Id { get; set; }
+
     public required string UserId { get; set; }
 
     /// <summary>IGDB game ID.</summary>

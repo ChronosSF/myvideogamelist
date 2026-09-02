@@ -92,13 +92,13 @@ flagged as a decision is now moot. `ROADMAP.md` should be amended to match these
 | Table / change | Notes | Roadmap |
 |---|---|---|
 | `UserGameEvents` | **Ship first.** Append-only: `(Id, UserId, GameId, FromStatusId, ToStatusId, OccurredAt)`. Both status ids are nullable FKs — null *from* means the game was not tracked before, null *to* means it was removed. **No FK to the entry**, because removals are events and the log has to outlive the row it describes. **Status transitions only** — no custom-list column and no event-type discriminator, see decision 7. Indexes on `(UserId, OccurredAt)`, `(GameId, OccurredAt)`, `(ToStatusId, OccurredAt)` | Tier 1 activity history, H6, Tier 3 feed and wrapped |
-| `UserGameEntries` | **Partly shipped** — the rename, a nullable `StatusId`, `Score`, `AddedAt` and `StatusChangedAt` are in (ADR [0019](decisions/0019-entry-survives-leaving-every-list.md)). Still open: the surrogate `Id`, `Ownership`, `Notes`. Deliberately holds **no playtime or platform** — those belong to a playthrough | Tier 1 per-entry tracking |
+| `UserGameEntries` | **Partly shipped** — the rename, a nullable `StatusId`, `Score`, `AddedAt` and `StatusChangedAt` (ADR [0019](decisions/0019-entry-survives-leaving-every-list.md)), and the surrogate `Id` with `(UserId, GameId)` kept unique by index (ADR [0022](decisions/0022-entry-surrogate-key-and-the-wishlist-axis.md)). Still open: `Ownership`, `Notes` — both nullable and therefore cheap to add whenever there is UI for them, which is why they did not ride along. Deliberately holds **no playtime or platform** — those belong to a playthrough | Tier 1 per-entry tracking |
 | `UserGamePlaythroughs` | `(Id, UserGameEntryId, TypeId, PlatformId, MinutesPlayed, StartedOn, FinishedOn, Notes, CreatedAt)`. One row per time through the game, so a replay on a different platform is a second row rather than an overwrite. This is where playtime, platform and dates live | Tier 1 per-entry tracking, completion states, profile stats |
 | `PlaythroughTypes` | Lookup: Rushed, Normally, Completionist — **the same three tiers IGDB reports**, so MVGL averages bucket into the same shape and the two sources sit side by side on the game page | Tier 1 completion states |
 | `ListStatuses` | **Ship with the event log.** System-owned lookup, seeded with all five at P0 and never deleted from. Carries semantic flags, not just names — see [the five statuses](#the-five-statuses). Replaces the hardcoded `ValidListTypes` set in `ListService` | Tier 1 taxonomy |
 | `UserListSettings` | `(UserId, StatusId, DisplayName)`. Lazily created: no row means "use `DefaultName`". This is what makes the defaults renameable without any statistic having to care, because everything else keys on `StatusId` | Tier 1 taxonomy |
 | `UserListSortPreferences` | **Shipped.** `(UserId, StatusId, SortKey, Descending)`, one row per list the user has actually re-sorted. The same lazily-created shape `UserListSettings` will use, and the reason a sixth status needs no migration (ADR [0020](decisions/0020-list-view-preferences-in-the-database.md)) | Tier 2 list views |
-| `UserWishlist` | **Structural consequence.** A separate axis, not a status — the roadmap requires a game to sit in the wishlist *alongside* any list, which today's `(UserId, GameId)` primary key forbids outright | Tier 1, H4, ITAD P5/P7 |
+| `UserWishlistItems` | **Shipped** as `(UserId, GameId, AddedAt)` with no foreign key to the entry — a wishlisted game usually has no entry at all. A separate axis, not a status: the five statuses are exclusive by construction and wanting a game is not exclusive with playing it. Records no events; `AddedAt` is the whole history. Named `UserWishlistItems` rather than this document's earlier `UserWishlist`, to match every other table here. See ADR [0022](decisions/0022-entry-surrogate-key-and-the-wishlist-axis.md) | Tier 1, H4, ITAD P5/P7 |
 | `Reviews` | `(Id, UserGameEntryId, Body, HasSpoilers, Visibility, PlaythroughId?, CreatedAt, UpdatedAt)`. One per user per game, hung off the entry rather than the playthrough, with an optional pointer to the playthrough it is about. The **score is not here** — it lives on the entry, because a score with no prose is the common case and must not require a review row | Tier 1 per-entry, Tier 2 community signal |
 | `UserFavourites` | `(UserId, GameId)`. A separate table because a favourite is explicitly independent of list membership, so it must be expressible with no entry at all | Tier 1 favourites |
 | `Tags` + `UserGameEntryTags` | User-scoped tags, not a global vocabulary | Tier 3 |
@@ -175,8 +175,9 @@ handful of extracted columns for sorting and filtering, cannot collide with anyt
 migration when IGDB adds a field, and is a shape PostgreSQL indexes well. The purpose is
 rendering lists when IGDB is unreachable, not re-implementing IGDB.
 
-**3. Give `UserGameEntries` a surrogate key.** This stops being a nicety the moment playthroughs
-exist. Playthroughs, reviews and tags all hang off an entry, and with the composite
+**3. Give `UserGameEntries` a surrogate key.** *(Done — ADR
+[0022](decisions/0022-entry-surrogate-key-and-the-wishlist-axis.md).)* This stops being a nicety
+the moment playthroughs exist. Playthroughs, reviews and tags all hang off an entry, and with the composite
 `(UserId, GameId)` every one of them carries both columns in its own key and in every join. A
 surrogate `Id` with a unique index on `(UserId, GameId)` keeps the same constraint and makes the
 children clean.
@@ -256,9 +257,12 @@ Order by what is irrecoverable, then by what unblocks the most.
    `ListsProvider.tsx`. Five statuses make that untenable and custom lists would anyway, so it
    becomes a collection keyed by status — a bigger client change than the server one, and the
    reason this step is not quite a one-file job.
-2. **`UserGameEntries` and the wishlist axis.** Changes the one table that already exists, and H6,
-   profile stats, community scores and the paid stats charts all block on it. Do it while there is
-   no data to migrate.
+2. ~~**`UserGameEntries` and the wishlist axis.**~~ **Shipped** — see ADR
+   [0022](decisions/0022-entry-surrogate-key-and-the-wishlist-axis.md). The surrogate key and
+   `UserWishlistItems` landed in one migration against nine rows, which is the whole reason this
+   step came second: a primary-key change is cheapest when the table is smallest. `Ownership` and
+   `Notes` were deliberately left for whenever there is UI for them, because a nullable column is
+   additive and the key change was not. The guard test below landed here too, five tables late.
 3. **`UserGamePlaythroughs`, `PlaythroughTypes` and `Reviews`.** The three things a user actually
    enters about a game they have played, and the reason the entry table needs a surrogate key.
    Worth doing directly after step 2 rather than later, because the alternative is putting
@@ -281,3 +285,8 @@ handled by the deletion path and named in the export manifest will fail the mome
 a user-owned table and forgets — which is the only reliable moment to find out.
 
 Worth writing that test with the *second* such table, not the twentieth.
+
+**Half of it now exists**, five tables in, as `UserOwnedDataTests`: it walks the model and fails
+when an entity carrying a `UserId` has no cascading foreign key from `AspNetUsers`, and carries an
+inventory tripwire that fails the moment a sixth such table appears. The export half is still
+missing because there is still no export to assert against — add it with the export, not before.

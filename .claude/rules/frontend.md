@@ -38,6 +38,21 @@ component plus optional `loader`, `meta`, `links`, `headers` and `ErrorBoundary`
 - Give every indexable route a `meta` export with title, description and Open Graph tags.
 - Route types come from `react-router typegen`; import them as `./+types/<RouteName>`.
 
+## Optimistic updates
+
+The providers apply a change locally, fire the request, and undo the change if it fails. Two rules
+that are easy to get wrong and were got wrong once (`docs/decisions/0022-*`):
+
+- **Roll back surgically, never by restoring a snapshot.** Mutations for different games overlap by
+  design — the pending set is per game id — so putting back the list as it was before *this*
+  request also undoes whichever other request succeeded meanwhile. The visible symptom is a removed
+  game reappearing. Dispatch an action that touches only the affected item, computed from current
+  state.
+- **Keep the load error and the mutation error in separate fields.** A failed fetch means there is
+  nothing trustworthy to show. A failed mutation has already been rolled back, so the data beside
+  it is fine — sharing one field makes a failed toggle render as "failed to load" and hide a
+  perfectly good list. Clear the mutation error on the next success.
+
 ## State & effects
 
 - **Do not call `setState` synchronously inside an effect.** Adjust state during render

@@ -22,6 +22,7 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
     public DbSet<UserGameEvent> UserGameEvents { get; set; }
     public DbSet<UserHiddenPlatform> UserHiddenPlatforms { get; set; }
     public DbSet<UserListSortPreference> UserListSortPreferences { get; set; }
+    public DbSet<UserWishlistItem> UserWishlistItems { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -29,8 +30,11 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
 
         ConfigureListStatuses(modelBuilder);
 
-        // UserGameEntry: composite PK on (UserId, GameId); cascade delete when user is deleted
-        modelBuilder.Entity<UserGameEntry>().HasKey(e => new { e.UserId, e.GameId });
+        // UserGameEntry: surrogate PK, with (UserId, GameId) kept unique by index rather than by
+        // being the key. Children — playthroughs, reviews, tags — hang off the single column;
+        // cascade delete when the user is deleted.
+        modelBuilder.Entity<UserGameEntry>().HasKey(e => e.Id);
+        modelBuilder.Entity<UserGameEntry>().HasIndex(e => new { e.UserId, e.GameId }).IsUnique();
         modelBuilder.Entity<UserGameEntry>()
             .HasOne(e => e.User)
             .WithMany()
@@ -71,6 +75,18 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
             .WithMany()
             .HasForeignKey(p => p.StatusId)
             .OnDelete(DeleteBehavior.Restrict);
+
+        // UserWishlistItem: an axis of its own, so no foreign key to UserGameEntry — a wishlisted
+        // game usually has no entry yet. Composite PK is what makes wishlisting idempotent.
+        modelBuilder.Entity<UserWishlistItem>().HasKey(w => new { w.UserId, w.GameId });
+        modelBuilder.Entity<UserWishlistItem>()
+            .HasOne(w => w.User)
+            .WithMany()
+            .HasForeignKey(w => w.UserId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // The wishlist has one order that matters — most recently wanted first.
+        modelBuilder.Entity<UserWishlistItem>().HasIndex(w => new { w.UserId, w.AddedAt });
 
         // UserHiddenPlatform: composite PK on (UserId, IgdbPlatformId); cascade delete when user is deleted
         modelBuilder.Entity<UserHiddenPlatform>().HasKey(hp => new { hp.UserId, hp.IgdbPlatformId });

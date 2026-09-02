@@ -3,6 +3,7 @@ import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { GameUserPanel } from '@/components/GameUserPanel';
 import { ListsContext, type ListsContextValue } from '@/contexts/ListsContext';
+import { WishlistContext, type WishlistContextValue } from '@/contexts/WishlistContext';
 import { DEFAULT_SORT } from '@/lib/listSort';
 import type { ListId } from '@/types/list';
 import { entry, game } from '@/test/factories';
@@ -32,14 +33,36 @@ function contextValue(overrides: Partial<ListsContextValue> = {}): ListsContextV
     };
 }
 
-function renderPanel(overrides: Partial<ListsContextValue> = {}) {
+/** The wishlist is a second axis with its own context, so the panel needs both. */
+function wishlistValue(overrides: Partial<WishlistContextValue> = {}): WishlistContextValue {
+    return {
+        items: [],
+        loading: false,
+        error: null,
+        mutationError: null,
+        isWishlisted: () => false,
+        isPending: () => false,
+        add: vi.fn(async () => true),
+        remove: vi.fn(async () => true),
+        reload: vi.fn(),
+        ...overrides,
+    };
+}
+
+function renderPanel(
+    overrides: Partial<ListsContextValue> = {},
+    wishlistOverrides: Partial<WishlistContextValue> = {},
+) {
     const value = contextValue(overrides);
+    const wishlist = wishlistValue(wishlistOverrides);
     render(
         <ListsContext.Provider value={value}>
-            <GameUserPanel game={CELESTE} />
+            <WishlistContext.Provider value={wishlist}>
+                <GameUserPanel game={CELESTE} />
+            </WishlistContext.Provider>
         </ListsContext.Provider>,
     );
-    return value;
+    return { ...value, wishlist };
 }
 
 /** The entry the panel fetches for itself, since the provider only knows about listed games. */
@@ -301,5 +324,97 @@ describe('GameUserPanel deleting everything', () => {
 
         expect(ctx.deleteEntry).not.toHaveBeenCalled();
         expect(screen.getByRole('button', { name: /delete my data/i })).toBeInTheDocument();
+    });
+});
+
+describe('GameUserPanel wishlist', () => {
+    it('offers to wishlist a game that is not on it', async () => {
+        stubEntryFetch(null, 404);
+        renderPanel();
+        await settled();
+
+        const button = screen.getByRole('button', { name: 'Add to wishlist' });
+        expect(button).toHaveAttribute('aria-pressed', 'false');
+    });
+
+    it('says so for a game already on it', async () => {
+        stubEntryFetch(null, 404);
+        renderPanel({}, { isWishlisted: () => true });
+        await settled();
+
+        expect(screen.getByRole('button', { name: 'On your wishlist' }))
+            .toHaveAttribute('aria-pressed', 'true');
+    });
+
+    it('passes the whole game when adding, not just the id', async () => {
+        // The provider inserts the row optimistically, so it needs something to render.
+        stubEntryFetch(null, 404);
+        const ctx = renderPanel();
+        await settled();
+
+        await userEvent.click(screen.getByRole('button', { name: 'Add to wishlist' }));
+
+        expect(ctx.wishlist.add).toHaveBeenCalledWith(CELESTE);
+    });
+
+    it('takes it off when clicked while already wishlisted', async () => {
+        stubEntryFetch(null, 404);
+        const ctx = renderPanel({}, { isWishlisted: () => true });
+        await settled();
+
+        await userEvent.click(screen.getByRole('button', { name: 'On your wishlist' }));
+
+        expect(ctx.wishlist.remove).toHaveBeenCalledWith(1);
+    });
+
+    it('can be wishlisted while sitting in a status list', async () => {
+        // The whole point of the separate axis: wanting a game and playing it are not exclusive,
+        // which a sixth status could not have expressed.
+        stubEntryFetch(null, 404);
+        const ctx = renderPanel(
+            { isInList: (id: ListId) => id === 'playing', getListFor: () => 'playing' },
+            { isWishlisted: () => true },
+        );
+        await settled();
+
+        expect(screen.getByRole('button', { name: 'Playing' })).toHaveAttribute('aria-pressed', 'true');
+        expect(screen.getByRole('button', { name: 'On your wishlist' })).toHaveAttribute('aria-pressed', 'true');
+        expect(ctx.wishlist.remove).not.toHaveBeenCalled();
+    });
+
+    it('is disabled while its own mutation is in flight', async () => {
+        stubEntryFetch(null, 404);
+        renderPanel({}, { isPending: () => true });
+        await settled();
+
+        expect(screen.getByRole('button', { name: 'Add to wishlist' })).toBeDisabled();
+    });
+
+    it('stays usable while a list mutation is in flight', async () => {
+        // Two independent axes with two pending sets. Sharing one would block a wishlist click
+        // because an unrelated status change happened to be in flight.
+        stubEntryFetch(null, 404);
+        renderPanel({ isPending: () => true });
+
+        expect(screen.getByRole('button', { name: 'Add to wishlist' })).toBeEnabled();
+        expect(screen.getByRole('button', { name: 'Playing' })).toBeDisabled();
+    });
+
+    it('surfaces a failed toggle', async () => {
+        stubEntryFetch(null, 404);
+        renderPanel({}, { mutationError: 'Failed to update your wishlist. Please try again.' });
+        await settled();
+
+        expect(screen.getByRole('alert')).toHaveTextContent(/failed to update your wishlist/i);
+    });
+
+    it('leaves a wishlist that failed to load to the page, not to this panel', async () => {
+        // A load failure is a whole-page condition. This panel is about one game, and repeating
+        // it here would put the same message in two places on the game page.
+        stubEntryFetch(null, 404);
+        renderPanel({}, { error: 'Failed to load your wishlist (500)' });
+        await settled();
+
+        expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     });
 });

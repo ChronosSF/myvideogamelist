@@ -5,6 +5,7 @@ export default [
     route('games', 'pages/GamesPage.tsx'),
     route('games/:id', 'pages/GamePage.tsx'),
     route('lists', 'pages/ListsPage.tsx'),
+    route('wishlist', 'pages/WishlistPage.tsx'),
     route('user', 'pages/UserPage.tsx'),
 
     // Anything else renders the root ErrorBoundary as a 404.

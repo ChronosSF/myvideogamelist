@@ -39,6 +39,7 @@ decision, write a new record and mark the old one superseded.
 | [0019](0019-entry-survives-leaving-every-list.md) | A user's entry survives the game leaving every list | Implemented |
 | [0020](0020-list-view-preferences-in-the-database.md) | List view preferences live in the database; sorting is client-side | Implemented |
 | [0021](0021-one-control-for-a-score.md) | Stars are the user's own score; every aggregate is a number out of 100 | Implemented |
+| [0022](0022-entry-surrogate-key-and-the-wishlist-axis.md) | The entry gets a surrogate key, and the wishlist is an axis rather than a status | Implemented |
 
 **Status** — *Accepted*: decided, not yet built. *Implemented*: decided and in the code.
 *Superseded*: replaced by a later record.
