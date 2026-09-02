@@ -81,6 +81,7 @@ function Probe({ listId = 'playing' as ListId }: { listId?: ListId }) {
             <span data-testid="error">{lists.mutationError ?? ''}</span>
             <span data-testid="score">{String(lists.scoreFor(1))}</span>
             <span data-testid="found-in">{String(lists.getListFor(1))}</span>
+            <span data-testid="pending">{String(lists.isPending(1))}</span>
             {(['backlog', 'playing', 'on_hold', 'finished', 'dropped'] as ListId[]).map(id => (
                 <span key={id} data-testid={`list-${id}`}>
                     {lists.lists[id].map(e => `${e.game.title}(${e.score ?? '-'})`).join(',')}
@@ -484,19 +485,36 @@ describe('two mutations at once', () => {
         expect(screen.getByTestId('list-finished')).toBeEmptyDOMElement();
     });
 
-    it('puts a game back where it was, not on the end of the list', async () => {
-        // Undoing a move is not the same operation as making one. A game moved to a list belongs
-        // at its end, but a game put back belongs at the position it was taken from — otherwise a
-        // failed move silently re-orders a list the user was not changing.
-        await mountPair({
-            lists: { playing: [CELESTE, HADES] },
-            failing: ['PUT /api/lists/1'],
+    it('restores the right membership when a game left from in front of it', async () => {
+        /*
+         * Three entries, because that is the size at which a remembered *position* goes wrong: with
+         * `[Celeste, Hades, Cuphead]`, holding Hades' move and then removing Celeste leaves
+         * `[Cuphead]`, and an index of 1 captured before the request now points past Cuphead
+         * instead of before it.
+         *
+         * A rollback owes membership and the score, and deliberately not the order: `ListsPage`
+         * renders every list through `sortEntries`, which breaks ties on title precisely so that
+         * the result cannot depend on the order the API happened to return. So this asserts what is
+         * contracted — both surviving games present, the moved one back out of `finished` — and
+         * says nothing about their order, which is why the position was dropped rather than
+         * anchored to a neighbour.
+         */
+        const CUPHEAD = entry({ game: { id: 3, title: 'Cuphead' } });
+        const { release } = await mountPair({
+            lists: { playing: [CELESTE, HADES, CUPHEAD] },
+            hold: ['PUT /api/lists/2'],
         });
 
-        await press('move 1');
+        await press('move 2');
+        await press('remove 1');
+        await waitFor(() => expect(playing().textContent).toBe('Cuphead(-)'));
 
-        await waitFor(() => expect(playing()).toHaveTextContent('Celeste'));
-        expect(playing().textContent).toBe('Celeste(7),Hades(-)');
+        await release('PUT /api/lists/2', 500);
+
+        expect(playing()).toHaveTextContent('Hades');
+        expect(playing()).toHaveTextContent('Cuphead');
+        expect(playing()).not.toHaveTextContent('Celeste');
+        expect(screen.getByTestId('list-finished')).toBeEmptyDOMElement();
     });
 
     it('refuses a second score while the first is still saving', async () => {
@@ -942,5 +960,30 @@ describe('across a session change', () => {
 
         expect(playing()).toHaveTextContent('Celeste(7)');
         expect(screen.getByTestId('error')).toHaveTextContent(/failed to remove from list/i);
+    });
+
+    it('does not leave the next account holding the previous one lock', async () => {
+        /*
+         * The pending set is what stops two writes to one entry row overlapping, and it disables
+         * that game's controls while a request is out. Kept in its own `useState` it was the one
+         * piece of state the account change did not clear, so a game the previous account had left
+         * in flight stayed locked for the new one — and stayed locked indefinitely if that request
+         * never settled, which is the case nothing else recovers from.
+         */
+        sessionStub({
+            loads: [{ playing: [CELESTE] }, { playing: [CELESTE] }],
+            deferred: 'PUT /api/entries/1/score',
+        });
+        const view = mount();
+        await waitFor(() => expect(playing()).toHaveTextContent('Celeste(7)'));
+
+        // Alice starts a score that never comes back.
+        await userEvent.click(screen.getByRole('button', { name: 'score 9' }));
+        expect(screen.getByTestId('pending')).toHaveTextContent('true');
+
+        await signIn(BOB, view);
+        await waitFor(() => expect(playing()).toHaveTextContent('Celeste(7)'));
+
+        expect(screen.getByTestId('pending')).toHaveTextContent('false');
     });
 });

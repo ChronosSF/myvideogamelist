@@ -1,4 +1,4 @@
-import { useEffect, useReducer, useState, type ReactNode } from 'react';
+import { useEffect, useReducer, type ReactNode } from 'react';
 import type { GameDto } from '@/types/game';
 import { type ListId, type ListEntryDto, type ViewMode, LIST_IDS, emptyLists } from '@/types/list';
 import { type SortState, DEFAULT_SORT } from '@/lib/listSort';
@@ -43,6 +43,17 @@ interface ListsState {
      * when it was sent, so nothing crosses accounts on the server.
      */
     session: string | null;
+    /**
+     * The game ids with a mutation in flight, which is what stops two writes to one entry row
+     * overlapping and what disables that game's controls while one is out.
+     *
+     * It lives in the reducer for the same reason `session` does, and specifically so that the
+     * account change clears it. Held in its own `useState` it survived a sign-out, and the id of a
+     * game the previous account had left in flight stayed locked — the new account's controls for
+     * that one game disabled until a request it has nothing to do with settles, or forever if that
+     * request hangs.
+     */
+    pending: ReadonlySet<number>;
 }
 
 type ListsAction =
@@ -57,16 +68,25 @@ type ListsAction =
      * it arrives, and touches only the game it names — so a mutation for another game completing
      * in the meantime survives both the optimistic write and the rollback.
      *
-     * `index` on PLACE_ENTRY is what makes a rollback exact: an add appends, because a game moved
-     * to a list belongs at its end, but putting one back has a position to return it to.
+     * None of them carries a position, and that is deliberate: a list is never rendered in the
+     * order it is held in. `ListsPage` runs every list through `sortEntries`, which is a total
+     * order — title breaks the tie for every key, precisely so the result cannot depend on the
+     * order the API happened to return. An index captured before a request is also wrong by the
+     * time it is used, because another game may have left the list from in front of it. The
+     * wishlist is the opposite case and keeps its order from `addedAt`, a value rather than a
+     * position, because that page does render its array as it stands.
      */
-    | { type: 'PLACE_ENTRY'; session: string | null; listId: ListId; entry: ListEntryDto; index?: number }
+    | { type: 'PLACE_ENTRY'; session: string | null; listId: ListId; entry: ListEntryDto }
     | { type: 'DROP_ENTRY'; session: string | null; gameId: number }
     | { type: 'SET_ENTRY_SCORE'; session: string | null; gameId: number; score: number | null }
     | { type: 'SET_VIEW'; view: ViewMode }
     | { type: 'SET_SORT'; listId: ListId; sort: SortState }
     | { type: 'MUTATION_ERROR'; session: string | null; error: string }
-    | { type: 'CLEAR_MUTATION_ERROR'; session: string | null };
+    | { type: 'CLEAR_MUTATION_ERROR'; session: string | null }
+    // Session-stamped like everything else a mutation raises, so the release of a lock taken by
+    // the previous account cannot reach a set that has since been cleared and refilled.
+    | { type: 'START_PENDING'; session: string | null; gameId: number }
+    | { type: 'END_PENDING'; session: string | null; gameId: number };
 
 const initialState: ListsState = {
     lists: emptyLists(),
@@ -76,6 +96,7 @@ const initialState: ListsState = {
     error: null,
     mutationError: null,
     session: null,
+    pending: new Set(),
 };
 
 /** Drops an action that was raised against an account other than the one on screen. */
@@ -119,15 +140,12 @@ function reducer(state: ListsState, action: ListsAction): ListsState {
         case 'PREFERENCES_LOADED':
             return ifCurrent(state, action.session, () =>
                 ({ ...state, view: action.view, sorts: action.sorts }));
-        // The three that a mutation raises, and therefore the three that can arrive late. Each
-        // carries the session it was captured under; ifCurrent drops it when that has moved on.
+        // The ones a mutation raises, and therefore the ones that can arrive late. Each carries
+        // the session it was captured under; ifCurrent drops it when that has moved on.
         case 'PLACE_ENTRY':
             return ifCurrent(state, action.session, () => {
                 const lists = without(state.lists, action.entry.game.id);
-                const target = lists[action.listId];
-                lists[action.listId] = action.index === undefined
-                    ? [...target, action.entry]
-                    : [...target.slice(0, action.index), action.entry, ...target.slice(action.index)];
+                lists[action.listId] = [...lists[action.listId], action.entry];
                 return { ...state, lists };
             });
         case 'DROP_ENTRY':
@@ -151,6 +169,15 @@ function reducer(state: ListsState, action: ListsAction): ListsState {
             return ifCurrent(state, action.session, () => ({ ...state, mutationError: action.error }));
         case 'CLEAR_MUTATION_ERROR':
             return ifCurrent(state, action.session, () => ({ ...state, mutationError: null }));
+        case 'START_PENDING':
+            return ifCurrent(state, action.session, () =>
+                ({ ...state, pending: new Set(state.pending).add(action.gameId) }));
+        case 'END_PENDING':
+            return ifCurrent(state, action.session, () => {
+                const pending = new Set(state.pending);
+                pending.delete(action.gameId);
+                return { ...state, pending };
+            });
         default:
             return state;
     }
@@ -171,22 +198,22 @@ function without(
 }
 
 /**
- * Where a game's entry sits: which list, the row itself, and its position in that list.
+ * Which list a game's entry is in, and the row itself.
  *
  * A mutation captures this for the one game it is about, which is the whole of what it needs to
  * undo itself — and, unlike the set of lists it used to keep, it says nothing about any other
- * game, so a rollback built from it cannot disturb one.
+ * game, so a rollback built from it cannot disturb one. Deliberately not a position: see
+ * `PLACE_ENTRY`.
  */
-interface EntryPosition {
+interface EntryOrigin {
     listId: ListId;
     entry: ListEntryDto;
-    index: number;
 }
 
-function locate(lists: Record<ListId, ListEntryDto[]>, gameId: number): EntryPosition | null {
+function locate(lists: Record<ListId, ListEntryDto[]>, gameId: number): EntryOrigin | null {
     for (const listId of LIST_IDS) {
-        const index = lists[listId].findIndex(entry => entry.game.id === gameId);
-        if (index !== -1) return { listId, entry: lists[listId][index], index };
+        const found = lists[listId].find(entry => entry.game.id === gameId);
+        if (found) return { listId, entry: found };
     }
     return null;
 }
@@ -194,8 +221,6 @@ function locate(lists: Record<ListId, ListEntryDto[]>, gameId: number): EntryPos
 export function ListsProvider({ children }: { children: ReactNode }) {
     const { user, loading: authLoading } = useAuth();
     const [state, dispatch] = useReducer(reducer, initialState);
-    // Track gameIds with in-flight mutations to prevent concurrent-update corruption
-    const [pendingIds, setPendingIds] = useState<Set<number>>(new Set());
 
     /**
      * The account every mutation below stamps its actions with — see `ListsState.session` for what
@@ -311,9 +336,8 @@ export function ListsProvider({ children }: { children: ReactNode }) {
 
     const sortFor = (listId: ListId): SortState => state.sorts[listId] ?? DEFAULT_SORT;
 
-    const startPending = (gameId: number) => setPendingIds(prev => new Set(prev).add(gameId));
-    const endPending = (gameId: number) =>
-        setPendingIds(prev => { const next = new Set(prev); next.delete(gameId); return next; });
+    const startPending = (gameId: number) => dispatch({ type: 'START_PENDING', session, gameId });
+    const endPending = (gameId: number) => dispatch({ type: 'END_PENDING', session, gameId });
 
     /**
      * Undoes one game's optimistic change and says why, for whichever way the request failed.
@@ -329,23 +353,17 @@ export function ListsProvider({ children }: { children: ReactNode }) {
         dispatch({ type: 'MUTATION_ERROR', session, error });
     };
 
-    /** Puts one game back exactly where it was, or off the lists if it was on none. */
-    const restore = (origin: EntryPosition | null, gameId: number) => () => {
+    /** Puts one game back in the list it came from, or off the lists if it was in none. */
+    const restore = (origin: EntryOrigin | null, gameId: number) => () => {
         if (origin) {
-            dispatch({
-                type: 'PLACE_ENTRY',
-                session,
-                listId: origin.listId,
-                entry: origin.entry,
-                index: origin.index,
-            });
+            dispatch({ type: 'PLACE_ENTRY', session, listId: origin.listId, entry: origin.entry });
         } else {
             dispatch({ type: 'DROP_ENTRY', session, gameId });
         }
     };
 
     const addToList = async (listId: ListId, game: GameDto): Promise<void> => {
-        if (pendingIds.has(game.id)) return;
+        if (state.pending.has(game.id)) return;
         startPending(game.id);
 
         // Only this game's own row is remembered, never the whole set of lists — see
@@ -382,11 +400,11 @@ export function ListsProvider({ children }: { children: ReactNode }) {
     };
 
     const removeFromList = async (listId: ListId, gameId: number): Promise<void> => {
-        if (pendingIds.has(gameId)) return;
+        if (state.pending.has(gameId)) return;
         startPending(gameId);
 
-        const index = state.lists[listId].findIndex(entry => entry.game.id === gameId);
-        const removed = index === -1 ? null : { listId, entry: state.lists[listId][index], index };
+        const found = state.lists[listId].find(entry => entry.game.id === gameId);
+        const removed = found ? { listId, entry: found } : null;
         dispatch({ type: 'DROP_ENTRY', session, gameId });
 
         const undo = restore(removed, gameId);
@@ -410,7 +428,7 @@ export function ListsProvider({ children }: { children: ReactNode }) {
         // Scoring takes the same per-game lock as a status change, because it writes the same
         // entry row. Without it two scores set in quick succession could both be in flight, and
         // the first one failing would roll the second one back to a value neither had asked for.
-        if (pendingIds.has(gameId)) return false;
+        if (state.pending.has(gameId)) return false;
         startPending(gameId);
 
         // The entry may be in no list at all, in which case there is nothing on screen to update
@@ -443,7 +461,7 @@ export function ListsProvider({ children }: { children: ReactNode }) {
     };
 
     const deleteEntry = async (gameId: number): Promise<void> => {
-        if (pendingIds.has(gameId)) return;
+        if (state.pending.has(gameId)) return;
         startPending(gameId);
 
         const origin = locate(state.lists, gameId);
@@ -476,7 +494,7 @@ export function ListsProvider({ children }: { children: ReactNode }) {
     const scoreFor = (gameId: number): number | null =>
         locate(state.lists, gameId)?.entry.score ?? null;
 
-    const isPending = (gameId: number): boolean => pendingIds.has(gameId);
+    const isPending = (gameId: number): boolean => state.pending.has(gameId);
 
     return (
         <ListsContext.Provider value={{

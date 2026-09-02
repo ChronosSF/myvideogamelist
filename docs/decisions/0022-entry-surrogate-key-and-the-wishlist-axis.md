@@ -198,10 +198,20 @@ and says nothing about any other game. `setScore` takes the same per-game lock a
 because it writes the same entry row: without it two scores set in quick succession could both be
 in flight, and the first to fail would roll the second back to a value neither had asked for.
 
-Undoing a move is deliberately not the same operation as making one, for the reason decision 6
-gives for the wishlist. A game moved to a list is appended, because it is the most recent thing in
-it; a game put back carries the index it was taken from, or a failed move quietly re-orders a list
-the user was not changing.
+**A rollback owes membership and the score, and not a position.** The first attempt had the entry
+carry the index it came from, on the same reasoning decision 6 gives for the wishlist — and it was
+wrong on both counts. An index captured before a request is stale by the time it is used, because
+another game may have left the list from in front of it: with `[Celeste, Hades, Cuphead]`, holding
+Hades' move and then removing Celeste leaves `[Cuphead]`, where index 1 puts Hades *after* Cuphead
+rather than before. More to the point, nothing renders it. `ListsPage` puts every list through
+`sortEntries`, which is a total order — title breaks the tie for every key, deliberately, so that
+the result cannot depend on the order the API happened to return.
+
+So the position was dropped rather than anchored to a surviving neighbour, which is the other way
+to fix it: the property was never observable, and machinery to preserve it would have cost more
+than it protects. The wishlist is the case that looks similar and is not — `WishlistPage` renders
+its array as it stands, so order there is real, and it comes from `addedAt`, a value rather than a
+position, which is why it cannot go stale in the first place.
 
 **A rejected `fetch` is now handled, and it is the same trap `CLAUDE.md` records for loaders.**
 `addToList`, `removeFromList` and `deleteEntry` wrapped their fetch in `try`/`finally` with no
@@ -215,8 +225,21 @@ control on the banner, so nothing else would ever take it down: it sat there des
 the user had already retried successfully, until the lists happened to be refetched. `CLEAR_MUTATION_ERROR`
 existed and was session-stamped but had no caller, which is what made the omission easy to miss.
 
-Nine of the ten tests covering this fail against the previous implementation; the tenth fails
-against a rollback that appends instead of restoring the position.
+**The pending set is part of the account's state, so it lives in the reducer too.** It was the one
+piece both providers kept in its own `useState`, and therefore the one piece the account change did
+not clear. A game the previous account had left in flight stayed locked for the next one: its
+controls disabled until a request that account has nothing to do with settles, or indefinitely if
+that request hangs, since nothing else recovers it. Both `START_PENDING` and `END_PENDING` are
+session-stamped like everything else a mutation raises.
+
+`WishlistProvider` had the identical bug, and it is worth recording *why* it was missed twice.
+Review looks at the file that changed: decision 8 was applied to the wishlist first and to the
+lists second, and both times the set sitting outside the reducer went unexamined because it was not
+in the diff. When one provider gains a guard, the other needs the same one applied by hand.
+
+Twelve tests cover this work. Nine fail against the implementation before it; one fails against a
+rollback that restores the whole set of lists with a third game present; and the two pending-lock
+tests fail against a set that survives the account change.
 
 **The wishlist page is tiles only.** No table view and no toolbar: a wishlist item has no score and
 no status, so four of the table's columns would be empty and its sort options meaningless. "When

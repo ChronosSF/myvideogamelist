@@ -26,6 +26,17 @@ interface WishlistState {
      * when it was sent, so nothing crosses accounts on the server.
      */
     session: string | null;
+    /**
+     * The game ids with a mutation in flight, which is what stops two writes to one row
+     * overlapping and what disables that game's heart while one is out.
+     *
+     * It lives in the reducer for the same reason `session` does, and specifically so that the
+     * account change clears it. Held in its own `useState` it survived a sign-out, and the id of
+     * a game the previous account had left in flight stayed locked — the new account's toggle for
+     * that one game disabled until a request it has nothing to do with settles, or forever if that
+     * request hangs.
+     */
+    pending: ReadonlySet<number>;
 }
 
 type WishlistAction =
@@ -37,7 +48,11 @@ type WishlistAction =
     | { type: 'RESTORE_ITEM'; session: string | null; item: WishlistItemDto }
     | { type: 'DROP_ITEM'; session: string | null; gameId: number }
     | { type: 'MUTATION_ERROR'; session: string | null; error: string }
-    | { type: 'CLEAR_MUTATION_ERROR'; session: string | null };
+    | { type: 'CLEAR_MUTATION_ERROR'; session: string | null }
+    // Session-stamped like everything else a mutation raises, so the release of a lock taken by
+    // the previous account cannot reach a set that has since been cleared and refilled.
+    | { type: 'START_PENDING'; session: string | null; gameId: number }
+    | { type: 'END_PENDING'; session: string | null; gameId: number };
 
 const initialState: WishlistState = {
     items: [],
@@ -45,6 +60,7 @@ const initialState: WishlistState = {
     error: null,
     mutationError: null,
     session: null,
+    pending: new Set(),
 };
 
 function has(items: WishlistItemDto[], gameId: number): boolean {
@@ -118,6 +134,15 @@ function reducer(state: WishlistState, action: WishlistAction): WishlistState {
             return ifCurrent(state, action.session, () => ({ ...state, mutationError: action.error }));
         case 'CLEAR_MUTATION_ERROR':
             return ifCurrent(state, action.session, () => ({ ...state, mutationError: null }));
+        case 'START_PENDING':
+            return ifCurrent(state, action.session, () =>
+                ({ ...state, pending: new Set(state.pending).add(action.gameId) }));
+        case 'END_PENDING':
+            return ifCurrent(state, action.session, () => {
+                const pending = new Set(state.pending);
+                pending.delete(action.gameId);
+                return { ...state, pending };
+            });
         default:
             return state;
     }
@@ -141,9 +166,9 @@ const MUTATION_FAILED = 'Failed to update your wishlist. Please try again.';
 export function WishlistProvider({ children }: { children: ReactNode }) {
     const { user, loading: authLoading } = useAuth();
     const [state, dispatch] = useReducer(reducer, initialState);
-    // Wishlist mutations only. Deliberately not shared with the list mutations in ListsProvider:
-    // the two axes are independent, so one being in flight must not disable the other.
-    const [pendingIds, setPendingIds] = useState<Set<number>>(new Set());
+    // Note that `state.pending` is this provider's own. Deliberately not shared with the list
+    // mutations in ListsProvider: the two axes are independent, so one being in flight must not
+    // disable the other.
     const [reloadToken, setReloadToken] = useState(0);
 
     /**
@@ -204,11 +229,10 @@ export function WishlistProvider({ children }: { children: ReactNode }) {
      * wishlisted" when the truth is that nothing is known.
      */
     const isPending = (gameId: number): boolean =>
-        state.loading || state.error !== null || pendingIds.has(gameId);
+        state.loading || state.error !== null || state.pending.has(gameId);
 
-    const startPending = (gameId: number) => setPendingIds(prev => new Set(prev).add(gameId));
-    const endPending = (gameId: number) =>
-        setPendingIds(prev => { const next = new Set(prev); next.delete(gameId); return next; });
+    const startPending = (gameId: number) => dispatch({ type: 'START_PENDING', session, gameId });
+    const endPending = (gameId: number) => dispatch({ type: 'END_PENDING', session, gameId });
 
     const add = async (game: GameDto): Promise<boolean> => {
         if (isPending(game.id)) return false;
