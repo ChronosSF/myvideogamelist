@@ -91,3 +91,13 @@
 .game-card-wishlist-btn.active {
     background: rgba(190, 24, 93, 0.9);
 }
+
+.game-card-wishlist-error {
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: #fca5a5;
+}
+
+[data-theme='light'] .game-card-wishlist-error {
+    color: #b91c1c;
+}

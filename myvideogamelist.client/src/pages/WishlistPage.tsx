@@ -28,7 +28,7 @@ export function meta() {
  */
 export function WishlistPage() {
     const { user } = useAuth();
-    const { items, loading, error, mutationError } = useWishlist();
+    const { items, loading, error, mutationError, reload } = useWishlist();
 
     return (
         <div className="min-h-screen">
@@ -85,7 +85,17 @@ export function WishlistPage() {
                     <div className="flex items-center justify-center py-24" role="alert">
                         <div className="bg-red-900/20 border border-red-700/50 rounded-xl p-8 max-w-md text-center">
                             <p className="text-red-300 font-medium mb-1">Failed to load wishlist</p>
-                            <p className="text-red-400/70 text-sm">{error}</p>
+                            <p className="text-red-400/70 text-sm mb-4">{error}</p>
+                            {/* Not decoration. Every wishlist control stays disabled while the
+                                load is unresolved, because membership is unknown — so without a
+                                retry the only way back is reloading the page. */}
+                            <button
+                                type="button"
+                                className="inline-flex items-center gap-1.5 px-4 py-2 bg-red-700 hover:bg-red-600 text-white text-sm font-semibold rounded-lg transition-colors"
+                                onClick={reload}
+                            >
+                                Try again
+                            </button>
                         </div>
                     </div>
                 )}

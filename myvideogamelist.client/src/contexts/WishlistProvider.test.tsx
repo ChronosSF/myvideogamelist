@@ -6,26 +6,34 @@ import { useWishlist } from '@/hooks/useWishlist';
 import type { WishlistItemDto } from '@/types/wishlist';
 import { game } from '@/test/factories';
 
-// A module-level constant, not a fresh literal per call. The fetch effect in the provider depends
-// on `user`, so returning a new object each render would re-run it on every render it caused — an
-// unbounded loop that ends in an out-of-memory crash rather than a failed assertion.
-vi.mock('@/hooks/useAuth', () => {
-    const value = {
-        user: { id: 'u1', email: 'alice@test.local', theme: 'dark' },
-        loading: false,
-        login: vi.fn(),
-        register: vi.fn(),
-        logout: vi.fn(),
-        updateTheme: vi.fn(),
-    };
-    return { useAuth: () => value };
-});
+const ALICE = { id: 'u1', email: 'alice@test.local', theme: 'dark' };
+const BOB = { id: 'u2', email: 'bob@test.local', theme: 'dark' };
+
+/**
+ * Mutable so a test can switch accounts, but handed back as one stable object.
+ *
+ * The fetch effect in the provider depends on `user`, so returning a fresh literal per call would
+ * re-run it on every render it caused — an unbounded loop that ends in an out-of-memory crash
+ * rather than a failed assertion. Reassigning `auth.user` changes that dependency deliberately.
+ */
+const auth = {
+    user: ALICE as typeof ALICE | null,
+    loading: false,
+    login: vi.fn(),
+    register: vi.fn(),
+    logout: vi.fn(),
+    updateTheme: vi.fn(),
+};
+
+vi.mock('@/hooks/useAuth', () => ({ useAuth: () => auth }));
 
 const CELESTE = game({ id: 1, title: 'Celeste' });
 const HADES = game({ id: 2, title: 'Hades' });
 
 const JANUARY = '2026-01-01T00:00:00+00:00';
 const MARCH = '2026-03-01T00:00:00+00:00';
+/** Later than any clock this test could be running under. */
+const FAR_FUTURE = '2099-01-01T00:00:00+00:00';
 
 interface Recorded {
     method: string;
@@ -38,29 +46,39 @@ function item(id: number, title: string, addedAt: string): WishlistItemDto {
 
 interface StubOptions {
     initial?: WishlistItemDto[];
+    /** Successive GET payloads, for tests that reload or switch accounts. */
+    loads?: WishlistItemDto[][];
     /** Status for the initial GET, so a load failure can be asserted. */
     loadStatus?: number;
     /** Status for every mutation, so rollback can be asserted. */
     mutationStatus?: number;
     /** URLs that fail while the rest succeed, so one mutation can fail among several. */
     failing?: string[];
-    /** URLs held open until the test releases them, so two mutations can genuinely overlap. */
+    /** URLs held open until the test releases them, so two requests can genuinely overlap. */
     deferred?: string[];
 }
 
 function stubFetch(options: StubOptions = {}) {
     const calls: Recorded[] = [];
     const held = new Map<string, (response: Response) => void>();
+    const loads = [...(options.loads ?? [])];
+    let getCount = 0;
 
-    const respond = (url: string, method: string): Response => {
+    const nextLoad = (): WishlistItemDto[] => {
+        if (loads.length === 0) return options.initial ?? [];
+        return loads[Math.min(getCount++, loads.length - 1)];
+    };
+
+    const respond = (url: string, method: string, statusOverride?: number): Response => {
         if (method === 'GET') {
-            const status = options.loadStatus ?? 200;
+            const status = statusOverride ?? options.loadStatus ?? 200;
             return status === 200
-                ? new Response(JSON.stringify(options.initial ?? []), { status })
+                ? new Response(JSON.stringify(nextLoad()), { status })
                 : new Response('nope', { status });
         }
-        if (options.failing?.includes(url)) return new Response('nope', { status: 500 });
-        return new Response(null, { status: options.mutationStatus ?? 204 });
+        const status = statusOverride
+            ?? (options.failing?.includes(url) ? 500 : options.mutationStatus ?? 204);
+        return new Response(status === 204 ? null : 'nope', { status });
     };
 
     const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
@@ -77,11 +95,10 @@ function stubFetch(options: StubOptions = {}) {
     vi.stubGlobal('fetch', fetchMock);
 
     /** Releases a held request with the given status, flushing the resulting state updates. */
-    const release = (url: string, status = 204) =>
+    const release = (url: string, status: number) =>
         act(async () => {
-            held.get(url)!(status === 200
-                ? new Response(JSON.stringify(options.initial ?? []), { status })
-                : new Response(status === 204 ? null : 'nope', { status }));
+            const method = url === '/api/wishlist' ? 'GET' : 'PUT';
+            held.get(url)!(respond(url, method, status));
             await Promise.resolve();
         });
 
@@ -104,12 +121,13 @@ function Probe() {
             <button onClick={() => void wishlist.add(HADES)}>add hades</button>
             <button onClick={() => void wishlist.remove(1)}>remove celeste</button>
             <button onClick={() => void wishlist.remove(2)}>remove hades</button>
+            <button onClick={() => wishlist.reload()}>reload</button>
         </div>
     );
 }
 
 function renderProvider() {
-    render(
+    return render(
         <WishlistProvider>
             <Probe />
         </WishlistProvider>,
@@ -122,6 +140,7 @@ const settled = () => waitFor(() => expect(screen.getByTestId('loading')).toHave
 
 beforeEach(() => {
     vi.unstubAllGlobals();
+    auth.user = ALICE;
 });
 
 describe('WishlistProvider loading', () => {
@@ -167,6 +186,40 @@ describe('WishlistProvider loading', () => {
 
         expect(screen.getByTestId('pending-celeste')).toHaveTextContent('false');
     });
+
+    it('keeps every game pending after a load failure, rather than claiming none are wishlisted', async () => {
+        // The dangerous case: loading goes false, so without this every card would offer "Add"
+        // for games that are already on the wishlist, on the strength of a list that never
+        // arrived.
+        stubFetch({ loadStatus: 500 });
+        renderProvider();
+
+        await settled();
+
+        expect(screen.getByTestId('pending-celeste')).toHaveTextContent('true');
+        expect(screen.getByTestId('has-celeste')).toHaveTextContent('false');
+    });
+
+    it('recovers on retry, which is the only way out of that state', async () => {
+        // Every control stays disabled while the load error stands, so without a retry the user
+        // would have to reload the page.
+        let failed = false;
+        const fetchMock = vi.fn(async () => {
+            if (!failed) { failed = true; return new Response('nope', { status: 500 }); }
+            return new Response(JSON.stringify([item(1, 'Celeste', JANUARY)]), { status: 200 });
+        });
+        vi.stubGlobal('fetch', fetchMock);
+        renderProvider();
+
+        await settled();
+        expect(screen.getByTestId('error')).toHaveTextContent(/failed to load/i);
+
+        await click('reload');
+
+        await waitFor(() => expect(screen.getByTestId('error')).toHaveTextContent(''));
+        expect(titles()).toBe('Celeste');
+        expect(screen.getByTestId('pending-celeste')).toHaveTextContent('false');
+    });
 });
 
 describe('WishlistProvider adding', () => {
@@ -195,6 +248,19 @@ describe('WishlistProvider adding', () => {
 
     it('shows the game at once, newest first, before the save lands', async () => {
         stubFetch({ initial: [item(1, 'Celeste', JANUARY)] });
+        renderProvider();
+        await settled();
+
+        await click('add hades');
+
+        expect(titles()).toBe('Hades,Celeste');
+    });
+
+    it('puts a new game first even when this browser clock is behind the server', async () => {
+        // The optimistic timestamp comes from the browser and the rest come from the server, so
+        // sorting the two together lets clock skew file a brand-new game below old ones. A new
+        // add is the newest by definition, so it is placed rather than sorted.
+        stubFetch({ initial: [item(1, 'Celeste', FAR_FUTURE)] });
         renderProvider();
         await settled();
 
@@ -252,8 +318,8 @@ describe('WishlistProvider removing', () => {
     });
 
     it('puts a failed removal back where it was, not at the top', async () => {
-        // The list is ordered by when each game was wanted, so restoring by prepending would
-        // quietly reorder it and the order would only correct itself on the next page load.
+        // A restore is the opposite of an add: the row has a server timestamp and a place it came
+        // from, so prepending it would quietly reorder the list until the next page load.
         stubFetch({
             initial: [item(2, 'Hades', MARCH), item(1, 'Celeste', JANUARY)],
             mutationStatus: 500,
@@ -308,7 +374,6 @@ describe('WishlistProvider concurrent mutations', () => {
         const { release } = stubFetch({
             initial: [item(1, 'Celeste', JANUARY), item(2, 'Hades', MARCH)],
             deferred: ['/api/wishlist/2'],
-            failing: ['/api/wishlist/2'],
         });
         renderProvider();
         await settled();
@@ -351,5 +416,57 @@ describe('WishlistProvider concurrent mutations', () => {
             expect(screen.getByTestId('mutation-error')).toHaveTextContent(/failed to update/i));
         expect(screen.getByTestId('error')).toHaveTextContent('');
         expect(titles()).toBe('Celeste');
+    });
+});
+
+describe('WishlistProvider across a session change', () => {
+    it('does not write a rolled-back item into the next account', async () => {
+        // The worst of the rollback cases: a mutation still in flight when somebody logs out and
+        // somebody else logs in. Restoring the captured row then puts one user's game into
+        // another user's wishlist, which is a leak rather than a glitch.
+        const { release } = stubFetch({
+            loads: [[item(1, 'Celeste', JANUARY)], [item(2, 'Hades', MARCH)]],
+            deferred: ['/api/wishlist/1'],
+        });
+        const view = renderProvider();
+        await settled();
+        expect(titles()).toBe('Celeste');
+
+        await click('remove celeste');
+        expect(titles()).toBe('');
+
+        // Alice leaves, Bob arrives, and Bob's wishlist loads.
+        auth.user = BOB;
+        await act(async () => {
+            view.rerender(
+                <WishlistProvider>
+                    <Probe />
+                </WishlistProvider>,
+            );
+        });
+        await waitFor(() => expect(titles()).toBe('Hades'));
+
+        // Alice's removal now fails. Her row must not come back into Bob's list.
+        await release('/api/wishlist/1', 500);
+
+        expect(titles()).toBe('Hades');
+    });
+
+    it('clears the wishlist on sign-out', async () => {
+        stubFetch({ initial: [item(1, 'Celeste', JANUARY)] });
+        const view = renderProvider();
+        await settled();
+        expect(titles()).toBe('Celeste');
+
+        auth.user = null;
+        await act(async () => {
+            view.rerender(
+                <WishlistProvider>
+                    <Probe />
+                </WishlistProvider>,
+            );
+        });
+
+        expect(titles()).toBe('');
     });
 });

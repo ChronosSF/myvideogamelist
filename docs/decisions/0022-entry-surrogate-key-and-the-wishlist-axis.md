@@ -62,10 +62,29 @@ is per game, so an add of one game and a removal of another run at the same time
 Rolling back by restoring the list as it was before the request therefore cannot be correct: it
 would undo whichever other mutation succeeded in the meantime, and the visible symptom is a removed
 game reappearing. So the rollback of an add drops exactly that game from current state, and the
-rollback of a removal re-inserts exactly that row — ordered back into place by its own `AddedAt`
-rather than prepended, or the list would quietly reorder itself until the next page load.
+rollback of a removal re-inserts exactly that row.
 
-**7. Load errors and mutation errors are separate fields.** A wishlist that failed to load has
+Adding and restoring are then deliberately *different* operations. A newly wanted game is placed at
+the front, because it is the newest by definition and its timestamp came from the browser — sorting
+that against server timestamps lets a slow client clock file a brand-new game below old ones. A
+restored row has a server timestamp and a position it came from, so it is sorted back into that
+position rather than prepended.
+
+**7. A toggle is only offered when membership is known.** That means disabled during the first
+fetch — where a successful write would be overwritten by the older response landing after it — and
+also disabled while a *failed* fetch stands. The second case is the sharper one: `loading` goes
+false on failure, so without it every card would cheerfully offer "Add" for games already on the
+wishlist, on the strength of a list that never arrived. Since that leaves the feature inert, the
+error state carries a retry; disabling with no way out would be worse than the wrong label.
+
+**8. A rollback belongs to the session that started it.** A mutation can still be in flight when
+one account logs out and another logs in. Every mutation records whose wishlist it began against
+and abandons its own rollback if that is no longer the session in play. Without it, a delayed
+failure writes the previous account's row into the new account's list — one user seeing another
+user's game, which is a leak rather than a glitch, and the reason this is a decision and not a
+detail.
+
+**9. Load errors and mutation errors are separate fields.** A wishlist that failed to load has
 nothing trustworthy to show and takes the whole page. A toggle that failed has already been rolled
 back, so the wishlist beside it is perfectly good and must not be replaced by an error state. The
 mutation error also clears on the next success, or the banner outlives the problem with no way to
@@ -110,6 +129,17 @@ cascade check, but are scoped out of the inventory — the framework owns their 
 needed the surrogate key); H4 "your week", which surfaces wishlist and backlog releases above the
 general timeline; and the IsThereAnyDeal work, whose flagship feature is a price-drop alert on a
 wishlisted game.
+
+**A card reports its own failure, because the shared error has nowhere to appear.** `GameCard`
+renders on Games, Home and the upcoming timeline, and none of those pages show the provider's
+`mutationError` — so a failed toggle would have snapped the heart back with no explanation. `add`
+and `remove` therefore return whether the wishlist ended up holding what was asked for, following
+`setScore` on the lists context, and the card renders its own result rather than the shared error,
+which belongs to whichever card was clicked last. The message sits in the card body, not the hover
+overlay, because a message that vanishes when the pointer moves is not one.
+
+A shared notification would be the better answer and is the natural follow-up: the five list
+buttons on the same card have exactly this gap, and it predates the wishlist.
 
 **`ListsProvider` still rolls back wholesale**, and is untouched here. Its mutations are guarded by
 one pending set across all five statuses, so two of them cannot overlap for the same game — but

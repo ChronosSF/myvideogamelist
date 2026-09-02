@@ -42,8 +42,9 @@ function wishlistValue(overrides: Partial<WishlistContextValue> = {}): WishlistC
         mutationError: null,
         isWishlisted: () => false,
         isPending: () => false,
-        add: vi.fn(async () => {}),
-        remove: vi.fn(async () => {}),
+        add: vi.fn(async () => true),
+        remove: vi.fn(async () => true),
+        reload: vi.fn(),
         ...overrides,
     };
 }

@@ -22,11 +22,24 @@ export function GameCard({ game }: GameCardProps) {
 
     const wishlisted = wishlist.isWishlisted(game.id);
 
+    /**
+     * Cards appear on Games, Home and the timeline, and none of those render the provider's
+     * `mutationError` — so without something here a failed toggle would just quietly snap the
+     * heart back. Read off the return value rather than the shared error, because that error
+     * belongs to whichever card was clicked last and not necessarily to this one.
+     *
+     * A shared notification would be the better answer, and would also cover the list buttons
+     * below, which have the same gap and predate this.
+     */
+    const [wishlistFailed, setWishlistFailed] = useState(false);
+
     const handleWishlistToggle = async (e: React.MouseEvent) => {
         e.preventDefault();
         e.stopPropagation();
-        if (wishlisted) await wishlist.remove(game.id);
-        else await wishlist.add(game);
+        setWishlistFailed(false);
+
+        const saved = wishlisted ? await wishlist.remove(game.id) : await wishlist.add(game);
+        setWishlistFailed(!saved);
     };
 
     const handleListToggle = async (e: React.MouseEvent, listId: ListId) => {
@@ -166,6 +179,14 @@ export function GameCard({ game }: GameCardProps) {
 
             {/* Card Body */}
             <div className="p-4 flex flex-col gap-2 flex-1">
+                {/* In the body rather than the overlay, which is only visible on hover — a
+                    message that disappears when the pointer moves away is no message. */}
+                {wishlistFailed && (
+                    <p className="game-card-wishlist-error" role="alert">
+                        Could not update your wishlist.
+                    </p>
+                )}
+
                 <div className="flex items-start justify-between gap-2">
                     <h3 className="text-white light:text-slate-900 font-semibold text-sm leading-snug line-clamp-2">
                         <Link to={`/games/${game.id}`} className="hover:text-blue-400 light:hover:text-blue-700 transition-colors">
