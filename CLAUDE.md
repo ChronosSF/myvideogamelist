@@ -44,6 +44,7 @@ Open `https://localhost:58546`.
 | `dotnet ef database update` | Applies migrations by hand; only needed outside Development |
 | `docker compose up -d --wait` | Local PostgreSQL. `--wait` blocks until it accepts connections |
 | `docker compose down` | Stops it, keeping data. **`down -v` destroys the data volume** |
+| `node scripts/seed-demo-history.mjs --email <account>` | Months of demo tracking history, so the profile stats have something to show. Prints SQL — pipe it to psql. `--email` is mandatory and **replaces that account's lists**, so use a `@test.local` one |
 
 Health endpoints: `/healthz` (liveness, no dependency checks) and `/readyz` (database and
 IGDB reachability). A degraded IGDB returns 200, not 503 — browsing breaks but stored lists
@@ -62,6 +63,8 @@ myvideogamelist.client/
   src/lib/                      apiUrl(), useStoredNumberSet()
 docs/decisions/                 Architecture decision records
 docs/data-model-plan.md         Schema the roadmap implies, by table, with sequencing
+scripts/                        Dev-only tools. These print SQL to stdout and never open a
+                                database connection — piping to psql stays a deliberate act
 ROADMAP.md                      Forward-looking plan
 ```
 
