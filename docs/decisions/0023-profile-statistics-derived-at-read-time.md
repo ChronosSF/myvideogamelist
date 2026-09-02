@@ -77,6 +77,14 @@ where a plausible-looking number would mean something other than what the label 
   resting on more than it does.
 - **"Started" means started for the first time.** Replaying a game is not picking up a new one, and
   counting it as one would make revisiting a favourite look like broadening a library.
+- **"Started" is the `IsStarted` flag, which includes being finished or dropped.** So a game ticked
+  off straight from the backlog counts as started in the month it was finished, and one abandoned
+  without being played counts as started in the month it was dropped. That is the flag's own meaning
+  — 0018 defines it as "the user has actually played the game, as opposed to merely intending to" —
+  and it keeps the three columns coherent: nothing can be finished or dropped in a month without
+  having been counted as started by then. Reading "started" as *moved into Playing* would be closer
+  to the English but would let a game be finished in a month it was never started in, which looks
+  like a bug on a chart where the two sit side by side.
 - **Finishes are distinct games per month.** Finishing a game twice in one month is one finish;
   finishing it again next year is a finish next year too.
 - **The chart never reaches back before the user's first event.** The log shipped in August 2026 and
@@ -121,11 +129,19 @@ sign-out; this hook is mounted only inside the signed-in branch of the profile r
 unmounts it. **If it is ever lifted somewhere that outlives a sign-out it needs the guard**, because
 the fetch would then be in flight across the change — the hook says so in its own comment.
 
-**The local development database has almost nothing in it.** Seventeen events across two accounts,
-spanning three days in August, most of them seconds apart from manual testing. Every figure renders
-and the empty and thin states are the ones on display: one or two months of chart, and an active
-time of "under an hour". That is the feature working, not the feature broken, but it is worth
-knowing before judging the design from a screenshot.
+**The three local accounts now cover three states, deliberately.** `bob2870@test.local` has a
+generated fourteen-month history — 28 entries, 61 events, 6 wishlist items, built from real IGDB ids
+so the metadata-dependent half populates too — and exercises the twelve-month cap, a longest streak
+that predates the visible chart, a game finished from the backlog and so excluded from the active
+time, and a game finished and then picked up again. `alice14188@test.local` keeps her three days of
+manual testing, which is the thin case: two months of chart and an active time of "under an hour".
+`carol24560@test.local` is empty, which is the new-user case. Nothing was deleted to make room, and
+the generated history is deterministic, so the figures it produces can be asserted rather than
+eyeballed.
+
+Verified against PostgreSQL through the running API rather than only in the unit tests, which is
+worth doing precisely *because* those run on the in-memory provider: the projections and the
+ordering are the parts that could translate differently, and they do not.
 
 **What this unblocks.** H6's stats strip on the home page reads the same endpoint. Public profiles
 need this page to exist before there is anything worth sharing. "Yearly wrapped" is this
