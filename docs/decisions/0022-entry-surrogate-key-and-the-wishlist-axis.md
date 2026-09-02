@@ -78,11 +78,31 @@ wishlist, on the strength of a list that never arrived. Since that leaves the fe
 error state carries a retry; disabling with no way out would be worse than the wrong label.
 
 **8. A rollback belongs to the session that started it.** A mutation can still be in flight when
-one account logs out and another logs in. Every mutation records whose wishlist it began against
-and abandons its own rollback if that is no longer the session in play. Without it, a delayed
-failure writes the previous account's row into the new account's list — one user seeing another
-user's game, which is a leak rather than a glitch, and the reason this is a decision and not a
-detail.
+one account logs out and another logs in. Without a guard, the delayed failure writes the previous
+account's row into the new account's list — one user seeing another user's game, which is a leak
+rather than a glitch, and the reason this is a decision and not a detail.
+
+It takes two things, and neither is sufficient alone.
+
+**The account lives in reducer state**, is stamped on every action a mutation raises, and
+mismatched actions are dropped by the reducer. The first attempt used a ref written from the fetch
+effect, which is wrong in a way worth recording: a passive effect runs *after* the commit, so there
+is a window in which the new account is already on screen while the marker still names the old one,
+and a completion landing inside it passes the guard. Writing the ref during render closes that
+window but opens another — React can discard a render it never commits, moving the marker for an
+account that never arrived. State compared inside the reducer cannot drift from the data it guards,
+which is the property the ref never had.
+
+**And the state is cleared when the account changes**, on `FETCH_START` rather than when the fetch
+succeeds. This one is independent of any mutation: `FETCH_ERROR` keeps the items it already has, so
+a *failed* load for the new account left the previous account's data on screen underneath the error
+message. Clearing on the transition means a fetch that never succeeds cannot strand anything.
+
+Both were found by review after the first fix shipped, and the tests that were meant to cover the
+first one could not have caught either: they signed the second account in through a helper that
+exits its own `act` and therefore flushes effects, so the marker was always current by the time the
+rollback ran. Reproducing the window needs the re-render and the completion inside a single `act`
+block, since a nested `act` does not flush passive effects.
 
 **9. Load errors and mutation errors are separate fields.** A wishlist that failed to load has
 nothing trustworthy to show and takes the whole page. A toggle that failed has already been rolled
@@ -142,9 +162,10 @@ A shared notification would be the better answer and is the natural follow-up: t
 buttons on the same card have exactly this gap, and it predates the wishlist.
 
 **`ListsProvider` has since had decision 8 applied to it** — all four of its mutations
-(`addToList`, `removeFromList`, `setScore`, `deleteEntry`) record the session they began in and
-skip their rollback when it no longer matches, so the cross-account case is closed on both
-providers.
+(`addToList`, `removeFromList`, `setScore`, `deleteEntry`) stamp the session on every action they
+raise, and it clears its lists *and* its per-user preferences when the account changes. Both
+providers now use the same two mechanisms, and the wishlist one was moved off the ref it originally
+shipped with.
 
 **It still rolls back wholesale, though.** Its mutations share one pending set across all five
 statuses, so two cannot overlap for the same game — but they can for two different games, and

@@ -1,4 +1,4 @@
-import { useEffect, useReducer, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useReducer, useState, type ReactNode } from 'react';
 import type { GameDto } from '@/types/game';
 import type { WishlistItemDto } from '@/types/wishlist';
 import { useAuth } from '@/hooks/useAuth';
@@ -11,17 +11,32 @@ interface WishlistState {
     error: string | null;
     /** Add or remove failure — shown next to the items, not instead of them. */
     mutationError: string | null;
+    /**
+     * Whose wishlist these items are, as the user id, or null when nobody is signed in.
+     *
+     * It lives here rather than in a ref so that the check and the data it protects move together.
+     * A mutation can still be in flight when one account signs out and another signs in; its
+     * rollback closes over the row captured from the first account, and every action that would
+     * write it carries the session it was captured under. A ref cannot do this job: written from
+     * an effect it lags the commit, leaving a window where the new account is on screen while the
+     * marker still names the old one, and written during render it can be moved by a render React
+     * then throws away.
+     *
+     * Only local state was ever at risk: a request already carries whichever cookie was current
+     * when it was sent, so nothing crosses accounts on the server.
+     */
+    session: string | null;
 }
 
 type WishlistAction =
     | { type: 'RESET' }
-    | { type: 'FETCH_START' }
+    | { type: 'FETCH_START'; session: string | null }
     | { type: 'FETCH_SUCCESS'; items: WishlistItemDto[] }
     | { type: 'FETCH_ERROR'; error: string }
-    | { type: 'PREPEND_ITEM'; item: WishlistItemDto }
-    | { type: 'RESTORE_ITEM'; item: WishlistItemDto }
-    | { type: 'DROP_ITEM'; gameId: number }
-    | { type: 'MUTATION_ERROR'; error: string }
+    | { type: 'PREPEND_ITEM'; session: string | null; item: WishlistItemDto }
+    | { type: 'RESTORE_ITEM'; session: string | null; item: WishlistItemDto }
+    | { type: 'DROP_ITEM'; session: string | null; gameId: number }
+    | { type: 'MUTATION_ERROR'; session: string | null; error: string }
     | { type: 'CLEAR_MUTATION_ERROR' };
 
 const initialState: WishlistState = {
@@ -29,10 +44,20 @@ const initialState: WishlistState = {
     loading: false,
     error: null,
     mutationError: null,
+    session: null,
 };
 
 function has(items: WishlistItemDto[], gameId: number): boolean {
     return items.some(item => item.game.id === gameId);
+}
+
+/** Drops an action that was raised against an account other than the one on screen. */
+function ifCurrent(
+    state: WishlistState,
+    session: string | null,
+    next: () => WishlistState,
+): WishlistState {
+    return session === state.session ? next() : state;
 }
 
 function reducer(state: WishlistState, action: WishlistAction): WishlistState {
@@ -40,9 +65,15 @@ function reducer(state: WishlistState, action: WishlistAction): WishlistState {
         case 'RESET':
             return initialState;
         case 'FETCH_START':
-            return { ...state, loading: true, error: null };
+            // A different account means none of the current state belongs to it. Cleared here
+            // rather than waiting for the fetch to land, because a fetch that *fails* would
+            // otherwise leave the previous account's wishlist on screen under the new account's
+            // error message.
+            return action.session === state.session
+                ? { ...state, loading: true, error: null }
+                : { ...initialState, session: action.session, loading: true };
         case 'FETCH_SUCCESS':
-            return { items: action.items, loading: false, error: null, mutationError: null };
+            return { ...state, items: action.items, loading: false, error: null, mutationError: null };
         case 'FETCH_ERROR':
             return { ...state, loading: false, error: action.error };
 
@@ -50,33 +81,35 @@ function reducer(state: WishlistState, action: WishlistAction): WishlistState {
         // sorting on a timestamp this client invented: a browser clock running behind the server
         // would otherwise file a brand-new item below older ones until the next load.
         case 'PREPEND_ITEM':
-            return has(state.items, action.item.game.id)
-                ? state
-                : { ...state, items: [action.item, ...state.items] };
+            return ifCurrent(state, action.session, () =>
+                has(state.items, action.item.game.id)
+                    ? state
+                    : { ...state, items: [action.item, ...state.items] });
 
         // A restore is the opposite case: the row has a server timestamp and a place it came
         // from, so it is sorted back into it rather than pushed to the front.
         case 'RESTORE_ITEM':
-            return has(state.items, action.item.game.id)
-                ? state
-                : {
-                    ...state,
-                    items: [...state.items, action.item]
-                        .sort((a, b) => Date.parse(b.addedAt) - Date.parse(a.addedAt)),
-                };
+            return ifCurrent(state, action.session, () =>
+                has(state.items, action.item.game.id)
+                    ? state
+                    : {
+                        ...state,
+                        items: [...state.items, action.item]
+                            .sort((a, b) => Date.parse(b.addedAt) - Date.parse(a.addedAt)),
+                    });
 
         // Both of the above and this one work off whatever the current state is, rather than
         // restoring a snapshot taken before the request. Mutations for different games run
         // concurrently by design, so replacing the whole list on rollback would undo whichever
         // of them happened to succeed in the meantime.
         case 'DROP_ITEM':
-            return {
+            return ifCurrent(state, action.session, () => ({
                 ...state,
                 items: state.items.filter(item => item.game.id !== action.gameId),
-            };
+            }));
 
         case 'MUTATION_ERROR':
-            return { ...state, mutationError: action.error };
+            return ifCurrent(state, action.session, () => ({ ...state, mutationError: action.error }));
         case 'CLEAR_MUTATION_ERROR':
             return { ...state, mutationError: null };
         default:
@@ -108,20 +141,13 @@ export function WishlistProvider({ children }: { children: ReactNode }) {
     const [reloadToken, setReloadToken] = useState(0);
 
     /**
-     * Whose wishlist the state currently describes.
-     *
-     * A mutation can still be in flight when somebody logs out and somebody else logs in. Without
-     * this, a rollback arriving after that point would write the previous account's row into the
-     * new account's list — one user seeing another user's game, which is worse than any error
-     * message. Every mutation records the session it began in and abandons its own rollback if
-     * that is no longer the session in play.
+     * The account every mutation below stamps its actions with — see `WishlistState.session` for
+     * what that protects against. Read from this render, never from a ref at completion time.
      */
-    const sessionRef = useRef<string | null>(null);
+    const session = user?.id ?? null;
 
     useEffect(() => {
         if (authLoading) return;
-
-        sessionRef.current = user?.id ?? null;
 
         if (!user) {
             dispatch({ type: 'RESET' });
@@ -129,7 +155,7 @@ export function WishlistProvider({ children }: { children: ReactNode }) {
         }
 
         const controller = new AbortController();
-        dispatch({ type: 'FETCH_START' });
+        dispatch({ type: 'FETCH_START', session: user.id });
 
         fetch('/api/wishlist', { credentials: 'include', signal: controller.signal })
             .then(res => {
@@ -173,8 +199,7 @@ export function WishlistProvider({ children }: { children: ReactNode }) {
         if (has(state.items, game.id)) return true;
 
         startPending(game.id);
-        const session = sessionRef.current;
-        dispatch({ type: 'PREPEND_ITEM', item: { game, addedAt: new Date().toISOString() } });
+        dispatch({ type: 'PREPEND_ITEM', session, item: { game, addedAt: new Date().toISOString() } });
 
         try {
             const res = await fetch(`/api/wishlist/${game.id}`, {
@@ -182,19 +207,16 @@ export function WishlistProvider({ children }: { children: ReactNode }) {
                 credentials: 'include',
             });
 
-            if (sessionRef.current !== session) return false;
-
             if (res.ok) {
                 dispatch({ type: 'CLEAR_MUTATION_ERROR' });
                 return true;
             }
-            dispatch({ type: 'DROP_ITEM', gameId: game.id });
-            dispatch({ type: 'MUTATION_ERROR', error: MUTATION_FAILED });
+            dispatch({ type: 'DROP_ITEM', session, gameId: game.id });
+            dispatch({ type: 'MUTATION_ERROR', session, error: MUTATION_FAILED });
             return false;
         } catch {
-            if (sessionRef.current !== session) return false;
-            dispatch({ type: 'DROP_ITEM', gameId: game.id });
-            dispatch({ type: 'MUTATION_ERROR', error: MUTATION_FAILED });
+            dispatch({ type: 'DROP_ITEM', session, gameId: game.id });
+            dispatch({ type: 'MUTATION_ERROR', session, error: MUTATION_FAILED });
             return false;
         } finally {
             endPending(game.id);
@@ -205,12 +227,11 @@ export function WishlistProvider({ children }: { children: ReactNode }) {
         if (isPending(gameId)) return false;
 
         startPending(gameId);
-        const session = sessionRef.current;
 
         // Only the one row is remembered, so putting it back cannot disturb anything else. Its
         // AddedAt is what returns it to its original position rather than the top of the list.
         const removed = state.items.find(item => item.game.id === gameId);
-        dispatch({ type: 'DROP_ITEM', gameId });
+        dispatch({ type: 'DROP_ITEM', session, gameId });
 
         try {
             const res = await fetch(`/api/wishlist/${gameId}`, {
@@ -218,20 +239,17 @@ export function WishlistProvider({ children }: { children: ReactNode }) {
                 credentials: 'include',
             });
 
-            if (sessionRef.current !== session) return false;
-
             // 404 means it was not on the wishlist, which is the state the caller asked for.
             if (res.ok || res.status === 404) {
                 dispatch({ type: 'CLEAR_MUTATION_ERROR' });
                 return true;
             }
-            if (removed) dispatch({ type: 'RESTORE_ITEM', item: removed });
-            dispatch({ type: 'MUTATION_ERROR', error: MUTATION_FAILED });
+            if (removed) dispatch({ type: 'RESTORE_ITEM', session, item: removed });
+            dispatch({ type: 'MUTATION_ERROR', session, error: MUTATION_FAILED });
             return false;
         } catch {
-            if (sessionRef.current !== session) return false;
-            if (removed) dispatch({ type: 'RESTORE_ITEM', item: removed });
-            dispatch({ type: 'MUTATION_ERROR', error: MUTATION_FAILED });
+            if (removed) dispatch({ type: 'RESTORE_ITEM', session, item: removed });
+            dispatch({ type: 'MUTATION_ERROR', session, error: MUTATION_FAILED });
             return false;
         } finally {
             endPending(gameId);

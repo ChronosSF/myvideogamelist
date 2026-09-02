@@ -361,8 +361,13 @@ describe('across a session change', () => {
      * Keyed by method and URL together, because adding to a list and removing from one are a PUT
      * and a DELETE to the same path.
      */
-    function sessionStub(options: { loads: ListsPayload[]; deferred: string }) {
-        let release!: (status: number) => Promise<void>;
+    function sessionStub(options: {
+        loads: (ListsPayload | 'fail')[];
+        deferred: string;
+        /** Fails the preference fetch too, so only a state reset can explain a default. */
+        preferences?: 'fail';
+    }) {
+        let settle!: (status: number) => void;
         let loadIndex = 0;
 
         const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
@@ -371,25 +376,38 @@ describe('across a session change', () => {
 
             if (method === 'GET' && url === '/api/lists') {
                 const lists = options.loads[Math.min(loadIndex++, options.loads.length - 1)];
-                return Promise.resolve(new Response(JSON.stringify({ lists }), { status: 200 }));
+                return Promise.resolve(lists === 'fail'
+                    ? new Response('nope', { status: 500 })
+                    : new Response(JSON.stringify({ lists }), { status: 200 }));
             }
             if (method === 'GET' && url === '/api/user/list-preferences') {
-                return Promise.resolve(
-                    new Response(JSON.stringify({ view: 'tiles', sorts: {} }), { status: 200 }));
+                return Promise.resolve(options.preferences === 'fail'
+                    ? new Response('nope', { status: 500 })
+                    : new Response(JSON.stringify({ view: 'tiles', sorts: {} }), { status: 200 }));
             }
             if (`${method} ${url}` === options.deferred) {
                 return new Promise<Response>(resolve => {
-                    release = (status: number) => act(async () => {
+                    settle = (status: number) =>
                         resolve(new Response(status === 204 ? null : 'nope', { status }));
-                        await Promise.resolve();
-                    });
                 });
             }
             return Promise.resolve(new Response(null, { status: 204 }));
         });
 
         vi.stubGlobal('fetch', fetchMock);
-        return { release: (status: number) => release(status) };
+
+        return {
+            /** Settles the held request and flushes everything it causes. */
+            release: (status: number) => act(async () => {
+                settle(status);
+                await Promise.resolve();
+            }),
+            /**
+             * Settles it without an `act` of its own, for the one test that has to interleave the
+             * completion with a re-render inside a single `act` block.
+             */
+            settle: (status: number) => settle(status),
+        };
     }
 
     function mount() {
@@ -409,8 +427,8 @@ describe('across a session change', () => {
     /*
      * Each of these holds one mutation open, signs a second account in, and then fails the
      * mutation. Every rollback closes over entries captured from the first account, so an
-     * unguarded one writes them into the second account list — one user seeing another user
-     * games. All four mutations carry their own rollback, hence four tests.
+     * unguarded one writes them into the second account’s lists — one user seeing another
+     * user’s games. All four mutations carry their own rollback, hence four tests.
      */
     it('does not put a failed move back into the next account', async () => {
         const { release } = sessionStub({
@@ -512,6 +530,93 @@ describe('across a session change', () => {
         await release(500);
 
         expect(screen.getByTestId('error')).toHaveTextContent('');
+    });
+
+    it('shows the next account nothing when its own load fails, not the previous account lists', async () => {
+        /*
+         * No mutation involved, which is what makes this its own bug rather than a variant of the
+         * ones above: FETCH_ERROR keeps state.lists, so a failed load for the new account left the
+         * previous account entries on screen underneath the error. The state is cleared when the
+         * account changes instead of when the fetch succeeds, so a fetch that never succeeds
+         * cannot strand anything.
+         */
+        sessionStub({
+            loads: [{ playing: [CELESTE] }, 'fail'],
+            deferred: 'DELETE /api/lists/never-called',
+        });
+        const view = mount();
+        await waitFor(() => expect(playing()).toHaveTextContent('Celeste(7)'));
+
+        await signIn(BOB, view);
+        await waitFor(() => expect(screen.getByTestId('loading')).toHaveTextContent('false'));
+
+        expect(playing()).toBeEmptyDOMElement();
+        expect(playing()).not.toHaveTextContent('Celeste');
+    });
+
+    it('does not carry the previous account preferences over either', async () => {
+        // The sort and layout are per-user rows on the server, so they belong to the account that
+        // loaded them and have to go with it.
+        //
+        // Both fetches are made to fail: with the preference fetch succeeding, the default it
+        // returns would explain the assertion just as well as the reset does, and the test would
+        // pass whether or not the reset happened at all.
+        sessionStub({
+            loads: [{ playing: [CELESTE] }, 'fail'],
+            deferred: 'DELETE /api/lists/never-called',
+            preferences: 'fail',
+        });
+        const view = mount();
+        await waitFor(() => expect(playing()).toHaveTextContent('Celeste(7)'));
+
+        await userEvent.click(screen.getByRole('button', { name: 'use table' }));
+        expect(screen.getByTestId('view')).toHaveTextContent('table');
+
+        await signIn(BOB, view);
+        await waitFor(() => expect(screen.getByTestId('loading')).toHaveTextContent('false'));
+
+        expect(screen.getByTestId('view')).toHaveTextContent('tiles');
+    });
+
+    it('rejects a stale completion that lands before the account effect has run', async () => {
+        /*
+         * The window the other tests in this block cannot reach.
+         *
+         * They call `signIn`, which exits its own `act` and therefore flushes the provider effect
+         * before the request is released — so the session marker is always up to date by the time
+         * the rollback happens, whether it was written during render or in the effect. That made
+         * them pass against a marker updated in a passive effect, which is wrong: an effect runs
+         * after the commit, so the new account is on screen while the marker still names the old
+         * one, and a completion arriving in between is exactly the leak.
+         *
+         * Re-rendering and settling the request inside one `act` block reproduces it. A nested
+         * `act` does not flush passive effects; the outermost one does, on exit.
+         *
+         * The second load is made to fail on purpose. A successful one would overwrite the leaked
+         * entries a moment later and hide the bug behind a race.
+         */
+        const { settle } = sessionStub({
+            loads: [{ playing: [CELESTE] }, 'fail'],
+            deferred: 'DELETE /api/lists/1',
+        });
+        const view = mount();
+        await waitFor(() => expect(playing()).toHaveTextContent('Celeste(7)'));
+
+        await userEvent.click(screen.getByRole('button', { name: 'remove' }));
+        expect(playing()).toBeEmptyDOMElement();
+
+        auth.user = BOB;
+        await act(async () => {
+            // Commits with BOB. The provider effect has not run yet.
+            view.rerender(<ListsProvider><Probe /></ListsProvider>);
+            settle(500);
+            await Promise.resolve();
+        });
+
+        await waitFor(() => expect(screen.getByTestId('loading')).toHaveTextContent('false'));
+
+        expect(playing()).toBeEmptyDOMElement();
+        expect(playing()).not.toHaveTextContent('Celeste');
     });
 
     it('still rolls back normally when the account has not changed', async () => {
