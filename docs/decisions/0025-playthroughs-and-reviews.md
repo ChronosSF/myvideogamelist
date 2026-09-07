@@ -154,8 +154,20 @@ not on it**: a score with no prose is the common case and must not require a rev
 which is exactly why 0019 put it on the entry in the first place.
 
 An optional `PlaythroughId` points at the run the review is about, with `OnDelete(SetNull)` —
-deleting a playthrough must not take the prose with it. It is validated to belong to this user and
-this entry, so it cannot be made to point at somebody else's row.
+deleting a playthrough must not take the prose with it.
+
+**That pointer is the one field a constraint cannot guard**, and the gap is worth naming. The
+composite key makes a review's *entry* provably its author's; the playthrough reference is a plain
+foreign key to a surrogate id, so the database would happily accept somebody else's playthrough,
+or one of your own from a different game. `ReviewService` therefore checks ownership itself, with
+the same `UserId` predicate every other read here uses, and `EntriesController` turns the resulting
+`ArgumentException` into a `ValidationProblemDetails` naming the field — a 400 beside the select
+rather than a 500, and never a silently stored lie. The message the user reads is written for them;
+the exception's own names ids and is written for whoever is debugging.
+
+The write is a **`PUT`**, because one review per game leaves no create/update distinction worth
+exposing: writing a second replaces the first. Deleting one leaves the entry, the score and the
+playthroughs alone — deleting what you wrote about a game is not deleting your record of it.
 
 **`Visibility` ships now rather than later**, even though there are no public profiles to be
 visible on. Defaulting it silently would be making a consent decision on the user's behalf and
@@ -203,6 +215,11 @@ the `ON DELETE CASCADE` the migration emits, and the migration SQL was read befo
 no game-page review list, no helpful-votes and no site-wide score histogram — those are Tier 2's
 community signal and they need public profiles first. What ships here is the writing half, which is
 the half that cannot be backfilled: a review nobody wrote in 2026 is not recoverable in 2027.
+
+That makes the visibility column look like dead weight today, and it is not. It is the one part of
+this that would be *wrong* to add later: the day a reading half ships, every review already written
+has to have an answer to "did its author agree to this being public", and the only way to have one
+is to have asked. A migration filling that column in retrospectively would be inventing consent.
 
 **What this unblocks.** H6's stats strip can show hours. Tier 2's community signal has review text
 to aggregate. "Most played platform" is answerable. And the completion-states roadmap item is
