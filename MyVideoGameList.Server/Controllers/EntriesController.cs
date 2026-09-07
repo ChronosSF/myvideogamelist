@@ -24,6 +24,7 @@ namespace MyVideoGameList.Server.Controllers;
 public class EntriesController(
     IListService listService,
     IPlaythroughService playthroughService,
+    IReviewService reviewService,
     UserManager<ApplicationUser> userManager) : ControllerBase
 {
     /// <summary>
@@ -42,10 +43,9 @@ public class EntriesController(
         if (entry is null) return NotFound();
 
         var playthroughs = await playthroughService.GetForGameAsync(user.Id, gameId, cancellationToken);
+        var review = await reviewService.GetAsync(user.Id, gameId, cancellationToken);
 
-        // Review stays null until the review table ships; the field is here from the start so the
-        // client's type does not churn when it does.
-        return Ok(new EntryDetailDto(entry, playthroughs, Review: null));
+        return Ok(new EntryDetailDto(entry, playthroughs, review));
     }
 
     [HttpPut("{gameId:int}/score")]
@@ -123,6 +123,52 @@ public class EntriesController(
         var deleted = await playthroughService.DeleteAsync(
             user.Id, gameId, playthroughId, cancellationToken);
 
+        return deleted ? NoContent() : NotFound();
+    }
+
+    /// <summary>
+    /// Writes or rewrites the user's review of this game.
+    /// </summary>
+    /// <remarks>
+    /// A <c>PUT</c> because there is one review per game — writing a second replaces the first,
+    /// so there is no create/update distinction to expose. The body is validated by attribute; the
+    /// one rule an attribute cannot express is whether a supplied playthrough id belongs to this
+    /// user and this game, which the service checks and this turns into a 400 rather than a 500.
+    /// </remarks>
+    [HttpPut("{gameId:int}/review")]
+    public async Task<ActionResult<ReviewDto>> SetReview(
+        [Range(1, int.MaxValue)] int gameId,
+        [FromBody] ReviewInputDto dto,
+        CancellationToken cancellationToken)
+    {
+        var user = await userManager.GetUserAsync(User);
+        if (user is null) return Unauthorized();
+
+        try
+        {
+            return Ok(await reviewService.UpsertAsync(user.Id, gameId, dto, cancellationToken));
+        }
+        catch (ArgumentException)
+        {
+            // The exception's own message names ids and is written for a developer. This is the
+            // sentence the writer of the review reads, in the shape ValidationProblemDetails puts
+            // every other 400 in.
+            ModelState.AddModelError(
+                nameof(ReviewInputDto.PlaythroughId),
+                "That playthrough is not one of yours for this game.");
+            return ValidationProblem(ModelState);
+        }
+    }
+
+    [HttpDelete("{gameId:int}/review")]
+    public async Task<IActionResult> DeleteReview(
+        [Range(1, int.MaxValue)] int gameId,
+        CancellationToken cancellationToken)
+    {
+        var user = await userManager.GetUserAsync(User);
+        if (user is null) return Unauthorized();
+
+        var deleted = await reviewService.DeleteAsync(user.Id, gameId, cancellationToken);
         return deleted ? NoContent() : NotFound();
     }
 

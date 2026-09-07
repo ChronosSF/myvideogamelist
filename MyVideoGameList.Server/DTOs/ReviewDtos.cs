@@ -1,3 +1,6 @@
+using System.ComponentModel.DataAnnotations;
+using MyVideoGameList.Server.Models;
+
 namespace MyVideoGameList.Server.DTOs;
 
 /// <summary>
@@ -31,3 +34,27 @@ public record ReviewDto(
     int? PlaythroughId,
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt);
+
+/// <summary>
+/// A review being written or rewritten. One per game, so there is no create/update distinction —
+/// the endpoint is a <c>PUT</c>.
+/// </summary>
+/// <remarks>
+/// Validated by attribute so <c>[ApiController]</c> returns the 400 itself, with the allowed
+/// visibilities coming from <see cref="ReviewVisibility"/> rather than a second list of literals.
+/// The attributes target the constructor <em>parameter</em> — see <see cref="SetListEntryDto"/>
+/// for why a <c>[property:]</c> target compiles and then throws at request time.
+/// </remarks>
+/// <param name="PlaythroughId">
+/// Optional, and checked by the service to belong to this user and this game — an id from
+/// somebody else's account is a 400 rather than a silently stored pointer.
+/// </param>
+public record ReviewInputDto(
+    [Required]
+    [MaxLength(10000)]
+    string Body,
+    bool HasSpoilers,
+    [Required]
+    [AllowedValues(ReviewVisibility.Public, ReviewVisibility.Private)]
+    string Visibility,
+    [Range(1, int.MaxValue)] int? PlaythroughId);

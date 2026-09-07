@@ -39,15 +39,34 @@ export interface PlaythroughInputDto {
     notes: string | null;
 }
 
-/** The user's own review of a game. Always null until the review table ships. */
+/**
+ * The user's own review of a game. At most one per game.
+ *
+ * The score is deliberately not on it — it lives on the entry, because a score with no prose is
+ * the common case and must not require a review to exist.
+ */
 export interface ReviewDto {
     id: number;
     body: string;
     hasSpoilers: boolean;
+    /**
+     * `public` or `private`. Typed as a plain string rather than a union because the column is
+     * one, and `friends` is a foreseeable third value: a response carrying one the client does not
+     * know about should render, not throw.
+     */
     visibility: string;
+    /** The playthrough the review is about, when the author said which. */
     playthroughId: number | null;
     createdAt: string;
     updatedAt: string;
+}
+
+/** What a review write sends. A PUT: one per game, so writing again replaces it. */
+export interface ReviewInputDto {
+    body: string;
+    hasSpoilers: boolean;
+    visibility: 'public' | 'private';
+    playthroughId: number | null;
 }
 
 /**

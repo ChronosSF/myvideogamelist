@@ -395,3 +395,32 @@
     grid-template-columns: 1fr 1fr;
     gap: 0.5rem;
 }
+
+/* ---- the review ---- */
+
+.game-user-panel-review-form {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+}
+
+.game-user-panel-check {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+.game-user-panel-check label {
+    font-size: 0.72rem;
+    color: #94a3b8;
+}
+
+[data-theme='light'] .game-user-panel-check label {
+    color: #475569;
+}
+
+.game-user-panel-check input:focus-visible,
+.game-user-panel-review-form :focus-visible {
+    outline: 2px solid #3b82f6;
+    outline-offset: 2px;
+}

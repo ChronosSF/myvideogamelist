@@ -6,8 +6,8 @@ import { ListsContext, type ListsContextValue } from '@/contexts/ListsContext';
 import { WishlistContext, type WishlistContextValue } from '@/contexts/WishlistContext';
 import { DEFAULT_SORT } from '@/lib/listSort';
 import type { ListId } from '@/types/list';
-import type { PlaythroughDto } from '@/types/playthrough';
-import { entryDetail, game, platform, playthrough } from '@/test/factories';
+import type { PlaythroughDto, ReviewDto } from '@/types/playthrough';
+import { entryDetail, game, platform, playthrough, review } from '@/test/factories';
 
 const CELESTE = game({
     id: 1,
@@ -83,11 +83,12 @@ function stubEntryFetch(
     status = 200,
     playthroughs: PlaythroughDto[] = [],
     onWrite?: (url: string, init: RequestInit | undefined) => Response,
+    existingReview: ReviewDto | null = null,
 ) {
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
         const url = String(input);
 
-        if (url.includes('/playthroughs')) {
+        if (url.includes('/playthroughs') || url.includes('/review')) {
             return onWrite?.(url, init) ?? new Response(null, { status: 204 });
         }
 
@@ -96,6 +97,7 @@ function stubEntryFetch(
                 JSON.stringify(entryDetail({
                     entry: { game: { id: 1, title: 'Celeste' }, score },
                     playthroughs,
+                    review: existingReview,
                 })),
                 { status })
             : new Response('not found', { status });
@@ -327,15 +329,16 @@ describe('GameUserPanel deleting everything', () => {
         expect(screen.getByText(/history of moving it between lists is kept/i)).toBeInTheDocument();
     });
 
-    it('warns that the playthroughs go too', async () => {
-        // They cascade from the entry, so the confirmation has to name them — the score is not
-        // the only thing being discarded any more.
+    it('warns that the playthroughs and the review go too', async () => {
+        // Both cascade from the entry, so the confirmation has to name them — the score is not the
+        // only thing being discarded any more.
         stubEntryFetch(null, 200, [playthrough({ id: 5 })]);
         renderPanel();
 
         await userEvent.click(await screen.findByRole('button', { name: /delete my data/i }));
 
-        expect(screen.getByText(/score, list placement and playthroughs/i)).toBeInTheDocument();
+        expect(screen.getByText(/score, list placement, playthroughs and review/i))
+            .toBeInTheDocument();
     });
 
     it('offers it for a game that is only played, with no score and no list', async () => {
@@ -706,5 +709,142 @@ describe('GameUserPanel playthroughs', () => {
         expect(await screen.findByRole('alert'))
             .toHaveTextContent(/could not delete that playthrough/i);
         expect(screen.getByText('4h 20m')).toBeInTheDocument();
+    });
+});
+
+describe('GameUserPanel review', () => {
+    it('starts empty for a game with nothing written', async () => {
+        stubEntryFetch(null, 404);
+        renderPanel();
+        await settled();
+
+        expect(screen.getByLabelText('What you thought')).toHaveValue('');
+        expect(screen.getByRole('button', { name: 'Save review' })).toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'Delete review' })).not.toBeInTheDocument();
+    });
+
+    it('loads a review that was already written', async () => {
+        stubEntryFetch(null, 200, [], undefined, review({
+            body: 'The best side quests in the genre.',
+            hasSpoilers: true,
+            visibility: 'public',
+        }));
+        renderPanel();
+
+        await waitFor(() => expect(screen.getByLabelText('What you thought'))
+            .toHaveValue('The best side quests in the genre.'));
+        expect(screen.getByLabelText(/contains spoilers/i)).toBeChecked();
+        expect(screen.getByLabelText('Who can see it')).toHaveValue('public');
+        expect(screen.getByRole('button', { name: 'Update review' })).toBeInTheDocument();
+    });
+
+    it('defaults a new review to private and says what public will mean', async () => {
+        // No public profiles exist yet, so nothing is published either way — but the default is a
+        // consent decision, and it has to still be honoured when profiles launch.
+        stubEntryFetch(null, 404);
+        renderPanel();
+        await settled();
+
+        expect(screen.getByLabelText('Who can see it')).toHaveValue('private');
+        expect(screen.getByText(/appear on your public profile once profiles launch/i))
+            .toBeInTheDocument();
+    });
+
+    it('saves what was written', async () => {
+        const fetchMock = stubEntryFetch(null, 200, [], (url) =>
+            url.includes('/review')
+                ? new Response(JSON.stringify(review({ id: 3, body: 'Superb.' })), { status: 200 })
+                : new Response(null, { status: 204 }));
+        renderPanel();
+        await settled();
+
+        await userEvent.type(screen.getByLabelText('What you thought'), 'Superb.');
+        await userEvent.click(screen.getByLabelText(/contains spoilers/i));
+        await userEvent.selectOptions(screen.getByLabelText('Who can see it'), 'public');
+        await userEvent.click(screen.getByRole('button', { name: 'Save review' }));
+
+        await waitFor(() =>
+            expect(screen.getByRole('button', { name: 'Update review' })).toBeInTheDocument());
+
+        // A PUT, because there is one review per game.
+        expect(fetchMock.mock.calls[1][1]?.method).toBe('PUT');
+        expect(String(fetchMock.mock.calls[1][0])).toBe('/api/entries/1/review');
+        expect(bodyOf(fetchMock, 1)).toEqual({
+            body: 'Superb.',
+            hasSpoilers: true,
+            visibility: 'public',
+            playthroughId: null,
+        });
+    });
+
+    it('offers to name the playthrough it is about, once there are any', async () => {
+        stubEntryFetch(null, 200, [playthrough({ id: 5, type: 'completionist' })]);
+        renderPanel();
+
+        const select = await screen.findByLabelText('About which playthrough');
+        expect(within(select).getByRole('option', { name: 'The game in general' })).toBeInTheDocument();
+        expect(within(select).getByRole('option', { name: '1. Completionist' })).toBeInTheDocument();
+    });
+
+    it('does not offer that select when nothing has been logged', async () => {
+        stubEntryFetch(null, 404);
+        renderPanel();
+        await settled();
+
+        expect(screen.queryByLabelText('About which playthrough')).not.toBeInTheDocument();
+    });
+
+    it('shows what the server said was wrong with it', async () => {
+        stubEntryFetch(null, 200, [], () => new Response(
+            JSON.stringify({
+                title: 'One or more validation errors occurred.',
+                errors: { PlaythroughId: ['That playthrough is not one of yours for this game.'] },
+            }),
+            { status: 400 }));
+        renderPanel();
+        await settled();
+
+        await userEvent.type(screen.getByLabelText('What you thought'), 'Hmm.');
+        await userEvent.click(screen.getByRole('button', { name: 'Save review' }));
+
+        expect(await screen.findByRole('alert'))
+            .toHaveTextContent(/not one of yours for this game/i);
+    });
+
+    it('reports a dead API rather than looking as though it saved', async () => {
+        const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+            if (String(input).includes('/review')) throw new Error('Network down');
+            return new Response('not found', { status: 404 });
+        });
+        vi.stubGlobal('fetch', fetchMock);
+        renderPanel();
+        await settled();
+
+        await userEvent.click(screen.getByRole('button', { name: 'Save review' }));
+
+        expect(await screen.findByRole('alert')).toHaveTextContent(/could not save your review/i);
+    });
+
+    it('deletes it and clears the field', async () => {
+        const fetchMock = stubEntryFetch(
+            null,
+            200,
+            [],
+            () => new Response(null, { status: 204 }),
+            review({ id: 3, body: 'On reflection, no.' }));
+        renderPanel();
+
+        await userEvent.click(await screen.findByRole('button', { name: 'Delete review' }));
+
+        await waitFor(() => expect(screen.getByLabelText('What you thought')).toHaveValue(''));
+        expect(screen.getByRole('button', { name: 'Save review' })).toBeInTheDocument();
+        expect(fetchMock.mock.calls[1][1]?.method).toBe('DELETE');
+    });
+
+    it('offers the whole-game delete for a game that only has a review', async () => {
+        stubEntryFetch(null, 200, [], undefined, review({ id: 3 }));
+        renderPanel();
+
+        expect(await screen.findByRole('button', { name: /delete my data/i })).toBeInTheDocument();
     });
 });

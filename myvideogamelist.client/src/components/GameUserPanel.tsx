@@ -1,12 +1,19 @@
 import { useEffect, useState } from 'react';
 import type { GameDto } from '@/types/game';
 import { type ListId, LIST_IDS, LIST_NAMES } from '@/types/list';
-import type { EntryDetailDto, PlaythroughDto, PlaythroughInputDto } from '@/types/playthrough';
+import type {
+    EntryDetailDto,
+    PlaythroughDto,
+    PlaythroughInputDto,
+    ReviewDto,
+    ReviewInputDto,
+} from '@/types/playthrough';
 import { useLists } from '@/hooks/useLists';
 import { useWishlist } from '@/hooks/useWishlist';
 import { ScoreInput } from '@/components/ScoreInput';
 import { PlaythroughForm } from '@/components/PlaythroughForm';
 import { PlaythroughList } from '@/components/PlaythroughList';
+import { ReviewForm } from '@/components/ReviewForm';
 import './GameUserPanel.css';
 
 interface GameUserPanelProps {
@@ -37,6 +44,7 @@ export function GameUserPanel({ game }: GameUserPanelProps) {
     // read carries the playthroughs too, because this panel shows them together.
     const [score, setLocalScore] = useState<number | null>(null);
     const [playthroughs, setPlaythroughs] = useState<PlaythroughDto[]>([]);
+    const [review, setReview] = useState<ReviewDto | null>(null);
     const [loaded, setLoaded] = useState(false);
     const [confirmingDelete, setConfirmingDelete] = useState(false);
 
@@ -44,6 +52,9 @@ export function GameUserPanel({ game }: GameUserPanelProps) {
     const [savingPlaythrough, setSavingPlaythrough] = useState(false);
     const [deletingPlaythroughId, setDeletingPlaythroughId] = useState<number | null>(null);
     const [playthroughError, setPlaythroughError] = useState<string | null>(null);
+
+    const [savingReview, setSavingReview] = useState(false);
+    const [reviewError, setReviewError] = useState<string | null>(null);
 
     const [lastGameId, setLastGameId] = useState(game.id);
 
@@ -54,12 +65,15 @@ export function GameUserPanel({ game }: GameUserPanelProps) {
         setLastGameId(game.id);
         setLocalScore(null);
         setPlaythroughs([]);
+        setReview(null);
         setLoaded(false);
         setConfirmingDelete(false);
         setEditing(null);
         setSavingPlaythrough(false);
         setDeletingPlaythroughId(null);
         setPlaythroughError(null);
+        setSavingReview(false);
+        setReviewError(null);
     }
 
     const currentList = getListFor(game.id);
@@ -75,6 +89,7 @@ export function GameUserPanel({ game }: GameUserPanelProps) {
                 if (controller.signal.aborted) return;
                 setLocalScore(detail?.entry.score ?? null);
                 setPlaythroughs(detail?.playthroughs ?? []);
+                setReview(detail?.review ?? null);
                 setLoaded(true);
             })
             .catch(() => {
@@ -98,9 +113,10 @@ export function GameUserPanel({ game }: GameUserPanelProps) {
         await deleteEntry(game.id);
         setLocalScore(null);
 
-        // The playthroughs go with the entry — the composite foreign key cascades them — so the
-        // panel must not go on showing rows the server has just discarded.
+        // The playthroughs and the review go with the entry — the composite foreign key cascades
+        // both — so the panel must not go on showing what the server has just discarded.
         setPlaythroughs([]);
+        setReview(null);
         setEditing(null);
     };
 
@@ -168,6 +184,56 @@ export function GameUserPanel({ game }: GameUserPanelProps) {
         }
     };
 
+    const handleReviewSave = async (input: ReviewInputDto) => {
+        setSavingReview(true);
+        setReviewError(null);
+
+        try {
+            // A PUT, not a POST: there is one review per game, so writing a second replaces the
+            // first rather than adding one.
+            const res = await fetch(`/api/entries/${game.id}/review`, {
+                method: 'PUT',
+                credentials: 'include',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(input),
+            });
+
+            if (!res.ok) {
+                setReviewError(await problemMessage(res, 'saveReview'));
+                return;
+            }
+
+            setReview((await res.json()) as ReviewDto);
+        } catch {
+            setReviewError('Could not save your review. Please try again.');
+        } finally {
+            setSavingReview(false);
+        }
+    };
+
+    const handleReviewDelete = async () => {
+        setSavingReview(true);
+        setReviewError(null);
+
+        try {
+            const res = await fetch(`/api/entries/${game.id}/review`, {
+                method: 'DELETE',
+                credentials: 'include',
+            });
+
+            if (!res.ok) {
+                setReviewError(await problemMessage(res, 'deleteReview'));
+                return;
+            }
+
+            setReview(null);
+        } catch {
+            setReviewError('Could not delete your review. Please try again.');
+        } finally {
+            setSavingReview(false);
+        }
+    };
+
     const handleWishlistToggle = async () => {
         if (wishlisted) await wishlist.remove(game.id);
         else await wishlist.add(game);
@@ -179,7 +245,8 @@ export function GameUserPanel({ game }: GameUserPanelProps) {
         else await addToList(listId, game);
     };
 
-    const hasData = currentList !== null || score !== null || playthroughs.length > 0;
+    const hasData =
+        currentList !== null || score !== null || playthroughs.length > 0 || review !== null;
 
     return (
         <div className="game-user-panel">
@@ -275,13 +342,25 @@ export function GameUserPanel({ game }: GameUserPanelProps) {
                 />
             </div>
 
+            <div className="game-user-panel-section">
+                <p className="game-user-panel-label">Your review</p>
+                <ReviewForm
+                    review={review}
+                    playthroughs={playthroughs}
+                    onSave={input => void handleReviewSave(input)}
+                    onDelete={() => void handleReviewDelete()}
+                    pending={!loaded || savingReview}
+                    error={reviewError}
+                />
+            </div>
+
             {hasData && (
                 <div className="game-user-panel-danger">
                     {confirmingDelete ? (
                         <>
                             <p className="game-user-panel-hint">
-                                Delete your score, list placement and playthroughs for this game?
-                                Your history of moving it between lists is kept.
+                                Delete your score, list placement, playthroughs and review for
+                                this game? Your history of moving it between lists is kept.
                             </p>
                             <div className="game-user-panel-confirm">
                                 <button type="button" className="danger" onClick={() => void handleDelete()}>
@@ -330,6 +409,13 @@ function compare(a: string | null, b: string | null): number {
     return a < b ? -1 : 1;
 }
 
+const FALLBACKS: Record<'save' | 'delete' | 'saveReview' | 'deleteReview', (status: number) => string> = {
+    save: status => `Could not save your playthrough (${status}).`,
+    delete: status => `Could not delete that playthrough (${status}).`,
+    saveReview: status => `Could not save your review (${status}).`,
+    deleteReview: status => `Could not delete your review (${status}).`,
+};
+
 /**
  * What the server said went wrong, as one sentence.
  *
@@ -338,10 +424,11 @@ function compare(a: string | null, b: string | null): number {
  * your playthrough". Falls back to something plain rather than throwing on a body that is not
  * JSON at all, which is what a 500 or a proxy error looks like.
  */
-async function problemMessage(response: Response, verb: 'save' | 'delete'): Promise<string> {
-    const fallback = verb === 'save'
-        ? `Could not save your playthrough (${response.status}).`
-        : `Could not delete that playthrough (${response.status}).`;
+async function problemMessage(
+    response: Response,
+    verb: 'save' | 'delete' | 'saveReview' | 'deleteReview',
+): Promise<string> {
+    const fallback = FALLBACKS[verb](response.status);
 
     try {
         const problem = (await response.json()) as {

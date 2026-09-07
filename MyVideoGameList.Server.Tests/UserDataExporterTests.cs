@@ -143,6 +143,36 @@ public class UserDataExporterTests
         db.SaveChanges();
     }
 
+    /// <summary>One review on the user's entry for a game, creating that entry if it is not there.</summary>
+    private static void AddReview(
+        ApplicationDbContext db,
+        int gameId,
+        string body = "Worth every hour.",
+        bool hasSpoilers = false,
+        string visibility = ReviewVisibility.Private,
+        DateTimeOffset? createdAt = null,
+        string userId = UserId)
+    {
+        var entry = db.UserGameEntries.FirstOrDefault(e => e.UserId == userId && e.GameId == gameId);
+        if (entry is null)
+        {
+            AddEntry(db, gameId, status: null, userId: userId);
+            entry = db.UserGameEntries.Single(e => e.UserId == userId && e.GameId == gameId);
+        }
+
+        db.Reviews.Add(new Review
+        {
+            UserId = userId,
+            Entry = entry,
+            Body = body,
+            HasSpoilers = hasSpoilers,
+            Visibility = visibility,
+            CreatedAt = createdAt ?? Now,
+            UpdatedAt = createdAt ?? Now
+        });
+        db.SaveChanges();
+    }
+
     private static void AddWishlistItem(
         ApplicationDbContext db, int gameId, DateTimeOffset? at = null, string userId = UserId)
     {
@@ -197,6 +227,7 @@ public class UserDataExporterTests
         AddEntry(db, gameId: 11, status: ListStatusKeys.Playing, score: 8);
         AddEvent(db, gameId: 11, from: null, to: ListStatusKeys.Playing);
         AddPlaythrough(db, gameId: 11);
+        AddReview(db, gameId: 11);
         AddWishlistItem(db, gameId: 12);
         AddHiddenPlatform(db, platformId: 13);
         AddSortPreference(db, ListStatusKeys.Playing, ListSortKeys.Score);
@@ -204,6 +235,7 @@ public class UserDataExporterTests
         AddEntry(db, gameId: 21, status: ListStatusKeys.Finished, score: 3, userId: OtherUserId);
         AddEvent(db, gameId: 21, from: null, to: ListStatusKeys.Finished, userId: OtherUserId);
         AddPlaythrough(db, gameId: 21, userId: OtherUserId);
+        AddReview(db, gameId: 21, body: "Theirs.", userId: OtherUserId);
         AddWishlistItem(db, gameId: 22, userId: OtherUserId);
         AddHiddenPlatform(db, platformId: 23, userId: OtherUserId);
         AddSortPreference(db, ListStatusKeys.Finished, ListSortKeys.Title, userId: OtherUserId);
@@ -217,6 +249,7 @@ public class UserDataExporterTests
         Assert.Equal([11], export.Entries.Select(e => e.GameId));
         Assert.Equal([11], export.Events.Select(e => e.GameId));
         Assert.Equal([11], export.Playthroughs.Select(p => p.GameId));
+        Assert.Equal([11], export.Reviews.Select(r => r.GameId));
         Assert.Equal([12], export.Wishlist.Select(w => w.GameId));
         Assert.Equal([13], export.HiddenPlatformIds);
         Assert.Equal([ListStatusKeys.Playing], export.ListSortPreferences.Select(p => p.Status));
@@ -237,6 +270,7 @@ public class UserDataExporterTests
         Assert.Empty(export.Entries);
         Assert.Empty(export.Events);
         Assert.Empty(export.Playthroughs);
+        Assert.Empty(export.Reviews);
         Assert.Empty(export.Wishlist);
         Assert.Empty(export.HiddenPlatformIds);
         Assert.Empty(export.ListSortPreferences);
@@ -402,6 +436,42 @@ public class UserDataExporterTests
 
         // Oldest first: 30 days ago, then 10, then 1.
         Assert.Equal([100, 300, 200], export.Playthroughs.Select(p => p.MinutesPlayed));
+    }
+
+    [Fact]
+    public async Task ExportAsync_Review_CarriesTheProseAndItsVisibility()
+    {
+        using var db = NewDb();
+        AddAccount(db, UserId, "mine@test.local");
+        AddReview(
+            db,
+            gameId: 11,
+            body: "The best side quests in the genre.",
+            hasSpoilers: true,
+            visibility: ReviewVisibility.Public);
+
+        var export = await NewExporter(db).ExportAsync(UserId, default);
+
+        var review = Assert.Single(export.Reviews);
+        Assert.Equal(11, review.GameId);
+        Assert.Equal("The best side quests in the genre.", review.Body);
+        Assert.True(review.HasSpoilers);
+        Assert.Equal(ReviewVisibility.Public, review.Visibility);
+    }
+
+    [Fact]
+    public async Task ExportAsync_Reviews_AreOrderedByWhenTheyWereWritten()
+    {
+        using var db = NewDb();
+        AddAccount(db, UserId, "mine@test.local");
+
+        AddReview(db, gameId: 11, body: "Second", createdAt: Now.AddDays(-1));
+        AddReview(db, gameId: 12, body: "First", createdAt: Now.AddDays(-30));
+        AddReview(db, gameId: 13, body: "Third", createdAt: Now.AddHours(-1));
+
+        var export = await NewExporter(db).ExportAsync(UserId, default);
+
+        Assert.Equal(["First", "Second", "Third"], export.Reviews.Select(r => r.Body));
     }
 
     [Fact]

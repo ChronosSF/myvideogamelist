@@ -42,6 +42,23 @@ Content-Type: application/json
   "notes": "Death March, no map markers."
 }
 
+### Write or rewrite the review of a game
+# A PUT because there is one per game. "playthroughId" is optional and must be one of your own
+# playthroughs of this game, or the response is a 400 naming that field.
+PUT {{MyVideoGameList.Server_HostAddress}}/api/entries/1942/review
+Content-Type: application/json
+
+{
+  "body": "The best side quests in the genre. The main story is the least of it.",
+  "hasSpoilers": false,
+  "visibility": "public",
+  "playthroughId": null
+}
+
+### Delete the review of a game
+# Leaves the entry, the score and the playthroughs alone.
+DELETE {{MyVideoGameList.Server_HostAddress}}/api/entries/1942/review
+
 ### How long MVGL members say a game takes
 # Public: an aggregate over everybody that names nobody. Always 200 and always three tiers,
 # each with the number of playthroughs behind it (ADR 0016).
