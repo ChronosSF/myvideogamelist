@@ -114,7 +114,13 @@ const ARGS = process.argv.slice(2);
 
 function arg(name, fallback) {
     const at = ARGS.indexOf(`--${name}`);
-    return at === -1 ? fallback : ARGS[at + 1];
+    if (at === -1) return fallback;
+
+    const value = ARGS[at + 1];
+    // Missing value, or the next token is another flag.
+    if (value === undefined || value.startsWith('--')) return fallback;
+
+    return value;
 }
 
 /**
@@ -157,7 +163,7 @@ const DAY_MS = 86_400_000;
 const SHIFT_DAYS = Math.round((Date.parse(`${TODAY}T00:00:00Z`) - Date.parse(`${ANCHOR}T00:00:00Z`)) / DAY_MS);
 
 if (!Number.isFinite(SHIFT_DAYS)) {
-    process.stderr.write(`Unusable anchor date: ${TODAY}\n`);
+    process.stderr.write(`Unusable --as-of date: ${TODAY}\n`);
     process.exit(1);
 }
 
