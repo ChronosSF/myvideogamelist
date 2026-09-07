@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using MyVideoGameList.Server.Data;
 using MyVideoGameList.Server.DTOs;
 using MyVideoGameList.Server.Models;
+using MyVideoGameList.Server.Services;
 
 namespace MyVideoGameList.Server.Controllers;
 
@@ -13,7 +14,8 @@ namespace MyVideoGameList.Server.Controllers;
 [Authorize]
 public class UserController(
     UserManager<ApplicationUser> userManager,
-    ApplicationDbContext db) : ControllerBase
+    ApplicationDbContext db,
+    IStatsService stats) : ControllerBase
 {
     [HttpPut("theme")]
     public async Task<IActionResult> UpdateTheme([FromBody] UpdateThemeDto dto)
@@ -126,5 +128,22 @@ public class UserController(
         await db.SaveChangesAsync(cancellationToken);
 
         return NoContent();
+    }
+
+    /// <summary>
+    /// What the signed-in user has tracked and done, for their own profile.
+    /// </summary>
+    /// <remarks>
+    /// The id comes from the claims principal rather than from a lookup, because that is all this
+    /// needs — and from the principal rather than from the route, which is what keeps one user's
+    /// figures out of another's response.
+    /// </remarks>
+    [HttpGet("stats")]
+    public async Task<ActionResult<UserStatsDto>> GetStats(CancellationToken cancellationToken)
+    {
+        var userId = userManager.GetUserId(User);
+        if (userId is null) return Unauthorized();
+
+        return Ok(await stats.GetStatsAsync(userId, cancellationToken));
     }
 }
