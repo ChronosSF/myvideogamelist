@@ -152,24 +152,13 @@ public class ListService(
     /// The entry is the user's record of a game, so any operation on it may be the first — scoring
     /// a game that has never been in a list creates the row just as adding it to one does.
     /// </summary>
-    private async Task<UserGameEntry> FindOrCreateAsync(
-        string userId, int gameId, CancellationToken cancellationToken)
-    {
-        var existing = await db.UserGameEntries
-            .FirstOrDefaultAsync(e => e.UserId == userId && e.GameId == gameId, cancellationToken);
-
-        if (existing is not null) return existing;
-
-        var created = new UserGameEntry
-        {
-            UserId = userId,
-            GameId = gameId,
-            AddedAt = timeProvider.GetUtcNow()
-        };
-
-        db.UserGameEntries.Add(created);
-        return created;
-    }
+    /// <remarks>
+    /// Shared with <see cref="PlaythroughService"/> through <see cref="EntryStore"/>, because
+    /// logging a playthrough of a never-listed game has to create the entry the same way.
+    /// </remarks>
+    private Task<UserGameEntry> FindOrCreateAsync(
+        string userId, int gameId, CancellationToken cancellationToken) =>
+        EntryStore.FindOrCreateAsync(db, timeProvider, userId, gameId, cancellationToken);
 
     private static ListEntryDto ToDto(UserGameEntry entry, GameDto game) =>
         new(game, entry.Score, entry.AddedAt, entry.StatusChangedAt);

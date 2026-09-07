@@ -46,6 +46,27 @@ public record ListEntryDto(
     DateTimeOffset? StatusChangedAt);
 
 /// <summary>
+/// Everything one user has recorded about one game: the entry itself, every playthrough of it,
+/// and their review.
+/// </summary>
+/// <remarks>
+/// <para>
+/// The single-entry read returns this; the list read still returns bare
+/// <see cref="ListEntryDto"/> rows. The two answer different questions — a list view shows fifty
+/// games at once and has no use for anybody's notes, and attaching them would multiply the
+/// payload by every row.
+/// </para>
+/// <para>
+/// <see cref="Review"/> is always null until the review table ships. The field is here from the
+/// start so the client's type does not have to change when it does.
+/// </para>
+/// </remarks>
+public record EntryDetailDto(
+    ListEntryDto Entry,
+    IReadOnlyList<PlaythroughDto> Playthroughs,
+    ReviewDto? Review);
+
+/// <summary>
 /// Every status list for one user, keyed by <see cref="ListStatus.Key"/>.
 /// </summary>
 /// <remarks>

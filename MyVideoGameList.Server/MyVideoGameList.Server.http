@@ -22,6 +22,32 @@ Accept: application/json
 GET {{MyVideoGameList.Server_HostAddress}}/api/platforms/active
 Accept: application/json
 
+### What the signed-in user has recorded about one game
+# Entry, playthroughs and review in one read. Needs the Identity cookie.
+GET {{MyVideoGameList.Server_HostAddress}}/api/entries/1942
+Accept: application/json
+
+### Log a playthrough
+# Everything is optional. Leave "type" null while still playing — only typed playthroughs with
+# minutes feed the community medians below.
+POST {{MyVideoGameList.Server_HostAddress}}/api/entries/1942/playthroughs
+Content-Type: application/json
+
+{
+  "type": "normally",
+  "platformId": 6,
+  "minutesPlayed": 3120,
+  "startedOn": "2026-08-02",
+  "finishedOn": "2026-09-01",
+  "notes": "Death March, no map markers."
+}
+
+### How long MVGL members say a game takes
+# Public: an aggregate over everybody that names nobody. Always 200 and always three tiers,
+# each with the number of playthroughs behind it (ADR 0016).
+GET {{MyVideoGameList.Server_HostAddress}}/api/games/1942/community-times
+Accept: application/json
+
 ### Export everything the signed-in user has entered
 # Needs the Identity cookie. Free and IGDB-free — see docs/decisions/0024-the-ownership-contract.md.
 GET {{MyVideoGameList.Server_HostAddress}}/api/user/export
