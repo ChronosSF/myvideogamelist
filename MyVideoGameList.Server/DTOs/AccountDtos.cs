@@ -32,6 +32,7 @@ public record UserDataExportDto(
     IReadOnlyList<EntryExportDto> Entries,
     IReadOnlyList<EventExportDto> Events,
     IReadOnlyList<PlaythroughExportDto> Playthroughs,
+    IReadOnlyList<ReviewExportDto> Reviews,
     IReadOnlyList<WishlistExportDto> Wishlist,
     IReadOnlyList<int> HiddenPlatformIds,
     IReadOnlyList<ListSortExportDto> ListSortPreferences);
@@ -108,6 +109,22 @@ public record PlaythroughExportDto(
     DateOnly? StartedOn,
     DateOnly? FinishedOn,
     string? Notes,
+    DateTimeOffset CreatedAt,
+    DateTimeOffset UpdatedAt);
+
+/// <summary>
+/// One review the user has written.
+/// </summary>
+/// <remarks>
+/// The pointer to the playthrough it is about is deliberately omitted: it is an internal surrogate
+/// id with no meaning outside this database, the same reason the entry's own <c>Id</c> is left out.
+/// The score is absent because it is not on the review — it travels with the entry.
+/// </remarks>
+public record ReviewExportDto(
+    int GameId,
+    string Body,
+    bool HasSpoilers,
+    string Visibility,
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt);
 

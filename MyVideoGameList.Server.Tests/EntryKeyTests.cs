@@ -193,4 +193,48 @@ public class EntryKeyTests
             fk.PrincipalEntityType.ClrType == typeof(PlaythroughType)
             && fk.DeleteBehavior == DeleteBehavior.Restrict);
     }
+
+    [Fact]
+    public void Review_ReachesItsEntryThroughBothIdAndOwner()
+    {
+        // The same shape as a playthrough, for the same reason.
+        using var db = NewDb();
+
+        var foreignKeys = db.Model.FindEntityType(typeof(Review))!.GetForeignKeys();
+
+        Assert.Contains(foreignKeys, fk =>
+            fk.PrincipalEntityType.ClrType == typeof(UserGameEntry)
+            && fk.DeleteBehavior == DeleteBehavior.Cascade
+            && fk.Properties.Select(p => p.Name).SequenceEqual(
+                [nameof(Review.UserGameEntryId), nameof(Review.UserId)]));
+    }
+
+    [Fact]
+    public void Review_IsUniquePerEntry()
+    {
+        // One review per user per game. The entry is already unique on (UserId, GameId), so a
+        // unique index on the entry id is the whole of that constraint — and the in-memory
+        // provider enforces none of it, which is why the model is what is asserted.
+        using var db = NewDb();
+
+        var indexes = db.Model.FindEntityType(typeof(Review))!.GetIndexes();
+
+        Assert.Contains(indexes, index =>
+            index.IsUnique
+            && index.Properties.Select(p => p.Name).SequenceEqual([nameof(Review.UserGameEntryId)]));
+    }
+
+    [Fact]
+    public void Review_KeepsItsProseWhenThePlaythroughItNamesIsDeleted()
+    {
+        // SetNull rather than Cascade: losing the record of one run must not take the prose
+        // somebody wrote about the game with it. The pointer was optional to begin with.
+        using var db = NewDb();
+
+        var foreignKeys = db.Model.FindEntityType(typeof(Review))!.GetForeignKeys();
+
+        Assert.Contains(foreignKeys, fk =>
+            fk.PrincipalEntityType.ClrType == typeof(UserGamePlaythrough)
+            && fk.DeleteBehavior == DeleteBehavior.SetNull);
+    }
 }

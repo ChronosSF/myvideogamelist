@@ -20,6 +20,7 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
 {
     public DbSet<ListStatus> ListStatuses { get; set; }
     public DbSet<PlaythroughType> PlaythroughTypes { get; set; }
+    public DbSet<Review> Reviews { get; set; }
     public DbSet<UserGameEntry> UserGameEntries { get; set; }
     public DbSet<UserGameEvent> UserGameEvents { get; set; }
     public DbSet<UserGamePlaythrough> UserGamePlaythroughs { get; set; }
@@ -72,6 +73,7 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
 
         ConfigureUserGameEvents(modelBuilder);
         ConfigureUserGamePlaythroughs(modelBuilder);
+        ConfigureReviews(modelBuilder);
 
         // UserListSortPreference: one row per (user, status); no row means the default sort
         modelBuilder.Entity<UserListSortPreference>().HasKey(p => new { p.UserId, p.StatusId });
@@ -229,6 +231,47 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
         // UserGameEntryId. No index is declared for that here on purpose — the composite foreign
         // key above already gets one on (UserGameEntryId, UserId), which serves the join as a
         // leading-column prefix. A second index on UserGameEntryId alone would be pure duplication.
+    }
+
+    private static void ConfigureReviews(ModelBuilder modelBuilder)
+    {
+        var reviews = modelBuilder.Entity<Review>();
+
+        reviews.HasKey(r => r.Id);
+        reviews.Property(r => r.Body).HasMaxLength(10000);
+        reviews.Property(r => r.Visibility).HasMaxLength(16);
+
+        // One review per user per game. The entry is already unique on (UserId, GameId), so a
+        // unique index on the entry id is the whole of that constraint.
+        reviews.HasIndex(r => r.UserGameEntryId).IsUnique();
+
+        // The same two foreign keys a playthrough carries, for the same two reasons: the guard
+        // keys on the UserId column, and the composite key makes "this review's owner is the
+        // entry's owner" a database constraint rather than a service's promise.
+        reviews.HasOne(r => r.User)
+            .WithMany()
+            .HasForeignKey(r => r.UserId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        reviews.HasOne(r => r.Entry)
+            .WithMany()
+            .HasForeignKey(r => new { r.UserGameEntryId, r.UserId })
+            .HasPrincipalKey(e => new { e.Id, e.UserId })
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // SetNull rather than Cascade: deleting the record of one run must not take the prose
+        // somebody wrote about the game with it. The pointer was optional to begin with.
+        reviews.HasOne(r => r.Playthrough)
+            .WithMany()
+            .HasForeignKey(r => r.PlaythroughId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        // Enforced by the database as well as by the input DTO, because the column outlives any
+        // one validation attribute. A third value — `friends`, once following exists — is one
+        // additive migration away.
+        reviews.ToTable(t => t.HasCheckConstraint(
+            "CK_Reviews_Visibility",
+            "\"Visibility\" IN ('public', 'private')"));
     }
 
     private static void ConfigureUserGameEvents(ModelBuilder modelBuilder)

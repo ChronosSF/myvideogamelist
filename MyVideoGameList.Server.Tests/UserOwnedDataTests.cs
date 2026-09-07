@@ -139,6 +139,7 @@ public class UserOwnedDataTests
 
         Assert.Equal(
             [
+                nameof(Review),
                 nameof(UserGameEntry),
                 nameof(UserGameEvent),
                 nameof(UserGamePlaythrough),

@@ -69,6 +69,7 @@ public class UserDataExporter(ApplicationDbContext db, TimeProvider clock) : IUs
             { typeof(UserGameEntry), new("entries", ReadEntriesAsync) },
             { typeof(UserGameEvent), new("events", ReadEventsAsync) },
             { typeof(UserGamePlaythrough), new("playthroughs", ReadPlaythroughsAsync) },
+            { typeof(Review), new("reviews", ReadReviewsAsync) },
             { typeof(UserWishlistItem), new("wishlist", ReadWishlistAsync) },
             { typeof(UserHiddenPlatform), new("hiddenPlatformIds", ReadHiddenPlatformsAsync) },
             { typeof(UserListSortPreference), new("listSortPreferences", ReadListSortPreferencesAsync) },
@@ -103,13 +104,14 @@ public class UserDataExporter(ApplicationDbContext db, TimeProvider clock) : IUs
         public IReadOnlyList<EntryExportDto> Entries { get; set; } = [];
         public IReadOnlyList<EventExportDto> Events { get; set; } = [];
         public IReadOnlyList<PlaythroughExportDto> Playthroughs { get; set; } = [];
+        public IReadOnlyList<ReviewExportDto> Reviews { get; set; } = [];
         public IReadOnlyList<WishlistExportDto> Wishlist { get; set; } = [];
         public IReadOnlyList<int> HiddenPlatformIds { get; set; } = [];
         public IReadOnlyList<ListSortExportDto> ListSortPreferences { get; set; } = [];
 
         public UserDataExportDto ToDocument(DateTimeOffset exportedAt, AccountExportDto account) =>
-            new(exportedAt, account, Entries, Events, Playthroughs, Wishlist, HiddenPlatformIds,
-                ListSortPreferences);
+            new(exportedAt, account, Entries, Events, Playthroughs, Reviews, Wishlist,
+                HiddenPlatformIds, ListSortPreferences);
     }
 
     public async Task<UserDataExportDto> ExportAsync(string userId, CancellationToken cancellationToken)
@@ -226,6 +228,23 @@ public class UserDataExporter(ApplicationDbContext db, TimeProvider clock) : IUs
                 p.CreatedAt,
                 p.UpdatedAt))
             .ToList();
+    }
+
+    /// <remarks>
+    /// Joined to the entry for the game id, as the playthroughs are. Ordered oldest first so two
+    /// exports of unchanged data are byte-identical.
+    /// </remarks>
+    private static async Task ReadReviewsAsync(
+        ApplicationDbContext db, ExportDraft draft, CancellationToken cancellationToken)
+    {
+        draft.Reviews = await db.Reviews
+            .AsNoTracking()
+            .Where(r => r.UserId == draft.UserId)
+            .OrderBy(r => r.CreatedAt)
+            .ThenBy(r => r.Id)
+            .Select(r => new ReviewExportDto(
+                r.Entry.GameId, r.Body, r.HasSpoilers, r.Visibility, r.CreatedAt, r.UpdatedAt))
+            .ToListAsync(cancellationToken);
     }
 
     private static async Task ReadWishlistAsync(
