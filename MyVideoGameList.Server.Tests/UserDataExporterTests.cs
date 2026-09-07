@@ -105,6 +105,44 @@ public class UserDataExporterTests
         db.SaveChanges();
     }
 
+    /// <summary>
+    /// One playthrough on the user's entry for a game, creating that entry if it is not there.
+    /// </summary>
+    private static void AddPlaythrough(
+        ApplicationDbContext db,
+        int gameId,
+        string? type = PlaythroughTypeKeys.Normally,
+        int? platformId = 6,
+        int? minutesPlayed = 600,
+        DateOnly? startedOn = null,
+        DateOnly? finishedOn = null,
+        string? notes = null,
+        DateTimeOffset? createdAt = null,
+        string userId = UserId)
+    {
+        var entry = db.UserGameEntries.FirstOrDefault(e => e.UserId == userId && e.GameId == gameId);
+        if (entry is null)
+        {
+            AddEntry(db, gameId, status: null, userId: userId);
+            entry = db.UserGameEntries.Single(e => e.UserId == userId && e.GameId == gameId);
+        }
+
+        db.UserGamePlaythroughs.Add(new UserGamePlaythrough
+        {
+            UserId = userId,
+            Entry = entry,
+            TypeId = type is null ? null : db.PlaythroughTypes.Single(t => t.Key == type).Id,
+            PlatformId = platformId,
+            MinutesPlayed = minutesPlayed,
+            StartedOn = startedOn,
+            FinishedOn = finishedOn,
+            Notes = notes,
+            CreatedAt = createdAt ?? Now,
+            UpdatedAt = createdAt ?? Now
+        });
+        db.SaveChanges();
+    }
+
     private static void AddWishlistItem(
         ApplicationDbContext db, int gameId, DateTimeOffset? at = null, string userId = UserId)
     {
@@ -158,12 +196,14 @@ public class UserDataExporterTests
 
         AddEntry(db, gameId: 11, status: ListStatusKeys.Playing, score: 8);
         AddEvent(db, gameId: 11, from: null, to: ListStatusKeys.Playing);
+        AddPlaythrough(db, gameId: 11);
         AddWishlistItem(db, gameId: 12);
         AddHiddenPlatform(db, platformId: 13);
         AddSortPreference(db, ListStatusKeys.Playing, ListSortKeys.Score);
 
         AddEntry(db, gameId: 21, status: ListStatusKeys.Finished, score: 3, userId: OtherUserId);
         AddEvent(db, gameId: 21, from: null, to: ListStatusKeys.Finished, userId: OtherUserId);
+        AddPlaythrough(db, gameId: 21, userId: OtherUserId);
         AddWishlistItem(db, gameId: 22, userId: OtherUserId);
         AddHiddenPlatform(db, platformId: 23, userId: OtherUserId);
         AddSortPreference(db, ListStatusKeys.Finished, ListSortKeys.Title, userId: OtherUserId);
@@ -176,6 +216,7 @@ public class UserDataExporterTests
 
         Assert.Equal([11], export.Entries.Select(e => e.GameId));
         Assert.Equal([11], export.Events.Select(e => e.GameId));
+        Assert.Equal([11], export.Playthroughs.Select(p => p.GameId));
         Assert.Equal([12], export.Wishlist.Select(w => w.GameId));
         Assert.Equal([13], export.HiddenPlatformIds);
         Assert.Equal([ListStatusKeys.Playing], export.ListSortPreferences.Select(p => p.Status));
@@ -195,6 +236,7 @@ public class UserDataExporterTests
         Assert.Equal("new@test.local", export.Account.Email);
         Assert.Empty(export.Entries);
         Assert.Empty(export.Events);
+        Assert.Empty(export.Playthroughs);
         Assert.Empty(export.Wishlist);
         Assert.Empty(export.HiddenPlatformIds);
         Assert.Empty(export.ListSortPreferences);
@@ -297,6 +339,69 @@ public class UserDataExporterTests
         Assert.Equal(ListStatusKeys.OnHold, preference.Status);
         Assert.Equal(ListSortKeys.StatusChanged, preference.SortKey);
         Assert.False(preference.Descending);
+    }
+
+    [Fact]
+    public async Task ExportAsync_Playthrough_CarriesItsTypeAsTheKeyRatherThanTheId()
+    {
+        // Same rule as the status keys, for the same reason: the seeded ids are constants of this
+        // database and nothing outside it could interpret a `3`.
+        using var db = NewDb();
+        AddAccount(db, UserId, "mine@test.local");
+        AddPlaythrough(
+            db,
+            gameId: 11,
+            type: PlaythroughTypeKeys.Completionist,
+            platformId: 48,
+            minutesPlayed: 2400,
+            startedOn: new DateOnly(2026, 5, 1),
+            finishedOn: new DateOnly(2026, 6, 12),
+            notes: "Every side quest.");
+
+        var export = await NewExporter(db).ExportAsync(UserId, default);
+
+        var playthrough = Assert.Single(export.Playthroughs);
+        Assert.Equal(11, playthrough.GameId);
+        Assert.Equal(PlaythroughTypeKeys.Completionist, playthrough.Type);
+        Assert.Equal(48, playthrough.PlatformId);
+        Assert.Equal(2400, playthrough.MinutesPlayed);
+        Assert.Equal(new DateOnly(2026, 5, 1), playthrough.StartedOn);
+        Assert.Equal(new DateOnly(2026, 6, 12), playthrough.FinishedOn);
+        Assert.Equal("Every side quest.", playthrough.Notes);
+    }
+
+    [Fact]
+    public async Task ExportAsync_UntypedPlaythrough_ExportsANullType()
+    {
+        // Null is a real value here — a run still in progress has no answer to "how thoroughly" —
+        // so it exports as null rather than being dropped or filled in.
+        using var db = NewDb();
+        AddAccount(db, UserId, "mine@test.local");
+        AddPlaythrough(db, gameId: 11, type: null, minutesPlayed: null);
+
+        var export = await NewExporter(db).ExportAsync(UserId, default);
+
+        var playthrough = Assert.Single(export.Playthroughs);
+        Assert.Null(playthrough.Type);
+        Assert.Null(playthrough.MinutesPlayed);
+    }
+
+    [Fact]
+    public async Task ExportAsync_Playthroughs_AreOrderedByWhenTheyWereLogged()
+    {
+        // So two exports of unchanged data are byte-identical and can be diffed. Inserted out of
+        // order here deliberately.
+        using var db = NewDb();
+        AddAccount(db, UserId, "mine@test.local");
+
+        AddPlaythrough(db, gameId: 11, minutesPlayed: 200, createdAt: Now.AddDays(-1));
+        AddPlaythrough(db, gameId: 12, minutesPlayed: 100, createdAt: Now.AddDays(-30));
+        AddPlaythrough(db, gameId: 13, minutesPlayed: 300, createdAt: Now.AddDays(-10));
+
+        var export = await NewExporter(db).ExportAsync(UserId, default);
+
+        // Oldest first: 30 days ago, then 10, then 1.
+        Assert.Equal([100, 300, 200], export.Playthroughs.Select(p => p.MinutesPlayed));
     }
 
     [Fact]
