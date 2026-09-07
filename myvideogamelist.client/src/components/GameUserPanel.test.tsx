@@ -1,14 +1,19 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { GameUserPanel } from '@/components/GameUserPanel';
 import { ListsContext, type ListsContextValue } from '@/contexts/ListsContext';
 import { WishlistContext, type WishlistContextValue } from '@/contexts/WishlistContext';
 import { DEFAULT_SORT } from '@/lib/listSort';
 import type { ListId } from '@/types/list';
-import { entry, game } from '@/test/factories';
+import type { PlaythroughDto } from '@/types/playthrough';
+import { entryDetail, game, platform, playthrough } from '@/test/factories';
 
-const CELESTE = game({ id: 1, title: 'Celeste' });
+const CELESTE = game({
+    id: 1,
+    title: 'Celeste',
+    platforms: [platform(6, 'PC (Microsoft Windows)'), platform(48, 'PlayStation 4')],
+});
 
 /** A context whose behaviour each test can steer, without the provider's fetches in the way. */
 function contextValue(overrides: Partial<ListsContextValue> = {}): ListsContextValue {
@@ -65,16 +70,43 @@ function renderPanel(
     return { ...value, wishlist };
 }
 
-/** The entry the panel fetches for itself, since the provider only knows about listed games. */
-function stubEntryFetch(score: number | null, status = 200) {
-    // The parameter is declared, unused, so `fetchMock.mock.calls` is typed and the URL can be
-    // asserted rather than just the fact that something was fetched.
-    const fetchMock = vi.fn(async (_input: RequestInfo | URL) =>
-        status === 200
-            ? new Response(JSON.stringify(entry({ game: { id: 1, title: 'Celeste' }, score })), { status })
-            : new Response('not found', { status }));
+/**
+ * The API the panel talks to: one read for the entry and its playthroughs, and the playthrough
+ * writes.
+ *
+ * One stub rather than two, because the panel holds a single `fetch` and a second `stubGlobal`
+ * would silently replace the first — the symptom being an entry read answered with a playthrough
+ * response.
+ */
+function stubEntryFetch(
+    score: number | null,
+    status = 200,
+    playthroughs: PlaythroughDto[] = [],
+    onWrite?: (url: string, init: RequestInit | undefined) => Response,
+) {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+
+        if (url.includes('/playthroughs')) {
+            return onWrite?.(url, init) ?? new Response(null, { status: 204 });
+        }
+
+        return status === 200
+            ? new Response(
+                JSON.stringify(entryDetail({
+                    entry: { game: { id: 1, title: 'Celeste' }, score },
+                    playthroughs,
+                })),
+                { status })
+            : new Response('not found', { status });
+    });
     vi.stubGlobal('fetch', fetchMock);
     return fetchMock;
+}
+
+/** The body of the nth request the panel made, parsed. */
+function bodyOf(fetchMock: ReturnType<typeof stubEntryFetch>, call: number): unknown {
+    return JSON.parse(String(fetchMock.mock.calls[call][1]?.body));
 }
 
 /**
@@ -295,6 +327,34 @@ describe('GameUserPanel deleting everything', () => {
         expect(screen.getByText(/history of moving it between lists is kept/i)).toBeInTheDocument();
     });
 
+    it('warns that the playthroughs go too', async () => {
+        // They cascade from the entry, so the confirmation has to name them — the score is not
+        // the only thing being discarded any more.
+        stubEntryFetch(null, 200, [playthrough({ id: 5 })]);
+        renderPanel();
+
+        await userEvent.click(await screen.findByRole('button', { name: /delete my data/i }));
+
+        expect(screen.getByText(/score, list placement and playthroughs/i)).toBeInTheDocument();
+    });
+
+    it('offers it for a game that is only played, with no score and no list', async () => {
+        stubEntryFetch(null, 200, [playthrough({ id: 5 })]);
+        renderPanel();
+
+        expect(await screen.findByRole('button', { name: /delete my data/i })).toBeInTheDocument();
+    });
+
+    it('clears the playthroughs after deleting, because they cascade', async () => {
+        stubEntryFetch(null, 200, [playthrough({ id: 5, minutesPlayed: 260 })]);
+        renderPanel();
+
+        await userEvent.click(await screen.findByRole('button', { name: /delete my data/i }));
+        await userEvent.click(screen.getByRole('button', { name: 'Delete' }));
+
+        await waitFor(() => expect(screen.queryByText('4h 20m')).not.toBeInTheDocument());
+    });
+
     it('deletes once confirmed', async () => {
         stubEntryFetch(7);
         const ctx = renderPanel();
@@ -421,5 +481,230 @@ describe('GameUserPanel wishlist', () => {
         await settled();
 
         expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    });
+});
+
+describe('GameUserPanel playthroughs', () => {
+    it('lists what the entry read returned', async () => {
+        stubEntryFetch(null, 200, [
+            playthrough({
+                id: 5,
+                type: 'completionist',
+                platformId: 48,
+                minutesPlayed: 260,
+                startedOn: '2026-05-01',
+                finishedOn: '2026-06-12',
+                notes: 'Every strawberry.',
+            }),
+        ]);
+        renderPanel();
+
+        // Scoped to the list: both labels are also options in the selects below it.
+        const row = within(await screen.findByRole('list'));
+        expect(row.getByText('Completionist')).toBeInTheDocument();
+        expect(row.getByText('PlayStation 4')).toBeInTheDocument();
+        expect(row.getByText('4h 20m')).toBeInTheDocument();
+        expect(row.getByText(/started 1 May 2026, finished 12 June 2026/i)).toBeInTheDocument();
+        expect(row.getByText('Every strawberry.')).toBeInTheDocument();
+    });
+
+    it('says so for a platform the game does not list rather than hiding it', async () => {
+        // The id is stored bare and never validated against IGDB, so it can name something this
+        // game's metadata does not carry — and the user did record it.
+        stubEntryFetch(null, 200, [playthrough({ id: 5, platformId: 9999 })]);
+        renderPanel();
+
+        expect(await screen.findByText('Unknown platform')).toBeInTheDocument();
+    });
+
+    it('calls an untyped playthrough in progress rather than blank', async () => {
+        stubEntryFetch(null, 200, [playthrough({ id: 5, type: null })]);
+        renderPanel();
+
+        expect(await screen.findByText('In progress')).toBeInTheDocument();
+    });
+
+    it('invites a first one when there are none', async () => {
+        stubEntryFetch(null, 404);
+        renderPanel();
+        await settled();
+
+        expect(screen.getByText(/nothing logged yet/i)).toBeInTheDocument();
+    });
+
+    it('says to leave the type blank while still playing', async () => {
+        stubEntryFetch(null, 404);
+        renderPanel();
+        await settled();
+
+        expect(screen.getByText(/leave this blank while you are still playing/i))
+            .toBeInTheDocument();
+    });
+
+    it('offers the game own platforms', async () => {
+        stubEntryFetch(null, 404);
+        renderPanel();
+        await settled();
+
+        const select = screen.getByLabelText('Platform');
+        expect(within(select).getByRole('option', { name: 'PlayStation 4' })).toBeInTheDocument();
+        expect(within(select).getByRole('option', { name: 'Not recorded' })).toBeInTheDocument();
+    });
+
+    it('logs a new one and shows it', async () => {
+        const saved = playthrough({ id: 9, type: 'rushed', platformId: 6, minutesPlayed: 195 });
+        const fetchMock = stubEntryFetch(null, 200, [], () =>
+            new Response(JSON.stringify(saved), { status: 201 }));
+        renderPanel();
+        await settled();
+
+        await userEvent.selectOptions(screen.getByLabelText('Platform'), '6');
+        await userEvent.selectOptions(screen.getByLabelText('How you played it'), 'rushed');
+        await userEvent.type(screen.getByLabelText('Hours'), '3');
+        await userEvent.type(screen.getByLabelText('Minutes'), '15');
+        await userEvent.click(screen.getByRole('button', { name: 'Log playthrough' }));
+
+        expect(await screen.findByText('3h 15m')).toBeInTheDocument();
+        // Scoped to the list: 'Rushed' is also an option in the type select above it.
+        expect(within(screen.getByRole('list')).getByText('Rushed')).toBeInTheDocument();
+
+        // Hours and minutes are two fields on screen and one number in the API.
+        expect(bodyOf(fetchMock, 1)).toMatchObject({
+            type: 'rushed',
+            platformId: 6,
+            minutesPlayed: 195,
+        });
+    });
+
+    it('sends nulls rather than empty strings for the fields left blank', async () => {
+        // The API range starts at one minute, so a zero would be a valid-looking value the
+        // database would reject.
+        const fetchMock = stubEntryFetch(null, 200, [], () =>
+            new Response(JSON.stringify(playthrough({ id: 9 })), { status: 201 }));
+        renderPanel();
+        await settled();
+
+        await userEvent.click(screen.getByRole('button', { name: 'Log playthrough' }));
+
+        await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+        expect(bodyOf(fetchMock, 1)).toEqual({
+            type: null,
+            platformId: null,
+            minutesPlayed: null,
+            startedOn: null,
+            finishedOn: null,
+            notes: null,
+        });
+    });
+
+    it('shows what the server said was wrong with it', async () => {
+        stubEntryFetch(null, 200, [], () => new Response(
+            JSON.stringify({
+                title: 'One or more validation errors occurred.',
+                errors: { FinishedOn: ['The finish date cannot be before the start date.'] },
+            }),
+            { status: 400 }));
+        renderPanel();
+        await settled();
+
+        await userEvent.click(screen.getByRole('button', { name: 'Log playthrough' }));
+
+        expect(await screen.findByRole('alert'))
+            .toHaveTextContent(/finish date cannot be before the start date/i);
+    });
+
+    it('reports a dead API rather than clearing the form as though it saved', async () => {
+        // An unreachable API makes `fetch` reject; it does not return a bad response.
+        const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+            if (String(input).includes('/playthroughs')) throw new Error('Network down');
+            return new Response('not found', { status: 404 });
+        });
+        vi.stubGlobal('fetch', fetchMock);
+        renderPanel();
+        await settled();
+
+        await userEvent.click(screen.getByRole('button', { name: 'Log playthrough' }));
+
+        expect(await screen.findByRole('alert'))
+            .toHaveTextContent(/could not save your playthrough/i);
+    });
+
+    it('loads a playthrough into the form to edit it', async () => {
+        stubEntryFetch(null, 200, [
+            playthrough({ id: 5, type: 'completionist', platformId: 48, minutesPlayed: 260 }),
+        ]);
+        renderPanel();
+
+        await userEvent.click(await screen.findByRole('button', { name: 'Edit playthrough 1' }));
+
+        expect(screen.getByLabelText('How you played it')).toHaveValue('completionist');
+        expect(screen.getByLabelText('Platform')).toHaveValue('48');
+        expect(screen.getByLabelText('Hours')).toHaveValue(4);
+        expect(screen.getByLabelText('Minutes')).toHaveValue(20);
+        expect(screen.getByRole('button', { name: 'Save playthrough' })).toBeInTheDocument();
+    });
+
+    it('replaces the row it edited rather than adding a second', async () => {
+        const fetchMock = stubEntryFetch(
+            null,
+            200,
+            [playthrough({ id: 5, type: 'rushed', minutesPlayed: 60 })],
+            () => new Response(
+                JSON.stringify(playthrough({ id: 5, type: 'completionist', minutesPlayed: 300 })),
+                { status: 200 }));
+        renderPanel();
+
+        await userEvent.click(await screen.findByRole('button', { name: 'Edit playthrough 1' }));
+        await userEvent.click(screen.getByRole('button', { name: 'Save playthrough' }));
+
+        expect(await screen.findByText('5h')).toBeInTheDocument();
+        expect(screen.queryByText('1h')).not.toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'Edit playthrough 2' })).not.toBeInTheDocument();
+
+        // A PUT at the row's own address, not another POST.
+        expect(fetchMock.mock.calls[1][1]?.method).toBe('PUT');
+        expect(String(fetchMock.mock.calls[1][0])).toBe('/api/entries/1/playthroughs/5');
+    });
+
+    it('backs out of an edit without saving', async () => {
+        const fetchMock = stubEntryFetch(null, 200, [playthrough({ id: 5, minutesPlayed: 60 })]);
+        renderPanel();
+
+        await userEvent.click(await screen.findByRole('button', { name: 'Edit playthrough 1' }));
+        await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+
+        expect(screen.getByRole('button', { name: 'Log playthrough' })).toBeInTheDocument();
+        expect(screen.getByLabelText('Hours')).toHaveValue(null);
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('removes a deleted row', async () => {
+        const fetchMock = stubEntryFetch(
+            null,
+            200,
+            [playthrough({ id: 5, minutesPlayed: 260 })],
+            () => new Response(null, { status: 204 }));
+        renderPanel();
+
+        await userEvent.click(await screen.findByRole('button', { name: 'Delete playthrough 1' }));
+
+        await waitFor(() => expect(screen.queryByText('4h 20m')).not.toBeInTheDocument());
+        expect(fetchMock.mock.calls[1][1]?.method).toBe('DELETE');
+        expect(String(fetchMock.mock.calls[1][0])).toBe('/api/entries/1/playthroughs/5');
+    });
+
+    it('keeps the row and says so when the delete fails', async () => {
+        stubEntryFetch(
+            null,
+            200,
+            [playthrough({ id: 5, minutesPlayed: 260 })],
+            () => new Response('nope', { status: 500 }));
+        renderPanel();
+
+        await userEvent.click(await screen.findByRole('button', { name: 'Delete playthrough 1' }));
+
+        expect(await screen.findByRole('alert'))
+            .toHaveTextContent(/could not delete that playthrough/i);
+        expect(screen.getByText('4h 20m')).toBeInTheDocument();
     });
 });

@@ -1,5 +1,6 @@
 import type { GameDto, PlatformDto } from '@/types/game';
 import type { ListEntryDto } from '@/types/list';
+import type { EntryDetailDto, PlaythroughDto } from '@/types/playthrough';
 
 /**
  * Fixture builders for the two DTOs the list views are built on.
@@ -50,6 +51,38 @@ export function entry(
         score: null,
         addedAt: '2026-01-01T00:00:00+00:00',
         statusChangedAt: null,
+        ...rest,
+    };
+}
+
+/** One logged playthrough, with everything the panel does not assert on left blank. */
+export function playthrough(overrides: Partial<PlaythroughDto> = {}): PlaythroughDto {
+    return {
+        id: 1,
+        type: 'normally',
+        platformId: null,
+        minutesPlayed: null,
+        startedOn: null,
+        finishedOn: null,
+        notes: null,
+        createdAt: '2026-01-01T00:00:00+00:00',
+        updatedAt: '2026-01-01T00:00:00+00:00',
+        ...overrides,
+    };
+}
+
+/**
+ * What `GET /api/entries/{gameId}` returns: the entry, its playthroughs, and a review that is
+ * always null until the review table ships.
+ */
+export function entryDetail(
+    overrides: Omit<Partial<EntryDetailDto>, 'entry'> & { entry?: Parameters<typeof entry>[0] } = {},
+): EntryDetailDto {
+    const { entry: entryOverrides, ...rest } = overrides;
+    return {
+        entry: entry(entryOverrides),
+        playthroughs: [],
+        review: null,
         ...rest,
     };
 }

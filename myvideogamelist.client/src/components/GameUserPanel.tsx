@@ -1,9 +1,12 @@
 import { useEffect, useState } from 'react';
 import type { GameDto } from '@/types/game';
-import { type ListId, type ListEntryDto, LIST_IDS, LIST_NAMES } from '@/types/list';
+import { type ListId, LIST_IDS, LIST_NAMES } from '@/types/list';
+import type { EntryDetailDto, PlaythroughDto, PlaythroughInputDto } from '@/types/playthrough';
 import { useLists } from '@/hooks/useLists';
 import { useWishlist } from '@/hooks/useWishlist';
 import { ScoreInput } from '@/components/ScoreInput';
+import { PlaythroughForm } from '@/components/PlaythroughForm';
+import { PlaythroughList } from '@/components/PlaythroughList';
 import './GameUserPanel.css';
 
 interface GameUserPanelProps {
@@ -16,18 +19,31 @@ interface GameUserPanelProps {
  *
  * The panel exists because those things are independent. Moving a game between lists, or taking
  * it out of all of them, leaves the score alone — so there has to be somewhere that shows what is
- * actually held and one deliberate way to discard it. Playthroughs and a review will join the same
- * panel rather than getting controls of their own scattered around the page.
+ * actually held and one deliberate way to discard it. Playthroughs live here for the same reason,
+ * rather than getting controls of their own scattered around the page.
+ *
+ * The playthrough writes are plain submits with a pending state and an inline error — no
+ * optimistic update, and nothing touching `ListsProvider`. Optimism pays for itself on a status
+ * toggle, where the change is one field and the gesture has to feel instant; a seven-field form
+ * has nothing to gain from showing a row that may be about to vanish, and everything to lose from
+ * the user editing it while it does.
  */
 export function GameUserPanel({ game }: GameUserPanelProps) {
     const { isInList, getListFor, addToList, removeFromList, setScore, deleteEntry, isPending } = useLists();
     const wishlist = useWishlist();
 
     // The provider only knows about games that are in a list. A game that was scored and then
-    // taken out of every list still has an entry, so the panel asks for it directly.
+    // taken out of every list still has an entry, so the panel asks for it directly — and that
+    // read carries the playthroughs too, because this panel shows them together.
     const [score, setLocalScore] = useState<number | null>(null);
+    const [playthroughs, setPlaythroughs] = useState<PlaythroughDto[]>([]);
     const [loaded, setLoaded] = useState(false);
     const [confirmingDelete, setConfirmingDelete] = useState(false);
+
+    const [editing, setEditing] = useState<PlaythroughDto | null>(null);
+    const [savingPlaythrough, setSavingPlaythrough] = useState(false);
+    const [deletingPlaythroughId, setDeletingPlaythroughId] = useState<number | null>(null);
+    const [playthroughError, setPlaythroughError] = useState<string | null>(null);
 
     const [lastGameId, setLastGameId] = useState(game.id);
 
@@ -37,8 +53,13 @@ export function GameUserPanel({ game }: GameUserPanelProps) {
     if (lastGameId !== game.id) {
         setLastGameId(game.id);
         setLocalScore(null);
+        setPlaythroughs([]);
         setLoaded(false);
         setConfirmingDelete(false);
+        setEditing(null);
+        setSavingPlaythrough(false);
+        setDeletingPlaythroughId(null);
+        setPlaythroughError(null);
     }
 
     const currentList = getListFor(game.id);
@@ -49,10 +70,11 @@ export function GameUserPanel({ game }: GameUserPanelProps) {
         const controller = new AbortController();
 
         fetch(`/api/entries/${game.id}`, { credentials: 'include', signal: controller.signal })
-            .then(res => (res.ok ? (res.json() as Promise<ListEntryDto>) : null))
-            .then(entry => {
+            .then(res => (res.ok ? (res.json() as Promise<EntryDetailDto>) : null))
+            .then(detail => {
                 if (controller.signal.aborted) return;
-                setLocalScore(entry?.score ?? null);
+                setLocalScore(detail?.entry.score ?? null);
+                setPlaythroughs(detail?.playthroughs ?? []);
                 setLoaded(true);
             })
             .catch(() => {
@@ -75,6 +97,75 @@ export function GameUserPanel({ game }: GameUserPanelProps) {
         setConfirmingDelete(false);
         await deleteEntry(game.id);
         setLocalScore(null);
+
+        // The playthroughs go with the entry — the composite foreign key cascades them — so the
+        // panel must not go on showing rows the server has just discarded.
+        setPlaythroughs([]);
+        setEditing(null);
+    };
+
+    /**
+     * Logs a new playthrough, or saves an edit to one.
+     *
+     * `catch` rather than only `!res.ok`, because an unreachable API makes `fetch` reject rather
+     * than return a bad response — without it the form would clear as though it had saved.
+     */
+    const handlePlaythroughSubmit = async (input: PlaythroughInputDto) => {
+        setSavingPlaythrough(true);
+        setPlaythroughError(null);
+
+        const editingId = editing?.id ?? null;
+        const url = editingId === null
+            ? `/api/entries/${game.id}/playthroughs`
+            : `/api/entries/${game.id}/playthroughs/${editingId}`;
+
+        try {
+            const res = await fetch(url, {
+                method: editingId === null ? 'POST' : 'PUT',
+                credentials: 'include',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(input),
+            });
+
+            if (!res.ok) {
+                setPlaythroughError(await problemMessage(res, 'save'));
+                return;
+            }
+
+            const saved = (await res.json()) as PlaythroughDto;
+            setPlaythroughs(current => sorted(editingId === null
+                ? [...current, saved]
+                : current.map(p => (p.id === editingId ? saved : p))));
+            setEditing(null);
+        } catch {
+            setPlaythroughError('Could not save your playthrough. Please try again.');
+        } finally {
+            setSavingPlaythrough(false);
+        }
+    };
+
+    const handlePlaythroughDelete = async (playthrough: PlaythroughDto) => {
+        setDeletingPlaythroughId(playthrough.id);
+        setPlaythroughError(null);
+
+        try {
+            const res = await fetch(
+                `/api/entries/${game.id}/playthroughs/${playthrough.id}`,
+                { method: 'DELETE', credentials: 'include' },
+            );
+
+            if (!res.ok) {
+                setPlaythroughError(await problemMessage(res, 'delete'));
+                return;
+            }
+
+            setPlaythroughs(current => current.filter(p => p.id !== playthrough.id));
+            if (editing?.id === playthrough.id) setEditing(null);
+        } catch {
+            setPlaythroughError('Could not delete that playthrough. Please try again.');
+        } finally {
+            setDeletingPlaythroughId(null);
+        }
     };
 
     const handleWishlistToggle = async () => {
@@ -88,7 +179,7 @@ export function GameUserPanel({ game }: GameUserPanelProps) {
         else await addToList(listId, game);
     };
 
-    const hasData = currentList !== null || score !== null;
+    const hasData = currentList !== null || score !== null || playthroughs.length > 0;
 
     return (
         <div className="game-user-panel">
@@ -164,13 +255,33 @@ export function GameUserPanel({ game }: GameUserPanelProps) {
                 </div>
             </div>
 
+            <div className="game-user-panel-section">
+                <p className="game-user-panel-label">Playthroughs</p>
+                <PlaythroughList
+                    playthroughs={playthroughs}
+                    platforms={game.platforms}
+                    onEdit={setEditing}
+                    onDelete={playthrough => void handlePlaythroughDelete(playthrough)}
+                    busyId={deletingPlaythroughId}
+                    disabled={!loaded || savingPlaythrough}
+                />
+                <PlaythroughForm
+                    platforms={game.platforms}
+                    editing={editing}
+                    onSubmit={input => void handlePlaythroughSubmit(input)}
+                    onCancelEdit={() => setEditing(null)}
+                    pending={!loaded || savingPlaythrough}
+                    error={playthroughError}
+                />
+            </div>
+
             {hasData && (
                 <div className="game-user-panel-danger">
                     {confirmingDelete ? (
                         <>
                             <p className="game-user-panel-hint">
-                                Delete your score and list placement for this game? Your history of
-                                moving it between lists is kept.
+                                Delete your score, list placement and playthroughs for this game?
+                                Your history of moving it between lists is kept.
                             </p>
                             <div className="game-user-panel-confirm">
                                 <button type="button" className="danger" onClick={() => void handleDelete()}>
@@ -195,4 +306,53 @@ export function GameUserPanel({ game }: GameUserPanelProps) {
             )}
         </div>
     );
+}
+
+/**
+ * The same order the server reads them back in: by start date, then by when they were logged.
+ *
+ * Applied after every write rather than appending, because a run logged today with last year's
+ * start date belongs in the middle. Appending would put it at the bottom until the next page
+ * load moved it, which reads as the list having reshuffled itself.
+ */
+function sorted(playthroughs: PlaythroughDto[]): PlaythroughDto[] {
+    return [...playthroughs].sort((a, b) =>
+        compare(a.startedOn, b.startedOn)
+        || compare(a.createdAt, b.createdAt)
+        || a.id - b.id);
+}
+
+/** Nulls first, matching the server, and ISO strings compare correctly as strings. */
+function compare(a: string | null, b: string | null): number {
+    if (a === b) return 0;
+    if (a === null) return -1;
+    if (b === null) return 1;
+    return a < b ? -1 : 1;
+}
+
+/**
+ * What the server said went wrong, as one sentence.
+ *
+ * ASP.NET returns a `ValidationProblemDetails` for a 400, whose `errors` carry the message the
+ * user actually needs — "The finish date cannot be before the start date" beats "Could not save
+ * your playthrough". Falls back to something plain rather than throwing on a body that is not
+ * JSON at all, which is what a 500 or a proxy error looks like.
+ */
+async function problemMessage(response: Response, verb: 'save' | 'delete'): Promise<string> {
+    const fallback = verb === 'save'
+        ? `Could not save your playthrough (${response.status}).`
+        : `Could not delete that playthrough (${response.status}).`;
+
+    try {
+        const problem = (await response.json()) as {
+            title?: string;
+            detail?: string;
+            errors?: Record<string, string[]>;
+        };
+
+        const firstFieldError = Object.values(problem.errors ?? {}).flat()[0];
+        return firstFieldError ?? problem.detail ?? problem.title ?? fallback;
+    } catch {
+        return fallback;
+    }
 }
