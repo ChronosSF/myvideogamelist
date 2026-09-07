@@ -93,13 +93,13 @@ flagged as a decision is now moot. `ROADMAP.md` should be amended to match these
 |---|---|---|
 | `UserGameEvents` | **Ship first.** Append-only: `(Id, UserId, GameId, FromStatusId, ToStatusId, OccurredAt)`. Both status ids are nullable FKs — null *from* means the game was not tracked before, null *to* means it was removed. **No FK to the entry**, because removals are events and the log has to outlive the row it describes. **Status transitions only** — no custom-list column and no event-type discriminator, see decision 7. Indexes on `(UserId, OccurredAt)`, `(GameId, OccurredAt)`, `(ToStatusId, OccurredAt)` | Tier 1 activity history, H6, Tier 3 feed and wrapped |
 | `UserGameEntries` | **Partly shipped** — the rename, a nullable `StatusId`, `Score`, `AddedAt` and `StatusChangedAt` (ADR [0019](decisions/0019-entry-survives-leaving-every-list.md)), and the surrogate `Id` with `(UserId, GameId)` kept unique by index (ADR [0022](decisions/0022-entry-surrogate-key-and-the-wishlist-axis.md)). Still open: `Ownership`, `Notes` — both nullable and therefore cheap to add whenever there is UI for them, which is why they did not ride along. Deliberately holds **no playtime or platform** — those belong to a playthrough | Tier 1 per-entry tracking |
-| `UserGamePlaythroughs` | `(Id, UserGameEntryId, TypeId, PlatformId, MinutesPlayed, StartedOn, FinishedOn, Notes, CreatedAt)`. One row per time through the game, so a replay on a different platform is a second row rather than an overwrite. This is where playtime, platform and dates live | Tier 1 per-entry tracking, completion states, profile stats |
-| `PlaythroughTypes` | Lookup: Rushed, Normally, Completionist — **the same three tiers IGDB reports**, so MVGL averages bucket into the same shape and the two sources sit side by side on the game page | Tier 1 completion states |
+| `UserGamePlaythroughs` | **Shipped** as `(Id, UserId, UserGameEntryId, TypeId, PlatformId, MinutesPlayed, StartedOn, FinishedOn, Notes, CreatedAt, UpdatedAt)`. One row per time through the game, so a replay on a different platform is a second row rather than an overwrite. This is where playtime, platform and dates live. Carries its own `UserId` — the guard below keys on that column — and reaches its entry by a composite key on `(UserGameEntryId, UserId)`, so the database refuses a row whose owner is not the entry's owner. Writes no events (ADR [0025](decisions/0025-playthroughs-and-reviews.md)) | Tier 1 per-entry tracking, completion states, profile stats |
+| `PlaythroughTypes` | **Shipped.** Lookup: Rushed, Normally, Completionist — **the same three tiers IGDB reports**, so MVGL averages bucket into the same shape and the two sources sit side by side on the game page. Keys are permanent; IGDB's own spellings are deliberately not stored, and the mapping between the two vocabularies lives in one constant on the client | Tier 1 completion states |
 | `ListStatuses` | **Ship with the event log.** System-owned lookup, seeded with all five at P0 and never deleted from. Carries semantic flags, not just names — see [the five statuses](#the-five-statuses). Replaces the hardcoded `ValidListTypes` set in `ListService` | Tier 1 taxonomy |
 | `UserListSettings` | `(UserId, StatusId, DisplayName)`. Lazily created: no row means "use `DefaultName`". This is what makes the defaults renameable without any statistic having to care, because everything else keys on `StatusId` | Tier 1 taxonomy |
 | `UserListSortPreferences` | **Shipped.** `(UserId, StatusId, SortKey, Descending)`, one row per list the user has actually re-sorted. The same lazily-created shape `UserListSettings` will use, and the reason a sixth status needs no migration (ADR [0020](decisions/0020-list-view-preferences-in-the-database.md)) | Tier 2 list views |
 | `UserWishlistItems` | **Shipped** as `(UserId, GameId, AddedAt)` with no foreign key to the entry — a wishlisted game usually has no entry at all. A separate axis, not a status: the five statuses are exclusive by construction and wanting a game is not exclusive with playing it. Records no events; `AddedAt` is the whole history. Named `UserWishlistItems` rather than this document's earlier `UserWishlist`, to match every other table here. See ADR [0022](decisions/0022-entry-surrogate-key-and-the-wishlist-axis.md) | Tier 1, H4, ITAD P5/P7 |
-| `Reviews` | `(Id, UserGameEntryId, Body, HasSpoilers, Visibility, PlaythroughId?, CreatedAt, UpdatedAt)`. One per user per game, hung off the entry rather than the playthrough, with an optional pointer to the playthrough it is about. The **score is not here** — it lives on the entry, because a score with no prose is the common case and must not require a review row | Tier 1 per-entry, Tier 2 community signal |
+| `Reviews` | **Shipped** as `(Id, UserId, UserGameEntryId, Body, HasSpoilers, Visibility, PlaythroughId?, CreatedAt, UpdatedAt)`. One per user per game, hung off the entry rather than the playthrough, with an optional pointer to the playthrough it is about (`SetNull`, so deleting a run does not take the prose). The **score is not here** — it lives on the entry, because a score with no prose is the common case and must not require a review row. `Visibility` shipped with the table rather than later, because a default is a consent decision (ADR [0025](decisions/0025-playthroughs-and-reviews.md)) | Tier 1 per-entry, Tier 2 community signal |
 | `UserFavourites` | `(UserId, GameId)`. A separate table because a favourite is explicitly independent of list membership, so it must be expressible with no entry at all | Tier 1 favourites |
 | `Tags` + `UserGameEntryTags` | User-scoped tags, not a global vocabulary | Tier 3 |
 
@@ -182,7 +182,8 @@ the moment playthroughs exist. Playthroughs, reviews and tags all hang off an en
 surrogate `Id` with a unique index on `(UserId, GameId)` keeps the same constraint and makes the
 children clean.
 
-**4. Playthrough types mirror IGDB's tiers exactly, and their averages carry counts.** Rushed /
+**4. Playthrough types mirror IGDB's tiers exactly, and their averages carry counts.** *(Done — ADR
+[0025](decisions/0025-playthroughs-and-reviews.md).)* Rushed /
 Normally / Completionist are deliberately the same three buckets as IGDB's `hastily` / `normally`
 / `completely`. That is what lets the game page show "IGDB: 45h / 119h / 174h" against
 "MVGL members: 51h / 130h / —" as two readable rows from two sources rather than one blended
@@ -263,10 +264,16 @@ Order by what is irrecoverable, then by what unblocks the most.
    step came second: a primary-key change is cheapest when the table is smallest. `Ownership` and
    `Notes` were deliberately left for whenever there is UI for them, because a nullable column is
    additive and the key change was not. The guard test below landed here too, five tables late.
-3. **`UserGamePlaythroughs`, `PlaythroughTypes` and `Reviews`.** The three things a user actually
-   enters about a game they have played, and the reason the entry table needs a surrogate key.
-   Worth doing directly after step 2 rather than later, because the alternative is putting
-   playtime and platform on the entry first and moving them afterwards.
+3. ~~**`UserGamePlaythroughs`, `PlaythroughTypes` and `Reviews`.**~~ **Shipped** — see ADR
+   [0025](decisions/0025-playthroughs-and-reviews.md). The three things a user actually enters
+   about a game they have played, and the reason the entry table needs a surrogate key. Three
+   things came out of it that this plan did not anticipate. Both children carry their own `UserId`,
+   because the guard below selects user-owned entities by that property and a child keyed only
+   through the entry would escape it silently; consistency with the entry is then a composite
+   foreign key rather than a convention. Neither table writes an event, which is decision 5 above
+   applied rather than discovered. And `Reviews.Visibility` shipped with the table instead of
+   waiting for public profiles, because defaulting it later would silently change what an already
+   written review meant.
 4. ~~**The ownership contract** — cascade behaviour and the export enumeration, plus the guard
    below.~~ **Shipped** — see ADR [0024](decisions/0024-the-ownership-contract.md).
    `GET /api/user/export` returns one JSON document built by walking a type-keyed manifest, and
