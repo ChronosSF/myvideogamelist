@@ -28,6 +28,7 @@ builder.Services.AddSingleton<IHomeService, HomeService>();
 builder.Services.AddScoped<IListService, ListService>();
 builder.Services.AddScoped<IWishlistService, WishlistService>();
 builder.Services.AddScoped<IStatsService, StatsService>();
+builder.Services.AddScoped<IUserDataExporter, UserDataExporter>();
 
 // The clock, injected so the event log's timestamps are controllable in tests.
 builder.Services.AddSingleton(TimeProvider.System);

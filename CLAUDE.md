@@ -109,6 +109,15 @@ ROADMAP.md                      Forward-looking plan
   those two rows and nothing else. Note there are no hours anywhere in the schema, so no stat may
   say "played". See `docs/decisions/0023-*`.
 
+- **A new user-owned table has to be registered in the export manifest and cascade from
+  `AspNetUsers`.** `UserOwnedDataTests` walks the EF model and fails otherwise — in both
+  directions, so a stale registration for a table you removed fails too. The manifest is
+  `UserDataExporter.Manifest`, keyed by entity `Type`, and it is the *only* place to register:
+  `ExportAsync` walks it. Statuses export as their `Key`, never the seeded id. The export is free
+  and stays free — portability is a right, and the paid "Export" in the monetisation table is a
+  nicer *format* on top, so do not put an entitlement check on `/api/user/export`. It makes no IGDB
+  call, for the same reason the stats do not. See `docs/decisions/0024-*`.
+
 - **Never change a game's status without recording an event.** `UserGameEvents` is append-only
   and is the only record that a transition happened — `UserGameLists` holds current state and is
   overwritten on every move. A direct `UPDATE` to `StatusId` leaves a permanent hole in a history

@@ -54,7 +54,7 @@ polished game-tracking product that runs on AWS and ships safely on every commit
 - ~~**Activity history**~~ **DONE for status changes.** `UserGameEvents` records every transition append-only, including first adds and removals, and is the one thing in the schema that could not have been backfilled later (ADR [0018](docs/decisions/0018-append-only-status-event-log.md)). **Still open:** scores and playthroughs. The profile UI that reads the log shipped with ADR [0023](docs/decisions/0023-profile-statistics-derived-at-read-time.md).
 - ~~**User profile stats**~~ **DONE, less the parts the data cannot support.** `/api/user/stats` derives counts, score distribution, completion rate, a monthly started/finished/dropped chart, finish streaks and median *active* time to finish, all from our own tables at read time (ADR [0023](docs/decisions/0023-profile-statistics-derived-at-read-time.md)). Platform and genre breakdowns are counted client-side from the lists already loaded, so an IGDB outage costs two rows rather than the page. **Not shipped:** total hours and anything per-hour, which need Tier 1 per-entry tracking — and note that "most-*played* platform" is unbuildable without it, so the page says "most of your games are on".
 - **Public profiles** — real usernames (`ApplicationUser` currently only has an email), a shareable `/u/{username}` route, and per-user privacy settings (public / friends / private).
-- **Account lifecycle** — email confirmation, password reset, email change, and self-service account deletion with data export. `SignIn.RequireConfirmedAccount` is off and there is no email sender at all.
+- **Account lifecycle** — ~~self-service account deletion with data export~~ **DONE.** `GET /api/user/export` returns everything the user has entered as one JSON document, and `DELETE /api/user` deletes the account and cascades to every user-owned table, confirmed by re-entering the password. A test walks the EF model and fails the build if a user-owned table is ever added without both a cascade and an export registration, in both directions (ADR [0024](docs/decisions/0024-the-ownership-contract.md)). The export is deliberately **free and IGDB-free** — portability is a right, not a feature. **Still open:** email confirmation, password reset and email change, all of which need an email sender that does not exist yet (`SignIn.RequireConfirmedAccount` is off); and the profile-page buttons, since both endpoints currently ship without UI.
 - **Social login finished** — Google and Facebook challenge/callback endpoints, account linking, and buttons in `LoginDialog`.
 
 ### Tier 2 — Discovery and daily-use polish
@@ -67,7 +67,7 @@ polished game-tracking product that runs on AWS and ships safely on every commit
 - **Release notifications** — email or in-app alerts when a wishlist game gets a date or launches. The upcoming timeline already computes this data.
 - **Recommendations** — "because you finished X" using IGDB genre/theme similarity; a "what should I play next" backlog picker.
 - **Import from Steam / PSN / Xbox / GOG** — the single biggest reason people abandon a new tracker is retyping 300 games. Steam's public API makes this cheap and it deserves to be an early bet.
-- **Export** — CSV and JSON download of everything a user has entered.
+- **Export** — CSV and a re-importable shape, plus column selection and scheduled or emailed exports. The **JSON download already ships and is free**: `GET /api/user/export` is data portability and cannot sit behind a subscription, so what is left to sell here is a nicer *format* over the same data, not access to it. See ADR [0024](docs/decisions/0024-the-ownership-contract.md) before gating anything export-shaped.
 - **Empty and error states that teach** — the lists page already has good ones; extend the pattern to games and profile.
 - **Responsive navigation** — `Navbar.tsx` tracks `menuOpen` but always renders the full link row; there is no mobile hamburger.
 - **Anonymous theme** — theme only persists server-side, so signed-out users are locked to dark and get a flash on load. Store it in `localStorage` and reconcile on login.
@@ -204,7 +204,7 @@ calendar. Capping the core loop is what kills trackers. Sell depth, convenience 
 | Price history | Current + best price | Full history charts and all-time low |
 | Bundle & giveaway alerts | — | ✅ |
 | Import from Steam/PSN/Xbox | One-time | Unlimited re-sync |
-| Export (CSV/JSON) | — | ✅ |
+| Export | **JSON, free** — portability is a right ([0024](docs/decisions/0024-the-ownership-contract.md)) | CSV, re-importable, column selection, scheduled |
 | Release notifications | In-app | In-app + email |
 | Private profile | — | ✅ |
 | Early access to new features | — | ✅ |
@@ -374,4 +374,4 @@ H1 and H3 first — fork on auth and ship Continue Playing, which needs no new A
 Browse filters and sorting; game-page media; ITAD price tracking (P1–P11); Steam news (N1–N7); Steam import; export; recommendations; release notifications; reviews; mobile navigation and responsive polish; then the Tier 3 social layer.
 
 **Phase 5 — Monetise (after there is an audience)**
-The paid tier only makes sense once Phases 2–4 have shipped the features that sit behind it — price alerts (P5, P8), advanced stats, import re-sync and export are the actual product being sold. Land the legal pages and consent banner (M8, M9) early since they are required regardless. Then Stripe Billing and entitlement gating (M1–M7), and ads (A1–A6) last — they are the least valuable revenue per unit of user goodwill, so introduce them only once the paid tier gives people a way out.
+The paid tier only makes sense once Phases 2–4 have shipped the features that sit behind it — price alerts (P5, P8), advanced stats, import re-sync and the paid export *format* are the actual product being sold — the JSON export itself already ships free and stays that way ([0024](docs/decisions/0024-the-ownership-contract.md)). Land the legal pages and consent banner (M8, M9) early since they are required regardless. Then Stripe Billing and entitlement gating (M1–M7), and ads (A1–A6) last — they are the least valuable revenue per unit of user goodwill, so introduce them only once the paid tier gives people a way out.
