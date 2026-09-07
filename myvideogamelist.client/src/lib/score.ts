@@ -10,6 +10,21 @@ import type { GameDto } from '@/types/game';
 export const MIN_CRITIC_REVIEWS = 4;
 
 /**
+ * Playthroughs a game needs before MVGL's own median for a tier is worth printing.
+ *
+ * The same argument as `MIN_CRITIC_REVIEWS`, applied to our own numbers rather than IGDB's: a
+ * median over two members is exactly as uninformative as a critic score from one review, and a
+ * bare "51h" reads as a measured fact whatever is behind it. The API reports the sample size
+ * faithfully and each caller sets its own bar, so this lives here rather than in a query.
+ *
+ * Lower than the critic floor because the two are asking different things of different pools.
+ * Four critic reviews is a low bar among the thousands IGDB aggregates; three playthroughs of one
+ * game by members of a site this size is not, and a floor nothing ever clears shows nobody
+ * anything. See `docs/decisions/0016-*`.
+ */
+export const MIN_PLAYTHROUGH_SAMPLES = 3;
+
+/**
  * Five stars at half-star steps, which is exactly the ten values the API stores.
  *
  * Every score a user enters goes through that control; every score somebody else produced is
