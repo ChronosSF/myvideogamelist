@@ -21,3 +21,17 @@ Accept: application/json
 ### Active platforms
 GET {{MyVideoGameList.Server_HostAddress}}/api/platforms/active
 Accept: application/json
+
+### Export everything the signed-in user has entered
+# Needs the Identity cookie. Free and IGDB-free — see docs/decisions/0024-the-ownership-contract.md.
+GET {{MyVideoGameList.Server_HostAddress}}/api/user/export
+Accept: application/json
+
+### Delete the signed-in user's account
+# Irreversible, and it cascades to every user-owned table. The password is the confirmation.
+DELETE {{MyVideoGameList.Server_HostAddress}}/api/user
+Content-Type: application/json
+
+{
+  "password": "your-password-here"
+}

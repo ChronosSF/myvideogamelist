@@ -267,8 +267,16 @@ Order by what is irrecoverable, then by what unblocks the most.
    enters about a game they have played, and the reason the entry table needs a surrogate key.
    Worth doing directly after step 2 rather than later, because the alternative is putting
    playtime and platform on the entry first and moving them afterwards.
-4. **The ownership contract** — cascade behaviour and the export enumeration, plus the guard
-   below. Cheap now, and it is what stops the list going stale.
+4. ~~**The ownership contract** — cascade behaviour and the export enumeration, plus the guard
+   below.~~ **Shipped** — see ADR [0024](decisions/0024-the-ownership-contract.md).
+   `GET /api/user/export` returns one JSON document built by walking a type-keyed manifest, and
+   `DELETE /api/user` is a single `UserManager.DeleteAsync` that the cascades carry. The guard below
+   now runs in both directions, so a user-owned table that is unregistered *or* a registration whose
+   table has gone both fail the build. Two things came out of it that the plan did not anticipate:
+   statuses export as their `Key` rather than their seeded id, because the ids mean nothing outside
+   this database; and the free/paid line had to be drawn explicitly, because `ROADMAP.md` listed
+   export as Tier 1 *and* as paid-only. Portability is a right and stays free; the paid export is a
+   nicer format on top. No UI yet — that is a follow-up on the profile page.
 5. **`CachedGames`**, before public profiles and any SEO-bearing page, because those have to
    render without a live IGDB call.
 6. **Everything else is additive** and can follow its own feature.
@@ -286,7 +294,23 @@ a user-owned table and forgets — which is the only reliable moment to find out
 
 Worth writing that test with the *second* such table, not the twentieth.
 
-**Half of it now exists**, five tables in, as `UserOwnedDataTests`: it walks the model and fails
-when an entity carrying a `UserId` has no cascading foreign key from `AspNetUsers`, and carries an
-inventory tripwire that fails the moment a sixth such table appears. The export half is still
-missing because there is still no export to assert against — add it with the export, not before.
+**Both halves now exist**, five tables in, as `UserOwnedDataTests`.
+
+*Deletion* is asserted against the model: an entity carrying a `UserId` must have a cascading
+foreign key from `AspNetUsers` tied to *that column*, so an orphaned `UserId` alongside an unrelated
+cascade does not satisfy it. That plus the `ON DELETE CASCADE` the migrations emit is what makes
+account deletion a single `UserManager.DeleteAsync` with no list of tables in it.
+
+*Export* is asserted against `UserDataExporter.Manifest`, a registry keyed by entity `Type` — keyed
+by type, not by table name, so the comparison is against the model itself rather than against
+strings somebody has to keep in step with a rename. The guard runs **in both directions**: every
+user-owned entity must be a manifest key, and every manifest key must still be such an entity, so an
+unregistered new table and a stale registration for a removed one each fail. The manifest is the
+only place a new table has to be registered; `ExportAsync` walks it.
+
+The inventory tripwire remains, and still fails the moment a sixth user-owned table appears at all.
+
+What is deliberately *not* asserted is a deletion actually cascading. These tests run on the EF
+in-memory provider, which cascades only to rows the context happens to be tracking, so such a test
+would pass or fail on fixture ordering rather than on the constraint it names. See ADR
+[0024](decisions/0024-the-ownership-contract.md).
