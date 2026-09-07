@@ -58,6 +58,35 @@ public class StatsServiceTests
         db.SaveChanges();
     }
 
+    /// <summary>
+    /// One playthrough on the user's entry for a game, creating that entry if it is not there.
+    /// </summary>
+    private static void AddPlaythrough(
+        ApplicationDbContext db,
+        int gameId,
+        int? platformId = 6,
+        int? minutesPlayed = 600,
+        string userId = UserId)
+    {
+        var entry = db.UserGameEntries.FirstOrDefault(e => e.UserId == userId && e.GameId == gameId);
+        if (entry is null)
+        {
+            AddEntry(db, gameId, status: null, userId: userId);
+            entry = db.UserGameEntries.Single(e => e.UserId == userId && e.GameId == gameId);
+        }
+
+        db.UserGamePlaythroughs.Add(new UserGamePlaythrough
+        {
+            UserId = userId,
+            Entry = entry,
+            PlatformId = platformId,
+            MinutesPlayed = minutesPlayed,
+            CreatedAt = Now,
+            UpdatedAt = Now
+        });
+        db.SaveChanges();
+    }
+
     /// <summary>One transition. `null` at either end is a real event: a first add, or a removal.</summary>
     private static void AddEvent(
         ApplicationDbContext db,
@@ -499,5 +528,122 @@ public class StatsServiceTests
 
         Assert.Equal(2, stats.Library.Wishlisted);
         Assert.Equal(1, stats.Library.Recorded);
+    }
+
+    // -----------------------------------------------------------------------------------
+    // Playtime — the first figures on this page that hours actually back
+    // -----------------------------------------------------------------------------------
+
+    [Fact]
+    public async Task GetStatsAsync_NoPlaythroughs_ReportsNothingRatherThanZeroesWithAPlatform()
+    {
+        using var db = NewDb();
+
+        var playtime = (await NewService(db).GetStatsAsync(UserId, default)).Playtime;
+
+        Assert.Equal(0, playtime.Playthroughs);
+        Assert.Equal(0, playtime.TotalMinutes);
+        Assert.Equal(0, playtime.WithHours);
+        Assert.Empty(playtime.ByPlatform);
+    }
+
+    [Fact]
+    public async Task GetStatsAsync_Playthroughs_SumTheirMinutes()
+    {
+        using var db = NewDb();
+        AddPlaythrough(db, gameId: 1, minutesPlayed: 600);
+        AddPlaythrough(db, gameId: 2, minutesPlayed: 195);
+
+        var playtime = (await NewService(db).GetStatsAsync(UserId, default)).Playtime;
+
+        Assert.Equal(2, playtime.Playthroughs);
+        Assert.Equal(795, playtime.TotalMinutes);
+        Assert.Equal(2, playtime.WithHours);
+    }
+
+    [Fact]
+    public async Task GetStatsAsync_PlaythroughWithNoHours_IsCountedButAddsNothing()
+    {
+        // The gap between Playthroughs and WithHours is what stops the total reading as though it
+        // covered every run.
+        using var db = NewDb();
+        AddPlaythrough(db, gameId: 1, minutesPlayed: 600);
+        AddPlaythrough(db, gameId: 2, minutesPlayed: null);
+
+        var playtime = (await NewService(db).GetStatsAsync(UserId, default)).Playtime;
+
+        Assert.Equal(2, playtime.Playthroughs);
+        Assert.Equal(1, playtime.WithHours);
+        Assert.Equal(600, playtime.TotalMinutes);
+    }
+
+    [Fact]
+    public async Task GetStatsAsync_PlaythroughWithNoPlatform_CountsTowardsTheTotalAndNoPlatformRow()
+    {
+        // The time was real even where the user did not say where it was spent. Inventing an
+        // "Unknown" bucket would put a platform-shaped thing in a list of platforms.
+        using var db = NewDb();
+        AddPlaythrough(db, gameId: 1, platformId: null, minutesPlayed: 500);
+        AddPlaythrough(db, gameId: 2, platformId: 6, minutesPlayed: 100);
+
+        var playtime = (await NewService(db).GetStatsAsync(UserId, default)).Playtime;
+
+        Assert.Equal(600, playtime.TotalMinutes);
+        Assert.Equal([6], playtime.ByPlatform.Select(p => p.PlatformId));
+        Assert.Equal(100, playtime.ByPlatform.Single().Minutes);
+    }
+
+    [Fact]
+    public async Task GetStatsAsync_ByPlatform_IsOrderedByMinutesDescending()
+    {
+        using var db = NewDb();
+        AddPlaythrough(db, gameId: 1, platformId: 6, minutesPlayed: 100);
+        AddPlaythrough(db, gameId: 2, platformId: 48, minutesPlayed: 900);
+        AddPlaythrough(db, gameId: 3, platformId: 130, minutesPlayed: 400);
+
+        var playtime = (await NewService(db).GetStatsAsync(UserId, default)).Playtime;
+
+        Assert.Equal([48, 130, 6], playtime.ByPlatform.Select(p => p.PlatformId));
+    }
+
+    [Fact]
+    public async Task GetStatsAsync_ByPlatform_BreaksTiesOnPlatformId()
+    {
+        // Otherwise the order depends on which row the database happened to return first, and two
+        // requests could disagree about a page that has not changed.
+        using var db = NewDb();
+        AddPlaythrough(db, gameId: 1, platformId: 130, minutesPlayed: 300);
+        AddPlaythrough(db, gameId: 2, platformId: 6, minutesPlayed: 300);
+        AddPlaythrough(db, gameId: 3, platformId: 48, minutesPlayed: 300);
+
+        var playtime = (await NewService(db).GetStatsAsync(UserId, default)).Playtime;
+
+        Assert.Equal([6, 48, 130], playtime.ByPlatform.Select(p => p.PlatformId));
+    }
+
+    [Fact]
+    public async Task GetStatsAsync_TwoRunsOnOnePlatform_AreOneRowWithBothCounted()
+    {
+        using var db = NewDb();
+        AddPlaythrough(db, gameId: 1, platformId: 6, minutesPlayed: 600);
+        AddPlaythrough(db, gameId: 2, platformId: 6, minutesPlayed: 200);
+
+        var byPlatform = (await NewService(db).GetStatsAsync(UserId, default)).Playtime.ByPlatform;
+
+        var pc = Assert.Single(byPlatform);
+        Assert.Equal(800, pc.Minutes);
+        Assert.Equal(2, pc.Playthroughs);
+    }
+
+    [Fact]
+    public async Task GetStatsAsync_AnotherUsersPlaythroughs_AreNotCounted()
+    {
+        using var db = NewDb();
+        AddPlaythrough(db, gameId: 1, minutesPlayed: 600, userId: OtherUserId);
+
+        var playtime = (await NewService(db).GetStatsAsync(UserId, default)).Playtime;
+
+        Assert.Equal(0, playtime.Playthroughs);
+        Assert.Empty(playtime.ByPlatform);
     }
 }

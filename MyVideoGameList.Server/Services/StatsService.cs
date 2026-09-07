@@ -10,7 +10,7 @@ namespace MyVideoGameList.Server.Services;
 /// </summary>
 /// <remarks>
 /// <para>
-/// Four queries and no SQL aggregation, which is a deliberate trade rather than an oversight:
+/// Five queries and no SQL aggregation, which is a deliberate trade rather than an oversight:
 /// </para>
 /// <list type="bullet">
 /// <item>
@@ -52,6 +52,12 @@ public class StatsService(ApplicationDbContext db, TimeProvider clock) : IStatsS
     /// <summary>One entry, flattened likewise. No game metadata is fetched or needed.</summary>
     private record EntryRow(short? StatusId, short? Score);
 
+    /// <summary>
+    /// One playthrough, flattened to the three columns the playtime figures need. The type, the
+    /// dates and the notes are deliberately not read — nothing here aggregates them.
+    /// </summary>
+    private record PlaythroughRow(int? PlatformId, int? MinutesPlayed);
+
     public async Task<UserStatsDto> GetStatsAsync(string userId, CancellationToken cancellationToken)
     {
         var statuses = await db.ListStatuses
@@ -81,10 +87,19 @@ public class StatsService(ApplicationDbContext db, TimeProvider clock) : IStatsS
             .Select(e => new EventRow(e.GameId, e.FromStatusId, e.ToStatusId, e.OccurredAt))
             .ToListAsync(cancellationToken);
 
+        // The fifth query, and the first one about playing rather than about listing. Scoped on
+        // the playthrough's own UserId, like every other read here.
+        var playthroughs = await db.UserGamePlaythroughs
+            .AsNoTracking()
+            .Where(p => p.UserId == userId)
+            .Select(p => new PlaythroughRow(p.PlatformId, p.MinutesPlayed))
+            .ToListAsync(cancellationToken);
+
         return new UserStatsDto(
             BuildLibrary(entries, statuses, wishlisted),
             BuildScores(entries),
-            BuildActivity(events, statuses));
+            BuildActivity(events, statuses),
+            BuildPlaytime(playthroughs));
     }
 
     private static LibraryStatsDto BuildLibrary(
@@ -131,6 +146,40 @@ public class StatsService(ApplicationDbContext db, TimeProvider clock) : IStatsS
             scores.Count,
             scores.Count == 0 ? null : scores.Average(),
             distribution);
+    }
+
+    /// <summary>
+    /// Hours logged, and where they were spent.
+    /// </summary>
+    /// <remarks>
+    /// A playthrough with no recorded duration counts towards <c>Playthroughs</c> and nothing else,
+    /// so the total never claims to cover runs that never said how long they took. One with no
+    /// platform counts towards the totals but appears in no platform row — the time was real even
+    /// when the user did not say where it was spent, and inventing an "Unknown" bucket would put a
+    /// platform-shaped thing in a list of platforms.
+    /// </remarks>
+    private static PlaytimeStatsDto BuildPlaytime(List<PlaythroughRow> playthroughs)
+    {
+        var timed = playthroughs.Where(p => p.MinutesPlayed is > 0).ToList();
+
+        var byPlatform = timed
+            .Where(p => p.PlatformId is not null)
+            .GroupBy(p => p.PlatformId!.Value)
+            .Select(group => new PlatformMinutesDto(
+                group.Key,
+                group.Sum(p => p.MinutesPlayed!.Value),
+                group.Count()))
+            // Ties broken by platform id, so the order does not depend on which row the database
+            // happened to return first.
+            .OrderByDescending(platform => platform.Minutes)
+            .ThenBy(platform => platform.PlatformId)
+            .ToList();
+
+        return new PlaytimeStatsDto(
+            Playthroughs: playthroughs.Count,
+            TotalMinutes: timed.Sum(p => p.MinutesPlayed!.Value),
+            WithHours: timed.Count,
+            ByPlatform: byPlatform);
     }
 
     private ActivityStatsDto BuildActivity(List<EventRow> events, List<ListStatus> statuses)
