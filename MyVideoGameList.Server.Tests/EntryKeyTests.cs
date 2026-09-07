@@ -144,4 +144,53 @@ public class EntryKeyTests
             [nameof(UserWishlistItem.UserId), nameof(UserWishlistItem.GameId)],
             key.Properties.Select(p => p.Name));
     }
+
+    [Fact]
+    public void UserGameEntry_CarriesAnAlternateKeyForItsChildren()
+    {
+        // (Id, UserId) is what a child's composite foreign key points at. Uniqueness is already
+        // guaranteed by Id alone, so this constrains nothing new — it exists to be referenced.
+        using var db = NewDb();
+
+        var keys = db.Model.FindEntityType(typeof(UserGameEntry))!.GetKeys();
+
+        Assert.Contains(keys, key =>
+            !key.IsPrimaryKey()
+            && key.Properties.Select(p => p.Name)
+                .SequenceEqual([nameof(UserGameEntry.Id), nameof(UserGameEntry.UserId)]));
+    }
+
+    [Fact]
+    public void UserGamePlaythrough_ReachesItsEntryThroughBothIdAndOwner()
+    {
+        // The composite foreign key is what makes "this playthrough's owner is its entry's owner"
+        // a database constraint rather than a promise the service has to keep. The in-memory
+        // provider enforces none of it, so the model is what is asserted — the constraint itself
+        // is verified by reading the generated migration SQL.
+        using var db = NewDb();
+
+        var foreignKeys = db.Model.FindEntityType(typeof(UserGamePlaythrough))!.GetForeignKeys();
+
+        Assert.Contains(foreignKeys, fk =>
+            fk.PrincipalEntityType.ClrType == typeof(UserGameEntry)
+            && fk.DeleteBehavior == DeleteBehavior.Cascade
+            && fk.Properties.Select(p => p.Name).SequenceEqual(
+                [nameof(UserGamePlaythrough.UserGameEntryId), nameof(UserGamePlaythrough.UserId)])
+            && fk.PrincipalKey.Properties.Select(p => p.Name).SequenceEqual(
+                [nameof(UserGameEntry.Id), nameof(UserGameEntry.UserId)]));
+    }
+
+    [Fact]
+    public void UserGamePlaythrough_KeepsItsSeededTypeWhenNothingIsDeleted()
+    {
+        // Restrict rather than cascade, as for statuses: the types are seeded reference data, and
+        // removing one should fail loudly instead of taking every playthrough that used it.
+        using var db = NewDb();
+
+        var foreignKeys = db.Model.FindEntityType(typeof(UserGamePlaythrough))!.GetForeignKeys();
+
+        Assert.Contains(foreignKeys, fk =>
+            fk.PrincipalEntityType.ClrType == typeof(PlaythroughType)
+            && fk.DeleteBehavior == DeleteBehavior.Restrict);
+    }
 }
