@@ -507,8 +507,22 @@ describe('GameUserPanel playthroughs', () => {
         expect(row.getByText('Completionist')).toBeInTheDocument();
         expect(row.getByText('PlayStation 4')).toBeInTheDocument();
         expect(row.getByText('4h 20m')).toBeInTheDocument();
-        expect(row.getByText(/started 1 May 2026, finished 12 June 2026/i)).toBeInTheDocument();
+        // Case-sensitive on purpose: the finish label is lowercase here because it is the second
+        // half of one sentence, and capital-cased when it stands alone. See the test below.
+        expect(row.getByText('Started 1 May 2026, finished 12 June 2026')).toBeInTheDocument();
         expect(row.getByText('Every strawberry.')).toBeInTheDocument();
+    });
+
+    it('capitalises the finish date when it has no start date to follow', async () => {
+        // Both dates are optional, so this row is reachable — and it renders on a line of its own,
+        // where the joined sentence's lowercase "finished" would read as a typo.
+        stubEntryFetch(null, 200, [
+            playthrough({ id: 5, startedOn: null, finishedOn: '2026-06-12' }),
+        ]);
+        renderPanel();
+
+        const row = within(await screen.findByRole('list'));
+        expect(row.getByText('Finished 12 June 2026')).toBeInTheDocument();
     });
 
     it('says so for a platform the game does not list rather than hiding it', async () => {

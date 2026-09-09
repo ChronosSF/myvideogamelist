@@ -104,12 +104,27 @@ function platformName(platformId: number | null, platforms: PlatformDto[]): stri
     return platforms.find(platform => platform.id === platformId)?.name ?? 'Unknown platform';
 }
 
-/** `Started 1 May 2026`, `Finished 12 June 2026`, or both. Null when neither date is set. */
+/**
+ * `Started 1 May 2026`, `Finished 12 June 2026`, or `Started 1 May 2026, finished 12 June 2026`.
+ * Null when neither date is set.
+ *
+ * The finish label is capitalised only when it leads. Both dates are optional and the database
+ * constrains their order rather than their presence, so a finish date with no start date is a
+ * real row — and it renders as a line of its own, where a lowercase opening word reads as a typo.
+ * Capitalising it unconditionally would fix that and break the common case, which joins the two
+ * into one sentence.
+ */
 function dateRange(playthrough: PlaythroughDto): string | null {
-    const parts: string[] = [];
-    if (playthrough.startedOn !== null) parts.push(`Started ${formatDay(playthrough.startedOn)}`);
-    if (playthrough.finishedOn !== null) parts.push(`finished ${formatDay(playthrough.finishedOn)}`);
-    return parts.length === 0 ? null : `${parts.join(', ')}`;
+    const started = playthrough.startedOn === null
+        ? null
+        : `Started ${formatDay(playthrough.startedOn)}`;
+
+    if (playthrough.finishedOn === null) return started;
+
+    const finished = formatDay(playthrough.finishedOn);
+    return started === null
+        ? `Finished ${finished}`
+        : `${started}, finished ${finished}`;
 }
 
 const MONTHS = [
