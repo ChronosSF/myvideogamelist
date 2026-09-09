@@ -55,8 +55,8 @@ public class UserDataExporter(ApplicationDbContext db, TimeProvider clock) : IUs
     /// <see cref="ApplicationUser"/> is absent on purpose: it is not a table the user owns rows in,
     /// it is the user. It carries no <c>UserId</c> column, so the guard does not expect it here, and
     /// its two MVGL columns are read into <see cref="UserDataExportDto.Account"/> directly.
-    /// <see cref="ListStatus"/> is absent because it is system-owned seed data — the export carries
-    /// its keys, not its rows.
+    /// <see cref="ListStatus"/> and <see cref="PlaythroughType"/> are absent because they are
+    /// system-owned seed data — the export carries their keys, not their rows.
     /// </para>
     /// <para>
     /// Written with the add form rather than indexers so a duplicate registration throws at type
@@ -68,6 +68,8 @@ public class UserDataExporter(ApplicationDbContext db, TimeProvider clock) : IUs
         {
             { typeof(UserGameEntry), new("entries", ReadEntriesAsync) },
             { typeof(UserGameEvent), new("events", ReadEventsAsync) },
+            { typeof(UserGamePlaythrough), new("playthroughs", ReadPlaythroughsAsync) },
+            { typeof(Review), new("reviews", ReadReviewsAsync) },
             { typeof(UserWishlistItem), new("wishlist", ReadWishlistAsync) },
             { typeof(UserHiddenPlatform), new("hiddenPlatformIds", ReadHiddenPlatformsAsync) },
             { typeof(UserListSortPreference), new("listSortPreferences", ReadListSortPreferencesAsync) },
@@ -93,14 +95,23 @@ public class UserDataExporter(ApplicationDbContext db, TimeProvider clock) : IUs
         /// </summary>
         public required IReadOnlyDictionary<short, string> StatusKeys { get; init; }
 
+        /// <summary>
+        /// Playthrough type id to permanent key, read once for the same reason
+        /// <see cref="StatusKeys"/> is: the rows hold ids and the document may not carry one.
+        /// </summary>
+        public required IReadOnlyDictionary<short, string> TypeKeys { get; init; }
+
         public IReadOnlyList<EntryExportDto> Entries { get; set; } = [];
         public IReadOnlyList<EventExportDto> Events { get; set; } = [];
+        public IReadOnlyList<PlaythroughExportDto> Playthroughs { get; set; } = [];
+        public IReadOnlyList<ReviewExportDto> Reviews { get; set; } = [];
         public IReadOnlyList<WishlistExportDto> Wishlist { get; set; } = [];
         public IReadOnlyList<int> HiddenPlatformIds { get; set; } = [];
         public IReadOnlyList<ListSortExportDto> ListSortPreferences { get; set; } = [];
 
         public UserDataExportDto ToDocument(DateTimeOffset exportedAt, AccountExportDto account) =>
-            new(exportedAt, account, Entries, Events, Wishlist, HiddenPlatformIds, ListSortPreferences);
+            new(exportedAt, account, Entries, Events, Playthroughs, Reviews, Wishlist,
+                HiddenPlatformIds, ListSortPreferences);
     }
 
     public async Task<UserDataExportDto> ExportAsync(string userId, CancellationToken cancellationToken)
@@ -122,7 +133,10 @@ public class UserDataExporter(ApplicationDbContext db, TimeProvider clock) : IUs
             UserId = userId,
             StatusKeys = await db.ListStatuses
                 .AsNoTracking()
-                .ToDictionaryAsync(s => s.Id, s => s.Key, cancellationToken)
+                .ToDictionaryAsync(s => s.Id, s => s.Key, cancellationToken),
+            TypeKeys = await db.PlaythroughTypes
+                .AsNoTracking()
+                .ToDictionaryAsync(t => t.Id, t => t.Key, cancellationToken)
         };
 
         // Walking the manifest rather than calling the five readers in a row is what makes
@@ -173,6 +187,64 @@ public class UserDataExporter(ApplicationDbContext db, TimeProvider clock) : IUs
             .Select(e => new EventExportDto(
                 e.GameId, Key(draft, e.FromStatusId), Key(draft, e.ToStatusId), e.OccurredAt))
             .ToList();
+    }
+
+    /// <remarks>
+    /// Joined to the entry for the game id, which is what identifies the playthrough's subject
+    /// outside this database. Ordered oldest first, then by the key, so two exports of unchanged
+    /// data are byte-identical.
+    /// </remarks>
+    private static async Task ReadPlaythroughsAsync(
+        ApplicationDbContext db, ExportDraft draft, CancellationToken cancellationToken)
+    {
+        var rows = await db.UserGamePlaythroughs
+            .AsNoTracking()
+            .Where(p => p.UserId == draft.UserId)
+            .OrderBy(p => p.CreatedAt)
+            .ThenBy(p => p.Id)
+            .Select(p => new
+            {
+                p.Entry.GameId,
+                p.TypeId,
+                p.PlatformId,
+                p.MinutesPlayed,
+                p.StartedOn,
+                p.FinishedOn,
+                p.Notes,
+                p.CreatedAt,
+                p.UpdatedAt
+            })
+            .ToListAsync(cancellationToken);
+
+        draft.Playthroughs = rows
+            .Select(p => new PlaythroughExportDto(
+                p.GameId,
+                p.TypeId is short id && draft.TypeKeys.TryGetValue(id, out var key) ? key : null,
+                p.PlatformId,
+                p.MinutesPlayed,
+                p.StartedOn,
+                p.FinishedOn,
+                p.Notes,
+                p.CreatedAt,
+                p.UpdatedAt))
+            .ToList();
+    }
+
+    /// <remarks>
+    /// Joined to the entry for the game id, as the playthroughs are. Ordered oldest first so two
+    /// exports of unchanged data are byte-identical.
+    /// </remarks>
+    private static async Task ReadReviewsAsync(
+        ApplicationDbContext db, ExportDraft draft, CancellationToken cancellationToken)
+    {
+        draft.Reviews = await db.Reviews
+            .AsNoTracking()
+            .Where(r => r.UserId == draft.UserId)
+            .OrderBy(r => r.CreatedAt)
+            .ThenBy(r => r.Id)
+            .Select(r => new ReviewExportDto(
+                r.Entry.GameId, r.Body, r.HasSpoilers, r.Visibility, r.CreatedAt, r.UpdatedAt))
+            .ToListAsync(cancellationToken);
     }
 
     private static async Task ReadWishlistAsync(

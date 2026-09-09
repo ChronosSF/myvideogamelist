@@ -31,6 +31,8 @@ public record UserDataExportDto(
     AccountExportDto Account,
     IReadOnlyList<EntryExportDto> Entries,
     IReadOnlyList<EventExportDto> Events,
+    IReadOnlyList<PlaythroughExportDto> Playthroughs,
+    IReadOnlyList<ReviewExportDto> Reviews,
     IReadOnlyList<WishlistExportDto> Wishlist,
     IReadOnlyList<int> HiddenPlatformIds,
     IReadOnlyList<ListSortExportDto> ListSortPreferences);
@@ -84,6 +86,47 @@ public record EventExportDto(
     string? FromStatus,
     string? ToStatus,
     DateTimeOffset OccurredAt);
+
+/// <summary>
+/// One recorded playthrough of one game.
+/// </summary>
+/// <remarks>
+/// Carries the game's IGDB id rather than the entry's surrogate key, for the reason
+/// <see cref="EntryExportDto"/> gives: an internal id means nothing outside this database. The
+/// entry it belongs to is identified by that game id plus the owning account, which is the pair
+/// ADR 0022 keeps unique.
+/// </remarks>
+/// <param name="Type">
+/// The playthrough type's permanent <c>Key</c> — <c>completionist</c>, never <c>3</c>, on the same
+/// argument as <see cref="EntryExportDto.Status"/>. Null is a real value: a run in progress has no
+/// answer yet.
+/// </param>
+public record PlaythroughExportDto(
+    int GameId,
+    string? Type,
+    int? PlatformId,
+    int? MinutesPlayed,
+    DateOnly? StartedOn,
+    DateOnly? FinishedOn,
+    string? Notes,
+    DateTimeOffset CreatedAt,
+    DateTimeOffset UpdatedAt);
+
+/// <summary>
+/// One review the user has written.
+/// </summary>
+/// <remarks>
+/// The pointer to the playthrough it is about is deliberately omitted: it is an internal surrogate
+/// id with no meaning outside this database, the same reason the entry's own <c>Id</c> is left out.
+/// The score is absent because it is not on the review — it travels with the entry.
+/// </remarks>
+public record ReviewExportDto(
+    int GameId,
+    string Body,
+    bool HasSpoilers,
+    string Visibility,
+    DateTimeOffset CreatedAt,
+    DateTimeOffset UpdatedAt);
 
 /// <summary>
 /// One wishlisted game. <c>AddedAt</c> is its entire history by design — the wishlist is an axis of

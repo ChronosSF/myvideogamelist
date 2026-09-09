@@ -27,6 +27,8 @@ builder.Services.AddSingleton<ISteamNewsService, SteamNewsService>();
 builder.Services.AddSingleton<IHomeService, HomeService>();
 builder.Services.AddScoped<IListService, ListService>();
 builder.Services.AddScoped<IWishlistService, WishlistService>();
+builder.Services.AddScoped<IPlaythroughService, PlaythroughService>();
+builder.Services.AddScoped<IReviewService, ReviewService>();
 builder.Services.AddScoped<IStatsService, StatsService>();
 builder.Services.AddScoped<IUserDataExporter, UserDataExporter>();
 

@@ -7,6 +7,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { GameNewsPanel } from '@/components/GameNewsPanel';
 import { GameUserPanel } from '@/components/GameUserPanel';
 import { CompletionTimes } from '@/components/CompletionTimes';
+import { SectionHeading } from '@/components/SectionHeading';
 import { GameRefRail } from '@/components/GameRefRail';
 import { MultiplayerSummary } from '@/components/MultiplayerSummary';
 import { ScreenshotGallery } from '@/components/ScreenshotGallery';
@@ -19,14 +20,6 @@ function InfoChip({ label }: { label: string }) {
         <span className="px-2.5 py-1 bg-slate-700/60 light:bg-slate-100 text-slate-300 light:text-slate-700 text-xs font-medium rounded-lg border border-slate-600/40 light:border-slate-200">
             {label}
         </span>
-    );
-}
-
-function SectionHeading({ children }: { children: React.ReactNode }) {
-    return (
-        <h2 className="text-sm font-semibold uppercase tracking-widest text-slate-500 light:text-slate-400 mb-3">
-            {children}
-        </h2>
     );
 }
 
@@ -230,13 +223,10 @@ export function GamePage() {
                         )}
 
                         {/* The headline answer to "should I start this?", so it sits above the
-                            taxonomy rather than below it. */}
-                        {details?.timeToBeat && (
-                            <section>
-                                <SectionHeading>How long to beat</SectionHeading>
-                                <CompletionTimes timeToBeat={details.timeToBeat} />
-                            </section>
-                        )}
+                            taxonomy rather than below it. Renders its own section and decides for
+                            itself whether it has anything to show — its second row comes from our
+                            own members and is fetched on the client, so this cannot know. */}
+                        <CompletionTimes timeToBeat={details?.timeToBeat ?? null} gameId={game.id} />
 
                         {/* Genres */}
                         {game.genres.length > 0 && (

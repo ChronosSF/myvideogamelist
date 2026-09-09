@@ -11,15 +11,19 @@ namespace MyVideoGameList.Server.Data;
 /// rather than the local catalog schema this context used to carry.
 /// </summary>
 /// <remarks>
-/// <see cref="ListStatuses"/> is the one exception to "user-owned data only": it is a small
-/// system-owned lookup seeded by the migration, and it is what every other table keys against.
+/// <see cref="ListStatuses"/> and <see cref="PlaythroughTypes"/> are the exceptions to "user-owned
+/// data only": both are small system-owned lookups seeded by a migration, and they are what the
+/// other tables key against.
 /// </remarks>
 public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options)
     : IdentityDbContext<ApplicationUser>(options)
 {
     public DbSet<ListStatus> ListStatuses { get; set; }
+    public DbSet<PlaythroughType> PlaythroughTypes { get; set; }
+    public DbSet<Review> Reviews { get; set; }
     public DbSet<UserGameEntry> UserGameEntries { get; set; }
     public DbSet<UserGameEvent> UserGameEvents { get; set; }
+    public DbSet<UserGamePlaythrough> UserGamePlaythroughs { get; set; }
     public DbSet<UserHiddenPlatform> UserHiddenPlatforms { get; set; }
     public DbSet<UserListSortPreference> UserListSortPreferences { get; set; }
     public DbSet<UserWishlistItem> UserWishlistItems { get; set; }
@@ -29,11 +33,18 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
         base.OnModelCreating(modelBuilder);
 
         ConfigureListStatuses(modelBuilder);
+        ConfigurePlaythroughTypes(modelBuilder);
 
         // UserGameEntry: surrogate PK, with (UserId, GameId) kept unique by index rather than by
         // being the key. Children — playthroughs, reviews, tags — hang off the single column;
         // cascade delete when the user is deleted.
         modelBuilder.Entity<UserGameEntry>().HasKey(e => e.Id);
+
+        // An alternate key on (Id, UserId), which is what lets a child point at the entry *and*
+        // its owner in one foreign key. Uniqueness is already guaranteed by Id alone, so this
+        // constrains nothing new; it exists only to be referenced.
+        modelBuilder.Entity<UserGameEntry>().HasAlternateKey(e => new { e.Id, e.UserId });
+
         modelBuilder.Entity<UserGameEntry>().HasIndex(e => new { e.UserId, e.GameId }).IsUnique();
         modelBuilder.Entity<UserGameEntry>()
             .HasOne(e => e.User)
@@ -61,6 +72,8 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
         modelBuilder.Entity<UserGameEntry>().HasIndex(e => new { e.UserId, e.StatusChangedAt });
 
         ConfigureUserGameEvents(modelBuilder);
+        ConfigureUserGamePlaythroughs(modelBuilder);
+        ConfigureReviews(modelBuilder);
 
         // UserListSortPreference: one row per (user, status); no row means the default sort
         modelBuilder.Entity<UserListSortPreference>().HasKey(p => new { p.UserId, p.StatusId });
@@ -134,6 +147,131 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
                 Id = 5, Key = ListStatusKeys.Dropped, DefaultName = "Dropped", SortOrder = 5,
                 IsStarted = true, IsTerminal = true, CountsAsCompletion = false
             });
+    }
+
+    private static void ConfigurePlaythroughTypes(ModelBuilder modelBuilder)
+    {
+        var types = modelBuilder.Entity<PlaythroughType>();
+
+        // Assigned rather than generated, exactly as ListStatus is: these ids are seeded constants
+        // referenced by every playthrough row, so they must be stable across every environment.
+        types.Property(t => t.Id).ValueGeneratedNever();
+        types.Property(t => t.Key).HasMaxLength(32);
+        types.Property(t => t.DefaultName).HasMaxLength(64);
+        types.HasIndex(t => t.Key).IsUnique();
+
+        types.HasData(
+            new PlaythroughType
+            {
+                Id = 1, Key = PlaythroughTypeKeys.Rushed, DefaultName = "Rushed", SortOrder = 1
+            },
+            new PlaythroughType
+            {
+                Id = 2, Key = PlaythroughTypeKeys.Normally, DefaultName = "Normally", SortOrder = 2
+            },
+            new PlaythroughType
+            {
+                Id = 3, Key = PlaythroughTypeKeys.Completionist, DefaultName = "Completionist", SortOrder = 3
+            });
+    }
+
+    private static void ConfigureUserGamePlaythroughs(ModelBuilder modelBuilder)
+    {
+        var playthroughs = modelBuilder.Entity<UserGamePlaythrough>();
+
+        playthroughs.HasKey(p => p.Id);
+        playthroughs.Property(p => p.Notes).HasMaxLength(2000);
+
+        // A direct foreign key to the account, even though the entry already leads there. The
+        // ownership guard selects user-owned entities by the presence of a `UserId` property and
+        // then insists on a cascading foreign key tied to that column; a child keyed only through
+        // the entry would carry no such column and escape both the cascade and the export
+        // registration without failing anything. See ADR 0024.
+        playthroughs.HasOne(p => p.User)
+            .WithMany()
+            .HasForeignKey(p => p.UserId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // The entry, referenced by (Id, UserId) rather than by Id alone. That makes "this
+        // playthrough's owner is the entry's owner" a database constraint rather than a promise
+        // the service has to keep — a row pointing at somebody else's entry cannot be written at
+        // all. PostgreSQL is happy with the two overlapping cascade paths this creates.
+        playthroughs.HasOne(p => p.Entry)
+            .WithMany()
+            .HasForeignKey(p => new { p.UserGameEntryId, p.UserId })
+            .HasPrincipalKey(e => new { e.Id, e.UserId })
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // Restrict, as for statuses: types are seeded reference data, and deleting one should fail
+        // loudly rather than take every playthrough that used it.
+        playthroughs.HasOne(p => p.Type)
+            .WithMany()
+            .HasForeignKey(p => p.TypeId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        // Enforced by the database as well as by the input DTO, because the column outlives any
+        // one validation attribute. 600,000 minutes is ten thousand hours — comfortably past any
+        // honest figure and still short of a typo that would break a sum.
+        playthroughs.ToTable(t =>
+        {
+            t.HasCheckConstraint(
+                "CK_UserGamePlaythroughs_MinutesPlayed_Range",
+                "\"MinutesPlayed\" IS NULL OR (\"MinutesPlayed\" >= 1 AND \"MinutesPlayed\" <= 600000)");
+            t.HasCheckConstraint(
+                "CK_UserGamePlaythroughs_Dates_Order",
+                "\"StartedOn\" IS NULL OR \"FinishedOn\" IS NULL OR \"FinishedOn\" >= \"StartedOn\"");
+        });
+
+        // The user's own playthroughs, which is every read the panel makes.
+        playthroughs.HasIndex(p => new { p.UserId, p.UserGameEntryId });
+
+        // The community aggregate's access path is the one that is not obvious, so it is worth
+        // stating: it asks about one *game* across all users, and the game id lives on the entry
+        // rather than here. So it selects the entries for that game and joins in on
+        // UserGameEntryId. No index is declared for that here on purpose — the composite foreign
+        // key above already gets one on (UserGameEntryId, UserId), which serves the join as a
+        // leading-column prefix. A second index on UserGameEntryId alone would be pure duplication.
+    }
+
+    private static void ConfigureReviews(ModelBuilder modelBuilder)
+    {
+        var reviews = modelBuilder.Entity<Review>();
+
+        reviews.HasKey(r => r.Id);
+        reviews.Property(r => r.Body).HasMaxLength(10000);
+        reviews.Property(r => r.Visibility).HasMaxLength(16);
+
+        // One review per user per game. The entry is already unique on (UserId, GameId), so a
+        // unique index on the entry id is the whole of that constraint.
+        reviews.HasIndex(r => r.UserGameEntryId).IsUnique();
+
+        // The same two foreign keys a playthrough carries, for the same two reasons: the guard
+        // keys on the UserId column, and the composite key makes "this review's owner is the
+        // entry's owner" a database constraint rather than a service's promise.
+        reviews.HasOne(r => r.User)
+            .WithMany()
+            .HasForeignKey(r => r.UserId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        reviews.HasOne(r => r.Entry)
+            .WithMany()
+            .HasForeignKey(r => new { r.UserGameEntryId, r.UserId })
+            .HasPrincipalKey(e => new { e.Id, e.UserId })
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // SetNull rather than Cascade: deleting the record of one run must not take the prose
+        // somebody wrote about the game with it. The pointer was optional to begin with.
+        reviews.HasOne(r => r.Playthrough)
+            .WithMany()
+            .HasForeignKey(r => r.PlaythroughId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        // Enforced by the database as well as by the input DTO, because the column outlives any
+        // one validation attribute. A third value — `friends`, once following exists — is one
+        // additive migration away.
+        reviews.ToTable(t => t.HasCheckConstraint(
+            "CK_Reviews_Visibility",
+            "\"Visibility\" IN ('public', 'private')"));
     }
 
     private static void ConfigureUserGameEvents(ModelBuilder modelBuilder)

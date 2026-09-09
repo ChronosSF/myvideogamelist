@@ -12,11 +12,16 @@ namespace MyVideoGameList.Server.DTOs;
 /// <c>docs/decisions/0023-*</c>.
 /// </para>
 /// <para>
-/// No "total hours": nothing records hours yet. A stat that would have to be invented is left out
-/// rather than approximated from timestamps that do not mean what it would claim.
+/// Hours are real now — they come from playthroughs, which the user types in — so
+/// <see cref="PlaytimeStatsDto"/> can say "played" where nothing else here may. It carries platform
+/// <em>ids</em> rather than names, keeping the no-IGDB-call rule intact; the client resolves them.
 /// </para>
 /// </remarks>
-public record UserStatsDto(LibraryStatsDto Library, ScoreStatsDto Scores, ActivityStatsDto Activity);
+public record UserStatsDto(
+    LibraryStatsDto Library,
+    ScoreStatsDto Scores,
+    ActivityStatsDto Activity,
+    PlaytimeStatsDto Playtime);
 
 /// <summary>
 /// What the user is tracking right now. Current state, read from <c>UserGameEntries</c> rather than
@@ -97,3 +102,39 @@ public record ActivityMonthDto(string Month, int Started, int Finished, int Drop
 /// keeps the median honest about how little it may be based on.
 /// </param>
 public record ActiveTimeDto(int Samples, double MedianHours, double LongestHours);
+
+/// <summary>
+/// Time the user has actually logged, from their playthroughs.
+/// </summary>
+/// <remarks>
+/// <para>
+/// The one figure on this page that may use the word "played", because it is the only one hours
+/// back. Everything else about platforms — "most of your games are on" — is about library
+/// composition and counts a four-platform game four times.
+/// </para>
+/// <para>
+/// Read from <c>UserGamePlaythroughs</c> alone, with no IGDB call, on the same rule as the rest of
+/// this document: a statistic about the user's own behaviour must not go dark because a third party
+/// is down (ADR 0023). <see cref="PlatformMinutesDto.PlatformId"/> is therefore a bare IGDB id, and
+/// the client turns it into a name from the games it has already loaded.
+/// </para>
+/// </remarks>
+/// <param name="Playthroughs">Every playthrough recorded, whether or not it says how long it took.</param>
+/// <param name="TotalMinutes">The sum over those that do.</param>
+/// <param name="WithHours">
+/// How many carried a duration. The difference from <paramref name="Playthroughs"/> is what stops
+/// the total reading as though it covered everything.
+/// </param>
+/// <param name="ByPlatform">
+/// Most minutes first, ties broken by platform id so the order does not depend on the database's.
+/// Playthroughs with no platform are absent here and still counted in the totals — the time was
+/// real even when the user did not say where it was spent.
+/// </param>
+public record PlaytimeStatsDto(
+    int Playthroughs,
+    int TotalMinutes,
+    int WithHours,
+    IReadOnlyList<PlatformMinutesDto> ByPlatform);
+
+/// <param name="PlatformId">An IGDB platform id. Resolved to a name on the client.</param>
+public record PlatformMinutesDto(int PlatformId, int Minutes, int Playthroughs);

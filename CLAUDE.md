@@ -106,8 +106,9 @@ ROADMAP.md                      Forward-looking plan
   our own tables, derives everything at read time, and is deliberately uncached — every figure
   changes the moment a game moves. The platform and genre breakdowns are the one part that needs
   game metadata, so they are counted on the client from the lists already loaded; an outage costs
-  those two rows and nothing else. Note there are no hours anywhere in the schema, so no stat may
-  say "played". See `docs/decisions/0023-*`.
+  those two rows and nothing else. Hours now exist — on playthroughs — so "most played on" is
+  answerable and says "played"; the older "most of your games are on" row is a different claim about
+  library composition and keeps its wording. See `docs/decisions/0023-*` and `0025-*`.
 
 - **A new user-owned table has to be registered in the export manifest and cascade from
   `AspNetUsers`.** `UserOwnedDataTests` walks the EF model and fails otherwise — in both
@@ -117,6 +118,23 @@ ROADMAP.md                      Forward-looking plan
   and stays free — portability is a right, and the paid "Export" in the monetisation table is a
   nicer *format* on top, so do not put an entitlement check on `/api/user/export`. It makes no IGDB
   call, for the same reason the stats do not. See `docs/decisions/0024-*`.
+
+- **A child table of the entry carries its own `UserId`, because the ownership guard keys on it.**
+  `UserOwnedDataTests` selects user-owned entities by the *presence of a `UserId` property* and then
+  demands a cascading foreign key tied to that column. A playthrough or a review keyed only through
+  `UserGameEntries` would carry no such column, so it would escape both the cascade check and the
+  export manifest without failing anything — a silent hole in somebody's data. So both carry
+  `UserId` and reach their entry by a composite foreign key on `(UserGameEntryId, UserId)`, which is
+  what makes "the child's owner is the entry's owner" a database constraint rather than a promise a
+  service has to keep. See `docs/decisions/0025-*`.
+
+- **No MVGL average is shown without its count, and the floor lives in the client.** The community
+  completion times are medians, never means — self-reported playtime has a long idle-hours tail —
+  and every bucket travels with `samples`. `MIN_PLAYTHROUGH_SAMPLES` in `@/lib/score` suppresses a
+  tier under the floor, showing a dash and the count rather than a number, exactly as
+  `MIN_CRITIC_REVIEWS` does for IGDB's critic score. Only playthroughs with *both* a type and a
+  duration are counted: the others would inflate a sample size behind a figure they did not help
+  produce. See `docs/decisions/0016-*` and `0025-*`.
 
 - **Never change a game's status without recording an event.** `UserGameEvents` is append-only
   and is the only record that a transition happened — `UserGameLists` holds current state and is

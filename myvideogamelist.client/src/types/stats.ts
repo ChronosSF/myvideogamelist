@@ -11,6 +11,7 @@ export interface UserStats {
     library: LibraryStats;
     scores: ScoreStats;
     activity: ActivityStats;
+    playtime: PlaytimeStats;
 }
 
 export interface LibraryStats {
@@ -52,6 +53,32 @@ export interface ActivityMonth {
     started: number;
     finished: number;
     dropped: number;
+}
+
+/**
+ * Hours the user has logged on playthroughs — the one part of this page that "played" is an honest
+ * word for, because hours back it.
+ *
+ * `byPlatform` carries bare IGDB ids, because `/api/user/stats` makes no IGDB call. The page
+ * resolves them from the games in the lists it has already loaded, then from
+ * `/api/platforms/active`, then prints the id.
+ */
+export interface PlaytimeStats {
+    /** Every playthrough recorded, whether or not it says how long it took. */
+    playthroughs: number;
+    /** The sum over those that do. */
+    totalMinutes: number;
+    /** How many carried a duration. The gap from `playthroughs` is what keeps the total honest. */
+    withHours: number;
+    /** Most minutes first. Playthroughs with no platform are absent, and still in the totals. */
+    byPlatform: PlatformMinutes[];
+}
+
+export interface PlatformMinutes {
+    /** An IGDB platform id. */
+    platformId: number;
+    minutes: number;
+    playthroughs: number;
 }
 
 /** Time spent actually playing, with time on hold excluded — see ADR 0018. */

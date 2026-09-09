@@ -1,10 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { ProfileStats } from '@/components/ProfileStats';
 import { DEFAULT_SORT } from '@/lib/listSort';
 import { emptyLists, type ListEntryDto, type ListId } from '@/types/list';
+import type { PlatformDto } from '@/types/game';
 import type { UserStats } from '@/types/stats';
 import { entry, platform } from '@/test/factories';
 
@@ -63,14 +64,35 @@ function stats(overrides: Partial<UserStats> = {}): UserStats {
             longestStreakMonths: 3,
             timeToFinish: { samples: 3, medianHours: 84, longestHours: 240 },
         },
+        playtime: {
+            playthroughs: 0,
+            totalMinutes: 0,
+            withHours: 0,
+            byPlatform: [],
+        },
         ...overrides,
     };
 }
 
-/** Answers the stats endpoint and nothing else, so a stray fetch fails loudly. */
-function stubFetch(response: UserStats | 'fail' | 'unreachable') {
+/**
+ * Answers the two endpoints this page may call and nothing else, so a stray fetch fails loudly.
+ *
+ * `platforms` is the fallback lookup the playtime breakdown reaches for when the loaded lists
+ * cannot name an id: `null` makes it fail, which is a case with its own copy on screen.
+ */
+function stubFetch(
+    response: UserStats | 'fail' | 'unreachable',
+    platforms: PlatformDto[] | null = [],
+) {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
         const url = String(input);
+
+        if (url === '/api/platforms/active') {
+            return platforms === null
+                ? new Response('nope', { status: 500 })
+                : new Response(JSON.stringify(platforms), { status: 200 });
+        }
+
         if (url !== '/api/user/stats') throw new Error(`unexpected fetch: ${url}`);
         if (response === 'unreachable') throw new TypeError('Failed to fetch');
         if (response === 'fail') return new Response('nope', { status: 500 });
@@ -79,6 +101,11 @@ function stubFetch(response: UserStats | 'fail' | 'unreachable') {
 
     vi.stubGlobal('fetch', fetchMock);
     return fetchMock;
+}
+
+/** Puts entries in the mocked lists context, which is where platform names come from first. */
+function withLists(lists: Partial<Record<ListId, ListEntryDto[]>>) {
+    listsValue.lists = { ...emptyLists(), ...lists } as Record<ListId, ListEntryDto[]>;
 }
 
 function renderStats() {
@@ -206,8 +233,10 @@ describe('ProfileStats headline figures', () => {
         renderStats();
         await settled();
 
-        expect(screen.getByText('—')).toBeInTheDocument();
-        expect(screen.getByText(/nothing finished or dropped yet/i)).toBeInTheDocument();
+        // Scoped to the tile: the hours tile shows a dash of its own when nothing is logged.
+        const rate = screen.getByText('completion rate').closest('.profile-stat-tile') as HTMLElement;
+        expect(within(rate).getByText('—')).toBeInTheDocument();
+        expect(within(rate).getByText(/nothing finished or dropped yet/i)).toBeInTheDocument();
     });
 
     it('shows the mean score against the ten-point scale, never as a percentage', async () => {
@@ -289,5 +318,139 @@ describe('ProfileStats library breakdown', () => {
         expect(screen.getByText(/needs game details, which failed to load/i)).toBeInTheDocument();
         expect(screen.getByText('75%')).toBeInTheDocument();
         expect(screen.getByText('3.5 days')).toBeInTheDocument();
+    });
+});
+
+describe('ProfileStats hours logged', () => {
+    it('says so when nothing has been logged, rather than printing a zero', async () => {
+        stubFetch(stats());
+        renderStats();
+
+        await waitFor(() => expect(screen.getByText('hours logged')).toBeInTheDocument());
+        expect(screen.getByText(/log a playthrough with its hours and this fills in/i))
+            .toBeInTheDocument();
+    });
+
+    it('reports the total the user logged, over the runs that carried one', async () => {
+        stubFetch(stats({
+            playtime: {
+                playthroughs: 4,
+                totalMinutes: 60 * 96,
+                withHours: 4,
+                byPlatform: [{ platformId: 6, minutes: 60 * 96, playthroughs: 4 }],
+            },
+        }));
+        renderStats();
+
+        await waitFor(() => expect(screen.getByText('4 days')).toBeInTheDocument());
+        expect(screen.getByText(/you logged, over 4 playthroughs/i)).toBeInTheDocument();
+    });
+
+    it('says how many playthroughs recorded no time at all', async () => {
+        // The gap is what stops the total reading as though it covered every run.
+        stubFetch(stats({
+            playtime: {
+                playthroughs: 5,
+                totalMinutes: 600,
+                withHours: 2,
+                byPlatform: [{ platformId: 6, minutes: 600, playthroughs: 2 }],
+            },
+        }));
+        renderStats();
+
+        await waitFor(() =>
+            expect(screen.getByText(/3 more recorded no time/i)).toBeInTheDocument());
+    });
+});
+
+/** The "Most played on" section, so its rows are not confused with the game-count breakdown. */
+function playedOnSection(): HTMLElement {
+    return screen.getByRole('heading', { name: 'Most played on' }).parentElement as HTMLElement;
+}
+
+describe('ProfileStats most played on', () => {
+    const PLAYED = stats({
+        playtime: {
+            playthroughs: 3,
+            totalMinutes: 60 * 30,
+            withHours: 3,
+            byPlatform: [
+                { platformId: 6, minutes: 60 * 20, playthroughs: 2 },
+                { platformId: 48, minutes: 60 * 10, playthroughs: 1 },
+            ],
+        },
+    });
+
+    it('is absent when no playthrough named a platform', async () => {
+        stubFetch(stats());
+        renderStats();
+
+        await waitFor(() => expect(screen.getByText('hours logged')).toBeInTheDocument());
+        expect(screen.queryByRole('heading', { name: 'Most played on' })).not.toBeInTheDocument();
+    });
+
+    it('says "played" here, where hours back it', async () => {
+        // The other platform row is about library composition and keeps its own wording — a
+        // four-platform game counts towards all four there, and no hours are involved.
+        withLists({ finished: [entry({ game: { id: 1, platforms: [platform(6, 'PC')] } })] });
+        stubFetch(PLAYED);
+        renderStats();
+
+        await waitFor(() =>
+            expect(screen.getByRole('heading', { name: 'Most played on' })).toBeInTheDocument());
+        expect(screen.getByRole('heading', { name: 'Most of your games are on' })).toBeInTheDocument();
+    });
+
+    it('names platforms from the games already loaded', async () => {
+        withLists({
+            finished: [entry({ game: { id: 1, platforms: [platform(6, 'PC'), platform(48, 'PlayStation 4')] } })],
+        });
+        stubFetch(PLAYED);
+        renderStats();
+
+        // Scoped to this section: the same platform names appear in "Most of your games are on"
+        // below, which counts games rather than hours.
+        await waitFor(() =>
+            expect(screen.getByRole('heading', { name: 'Most played on' })).toBeInTheDocument());
+        const played = within(playedOnSection());
+        expect(played.getByText('PC')).toBeInTheDocument();
+        expect(played.getByText('PlayStation 4')).toBeInTheDocument();
+        expect(played.getByText('20 hours')).toBeInTheDocument();
+        expect(played.getByText('10 hours')).toBeInTheDocument();
+    });
+
+    it('falls back to the active platform list for an id the lists cannot name', async () => {
+        // Usually a game the user has since deleted: the hours are still theirs.
+        withLists({ finished: [entry({ game: { id: 1, platforms: [platform(6, 'PC')] } })] });
+        stubFetch(PLAYED, [platform(48, 'PlayStation 4')]);
+        renderStats();
+
+        await waitFor(() => expect(screen.getByText('PlayStation 4')).toBeInTheDocument());
+    });
+
+    it('prints the id when neither source can name it, and says why', async () => {
+        withLists({ finished: [entry({ game: { id: 1, platforms: [platform(6, 'PC')] } })] });
+        stubFetch(PLAYED, null);
+        renderStats();
+
+        await waitFor(() => expect(screen.getByText('Platform #48')).toBeInTheDocument());
+        expect(screen.getByText(/some platform names could not be loaded/i)).toBeInTheDocument();
+
+        // The hours are from our own tables and stand whatever IGDB did.
+        expect(screen.getByText('10 hours')).toBeInTheDocument();
+    });
+
+    it('asks for the active platform list only when something is unnamed', async () => {
+        const fetchMock = stubFetch(PLAYED);
+        withLists({
+            finished: [entry({ game: { id: 1, platforms: [platform(6, 'PC'), platform(48, 'PS4')] } })],
+        });
+        renderStats();
+
+        await waitFor(() =>
+            expect(screen.getByRole('heading', { name: 'Most played on' })).toBeInTheDocument());
+        expect(within(playedOnSection()).getByText('PC')).toBeInTheDocument();
+        expect(fetchMock.mock.calls.map(call => String(call[0])))
+            .not.toContain('/api/platforms/active');
     });
 });

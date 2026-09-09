@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using MyVideoGameList.Server.Data;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace MyVideoGameList.Server.Data.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260907143409_AddPlaythroughs")]
+    partial class AddPlaythroughs
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -362,60 +365,6 @@ namespace MyVideoGameList.Server.Data.Migrations
                         });
                 });
 
-            modelBuilder.Entity("MyVideoGameList.Server.Models.Review", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<string>("Body")
-                        .IsRequired()
-                        .HasMaxLength(10000)
-                        .HasColumnType("character varying(10000)");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<bool>("HasSpoilers")
-                        .HasColumnType("boolean");
-
-                    b.Property<int?>("PlaythroughId")
-                        .HasColumnType("integer");
-
-                    b.Property<DateTimeOffset>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<int>("UserGameEntryId")
-                        .HasColumnType("integer");
-
-                    b.Property<string>("UserId")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("Visibility")
-                        .IsRequired()
-                        .HasMaxLength(16)
-                        .HasColumnType("character varying(16)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("PlaythroughId");
-
-                    b.HasIndex("UserGameEntryId")
-                        .IsUnique();
-
-                    b.HasIndex("UserId");
-
-                    b.HasIndex("UserGameEntryId", "UserId");
-
-                    b.ToTable("Reviews", t =>
-                        {
-                            t.HasCheckConstraint("CK_Reviews_Visibility", "\"Visibility\" IN ('public', 'private')");
-                        });
-                });
-
             modelBuilder.Entity("MyVideoGameList.Server.Models.UserGameEntry", b =>
                 {
                     b.Property<int>("Id")
@@ -656,33 +605,6 @@ namespace MyVideoGameList.Server.Data.Migrations
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
-                });
-
-            modelBuilder.Entity("MyVideoGameList.Server.Models.Review", b =>
-                {
-                    b.HasOne("MyVideoGameList.Server.Models.UserGamePlaythrough", "Playthrough")
-                        .WithMany()
-                        .HasForeignKey("PlaythroughId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
-                    b.HasOne("MyVideoGameList.Server.Models.ApplicationUser", "User")
-                        .WithMany()
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("MyVideoGameList.Server.Models.UserGameEntry", "Entry")
-                        .WithMany()
-                        .HasForeignKey("UserGameEntryId", "UserId")
-                        .HasPrincipalKey("Id", "UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Entry");
-
-                    b.Navigation("Playthrough");
-
-                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("MyVideoGameList.Server.Models.UserGameEntry", b =>

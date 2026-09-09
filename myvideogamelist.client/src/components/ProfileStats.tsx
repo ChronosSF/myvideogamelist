@@ -1,9 +1,13 @@
+import { useMemo } from 'react';
 import { Link } from 'react-router';
 import { useLists } from '@/hooks/useLists';
 import { useUserStats } from '@/hooks/useUserStats';
+import { useActivePlatforms } from '@/hooks/useActivePlatforms';
 import { formatDate, formatHours, formatRate, tallyBy } from '@/lib/stats';
 import { MAX_SCORE } from '@/lib/score';
+import type { ListEntryDto, ListId } from '@/types/list';
 import { LIST_IDS, LIST_NAMES } from '@/types/list';
+import type { PlaytimeStats } from '@/types/stats';
 import { ActivityChart } from './ActivityChart';
 import { LibraryBreakdown } from './LibraryBreakdown';
 import { ScoreHistogram } from './ScoreHistogram';
@@ -22,6 +26,21 @@ import './ProfileStats.css';
 export function ProfileStats() {
     const { stats, loading, error, reload } = useUserStats();
     const { lists, loading: listsLoading, error: listsError } = useLists();
+
+    // Every platform name the loaded lists can supply. Memoised because it is rebuilt from every
+    // game in every list, and because `missingPlatformIds` below depends on it.
+    const namesFromLists = useMemo(() => platformNamesIn(lists), [lists]);
+
+    const played = stats?.playtime.byPlatform ?? [];
+
+    // The second lookup is only worth a request when the first one left something unnamed, which
+    // for most people it does not.
+    const missing = listsLoading
+        ? []
+        : played.filter(platform => !namesFromLists.has(platform.platformId));
+
+    const active = useActivePlatforms(missing.length > 0);
+    const namesLoading = listsLoading || active.loading;
 
     if (loading) {
         return (
@@ -46,7 +65,7 @@ export function ProfileStats() {
         );
     }
 
-    const { library, scores, activity } = stats;
+    const { library, scores, activity, playtime } = stats;
 
     // Nothing recorded and nothing ever moved. Distinct from "a quiet month": there is no history
     // to summarise, so a page of zeros would be noise where one sentence is the whole answer.
@@ -91,6 +110,13 @@ export function ProfileStats() {
                     hint={scores.mean === null
                         ? 'no scores yet'
                         : `out of ${MAX_SCORE}, over ${scores.scored} ${scores.scored === 1 ? 'game' : 'games'}`}
+                />
+                <StatTile
+                    label="hours logged"
+                    value={playtime.withHours === 0 ? null : formatHours(playtime.totalMinutes / 60)}
+                    hint={playtime.withHours === 0
+                        ? 'log a playthrough with its hours and this fills in'
+                        : hoursHint(playtime)}
                 />
                 <StatTile
                     label="month streak"
@@ -170,8 +196,51 @@ export function ProfileStats() {
                 )}
             </section>
 
-            {/* The metadata-dependent half. Its own loading and error states, so an IGDB outage
-                takes these two rows and leaves every figure above them standing. */}
+            {/* The metadata-dependent half, from here down. Each part has its own loading and
+                error state, so an IGDB outage takes rows rather than the page. */}
+
+            {played.length > 0 && (
+                <section className="profile-section">
+                    {/* The one heading on this page allowed to say "played": hours back it. The
+                        "Most of your games are on" row below is about library composition and
+                        counts a four-platform game four times. */}
+                    <h3 className="profile-section-title">Most played on</h3>
+                    {namesLoading ? (
+                        <p className="profile-empty">Working out which platforms those hours were on…</p>
+                    ) : (
+                        <>
+                            <ul className="profile-ranked">
+                                {played.map(platform => (
+                                    <li key={platform.platformId} className="profile-ranked-row">
+                                        <span className="profile-ranked-name">
+                                            {platformName(platform.platformId, namesFromLists, active.platforms)}
+                                        </span>
+                                        <span className="profile-ranked-track" aria-hidden="true">
+                                            <span
+                                                className="profile-ranked-fill"
+                                                style={{ width: `${(platform.minutes / played[0].minutes) * 100}%` }}
+                                            />
+                                        </span>
+                                        <span className="profile-ranked-count" aria-hidden="true">
+                                            {formatHours(platform.minutes / 60)}
+                                        </span>
+                                        <span className="sr-only">
+                                            {`${formatHours(platform.minutes / 60)} over ${platform.playthroughs} ${platform.playthroughs === 1 ? 'playthrough' : 'playthroughs'}`}
+                                        </span>
+                                    </li>
+                                ))}
+                            </ul>
+                            {active.error !== null && (
+                                <p className="profile-caption">
+                                    Some platform names could not be loaded, so those rows show an
+                                    id. The hours come from your own data and are unaffected.
+                                </p>
+                            )}
+                        </>
+                    )}
+                </section>
+            )}
+
             {listsLoading ? (
                 <p className="profile-empty">Loading your library breakdown…</p>
             ) : listsError !== null ? (
@@ -195,4 +264,43 @@ export function ProfileStats() {
             )}
         </section>
     );
+}
+
+/** Every platform name the already-loaded lists can supply, by IGDB id. */
+function platformNamesIn(lists: Record<ListId, ListEntryDto[]>): Map<number, string> {
+    const names = new Map<number, string>();
+    for (const listId of LIST_IDS) {
+        for (const entry of lists[listId]) {
+            for (const platform of entry.game.platforms) names.set(platform.id, platform.name);
+        }
+    }
+    return names;
+}
+
+/**
+ * A platform's name, from the lists first, then from the active-platform list, then its id.
+ *
+ * Three sources because `/api/user/stats` deliberately makes no IGDB call, so it can only send the
+ * id. Most are named by the lists already on screen; the rest usually belong to a game the user has
+ * since deleted. Printing "Platform #48" is the honest last resort — the hours are real and the row
+ * belongs on the page whether or not we can name it.
+ */
+function platformName(
+    platformId: number,
+    fromLists: Map<number, string>,
+    active: { id: number; name: string }[],
+): string {
+    return fromLists.get(platformId)
+        ?? active.find(platform => platform.id === platformId)?.name
+        ?? `Platform #${platformId}`;
+}
+
+/** "what you logged, over 7 playthroughs" — and how many of them said nothing about hours. */
+function hoursHint(playtime: PlaytimeStats): string {
+    const runs = `${playtime.withHours} ${playtime.withHours === 1 ? 'playthrough' : 'playthroughs'}`;
+    const untimed = playtime.playthroughs - playtime.withHours;
+
+    return untimed === 0
+        ? `you logged, over ${runs}`
+        : `you logged, over ${runs}; ${untimed} more recorded no time`;
 }

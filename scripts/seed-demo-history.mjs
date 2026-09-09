@@ -47,16 +47,22 @@
  * complete history or it is left exactly as it was.
  *
  * It is **idempotent per account**: it deletes that user's `UserGameEntries`, `UserGameEvents` and
- * `UserWishlistItems` first, so re-running replaces the history rather than doubling it. It
- * touches no other account and no other table. Point it at a real account and you will destroy
- * that account's lists, which is why `--email` is mandatory and has no default — there is no way
- * to run this and have it choose a target for you.
+ * `UserWishlistItems` first, so re-running replaces the history rather than doubling it. That
+ * covers `UserGamePlaythroughs` and `Reviews` as well, without either being named in a DELETE:
+ * both cascade from the entry through their composite foreign key on `(UserGameEntryId, UserId)`,
+ * so deleting the entries takes them. It touches no other account and no other table. Point it at
+ * a real account and you will destroy that account's lists, which is why `--email` is mandatory
+ * and has no default — there is no way to run this and have it choose a target for you.
  *
  * The source of truth below is `GAMES`: one entry per game, with a timeline of status transitions.
  * Everything else is derived from it — one `UserGameEvents` row per consecutive pair of statuses,
  * and one `UserGameEntries` row carrying the last status, the score and the first and last
  * timestamps. That mirrors what `ListService` does at runtime, which is the property that matters:
  * the log and the current state agree, exactly as `docs/decisions/0018-*` requires.
+ *
+ * `PLAYTHROUGHS` and `REVIEWS` hang off those entries and are looked up by game id at insert time,
+ * so neither has to know a surrogate key. **Neither writes an event**, which is not an omission —
+ * a playthrough is not a status transition, and `docs/decisions/0025-*` is the record of why.
  *
  * The game ids are **real IGDB ids**, taken from this project's own `/api/games`. A made-up id
  * would leave every entry unhydrated on the lists page, and the platform and genre breakdowns
@@ -81,6 +87,11 @@
  *   activity   logStartedAt 2025-07-05, 12 months, 61 transitions
  *              currentStreakMonths 3, longestStreakMonths 5
  *              timeToFinish samples 11, median 508.17h, longest 990.17h
+ *   playtime   playthroughs 13, withHours 12, totalMinutes 29130
+ *              byPlatform PC 13050/7, Switch 8700/3, PS4 7380/2
+ *
+ * Note that `playthroughs` exceeds `withHours` by exactly one — Undertale below is logged with a
+ * type and no time, which is the row that proves the total does not claim to cover every run.
  *
  * ---------------------------------------------------------------------------------------------
  * WHAT EACH AWKWARD CASE IN THE DATA IS THERE TO PROVE
@@ -102,6 +113,15 @@
  *                          are why `recorded` (28) exceeds `tracked` (26).
  *   Baldur's Gate III      Wishlisted *and* currently playing. The wishlist is a separate axis
  *                          (ADR 0022), so the two are not exclusive and the page says so.
+ *   Playthroughs          A mix, on purpose: typed runs with hours on real IGDB platform ids of
+ *                         those games, which is what the community medians and the profile's
+ *                         "most played on" need; one untyped run and one with no hours, both of
+ *                         which are excluded from the medians and still counted as playthroughs;
+ *                         and a replay of Elden Ring on a second platform, which is the case the
+ *                         whole table exists for.
+ *   Reviews               Two, both private: a seeded account has consented to nothing, and the
+ *                         point of asking at write time is that the answer is not invented later.
+ *                         One names the playthrough it is about; the other is about the game.
  *   Aug–Dec 2025           Five consecutive months with a finish — the longest streak, and
  *                          deliberately partly outside the twelve months the chart shows, so the
  *                          figure proves it comes from the whole log.
@@ -169,6 +189,9 @@ if (!Number.isFinite(SHIFT_DAYS)) {
 
 /** As seeded by the migration. Backlog is the only status whose `IsStarted` is false. */
 const STATUS = { backlog: 1, playing: 2, on_hold: 3, finished: 4, dropped: 5 };
+
+/** As seeded by AddPlaythroughs. Effort order, matching IGDB's three tiers. */
+const PLAYTHROUGH_TYPE = { rushed: 1, normally: 2, completionist: 3 };
 
 /**
  * Every game, with its transitions in order. A `null` status is a removal from every list.
@@ -257,6 +280,66 @@ const GAMES = [
         [null, '2026-01-20 10:00'] ] },
 ];
 
+/**
+ * Playthroughs, keyed by the game they belong to. `type` of null means "still playing, do not know
+ * yet"; `minutes` of null means the user never said how long it took. Both are excluded from the
+ * community medians and both are still real rows — which is the case the aggregate has to handle.
+ *
+ * Platform ids are real IGDB ones, and are platforms those games actually run on, so the profile's
+ * "most played on" resolves to names from the lists rather than falling back to printing an id.
+ */
+const PLAYTHROUGHS = [
+    // Typed, timed, and on a platform — the rows that feed everything.
+    { game: 7346, title: 'Breath of the Wild', type: 'normally', platform: 130, minutes: 3180,
+      startedOn: '2025-07-20', finishedOn: '2025-08-14', notes: 'Went straight for the castle in the end.' },
+    { game: 1942, title: 'The Witcher 3', type: 'completionist', platform: 6, minutes: 7260,
+      startedOn: '2025-08-02', finishedOn: '2025-09-28', notes: 'Death March, every contract.' },
+    { game: 26226, title: 'Celeste', type: 'rushed', platform: 6, minutes: 480,
+      startedOn: '2025-10-01', finishedOn: '2025-10-09', notes: null },
+    { game: 14593, title: 'Hollow Knight', type: 'normally', platform: 6, minutes: 2340,
+      startedOn: '2025-10-05', finishedOn: '2025-10-27', notes: null },
+    { game: 113112, title: 'Hades', type: 'completionist', platform: 130, minutes: 4020,
+      startedOn: '2025-11-02', finishedOn: '2025-11-24', notes: 'Cleared it, then kept going anyway.' },
+    { game: 72, title: 'Portal 2', type: 'rushed', platform: 6, minutes: 510,
+      startedOn: '2025-12-03', finishedOn: '2025-12-07', notes: null },
+    { game: 19560, title: 'God of War', type: 'normally', platform: 48, minutes: 1980,
+      startedOn: '2026-02-14', finishedOn: '2026-03-22', notes: null },
+    { game: 26758, title: 'Super Mario Odyssey', type: 'normally', platform: 130, minutes: 1500,
+      startedOn: '2026-07-04', finishedOn: '2026-07-25', notes: null },
+    { game: 7342, title: 'Inside', type: 'rushed', platform: 6, minutes: 240,
+      startedOn: '2026-08-10', finishedOn: '2026-08-13', notes: null },
+
+    // Elden Ring twice, on two platforms. A replay is a second row, never an overwrite — this is
+    // the case that stopped playtime and platform being columns on the entry.
+    { game: 119133, title: 'Elden Ring (first run)', type: 'normally', platform: 48, minutes: 5400,
+      startedOn: '2026-08-01', finishedOn: '2026-08-20', notes: 'Faith build.' },
+    { game: 119133, title: 'Elden Ring (replay)', type: null, platform: 6, minutes: 900,
+      startedOn: '2026-08-25', finishedOn: null, notes: 'Going again on PC, dexterity this time.' },
+
+    // Untyped: in progress, so no answer to "how thoroughly" yet. Counted as a playthrough and in
+    // no median.
+    { game: 119171, title: "Baldur's Gate III", type: null, platform: 6, minutes: 1320,
+      startedOn: '2026-08-28', finishedOn: null, notes: null },
+
+    // Typed but with no hours recorded, which is the other half of the same exclusion.
+    { game: 12517, title: 'Undertale', type: 'rushed', platform: 6, minutes: null,
+      startedOn: '2026-06-02', finishedOn: '2026-06-06', notes: 'Pacifist. Forgot to time it.' },
+];
+
+/**
+ * Reviews, one per game at most. `playthrough` names one of the rows above by its `title`, or is
+ * null when the review is about the game in general — which is the common case.
+ *
+ * Both are `private`, because a seeded account has not consented to anything being public and the
+ * whole point of asking at write time is that the answer is not invented later.
+ */
+const REVIEWS = [
+    { game: 1942, visibility: 'private', hasSpoilers: false, playthrough: 'The Witcher 3',
+      body: 'The best side quests in the genre, and it is not close. The main story is the least of it.' },
+    { game: 119133, visibility: 'private', hasSpoilers: true, playthrough: null,
+      body: 'Opens up completely once you stop treating Stormveil as a wall. Second run is better than the first.' },
+];
+
 /** Scored without ever being listed: an entry with a status of null and no events whatsoever. */
 const SCORED_ONLY = [
     { id: 20744, title: 'Ōkami HD', score: 7, addedAt: '2026-07-11 21:00' },
@@ -280,7 +363,19 @@ function stamp(local) {
 }
 
 const statusId = key => (key === null ? 'NULL' : STATUS[key]);
+const typeId = key => (key === null ? 'NULL' : PLAYTHROUGH_TYPE[key]);
 const score = value => (value === null ? 'NULL' : value);
+const number = value => (value === null ? 'NULL' : value);
+
+/** `YYYY-MM-DD` shifted off the anchor, as a PostgreSQL date literal. */
+function day(local) {
+    const at = new Date(`${local}T00:00:00Z`);
+    at.setUTCDate(at.getUTCDate() + SHIFT_DAYS);
+    return `'${at.toISOString().slice(0, 10)}'::date`;
+}
+
+/** A nullable text literal, single-quotes doubled. */
+const text = value => (value === null ? 'NULL' : `'${String(value).replace(/'/g, "''")}'`);
 
 /** Single-quotes doubled, in case an email ever arrives with one in it. */
 const literal = value => `'${String(value).replace(/'/g, "''")}'`;
@@ -305,6 +400,10 @@ write(`        RAISE EXCEPTION 'No account %. Register it through the app first.
 write('    END IF;');
 write('');
 write('    -- Idempotent per account: replaces this history rather than doubling it.');
+write('    --');
+write('    -- UserGamePlaythroughs and Reviews are not named here and do not need to be: both');
+write('    -- cascade from the entry through their composite foreign key on');
+write('    -- (UserGameEntryId, UserId), so deleting the entries takes them.');
 write('    DELETE FROM "UserGameEvents" WHERE "UserId" = seed_user;');
 write('    DELETE FROM "UserWishlistItems" WHERE "UserId" = seed_user;');
 write('    DELETE FROM "UserGameEntries" WHERE "UserId" = seed_user;');
@@ -338,6 +437,65 @@ for (const game of SCORED_ONLY) {
     write('    INSERT INTO "UserGameEntries"'
         + ' ("UserId", "GameId", "StatusId", "Score", "AddedAt", "StatusChangedAt") VALUES');
     write(`        (seed_user, ${game.id}, NULL, ${score(game.score)}, ${stamp(game.addedAt)}, NULL);`);
+    write('');
+}
+
+// Playthroughs, looked up by game id so nothing here has to know a surrogate key. No events: a
+// playthrough is not a status transition (ADR 0025).
+write('    -- Playthroughs. No events written, deliberately — playing a game is not a transition.');
+for (const run of PLAYTHROUGHS) {
+    write(`    -- ${run.title}`);
+    write('    INSERT INTO "UserGamePlaythroughs"'
+        + ' ("UserId", "UserGameEntryId", "TypeId", "PlatformId", "MinutesPlayed",'
+        + ' "StartedOn", "FinishedOn", "Notes", "CreatedAt", "UpdatedAt")');
+    write('    SELECT seed_user, e."Id",'
+        + ` ${typeId(run.type)}, ${number(run.platform)}, ${number(run.minutes)},`);
+    write(`        ${run.startedOn === null ? 'NULL' : day(run.startedOn)},`
+        + ` ${run.finishedOn === null ? 'NULL' : day(run.finishedOn)}, ${text(run.notes)},`);
+    // Logged when the run ended, or when it started for one still in progress. Every row below
+    // has a start date, which is what makes that fallback total.
+    const loggedAt = `${run.finishedOn ?? run.startedOn} 20:00`;
+    write(`        ${stamp(loggedAt)}, ${stamp(loggedAt)}`);
+    write('    FROM "UserGameEntries" e'
+        + ` WHERE e."UserId" = seed_user AND e."GameId" = ${run.game};`);
+    write('');
+}
+
+write('    -- Reviews. One per game, private because consent is asked rather than assumed.');
+for (const review of REVIEWS) {
+    write('    INSERT INTO "Reviews"'
+        + ' ("UserId", "UserGameEntryId", "Body", "HasSpoilers", "Visibility",'
+        + ' "PlaythroughId", "CreatedAt", "UpdatedAt")');
+    write(`    SELECT seed_user, e."Id", ${text(review.body)},`
+        + ` ${review.hasSpoilers}, ${text(review.visibility)},`);
+
+    // The pointer, resolved in two steps rather than by guessing an id: the run is found here by
+    // its `title`, and the SQL below then locates that row by its `MinutesPlayed` within the
+    // game's entry, since the id is assigned by the database and is not knowable from here.
+    //
+    // Two limits come with matching on a duration, and both hold today only because the data
+    // above happens to avoid them. A run with `minutes: null` can never be pointed at, because
+    // SQL equality never matches null — Undertale is one. And two runs of the same game sharing a
+    // duration would leave `LIMIT 1` to choose between them arbitrarily. Check both before
+    // pointing a review at a new run.
+    const named = review.playthrough === null
+        ? null
+        : PLAYTHROUGHS.find(run => run.title === review.playthrough);
+
+    if (named === undefined) {
+        process.stderr.write(`Unknown playthrough named by a review: ${review.playthrough}\n`);
+        process.exit(1);
+    }
+
+    write(named === null
+        ? '        NULL,'
+        : `        (SELECT p."Id" FROM "UserGamePlaythroughs" p`
+            + ` WHERE p."UserId" = seed_user AND p."UserGameEntryId" = e."Id"`
+            + ` AND p."MinutesPlayed" = ${number(named.minutes)} LIMIT 1),`);
+
+    write(`        ${stamp('2026-08-31 21:00')}, ${stamp('2026-08-31 21:00')}`);
+    write('    FROM "UserGameEntries" e'
+        + ` WHERE e."UserId" = seed_user AND e."GameId" = ${review.game};`);
     write('');
 }
 

@@ -42,7 +42,7 @@ public class UserOwnedDataTests
     /// System-owned lookups. Everything else carrying a <c>UserId</c> is somebody's data and has
     /// to disappear with them.
     /// </summary>
-    private static readonly Type[] SystemOwned = [typeof(ListStatus)];
+    private static readonly Type[] SystemOwned = [typeof(ListStatus), typeof(PlaythroughType)];
 
     /// <summary>
     /// Our own user-owned entity types, which is what both halves of the contract are about.
@@ -139,8 +139,10 @@ public class UserOwnedDataTests
 
         Assert.Equal(
             [
+                nameof(Review),
                 nameof(UserGameEntry),
                 nameof(UserGameEvent),
+                nameof(UserGamePlaythrough),
                 nameof(UserHiddenPlatform),
                 nameof(UserListSortPreference),
                 nameof(UserWishlistItem),
