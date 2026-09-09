@@ -469,7 +469,15 @@ for (const review of REVIEWS) {
     write(`    SELECT seed_user, e."Id", ${text(review.body)},`
         + ` ${review.hasSpoilers}, ${text(review.visibility)},`);
 
-    // The pointer, resolved by matching the run's own notes rather than by guessing an id.
+    // The pointer, resolved in two steps rather than by guessing an id: the run is found here by
+    // its `title`, and the SQL below then locates that row by its `MinutesPlayed` within the
+    // game's entry, since the id is assigned by the database and is not knowable from here.
+    //
+    // Two limits come with matching on a duration, and both hold today only because the data
+    // above happens to avoid them. A run with `minutes: null` can never be pointed at, because
+    // SQL equality never matches null — Undertale is one. And two runs of the same game sharing a
+    // duration would leave `LIMIT 1` to choose between them arbitrarily. Check both before
+    // pointing a review at a new run.
     const named = review.playthrough === null
         ? null
         : PLAYTHROUGHS.find(run => run.title === review.playthrough);
