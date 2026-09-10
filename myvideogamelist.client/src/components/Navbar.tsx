@@ -63,8 +63,11 @@ export function Navbar() {
                                         aria-expanded={menuOpen}
                                         aria-label="User menu"
                                     >
+                                        {/* The username, not the email. The initial of an address
+                                            is an initial of something the user did not choose to
+                                            be known by, and often is not even a letter. */}
                                         <span className="navbar-avatar" aria-hidden="true">
-                                            {user.email.charAt(0).toUpperCase()}
+                                            {user.userName.charAt(0).toUpperCase()}
                                         </span>
                                         <svg className="w-3.5 h-3.5 text-slate-400 light:text-slate-500 ml-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
@@ -75,7 +78,7 @@ export function Navbar() {
                                         <>
                                             <div className="navbar-dropdown-overlay" onClick={() => setMenuOpen(false)} />
                                             <div className="navbar-dropdown" role="menu">
-                                                <div className="navbar-dropdown-email">{user.email}</div>
+                                                <div className="navbar-dropdown-email">@{user.userName}</div>
                                                 <Link
                                                     to="/user"
                                                     className="navbar-dropdown-item"
@@ -87,6 +90,23 @@ export function Navbar() {
                                                     </svg>
                                                     My Profile
                                                 </Link>
+                                                {/* Only when there is one. A link to a page that
+                                                    404s for everybody including its owner would be
+                                                    a worse explanation of the privacy setting than
+                                                    its absence is. */}
+                                                {user.profileVisibility === 'public' && (
+                                                    <Link
+                                                        to={`/u/${user.userName}`}
+                                                        className="navbar-dropdown-item"
+                                                        role="menuitem"
+                                                        onClick={() => setMenuOpen(false)}
+                                                    >
+                                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0zM3.6 9h16.8M3.6 15h16.8M12 3a15 15 0 010 18a15 15 0 010-18z" />
+                                                        </svg>
+                                                        My public page
+                                                    </Link>
+                                                )}
                                                 <button
                                                     className="navbar-dropdown-item navbar-dropdown-logout"
                                                     role="menuitem"

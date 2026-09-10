@@ -60,6 +60,20 @@ export const CACHE_GAME = sharedCache(3600, 86_400);
 export const CACHE_GAMES_LIST = sharedCache(600, 3600);
 
 /**
+ * Public profile pages.
+ *
+ * Shared-cacheable at all, which is worth stating because the page is about one person: it is
+ * identical for every reader, signed in or not, because the API behind it varies on nothing but
+ * the username in the URL. The owner's own private figures are a different route.
+ *
+ * Shorter than a game page, longer than the home page. A profile changes whenever its owner
+ * finishes something, and the first person to notice a stale one is its owner — but they are also
+ * the one person for whom a five-minute wait is explicable, and the acquisition case (ROADMAP D8)
+ * wants crawlers hitting the edge rather than the origin.
+ */
+export const CACHE_PROFILE = sharedCache(300, 3600);
+
+/**
  * Not-found responses. Cached briefly so a crawler hammering dead URLs does not reach the
  * origin every time, but not so long that a newly valid URL stays 404 at the edge.
  */
