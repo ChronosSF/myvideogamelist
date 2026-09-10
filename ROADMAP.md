@@ -67,7 +67,7 @@ polished game-tracking product that runs on AWS and ships safely on every commit
 - **Community signal** — *partly done*. **Community completion times ship**: a median per tier, each carrying the number of playthroughs behind it, behind a display floor, beside IGDB's own figures on the game page — which is what the playthrough types were made to mirror IGDB's tiers for (ADR [0025](docs/decisions/0025-playthroughs-and-reviews.md)). **Review text with spoiler tags ships too, but only the writing half**: a review is stored with a spoiler flag and a public/private choice its author actually made, and nothing reads it but them. **Still open:** anywhere to read somebody else's — a game-page review list and a profile — which needs public profiles first; plus site-wide average score, a score histogram over it, and helpful-votes. Note the reading half is not blocked on schema: `Reviews.Visibility` was deliberately asked for at write time rather than defaulted later, so every review already stored has an answer.
 - **Release notifications** — email or in-app alerts when a wishlist game gets a date or launches. The upcoming timeline already computes this data.
 - **Recommendations** — "because you finished X" using IGDB genre/theme similarity; a "what should I play next" backlog picker.
-- **Import from Steam / PSN / Xbox / GOG** — the single biggest reason people abandon a new tracker is retyping 300 games. Steam's public API makes this cheap and it deserves to be an early bet.
+- **Import from Steam / PSN / Xbox / GOG** — the single biggest reason people abandon a new tracker is retyping 300 games. **Scoped down, and no longer an early bet** (ADR [0026](docs/decisions/0026-a-library-import-records-ownership-not-history.md)): Steam exposes playtime and a last-played timestamp and nothing else, which separates "never launched" from "played at some point" and cannot distinguish Finished from Dropped from On Hold — and that ambiguous bucket is most of a real library. So an import records *ownership*: unplayed games land in Backlog, played ones become status-less entries ([0019](docs/decisions/0019-entry-survives-leaving-every-list.md)), the Steam wishlist maps one-to-one, and **no `UserGameEvents` rows are written at all**, because `AppendEvent` stamps import time and a guessed transition would be permanent fabricated history. An `Origin` column on the entry makes that exemption from [0018](docs/decisions/0018-append-only-status-event-log.md) explicit rather than implied by a missing row. The IGDB↔Steam AppID mapping from N1 is reusable with its `where` clause inverted, but cheap plumbing was never the reason to build this — read 0026 before starting, and note it needs a Steam Web API key, the project's first.
 - **Export** — CSV and a re-importable shape, plus column selection and scheduled or emailed exports. The **JSON download already ships and is free**: `GET /api/user/export` is data portability and cannot sit behind a subscription, so what is left to sell here is a nicer *format* over the same data, not access to it. See ADR [0024](docs/decisions/0024-the-ownership-contract.md) before gating anything export-shaped.
 - **Empty and error states that teach** — the lists page already has good ones; extend the pattern to games and profile.
 - **Responsive navigation** — `Navbar.tsx` tracks `menuOpen` but always renders the full link row; there is no mobile hamburger.
@@ -354,6 +354,19 @@ The project owns **myvideogamelist.net**, which pins down several items that wou
 
 ## 7. Suggested sequencing
 
+> **Next up, after playthroughs and reviews landed ([0025](docs/decisions/0025-playthroughs-and-reviews.md)).**
+> Three ADRs are now parked on the same missing thing, so **usernames and public profiles** is the
+> item that unblocks the most already-written code: 0025's reviews are stored and readable by nobody
+> but their author, [0016](docs/decisions/0016-scores-carry-their-sample-size.md)'s site-wide score
+> histogram has no page to live on, and D8/D9 have nothing to index. `ApplicationUser` holds only
+> `Theme` and `ListView` today — no display name at all, which is why the navbar avatar is the first
+> letter of an email address. It also gets cheaper the earlier it happens: a username is a namespace
+> claim, and every account created before it ships needs a backfill with collision handling.
+>
+> **H1 is the cheap warm-up** and should go first. Forking `HomePage.tsx` on `user` needs no new API:
+> Continue Playing (H3) reads `ListsProvider`, and the stats strip (H6) reads `/api/user/stats`, which
+> 0025 gave hours to. Both are already built; nothing renders them.
+
 **Phase 0 — Clean the foundation — DONE**
 IGDB credentials moved to user secrets (rotation still outstanding, and only you can do it); WeatherForecast template and the dead `Developers`/`Publishers` controllers deleted; seed data dropped via migration; `CancellationToken` plumbed through every controller and service; `/healthz` and `/readyz` added; the unbounded IGDB paging loop bounded; the calendar rebuilt on `release_dates` (3.3); 33 server unit tests added; CI extended with lint, typecheck, tests and CodeQL on both PRs and pushes.
 
@@ -372,7 +385,7 @@ Per-entry scores, dates, hours and notes; full list taxonomy plus Wishlist; prof
 H1 and H3 first — fork on auth and ship Continue Playing, which needs no new API. Then H4 personalised calendar and H8 events banner (H7's trending rail is already in). Fold them into the `/api/home` composite (3.5) as you go.
 
 **Phase 4 — Make it cool (ongoing)**
-Browse filters and sorting; game-page media; ITAD price tracking (P1–P11); Steam news (N1–N7); Steam import; export; recommendations; release notifications; reviews; mobile navigation and responsive polish; then the Tier 3 social layer.
+Browse filters and sorting; game-page media; ITAD price tracking (P1–P11); Steam news (N1–N7); Steam import (scoped to ownership by [0026](docs/decisions/0026-a-library-import-records-ownership-not-history.md)); export; recommendations; release notifications; the reading half of reviews, which needs public profiles first; mobile navigation and responsive polish; then the Tier 3 social layer.
 
 **Phase 5 — Monetise (after there is an audience)**
 The paid tier only makes sense once Phases 2–4 have shipped the features that sit behind it — price alerts (P5, P8), advanced stats, import re-sync and the paid export *format* are the actual product being sold — the JSON export itself already ships free and stays that way ([0024](docs/decisions/0024-the-ownership-contract.md)). Land the legal pages and consent banner (M8, M9) early since they are required regardless. Then Stripe Billing and entitlement gating (M1–M7), and ads (A1–A6) last — they are the least valuable revenue per unit of user goodwill, so introduce them only once the paid tier gives people a way out.
