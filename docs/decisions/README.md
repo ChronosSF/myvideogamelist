@@ -44,6 +44,7 @@ decision, write a new record and mark the old one superseded.
 | [0024](0024-the-ownership-contract.md) | One export manifest for every user-owned table, guarded in both directions | Implemented |
 | [0025](0025-playthroughs-and-reviews.md) | Playthroughs and reviews: what a user records about actually playing a game | Implemented |
 | [0026](0026-a-library-import-records-ownership-not-history.md) | A library import records ownership, not history | Accepted |
+| [0027](0027-usernames-and-public-profiles.md) | Usernames are a namespace, and a profile is published only when asked | Implemented |
 
 **Status** — *Accepted*: decided, not yet built. *Implemented*: decided and in the code.
 *Superseded*: replaced by a later record.

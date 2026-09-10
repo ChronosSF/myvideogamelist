@@ -58,7 +58,7 @@ MyVideoGameList.Server/         ASP.NET Core 10 API
 MyVideoGameList.Server.Tests/   xUnit tests
 myvideogamelist.client/
   src/root.tsx                  HTML document, providers, global ErrorBoundary
-  src/routes.ts                 Route table
+  src/routes.ts                 Route table. `/u/:userName` is the one public per-person page
   src/pages/                    Route modules (default export + optional loader/meta)
   src/lib/                      apiUrl(), useStoredNumberSet()
 docs/decisions/                 Architecture decision records
@@ -101,6 +101,24 @@ ROADMAP.md                      Forward-looking plan
   construction; wanting a game is not exclusive with playing it, so a game sits on the wishlist
   *and* in a list. `AddedAt` is its entire history — do not reach for `UserGameEvents`, and do not
   add a foreign key to `UserGameEntries`, because a wishlisted game usually has no entry at all.
+
+- **`UserName` is the public handle, not the email — and login had to be fixed for it.**
+  `SignInManager.PasswordSignInAsync(string, …)` resolves its first argument as a *username*, which
+  worked only while registration set both columns to the address. `AuthController` now looks the
+  account up by email and then by name and signs in the resolved user; reverting that reports itself
+  to every user as "your password is wrong". The shape rules live in `UserNamePolicy`, and
+  `Program.cs` configures Identity's own validator from the same constant — never state the alphabet
+  twice. Uniqueness is Identity's index over `NormalizedUserName`: **never check availability before
+  writing**, let `SetUserNameAsync` return `DuplicateUserName`. See `docs/decisions/0027-*`.
+
+- **A profile is private by default, and the public document is hand-assembled.**
+  `ProfileVisibility` defaults to `private` for new accounts as well as backfilled ones, on ADR
+  0025's argument that a default is not consent. Two gates compose and the narrower wins: a public
+  review on a private profile is visible to nobody. `PublicProfileService` reuses `StatsService`
+  rather than re-deriving anything, but copies fields into `PublicProfileDto` **one at a time** —
+  returning `UserStatsDto` would publish every figure ever added to the private profile, by nobody's
+  decision. A private profile and an unclaimed name are the same 404, so the endpoint cannot be used
+  to ask whether a name has an account.
 
 - **A statistic about the user must not depend on IGDB being up.** `/api/user/stats` reads only
   our own tables, derives everything at read time, and is deliberately uncached — every figure
@@ -175,6 +193,11 @@ ROADMAP.md                      Forward-looking plan
   that only checks `response.ok` turns a dead upstream into an unhandled 500. Wrap it and throw
   a deliberate 502. The same trap catches an optimistic mutation: with no `catch`, the change
   stays on screen as though it saved, and the rejection escapes unhandled.
+
+- **`useUserStats` takes the account id, and that parameter is the guard.** It is mounted on the
+  home page now, which outlives a sign-out, so the account is held in state and compared during
+  render — the shape ADR 0022 settled on for the list providers. Passing a constant, or dropping the
+  parameter, puts one account's figures under another's name.
 
 - **Loaders run on the server**, where a relative URL has no origin. Use `apiUrl()` from
   `@/lib/api` for any fetch that may run during SSR.

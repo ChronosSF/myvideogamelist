@@ -12,7 +12,7 @@ has to be persisted**, because the two views miss different things. Read it alon
 | Table | Shape | Serves |
 |---|---|---|
 | `AspNet*` | ASP.NET Identity, unmodified | Auth |
-| `ApplicationUser` | Identity plus `Theme` and `ListView` columns | Presentation preferences |
+| `ApplicationUser` | Identity plus `Theme`, `ListView`, `ProfileVisibility` and `UserNameChangedAt` | Presentation preferences, and who may read the profile |
 | `UserGameEntries` | PK `(UserId, GameId)`, nullable `StatusId` FK, `Score`, `AddedAt`, `StatusChangedAt` | The user's record of a game |
 | `ListStatuses` | Seeded lookup, five rows, semantic flags | The taxonomy |
 | `UserGameEvents` | Append-only status transitions | Activity, streaks, trends |
@@ -52,8 +52,8 @@ change existing shapes rather than adding to them.
 
 | Table / change | Notes | Roadmap |
 |---|---|---|
-| `ApplicationUser` + `Username` | **Structural.** A real public handle, unique, separate from the email Identity currently puts in `UserName`. Needs a reserved-name list (`admin`, `api`, `settings`) or `/u/{username}` will collide with routes | Tier 1 public profiles |
-| `ApplicationUser` + profile columns | `DisplayName`, `AvatarUrl`, `Bio`, `CreatedAt`, `ProfileVisibility` (public / friends / private) | Tier 1 |
+| ~~`ApplicationUser` + `Username`~~ | **DONE, and not as a new column.** Identity's own `UserName` became the handle, so the case-insensitive unique index it already maintains over `NormalizedUserName` *is* the namespace constraint — a second column would have meant a second uniqueness rule to keep in step. The reserved-name list this row predicted lives in `UserNamePolicy`. Login had to stop resolving its first argument as a username, which is the breakage worth knowing about. Pre-existing accounts were backfilled deterministically from the email local part. See ADR [0027](decisions/0027-usernames-and-public-profiles.md) | Tier 1 public profiles |
+| `ApplicationUser` + profile columns | `ProfileVisibility` **ships**, defaulting to `private` — a default is not consent, and it is what made the email-derived backfill above safe. `DisplayName`, `AvatarUrl` and `Bio` are still open and are all additive. **`CreatedAt` is deliberately not added**: the public profile says "tracking games here since" from the event log's first entry instead, because backfilling a join date for accounts that predate the column would be inventing a fact | Tier 1 |
 | `ApplicationUser` + locale columns | `Region`, `Currency` — ITAD is region-aware and a EUR user must not be shown USD prices | ITAD P6 |
 | `ExternalAccountLinks` | `(UserId, Provider, ExternalId)`. Identity's `AspNetUserLogins` covers OAuth sign-in, but a SteamID64 held for *import* is not a login credential and does not belong there | Tier 2 import, Tier 1 social login |
 
