@@ -24,8 +24,8 @@ import './ProfileStats.css';
  * `docs/decisions/0023-*` — the point is that a third party being down costs two rows of this page
  * rather than all of it.
  */
-export function ProfileStats() {
-    const { stats, loading, error, reload } = useUserStats();
+export function ProfileStats({ userId }: { userId: string }) {
+    const { stats, loading, error, reload } = useUserStats(userId);
     const { lists, loading: listsLoading, error: listsError } = useLists();
 
     // Every platform name the loaded lists can supply. Memoised because it is rebuilt from every

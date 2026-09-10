@@ -1,0 +1,132 @@
+/*
+ * The signed-in half of the home page. The landing hero above it is Tailwind inline like the rest
+ * of the page; these are the handful of things that are awkward as utilities — a themed panel, a
+ * three-up figure strip, and the button on a rail tile.
+ */
+
+.signed-in-hero {
+    border-bottom: 1px solid rgba(30, 41, 59, 1);
+    background: linear-gradient(180deg, rgba(30, 58, 138, 0.25), transparent);
+}
+
+[data-theme='light'] .signed-in-hero {
+    border-bottom-color: #e2e8f0;
+    background: linear-gradient(180deg, rgba(219, 234, 254, 0.7), transparent);
+}
+
+/* ── The figures ─────────────────────────────────────────────────────────── */
+
+.home-strip {
+    display: grid;
+    /* Three across on anything but a phone, and stacked rather than crushed below that: three
+       numbers side by side at 320px are three numbers nobody reads. */
+    grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+    gap: 0.75rem;
+    margin: 0;
+}
+
+.home-strip-item {
+    /* column-reverse, so the markup keeps the term before the description a definition list wants
+       while the eye gets the figure before its label. */
+    display: flex;
+    flex-direction: column-reverse;
+    justify-content: flex-end;
+    gap: 0.25rem;
+    padding: 0.875rem 1rem;
+    border: 1px solid rgba(51, 65, 85, 0.6);
+    border-radius: 0.75rem;
+    background: rgba(15, 23, 42, 0.4);
+}
+
+[data-theme='light'] .home-strip-item {
+    border-color: #e2e8f0;
+    background: #fff;
+}
+
+.home-strip-item dd {
+    margin: 0;
+    font-size: 1.5rem;
+    font-weight: 700;
+    line-height: 1.2;
+    color: #f1f5f9;
+}
+
+[data-theme='light'] .home-strip-item dd {
+    color: #0f172a;
+}
+
+.home-strip-item dt {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #94a3b8;
+}
+
+[data-theme='light'] .home-strip-item dt {
+    color: #475569;
+}
+
+/* ── Continue playing ────────────────────────────────────────────────────── */
+
+.continue-finish-btn {
+    width: 100%;
+    margin-top: 0.5rem;
+    padding: 0.375rem 0.5rem;
+    border: 1px solid rgba(71, 85, 105, 0.7);
+    border-radius: 0.5rem;
+    background: rgba(30, 41, 59, 0.7);
+    color: #cbd5e1;
+    font-size: 0.75rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background-color 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.continue-finish-btn:hover:not(:disabled) {
+    border-color: #22c55e;
+    color: #86efac;
+}
+
+.continue-finish-btn:disabled {
+    opacity: 0.6;
+    cursor: default;
+}
+
+[data-theme='light'] .continue-finish-btn {
+    border-color: #cbd5e1;
+    background: #f8fafc;
+    color: #334155;
+}
+
+[data-theme='light'] .continue-finish-btn:hover:not(:disabled) {
+    border-color: #16a34a;
+    color: #15803d;
+}
+
+.continue-empty {
+    padding: 1.25rem;
+    border: 1px dashed rgba(71, 85, 105, 0.7);
+    border-radius: 0.75rem;
+    font-size: 0.875rem;
+    color: #94a3b8;
+}
+
+[data-theme='light'] .continue-empty {
+    border-color: #cbd5e1;
+    color: #475569;
+}
+
+.continue-empty-link {
+    display: inline-block;
+    margin-top: 0.5rem;
+    color: #60a5fa;
+    font-weight: 500;
+}
+
+.continue-empty-link:hover {
+    text-decoration: underline;
+}
+
+[data-theme='light'] .continue-empty-link {
+    color: #2563eb;
+}

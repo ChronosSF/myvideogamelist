@@ -126,7 +126,7 @@ export function UserPage() {
                     and the theme toggle is not. Mounted only in this signed-in branch, which is
                     what lets its hook skip an account-change guard. */}
                 <div className="user-card">
-                    <ProfileStats />
+                    <ProfileStats userId={user.id} />
                 </div>
 
                 {/* Theme preference */}

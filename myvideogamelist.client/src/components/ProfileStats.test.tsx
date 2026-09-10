@@ -109,7 +109,7 @@ function withLists(lists: Partial<Record<ListId, ListEntryDto[]>>) {
 }
 
 function renderStats() {
-    return render(<MemoryRouter><ProfileStats /></MemoryRouter>);
+    return render(<MemoryRouter><ProfileStats userId="user-1" /></MemoryRouter>);
 }
 
 const settled = () =>
