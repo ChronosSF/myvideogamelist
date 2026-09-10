@@ -52,15 +52,18 @@ public class UserDataExporterTests
         string userId,
         string email,
         string theme = "dark",
-        string listView = ListViewModes.Tiles)
+        string listView = ListViewModes.Tiles,
+        string userName = "someone",
+        string profileVisibility = ProfileVisibility.Private)
     {
         db.Users.Add(new ApplicationUser
         {
             Id = userId,
-            UserName = email,
+            UserName = userName,
             Email = email,
             Theme = theme,
-            ListView = listView
+            ListView = listView,
+            ProfileVisibility = profileVisibility
         });
         db.SaveChanges();
     }
@@ -221,8 +224,10 @@ public class UserDataExporterTests
         // as somebody else's game id rather than as a subtly wrong count.
         using var db = NewDb();
 
-        AddAccount(db, UserId, "mine@test.local", theme: "light", listView: ListViewModes.Table);
-        AddAccount(db, OtherUserId, "theirs@test.local", theme: "dark", listView: ListViewModes.Tiles);
+        AddAccount(db, UserId, "mine@test.local", theme: "light", listView: ListViewModes.Table,
+            userName: "mine", profileVisibility: ProfileVisibility.Public);
+        AddAccount(db, OtherUserId, "theirs@test.local", theme: "dark", listView: ListViewModes.Tiles,
+            userName: "theirs");
 
         AddEntry(db, gameId: 11, status: ListStatusKeys.Playing, score: 8);
         AddEvent(db, gameId: 11, from: null, to: ListStatusKeys.Playing);
@@ -243,8 +248,13 @@ public class UserDataExporterTests
         var export = await NewExporter(db).ExportAsync(UserId, default);
 
         Assert.Equal("mine@test.local", export.Account.Email);
+        Assert.Equal("mine", export.Account.UserName);
         Assert.Equal("light", export.Account.Theme);
         Assert.Equal(ListViewModes.Table, export.Account.ListView);
+
+        // The name the user chose and the answer they gave about publishing are both data they
+        // entered, so both travel with the rest of it (ADR 0027).
+        Assert.Equal(ProfileVisibility.Public, export.Account.ProfileVisibility);
 
         Assert.Equal([11], export.Entries.Select(e => e.GameId));
         Assert.Equal([11], export.Events.Select(e => e.GameId));

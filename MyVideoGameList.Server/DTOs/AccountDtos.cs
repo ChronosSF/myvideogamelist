@@ -38,15 +38,28 @@ public record UserDataExportDto(
     IReadOnlyList<ListSortExportDto> ListSortPreferences);
 
 /// <summary>
-/// The account row itself — the columns MVGL added to Identity's user, plus the address that
-/// identifies it.
+/// The account row itself — the columns MVGL added to Identity's user, plus the address and the
+/// name that identify it.
 /// </summary>
 /// <remarks>
+/// <para>
 /// No password hash, no security stamp and no Identity bookkeeping. Those are credentials and
 /// machinery rather than data the user entered, and a hash in a downloaded file is a liability with
 /// nothing to recommend it.
+/// </para>
+/// <para>
+/// The username <em>is</em> data the user entered — they chose it, and it is the name everything
+/// they have written is published under — so it belongs here beside the address. So does
+/// <paramref name="ProfileVisibility"/>: an export that recorded what somebody wrote but not
+/// whether they agreed to it being read would be missing the more consequential of the two.
+/// </para>
 /// </remarks>
-public record AccountExportDto(string? Email, string Theme, string ListView);
+public record AccountExportDto(
+    string? Email,
+    string? UserName,
+    string Theme,
+    string ListView,
+    string ProfileVisibility);
 
 /// <summary>
 /// One game the user has recorded something about.

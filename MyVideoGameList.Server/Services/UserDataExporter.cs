@@ -54,7 +54,7 @@ public class UserDataExporter(ApplicationDbContext db, TimeProvider clock) : IUs
     /// <para>
     /// <see cref="ApplicationUser"/> is absent on purpose: it is not a table the user owns rows in,
     /// it is the user. It carries no <c>UserId</c> column, so the guard does not expect it here, and
-    /// its two MVGL columns are read into <see cref="UserDataExportDto.Account"/> directly.
+    /// the MVGL columns it does carry are read into <see cref="UserDataExportDto.Account"/> directly.
     /// <see cref="ListStatus"/> and <see cref="PlaythroughType"/> are absent because they are
     /// system-owned seed data — the export carries their keys, not their rows.
     /// </para>
@@ -119,7 +119,8 @@ public class UserDataExporter(ApplicationDbContext db, TimeProvider clock) : IUs
         var account = await db.Users
             .AsNoTracking()
             .Where(u => u.Id == userId)
-            .Select(u => new AccountExportDto(u.Email, u.Theme, u.ListView))
+            .Select(u => new AccountExportDto(
+                u.Email, u.UserName, u.Theme, u.ListView, u.ProfileVisibility))
             .SingleOrDefaultAsync(cancellationToken);
 
         // The caller is authenticated, so a missing row means the account was deleted underneath

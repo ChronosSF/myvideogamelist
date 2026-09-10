@@ -32,6 +32,7 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
     {
         base.OnModelCreating(modelBuilder);
 
+        ConfigureApplicationUsers(modelBuilder);
         ConfigureListStatuses(modelBuilder);
         ConfigurePlaythroughTypes(modelBuilder);
 
@@ -108,6 +109,41 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
             .WithMany()
             .HasForeignKey(hp => hp.UserId)
             .OnDelete(DeleteBehavior.Cascade);
+    }
+
+    /// <summary>
+    /// The MVGL columns on Identity's user row.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <c>UserName</c> itself is left exactly as Identity declares it. It carries the public handle
+    /// (ADR 0027) rather than a second column doing the same job, which means the case-insensitive
+    /// unique index Identity already maintains over <c>NormalizedUserName</c> <em>is</em> the
+    /// namespace constraint — there is no second uniqueness rule here to drift out of step with it.
+    /// The shape rules live in <see cref="UserNamePolicy"/> and are enforced by Identity's own
+    /// validator, which <c>Program.cs</c> configures from the same constants.
+    /// </para>
+    /// <para>
+    /// The visibility check constraint is the counterpart of the one on <c>Reviews</c>: the column
+    /// outlives any one validation attribute, and a row saying something other than public or
+    /// private would silently be treated as private by every read that compares against a literal.
+    /// </para>
+    /// </remarks>
+    private static void ConfigureApplicationUsers(ModelBuilder modelBuilder)
+    {
+        var users = modelBuilder.Entity<ApplicationUser>();
+
+        // The default is stated to the database as well as in the CLR property, so a row inserted
+        // by anything that is not this application — a fixture, a support script — is private too.
+        // Defaulting to public in one of those places and private in the other is the shape of
+        // mistake that publishes somebody's library without them ever being asked.
+        users.Property(u => u.ProfileVisibility)
+            .HasMaxLength(16)
+            .HasDefaultValue(Models.ProfileVisibility.Private);
+
+        users.ToTable(t => t.HasCheckConstraint(
+            "CK_AspNetUsers_ProfileVisibility",
+            "\"ProfileVisibility\" IN ('public', 'private')"));
     }
 
     private static void ConfigureListStatuses(ModelBuilder modelBuilder)
