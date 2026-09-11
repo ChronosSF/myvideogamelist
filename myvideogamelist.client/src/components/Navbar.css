@@ -4,9 +4,21 @@
     z-index: 50;
     background: var(--nav-bg, rgba(15, 23, 42, 0.95));
     border-bottom: 1px solid var(--nav-border, rgba(51, 65, 85, 0.5));
+    transition: background 0.2s, border-color 0.2s;
+}
+
+/* The bar's blur, on a layer of its own rather than on the bar. A backdrop-filter makes its element
+   the containing block for everything fixed inside it, and on the bar that shrank the user menu's
+   click-away overlay — `position: fixed; inset: 0` — to the bar itself, so a click on the page went
+   through to the page and left the menu open. */
+.navbar-root::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
     backdrop-filter: blur(8px);
     -webkit-backdrop-filter: blur(8px);
-    transition: background 0.2s, border-color 0.2s;
+    pointer-events: none;
 }
 
 [data-theme='light'] .navbar-root {
@@ -107,9 +119,8 @@
 }
 
 /* Dims the page under an open main menu, and a tap on it closes the menu. Rendered outside
-   .navbar-root on purpose: the bar's backdrop-filter makes it the containing block for anything
-   fixed inside it, so an `inset: 0` element in there covers the bar and nothing else. Below the
-   bar's z-index, so the bar itself stays usable. */
+   .navbar-root and below its z-index, unlike the user menu's overlay, so the bar stays usable: the
+   button that opened this menu is also the one that closes it. */
 .navbar-scrim {
     position: fixed;
     inset: 0;
