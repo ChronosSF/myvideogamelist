@@ -350,8 +350,9 @@ The project owns **myvideogamelist.net**, which pins down several items that wou
 | D9 | Open Graph and Twitter Card tags on game pages, profiles and shared lists | Also powers the Tier 3 "share card" feature |
 | ~~D10~~ | ~~Server-side rendering or prerendering for game pages~~ **DONE** | Framework-mode SSR (ADR [0002](docs/decisions/0002-server-side-rendering.md)). `/`, `/games` and `/games/:id` all server-render real content; `/lists` and `/user` stay client-side by design |
 | D11 | Email deliverability monitoring — bounce and complaint handling via SNS | SES will throttle or suspend on high bounce rates |
-| D12 | **CloudFront cache behaviours matching the per-route `Cache-Control`** | The origin now states a policy per route (ADR [0013](docs/decisions/0013-http-caching-policy.md)). Two things the CDN config must get right: **include `search` in the cache key for `/games`**, and give `/lists` and `/user` a behaviour that forwards the auth cookie and caches nothing |
+| D12 | **CloudFront cache behaviours matching the per-route `Cache-Control`** | The origin now states a policy per route (ADR [0013](docs/decisions/0013-http-caching-policy.md)). Three things the CDN config must get right: **include `search` in the cache key for `/games` and `page` in the cache key for `/u/*`**, and give `/lists` and `/user` a behaviour that forwards the auth cookie and caches nothing |
 | D13 | Write the behaviours against React Router **v8** `.data` URL formats | Trailing-slash routes request `/path/_.data` and the root is `/_.data`, not `/_root.data` (ADR [0011](docs/decisions/0011-react-router-8-upgrade.md)) |
+| D14 | **CloudFront invalidation when a profile is withdrawn** — switched back to private, renamed, or deleted | `CACHE_PROFILE` is five minutes fresh plus an hour of `stale-while-revalidate`, so the edge keeps serving a withdrawn page for five minutes and can hand one stale copy per edge to whoever asks first for up to an hour after that (ADR [0027](docs/decisions/0027-usernames-and-public-profiles.md)). Invalidate `/u/{name}` and its `.data` URL (D13) from the API on all three events — the old name as well, on a rename. Needs the distribution id in configuration and `cloudfront:CreateInvalidation` on the task role. Consent withdrawn should take effect when it is withdrawn, not when a TTL runs out |
 
 ---
 
@@ -369,10 +370,12 @@ The project owns **myvideogamelist.net**, which pins down several items that wou
 > rows for one game, where everything built so far aggregates one person's rows across all games.
 > That is a new query shape rather than a new page, and it is the natural next step.
 >
-> **Two smaller things this left behind.** The `friends` visibility value needs a follow graph and is
-> one additive migration in each of two columns. And a returning user still sees the landing hero for
+> **Three smaller things this left behind.** The `friends` visibility value needs a follow graph and
+> is one additive migration in each of two columns. A returning user still sees the landing hero for
 > one request, because the home page is shared-cached and the server render has no cookie — D12 is
-> what fixes that, not the home page.
+> what fixes that, not the home page. And a profile switched back to private, renamed or deleted
+> stays at the edge until its TTL runs out, because nothing invalidates it — D14 closes that, and
+> until it ships the window is the one 0027 records.
 
 **Phase 0 — Clean the foundation — DONE**
 IGDB credentials moved to user secrets (rotation still outstanding, and only you can do it); WeatherForecast template and the dead `Developers`/`Publishers` controllers deleted; seed data dropped via migration; `CancellationToken` plumbed through every controller and service; `/healthz` and `/readyz` added; the unbounded IGDB paging loop bounded; the calendar rebuilt on `release_dates` (3.3); 33 server unit tests added; CI extended with lint, typecheck, tests and CodeQL on both PRs and pushes.

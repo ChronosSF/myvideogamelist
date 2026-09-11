@@ -66,10 +66,18 @@ export const CACHE_GAMES_LIST = sharedCache(600, 3600);
  * identical for every reader, signed in or not, because the API behind it varies on nothing but
  * the username in the URL. The owner's own private figures are a different route.
  *
+ * It also varies on `?page=`, which pages the reviews. **The CloudFront cache policy must include
+ * `page` in the cache key** for this route, exactly as `search` for the listing above.
+ *
  * Shorter than a game page, longer than the home page. A profile changes whenever its owner
  * finishes something, and the first person to notice a stale one is its owner — but they are also
  * the one person for whom a five-minute wait is explicable, and the acquisition case (ROADMAP D8)
  * wants crawlers hitting the edge rather than the origin.
+ *
+ * **Known gap:** a profile switched back to private, renamed or deleted stays servable from the
+ * edge for the `stale-while-revalidate` window, because nothing invalidates it. ROADMAP D14 is
+ * CloudFront invalidation from the API on those three events; until it ships, this policy is the
+ * window. Shortening it here would narrow the window without closing it — see ADR 0027.
  */
 export const CACHE_PROFILE = sharedCache(300, 3600);
 

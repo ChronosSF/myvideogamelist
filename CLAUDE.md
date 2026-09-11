@@ -108,8 +108,14 @@ ROADMAP.md                      Forward-looking plan
   account up by email and then by name and signs in the resolved user; reverting that reports itself
   to every user as "your password is wrong". The shape rules live in `UserNamePolicy`, and
   `Program.cs` configures Identity's own validator from the same constant — never state the alphabet
-  twice. Uniqueness is Identity's index over `NormalizedUserName`: **never check availability before
-  writing**, let `SetUserNameAsync` return `DuplicateUserName`. See `docs/decisions/0027-*`.
+  twice. Uniqueness is Identity's index over `NormalizedUserName`, and **never check availability
+  before writing**: Identity's own validator already reads before it writes and reports the ordinary
+  case as `DuplicateUserName`, but the EF store does not translate the index violation two
+  simultaneous claimants produce — it surfaces as a `DbUpdateException`. `UserNameClaimService`
+  wraps both writes and turns that into the same `DuplicateUserName`, so go through it; never call
+  `CreateAsync` or `SetUserNameAsync` for a username directly. After a real rename, refresh the
+  sign-in: `SetUserNameAsync` rotates the security stamp, and the validator signs the user out within
+  thirty minutes otherwise. See `docs/decisions/0027-*`.
 
 - **A profile is private by default, and the public document is hand-assembled.**
   `ProfileVisibility` defaults to `private` for new accounts as well as backfilled ones, on ADR
@@ -194,10 +200,13 @@ ROADMAP.md                      Forward-looking plan
   a deliberate 502. The same trap catches an optimistic mutation: with no `catch`, the change
   stays on screen as though it saved, and the rejection escapes unhandled.
 
-- **`useUserStats` takes the account id, and that parameter is the guard.** It is mounted on the
-  home page now, which outlives a sign-out, so the account is held in state and compared during
-  render — the shape ADR 0022 settled on for the list providers. Passing a constant, or dropping the
-  parameter, puts one account's figures under another's name.
+- **`useUserStats` and `useHiddenPlatforms` take the account id, and that parameter is the guard.**
+  Both are mounted on the home page, which outlives a sign-out, so each follows the whole of the
+  shape ADR 0022 settled on for the list providers: the account lives in reducer state beside the
+  data, the transition is applied during render, and every completion is stamped with the account it
+  was started for and dropped on a mismatch. The `AbortController` is not the guard — the abort runs
+  in the effect cleanup, after the commit. Passing a constant, a boolean, or dropping the parameter
+  puts one account's data under another's name. Apply the same shape to any new account-scoped hook.
 
 - **Loaders run on the server**, where a relative URL has no origin. Use `apiUrl()` from
   `@/lib/api` for any fetch that may run during SSR.

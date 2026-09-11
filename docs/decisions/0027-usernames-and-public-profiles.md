@@ -47,7 +47,9 @@ The price is one real breakage, and it is worth naming because it is invisible u
 worked by accident while the username was the email address, and it stops working the day it is not
 — reporting itself to every affected user as "your password is wrong". `AuthController` now looks
 the account up explicitly, by email and then by name, and signs in the resolved user. Both work,
-because the field is one box on a form and the person filling it in has one of the two memorised.
+because the field is one box on a form and the person filling it in has one of the two memorised —
+and the form says so: the box is labelled for either, and it carries the `username` autocomplete
+token so a password manager fills it from whichever of the two it stored.
 
 ### 2. The shape rules live in one class, and Identity is configured from it
 
@@ -74,12 +76,25 @@ so `[ApiController]` returns the 400 itself and the message lands beside the fie
 answers "may this be a username" and never "is this username free" — availability is a fact about
 the database at one instant, and it belongs to the write that races for it.
 
-### 3. Availability is settled by the index, never by a check-then-write
+### 3. Availability is settled by the index, and the race it settles is translated by hand
 
-`UpdateUserName` does not query for a matching name before writing. A "is it free" read followed by
-an update is two statements with a gap between them, and the gap is exactly where two people
-claiming the same name at once are both told yes. `SetUserNameAsync` reports the loser's failure as
-`DuplicateUserName`, which becomes "That username is taken." beside the input.
+Neither endpoint queries for a matching name before writing. A "is it free" read followed by an
+update is two statements with a gap between them, and the gap is exactly where two people claiming
+the same name at once are both told yes.
+
+Identity makes that read itself, which is worth stating precisely because the first version of this
+record got it wrong. `UserManager`'s `UserValidator` looks the name up before every create and
+update and reports `DuplicateUserName` if somebody has it — that is where the ordinary "That
+username is taken." comes from, and it is a check-then-write inside the framework. What settles the
+pair who both pass it is the unique index over `NormalizedUserName`, and the EF store does **not**
+translate that: `UserStore.CreateAsync` catches nothing, `UpdateAsync` catches only the
+concurrency-stamp failure, and the loser gets a `DbUpdateException`. Unhandled, that is a 500 for a
+perfectly ordinary outcome. `UserNameClaimService` wraps both writes, confirms the race by
+re-reading — if the name now belongs to somebody else, that is the answer — and returns the same
+`DuplicateUserName` the validator would have, so the controllers have one failure to handle. It
+rethrows anything else, because a write that failed with the name still free was not this race.
+Confirmed by re-reading rather than by matching a SQL state, for the reason `WishlistService` gives:
+it stays correct on any provider.
 
 ### 4. Renaming is allowed, and rate-limited to once every thirty days
 
@@ -92,6 +107,12 @@ Thirty days is long enough to make that pointless and short enough that somebody
 name at signup is not stuck with it for a year. The first choice is free: `UserNameChangedAt` is
 null until the first rename. A change of **letter case only** skips the cooldown and does not start
 one, because it can collide with nobody and it is how somebody fixes a name they capitalised wrongly.
+
+A rename also reissues the sign-in cookie. `SetUserNameAsync` rotates the security stamp, and
+Identity's `SecurityStampValidator` compares the cookie's copy against the account every thirty
+minutes and signs out on a mismatch — so without `RefreshSignInAsync` a rename read, half an hour
+later, as "the site logged me out for no reason". The case-only change goes through `UpdateAsync`,
+which leaves the stamp alone.
 
 ### 5. A profile is private by default, and that default is not consent
 
@@ -107,9 +128,18 @@ D8/D9 is real, and it is not a reason to publish somebody who has not been asked
 
 That default is also what makes the backfill safe. Every pre-existing account holds an email address
 in the username column, so the migration derives a handle from the local part, strips it to the
-allowed alphabet, pads a too-short one and resolves collisions with a `row_number()` suffix over the
-rows sharing a derived name, ordered by account id. Deterministic on purpose: "who got `alex` and
-who got `alex_2`" should not have a different answer on staging than in production. A handle derived
+allowed alphabet and pads a too-short one. Collisions are resolved against the whole namespace: the
+candidates are walked in account-id order, and each takes the first of `seed`, `seed_2`, `seed_3`…
+not yet in a set that starts out holding every handle that was already legal and every reserved
+name, and grows with each assignment. The first cut numbered collisions per seed with
+`row_number()` instead, which is not the same thing — `alex`, `alex` and `alex_2` came out as
+`alex`, `alex_2` and `alex_2`, an existing legal handle was never in any partition, and
+`admin@example.com` became `admin` — and any of those aborts the whole migration on the unique
+index. The reserved list is read from `UserNamePolicy` rather than restated, which makes the
+migration's SQL depend on live code; that is deliberate, because a backfill should agree with the
+policy as it stands when it runs. Verified against PostgreSQL with a fixture of every case above,
+and re-running it changes nothing. Deterministic on purpose: "who got `alex` and who got `alex_2`"
+should not have a different answer on staging than in production. A handle derived
 from somebody's email address is a mild privacy problem *if it is published*, and it is not
 published — the profile is private until its owner says otherwise, and they can rename first.
 
@@ -170,11 +200,20 @@ The reviews are still fetched in the loader rather than after hydration, unlike 
 community times. Reviews are the text a crawler came for (D8/D9), and text loaded by an effect is
 text that was not indexed.
 
+The pages of them are URLs for the same reason. `?page=N` is read by the loader, passed to the API,
+and rendered as previous and next links — not a "load more" button, which would put every review
+after the twentieth behind a click no crawler makes. A page number that names nothing, malformed or
+past the end, is the same 404 as an unclaimed name: there are unboundedly many of them, and a
+crawler must not be handed a 200 for each. The first page is the bare profile URL, so every page
+has exactly one address.
+
 ### 10. The page is shared-cacheable, and that is a property of the endpoint
 
 `CACHE_PROFILE` is `s-maxage=300, stale-while-revalidate=3600`. The page is byte-identical for every
 reader — signed in, signed out, or its own owner — because the endpoints behind it vary on nothing
-but the name in the URL and the loader sends no credentials.
+but the name in the URL and the loader sends no credentials. It does vary on `?page=`, which pages
+the reviews, so the CloudFront cache key for this route has to include `page` (D12) — the rule
+`/games` already has for `search`.
 
 That is stated in the route so it can be *un*stated: the day this page grows a per-viewer element,
 such as "you follow this person", the policy has to change with it. A degraded render, where the
@@ -201,9 +240,16 @@ form behind a cover would be a worse version of a page that already exists.
 one, on the argument that it was only ever mounted inside the signed-in half of the profile route
 and so was unmounted by a sign-out — with a note saying it would need one *"if it is ever lifted
 somewhere that outlives a sign-out"*. The home page is that place. The account is now a required
-parameter, held in state beside the data it protects and compared during render, which is the shape
-[0022](0022-entry-surrogate-key-and-the-wishlist-axis.md) settled on for the two list providers and
-for the same reason: a ref written from an effect lags the commit.
+parameter, and the guard is the whole of the shape
+[0022](0022-entry-surrogate-key-and-the-wishlist-axis.md) settled on for the two list providers,
+not the first half of it: the account is held in reducer state beside the figures it protects, the
+transition is applied during render, and every completion is stamped with the account it was
+fetched for and dropped on a mismatch. The first cut had the first two and not the third, on the
+reading that the `AbortController` covered it. It does not — the abort runs in the effect cleanup,
+after the commit, and a response landing in between would have been written under the new
+account's name. `useHiddenPlatforms` had the same gap and is now keyed on the account for the same
+reason: it is mounted on the home page's timeline, which outlives a sign-out, and the boolean it
+used to take cannot tell one account from the next.
 
 ## Consequences
 
@@ -239,6 +285,18 @@ is not in `UserDataExporter.Manifest` and `UserOwnedDataTests` had nothing to sa
 Both fields are data the user entered: they chose the name, and an export that recorded what
 somebody wrote but not whether they agreed to it being read would be missing the more consequential
 of the two.
+
+**A withdrawn profile outlives its withdrawal at the edge.** `CACHE_PROFILE` is five minutes fresh
+plus an hour of `stale-while-revalidate`, and nothing invalidates a profile when its owner switches
+it back to private, renames it, or deletes the account. So the edge keeps serving the old page for
+five minutes and can hand one stale copy per edge to whoever asks first for up to an hour after
+that — under the old name too, after a rename. Section 10 accepted that staleness for *content*; it
+is a different matter for consent, which 0025 says a default cannot stand in for and this record
+says a TTL should not either. The fix is CloudFront invalidation from the API on those three events,
+which needs infrastructure this codebase does not have yet — the distribution id and an IAM
+permission on the task role — and is ROADMAP D14. Shortening the TTL instead was considered and
+rejected: it would trade the crawler-latency case this page exists for against a window it could
+only narrow, not close.
 
 **There is no sitemap yet.** D8 wants `sitemap.xml` to list public profiles, and this is what makes
 that list non-empty. It needs a real domain first, so it stays where the roadmap has it.
