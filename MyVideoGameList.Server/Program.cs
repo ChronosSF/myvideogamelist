@@ -30,7 +30,9 @@ builder.Services.AddScoped<IWishlistService, WishlistService>();
 builder.Services.AddScoped<IPlaythroughService, PlaythroughService>();
 builder.Services.AddScoped<IReviewService, ReviewService>();
 builder.Services.AddScoped<IStatsService, StatsService>();
+builder.Services.AddScoped<IPublicProfileService, PublicProfileService>();
 builder.Services.AddScoped<IUserDataExporter, UserDataExporter>();
+builder.Services.AddScoped<IUserNameClaimService, UserNameClaimService>();
 
 // The clock, injected so the event log's timestamps are controllable in tests.
 builder.Services.AddSingleton(TimeProvider.System);
@@ -54,6 +56,13 @@ builder.Services.AddIdentity<ApplicationUser, IdentityRole>(options =>
     options.Password.RequireNonAlphanumeric = false;
     options.User.RequireUniqueEmail = true;
     options.SignIn.RequireConfirmedAccount = false;
+
+    // The username is the public handle at /u/{name}, not an email address, so Identity's own
+    // validator is narrowed to the same alphabet UserNamePolicy enforces. Without this the default
+    // would also accept "@", "." and "-", and any write that did not happen to go through the
+    // policy — a future admin tool, a social-login auto-provision — could put a name in the
+    // namespace that the policy would have refused. See docs/decisions/0027-*.
+    options.User.AllowedUserNameCharacters = UserNamePolicy.AllowedCharacters;
 })
 .AddEntityFrameworkStores<ApplicationDbContext>()
 .AddDefaultTokenProviders();

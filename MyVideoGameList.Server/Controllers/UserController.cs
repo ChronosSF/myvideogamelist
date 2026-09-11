@@ -17,7 +17,9 @@ public class UserController(
     SignInManager<ApplicationUser> signInManager,
     ApplicationDbContext db,
     IStatsService stats,
-    IUserDataExporter exporter) : ControllerBase
+    IUserDataExporter exporter,
+    IUserNameClaimService claims,
+    TimeProvider clock) : ControllerBase
 {
     [HttpPut("theme")]
     public async Task<IActionResult> UpdateTheme([FromBody] UpdateThemeDto dto)
@@ -29,8 +31,134 @@ public class UserController(
         if (user == null) return Unauthorized();
 
         user.Theme = dto.Theme;
-        await userManager.UpdateAsync(user);
+        var saved = await userManager.UpdateAsync(user);
+        if (!saved.Succeeded) return NotSaved(saved);
+
         return NoContent();
+    }
+
+    /// <summary>
+    /// How long an account must wait between renames.
+    /// </summary>
+    /// <remarks>
+    /// A username is a public address. Renaming breaks every link to the old one and releases it
+    /// for somebody else to claim, so a stream of renames is both how links rot and how a namespace
+    /// gets churned by a squatter cycling names. Thirty days is long enough to make that pointless
+    /// and short enough that somebody who mistyped their name at signup is not stuck with it for a
+    /// year. The first choice is free: <c>UserNameChangedAt</c> is null until the first rename.
+    /// </remarks>
+    private static readonly TimeSpan RenameCooldown = TimeSpan.FromDays(30);
+
+    /// <summary>
+    /// Claims a different username.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The shape and the reserved list are settled by <c>[UserName]</c> before this runs. What is
+    /// left are the two things an attribute cannot know: whether the name is free, and whether this
+    /// account is allowed to change again yet. Both come back as a
+    /// <see cref="ValidationProblemDetails"/> naming the field, so they land beside the input the
+    /// same way a malformed name does.
+    /// </para>
+    /// <para>
+    /// Availability is not checked here before the write. A "is it free" query followed by an
+    /// update is two statements with a gap in between, and the gap is exactly where two people
+    /// claiming the same name at once both get told yes. Identity makes that read itself inside
+    /// <c>SetUserNameAsync</c>, which is what reports the ordinary "taken" as
+    /// <c>DuplicateUserName</c>; the pair who both pass it are settled by the unique index over
+    /// <c>NormalizedUserName</c>, and <see cref="IUserNameClaimService"/> reports the loser the
+    /// same way rather than letting the index violation surface as a 500.
+    /// </para>
+    /// </remarks>
+    [HttpPut("username")]
+    public async Task<ActionResult<UserProfileDto>> UpdateUserName([FromBody] UpdateUserNameDto dto)
+    {
+        var user = await userManager.GetUserAsync(User);
+        if (user is null) return Unauthorized();
+
+        // Renaming to what you already are is not a rename, and must not start a cooldown. The
+        // comparison is case-insensitive because the namespace is: `Alex` and `alex` are one name.
+        if (string.Equals(user.UserName, dto.UserName, StringComparison.OrdinalIgnoreCase))
+        {
+            // A change of letter case is a change worth allowing — it is how somebody fixes a name
+            // they capitalised wrongly — and it cannot collide with anybody, so it skips the
+            // cooldown as well.
+            if (user.UserName != dto.UserName)
+            {
+                user.UserName = dto.UserName;
+                var saved = await userManager.UpdateAsync(user);
+                if (!saved.Succeeded) return NotSaved(saved);
+            }
+
+            return Ok(Profile(user));
+        }
+
+        if (user.UserNameChangedAt is DateTimeOffset last)
+        {
+            var free = last + RenameCooldown;
+            if (clock.GetUtcNow() < free)
+            {
+                ModelState.AddModelError(
+                    nameof(UpdateUserNameDto.UserName),
+                    $"You can change your username again on {free.UtcDateTime:d MMMM yyyy}.");
+                return ValidationProblem(ModelState);
+            }
+        }
+
+        var previous = user.UserName;
+        var previousChangedAt = user.UserNameChangedAt;
+        user.UserNameChangedAt = clock.GetUtcNow();
+
+        var result = await claims.RenameAsync(user, dto.UserName);
+        if (!result.Succeeded)
+        {
+            // Nothing was written, but the in-memory user was mutated on the way here, so both
+            // fields are put back as they were rather than left to be picked up by an unrelated
+            // later save. Back to what they were, note, not to null: an account that has renamed
+            // before still carries its last rename date, and a restore that dropped it would be a
+            // restore to the wrong state.
+            user.UserNameChangedAt = previousChangedAt;
+            user.UserName = previous;
+
+            ModelState.AddModelError(
+                nameof(UpdateUserNameDto.UserName),
+                result.Errors.Any(e => e.Code == nameof(IdentityErrorDescriber.DuplicateUserName))
+                    ? "That username is taken."
+                    : string.Join(" ", result.Errors.Select(e => e.Description)));
+
+            return ValidationProblem(ModelState);
+        }
+
+        // SetUserNameAsync rotates the security stamp, and the cookie this request arrived with
+        // carries the old one. Identity's SecurityStampValidator re-checks the cookie against the
+        // account every thirty minutes and signs out on a mismatch, so without a reissued cookie a
+        // rename reads, half an hour later, as "the site logged me out for no reason". The
+        // case-only path above goes through UpdateAsync, which leaves the stamp alone.
+        await signInManager.RefreshSignInAsync(user);
+
+        return Ok(Profile(user));
+    }
+
+    /// <summary>
+    /// Turns the public profile at <c>/u/{userName}</c> on or off.
+    /// </summary>
+    /// <remarks>
+    /// Its own endpoint rather than a field on a general settings update, because it is the one
+    /// preference here whose effect is on other people. Turning it off does not delete anything: a
+    /// private profile is a 404 to every reader, and turning it back on restores the same page.
+    /// </remarks>
+    [HttpPut("privacy")]
+    public async Task<ActionResult<UserProfileDto>> UpdatePrivacy(
+        [FromBody] UpdateProfileVisibilityDto dto)
+    {
+        var user = await userManager.GetUserAsync(User);
+        if (user is null) return Unauthorized();
+
+        user.ProfileVisibility = dto.ProfileVisibility;
+        var saved = await userManager.UpdateAsync(user);
+        if (!saved.Succeeded) return NotSaved(saved);
+
+        return Ok(Profile(user));
     }
 
     /// <summary>
@@ -64,7 +192,8 @@ public class UserController(
         if (user == null) return Unauthorized();
 
         user.ListView = dto.View;
-        await userManager.UpdateAsync(user);
+        var saved = await userManager.UpdateAsync(user);
+        if (!saved.Succeeded) return NotSaved(saved);
 
         // Replace wholesale, the same way hidden platforms are handled: the client owns the full
         // set and sends it, so there is no partial-update ambiguity.
@@ -213,4 +342,27 @@ public class UserController(
 
         return NoContent();
     }
+
+    /// <summary>
+    /// The response for an Identity update that did not persist.
+    /// </summary>
+    /// <remarks>
+    /// <c>UpdateAsync</c> reports a lost concurrency-stamp race — two tabs saving the same account
+    /// at once — as a failed result rather than an exception, and an endpoint that ignored it would
+    /// hand back the in-memory object as though it had been written. For the privacy switch that
+    /// would tell somebody a consent change had taken effect while the database still says
+    /// otherwise. A 409, because the row was changed by another request between this one's read
+    /// and its write; the client shows its own generic failure and the user tries again.
+    /// </remarks>
+    private ObjectResult NotSaved(IdentityResult result) =>
+        Problem(
+            detail: string.Join(" ", result.Errors.Select(e => e.Description)),
+            statusCode: StatusCodes.Status409Conflict);
+
+    /// <summary>
+    /// The same projection <c>AuthController</c> returns, so an endpoint that changes part of the
+    /// profile hands back the whole of it in the shape the client already holds.
+    /// </summary>
+    private static UserProfileDto Profile(ApplicationUser user) =>
+        new(user.Id, user.Email!, user.UserName!, user.Theme, user.ProfileVisibility);
 }

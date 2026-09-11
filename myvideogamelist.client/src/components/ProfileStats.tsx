@@ -6,11 +6,12 @@ import { useActivePlatforms } from '@/hooks/useActivePlatforms';
 import { formatDate, formatHours, formatRate, tallyBy } from '@/lib/stats';
 import { MAX_SCORE } from '@/lib/score';
 import type { ListEntryDto, ListId } from '@/types/list';
-import { LIST_IDS, LIST_NAMES } from '@/types/list';
+import { LIST_IDS } from '@/types/list';
 import type { PlaytimeStats } from '@/types/stats';
 import { ActivityChart } from './ActivityChart';
 import { LibraryBreakdown } from './LibraryBreakdown';
 import { ScoreHistogram } from './ScoreHistogram';
+import { StatusBreakdown } from './StatusBreakdown';
 import { StatTile } from './StatTile';
 import './ProfileStats.css';
 
@@ -23,8 +24,8 @@ import './ProfileStats.css';
  * `docs/decisions/0023-*` — the point is that a third party being down costs two rows of this page
  * rather than all of it.
  */
-export function ProfileStats() {
-    const { stats, loading, error, reload } = useUserStats();
+export function ProfileStats({ userId }: { userId: string }) {
+    const { stats, loading, error, reload } = useUserStats(userId);
     const { lists, loading: listsLoading, error: listsError } = useLists();
 
     // Every platform name the loaded lists can supply. Memoised because it is rebuilt from every
@@ -83,7 +84,6 @@ export function ProfileStats() {
     }
 
     const tracked = library.tracked;
-    const mostInAStatus = Math.max(1, ...LIST_IDS.map(id => library.byStatus[id]));
 
     return (
         <section className="profile-stats">
@@ -127,34 +127,15 @@ export function ProfileStats() {
                 />
             </div>
 
-            <section className="profile-section">
-                <h3 className="profile-section-title">Where your games sit</h3>
-                <ul className="profile-ranked">
-                    {LIST_IDS.map(id => (
-                        <li key={id} className="profile-ranked-row">
-                            <span className="profile-ranked-name">{LIST_NAMES[id]}</span>
-                            <span className="profile-ranked-track" aria-hidden="true">
-                                <span
-                                    className={`profile-ranked-fill status-${id}`}
-                                    style={{ width: `${(library.byStatus[id] / mostInAStatus) * 100}%` }}
-                                />
-                            </span>
-                            <span className="profile-ranked-count" aria-hidden="true">
-                                {library.byStatus[id]}
-                            </span>
-                            <span className="sr-only">
-                                {`${library.byStatus[id]} ${library.byStatus[id] === 1 ? 'game' : 'games'}`}
-                            </span>
-                        </li>
-                    ))}
-                </ul>
-                <p className="profile-caption">
-                    {/* Worth stating, because every other number here is exclusive and this one is not. */}
-                    {library.wishlisted === 0
-                        ? 'Your wishlist is empty. It is a separate axis, so a wishlisted game can also sit in one of these.'
-                        : `Plus ${library.wishlisted} on your wishlist, which is a separate axis — a game can be on it and in a list at once.`}
-                </p>
-            </section>
+            {/* Worth stating in the caption, because every other number here is exclusive and the
+                wishlist is not. */}
+            <StatusBreakdown
+                title="Where your games sit"
+                byStatus={library.byStatus}
+                caption={library.wishlisted === 0
+                    ? 'Your wishlist is empty. It is a separate axis, so a wishlisted game can also sit in one of these.'
+                    : `Plus ${library.wishlisted} on your wishlist, which is a separate axis — a game can be on it and in a list at once.`}
+            />
 
             <section className="profile-section">
                 <h3 className="profile-section-title">How you score</h3>

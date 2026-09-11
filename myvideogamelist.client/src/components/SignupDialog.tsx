@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useAuth } from '@/hooks/useAuth';
+import { USERNAME_MAX_LENGTH, USERNAME_MIN_LENGTH, userNameProblem } from '@/types/auth';
 import './LoginDialog.css';
 
 interface Props {
@@ -9,6 +10,7 @@ interface Props {
 
 export function SignupDialog({ onClose, onSwitchToLogin }: Props) {
     const { register } = useAuth();
+    const [userName, setUserName] = useState('');
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [confirm, setConfirm] = useState('');
@@ -18,13 +20,23 @@ export function SignupDialog({ onClose, onSwitchToLogin }: Props) {
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setError(null);
+
+        // Checked here so an obviously wrong name is answered without a round trip. It is not the
+        // enforcement: the server applies the same rules plus a reserved list and availability,
+        // and its message replaces this one.
+        const badUserName = userNameProblem(userName);
+        if (badUserName !== null) {
+            setError(badUserName);
+            return;
+        }
+
         if (password !== confirm) {
             setError('Passwords do not match.');
             return;
         }
         setLoading(true);
         try {
-            await register(email, password);
+            await register(email, password, userName);
             onClose();
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Registration failed');
@@ -45,6 +57,31 @@ export function SignupDialog({ onClose, onSwitchToLogin }: Props) {
                 <h2 id="signup-title" className="dialog-title">Create Account</h2>
 
                 <form onSubmit={handleSubmit} noValidate>
+                    {/* First, because it is the one field on this form that other people will see
+                        and the only one that cannot be quietly changed later without breaking
+                        links to it. */}
+                    <div className="dialog-field">
+                        <label className="dialog-label" htmlFor="signup-username">Username</label>
+                        <input
+                            id="signup-username"
+                            type="text"
+                            className="dialog-input"
+                            placeholder="letters, numbers and underscores"
+                            value={userName}
+                            onChange={e => setUserName(e.target.value)}
+                            required
+                            autoFocus
+                            minLength={USERNAME_MIN_LENGTH}
+                            maxLength={USERNAME_MAX_LENGTH}
+                            autoComplete="username"
+                            aria-describedby="signup-username-hint"
+                        />
+                        <p id="signup-username-hint" className="dialog-hint">
+                            This is how you appear to other people. Your profile stays private
+                            until you choose to publish it.
+                        </p>
+                    </div>
+
                     <div className="dialog-field">
                         <label className="dialog-label" htmlFor="signup-email">Email</label>
                         <input
@@ -55,7 +92,6 @@ export function SignupDialog({ onClose, onSwitchToLogin }: Props) {
                             value={email}
                             onChange={e => setEmail(e.target.value)}
                             required
-                            autoFocus
                             autoComplete="email"
                         />
                     </div>

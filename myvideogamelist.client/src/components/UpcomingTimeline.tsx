@@ -62,7 +62,9 @@ function PlatformCheckbox({ platform, checked, onChange }: PlatformCheckboxProps
 export function UpcomingTimeline() {
     const { games, loading, error } = useUpcomingGames();
     const { user } = useAuth();
-    const { hiddenIds: serverHiddenIds } = useHiddenPlatforms(user !== null);
+    // Keyed on the account rather than on "is anybody signed in": this component outlives a
+    // sign-out, and the hook has to know whose preference it is holding.
+    const { hiddenIds: serverHiddenIds } = useHiddenPlatforms(user?.id ?? null);
 
     const scrollContainerRef = useRef<HTMLDivElement>(null);
 

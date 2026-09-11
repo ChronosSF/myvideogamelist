@@ -87,6 +87,19 @@
     color: #475569;
 }
 
+/* Guidance under a field, for the one input on the signup form whose consequences are not
+   obvious from its label. Deliberately quieter than .dialog-error, which it sits above. */
+.dialog-hint {
+    font-size: 0.75rem;
+    line-height: 1.4;
+    color: #64748b;
+    margin: 0;
+}
+
+[data-theme='light'] .dialog-hint {
+    color: #64748b;
+}
+
 .dialog-checkbox-row {
     display: flex;
     align-items: center;

@@ -1,11 +1,16 @@
 import { Link, data } from 'react-router';
+import { useAuth } from '@/hooks/useAuth';
+import { ContinuePlayingRail } from '@/components/ContinuePlayingRail';
+import { HomeStatsStrip } from '@/components/HomeStatsStrip';
 import { UpcomingTimeline } from '@/components/UpcomingTimeline';
 import { TrendingRail } from '@/components/TrendingRail';
 import { NewsCard } from '@/components/NewsCard';
 import { apiUrl } from '@/lib/api';
 import { CACHE_HOME, PRIVATE_NO_STORE } from '@/lib/cache';
+import type { UserProfile } from '@/types/auth';
 import type { HomeResponse } from '@/types/news';
 import type { Route } from './+types/HomePage';
+import './HomePage.css';
 
 /**
  * Normally the shared home policy, but the loader overrides it when it degrades.
@@ -78,11 +83,52 @@ function SectionHeading({ id, title, subtitle, action }: {
     );
 }
 
-export function HomePage({ loaderData }: Route.ComponentProps) {
-    const { spotlight, popular, news } = loaderData;
-
+/**
+ * What a returning user lands on instead of the pitch (ROADMAP H1).
+ *
+ * Rendered only after hydration, and unavoidably so: this page is shared-cached, the server render
+ * has no cookie, and `AuthProvider` learns who the user is from a fetch. So a signed-in visitor
+ * sees the landing hero for the length of one request and then this. Fixing that properly means a
+ * cookie-varying SSR render and a CloudFront behaviour to match, which is ROADMAP D12's problem
+ * rather than this component's.
+ */
+function SignedInHero({ user }: { user: UserProfile }) {
     return (
-        <div className="min-h-screen">
+        <section className="signed-in-hero">
+            <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8 sm:py-10">
+                <div className="flex flex-wrap items-end justify-between gap-4 mb-6">
+                    <div>
+                        <h1 className="text-2xl sm:text-3xl font-bold text-white light:text-slate-900">
+                            Welcome back, {user.userName}
+                        </h1>
+                        <p className="text-sm text-slate-400 light:text-slate-600 mt-1">
+                            Pick up where you left off.
+                        </p>
+                    </div>
+
+                    <Link
+                        to="/lists"
+                        className="shrink-0 text-sm font-medium text-blue-400 light:text-blue-600 hover:text-blue-300 light:hover:text-blue-700 transition-colors"
+                    >
+                        All your lists <span aria-hidden="true">→</span>
+                    </Link>
+                </div>
+
+                <HomeStatsStrip userId={user.id} />
+
+                <h2 className="text-lg font-semibold text-white light:text-slate-900 mt-8 mb-4">
+                    Continue playing
+                </h2>
+                <ContinuePlayingRail />
+            </div>
+        </section>
+    );
+}
+
+/** The pitch, for a visitor who has not signed in — and for the server render, which never has. */
+function LandingHero({ spotlight }: { spotlight: HomeResponse['spotlight'] }) {
+    return (
+        <>
             {/* ── Hero ────────────────────────────────────────────────
                 Compact by design. The old full-viewport hero pushed every piece of real
                 content below the fold; this keeps the pitch but lets the trending covers
@@ -151,7 +197,26 @@ export function HomePage({ loaderData }: Route.ComponentProps) {
                     </div>
                 </div>
             </section>
+        </>
+    );
+}
 
+export function HomePage({ loaderData }: Route.ComponentProps) {
+    const { spotlight, popular, news } = loaderData;
+    const { user, loading } = useAuth();
+
+    return (
+        <div className="min-h-screen">
+            {/* The landing hero while auth is still unknown, which includes every server render.
+                The alternative — nothing until `me` answers — flashes an empty page at the one
+                visitor the pitch is written for. */}
+            {user && !loading
+                ? <SignedInHero user={user} />
+                : <LandingHero spotlight={spotlight} />}
+
+            {/* Everything below is the same for both. Trending, the news and the calendar are
+                worth seeing whether or not anybody is signed in, and duplicating them into two
+                branches is how the two drift. */}
             <div className="max-w-6xl mx-auto px-4 sm:px-6">
                 {popular.length > 0 && (
                     <section className="py-10 sm:py-12" aria-labelledby="trending-heading">

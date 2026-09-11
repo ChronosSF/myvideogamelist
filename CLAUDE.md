@@ -58,7 +58,7 @@ MyVideoGameList.Server/         ASP.NET Core 10 API
 MyVideoGameList.Server.Tests/   xUnit tests
 myvideogamelist.client/
   src/root.tsx                  HTML document, providers, global ErrorBoundary
-  src/routes.ts                 Route table
+  src/routes.ts                 Route table. `/u/:userName` is the one public per-person page
   src/pages/                    Route modules (default export + optional loader/meta)
   src/lib/                      apiUrl(), useStoredNumberSet()
 docs/decisions/                 Architecture decision records
@@ -101,6 +101,30 @@ ROADMAP.md                      Forward-looking plan
   construction; wanting a game is not exclusive with playing it, so a game sits on the wishlist
   *and* in a list. `AddedAt` is its entire history — do not reach for `UserGameEvents`, and do not
   add a foreign key to `UserGameEntries`, because a wishlisted game usually has no entry at all.
+
+- **`UserName` is the public handle, not the email — and login had to be fixed for it.**
+  `SignInManager.PasswordSignInAsync(string, …)` resolves its first argument as a *username*, which
+  worked only while registration set both columns to the address. `AuthController` now looks the
+  account up by email and then by name and signs in the resolved user; reverting that reports itself
+  to every user as "your password is wrong". The shape rules live in `UserNamePolicy`, and
+  `Program.cs` configures Identity's own validator from the same constant — never state the alphabet
+  twice. Uniqueness is Identity's index over `NormalizedUserName`, and **never check availability
+  before writing**: Identity's own validator already reads before it writes and reports the ordinary
+  case as `DuplicateUserName`, but the EF store does not translate the index violation two
+  simultaneous claimants produce — it surfaces as a `DbUpdateException`. `UserNameClaimService`
+  wraps both writes and turns that into the same `DuplicateUserName`, so go through it; never call
+  `CreateAsync` or `SetUserNameAsync` for a username directly. After a real rename, refresh the
+  sign-in: `SetUserNameAsync` rotates the security stamp, and the validator signs the user out within
+  thirty minutes otherwise. See `docs/decisions/0027-*`.
+
+- **A profile is private by default, and the public document is hand-assembled.**
+  `ProfileVisibility` defaults to `private` for new accounts as well as backfilled ones, on ADR
+  0025's argument that a default is not consent. Two gates compose and the narrower wins: a public
+  review on a private profile is visible to nobody. `PublicProfileService` reuses `StatsService`
+  rather than re-deriving anything, but copies fields into `PublicProfileDto` **one at a time** —
+  returning `UserStatsDto` would publish every figure ever added to the private profile, by nobody's
+  decision. A private profile and an unclaimed name are the same 404, so the endpoint cannot be used
+  to ask whether a name has an account.
 
 - **A statistic about the user must not depend on IGDB being up.** `/api/user/stats` reads only
   our own tables, derives everything at read time, and is deliberately uncached — every figure
@@ -175,6 +199,14 @@ ROADMAP.md                      Forward-looking plan
   that only checks `response.ok` turns a dead upstream into an unhandled 500. Wrap it and throw
   a deliberate 502. The same trap catches an optimistic mutation: with no `catch`, the change
   stays on screen as though it saved, and the rejection escapes unhandled.
+
+- **`useUserStats` and `useHiddenPlatforms` take the account id, and that parameter is the guard.**
+  Both are mounted on the home page, which outlives a sign-out, so each follows the whole of the
+  shape ADR 0022 settled on for the list providers: the account lives in reducer state beside the
+  data, the transition is applied during render, and every completion is stamped with the account it
+  was started for and dropped on a mismatch. The `AbortController` is not the guard — the abort runs
+  in the effect cleanup, after the commit. Passing a constant, a boolean, or dropping the parameter
+  puts one account's data under another's name. Apply the same shape to any new account-scoped hook.
 
 - **Loaders run on the server**, where a relative URL has no origin. Use `apiUrl()` from
   `@/lib/api` for any fetch that may run during SSR.

@@ -285,3 +285,100 @@
     margin-top: 0.5rem;
     margin-bottom: 0.5rem;
 }
+
+/* ── Username and public profile ─────────────────────────────────────────── */
+
+/*
+ * A rule inside a card, separating the name from the decision about publishing it. The two are one
+ * card because they are one decision — see AccountIdentityCard — but they are still two questions.
+ */
+.user-card-rule {
+    border: 0;
+    border-top: 1px solid rgba(51, 65, 85, 0.6);
+    margin: 1.25rem 0 1rem;
+}
+
+[data-theme='light'] .user-card-rule {
+    border-top-color: #e2e8f0;
+}
+
+.username-form {
+    margin-top: 0.5rem;
+}
+
+.username-row {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    max-width: 22rem;
+}
+
+.username-at {
+    font-size: 1rem;
+    color: #64748b;
+}
+
+.username-input {
+    flex: 1;
+    padding: 0.5rem 0.75rem;
+    background: #0f172a;
+    border: 1px solid rgba(71, 85, 105, 0.7);
+    border-radius: 0.5rem;
+    color: #f1f5f9;
+    font-size: 0.9375rem;
+    outline: none;
+    /* The handle is an identifier rather than prose, so it never gets a capital it did not ask
+       for from a mobile keyboard. */
+    text-transform: none;
+}
+
+.username-input:focus {
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+}
+
+[data-theme='light'] .username-input {
+    background: #f8fafc;
+    border-color: rgba(148, 163, 184, 0.7);
+    color: #0f172a;
+}
+
+.username-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-top: 0.75rem;
+}
+
+.username-cancel {
+    background: none;
+    border: 0;
+    color: #94a3b8;
+    font-size: 0.875rem;
+    cursor: pointer;
+}
+
+.username-cancel:hover:not(:disabled) {
+    color: #e2e8f0;
+}
+
+[data-theme='light'] .username-cancel:hover:not(:disabled) {
+    color: #0f172a;
+}
+
+.username-link {
+    margin-top: 0.75rem;
+    font-size: 0.875rem;
+}
+
+.username-link a {
+    color: #60a5fa;
+}
+
+.username-link a:hover {
+    text-decoration: underline;
+}
+
+[data-theme='light'] .username-link a {
+    color: #2563eb;
+}

@@ -200,6 +200,13 @@ namespace MyVideoGameList.Server.Data.Migrations
                     b.Property<bool>("PhoneNumberConfirmed")
                         .HasColumnType("boolean");
 
+                    b.Property<string>("ProfileVisibility")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasDefaultValue("private");
+
                     b.Property<string>("SecurityStamp")
                         .HasColumnType("text");
 
@@ -214,6 +221,9 @@ namespace MyVideoGameList.Server.Data.Migrations
                         .HasMaxLength(256)
                         .HasColumnType("character varying(256)");
 
+                    b.Property<DateTimeOffset?>("UserNameChangedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.HasKey("Id");
 
                     b.HasIndex("NormalizedEmail")
@@ -223,7 +233,10 @@ namespace MyVideoGameList.Server.Data.Migrations
                         .IsUnique()
                         .HasDatabaseName("UserNameIndex");
 
-                    b.ToTable("AspNetUsers", (string)null);
+                    b.ToTable("AspNetUsers", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_AspNetUsers_ProfileVisibility", "\"ProfileVisibility\" IN ('public', 'private')");
+                        });
                 });
 
             modelBuilder.Entity("MyVideoGameList.Server.Models.ListStatus", b =>

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { useAuth } from '@/hooks/useAuth';
 import { ProfileStats } from '@/components/ProfileStats';
+import { AccountIdentityCard } from '@/components/AccountIdentityCard';
 import { useHiddenPlatforms } from '@/hooks/useHiddenPlatforms';
 import type { PlatformDto } from '@/types/game';
 import './UserPage.css';
@@ -55,7 +56,7 @@ export function UserPage() {
     const [themeError, setThemeError] = useState<string | null>(null);
 
     const { platforms: activePlatforms, loading: platformsLoading } = useActivePlatforms();
-    const { hiddenIds, loading: hiddenLoading, saving, error: hiddenError, setHiddenIds, save } = useHiddenPlatforms(user !== null);
+    const { hiddenIds, loading: hiddenLoading, saving, error: hiddenError, setHiddenIds, save } = useHiddenPlatforms(user?.id ?? null);
     const [saveSuccess, setSaveSuccess] = useState(false);
 
     if (!user) {
@@ -110,17 +111,22 @@ export function UserPage() {
                     <p className="user-page-subtitle">Manage your account settings</p>
                 </div>
 
-                {/* Account info */}
+                {/* Account info. The email is here and nowhere else — it identifies the
+                    account to us and appears on nothing anybody else can read. */}
                 <div className="user-card">
                     <div className="user-card-label">Email</div>
                     <div className="user-card-value">{user.email}</div>
                 </div>
 
+                {/* Directly under it, because the two answer the same question from opposite
+                    sides: what we know you by, and what everybody else does. */}
+                <AccountIdentityCard user={user} />
+
                 {/* Above the settings, because what the user has done is the reason they came here
                     and the theme toggle is not. Mounted only in this signed-in branch, which is
                     what lets its hook skip an account-change guard. */}
                 <div className="user-card">
-                    <ProfileStats />
+                    <ProfileStats userId={user.id} />
                 </div>
 
                 {/* Theme preference */}
