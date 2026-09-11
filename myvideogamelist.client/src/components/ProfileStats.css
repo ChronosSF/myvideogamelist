@@ -8,6 +8,9 @@
     display: flex;
     flex-direction: column;
     gap: 1.5rem;
+    /* The tiles and the paired sections lay themselves out by the width this block has, not the
+       viewport's: the owner's profile sits beside a sidebar and the public one does not. */
+    container-type: inline-size;
 }
 
 .profile-heading {
@@ -77,6 +80,12 @@
     border-radius: 0.5rem;
 }
 
+[data-theme='light'] .profile-error {
+    color: #b91c1c;
+    background: #fef2f2;
+    border-color: #fecaca;
+}
+
 .profile-error p {
     margin: 0;
 }
@@ -102,10 +111,50 @@
 
 /* Headline figures */
 
+/*
+ * Two to a row on a phone, all on one row once they fit, and — for the owner's five — three and two
+ * in between. Container queries rather than auto-fit, which steps through every column count on the
+ * way: at four columns, five tiles leave one stranded under the rest.
+ */
 .profile-tiles {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 0.75rem;
+}
+
+/* With an odd number of tiles one is left over, and it is the first — the headline count — that
+   takes a row to itself rather than the last sitting alone in half of one. */
+.profile-tiles > :first-child:nth-last-child(odd) {
+    grid-column: 1 / -1;
+}
+
+/* Only for exactly five. The public profile's four in three columns would strand the fourth. */
+@container (34rem <= width < 48rem) {
+    .profile-tiles:has(> :nth-child(5):last-child) {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .profile-tiles:has(> :nth-child(5):last-child) > :first-child {
+        grid-column: auto;
+    }
+}
+
+/*
+ * One row from here. Measured, not guessed: at 48rem each of five tiles has about 124px inside its
+ * padding, which holds the widest values formatHours produces in practice ("123 days" is 121px,
+ * "23 hours" 120px) and a label like "completion rate" on one line. At 42rem it had 102px, and
+ * both wrapped.
+ */
+@container (min-width: 48rem) {
+    .profile-tiles {
+        grid-template-columns: none;
+        grid-auto-flow: column;
+        grid-auto-columns: minmax(0, 1fr);
+    }
+
+    .profile-tiles > :first-child:nth-last-child(odd) {
+        grid-column: auto;
+    }
 }
 
 .profile-stat-tile {
@@ -156,10 +205,17 @@
 
 /* Ranked bars — statuses, platforms, genres */
 
+/*
+ * One set of columns for the whole list, which every row takes up through subgrid. The name column
+ * is fixed so every track starts at the same x, and the count column is as wide as the widest count
+ * in the list so every track also ends at the same x — together, what makes the lengths comparable
+ * at a glance. The count column used to be a fixed 2.25rem per row, which fits a number of games
+ * and wrapped the playtime list's "9.1 days" onto two lines.
+ */
 .profile-ranked {
-    display: flex;
-    flex-direction: column;
-    gap: 0.35rem;
+    display: grid;
+    grid-template-columns: 8rem minmax(0, 1fr) auto;
+    gap: 0.35rem 0.6rem;
     margin: 0;
     padding: 0;
     list-style: none;
@@ -167,11 +223,9 @@
 
 .profile-ranked-row {
     display: grid;
-    /* Fixed name column so every track starts at the same x, which is what makes the lengths
-       comparable at a glance. */
-    grid-template-columns: 8rem 1fr 2.25rem;
+    grid-column: 1 / -1;
+    grid-template-columns: subgrid;
     align-items: center;
-    gap: 0.6rem;
     font-size: 0.8125rem;
     color: #cbd5e1;
 }
@@ -214,6 +268,7 @@
 
 .profile-ranked-count {
     text-align: right;
+    white-space: nowrap;
     font-variant-numeric: tabular-nums;
     color: #94a3b8;
 }
@@ -222,9 +277,11 @@
     color: #64748b;
 }
 
+/* Two sections side by side. The minimum keeps a ranked bar's track long enough to compare once the
+   fixed name and count columns have taken their share; below twice that, the pair stacks. */
 .profile-columns {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr));
     gap: 1.5rem;
 }
 
@@ -315,9 +372,12 @@
 .profile-swatch.dropped,
 .profile-chart-bar.dropped { background: #ef4444; }
 
-/* Below the width at which three bars a month stay readable, scroll rather than compress. */
+/* Below the width at which three bars a month stay readable, scroll rather than compress. Only
+   sideways: `overflow-x: auto` alone turns the other axis to auto as well, and a year label a pixel
+   taller than the box then grew the chart a vertical scrollbar of its own. */
 .profile-chart-scroll {
     overflow-x: auto;
+    overflow-y: hidden;
 }
 
 .profile-chart {

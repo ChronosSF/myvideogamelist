@@ -194,18 +194,21 @@ export function ProfilePage({ loaderData }: Route.ComponentProps) {
                         />
                     </div>
 
-                    <StatusBreakdown
-                        title="Where their games sit"
-                        byStatus={library.byStatus}
-                        caption={library.wishlisted === 0
-                            ? 'Nothing on their wishlist. It is a separate axis, so a wishlisted game can also sit in one of these.'
-                            : `Plus ${library.wishlisted} on their wishlist, which is a separate axis — a game can be on it and in a list at once.`}
-                    />
+                    {/* Paired as they are on the owner's own profile, so the two stay one layout. */}
+                    <div className="profile-columns">
+                        <StatusBreakdown
+                            title="Where their games sit"
+                            byStatus={library.byStatus}
+                            caption={library.wishlisted === 0
+                                ? 'Nothing on their wishlist. It is a separate axis, so a wishlisted game can also sit in one of these.'
+                                : `Plus ${library.wishlisted} on their wishlist, which is a separate axis — a game can be on it and in a list at once.`}
+                        />
 
-                    <section className="profile-section">
-                        <h3 className="profile-section-title">How they score</h3>
-                        <ScoreHistogram scores={scores} owner={profile.userName} />
-                    </section>
+                        <section className="profile-section">
+                            <h3 className="profile-section-title">How they score</h3>
+                            <ScoreHistogram scores={scores} owner={profile.userName} />
+                        </section>
+                    </div>
 
                     <section className="profile-section">
                         <h3 className="profile-section-title">What they start and finish</h3>
