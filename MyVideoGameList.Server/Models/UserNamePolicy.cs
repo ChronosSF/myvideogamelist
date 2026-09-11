@@ -71,6 +71,14 @@ public static class UserNamePolicy
         "null", "undefined", "none", "anonymous", "deleted", "me"
     };
 
+    /// <summary>
+    /// The reserved list itself, for the one caller that cannot ask <see cref="Check"/>: the
+    /// migration that backfilled handles for accounts predating them writes SQL, and it has to
+    /// know which names to step around. Every entry is plain lower-case letters, which is what
+    /// lets that SQL quote them without escaping.
+    /// </summary>
+    public static IReadOnlyCollection<string> ReservedNames => Reserved;
+
     /// <summary>Why a username was refused, or <see cref="Ok"/>.</summary>
     public enum Result
     {

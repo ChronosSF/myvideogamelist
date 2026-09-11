@@ -67,6 +67,21 @@ public class UserNamePolicyTests
     }
 
     [Fact]
+    public void ReservedNames_AreRefusedByCheckAndQuotableIntoSql()
+    {
+        // The backfill migration reads this list to keep a derived handle off it, so the list and
+        // the check must agree — and it quotes each entry into SQL unescaped, which is only safe
+        // while every entry is plain lower-case letters. (Some are shorter than MinLength, so the
+        // refusal is not always "reserved"; it is never "ok".)
+        Assert.NotEmpty(UserNamePolicy.ReservedNames);
+        Assert.All(UserNamePolicy.ReservedNames, name =>
+        {
+            Assert.NotEqual(UserNamePolicy.Result.Ok, UserNamePolicy.Check(name));
+            Assert.All(name, c => Assert.True(char.IsAsciiLetterLower(c)));
+        });
+    }
+
+    [Fact]
     public void AllowedCharacters_MatchesWhatCheckAccepts()
     {
         // Identity's own validator is configured from AllowedCharacters, and Check reads the same
