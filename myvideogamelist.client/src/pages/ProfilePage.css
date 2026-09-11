@@ -205,3 +205,33 @@
 [data-theme='light'] .review-spoiler-btn:hover {
     color: #1e293b;
 }
+
+/*
+ * The previous and next page of reviews. Links rather than a "load more" button, because each
+ * page is its own URL: that is what lets the server render it and a crawler reach it.
+ */
+.review-pages {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+    margin-top: 1rem;
+    font-size: 0.875rem;
+    color: #94a3b8;
+}
+
+.review-pages a {
+    color: #60a5fa;
+}
+
+.review-pages a:hover {
+    text-decoration: underline;
+}
+
+[data-theme='light'] .review-pages {
+    color: #64748b;
+}
+
+[data-theme='light'] .review-pages a {
+    color: #2563eb;
+}

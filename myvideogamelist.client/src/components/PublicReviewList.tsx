@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router';
+import { lastPage, pageSearch } from '@/lib/paging';
 import { formatDate } from '@/lib/stats';
 import { MAX_SCORE } from '@/lib/score';
 import type { PublicReview, PublicReviews } from '@/types/profile';
@@ -45,8 +46,17 @@ export function PublicReviewList({ userName, reviews, total }: PublicReviewListP
         );
     }
 
+    const { page, pageSize } = reviews;
+    const last = lastPage(total, pageSize);
+
+    // The slice this page covers, counted from the total rather than from what came back: a
+    // review whose game IGDB no longer returns is dropped from the page but is still counted, so
+    // the two can legitimately differ.
+    const from = (page - 1) * pageSize + 1;
+    const to = Math.min(page * pageSize, total);
+    const expected = to - from + 1;
     const shown = reviews.reviews.length;
-    const dropped = Math.min(total, reviews.pageSize) - shown;
+    const dropped = expected - shown;
 
     return (
         <section className="profile-section">
@@ -60,15 +70,29 @@ export function PublicReviewList({ userName, reviews, total }: PublicReviewListP
                 ))}
             </ol>
 
-            {total > shown && (
+            {(last > 1 || dropped > 0) && (
                 <p className="profile-caption">
                     {dropped > 0
-                        // Honest about the gap rather than silently short. The total counts what
-                        // the user wrote; a review whose game IGDB no longer returns is dropped
-                        // from the page, and a count that did not add up would read as a bug.
-                        ? `Showing ${shown} of ${total}. Some could not be matched to a game.`
-                        : `Showing the ${shown} most recent of ${total}.`}
+                        // Honest about the gap rather than silently short: a count that did not
+                        // add up would read as a bug.
+                        ? `Showing ${shown} of ${last > 1 ? `the ${expected} on this page` : total}. `
+                            + 'Some could not be matched to a game.'
+                        : `Showing ${from}–${to} of ${total}.`}
                 </p>
+            )}
+
+            {last > 1 && (
+                // Links rather than a button that fetches more, because each page is its own URL:
+                // that is what lets the server render it and a crawler reach it (ADR 0027).
+                <nav className="review-pages" aria-label="Review pages">
+                    {page > 1
+                        ? <Link to={{ search: pageSearch(page - 1) }} rel="prev">Newer reviews</Link>
+                        : <span aria-hidden="true" />}
+                    <span>{`Page ${page} of ${last}`}</span>
+                    {page < last
+                        ? <Link to={{ search: pageSearch(page + 1) }} rel="next">Older reviews</Link>
+                        : <span aria-hidden="true" />}
+                </nav>
             )}
         </section>
     );
@@ -89,7 +113,15 @@ function PublicReviewCard({ review }: { review: PublicReview }) {
         <li className="review-card">
             <div className="review-card-head">
                 {review.game.coverImageUrl && (
-                    <Link to={`/games/${review.game.id}`} className="review-cover">
+                    // Out of the tab order and the accessibility tree, as ListTable's cover link
+                    // is: the title beside it goes to the same place and carries the name, and a
+                    // link whose only content is a decorative image is an unexplained extra stop.
+                    <Link
+                        to={`/games/${review.game.id}`}
+                        className="review-cover"
+                        tabIndex={-1}
+                        aria-hidden="true"
+                    >
                         <img src={review.game.coverImageUrl} alt="" loading="lazy" />
                     </Link>
                 )}

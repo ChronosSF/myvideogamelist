@@ -29,9 +29,9 @@ function page(overrides: Partial<PublicReviews> = {}): PublicReviews {
     };
 }
 
-function renderList(props: Partial<Parameters<typeof PublicReviewList>[0]> = {}) {
+function renderList(props: Partial<Parameters<typeof PublicReviewList>[0]> = {}, url = '/u/alex') {
     return render(
-        <MemoryRouter>
+        <MemoryRouter initialEntries={[url]}>
             <PublicReviewList userName="alex" reviews={page()} total={1} {...props} />
         </MemoryRouter>,
     );
@@ -59,6 +59,23 @@ describe('PublicReviewList', () => {
 
         expect(screen.getByText(/alex has not published any reviews yet/i))
             .toBeInTheDocument();
+    });
+
+    it('keeps the cover out of the tab order, leaving one link per game', () => {
+        const withCover = review({
+            game: game({ id: 1, title: 'A Game', coverImageUrl: 'https://img.test/1.jpg' }),
+        });
+        renderList({ reviews: page({ reviews: [withCover] }) });
+
+        // One accessible link, the title. The cover goes to the same place and, with an empty
+        // alt, would be a second, nameless stop in front of it.
+        const [title] = screen.getAllByRole('link');
+        expect(screen.getAllByRole('link')).toHaveLength(1);
+        expect(title).toHaveTextContent('A Game');
+
+        const cover = screen.getAllByRole('link', { hidden: true }).find(link => link !== title);
+        expect(cover).toHaveAttribute('tabindex', '-1');
+        expect(cover).toHaveAttribute('aria-hidden', 'true');
     });
 });
 
@@ -117,7 +134,7 @@ describe('PublicReviewList counts', () => {
             total: 30,
         });
 
-        expect(screen.getByText(/showing the 2 most recent of 30/i)).toBeInTheDocument();
+        expect(screen.getByText('Showing 1–2 of 30.')).toBeInTheDocument();
     });
 
     it('explains a short page rather than letting the numbers disagree', () => {
@@ -135,5 +152,68 @@ describe('PublicReviewList counts', () => {
         renderList();
 
         expect(screen.queryByText(/showing/i)).not.toBeInTheDocument();
+    });
+});
+
+describe('PublicReviewList pages', () => {
+    /** Two reviews to a page, so page 2 of 5 reviews is the middle one and page 3 is the last. */
+    function renderPage(pageNumber: number, total = 5) {
+        return renderList(
+            {
+                reviews: page({
+                    reviews: [review(), review({ game: game({ id: 2, title: 'Another' }) })],
+                    total,
+                    page: pageNumber,
+                    pageSize: 2,
+                }),
+                total,
+            },
+            pageNumber > 1 ? `/u/alex?page=${pageNumber}` : '/u/alex',
+        );
+    }
+
+    it('links to the newer and older pages from the middle of the set', () => {
+        // Links rather than a "load more" control: each page is a URL a crawler can reach and the
+        // server can render. The first page is the bare profile URL, so it stays one URL.
+        renderPage(2);
+
+        expect(screen.getByRole('link', { name: 'Newer reviews' })).toHaveAttribute('href', '/u/alex');
+        expect(screen.getByRole('link', { name: 'Older reviews' })).toHaveAttribute('href', '/u/alex?page=3');
+        expect(screen.getByText('Page 2 of 3')).toBeInTheDocument();
+        expect(screen.getByText('Showing 3–4 of 5.')).toBeInTheDocument();
+    });
+
+    it('offers only older pages from the first', () => {
+        renderPage(1);
+
+        expect(screen.queryByRole('link', { name: 'Newer reviews' })).not.toBeInTheDocument();
+        expect(screen.getByRole('link', { name: 'Older reviews' })).toHaveAttribute('href', '/u/alex?page=2');
+    });
+
+    it('offers only newer pages from the last', () => {
+        renderPage(3);
+
+        expect(screen.getByRole('link', { name: 'Newer reviews' })).toHaveAttribute('href', '/u/alex?page=2');
+        expect(screen.queryByRole('link', { name: 'Older reviews' })).not.toBeInTheDocument();
+    });
+
+    it('offers no pages at all when there is only one', () => {
+        renderList();
+
+        expect(screen.queryByRole('navigation', { name: 'Review pages' })).not.toBeInTheDocument();
+    });
+
+    it('counts a short page against what the page should hold, not the total', () => {
+        // One of the two reviews on page 2 could not be matched to a game.
+        renderList(
+            {
+                reviews: page({ reviews: [review()], total: 5, page: 2, pageSize: 2 }),
+                total: 5,
+            },
+            '/u/alex?page=2',
+        );
+
+        expect(screen.getByText('Showing 1 of the 2 on this page. Some could not be matched to a game.'))
+            .toBeInTheDocument();
     });
 });

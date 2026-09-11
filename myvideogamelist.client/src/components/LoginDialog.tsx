@@ -42,17 +42,24 @@ export function LoginDialog({ onClose, onSwitchToRegister }: Props) {
 
                 <form onSubmit={handleSubmit} noValidate>
                     <div className="dialog-field">
-                        <label className="dialog-label" htmlFor="login-email">Email</label>
+                        {/* One box for either, and it says so: the API tries the address first and
+                            then the handle (ADR 0027). `autoComplete="username"` is the token a
+                            password manager fills a sign-in identifier from, whichever of the two
+                            it stored; `type="email"` told it, and the person typing, that this was
+                            an address and nothing else. */}
+                        <label className="dialog-label" htmlFor="login-email">Email or username</label>
                         <input
                             id="login-email"
-                            type="email"
+                            type="text"
                             className="dialog-input"
-                            placeholder="you@example.com"
+                            placeholder="you@example.com or your username"
                             value={email}
                             onChange={e => setEmail(e.target.value)}
                             required
                             autoFocus
-                            autoComplete="email"
+                            autoComplete="username"
+                            autoCapitalize="none"
+                            spellCheck={false}
                         />
                     </div>
 

@@ -1,6 +1,7 @@
 import { Link, data } from 'react-router';
 import { apiUrl } from '@/lib/api';
 import { CACHE_NOT_FOUND, CACHE_PROFILE, PRIVATE_NO_STORE } from '@/lib/cache';
+import { lastPage, pageFrom } from '@/lib/paging';
 import { formatDate, formatHours, formatRate } from '@/lib/stats';
 import { MAX_SCORE } from '@/lib/score';
 import type { PublicProfile, PublicReviews } from '@/types/profile';
@@ -17,6 +18,8 @@ interface ProfilePageData {
     profile: PublicProfile;
     /** Null when the reviews request failed. Not the same as having written none. */
     reviews: PublicReviews | null;
+    /** Which page of reviews this is. Everything above the reviews is the same on every one. */
+    page: number;
 }
 
 /**
@@ -27,6 +30,10 @@ interface ProfilePageData {
  * profile's own owner sees exactly what a stranger sees, and their private figures live on
  * `/user`. If this page ever grows a per-viewer state such as "you follow this person", that stops
  * being true and this policy has to change with it.
+ *
+ * It does vary on `?page=`, which pages the reviews. **The CloudFront cache key for this route must
+ * include `page`**, the same rule `/games` has for `search`, or every visitor is served whichever
+ * page populated the edge first.
  *
  * The loader overrides it when the reviews half failed, for the reason the home page does: caching
  * a degraded render pins the failure at the edge long after the failure is over.
@@ -39,8 +46,12 @@ export function meta({ loaderData }: Route.MetaArgs) {
     // Undefined when the loader threw, in which case the error boundary supplies the page.
     if (!loaderData?.profile) return [{ title: 'Profile not found - MyVideoGameList' }];
 
-    const { profile } = loaderData;
-    const title = `${profile.userName} - MyVideoGameList`;
+    const { profile, page } = loaderData;
+    // Each page of reviews is its own URL, so each gets its own title: two pages indexed under one
+    // title read as duplicates of each other.
+    const title = page > 1
+        ? `${profile.userName}, reviews page ${page} - MyVideoGameList`
+        : `${profile.userName} - MyVideoGameList`;
     const finished = profile.library.byStatus.finished;
     const description = `${profile.userName} has finished ${finished} `
         + `${finished === 1 ? 'game' : 'games'} and is tracking ${profile.library.tracked} `
@@ -61,12 +72,13 @@ export function meta({ loaderData }: Route.MetaArgs) {
  * The profile itself touches no third party, so it either answers or the profile is not there. The
  * reviews need game titles and covers from IGDB, so they can fail while everything else is fine —
  * and they are still fetched here rather than after hydration, because the reviews are the text a
- * crawler came for (ROADMAP D8/D9), and text loaded by an effect is text that was not indexed.
+ * crawler came for (ROADMAP D8/D9), and text loaded by an effect is text that was not indexed. The
+ * same reasoning is why the pages of them are URLs rather than a "load more" button.
  *
  * A private profile and an unclaimed username are both a 404 from the API, deliberately, and both
  * become the same page here.
  */
-export async function loader({ params }: Route.LoaderArgs) {
+export async function loader({ params, request }: Route.LoaderArgs) {
     const userName = encodeURIComponent(params.userName);
 
     // A thrown Response carries its own headers and bypasses the `headers` export above, so each
@@ -84,11 +96,17 @@ export async function loader({ params }: Route.LoaderArgs) {
         headers: { 'Cache-Control': PRIVATE_NO_STORE },
     });
 
+    // `?page=` names a page of reviews or it names nothing, and nothing is a 404 like any other
+    // URL that resolves to no resource. There are unboundedly many malformed and out-of-range
+    // values, and a crawler must not be handed a 200 for each of them.
+    const page = pageFrom(new URL(request.url).searchParams.get('page'));
+    if (page === null) throw notFound();
+
     // `allSettled` rather than `all`: a rejection from the reviews request must not take the
     // profile down with it, and `all` rejects on the first of either.
     const [profileResult, reviewsResult] = await Promise.allSettled([
         fetch(apiUrl(`/api/users/${userName}`)),
-        fetch(apiUrl(`/api/users/${userName}/reviews`)),
+        fetch(apiUrl(`/api/users/${userName}/reviews?page=${page}`)),
     ]);
 
     // A rejection is the unreachable-API case, which `!response.ok` never reports.
@@ -103,8 +121,14 @@ export async function loader({ params }: Route.LoaderArgs) {
         ? await reviewsResult.value.json() as PublicReviews
         : null;
 
+    // Past the last page is the same 404, judged from the response rather than from a page-size
+    // constant this file would otherwise have to keep in step with the server. When the reviews
+    // request failed there is nothing to judge by, and the degraded page renders as it would for
+    // page one — uncached, so the failure is not pinned at the edge under this URL either.
+    if (reviews !== null && page > lastPage(reviews.total, reviews.pageSize)) throw notFound();
+
     return data<ProfilePageData>(
-        { profile, reviews },
+        { profile, reviews, page },
         { headers: { 'Cache-Control': reviews === null ? PRIVATE_NO_STORE : CACHE_PROFILE } },
     );
 }
