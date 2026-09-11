@@ -374,9 +374,11 @@ export function GamePage() {
 
                     {/* Sidebar */}
                     <aside className="lg:w-64 xl:w-72 space-y-6">
-                        {/* Lists, score and the one control that erases both. */}
+                        {/* Lists, score and the one control that erases both. Keyed on the account
+                            so a different sign-in remounts it: the panel holds that person's score,
+                            playthroughs and review, and its own fetch is keyed on the game alone. */}
                         {user ? (
-                            <GameUserPanel game={game} />
+                            <GameUserPanel key={user.id} game={game} />
                         ) : (
                             <div className="bg-slate-800/60 light:bg-white border border-slate-700/50 light:border-slate-200 rounded-xl p-5 text-center">
                                 <p className="text-slate-400 light:text-slate-600 text-xs mb-3">Sign in to track this game.</p>

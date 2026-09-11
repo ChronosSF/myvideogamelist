@@ -56,7 +56,7 @@ export function UserPage() {
     const [themeError, setThemeError] = useState<string | null>(null);
 
     const { platforms: activePlatforms, loading: platformsLoading } = useActivePlatforms();
-    const { hiddenIds, loading: hiddenLoading, saving, error: hiddenError, setHiddenIds, save } = useHiddenPlatforms(user !== null);
+    const { hiddenIds, loading: hiddenLoading, saving, error: hiddenError, setHiddenIds, save } = useHiddenPlatforms(user?.id ?? null);
     const [saveSuccess, setSaveSuccess] = useState(false);
 
     if (!user) {
