@@ -9,7 +9,13 @@ interface PublicReviewListProps {
     userName: string;
     /** Null when the request for them failed — distinct from a user who has written none. */
     reviews: PublicReviews | null;
-    /** From the profile document, which is fetched separately and does not need IGDB. */
+    /**
+     * From the profile document, which is fetched separately and does not need IGDB. It is used
+     * only by the two early returns below — the failed request and the person who has written
+     * none. Once there is a page to show, every figure comes from `reviews.total` instead: the
+     * two requests are independent and can disagree, and it is the page's own count the loader
+     * validates `?page=` against.
+     */
     total: number;
 }
 
@@ -46,14 +52,18 @@ export function PublicReviewList({ userName, reviews, total }: PublicReviewListP
         );
     }
 
-    const { page, pageSize } = reviews;
-    const last = lastPage(total, pageSize);
+    // Past this point the count travelling with the reviews is the only one used, and the prop
+    // from the profile is not. They are two independent requests, so a review published or
+    // withdrawn between them leaves one of them stale — and the loader validates `?page=` against
+    // this one, so paging computed from the other can offer a page the loader answers with a 404.
+    const { page, pageSize, total: loadedTotal } = reviews;
+    const last = lastPage(loadedTotal, pageSize);
 
     // The slice this page covers, counted from the total rather than from what came back: a
     // review whose game IGDB no longer returns is dropped from the page but is still counted, so
     // the two can legitimately differ.
     const from = (page - 1) * pageSize + 1;
-    const to = Math.min(page * pageSize, total);
+    const to = Math.min(page * pageSize, loadedTotal);
     const expected = to - from + 1;
     const shown = reviews.reviews.length;
     const dropped = expected - shown;
@@ -61,7 +71,7 @@ export function PublicReviewList({ userName, reviews, total }: PublicReviewListP
     return (
         <section className="profile-section">
             <h3 className="profile-section-title">
-                {`Reviews (${total})`}
+                {`Reviews (${loadedTotal})`}
             </h3>
 
             <ol className="review-list">
@@ -75,9 +85,9 @@ export function PublicReviewList({ userName, reviews, total }: PublicReviewListP
                     {dropped > 0
                         // Honest about the gap rather than silently short: a count that did not
                         // add up would read as a bug.
-                        ? `Showing ${shown} of ${last > 1 ? `the ${expected} on this page` : total}. `
+                        ? `Showing ${shown} of ${last > 1 ? `the ${expected} on this page` : loadedTotal}. `
                             + 'Some could not be matched to a game.'
-                        : `Showing ${from}–${to} of ${total}.`}
+                        : `Showing ${from}–${to} of ${loadedTotal}.`}
                 </p>
             )}
 

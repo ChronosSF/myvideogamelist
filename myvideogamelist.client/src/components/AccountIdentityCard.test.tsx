@@ -95,7 +95,9 @@ describe('AccountIdentityCard username', () => {
         await actor.type(screen.getByLabelText('Username'), 'sam');
         await actor.click(screen.getByRole('button', { name: /save username/i }));
 
-        expect(await screen.findByText('That username is taken.')).toBeInTheDocument();
+        // Found by role: the refusal arrives after the form has been submitted and focus is still
+        // on the button, so a screen reader is told about it only if it is a live region.
+        expect(await screen.findByRole('alert')).toHaveTextContent('That username is taken.');
     });
 
     it('warns that renaming breaks links before it happens', async () => {
@@ -173,6 +175,25 @@ describe('AccountIdentityCard profile visibility', () => {
 
         await actor.click(screen.getByRole('checkbox', { name: /public/i }));
 
-        expect(await screen.findByText('Network is down.')).toBeInTheDocument();
+        // The toggle is the only thing that moved, and it moves back — nothing else on screen
+        // changes to say it failed, so the failure has to announce itself.
+        expect(await screen.findByRole('alert')).toHaveTextContent('Network is down.');
+    });
+
+    it('leaves the standing hint out of the live region', async () => {
+        // The hint is the permanent explanation of what publishing covers, not news. Printing the
+        // failure into it would have a screen reader read that paragraph out on every re-render.
+        const actor = userEvent.setup();
+        authValue.updateProfileVisibility.mockRejectedValue(new Error('Network is down.'));
+        renderCard();
+
+        expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+
+        await actor.click(screen.getByRole('checkbox', { name: /public/i }));
+
+        const alerts = await screen.findAllByRole('alert');
+        expect(alerts).toHaveLength(1);
+        expect(alerts[0]).toHaveTextContent('Network is down.');
+        expect(screen.getByText(/nobody else can see your lists/i)).toBeInTheDocument();
     });
 });

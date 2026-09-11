@@ -75,9 +75,11 @@ export const CACHE_GAMES_LIST = sharedCache(600, 3600);
  * wants crawlers hitting the edge rather than the origin.
  *
  * **Known gap:** a profile switched back to private, renamed or deleted stays servable from the
- * edge for the `stale-while-revalidate` window, because nothing invalidates it. ROADMAP D14 is
- * CloudFront invalidation from the API on those three events; until it ships, this policy is the
- * window. Shortening it here would narrow the window without closing it — see ADR 0027.
+ * edge for the `stale-while-revalidate` window, because nothing invalidates it — and so does a
+ * review its author makes private, edits or deletes, since the page renders review bodies and the
+ * old text sits in the cached HTML and its `.data` URL. ROADMAP D14 is CloudFront invalidation
+ * from the API on those four events; until it ships, this policy is the window. Shortening it
+ * here would narrow the window without closing it — see ADR 0027.
  */
 export const CACHE_PROFILE = sharedCache(300, 3600);
 

@@ -106,14 +106,18 @@ public class UserController(
         }
 
         var previous = user.UserName;
+        var previousChangedAt = user.UserNameChangedAt;
         user.UserNameChangedAt = clock.GetUtcNow();
 
         var result = await claims.RenameAsync(user, dto.UserName);
         if (!result.Succeeded)
         {
-            // Nothing was written, but the in-memory user was mutated on the way here, so the
-            // timestamp is put back rather than left to be picked up by an unrelated later save.
-            user.UserNameChangedAt = null;
+            // Nothing was written, but the in-memory user was mutated on the way here, so both
+            // fields are put back as they were rather than left to be picked up by an unrelated
+            // later save. Back to what they were, note, not to null: an account that has renamed
+            // before still carries its last rename date, and a restore that dropped it would be a
+            // restore to the wrong state.
+            user.UserNameChangedAt = previousChangedAt;
             user.UserName = previous;
 
             ModelState.AddModelError(

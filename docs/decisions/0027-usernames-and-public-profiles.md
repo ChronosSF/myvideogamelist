@@ -290,11 +290,13 @@ of the two.
 plus an hour of `stale-while-revalidate`, and nothing invalidates a profile when its owner switches
 it back to private, renames it, or deletes the account. So the edge keeps serving the old page for
 five minutes and can hand one stale copy per edge to whoever asks first for up to an hour after
-that — under the old name too, after a rename. Section 10 accepted that staleness for *content*; it
-is a different matter for consent, which 0025 says a default cannot stand in for and this record
-says a TTL should not either. The fix is CloudFront invalidation from the API on those three events,
-which needs infrastructure this codebase does not have yet — the distribution id and an IAM
-permission on the task role — and is ROADMAP D14. Shortening the TTL instead was considered and
+that — under the old name too, after a rename. The same window covers a review its author makes
+private, edits or deletes, because the page renders review bodies: the withdrawn text stays in the
+cached HTML and in its `.data` URL until the TTL runs out. Section 10 accepted that staleness for
+*content*; it is a different matter for consent, which 0025 says a default cannot stand in for and
+this record says a TTL should not either. The fix is CloudFront invalidation from the API on those
+four events, which needs infrastructure this codebase does not have yet — the distribution id and an
+IAM permission on the task role — and is ROADMAP D14. Shortening the TTL instead was considered and
 rejected: it would trade the crawler-latency case this page exists for against a window it could
 only narrow, not close.
 

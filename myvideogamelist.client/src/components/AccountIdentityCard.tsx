@@ -104,7 +104,7 @@ export function AccountIdentityCard({ user }: { user: UserProfile }) {
                         profile, and you can only change it once a month.
                     </p>
 
-                    {error && <p className="user-pref-error">{error}</p>}
+                    {error && <p className="user-pref-error" role="alert">{error}</p>}
 
                     <div className="username-actions">
                         <button type="submit" className="user-save-btn" disabled={saving}>
@@ -151,15 +151,24 @@ export function AccountIdentityCard({ user }: { user: UserProfile }) {
                         {isPublic ? 'Anyone can see it' : 'Only you can see it'}
                     </div>
                     <p className="theme-save-hint">
-                        {visibilityError ?? (isPublic
+                        {isPublic
                             // Both halves of what "public" covers, because one of them is prose the
                             // user wrote and may not expect to be republished by a settings toggle.
                             ? 'Your lists, scores and activity are visible at the address below, '
                                 + 'along with any review you marked public.'
                             : 'Nobody else can see your lists, scores or reviews. Publishing shows '
                                 + 'your tracking and the reviews you marked public — never your '
-                                + 'email address or your private reviews.')}
+                                + 'email address or your private reviews.'}
                     </p>
+
+                    {/*
+                      * Its own paragraph rather than a swap of the hint's text: the hint is the
+                      * standing explanation of what the toggle covers, and making it the live
+                      * region would announce that prose every time it re-rendered. The failure is
+                      * the only thing here worth interrupting a screen reader for.
+                      */}
+                    {visibilityError
+                        && <p className="user-pref-error" role="alert">{visibilityError}</p>}
                 </div>
 
                 <label className="toggle" aria-label="Make my profile public">

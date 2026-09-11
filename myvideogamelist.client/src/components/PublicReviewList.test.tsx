@@ -148,6 +148,26 @@ describe('PublicReviewList counts', () => {
         expect(screen.getByText(/some could not be matched to a game/i)).toBeInTheDocument();
     });
 
+    it('counts from the page rather than the profile when the two disagree', () => {
+        // The profile and the reviews are two independent requests, so a review published or
+        // withdrawn between them leaves the profile's figure stale. The loader validates `?page=`
+        // against the reviews' own total, so paging from the other one offers a page it 404s.
+        renderList({
+            reviews: page({
+                reviews: [review(), review({ game: game({ id: 2, title: 'Another' }) })],
+                total: 4,
+                pageSize: 2,
+            }),
+            total: 30,
+        });
+
+        expect(screen.getByRole('heading', { name: 'Reviews (4)' })).toBeInTheDocument();
+        expect(screen.getByText('Showing 1–2 of 4.')).toBeInTheDocument();
+        // Two pages at this page size, not the fifteen the profile's count would imply.
+        expect(screen.getByText('Page 1 of 2')).toBeInTheDocument();
+        expect(screen.getByRole('link', { name: 'Older reviews' })).toHaveAttribute('href', '/u/alex?page=2');
+    });
+
     it('says nothing about counts when the whole set is on screen', () => {
         renderList();
 

@@ -204,7 +204,7 @@ export function ProfilePage({ loaderData }: Route.ComponentProps) {
 
                     <section className="profile-section">
                         <h3 className="profile-section-title">How they score</h3>
-                        <ScoreHistogram scores={scores} />
+                        <ScoreHistogram scores={scores} owner={profile.userName} />
                     </section>
 
                     <section className="profile-section">
