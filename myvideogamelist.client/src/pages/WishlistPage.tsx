@@ -27,8 +27,14 @@ export function meta() {
  * start wanting this" is the only ordering the axis has, and it is the default.
  */
 export function WishlistPage() {
-    const { user } = useAuth();
+    const { user, loading: authLoading } = useAuth();
     const { items, loading, error, mutationError, reload } = useWishlist();
+
+    // Nobody is signed in or out until auth has answered: the server render never knows, and the
+    // first client render has to match it. Checking `user` alone told every signed-in visitor to
+    // sign in before showing them their wishlist.
+    const signedIn = !authLoading && user !== null;
+    const signedOut = !authLoading && user === null;
 
     return (
         <div className="min-h-screen">
@@ -64,7 +70,7 @@ export function WishlistPage() {
             )}
 
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-                {!user && (
+                {signedOut && (
                     <div className="flex items-center justify-center py-24">
                         <p className="text-slate-400 light:text-slate-600 font-medium">
                             Sign in to keep a wishlist.
@@ -72,16 +78,18 @@ export function WishlistPage() {
                     </div>
                 )}
 
-                {user && loading && (
+                {/* Auth's wait as well as the fetch's. The wishlist is asked for the moment auth
+                    answers, so the two read as one loading state rather than two in a row. */}
+                {(authLoading || (signedIn && loading)) && (
                     <div className="flex items-center justify-center py-24">
-                        <div className="flex flex-col items-center gap-4">
-                            <div className="w-10 h-10 border-4 border-blue-500/30 border-t-blue-500 rounded-full animate-spin" aria-label="Loading" />
+                        <div className="flex flex-col items-center gap-4" role="status">
+                            <div className="w-10 h-10 border-4 border-blue-500/30 border-t-blue-500 rounded-full animate-spin" aria-hidden="true" />
                             <p className="text-slate-400 light:text-slate-600 text-sm">Loading your wishlist…</p>
                         </div>
                     </div>
                 )}
 
-                {user && !loading && error && (
+                {signedIn && !loading && error && (
                     <div className="flex items-center justify-center py-24" role="alert">
                         <div className="bg-red-900/20 border border-red-700/50 rounded-xl p-8 max-w-md text-center">
                             <p className="text-red-300 font-medium mb-1">Failed to load wishlist</p>
@@ -100,7 +108,7 @@ export function WishlistPage() {
                     </div>
                 )}
 
-                {user && !loading && !error && items.length === 0 && (
+                {signedIn && !loading && !error && items.length === 0 && (
                     <div className="flex items-center justify-center py-24">
                         <div className="text-center">
                             <svg className="w-14 h-14 text-slate-700 light:text-slate-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
@@ -119,7 +127,7 @@ export function WishlistPage() {
                     </div>
                 )}
 
-                {user && !loading && !error && items.length > 0 && (
+                {signedIn && !loading && !error && items.length > 0 && (
                     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
                         {items.map(item => (
                             <GameCard key={item.game.id} game={item.game} />
