@@ -32,6 +32,7 @@ builder.Services.AddScoped<IReviewService, ReviewService>();
 builder.Services.AddScoped<IStatsService, StatsService>();
 builder.Services.AddScoped<IPublicProfileService, PublicProfileService>();
 builder.Services.AddScoped<IUserDataExporter, UserDataExporter>();
+builder.Services.AddScoped<IUserNameClaimService, UserNameClaimService>();
 
 // The clock, injected so the event log's timestamps are controllable in tests.
 builder.Services.AddSingleton(TimeProvider.System);

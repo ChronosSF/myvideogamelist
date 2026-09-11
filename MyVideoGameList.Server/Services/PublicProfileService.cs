@@ -85,14 +85,22 @@ public class PublicProfileService(
 
         var total = await published.CountAsync(cancellationToken);
 
+        // The page number arrives validated to be positive, not to be small: int.MaxValue is a
+        // legal page, and multiplying it by the page size overflows into a negative offset that
+        // PostgreSQL refuses. Computed wide, and a page past the end is answered here — without
+        // the query, and without the IGDB call — as the empty page it is.
         var wanted = Math.Max(page, 1);
+        var offset = (long)(wanted - 1) * ReviewsPerPage;
+
+        if (offset >= total)
+            return new PublicReviewsDto(user.UserName!, [], total, wanted, ReviewsPerPage);
 
         var rows = await published
             // Most recently written or rewritten first, with the key as a tie-break so a page
             // boundary does not depend on the order the database happens to return rows in.
             .OrderByDescending(r => r.UpdatedAt)
             .ThenByDescending(r => r.Id)
-            .Skip((wanted - 1) * ReviewsPerPage)
+            .Skip((int)offset)
             .Take(ReviewsPerPage)
             .Select(r => new
             {

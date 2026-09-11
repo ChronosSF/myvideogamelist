@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using MyVideoGameList.Server.DTOs;
 using MyVideoGameList.Server.Models;
+using MyVideoGameList.Server.Services;
 
 namespace MyVideoGameList.Server.Controllers;
 
@@ -10,14 +11,17 @@ namespace MyVideoGameList.Server.Controllers;
 [Route("api/[controller]")]
 public class AuthController(
     UserManager<ApplicationUser> userManager,
-    SignInManager<ApplicationUser> signInManager) : ControllerBase
+    SignInManager<ApplicationUser> signInManager,
+    IUserNameClaimService claims) : ControllerBase
 {
     [HttpPost("register")]
     public async Task<ActionResult<UserProfileDto>> Register([FromBody] RegisterDto dto)
     {
         // The shape of the username has already been checked by [UserName]; what is left is
-        // whether it is free, which only the unique index over NormalizedUserName can answer and
-        // only at the moment of writing. CreateAsync returns that as a DuplicateUserName error.
+        // whether it is free. Identity answers that with a read before the write, which covers
+        // everybody except two people claiming the same name at once — the unique index over
+        // NormalizedUserName settles that pair, and the claim service turns the loser's failure
+        // into the same DuplicateUserName error the read would have produced.
         var user = new ApplicationUser
         {
             UserName = dto.UserName,
@@ -25,7 +29,7 @@ public class AuthController(
             ProfileVisibility = ProfileVisibility.Private
         };
 
-        var result = await userManager.CreateAsync(user, dto.Password);
+        var result = await claims.RegisterAsync(user, dto.Password);
 
         if (!result.Succeeded)
             return BadRequest(new { errors = result.Errors.Select(e => e.Description) });
@@ -48,8 +52,8 @@ public class AuthController(
     /// </para>
     /// <para>
     /// Both are accepted because the field is one box on a form and the person filling it in has
-    /// one of the two memorised. The email is tried first: it is what the label says, and it is the
-    /// unique-by-configuration column.
+    /// one of the two memorised — and the form says so. The email is tried first, because it is
+    /// the unique-by-configuration column.
     /// </para>
     /// </remarks>
     [HttpPost("login")]
@@ -61,13 +65,13 @@ public class AuthController(
         // The same message for "no such account" as for "wrong password", deliberately: telling
         // them apart turns this endpoint into a way to ask whether an address has an account here.
         if (user is null)
-            return Unauthorized(new { message = "Invalid email or password." });
+            return Unauthorized(new { message = "Invalid email, username or password." });
 
         var result = await signInManager.PasswordSignInAsync(
             user, dto.Password, dto.RememberMe, lockoutOnFailure: false);
 
         if (!result.Succeeded)
-            return Unauthorized(new { message = "Invalid email or password." });
+            return Unauthorized(new { message = "Invalid email, username or password." });
 
         return Ok(Profile(user));
     }

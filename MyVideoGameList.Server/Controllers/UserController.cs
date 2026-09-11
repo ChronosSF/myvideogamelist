@@ -18,6 +18,7 @@ public class UserController(
     ApplicationDbContext db,
     IStatsService stats,
     IUserDataExporter exporter,
+    IUserNameClaimService claims,
     TimeProvider clock) : ControllerBase
 {
     [HttpPut("theme")]
@@ -30,7 +31,9 @@ public class UserController(
         if (user == null) return Unauthorized();
 
         user.Theme = dto.Theme;
-        await userManager.UpdateAsync(user);
+        var saved = await userManager.UpdateAsync(user);
+        if (!saved.Succeeded) return NotSaved(saved);
+
         return NoContent();
     }
 
@@ -58,11 +61,13 @@ public class UserController(
     /// same way a malformed name does.
     /// </para>
     /// <para>
-    /// Availability is never checked separately before the write. A "is it free" query followed by
-    /// an update is two statements with a gap in between, and the gap is exactly where two people
-    /// claiming the same name at once both get told yes. The unique index over
-    /// <c>NormalizedUserName</c> settles it, and <c>SetUserNameAsync</c> reports the loser's failure
-    /// as <c>DuplicateUserName</c>.
+    /// Availability is not checked here before the write. A "is it free" query followed by an
+    /// update is two statements with a gap in between, and the gap is exactly where two people
+    /// claiming the same name at once both get told yes. Identity makes that read itself inside
+    /// <c>SetUserNameAsync</c>, which is what reports the ordinary "taken" as
+    /// <c>DuplicateUserName</c>; the pair who both pass it are settled by the unique index over
+    /// <c>NormalizedUserName</c>, and <see cref="IUserNameClaimService"/> reports the loser the
+    /// same way rather than letting the index violation surface as a 500.
     /// </para>
     /// </remarks>
     [HttpPut("username")]
@@ -81,7 +86,8 @@ public class UserController(
             if (user.UserName != dto.UserName)
             {
                 user.UserName = dto.UserName;
-                await userManager.UpdateAsync(user);
+                var saved = await userManager.UpdateAsync(user);
+                if (!saved.Succeeded) return NotSaved(saved);
             }
 
             return Ok(Profile(user));
@@ -102,7 +108,7 @@ public class UserController(
         var previous = user.UserName;
         user.UserNameChangedAt = clock.GetUtcNow();
 
-        var result = await userManager.SetUserNameAsync(user, dto.UserName);
+        var result = await claims.RenameAsync(user, dto.UserName);
         if (!result.Succeeded)
         {
             // Nothing was written, but the in-memory user was mutated on the way here, so the
@@ -118,6 +124,13 @@ public class UserController(
 
             return ValidationProblem(ModelState);
         }
+
+        // SetUserNameAsync rotates the security stamp, and the cookie this request arrived with
+        // carries the old one. Identity's SecurityStampValidator re-checks the cookie against the
+        // account every thirty minutes and signs out on a mismatch, so without a reissued cookie a
+        // rename reads, half an hour later, as "the site logged me out for no reason". The
+        // case-only path above goes through UpdateAsync, which leaves the stamp alone.
+        await signInManager.RefreshSignInAsync(user);
 
         return Ok(Profile(user));
     }
@@ -138,7 +151,8 @@ public class UserController(
         if (user is null) return Unauthorized();
 
         user.ProfileVisibility = dto.ProfileVisibility;
-        await userManager.UpdateAsync(user);
+        var saved = await userManager.UpdateAsync(user);
+        if (!saved.Succeeded) return NotSaved(saved);
 
         return Ok(Profile(user));
     }
@@ -174,7 +188,8 @@ public class UserController(
         if (user == null) return Unauthorized();
 
         user.ListView = dto.View;
-        await userManager.UpdateAsync(user);
+        var saved = await userManager.UpdateAsync(user);
+        if (!saved.Succeeded) return NotSaved(saved);
 
         // Replace wholesale, the same way hidden platforms are handled: the client owns the full
         // set and sends it, so there is no partial-update ambiguity.
@@ -323,6 +338,22 @@ public class UserController(
 
         return NoContent();
     }
+
+    /// <summary>
+    /// The response for an Identity update that did not persist.
+    /// </summary>
+    /// <remarks>
+    /// <c>UpdateAsync</c> reports a lost concurrency-stamp race — two tabs saving the same account
+    /// at once — as a failed result rather than an exception, and an endpoint that ignored it would
+    /// hand back the in-memory object as though it had been written. For the privacy switch that
+    /// would tell somebody a consent change had taken effect while the database still says
+    /// otherwise. A 409, because the row was changed by another request between this one's read
+    /// and its write; the client shows its own generic failure and the user tries again.
+    /// </remarks>
+    private ObjectResult NotSaved(IdentityResult result) =>
+        Problem(
+            detail: string.Join(" ", result.Errors.Select(e => e.Description)),
+            statusCode: StatusCodes.Status409Conflict);
 
     /// <summary>
     /// The same projection <c>AuthController</c> returns, so an endpoint that changes part of the

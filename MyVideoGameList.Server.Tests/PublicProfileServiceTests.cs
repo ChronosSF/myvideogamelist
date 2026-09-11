@@ -337,6 +337,27 @@ public class PublicProfileServiceTests
     }
 
     [Fact]
+    public async Task GetReviewsAsync_PageAtIntMaxValue_IsEmptyRatherThanAnOverflow()
+    {
+        // [Range(1, int.MaxValue)] on the controller admits this, and (page - 1) * 20 overflows
+        // into a negative offset that PostgreSQL refuses — a 500 for a URL anybody can type. The
+        // empty page is answered before any query or IGDB call is made.
+        using var db = NewDb();
+        AddAccount(db, UserId, "alex");
+        AddReview(db, gameId: 11);
+        var igdb = IgdbKnowing(Game(11, "One"));
+
+        var page = await NewService(db, igdb).GetReviewsAsync("alex", int.MaxValue, default);
+
+        Assert.NotNull(page);
+        Assert.Empty(page.Reviews);
+        Assert.Equal(1, page.Total);
+        Assert.Equal(int.MaxValue, page.Page);
+        await igdb.DidNotReceiveWithAnyArgs()
+            .GetGamesByIdsAsync(Arg.Any<IEnumerable<int>>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public async Task GetReviewsAsync_GameIgdbNoLongerReturns_IsDroppedButStillCounted()
     {
         // Rendering a review against a blank card would be worse than omitting it, and ListService
