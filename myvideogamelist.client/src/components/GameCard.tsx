@@ -226,12 +226,13 @@ export function GameCard({ game }: GameCardProps) {
 
                 {/* Description */}
                 {game.description && (
-                    <p className="text-slate-400 light:text-slate-500 text-xs leading-relaxed line-clamp-3 mt-auto pt-1">
+                    <p className="text-slate-400 light:text-slate-500 text-xs leading-relaxed line-clamp-3 pt-1">
                         {game.description}
                     </p>
                 )}
 
-                {/* Platforms */}
+                {/* Platforms, pinned to the foot of the card. The only auto margin in the body: a
+                    second one would split the free space and leave the description floating. */}
                 {game.platforms.length > 0 && (
                     <div className="flex flex-wrap gap-1 mt-auto pt-2 border-t border-slate-700 light:border-slate-200">
                         {game.platforms.slice(0, 4).map(platform => (
