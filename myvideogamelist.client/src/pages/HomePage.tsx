@@ -238,7 +238,9 @@ export function HomePage({ loaderData }: Route.ComponentProps) {
                             subtitle="Patch notes and announcements from the games people are playing"
                         />
 
-                        <div className="grid gap-3 sm:grid-cols-2">
+                        {/* grid-cols-1, not an implicit column: that one sizes to its content, and
+                            a card's truncated source line counts at full length — wider than a phone. */}
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                             {news.map(item => (
                                 <NewsCard key={item.id} item={item} />
                             ))}
