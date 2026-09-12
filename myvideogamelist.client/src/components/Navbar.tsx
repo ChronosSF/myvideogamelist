@@ -9,7 +9,7 @@ import './Navbar.css';
 type DialogState = 'none' | 'login' | 'signup';
 
 export function Navbar() {
-    const { user, logout } = useAuth();
+    const { user, loading: authLoading, logout } = useAuth();
     const navigate = useNavigate();
     const [dialog, setDialog] = useState<DialogState>('none');
     const [menuOpen, setMenuOpen] = useState(false);
@@ -53,12 +53,20 @@ export function Navbar() {
                                 <NavLink to="/lists" className={navLinkClass}>Lists</NavLink>
                                 {/* Gated on auth, unlike Lists: the wishlist has no signed-out
                                     story to tell, so an anonymous visitor would land on a page
-                                    that only asks them to sign in. */}
-                                {user && <NavLink to="/wishlist" className={navLinkClass}>Wishlist</NavLink>}
+                                    that only asks them to sign in. Held back until auth has
+                                    answered, like the auth section below. */}
+                                {!authLoading && user && <NavLink to="/wishlist" className={navLinkClass}>Wishlist</NavLink>}
                             </nav>
 
-                            {/* Auth section */}
-                            {user ? (
+                            {/* Auth section. Nobody is signed in or out until auth has answered:
+                                the server render never knows, and the first client render has to
+                                match it. Until then this holds the space the Sign In / Sign Up
+                                pair takes, with nothing in it — sized for the pair because a
+                                signed-out visitor then sees no shift at all, and a signed-in one
+                                sees their avatar arrive instead of the wrong buttons. */}
+                            {authLoading ? (
+                                <div className="navbar-auth-placeholder sm:ml-2" />
+                            ) : user ? (
                                 <div className="relative shrink-0 sm:ml-2">
                                     <button
                                         className="navbar-user-btn"
