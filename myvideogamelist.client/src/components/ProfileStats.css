@@ -141,9 +141,10 @@
 
 /*
  * One row from here. Measured, not guessed: at 48rem each of five tiles has about 124px inside its
- * padding, which holds the widest values formatHours produces in practice ("123 days" is 121px,
- * "23 hours" 120px) and a label like "completion rate" on one line. At 42rem it had 102px, and
- * both wrapped.
+ * padding, which holds a label like "completion rate" and the values formatHours produces from an
+ * hour upwards ("123 days" is 121px, "23 hours" 120px) on one line. At 42rem it had 102px, and both
+ * wrapped. The exception is "under an hour", which is what the hours tile shows until a full hour
+ * has been logged: at 195px it takes two lines, and the row grows to fit rather than overflow.
  */
 @container (min-width: 48rem) {
     .profile-tiles {

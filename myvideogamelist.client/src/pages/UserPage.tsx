@@ -50,7 +50,15 @@ export function UserPage() {
     // Nothing on the signed-out page needs the platform list, so it is not asked for until somebody
     // is signed in.
     const platforms = useActivePlatforms(user !== null);
-    const { hiddenIds, loading: hiddenLoading, saving, error: hiddenError, setHiddenIds, save } = useHiddenPlatforms(user?.id ?? null);
+    const {
+        hiddenIds,
+        loading: hiddenLoading,
+        saving,
+        loadError: hiddenLoadError,
+        saveError: hiddenSaveError,
+        setHiddenIds,
+        save,
+    } = useHiddenPlatforms(user?.id ?? null);
     const [saveSuccess, setSaveSuccess] = useState(false);
 
     // `loading` before `user`: the server render never knows who is signed in, and neither does the
@@ -117,11 +125,21 @@ export function UserPage() {
     const isLight = user.theme === 'light';
     const platformsReady = !platforms.loading && !hiddenLoading;
 
-    // A failed load leaves the previous list in the hook, so the error decides for itself whether
-    // there is anything to show. A grid of checkboxes under "could not be loaded" is two answers to
-    // one question, and saving from it would write a preference chosen against a list we have just
-    // said we do not trust.
-    const platformsUsable = platformsReady && platforms.error === null && platforms.platforms.length > 0;
+    /*
+     * Both requests have to have worked, and they fail differently.
+     *
+     * A failed list leaves the previous one in the hook, so a grid of checkboxes under "could not
+     * be loaded" would be two answers to one question, and saving from it would write a preference
+     * chosen against a list we had just said we do not trust.
+     *
+     * A failed preference is worse, because it does not look like a failure: it leaves an empty
+     * set, which is exactly what "nothing hidden" looks like. Every box would render ticked, and
+     * one press of Save would write that over whatever the user had chosen.
+     */
+    const platformsUsable = platformsReady
+        && platforms.error === null
+        && hiddenLoadError === null
+        && platforms.platforms.length > 0;
 
     return (
         <div className="min-h-screen">
@@ -209,7 +227,17 @@ export function UserPage() {
                                 </p>
                             )}
 
-                            {platformsReady && platforms.error === null && platforms.platforms.length === 0 && (
+                            {/* The list can be fine while the preference is not, and then there is
+                                nothing to tick the boxes from. */}
+                            {platformsReady && hiddenLoadError !== null && (
+                                <p className="user-pref-error" role="alert">
+                                    Your hidden platforms could not be loaded, so they cannot be
+                                    changed just now.
+                                </p>
+                            )}
+
+                            {platformsReady && platforms.error === null && hiddenLoadError === null
+                                && platforms.platforms.length === 0 && (
                                 <p className="user-card-hint">No active platforms found.</p>
                             )}
 
@@ -235,9 +263,9 @@ export function UserPage() {
                             )}
 
                             {/* A live region for the same reason: a save that fails moves nothing
-                                else on screen, since the rollback puts the button back as it was. */}
-                            {hiddenError && (
-                                <p className="user-pref-error" role="alert">{hiddenError}</p>
+                                else on screen, since the set the user ticked is left as it was. */}
+                            {hiddenSaveError && (
+                                <p className="user-pref-error" role="alert">{hiddenSaveError}</p>
                             )}
 
                             {platformsUsable && (
