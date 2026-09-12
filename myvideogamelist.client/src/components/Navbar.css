@@ -282,3 +282,23 @@
 [data-theme='light'] .navbar-dropdown-logout:hover {
     color: #ef4444 !important;
 }
+
+/* Below sm the links are in the main menu, so the bar holds the menu button, the logo and the
+   account controls. Those controls are a little tighter here, which leaves the bar roomy on a
+   360px screen. Last in the file so it outranks the button rules above. */
+@media (width < 40rem) {
+    .navbar-btn-ghost {
+        padding-inline: 0.5rem;
+    }
+
+    .navbar-btn-primary {
+        padding-inline: 0.625rem;
+    }
+
+    /* The pair is narrower here than the width the placeholder is measured from, so the
+       placeholder has to match it or the links move when auth answers — which is the shift
+       the placeholder exists to prevent. */
+    .navbar-auth-placeholder {
+        width: 8.625rem;
+    }
+}

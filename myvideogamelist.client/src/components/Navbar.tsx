@@ -136,16 +136,20 @@ export function Navbar() {
                             </nav>
 
                             {/* Logo / Brand */}
-                            <Link to="/" className="flex items-center gap-2.5 text-slate-100 light:text-slate-900 font-bold text-lg hover:opacity-80 transition-opacity">
+                            <Link to="/" className="shrink-0 flex items-center gap-2.5 text-slate-100 light:text-slate-900 font-bold text-lg hover:opacity-80 transition-opacity">
                                 <Logo className="w-7 h-7" />
-                                {/* Visually hidden below sm rather than removed: it is the link's
-                                    only accessible name, and display: none would leave a link to
-                                    the home page that says nothing at all. */}
-                                <span className="sr-only sm:not-sr-only">MyVideoGame<span className="text-lime-400 light:text-lime-600">List</span></span>
+                                {/* Icon-only below sm, where the bar has no room for the name
+                                    beside the menu button and the account controls. Visually
+                                    hidden rather than removed: it is the link's only accessible
+                                    name, and display: none would leave a link to the home page
+                                    that says nothing at all. Not `sr-only sm:not-sr-only`:
+                                    ListTable.css defines an unlayered .sr-only that would outrank
+                                    the sm: utility once the lists page had loaded. */}
+                                <span className="max-sm:sr-only">MyVideoGame<span className="text-lime-400 light:text-lime-600">List</span></span>
                             </Link>
                         </div>
 
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 min-w-0">
                             {/* Navigation Links */}
                             <nav className="hidden md:flex items-center gap-1" aria-label="Main navigation">
                                 {navItems.map(item => (
@@ -162,9 +166,9 @@ export function Navbar() {
                                 signed-out visitor then sees no shift at all, and a signed-in one
                                 sees their avatar arrive instead of the wrong buttons. */}
                             {authLoading ? (
-                                <div className="navbar-auth-placeholder ml-2" />
+                                <div className="navbar-auth-placeholder sm:ml-2" />
                             ) : user ? (
-                                <div className="relative ml-2">
+                                <div className="relative shrink-0 sm:ml-2">
                                     <button
                                         className="navbar-user-btn"
                                         onClick={() => {
@@ -234,7 +238,7 @@ export function Navbar() {
                                     )}
                                 </div>
                             ) : (
-                                <div className="flex items-center gap-2 ml-2">
+                                <div className="flex items-center gap-2 shrink-0 sm:ml-2">
                                     <button
                                         className="navbar-btn-ghost"
                                         onClick={() => setDialog('login')}
