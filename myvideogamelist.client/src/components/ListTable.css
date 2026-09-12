@@ -1,5 +1,10 @@
-/* The table is wider than a phone; it scrolls inside its own box so the page never does. */
+/* The table is wider than a phone; it scrolls inside its own box so the page never does.
+   position: relative is part of that. The .sr-only labels in the cells are absolutely
+   positioned, and without a positioned ancestor here their containing block is the viewport,
+   which puts them outside this box's clip: one of them, a pixel wide, sat at the far end of
+   the table and widened the whole page to match. */
 .list-table-scroll {
+    position: relative;
     overflow-x: auto;
     border: 1px solid rgba(51, 65, 85, 0.6);
     border-radius: 0.75rem;
@@ -120,6 +125,9 @@
 .list-table-nocover {
     display: block;
     width: 2.25rem;
+    /* Preflight gives every img max-width: 100%. On a phone the table is squeezed to its minimum
+       width, that rule makes this column's minimum zero, and the covers rendered 0px wide. */
+    max-width: none;
     height: 3rem;
     object-fit: cover;
     border-radius: 0.25rem;

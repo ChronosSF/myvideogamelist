@@ -17,7 +17,7 @@ export function Navbar() {
     // Both states need explicit light: variants. Without them light mode inherited the dark
     // palette against a near-white bar: 2.45:1 inactive and 1.84:1 active, well under AA.
     const navLinkClass = ({ isActive }: { isActive: boolean }) =>
-        `px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+        `px-2 sm:px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
             isActive
                 ? 'bg-blue-600/20 text-blue-400 light:bg-blue-100 light:text-blue-800'
                 : 'text-slate-400 hover:text-white hover:bg-slate-800 '
@@ -36,14 +36,18 @@ export function Navbar() {
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                     <div className="flex items-center justify-between h-14">
                         {/* Logo / Brand */}
-                        <Link to="/" className="flex items-center gap-2.5 text-slate-100 light:text-slate-900 font-bold text-lg hover:opacity-80 transition-opacity">
+                        <Link to="/" className="shrink-0 flex items-center gap-2.5 text-slate-100 light:text-slate-900 font-bold text-lg hover:opacity-80 transition-opacity">
                             <Logo className="w-7 h-7" />
-                            <span>MyVideoGame<span className="text-lime-400 light:text-lime-600">List</span></span>
+                            {/* Icon-only on a phone, where the name and the links do not fit on one
+                                row. It stays in the accessibility tree as the link's name. Not
+                                `sr-only sm:not-sr-only`: ListTable.css defines an unlayered .sr-only
+                                that would outrank the sm: utility once the lists page had loaded. */}
+                            <span className="max-sm:sr-only">MyVideoGame<span className="text-lime-400 light:text-lime-600">List</span></span>
                         </Link>
 
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 min-w-0">
                             {/* Navigation Links */}
-                            <nav className="flex items-center gap-1" aria-label="Main navigation">
+                            <nav className="navbar-links flex items-center gap-1" aria-label="Main navigation">
                                 <NavLink to="/" end className={navLinkClass}>Home</NavLink>
                                 <NavLink to="/games" className={navLinkClass}>Games</NavLink>
                                 <NavLink to="/lists" className={navLinkClass}>Lists</NavLink>
@@ -61,9 +65,9 @@ export function Navbar() {
                                 signed-out visitor then sees no shift at all, and a signed-in one
                                 sees their avatar arrive instead of the wrong buttons. */}
                             {authLoading ? (
-                                <div className="navbar-auth-placeholder ml-2" />
+                                <div className="navbar-auth-placeholder sm:ml-2" />
                             ) : user ? (
-                                <div className="relative ml-2">
+                                <div className="relative shrink-0 sm:ml-2">
                                     <button
                                         className="navbar-user-btn"
                                         onClick={() => setMenuOpen(o => !o)}
@@ -130,7 +134,7 @@ export function Navbar() {
                                     )}
                                 </div>
                             ) : (
-                                <div className="flex items-center gap-2 ml-2">
+                                <div className="flex items-center gap-2 shrink-0 sm:ml-2">
                                     <button
                                         className="navbar-btn-ghost"
                                         onClick={() => setDialog('login')}
