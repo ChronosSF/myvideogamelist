@@ -4,14 +4,27 @@
     z-index: 50;
     background: var(--nav-bg, rgba(15, 23, 42, 0.95));
     border-bottom: 1px solid var(--nav-border, rgba(51, 65, 85, 0.5));
+    transition: background 0.2s, border-color 0.2s;
+}
+
+/* The bar's blur, on a layer of its own rather than on the bar. A backdrop-filter makes its element
+   the containing block for everything fixed inside it, and on the bar that shrank the user menu's
+   click-away overlay — `position: fixed; inset: 0` — to the bar itself, so a click on the page went
+   through to the page and left the menu open. */
+.navbar-root::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
     backdrop-filter: blur(8px);
     -webkit-backdrop-filter: blur(8px);
-    transition: background 0.2s, border-color 0.2s;
+    pointer-events: none;
 }
 
 [data-theme='light'] .navbar-root {
     --nav-bg: rgba(248, 250, 252, 0.95);
     --nav-border: rgba(203, 213, 225, 0.6);
+    --nav-menu-bg: #f8fafc;
 }
 
 .navbar-btn-ghost {
@@ -54,6 +67,75 @@
 
 .navbar-btn-primary:hover {
     background: #2563eb;
+}
+
+/* Main menu: the nav links behind a button, below md */
+.navbar-menu-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.5rem;
+    height: 2.5rem;
+    border-radius: 0.5rem;
+    color: var(--nbtn-ghost, #94a3b8);
+    background: none;
+    border: none;
+    cursor: pointer;
+    transition: color 0.15s, background 0.15s;
+}
+
+.navbar-menu-btn:hover,
+.navbar-menu-btn[aria-expanded='true'] {
+    color: var(--nbtn-ghost-hover, #f1f5f9);
+    background: rgba(255, 255, 255, 0.08);
+}
+
+[data-theme='light'] .navbar-menu-btn {
+    --nbtn-ghost: #475569;
+    --nbtn-ghost-hover: #0f172a;
+}
+
+[data-theme='light'] .navbar-menu-btn:hover,
+[data-theme='light'] .navbar-menu-btn[aria-expanded='true'] {
+    background: rgba(0, 0, 0, 0.06);
+}
+
+/* Hangs from the bar's bottom border, full width, positioned against .navbar-root, which is
+   sticky. Opaque rather than the bar's translucent colour: the bar's backdrop blur stops at the
+   bar's own edge, so a translucent panel would show the page through it unblurred. */
+.navbar-main-menu {
+    position: absolute;
+    top: calc(100% + 1px);
+    left: 0;
+    right: 0;
+    background: var(--nav-menu-bg, #0f172a);
+    border-bottom: 1px solid var(--nav-border, rgba(51, 65, 85, 0.5));
+    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.4);
+    animation: dd-in 0.12s ease;
+}
+
+[data-theme='light'] .navbar-main-menu {
+    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.15);
+}
+
+/* Dims the page under an open main menu, and a tap on it closes the menu. Rendered outside
+   .navbar-root and below its z-index, unlike the user menu's overlay, so the bar stays usable: the
+   button that opened this menu is also the one that closes it. */
+.navbar-scrim {
+    position: fixed;
+    inset: 0;
+    z-index: 40;
+    background: rgba(2, 6, 23, 0.6);
+    animation: navbar-fade-in 0.12s ease;
+}
+
+[data-theme='light'] .navbar-scrim {
+    background: rgba(15, 23, 42, 0.25);
+}
+
+@keyframes navbar-fade-in {
+    from { opacity: 0; }
+    to   { opacity: 1; }
 }
 
 /* User avatar button */
@@ -201,23 +283,10 @@
     color: #ef4444 !important;
 }
 
-/* Below sm the links take whatever width the logo and the account controls leave, and scroll
-   sideways if that is not enough, rather than pushing the page wider than the phone. The
-   account controls never give way (they are shrink-0 in the markup) and are a little tighter
-   here, so every link shows from 375px up. The padding on the links keeps a focused link's
-   outline inside the clip. Last in the file so it outranks the button rules above. */
+/* Below sm the links are in the main menu, so the bar holds the menu button, the logo and the
+   account controls. Those controls are a little tighter here, which leaves the bar roomy on a
+   360px screen. Last in the file so it outranks the button rules above. */
 @media (width < 40rem) {
-    .navbar-links {
-        min-width: 0;
-        padding: 0.25rem 0.125rem;
-        overflow-x: auto;
-        scrollbar-width: none;
-    }
-
-    .navbar-links::-webkit-scrollbar {
-        display: none;
-    }
-
     .navbar-btn-ghost {
         padding-inline: 0.5rem;
     }
