@@ -3,7 +3,7 @@ import { act, render, screen, waitFor } from '@testing-library/react';
 import { hiddenPlatformsReducer, useHiddenPlatforms } from '@/hooks/useHiddenPlatforms';
 import type { HiddenPlatformsState } from '@/hooks/useHiddenPlatforms';
 
-type Answer = number[] | 'held';
+type Answer = number[] | 'held' | 'fail';
 
 /**
  * Answers `/api/user/hidden-platforms` from a script, one entry per GET, repeating the last. A
@@ -25,6 +25,7 @@ function stubHidden(answers: Answer[]) {
                 held.push(ids => resolve(new Response(JSON.stringify(ids), { status: 200 })));
             });
         }
+        if (answer === 'fail') return Promise.resolve(new Response('nope', { status: 500 }));
         return Promise.resolve(new Response(JSON.stringify(answer), { status: 200 }));
     });
 
@@ -41,10 +42,11 @@ function stubHidden(answers: Answer[]) {
 }
 
 function Probe({ account }: { account: string | null }) {
-    const { hiddenIds, loading } = useHiddenPlatforms(account);
+    const { hiddenIds, loading, loadError } = useHiddenPlatforms(account);
     return (
         <div>
             <span data-testid="loading">{String(loading)}</span>
+            <span data-testid="load-error">{loadError ?? 'none'}</span>
             <span data-testid="hidden">
                 {hiddenIds.size === 0 ? 'none' : [...hiddenIds].sort((a, b) => a - b).join(',')}
             </span>
@@ -54,6 +56,7 @@ function Probe({ account }: { account: string | null }) {
 
 const hidden = () => screen.getByTestId('hidden');
 const loading = () => screen.getByTestId('loading');
+const loadError = () => screen.getByTestId('load-error');
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -73,6 +76,19 @@ describe('useHiddenPlatforms', () => {
 
         expect(loading()).toHaveTextContent('true');
         await waitFor(() => expect(hidden()).toHaveTextContent('6,48'));
+        expect(loading()).toHaveTextContent('false');
+    });
+
+    it('reports a failed read rather than passing its empty set off as the answer', async () => {
+        // The empty set left behind is not "nothing hidden", and a caller has to be able to tell
+        // the difference: the profile page offers no Save while this is set, because saving that
+        // set would write it over whatever the user had actually chosen.
+        stubHidden(['fail']);
+        render(<Probe account="alice" />);
+
+        await waitFor(() =>
+            expect(loadError()).toHaveTextContent('Failed to load hidden platforms (500)'));
+        expect(hidden()).toHaveTextContent('none');
         expect(loading()).toHaveTextContent('false');
     });
 
@@ -128,7 +144,8 @@ describe('hiddenPlatformsReducer', () => {
         hiddenIds: new Set([130]),
         loading: false,
         saving: false,
-        error: null,
+        loadError: null,
+        saveError: null,
     };
 
     it.each([
@@ -158,12 +175,34 @@ describe('hiddenPlatformsReducer', () => {
             hiddenIds: new Set([6, 48]),
             loading: false,
             saving: true,
-            error: 'old',
+            loadError: 'old',
+            saveError: 'old',
         };
 
         const next = hiddenPlatformsReducer(alice, { type: 'FETCH_START', account: 'bob' });
 
-        expect(next).toEqual({ account: 'bob', hiddenIds: new Set(), loading: true, saving: false, error: null });
+        expect(next).toEqual({
+            account: 'bob',
+            hiddenIds: new Set(),
+            loading: true,
+            saving: false,
+            loadError: null,
+            saveError: null,
+        });
+    });
+
+    it('keeps a failed read apart from a failed save', () => {
+        // One field for both cannot say whether the set beside it is the user's answer or the
+        // absence of one, and only the read's empty set is dangerous to save.
+        const next = hiddenPlatformsReducer(bob, {
+            type: 'FETCH_ERROR',
+            account: 'bob',
+            error: 'Failed to load hidden platforms (500)',
+        });
+
+        expect(next.loadError).toBe('Failed to load hidden platforms (500)');
+        expect(next.saveError).toBeNull();
+        expect(next.loading).toBe(false);
     });
 
     it('surfaces a failed save without dropping the edits it was saving', () => {
@@ -174,7 +213,9 @@ describe('hiddenPlatformsReducer', () => {
         const next = hiddenPlatformsReducer(saving, { type: 'SAVE_ERROR', account: 'bob', error: 'Failed to save (500)' });
 
         expect(next.saving).toBe(false);
-        expect(next.error).toBe('Failed to save (500)');
+        expect(next.saveError).toBe('Failed to save (500)');
+        // Not a load failure: what is on screen is still the user's own set.
+        expect(next.loadError).toBeNull();
         expect([...next.hiddenIds]).toEqual([130]);
     });
 });

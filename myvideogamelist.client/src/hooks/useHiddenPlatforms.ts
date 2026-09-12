@@ -4,7 +4,14 @@ export interface UseHiddenPlatformsResult {
     hiddenIds: Set<number>;
     loading: boolean;
     saving: boolean;
-    error: string | null;
+    /**
+     * The preference could not be read, so the empty set beside this is not the user's answer. A
+     * caller must not offer to save from it: an empty set is indistinguishable from "nothing
+     * hidden", and saving it writes that over whatever they had chosen.
+     */
+    loadError: string | null;
+    /** A save failed. The set beside this is still what the user chose, and is theirs to retry. */
+    saveError: string | null;
     setHiddenIds: (value: Set<number> | ((prev: Set<number>) => Set<number>)) => void;
     save: () => Promise<void>;
 }
@@ -21,7 +28,14 @@ export interface HiddenPlatformsState {
     hiddenIds: Set<number>;
     loading: boolean;
     saving: boolean;
-    error: string | null;
+    /**
+     * Kept apart, which is the rule every provider here follows: a failed read means there is
+     * nothing trustworthy to show, while a failed save leaves the set on screen exactly as the user
+     * chose it. One field for both cannot tell a caller which of those it is looking at — and the
+     * one that matters is the read, because the empty set it leaves behind reads as a preference.
+     */
+    loadError: string | null;
+    saveError: string | null;
 }
 
 export type HiddenPlatformsAction =
@@ -36,7 +50,14 @@ export type HiddenPlatformsAction =
 
 /** Nothing hidden, and a request in flight only if somebody is signed in. */
 function initial(account: string | null): HiddenPlatformsState {
-    return { account, hiddenIds: new Set(), loading: account !== null, saving: false, error: null };
+    return {
+        account,
+        hiddenIds: new Set(),
+        loading: account !== null,
+        saving: false,
+        loadError: null,
+        saveError: null,
+    };
 }
 
 /** Drops an action that was raised against an account other than the one on screen. */
@@ -64,14 +85,14 @@ export function hiddenPlatformsReducer(
             // cannot leave the previous account's preference in force for the next one. A save in
             // flight goes with it: whatever it was saving was never this account's.
             return action.account === state.account
-                ? { ...state, loading: true, error: null }
+                ? { ...state, loading: true, loadError: null }
                 : initial(action.account);
         case 'FETCH_SUCCESS':
             return ifCurrent(state, action.account, () =>
                 ({ ...state, loading: false, hiddenIds: action.ids }));
         case 'FETCH_ERROR':
             return ifCurrent(state, action.account, () =>
-                ({ ...state, loading: false, error: action.error }));
+                ({ ...state, loading: false, loadError: action.error }));
         case 'EDIT':
             return ifCurrent(state, action.account, () => ({
                 ...state,
@@ -83,12 +104,13 @@ export function hiddenPlatformsReducer(
         // cover: a PUT is not cancelled on sign-out, so its result really can arrive under the
         // next account.
         case 'SAVE_START':
-            return ifCurrent(state, action.account, () => ({ ...state, saving: true, error: null }));
+            return ifCurrent(state, action.account, () =>
+                ({ ...state, saving: true, saveError: null }));
         case 'SAVE_SUCCESS':
             return ifCurrent(state, action.account, () => ({ ...state, saving: false }));
         case 'SAVE_ERROR':
             return ifCurrent(state, action.account, () =>
-                ({ ...state, saving: false, error: action.error }));
+                ({ ...state, saving: false, saveError: action.error }));
     }
 }
 
@@ -171,5 +193,13 @@ export function useHiddenPlatforms(accountId: string | null): UseHiddenPlatforms
         }
     }, [accountId, hiddenIds]);
 
-    return { hiddenIds, loading: state.loading, saving: state.saving, error: state.error, setHiddenIds, save };
+    return {
+        hiddenIds,
+        loading: state.loading,
+        saving: state.saving,
+        loadError: state.loadError,
+        saveError: state.saveError,
+        setHiddenIds,
+        save,
+    };
 }

@@ -127,20 +127,23 @@ export function ProfileStats({ userId }: { userId: string }) {
                 />
             </div>
 
-            {/* Worth stating in the caption, because every other number here is exclusive and the
-                wishlist is not. */}
-            <StatusBreakdown
-                title="Where your games sit"
-                byStatus={library.byStatus}
-                caption={library.wishlisted === 0
-                    ? 'Your wishlist is empty. It is a separate axis, so a wishlisted game can also sit in one of these.'
-                    : `Plus ${library.wishlisted} on your wishlist, which is a separate axis — a game can be on it and in a list at once.`}
-            />
+            {/* Side by side once the block is wide enough for both, stacked before that. */}
+            <div className="profile-columns">
+                {/* Worth stating in the caption, because every other number here is exclusive and
+                    the wishlist is not. */}
+                <StatusBreakdown
+                    title="Where your games sit"
+                    byStatus={library.byStatus}
+                    caption={library.wishlisted === 0
+                        ? 'Your wishlist is empty. It is a separate axis, so a wishlisted game can also sit in one of these.'
+                        : `Plus ${library.wishlisted} on your wishlist, which is a separate axis — a game can be on it and in a list at once.`}
+                />
 
-            <section className="profile-section">
-                <h3 className="profile-section-title">How you score</h3>
-                <ScoreHistogram scores={scores} />
-            </section>
+                <section className="profile-section">
+                    <h3 className="profile-section-title">How you score</h3>
+                    <ScoreHistogram scores={scores} />
+                </section>
+            </div>
 
             <section className="profile-section">
                 <h3 className="profile-section-title">What you start and finish</h3>
@@ -156,71 +159,74 @@ export function ProfileStats({ userId }: { userId: string }) {
                 )}
             </section>
 
-            <section className="profile-section">
-                <h3 className="profile-section-title">How long games take you</h3>
-                {activity.timeToFinish === null ? (
-                    <p className="profile-empty">
-                        Play a game and mark it finished, and this measures how long it actually took.
-                    </p>
-                ) : (
-                    <>
-                        <p className="profile-figure">{formatHours(activity.timeToFinish.medianHours)}</p>
-                        <p className="profile-caption">
-                            {`Typical time from starting to finishing, over ${activity.timeToFinish.samples} ${activity.timeToFinish.samples === 1 ? 'game' : 'games'}. `}
-                            {`Longest ${formatHours(activity.timeToFinish.longestHours)}. `}
-                            {/* The distinction ADR 0018 exists to protect: a shelved game does not
-                                bill the months it sat on the shelf. */}
-                            Counts only the time a game spent in Playing, so shelving one does not
-                            inflate it.
-                        </p>
-                    </>
-                )}
-            </section>
-
-            {/* The metadata-dependent half, from here down. Each part has its own loading and
-                error state, so an IGDB outage takes rows rather than the page. */}
-
-            {played.length > 0 && (
+            {/* A pair when both are present. Alone, the first takes the whole row. */}
+            <div className="profile-columns">
                 <section className="profile-section">
-                    {/* The one heading on this page allowed to say "played": hours back it. The
-                        "Most of your games are on" row below is about library composition and
-                        counts a four-platform game four times. */}
-                    <h3 className="profile-section-title">Most played on</h3>
-                    {namesLoading ? (
-                        <p className="profile-empty">Working out which platforms those hours were on…</p>
+                    <h3 className="profile-section-title">How long games take you</h3>
+                    {activity.timeToFinish === null ? (
+                        <p className="profile-empty">
+                            Play a game and mark it finished, and this measures how long it actually took.
+                        </p>
                     ) : (
                         <>
-                            <ul className="profile-ranked">
-                                {played.map(platform => (
-                                    <li key={platform.platformId} className="profile-ranked-row">
-                                        <span className="profile-ranked-name">
-                                            {platformName(platform.platformId, namesFromLists, active.platforms)}
-                                        </span>
-                                        <span className="profile-ranked-track" aria-hidden="true">
-                                            <span
-                                                className="profile-ranked-fill"
-                                                style={{ width: `${(platform.minutes / played[0].minutes) * 100}%` }}
-                                            />
-                                        </span>
-                                        <span className="profile-ranked-count" aria-hidden="true">
-                                            {formatHours(platform.minutes / 60)}
-                                        </span>
-                                        <span className="sr-only">
-                                            {`${formatHours(platform.minutes / 60)} over ${platform.playthroughs} ${platform.playthroughs === 1 ? 'playthrough' : 'playthroughs'}`}
-                                        </span>
-                                    </li>
-                                ))}
-                            </ul>
-                            {active.error !== null && (
-                                <p className="profile-caption">
-                                    Some platform names could not be loaded, so those rows show an
-                                    id. The hours come from your own data and are unaffected.
-                                </p>
-                            )}
+                            <p className="profile-figure">{formatHours(activity.timeToFinish.medianHours)}</p>
+                            <p className="profile-caption">
+                                {`Typical time from starting to finishing, over ${activity.timeToFinish.samples} ${activity.timeToFinish.samples === 1 ? 'game' : 'games'}. `}
+                                {`Longest ${formatHours(activity.timeToFinish.longestHours)}. `}
+                                {/* The distinction ADR 0018 exists to protect: a shelved game does
+                                    not bill the months it sat on the shelf. */}
+                                Counts only the time a game spent in Playing, so shelving one does
+                                not inflate it.
+                            </p>
                         </>
                     )}
                 </section>
-            )}
+
+                {/* The metadata-dependent half starts here and runs to the end. Each part has its
+                    own loading and error state, so an IGDB outage takes rows rather than the page. */}
+
+                {played.length > 0 && (
+                    <section className="profile-section">
+                        {/* The one heading on this page allowed to say "played": hours back it. The
+                            "Most of your games are on" row below is about library composition and
+                            counts a four-platform game four times. */}
+                        <h3 className="profile-section-title">Most played on</h3>
+                        {namesLoading ? (
+                            <p className="profile-empty">Working out which platforms those hours were on…</p>
+                        ) : (
+                            <>
+                                <ul className="profile-ranked">
+                                    {played.map(platform => (
+                                        <li key={platform.platformId} className="profile-ranked-row">
+                                            <span className="profile-ranked-name">
+                                                {platformName(platform.platformId, namesFromLists, active.platforms)}
+                                            </span>
+                                            <span className="profile-ranked-track" aria-hidden="true">
+                                                <span
+                                                    className="profile-ranked-fill"
+                                                    style={{ width: `${(platform.minutes / played[0].minutes) * 100}%` }}
+                                                />
+                                            </span>
+                                            <span className="profile-ranked-count" aria-hidden="true">
+                                                {formatHours(platform.minutes / 60)}
+                                            </span>
+                                            <span className="sr-only">
+                                                {`${formatHours(platform.minutes / 60)} over ${platform.playthroughs} ${platform.playthroughs === 1 ? 'playthrough' : 'playthroughs'}`}
+                                            </span>
+                                        </li>
+                                    ))}
+                                </ul>
+                                {active.error !== null && (
+                                    <p className="profile-caption">
+                                        Some platform names could not be loaded, so those rows show an
+                                        id. The hours come from your own data and are unaffected.
+                                    </p>
+                                )}
+                            </>
+                        )}
+                    </section>
+                )}
+            </div>
 
             {listsLoading ? (
                 <p className="profile-empty">Loading your library breakdown…</p>

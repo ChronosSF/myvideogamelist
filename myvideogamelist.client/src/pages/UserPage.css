@@ -1,75 +1,110 @@
-.user-page {
-    min-height: 100vh;
-    padding: 3rem 1rem;
+/*
+ * The signed-in user's own profile. The header band and the page container are Tailwind inline,
+ * copied from Lists and Wishlist so the three stay one site; what is here is the grid below them
+ * and the cards in it.
+ */
+
+/* ── Layout ──────────────────────────────────────────────────────────────── */
+
+/*
+ * Three named areas rather than two columns. Stacked, they read in source order — who you are, what
+ * you have done, then preferences — which is the order that matters on a phone. From lg up the
+ * tracking takes the main column and both groups of settings share a sidebar, as the game page's
+ * details and sidebar do.
+ */
+.user-page-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+        'account'
+        'tracking'
+        'prefs';
+    gap: 1.25rem;
+}
+
+@media (min-width: 64rem) {
+    .user-page-grid {
+        grid-template-columns: minmax(0, 1fr) 20rem;
+        /* The first row is as tall as the account cards. The tracking spans both rows, and any
+           height it has beyond the first goes to the second, so the preferences sit directly
+           under the account cards rather than halfway down the page. */
+        grid-template-rows: auto 1fr;
+        grid-template-areas:
+            'tracking account'
+            'tracking prefs';
+        column-gap: 2rem;
+        align-items: start;
+    }
+}
+
+.user-page-account {
+    grid-area: account;
+}
+
+.user-page-tracking {
+    grid-area: tracking;
+}
+
+.user-page-prefs {
+    grid-area: prefs;
+}
+
+.user-page-account,
+.user-page-prefs {
     display: flex;
-    justify-content: center;
+    flex-direction: column;
+    gap: 1.25rem;
 }
 
-.user-page-inner {
-    width: 100%;
-    max-width: 480px;
-}
-
-.user-page-header {
-    margin-bottom: 2rem;
-}
-
-.user-page-title {
-    font-size: 1.75rem;
-    font-weight: 700;
-    color: var(--pg-title, #f1f5f9);
-    margin: 0 0 0.25rem;
-}
-
-[data-theme='light'] .user-page-title {
-    --pg-title: #0f172a;
-}
-
-.user-page-subtitle {
-    font-size: 0.9375rem;
-    color: var(--pg-sub, #94a3b8);
-}
-
-[data-theme='light'] .user-page-subtitle {
-    --pg-sub: #475569;
-}
+/* ── Cards ───────────────────────────────────────────────────────────────── */
 
 .user-card {
-    background: var(--card-bg, #1e293b);
-    border: 1px solid var(--card-border, rgba(51, 65, 85, 0.6));
-    border-radius: 1rem;
     padding: 1.5rem;
-    margin-bottom: 1.25rem;
+    background: #1e293b;
+    border: 1px solid rgba(51, 65, 85, 0.6);
+    border-radius: 1rem;
 }
 
 [data-theme='light'] .user-card {
-    --card-bg: #ffffff;
-    --card-border: rgba(203, 213, 225, 0.8);
+    background: #ffffff;
+    border-color: rgba(203, 213, 225, 0.8);
 }
 
+/*
+ * The label and the hint share ProfileStats' secondary text colours. The slate-500 and slate-400
+ * they used before measured under 3:1 against the card in both themes.
+ */
 .user-card-label {
+    margin-bottom: 0.375rem;
     font-size: 0.75rem;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.05em;
-    color: var(--lbl, #64748b);
-    margin-bottom: 0.375rem;
+    color: #94a3b8;
 }
 
 [data-theme='light'] .user-card-label {
-    --lbl: #94a3b8;
+    color: #64748b;
 }
 
 .user-card-value {
+    min-width: 0;
     font-size: 1rem;
-    color: var(--val, #f1f5f9);
     font-weight: 500;
+    color: #f1f5f9;
+    /* An email address or a username can be one long word, and this card may be in a sidebar. */
+    overflow-wrap: anywhere;
 }
 
 [data-theme='light'] .user-card-value {
-    --val: #0f172a;
+    color: #0f172a;
 }
 
+/*
+ * A value and the control that changes it, on one line. The explanation goes underneath at the
+ * card's full width: it used to share this row, where the button beside it could squeeze it down to
+ * one word per line.
+ */
 .user-card-row {
     display: flex;
     align-items: center;
@@ -77,13 +112,102 @@
     gap: 1rem;
 }
 
-.user-card-info {
-    flex: 1;
-    min-width: 0;
+.user-card-hint {
+    margin-top: 0.375rem;
+    font-size: 0.8125rem;
+    line-height: 1.5;
+    color: #94a3b8;
 }
+
+[data-theme='light'] .user-card-hint {
+    color: #64748b;
+}
+
+.user-pref-error {
+    margin: 0.5rem 0;
+    font-size: 0.8125rem;
+    color: #fca5a5;
+}
+
+[data-theme='light'] .user-pref-error {
+    color: #b91c1c;
+}
+
+/* ── Buttons ─────────────────────────────────────────────────────────────── */
+
+/* Sized to its label, so it can sit in a row beside a value. .user-btn-block spans the card. */
+.user-btn {
+    flex-shrink: 0;
+    padding: 0.4375rem 0.875rem;
+    background: rgba(59, 130, 246, 0.15);
+    color: #93c5fd;
+    border: 1px solid rgba(59, 130, 246, 0.35);
+    border-radius: 0.5rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+}
+
+.user-btn:hover:not(:disabled) {
+    background: rgba(59, 130, 246, 0.25);
+    border-color: rgba(59, 130, 246, 0.55);
+}
+
+.user-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+[data-theme='light'] .user-btn {
+    background: rgba(59, 130, 246, 0.08);
+    color: #1d4ed8;
+    border-color: rgba(59, 130, 246, 0.4);
+}
+
+[data-theme='light'] .user-btn:hover:not(:disabled) {
+    background: rgba(59, 130, 246, 0.14);
+}
+
+.user-btn-block {
+    width: 100%;
+    padding-top: 0.5625rem;
+    padding-bottom: 0.5625rem;
+}
+
+.user-logout-btn {
+    width: 100%;
+    padding: 0.6875rem 1rem;
+    background: rgba(239, 68, 68, 0.1);
+    color: #fca5a5;
+    border: 1px solid rgba(239, 68, 68, 0.25);
+    border-radius: 0.5rem;
+    font-size: 0.9375rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+}
+
+.user-logout-btn:hover {
+    background: rgba(239, 68, 68, 0.2);
+    border-color: rgba(239, 68, 68, 0.4);
+}
+
+[data-theme='light'] .user-logout-btn {
+    background: rgba(239, 68, 68, 0.06);
+    color: #b91c1c;
+    border-color: rgba(239, 68, 68, 0.3);
+}
+
+[data-theme='light'] .user-logout-btn:hover {
+    background: rgba(239, 68, 68, 0.12);
+}
+
+/* ── Appearance ──────────────────────────────────────────────────────────── */
 
 .theme-toggle-wrap {
     display: flex;
+    flex-shrink: 0;
     align-items: center;
     gap: 0.625rem;
 }
@@ -91,12 +215,12 @@
 .theme-icon {
     width: 1.125rem;
     height: 1.125rem;
-    color: var(--icon-c, #64748b);
     flex-shrink: 0;
+    color: #64748b;
 }
 
 [data-theme='light'] .theme-icon {
-    --icon-c: #94a3b8;
+    color: #94a3b8;
 }
 
 /* Toggle switch */
@@ -148,43 +272,17 @@
     outline-offset: 2px;
 }
 
-.user-logout-btn {
-    width: 100%;
-    padding: 0.6875rem 1rem;
-    background: rgba(239, 68, 68, 0.1);
-    color: #fca5a5;
-    border: 1px solid rgba(239, 68, 68, 0.25);
-    border-radius: 0.5rem;
-    font-size: 0.9375rem;
-    font-weight: 600;
-    cursor: pointer;
-    transition: background 0.15s, border-color 0.15s;
-    margin-top: 0.5rem;
-}
+/* ── Platform preferences ────────────────────────────────────────────────── */
 
-.user-logout-btn:hover {
-    background: rgba(239, 68, 68, 0.2);
-    border-color: rgba(239, 68, 68, 0.4);
-}
-
-.theme-save-hint {
-    font-size: 0.8125rem;
-    color: var(--hint, #64748b);
-    margin-top: 0.375rem;
-}
-
-[data-theme='light'] .theme-save-hint {
-    --hint: #94a3b8;
-}
-
-/* Platform preferences grid */
 .platform-prefs-grid {
     display: flex;
     flex-wrap: wrap;
     gap: 0.5rem;
-    margin-bottom: 1rem;
+    margin: 1rem 0;
 }
 
+/* Unchecked is slate-400 rather than slate-500, which measured under AA on both backgrounds; the
+   checked state still differs by border, fill and tick as well as by colour. */
 .platform-pref-label {
     display: inline-flex;
     align-items: center;
@@ -193,7 +291,7 @@
     border-radius: 9999px;
     border: 1px solid var(--pref-border, #334155);
     background: var(--pref-bg, #0f172a);
-    color: var(--pref-color, #64748b);
+    color: var(--pref-color, #94a3b8);
     font-size: 0.8rem;
     cursor: pointer;
     user-select: none;
@@ -203,7 +301,7 @@
 [data-theme='light'] .platform-pref-label {
     --pref-border: #e2e8f0;
     --pref-bg: #f8fafc;
-    --pref-color: #94a3b8;
+    --pref-color: #64748b;
 }
 
 .platform-pref-label.checked {
@@ -248,42 +346,16 @@
     transform: rotate(45deg);
 }
 
+.platform-pref-label:has(input:focus-visible) {
+    outline: 2px solid #60a5fa;
+    outline-offset: 2px;
+}
+
 .platform-pref-name {
     max-width: 6rem;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-}
-
-.user-save-btn {
-    width: 100%;
-    padding: 0.6rem 1rem;
-    background: rgba(59, 130, 246, 0.15);
-    color: #93c5fd;
-    border: 1px solid rgba(59, 130, 246, 0.35);
-    border-radius: 0.5rem;
-    font-size: 0.9rem;
-    font-weight: 600;
-    cursor: pointer;
-    transition: background 0.15s, border-color 0.15s;
-    margin-top: 0.25rem;
-}
-
-.user-save-btn:hover:not(:disabled) {
-    background: rgba(59, 130, 246, 0.25);
-    border-color: rgba(59, 130, 246, 0.55);
-}
-
-.user-save-btn:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-}
-
-.user-pref-error {
-    font-size: 0.8125rem;
-    color: #fca5a5;
-    margin-top: 0.5rem;
-    margin-bottom: 0.5rem;
 }
 
 /* ── Username and public profile ─────────────────────────────────────────── */
@@ -315,11 +387,16 @@
 
 .username-at {
     font-size: 1rem;
+    color: #94a3b8;
+}
+
+[data-theme='light'] .username-at {
     color: #64748b;
 }
 
 .username-input {
     flex: 1;
+    min-width: 0;
     padding: 0.5rem 0.75rem;
     background: #0f172a;
     border: 1px solid rgba(71, 85, 105, 0.7);
@@ -362,6 +439,10 @@
     color: #e2e8f0;
 }
 
+[data-theme='light'] .username-cancel {
+    color: #475569;
+}
+
 [data-theme='light'] .username-cancel:hover:not(:disabled) {
     color: #0f172a;
 }
@@ -373,6 +454,7 @@
 
 .username-link a {
     color: #60a5fa;
+    overflow-wrap: anywhere;
 }
 
 .username-link a:hover {

@@ -98,7 +98,7 @@ export function AccountIdentityCard({ user }: { user: UserProfile }) {
                         />
                     </div>
 
-                    <p className="theme-save-hint">
+                    <p className="user-card-hint">
                         Letters, numbers and underscores, {USERNAME_MIN_LENGTH}–
                         {USERNAME_MAX_LENGTH} characters. Changing it breaks existing links to your
                         profile, and you can only change it once a month.
@@ -107,7 +107,7 @@ export function AccountIdentityCard({ user }: { user: UserProfile }) {
                     {error && <p className="user-pref-error" role="alert">{error}</p>}
 
                     <div className="username-actions">
-                        <button type="submit" className="user-save-btn" disabled={saving}>
+                        <button type="submit" className="user-btn" disabled={saving}>
                             {saving ? 'Saving…' : 'Save username'}
                         </button>
                         <button
@@ -125,50 +125,31 @@ export function AccountIdentityCard({ user }: { user: UserProfile }) {
                     </div>
                 </form>
             ) : (
-                <div className="user-card-row">
-                    <div className="user-card-info">
+                <>
+                    {/* The value and its control share a row; the hint goes underneath at full
+                        width, where no button beside it can squeeze it. */}
+                    <div className="user-card-row">
                         <div className="user-card-value">@{user.userName}</div>
-                        <p className="theme-save-hint">
-                            {saved ? 'Saved.' : 'How you appear to other people.'}
-                        </p>
+                        <button
+                            type="button"
+                            className="user-btn"
+                            onClick={() => { setEditing(true); setSaved(false); }}
+                        >
+                            Change
+                        </button>
                     </div>
-                    <button
-                        type="button"
-                        className="user-save-btn"
-                        onClick={() => { setEditing(true); setSaved(false); }}
-                    >
-                        Change
-                    </button>
-                </div>
+                    <p className="user-card-hint">
+                        {saved ? 'Saved.' : 'How you appear to other people.'}
+                    </p>
+                </>
             )}
 
             <hr className="user-card-rule" />
 
             <div className="user-card-label">Public profile</div>
             <div className="user-card-row">
-                <div className="user-card-info">
-                    <div className="user-card-value">
-                        {isPublic ? 'Anyone can see it' : 'Only you can see it'}
-                    </div>
-                    <p className="theme-save-hint">
-                        {isPublic
-                            // Both halves of what "public" covers, because one of them is prose the
-                            // user wrote and may not expect to be republished by a settings toggle.
-                            ? 'Your lists, scores and activity are visible at the address below, '
-                                + 'along with any review you marked public.'
-                            : 'Nobody else can see your lists, scores or reviews. Publishing shows '
-                                + 'your tracking and the reviews you marked public — never your '
-                                + 'email address or your private reviews.'}
-                    </p>
-
-                    {/*
-                      * Its own paragraph rather than a swap of the hint's text: the hint is the
-                      * standing explanation of what the toggle covers, and making it the live
-                      * region would announce that prose every time it re-rendered. The failure is
-                      * the only thing here worth interrupting a screen reader for.
-                      */}
-                    {visibilityError
-                        && <p className="user-pref-error" role="alert">{visibilityError}</p>}
+                <div className="user-card-value">
+                    {isPublic ? 'Anyone can see it' : 'Only you can see it'}
                 </div>
 
                 <label className="toggle" aria-label="Make my profile public">
@@ -182,6 +163,25 @@ export function AccountIdentityCard({ user }: { user: UserProfile }) {
                     <span className="toggle-thumb" />
                 </label>
             </div>
+            <p className="user-card-hint">
+                {isPublic
+                    // Both halves of what "public" covers, because one of them is prose the user
+                    // wrote and may not expect to be republished by a settings toggle.
+                    ? 'Your lists, scores and activity are visible at the address below, '
+                        + 'along with any review you marked public.'
+                    : 'Nobody else can see your lists, scores or reviews. Publishing shows '
+                        + 'your tracking and the reviews you marked public — never your '
+                        + 'email address or your private reviews.'}
+            </p>
+
+            {/*
+              * Its own paragraph rather than a swap of the hint's text: the hint is the standing
+              * explanation of what the toggle covers, and making it the live region would announce
+              * that prose every time it re-rendered. The failure is the only thing here worth
+              * interrupting a screen reader for.
+              */}
+            {visibilityError
+                && <p className="user-pref-error" role="alert">{visibilityError}</p>}
 
             {isPublic && (
                 <p className="username-link">
