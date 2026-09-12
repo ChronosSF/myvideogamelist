@@ -95,6 +95,17 @@
     justify-content: center;
 }
 
+/* Stands in for the Sign In / Sign Up pair until auth has answered: nothing in it, just the room
+   the pair takes, so the pair arrives without moving the nav links. Measured from the pair — two
+   0.875rem labels in their padding, 0.5rem apart — and it only has to be close. Not shrinkable,
+   because an empty box would give up all of its room on a narrow bar, where the pair gives up
+   only a little. */
+.navbar-auth-placeholder {
+    flex-shrink: 0;
+    width: 9.75rem;
+    height: 2.2rem;
+}
+
 /* Dropdown */
 .navbar-dropdown-overlay {
     position: fixed;
@@ -188,4 +199,37 @@
 
 [data-theme='light'] .navbar-dropdown-logout:hover {
     color: #ef4444 !important;
+}
+
+/* Below sm the links take whatever width the logo and the account controls leave, and scroll
+   sideways if that is not enough, rather than pushing the page wider than the phone. The
+   account controls never give way (they are shrink-0 in the markup) and are a little tighter
+   here, so every link shows from 375px up. The padding on the links keeps a focused link's
+   outline inside the clip. Last in the file so it outranks the button rules above. */
+@media (width < 40rem) {
+    .navbar-links {
+        min-width: 0;
+        padding: 0.25rem 0.125rem;
+        overflow-x: auto;
+        scrollbar-width: none;
+    }
+
+    .navbar-links::-webkit-scrollbar {
+        display: none;
+    }
+
+    .navbar-btn-ghost {
+        padding-inline: 0.5rem;
+    }
+
+    .navbar-btn-primary {
+        padding-inline: 0.625rem;
+    }
+
+    /* The pair is narrower here than the width the placeholder is measured from, so the
+       placeholder has to match it or the links move when auth answers — which is the shift
+       the placeholder exists to prevent. */
+    .navbar-auth-placeholder {
+        width: 8.625rem;
+    }
 }

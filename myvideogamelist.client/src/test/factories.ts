@@ -1,3 +1,4 @@
+import type { UserProfile } from '@/types/auth';
 import type { GameDto, PlatformDto } from '@/types/game';
 import type { ListEntryDto } from '@/types/list';
 import type { EntryDetailDto, PlaythroughDto, ReviewDto } from '@/types/playthrough';
@@ -97,6 +98,18 @@ export function review(overrides: Partial<ReviewDto> = {}): ReviewDto {
         playthroughId: null,
         createdAt: '2026-01-01T00:00:00+00:00',
         updatedAt: '2026-01-01T00:00:00+00:00',
+        ...overrides,
+    };
+}
+
+/** The signed-in account, as `/api/auth/me` returns it. */
+export function userProfile(overrides: Partial<UserProfile> = {}): UserProfile {
+    return {
+        id: 'user-1',
+        email: 'alex@test.local',
+        userName: 'alex',
+        theme: 'dark',
+        profileVisibility: 'private',
         ...overrides,
     };
 }

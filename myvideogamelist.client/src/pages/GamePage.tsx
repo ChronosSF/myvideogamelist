@@ -93,7 +93,7 @@ export function meta({ loaderData }: Route.MetaArgs) {
 export function GamePage() {
     const { game } = useLoaderData<typeof loader>();
 
-    const { user } = useAuth();
+    const { user, loading: authLoading } = useAuth();
 
     // Null on the listing endpoints by design; this page is the one that asks IGDB for it.
     const details = game.details;
@@ -376,12 +376,22 @@ export function GamePage() {
                     <aside className="lg:w-64 xl:w-72 space-y-6">
                         {/* Lists, score and the one control that erases both. Keyed on the account
                             so a different sign-in remounts it: the panel holds that person's score,
-                            playthroughs and review, and its own fetch is keyed on the game alone. */}
-                        {user ? (
+                            playthroughs and review, and its own fetch is keyed on the game alone.
+
+                            Until auth answers, the slot holds the signed-out card with nothing in
+                            it. That is every server render — the page is shared-cached, so it
+                            cannot depend on who is asking — and the first client render, which
+                            must match it. It keeps the card's size rather than taking the panel's,
+                            because most visitors to a cached public page are signed out and so see
+                            no shift at all; a signed-in visitor sees the panel grow into place, but
+                            is never told to sign in first. */}
+                        {!authLoading && user ? (
                             <GameUserPanel key={user.id} game={game} />
                         ) : (
                             <div className="bg-slate-800/60 light:bg-white border border-slate-700/50 light:border-slate-200 rounded-xl p-5 text-center">
-                                <p className="text-slate-400 light:text-slate-600 text-xs mb-3">Sign in to track this game.</p>
+                                <p className="text-slate-400 light:text-slate-600 text-xs mb-3">
+                                    {authLoading ? <>&nbsp;</> : 'Sign in to track this game.'}
+                                </p>
                             </div>
                         )}
 
