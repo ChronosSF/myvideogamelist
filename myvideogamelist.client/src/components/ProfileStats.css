@@ -278,10 +278,13 @@
 }
 
 /* Two sections side by side. The minimum keeps a ranked bar's track long enough to compare once the
-   fixed name and count columns have taken their share; below twice that, the pair stacks. */
+   fixed name and count columns have taken their share; below twice that, the pair stacks. It is
+   capped at the container, because a bare 18rem is a floor the track keeps even when there is less
+   room than that — and on a 320px phone the stats block is about 240px once the page and the card
+   have taken their padding, so the pair would overflow the card sideways rather than fit in it. */
 .profile-columns {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(min(18rem, 100%), 1fr));
     gap: 1.5rem;
 }
 

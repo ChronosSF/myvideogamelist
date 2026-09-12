@@ -117,6 +117,12 @@ export function UserPage() {
     const isLight = user.theme === 'light';
     const platformsReady = !platforms.loading && !hiddenLoading;
 
+    // A failed load leaves the previous list in the hook, so the error decides for itself whether
+    // there is anything to show. A grid of checkboxes under "could not be loaded" is two answers to
+    // one question, and saving from it would write a preference chosen against a list we have just
+    // said we do not trust.
+    const platformsUsable = platformsReady && platforms.error === null && platforms.platforms.length > 0;
+
     return (
         <div className="min-h-screen">
             <PageHeader />
@@ -194,9 +200,11 @@ export function UserPage() {
                             )}
 
                             {/* Its own message rather than the empty one: the list comes from IGDB,
-                                and "no active platforms" would blame the platforms for an outage. */}
+                                and "no active platforms" would blame the platforms for an outage.
+                                A live region, because it replaces the loading line after a request
+                                that nobody was watching happen. */}
                             {platformsReady && platforms.error !== null && (
-                                <p className="user-pref-error">
+                                <p className="user-pref-error" role="alert">
                                     The platform list could not be loaded just now.
                                 </p>
                             )}
@@ -205,7 +213,7 @@ export function UserPage() {
                                 <p className="user-card-hint">No active platforms found.</p>
                             )}
 
-                            {platformsReady && platforms.platforms.length > 0 && (
+                            {platformsUsable && (
                                 <div className="platform-prefs-grid">
                                     {platforms.platforms.map(p => {
                                         const visible = !hiddenIds.has(p.id);
@@ -226,11 +234,13 @@ export function UserPage() {
                                 </div>
                             )}
 
+                            {/* A live region for the same reason: a save that fails moves nothing
+                                else on screen, since the rollback puts the button back as it was. */}
                             {hiddenError && (
-                                <p className="user-pref-error">{hiddenError}</p>
+                                <p className="user-pref-error" role="alert">{hiddenError}</p>
                             )}
 
-                            {platformsReady && platforms.platforms.length > 0 && (
+                            {platformsUsable && (
                                 <button
                                     type="button"
                                     className="user-btn user-btn-block"
