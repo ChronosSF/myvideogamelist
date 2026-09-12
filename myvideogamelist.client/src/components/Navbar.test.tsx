@@ -222,6 +222,25 @@ describe('Navbar main menu', () => {
         expect(button).toHaveAttribute('aria-expanded', 'false');
     });
 
+    it('closes when the scrim is tapped', async () => {
+        // The only page-level way to dismiss the panel. Queried by class for the same reason as the
+        // user menu's layer: it is presentational, with no role of its own.
+        authAnswered(null);
+        const actor = userEvent.setup();
+        renderNavbar();
+        const { button, panel } = mainMenu();
+
+        await actor.click(button);
+        const scrim = document.querySelector<HTMLElement>('.navbar-scrim');
+        expect(scrim).toBeInTheDocument();
+
+        await actor.click(scrim!);
+
+        expect(button).toHaveAttribute('aria-expanded', 'false');
+        expect(panel).not.toBeVisible();
+        expect(document.querySelector('.navbar-scrim')).not.toBeInTheDocument();
+    });
+
     it('closes when the page changes under it, and stays closed coming back', async () => {
         // A back-swipe: nothing in the menu is touched and no focus moves. Coming back to the page
         // it was opened on is the case a comparison against the opening location would get wrong.
@@ -279,6 +298,28 @@ describe('Navbar user menu', () => {
         await actor.click(screen.getByRole('button', { name: 'User menu' }));
 
         expect(screen.getByRole('menuitem', { name: 'My public page' })).toHaveAttribute('href', '/u/alex');
+    });
+
+    it('closes when the page behind it is clicked', async () => {
+        // The click-away layer covers the viewport only because the bar's blur sits on a
+        // pseudo-element rather than on the bar, which would make the bar the containing block for
+        // anything fixed inside it. Queried by class because the layer is presentational and has
+        // no role to find it by. jsdom has no layout, so this holds the layer's presence and its
+        // handler; that it lies over the page is the CSS half, checked in a browser.
+        authAnswered(ALEX);
+        const actor = userEvent.setup();
+        renderNavbar();
+        const button = screen.getByRole('button', { name: 'User menu' });
+
+        await actor.click(button);
+        const overlay = document.querySelector<HTMLElement>('.navbar-dropdown-overlay');
+        expect(overlay).toBeInTheDocument();
+
+        await actor.click(overlay!);
+
+        expect(button).toHaveAttribute('aria-expanded', 'false');
+        expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+        expect(document.querySelector('.navbar-dropdown-overlay')).not.toBeInTheDocument();
     });
 
     it('never shares the screen with the main menu', () => {
