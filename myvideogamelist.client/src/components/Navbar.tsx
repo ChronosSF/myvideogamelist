@@ -15,7 +15,7 @@ interface NavItem {
 }
 
 export function Navbar() {
-    const { user, logout } = useAuth();
+    const { user, loading: authLoading, logout } = useAuth();
     const navigate = useNavigate();
     const location = useLocation();
     const [dialog, setDialog] = useState<DialogState>('none');
@@ -52,13 +52,15 @@ export function Navbar() {
     const mainMenuLinkClass = ({ isActive }: { isActive: boolean }) =>
         `block px-3 py-2.5 rounded-lg text-base font-medium transition-colors ${navLinkColours(isActive)}`;
 
+    // Rendered twice, by the bar and by the main menu, so the two can never drift apart.
     const navItems: NavItem[] = [
         { to: '/', label: 'Home', end: true },
         { to: '/games', label: 'Games' },
         { to: '/lists', label: 'Lists' },
         // Gated on auth, unlike Lists: the wishlist has no signed-out story to tell, so an
-        // anonymous visitor would land on a page that only asks them to sign in.
-        ...(user ? [{ to: '/wishlist', label: 'Wishlist' }] : []),
+        // anonymous visitor would land on a page that only asks them to sign in. Held back until
+        // auth has answered, like the auth section below.
+        ...(!authLoading && user ? [{ to: '/wishlist', label: 'Wishlist' }] : []),
     ];
 
     const handleLogout = async () => {
@@ -153,8 +155,15 @@ export function Navbar() {
                                 ))}
                             </nav>
 
-                            {/* Auth section */}
-                            {user ? (
+                            {/* Auth section. Nobody is signed in or out until auth has answered:
+                                the server render never knows, and the first client render has to
+                                match it. Until then this holds the space the Sign In / Sign Up
+                                pair takes, with nothing in it — sized for the pair because a
+                                signed-out visitor then sees no shift at all, and a signed-in one
+                                sees their avatar arrive instead of the wrong buttons. */}
+                            {authLoading ? (
+                                <div className="navbar-auth-placeholder ml-2" />
+                            ) : user ? (
                                 <div className="relative ml-2">
                                     <button
                                         className="navbar-user-btn"

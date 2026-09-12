@@ -3,16 +3,20 @@ import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMemoryRouter, RouterProvider } from 'react-router';
 import { Navbar } from '@/components/Navbar';
+import type { AuthContextValue } from '@/contexts/AuthContext';
 import type { UserProfile } from '@/types/auth';
 
 /**
+ * Auth, mocked rather than provided: the real provider fetches, and the navbar only reads what it
+ * holds.
+ *
  * One module-level object handed back on every call, never a fresh literal — a new object per
  * render re-runs any effect depending on it, which ends in a heap crash rather than an assertion
- * failure.
+ * failure. Each test sets `user` and `loading` for the moment it is about.
  */
-const authValue = {
-    user: null as UserProfile | null,
-    loading: false,
+const auth: AuthContextValue = {
+    user: null,
+    loading: true,
     login: vi.fn(async () => {}),
     register: vi.fn(async () => {}),
     logout: vi.fn(async () => {}),
@@ -21,17 +25,20 @@ const authValue = {
     updateProfileVisibility: vi.fn(async () => {}),
 };
 
-vi.mock('@/hooks/useAuth', () => ({ useAuth: () => authValue }));
+vi.mock('@/hooks/useAuth', () => ({ useAuth: () => auth }));
 
-function user(overrides: Partial<UserProfile> = {}): UserProfile {
-    return {
-        id: 'user-1',
-        email: 'alex@test.local',
-        userName: 'alex',
-        theme: 'dark',
-        profileVisibility: 'private',
-        ...overrides,
-    };
+const ALEX: UserProfile = {
+    id: 'user-1',
+    email: 'alex@test.local',
+    userName: 'alex',
+    theme: 'dark',
+    profileVisibility: 'private',
+};
+
+/** `/api/auth/me` has come back, with an account or with nobody. */
+function authAnswered(user: UserProfile | null) {
+    auth.user = user;
+    auth.loading = false;
 }
 
 /** A data router rather than MemoryRouter, so a test can navigate without touching the navbar. */
@@ -58,11 +65,57 @@ function linkNames(panel: HTMLElement) {
 }
 
 beforeEach(() => {
-    authValue.user = null;
+    // Where every visit starts, the server render included: nobody known yet.
+    auth.user = null;
+    auth.loading = true;
+});
+
+describe('Navbar before auth has answered', () => {
+    it('shows neither the sign-in buttons nor the user menu', () => {
+        // The server render is always in this state, so the first client render is too. Offering a
+        // signed-in visitor Sign In and then swapping it for their avatar is the flash this prevents.
+        renderNavbar();
+
+        expect(screen.queryByRole('button', { name: 'Sign In' })).not.toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'Sign Up' })).not.toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'User menu' })).not.toBeInTheDocument();
+    });
+
+    it('holds back the Wishlist link, and only that one', () => {
+        // Queried on the whole bar rather than within the navigation landmark: there are two of
+        // those, the bar's row and the main menu's panel, and a closed panel is `hidden`, so only
+        // the row's links are on screen.
+        renderNavbar();
+
+        expect(screen.getByRole('link', { name: 'Lists' })).toHaveAttribute('href', '/lists');
+        expect(screen.queryByRole('link', { name: 'Wishlist' })).not.toBeInTheDocument();
+    });
+});
+
+describe('Navbar once auth has answered', () => {
+    it('offers a signed-out visitor Sign In and Sign Up', () => {
+        authAnswered(null);
+        renderNavbar();
+
+        expect(screen.getByRole('button', { name: 'Sign In' })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Sign Up' })).toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'User menu' })).not.toBeInTheDocument();
+        expect(screen.queryByRole('link', { name: 'Wishlist' })).not.toBeInTheDocument();
+    });
+
+    it('shows a signed-in user their menu and the Wishlist link', () => {
+        authAnswered(ALEX);
+        renderNavbar();
+
+        expect(screen.getByRole('button', { name: 'User menu' })).toBeInTheDocument();
+        expect(screen.getByRole('link', { name: 'Wishlist' })).toHaveAttribute('href', '/wishlist');
+        expect(screen.queryByRole('button', { name: 'Sign In' })).not.toBeInTheDocument();
+    });
 });
 
 describe('Navbar main menu', () => {
     it('starts collapsed', () => {
+        authAnswered(null);
         renderNavbar();
         const { button, panel } = mainMenu();
 
@@ -71,6 +124,7 @@ describe('Navbar main menu', () => {
     });
 
     it('opens from the keyboard, as the first stop in the page', async () => {
+        authAnswered(null);
         const actor = userEvent.setup();
         renderNavbar();
         const { button, panel } = mainMenu();
@@ -85,6 +139,7 @@ describe('Navbar main menu', () => {
     });
 
     it('opens to the same links as the bar, with no wishlist for a visitor', async () => {
+        authAnswered(null);
         const actor = userEvent.setup();
         renderNavbar();
         const { button, panel } = mainMenu();
@@ -97,7 +152,7 @@ describe('Navbar main menu', () => {
     });
 
     it('offers the wishlist once signed in', async () => {
-        authValue.user = user();
+        authAnswered(ALEX);
         const actor = userEvent.setup();
         renderNavbar();
         const { button, panel } = mainMenu();
@@ -108,6 +163,7 @@ describe('Navbar main menu', () => {
     });
 
     it('marks the page you are on', async () => {
+        authAnswered(null);
         const actor = userEvent.setup();
         renderNavbar('/games');
         const { button, panel } = mainMenu();
@@ -119,6 +175,7 @@ describe('Navbar main menu', () => {
     });
 
     it('closes once a link is followed', async () => {
+        authAnswered(null);
         const actor = userEvent.setup();
         const router = renderNavbar();
         const { button, panel } = mainMenu();
@@ -131,6 +188,7 @@ describe('Navbar main menu', () => {
     });
 
     it('closes on Escape and hands focus back to its button', async () => {
+        authAnswered(null);
         const actor = userEvent.setup();
         renderNavbar();
         const { button, panel } = mainMenu();
@@ -147,6 +205,7 @@ describe('Navbar main menu', () => {
 
     it('closes when focus moves past its last link', async () => {
         // Otherwise a keyboard user carries on into the page with the panel still covering it.
+        authAnswered(null);
         const actor = userEvent.setup();
         renderNavbar();
         const { button, panel } = mainMenu();
@@ -166,6 +225,7 @@ describe('Navbar main menu', () => {
     it('closes when the page changes under it, and stays closed coming back', async () => {
         // A back-swipe: nothing in the menu is touched and no focus moves. Coming back to the page
         // it was opened on is the case a comparison against the opening location would get wrong.
+        authAnswered(null);
         const actor = userEvent.setup();
         const router = renderNavbar();
         const { button } = mainMenu();
@@ -184,7 +244,7 @@ describe('Navbar main menu', () => {
 
 describe('Navbar user menu', () => {
     it('is a popup button that reports whether it is open', async () => {
-        authValue.user = user();
+        authAnswered(ALEX);
         const actor = userEvent.setup();
         renderNavbar();
         const button = screen.getByRole('button', { name: 'User menu' });
@@ -202,7 +262,7 @@ describe('Navbar user menu', () => {
     });
 
     it('has no public page to offer for a private profile', async () => {
-        authValue.user = user();
+        authAnswered(ALEX);
         const actor = userEvent.setup();
         renderNavbar();
 
@@ -212,7 +272,7 @@ describe('Navbar user menu', () => {
     });
 
     it('links to the public page of a public profile', async () => {
-        authValue.user = user({ profileVisibility: 'public' });
+        authAnswered({ ...ALEX, profileVisibility: 'public' });
         const actor = userEvent.setup();
         renderNavbar();
 
@@ -224,7 +284,7 @@ describe('Navbar user menu', () => {
     it('never shares the screen with the main menu', () => {
         // fireEvent rather than userEvent: Safari moves no focus on a click, so the main menu's
         // focus-out close cannot be what closes it here.
-        authValue.user = user();
+        authAnswered(ALEX);
         renderNavbar();
         const { button } = mainMenu();
         const userButton = screen.getByRole('button', { name: 'User menu' });
@@ -239,15 +299,5 @@ describe('Navbar user menu', () => {
 
         expect(userButton).toHaveAttribute('aria-expanded', 'false');
         expect(button).toHaveAttribute('aria-expanded', 'true');
-    });
-});
-
-describe('Navbar signed out', () => {
-    it('offers sign in and sign up in place of the user menu', () => {
-        renderNavbar();
-
-        expect(screen.getByRole('button', { name: 'Sign In' })).toBeInTheDocument();
-        expect(screen.getByRole('button', { name: 'Sign Up' })).toBeInTheDocument();
-        expect(screen.queryByRole('button', { name: 'User menu' })).not.toBeInTheDocument();
     });
 });

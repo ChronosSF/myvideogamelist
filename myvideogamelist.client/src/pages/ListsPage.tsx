@@ -30,11 +30,18 @@ export function meta() {
 }
 
 export function ListsPage() {
-    const { user } = useAuth();
+    const { user, loading: authLoading } = useAuth();
     const {
         lists, loading, error, mutationError, isPending,
         view, setView, sortFor, setSort, setScore, removeFromList,
     } = useLists();
+
+    // Nobody is signed in or out until auth has answered: the server render never knows, and the
+    // first client render has to match it. Checking `user` alone told every signed-in visitor to
+    // sign in before showing them their lists.
+    const signedIn = !authLoading && user !== null;
+    const signedOut = !authLoading && user === null;
+
     const [activeTab, setActiveTab] = useState<ListId>('playing');
 
     // Transient and deliberately not persisted, unlike the sort and the layout. An empty
@@ -114,7 +121,7 @@ export function ListsPage() {
                 role="tabpanel"
                 aria-labelledby={`lists-tab-${activeTab}`}
             >
-                {!user && (
+                {signedOut && (
                     <div className="flex items-center justify-center py-24">
                         <div className="text-center">
                             <svg className="w-14 h-14 text-slate-700 light:text-slate-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
@@ -127,16 +134,18 @@ export function ListsPage() {
                     </div>
                 )}
 
-                {user && loading && (
+                {/* Auth's wait as well as the fetch's. The lists are asked for the moment auth
+                    answers, so the two read as one loading state rather than two in a row. */}
+                {(authLoading || (signedIn && loading)) && (
                     <div className="flex items-center justify-center py-24">
-                        <div className="flex flex-col items-center gap-4">
-                            <div className="w-10 h-10 border-4 border-blue-500/30 border-t-blue-500 rounded-full animate-spin" aria-label="Loading" />
+                        <div className="flex flex-col items-center gap-4" role="status">
+                            <div className="w-10 h-10 border-4 border-blue-500/30 border-t-blue-500 rounded-full animate-spin" aria-hidden="true" />
                             <p className="text-slate-400 light:text-slate-600 text-sm">Loading your lists…</p>
                         </div>
                     </div>
                 )}
 
-                {user && !loading && error && (
+                {signedIn && !loading && error && (
                     <div className="flex items-center justify-center py-24">
                         <div className="bg-red-900/20 border border-red-700/50 rounded-xl p-8 max-w-md text-center">
                             <svg className="w-10 h-10 text-red-400 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
@@ -148,7 +157,7 @@ export function ListsPage() {
                     </div>
                 )}
 
-                {user && !loading && !error && entries.length > 0 && (
+                {signedIn && !loading && !error && entries.length > 0 && (
                     <ListToolbar
                         view={view}
                         onViewChange={setView}
@@ -160,7 +169,7 @@ export function ListsPage() {
                     />
                 )}
 
-                {user && !loading && !error && entries.length > 0 && visible.length === 0 && (
+                {signedIn && !loading && !error && entries.length > 0 && visible.length === 0 && (
                     <div className="text-center py-16">
                         <p className="text-slate-400 light:text-slate-600 text-sm mb-3">
                             No games in {LIST_NAMES[activeTab]} match the platform filter.
@@ -175,7 +184,7 @@ export function ListsPage() {
                     </div>
                 )}
 
-                {user && !loading && !error && entries.length === 0 && (
+                {signedIn && !loading && !error && entries.length === 0 && (
                     <div className="flex items-center justify-center py-24">
                         <div className="text-center">
                             <svg
@@ -203,7 +212,7 @@ export function ListsPage() {
                     </div>
                 )}
 
-                {user && !loading && !error && visible.length > 0 && view === 'tiles' && (
+                {signedIn && !loading && !error && visible.length > 0 && view === 'tiles' && (
                     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
                         {visible.map(entry => (
                             <GameCard key={entry.game.id} game={entry.game} />
@@ -211,7 +220,7 @@ export function ListsPage() {
                     </div>
                 )}
 
-                {user && !loading && !error && visible.length > 0 && view === 'table' && (
+                {signedIn && !loading && !error && visible.length > 0 && view === 'table' && (
                     <ListTable
                         entries={visible}
                         sort={sort}
