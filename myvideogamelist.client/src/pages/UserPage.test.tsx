@@ -3,18 +3,22 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { UserPage } from '@/pages/UserPage';
+import type { AuthContextValue } from '@/contexts/AuthContext';
 import type { UserProfile } from '@/types/auth';
 import type { PlatformDto } from '@/types/game';
-import { platform } from '@/test/factories';
+import { platform, userProfile } from '@/test/factories';
 
 /**
+ * Auth, mocked rather than provided: the real provider fetches, and this page only reads what it
+ * holds.
+ *
  * One module-level object handed back on every call, never a fresh literal — a new object per
  * render re-runs any effect depending on it, which ends in a heap crash rather than an assertion
  * failure.
  */
-const authValue = {
-    user: null as UserProfile | null,
-    loading: false,
+const auth: AuthContextValue = {
+    user: null,
+    loading: true,
     login: vi.fn(async () => {}),
     register: vi.fn(async () => {}),
     logout: vi.fn(async () => {}),
@@ -23,7 +27,7 @@ const authValue = {
     updateProfileVisibility: vi.fn(async () => {}),
 };
 
-vi.mock('@/hooks/useAuth', () => ({ useAuth: () => authValue }));
+vi.mock('@/hooks/useAuth', () => ({ useAuth: () => auth }));
 
 /**
  * The tracking block has its own test file and three requests of its own. These tests are about
@@ -69,15 +73,10 @@ function stubFetch(
     return fetchMock;
 }
 
-function user(overrides: Partial<UserProfile> = {}): UserProfile {
-    return {
-        id: 'user-1',
-        email: 'alex@test.local',
-        userName: 'alex',
-        theme: 'dark',
-        profileVisibility: 'private',
-        ...overrides,
-    };
+/** `/api/auth/me` has come back, with an account or with nobody. */
+function authAnswered(user: UserProfile | null) {
+    auth.user = user;
+    auth.loading = false;
 }
 
 function renderPage() {
@@ -88,18 +87,17 @@ const savePreferences = () => screen.queryByRole('button', { name: /save prefere
 
 beforeEach(() => {
     vi.unstubAllGlobals();
-    authValue.user = user();
-    authValue.loading = false;
-    authValue.updateTheme.mockReset();
-    authValue.updateTheme.mockResolvedValue(undefined);
+    // Where every visit starts, the server render included: nobody known yet.
+    auth.user = null;
+    auth.loading = true;
+    vi.mocked(auth.updateTheme).mockReset();
+    vi.mocked(auth.updateTheme).mockResolvedValue(undefined);
 });
 
 describe('UserPage before the account is known', () => {
     it('says it is loading rather than that nobody is signed in', () => {
         // The server render never knows who is signed in and neither does the first client render,
         // so without this every visit opened on the signed-out page and then replaced it.
-        authValue.user = null;
-        authValue.loading = true;
         stubFetch();
         renderPage();
 
@@ -108,7 +106,7 @@ describe('UserPage before the account is known', () => {
     });
 
     it('asks a signed-out visitor to sign in once that is settled', () => {
-        authValue.user = null;
+        authAnswered(null);
         stubFetch();
         renderPage();
 
@@ -117,7 +115,7 @@ describe('UserPage before the account is known', () => {
     });
 
     it('asks for nothing while nobody is signed in', () => {
-        authValue.user = null;
+        authAnswered(null);
         const fetchMock = stubFetch();
         renderPage();
 
@@ -126,6 +124,8 @@ describe('UserPage before the account is known', () => {
 });
 
 describe('UserPage platform preferences', () => {
+    beforeEach(() => authAnswered(userProfile()));
+
     it('ticks the platforms the user has not hidden', async () => {
         stubFetch([platform(6, 'PC'), platform(48, 'PlayStation 4')], [48]);
         renderPage();
@@ -186,6 +186,8 @@ describe('UserPage platform preferences', () => {
 });
 
 describe('UserPage appearance', () => {
+    beforeEach(() => authAnswered(userProfile()));
+
     it('names the switch for the state it turns on, not the action', async () => {
         // "Switch to light mode, checked" says nothing about which mode is on.
         const actor = userEvent.setup();
@@ -197,6 +199,6 @@ describe('UserPage appearance', () => {
 
         await actor.click(toggle);
 
-        await waitFor(() => expect(authValue.updateTheme).toHaveBeenCalledWith('light'));
+        await waitFor(() => expect(auth.updateTheme).toHaveBeenCalledWith('light'));
     });
 });

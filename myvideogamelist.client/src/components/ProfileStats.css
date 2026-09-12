@@ -128,6 +128,15 @@
     grid-column: 1 / -1;
 }
 
+/* One a row on the narrowest phones. Two columns of a block this size leave about 79px inside a
+   tile, where the label wraps and the hint under it runs to five lines; a 320px screen reads
+   better with one tile a row than with two nobody can take in. */
+@container (max-width: 18rem) {
+    .profile-tiles {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
+
 /* Only for exactly five. The public profile's four in three columns would strand the fourth. */
 @container (34rem <= width < 48rem) {
     .profile-tiles:has(> :nth-child(5):last-child) {
@@ -140,11 +149,17 @@
 }
 
 /*
- * One row from here. Measured, not guessed: at 48rem each of five tiles has about 124px inside its
- * padding, which holds a label like "completion rate" and the values formatHours produces from an
- * hour upwards ("123 days" is 121px, "23 hours" 120px) on one line. At 42rem it had 102px, and both
- * wrapped. The exception is "under an hour", which is what the hours tile shows until a full hour
- * has been logged: at 195px it takes two lines, and the row grows to fit rather than overflow.
+ * One row from here. Measured, not guessed: at 48rem each of five tiles has about 110px inside its
+ * padding, which holds the widest label — "completion rate", 94px — and the values formatHours
+ * produces from an hour upwards ("123 days" is 106px, "23 hours" 105px) on one line. At 42rem it
+ * has 90px and both wrap. The exception is "under an hour", which is what the hours tile shows
+ * until a full hour has been logged: at 171px it takes two lines, and the row grows to fit rather
+ * than overflow.
+ *
+ * The figures are px at the browser's default 16px root, which is what the app uses now that
+ * index.css no longer forces one of its own. Everything here is in rem, so the tiles and the text
+ * moved together when that changed and the threshold held — but the numbers did not, and these are
+ * the measured ones.
  */
 @container (min-width: 48rem) {
     .profile-tiles {
@@ -394,8 +409,15 @@
     list-style: none;
 }
 
+/*
+ * Positioned so that the sr-only label inside each month has a containing block within the scroller.
+ * Absolutely positioned and unanchored, those labels resolve against the document instead, and a
+ * month scrolled off to the right of the chart then stretched the page itself — 399px of horizontal
+ * scroll on a 360px phone, from text nobody can see.
+ */
 .profile-chart-month {
     display: flex;
+    position: relative;
     flex: 1;
     min-width: 1.6rem;
     flex-direction: column;
