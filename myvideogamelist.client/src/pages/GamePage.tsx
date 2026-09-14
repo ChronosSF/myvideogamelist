@@ -4,14 +4,16 @@ import { apiUrl } from '@/lib/api';
 import { CACHE_GAME, CACHE_NOT_FOUND, PRIVATE_NO_STORE } from '@/lib/cache';
 import type { GameDto } from '@/types/game';
 import { useAuth } from '@/hooks/useAuth';
+import { useGameCommunity } from '@/hooks/useGameCommunity';
 import { GameNewsPanel } from '@/components/GameNewsPanel';
 import { GameUserPanel } from '@/components/GameUserPanel';
+import { GameCommunity } from '@/components/GameCommunity';
 import { CompletionTimes } from '@/components/CompletionTimes';
 import { SectionHeading } from '@/components/SectionHeading';
 import { GameRefRail } from '@/components/GameRefRail';
 import { MultiplayerSummary } from '@/components/MultiplayerSummary';
 import { ScreenshotGallery } from '@/components/ScreenshotGallery';
-import { hasCriticScore, ratingPercent } from '@/lib/score';
+import { hasCriticScore, hasMemberScore, ratingPercent } from '@/lib/score';
 import { ScoreBadge } from '@/components/ScoreBadge';
 import './GamePage.css';
 
@@ -94,6 +96,11 @@ export function GamePage() {
     const { game } = useLoaderData<typeof loader>();
 
     const { user, loading: authLoading } = useAuth();
+
+    // Fetched after hydration and never in the loader — the page is edge-cached for up to a day, and
+    // a review its author withdraws must not outlive the withdrawal there (ADR 0028). Called here
+    // rather than in the section so the hero's badge and the section share one pair of requests.
+    const community = useGameCommunity(game.id);
 
     // Null on the listing endpoints by design; this page is the one that asks IGDB for it.
     const details = game.details;
@@ -182,7 +189,7 @@ export function GamePage() {
                                     {game.esrbRating}
                                 </span>
                             )}
-                            {/* Both aggregates, on the one scale, side by side: they answer the
+                            {/* Every aggregate, on the one scale, side by side: they answer the
                                 same question and used to be shown in two different languages.
                                 Stars are the user's own score only — see ADR 0021. */}
                             {hasCriticScore(game) && (
@@ -197,6 +204,16 @@ export function GamePage() {
                                     kind="players"
                                     percent={ratingPercent(game.rating)}
                                     count={game.ratingCount}
+                                />
+                            )}
+                            {/* Ours, once enough members have scored the game. Arrives after
+                                hydration, so it goes after the two server-rendered badges rather
+                                than moving them; only the date beside it shifts along. */}
+                            {hasMemberScore(community.scores) && (
+                                <ScoreBadge
+                                    kind="members"
+                                    percent={ratingPercent(community.scores.mean)}
+                                    count={community.scores.scored}
                                 />
                             )}
                             {releaseDate && (
@@ -356,6 +373,12 @@ export function GamePage() {
                             </section>
                         )}
 
+                        {/* Low in the column on purpose: it arrives after hydration, and all it can
+                            push down when it does is the news and the similar games. Renders nothing
+                            until both of its requests have answered, and nothing at all when there
+                            is nothing to read. */}
+                        <GameCommunity community={community} viewer={user?.userName ?? null} />
+
                         {/* Hides itself when the game has no Steam presence (ROADMAP N7). */}
                         <GameNewsPanel gameId={game.id} />
 
@@ -386,7 +409,11 @@ export function GamePage() {
                             no shift at all; a signed-in visitor sees the panel grow into place, but
                             is never told to sign in first. */}
                         {!authLoading && user ? (
-                            <GameUserPanel key={user.id} game={game} />
+                            <GameUserPanel
+                                key={user.id}
+                                game={game}
+                                profileVisibility={user.profileVisibility}
+                            />
                         ) : (
                             <div className="bg-slate-800/60 light:bg-white border border-slate-700/50 light:border-slate-200 rounded-xl p-5 text-center">
                                 <p className="text-slate-400 light:text-slate-600 text-xs mb-3">

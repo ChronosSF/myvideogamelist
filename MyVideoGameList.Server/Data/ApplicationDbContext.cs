@@ -72,6 +72,13 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
         modelBuilder.Entity<UserGameEntry>().HasIndex(e => new { e.UserId, e.AddedAt });
         modelBuilder.Entity<UserGameEntry>().HasIndex(e => new { e.UserId, e.StatusChangedAt });
 
+        // One game across every user — the question every community read asks, and the one no
+        // other index here can answer: they all lead with UserId, so without this each of those
+        // reads walks the whole table. GameId leads so the member reviews and the community times
+        // can select a game's entries and join in from them; Score rides along so the score
+        // distribution is read from the index alone. See ADR 0028.
+        modelBuilder.Entity<UserGameEntry>().HasIndex(e => new { e.GameId, e.Score });
+
         ConfigureUserGameEvents(modelBuilder);
         ConfigureUserGamePlaythroughs(modelBuilder);
         ConfigureReviews(modelBuilder);
@@ -263,10 +270,11 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
 
         // The community aggregate's access path is the one that is not obvious, so it is worth
         // stating: it asks about one *game* across all users, and the game id lives on the entry
-        // rather than here. So it selects the entries for that game and joins in on
-        // UserGameEntryId. No index is declared for that here on purpose — the composite foreign
-        // key above already gets one on (UserGameEntryId, UserId), which serves the join as a
-        // leading-column prefix. A second index on UserGameEntryId alone would be pure duplication.
+        // rather than here. So it selects the entries for that game — through the entry's own
+        // (GameId, Score) index — and joins in on UserGameEntryId. No index is declared for that
+        // join here on purpose — the composite foreign key above already gets one on
+        // (UserGameEntryId, UserId), which serves it as a leading-column prefix. A second index on
+        // UserGameEntryId alone would be pure duplication.
     }
 
     private static void ConfigureReviews(ModelBuilder modelBuilder)

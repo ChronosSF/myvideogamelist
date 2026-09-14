@@ -1,6 +1,10 @@
 import { aggregateTitle, scoreBandSolid, scoreBandSubtle, scoreBandTint } from '@/lib/score';
 
-export type AggregateKind = 'critics' | 'players';
+/**
+ * Whose opinions the figure averages. `members` is MyVideoGameList's own — a mean over everybody's
+ * scores for one game, which is an aggregate like the other two and is never shown as stars.
+ */
+export type AggregateKind = 'critics' | 'players' | 'members';
 
 interface ScoreBadgeProps {
     /** Already on the 0-100 scale — pass IGDB's player rating through `ratingPercent` first. */
@@ -19,9 +23,10 @@ interface ScoreBadgeProps {
 /**
  * A score somebody else produced.
  *
- * Both aggregates — the critic average and IGDB's player rating — go through this one component,
- * out of 100, because stars now mean exclusively "what this user thinks". Having two visual
- * languages for one kind of number was the confusing part; see `docs/decisions/0021-*`.
+ * Every aggregate — the critic average, IGDB's player rating and our own members' mean — goes
+ * through this one component, out of 100, because stars now mean exclusively "what this user
+ * thinks". Having two visual languages for one kind of number was the confusing part; see
+ * `docs/decisions/0021-*`.
  *
  * The visible number is hidden from assistive tech in favour of one `sr-only` sentence, since
  * "93" on its own says neither what it measures nor how many opinions are behind it.

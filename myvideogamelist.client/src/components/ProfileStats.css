@@ -304,45 +304,9 @@
     gap: 1.5rem;
 }
 
-/* Score histogram */
+/* The score histogram's columns are ScoreColumns.css, shared with the game page. Its ticks match
+   these. */
 
-.profile-histogram {
-    display: flex;
-    align-items: flex-end;
-    gap: 0.35rem;
-    height: 6rem;
-    margin: 0;
-    padding: 0;
-    list-style: none;
-}
-
-.profile-histogram-column {
-    display: flex;
-    flex: 1;
-    flex-direction: column;
-    align-items: center;
-    justify-content: flex-end;
-    height: 100%;
-}
-
-.profile-histogram-bar {
-    width: 100%;
-    min-height: 0;
-    background: #3b82f6;
-    border-radius: 0.2rem 0.2rem 0 0;
-}
-
-/* An unused score keeps its column and its tick, so the gap in the distribution is visible. */
-.profile-histogram-bar.empty {
-    height: 2px !important;
-    background: rgba(51, 65, 85, 0.8);
-}
-
-[data-theme='light'] .profile-histogram-bar.empty {
-    background: #e2e8f0;
-}
-
-.profile-histogram-tick,
 .profile-chart-tick {
     margin-top: 0.3rem;
     font-size: 0.6875rem;
@@ -350,7 +314,6 @@
     font-variant-numeric: tabular-nums;
 }
 
-[data-theme='light'] .profile-histogram-tick,
 [data-theme='light'] .profile-chart-tick {
     color: #64748b;
 }

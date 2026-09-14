@@ -160,6 +160,14 @@ ROADMAP.md                      Forward-looking plan
   duration are counted: the others would inflate a sample size behind a figure they did not help
   produce. See `docs/decisions/0016-*` and `0025-*`.
 
+- **A game's member reviews are fetched after hydration, never in the route loader.** The game page
+  is edge-cached for an hour and servable stale for a day, so review text rendered into it would
+  outlive its author withdrawing it by up to a day — and D14 invalidates profiles, not every game page
+  an author has reviewed. `/api/games/{id}/reviews` and `/community-scores` therefore send `no-store`
+  and keep no server cache either. The two cross different gates: the scores count every member, since
+  an aggregate names nobody; the reviews list only those public on a public profile. See
+  `docs/decisions/0028-*`.
+
 - **Never change a game's status without recording an event.** `UserGameEvents` is append-only
   and is the only record that a transition happened — `UserGameLists` holds current state and is
   overwritten on every move. A direct `UPDATE` to `StatusId` leaves a permanent hole in a history

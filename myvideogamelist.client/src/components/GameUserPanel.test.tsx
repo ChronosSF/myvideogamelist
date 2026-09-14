@@ -5,6 +5,7 @@ import { GameUserPanel } from '@/components/GameUserPanel';
 import { ListsContext, type ListsContextValue } from '@/contexts/ListsContext';
 import { WishlistContext, type WishlistContextValue } from '@/contexts/WishlistContext';
 import { DEFAULT_SORT } from '@/lib/listSort';
+import type { ProfileVisibility } from '@/types/auth';
 import type { ListId } from '@/types/list';
 import type { PlaythroughDto, ReviewDto } from '@/types/playthrough';
 import { entryDetail, game, platform, playthrough, review } from '@/test/factories';
@@ -57,13 +58,14 @@ function wishlistValue(overrides: Partial<WishlistContextValue> = {}): WishlistC
 function renderPanel(
     overrides: Partial<ListsContextValue> = {},
     wishlistOverrides: Partial<WishlistContextValue> = {},
+    profileVisibility: ProfileVisibility = 'private',
 ) {
     const value = contextValue(overrides);
     const wishlist = wishlistValue(wishlistOverrides);
     render(
         <ListsContext.Provider value={value}>
             <WishlistContext.Provider value={wishlist}>
-                <GameUserPanel game={CELESTE} />
+                <GameUserPanel game={CELESTE} profileVisibility={profileVisibility} />
             </WishlistContext.Provider>
         </ListsContext.Provider>,
     );
@@ -752,16 +754,35 @@ describe('GameUserPanel review', () => {
         expect(screen.getByRole('button', { name: 'Update review' })).toBeInTheDocument();
     });
 
-    it('defaults a new review to private and says what public will mean', async () => {
-        // No public profiles exist yet, so nothing is published either way — but the default is a
-        // consent decision, and it has to still be honoured when profiles launch.
+    it('defaults a new review to private', async () => {
+        // The default is a consent decision, so it is the one that publishes nothing.
         stubEntryFetch(null, 404);
         renderPanel();
         await settled();
 
         expect(screen.getByLabelText('Who can see it')).toHaveValue('private');
-        expect(screen.getByText(/appear on your public profile once profiles launch/i))
-            .toBeInTheDocument();
+    });
+
+    it('tells an author with a private profile that "Anyone" publishes nothing yet', async () => {
+        // The narrower gate wins, and it is the one that is easy to forget is there: a review for
+        // anyone on a private profile is shown nowhere, and its author must not believe otherwise.
+        stubEntryFetch(null, 404);
+        renderPanel({}, {}, 'private');
+        await settled();
+
+        expect(screen.getByLabelText('Who can see it'))
+            .toHaveAccessibleDescription(/once your profile is public\. Yours is private, so it is not shown anywhere yet\.$/);
+    });
+
+    it('tells an author with a public profile where "Anyone" publishes it', async () => {
+        // Both places — including the game page, which a reader of their profile alone would not
+        // think to expect.
+        stubEntryFetch(null, 404);
+        renderPanel({}, {}, 'public');
+        await settled();
+
+        expect(screen.getByLabelText('Who can see it'))
+            .toHaveAccessibleDescription('"Anyone" shows it on this game\'s page and on your public profile.');
     });
 
     it('saves what was written', async () => {

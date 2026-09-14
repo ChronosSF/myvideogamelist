@@ -1,5 +1,6 @@
 import type { ScoreStats } from '@/types/stats';
 import { MAX_SCORE } from '@/lib/score';
+import { ScoreColumns } from '@/components/ScoreColumns';
 
 interface ScoreHistogramProps {
     scores: ScoreStats;
@@ -33,34 +34,16 @@ export function ScoreHistogram({ scores, owner }: ScoreHistogramProps) {
         );
     }
 
-    const tallest = Math.max(...scores.distribution);
     const scale = `scores, from 1 to ${MAX_SCORE}`;
     const label = owner === undefined ? `Your ${scale}` : `${owner}'s ${scale}`;
 
     return (
         <div>
-            <ol className="profile-histogram" aria-label={label}>
-                {scores.distribution.map((count, index) => {
-                    const score = index + 1;
-                    // A non-zero column always gets a visible sliver, or a lone 1 next to a tall
-                    // column renders as nothing and reads as "never used".
-                    const height = count === 0 ? 0 : Math.max(6, (count / tallest) * 100);
-
-                    return (
-                        <li key={score} className="profile-histogram-column">
-                            <span
-                                className={`profile-histogram-bar${count === 0 ? ' empty' : ''}`}
-                                style={{ height: `${height}%` }}
-                                aria-hidden="true"
-                            />
-                            <span className="profile-histogram-tick" aria-hidden="true">{score}</span>
-                            <span className="sr-only">
-                                {`${score} out of ${MAX_SCORE}: ${count} ${count === 1 ? 'game' : 'games'}`}
-                            </span>
-                        </li>
-                    );
-                })}
-            </ol>
+            <ScoreColumns
+                distribution={scores.distribution}
+                label={label}
+                unit={{ one: 'game', other: 'games' }}
+            />
 
             <p className="profile-caption">
                 {scores.mean === null

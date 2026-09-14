@@ -2,9 +2,12 @@ import { describe, expect, it } from 'vitest';
 import {
     MAX_SCORE,
     MIN_CRITIC_REVIEWS,
+    MIN_MEMBER_SCORES,
+    MIN_PLAYTHROUGH_SAMPLES,
     STAR_COUNT,
     aggregateTitle,
     hasCriticScore,
+    hasMemberScore,
     ratingPercent,
     scoreBandSolid,
     scoreBandSubtle,
@@ -70,6 +73,35 @@ describe('ratingPercent', () => {
         expect(ratingPercent(8.44)).toBe(84);
         expect(ratingPercent(8.45)).toBe(85);
     });
+
+    it("puts the members' 1-10 mean on the same scale, where a half star is 10", () => {
+        // The lowest score the star control can give is half a star, which the database stores as
+        // a 1 — so an all-half-star game is a 10, not a 0, and five stars is 100.
+        expect(ratingPercent(1)).toBe(10);
+        expect(ratingPercent(10)).toBe(100);
+    });
+});
+
+describe('hasMemberScore', () => {
+    const scores = (scored: number, mean: number | null = 8) =>
+        ({ scored, mean, distribution: Array<number>(10).fill(0) });
+
+    it('accepts a mean backed by the member floor', () => {
+        expect(hasMemberScore(scores(MIN_MEMBER_SCORES))).toBe(true);
+    });
+
+    it('rejects one backed by fewer members, however good it looks', () => {
+        expect(hasMemberScore(scores(MIN_MEMBER_SCORES - 1, 10))).toBe(false);
+    });
+
+    it('rejects a game nobody has scored, and scores that failed to load', () => {
+        expect(hasMemberScore(scores(0, null))).toBe(false);
+        expect(hasMemberScore(null)).toBe(false);
+    });
+
+    it('sits above the playthrough floor, since a score is far cheaper to give than a logged run', () => {
+        expect(MIN_MEMBER_SCORES).toBeGreaterThan(MIN_PLAYTHROUGH_SAMPLES);
+    });
 });
 
 describe('hasCriticScore', () => {
@@ -121,6 +153,11 @@ describe('aggregateTitle', () => {
 
     it('distinguishes a player rating from a critic score', () => {
         expect(aggregateTitle('players', 88, 24)).toBe('Player rating: 88 out of 100, from 24 ratings');
+    });
+
+    it("names our own members' score as ours, counted in scores", () => {
+        expect(aggregateTitle('members', 84, 23)).toBe('Member score: 84 out of 100, from 23 scores');
+        expect(aggregateTitle('members', 90, 1)).toBe('Member score: 90 out of 100, from 1 score');
     });
 
     it('groups a large count the way the reader locale does', () => {

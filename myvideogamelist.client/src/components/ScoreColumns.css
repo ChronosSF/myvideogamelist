@@ -1,0 +1,52 @@
+/*
+ * A score distribution: ten columns over the 1-10 scale. Shared by the profile's histogram and the
+ * game page's member scores, which is why it lives beside its component rather than in either
+ * page's stylesheet.
+ */
+
+.score-columns {
+    display: flex;
+    align-items: flex-end;
+    gap: 0.35rem;
+    height: 6rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.score-columns-column {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-end;
+    height: 100%;
+}
+
+.score-columns-bar {
+    width: 100%;
+    min-height: 0;
+    background: #3b82f6;
+    border-radius: 0.2rem 0.2rem 0 0;
+}
+
+/* An unused score keeps its column and its tick, so the gap in the distribution is visible. */
+.score-columns-bar.empty {
+    height: 2px !important;
+    background: rgba(51, 65, 85, 0.8);
+}
+
+[data-theme='light'] .score-columns-bar.empty {
+    background: #e2e8f0;
+}
+
+.score-columns-tick {
+    margin-top: 0.3rem;
+    font-size: 0.6875rem;
+    color: #94a3b8;
+    font-variant-numeric: tabular-nums;
+}
+
+[data-theme='light'] .score-columns-tick {
+    color: #64748b;
+}

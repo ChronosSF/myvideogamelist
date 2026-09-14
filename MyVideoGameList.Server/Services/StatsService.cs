@@ -129,23 +129,10 @@ public class StatsService(ApplicationDbContext db, TimeProvider clock) : IStatsS
 
     private static ScoreStatsDto BuildScores(List<EntryRow> entries)
     {
-        // Only the API enforces 1-10; the column is a plain short. A score outside it is corrupt
-        // rather than merely unusual, and it is left out of all three figures together — a 42
-        // dropped from the histogram but kept in the mean would put "24 out of 10" on the page,
-        // which is worse than a mean over one fewer game.
-        var scores = entries
-            .Select(e => e.Score)
-            .Where(score => score is >= 1 and <= 10)
-            .Select(score => (int)score!.Value)
-            .ToList();
-
-        var distribution = new int[10];
-        foreach (var score in scores) distribution[score - 1]++;
-
-        return new ScoreStatsDto(
-            scores.Count,
-            scores.Count == 0 ? null : scores.Average(),
-            distribution);
+        // Shared with the game page's distribution of everybody's scores, so the two cannot come to
+        // treat an out-of-range score differently.
+        var (scored, mean, distribution) = ScoreSummary.Of(entries.Select(e => e.Score));
+        return new ScoreStatsDto(scored, mean, distribution);
     }
 
     /// <summary>

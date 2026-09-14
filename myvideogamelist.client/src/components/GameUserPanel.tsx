@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import type { ProfileVisibility } from '@/types/auth';
 import type { GameDto } from '@/types/game';
 import { type ListId, LIST_IDS, LIST_NAMES } from '@/types/list';
 import type {
@@ -18,6 +19,11 @@ import './GameUserPanel.css';
 
 interface GameUserPanelProps {
     game: GameDto;
+    /**
+     * Whether the signed-in user's profile is public, which decides what marking their review for
+     * anyone actually publishes. Passed in by the page, which already reads the account.
+     */
+    profileVisibility: ProfileVisibility;
 }
 
 /**
@@ -35,7 +41,7 @@ interface GameUserPanelProps {
  * has nothing to gain from showing a row that may be about to vanish, and everything to lose from
  * the user editing it while it does.
  */
-export function GameUserPanel({ game }: GameUserPanelProps) {
+export function GameUserPanel({ game, profileVisibility }: GameUserPanelProps) {
     const { isInList, getListFor, addToList, removeFromList, setScore, deleteEntry, isPending } = useLists();
     const wishlist = useWishlist();
 
@@ -347,6 +353,7 @@ export function GameUserPanel({ game }: GameUserPanelProps) {
                 <ReviewForm
                     review={review}
                     playthroughs={playthroughs}
+                    profileVisibility={profileVisibility}
                     onSave={input => void handleReviewSave(input)}
                     onDelete={() => void handleReviewDelete()}
                     pending={!loaded || savingReview}

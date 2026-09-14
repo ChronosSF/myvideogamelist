@@ -72,6 +72,23 @@ public class EntryKeyTests
     }
 
     [Fact]
+    public void UserGameEntry_IsIndexedForReadsAboutOneGameAcrossEveryUser()
+    {
+        // Every other index on the entry leads with UserId, which cannot serve "this game, for
+        // everybody" — so without this one, the member scores, the member reviews and the community
+        // times each walk the whole table. Not unique: many users hold the same game. Asserted on
+        // the model because nothing the in-memory provider does would notice it missing.
+        using var db = NewDb();
+
+        var indexes = db.Model.FindEntityType(typeof(UserGameEntry))!.GetIndexes();
+
+        Assert.Contains(indexes, index =>
+            !index.IsUnique
+            && index.Properties.Select(p => p.Name)
+                .SequenceEqual([nameof(UserGameEntry.GameId), nameof(UserGameEntry.Score)]));
+    }
+
+    [Fact]
     public async Task RepeatedOperationsOnOneGame_ReuseTheSameEntryRow()
     {
         // The application-level half of the uniqueness guarantee: every write path goes through
