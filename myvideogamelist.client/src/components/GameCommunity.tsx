@@ -1,6 +1,7 @@
 import { Link } from 'react-router';
 import type { UseGameCommunityResult } from '@/hooks/useGameCommunity';
 import type { CommunityScores, GameReview } from '@/types/community';
+import { formatCount } from '@/lib/format';
 import { formatDate } from '@/lib/stats';
 import { hasMemberScore, MAX_SCORE, MIN_MEMBER_SCORES, ratingPercent } from '@/lib/score';
 import { ReviewCard } from '@/components/ReviewCard';
@@ -84,7 +85,7 @@ function MemberScore({ scores }: { scores: CommunityScores }) {
                     average of other people, and stars mean the reader's own score (ADR 0021). */}
                 <ScoreBadge kind="members" percent={ratingPercent(scores.mean)} count={scores.scored} />
                 <p className="mt-2 text-xs text-slate-400 light:text-slate-500">
-                    {`from ${scores.scored.toLocaleString()} ${scores.scored === 1 ? 'score' : 'scores'}`}
+                    {`from ${formatCount(scores.scored)} ${scores.scored === 1 ? 'score' : 'scores'}`}
                 </p>
             </div>
 

@@ -160,10 +160,10 @@ describe('aggregateTitle', () => {
         expect(aggregateTitle('members', 90, 1)).toBe('Member score: 90 out of 100, from 1 score');
     });
 
-    it('groups a large count the way the reader locale does', () => {
-        // Asserted against toLocaleString rather than a literal, because whether four digits get
-        // a separator at all is locale-dependent and CI need not run in the same one.
-        expect(aggregateTitle('players', 88, 24000)).toContain((24000).toLocaleString());
+    it('groups a large count with commas, whatever locale the machine is in', () => {
+        // A literal on purpose. The title is rendered on the server and again in the browser, and
+        // the two only agree when neither follows its own locale — see `formatCount`.
+        expect(aggregateTitle('players', 88, 24000)).toBe('Player rating: 88 out of 100, from 24,000 ratings');
     });
 
     it('does not say "1 reviews"', () => {

@@ -13,6 +13,7 @@ import { SectionHeading } from '@/components/SectionHeading';
 import { GameRefRail } from '@/components/GameRefRail';
 import { MultiplayerSummary } from '@/components/MultiplayerSummary';
 import { ScreenshotGallery } from '@/components/ScreenshotGallery';
+import { formatCount } from '@/lib/format';
 import { hasCriticScore, hasMemberScore, ratingPercent } from '@/lib/score';
 import { ScoreBadge } from '@/components/ScoreBadge';
 import './GamePage.css';
@@ -442,7 +443,7 @@ export function GamePage() {
                                         count={game.criticScoreCount}
                                     />
                                     <span className="ml-2 text-xs text-slate-500 light:text-slate-400">
-                                        from {game.criticScoreCount!.toLocaleString()} reviews
+                                        from {formatCount(game.criticScoreCount!)} reviews
                                     </span>
                                 </div>
                             )}
@@ -457,7 +458,7 @@ export function GamePage() {
                                     />
                                     {game.ratingCount !== null && (
                                         <span className="ml-2 text-xs text-slate-500 light:text-slate-400">
-                                            from {game.ratingCount.toLocaleString()} ratings
+                                            from {formatCount(game.ratingCount)} ratings
                                         </span>
                                     )}
                                 </div>

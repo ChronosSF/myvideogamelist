@@ -2,6 +2,7 @@ import type { TimeToBeatDto } from '@/types/game';
 import type { PlaythroughTypeKey } from '@/types/playthrough';
 import { PLAYTHROUGH_TIERS } from '@/types/playthrough';
 import { formatMinutesPlayed, formatPlaytime } from '@/lib/duration';
+import { formatCount } from '@/lib/format';
 import { MIN_PLAYTHROUGH_SAMPLES } from '@/lib/score';
 import { useCommunityTimes } from '@/hooks/useCommunityTimes';
 import { SectionHeading } from '@/components/SectionHeading';
@@ -90,7 +91,7 @@ export function CompletionTimes({ timeToBeat, gameId }: CompletionTimesProps) {
                     <TierRow
                         title="IGDB community"
                         cells={igdbCells}
-                        footnote={`Averaged from ${timeToBeat.count.toLocaleString()} community ${
+                        footnote={`Averaged from ${formatCount(timeToBeat.count)} community ${
                             timeToBeat.count === 1 ? 'submission' : 'submissions'
                         }.`}
                     />

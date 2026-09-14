@@ -1,5 +1,6 @@
 import type { CommunityScores } from '@/types/community';
 import type { GameDto } from '@/types/game';
+import { formatCount } from '@/lib/format';
 
 /**
  * Critic reviews a game needs before its score is worth showing.
@@ -150,6 +151,6 @@ export function aggregateTitle(
     count: number | null,
 ): string {
     const { label, noun } = AGGREGATE_WORDS[kind];
-    const from = count === null ? '' : `, from ${count.toLocaleString()} ${noun}${count === 1 ? '' : 's'}`;
+    const from = count === null ? '' : `, from ${formatCount(count)} ${noun}${count === 1 ? '' : 's'}`;
     return `${label}: ${percent} out of 100${from}`;
 }
