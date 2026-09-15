@@ -100,7 +100,8 @@ export function GamePage() {
 
     // Fetched after hydration and never in the loader — the page is edge-cached for up to a day, and
     // a review its author withdraws must not outlive the withdrawal there (ADR 0028). Called here
-    // rather than in the section so the hero's badge and the section share one pair of requests.
+    // rather than in the section so the hero's badge and the section share one pair of requests,
+    // and so the reader's own panel can ask for them again after it writes.
     const community = useGameCommunity(game.id);
 
     // Null on the listing endpoints by design; this page is the one that asks IGDB for it.
@@ -414,6 +415,7 @@ export function GamePage() {
                                 key={user.id}
                                 game={game}
                                 profileVisibility={user.profileVisibility}
+                                onCommunityChange={community.reload}
                             />
                         ) : (
                             <div className="bg-slate-800/60 light:bg-white border border-slate-700/50 light:border-slate-200 rounded-xl p-5 text-center">

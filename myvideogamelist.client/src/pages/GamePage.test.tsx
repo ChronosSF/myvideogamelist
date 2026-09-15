@@ -43,6 +43,7 @@ const community: UseGameCommunityResult = {
     loadingMore: false,
     moreFailed: false,
     loadMore: vi.fn(),
+    reload: vi.fn(),
 };
 
 vi.mock('@/hooks/useGameCommunity', () => ({ useGameCommunity: () => community }));

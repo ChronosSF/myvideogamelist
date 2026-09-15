@@ -84,7 +84,9 @@ function MemberScore({ scores }: { scores: CommunityScores }) {
                 {/* Out of 100 and in a badge, beside the critics' and the players': it is an
                     average of other people, and stars mean the reader's own score (ADR 0021). */}
                 <ScoreBadge kind="members" percent={ratingPercent(scores.mean)} count={scores.scored} />
-                <p className="mt-2 text-xs text-slate-400 light:text-slate-500">
+                {/* For the eye only. The badge's own accessible name already ends "from N scores",
+                    and a screen reader would otherwise read the count out twice in a row. */}
+                <p className="mt-2 text-xs text-slate-400 light:text-slate-500" aria-hidden="true">
                     {`from ${formatCount(scores.scored)} ${scores.scored === 1 ? 'score' : 'scores'}`}
                 </p>
             </div>

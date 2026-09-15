@@ -43,6 +43,7 @@ function community(overrides: Partial<UseGameCommunityResult> = {}): UseGameComm
         loadingMore: false,
         moreFailed: false,
         loadMore: vi.fn(),
+        reload: vi.fn(),
         ...overrides,
     };
 }
@@ -98,6 +99,14 @@ describe("GameCommunity members' score", () => {
         expect(heading()).toBeInTheDocument();
         expect(screen.getByText('Member score: 84 out of 100, from 23 scores')).toBeInTheDocument();
         expect(screen.getByText('from 23 scores')).toBeInTheDocument();
+    });
+
+    it('says the count to a screen reader once, not twice', () => {
+        // The badge's accessible name already ends with the count, so the caption beside it is for
+        // the eye; read out as well, it would repeat "from 23 scores" straight after itself.
+        renderSection(community());
+
+        expect(screen.getByText('from 23 scores')).toHaveAttribute('aria-hidden', 'true');
     });
 
     it('draws how the scores spread, column by column, counting members', () => {

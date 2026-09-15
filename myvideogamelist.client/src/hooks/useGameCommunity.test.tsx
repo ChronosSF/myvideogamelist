@@ -21,15 +21,18 @@ function review(userName: string): GameReview {
     };
 }
 
-function reviewsPage(names: string[], total: number, page = 1, pageSize = 10): GameReviews {
-    return { reviews: names.map(review), total, page, pageSize };
+/** A page of reviews by these authors. `next` is opaque to the client, so any string will do. */
+function reviewsPage(names: string[], total: number, next: string | null = null): GameReviews {
+    return { reviews: names.map(review), total, next };
 }
+
+const TEN = Array.from({ length: 10 }, (_, i) => `member${i}`);
 
 /**
  * Answers the API from a table of URLs, each with a script of answers, one per request and
  * repeating the last. An answer is a JSON body, or one of `'fail'` (a 500), `'unreachable'` (a
  * rejected fetch) and `'held'` — not answered until the test releases it with a body, which is how a
- * request for one game is kept open across a navigation to the next.
+ * request is kept open across a navigation or a reload.
  */
 function stubApi(routes: Record<string, unknown[]>) {
     const counts = new Map<string, number>();
@@ -77,6 +80,7 @@ function Probe({ gameId }: { gameId: number }) {
             <span data-testid="more">{String(community.hasMore)}</span>
             <span data-testid="more-failed">{String(community.moreFailed)}</span>
             <button type="button" onClick={community.loadMore}>more</button>
+            <button type="button" onClick={community.reload}>reload</button>
         </div>
     );
 }
@@ -86,8 +90,9 @@ const text = (id: string) => screen.getByTestId(id);
 afterEach(() => vi.unstubAllGlobals());
 
 describe('useGameCommunity', () => {
-    it('asks both public endpoints for the game, without credentials', async () => {
-        // Both halves are the same for every reader, so there is nothing to send a cookie for.
+    it('asks both public endpoints for the game, and sends no cookie', async () => {
+        // Both halves are the same for every reader. `fetch` would send the sign-in cookie to our own
+        // origin unless told not to, so "no credentials" has to be said rather than left unset.
         const { fetchMock } = stubApi({
             '/api/games/1942/community-scores': [scores(0)],
             '/api/games/1942/reviews': [reviewsPage([], 0)],
@@ -97,7 +102,7 @@ describe('useGameCommunity', () => {
 
         expect(fetchMock.mock.calls.map(call => String(call[0])).sort())
             .toEqual(['/api/games/1942/community-scores', '/api/games/1942/reviews']);
-        for (const call of fetchMock.mock.calls) expect(call[1]?.credentials).toBeUndefined();
+        for (const call of fetchMock.mock.calls) expect(call[1]?.credentials).toBe('omit');
     });
 
     it('settles once, with both answers together', async () => {
@@ -146,12 +151,12 @@ describe('useGameCommunity', () => {
         expect(text('total')).toHaveTextContent('none');
     });
 
-    it('appends the next page when asked, and stops offering one at the end', async () => {
-        const firstTen = Array.from({ length: 10 }, (_, i) => `member${i}`);
+    it('asks for the next page by the cursor the last one ended with, and stops at the end', async () => {
+        // Never by page number: rows move while somebody reads, and an offset then skips a review.
         const { fetchMock } = stubApi({
             '/api/games/1/community-scores': [scores(0)],
-            '/api/games/1/reviews': [reviewsPage(firstTen, 12)],
-            '/api/games/1/reviews?page=2': [reviewsPage(['member10', 'member11'], 12, 2)],
+            '/api/games/1/reviews': [reviewsPage(TEN, 12, '638930.member9')],
+            '/api/games/1/reviews?after=638930.member9': [reviewsPage(['member10', 'member11'], 12)],
         });
         render(<Probe gameId={1} />);
         await waitFor(() => expect(text('more')).toHaveTextContent('true'));
@@ -161,15 +166,30 @@ describe('useGameCommunity', () => {
         await waitFor(() => expect(text('reviews')).toHaveTextContent('member10,member11'));
         expect(text('reviews').textContent?.split(',')).toHaveLength(12);
         expect(text('more')).toHaveTextContent('false');
-        expect(fetchMock).toHaveBeenCalledTimes(3);
+        expect(fetchMock.mock.calls[2][1]?.credentials).toBe('omit');
+    });
+
+    it('carries a cursor into the URL intact, whatever it holds', async () => {
+        // Opaque to the client, so it is escaped rather than trusted to be URL-safe.
+        const { fetchMock } = stubApi({
+            '/api/games/1/community-scores': [scores(0)],
+            '/api/games/1/reviews': [reviewsPage(TEN, 11, '1.a&b')],
+            '/api/games/1/reviews?after=1.a%26b': [reviewsPage(['member10'], 11)],
+        });
+        render(<Probe gameId={1} />);
+        await waitFor(() => expect(text('more')).toHaveTextContent('true'));
+
+        await userEvent.click(screen.getByRole('button', { name: 'more' }));
+
+        await waitFor(() => expect(text('reviews')).toHaveTextContent('member10'));
+        expect(String(fetchMock.mock.calls[2][0])).toBe('/api/games/1/reviews?after=1.a%26b');
     });
 
     it('reports a failed next page, keeps what it has, and can try again', async () => {
-        const firstTen = Array.from({ length: 10 }, (_, i) => `member${i}`);
         stubApi({
             '/api/games/1/community-scores': [scores(0)],
-            '/api/games/1/reviews': [reviewsPage(firstTen, 11)],
-            '/api/games/1/reviews?page=2': ['unreachable', reviewsPage(['member10'], 11, 2)],
+            '/api/games/1/reviews': [reviewsPage(TEN, 11, 'c1')],
+            '/api/games/1/reviews?after=c1': ['unreachable', reviewsPage(['member10'], 11)],
         });
         render(<Probe gameId={1} />);
         await waitFor(() => expect(text('more')).toHaveTextContent('true'));
@@ -226,13 +246,74 @@ describe('useGameCommunity', () => {
     });
 });
 
+describe('useGameCommunity reload', () => {
+    it('asks again and shows the new answer, without emptying the section while it waits', async () => {
+        // The reader has just scored or reviewed the game; blanking what they were looking at while
+        // the refresh is out would read as their change having wiped it.
+        const { release } = stubApi({
+            '/api/games/1/community-scores': [scores(6), 'held'],
+            '/api/games/1/reviews': [reviewsPage(['alex'], 1), 'held'],
+        });
+        render(<Probe gameId={1} />);
+        await waitFor(() => expect(text('scored')).toHaveTextContent('6'));
+
+        await userEvent.click(screen.getByRole('button', { name: 'reload' }));
+
+        expect(text('settled')).toHaveTextContent('true');
+        expect(text('scored')).toHaveTextContent('6');
+        expect(text('reviews')).toHaveTextContent('alex');
+
+        await release(scores(7));
+        await release(reviewsPage(['sam', 'alex'], 2));
+
+        expect(text('scored')).toHaveTextContent('7');
+        expect(text('reviews')).toHaveTextContent('sam,alex');
+        expect(text('total')).toHaveTextContent('2');
+    });
+
+    it('keeps what was on screen when the reload fails', async () => {
+        const { fetchMock } = stubApi({
+            '/api/games/1/community-scores': [scores(6), 'unreachable'],
+            '/api/games/1/reviews': [reviewsPage(['alex'], 1), 'fail'],
+        });
+        render(<Probe gameId={1} />);
+        await waitFor(() => expect(text('scored')).toHaveTextContent('6'));
+
+        await userEvent.click(screen.getByRole('button', { name: 'reload' }));
+        await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4));
+        await act(async () => {});
+
+        expect(text('scored')).toHaveTextContent('6');
+        expect(text('reviews')).toHaveTextContent('alex');
+        expect(text('total')).toHaveTextContent('1');
+    });
+
+    it('starts the list again from the first page', async () => {
+        // The reader's own review may now sit anywhere in it, so the pages already open are stale.
+        stubApi({
+            '/api/games/1/community-scores': [scores(0)],
+            '/api/games/1/reviews': [reviewsPage(TEN, 11, 'c1'), reviewsPage(TEN, 11, 'c1')],
+            '/api/games/1/reviews?after=c1': [reviewsPage(['member10'], 11)],
+        });
+        render(<Probe gameId={1} />);
+        await waitFor(() => expect(text('more')).toHaveTextContent('true'));
+        await userEvent.click(screen.getByRole('button', { name: 'more' }));
+        await waitFor(() => expect(text('reviews')).toHaveTextContent('member10'));
+
+        await userEvent.click(screen.getByRole('button', { name: 'reload' }));
+
+        await waitFor(() => expect(text('more')).toHaveTextContent('true'));
+        expect(text('reviews').textContent?.split(',')).toEqual(TEN);
+    });
+});
+
 describe('gameCommunityReducer', () => {
     /*
-     * The frame these pin cannot be reached through the hook under jsdom: `act` flushes render,
-     * commit and passive effects together, so the request is always aborted before a stale answer
-     * can land, and "drops a late answer" above passes on the abort alone. In a browser the cleanup
-     * runs after the commit, and a response resolving in between reaches the reducer carrying the
-     * previous game's stamp. This is what stops it — see ADR 0022.
+     * The frames these pin cannot be reached through the hook under jsdom: `act` flushes render,
+     * commit and passive effects together, so a request is always aborted before a stale answer can
+     * land, and the late-answer tests above pass on the abort alone. In a browser the cleanup runs
+     * after the commit, and a response resolving in between reaches the reducer carrying a stamp that
+     * no longer matches. This is what stops it — see ADR 0022.
      */
     const onGameTwo: GameCommunityState = {
         gameId: 2,
@@ -240,8 +321,7 @@ describe('gameCommunityReducer', () => {
         scores: scores(9),
         reviews: [review('sam')],
         total: 11,
-        page: 1,
-        pageSize: 10,
+        next: 'c1',
         loadingMore: false,
         moreFailed: false,
     };
@@ -256,22 +336,59 @@ describe('gameCommunityReducer', () => {
 
     it('drops a further page stamped with a game no longer on screen', () => {
         const next = gameCommunityReducer(onGameTwo, {
-            type: 'MORE_SUCCESS', gameId: 1, reviews: reviewsPage(['alex'], 11, 2),
+            type: 'MORE_SUCCESS', gameId: 1, after: 'c1', reviews: reviewsPage(['alex'], 11),
         });
 
         expect(next).toBe(onGameTwo);
     });
 
-    it('does not list a review twice when the pages have moved underneath the reader', () => {
-        // A review rewritten while somebody reads jumps to the top and pushes the rest down, so the
-        // next page can open with the review that closed the last one.
-        const next = gameCommunityReducer(onGameTwo, {
-            type: 'MORE_SUCCESS', gameId: 2, reviews: reviewsPage(['sam', 'nadia'], 12, 2),
+    it('appends a page that continues from where the list ends', () => {
+        const next = gameCommunityReducer({ ...onGameTwo, loadingMore: true }, {
+            type: 'MORE_SUCCESS', gameId: 2, after: 'c1', reviews: reviewsPage(['nadia'], 12, 'c2'),
         });
 
         expect(next.reviews.map(r => r.userName)).toEqual(['sam', 'nadia']);
-        expect(next.page).toBe(2);
+        expect(next.next).toBe('c2');
         expect(next.total).toBe(12);
+        expect(next.loadingMore).toBe(false);
+    });
+
+    it('drops a page that continues from somewhere the list no longer ends', () => {
+        // Asked for before a reload replaced the list, or by a second click after the first had
+        // already appended: either way it would put reviews after the wrong one.
+        const next = gameCommunityReducer(onGameTwo, {
+            type: 'MORE_SUCCESS', gameId: 2, after: 'c0', reviews: reviewsPage(['alex'], 11),
+        });
+
+        expect(next).toBe(onGameTwo);
+    });
+
+    it('drops a failure for a page that no longer continues the list', () => {
+        const next = gameCommunityReducer(onGameTwo, { type: 'MORE_ERROR', gameId: 2, after: 'c0' });
+
+        expect(next).toBe(onGameTwo);
+    });
+
+    it('keeps each half a reload failed to fetch, and takes the half it did', () => {
+        const next = gameCommunityReducer({ ...onGameTwo, loadingMore: true }, {
+            type: 'SETTLED', gameId: 2, scores: null, reviews: reviewsPage(['nadia', 'sam'], 12),
+        });
+
+        expect(next.scores?.scored).toBe(9);
+        expect(next.reviews.map(r => r.userName)).toEqual(['nadia', 'sam']);
+        // A reload cancels a "show more" still in flight, so nothing else would clear it.
+        expect(next.loadingMore).toBe(false);
+    });
+
+    it('has nothing to keep when the first load fails', () => {
+        const next = gameCommunityReducer(
+            { ...onGameTwo, settled: false, scores: null, reviews: [], total: null, next: null },
+            { type: 'SETTLED', gameId: 2, scores: null, reviews: null },
+        );
+
+        expect(next.settled).toBe(true);
+        expect(next.scores).toBeNull();
+        expect(next.total).toBeNull();
     });
 
     it('starts a new game from nothing', () => {
@@ -283,8 +400,7 @@ describe('gameCommunityReducer', () => {
             scores: null,
             reviews: [],
             total: null,
-            page: 0,
-            pageSize: 0,
+            next: null,
             loadingMore: false,
             moreFailed: false,
         });

@@ -123,6 +123,12 @@ whatever fronts `/api`, and nothing has configured that yet (D12). A response ca
 text fails closed on its own, as 0013's root policy does, rather than relying on a cache behaviour
 being set up correctly later.
 
+**And the client sends no cookie to either.** Both requests say `credentials: 'omit'`. Leaving the
+option unset does not do that: `fetch` defaults to `same-origin`, which sends the sign-in cookie to
+our own `/api`. The responses do not vary by reader, so the cookie has nothing to do there — and a
+request that never carries one cannot come to depend on it. The community completion times say the
+same.
+
 ### 6. One hook for both halves, keyed on the game
 
 `useGameCommunity` is called by the page, so the hero's badge and the section share one pair of
@@ -137,12 +143,46 @@ The page stays mounted when a link goes from one game to another, so the hook ta
 - Every completion is stamped with the game it was started for, and one that no longer matches is
   dropped.
 
-Further pages come from a button, not links. The profile's pages are URLs so a crawler can reach
-them; these are rendered by no server, so a URL per page would name nothing a crawler could read. A
-review rewritten while somebody reads moves to the top and can reappear at the start of the next page,
-so the list keys on the author's name, which is unique per game, and drops the repeat.
+**The reader's own writes ask for it again.** The panel beside it takes an `onCommunityChange`, which
+the page wires to the hook's `reload`, and calls it after a score saves, after a review is saved or
+deleted, and after everything recorded about the game is deleted. Without that, the member score and
+the review list on the same page go on showing the game as it was, which is exactly the look of a
+failed write that §4 fetches after hydration to avoid. A reload keeps what is on screen until the new
+answer lands, keeps a half that fails to refresh, and starts the review list again from its first page.
 
-### 7. The review form says what "Anyone" does for this author
+### 7. Further pages follow a cursor, never an offset
+
+Further pages come from a button, not links. The profile's pages are URLs so a crawler can reach
+them; these are rendered by no server, so a URL per page would name nothing a crawler could read.
+
+**The first cut paged by offset, and an offset can lose a review for good.** Rows move while
+somebody reads. Say a reader has page 1 open and a review on it is withdrawn: every later review
+moves up one place, so `page=2` now starts one review too late and the review that crossed the
+boundary is never shown. Or say a review the reader has not reached is rewritten: it jumps to the
+top under most-recently-rewritten ordering, and the same thing happens. The first cut de-duplicated
+repeats but could do nothing about skips.
+
+So each page ends with a cursor, `next`, and the button asks for `?after=` it:
+
+- **The order is by `CreatedAt`, newest first**, not by the last rewrite. A review's place in the list
+  never changes, so "everything written before the last review I was shown" means the same thing on
+  every request. A rewritten review keeps its place, which is a change from the first cut and from
+  the profile's order.
+- **The author's name breaks a tie** between two reviews written in the same instant. The page
+  already shows that name, so the cursor adds nothing to what the response publishes. The review's
+  own id would have made a simpler tie-break, but it counts every review site-wide, private ones
+  included, which is why the DTO leaves it out.
+- **The endpoint validates the cursor with a single `[RegularExpression]`** over the format the
+  service writes, `{ticks}.{userName}`. A malformed cursor is a 400, and every cursor that passes can
+  be parsed. The name part is not held to the username alphabet: the cursor carries a name to compare
+  against, not to vouch for, and the alphabet stays stated once, in `UserNamePolicy`.
+- **A page is one row over-read**, so the last page reports no `next` without a second count.
+
+On the client, a page's answer is stamped with the cursor it continued from as well as with the game.
+If the list no longer ends at that cursor, the answer is dropped. That covers a page asked for before
+a reload replaced the list, and a double click whose second page would repeat the first.
+
+### 8. The review form says what "Anyone" does for this author
 
 The hint now depends on the author's own profile setting, which the page passes down:
 

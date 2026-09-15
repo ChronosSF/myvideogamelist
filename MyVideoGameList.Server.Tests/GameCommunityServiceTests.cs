@@ -83,7 +83,7 @@ public class GameCommunityServiceTests
         string visibility = ReviewVisibility.Public,
         short? score = null,
         bool hasSpoilers = false,
-        DateTimeOffset? updatedAt = null)
+        DateTimeOffset? createdAt = null)
     {
         db.Reviews.Add(new Review
         {
@@ -92,11 +92,36 @@ public class GameCommunityServiceTests
             Body = body,
             HasSpoilers = hasSpoilers,
             Visibility = visibility,
-            CreatedAt = Now.AddDays(-30),
-            UpdatedAt = updatedAt ?? Now
+            CreatedAt = createdAt ?? Now,
+            UpdatedAt = createdAt ?? Now
         });
 
         db.SaveChanges();
+    }
+
+    /// <summary>Twelve published reviews, written a minute apart, "Review 0." the newest.</summary>
+    private static void AddTwelveReviews(ApplicationDbContext db)
+    {
+        for (var i = 0; i < 12; i++)
+            AddReview(db, AddAccount(db, $"member{i}"), body: $"Review {i}.", createdAt: Now.AddMinutes(-i));
+    }
+
+    /// <summary>Every page of a game's reviews, following each cursor to the end.</summary>
+    private static async Task<List<string>> ReadEveryPage(GameCommunityService service)
+    {
+        var bodies = new List<string>();
+        string? after = null;
+
+        // Bounded, so a cursor that failed to advance fails the test rather than hanging it.
+        for (var pages = 0; pages < 10; pages++)
+        {
+            var page = await service.GetReviewsAsync(GameId, after);
+            bodies.AddRange(page.Reviews.Select(r => r.Body));
+            if (page.Next is null) return bodies;
+            after = page.Next;
+        }
+
+        throw new InvalidOperationException("The cursor never reached the end.");
     }
 
     // ── The scores ────────────────────────────────────────────────────────────────────
@@ -215,7 +240,7 @@ public class GameCommunityServiceTests
         using var db = NewDb();
         AddReview(db, AddAccount(db, "Alex"), body: "The best side quests in the genre.", hasSpoilers: true);
 
-        var page = await NewService(db).GetReviewsAsync(GameId, 1);
+        var page = await NewService(db).GetReviewsAsync(GameId, after: null);
 
         var review = Assert.Single(page.Reviews);
         // As its owner capitalised it, because the name is theirs.
@@ -231,7 +256,7 @@ public class GameCommunityServiceTests
         using var db = NewDb();
         AddReview(db, AddAccount(db, "alex"), visibility: ReviewVisibility.Private);
 
-        var page = await NewService(db).GetReviewsAsync(GameId, 1);
+        var page = await NewService(db).GetReviewsAsync(GameId, after: null);
 
         Assert.Empty(page.Reviews);
         Assert.Equal(0, page.Total);
@@ -246,7 +271,7 @@ public class GameCommunityServiceTests
         using var db = NewDb();
         AddReview(db, AddAccount(db, "alex", ProfileVisibility.Private));
 
-        var page = await NewService(db).GetReviewsAsync(GameId, 1);
+        var page = await NewService(db).GetReviewsAsync(GameId, after: null);
 
         Assert.Empty(page.Reviews);
         Assert.Equal(0, page.Total);
@@ -262,7 +287,7 @@ public class GameCommunityServiceTests
         AddReview(db, AddAccount(db, "sam"), visibility: ReviewVisibility.Private);
         AddReview(db, AddAccount(db, "nadia", ProfileVisibility.Private));
 
-        var page = await NewService(db).GetReviewsAsync(GameId, 1);
+        var page = await NewService(db).GetReviewsAsync(GameId, after: null);
 
         Assert.Equal(["Published."], page.Reviews.Select(r => r.Body));
         Assert.Equal(1, page.Total);
@@ -276,7 +301,7 @@ public class GameCommunityServiceTests
         AddReview(db, alex, body: "This game.");
         AddReview(db, alex, gameId: OtherGameId, body: "Another game.");
 
-        var page = await NewService(db).GetReviewsAsync(GameId, 1);
+        var page = await NewService(db).GetReviewsAsync(GameId, after: null);
 
         Assert.Equal(["This game."], page.Reviews.Select(r => r.Body));
     }
@@ -286,89 +311,177 @@ public class GameCommunityServiceTests
     {
         using var db = NewDb();
         AddReview(db, AddAccount(db, "alex"), score: 9);
-        AddReview(db, AddAccount(db, "sam"), updatedAt: Now.AddDays(-1));
+        AddReview(db, AddAccount(db, "sam"), createdAt: Now.AddDays(-1));
 
-        var page = await NewService(db).GetReviewsAsync(GameId, 1);
+        var page = await NewService(db).GetReviewsAsync(GameId, after: null);
 
         Assert.Equal((short)9, page.Reviews.Single(r => r.UserName == "alex").Score);
         // Null rather than zero: writing about a game without scoring it is a real state.
         Assert.Null(page.Reviews.Single(r => r.UserName == "sam").Score);
     }
 
-    // ── The reviews: order and pages ──────────────────────────────────────────────────
+    // ── The reviews: order ────────────────────────────────────────────────────────────
 
     [Fact]
-    public async Task GetReviewsAsync_MostRecentlyUpdatedFirst()
+    public async Task GetReviewsAsync_MostRecentlyWrittenFirst()
     {
         using var db = NewDb();
-        AddReview(db, AddAccount(db, "alex"), body: "Oldest.", updatedAt: Now.AddDays(-10));
-        AddReview(db, AddAccount(db, "sam"), body: "Newest.", updatedAt: Now);
-        AddReview(db, AddAccount(db, "nadia"), body: "Middle.", updatedAt: Now.AddDays(-5));
+        AddReview(db, AddAccount(db, "alex"), body: "Oldest.", createdAt: Now.AddDays(-10));
+        AddReview(db, AddAccount(db, "sam"), body: "Newest.", createdAt: Now);
+        AddReview(db, AddAccount(db, "nadia"), body: "Middle.", createdAt: Now.AddDays(-5));
 
-        var page = await NewService(db).GetReviewsAsync(GameId, 1);
+        var page = await NewService(db).GetReviewsAsync(GameId, after: null);
 
         Assert.Equal(["Newest.", "Middle.", "Oldest."], page.Reviews.Select(r => r.Body));
     }
 
     [Fact]
-    public async Task GetReviewsAsync_SameUpdatedAt_BreaksTheTieOnTheLaterReview()
+    public async Task GetReviewsAsync_RewrittenReview_KeepsItsPlace()
     {
-        // Without a tie-break the order of equal timestamps is whatever the database returns, and a
-        // page boundary could then show one review twice and another never.
+        // Ordering by the last rewrite would let a review jump above a reader's cursor and be skipped
+        // on their next page. The order is by when it was written, which never changes.
         using var db = NewDb();
-        AddReview(db, AddAccount(db, "alex"), body: "Written first.");
-        AddReview(db, AddAccount(db, "sam"), body: "Written second.");
+        AddReview(db, AddAccount(db, "alex"), body: "Written first.", createdAt: Now.AddDays(-10));
+        AddReview(db, AddAccount(db, "sam"), body: "Written second.", createdAt: Now.AddDays(-5));
 
-        var page = await NewService(db).GetReviewsAsync(GameId, 1);
+        var rewritten = db.Reviews.Single(r => r.Body == "Written first.");
+        rewritten.UpdatedAt = Now;
+        db.SaveChanges();
+
+        var page = await NewService(db).GetReviewsAsync(GameId, after: null);
 
         Assert.Equal(["Written second.", "Written first."], page.Reviews.Select(r => r.Body));
     }
 
     [Fact]
-    public async Task GetReviewsAsync_SecondPage_ContinuesWhereTheFirstEnded()
+    public async Task GetReviewsAsync_WrittenInTheSameInstant_OrderedByAuthorsName()
+    {
+        // Without a tie-break the order of equal timestamps is whatever the database returns, and a
+        // page boundary could then show one review twice and another never.
+        using var db = NewDb();
+        AddReview(db, AddAccount(db, "sam"), body: "By sam.");
+        AddReview(db, AddAccount(db, "alex"), body: "By alex.");
+
+        var page = await NewService(db).GetReviewsAsync(GameId, after: null);
+
+        Assert.Equal(["By alex.", "By sam."], page.Reviews.Select(r => r.Body));
+    }
+
+    // ── The reviews: pages ────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task GetReviewsAsync_NextPage_ContinuesWhereTheFirstEnded()
     {
         using var db = NewDb();
-        var perPage = GameCommunityService.ReviewsPerPage;
-        for (var i = 0; i < perPage + 2; i++)
-            AddReview(db, AddAccount(db, $"member{i}"), body: $"Review {i}.", updatedAt: Now.AddMinutes(-i));
+        AddTwelveReviews(db);
+        var service = NewService(db);
 
-        var first = await NewService(db).GetReviewsAsync(GameId, 1);
-        var second = await NewService(db).GetReviewsAsync(GameId, 2);
+        var first = await service.GetReviewsAsync(GameId, after: null);
+        var second = await service.GetReviewsAsync(GameId, first.Next);
 
-        Assert.Equal(perPage, first.Reviews.Count);
+        Assert.Equal(GameCommunityService.ReviewsPerPage, first.Reviews.Count);
+        Assert.NotNull(first.Next);
         Assert.Equal(["Review 10.", "Review 11."], second.Reviews.Select(r => r.Body));
-        Assert.Equal(perPage + 2, second.Total);
-        Assert.Equal(2, second.Page);
-        Assert.Equal(perPage, second.PageSize);
-        Assert.Empty(first.Reviews.Select(r => r.UserName).Intersect(second.Reviews.Select(r => r.UserName)));
+        Assert.Equal(12, second.Total);
     }
 
     [Fact]
-    public async Task GetReviewsAsync_PageBeyondTheEnd_IsEmptyAndStillCarriesTheTotal()
+    public async Task GetReviewsAsync_LastPage_HasNoCursor()
+    {
+        // Learned by reading one row past the page rather than by counting, so a page that happens
+        // to end exactly on the last review does not offer an empty one after it.
+        using var db = NewDb();
+        for (var i = 0; i < GameCommunityService.ReviewsPerPage; i++)
+            AddReview(db, AddAccount(db, $"member{i}"), createdAt: Now.AddMinutes(-i));
+
+        var page = await NewService(db).GetReviewsAsync(GameId, after: null);
+
+        Assert.Equal(GameCommunityService.ReviewsPerPage, page.Reviews.Count);
+        Assert.Null(page.Next);
+    }
+
+    [Fact]
+    public async Task GetReviewsAsync_ReviewWithdrawnFromAnEarlierPage_SkipsNothingOnTheNext()
+    {
+        // The case an offset gets wrong. With page 1 already read, withdrawing one of its reviews
+        // shifts every later one up a place, so "offset 10" would start at Review 11 and Review 10
+        // would never be shown. A cursor names Review 9, and everything written before it is still
+        // everything written before it.
+        using var db = NewDb();
+        AddTwelveReviews(db);
+        var service = NewService(db);
+
+        var first = await service.GetReviewsAsync(GameId, after: null);
+
+        db.Reviews.Single(r => r.Body == "Review 3.").Visibility = ReviewVisibility.Private;
+        db.SaveChanges();
+
+        var second = await service.GetReviewsAsync(GameId, first.Next);
+
+        Assert.Equal(["Review 10.", "Review 11."], second.Reviews.Select(r => r.Body));
+        Assert.Equal(11, second.Total);
+    }
+
+    [Fact]
+    public async Task GetReviewsAsync_UnreadReviewRewrittenWhileReading_IsStillReached()
+    {
+        // The other way offsets and rewrite-ordering lose a review: rewriting one the reader has not
+        // reached yet. It keeps its place, so the next page still finds it.
+        using var db = NewDb();
+        AddTwelveReviews(db);
+        var service = NewService(db);
+
+        var first = await service.GetReviewsAsync(GameId, after: null);
+
+        var unread = db.Reviews.Single(r => r.Body == "Review 11.");
+        unread.Body = "Review 11, rewritten.";
+        unread.UpdatedAt = Now.AddMinutes(5);
+        db.SaveChanges();
+
+        var second = await service.GetReviewsAsync(GameId, first.Next);
+
+        Assert.Equal(["Review 10.", "Review 11, rewritten."], second.Reviews.Select(r => r.Body));
+    }
+
+    [Fact]
+    public async Task GetReviewsAsync_TieAcrossAPageBoundary_ShowsEveryReviewOnce()
+    {
+        // Eleven reviews written in one instant: the cursor's name is what carries the second page
+        // on from the right place.
+        using var db = NewDb();
+        for (var i = 0; i < 11; i++)
+            AddReview(db, AddAccount(db, $"member{i:00}"), body: $"By member{i:00}.");
+
+        var bodies = await ReadEveryPage(NewService(db));
+
+        Assert.Equal(11, bodies.Count);
+        Assert.Equal(11, bodies.Distinct().Count());
+        Assert.Equal(Enumerable.Range(0, 11).Select(i => $"By member{i:00}."), bodies);
+    }
+
+    [Fact]
+    public async Task GetReviewsAsync_CursorPastTheEnd_IsEmptyAndStillCarriesTheTotal()
     {
         using var db = NewDb();
         AddReview(db, AddAccount(db, "alex"));
 
-        var page = await NewService(db).GetReviewsAsync(GameId, 99);
+        var past = ReviewCursor.Format(Now.AddYears(-50), "zzz");
+        var page = await NewService(db).GetReviewsAsync(GameId, past);
 
         Assert.Empty(page.Reviews);
-        // So a client that asked for one page too many — because a review was withdrawn while it
-        // was reading — learns there is nothing further rather than an error.
+        Assert.Null(page.Next);
         Assert.Equal(1, page.Total);
     }
 
     [Fact]
-    public async Task GetReviewsAsync_PageAtIntMaxValue_IsEmptyRatherThanAnOverflow()
+    public async Task GetReviewsAsync_MalformedCursor_Throws()
     {
-        // [Range(1, int.MaxValue)] on the controller admits this, and (page - 1) * 10 overflows into
-        // a negative offset that PostgreSQL refuses — a 500 for a URL anybody can type.
+        // The endpoint's attribute turns this into a 400 before it gets here. Quietly reading it as
+        // "from the start" instead would show a reader the first page again as though it were the
+        // next.
         using var db = NewDb();
-        AddReview(db, AddAccount(db, "alex"));
 
-        var page = await NewService(db).GetReviewsAsync(GameId, int.MaxValue);
-
-        Assert.Empty(page.Reviews);
-        Assert.Equal(1, page.Total);
-        Assert.Equal(int.MaxValue, page.Page);
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            NewService(db).GetReviewsAsync(GameId, "not-a-cursor"));
     }
 }

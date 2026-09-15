@@ -80,8 +80,9 @@ export function useCommunityTimes(gameId: number): CommunityTimes | null {
         const controller = new AbortController();
 
         // No credentials: this is an aggregate over everybody and names nobody, so it is served
-        // to signed-out visitors too.
-        fetch(`/api/games/${gameId}/community-times`, { signal: controller.signal })
+        // to signed-out visitors too. Said explicitly, because `fetch` defaults to `same-origin`,
+        // which would send the sign-in cookie to our own `/api` all the same.
+        fetch(`/api/games/${gameId}/community-times`, { signal: controller.signal, credentials: 'omit' })
             .then(response => (response.ok ? (response.json() as Promise<CommunityTimes>) : null))
             // Swallowed by design, and `catch` rather than only `!response.ok` because an
             // unreachable API makes `fetch` reject rather than return a bad response. An abort

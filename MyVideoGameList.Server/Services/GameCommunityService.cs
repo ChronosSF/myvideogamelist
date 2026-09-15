@@ -64,8 +64,16 @@ public class GameCommunityService(ApplicationDbContext db) : IGameCommunityServi
     }
 
     public async Task<GameReviewsDto> GetReviewsAsync(
-        int gameId, int page, CancellationToken cancellationToken = default)
+        int gameId, string? after, CancellationToken cancellationToken = default)
     {
+        // The controller has already refused a malformed cursor with a 400, so this only fires for a
+        // caller that skipped it — and a cursor that names nothing must not quietly mean "from the
+        // start", which would show a reader the first page again as though it were the next.
+        var afterCreatedAt = default(DateTimeOffset);
+        var afterUserName = "";
+        if (after is not null && !ReviewCursor.TryParse(after, out afterCreatedAt, out afterUserName))
+            throw new ArgumentException($"Not a review cursor: {after}", nameof(after));
+
         // Both gates in the predicate rather than filtered afterwards: this is the authorization
         // boundary, and it belongs where it can be read. A public review on a private profile is
         // published nowhere, which is the only reading of the two settings that does not surprise
@@ -78,23 +86,23 @@ public class GameCommunityService(ApplicationDbContext db) : IGameCommunityServi
 
         var total = await published.CountAsync(cancellationToken);
 
-        // The page number arrives validated to be positive, not to be small: int.MaxValue is a
-        // legal page, and multiplying it by the page size overflows into a negative offset that
-        // PostgreSQL refuses. Computed wide, and a page past the end is answered here, without the
-        // query, as the empty page it is.
-        var wanted = Math.Max(page, 1);
-        var offset = (long)(wanted - 1) * ReviewsPerPage;
+        // Everything after the review the previous page ended on, in the order below. A position
+        // rather than an offset, because rows move while somebody reads and an offset then lands one
+        // too far on — see ReviewCursor.
+        var remaining = after is null
+            ? published
+            : published.Where(r => r.CreatedAt < afterCreatedAt
+                || (r.CreatedAt == afterCreatedAt && string.Compare(r.User.UserName, afterUserName) > 0));
 
-        if (offset >= total)
-            return new GameReviewsDto([], total, wanted, ReviewsPerPage);
-
-        var rows = await published
-            // Most recently written or rewritten first, with the key as a tie-break so a page
-            // boundary does not depend on the order the database happens to return rows in.
-            .OrderByDescending(r => r.UpdatedAt)
-            .ThenByDescending(r => r.Id)
-            .Skip((int)offset)
-            .Take(ReviewsPerPage)
+        var rows = await remaining
+            // Most recently written first, and a rewrite does not move a review: CreatedAt never
+            // changes, which is what keeps a cursor's place in the order still. The author's name
+            // breaks a tie between two written in the same instant, so a page boundary does not
+            // depend on the order the database happens to return rows in.
+            .OrderByDescending(r => r.CreatedAt)
+            .ThenBy(r => r.User.UserName)
+            // One more than a page, to learn whether there is another without counting the rest.
+            .Take(ReviewsPerPage + 1)
             .Select(r => new
             {
                 r.User.UserName,
@@ -107,13 +115,18 @@ public class GameCommunityService(ApplicationDbContext db) : IGameCommunityServi
             })
             .ToListAsync(cancellationToken);
 
+        var page = rows.Take(ReviewsPerPage).ToList();
+        var next = rows.Count > ReviewsPerPage
+            ? ReviewCursor.Format(page[^1].CreatedAt, page[^1].UserName!)
+            : null;
+
         // Copied across field by field, for the reason PublicProfileDto gives: nothing reaches a
         // public document without somebody writing it in.
-        var reviews = rows
+        var reviews = page
             .Select(r => new GameReviewDto(
                 r.UserName!, r.Body, r.HasSpoilers, r.Score, r.CreatedAt, r.UpdatedAt))
             .ToList();
 
-        return new GameReviewsDto(reviews, total, wanted, ReviewsPerPage);
+        return new GameReviewsDto(reviews, total, next);
     }
 }

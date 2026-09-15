@@ -20,9 +20,13 @@ public interface IGameCommunityService
 
     /// <summary>
     /// The reviews published about the game — marked public, on a public profile — most recently
-    /// written or rewritten first.
+    /// written first. Rewriting a review does not move it.
     /// </summary>
-    /// <param name="page">1-based. Out-of-range pages return an empty list and the total, not an error.</param>
+    /// <param name="after">
+    /// Null for the first page; otherwise the <see cref="GameReviewsDto.Next"/> of the page before.
+    /// A cursor past the end returns an empty list and the total, not an error.
+    /// </param>
+    /// <exception cref="ArgumentException"><paramref name="after"/> is not a cursor.</exception>
     Task<GameReviewsDto> GetReviewsAsync(
-        int gameId, int page, CancellationToken cancellationToken = default);
+        int gameId, string? after, CancellationToken cancellationToken = default);
 }

@@ -31,14 +31,18 @@ namespace MyVideoGameList.Server.DTOs;
 public record CommunityScoresDto(int Scored, double? Mean, IReadOnlyList<int> Distribution);
 
 /// <summary>
-/// A page of the reviews members have published about one game.
+/// A page of the reviews members have published about one game, newest first.
 /// </summary>
 /// <param name="Total">Every published review of the game, not just this page.</param>
+/// <param name="Next">
+/// What to pass as <c>after</c> for the page that follows this one, or null when this is the last.
+/// A position in the order rather than a page number, so a review withdrawn or rewritten while
+/// somebody reads cannot shift the next page past one they have not seen — see <c>ReviewCursor</c>.
+/// </param>
 public record GameReviewsDto(
     IReadOnlyList<GameReviewDto> Reviews,
     int Total,
-    int Page,
-    int PageSize);
+    string? Next);
 
 /// <summary>
 /// One published review, with its author's name and the score they gave the game.

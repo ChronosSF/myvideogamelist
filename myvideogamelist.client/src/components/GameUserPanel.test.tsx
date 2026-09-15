@@ -62,14 +62,19 @@ function renderPanel(
 ) {
     const value = contextValue(overrides);
     const wishlist = wishlistValue(wishlistOverrides);
+    const onCommunityChange = vi.fn();
     render(
         <ListsContext.Provider value={value}>
             <WishlistContext.Provider value={wishlist}>
-                <GameUserPanel game={CELESTE} profileVisibility={profileVisibility} />
+                <GameUserPanel
+                    game={CELESTE}
+                    profileVisibility={profileVisibility}
+                    onCommunityChange={onCommunityChange}
+                />
             </WishlistContext.Provider>
         </ListsContext.Provider>,
     );
-    return { ...value, wishlist };
+    return { ...value, wishlist, onCommunityChange };
 }
 
 /**
@@ -389,6 +394,104 @@ describe('GameUserPanel deleting everything', () => {
 
         expect(ctx.deleteEntry).not.toHaveBeenCalled();
         expect(screen.getByRole('button', { name: /delete my data/i })).toBeInTheDocument();
+    });
+});
+
+describe("GameUserPanel and the members' view of the game", () => {
+    /*
+     * The member score and the review list on the same page are fetched once, so a write here has to
+     * say so or they go on showing the game as it was — the look of a write that failed.
+     */
+
+    it('asks for it again once a score has saved', async () => {
+        stubEntryFetch(6);
+        const { setScore, finish } = deferredSetScore();
+        const ctx = renderPanel({ setScore });
+
+        await waitFor(() => expect(shownScore()).toBe(6));
+        await userEvent.click(screen.getByRole('radio', { name: '2 out of 10' }));
+
+        // Not while the save is still out: the view would be fetched before the score it should show.
+        expect(ctx.onCommunityChange).not.toHaveBeenCalled();
+
+        await finish(true);
+
+        expect(ctx.onCommunityChange).toHaveBeenCalledTimes(1);
+    });
+
+    it('leaves it alone when the score did not save', async () => {
+        stubEntryFetch(6);
+        const { setScore, finish } = deferredSetScore();
+        const ctx = renderPanel({ setScore });
+
+        await waitFor(() => expect(shownScore()).toBe(6));
+        await userEvent.click(screen.getByRole('radio', { name: '2 out of 10' }));
+        await finish(false);
+
+        expect(ctx.onCommunityChange).not.toHaveBeenCalled();
+    });
+
+    it('asks for it again once a review has saved', async () => {
+        stubEntryFetch(null, 200, [], url =>
+            url.includes('/review')
+                ? new Response(JSON.stringify(review({ id: 3, body: 'Superb.' })), { status: 200 })
+                : new Response(null, { status: 204 }));
+        const ctx = renderPanel();
+        await settled();
+
+        await userEvent.type(screen.getByLabelText('What you thought'), 'Superb.');
+        await userEvent.click(screen.getByRole('button', { name: 'Save review' }));
+
+        await waitFor(() => expect(ctx.onCommunityChange).toHaveBeenCalledTimes(1));
+    });
+
+    it('leaves it alone when the review did not save', async () => {
+        stubEntryFetch(null, 200, [], () => new Response('nope', { status: 500 }));
+        const ctx = renderPanel();
+        await settled();
+
+        await userEvent.type(screen.getByLabelText('What you thought'), 'Superb.');
+        await userEvent.click(screen.getByRole('button', { name: 'Save review' }));
+
+        await screen.findByRole('alert');
+        expect(ctx.onCommunityChange).not.toHaveBeenCalled();
+    });
+
+    it('asks for it again once a review has been deleted', async () => {
+        stubEntryFetch(
+            null,
+            200,
+            [],
+            () => new Response(null, { status: 204 }),
+            review({ id: 3, body: 'On reflection, no.' }));
+        const ctx = renderPanel();
+
+        await userEvent.click(await screen.findByRole('button', { name: 'Delete review' }));
+
+        await waitFor(() => expect(ctx.onCommunityChange).toHaveBeenCalledTimes(1));
+    });
+
+    it('asks for it again after deleting everything recorded about the game', async () => {
+        // The score and the review both go with the entry, so both halves of the view can change.
+        stubEntryFetch(7);
+        const ctx = renderPanel();
+
+        await userEvent.click(await screen.findByRole('button', { name: /delete my data/i }));
+        await userEvent.click(screen.getByRole('button', { name: 'Delete' }));
+
+        await waitFor(() => expect(ctx.onCommunityChange).toHaveBeenCalledTimes(1));
+        expect(ctx.deleteEntry).toHaveBeenCalledWith(1);
+    });
+
+    it('does not ask for it over a change of list, which it does not show', async () => {
+        stubEntryFetch(null, 404);
+        const ctx = renderPanel();
+        await settled();
+
+        await userEvent.click(screen.getByRole('button', { name: 'Playing' }));
+
+        expect(ctx.addToList).toHaveBeenCalled();
+        expect(ctx.onCommunityChange).not.toHaveBeenCalled();
     });
 });
 

@@ -19,13 +19,18 @@ export interface CommunityScores {
     distribution: number[];
 }
 
-/** One page of the reviews published about a game, mirroring `GameReviewsDto`. */
+/** One page of the reviews published about a game, newest first, mirroring `GameReviewsDto`. */
 export interface GameReviews {
     reviews: GameReview[];
     /** Every published review of the game, not just this page. */
     total: number;
-    page: number;
-    pageSize: number;
+    /**
+     * What to send as `?after=` for the page that follows, or null when this is the last. A position
+     * in the order rather than a page number, so a review withdrawn or rewritten while somebody reads
+     * cannot push the next page past one they have not seen. Opaque to the client: pass it back as
+     * it came.
+     */
+    next: string | null;
 }
 
 export interface GameReview {

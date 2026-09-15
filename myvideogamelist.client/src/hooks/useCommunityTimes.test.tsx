@@ -22,7 +22,7 @@ function times(samples: number): CommunityTimes {
 function stubApi(routes: Record<string, CommunityTimes | 'held'>) {
     const held: Array<(body: CommunityTimes) => void> = [];
 
-    vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL) => {
+    const fetchMock = vi.fn((input: RequestInfo | URL, _init?: RequestInit) => {
         const url = String(input);
         const answer = routes[url];
         if (answer === undefined) throw new Error(`unexpected fetch: ${url}`);
@@ -33,9 +33,12 @@ function stubApi(routes: Record<string, CommunityTimes | 'held'>) {
             });
         }
         return Promise.resolve(new Response(JSON.stringify(answer), { status: 200 }));
-    }));
+    });
+
+    vi.stubGlobal('fetch', fetchMock);
 
     return {
+        fetchMock,
         /** Answers the oldest held request and flushes everything it causes. */
         release: (body: CommunityTimes) => act(async () => {
             held.shift()?.(body);
@@ -55,6 +58,16 @@ const normally = () => screen.getByTestId('normally');
 afterEach(() => vi.unstubAllGlobals());
 
 describe('useCommunityTimes', () => {
+    it('asks without sending the sign-in cookie', async () => {
+        // An aggregate that names nobody and answers every reader alike. `fetch` sends cookies to our
+        // own origin by default, so leaving `credentials` unset would not have kept them off it.
+        const { fetchMock } = stubApi({ '/api/games/1/community-times': times(6) });
+        render(<Probe gameId={1} />);
+        await waitFor(() => expect(normally()).toHaveTextContent('6'));
+
+        expect(fetchMock.mock.calls[0][1]?.credentials).toBe('omit');
+    });
+
     it("clears the previous game's figures before the next game answers", async () => {
         // The game page stays mounted when a link goes from one game to another, so the last game's
         // medians must not sit under the new game's title while the new one loads.

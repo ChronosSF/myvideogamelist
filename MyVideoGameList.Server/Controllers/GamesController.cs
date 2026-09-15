@@ -82,12 +82,17 @@ public class GamesController(
     }
 
     /// <summary>
-    /// A page of the reviews members have published about this game.
+    /// A page of the reviews members have published about this game, newest first.
     /// </summary>
     /// <remarks>
     /// <para>
     /// Public, and identical for every reader — including a review's own author, who sees theirs
     /// here only if it is published. Only a review marked public, on a public profile, is listed.
+    /// </para>
+    /// <para>
+    /// Paged by cursor: each page ends with the <c>after</c> for the next. The attribute is the
+    /// whole of its validation — a malformed cursor is a 400, and every cursor that passes is one
+    /// the service can read.
     /// </para>
     /// <para>
     /// <c>no-store</c>, and this is the one that matters. These responses carry text their authors
@@ -102,10 +107,10 @@ public class GamesController(
     public async Task<ActionResult<GameReviewsDto>> GetReviews(
         [Range(1, int.MaxValue)] int id,
         CancellationToken cancellationToken,
-        // Defaulted rather than required: /reviews with no query string is the first page.
-        [FromQuery][Range(1, int.MaxValue)] int page = 1)
+        // Absent for the first page; otherwise the `next` the previous page returned.
+        [FromQuery][RegularExpression(ReviewCursor.Pattern)] string? after = null)
     {
-        return Ok(await communityService.GetReviewsAsync(id, page, cancellationToken));
+        return Ok(await communityService.GetReviewsAsync(id, after, cancellationToken));
     }
 
     [HttpGet("upcoming")]

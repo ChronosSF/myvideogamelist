@@ -165,7 +165,10 @@ ROADMAP.md                      Forward-looking plan
   outlive its author withdrawing it by up to a day — and D14 invalidates profiles, not every game page
   an author has reviewed. `/api/games/{id}/reviews` and `/community-scores` therefore send `no-store`
   and keep no server cache either. The two cross different gates: the scores count every member, since
-  an aggregate names nobody; the reviews list only those public on a public profile. See
+  an aggregate names nobody; the reviews list only those public on a public profile. The reviews page
+  by a cursor over `CreatedAt`, **never by offset** — rows move while somebody reads, and an offset
+  then skips a review for good — and `GameUserPanel` calls the hook's `reload` after the reader's own
+  score or review changes, or the section beside it shows the write as though it had failed. See
   `docs/decisions/0028-*`.
 
 - **Never change a game's status without recording an event.** `UserGameEvents` is append-only
