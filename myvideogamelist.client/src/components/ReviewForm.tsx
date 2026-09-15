@@ -1,4 +1,5 @@
 import { useId, useState } from 'react';
+import type { ProfileVisibility } from '@/types/auth';
 import type { PlaythroughDto, ReviewDto, ReviewInputDto } from '@/types/playthrough';
 import { playthroughTypeLabel } from '@/types/playthrough';
 
@@ -7,6 +8,8 @@ interface ReviewFormProps {
     review: ReviewDto | null;
     /** The user's playthroughs of this game, so a review can name the run it is about. */
     playthroughs: PlaythroughDto[];
+    /** The author's profile setting — the outer gate over what "Anyone" publishes. */
+    profileVisibility: ProfileVisibility;
     onSave: (input: ReviewInputDto) => void;
     onDelete: () => void;
     pending: boolean;
@@ -30,14 +33,17 @@ const EMPTY: Draft = { body: '', hasSpoilers: false, visibility: 'private', play
  * One per game, so there is no "add another": the form is the review. A plain submit with a
  * pending state and an inline error, like the playthrough form beside it and for the same reason.
  *
- * **Visibility is asked rather than assumed.** There are no public profiles yet, so nothing is
- * actually published today — but a default chosen now is a consent decision, and a review written
- * privately must not become public because a feature shipped later. The label says what "public"
- * will mean rather than what it currently does.
+ * **Visibility is asked rather than assumed.** A default is a consent decision, so a new review is
+ * private until its author says otherwise. And the hint says what "Anyone" does *for this author*,
+ * because that depends on a second setting: a review for anyone is published — on their profile
+ * (ADR 0027) and on the game's page (ADR 0028) — only while their profile is public. Somebody with a
+ * private profile must not come away believing they have published something that nobody can see,
+ * nor somebody with a public one believing it stays on their profile.
  */
 export function ReviewForm({
     review,
     playthroughs,
+    profileVisibility,
     onSave,
     onDelete,
     pending,
@@ -106,10 +112,12 @@ export function ReviewForm({
                     <option value="public">Anyone</option>
                 </select>
                 <p id={`${fieldId}-visibility-hint`} className="game-user-panel-hint">
-                    {/* Says what it will mean, not what it currently does — public profiles are
-                        not built yet, and a choice made now has to still be honoured then. */}
-                    "Anyone" means this will appear on your public profile once profiles launch.
-                    Nothing is published today either way.
+                    {/* Both gates, in the author's own terms: the narrower one wins, and it is the
+                        one that is easy to forget is there. */}
+                    {profileVisibility === 'public'
+                        ? '"Anyone" shows it on this game\'s page and on your public profile.'
+                        : '"Anyone" shows it on this game\'s page and on your profile once your '
+                            + 'profile is public. Yours is private, so it is not shown anywhere yet.'}
                 </p>
             </div>
 

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import type { ProfileVisibility } from '@/types/auth';
 import type { GameDto } from '@/types/game';
 import { type ListId, LIST_IDS, LIST_NAMES } from '@/types/list';
 import type {
@@ -18,6 +19,17 @@ import './GameUserPanel.css';
 
 interface GameUserPanelProps {
     game: GameDto;
+    /**
+     * Whether the signed-in user's profile is public, which decides what marking their review for
+     * anyone actually publishes. Passed in by the page, which already reads the account.
+     */
+    profileVisibility: ProfileVisibility;
+    /**
+     * Called after a write that the members' view of this game shows — a score, a review, or
+     * deleting the lot — so the page can ask for that view again. Without it the member score and
+     * the review list go on showing the game as it was, which reads as the write having failed.
+     */
+    onCommunityChange: () => void;
 }
 
 /**
@@ -35,7 +47,7 @@ interface GameUserPanelProps {
  * has nothing to gain from showing a row that may be about to vanish, and everything to lose from
  * the user editing it while it does.
  */
-export function GameUserPanel({ game }: GameUserPanelProps) {
+export function GameUserPanel({ game, profileVisibility, onCommunityChange }: GameUserPanelProps) {
     const { isInList, getListFor, addToList, removeFromList, setScore, deleteEntry, isPending } = useLists();
     const wishlist = useWishlist();
 
@@ -105,7 +117,8 @@ export function GameUserPanel({ game }: GameUserPanelProps) {
         const previous = score;
         setLocalScore(next);
         const saved = await setScore(game.id, next);
-        if (!saved) setLocalScore(previous);
+        if (saved) onCommunityChange();
+        else setLocalScore(previous);
     };
 
     const handleDelete = async () => {
@@ -118,6 +131,10 @@ export function GameUserPanel({ game }: GameUserPanelProps) {
         setPlaythroughs([]);
         setReview(null);
         setEditing(null);
+
+        // Unconditionally: the provider reports a failed delete by rolling back rather than by
+        // returning, and asking again when nothing changed costs one request and shows the truth.
+        onCommunityChange();
     };
 
     /**
@@ -204,6 +221,7 @@ export function GameUserPanel({ game }: GameUserPanelProps) {
             }
 
             setReview((await res.json()) as ReviewDto);
+            onCommunityChange();
         } catch {
             setReviewError('Could not save your review. Please try again.');
         } finally {
@@ -227,6 +245,7 @@ export function GameUserPanel({ game }: GameUserPanelProps) {
             }
 
             setReview(null);
+            onCommunityChange();
         } catch {
             setReviewError('Could not delete your review. Please try again.');
         } finally {
@@ -347,6 +366,7 @@ export function GameUserPanel({ game }: GameUserPanelProps) {
                 <ReviewForm
                     review={review}
                     playthroughs={playthroughs}
+                    profileVisibility={profileVisibility}
                     onSave={input => void handleReviewSave(input)}
                     onDelete={() => void handleReviewDelete()}
                     pending={!loaded || savingReview}

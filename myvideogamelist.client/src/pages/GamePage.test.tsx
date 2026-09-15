@@ -3,6 +3,8 @@ import { render, screen, within } from '@testing-library/react';
 import { createRoutesStub } from 'react-router';
 import { GamePage } from '@/pages/GamePage';
 import type { AuthContextValue } from '@/contexts/AuthContext';
+import type { UseGameCommunityResult } from '@/hooks/useGameCommunity';
+import { MIN_MEMBER_SCORES } from '@/lib/score';
 import type { UserProfile } from '@/types/auth';
 import { game, userProfile } from '@/test/factories';
 
@@ -27,13 +29,33 @@ const auth: AuthContextValue = {
 
 vi.mock('@/hooks/useAuth', () => ({ useAuth: () => auth }));
 
-// All three fetch for themselves after hydration. What this suite is about is which of three things
-// the sidebar shows, so the panel — which has a suite of its own — is reduced to the heading a
-// reader knows it by, and the two sections that render nothing until their fetch answers are left
-// out.
+/**
+ * The members' view of the game, mocked for the same reason and held to the same rule as `auth`.
+ * The page reads it for one thing of its own — the badge in the hero — and hands the rest to a
+ * section that has a suite of its own.
+ */
+const community: UseGameCommunityResult = {
+    settled: false,
+    scores: null,
+    reviews: [],
+    total: null,
+    hasMore: false,
+    loadingMore: false,
+    moreFailed: false,
+    loadMore: vi.fn(),
+    reload: vi.fn(),
+};
+
+vi.mock('@/hooks/useGameCommunity', () => ({ useGameCommunity: () => community }));
+
+// All four fetch for themselves after hydration. What this suite is about is which of three things
+// the sidebar shows and what the hero says, so the panel — which has a suite of its own — is
+// reduced to the heading a reader knows it by, and the sections that render nothing until their
+// fetch answers are left out.
 vi.mock('@/components/GameUserPanel', () => ({ GameUserPanel: () => <h2>Your copy</h2> }));
 vi.mock('@/components/CompletionTimes', () => ({ CompletionTimes: () => null }));
 vi.mock('@/components/GameNewsPanel', () => ({ GameNewsPanel: () => null }));
+vi.mock('@/components/GameCommunity', () => ({ GameCommunity: () => null }));
 
 const CELESTE = game({ id: 1, title: 'Celeste' });
 
@@ -57,6 +79,8 @@ function renderPage() {
 beforeEach(() => {
     auth.user = null;
     auth.loading = true;
+    community.settled = false;
+    community.scores = null;
 });
 
 describe('GamePage sidebar before auth has answered', () => {
@@ -90,5 +114,36 @@ describe('GamePage sidebar once auth has answered', () => {
 
         expect(screen.getByRole('heading', { name: 'Your copy' })).toBeInTheDocument();
         expect(screen.queryByText(/sign in to track this game/i)).not.toBeInTheDocument();
+    });
+});
+
+describe("GamePage hero's member score", () => {
+    /** The members' scores have come back, for a given number of members averaging 8.4. */
+    function scored(members: number) {
+        community.settled = true;
+        community.scores = { scored: members, mean: 8.4, distribution: [0, 0, 0, 0, 0, 0, 0, members, 0, 0] };
+    }
+
+    it("sits beside IGDB's aggregates, out of 100 and with its count", () => {
+        // Ours is an average of other people like theirs, so it wears the same badge on the same
+        // scale — never stars, which mean the reader's own score (ADR 0021).
+        scored(23);
+        renderPage();
+
+        expect(screen.getByText('Member score: 84 out of 100, from 23 scores')).toBeInTheDocument();
+    });
+
+    it('is absent until enough members have scored the game', () => {
+        // A mean over a handful of members is a handful of opinions presented as a verdict.
+        scored(MIN_MEMBER_SCORES - 1);
+        renderPage();
+
+        expect(screen.queryByText(/^Member score:/)).not.toBeInTheDocument();
+    });
+
+    it('is absent before the scores have answered, which is every server render', () => {
+        renderPage();
+
+        expect(screen.queryByText(/^Member score:/)).not.toBeInTheDocument();
     });
 });

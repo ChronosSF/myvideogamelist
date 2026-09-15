@@ -1,8 +1,8 @@
-import { useState } from 'react';
 import { Link } from 'react-router';
 import { lastPage, pageSearch } from '@/lib/paging';
 import { formatDate } from '@/lib/stats';
 import { MAX_SCORE } from '@/lib/score';
+import { ReviewCard } from '@/components/ReviewCard';
 import type { PublicReview, PublicReviews } from '@/types/profile';
 
 interface PublicReviewListProps {
@@ -108,63 +108,47 @@ export function PublicReviewList({ userName, reviews, total }: PublicReviewListP
     );
 }
 
-/**
- * One review.
- *
- * A spoiler review renders behind a control rather than blurred or truncated: blurring puts the
- * text in the page for anybody who selects it, and truncating gives away the shape of what is
- * being hidden. `hasSpoilers` is the author's own answer, so the only right default is to believe
- * it.
- */
+/** One review, headed by the game it is about. */
 function PublicReviewCard({ review }: { review: PublicReview }) {
-    const [revealed, setRevealed] = useState(false);
-
     return (
-        <li className="review-card">
-            <div className="review-card-head">
-                {review.game.coverImageUrl && (
-                    // Out of the tab order and the accessibility tree, as ListTable's cover link
-                    // is: the title beside it goes to the same place and carries the name, and a
-                    // link whose only content is a decorative image is an unexplained extra stop.
-                    <Link
-                        to={`/games/${review.game.id}`}
-                        className="review-cover"
-                        tabIndex={-1}
-                        aria-hidden="true"
-                    >
-                        <img src={review.game.coverImageUrl} alt="" loading="lazy" />
-                    </Link>
-                )}
+        <ReviewCard
+            head={
+                <>
+                    {review.game.coverImageUrl && (
+                        // Out of the tab order and the accessibility tree, as ListTable's cover link
+                        // is: the title beside it goes to the same place and carries the name, and a
+                        // link whose only content is a decorative image is an unexplained extra stop.
+                        <Link
+                            to={`/games/${review.game.id}`}
+                            className="review-cover"
+                            tabIndex={-1}
+                            aria-hidden="true"
+                        >
+                            <img src={review.game.coverImageUrl} alt="" loading="lazy" />
+                        </Link>
+                    )}
 
-                <div className="review-card-meta">
-                    <Link to={`/games/${review.game.id}`} className="review-game-title">
-                        {review.game.title}
-                    </Link>
+                    <div className="review-card-meta">
+                        <Link to={`/games/${review.game.id}`} className="review-card-title">
+                            {review.game.title}
+                        </Link>
 
-                    <p className="review-card-sub">
-                        {review.score !== null && (
-                            // The author's own score, on the scale they entered it. Never a
-                            // percentage: that means an average of other people (ADR 0021).
-                            <span className="review-score">
-                                {`${review.score}/${MAX_SCORE}`}
-                            </span>
-                        )}
-                        <span>{formatDate(review.updatedAt)}</span>
-                    </p>
-                </div>
-            </div>
-
-            {review.hasSpoilers && !revealed ? (
-                <button
-                    type="button"
-                    className="review-spoiler-btn"
-                    onClick={() => setRevealed(true)}
-                >
-                    {`Show review of ${review.game.title} — the author marked it as containing spoilers`}
-                </button>
-            ) : (
-                <p className="review-body">{review.body}</p>
-            )}
-        </li>
+                        <p className="review-card-sub">
+                            {review.score !== null && (
+                                // The author's own score, on the scale they entered it. Never a
+                                // percentage: that means an average of other people (ADR 0021).
+                                <span className="review-score">
+                                    {`${review.score}/${MAX_SCORE}`}
+                                </span>
+                            )}
+                            <span>{formatDate(review.updatedAt)}</span>
+                        </p>
+                    </div>
+                </>
+            }
+            body={review.body}
+            hasSpoilers={review.hasSpoilers}
+            revealLabel={`Show review of ${review.game.title} — the author marked it as containing spoilers`}
+        />
     );
 }

@@ -1,4 +1,6 @@
+import type { CommunityScores } from '@/types/community';
 import type { GameDto } from '@/types/game';
+import { formatCount } from '@/lib/format';
 
 /**
  * Critic reviews a game needs before its score is worth showing.
@@ -23,6 +25,22 @@ export const MIN_CRITIC_REVIEWS = 4;
  * anything. See `docs/decisions/0016-*`.
  */
 export const MIN_PLAYTHROUGH_SAMPLES = 3;
+
+/**
+ * Members who must have scored a game before MVGL's own score for it is worth printing — and
+ * before its distribution is drawn at all.
+ *
+ * The same argument again: a mean over two members is one person's opinion and a half, and a badge
+ * reading "100 members" over one perfect score would be the exact failure ADR 0016 was written
+ * about. Higher than the playthrough floor, because the pools differ in depth. A counted
+ * playthrough needs a type and a duration typed in after the game is over; a score is one tap on a
+ * star, so a game gathers scores far sooner than it gathers runs worth counting.
+ *
+ * The distribution goes behind the same floor as the mean rather than being drawn anyway. Under it,
+ * the columns are a handful of individuals' scores laid out one by one, which says less than the
+ * count does and more about each of them than a reader needs. See `docs/decisions/0028-*`.
+ */
+export const MIN_MEMBER_SCORES = 5;
 
 /**
  * Five stars at half-star steps, which is exactly the ten values the API stores.
@@ -54,8 +72,23 @@ export function hasCriticScore(
 }
 
 /**
- * IGDB's player rating arrives on a 0-10 scale and the critic score on 0-100. Aggregates are
- * all displayed out of 100, so a reader comparing two badges is comparing two like things.
+ * Whether enough members have scored a game for its mean — and its distribution — to be worth
+ * displaying. Narrows `mean` to a number, since a score that clears the floor has one.
+ */
+export function hasMemberScore(
+    scores: CommunityScores | null,
+): scores is CommunityScores & { mean: number } {
+    return scores !== null
+        && scores.mean !== null
+        && scores.scored >= MIN_MEMBER_SCORES;
+}
+
+/**
+ * An average out of ten, as a number out of 100.
+ *
+ * IGDB's player rating arrives on a 0-10 scale, the mean of our members' scores on the 1-10 scale
+ * they were entered on, and the critic score on 0-100. Aggregates are all displayed out of 100, so
+ * a reader comparing two badges is comparing two like things.
  */
 export function ratingPercent(rating: number): number {
     return Math.round(rating * 10);
@@ -101,17 +134,23 @@ export function scoreBandSubtle(percent: number): string {
     }
 }
 
+/** What each aggregate is called, and what it counts. */
+const AGGREGATE_WORDS = {
+    critics: { label: 'Critic score', noun: 'review' },
+    players: { label: 'Player rating', noun: 'rating' },
+    members: { label: 'Member score', noun: 'score' },
+} as const;
+
 /**
  * "Critic score: 93 out of 100, from 12 reviews" - the sample size belongs anywhere the score
- * is shown, and the scale belongs there too now that both aggregates share one.
+ * is shown, and the scale belongs there too now that every aggregate shares one.
  */
 export function aggregateTitle(
-    kind: 'critics' | 'players',
+    kind: keyof typeof AGGREGATE_WORDS,
     percent: number,
     count: number | null,
 ): string {
-    const noun = kind === 'critics' ? 'review' : 'rating';
-    const from = count === null ? '' : `, from ${count.toLocaleString()} ${noun}${count === 1 ? '' : 's'}`;
-    const label = kind === 'critics' ? 'Critic score' : 'Player rating';
+    const { label, noun } = AGGREGATE_WORDS[kind];
+    const from = count === null ? '' : `, from ${formatCount(count)} ${noun}${count === 1 ? '' : 's'}`;
     return `${label}: ${percent} out of 100${from}`;
 }

@@ -5,6 +5,7 @@ import { GameUserPanel } from '@/components/GameUserPanel';
 import { ListsContext, type ListsContextValue } from '@/contexts/ListsContext';
 import { WishlistContext, type WishlistContextValue } from '@/contexts/WishlistContext';
 import { DEFAULT_SORT } from '@/lib/listSort';
+import type { ProfileVisibility } from '@/types/auth';
 import type { ListId } from '@/types/list';
 import type { PlaythroughDto, ReviewDto } from '@/types/playthrough';
 import { entryDetail, game, platform, playthrough, review } from '@/test/factories';
@@ -57,17 +58,23 @@ function wishlistValue(overrides: Partial<WishlistContextValue> = {}): WishlistC
 function renderPanel(
     overrides: Partial<ListsContextValue> = {},
     wishlistOverrides: Partial<WishlistContextValue> = {},
+    profileVisibility: ProfileVisibility = 'private',
 ) {
     const value = contextValue(overrides);
     const wishlist = wishlistValue(wishlistOverrides);
+    const onCommunityChange = vi.fn();
     render(
         <ListsContext.Provider value={value}>
             <WishlistContext.Provider value={wishlist}>
-                <GameUserPanel game={CELESTE} />
+                <GameUserPanel
+                    game={CELESTE}
+                    profileVisibility={profileVisibility}
+                    onCommunityChange={onCommunityChange}
+                />
             </WishlistContext.Provider>
         </ListsContext.Provider>,
     );
-    return { ...value, wishlist };
+    return { ...value, wishlist, onCommunityChange };
 }
 
 /**
@@ -387,6 +394,104 @@ describe('GameUserPanel deleting everything', () => {
 
         expect(ctx.deleteEntry).not.toHaveBeenCalled();
         expect(screen.getByRole('button', { name: /delete my data/i })).toBeInTheDocument();
+    });
+});
+
+describe("GameUserPanel and the members' view of the game", () => {
+    /*
+     * The member score and the review list on the same page are fetched once, so a write here has to
+     * say so or they go on showing the game as it was — the look of a write that failed.
+     */
+
+    it('asks for it again once a score has saved', async () => {
+        stubEntryFetch(6);
+        const { setScore, finish } = deferredSetScore();
+        const ctx = renderPanel({ setScore });
+
+        await waitFor(() => expect(shownScore()).toBe(6));
+        await userEvent.click(screen.getByRole('radio', { name: '2 out of 10' }));
+
+        // Not while the save is still out: the view would be fetched before the score it should show.
+        expect(ctx.onCommunityChange).not.toHaveBeenCalled();
+
+        await finish(true);
+
+        expect(ctx.onCommunityChange).toHaveBeenCalledTimes(1);
+    });
+
+    it('leaves it alone when the score did not save', async () => {
+        stubEntryFetch(6);
+        const { setScore, finish } = deferredSetScore();
+        const ctx = renderPanel({ setScore });
+
+        await waitFor(() => expect(shownScore()).toBe(6));
+        await userEvent.click(screen.getByRole('radio', { name: '2 out of 10' }));
+        await finish(false);
+
+        expect(ctx.onCommunityChange).not.toHaveBeenCalled();
+    });
+
+    it('asks for it again once a review has saved', async () => {
+        stubEntryFetch(null, 200, [], url =>
+            url.includes('/review')
+                ? new Response(JSON.stringify(review({ id: 3, body: 'Superb.' })), { status: 200 })
+                : new Response(null, { status: 204 }));
+        const ctx = renderPanel();
+        await settled();
+
+        await userEvent.type(screen.getByLabelText('What you thought'), 'Superb.');
+        await userEvent.click(screen.getByRole('button', { name: 'Save review' }));
+
+        await waitFor(() => expect(ctx.onCommunityChange).toHaveBeenCalledTimes(1));
+    });
+
+    it('leaves it alone when the review did not save', async () => {
+        stubEntryFetch(null, 200, [], () => new Response('nope', { status: 500 }));
+        const ctx = renderPanel();
+        await settled();
+
+        await userEvent.type(screen.getByLabelText('What you thought'), 'Superb.');
+        await userEvent.click(screen.getByRole('button', { name: 'Save review' }));
+
+        await screen.findByRole('alert');
+        expect(ctx.onCommunityChange).not.toHaveBeenCalled();
+    });
+
+    it('asks for it again once a review has been deleted', async () => {
+        stubEntryFetch(
+            null,
+            200,
+            [],
+            () => new Response(null, { status: 204 }),
+            review({ id: 3, body: 'On reflection, no.' }));
+        const ctx = renderPanel();
+
+        await userEvent.click(await screen.findByRole('button', { name: 'Delete review' }));
+
+        await waitFor(() => expect(ctx.onCommunityChange).toHaveBeenCalledTimes(1));
+    });
+
+    it('asks for it again after deleting everything recorded about the game', async () => {
+        // The score and the review both go with the entry, so both halves of the view can change.
+        stubEntryFetch(7);
+        const ctx = renderPanel();
+
+        await userEvent.click(await screen.findByRole('button', { name: /delete my data/i }));
+        await userEvent.click(screen.getByRole('button', { name: 'Delete' }));
+
+        await waitFor(() => expect(ctx.onCommunityChange).toHaveBeenCalledTimes(1));
+        expect(ctx.deleteEntry).toHaveBeenCalledWith(1);
+    });
+
+    it('does not ask for it over a change of list, which it does not show', async () => {
+        stubEntryFetch(null, 404);
+        const ctx = renderPanel();
+        await settled();
+
+        await userEvent.click(screen.getByRole('button', { name: 'Playing' }));
+
+        expect(ctx.addToList).toHaveBeenCalled();
+        expect(ctx.onCommunityChange).not.toHaveBeenCalled();
     });
 });
 
@@ -752,16 +857,35 @@ describe('GameUserPanel review', () => {
         expect(screen.getByRole('button', { name: 'Update review' })).toBeInTheDocument();
     });
 
-    it('defaults a new review to private and says what public will mean', async () => {
-        // No public profiles exist yet, so nothing is published either way — but the default is a
-        // consent decision, and it has to still be honoured when profiles launch.
+    it('defaults a new review to private', async () => {
+        // The default is a consent decision, so it is the one that publishes nothing.
         stubEntryFetch(null, 404);
         renderPanel();
         await settled();
 
         expect(screen.getByLabelText('Who can see it')).toHaveValue('private');
-        expect(screen.getByText(/appear on your public profile once profiles launch/i))
-            .toBeInTheDocument();
+    });
+
+    it('tells an author with a private profile that "Anyone" publishes nothing yet', async () => {
+        // The narrower gate wins, and it is the one that is easy to forget is there: a review for
+        // anyone on a private profile is shown nowhere, and its author must not believe otherwise.
+        stubEntryFetch(null, 404);
+        renderPanel({}, {}, 'private');
+        await settled();
+
+        expect(screen.getByLabelText('Who can see it'))
+            .toHaveAccessibleDescription(/once your profile is public\. Yours is private, so it is not shown anywhere yet\.$/);
+    });
+
+    it('tells an author with a public profile where "Anyone" publishes it', async () => {
+        // Both places — including the game page, which a reader of their profile alone would not
+        // think to expect.
+        stubEntryFetch(null, 404);
+        renderPanel({}, {}, 'public');
+        await settled();
+
+        expect(screen.getByLabelText('Who can see it'))
+            .toHaveAccessibleDescription('"Anyone" shows it on this game\'s page and on your public profile.');
     });
 
     it('saves what was written', async () => {
