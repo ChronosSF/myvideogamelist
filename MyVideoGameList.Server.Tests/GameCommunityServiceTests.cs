@@ -1,3 +1,6 @@
+using System.Text;
+using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.EntityFrameworkCore;
 using MyVideoGameList.Server.Data;
 using MyVideoGameList.Server.Models;
@@ -31,7 +34,14 @@ public class GameCommunityServiceTests
         return db;
     }
 
-    private static GameCommunityService NewService(ApplicationDbContext db) => new(db);
+    /// <summary>
+    /// A service with a key ring of its own, unless one is handed in. A cursor is encrypted, so the
+    /// page that issues one and the page that reads it back must share a key ring — as two requests
+    /// to one deployment do — which is why the paging tests reuse a single service.
+    /// </summary>
+    private static GameCommunityService NewService(
+        ApplicationDbContext db, IDataProtectionProvider? keys = null) =>
+        new(db, keys ?? new EphemeralDataProtectionProvider());
 
     /// <summary>An account, public unless a test says otherwise. Its id is derived from its name.</summary>
     private static string AddAccount(
@@ -354,17 +364,18 @@ public class GameCommunityServiceTests
     }
 
     [Fact]
-    public async Task GetReviewsAsync_WrittenInTheSameInstant_OrderedByAuthorsName()
+    public async Task GetReviewsAsync_WrittenInTheSameInstant_LaterReviewFirst()
     {
         // Without a tie-break the order of equal timestamps is whatever the database returns, and a
-        // page boundary could then show one review twice and another never.
+        // page boundary could then show one review twice and another never. The id breaks it, being
+        // the one other key that never changes.
         using var db = NewDb();
-        AddReview(db, AddAccount(db, "sam"), body: "By sam.");
-        AddReview(db, AddAccount(db, "alex"), body: "By alex.");
+        AddReview(db, AddAccount(db, "sam"), body: "Written first.");
+        AddReview(db, AddAccount(db, "alex"), body: "Written second.");
 
         var page = await NewService(db).GetReviewsAsync(GameId, after: null);
 
-        Assert.Equal(["By alex.", "By sam."], page.Reviews.Select(r => r.Body));
+        Assert.Equal(["Written second.", "Written first."], page.Reviews.Select(r => r.Body));
     }
 
     // ── The reviews: pages ────────────────────────────────────────────────────────────
@@ -446,7 +457,7 @@ public class GameCommunityServiceTests
     [Fact]
     public async Task GetReviewsAsync_TieAcrossAPageBoundary_ShowsEveryReviewOnce()
     {
-        // Eleven reviews written in one instant: the cursor's name is what carries the second page
+        // Eleven reviews written in one instant: the id in the cursor is what carries the second page
         // on from the right place.
         using var db = NewDb();
         for (var i = 0; i < 11; i++)
@@ -454,9 +465,31 @@ public class GameCommunityServiceTests
 
         var bodies = await ReadEveryPage(NewService(db));
 
-        Assert.Equal(11, bodies.Count);
-        Assert.Equal(11, bodies.Distinct().Count());
-        Assert.Equal(Enumerable.Range(0, 11).Select(i => $"By member{i:00}."), bodies);
+        Assert.Equal(Enumerable.Range(0, 11).Reverse().Select(i => $"By member{i:00}."), bodies);
+    }
+
+    [Fact]
+    public async Task GetReviewsAsync_AuthorRenamedWhileReading_SkipsNothingAndRepeatsNothing()
+    {
+        // The case a name tie-break gets wrong. Among reviews written in one instant, a rename that
+        // carries an author across the cursor's name would move an unread review before the cursor,
+        // or a read one after it. Neither key the order uses can be renamed.
+        using var db = NewDb();
+        for (var i = 0; i < 11; i++)
+            AddReview(db, AddAccount(db, $"member{i:00}"), body: $"By member{i:00}.");
+        var service = NewService(db);
+
+        var first = await service.GetReviewsAsync(GameId, after: null);
+
+        // The one unread author renames to sort first, and one already read renames to sort last.
+        db.Users.Single(u => u.UserName == "member00").UserName = "aaa";
+        db.Users.Single(u => u.UserName == "member05").UserName = "zzz";
+        db.SaveChanges();
+
+        var second = await service.GetReviewsAsync(GameId, first.Next);
+
+        Assert.Equal(["By member00."], second.Reviews.Select(r => r.Body));
+        Assert.Empty(first.Reviews.Select(r => r.Body).Intersect(second.Reviews.Select(r => r.Body)));
     }
 
     [Fact]
@@ -464,9 +497,10 @@ public class GameCommunityServiceTests
     {
         using var db = NewDb();
         AddReview(db, AddAccount(db, "alex"));
+        var keys = new EphemeralDataProtectionProvider();
 
-        var past = ReviewCursor.Format(Now.AddYears(-50), "zzz");
-        var page = await NewService(db).GetReviewsAsync(GameId, past);
+        var past = ReviewCursor.Format(keys.CreateProtector(ReviewCursor.Purpose), Now.AddYears(-50), int.MaxValue);
+        var page = await NewService(db, keys).GetReviewsAsync(GameId, past);
 
         Assert.Empty(page.Reviews);
         Assert.Null(page.Next);
@@ -474,14 +508,40 @@ public class GameCommunityServiceTests
     }
 
     [Fact]
-    public async Task GetReviewsAsync_MalformedCursor_Throws()
+    public async Task GetReviewsAsync_CursorItDidNotIssue_Throws()
     {
-        // The endpoint's attribute turns this into a 400 before it gets here. Quietly reading it as
+        // Garbage, and a well-formed cursor protected under another key ring — a different deployment,
+        // or keys lost to a restart. The controller turns either into a 400. Quietly reading it as
         // "from the start" instead would show a reader the first page again as though it were the
         // next.
         using var db = NewDb();
+        AddTwelveReviews(db);
 
-        await Assert.ThrowsAsync<ArgumentException>(() =>
-            NewService(db).GetReviewsAsync(GameId, "not-a-cursor"));
+        var foreign = (await NewService(db).GetReviewsAsync(GameId, after: null)).Next;
+        Assert.NotNull(foreign);
+
+        var service = NewService(db);
+        await Assert.ThrowsAsync<ArgumentException>(() => service.GetReviewsAsync(GameId, "not-a-cursor"));
+        await Assert.ThrowsAsync<ArgumentException>(() => service.GetReviewsAsync(GameId, foreign));
+    }
+
+    [Fact]
+    public async Task GetReviewsAsync_Cursor_CarriesNoReviewIdTheClientCanRead()
+    {
+        // The id counts every review ever written, private and deleted ones included — which is why
+        // the review DTO leaves it out, and why the cursor that needs it is encrypted.
+        using var db = NewDb();
+        AddTwelveReviews(db);
+        var boundary = db.Reviews.Single(r => r.Body == "Review 9.");
+
+        var next = (await NewService(db).GetReviewsAsync(GameId, after: null)).Next;
+
+        Assert.NotNull(next);
+        Assert.Matches(ReviewCursor.Pattern, next);
+
+        // Not merely encoded: the bytes behind the base64url do not hold the position in the clear.
+        var plaintext = $"{boundary.CreatedAt.UtcTicks}.{boundary.Id}";
+        Assert.DoesNotContain(plaintext, next);
+        Assert.DoesNotContain(plaintext, Encoding.UTF8.GetString(WebEncoders.Base64UrlDecode(next)));
     }
 }

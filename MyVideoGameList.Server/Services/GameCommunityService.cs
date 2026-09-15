@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using MyVideoGameList.Server.Data;
 using MyVideoGameList.Server.DTOs;
@@ -37,13 +38,18 @@ namespace MyVideoGameList.Server.Services;
 /// rows, and an outage upstream should not cost it the members' view.
 /// </para>
 /// </remarks>
-public class GameCommunityService(ApplicationDbContext db) : IGameCommunityService
+public class GameCommunityService(
+    ApplicationDbContext db,
+    IDataProtectionProvider dataProtection) : IGameCommunityService
 {
     /// <summary>
     /// How many reviews one page carries. Fewer than a profile's twenty, because on the game page
     /// they are one section among many rather than the page itself.
     /// </summary>
     internal const int ReviewsPerPage = 10;
+
+    /// <summary>Encrypts the cursors, which carry a review id the client must not see.</summary>
+    private readonly IDataProtector cursors = dataProtection.CreateProtector(ReviewCursor.Purpose);
 
     public async Task<CommunityScoresDto> GetScoresAsync(
         int gameId, CancellationToken cancellationToken = default)
@@ -66,13 +72,13 @@ public class GameCommunityService(ApplicationDbContext db) : IGameCommunityServi
     public async Task<GameReviewsDto> GetReviewsAsync(
         int gameId, string? after, CancellationToken cancellationToken = default)
     {
-        // The controller has already refused a malformed cursor with a 400, so this only fires for a
-        // caller that skipped it — and a cursor that names nothing must not quietly mean "from the
-        // start", which would show a reader the first page again as though it were the next.
+        // A cursor that does not decrypt must not quietly mean "from the start", which would show a
+        // reader the first page again as though it were the next. The controller turns this into a
+        // 400 beside the parameter.
         var afterCreatedAt = default(DateTimeOffset);
-        var afterUserName = "";
-        if (after is not null && !ReviewCursor.TryParse(after, out afterCreatedAt, out afterUserName))
-            throw new ArgumentException($"Not a review cursor: {after}", nameof(after));
+        var afterId = 0;
+        if (after is not null && !ReviewCursor.TryParse(cursors, after, out afterCreatedAt, out afterId))
+            throw new ArgumentException("Not a cursor this list issued.", nameof(after));
 
         // Both gates in the predicate rather than filtered afterwards: this is the authorization
         // boundary, and it belongs where it can be read. A public review on a private profile is
@@ -92,19 +98,21 @@ public class GameCommunityService(ApplicationDbContext db) : IGameCommunityServi
         var remaining = after is null
             ? published
             : published.Where(r => r.CreatedAt < afterCreatedAt
-                || (r.CreatedAt == afterCreatedAt && string.Compare(r.User.UserName, afterUserName) > 0));
+                || (r.CreatedAt == afterCreatedAt && r.Id < afterId));
 
         var rows = await remaining
-            // Most recently written first, and a rewrite does not move a review: CreatedAt never
-            // changes, which is what keeps a cursor's place in the order still. The author's name
-            // breaks a tie between two written in the same instant, so a page boundary does not
-            // depend on the order the database happens to return rows in.
+            // Most recently written first, on two keys that never change, which is what keeps a
+            // cursor's place in the order still: CreatedAt, which a rewrite does not touch, then the
+            // id for two reviews written in the same instant. Not the author's name — a rename can
+            // move a review across the cursor between two requests.
             .OrderByDescending(r => r.CreatedAt)
-            .ThenBy(r => r.User.UserName)
+            .ThenByDescending(r => r.Id)
             // One more than a page, to learn whether there is another without counting the rest.
             .Take(ReviewsPerPage + 1)
             .Select(r => new
             {
+                // Read for the cursor only; it never reaches the response unencrypted.
+                r.Id,
                 r.User.UserName,
                 r.Body,
                 r.HasSpoilers,
@@ -117,7 +125,7 @@ public class GameCommunityService(ApplicationDbContext db) : IGameCommunityServi
 
         var page = rows.Take(ReviewsPerPage).ToList();
         var next = rows.Count > ReviewsPerPage
-            ? ReviewCursor.Format(page[^1].CreatedAt, page[^1].UserName!)
+            ? ReviewCursor.Format(cursors, page[^1].CreatedAt, page[^1].Id)
             : null;
 
         // Copied across field by field, for the reason PublicProfileDto gives: nothing reaches a

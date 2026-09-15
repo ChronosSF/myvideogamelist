@@ -90,9 +90,11 @@ public class GamesController(
     /// here only if it is published. Only a review marked public, on a public profile, is listed.
     /// </para>
     /// <para>
-    /// Paged by cursor: each page ends with the <c>after</c> for the next. The attribute is the
-    /// whole of its validation — a malformed cursor is a 400, and every cursor that passes is one
-    /// the service can read.
+    /// Paged by cursor: each page ends with the <c>after</c> for the next, encrypted, because it
+    /// carries a review id the client must not see. The attribute refuses anything not shaped like
+    /// a token before a decryption is spent on it; one that is shaped right but does not decrypt —
+    /// tampered with, or issued under a key ring this instance does not hold — is the same 400,
+    /// from the service.
     /// </para>
     /// <para>
     /// <c>no-store</c>, and this is the one that matters. These responses carry text their authors
@@ -110,7 +112,17 @@ public class GamesController(
         // Absent for the first page; otherwise the `next` the previous page returned.
         [FromQuery][RegularExpression(ReviewCursor.Pattern)] string? after = null)
     {
-        return Ok(await communityService.GetReviewsAsync(id, after, cancellationToken));
+        try
+        {
+            return Ok(await communityService.GetReviewsAsync(id, after, cancellationToken));
+        }
+        catch (ArgumentException)
+        {
+            // The one rule an attribute cannot express, since it takes the key ring to check. Put
+            // in the shape ValidationProblemDetails gives every other 400, beside the parameter.
+            ModelState.AddModelError(nameof(after), "That is not a page of this list. Start again from the first.");
+            return ValidationProblem(ModelState);
+        }
     }
 
     [HttpGet("upcoming")]

@@ -121,8 +121,14 @@ function MemberReviews({ community, viewer, reviews, total }: MemberReviewsProps
             {/* Named, because the section holds a second list — the score columns — right above. */}
             <ol className="review-list" aria-label="Member reviews">
                 {reviews.map(review => (
-                    // One review per member per game, so the author's name is a key for the list.
-                    <GameReviewCard key={review.userName} review={review} isViewer={review.userName === viewer} />
+                    // The name and the moment it was written, not the name alone. Names can change
+                    // hands while somebody reads, and a key two reviews shared would hand one card's
+                    // state — a spoiler already revealed — to the other.
+                    <GameReviewCard
+                        key={`${review.userName}@${review.createdAt}`}
+                        review={review}
+                        isViewer={review.userName === viewer}
+                    />
                 ))}
             </ol>
 

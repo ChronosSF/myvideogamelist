@@ -168,14 +168,22 @@ So each page ends with a cursor, `next`, and the button asks for `?after=` it:
   never changes, so "everything written before the last review I was shown" means the same thing on
   every request. A rewritten review keeps its place, which is a change from the first cut and from
   the profile's order.
-- **The author's name breaks a tie** between two reviews written in the same instant. The page
-  already shows that name, so the cursor adds nothing to what the response publishes. The review's
-  own id would have made a simpler tie-break, but it counts every review site-wide, private ones
-  included, which is why the DTO leaves it out.
-- **The endpoint validates the cursor with a single `[RegularExpression]`** over the format the
-  service writes, `{ticks}.{userName}`. A malformed cursor is a 400, and every cursor that passes can
-  be parsed. The name part is not held to the username alphabet: the cursor carries a name to compare
-  against, not to vouch for, and the alphabet stays stated once, in `UserNamePolicy`.
+- **The review's id breaks a tie** between two reviews written in the same instant, because it is
+  the other key that never changes. The next cut tried the author's name, which the page already
+  shows, and review found the flaw: a rename — a case-only one skips the cooldown — can carry an
+  author across the cursor between two requests, skipping one tied review or showing another twice.
+  Every key a cursor is built on has to be immutable, not merely unique.
+- **The cursor is encrypted, with ASP.NET Data Protection,** because the id must not reach the
+  client: it counts every review ever written site-wide, private and deleted ones included, which is
+  why the DTO leaves it out. Protection authenticates as well as hides, so a cursor cannot be forged
+  to a position that was never a page boundary. The endpoint's `[RegularExpression]` checks only the
+  token's shape, base64url and bounded, before a decryption is spent on it. A token that is shaped
+  right but does not decrypt is a 400 too, raised by the service and put beside the parameter by the
+  controller, as `EntriesController` does for a playthrough id.
+- **A cursor lives as long as the key ring**, exactly as the sign-in cookie does. Where keys are not
+  shared or persisted, a cursor issued by one instance fails on another and the reader's next page
+  fails until they reload — the same requirement ROADMAP §5 already sets for the cookie, and the
+  same fix covers both.
 - **A page is one row over-read**, so the last page reports no `next` without a second count.
 
 On the client, a page's answer is stamped with the cursor it continued from as well as with the game.

@@ -26,7 +26,10 @@ public interface IGameCommunityService
     /// Null for the first page; otherwise the <see cref="GameReviewsDto.Next"/> of the page before.
     /// A cursor past the end returns an empty list and the total, not an error.
     /// </param>
-    /// <exception cref="ArgumentException"><paramref name="after"/> is not a cursor.</exception>
+    /// <exception cref="ArgumentException">
+    /// <paramref name="after"/> is not a cursor this deployment issued — malformed, tampered with, or
+    /// protected under a key ring it does not hold.
+    /// </exception>
     Task<GameReviewsDto> GetReviewsAsync(
         int gameId, string? after, CancellationToken cancellationToken = default);
 }
