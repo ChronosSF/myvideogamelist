@@ -23,6 +23,7 @@ const auth: AuthContextValue = {
     updateTheme: vi.fn(async () => {}),
     updateUserName: vi.fn(async () => {}),
     updateProfileVisibility: vi.fn(async () => {}),
+    deleteAccount: vi.fn(async () => {}),
 };
 
 vi.mock('@/hooks/useAuth', () => ({ useAuth: () => auth }));
@@ -81,7 +82,7 @@ describe('Navbar before auth has answered', () => {
         expect(screen.queryByRole('button', { name: 'User menu' })).not.toBeInTheDocument();
     });
 
-    it('holds back the Wishlist link, and only that one', () => {
+    it('holds back the Wishlist and News links, and only those', () => {
         // Queried on the whole bar rather than within the navigation landmark: there are two of
         // those, the bar's row and the main menu's panel, and a closed panel is `hidden`, so only
         // the row's links are on screen.
@@ -89,6 +90,7 @@ describe('Navbar before auth has answered', () => {
 
         expect(screen.getByRole('link', { name: 'Lists' })).toHaveAttribute('href', '/lists');
         expect(screen.queryByRole('link', { name: 'Wishlist' })).not.toBeInTheDocument();
+        expect(screen.queryByRole('link', { name: 'News' })).not.toBeInTheDocument();
     });
 });
 
@@ -101,14 +103,16 @@ describe('Navbar once auth has answered', () => {
         expect(screen.getByRole('button', { name: 'Sign Up' })).toBeInTheDocument();
         expect(screen.queryByRole('button', { name: 'User menu' })).not.toBeInTheDocument();
         expect(screen.queryByRole('link', { name: 'Wishlist' })).not.toBeInTheDocument();
+        expect(screen.queryByRole('link', { name: 'News' })).not.toBeInTheDocument();
     });
 
-    it('shows a signed-in user their menu and the Wishlist link', () => {
+    it('shows a signed-in user their menu and the Wishlist and News links', () => {
         authAnswered(ALEX);
         renderNavbar();
 
         expect(screen.getByRole('button', { name: 'User menu' })).toBeInTheDocument();
         expect(screen.getByRole('link', { name: 'Wishlist' })).toHaveAttribute('href', '/wishlist');
+        expect(screen.getByRole('link', { name: 'News' })).toHaveAttribute('href', '/news');
         expect(screen.queryByRole('button', { name: 'Sign In' })).not.toBeInTheDocument();
     });
 });
@@ -151,7 +155,7 @@ describe('Navbar main menu', () => {
         expect(linkNames(panel)).toEqual(['Home', 'Games', 'Lists']);
     });
 
-    it('offers the wishlist once signed in', async () => {
+    it('offers the wishlist and the news once signed in', async () => {
         authAnswered(ALEX);
         const actor = userEvent.setup();
         renderNavbar();
@@ -159,7 +163,7 @@ describe('Navbar main menu', () => {
 
         await actor.click(button);
 
-        expect(linkNames(panel)).toEqual(['Home', 'Games', 'Lists', 'Wishlist']);
+        expect(linkNames(panel)).toEqual(['Home', 'Games', 'Lists', 'Wishlist', 'News']);
     });
 
     it('marks the page you are on', async () => {

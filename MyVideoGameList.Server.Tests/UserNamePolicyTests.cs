@@ -50,6 +50,7 @@ public class UserNamePolicyTests
     [InlineData("admin")]
     [InlineData("support")]
     [InlineData("games")]
+    [InlineData("news")]
     [InlineData("api")]
     [InlineData("myvideogamelist")]
     public void Check_ReservedName_IsReserved(string userName) =>

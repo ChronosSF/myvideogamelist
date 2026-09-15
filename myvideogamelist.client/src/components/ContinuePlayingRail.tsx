@@ -24,13 +24,23 @@ const RECENTLY_STARTED: SortState = { key: 'status_changed', descending: true };
  * behind a cover here would be a worse version of a page that already exists.
  */
 export function ContinuePlayingRail() {
-    const { lists, loading, isPending, addToList } = useLists();
+    const { lists, loading, error, isPending, addToList } = useLists();
 
     const playing = sortEntries(lists.playing, RECENTLY_STARTED);
 
     // Nothing at all while the lists are still coming: a "you are not playing anything" message
     // that turns into six covers a moment later is worse than a moment of nothing.
     if (loading) return null;
+
+    // Asked before the empty state, because a failed load leaves the lists empty and would otherwise
+    // read as "nothing in your Playing list" — the play-next picker below has the same guard.
+    if (error !== null) {
+        return (
+            <div className="continue-empty">
+                <p>Your lists could not be loaded just now.</p>
+            </div>
+        );
+    }
 
     if (playing.length === 0) {
         return (

@@ -57,10 +57,12 @@ export function Navbar() {
         { to: '/', label: 'Home', end: true },
         { to: '/games', label: 'Games' },
         { to: '/lists', label: 'Lists' },
-        // Gated on auth, unlike Lists: the wishlist has no signed-out story to tell, so an
-        // anonymous visitor would land on a page that only asks them to sign in. Held back until
-        // auth has answered, like the auth section below.
-        ...(!authLoading && user ? [{ to: '/wishlist', label: 'Wishlist' }] : []),
+        // Gated on auth, unlike Lists: neither has a signed-out story to tell, so an anonymous
+        // visitor would land on a page that only asks them to sign in. Held back until auth has
+        // answered, like the auth section below.
+        ...(!authLoading && user
+            ? [{ to: '/wishlist', label: 'Wishlist' }, { to: '/news', label: 'News' }]
+            : []),
     ];
 
     const handleLogout = async () => {

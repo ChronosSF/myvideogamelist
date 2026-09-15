@@ -47,6 +47,7 @@ function renderRail() {
 beforeEach(() => {
     listsValue.lists = emptyLists();
     listsValue.loading = false;
+    listsValue.error = null;
     listsValue.pending = new Set();
     listsValue.addToList.mockReset();
     listsValue.addToList.mockResolvedValue(undefined);
@@ -131,5 +132,13 @@ describe('ContinuePlayingRail with nothing to continue', () => {
         const { container } = renderRail();
 
         expect(container).toBeEmptyDOMElement();
+    });
+
+    it('says the lists could not be loaded, rather than that nothing is being played', () => {
+        listsValue.error = 'Failed to load lists (500)';
+        renderRail();
+
+        expect(screen.getByText('Your lists could not be loaded just now.')).toBeInTheDocument();
+        expect(screen.queryByText(/nothing in your playing list/i)).not.toBeInTheDocument();
     });
 });

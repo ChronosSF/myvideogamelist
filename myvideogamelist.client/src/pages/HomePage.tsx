@@ -2,7 +2,11 @@ import { Link, data } from 'react-router';
 import { useAuth } from '@/hooks/useAuth';
 import { ContinuePlayingRail } from '@/components/ContinuePlayingRail';
 import { HomeStatsStrip } from '@/components/HomeStatsStrip';
+import { PlayNextPicker } from '@/components/PlayNextPicker';
+import { ReleasingSoonRail } from '@/components/ReleasingSoonRail';
 import { UpcomingTimeline } from '@/components/UpcomingTimeline';
+import { useHiddenPlatforms } from '@/hooks/useHiddenPlatforms';
+import { useUpcomingGames, type UseUpcomingGamesResult } from '@/hooks/useUpcomingGames';
 import { TrendingRail } from '@/components/TrendingRail';
 import { NewsCard } from '@/components/NewsCard';
 import { apiUrl } from '@/lib/api';
@@ -92,7 +96,13 @@ function SectionHeading({ id, title, subtitle, action }: {
  * cookie-varying SSR render and a CloudFront behaviour to match, which is ROADMAP D12's problem
  * rather than this component's.
  */
-function SignedInHero({ user }: { user: UserProfile }) {
+function SignedInHero({ user, upcoming, hiddenPlatformIds, hiddenPlatformsLoading, hiddenPlatformsLoadError }: {
+    user: UserProfile;
+    upcoming: UseUpcomingGamesResult;
+    hiddenPlatformIds: ReadonlySet<number>;
+    hiddenPlatformsLoading: boolean;
+    hiddenPlatformsLoadError: string | null;
+}) {
     return (
         <section className="signed-in-hero">
             <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8 sm:py-10">
@@ -120,6 +130,22 @@ function SignedInHero({ user }: { user: UserProfile }) {
                     Continue playing
                 </h2>
                 <ContinuePlayingRail />
+
+                {/* After the rail rather than before it: what you are playing, then what to play
+                    once that is done. Starting the pick moves it into the rail above. */}
+                <h2 className="text-lg font-semibold text-white light:text-slate-900 mt-8 mb-4">
+                    Play next
+                </h2>
+                <PlayNextPicker />
+
+                {/* Brings its own heading, because unlike the two above it has nothing to say when
+                    nothing matches and disappears whole. */}
+                <ReleasingSoonRail
+                    upcoming={upcoming}
+                    hiddenPlatformIds={hiddenPlatformIds}
+                    hiddenPlatformsLoading={hiddenPlatformsLoading}
+                    hiddenPlatformsLoadError={hiddenPlatformsLoadError}
+                />
             </div>
         </section>
     );
@@ -205,13 +231,31 @@ export function HomePage({ loaderData }: Route.ComponentProps) {
     const { spotlight, popular, news } = loaderData;
     const { user, loading } = useAuth();
 
+    // Both fetched here rather than inside the calendar, because the Releasing Soon rail crosses the
+    // same two with the user's lists: one request each for two consumers. The preference is keyed on
+    // the account rather than on "is anybody signed in", because this page outlives a sign-out.
+    const upcoming = useUpcomingGames();
+    const {
+        hiddenIds: hiddenPlatformIds,
+        loading: hiddenPlatformsLoading,
+        loadError: hiddenPlatformsLoadError,
+    } = useHiddenPlatforms(user?.id ?? null);
+
     return (
         <div className="min-h-screen">
             {/* The landing hero while auth is still unknown, which includes every server render.
                 The alternative — nothing until `me` answers — flashes an empty page at the one
                 visitor the pitch is written for. */}
             {user && !loading
-                ? <SignedInHero user={user} />
+                ? (
+                    <SignedInHero
+                        user={user}
+                        upcoming={upcoming}
+                        hiddenPlatformIds={hiddenPlatformIds}
+                        hiddenPlatformsLoading={hiddenPlatformsLoading}
+                        hiddenPlatformsLoadError={hiddenPlatformsLoadError}
+                    />
+                )
                 : <LandingHero spotlight={spotlight} />}
 
             {/* Everything below is the same for both. Trending, the news and the calendar are
@@ -236,6 +280,10 @@ export function HomePage({ loaderData }: Route.ComponentProps) {
                             id="news-heading"
                             title="Latest news"
                             subtitle="Patch notes and announcements from the games people are playing"
+                            // The same rail for everybody, so the way to one's own news is a link
+                            // rather than a second rail. Shown once auth has answered, as the
+                            // navbar's link to the same page is.
+                            action={user && !loading ? { to: '/news', label: 'News for your games' } : undefined}
                         />
 
                         {/* grid-cols-1, not an implicit column: that one sizes to its content, and
@@ -249,9 +297,10 @@ export function HomePage({ loaderData }: Route.ComponentProps) {
                 )}
             </div>
 
-            {/* Keeps its own client-side fetch: the calendar is filtered by the viewer's hidden
-                platforms, so unlike everything above it cannot be cached once for everyone. */}
-            <UpcomingTimeline />
+            {/* A client-side fetch rather than part of the loader: the calendar is filtered by the
+                viewer's hidden platforms, so unlike everything above it cannot be cached once for
+                everyone. */}
+            <UpcomingTimeline upcoming={upcoming} hiddenPlatformIds={hiddenPlatformIds} />
         </div>
     );
 }

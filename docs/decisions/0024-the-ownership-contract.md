@@ -2,6 +2,12 @@
 
 **Status:** Implemented
 
+> **Later note.** The "No UI yet" consequence below is closed. `/user` has a "Your data" card:
+> *Download my data* fetches the export and saves it under the name the API's `Content-Disposition`
+> gives, reporting a failure beside the button; *Delete my account* opens a dialog that asks for the
+> password, as decision 7 requires, and offers the download again before anything is deleted. The
+> page then says the account is gone rather than asking a visitor to sign in. Neither endpoint changed.
+
 ## Context
 
 `docs/data-model-plan.md` separates schema gaps into two kinds. Most are recoverable — add a

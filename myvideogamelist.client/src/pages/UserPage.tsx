@@ -1,10 +1,11 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router';
+import { Link, useNavigate } from 'react-router';
 import { useAuth } from '@/hooks/useAuth';
 import { useActivePlatforms } from '@/hooks/useActivePlatforms';
 import { useHiddenPlatforms } from '@/hooks/useHiddenPlatforms';
 import { ProfileStats } from '@/components/ProfileStats';
 import { AccountIdentityCard } from '@/components/AccountIdentityCard';
+import { AccountDataCard } from '@/components/AccountDataCard';
 import { PRIVATE_NO_STORE } from '@/lib/cache';
 import './UserPage.css';
 
@@ -42,10 +43,18 @@ function PageHeader() {
 }
 
 export function UserPage() {
-    const { user, loading, logout, updateTheme } = useAuth();
+    const { user, loading, logout, updateTheme, deleteAccount } = useAuth();
     const navigate = useNavigate();
 
     const [themeError, setThemeError] = useState<string | null>(null);
+
+    /**
+     * Set before the deletion request rather than after it, and that ordering is the point. The
+     * render in which the account disappears is the one `deleteAccount` causes, and it has to know
+     * why nobody is signed in — set afterwards, that render would say "Sign in to see your profile"
+     * to somebody who has just deleted theirs, and correct itself a frame later.
+     */
+    const [accountDeleted, setAccountDeleted] = useState(false);
 
     // Nothing on the signed-out page needs the platform list, so it is not asked for until somebody
     // is signed in.
@@ -73,6 +82,23 @@ export function UserPage() {
                             <div className="flex flex-col items-center gap-4" role="status">
                                 <div className="w-10 h-10 border-4 border-blue-500/30 border-t-blue-500 rounded-full animate-spin" aria-hidden="true" />
                                 <p className="text-slate-400 light:text-slate-600 text-sm">Loading your profile…</p>
+                            </div>
+                        ) : accountDeleted ? (
+                            // A live region, so the outcome of a request made from a dialog that
+                            // has just vanished is announced rather than left to be discovered.
+                            <div className="text-center max-w-md" role="status">
+                                <p className="text-slate-200 light:text-slate-800 font-medium mb-2">
+                                    Your account has been deleted.
+                                </p>
+                                <p className="text-slate-400 light:text-slate-600 text-sm mb-6">
+                                    Everything you had recorded went with it.
+                                </p>
+                                <Link
+                                    to="/"
+                                    className="inline-flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold rounded-lg transition-colors"
+                                >
+                                    Back to the home page
+                                </Link>
                             </div>
                         ) : (
                             <div className="text-center">
@@ -119,6 +145,18 @@ export function UserPage() {
             setSaveSuccess(true);
         } catch {
             setSaveSuccess(false);
+        }
+    };
+
+    // Stays on this page rather than navigating home: the confirmation is only worth anything
+    // where the person who asked for it is looking. See `accountDeleted` for the ordering.
+    const handleDeleteAccount = async (password: string) => {
+        setAccountDeleted(true);
+        try {
+            await deleteAccount(password);
+        } catch (err) {
+            setAccountDeleted(false);
+            throw err;
         }
     };
 
@@ -283,6 +321,13 @@ export function UserPage() {
                         <button type="button" className="user-logout-btn" onClick={handleLogout}>
                             Sign Out
                         </button>
+
+                        {/* Last, below Sign Out, where a settings page conventionally keeps the
+                            one thing on it that cannot be undone. A section of its own, since
+                            neither half of it is a preference. */}
+                        <section aria-label="Your data">
+                            <AccountDataCard userName={user.userName} onDeleteAccount={handleDeleteAccount} />
+                        </section>
                     </section>
                 </div>
             </div>

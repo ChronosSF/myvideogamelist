@@ -57,7 +57,7 @@ public static class UserNamePolicy
     private static readonly HashSet<string> Reserved = new(StringComparer.OrdinalIgnoreCase)
     {
         // Routes, current and plausible.
-        "u", "user", "users", "api", "games", "game", "lists", "list", "wishlist", "home",
+        "u", "user", "users", "api", "games", "game", "lists", "list", "wishlist", "news", "home",
         "search", "browse", "settings", "profile", "profiles", "login", "logout", "signin",
         "signout", "signup", "register", "account", "auth", "healthz", "readyz", "static",
         "assets", "public", "sitemap", "robots", "feed", "rss", "new", "edit", "delete",

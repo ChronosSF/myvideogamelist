@@ -127,6 +127,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(await res.json() as UserProfile);
     };
 
+    /**
+     * Signed out by the server as part of the same request, so the only thing left to do here is
+     * forget the user — calling `logout` as well would spend a request on a guaranteed 401. Clearing
+     * `user` is also what empties the list and wishlist providers, which reset on the transition.
+     */
+    const deleteAccount = async (password: string) => {
+        const res = await fetch('/api/user', {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ password }),
+        });
+        if (!res.ok) throw new Error(await problem(res, 'Failed to delete your account'));
+
+        setUser(null);
+        applyTheme('dark');
+    };
+
     return (
         <AuthContext.Provider
             value={{
@@ -138,6 +156,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 updateTheme,
                 updateUserName,
                 updateProfileVisibility,
+                deleteAccount,
             }}
         >
             {children}

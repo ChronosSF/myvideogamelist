@@ -19,6 +19,7 @@ public class UserController(
     IStatsService stats,
     IUserDataExporter exporter,
     IUserNameClaimService claims,
+    ITrackedNewsService trackedNews,
     TimeProvider clock) : ControllerBase
 {
     [HttpPut("theme")]
@@ -276,6 +277,31 @@ public class UserController(
         if (userId is null) return Unauthorized();
 
         return Ok(await stats.GetStatsAsync(userId, cancellationToken));
+    }
+
+    /// <summary>
+    /// Steam news for the games the signed-in user tracks, newest first — the <c>/news</c> page.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Here with the other reads of the signed-in user's own things rather than on
+    /// <c>NewsController</c>, whose one endpoint gives every caller the same answer. This one differs
+    /// per account, so it also says <c>no-store</c>: nothing between here and the browser should keep
+    /// one person's news for the next.
+    /// </para>
+    /// <para>
+    /// Always 200. Tracking nothing, tracking only games with no Steam presence, and Steam or IGDB
+    /// being down all come back as an empty list, which is what the page has to explain anyway.
+    /// </para>
+    /// </remarks>
+    [HttpGet("news")]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public async Task<ActionResult<IReadOnlyList<NewsItemDto>>> GetNews(CancellationToken cancellationToken)
+    {
+        var userId = userManager.GetUserId(User);
+        if (userId is null) return Unauthorized();
+
+        return Ok(await trackedNews.GetNewsAsync(userId, cancellationToken));
     }
 
     /// <summary>
