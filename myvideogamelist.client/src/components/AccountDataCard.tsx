@@ -57,11 +57,15 @@ export function AccountDataCard({ userName, onDeleteAccount }: Props) {
                 password first.
             </p>
 
+            {/* Held while the download above is running. The export reads the account table by
+                table, and a deletion cascading through those tables part way through would leave a
+                partial copy of the data about to be lost. */}
             <button
                 ref={deleteButton}
                 type="button"
                 className="user-btn user-btn-block user-btn-danger user-card-action"
                 onClick={() => setConfirming(true)}
+                disabled={exporter.downloading}
                 aria-haspopup="dialog"
             >
                 Delete my account

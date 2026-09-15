@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { DeleteAccountDialog } from '@/components/DeleteAccountDialog';
 import { downloadDataExport } from '@/lib/dataExport';
@@ -13,8 +13,28 @@ function renderDialog() {
     return render(<DeleteAccountDialog userName="alex" onCancel={onCancel} onDelete={onDelete} />);
 }
 
+const dialog = () => screen.getByRole('dialog', { name: 'Delete your account?' });
 const password = () => screen.getByLabelText('Password');
 const deleteButton = () => screen.getByRole('button', { name: /delete my account|deleting/i });
+
+/**
+ * What a browser fires at a modal dialog when Escape is pressed. jsdom maps no key to it, so the
+ * event is fired directly — which tests this component's handling of it, and leaves the mapping from
+ * the key to the event where it belongs, with the browser.
+ */
+function pressEscape() {
+    const cancel = new Event('cancel', { cancelable: true });
+    fireEvent(dialog(), cancel);
+    return cancel;
+}
+
+/** Holds the export open until the returned function is called. */
+function holdDownload() {
+    let finish: () => void = () => {};
+    vi.mocked(downloadDataExport).mockImplementationOnce(
+        () => new Promise<void>(resolve => { finish = resolve; }));
+    return () => finish();
+}
 
 beforeEach(() => {
     onCancel.mockReset();
@@ -25,12 +45,15 @@ beforeEach(() => {
 });
 
 describe('DeleteAccountDialog', () => {
-    it('is a modal dialog that names the account it deletes', () => {
+    it('opens as a modal that names the account it deletes', () => {
+        // showModal rather than an `open` attribute: only the modal makes the page behind it inert
+        // and keeps focus inside, which is what the review of the first version found missing.
+        const showModal = vi.spyOn(HTMLDialogElement.prototype, 'showModal');
         renderDialog();
 
-        const dialog = screen.getByRole('dialog', { name: 'Delete your account?' });
-        expect(dialog).toHaveAttribute('aria-modal', 'true');
-        expect(dialog).toHaveAccessibleDescription(/permanently deletes @alex/i);
+        expect(showModal).toHaveBeenCalledTimes(1);
+        expect(dialog()).toHaveAttribute('open');
+        expect(dialog()).toHaveAccessibleDescription(/permanently deletes @alex/i);
         expect(password()).toHaveFocus();
     });
 
@@ -67,6 +90,49 @@ describe('DeleteAccountDialog', () => {
         expect(deleteButton()).toBeEnabled();
         expect(password()).toBeEnabled();
     });
+});
+
+describe('DeleteAccountDialog closing', () => {
+    it('closes on Cancel', async () => {
+        const actor = userEvent.setup();
+        renderDialog();
+
+        await actor.click(screen.getByRole('button', { name: 'Cancel' }));
+
+        expect(onCancel).toHaveBeenCalledTimes(1);
+    });
+
+    it('closes on Escape, by unmounting rather than by letting the browser close it', () => {
+        // Prevented, so the page's state and the browser's never disagree about whether it is open.
+        renderDialog();
+
+        const escape = pressEscape();
+
+        expect(onCancel).toHaveBeenCalledTimes(1);
+        expect(escape.defaultPrevented).toBe(true);
+    });
+
+    it('closes on a click on the backdrop, and not on one inside', async () => {
+        // A click on the backdrop is delivered to the dialog element itself.
+        const actor = userEvent.setup();
+        renderDialog();
+
+        await actor.click(screen.getByText('It cannot be undone.'));
+        expect(onCancel).not.toHaveBeenCalled();
+
+        await actor.click(dialog());
+        expect(onCancel).toHaveBeenCalledTimes(1);
+    });
+
+    it('tells the page when the browser closes it anyway', () => {
+        // A browser may close a dialog that keeps refusing Escape. Holding on to one nobody can see
+        // would leave the card's button opening nothing.
+        renderDialog();
+
+        fireEvent(dialog(), new Event('close'));
+
+        expect(onCancel).toHaveBeenCalledTimes(1);
+    });
 
     it('holds every way out while the deletion is in flight', async () => {
         // A deletion that lands after its dialog was dismissed would sign somebody out unexplained.
@@ -82,24 +148,17 @@ describe('DeleteAccountDialog', () => {
         expect(deleteButton()).toBeDisabled();
         expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled();
 
-        await actor.keyboard('{Escape}');
+        const escape = pressEscape();
+        await actor.click(dialog());
+
         expect(onCancel).not.toHaveBeenCalled();
+        expect(escape.defaultPrevented).toBe(true);
 
         finish();
     });
+});
 
-    it('closes on Cancel and on Escape', async () => {
-        const actor = userEvent.setup();
-        renderDialog();
-
-        await actor.click(screen.getByRole('button', { name: 'Cancel' }));
-        expect(onCancel).toHaveBeenCalledTimes(1);
-
-        await actor.click(password());
-        await actor.keyboard('{Escape}');
-        expect(onCancel).toHaveBeenCalledTimes(2);
-    });
-
+describe('DeleteAccountDialog export', () => {
     it('offers the export before anything is deleted', async () => {
         // The one moment somebody is certain to want a copy is just before it is gone (ADR 0024).
         const actor = userEvent.setup();
@@ -109,6 +168,27 @@ describe('DeleteAccountDialog', () => {
 
         await waitFor(() => expect(downloadDataExport).toHaveBeenCalledTimes(1));
         expect(onDelete).not.toHaveBeenCalled();
+    });
+
+    it('will not delete while that export is still downloading', async () => {
+        // The export reads table by table. A deletion cascading through them part way would leave a
+        // partial copy — or none — of the data about to be lost.
+        const actor = userEvent.setup();
+        const finishDownload = holdDownload();
+        renderDialog();
+
+        await actor.type(password(), 'Passw0rd1');
+        await actor.click(screen.getByRole('button', { name: 'Download your data' }));
+
+        expect(deleteButton()).toBeDisabled();
+        await actor.type(password(), '{Enter}');
+        expect(onDelete).not.toHaveBeenCalled();
+
+        finishDownload();
+
+        await waitFor(() => expect(deleteButton()).toBeEnabled());
+        await actor.click(deleteButton());
+        expect(onDelete).toHaveBeenCalledWith('Passw0rd1');
     });
 
     it('says so when that export fails', async () => {

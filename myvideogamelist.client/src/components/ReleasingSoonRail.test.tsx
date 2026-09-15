@@ -64,10 +64,16 @@ function renderRail(
     result: UseUpcomingGamesResult = upcoming(),
     hidden: ReadonlySet<number> = noneHidden,
     hiddenLoading = false,
+    hiddenLoadError: string | null = null,
 ) {
     return render(
         <MemoryRouter>
-            <ReleasingSoonRail upcoming={result} hiddenPlatformIds={hidden} hiddenPlatformsLoading={hiddenLoading} />
+            <ReleasingSoonRail
+                upcoming={result}
+                hiddenPlatformIds={hidden}
+                hiddenPlatformsLoading={hiddenLoading}
+                hiddenPlatformsLoadError={hiddenLoadError}
+            />
         </MemoryRouter>,
     );
 }
@@ -147,6 +153,9 @@ describe('ReleasingSoonRail staying out of the way', () => {
         ['the releases', () => renderRail(upcoming({ error: 'Failed to load upcoming releases (500)' }))],
         ['the lists', () => { listsValue.error = 'Failed to load lists (500)'; return renderRail(); }],
         ['the wishlist', () => { wishlistValue.error = 'Failed to load your wishlist (500)'; return renderRail(); }],
+        // The empty set a failed read leaves is not "nothing hidden", and treating it as that would
+        // name releases on platforms the user has hidden.
+        ['the hidden platforms', () => renderRail(upcoming(), noneHidden, false, 'Failed to load hidden platforms (500)')],
     ])('renders nothing when %s failed, rather than a partial answer', (_what, renderIt) => {
         const { container } = renderIt();
 

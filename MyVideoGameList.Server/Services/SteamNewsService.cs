@@ -76,7 +76,11 @@ public partial class SteamNewsService(
         {
             appIdsByGame = await igdbService.GetSteamAppIdsAsync(ids, cancellationToken);
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        // Filtered on the caller's token rather than on the exception's type, here and below. An
+        // HttpClient that times out throws a TaskCanceledException too, and that is an upstream
+        // failure to degrade from, not a request the caller abandoned — filtering out every
+        // OperationCanceledException let a slow upstream through as a 500.
+        catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
         {
             // IGDB being down is already visible on the readiness probe. Losing the news rail
             // is the correct, quiet consequence rather than a second alarm.
@@ -101,8 +105,20 @@ public partial class SteamNewsService(
                 MaxGamesPerAggregate, appIdsByGame.Count);
         }
 
-        var games = (await igdbService.GetGamesByIdsAsync(targets.Select(t => t.GameId), cancellationToken))
-            .ToDictionary(g => g.Id);
+        Dictionary<int, GameDto> games;
+        try
+        {
+            games = (await igdbService.GetGamesByIdsAsync(targets.Select(t => t.GameId), cancellationToken))
+                .ToDictionary(g => g.Id);
+        }
+        catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
+        {
+            // Guarded for the same reason as the AppID lookup, and reachable when that one is not:
+            // the AppID map is cached for a day and this lookup for half an hour, so IGDB can fail
+            // here after the call above was answered from cache.
+            logger.LogWarning(ex, "Could not load the games behind Steam news; returning no news.");
+            return [];
+        }
 
         var feeds = await Task.WhenAll(targets.Select(t =>
             FetchFeedAsync(t.AppId, count * OverFetchFactor, cancellationToken)));
@@ -172,8 +188,10 @@ public partial class SteamNewsService(
                 items = payload?.AppNews?.NewsItems ?? [];
             }
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
         {
+            // A timeout included: the Steam client gives up after eight seconds and throws a
+            // TaskCanceledException, which is a slow Steam rather than a cancelled request.
             logger.LogWarning(ex, "Failed to fetch Steam news for AppID {AppId}.", appId);
         }
 

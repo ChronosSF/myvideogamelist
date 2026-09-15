@@ -44,6 +44,23 @@ describe('AccountDataCard download', () => {
         expect(await screen.findByRole('button', { name: 'Download my data' })).toBeEnabled();
     });
 
+    it('holds the deletion while the file is being prepared', async () => {
+        // The export reads table by table, and a deletion cascading through those tables part way
+        // through would leave a partial copy of the data about to be lost.
+        const actor = userEvent.setup();
+        let finish: () => void = () => {};
+        vi.mocked(downloadDataExport).mockImplementationOnce(
+            () => new Promise<void>(resolve => { finish = resolve; }));
+        renderCard();
+
+        await actor.click(screen.getByRole('button', { name: 'Download my data' }));
+
+        expect(screen.getByRole('button', { name: 'Delete my account' })).toBeDisabled();
+
+        finish();
+        await waitFor(() => expect(screen.getByRole('button', { name: 'Delete my account' })).toBeEnabled());
+    });
+
     it('announces a failed download', async () => {
         const actor = userEvent.setup();
         vi.mocked(downloadDataExport).mockRejectedValueOnce(new Error('Export failed (500)'));

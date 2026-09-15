@@ -96,11 +96,12 @@ function SectionHeading({ id, title, subtitle, action }: {
  * cookie-varying SSR render and a CloudFront behaviour to match, which is ROADMAP D12's problem
  * rather than this component's.
  */
-function SignedInHero({ user, upcoming, hiddenPlatformIds, hiddenPlatformsLoading }: {
+function SignedInHero({ user, upcoming, hiddenPlatformIds, hiddenPlatformsLoading, hiddenPlatformsLoadError }: {
     user: UserProfile;
     upcoming: UseUpcomingGamesResult;
     hiddenPlatformIds: ReadonlySet<number>;
     hiddenPlatformsLoading: boolean;
+    hiddenPlatformsLoadError: string | null;
 }) {
     return (
         <section className="signed-in-hero">
@@ -143,6 +144,7 @@ function SignedInHero({ user, upcoming, hiddenPlatformIds, hiddenPlatformsLoadin
                     upcoming={upcoming}
                     hiddenPlatformIds={hiddenPlatformIds}
                     hiddenPlatformsLoading={hiddenPlatformsLoading}
+                    hiddenPlatformsLoadError={hiddenPlatformsLoadError}
                 />
             </div>
         </section>
@@ -233,7 +235,11 @@ export function HomePage({ loaderData }: Route.ComponentProps) {
     // same two with the user's lists: one request each for two consumers. The preference is keyed on
     // the account rather than on "is anybody signed in", because this page outlives a sign-out.
     const upcoming = useUpcomingGames();
-    const { hiddenIds: hiddenPlatformIds, loading: hiddenPlatformsLoading } = useHiddenPlatforms(user?.id ?? null);
+    const {
+        hiddenIds: hiddenPlatformIds,
+        loading: hiddenPlatformsLoading,
+        loadError: hiddenPlatformsLoadError,
+    } = useHiddenPlatforms(user?.id ?? null);
 
     return (
         <div className="min-h-screen">
@@ -247,6 +253,7 @@ export function HomePage({ loaderData }: Route.ComponentProps) {
                         upcoming={upcoming}
                         hiddenPlatformIds={hiddenPlatformIds}
                         hiddenPlatformsLoading={hiddenPlatformsLoading}
+                        hiddenPlatformsLoadError={hiddenPlatformsLoadError}
                     />
                 )
                 : <LandingHero spotlight={spotlight} />}

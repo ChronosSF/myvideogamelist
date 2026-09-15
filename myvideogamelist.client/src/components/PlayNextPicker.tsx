@@ -13,7 +13,7 @@ import type { ListEntryDto } from '@/types/list';
  * (ADR 0018). The started game then leads the rail above, which is the whole loop in one screen.
  */
 export function PlayNextPicker() {
-    const { lists, loading, isPending, addToList } = useLists();
+    const { lists, loading, error, isPending, addToList } = useLists();
     const backlog = lists.backlog;
 
     /**
@@ -44,6 +44,17 @@ export function PlayNextPicker() {
     // Nothing while the lists load, for the rail's reason: an empty-backlog message that turns into
     // a game a moment later is worse than a moment of nothing.
     if (loading) return null;
+
+    // A failed load leaves every list empty, which is exactly what an empty backlog looks like — so
+    // it has to be asked about before the empty state, or a failure tells somebody with a hundred
+    // games waiting that they have none.
+    if (error !== null) {
+        return (
+            <div className="continue-empty">
+                <p>Your backlog could not be loaded just now.</p>
+            </div>
+        );
+    }
 
     if (current === null) {
         return (

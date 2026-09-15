@@ -131,6 +131,31 @@
 
 /* ── Confirmation dialogs ────────────────────────────────────────────────── */
 
+/*
+ * A native modal <dialog>, which the browser puts in the top layer with the rest of the document
+ * inert. These only take away its default box, so the .dialog-panel inside looks like the other
+ * dialogs, and give its backdrop the scrim .dialog-overlay gives theirs.
+ */
+.dialog-modal {
+    width: calc(100% - 2rem);
+    max-width: 420px;
+    margin: auto;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+}
+
+.dialog-modal::backdrop {
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(4px);
+}
+
+/* The page stays where it was behind an open modal rather than scrolling underneath it. */
+html:has(.dialog-modal[open]) {
+    overflow: hidden;
+}
+
 .dialog-text {
     display: grid;
     gap: 0.625rem;

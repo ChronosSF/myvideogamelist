@@ -11,6 +11,11 @@ interface Props {
     upcoming: UseUpcomingGamesResult;
     hiddenPlatformIds: ReadonlySet<number>;
     hiddenPlatformsLoading: boolean;
+    /**
+     * Set when the preference could not be read. The empty set beside it then is not the user's
+     * answer, and crossing releases with it would name games on platforms they have hidden.
+     */
+    hiddenPlatformsLoadError: string | null;
 }
 
 /** Why a game is on the rail, in the fewest words that say it. */
@@ -35,7 +40,12 @@ function reason(item: ReleasingSoonItem): string {
  * Reads the reader's clock for "Today" and "Tomorrow", which is safe only because the signed-in half
  * of the home page never server-renders: auth is unknown until a client fetch answers.
  */
-export function ReleasingSoonRail({ upcoming, hiddenPlatformIds, hiddenPlatformsLoading }: Props) {
+export function ReleasingSoonRail({
+    upcoming,
+    hiddenPlatformIds,
+    hiddenPlatformsLoading,
+    hiddenPlatformsLoadError,
+}: Props) {
     const { lists, loading: listsLoading, error: listsError } = useLists();
     const { items: wishlist, loading: wishlistLoading, error: wishlistError } = useWishlist();
 
@@ -47,7 +57,11 @@ export function ReleasingSoonRail({ upcoming, hiddenPlatformIds, hiddenPlatforms
     ), [upcoming.games, wishlist, lists.backlog, hiddenPlatformIds]);
 
     if (upcoming.loading || listsLoading || wishlistLoading || hiddenPlatformsLoading) return null;
-    if (upcoming.error !== null || listsError !== null || wishlistError !== null) return null;
+    // The hidden platforms included, unlike the calendar below, which shows every platform when the
+    // preference fails. The calendar is everybody's releases with a filter row the reader can still
+    // use; this rail is a claim about which releases are theirs, and it would be the wrong claim.
+    if (upcoming.error !== null || listsError !== null || wishlistError !== null
+        || hiddenPlatformsLoadError !== null) return null;
     if (items.length === 0) return null;
 
     return (

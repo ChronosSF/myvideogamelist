@@ -52,6 +52,7 @@ const pickedTitle = () => screen.getByRole('link').textContent;
 beforeEach(() => {
     listsValue.lists = emptyLists();
     listsValue.loading = false;
+    listsValue.error = null;
     listsValue.pending = new Set();
     listsValue.addToList.mockReset();
     listsValue.addToList.mockResolvedValue(undefined);
@@ -160,5 +161,14 @@ describe('PlayNextPicker with nothing to pick', () => {
         const { container } = render(picker());
 
         expect(container).toBeEmptyDOMElement();
+    });
+
+    it('says the backlog could not be loaded, rather than that it is empty', () => {
+        // A failed load leaves every list empty, which is exactly what an empty backlog looks like.
+        listsValue.error = 'Failed to load lists (500)';
+        render(picker());
+
+        expect(screen.getByText('Your backlog could not be loaded just now.')).toBeInTheDocument();
+        expect(screen.queryByText(/your backlog is empty/i)).not.toBeInTheDocument();
     });
 });
