@@ -155,7 +155,7 @@ Per-game news beats a generic industry feed, because it attaches to games the us
 | N3 | Background refresh job writing to cache | **Still open.** Currently a cache-on-miss, so the first request after expiry pays the Steam round trip. Belongs with the distributed cache in §5 — a per-instance background job would duplicate work across ECS tasks |
 | ~~N4~~ | ~~Surface on the **game page** as a "Latest news / patch notes" panel~~ **DONE** | `GameNewsPanel`, fetched client-side so a third party never blocks the game page's server render |
 | ~~N5~~ | ~~Surface as a **home page rail**~~ **DONE** | Server-rendered via `/api/home`. Capped at 2 items per game, or one game mid-tournament fills the rail |
-| N6 | Dedicated **`/news` page** aggregating across everything the user tracks | **Still open.** `ISteamNewsService.GetLatestNewsAsync` already takes an arbitrary set of game ids, so this is a page and a route, not new plumbing |
+| ~~N6~~ | ~~Dedicated **`/news` page** aggregating across everything the user tracks~~ **DONE** | `GET /api/user/news` over `GetLatestNewsAsync`, which already took any set of games — so no new plumbing, as predicted. **The order the games are handed over is the feature**, because the aggregate follows at most 12 Steam-backed games and keeps the first it is given: in progress (Playing, then On Hold), the wishlist, the backlog, then Finished and Dropped, most recently moved first within each, read from the status flags rather than keys. At most 50 of the user's games are resolved to AppIDs, 20 items shown, 3 per game. Under `/api/user` rather than `/api/news` and `no-store`, because the answer differs per account. Linked from the navbar and from the home page's news rail once signed in |
 | ~~N7~~ | ~~Degrade gracefully for games with no Steam presence~~ **DONE** | Console exclusives return 200 with an empty list and the panel hides itself. Verified against Zelda: Tears of the Kingdom |
 
 **Not available:** IGDB has no news endpoint. v3 had `pulse` / `pulse_groups` / `pulse_sources`; v4 removed
@@ -371,8 +371,12 @@ The project owns **myvideogamelist.net**, which pins down several items that wou
 > Community completion times have always worked the same way. A server-side floor on both endpoints
 > would make it one, and would be a deliberate exception to 0016 rather than a fix.
 >
-> **Several finished APIs are still waiting for a screen.** N6's
-> `/news` page needs a thin endpoint over `GetLatestNewsAsync` and a route.
+> **The finished APIs that were waiting for a screen now have one.** `/user` downloads the export
+> and deletes the account behind a password dialog; the signed-in home page has H5's play-next picker
+> and H4's releasing-soon rail; and N6's `/news` page reads a thin `/api/user/news` over
+> `GetLatestNewsAsync`. None of them needed a migration. One follow-up they surfaced: the aggregate
+> over-fetches `count × 3` items from every feed even when a per-game cap means it keeps three, which
+> `/news` makes the most expensive caller of — asking for `maxPerGame × 3` would be enough.
 >
 > **Three smaller things 0027 left behind still stand.** The `friends` visibility value needs a
 > follow graph and is one additive migration in each of two columns — and it would be the first thing

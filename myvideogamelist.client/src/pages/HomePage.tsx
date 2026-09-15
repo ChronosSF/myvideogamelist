@@ -273,6 +273,10 @@ export function HomePage({ loaderData }: Route.ComponentProps) {
                             id="news-heading"
                             title="Latest news"
                             subtitle="Patch notes and announcements from the games people are playing"
+                            // The same rail for everybody, so the way to one's own news is a link
+                            // rather than a second rail. Shown once auth has answered, as the
+                            // navbar's link to the same page is.
+                            action={user && !loading ? { to: '/news', label: 'News for your games' } : undefined}
                         />
 
                         {/* grid-cols-1, not an implicit column: that one sizes to its content, and

@@ -6,6 +6,7 @@ export default [
     route('games/:id', 'pages/GamePage.tsx'),
     route('lists', 'pages/ListsPage.tsx'),
     route('wishlist', 'pages/WishlistPage.tsx'),
+    route('news', 'pages/NewsPage.tsx'),
     route('user', 'pages/UserPage.tsx'),
 
     // Somebody else's profile, and the only route addressed by a name the user chose. Under `/u/`
