@@ -145,6 +145,7 @@ public class UserOwnedDataTests
                 nameof(UserGameEvent),
                 nameof(UserGamePlaythrough),
                 nameof(UserHiddenPlatform),
+                nameof(UserListSetting),
                 nameof(UserListSortPreference),
                 nameof(UserWishlistItem),
             ],

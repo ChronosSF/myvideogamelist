@@ -1,9 +1,12 @@
 import { useEffect, useReducer, type ReactNode } from 'react';
 import type { GameDto } from '@/types/game';
-import { type ListId, type ListEntryDto, type Ownership, type ViewMode, LIST_IDS, emptyLists } from '@/types/list';
+import {
+    type ListId, type ListEntryDto, type ListNames, type Ownership, type ViewMode,
+    LIST_IDS, LIST_NAMES, emptyLists,
+} from '@/types/list';
 import { type SortState, DEFAULT_SORT } from '@/lib/listSort';
 import { useAuth } from '@/hooks/useAuth';
-import { ListsContext } from './ListsContext';
+import { ListsContext, type SaveListNamesResult } from './ListsContext';
 
 interface ApiListsResponse {
     lists: Record<ListId, ListEntryDto[]>;
@@ -13,12 +16,21 @@ interface ApiPreferencesResponse {
     view: ViewMode;
     /** Only the lists the user has actually changed; everything else uses `DEFAULT_SORT`. */
     sorts: Partial<Record<ListId, { sortKey: SortState['key']; descending: boolean }>>;
+    /** Only the lists the user has renamed; everything else uses `LIST_NAMES`. */
+    names: ListNames;
 }
 
 interface ListsState {
     lists: Record<ListId, ListEntryDto[]>;
     view: ViewMode;
     sorts: Partial<Record<ListId, SortState>>;
+    names: ListNames;
+    /**
+     * Whether `names` came back. Kept apart from `loading` because the names ride on the preferences
+     * request, which fails independently of the lists and used to fail silently — harmless for a
+     * sort, which has a default, but not for a form that would save the defaults over real names.
+     */
+    namesStatus: 'loading' | 'ready' | 'failed';
     loading: boolean;
     /** Set only on the initial fetch failure — triggers the full-page error state. */
     error: string | null;
@@ -61,7 +73,11 @@ type ListsAction =
     | { type: 'FETCH_START'; session: string | null }
     | { type: 'FETCH_SUCCESS'; session: string | null; lists: Record<ListId, ListEntryDto[]> }
     | { type: 'FETCH_ERROR'; session: string | null; error: string }
-    | { type: 'PREFERENCES_LOADED'; session: string | null; view: ViewMode; sorts: Partial<Record<ListId, SortState>> }
+    | { type: 'PREFERENCES_LOADED'; session: string | null; view: ViewMode; sorts: Partial<Record<ListId, SortState>>; names: ListNames }
+    | { type: 'PREFERENCES_FAILED'; session: string | null }
+    // Stamped like a mutation, because it is one: a save still out when the account changes must not
+    // write the previous account's names over the next one's.
+    | { type: 'NAMES_SAVED'; session: string | null; names: ListNames }
     /*
      * The three a mutation raises, and the reason they name one game rather than carrying a set of
      * lists. Every one of them is computed inside the reducer from whatever state is current when
@@ -92,6 +108,8 @@ const initialState: ListsState = {
     lists: emptyLists(),
     view: 'tiles',
     sorts: {},
+    names: {},
+    namesStatus: 'loading',
     loading: false,
     error: null,
     mutationError: null,
@@ -139,7 +157,13 @@ function reducer(state: ListsState, action: ListsAction): ListsState {
                 ({ ...state, loading: false, error: action.error }));
         case 'PREFERENCES_LOADED':
             return ifCurrent(state, action.session, () =>
-                ({ ...state, view: action.view, sorts: action.sorts }));
+                ({ ...state, view: action.view, sorts: action.sorts, names: action.names, namesStatus: 'ready' }));
+        case 'PREFERENCES_FAILED':
+            // The lists and every label still work, on the default names; only a names form needs to
+            // know that what it would be editing never arrived.
+            return ifCurrent(state, action.session, () => ({ ...state, namesStatus: 'failed' }));
+        case 'NAMES_SAVED':
+            return ifCurrent(state, action.session, () => ({ ...state, names: action.names, namesStatus: 'ready' }));
         // The ones a mutation raises, and therefore the ones that can arrive late. Each carries
         // the session it was captured under; ifCurrent drops it when that has moved on.
         case 'PLACE_ENTRY':
@@ -287,18 +311,23 @@ export function ListsProvider({ children }: { children: ReactNode }) {
         // Fetched alongside rather than before: preferences only affect presentation, so failing
         // to load them falls back to the defaults rather than blocking the lists themselves.
         fetch('/api/user/list-preferences', { credentials: 'include', signal: controller.signal })
-            .then(res => (res.ok ? (res.json() as Promise<ApiPreferencesResponse>) : null))
+            .then(res => {
+                if (!res.ok) throw new Error(`Failed to load list preferences (${res.status})`);
+                return res.json() as Promise<ApiPreferencesResponse>;
+            })
             .then(data => {
-                if (!data || controller.signal.aborted) return;
+                if (controller.signal.aborted) return;
                 const sorts: Partial<Record<ListId, SortState>> = {};
                 for (const [id, sort] of Object.entries(data.sorts) as [ListId, { sortKey: SortState['key']; descending: boolean }][]) {
                     sorts[id] = { key: sort.sortKey, descending: sort.descending };
                 }
-                dispatch({ type: 'PREFERENCES_LOADED', session: fetchSession, view: data.view, sorts });
+                dispatch({ type: 'PREFERENCES_LOADED', session: fetchSession, view: data.view, sorts, names: data.names ?? {} });
             })
             .catch(() => {
-                // Swallowed by design — the defaults are a perfectly good fallback and a failed
-                // preference load is not worth an error state over the user's actual lists.
+                // No error state over the user's actual lists — the defaults are a perfectly good
+                // fallback for a sort and a label. Recorded all the same, for the one consumer that
+                // must not treat the defaults as the truth: the form that renames the lists.
+                if (!controller.signal.aborted) dispatch({ type: 'PREFERENCES_FAILED', session: fetchSession });
             });
 
         return () => controller.abort();
@@ -335,6 +364,59 @@ export function ListsProvider({ children }: { children: ReactNode }) {
     };
 
     const sortFor = (listId: ListId): SortState => state.sorts[listId] ?? DEFAULT_SORT;
+
+    const nameFor = (listId: ListId): string => state.names[listId] ?? LIST_NAMES[listId];
+
+    /**
+     * Saves every name at once, and adopts the names the server says it stored — normalised there,
+     * so a name typed with a double space is shown as it will be read back.
+     *
+     * Not optimistic. A rename is typed into a form and saved with a button, and a refusal has to
+     * leave the form as the user typed it with a message beside the field, which a name already
+     * applied across the site would contradict.
+     */
+    const saveListNames = async (names: ListNames): Promise<SaveListNamesResult> => {
+        const failed: SaveListNamesResult = {
+            ok: false,
+            fieldErrors: {},
+            error: 'Failed to save your list names. Please try again.',
+        };
+
+        try {
+            const res = await fetch('/api/user/list-names', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({
+                    names: LIST_IDS.map(id => ({ status: id, name: names[id] ?? null })),
+                }),
+            });
+
+            if (res.ok) {
+                const saved = await res.json() as { names: ListNames };
+                dispatch({ type: 'NAMES_SAVED', session, names: saved.names });
+                return { ok: true };
+            }
+
+            if (res.status === 400) {
+                // A ValidationProblemDetails keyed by status key, one message per refused list.
+                const problem = await res.json() as { errors?: Record<string, string[]> };
+                const fieldErrors: Partial<Record<ListId, string>> = {};
+                for (const [key, messages] of Object.entries(problem.errors ?? {})) {
+                    const id = LIST_IDS.find(listId => listId.toLowerCase() === key.toLowerCase());
+                    if (id && messages.length > 0) fieldErrors[id] = messages[0];
+                }
+                return Object.keys(fieldErrors).length > 0
+                    ? { ok: false, fieldErrors, error: null }
+                    : failed;
+            }
+
+            return failed;
+        } catch {
+            // Unreachable, or a body that was not the JSON it claimed to be.
+            return failed;
+        }
+    };
 
     const startPending = (gameId: number) => dispatch({ type: 'START_PENDING', session, gameId });
     const endPending = (gameId: number) => dispatch({ type: 'END_PENDING', session, gameId });
@@ -562,6 +644,10 @@ export function ListsProvider({ children }: { children: ReactNode }) {
             setView,
             sortFor,
             setSort,
+            names: state.names,
+            nameFor,
+            namesStatus: state.namesStatus,
+            saveListNames,
         }}>
             {children}
         </ListsContext.Provider>

@@ -36,7 +36,8 @@ public record UserDataExportDto(
     IReadOnlyList<WishlistExportDto> Wishlist,
     IReadOnlyList<FavouriteExportDto> Favourites,
     IReadOnlyList<int> HiddenPlatformIds,
-    IReadOnlyList<ListSortExportDto> ListSortPreferences);
+    IReadOnlyList<ListSortExportDto> ListSortPreferences,
+    IReadOnlyList<ListNameExportDto> ListNames);
 
 /// <summary>
 /// The account row itself — the columns MVGL added to Identity's user, plus the address and the
@@ -163,6 +164,12 @@ public record FavouriteExportDto(int GameId, DateTimeOffset AddedAt);
 /// row, here as in the database (ADR 0020).
 /// </summary>
 public record ListSortExportDto(string Status, string SortKey, bool Descending);
+
+/// <summary>
+/// What the user calls one of their lists. Only renamed lists have a row, and the status is its
+/// permanent key, so the name can be applied back to the right list by anything that reads this.
+/// </summary>
+public record ListNameExportDto(string Status, string DisplayName);
 
 /// <summary>
 /// Confirmation for deleting an account: the account's own password, typed again.

@@ -20,6 +20,7 @@ public class UserController(
     IUserDataExporter exporter,
     IUserNameClaimService claims,
     ITrackedNewsService trackedNews,
+    IListNameService listNames,
     TimeProvider clock) : ControllerBase
 {
     [HttpPut("theme")]
@@ -182,7 +183,38 @@ public class UserController(
 
         return Ok(new ListPreferencesDto(
             user.ListView,
-            sorts.ToDictionary(x => x.Key, x => new ListSortDto(x.SortKey, x.Descending))));
+            sorts.ToDictionary(x => x.Key, x => new ListSortDto(x.SortKey, x.Descending)),
+            await listNames.GetNamesAsync(user.Id, cancellationToken)));
+    }
+
+    /// <summary>
+    /// Renames the user's lists, all five at once.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Its own endpoint rather than a field on <see cref="UpdateListPreferences"/>, which is sent on
+    /// every change of sort and layout: folding the names in would mean every sort click resending
+    /// five names, and a names form saving the sorts it was never shown.
+    /// </para>
+    /// <para>
+    /// A refused name comes back as a <see cref="ValidationProblemDetails"/> keyed by status, so each
+    /// message lands beside the input it is about. Nothing is written unless all five pass.
+    /// </para>
+    /// </remarks>
+    [HttpPut("list-names")]
+    public async Task<ActionResult<ListNamesDto>> UpdateListNames(
+        [FromBody] UpdateListNamesDto dto, CancellationToken cancellationToken)
+    {
+        var userId = userManager.GetUserId(User);
+        if (userId is null) return Unauthorized();
+
+        var result = await listNames.ReplaceAsync(userId, dto.Names, cancellationToken);
+        if (result.Succeeded) return Ok(new ListNamesDto(result.Names!));
+
+        foreach (var (status, message) in result.Errors)
+            ModelState.AddModelError(status, message);
+
+        return ValidationProblem(ModelState);
     }
 
     [HttpPut("list-preferences")]

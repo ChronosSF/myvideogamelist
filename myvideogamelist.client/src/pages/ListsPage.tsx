@@ -5,7 +5,7 @@ import { ListTable } from '@/components/ListTable';
 import { ListToolbar } from '@/components/ListToolbar';
 import { useLists } from '@/hooks/useLists';
 import { useAuth } from '@/hooks/useAuth';
-import { type ListId, LIST_IDS, LIST_NAMES } from '@/types/list';
+import { type ListId, LIST_IDS } from '@/types/list';
 import type { PlatformDto } from '@/types/game';
 import { sortEntries } from '@/lib/listSort';
 import './ListsPage.css';
@@ -33,7 +33,7 @@ export function ListsPage() {
     const { user, loading: authLoading } = useAuth();
     const {
         lists, loading, error, mutationError, isPending,
-        view, setView, sortFor, setSort, setScore, removeFromList,
+        view, setView, sortFor, setSort, setScore, removeFromList, nameFor,
     } = useLists();
 
     // Nobody is signed in or out until auth has answered: the server render never knows, and the
@@ -94,7 +94,7 @@ export function ListsPage() {
                                 className={`lists-tab-btn${activeTab === id ? ' active' : ''}`}
                                 onClick={() => setActiveTab(id)}
                             >
-                                {LIST_NAMES[id]}
+                                {nameFor(id)}
                                 <span className="lists-tab-count">{lists[id].length}</span>
                             </button>
                         ))}
@@ -172,7 +172,7 @@ export function ListsPage() {
                 {signedIn && !loading && !error && entries.length > 0 && visible.length === 0 && (
                     <div className="text-center py-16">
                         <p className="text-slate-400 light:text-slate-600 text-sm mb-3">
-                            No games in {LIST_NAMES[activeTab]} match the platform filter.
+                            No games in {nameFor(activeTab)} match the platform filter.
                         </p>
                         <button
                             type="button"
@@ -197,7 +197,7 @@ export function ListsPage() {
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
                             </svg>
                             <p className="text-slate-400 light:text-slate-600 font-medium mb-3">
-                                No games in {LIST_NAMES[activeTab]} yet.
+                                No games in {nameFor(activeTab)} yet.
                             </p>
                             <Link
                                 to="/games"
@@ -224,7 +224,7 @@ export function ListsPage() {
                     <ListTable
                         entries={visible}
                         sort={sort}
-                        listName={LIST_NAMES[activeTab]}
+                        listName={nameFor(activeTab)}
                         isPending={isPending}
                         onSortChange={next => setSort(activeTab, next)}
                         onScoreChange={(gameId, score) => void setScore(gameId, score)}

@@ -22,8 +22,8 @@ public static class ListStatusKeys
 /// <remarks>
 /// <para>
 /// System-owned: seeded by the migration, never written by a user, and never deleted from. Users
-/// will be able to <em>rename</em> a status list, which writes a display name elsewhere and
-/// leaves <see cref="Key"/> untouched — every statistic keys on the status, so a rename must not
+/// can <em>rename</em> a status list, which writes a display name to <see cref="UserListSetting"/>
+/// and leaves <see cref="Key"/> untouched — every statistic keys on the status, so a rename must not
 /// be able to change what a list means.
 /// </para>
 /// <para>

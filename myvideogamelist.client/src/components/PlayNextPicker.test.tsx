@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { PlayNextPicker } from '@/components/PlayNextPicker';
 import { DEFAULT_SORT } from '@/lib/listSort';
-import { emptyLists, type ListEntryDto, type ListId } from '@/types/list';
+import { emptyLists, LIST_NAMES, type ListEntryDto, type ListId } from '@/types/list';
 import { entry } from '@/test/factories';
 
 /**
@@ -34,6 +34,10 @@ const listsValue = {
     setView: vi.fn(),
     sortFor: () => DEFAULT_SORT,
     setSort: vi.fn(),
+    names: {},
+    nameFor: (id: ListId) => LIST_NAMES[id],
+    namesStatus: 'ready',
+    saveListNames: vi.fn(async () => ({ ok: true as const })),
 };
 
 vi.mock('@/hooks/useLists', () => ({ useLists: () => listsValue }));

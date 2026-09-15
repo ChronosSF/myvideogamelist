@@ -6,7 +6,7 @@ import type { AuthContextValue } from '@/contexts/AuthContext';
 import type { ListsContextValue } from '@/contexts/ListsContext';
 import { DEFAULT_SORT } from '@/lib/listSort';
 import type { UserProfile } from '@/types/auth';
-import { emptyLists } from '@/types/list';
+import { emptyLists, LIST_NAMES, type ListId } from '@/types/list';
 import { userProfile } from '@/test/factories';
 
 /**
@@ -48,6 +48,10 @@ const lists: ListsContextValue = {
     setView: vi.fn(),
     sortFor: () => DEFAULT_SORT,
     setSort: vi.fn(),
+    names: {},
+    nameFor: (id: ListId) => LIST_NAMES[id],
+    namesStatus: 'ready',
+    saveListNames: vi.fn(async () => ({ ok: true as const })),
 };
 
 vi.mock('@/hooks/useAuth', () => ({ useAuth: () => auth }));
@@ -70,6 +74,7 @@ beforeEach(() => {
     auth.loading = true;
     lists.loading = false;
     lists.error = null;
+    lists.nameFor = (id: ListId) => LIST_NAMES[id];
 });
 
 describe('ListsPage before auth has answered', () => {
@@ -109,5 +114,17 @@ describe('ListsPage once auth has answered', () => {
         expect(screen.getByText(/no games in playing yet/i)).toBeInTheDocument();
         expect(screen.queryByRole('status')).not.toBeInTheDocument();
         expect(screen.queryByText(/sign in to manage your game lists/i)).not.toBeInTheDocument();
+    });
+});
+
+describe('ListsPage and renamed lists', () => {
+    it('names each tab as its owner renamed it', () => {
+        authAnswered(userProfile());
+        lists.nameFor = (id: ListId) => (id === 'finished' ? 'Beaten' : LIST_NAMES[id]);
+        renderPage();
+
+        expect(screen.getByRole('tab', { name: /Beaten/ })).toBeInTheDocument();
+        expect(screen.queryByRole('tab', { name: /Finished/ })).not.toBeInTheDocument();
+        expect(screen.getByRole('tab', { name: /Playing/ })).toBeInTheDocument();
     });
 });

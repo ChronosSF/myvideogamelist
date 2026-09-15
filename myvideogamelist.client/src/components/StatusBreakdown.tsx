@@ -1,10 +1,15 @@
-import { type ListId, LIST_IDS, LIST_NAMES } from '@/types/list';
+import { type ListId, type ListNames, LIST_IDS, LIST_NAMES } from '@/types/list';
 
 interface StatusBreakdownProps {
     title: string;
     byStatus: Record<ListId, number>;
     /** Shown under the bars. The wishlist note, on both profiles, in the right person's words. */
     caption: string;
+    /**
+     * The owner's own names for their lists, on their own profile. Left out on a public one, which
+     * names the lists by their defaults: a rename is a label its owner sees (ADR 0031).
+     */
+    names?: ListNames;
 }
 
 /**
@@ -18,7 +23,7 @@ interface StatusBreakdownProps {
  * Always all five statuses, including the empty ones. An absent Dropped row would read as a user
  * who has never dropped anything being a user for whom dropping does not exist.
  */
-export function StatusBreakdown({ title, byStatus, caption }: StatusBreakdownProps) {
+export function StatusBreakdown({ title, byStatus, caption, names = {} }: StatusBreakdownProps) {
     // At least 1, so the widths are a proportion of something rather than a division by zero on a
     // brand-new account.
     const mostInAStatus = Math.max(1, ...LIST_IDS.map(id => byStatus[id]));
@@ -29,7 +34,7 @@ export function StatusBreakdown({ title, byStatus, caption }: StatusBreakdownPro
             <ul className="profile-ranked">
                 {LIST_IDS.map(id => (
                     <li key={id} className="profile-ranked-row">
-                        <span className="profile-ranked-name">{LIST_NAMES[id]}</span>
+                        <span className="profile-ranked-name">{names[id] ?? LIST_NAMES[id]}</span>
                         <span className="profile-ranked-track" aria-hidden="true">
                             <span
                                 className={`profile-ranked-fill status-${id}`}

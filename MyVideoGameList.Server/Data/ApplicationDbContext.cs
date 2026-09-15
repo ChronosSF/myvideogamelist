@@ -26,6 +26,7 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
     public DbSet<UserGameEvent> UserGameEvents { get; set; }
     public DbSet<UserGamePlaythrough> UserGamePlaythroughs { get; set; }
     public DbSet<UserHiddenPlatform> UserHiddenPlatforms { get; set; }
+    public DbSet<UserListSetting> UserListSettings { get; set; }
     public DbSet<UserListSortPreference> UserListSortPreferences { get; set; }
     public DbSet<UserWishlistItem> UserWishlistItems { get; set; }
 
@@ -105,6 +106,22 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
             .HasOne(p => p.Status)
             .WithMany()
             .HasForeignKey(p => p.StatusId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        // UserListSetting: the sort preference's shape — one row per (user, status), and no row means
+        // the default name. Restrict on the status for the same reason: renaming a list must never be
+        // a way to delete one.
+        modelBuilder.Entity<UserListSetting>().HasKey(s => new { s.UserId, s.StatusId });
+        modelBuilder.Entity<UserListSetting>().Property(s => s.DisplayName).HasMaxLength(ListNamePolicy.MaxLength);
+        modelBuilder.Entity<UserListSetting>()
+            .HasOne(s => s.User)
+            .WithMany()
+            .HasForeignKey(s => s.UserId)
+            .OnDelete(DeleteBehavior.Cascade);
+        modelBuilder.Entity<UserListSetting>()
+            .HasOne(s => s.Status)
+            .WithMany()
+            .HasForeignKey(s => s.StatusId)
             .OnDelete(DeleteBehavior.Restrict);
 
         // UserWishlistItem: an axis of its own, so no foreign key to UserGameEntry — a wishlisted

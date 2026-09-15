@@ -7,6 +7,7 @@ import { ProfileStats } from '@/components/ProfileStats';
 import { FavouritesShowcase } from '@/components/FavouritesShowcase';
 import { AccountIdentityCard } from '@/components/AccountIdentityCard';
 import { AccountDataCard } from '@/components/AccountDataCard';
+import { ListNamesCard } from '@/components/ListNamesCard';
 import { PRIVATE_NO_STORE } from '@/lib/cache';
 import './UserPage.css';
 
@@ -250,6 +251,10 @@ export function UserPage() {
                             <p className="user-card-hint">Saved automatically</p>
                             {themeError && <p className="user-pref-error" role="alert">{themeError}</p>}
                         </div>
+
+                        {/* Beside the appearance, because both change how the site reads to this
+                            person and to nobody else. */}
+                        <ListNamesCard />
 
                         <div className="user-card">
                             <div className="user-card-label">Upcoming releases — platforms</div>

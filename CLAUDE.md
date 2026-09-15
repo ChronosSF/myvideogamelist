@@ -181,6 +181,12 @@ ROADMAP.md                      Forward-looking plan
   score or review changes, or the section beside it shows the write as though it had failed. See
   `docs/decisions/0028-*`.
 
+- **A list's label reads `nameFor` from the lists context, never `LIST_NAMES`** — except on a public
+  profile, which keeps the defaults because a rename is its owner's alone. `LIST_NAMES` is the
+  defaults. A rename writes `UserListSettings` and nothing else, the five effective names must differ
+  without case, and the names form edits only when `namesStatus` is `ready`: a failed read looks like
+  "nothing renamed", and saving from it would reset every list. See `docs/decisions/0031-*`.
+
 - **Never change a game's status without recording an event.** `UserGameEvents` is append-only
   and is the only record that a transition happened — `UserGameLists` holds current state and is
   overwritten on every move. A direct `UPDATE` to `StatusId` leaves a permanent hole in a history

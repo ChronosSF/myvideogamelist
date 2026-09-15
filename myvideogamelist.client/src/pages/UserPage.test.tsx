@@ -38,9 +38,13 @@ vi.mock('@/components/ProfileStats', () => ({
     ProfileStats: ({ userId }: { userId: string }) => <div>tracking for {userId}</div>,
 }));
 
-/** Likewise the favourites, which read a provider this page does not mount. */
+/** Likewise the favourites and the list names, which read providers this page does not mount. */
 vi.mock('@/components/FavouritesShowcase', () => ({
     FavouritesShowcase: () => <div>favourites</div>,
+}));
+
+vi.mock('@/components/ListNamesCard', () => ({
+    ListNamesCard: () => <div>list names</div>,
 }));
 
 type PlatformsAnswer = PlatformDto[] | 'fail';

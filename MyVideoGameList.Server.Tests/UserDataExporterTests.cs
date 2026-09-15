@@ -211,6 +211,18 @@ public class UserDataExporterTests
         db.SaveChanges();
     }
 
+    private static void AddListName(
+        ApplicationDbContext db, string status, string name, string userId = UserId)
+    {
+        db.UserListSettings.Add(new UserListSetting
+        {
+            UserId = userId,
+            StatusId = StatusId(db, status),
+            DisplayName = name
+        });
+        db.SaveChanges();
+    }
+
     private static void AddSortPreference(
         ApplicationDbContext db,
         string status,
@@ -249,6 +261,7 @@ public class UserDataExporterTests
         AddFavourite(db, gameId: 14);
         AddHiddenPlatform(db, platformId: 13);
         AddSortPreference(db, ListStatusKeys.Playing, ListSortKeys.Score);
+        AddListName(db, ListStatusKeys.Backlog, "Someday");
 
         AddEntry(db, gameId: 21, status: ListStatusKeys.Finished, score: 3, userId: OtherUserId);
         AddEvent(db, gameId: 21, from: null, to: ListStatusKeys.Finished, userId: OtherUserId);
@@ -258,6 +271,7 @@ public class UserDataExporterTests
         AddFavourite(db, gameId: 24, userId: OtherUserId);
         AddHiddenPlatform(db, platformId: 23, userId: OtherUserId);
         AddSortPreference(db, ListStatusKeys.Finished, ListSortKeys.Title, userId: OtherUserId);
+        AddListName(db, ListStatusKeys.Dropped, "Nope", userId: OtherUserId);
 
         var export = await NewExporter(db).ExportAsync(UserId, default);
 
@@ -278,6 +292,7 @@ public class UserDataExporterTests
         Assert.Equal([14], export.Favourites.Select(f => f.GameId));
         Assert.Equal([13], export.HiddenPlatformIds);
         Assert.Equal([ListStatusKeys.Playing], export.ListSortPreferences.Select(p => p.Status));
+        Assert.Equal([ListStatusKeys.Backlog], export.ListNames.Select(n => n.Status));
     }
 
     [Fact]
@@ -300,6 +315,23 @@ public class UserDataExporterTests
         Assert.Empty(export.Favourites);
         Assert.Empty(export.HiddenPlatformIds);
         Assert.Empty(export.ListSortPreferences);
+        Assert.Empty(export.ListNames);
+    }
+
+    [Fact]
+    public async Task ExportAsync_ListNames_CarryTheStatusKeyAndTheName()
+    {
+        using var db = NewDb();
+        AddAccount(db, UserId, "mine@test.local");
+        AddListName(db, ListStatusKeys.Finished, "Beaten");
+        AddListName(db, ListStatusKeys.Backlog, "Pile of Shame");
+
+        var export = await NewExporter(db).ExportAsync(UserId, default);
+
+        // Lifecycle order, as the lists read in the UI.
+        Assert.Equal(
+            [(ListStatusKeys.Backlog, "Pile of Shame"), (ListStatusKeys.Finished, "Beaten")],
+            export.ListNames.Select(n => (n.Status, n.DisplayName)));
     }
 
     [Fact]

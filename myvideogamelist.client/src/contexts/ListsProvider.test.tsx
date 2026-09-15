@@ -1132,3 +1132,186 @@ describe("the entry's own fields", () => {
         expect(calls.some(c => c.url === '/api/entries/1/ownership')).toBe(false);
     });
 });
+
+describe('list names', () => {
+    /**
+     * The preferences read carries the names; the names write answers with what it stored. Every
+     * other request is a 204, so a stray one is visible in `calls` rather than failing the render.
+     */
+    function namesStub(options: {
+        names?: Record<string, string>;
+        /** The preferences read fails, so the names never arrive. */
+        preferencesFail?: boolean;
+        /** How the names write answers. Defaults to storing what was sent. */
+        save?: { status: number; body?: unknown } | 'reject' | 'hold';
+    } = {}) {
+        const calls: Recorded[] = [];
+        let settle!: (response: Response) => void;
+
+        vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+            const url = String(input);
+            const method = init?.method ?? 'GET';
+            const body = init?.body ? JSON.parse(String(init.body)) : undefined;
+            calls.push({ method, url, body });
+
+            if (method === 'GET' && url === '/api/lists') {
+                return Promise.resolve(new Response(JSON.stringify({ lists: { playing: [CELESTE] } }), { status: 200 }));
+            }
+            if (method === 'GET' && url === '/api/user/list-preferences') {
+                return Promise.resolve(options.preferencesFail
+                    ? new Response('nope', { status: 500 })
+                    : new Response(JSON.stringify({ view: 'tiles', sorts: {}, names: options.names ?? {} }), { status: 200 }));
+            }
+            if (method === 'PUT' && url === '/api/user/list-names') {
+                if (options.save === 'reject') return Promise.reject(new TypeError('Failed to fetch'));
+                if (options.save === 'hold') return new Promise<Response>(resolve => { settle = resolve; });
+                if (options.save) {
+                    return Promise.resolve(new Response(JSON.stringify(options.save.body ?? {}), { status: options.save.status }));
+                }
+                const stored: Record<string, string> = {};
+                for (const { status, name } of (body as { names: { status: string; name: string | null }[] }).names) {
+                    if (name !== null) stored[status] = name;
+                }
+                return Promise.resolve(new Response(JSON.stringify({ names: stored }), { status: 200 }));
+            }
+            return Promise.resolve(new Response(null, { status: 204 }));
+        }));
+
+        return {
+            calls,
+            release: (response: Response) => act(async () => {
+                settle(response);
+                await Promise.resolve();
+            }),
+        };
+    }
+
+    function NamesProbe() {
+        const lists = useLists();
+        const [outcome, setOutcome] = useState('');
+
+        return (
+            <div>
+                <span data-testid="names-status">{lists.namesStatus}</span>
+                <span data-testid="finished-name">{lists.nameFor('finished')}</span>
+                <span data-testid="backlog-name">{lists.nameFor('backlog')}</span>
+                <span data-testid="outcome">{outcome}</span>
+                <button onClick={() => void lists.saveListNames({ finished: 'Beaten' })
+                    .then(result => setOutcome(JSON.stringify(result)))}>
+                    rename finished
+                </button>
+            </div>
+        );
+    }
+
+    function mountNames() {
+        return render(<ListsProvider><NamesProbe /></ListsProvider>);
+    }
+
+    const settledNames = () =>
+        waitFor(() => expect(screen.getByTestId('names-status')).not.toHaveTextContent('loading'));
+
+    it('names each list as the user renamed it, and the rest by default', async () => {
+        namesStub({ names: { finished: 'Beaten' } });
+        mountNames();
+        await settledNames();
+
+        expect(screen.getByTestId('names-status')).toHaveTextContent('ready');
+        expect(screen.getByTestId('finished-name')).toHaveTextContent('Beaten');
+        expect(screen.getByTestId('backlog-name')).toHaveTextContent('Backlog');
+    });
+
+    it('says the names never arrived when the preferences fail, and labels by default meanwhile', async () => {
+        // The lists and every label are fine on the defaults; only a form that would save those
+        // defaults over the real names needs to know.
+        namesStub({ preferencesFail: true });
+        mountNames();
+        await settledNames();
+
+        expect(screen.getByTestId('names-status')).toHaveTextContent('failed');
+        expect(screen.getByTestId('finished-name')).toHaveTextContent('Finished');
+    });
+
+    it('sends all five lists, with a null for every one left at its default', async () => {
+        const { calls } = namesStub();
+        mountNames();
+        await settledNames();
+
+        await userEvent.click(screen.getByRole('button', { name: 'rename finished' }));
+
+        await waitFor(() => expect(screen.getByTestId('finished-name')).toHaveTextContent('Beaten'));
+        expect(calls.find(c => c.url === '/api/user/list-names')?.body).toEqual({
+            names: [
+                { status: 'backlog', name: null },
+                { status: 'playing', name: null },
+                { status: 'on_hold', name: null },
+                { status: 'finished', name: 'Beaten' },
+                { status: 'dropped', name: null },
+            ],
+        });
+        expect(screen.getByTestId('outcome')).toHaveTextContent('{"ok":true}');
+    });
+
+    it('adopts the names the server says it stored, not the ones it was sent', async () => {
+        namesStub({ save: { status: 200, body: { names: { finished: 'Beaten, finally' } } } });
+        mountNames();
+        await settledNames();
+
+        await userEvent.click(screen.getByRole('button', { name: 'rename finished' }));
+
+        await waitFor(() => expect(screen.getByTestId('finished-name')).toHaveTextContent('Beaten, finally'));
+    });
+
+    it('hands back a refusal per list and changes no name', async () => {
+        namesStub({
+            names: { backlog: 'Someday' },
+            save: {
+                status: 400,
+                body: { errors: { finished: ['Another of your lists is already called "Beaten".'] } },
+            },
+        });
+        mountNames();
+        await settledNames();
+
+        await userEvent.click(screen.getByRole('button', { name: 'rename finished' }));
+
+        await waitFor(() => expect(screen.getByTestId('outcome')).not.toBeEmptyDOMElement());
+        expect(JSON.parse(screen.getByTestId('outcome').textContent!)).toEqual({
+            ok: false,
+            fieldErrors: { finished: 'Another of your lists is already called "Beaten".' },
+            error: null,
+        });
+        expect(screen.getByTestId('finished-name')).toHaveTextContent('Finished');
+        expect(screen.getByTestId('backlog-name')).toHaveTextContent('Someday');
+    });
+
+    it('reports a request that never arrives as a failure about no one list', async () => {
+        namesStub({ save: 'reject' });
+        mountNames();
+        await settledNames();
+
+        await userEvent.click(screen.getByRole('button', { name: 'rename finished' }));
+
+        await waitFor(() => expect(screen.getByTestId('outcome')).toHaveTextContent('"ok":false'));
+        expect(JSON.parse(screen.getByTestId('outcome').textContent!).error).toMatch(/failed to save your list names/i);
+        expect(screen.getByTestId('finished-name')).toHaveTextContent('Finished');
+    });
+
+    it('does not write a save that lands after the account changed over the next account', async () => {
+        const { release } = namesStub({ save: 'hold' });
+        const view = mountNames();
+        await settledNames();
+
+        await userEvent.click(screen.getByRole('button', { name: 'rename finished' }));
+
+        auth.user = BOB;
+        await act(async () => {
+            view.rerender(<ListsProvider><NamesProbe /></ListsProvider>);
+        });
+        await settledNames();
+
+        await release(new Response(JSON.stringify({ names: { finished: 'Beaten' } }), { status: 200 }));
+
+        expect(screen.getByTestId('finished-name')).toHaveTextContent('Finished');
+    });
+});

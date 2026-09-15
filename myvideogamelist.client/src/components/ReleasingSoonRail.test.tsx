@@ -4,7 +4,7 @@ import { MemoryRouter } from 'react-router';
 import { ReleasingSoonRail } from '@/components/ReleasingSoonRail';
 import type { UseUpcomingGamesResult } from '@/hooks/useUpcomingGames';
 import { DEFAULT_SORT } from '@/lib/listSort';
-import { emptyLists, type ListEntryDto, type ListId } from '@/types/list';
+import { emptyLists, LIST_NAMES, type ListEntryDto, type ListId } from '@/types/list';
 import type { WishlistItemDto } from '@/types/wishlist';
 import { entry, game, platform } from '@/test/factories';
 
@@ -32,6 +32,10 @@ const listsValue = {
     setView: vi.fn(),
     sortFor: () => DEFAULT_SORT,
     setSort: vi.fn(),
+    names: {},
+    nameFor: (id: ListId) => LIST_NAMES[id],
+    namesStatus: 'ready',
+    saveListNames: vi.fn(async () => ({ ok: true as const })),
 };
 
 const wishlistValue = {

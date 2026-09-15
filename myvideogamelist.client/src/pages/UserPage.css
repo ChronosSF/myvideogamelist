@@ -301,6 +301,68 @@
     outline-offset: 2px;
 }
 
+/* ── List names ──────────────────────────────────────────────────────────── */
+
+.list-names-form {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    margin-top: 1rem;
+}
+
+.list-names-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+/* The default name labels its box, in the card label's colours, so a renamed list still says which
+   list it is. */
+.list-names-field label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #94a3b8;
+}
+
+[data-theme='light'] .list-names-field label {
+    color: #64748b;
+}
+
+/* The username box's look, without its flex growth: these stack rather than share a row. */
+.list-names-field input {
+    width: 100%;
+    padding: 0.4375rem 0.75rem;
+    background: #0f172a;
+    border: 1px solid rgba(71, 85, 105, 0.7);
+    border-radius: 0.5rem;
+    color: #f1f5f9;
+    font-size: 0.9375rem;
+    outline: none;
+}
+
+.list-names-field input:focus {
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+}
+
+.list-names-field input[aria-invalid='true'] {
+    border-color: #f87171;
+}
+
+[data-theme='light'] .list-names-field input {
+    background: #f8fafc;
+    border-color: rgba(148, 163, 184, 0.7);
+    color: #0f172a;
+}
+
+[data-theme='light'] .list-names-field input[aria-invalid='true'] {
+    border-color: #dc2626;
+}
+
+.list-names-field .user-pref-error {
+    margin: 0;
+}
+
 /* ── Platform preferences ────────────────────────────────────────────────── */
 
 .platform-prefs-grid {

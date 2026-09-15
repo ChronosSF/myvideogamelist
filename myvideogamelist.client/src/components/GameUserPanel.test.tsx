@@ -7,7 +7,7 @@ import { WishlistContext, type WishlistContextValue } from '@/contexts/WishlistC
 import { FavouritesContext, type FavouritesContextValue } from '@/contexts/FavouritesContext';
 import { DEFAULT_SORT } from '@/lib/listSort';
 import type { ProfileVisibility } from '@/types/auth';
-import type { ListId } from '@/types/list';
+import { LIST_NAMES, type ListId } from '@/types/list';
 import type { PlaythroughDto, ReviewDto } from '@/types/playthrough';
 import { entryDetail, game, platform, playthrough, review } from '@/test/factories';
 
@@ -38,6 +38,10 @@ function contextValue(overrides: Partial<ListsContextValue> = {}): ListsContextV
         setView: vi.fn(),
         sortFor: () => DEFAULT_SORT,
         setSort: vi.fn(),
+        names: {},
+        nameFor: (id: ListId) => LIST_NAMES[id],
+        namesStatus: 'ready',
+        saveListNames: vi.fn(async () => ({ ok: true as const })),
         ...overrides,
     };
 }
@@ -1266,5 +1270,18 @@ describe('GameUserPanel ownership and notes', () => {
 
         await waitFor(() => expect(notesBox()).toHaveValue(''));
         expect(screen.getByRole('button', { name: 'Borrowed' })).toHaveAttribute('aria-pressed', 'false');
+    });
+});
+
+describe('GameUserPanel and renamed lists', () => {
+    it('labels the list buttons with the names their owner gave them', async () => {
+        stubEntryFetch(null, 404);
+        const ctx = renderPanel({ nameFor: (id: ListId) => (id === 'backlog' ? 'Pile of Shame' : LIST_NAMES[id]) });
+        await settled();
+
+        await userEvent.click(screen.getByRole('button', { name: 'Pile of Shame' }));
+
+        // The label is the user's; what is sent is still the permanent key.
+        expect(ctx.addToList).toHaveBeenCalledWith('backlog', CELESTE);
     });
 });

@@ -74,6 +74,7 @@ public class UserDataExporter(ApplicationDbContext db, TimeProvider clock) : IUs
             { typeof(UserFavourite), new("favourites", ReadFavouritesAsync) },
             { typeof(UserHiddenPlatform), new("hiddenPlatformIds", ReadHiddenPlatformsAsync) },
             { typeof(UserListSortPreference), new("listSortPreferences", ReadListSortPreferencesAsync) },
+            { typeof(UserListSetting), new("listNames", ReadListNamesAsync) },
         };
 
     /// <summary>
@@ -110,10 +111,11 @@ public class UserDataExporter(ApplicationDbContext db, TimeProvider clock) : IUs
         public IReadOnlyList<FavouriteExportDto> Favourites { get; set; } = [];
         public IReadOnlyList<int> HiddenPlatformIds { get; set; } = [];
         public IReadOnlyList<ListSortExportDto> ListSortPreferences { get; set; } = [];
+        public IReadOnlyList<ListNameExportDto> ListNames { get; set; } = [];
 
         public UserDataExportDto ToDocument(DateTimeOffset exportedAt, AccountExportDto account) =>
             new(exportedAt, account, Entries, Events, Playthroughs, Reviews, Wishlist, Favourites,
-                HiddenPlatformIds, ListSortPreferences);
+                HiddenPlatformIds, ListSortPreferences, ListNames);
     }
 
     public async Task<UserDataExportDto> ExportAsync(string userId, CancellationToken cancellationToken)
@@ -313,6 +315,27 @@ public class UserDataExporter(ApplicationDbContext db, TimeProvider clock) : IUs
             .Select(p => new { Status = Key(draft, p.StatusId), p.SortKey, p.Descending })
             .Where(p => p.Status is not null)
             .Select(p => new ListSortExportDto(p.Status!, p.SortKey, p.Descending))
+            .ToList();
+    }
+
+    /// <remarks>
+    /// In lifecycle order, as the sort preferences are, and skipping a name whose status cannot be
+    /// resolved for the same reason: every key in the document is one something could import against.
+    /// </remarks>
+    private static async Task ReadListNamesAsync(
+        ApplicationDbContext db, ExportDraft draft, CancellationToken cancellationToken)
+    {
+        var rows = await db.UserListSettings
+            .AsNoTracking()
+            .Where(s => s.UserId == draft.UserId)
+            .OrderBy(s => s.StatusId)
+            .Select(s => new { s.StatusId, s.DisplayName })
+            .ToListAsync(cancellationToken);
+
+        draft.ListNames = rows
+            .Select(s => new { Status = Key(draft, s.StatusId), s.DisplayName })
+            .Where(s => s.Status is not null)
+            .Select(s => new ListNameExportDto(s.Status!, s.DisplayName))
             .ToList();
     }
 

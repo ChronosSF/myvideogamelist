@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import type { ProfileVisibility } from '@/types/auth';
 import type { GameDto } from '@/types/game';
-import { type ListId, type Ownership, LIST_IDS, LIST_NAMES, OWNERSHIPS, OWNERSHIP_NAMES } from '@/types/list';
+import { type ListId, type Ownership, LIST_IDS, OWNERSHIPS, OWNERSHIP_NAMES } from '@/types/list';
 import type {
     EntryDetailDto,
     PlaythroughDto,
@@ -52,6 +52,7 @@ interface GameUserPanelProps {
 export function GameUserPanel({ game, profileVisibility, onCommunityChange }: GameUserPanelProps) {
     const {
         isInList, getListFor, addToList, removeFromList, setScore, setOwnership, setNotes, deleteEntry, isPending,
+        nameFor,
     } = useLists();
     const wishlist = useWishlist();
     const favourites = useFavourites();
@@ -349,9 +350,9 @@ export function GameUserPanel({ game, profileVisibility, onCommunityChange }: Ga
                                 onClick={() => void handleListClick(listId)}
                                 disabled={pending}
                                 aria-pressed={active}
-                                title={active ? `Take out of ${LIST_NAMES[listId]}` : `Move to ${LIST_NAMES[listId]}`}
+                                title={active ? `Take out of ${nameFor(listId)}` : `Move to ${nameFor(listId)}`}
                             >
-                                {LIST_NAMES[listId]}
+                                {nameFor(listId)}
                             </button>
                         );
                     })}
