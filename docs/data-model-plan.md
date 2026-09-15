@@ -283,7 +283,7 @@ Order by what is irrecoverable, then by what unblocks the most.
    statuses export as their `Key` rather than their seeded id, because the ids mean nothing outside
    this database; and the free/paid line had to be drawn explicitly, because `ROADMAP.md` listed
    export as Tier 1 *and* as paid-only. Portability is a right and stays free; the paid export is a
-   nicer format on top. No UI yet — that is a follow-up on the profile page.
+   nicer format on top. The profile page's two buttons followed.
 5. **`CachedGames`**, before public profiles and any SEO-bearing page, because those have to
    render without a live IGDB call.
 6. **Everything else is additive** and can follow its own feature.

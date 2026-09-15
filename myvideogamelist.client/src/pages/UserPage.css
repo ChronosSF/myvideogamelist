@@ -175,6 +175,34 @@
     padding-bottom: 0.5625rem;
 }
 
+/* A block button that follows a hint rather than a grid, which brings no margin of its own. */
+.user-card-action {
+    margin-top: 0.875rem;
+}
+
+/* The outline treatment every other button in these cards has, in red. The solid red is kept for
+   the dialog's own button, which is the one that actually deletes. */
+.user-btn-danger {
+    background: rgba(239, 68, 68, 0.1);
+    color: #fca5a5;
+    border-color: rgba(239, 68, 68, 0.35);
+}
+
+.user-btn-danger:hover:not(:disabled) {
+    background: rgba(239, 68, 68, 0.2);
+    border-color: rgba(239, 68, 68, 0.55);
+}
+
+[data-theme='light'] .user-btn-danger {
+    background: rgba(239, 68, 68, 0.06);
+    color: #b91c1c;
+    border-color: rgba(239, 68, 68, 0.4);
+}
+
+[data-theme='light'] .user-btn-danger:hover:not(:disabled) {
+    background: rgba(239, 68, 68, 0.12);
+}
+
 .user-logout-btn {
     width: 100%;
     padding: 0.6875rem 1rem;

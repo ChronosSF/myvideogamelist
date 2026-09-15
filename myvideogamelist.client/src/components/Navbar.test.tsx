@@ -23,6 +23,7 @@ const auth: AuthContextValue = {
     updateTheme: vi.fn(async () => {}),
     updateUserName: vi.fn(async () => {}),
     updateProfileVisibility: vi.fn(async () => {}),
+    deleteAccount: vi.fn(async () => {}),
 };
 
 vi.mock('@/hooks/useAuth', () => ({ useAuth: () => auth }));

@@ -26,6 +26,7 @@ const auth: AuthContextValue = {
     updateTheme: vi.fn(async () => {}),
     updateUserName: vi.fn(async () => {}),
     updateProfileVisibility: vi.fn(async () => {}),
+    deleteAccount: vi.fn(async () => {}),
 };
 
 const lists: ListsContextValue = {

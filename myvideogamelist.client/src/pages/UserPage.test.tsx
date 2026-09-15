@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { UserPage } from '@/pages/UserPage';
@@ -25,6 +25,7 @@ const auth: AuthContextValue = {
     updateTheme: vi.fn(async () => {}),
     updateUserName: vi.fn(async () => {}),
     updateProfileVisibility: vi.fn(async () => {}),
+    deleteAccount: vi.fn(async () => {}),
 };
 
 vi.mock('@/hooks/useAuth', () => ({ useAuth: () => auth }));
@@ -182,6 +183,53 @@ describe('UserPage platform preferences', () => {
 
         expect(await screen.findByRole('alert')).toHaveTextContent(/failed to save/i);
         expect(screen.getByRole('checkbox', { name: 'PC' })).not.toBeChecked();
+    });
+});
+
+describe('UserPage account deletion', () => {
+    beforeEach(() => {
+        authAnswered(userProfile());
+        vi.mocked(auth.deleteAccount).mockReset();
+    });
+
+    /**
+     * Deletes through the dialog, as a user would. The confirming button is found inside the dialog,
+     * because the card's own button that opened it has the same name.
+     */
+    async function deleteThroughDialog(actor: ReturnType<typeof userEvent.setup>) {
+        await actor.click(screen.getByRole('button', { name: 'Delete my account' }));
+        const dialog = screen.getByRole('dialog', { name: 'Delete your account?' });
+        await actor.type(within(dialog).getByLabelText('Password'), 'Passw0rd1');
+        await actor.click(within(dialog).getByRole('button', { name: 'Delete my account' }));
+    }
+
+    it('says the account is gone rather than asking the user to sign in', async () => {
+        // The provider signs the user out as part of deleting them. Without the page knowing why,
+        // the render that follows would ask somebody who has just deleted their account to sign in.
+        const actor = userEvent.setup();
+        stubFetch();
+        vi.mocked(auth.deleteAccount).mockImplementation(async () => { auth.user = null; });
+        const view = renderPage();
+
+        await deleteThroughDialog(actor);
+        await waitFor(() => expect(auth.deleteAccount).toHaveBeenCalledWith('Passw0rd1'));
+        view.rerender(<MemoryRouter><UserPage /></MemoryRouter>);
+
+        expect(await screen.findByText('Your account has been deleted.')).toBeInTheDocument();
+        expect(screen.queryByText(/sign in to see your profile/i)).not.toBeInTheDocument();
+    });
+
+    it('keeps the profile when the deletion is refused', async () => {
+        const actor = userEvent.setup();
+        stubFetch();
+        vi.mocked(auth.deleteAccount).mockRejectedValue(new Error('Password is incorrect.'));
+        renderPage();
+
+        await deleteThroughDialog(actor);
+
+        expect(await screen.findByText('Password is incorrect.')).toBeInTheDocument();
+        expect(screen.getByRole('dialog', { name: 'Delete your account?' })).toBeInTheDocument();
+        expect(screen.queryByText('Your account has been deleted.')).not.toBeInTheDocument();
     });
 });
 

@@ -124,6 +124,108 @@
     margin-bottom: 1rem;
 }
 
+/* The dark theme's pink is a pale text on a pale panel in the light one. */
+[data-theme='light'] .dialog-error {
+    color: #b91c1c;
+}
+
+/* ── Confirmation dialogs ────────────────────────────────────────────────── */
+
+.dialog-text {
+    display: grid;
+    gap: 0.625rem;
+    margin-bottom: 1.25rem;
+    font-size: 0.9375rem;
+    line-height: 1.55;
+    color: #cbd5e1;
+}
+
+[data-theme='light'] .dialog-text {
+    color: #334155;
+}
+
+.dialog-text strong {
+    color: #f1f5f9;
+    overflow-wrap: anywhere;
+}
+
+[data-theme='light'] .dialog-text strong {
+    color: #0f172a;
+}
+
+/* An offer beside the decision rather than part of it, so it wraps under its prompt on a phone. */
+.dialog-export {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem 1rem;
+    margin-bottom: 1.25rem;
+    padding: 0.75rem 0.875rem;
+    border: 1px dashed rgba(71, 85, 105, 0.7);
+    border-radius: 0.5rem;
+    font-size: 0.875rem;
+    color: #94a3b8;
+}
+
+[data-theme='light'] .dialog-export {
+    border-color: #cbd5e1;
+    color: #475569;
+}
+
+.dialog-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.75rem;
+}
+
+.dialog-btn-secondary,
+.dialog-btn-danger {
+    padding: 0.5625rem 1rem;
+    border-radius: 0.5rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+}
+
+.dialog-btn-secondary:disabled,
+.dialog-btn-danger:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.dialog-btn-secondary {
+    background: transparent;
+    color: #e2e8f0;
+    border: 1px solid rgba(71, 85, 105, 0.8);
+}
+
+.dialog-btn-secondary:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.06);
+}
+
+[data-theme='light'] .dialog-btn-secondary {
+    color: #0f172a;
+    border-color: #cbd5e1;
+}
+
+[data-theme='light'] .dialog-btn-secondary:hover:not(:disabled) {
+    background: #f1f5f9;
+}
+
+/* A solid fill, unlike every other red on the site, because this is the one that cannot be undone. */
+.dialog-btn-danger {
+    background: #dc2626;
+    color: #ffffff;
+    border: 1px solid #dc2626;
+}
+
+.dialog-btn-danger:hover:not(:disabled) {
+    background: #b91c1c;
+    border-color: #b91c1c;
+}
+
 .dialog-btn-primary {
     width: 100%;
     padding: 0.6875rem 1rem;
