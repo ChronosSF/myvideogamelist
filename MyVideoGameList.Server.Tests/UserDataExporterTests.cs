@@ -188,6 +188,18 @@ public class UserDataExporterTests
         db.SaveChanges();
     }
 
+    private static void AddFavourite(
+        ApplicationDbContext db, int gameId, DateTimeOffset? at = null, string userId = UserId)
+    {
+        db.UserFavourites.Add(new UserFavourite
+        {
+            UserId = userId,
+            GameId = gameId,
+            AddedAt = at ?? Now
+        });
+        db.SaveChanges();
+    }
+
     private static void AddHiddenPlatform(
         ApplicationDbContext db, int platformId, string userId = UserId)
     {
@@ -234,6 +246,7 @@ public class UserDataExporterTests
         AddPlaythrough(db, gameId: 11);
         AddReview(db, gameId: 11);
         AddWishlistItem(db, gameId: 12);
+        AddFavourite(db, gameId: 14);
         AddHiddenPlatform(db, platformId: 13);
         AddSortPreference(db, ListStatusKeys.Playing, ListSortKeys.Score);
 
@@ -242,6 +255,7 @@ public class UserDataExporterTests
         AddPlaythrough(db, gameId: 21, userId: OtherUserId);
         AddReview(db, gameId: 21, body: "Theirs.", userId: OtherUserId);
         AddWishlistItem(db, gameId: 22, userId: OtherUserId);
+        AddFavourite(db, gameId: 24, userId: OtherUserId);
         AddHiddenPlatform(db, platformId: 23, userId: OtherUserId);
         AddSortPreference(db, ListStatusKeys.Finished, ListSortKeys.Title, userId: OtherUserId);
 
@@ -261,6 +275,7 @@ public class UserDataExporterTests
         Assert.Equal([11], export.Playthroughs.Select(p => p.GameId));
         Assert.Equal([11], export.Reviews.Select(r => r.GameId));
         Assert.Equal([12], export.Wishlist.Select(w => w.GameId));
+        Assert.Equal([14], export.Favourites.Select(f => f.GameId));
         Assert.Equal([13], export.HiddenPlatformIds);
         Assert.Equal([ListStatusKeys.Playing], export.ListSortPreferences.Select(p => p.Status));
     }
@@ -282,8 +297,26 @@ public class UserDataExporterTests
         Assert.Empty(export.Playthroughs);
         Assert.Empty(export.Reviews);
         Assert.Empty(export.Wishlist);
+        Assert.Empty(export.Favourites);
         Assert.Empty(export.HiddenPlatformIds);
         Assert.Empty(export.ListSortPreferences);
+    }
+
+    [Fact]
+    public async Task ExportAsync_Favourites_AreOrderedByWhenTheyWereMadeFavourites()
+    {
+        // Oldest first like every other section, so two exports of unchanged data are identical —
+        // not newest first as the profile shows them, which is a presentation choice.
+        using var db = NewDb();
+        AddAccount(db, UserId, "mine@test.local");
+
+        AddFavourite(db, gameId: 11, at: Now.AddDays(-1));
+        AddFavourite(db, gameId: 12, at: Now.AddDays(-30));
+
+        var export = await NewExporter(db).ExportAsync(UserId, default);
+
+        Assert.Equal([12, 11], export.Favourites.Select(f => f.GameId));
+        Assert.Equal(Now.AddDays(-30), export.Favourites[0].AddedAt);
     }
 
     [Fact]

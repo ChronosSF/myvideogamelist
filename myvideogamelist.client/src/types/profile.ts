@@ -1,4 +1,4 @@
-import type { GameDto } from './game';
+import type { GameDto, GameRefDto } from './game';
 import type { ActivityMonth, LibraryStats, ScoreStats } from './stats';
 
 /**
@@ -18,6 +18,17 @@ export interface PublicProfile {
     playtime: PublicPlaytime;
     /** How many public reviews they have written, all pages. */
     reviews: number;
+    /**
+     * How many favourites they have. Here as well as on the favourites request, because that request
+     * needs IGDB and can fail while this one does not — see `docs/decisions/0029-*`.
+     */
+    favourites: number;
+}
+
+/** Somebody's favourite games, mirroring `PublicFavouritesDto`. Most recent first. */
+export interface PublicFavourites {
+    userName: string;
+    games: GameRefDto[];
 }
 
 export interface PublicActivity {

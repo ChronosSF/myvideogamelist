@@ -102,6 +102,13 @@ ROADMAP.md                      Forward-looking plan
   *and* in a list. `AddedAt` is its entire history — do not reach for `UserGameEvents`, and do not
   add a foreign key to `UserGameEntries`, because a wishlisted game usually has no entry at all.
 
+- **Favourites are a second axis on the wishlist's code, so fix either one in the shared place.**
+  `UserFavourites` has the wishlist's shape, and both write through `GameAxisStore` on the server and
+  run on `useGameAxis` on the client — a race guard or a session stamp added to one provider by hand
+  is exactly the drift ADR 0022 records. Each provider keeps its own context and pending set. A
+  favourite is marked with a rosette, never a star, and is published on a public profile where the
+  wishlist shows only its size. See `docs/decisions/0029-*`.
+
 - **`UserName` is the public handle, not the email — and login had to be fixed for it.**
   `SignInManager.PasswordSignInAsync(string, …)` resolves its first argument as a *username*, which
   worked only while registration set both columns to the address. `AuthController` now looks the

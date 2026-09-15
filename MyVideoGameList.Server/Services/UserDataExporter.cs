@@ -71,6 +71,7 @@ public class UserDataExporter(ApplicationDbContext db, TimeProvider clock) : IUs
             { typeof(UserGamePlaythrough), new("playthroughs", ReadPlaythroughsAsync) },
             { typeof(Review), new("reviews", ReadReviewsAsync) },
             { typeof(UserWishlistItem), new("wishlist", ReadWishlistAsync) },
+            { typeof(UserFavourite), new("favourites", ReadFavouritesAsync) },
             { typeof(UserHiddenPlatform), new("hiddenPlatformIds", ReadHiddenPlatformsAsync) },
             { typeof(UserListSortPreference), new("listSortPreferences", ReadListSortPreferencesAsync) },
         };
@@ -106,11 +107,12 @@ public class UserDataExporter(ApplicationDbContext db, TimeProvider clock) : IUs
         public IReadOnlyList<PlaythroughExportDto> Playthroughs { get; set; } = [];
         public IReadOnlyList<ReviewExportDto> Reviews { get; set; } = [];
         public IReadOnlyList<WishlistExportDto> Wishlist { get; set; } = [];
+        public IReadOnlyList<FavouriteExportDto> Favourites { get; set; } = [];
         public IReadOnlyList<int> HiddenPlatformIds { get; set; } = [];
         public IReadOnlyList<ListSortExportDto> ListSortPreferences { get; set; } = [];
 
         public UserDataExportDto ToDocument(DateTimeOffset exportedAt, AccountExportDto account) =>
-            new(exportedAt, account, Entries, Events, Playthroughs, Reviews, Wishlist,
+            new(exportedAt, account, Entries, Events, Playthroughs, Reviews, Wishlist, Favourites,
                 HiddenPlatformIds, ListSortPreferences);
     }
 
@@ -257,6 +259,18 @@ public class UserDataExporter(ApplicationDbContext db, TimeProvider clock) : IUs
             .OrderBy(w => w.AddedAt)
             .ThenBy(w => w.GameId)
             .Select(w => new WishlistExportDto(w.GameId, w.AddedAt))
+            .ToListAsync(cancellationToken);
+    }
+
+    private static async Task ReadFavouritesAsync(
+        ApplicationDbContext db, ExportDraft draft, CancellationToken cancellationToken)
+    {
+        draft.Favourites = await db.UserFavourites
+            .AsNoTracking()
+            .Where(f => f.UserId == draft.UserId)
+            .OrderBy(f => f.AddedAt)
+            .ThenBy(f => f.GameId)
+            .Select(f => new FavouriteExportDto(f.GameId, f.AddedAt))
             .ToListAsync(cancellationToken);
     }
 

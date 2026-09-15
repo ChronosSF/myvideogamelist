@@ -38,6 +38,11 @@ vi.mock('@/components/ProfileStats', () => ({
     ProfileStats: ({ userId }: { userId: string }) => <div>tracking for {userId}</div>,
 }));
 
+/** Likewise the favourites, which read a provider this page does not mount. */
+vi.mock('@/components/FavouritesShowcase', () => ({
+    FavouritesShowcase: () => <div>favourites</div>,
+}));
+
 type PlatformsAnswer = PlatformDto[] | 'fail';
 type HiddenAnswer = number[] | 'fail';
 

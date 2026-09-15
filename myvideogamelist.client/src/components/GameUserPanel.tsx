@@ -11,6 +11,7 @@ import type {
 } from '@/types/playthrough';
 import { useLists } from '@/hooks/useLists';
 import { useWishlist } from '@/hooks/useWishlist';
+import { useFavourites } from '@/hooks/useFavourites';
 import { ScoreInput } from '@/components/ScoreInput';
 import { PlaythroughForm } from '@/components/PlaythroughForm';
 import { PlaythroughList } from '@/components/PlaythroughList';
@@ -50,6 +51,7 @@ interface GameUserPanelProps {
 export function GameUserPanel({ game, profileVisibility, onCommunityChange }: GameUserPanelProps) {
     const { isInList, getListFor, addToList, removeFromList, setScore, deleteEntry, isPending } = useLists();
     const wishlist = useWishlist();
+    const favourites = useFavourites();
 
     // The provider only knows about games that are in a list. A game that was scored and then
     // taken out of every list still has an entry, so the panel asks for it directly — and that
@@ -91,6 +93,7 @@ export function GameUserPanel({ game, profileVisibility, onCommunityChange }: Ga
     const currentList = getListFor(game.id);
     const pending = isPending(game.id);
     const wishlisted = wishlist.isWishlisted(game.id);
+    const favourite = favourites.isFavourite(game.id);
 
     useEffect(() => {
         const controller = new AbortController();
@@ -258,6 +261,11 @@ export function GameUserPanel({ game, profileVisibility, onCommunityChange }: Ga
         else await wishlist.add(game);
     };
 
+    const handleFavouriteToggle = async () => {
+        if (favourite) await favourites.remove(game.id);
+        else await favourites.add(game);
+    };
+
     const handleListClick = async (listId: ListId) => {
         if (pending) return;
         if (isInList(listId, game.id)) await removeFromList(listId, game.id);
@@ -321,6 +329,50 @@ export function GameUserPanel({ game, profileVisibility, onCommunityChange }: Ga
                     whole-page condition, and this panel is about one game. */}
                 {wishlist.mutationError && (
                     <p className="game-user-panel-hint" role="alert">{wishlist.mutationError}</p>
+                )}
+            </div>
+
+            {/* A third axis, beside the wishlist rather than folded into it: loving a game is not
+                wanting one, and a game can be both. A rosette, never a star — stars are the score
+                below and nothing else (ADR 0021). */}
+            <div className="game-user-panel-section">
+                <p className="game-user-panel-label">Favourite</p>
+                <button
+                    type="button"
+                    className={`game-user-panel-favourite${favourite ? ' active' : ''}`}
+                    onClick={() => void handleFavouriteToggle()}
+                    disabled={favourites.isPending(game.id)}
+                    aria-pressed={favourite}
+                >
+                    <svg
+                        fill={favourite ? 'currentColor' : 'none'}
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                        aria-hidden="true"
+                    >
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15a6 6 0 100-12 6 6 0 000 12zM8.2 13.7L7 21l5-3 5 3-1.2-7.3" />
+                    </svg>
+                    {favourite ? 'One of your favourites' : 'Add to favourites'}
+                </button>
+                {/* Where a favourite shows is the question worth answering here, and the answer
+                    depends on the one setting that decides it — as the review form's does. */}
+                <p className="game-user-panel-hint">
+                    {profileVisibility === 'public'
+                        ? 'Favourites are shown on your public profile.'
+                        : 'Shown on your own profile page. Your profile is private, so nobody else sees them.'}
+                </p>
+                {/* Unlike the wishlist, favourites have no page of their own to report a failed
+                    load and offer a retry, so the one control that is stuck says why. */}
+                {favourites.error && (
+                    <p className="game-user-panel-hint" role="alert">
+                        Your favourites could not be loaded, so this cannot be changed just now.{' '}
+                        <button type="button" className="game-user-panel-retry" onClick={favourites.reload}>
+                            Try again
+                        </button>
+                    </p>
+                )}
+                {favourites.mutationError && (
+                    <p className="game-user-panel-hint" role="alert">{favourites.mutationError}</p>
                 )}
             </div>
 

@@ -34,6 +34,7 @@ public record UserDataExportDto(
     IReadOnlyList<PlaythroughExportDto> Playthroughs,
     IReadOnlyList<ReviewExportDto> Reviews,
     IReadOnlyList<WishlistExportDto> Wishlist,
+    IReadOnlyList<FavouriteExportDto> Favourites,
     IReadOnlyList<int> HiddenPlatformIds,
     IReadOnlyList<ListSortExportDto> ListSortPreferences);
 
@@ -146,6 +147,12 @@ public record ReviewExportDto(
 /// its own and writes no events (ADR 0022).
 /// </summary>
 public record WishlistExportDto(int GameId, DateTimeOffset AddedAt);
+
+/// <summary>
+/// One favourite game. Another axis like the wishlist, so <c>AddedAt</c> is its entire history too
+/// (ADR 0029).
+/// </summary>
+public record FavouriteExportDto(int GameId, DateTimeOffset AddedAt);
 
 /// <summary>
 /// How the user has chosen to sort one status list. Only the lists they actually re-sorted have a

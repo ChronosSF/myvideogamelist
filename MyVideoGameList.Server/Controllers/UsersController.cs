@@ -61,4 +61,20 @@ public class UsersController(IPublicProfileService profiles) : ControllerBase
         var reviews = await profiles.GetReviewsAsync(userName, page, cancellationToken);
         return reviews is null ? NotFound() : Ok(reviews);
     }
+
+    /// <summary>
+    /// The games that user has made favourites, most recent first.
+    /// </summary>
+    /// <remarks>
+    /// Not paged. A showcase is read as a whole, and the profile page renders it on the server in one
+    /// pass. The count on the profile document is what decides whether the section appears at all,
+    /// which is why it is there and not only here: this is the half that fails when IGDB does.
+    /// </remarks>
+    [HttpGet("{userName}/favourites")]
+    public async Task<ActionResult<PublicFavouritesDto>> GetFavourites(
+        string userName, CancellationToken cancellationToken)
+    {
+        var favourites = await profiles.GetFavouritesAsync(userName, cancellationToken);
+        return favourites is null ? NotFound() : Ok(favourites);
+    }
 }

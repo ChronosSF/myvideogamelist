@@ -52,6 +52,11 @@ public class PublicProfileService(
                 r => r.UserId == user.Id && r.Visibility == ReviewVisibility.Public,
                 cancellationToken);
 
+        // Nor about favourites, which are an axis of their own rather than a figure about tracking.
+        var favourites = await db.UserFavourites
+            .AsNoTracking()
+            .CountAsync(f => f.UserId == user.Id, cancellationToken);
+
         // Copied across field by field on purpose — see PublicProfileDto for why this is not a
         // cast, a mapper or a subset attribute.
         return new PublicProfileDto(
@@ -67,7 +72,40 @@ public class PublicProfileService(
                 figures.Playtime.Playthroughs,
                 figures.Playtime.TotalMinutes,
                 figures.Playtime.WithHours),
-            Reviews: reviews);
+            Reviews: reviews,
+            Favourites: favourites);
+    }
+
+    public async Task<PublicFavouritesDto?> GetFavouritesAsync(
+        string userName, CancellationToken cancellationToken = default)
+    {
+        var user = await FindPublicAsync(userName, cancellationToken);
+        if (user is null) return null;
+
+        // Scoped on the favourite's own UserId, in the predicate — the same boundary the reviews
+        // draw — and in the order the owner's own page reads them: newest first, the game id
+        // breaking a tie so the row does not depend on what order the database returns.
+        var gameIds = await db.UserFavourites
+            .AsNoTracking()
+            .Where(f => f.UserId == user.Id)
+            .OrderByDescending(f => f.AddedAt)
+            .ThenBy(f => f.GameId)
+            .Select(f => f.GameId)
+            .ToListAsync(cancellationToken);
+
+        if (gameIds.Count == 0) return new PublicFavouritesDto(user.UserName!, []);
+
+        var games = (await igdbService.GetGamesByIdsAsync(gameIds, cancellationToken))
+            .ToDictionary(g => g.Id);
+
+        // A game IGDB no longer returns is dropped, as a review of one is. The profile's count still
+        // includes it, because the count is about what the user chose.
+        return new PublicFavouritesDto(
+            user.UserName!,
+            gameIds
+                .Where(games.ContainsKey)
+                .Select(id => new GameRefDto(id, games[id].Title, games[id].CoverImageUrl))
+                .ToList());
     }
 
     public async Task<PublicReviewsDto?> GetReviewsAsync(

@@ -221,6 +221,75 @@
     opacity: 0.55;
 }
 
+/*
+ * The wishlist's shape in violet: a third colour for a third kind of thing, and deliberately not the
+ * stars' yellow, because a favourite is not a score (ADR 0021).
+ */
+.game-user-panel-favourite {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.35rem 0.7rem;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: #cbd5e1;
+    background: rgba(51, 65, 85, 0.6);
+    border: 1px solid rgba(71, 85, 105, 0.7);
+    border-radius: 0.45rem;
+    cursor: pointer;
+    transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+
+[data-theme='light'] .game-user-panel-favourite {
+    color: #475569;
+    background: #ffffff;
+    border-color: #e2e8f0;
+}
+
+.game-user-panel-favourite svg {
+    width: 0.95rem;
+    height: 0.95rem;
+}
+
+.game-user-panel-favourite:hover:not(:disabled) {
+    color: #ffffff;
+    background: rgba(124, 58, 237, 0.75);
+    border-color: rgba(124, 58, 237, 0.9);
+}
+
+.game-user-panel-favourite.active {
+    color: #ffffff;
+    background: rgba(109, 40, 217, 0.9);
+    border-color: rgba(109, 40, 217, 0.9);
+}
+
+.game-user-panel-favourite:focus-visible,
+.game-user-panel-retry:focus-visible {
+    outline: 2px solid #3b82f6;
+    outline-offset: 2px;
+}
+
+.game-user-panel-favourite:disabled {
+    cursor: default;
+    opacity: 0.55;
+}
+
+.game-user-panel-retry {
+    padding: 0;
+    font: inherit;
+    font-weight: 600;
+    color: #60a5fa;
+    background: none;
+    border: none;
+    cursor: pointer;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+}
+
+[data-theme='light'] .game-user-panel-retry {
+    color: #1d4ed8;
+}
+
 /* ---- playthroughs ---- */
 
 .game-user-panel-playthroughs {

@@ -21,6 +21,7 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
     public DbSet<ListStatus> ListStatuses { get; set; }
     public DbSet<PlaythroughType> PlaythroughTypes { get; set; }
     public DbSet<Review> Reviews { get; set; }
+    public DbSet<UserFavourite> UserFavourites { get; set; }
     public DbSet<UserGameEntry> UserGameEntries { get; set; }
     public DbSet<UserGameEvent> UserGameEvents { get; set; }
     public DbSet<UserGamePlaythrough> UserGamePlaythroughs { get; set; }
@@ -108,6 +109,18 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
 
         // The wishlist has one order that matters — most recently wanted first.
         modelBuilder.Entity<UserWishlistItem>().HasIndex(w => new { w.UserId, w.AddedAt });
+
+        // UserFavourite: the wishlist's shape exactly, for the same reasons — an axis of its own, so
+        // no foreign key to the entry, and a composite PK that makes favouriting idempotent.
+        modelBuilder.Entity<UserFavourite>().HasKey(f => new { f.UserId, f.GameId });
+        modelBuilder.Entity<UserFavourite>()
+            .HasOne(f => f.User)
+            .WithMany()
+            .HasForeignKey(f => f.UserId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // Read in one order, newest first, by the owner and by their public profile alike.
+        modelBuilder.Entity<UserFavourite>().HasIndex(f => new { f.UserId, f.AddedAt });
 
         // UserHiddenPlatform: composite PK on (UserId, IgdbPlatformId); cascade delete when user is deleted
         modelBuilder.Entity<UserHiddenPlatform>().HasKey(hp => new { hp.UserId, hp.IgdbPlatformId });

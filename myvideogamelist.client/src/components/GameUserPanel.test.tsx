@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { GameUserPanel } from '@/components/GameUserPanel';
 import { ListsContext, type ListsContextValue } from '@/contexts/ListsContext';
 import { WishlistContext, type WishlistContextValue } from '@/contexts/WishlistContext';
+import { FavouritesContext, type FavouritesContextValue } from '@/contexts/FavouritesContext';
 import { DEFAULT_SORT } from '@/lib/listSort';
 import type { ProfileVisibility } from '@/types/auth';
 import type { ListId } from '@/types/list';
@@ -55,26 +56,46 @@ function wishlistValue(overrides: Partial<WishlistContextValue> = {}): WishlistC
     };
 }
 
+/** And the favourites are a third, with a third context. */
+function favouritesValue(overrides: Partial<FavouritesContextValue> = {}): FavouritesContextValue {
+    return {
+        items: [],
+        loading: false,
+        error: null,
+        mutationError: null,
+        isFavourite: () => false,
+        isPending: () => false,
+        add: vi.fn(async () => true),
+        remove: vi.fn(async () => true),
+        reload: vi.fn(),
+        ...overrides,
+    };
+}
+
 function renderPanel(
     overrides: Partial<ListsContextValue> = {},
     wishlistOverrides: Partial<WishlistContextValue> = {},
     profileVisibility: ProfileVisibility = 'private',
+    favouritesOverrides: Partial<FavouritesContextValue> = {},
 ) {
     const value = contextValue(overrides);
     const wishlist = wishlistValue(wishlistOverrides);
+    const favourites = favouritesValue(favouritesOverrides);
     const onCommunityChange = vi.fn();
     render(
         <ListsContext.Provider value={value}>
             <WishlistContext.Provider value={wishlist}>
-                <GameUserPanel
-                    game={CELESTE}
-                    profileVisibility={profileVisibility}
-                    onCommunityChange={onCommunityChange}
-                />
+                <FavouritesContext.Provider value={favourites}>
+                    <GameUserPanel
+                        game={CELESTE}
+                        profileVisibility={profileVisibility}
+                        onCommunityChange={onCommunityChange}
+                    />
+                </FavouritesContext.Provider>
             </WishlistContext.Provider>
         </ListsContext.Provider>,
     );
-    return { ...value, wishlist, onCommunityChange };
+    return { ...value, wishlist, favourites, onCommunityChange };
 }
 
 /**
@@ -589,6 +610,121 @@ describe('GameUserPanel wishlist', () => {
         await settled();
 
         expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    });
+});
+
+describe('GameUserPanel favourite', () => {
+    it('offers to make a favourite of a game that is not one', async () => {
+        stubEntryFetch(null, 404);
+        renderPanel();
+        await settled();
+
+        expect(screen.getByRole('button', { name: 'Add to favourites' }))
+            .toHaveAttribute('aria-pressed', 'false');
+    });
+
+    it('says so for a game that already is one', async () => {
+        stubEntryFetch(null, 404);
+        renderPanel({}, {}, 'private', { isFavourite: () => true });
+        await settled();
+
+        expect(screen.getByRole('button', { name: 'One of your favourites' }))
+            .toHaveAttribute('aria-pressed', 'true');
+    });
+
+    it('passes the whole game when adding, and the id when removing', async () => {
+        stubEntryFetch(null, 404);
+        const ctx = renderPanel();
+        await settled();
+
+        await userEvent.click(screen.getByRole('button', { name: 'Add to favourites' }));
+        expect(ctx.favourites.add).toHaveBeenCalledWith(CELESTE);
+        expect(ctx.favourites.remove).not.toHaveBeenCalled();
+    });
+
+    it('stops it being a favourite when clicked while it is one', async () => {
+        stubEntryFetch(null, 404);
+        const ctx = renderPanel({}, {}, 'private', { isFavourite: () => true });
+        await settled();
+
+        await userEvent.click(screen.getByRole('button', { name: 'One of your favourites' }));
+
+        expect(ctx.favourites.remove).toHaveBeenCalledWith(1);
+    });
+
+    it('is its own axis: a wishlisted, listed game can be a favourite too', async () => {
+        stubEntryFetch(null, 404);
+        const ctx = renderPanel(
+            { isInList: (id: ListId) => id === 'finished', getListFor: () => 'finished' },
+            { isWishlisted: () => true },
+            'private',
+            { isFavourite: () => true },
+        );
+        await settled();
+
+        expect(screen.getByRole('button', { name: 'Finished' })).toHaveAttribute('aria-pressed', 'true');
+        expect(screen.getByRole('button', { name: 'On your wishlist' })).toHaveAttribute('aria-pressed', 'true');
+        expect(screen.getByRole('button', { name: 'One of your favourites' })).toHaveAttribute('aria-pressed', 'true');
+        expect(ctx.wishlist.remove).not.toHaveBeenCalled();
+    });
+
+    it('is disabled while its own mutation is in flight', async () => {
+        stubEntryFetch(null, 404);
+        renderPanel({}, {}, 'private', { isPending: () => true });
+        await settled();
+
+        expect(screen.getByRole('button', { name: 'Add to favourites' })).toBeDisabled();
+    });
+
+    it('stays usable while the wishlist has a mutation in flight', async () => {
+        // Separate pending sets, so the two toggles beside each other never block one another.
+        stubEntryFetch(null, 404);
+        renderPanel({}, { isPending: () => true });
+        await settled();
+
+        expect(screen.getByRole('button', { name: 'Add to wishlist' })).toBeDisabled();
+        expect(screen.getByRole('button', { name: 'Add to favourites' })).toBeEnabled();
+    });
+
+    it('says the public profile shows favourites when it is public', async () => {
+        stubEntryFetch(null, 404);
+        renderPanel({}, {}, 'public');
+        await settled();
+
+        expect(screen.getByText(/favourites are shown on your public profile/i)).toBeInTheDocument();
+    });
+
+    it('says nobody else sees them while the profile is private', async () => {
+        stubEntryFetch(null, 404);
+        renderPanel({}, {}, 'private');
+        await settled();
+
+        expect(screen.getByText(/your profile is private, so nobody else sees them/i)).toBeInTheDocument();
+    });
+
+    it('explains a control stuck by a failed load, and offers a retry', async () => {
+        // Favourites have no page of their own to report this on, unlike the wishlist.
+        const actor = userEvent.setup();
+        stubEntryFetch(null, 404);
+        const ctx = renderPanel({}, {}, 'private', {
+            error: 'Failed to load your favourites (500)',
+            isPending: () => true,
+        });
+        await settled();
+
+        expect(screen.getByRole('alert')).toHaveTextContent(/favourites could not be loaded/i);
+        expect(screen.getByRole('button', { name: 'Add to favourites' })).toBeDisabled();
+
+        await actor.click(screen.getByRole('button', { name: 'Try again' }));
+        expect(ctx.favourites.reload).toHaveBeenCalled();
+    });
+
+    it('surfaces a failed toggle', async () => {
+        stubEntryFetch(null, 404);
+        renderPanel({}, {}, 'private', { mutationError: 'Failed to update your favourites. Please try again.' });
+        await settled();
+
+        expect(screen.getByRole('alert')).toHaveTextContent(/failed to update your favourites/i);
     });
 });
 

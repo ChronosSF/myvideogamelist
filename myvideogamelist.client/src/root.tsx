@@ -11,6 +11,7 @@ import type { Route } from './+types/root';
 import { AuthProvider } from '@/contexts/AuthProvider';
 import { ListsProvider } from '@/contexts/ListsProvider';
 import { WishlistProvider } from '@/contexts/WishlistProvider';
+import { FavouritesProvider } from '@/contexts/FavouritesProvider';
 import { Navbar } from '@/components/Navbar';
 import { PRIVATE_NO_STORE } from '@/lib/cache';
 import './index.css';
@@ -75,12 +76,14 @@ export default function Root() {
         <AuthProvider>
             <ListsProvider>
                 <WishlistProvider>
-                    <div className="app-root">
-                        <Navbar />
-                        <main className="flex-1">
-                            <Outlet />
-                        </main>
-                    </div>
+                    <FavouritesProvider>
+                        <div className="app-root">
+                            <Navbar />
+                            <main className="flex-1">
+                                <Outlet />
+                            </main>
+                        </div>
+                    </FavouritesProvider>
                 </WishlistProvider>
             </ListsProvider>
         </AuthProvider>

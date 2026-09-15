@@ -50,6 +50,7 @@
 }
 
 .user-page-account,
+.user-page-tracking,
 .user-page-prefs {
     display: flex;
     flex-direction: column;

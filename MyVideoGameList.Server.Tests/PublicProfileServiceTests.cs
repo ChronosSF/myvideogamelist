@@ -392,4 +392,109 @@ public class PublicProfileServiceTests
         await igdb.DidNotReceiveWithAnyArgs()
             .GetGamesByIdsAsync(Arg.Any<IEnumerable<int>>(), Arg.Any<CancellationToken>());
     }
+
+    // ── The favourites ────────────────────────────────────────────────────────────────
+
+    private static void AddFavourite(
+        ApplicationDbContext db, int gameId, string userId = UserId, DateTimeOffset? addedAt = null)
+    {
+        db.UserFavourites.Add(new UserFavourite
+        {
+            UserId = userId,
+            GameId = gameId,
+            AddedAt = addedAt ?? Now
+        });
+        db.SaveChanges();
+    }
+
+    [Fact]
+    public async Task GetProfileAsync_CountsTheirFavourites()
+    {
+        using var db = NewDb();
+        AddAccount(db, UserId, "alex");
+        AddAccount(db, OtherUserId, "sam");
+        AddFavourite(db, gameId: 11);
+        AddFavourite(db, gameId: 12);
+        AddFavourite(db, gameId: 21, userId: OtherUserId);
+
+        var profile = await NewService(db).GetProfileAsync("alex", default);
+
+        Assert.NotNull(profile);
+        Assert.Equal(2, profile.Favourites);
+    }
+
+    [Fact]
+    public async Task GetFavouritesAsync_PrivateProfile_ReturnsNull()
+    {
+        // The one gate favourites cross. There is no per-favourite visibility: a favourite is made to
+        // be shown, and a private profile shows nothing to anybody.
+        using var db = NewDb();
+        AddAccount(db, UserId, "alex", ProfileVisibility.Private);
+        AddFavourite(db, gameId: 11);
+
+        Assert.Null(await NewService(db, IgdbKnowing(Game(11, "One")))
+            .GetFavouritesAsync("alex", default));
+    }
+
+    [Fact]
+    public async Task GetFavouritesAsync_AnotherUsersFavourites_AreNeverReturned()
+    {
+        using var db = NewDb();
+        AddAccount(db, UserId, "alex");
+        AddAccount(db, OtherUserId, "sam");
+        AddFavourite(db, gameId: 11);
+        AddFavourite(db, gameId: 21, userId: OtherUserId);
+
+        var favourites = await NewService(db, IgdbKnowing(Game(11, "Mine"), Game(21, "Theirs")))
+            .GetFavouritesAsync("alex", default);
+
+        Assert.NotNull(favourites);
+        Assert.Equal(["Mine"], favourites.Games.Select(g => g.Name));
+    }
+
+    [Fact]
+    public async Task GetFavouritesAsync_MostRecentFirst_AsTheOwnerSeesThem()
+    {
+        using var db = NewDb();
+        AddAccount(db, UserId, "alex");
+        AddFavourite(db, gameId: 11, addedAt: Now.AddDays(-10));
+        AddFavourite(db, gameId: 12, addedAt: Now);
+        AddFavourite(db, gameId: 13, addedAt: Now.AddDays(-5));
+
+        var favourites = await NewService(db, IgdbKnowing(Game(11, "A"), Game(12, "B"), Game(13, "C")))
+            .GetFavouritesAsync("alex", default);
+
+        Assert.NotNull(favourites);
+        Assert.Equal([12, 13, 11], favourites.Games.Select(g => g.Id));
+    }
+
+    [Fact]
+    public async Task GetFavouritesAsync_GameIgdbNoLongerReturns_IsDropped()
+    {
+        using var db = NewDb();
+        AddAccount(db, UserId, "alex");
+        AddFavourite(db, gameId: 11);
+        AddFavourite(db, gameId: 12);
+
+        var favourites = await NewService(db, IgdbKnowing(Game(11, "Still known")))
+            .GetFavouritesAsync("alex", default);
+
+        Assert.NotNull(favourites);
+        Assert.Equal(["Still known"], favourites.Games.Select(g => g.Name));
+    }
+
+    [Fact]
+    public async Task GetFavouritesAsync_NoFavourites_MakesNoIgdbCall()
+    {
+        using var db = NewDb();
+        AddAccount(db, UserId, "alex");
+
+        var igdb = Substitute.For<IIgdbService>();
+        var favourites = await NewService(db, igdb).GetFavouritesAsync("alex", default);
+
+        Assert.NotNull(favourites);
+        Assert.Empty(favourites.Games);
+        await igdb.DidNotReceiveWithAnyArgs()
+            .GetGamesByIdsAsync(Arg.Any<IEnumerable<int>>(), Arg.Any<CancellationToken>());
+    }
 }
