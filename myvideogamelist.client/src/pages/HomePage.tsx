@@ -2,6 +2,7 @@ import { Link, data } from 'react-router';
 import { useAuth } from '@/hooks/useAuth';
 import { ContinuePlayingRail } from '@/components/ContinuePlayingRail';
 import { HomeStatsStrip } from '@/components/HomeStatsStrip';
+import { PlayNextPicker } from '@/components/PlayNextPicker';
 import { UpcomingTimeline } from '@/components/UpcomingTimeline';
 import { TrendingRail } from '@/components/TrendingRail';
 import { NewsCard } from '@/components/NewsCard';
@@ -120,6 +121,13 @@ function SignedInHero({ user }: { user: UserProfile }) {
                     Continue playing
                 </h2>
                 <ContinuePlayingRail />
+
+                {/* After the rail rather than before it: what you are playing, then what to play
+                    once that is done. Starting the pick moves it into the rail above. */}
+                <h2 className="text-lg font-semibold text-white light:text-slate-900 mt-8 mb-4">
+                    Play next
+                </h2>
+                <PlayNextPicker />
             </div>
         </section>
     );
