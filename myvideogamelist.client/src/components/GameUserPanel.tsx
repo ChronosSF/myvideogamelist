@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import type { ProfileVisibility } from '@/types/auth';
 import type { GameDto } from '@/types/game';
-import { type ListId, LIST_IDS, LIST_NAMES } from '@/types/list';
+import { type ListId, type Ownership, LIST_IDS, LIST_NAMES, OWNERSHIPS, OWNERSHIP_NAMES } from '@/types/list';
 import type {
     EntryDetailDto,
     PlaythroughDto,
@@ -16,6 +16,7 @@ import { ScoreInput } from '@/components/ScoreInput';
 import { PlaythroughForm } from '@/components/PlaythroughForm';
 import { PlaythroughList } from '@/components/PlaythroughList';
 import { ReviewForm } from '@/components/ReviewForm';
+import { EntryNotesForm } from '@/components/EntryNotesForm';
 import './GameUserPanel.css';
 
 interface GameUserPanelProps {
@@ -49,7 +50,9 @@ interface GameUserPanelProps {
  * the user editing it while it does.
  */
 export function GameUserPanel({ game, profileVisibility, onCommunityChange }: GameUserPanelProps) {
-    const { isInList, getListFor, addToList, removeFromList, setScore, deleteEntry, isPending } = useLists();
+    const {
+        isInList, getListFor, addToList, removeFromList, setScore, setOwnership, setNotes, deleteEntry, isPending,
+    } = useLists();
     const wishlist = useWishlist();
     const favourites = useFavourites();
 
@@ -57,6 +60,8 @@ export function GameUserPanel({ game, profileVisibility, onCommunityChange }: Ga
     // taken out of every list still has an entry, so the panel asks for it directly — and that
     // read carries the playthroughs too, because this panel shows them together.
     const [score, setLocalScore] = useState<number | null>(null);
+    const [ownership, setLocalOwnership] = useState<Ownership | null>(null);
+    const [notes, setLocalNotes] = useState<string | null>(null);
     const [playthroughs, setPlaythroughs] = useState<PlaythroughDto[]>([]);
     const [review, setReview] = useState<ReviewDto | null>(null);
     const [loaded, setLoaded] = useState(false);
@@ -70,6 +75,9 @@ export function GameUserPanel({ game, profileVisibility, onCommunityChange }: Ga
     const [savingReview, setSavingReview] = useState(false);
     const [reviewError, setReviewError] = useState<string | null>(null);
 
+    const [savingNotes, setSavingNotes] = useState(false);
+    const [notesError, setNotesError] = useState<string | null>(null);
+
     const [lastGameId, setLastGameId] = useState(game.id);
 
     // Reset when navigating straight from one game page to another. Adjusted during render
@@ -78,6 +86,8 @@ export function GameUserPanel({ game, profileVisibility, onCommunityChange }: Ga
     if (lastGameId !== game.id) {
         setLastGameId(game.id);
         setLocalScore(null);
+        setLocalOwnership(null);
+        setLocalNotes(null);
         setPlaythroughs([]);
         setReview(null);
         setLoaded(false);
@@ -88,8 +98,20 @@ export function GameUserPanel({ game, profileVisibility, onCommunityChange }: Ga
         setPlaythroughError(null);
         setSavingReview(false);
         setReviewError(null);
+        setSavingNotes(false);
+        setNotesError(null);
     }
 
+    // Which game the panel is showing now, for the two writes below to check once they come back.
+    // The page stays mounted when a link goes from one game to another, so a save that lands after
+    // that must not write the first game's value into the second game's panel. Read only in those
+    // continuations, never during render.
+    const shownGameId = useRef(game.id);
+    useEffect(() => {
+        shownGameId.current = game.id;
+    }, [game.id]);
+
+    const ownershipLabelId = useId();
     const currentList = getListFor(game.id);
     const pending = isPending(game.id);
     const wishlisted = wishlist.isWishlisted(game.id);
@@ -103,6 +125,8 @@ export function GameUserPanel({ game, profileVisibility, onCommunityChange }: Ga
             .then(detail => {
                 if (controller.signal.aborted) return;
                 setLocalScore(detail?.entry.score ?? null);
+                setLocalOwnership(detail?.ownership ?? null);
+                setLocalNotes(detail?.notes ?? null);
                 setPlaythroughs(detail?.playthroughs ?? []);
                 setReview(detail?.review ?? null);
                 setLoaded(true);
@@ -124,10 +148,39 @@ export function GameUserPanel({ game, profileVisibility, onCommunityChange }: Ga
         else setLocalScore(previous);
     };
 
+    /**
+     * Shown at once and put back if the save fails, as the score is. The provider takes the
+     * per-game lock, so no other write to this entry can be out at the same time.
+     */
+    const handleOwnership = async (next: Ownership | null) => {
+        const forGame = game.id;
+        const previous = ownership;
+        setLocalOwnership(next);
+
+        const saved = await setOwnership(forGame, next);
+        if (!saved && shownGameId.current === forGame) setLocalOwnership(previous);
+    };
+
+    /** Not optimistic: the box keeps what was typed until the server has it, as the review does. */
+    const handleNotesSave = async (next: string | null) => {
+        const forGame = game.id;
+        setSavingNotes(true);
+        setNotesError(null);
+
+        const saved = await setNotes(forGame, next);
+        if (shownGameId.current !== forGame) return;
+
+        if (saved) setLocalNotes(next);
+        else setNotesError('Could not save your notes. Please try again.');
+        setSavingNotes(false);
+    };
+
     const handleDelete = async () => {
         setConfirmingDelete(false);
         await deleteEntry(game.id);
         setLocalScore(null);
+        setLocalOwnership(null);
+        setLocalNotes(null);
 
         // The playthroughs and the review go with the entry — the composite foreign key cascades
         // both — so the panel must not go on showing what the server has just discarded.
@@ -272,8 +325,12 @@ export function GameUserPanel({ game, profileVisibility, onCommunityChange }: Ga
         else await addToList(listId, game);
     };
 
-    const hasData =
-        currentList !== null || score !== null || playthroughs.length > 0 || review !== null;
+    const hasData = currentList !== null
+        || score !== null
+        || ownership !== null
+        || notes !== null
+        || playthroughs.length > 0
+        || review !== null;
 
     return (
         <div className="game-user-panel">
@@ -393,6 +450,45 @@ export function GameUserPanel({ game, profileVisibility, onCommunityChange }: Ga
                 </div>
             </div>
 
+            {/* Toggles like the statuses above, so pressing the one that is on clears it — but a
+                colour of their own, because this is about the copy and not about the playing. */}
+            <div className="game-user-panel-section">
+                <p className="game-user-panel-label" id={ownershipLabelId}>How you have it</p>
+                <div className="game-user-panel-lists" role="group" aria-labelledby={ownershipLabelId}>
+                    {OWNERSHIPS.map(kind => {
+                        const active = ownership === kind;
+                        return (
+                            <button
+                                key={kind}
+                                type="button"
+                                className={`game-user-panel-list-btn game-user-panel-ownership-btn${active ? ' active' : ''}`}
+                                onClick={() => void handleOwnership(active ? null : kind)}
+                                disabled={!loaded || pending}
+                                aria-pressed={active}
+                                title={active ? 'Clear' : `Mark as ${OWNERSHIP_NAMES[kind].toLowerCase()}`}
+                            >
+                                {OWNERSHIP_NAMES[kind]}
+                            </button>
+                        );
+                    })}
+                </div>
+                <p className="game-user-panel-hint">
+                    {ownership === null
+                        ? 'Not recorded. Whether the copy is yours to keep; where you play it goes on a playthrough.'
+                        : 'Press it again to clear it.'}
+                </p>
+            </div>
+
+            <div className="game-user-panel-section">
+                <EntryNotesForm
+                    key={game.id}
+                    notes={notes}
+                    onSave={next => void handleNotesSave(next)}
+                    pending={!loaded || pending || savingNotes}
+                    error={notesError}
+                />
+            </div>
+
             <div className="game-user-panel-section">
                 <p className="game-user-panel-label">Playthroughs</p>
                 <PlaythroughList
@@ -431,8 +527,9 @@ export function GameUserPanel({ game, profileVisibility, onCommunityChange }: Ga
                     {confirmingDelete ? (
                         <>
                             <p className="game-user-panel-hint">
-                                Delete your score, list placement, playthroughs and review for
-                                this game? Your history of moving it between lists is kept.
+                                Delete your score, list placement, ownership, notes, playthroughs
+                                and review for this game? Your history of moving it between lists
+                                is kept.
                             </p>
                             <div className="game-user-panel-confirm">
                                 <button type="button" className="danger" onClick={() => void handleDelete()}>

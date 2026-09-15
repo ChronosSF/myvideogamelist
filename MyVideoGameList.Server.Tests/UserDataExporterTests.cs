@@ -336,6 +336,30 @@ public class UserDataExporterTests
     }
 
     [Fact]
+    public async Task ExportAsync_Entry_CarriesItsOwnershipAndNotes()
+    {
+        // The projection is written by hand, so a column added to the entry reaches the document
+        // only if somebody adds it there. This is the test that notices when they do not.
+        using var db = NewDb();
+        AddAccount(db, UserId, "mine@test.local");
+        db.UserGameEntries.Add(new UserGameEntry
+        {
+            UserId = UserId,
+            GameId = 11,
+            Ownership = OwnershipKinds.Subscription,
+            Notes = "Leaves the service in March.",
+            AddedAt = Now
+        });
+        db.SaveChanges();
+
+        var export = await NewExporter(db).ExportAsync(UserId, default);
+
+        var entry = Assert.Single(export.Entries);
+        Assert.Equal(OwnershipKinds.Subscription, entry.Ownership);
+        Assert.Equal("Leaves the service in March.", entry.Notes);
+    }
+
+    [Fact]
     public async Task ExportAsync_EntryInNoList_ExportsANullStatus()
     {
         // An entry with no status is a game the user has data about but is not tracking (ADR

@@ -1,6 +1,6 @@
 import { useEffect, useReducer, type ReactNode } from 'react';
 import type { GameDto } from '@/types/game';
-import { type ListId, type ListEntryDto, type ViewMode, LIST_IDS, emptyLists } from '@/types/list';
+import { type ListId, type ListEntryDto, type Ownership, type ViewMode, LIST_IDS, emptyLists } from '@/types/list';
 import { type SortState, DEFAULT_SORT } from '@/lib/listSort';
 import { useAuth } from '@/hooks/useAuth';
 import { ListsContext } from './ListsContext';
@@ -460,6 +460,52 @@ export function ListsProvider({ children }: { children: ReactNode }) {
         }
     };
 
+    /**
+     * Writes one of the entry's own fields — how the user has the game, or their notes on it.
+     *
+     * Under the per-game lock, because the row is the one a move or a score writes: with two
+     * requests out for one entry, a failure could be taken for the other's, and a delete racing a
+     * write could have the write recreate the row it just removed. Nothing optimistic happens here —
+     * no list shows either field — so the caller keeps the value on screen and reverts it on false.
+     */
+    const writeEntryField = async (
+        gameId: number,
+        field: 'ownership' | 'notes',
+        body: Record<string, unknown>,
+        failure: string,
+    ): Promise<boolean> => {
+        if (state.pending.has(gameId)) return false;
+        startPending(gameId);
+
+        try {
+            const res = await fetch(`/api/entries/${gameId}/${field}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify(body),
+            });
+
+            if (!res.ok) {
+                dispatch({ type: 'MUTATION_ERROR', session, error: failure });
+                return false;
+            }
+            dispatch({ type: 'CLEAR_MUTATION_ERROR', session });
+            return true;
+        } catch {
+            // A rejection is the unreachable-API case, which `!res.ok` never sees.
+            dispatch({ type: 'MUTATION_ERROR', session, error: failure });
+            return false;
+        } finally {
+            endPending(gameId);
+        }
+    };
+
+    const setOwnership = (gameId: number, ownership: Ownership | null): Promise<boolean> =>
+        writeEntryField(gameId, 'ownership', { ownership }, 'Failed to save how you have this game. Please try again.');
+
+    const setNotes = (gameId: number, notes: string | null): Promise<boolean> =>
+        writeEntryField(gameId, 'notes', { notes }, 'Failed to save your notes. Please try again.');
+
     const deleteEntry = async (gameId: number): Promise<void> => {
         if (state.pending.has(gameId)) return;
         startPending(gameId);
@@ -509,6 +555,8 @@ export function ListsProvider({ children }: { children: ReactNode }) {
             getListFor,
             scoreFor,
             setScore,
+            setOwnership,
+            setNotes,
             deleteEntry,
             view: state.view,
             setView,

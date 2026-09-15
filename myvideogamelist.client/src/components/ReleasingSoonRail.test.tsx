@@ -25,6 +25,8 @@ const listsValue = {
     getListFor: () => null,
     scoreFor: () => null,
     setScore: vi.fn(async () => true),
+    setOwnership: vi.fn(async () => true),
+    setNotes: vi.fn(async () => true),
     deleteEntry: vi.fn(async () => {}),
     view: 'tiles' as const,
     setView: vi.fn(),

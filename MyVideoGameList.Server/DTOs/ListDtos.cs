@@ -32,6 +32,24 @@ public record SetListEntryDto(
 public record SetScoreDto([Range(1, 10)] short? Score);
 
 /// <summary>
+/// Sets or clears how the user has the game. A null clears it, and is allowed by name: without
+/// <c>null</c> in the list, <see cref="AllowedValuesAttribute"/> refuses it.
+/// </summary>
+public record SetOwnershipDto(
+    [AllowedValues(
+        null,
+        OwnershipKinds.Owned,
+        OwnershipKinds.Subscription,
+        OwnershipKinds.Borrowed)]
+    string? Ownership);
+
+/// <summary>
+/// Replaces the user's notes on the game. Null, empty and whitespace all clear them; the service
+/// trims, as it does a playthrough's notes.
+/// </summary>
+public record SetNotesDto([MaxLength(2000)] string? Notes);
+
+/// <summary>
 /// One game plus what this user has recorded about it.
 /// </summary>
 /// <remarks>
@@ -46,23 +64,33 @@ public record ListEntryDto(
     DateTimeOffset? StatusChangedAt);
 
 /// <summary>
-/// Everything one user has recorded about one game: the entry itself, every playthrough of it,
-/// and their review.
+/// One entry read on its own: its list-shaped fields, and the two a list row leaves out.
+/// </summary>
+/// <remarks>
+/// What <c>IListService.GetEntryAsync</c> returns, for the controller to put together with the
+/// playthroughs and the review. Not sent as it is.
+/// </remarks>
+public record EntryDto(ListEntryDto Entry, string? Ownership, string? Notes);
+
+/// <summary>
+/// Everything one user has recorded about one game: the entry itself, how they have it, their
+/// notes, every playthrough of it, and their review.
 /// </summary>
 /// <remarks>
 /// <para>
 /// The single-entry read returns this; the list read still returns bare
 /// <see cref="ListEntryDto"/> rows. The two answer different questions — a list view shows fifty
 /// games at once and has no use for anybody's notes, and attaching them would multiply the
-/// payload by every row.
-/// </para>
-/// <para>
-/// <see cref="Review"/> is always null until the review table ships. The field is here from the
-/// start so the client's type does not have to change when it does.
+/// payload by every row. <see cref="Ownership"/> stays off the list row for the same reason until a
+/// list view has a use for it: nothing there reads it today.
 /// </para>
 /// </remarks>
+/// <param name="Ownership">One of <c>OwnershipKinds</c>, or null when the user has not said.</param>
+/// <param name="Notes">Private to the user; no public or community read carries them.</param>
 public record EntryDetailDto(
     ListEntryDto Entry,
+    string? Ownership,
+    string? Notes,
     IReadOnlyList<PlaythroughDto> Playthroughs,
     ReviewDto? Review);
 

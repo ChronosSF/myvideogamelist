@@ -62,11 +62,20 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
             .HasForeignKey(e => e.StatusId)
             .OnDelete(DeleteBehavior.Restrict);
 
-        // A score out of 10, enforced by the database as well as by the API — the column outlives
-        // any one validation attribute.
+        // A score out of 10 and an ownership from the known set, both enforced by the database as
+        // well as by the API — the columns outlive any one validation attribute. The notes are
+        // bounded to the playthrough notes' length, for the same reason.
+        modelBuilder.Entity<UserGameEntry>().Property(e => e.Ownership).HasMaxLength(16);
+        modelBuilder.Entity<UserGameEntry>().Property(e => e.Notes).HasMaxLength(2000);
         modelBuilder.Entity<UserGameEntry>()
-            .ToTable(t => t.HasCheckConstraint(
-                "CK_UserGameEntries_Score_Range", "\"Score\" IS NULL OR (\"Score\" >= 1 AND \"Score\" <= 10)"));
+            .ToTable(t =>
+            {
+                t.HasCheckConstraint(
+                    "CK_UserGameEntries_Score_Range", "\"Score\" IS NULL OR (\"Score\" >= 1 AND \"Score\" <= 10)");
+                t.HasCheckConstraint(
+                    "CK_UserGameEntries_Ownership",
+                    "\"Ownership\" IS NULL OR \"Ownership\" IN ('owned', 'subscription', 'borrowed')");
+            });
 
         // Sorting a list by "recently added" or "recently moved" is the default view, so both
         // sort keys are indexed per user.

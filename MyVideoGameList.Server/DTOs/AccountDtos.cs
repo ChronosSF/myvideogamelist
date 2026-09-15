@@ -77,10 +77,14 @@ public record AccountExportDto(
 /// including a future importer of our own. Null means the game is in none of the user's lists,
 /// which is a real state (ADR 0019) rather than missing data.
 /// </param>
+/// <param name="Ownership">One of <c>OwnershipKinds</c>, already a permanent key, or null.</param>
+/// <param name="Notes">The user's private notes on the game. Theirs, so theirs to take.</param>
 public record EntryExportDto(
     int GameId,
     string? Status,
     int? Score,
+    string? Ownership,
+    string? Notes,
     DateTimeOffset AddedAt,
     DateTimeOffset? StatusChangedAt);
 

@@ -23,6 +23,21 @@ export interface ListEntryDto {
     statusChangedAt: string | null;
 }
 
+/**
+ * How the user has a game, mirroring the server's `OwnershipKinds`. A key rather than a label, and
+ * permanent once written, because the export carries it — see `docs/decisions/0030-*`.
+ */
+export type Ownership = 'owned' | 'subscription' | 'borrowed';
+
+/** In the order the panel offers them: keeps, then for now, then somebody else's. */
+export const OWNERSHIPS: Ownership[] = ['owned', 'subscription', 'borrowed'];
+
+export const OWNERSHIP_NAMES: Record<Ownership, string> = {
+    owned: 'Owned',
+    subscription: 'Subscription',
+    borrowed: 'Borrowed',
+};
+
 /** Layout of the list views. Global, unlike the sort order which is per status list. */
 export type ViewMode = 'tiles' | 'table';
 

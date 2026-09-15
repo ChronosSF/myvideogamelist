@@ -51,7 +51,7 @@ public class ListService(
         return new ListsDto(statuses.ToDictionary(s => s.Key, s => EntriesForStatus(s.Id)));
     }
 
-    public async Task<ListEntryDto?> GetEntryAsync(
+    public async Task<EntryDto?> GetEntryAsync(
         string userId, int gameId, CancellationToken cancellationToken = default)
     {
         var entry = await db.UserGameEntries
@@ -61,7 +61,7 @@ public class ListService(
         if (entry is null) return null;
 
         var game = (await igdbService.GetGamesByIdsAsync([gameId], cancellationToken)).FirstOrDefault();
-        return game is null ? null : ToDto(entry, game);
+        return game is null ? null : new EntryDto(ToDto(entry, game), entry.Ownership, entry.Notes);
     }
 
     public async Task SetListEntryAsync(
@@ -125,6 +125,61 @@ public class ListService(
 
         await db.SaveChangesAsync(cancellationToken);
     }
+
+    /// <summary>The ownership values the column accepts, which is its check constraint's list too.</summary>
+    internal static readonly IReadOnlySet<string> OwnershipValues = new HashSet<string>
+    {
+        OwnershipKinds.Owned,
+        OwnershipKinds.Subscription,
+        OwnershipKinds.Borrowed
+    };
+
+    public async Task SetOwnershipAsync(
+        string userId, int gameId, string? ownership, CancellationToken cancellationToken = default)
+    {
+        // The DTO has already refused anything else; this refuses it too, as SetScoreAsync refuses
+        // a score out of range, so that no caller can reach the check constraint and a 500.
+        if (ownership is not null && !OwnershipValues.Contains(ownership))
+            throw new ArgumentException($"Unknown ownership: {ownership}", nameof(ownership));
+
+        var entry = await EntryToWriteAsync(userId, gameId, create: ownership is not null, cancellationToken);
+        if (entry is null) return;
+
+        entry.Ownership = ownership;
+        await db.SaveChangesAsync(cancellationToken);
+    }
+
+    public async Task SetNotesAsync(
+        string userId, int gameId, string? notes, CancellationToken cancellationToken = default)
+    {
+        // Blank is no notes, as it is for a playthrough's: a note of three spaces is not something
+        // anybody meant to keep.
+        var trimmed = string.IsNullOrWhiteSpace(notes) ? null : notes.Trim();
+
+        var entry = await EntryToWriteAsync(userId, gameId, create: trimmed is not null, cancellationToken);
+        if (entry is null) return;
+
+        entry.Notes = trimmed;
+        await db.SaveChangesAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// The entry one of its own fields is about to be written to: created when there is a value to
+    /// hold, and only looked up when the write is a clear.
+    /// </summary>
+    /// <remarks>
+    /// Clearing a field on a game with no entry is answered without a write. Creating a row to hold
+    /// a null would leave a statusless entry recording nothing at all, and it would switch on the
+    /// game page's "delete my data" for a game the user has said nothing about. Scoring keeps its
+    /// older behaviour and creates the row either way. No event in any case: none of these is a
+    /// status transition.
+    /// </remarks>
+    private async Task<UserGameEntry?> EntryToWriteAsync(
+        string userId, int gameId, bool create, CancellationToken cancellationToken) =>
+        create
+            ? await FindOrCreateAsync(userId, gameId, cancellationToken)
+            : await db.UserGameEntries
+                .FirstOrDefaultAsync(e => e.UserId == userId && e.GameId == gameId, cancellationToken);
 
     /// <summary>
     /// Deletes everything the user has recorded about a game. The only path that discards a score,

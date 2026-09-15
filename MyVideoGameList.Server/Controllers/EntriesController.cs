@@ -28,8 +28,9 @@ public class EntriesController(
     UserManager<ApplicationUser> userManager) : ControllerBase
 {
     /// <summary>
-    /// Everything the user has recorded about one game — the entry, its playthroughs and their
-    /// review — in one round trip, because the panel that shows them shows them together.
+    /// Everything the user has recorded about one game — the entry with its ownership and notes,
+    /// its playthroughs and their review — in one round trip, because the panel that shows them
+    /// shows them together.
     /// </summary>
     [HttpGet("{gameId:int}")]
     public async Task<ActionResult<EntryDetailDto>> GetEntry(
@@ -45,7 +46,7 @@ public class EntriesController(
         var playthroughs = await playthroughService.GetForGameAsync(user.Id, gameId, cancellationToken);
         var review = await reviewService.GetAsync(user.Id, gameId, cancellationToken);
 
-        return Ok(new EntryDetailDto(entry, playthroughs, review));
+        return Ok(new EntryDetailDto(entry.Entry, entry.Ownership, entry.Notes, playthroughs, review));
     }
 
     [HttpPut("{gameId:int}/score")]
@@ -58,6 +59,41 @@ public class EntriesController(
         if (user is null) return Unauthorized();
 
         await listService.SetScoreAsync(user.Id, gameId, dto.Score, cancellationToken);
+        return NoContent();
+    }
+
+    /// <summary>
+    /// Says how the user has the game — owned, through a subscription, or borrowed — or clears it.
+    /// </summary>
+    /// <remarks>
+    /// A <c>PUT</c> of one field, like the score beside it, rather than a general "update the entry":
+    /// each control on the panel saves on its own, and a partial update would have to tell an absent
+    /// field from a cleared one.
+    /// </remarks>
+    [HttpPut("{gameId:int}/ownership")]
+    public async Task<IActionResult> SetOwnership(
+        [Range(1, int.MaxValue)] int gameId,
+        [FromBody] SetOwnershipDto dto,
+        CancellationToken cancellationToken)
+    {
+        var user = await userManager.GetUserAsync(User);
+        if (user is null) return Unauthorized();
+
+        await listService.SetOwnershipAsync(user.Id, gameId, dto.Ownership, cancellationToken);
+        return NoContent();
+    }
+
+    /// <summary>Replaces the user's private notes on the game; blank clears them.</summary>
+    [HttpPut("{gameId:int}/notes")]
+    public async Task<IActionResult> SetNotes(
+        [Range(1, int.MaxValue)] int gameId,
+        [FromBody] SetNotesDto dto,
+        CancellationToken cancellationToken)
+    {
+        var user = await userManager.GetUserAsync(User);
+        if (user is null) return Unauthorized();
+
+        await listService.SetNotesAsync(user.Id, gameId, dto.Notes, cancellationToken);
         return NoContent();
     }
 

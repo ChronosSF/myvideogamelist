@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { useState } from 'react';
 import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ListsProvider } from '@/contexts/ListsProvider';
@@ -985,5 +986,149 @@ describe('across a session change', () => {
         await waitFor(() => expect(playing()).toHaveTextContent('Celeste(7)'));
 
         expect(screen.getByTestId('pending')).toHaveTextContent('false');
+    });
+});
+
+describe("the entry's own fields", () => {
+    /**
+     * Ownership and notes are written under the same per-game lock as a move or a score, and show
+     * in no list, so what these assert is the request, the lock and the result — not the lists.
+     */
+    function fieldsStub(options: { hold?: string[]; failing?: string[]; reject?: string[] } = {}) {
+        const calls: Recorded[] = [];
+        const settlers = new Map<string, (status: number) => void>();
+
+        vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+            const url = String(input);
+            const method = init?.method ?? 'GET';
+            const key = `${method} ${url}`;
+            calls.push({ method, url, body: init?.body ? JSON.parse(String(init.body)) : undefined });
+
+            if (key === 'GET /api/lists') {
+                return Promise.resolve(new Response(JSON.stringify({ lists: { playing: [CELESTE] } }), { status: 200 }));
+            }
+            if (key === 'GET /api/user/list-preferences') {
+                return Promise.resolve(new Response(JSON.stringify({ view: 'tiles', sorts: {} }), { status: 200 }));
+            }
+            if (options.reject?.includes(key)) return Promise.reject(new TypeError('Failed to fetch'));
+            if (options.hold?.includes(key)) {
+                return new Promise<Response>(resolve => {
+                    settlers.set(key, status => resolve(new Response(status === 204 ? null : 'nope', { status })));
+                });
+            }
+            if (options.failing?.includes(key)) return Promise.resolve(new Response('nope', { status: 500 }));
+            return Promise.resolve(new Response(null, { status: 204 }));
+        }));
+
+        return {
+            calls,
+            release: (key: string, status: number) => act(async () => {
+                settlers.get(key)!(status);
+                await Promise.resolve();
+            }),
+        };
+    }
+
+    function FieldsProbe() {
+        const lists = useLists();
+        const [result, setResult] = useState('');
+
+        return (
+            <div>
+                <span data-testid="loading">{String(lists.loading)}</span>
+                <span data-testid="error">{lists.mutationError ?? ''}</span>
+                <span data-testid="pending">{String(lists.isPending(1))}</span>
+                <span data-testid="result">{result}</span>
+                <span data-testid="list-playing">{lists.lists.playing.map(e => `${e.game.title}(${e.score ?? '-'})`).join(',')}</span>
+                <button onClick={() => void lists.setOwnership(1, 'owned').then(ok => setResult(String(ok)))}>own it</button>
+                <button onClick={() => void lists.setOwnership(1, null).then(ok => setResult(String(ok)))}>clear ownership</button>
+                <button onClick={() => void lists.setNotes(1, 'Save is on the laptop.').then(ok => setResult(String(ok)))}>write notes</button>
+                <button onClick={() => void lists.setScore(1, 9)}>score</button>
+            </div>
+        );
+    }
+
+    async function mountFields(options: Parameters<typeof fieldsStub>[0] = {}) {
+        const stub = fieldsStub(options);
+        render(<ListsProvider><FieldsProbe /></ListsProvider>);
+        await waitFor(() => expect(screen.getByTestId('loading')).toHaveTextContent('false'));
+        return stub;
+    }
+
+    const press = (name: string) => userEvent.click(screen.getByRole('button', { name }));
+    const result = () => screen.getByTestId('result');
+
+    it('says how the user has the game through the entry endpoint, touching no list', async () => {
+        const { calls } = await mountFields();
+
+        await press('own it');
+
+        await waitFor(() => expect(result()).toHaveTextContent('true'));
+        const put = calls.find(c => c.url === '/api/entries/1/ownership');
+        expect(put?.method).toBe('PUT');
+        expect(put?.body).toEqual({ ownership: 'owned' });
+        expect(screen.getByTestId('list-playing')).toHaveTextContent('Celeste(7)');
+        expect(calls.some(c => c.url === '/api/lists/1')).toBe(false);
+    });
+
+    it('sends a clear as a null rather than leaving the field out', async () => {
+        const { calls } = await mountFields();
+
+        await press('clear ownership');
+
+        await waitFor(() => expect(result()).toHaveTextContent('true'));
+        expect(calls.find(c => c.url === '/api/entries/1/ownership')?.body).toEqual({ ownership: null });
+    });
+
+    it('saves notes through the entry endpoint', async () => {
+        const { calls } = await mountFields();
+
+        await press('write notes');
+
+        await waitFor(() => expect(result()).toHaveTextContent('true'));
+        expect(calls.find(c => c.url === '/api/entries/1/notes')?.body)
+            .toEqual({ notes: 'Save is on the laptop.' });
+    });
+
+    it('reports a refused save as false, with a message of its own', async () => {
+        await mountFields({ failing: ['PUT /api/entries/1/ownership'] });
+
+        await press('own it');
+
+        await waitFor(() => expect(result()).toHaveTextContent('false'));
+        expect(screen.getByTestId('error')).toHaveTextContent('Failed to save how you have this game');
+    });
+
+    it('reports a request that never arrives as false too', async () => {
+        await mountFields({ reject: ['PUT /api/entries/1/notes'] });
+
+        await press('write notes');
+
+        await waitFor(() => expect(result()).toHaveTextContent('false'));
+        expect(screen.getByTestId('error')).toHaveTextContent('Failed to save your notes');
+    });
+
+    it('holds the game lock while it saves', async () => {
+        const { release } = await mountFields({ hold: ['PUT /api/entries/1/ownership'] });
+
+        await press('own it');
+        expect(screen.getByTestId('pending')).toHaveTextContent('true');
+
+        await release('PUT /api/entries/1/ownership', 204);
+
+        expect(screen.getByTestId('pending')).toHaveTextContent('false');
+        expect(result()).toHaveTextContent('true');
+    });
+
+    it('refuses while another write to the same entry is out', async () => {
+        // A score still saving holds the lock, and a second request for the same row would be the
+        // overlap the lock exists to prevent — so this one is not sent at all.
+        const { calls } = await mountFields({ hold: ['PUT /api/entries/1/score'] });
+
+        await press('score');
+        await press('own it');
+
+        await waitFor(() => expect(result()).toHaveTextContent('false'));
+        expect(calls.some(c => c.url === '/api/entries/1/ownership')).toBe(false);
     });
 });

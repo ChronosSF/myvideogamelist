@@ -31,6 +31,8 @@ function contextValue(overrides: Partial<ListsContextValue> = {}): ListsContextV
         getListFor: () => null,
         scoreFor: () => null,
         setScore: vi.fn(async () => true),
+        setOwnership: vi.fn(async () => true),
+        setNotes: vi.fn(async () => true),
         deleteEntry: vi.fn(async () => {}),
         view: 'tiles',
         setView: vi.fn(),
@@ -357,15 +359,15 @@ describe('GameUserPanel deleting everything', () => {
         expect(screen.getByText(/history of moving it between lists is kept/i)).toBeInTheDocument();
     });
 
-    it('warns that the playthroughs and the review go too', async () => {
-        // Both cascade from the entry, so the confirmation has to name them — the score is not the
-        // only thing being discarded any more.
+    it('warns that the ownership, notes, playthroughs and review go too', async () => {
+        // All of them go with the entry — the playthroughs and review by cascade, the ownership and
+        // notes because they are columns on it — so the confirmation has to name them.
         stubEntryFetch(null, 200, [playthrough({ id: 5 })]);
         renderPanel();
 
         await userEvent.click(await screen.findByRole('button', { name: /delete my data/i }));
 
-        expect(screen.getByText(/score, list placement, playthroughs and review/i))
+        expect(screen.getByText(/score, list placement, ownership, notes, playthroughs\s+and review/i))
             .toBeInTheDocument();
     });
 
@@ -1120,5 +1122,149 @@ describe('GameUserPanel review', () => {
         renderPanel();
 
         expect(await screen.findByRole('button', { name: /delete my data/i })).toBeInTheDocument();
+    });
+});
+
+describe('GameUserPanel ownership and notes', () => {
+    /** The entry read, carrying whatever ownership and notes a test gives it. */
+    function stubDetail(detail: { ownership?: 'owned' | 'subscription' | 'borrowed' | null; notes?: string | null } = {}) {
+        const fetchMock = vi.fn(async () => new Response(
+            JSON.stringify(entryDetail({
+                entry: { game: { id: 1, title: 'Celeste' } },
+                ownership: detail.ownership ?? null,
+                notes: detail.notes ?? null,
+            })),
+            { status: 200 },
+        ));
+        vi.stubGlobal('fetch', fetchMock);
+        return fetchMock;
+    }
+
+    const notesBox = () => screen.getByLabelText('Your notes');
+
+    it('shows how the user has the game, from the entry read', async () => {
+        stubDetail({ ownership: 'subscription' });
+        renderPanel();
+        await settled();
+
+        await waitFor(() => expect(screen.getByRole('button', { name: 'Subscription' }))
+            .toHaveAttribute('aria-pressed', 'true'));
+        expect(screen.getByRole('button', { name: 'Owned' })).toHaveAttribute('aria-pressed', 'false');
+    });
+
+    it('marks a kind at once and saves it', async () => {
+        stubEntryFetch(null, 404);
+        const ctx = renderPanel();
+        await settled();
+
+        await userEvent.click(screen.getByRole('button', { name: 'Borrowed' }));
+
+        expect(ctx.setOwnership).toHaveBeenCalledWith(1, 'borrowed');
+        expect(screen.getByRole('button', { name: 'Borrowed' })).toHaveAttribute('aria-pressed', 'true');
+    });
+
+    it('clears it when the kind already on is pressed again', async () => {
+        stubDetail({ ownership: 'owned' });
+        const ctx = renderPanel();
+        await settled();
+
+        await userEvent.click(await screen.findByRole('button', { name: 'Owned', pressed: true }));
+
+        expect(ctx.setOwnership).toHaveBeenCalledWith(1, null);
+        expect(screen.getByRole('button', { name: 'Owned' })).toHaveAttribute('aria-pressed', 'false');
+    });
+
+    it('puts the previous kind back when the save fails', async () => {
+        stubDetail({ ownership: 'owned' });
+        renderPanel({ setOwnership: vi.fn(async () => false) });
+        await settled();
+        await screen.findByRole('button', { name: 'Owned', pressed: true });
+
+        await userEvent.click(screen.getByRole('button', { name: 'Subscription' }));
+
+        await waitFor(() => expect(screen.getByRole('button', { name: 'Owned' }))
+            .toHaveAttribute('aria-pressed', 'true'));
+        expect(screen.getByRole('button', { name: 'Subscription' })).toHaveAttribute('aria-pressed', 'false');
+    });
+
+    it('offers no ownership change while another write to the entry is out', async () => {
+        stubEntryFetch(null, 404);
+        renderPanel({ isPending: () => true });
+        await act(async () => {});
+
+        expect(screen.getByRole('button', { name: 'Owned' })).toBeDisabled();
+        expect(screen.getByRole('button', { name: 'Save notes' })).toBeDisabled();
+    });
+
+    it('loads the notes into the box, with nothing to save until they change', async () => {
+        stubDetail({ notes: 'Save is on the old laptop.' });
+        renderPanel();
+        await settled();
+
+        await waitFor(() => expect(notesBox()).toHaveValue('Save is on the old laptop.'));
+        expect(screen.getByRole('button', { name: 'Save notes' })).toBeDisabled();
+    });
+
+    it('says the notes are private', async () => {
+        stubEntryFetch(null, 404);
+        renderPanel();
+        await settled();
+
+        expect(screen.getByText(/only you can see these/i)).toBeInTheDocument();
+    });
+
+    it('saves the notes trimmed', async () => {
+        stubEntryFetch(null, 404);
+        const ctx = renderPanel();
+        await settled();
+
+        await userEvent.type(notesBox(), '  Try the hard mode.  ');
+        await userEvent.click(screen.getByRole('button', { name: 'Save notes' }));
+
+        expect(ctx.setNotes).toHaveBeenCalledWith(1, 'Try the hard mode.');
+        await waitFor(() => expect(screen.getByRole('button', { name: 'Save notes' })).toBeDisabled());
+    });
+
+    it('clears the notes when the box is emptied and saved', async () => {
+        stubDetail({ notes: 'Old thought.' });
+        const ctx = renderPanel();
+        await settled();
+        await waitFor(() => expect(notesBox()).toHaveValue('Old thought.'));
+
+        await userEvent.clear(notesBox());
+        await userEvent.click(screen.getByRole('button', { name: 'Clear notes' }));
+
+        expect(ctx.setNotes).toHaveBeenCalledWith(1, null);
+    });
+
+    it('keeps what was typed and says so when the notes do not save', async () => {
+        stubEntryFetch(null, 404);
+        renderPanel({ setNotes: vi.fn(async () => false) });
+        await settled();
+
+        await userEvent.type(notesBox(), 'Worth keeping.');
+        await userEvent.click(screen.getByRole('button', { name: 'Save notes' }));
+
+        expect(await screen.findByRole('alert')).toHaveTextContent(/could not save your notes/i);
+        expect(notesBox()).toHaveValue('Worth keeping.');
+    });
+
+    it('offers to delete a game that has only ownership and notes', async () => {
+        // Both live on the entry, so the one control that erases the entry has to be there.
+        stubDetail({ ownership: 'borrowed', notes: 'Return it.' });
+        renderPanel();
+
+        expect(await screen.findByRole('button', { name: /delete my data/i })).toBeInTheDocument();
+    });
+
+    it('clears both after deleting everything', async () => {
+        stubDetail({ ownership: 'borrowed', notes: 'Return it.' });
+        renderPanel();
+
+        await userEvent.click(await screen.findByRole('button', { name: /delete my data/i }));
+        await userEvent.click(screen.getByRole('button', { name: 'Delete' }));
+
+        await waitFor(() => expect(notesBox()).toHaveValue(''));
+        expect(screen.getByRole('button', { name: 'Borrowed' })).toHaveAttribute('aria-pressed', 'false');
     });
 });

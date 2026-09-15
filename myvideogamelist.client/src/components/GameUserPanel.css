@@ -101,6 +101,22 @@
     opacity: 0.5;
 }
 
+/*
+ * The same chips as the statuses, in teal: the shape says "pick one, press it again to clear", and
+ * the colour says this is about the copy rather than a sixth kind of list.
+ */
+.game-user-panel-ownership-btn:hover:not(:disabled) {
+    background: rgba(20, 184, 166, 0.75);
+}
+
+.game-user-panel-ownership-btn.active {
+    background: rgba(15, 118, 110, 0.95);
+}
+
+.game-user-panel-ownership-btn.active:hover:not(:disabled) {
+    background: rgba(220, 38, 38, 0.8);
+}
+
 .game-user-panel-score {
     display: flex;
     flex-direction: column;

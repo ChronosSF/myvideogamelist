@@ -145,7 +145,9 @@ ROADMAP.md                      Forward-looking plan
   `AspNetUsers`.** `UserOwnedDataTests` walks the EF model and fails otherwise — in both
   directions, so a stale registration for a table you removed fails too. The manifest is
   `UserDataExporter.Manifest`, keyed by entity `Type`, and it is the *only* place to register:
-  `ExportAsync` walks it. Statuses export as their `Key`, never the seeded id. The export is free
+  `ExportAsync` walks it. A new *column* on a registered table trips nothing, because each section is
+  a hand-written projection — add it to that reader too, as `Ownership` and `Notes` were
+  (`docs/decisions/0030-*`). Statuses export as their `Key`, never the seeded id. The export is free
   and stays free — portability is a right, and the paid "Export" in the monetisation table is a
   nicer *format* on top, so do not put an entitlement check on `/api/user/export`. It makes no IGDB
   call, for the same reason the stats do not. See `docs/decisions/0024-*`.
