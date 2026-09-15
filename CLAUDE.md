@@ -200,6 +200,12 @@ ROADMAP.md                      Forward-looking plan
   `MIN_CRITIC_REVIEWS`. Search is deliberately *not* filtered this way. See
   `docs/decisions/0016-*`.
 
+- **Each browse order carries its own floor, and a search carries none.** Top rated keeps 0016's eight
+  critics; Popular needs ten ratings; Newest and A to Z need ten ratings *and* a critic, because
+  without one they fill with shovelware. The filters apply to a search, but never an order: IGDB
+  answers a `search` with a `sort` with a 406. Every browse parameter is in the URL through
+  `@/lib/gameBrowse`, and all six belong in the CDN cache key. See `docs/decisions/0032-*`.
+
 - **Stars mean the user's own score and nothing else.** One `ScoreInput` — five stars, half-star
   steps, which is exactly the 1–10 the database stores. Everything averaged from other people
   (critic score, IGDB player rating) is a number out of 100 in a `ScoreBadge`. Do not add a second

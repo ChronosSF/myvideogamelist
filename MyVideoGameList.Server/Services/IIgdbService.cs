@@ -4,8 +4,18 @@ namespace MyVideoGameList.Server.Services;
 
 public interface IIgdbService
 {
+    /// <summary>
+    /// A page of the browse listing, or of a search, narrowed and ordered by <paramref name="browse"/>.
+    /// </summary>
     Task<PagedGamesResponse> GetGamesAsync(
-        int offset = 0, int limit = 20, string? search = null, CancellationToken cancellationToken = default);
+        int offset = 0,
+        int limit = 20,
+        string? search = null,
+        GameBrowseQuery? browse = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>IGDB's genres, by name — what the browse listing's genre filter offers.</summary>
+    Task<IReadOnlyList<GenreDto>> GetGenresAsync(CancellationToken cancellationToken = default);
 
     Task<GameDto?> GetGameByIdAsync(int id, CancellationToken cancellationToken = default);
 

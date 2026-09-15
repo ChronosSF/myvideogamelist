@@ -59,6 +59,114 @@ public class BuildQueryTests
     [InlineData("back\\slash", "search \"back\\\\slash\";")]
     public void EscapesApicalypseInjectionCharacters(string search, string expected)
         => Assert.Contains(expected, IgdbService.BuildQuery(0, 20, search));
+
+    // ── Orders and filters (ADR 0032) ─────────────────────────────────────────────────
+
+    private static readonly DateTimeOffset Now = new(2026, 9, 15, 12, 0, 0, TimeSpan.Zero);
+
+    private static string Browse(GameBrowseQuery browse, string? search = null) =>
+        IgdbService.BuildQuery(0, 20, search, browse, Now);
+
+    /// <summary>The query's one <c>where</c> clause, split into its conditions.</summary>
+    private static string[] Conditions(string query)
+    {
+        var line = query.Split('\n').Select(l => l.Trim()).SingleOrDefault(l => l.StartsWith("where "));
+        return line is null ? [] : line["where ".Length..].TrimEnd(';').Split(" & ");
+    }
+
+    [Fact]
+    public void Popular_RanksByRatingsHeld_WithTheListedFloorAndNoCritic()
+    {
+        // No critic required: a game players rated heavily and no outlet reviewed belongs near the top.
+        var query = Browse(new GameBrowseQuery(GameSortKeys.Popular));
+
+        Assert.Contains("sort total_rating_count desc;", query);
+        Assert.Equal(["total_rating_count >= 10"], Conditions(query));
+    }
+
+    [Fact]
+    public void Newest_IsReleasedGamesSomebodyNoticed_NewestFirst()
+    {
+        var query = Browse(new GameBrowseQuery(GameSortKeys.Newest));
+
+        Assert.Contains("sort first_release_date desc;", query);
+        Assert.Equal(
+            [$"first_release_date <= {Now.ToUnixTimeSeconds()}", "total_rating_count >= 10", "aggregated_rating_count >= 1"],
+            Conditions(query));
+    }
+
+    [Fact]
+    public void Name_TakesBothFloors_AToZ()
+    {
+        var query = Browse(new GameBrowseQuery(GameSortKeys.Name));
+
+        Assert.Contains("sort name asc;", query);
+        Assert.Equal(["total_rating_count >= 10", "aggregated_rating_count >= 1"], Conditions(query));
+    }
+
+    [Fact]
+    public void Rating_IsStillTheDefault_WithItsCriticFloor()
+    {
+        var query = Browse(GameBrowseQuery.Default);
+
+        Assert.Contains("sort aggregated_rating desc;", query);
+        Assert.Equal(["aggregated_rating_count >= 8"], Conditions(query));
+    }
+
+    [Fact]
+    public void Filters_NarrowTheOrderWithoutReplacingItsFloor()
+    {
+        var query = Browse(new GameBrowseQuery(GameSortKeys.Popular, PlatformId: 130, GenreId: 12));
+
+        Assert.Equal(["platforms = (130)", "genres = (12)", "total_rating_count >= 10"], Conditions(query));
+    }
+
+    [Fact]
+    public void Year_IsTheWholeCalendarYearInUtc()
+    {
+        var query = Browse(new GameBrowseQuery(Year: 2024));
+
+        // 2024-01-01T00:00:00Z and 2025-01-01T00:00:00Z, the second exclusive.
+        Assert.Contains("first_release_date >= 1704067200", Conditions(query));
+        Assert.Contains("first_release_date < 1735689600", Conditions(query));
+    }
+
+    [Fact]
+    public void MinScore_BringsTheCriticFloorWithIt_Once()
+    {
+        // Without the count, "80 and above" is every game a single critic loved. The rating order asks
+        // for the same floor, and the clause is not repeated.
+        var query = Browse(new GameBrowseQuery(MinScore: 80));
+
+        Assert.Equal(["aggregated_rating >= 80", "aggregated_rating_count >= 8"], Conditions(query));
+    }
+
+    [Fact]
+    public void MinScore_UnderAnotherOrder_StillBringsTheCriticFloor()
+    {
+        var query = Browse(new GameBrowseQuery(GameSortKeys.Newest, MinScore: 90));
+
+        Assert.Contains("aggregated_rating >= 90", Conditions(query));
+        Assert.Contains("aggregated_rating_count >= 8", Conditions(query));
+    }
+
+    [Fact]
+    public void Search_KeepsTheFiltersButDropsTheOrderAndItsFloor()
+    {
+        // IGDB answers a search that carries a sort with a 406, and a search must reach thinly rated
+        // games too — so the order's floor goes with the order.
+        var query = Browse(new GameBrowseQuery(GameSortKeys.Popular, PlatformId: 130), search: "zelda");
+
+        Assert.Contains("search \"zelda\";", query);
+        Assert.DoesNotContain("sort ", query);
+        Assert.Equal(["platforms = (130)"], Conditions(query));
+    }
+
+    [Fact]
+    public void Search_WithNoFilters_HasNoWhereClause()
+    {
+        Assert.Empty(Conditions(Browse(new GameBrowseQuery(GameSortKeys.Name), search: "hades")));
+    }
 }
 
 public class MapEsrbRatingTests
