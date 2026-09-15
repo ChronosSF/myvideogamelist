@@ -125,7 +125,7 @@ hydration. D12 is what fixes that.
 | ~~H1~~ | ~~Fork `HomePage.tsx` on `user` — dashboard when signed in, landing when not~~ **DONE** | `SignedInHero` above the shared rails, which are the same for both branches rather than duplicated. Everything below hung off this |
 | ~~H2~~ | ~~Drop or rewrite the "Rate" feature card~~ **DONE** | All three feature cards removed with the home page redesign |
 | ~~H3~~ | ~~**Continue Playing rail** — horizontal scroll of the `playing` list with "mark finished"~~ **DONE** | Reads `ListsProvider`; no new API, as predicted. Sorted by *recently moved* rather than *recently added* — those differ for exactly the game the rail exists for. **"Log progress" was deliberately left out**: a seven-field form behind a cover is a worse version of the game page |
-| H4 | **Your week** — releases from the user's Wishlist/Backlog surfaced *above* the general timeline | "3 games you're waiting for drop this week" beats a firehose of every release |
+| ~~H4~~ | ~~**Your week** — releases from the user's Wishlist/Backlog surfaced *above* the general timeline~~ **DONE, as "Releasing soon"** | A rail in the signed-in hero, crossing the calendar's own response with the two providers — no new API, and nothing per-user in `/api/home` (3.5). It covers the calendar's whole 30-day window rather than a week, because a week of one person's lists is often empty; each game's date says how close it is. Hidden platforms apply as they do to the calendar, so a release only on a hidden platform is passed over for a later one the user can see. The calendar and the rail share one fetch |
 | ~~H5~~ | ~~**Play next picker** — one random backlog game, with a reroll button~~ **DONE** | Reads `ListsProvider`, like H3. A fresh pick each visit, and a reroll never lands on the game already showing. **"Start playing"** goes through the provider, so it records the event, and the started game then leads the Continue Playing rail above it |
 | ~~H6~~ | ~~**Stats strip** — finished this year, hours logged, current streak~~ **DONE** | All three from `/api/user/stats`, which ADR [0025](docs/decisions/0025-playthroughs-and-reviews.md) gave hours to. Silent on failure and on an empty account: it sits above a page that works fine without it |
 | ~~H7~~ | ~~**Trending rail** via IGDB `popularity_primitives`~~ **DONE** | Uses `popularity_type` 5 ("24hr Peak Players", Steam-sourced), cached hourly. See ADR [0012](docs/decisions/0012-steam-news-without-a-database.md) for why that type and not the IGDB-native ones |
@@ -371,7 +371,7 @@ The project owns **myvideogamelist.net**, which pins down several items that wou
 > Community completion times have always worked the same way. A server-side floor on both endpoints
 > would make it one, and would be a deliberate exception to 0016 rather than a fix.
 >
-> **Several finished APIs are still waiting for a screen.** H4's "your week" crosses the wishlist with the upcoming timeline the client already fetches. N6's
+> **Several finished APIs are still waiting for a screen.** N6's
 > `/news` page needs a thin endpoint over `GetLatestNewsAsync` and a route.
 >
 > **Three smaller things 0027 left behind still stand.** The `friends` visibility value needs a
@@ -397,7 +397,7 @@ PostgreSQL swap; Data Protection keys to S3; migrations out of startup; distribu
 Per-entry scores, dates, hours and notes; full list taxonomy plus Wishlist; profile stats; ~~usernames and public profiles~~ (done — ADR [0027](docs/decisions/0027-usernames-and-public-profiles.md)); email confirmation and password reset; local game-metadata cache table. (It is no longer a prerequisite for the Steam AppID mapping in N1, which shipped against an in-memory cache instead — see ADR [0012](docs/decisions/0012-steam-news-without-a-database.md).)
 
 **Phase 3 — Make the home page earn its place (1–2 weeks)**
-H1, H3, H5 and H6 are in — the page forks on auth, Continue Playing and the play-next picker read `ListsProvider` and the stats strip reads `/api/user/stats`, none of which needed a new endpoint ([0027](docs/decisions/0027-usernames-and-public-profiles.md)). Left: H4 personalised calendar and H8 events banner (H7's trending rail is already in). Fold them into the `/api/home` composite (3.5) as you go.
+H1, H3, H5 and H6 are in — the page forks on auth, Continue Playing and the play-next picker read `ListsProvider` and the stats strip reads `/api/user/stats`, none of which needed a new endpoint ([0027](docs/decisions/0027-usernames-and-public-profiles.md)). H4 is in as well, as a "Releasing soon" rail crossed on the client — deliberately *not* folded into `/api/home`, which is cached once for every visitor and must carry nothing about any one of them (3.5). Left: H8 events banner (H7's trending rail is already in), which *is* shared and belongs in that composite.
 
 **Phase 4 — Make it cool (ongoing)**
 Browse filters and sorting; game-page media; ITAD price tracking (P1–P11); Steam news (N1–N7); Steam import (scoped to ownership by [0026](docs/decisions/0026-a-library-import-records-ownership-not-history.md)); export; recommendations; release notifications; ~~the game-page half of reading reviews~~ (done — [0028](docs/decisions/0028-a-games-community-view.md)); ~~mobile navigation~~ (done) and responsive polish; then the Tier 3 social layer.

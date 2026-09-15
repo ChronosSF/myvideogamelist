@@ -1,39 +1,12 @@
 import { useMemo, useRef } from 'react';
 import type { GameDto, PlatformDto } from '@/types/game';
 import { GameCard } from '@/components/GameCard';
-import { useUpcomingGames } from '@/hooks/useUpcomingGames';
-import { useAuth } from '@/hooks/useAuth';
-import { useHiddenPlatforms } from '@/hooks/useHiddenPlatforms';
+import type { UseUpcomingGamesResult } from '@/hooks/useUpcomingGames';
+import { formatReleaseDay as formatDateHeading, isReleaseToday as isToday } from '@/lib/releaseDate';
 import { useStoredNumberSet } from '@/lib/useStoredNumberSet';
 import './UpcomingTimeline.css';
 
 const LS_KEY = 'mvgl_upcoming_disabled_platforms';
-
-// Parse "YYYY-MM-DD" safely into a local-time Date
-function parseLocalDate(dateStr: string): Date {
-    const [year, month, day] = dateStr.split('-').map(Number);
-    return new Date(year, month - 1, day);
-}
-
-function formatDateHeading(dateStr: string): string {
-    const date = parseLocalDate(dateStr);
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const tomorrow = new Date(today);
-    tomorrow.setDate(today.getDate() + 1);
-
-    if (date.getTime() === today.getTime()) return 'Today';
-    if (date.getTime() === tomorrow.getTime()) return 'Tomorrow';
-
-    return date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-}
-
-function isToday(dateStr: string): boolean {
-    const date = parseLocalDate(dateStr);
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    return date.getTime() === today.getTime();
-}
 
 // ─── Platform filter checkbox ─────────────────────────────────────────────────
 
@@ -59,12 +32,22 @@ function PlatformCheckbox({ platform, checked, onChange }: PlatformCheckboxProps
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export function UpcomingTimeline() {
-    const { games, loading, error } = useUpcomingGames();
-    const { user } = useAuth();
-    // Keyed on the account rather than on "is anybody signed in": this component outlives a
-    // sign-out, and the hook has to know whose preference it is holding.
-    const { hiddenIds: serverHiddenIds } = useHiddenPlatforms(user?.id ?? null);
+interface UpcomingTimelineProps {
+    /**
+     * The upcoming releases, fetched by the page rather than here so that the Releasing Soon rail
+     * above can cross the same response with the user's lists without a second request for it.
+     */
+    upcoming: UseUpcomingGamesResult;
+    /**
+     * The platforms the signed-in user has hidden, empty for a visitor. Also the page's, for the same
+     * reason: the rail applies the same preference, and the hook it comes from is keyed on the account
+     * and follows it across a sign-out.
+     */
+    hiddenPlatformIds: ReadonlySet<number>;
+}
+
+export function UpcomingTimeline({ upcoming, hiddenPlatformIds: serverHiddenIds }: UpcomingTimelineProps) {
+    const { games, loading, error } = upcoming;
 
     const scrollContainerRef = useRef<HTMLDivElement>(null);
 
@@ -100,7 +83,7 @@ export function UpcomingTimeline() {
         setDisabledIds(new Set(visiblePlatforms.map(p => p.id)));
     }
 
-    // All date groups across the full 14-day range (filtered by platform preferences)
+    // All date groups across the whole window (filtered by platform preferences)
     const allDateGroups = useMemo<[string, GameDto[]][]>(() => {
         const effectivelyHidden = (id: number) => serverHiddenIds.has(id) || disabledIds.has(id);
 
@@ -157,7 +140,10 @@ export function UpcomingTimeline() {
                     </div>
                     <div>
                         <h2 className="text-white light:text-slate-900 font-bold text-xl leading-tight">Upcoming Releases</h2>
-                        <p className="text-slate-400 light:text-slate-500 text-sm">Next 2 weeks</p>
+                        {/* The server's `UpcomingWindowDays`, stated a second time. This still said
+                            "Next 2 weeks" long after that constant became 30, which is the cost of
+                            stating it twice — change both together. */}
+                        <p className="text-slate-400 light:text-slate-500 text-sm">Next 30 days</p>
                     </div>
                 </div>
 
