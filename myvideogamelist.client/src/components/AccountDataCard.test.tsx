@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { AccountDataCard } from '@/components/AccountDataCard';
 import { downloadDataExport } from '@/lib/dataExport';
@@ -84,8 +84,10 @@ describe('AccountDataCard deletion', () => {
         expect(onDeleteAccount).not.toHaveBeenCalled();
     });
 
-    it('hands focus back to its button when the dialog is cancelled', async () => {
-        // Otherwise a keyboard user who backs out is left at the top of the document.
+    it('hands focus back to its button once the dialog has gone', async () => {
+        // Otherwise a keyboard user who backs out is left at the top of the document. The test setup's
+        // modal makes everything outside it inert, as a browser does, so this passes only when focus
+        // moves after the dialog has unmounted — from the Cancel handler itself it would be ignored.
         const actor = userEvent.setup();
         renderCard();
         const opener = screen.getByRole('button', { name: 'Delete my account' });
@@ -95,5 +97,41 @@ describe('AccountDataCard deletion', () => {
 
         expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
         expect(opener).toHaveFocus();
+    });
+
+    it('keeps the deletion held when the dialog is closed while its download runs', async () => {
+        // The dialog refuses to close mid-download, but a browser can close a modal anyway. The
+        // download's state is the card's, so reopening the dialog cannot race the export.
+        const actor = userEvent.setup();
+        let finish: () => void = () => {};
+        vi.mocked(downloadDataExport).mockImplementationOnce(
+            () => new Promise<void>(resolve => { finish = resolve; }));
+        renderCard();
+
+        await actor.click(screen.getByRole('button', { name: 'Delete my account' }));
+        await actor.click(screen.getByRole('button', { name: 'Download your data' }));
+        fireEvent(screen.getByRole('dialog'), new Event('close'));
+
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Delete my account' })).toBeDisabled();
+        expect(screen.getByRole('button', { name: /preparing your file/i })).toBeDisabled();
+
+        finish();
+        await waitFor(() => expect(screen.getByRole('button', { name: 'Delete my account' })).toBeEnabled());
+    });
+
+    it('reports a download that failed in the dialog once, in the dialog', async () => {
+        // The download is shared, so the card holds back its own copy of the error while the dialog
+        // is open rather than announcing it twice.
+        const actor = userEvent.setup();
+        vi.mocked(downloadDataExport).mockRejectedValueOnce(new Error('Export failed (500)'));
+        renderCard();
+
+        await actor.click(screen.getByRole('button', { name: 'Delete my account' }));
+        await actor.click(screen.getByRole('button', { name: 'Download your data' }));
+
+        const alert = await within(screen.getByRole('dialog')).findByRole('alert');
+        expect(alert).toHaveTextContent(/could not be downloaded/i);
+        expect(screen.getAllByRole('alert')).toHaveLength(1);
     });
 });

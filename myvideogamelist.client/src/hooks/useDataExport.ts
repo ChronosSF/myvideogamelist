@@ -9,12 +9,12 @@ export interface UseDataExportResult {
 }
 
 /**
- * A button's worth of state around `downloadDataExport`: whether it is running, and whether it
- * failed.
+ * The state around `downloadDataExport`: whether it is running, and whether it failed.
  *
- * Local to each button rather than shared, because the profile card and the deletion dialog each
- * offer the download and each should report its own attempt. Nothing here belongs to an account —
- * the document goes straight to a file — so there is nothing for a sign-out to leave behind.
+ * `AccountDataCard` holds one and hands it to its deletion dialog, rather than each keeping its own:
+ * whether a download is running is what holds the deletion back, and the dialog can close — and
+ * open again — while one is. Nothing here belongs to an account, since the document goes straight
+ * to a file, so there is nothing for a sign-out to leave behind.
  */
 export function useDataExport(): UseDataExportResult {
     const [downloading, setDownloading] = useState(false);

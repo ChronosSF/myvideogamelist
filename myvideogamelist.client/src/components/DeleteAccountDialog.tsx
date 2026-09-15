@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react';
-import { useDataExport } from '@/hooks/useDataExport';
+import type { UseDataExportResult } from '@/hooks/useDataExport';
 import './LoginDialog.css';
 
 interface Props {
@@ -11,6 +11,12 @@ interface Props {
      * success the page moves on to a signed-out state and this dialog unmounts with it.
      */
     onDelete: (password: string) => Promise<void>;
+    /**
+     * The card's download, passed in rather than held here. State held here would end with the
+     * dialog, so closing it part way through a download and opening it again would forget the
+     * download was running — and let a deletion race it.
+     */
+    exporter: UseDataExportResult;
 }
 
 /**
@@ -29,11 +35,10 @@ interface Props {
  * wherever focus is — an overlay marked `aria-modal` does none of those, and its Escape handler went
  * deaf the moment Tab carried focus out of it.
  */
-export function DeleteAccountDialog({ userName, onCancel, onDelete }: Props) {
+export function DeleteAccountDialog({ userName, onCancel, onDelete, exporter }: Props) {
     const [password, setPassword] = useState('');
     const [deleting, setDeleting] = useState(false);
     const [error, setError] = useState<string | null>(null);
-    const exporter = useDataExport();
 
     const dialog = useRef<HTMLDialogElement>(null);
     const passwordInput = useRef<HTMLInputElement>(null);
@@ -54,18 +59,19 @@ export function DeleteAccountDialog({ userName, onCancel, onDelete }: Props) {
         passwordInput.current?.focus();
     }, []);
 
-    // Nothing closes the dialog while the request is out: the answer has to land somewhere, and a
-    // deletion that succeeds after its dialog was dismissed would sign somebody out unexplained.
-    const cancel = () => {
-        if (!deleting) onCancel();
-    };
-
     /*
-     * Deletion waits for a download this dialog started. The export reads the account table by
-     * table, and a deletion cascading through those tables part way through would leave the user
-     * with a partial copy of exactly the data they are about to lose — or with none.
+     * Deletion waits for a download. The export reads the account table by table, and a deletion
+     * cascading through those tables part way through would leave the user with a partial copy of
+     * exactly the data they are about to lose — or with none.
      */
     const busy = deleting || exporter.downloading;
+
+    // Nothing closes the dialog while either is out. A deletion that succeeds after its dialog was
+    // dismissed would sign somebody out unexplained, and a download is what the dialog is holding
+    // the deletion back for — dismissed, it would be one reopen away from the race it prevents.
+    const cancel = () => {
+        if (!busy) onCancel();
+    };
 
     const handleSubmit = async (event: React.FormEvent) => {
         event.preventDefault();
@@ -104,7 +110,8 @@ export function DeleteAccountDialog({ userName, onCancel, onDelete }: Props) {
             }}
             // The browser can still close it without a preventable `cancel` — its close-watcher rules
             // let somebody out of a dialog that keeps refusing Escape. The page is told, so it does
-            // not go on holding a dialog nobody can see, whose button would then open nothing.
+            // not go on holding a dialog nobody can see, whose button would then open nothing. A
+            // download still running stays held: its state is the card's, not this dialog's.
             onClose={onCancel}
             // A click on the backdrop lands on the dialog element itself; one on the panel does not.
             onClick={event => {
@@ -159,7 +166,7 @@ export function DeleteAccountDialog({ userName, onCancel, onDelete }: Props) {
                             type="button"
                             className="dialog-btn-secondary"
                             onClick={cancel}
-                            disabled={deleting}
+                            disabled={busy}
                         >
                             Cancel
                         </button>

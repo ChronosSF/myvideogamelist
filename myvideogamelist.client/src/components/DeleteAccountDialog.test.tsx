@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { DeleteAccountDialog } from '@/components/DeleteAccountDialog';
+import { useDataExport } from '@/hooks/useDataExport';
 import { downloadDataExport } from '@/lib/dataExport';
 
 vi.mock('@/lib/dataExport', () => ({ downloadDataExport: vi.fn(async () => {}) }));
@@ -9,8 +10,17 @@ vi.mock('@/lib/dataExport', () => ({ downloadDataExport: vi.fn(async () => {}) }
 const onCancel = vi.fn();
 const onDelete = vi.fn(async (_password: string) => {});
 
+/**
+ * The download state is the card's and is passed in, so these tests hold it the way the card does:
+ * the real hook, over a mocked download.
+ */
+function Harness() {
+    const exporter = useDataExport();
+    return <DeleteAccountDialog userName="alex" onCancel={onCancel} onDelete={onDelete} exporter={exporter} />;
+}
+
 function renderDialog() {
-    return render(<DeleteAccountDialog userName="alex" onCancel={onCancel} onDelete={onDelete} />);
+    return render(<Harness />);
 }
 
 const dialog = () => screen.getByRole('dialog', { name: 'Delete your account?' });
@@ -168,6 +178,28 @@ describe('DeleteAccountDialog export', () => {
 
         await waitFor(() => expect(downloadDataExport).toHaveBeenCalledTimes(1));
         expect(onDelete).not.toHaveBeenCalled();
+    });
+
+    it('cannot be dismissed while that export is still downloading', async () => {
+        // Dismissed, it would be one reopen away from a deletion racing the download it was holding
+        // back. The browser can still force it closed; the card keeps the download's state for that.
+        const actor = userEvent.setup();
+        const finishDownload = holdDownload();
+        renderDialog();
+
+        await actor.click(screen.getByRole('button', { name: 'Download your data' }));
+
+        expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled();
+        const escape = pressEscape();
+        await actor.click(dialog());
+        expect(onCancel).not.toHaveBeenCalled();
+        expect(escape.defaultPrevented).toBe(true);
+
+        finishDownload();
+
+        await waitFor(() => expect(screen.getByRole('button', { name: 'Cancel' })).toBeEnabled());
+        await actor.click(screen.getByRole('button', { name: 'Cancel' }));
+        expect(onCancel).toHaveBeenCalledTimes(1);
     });
 
     it('will not delete while that export is still downloading', async () => {

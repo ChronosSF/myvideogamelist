@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { DeleteAccountDialog } from '@/components/DeleteAccountDialog';
 import { useDataExport } from '@/hooks/useDataExport';
 
@@ -17,16 +17,35 @@ interface Props {
  * the download again.
  */
 export function AccountDataCard({ userName, onDeleteAccount }: Props) {
+    /**
+     * One download for the card and its dialog, held here because the card outlives the dialog. A
+     * download started in the dialog keeps the deletion held however the dialog is then closed —
+     * including by the browser, which can close a modal the dialog itself refuses to.
+     */
     const exporter = useDataExport();
     const [confirming, setConfirming] = useState(false);
     const deleteButton = useRef<HTMLButtonElement>(null);
 
-    // Focus goes back to the button that opened the dialog, or a keyboard user who cancels is left
-    // at the top of the document.
+    /**
+     * Set when the dialog is dismissed, and acted on once the dismissal has rendered. Focus cannot go
+     * back to the opener from the handler itself: the modal is still open at that point, the opener
+     * behind it is inert, and a browser ignores `focus()` on an inert element.
+     */
+    const refocusOpener = useRef(false);
+
     const closeDialog = () => {
+        refocusOpener.current = true;
         setConfirming(false);
-        deleteButton.current?.focus();
     };
+
+    // Runs after the commit that removes the dialog, when the page behind it is no longer inert.
+    // Without it a keyboard user who cancels is left at the top of the document.
+    useEffect(() => {
+        if (confirming || !refocusOpener.current) return;
+
+        refocusOpener.current = false;
+        deleteButton.current?.focus();
+    }, [confirming]);
 
     return (
         <div className="user-card">
@@ -37,8 +56,9 @@ export function AccountDataCard({ userName, onDeleteAccount }: Props) {
                 IGDB id.
             </p>
 
-            {/* A live region, because the button beside it just goes back to how it was. */}
-            {exporter.error && <p className="user-pref-error" role="alert">{exporter.error}</p>}
+            {/* A live region, because the button beside it just goes back to how it was. Not while
+                the dialog is open: the download is shared, and the dialog reports its own. */}
+            {exporter.error && !confirming && <p className="user-pref-error" role="alert">{exporter.error}</p>}
 
             <button
                 type="button"
@@ -57,9 +77,9 @@ export function AccountDataCard({ userName, onDeleteAccount }: Props) {
                 password first.
             </p>
 
-            {/* Held while the download above is running. The export reads the account table by
-                table, and a deletion cascading through those tables part way through would leave a
-                partial copy of the data about to be lost. */}
+            {/* Held while a download is running, whichever button started it. The export reads the
+                account table by table, and a deletion cascading through those tables part way
+                through would leave a partial copy of the data about to be lost. */}
             <button
                 ref={deleteButton}
                 type="button"
@@ -76,6 +96,7 @@ export function AccountDataCard({ userName, onDeleteAccount }: Props) {
                     userName={userName}
                     onCancel={closeDialog}
                     onDelete={onDeleteAccount}
+                    exporter={exporter}
                 />
             )}
         </div>
