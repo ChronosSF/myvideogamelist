@@ -35,18 +35,19 @@ public class FavouritesController(
 
     /// <summary>
     /// Makes a game a favourite. <c>PUT</c> rather than <c>POST</c> because it is idempotent: doing it
-    /// twice succeeds and changes nothing, including the timestamp the favourites are ordered by.
+    /// twice succeeds and changes nothing, including the timestamp the favourites are ordered by —
+    /// which it answers with, whichever request set it, as the wishlist's does.
     /// </summary>
     [HttpPut("{gameId:int}")]
-    public async Task<IActionResult> Add(
+    public async Task<ActionResult<FavouriteAddedDto>> Add(
         [Range(1, int.MaxValue)] int gameId,
         CancellationToken cancellationToken)
     {
         var user = await userManager.GetUserAsync(User);
         if (user is null) return Unauthorized();
 
-        await favouriteService.AddAsync(user.Id, gameId, cancellationToken);
-        return NoContent();
+        var addedAt = await favouriteService.AddAsync(user.Id, gameId, cancellationToken);
+        return Ok(new FavouriteAddedDto(addedAt));
     }
 
     [HttpDelete("{gameId:int}")]

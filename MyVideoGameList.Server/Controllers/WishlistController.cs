@@ -38,16 +38,21 @@ public class WishlistController(
     /// wishlisting a game already wishlisted succeeds and changes nothing, including the
     /// timestamp the list is ordered by.
     /// </summary>
+    /// <remarks>
+    /// Answers with that timestamp, whichever request set it. A tab that loaded before another one
+    /// wishlisted the game still offers to add it, and without the answer would show the game as
+    /// wanted from the moment it asked.
+    /// </remarks>
     [HttpPut("{gameId:int}")]
-    public async Task<IActionResult> Add(
+    public async Task<ActionResult<WishlistAddedDto>> Add(
         [Range(1, int.MaxValue)] int gameId,
         CancellationToken cancellationToken)
     {
         var user = await userManager.GetUserAsync(User);
         if (user is null) return Unauthorized();
 
-        await wishlistService.AddAsync(user.Id, gameId, cancellationToken);
-        return NoContent();
+        var addedAt = await wishlistService.AddAsync(user.Id, gameId, cancellationToken);
+        return Ok(new WishlistAddedDto(addedAt));
     }
 
     [HttpDelete("{gameId:int}")]

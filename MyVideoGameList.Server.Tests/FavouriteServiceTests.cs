@@ -58,18 +58,19 @@ public class FavouriteServiceTests
         using var db = NewDb();
         var service = NewService(db);
 
-        var added = await service.AddAsync(UserId, 42);
+        var addedAt = await service.AddAsync(UserId, 42);
 
-        Assert.True(added);
+        Assert.Equal(Midday, addedAt);
         var favourite = db.UserFavourites.Single();
         Assert.Equal(42, favourite.GameId);
         Assert.Equal(Midday, favourite.AddedAt);
     }
 
     [Fact]
-    public async Task AddAsync_AlreadyAFavourite_KeepsTheOriginalTimestamp()
+    public async Task AddAsync_AlreadyAFavourite_KeepsAndReturnsTheOriginalTimestamp()
     {
-        // The favourites are shown newest first, so a second add must not move one to the front.
+        // The favourites are shown newest first, so a second add must not move one to the front, and
+        // it answers with the original time so that a second tab does not move it there either.
         using var db = NewDb();
         var clock = new FixedClock(Midday);
         var service = NewService(db, clock: clock);
@@ -78,7 +79,7 @@ public class FavouriteServiceTests
         clock.Advance(TimeSpan.FromDays(30));
         var addedAgain = await service.AddAsync(UserId, 42);
 
-        Assert.False(addedAgain);
+        Assert.Equal(Midday, addedAgain);
         Assert.Equal(Midday, db.UserFavourites.Single().AddedAt);
     }
 

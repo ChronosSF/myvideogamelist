@@ -38,7 +38,8 @@ deliberately publishes nothing of the wishlist beyond its size.
 cascade from `AspNetUsers`, an index on `(UserId, AddedAt)`, **no foreign key to the entry** and **no
 events**. `AddedAt` is the whole history. The API is the wishlist's: `GET /api/favourites`, and an
 idempotent `PUT` and `DELETE` on `/api/favourites/{gameId}`, where a second add keeps the original
-timestamp.
+timestamp. The `PUT` answers with the timestamp it kept — on both axes, since the code is shared — so a
+tab that adds a game another tab already added files it where it really belongs rather than at the top.
 
 It is registered in the export manifest (`favourites`, oldest first like every other section) and in
 `UserOwnedDataTests`' inventory, as [0024](0024-the-ownership-contract.md) requires.
@@ -106,14 +107,17 @@ for the reason the wishlist accepted it: the panel needs membership the moment t
 provider is what keeps a toggle on one page true on the next.
 
 **The wishlist's tests are the evidence the move preserved it.** All 26 of `WishlistProvider.test.tsx`
-pass against `useGameAxis` without an edit, and `WishlistRaceTests` now exercise `GameAxisStore`.
+passed against `useGameAxis` without an edit (three more have since been added, for the timestamp the
+`PUT` answers with), and `WishlistRaceTests` now exercise `GameAxisStore`.
 `FavouriteRaceTests` exist so that a favourites service which stopped going through the store fails
 rather than losing its guard quietly.
 
 **The generic predicate was checked against PostgreSQL, not only the in-memory provider.** Npgsql
 translates the interface-constrained `i.UserId == userId && i.GameId == gameId` into a plain
 parameterised `WHERE`, and an add, a repeated add, a remove and a repeated remove against the local
-database returned true, false, true and false.
+database returned true, false, true and false. Once the add returned the timestamp instead, the
+projection `(DateTimeOffset?)i.AddedAt` was checked the same way: it reads the one column, and an add
+repeated three hours later answered with the first add's time.
 
 **An unfavourited game stays on a cached public profile** for `CACHE_PROFILE`'s window. That is not a
 withdrawal of consent, so it is not one of the events ROADMAP D14 invalidates for; a profile made

@@ -34,7 +34,10 @@ export interface GameAxis {
  * depends on its members, so a literal written inline would refetch on every render it caused.
  */
 export interface GameAxisOptions {
-    /** The collection endpoint: `GET` it for the items, `PUT` and `DELETE` `{endpoint}/{gameId}`. */
+    /**
+     * The collection endpoint: `GET` it for the items, `PUT` and `DELETE` `{endpoint}/{gameId}`. The
+     * `PUT` answers with `{ addedAt }`, the time the server kept.
+     */
     endpoint: string;
     /** "Failed to load your wishlist (500)", for a response that was refused. */
     loadFailed: (status: number) => string;
@@ -82,6 +85,7 @@ type GameAxisAction =
     | { type: 'FETCH_SUCCESS'; session: string | null; items: GameAxisItem[] }
     | { type: 'FETCH_ERROR'; session: string | null; error: string }
     | { type: 'PREPEND_ITEM'; session: string | null; item: GameAxisItem }
+    | { type: 'CONFIRM_ITEM'; session: string | null; gameId: number; addedAt: string }
     | { type: 'RESTORE_ITEM'; session: string | null; item: GameAxisItem }
     | { type: 'DROP_ITEM'; session: string | null; gameId: number }
     | { type: 'MUTATION_ERROR'; session: string | null; error: string }
@@ -102,6 +106,20 @@ const initialState: GameAxisState = {
 
 function has(items: GameAxisItem[], gameId: number): boolean {
     return items.some(item => item.game.id === gameId);
+}
+
+/**
+ * The time a successful add says the game joined, or null when the answer carries none that parses —
+ * the item then stays where the add put it, which is the next best place.
+ */
+async function addedAtFrom(response: Response): Promise<string | null> {
+    try {
+        const body: unknown = await response.json();
+        const addedAt = typeof body === 'object' && body !== null && 'addedAt' in body ? body.addedAt : null;
+        return typeof addedAt === 'string' && !Number.isNaN(Date.parse(addedAt)) ? addedAt : null;
+    } catch {
+        return null;
+    }
 }
 
 /** Drops an action that was raised against an account other than the one on screen. */
@@ -138,12 +156,35 @@ function reducer(state: GameAxisState, action: GameAxisAction): GameAxisState {
 
         // A newly added game goes to the front because it *is* the newest, and saying so beats
         // sorting on a timestamp this client invented: a browser clock running behind the server
-        // would otherwise file a brand-new item below older ones until the next load.
+        // would otherwise file a brand-new item below older ones until the server's own time comes
+        // back with the answer.
         case 'PREPEND_ITEM':
             return ifCurrent(state, action.session, () =>
                 has(state.items, action.item.game.id)
                     ? state
                     : { ...state, items: [action.item, ...state.items] });
+
+        // That answer: the time the server kept for an item this client added. Nearly always a
+        // moment after every other item's, so the item stays at the front — but a game another tab
+        // had already added keeps the time it really joined, and goes back to it. Only this item
+        // moves, placed among the others by their own timestamps, so nothing else is reordered.
+        case 'CONFIRM_ITEM':
+            return ifCurrent(state, action.session, () => {
+                const confirmed = state.items.find(item => item.game.id === action.gameId);
+                if (!confirmed) return state;
+
+                const others = state.items.filter(item => item.game.id !== action.gameId);
+                const joined = Date.parse(action.addedAt);
+                const at = others.findIndex(item => Date.parse(item.addedAt) < joined);
+                const placed = { ...confirmed, addedAt: action.addedAt };
+
+                return {
+                    ...state,
+                    items: at === -1
+                        ? [...others, placed]
+                        : [...others.slice(0, at), placed, ...others.slice(at)],
+                };
+            });
 
         // A restore is the opposite case: the row has a server timestamp and a place it came
         // from, so it is sorted back into it rather than pushed to the front.
@@ -283,6 +324,9 @@ export function useGameAxis({ endpoint, loadFailed, loadUnreachable, mutationFai
             });
 
             if (res.ok) {
+                // Read while the game's lock is still held, so no removal of it can land in between.
+                const addedAt = await addedAtFrom(res);
+                if (addedAt !== null) dispatch({ type: 'CONFIRM_ITEM', session, gameId: game.id, addedAt });
                 dispatch({ type: 'CLEAR_MUTATION_ERROR', session });
                 return true;
             }

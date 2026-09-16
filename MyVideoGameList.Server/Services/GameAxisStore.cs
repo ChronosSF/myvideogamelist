@@ -23,37 +23,46 @@ namespace MyVideoGameList.Server.Services;
 internal static class GameAxisStore
 {
     /// <summary>
-    /// Adds the row unless the user already has this game on the axis. False means it was already
-    /// there, and the original <c>AddedAt</c> is left alone.
+    /// Adds the row unless the user already has this game on the axis, and returns when the game
+    /// joined it: the new row's <c>AddedAt</c>, or the original one if it was already there.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// Re-adding keeps the original timestamp. An axis is ordered by when the game joined it, and a
     /// double-click should not reorder anybody's list.
+    /// </para>
+    /// <para>
+    /// The timestamp is returned rather than whether this call inserted, because it is what the caller
+    /// can use. A second tab that adds a game the first has already added has no way to know that
+    /// happened, and would otherwise file the game under the moment it asked.
+    /// </para>
     /// </remarks>
-    public static async Task<bool> AddAsync<TItem>(
+    public static async Task<DateTimeOffset> AddAsync<TItem>(
         ApplicationDbContext db, TItem item, CancellationToken cancellationToken)
         where TItem : class, IGameAxisItem
     {
-        if (await ExistsAsync<TItem>(db, item.UserId, item.GameId, cancellationToken)) return false;
+        if (await AddedAtAsync<TItem>(db, item.UserId, item.GameId, cancellationToken) is { } existing)
+            return existing;
 
         db.Set<TItem>().Add(item);
 
         try
         {
             await db.SaveChangesAsync(cancellationToken);
-            return true;
+            return item.AddedAt;
         }
         catch (DbUpdateException)
         {
             // Two requests can both pass the check above — a double-click, or two tabs — and only
             // one insert can win the composite primary key. A PUT is idempotent, so losing that
-            // race is success, not a 500.
+            // race is success, not a 500, and the answer is the winner's timestamp.
             //
             // Confirmed by re-reading rather than by matching a provider-specific SQL state, so
             // this stays correct on any provider and rethrows anything that is not this race.
             db.Entry(item).State = EntityState.Detached;
 
-            if (await ExistsAsync<TItem>(db, item.UserId, item.GameId, cancellationToken)) return false;
+            if (await AddedAtAsync<TItem>(db, item.UserId, item.GameId, cancellationToken) is { } winner)
+                return winner;
             throw;
         }
     }
@@ -89,8 +98,13 @@ internal static class GameAxisStore
         }
     }
 
-    private static Task<bool> ExistsAsync<TItem>(
+    /// <summary>When the game joined the axis, or null when it is not on it.</summary>
+    private static Task<DateTimeOffset?> AddedAtAsync<TItem>(
         ApplicationDbContext db, string userId, int gameId, CancellationToken cancellationToken)
         where TItem : class, IGameAxisItem =>
-        db.Set<TItem>().AnyAsync(i => i.UserId == userId && i.GameId == gameId, cancellationToken);
+        db.Set<TItem>()
+            .AsNoTracking()
+            .Where(i => i.UserId == userId && i.GameId == gameId)
+            .Select(i => (DateTimeOffset?)i.AddedAt)
+            .FirstOrDefaultAsync(cancellationToken);
 }

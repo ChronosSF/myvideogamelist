@@ -44,7 +44,7 @@ public class FavouriteService(
             .ToList();
     }
 
-    public Task<bool> AddAsync(
+    public Task<DateTimeOffset> AddAsync(
         string userId, int gameId, CancellationToken cancellationToken = default) =>
         GameAxisStore.AddAsync(
             db,

@@ -48,7 +48,7 @@ public class WishlistService(
     /// The race between two adds of the same game is handled in <see cref="GameAxisStore"/>, which
     /// the favourites share, so the guard cannot be fixed for one axis and missed on the other.
     /// </remarks>
-    public Task<bool> AddAsync(
+    public Task<DateTimeOffset> AddAsync(
         string userId, int gameId, CancellationToken cancellationToken = default) =>
         GameAxisStore.AddAsync(
             db,

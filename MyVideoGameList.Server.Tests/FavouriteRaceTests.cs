@@ -55,27 +55,28 @@ public class FavouriteRaceTests
     private static FavouriteService NewService(ApplicationDbContext db) =>
         new(db, Substitute.For<IIgdbService>(), new FixedClock(Midday));
 
-    private static UserFavourite Favourite(int gameId) =>
-        new() { UserId = UserId, GameId = gameId, AddedAt = Midday };
+    private static UserFavourite Favourite(int gameId, DateTimeOffset? addedAt = null) =>
+        new() { UserId = UserId, GameId = gameId, AddedAt = addedAt ?? Midday };
 
     [Fact]
-    public async Task AddAsync_LosingTheInsertRace_ReportsAlreadyPresentRatherThanThrowing()
+    public async Task AddAsync_LosingTheInsertRace_ReturnsTheWinnersTimeRatherThanThrowing()
     {
         // Raised by hand, as in WishlistRaceTests: the in-memory provider does not translate a
         // duplicate key into the DbUpdateException PostgreSQL's would become.
         var store = Guid.NewGuid().ToString();
         using var otherRequest = NewDb(store);
+        var winnersTime = Midday.AddSeconds(-1);
 
         using var db = NewDb(store, new CommitsCompetingWrite(async () =>
         {
-            otherRequest.UserFavourites.Add(Favourite(42));
+            otherRequest.UserFavourites.Add(Favourite(42, winnersTime));
             await otherRequest.SaveChangesAsync();
             throw new DbUpdateException("duplicate key value violates unique constraint");
         }));
 
-        var added = await NewService(db).AddAsync(UserId, 42);
+        var addedAt = await NewService(db).AddAsync(UserId, 42);
 
-        Assert.False(added);
+        Assert.Equal(winnersTime, addedAt);
         Assert.Single(NewDb(store).UserFavourites.Where(f => f.GameId == 42));
     }
 

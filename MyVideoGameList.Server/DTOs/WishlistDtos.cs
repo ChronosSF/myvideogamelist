@@ -9,3 +9,9 @@ namespace MyVideoGameList.Server.DTOs;
 /// mean two always-null fields and would invite client code to treat the two as interchangeable.
 /// </remarks>
 public record WishlistItemDto(GameDto Game, DateTimeOffset AddedAt);
+
+/// <summary>
+/// The answer to putting a game on the wishlist: when it joined, which for a game already there is
+/// the original time rather than now.
+/// </summary>
+public record WishlistAddedDto(DateTimeOffset AddedAt);

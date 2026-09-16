@@ -9,10 +9,10 @@ public interface IFavouriteService
         string userId, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Makes a game a favourite. Idempotent: false means it already was one, and the original
-    /// <c>AddedAt</c> is left alone rather than being bumped to now.
+    /// Makes a game a favourite, and returns when it became one. Idempotent: for a game that already
+    /// was one that is the original <c>AddedAt</c>, left alone rather than bumped to now.
     /// </summary>
-    Task<bool> AddAsync(string userId, int gameId, CancellationToken cancellationToken = default);
+    Task<DateTimeOffset> AddAsync(string userId, int gameId, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Stops a game being a favourite. False when it was not one. Removes nothing else — the entry,

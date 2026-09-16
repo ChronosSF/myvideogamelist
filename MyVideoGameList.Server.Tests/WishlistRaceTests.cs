@@ -67,11 +67,11 @@ public class WishlistRaceTests
     private static WishlistService NewService(ApplicationDbContext db) =>
         new(db, Substitute.For<IIgdbService>(), new FixedClock(Midday));
 
-    private static UserWishlistItem Item(int gameId) =>
-        new() { UserId = UserId, GameId = gameId, AddedAt = Midday };
+    private static UserWishlistItem Item(int gameId, DateTimeOffset? addedAt = null) =>
+        new() { UserId = UserId, GameId = gameId, AddedAt = addedAt ?? Midday };
 
     [Fact]
-    public async Task AddAsync_LosingTheInsertRace_ReportsAlreadyPresentRatherThanThrowing()
+    public async Task AddAsync_LosingTheInsertRace_ReturnsTheWinnersTimeRatherThanThrowing()
     {
         // The competing row lands and the save then fails, which is the shape of the real race.
         //
@@ -84,16 +84,19 @@ public class WishlistRaceTests
         var store = Guid.NewGuid().ToString();
         using var otherRequest = NewDb(store);
 
+        // A moment earlier than this request's clock, so the answer shows whose row it came from.
+        var winnersTime = Midday.AddSeconds(-1);
+
         using var db = NewDb(store, new CommitsCompetingWrite(async () =>
         {
-            otherRequest.UserWishlistItems.Add(Item(42));
+            otherRequest.UserWishlistItems.Add(Item(42, winnersTime));
             await otherRequest.SaveChangesAsync();
             throw new DbUpdateException("duplicate key value violates unique constraint");
         }));
 
-        var added = await NewService(db).AddAsync(UserId, 42);
+        var addedAt = await NewService(db).AddAsync(UserId, 42);
 
-        Assert.False(added);
+        Assert.Equal(winnersTime, addedAt);
         Assert.Single(NewDb(store).UserWishlistItems.Where(w => w.GameId == 42));
     }
 

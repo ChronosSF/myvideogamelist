@@ -56,6 +56,11 @@ interface StubOptions {
     failing?: string[];
     /** URLs held open until the test releases them, so two requests can genuinely overlap. */
     deferred?: string[];
+    /**
+     * The time a successful PUT to each URL answers with, as the server does. A PUT not listed here
+     * answers 204 with no body, which the provider has to take in its stride too.
+     */
+    addedAt?: Record<string, string>;
 }
 
 function stubFetch(options: StubOptions = {}) {
@@ -80,6 +85,10 @@ function stubFetch(options: StubOptions = {}) {
         }
         const status = statusOverride
             ?? (options.failing?.includes(url) ? 500 : options.mutationStatus ?? 204);
+        const addedAt = method === 'PUT' ? options.addedAt?.[url] : undefined;
+        if (addedAt !== undefined && status < 300) {
+            return new Response(JSON.stringify({ addedAt }), { status: 200 });
+        }
         return new Response(status === 204 ? null : 'nope', { status });
     };
 
@@ -278,6 +287,36 @@ describe('WishlistProvider adding', () => {
         await click('add hades');
 
         expect(titles()).toBe('Hades,Celeste');
+    });
+
+    it('files the game under the time the server kept, when another tab had already added it', async () => {
+        // This tab loaded before the other one wishlisted Hades, so it offered "Add", and the PUT
+        // created nothing: the server kept January. Left at the front under this click's time, Hades
+        // would sit above Celeste in an order the wishlist has never had, until the next load.
+        stubFetch({
+            initial: [item(1, 'Celeste', MARCH)],
+            addedAt: { '/api/wishlist/2': JANUARY },
+        });
+        renderProvider();
+        await settled();
+
+        await click('add hades');
+
+        await waitFor(() => expect(titles()).toBe('Celeste,Hades'));
+    });
+
+    it('keeps a new game at the front once the server confirms it is the newest', async () => {
+        stubFetch({
+            initial: [item(2, 'Hades', MARCH)],
+            addedAt: { '/api/wishlist/1': FAR_FUTURE },
+        });
+        renderProvider();
+        await settled();
+
+        await click('add celeste');
+
+        await waitFor(() => expect(screen.getByTestId('pending-celeste')).toHaveTextContent('false'));
+        expect(titles()).toBe('Celeste,Hades');
     });
 
     it('rolls back when the save fails', async () => {
@@ -564,6 +603,45 @@ describe('WishlistProvider across a session change', () => {
         await release('/api/wishlist/2', 204);
 
         expect(screen.getByTestId('mutation-error')).toHaveTextContent(/failed to update/i);
+    });
+
+    it('does not refile a game in the next account when the previous one add is answered late', async () => {
+        /*
+         * The answer to an add carries a time for a game id, and the next account can hold the same
+         * game. Unstamped, Alice's late answer would move Bob's Hades to a time that is Alice's.
+         */
+        const LAST_YEAR = '2025-01-01T00:00:00+00:00';
+        const { release } = stubFetch({
+            loads: [[item(1, 'Celeste', JANUARY)], [item(2, 'Hades', MARCH), item(1, 'Celeste', JANUARY)]],
+            deferred: ['/api/wishlist/2'],
+            addedAt: { '/api/wishlist/2': LAST_YEAR },
+        });
+        const view = renderProvider();
+        await settled();
+
+        // Alice adds Hades, and the answer is held.
+        await click('add hades');
+        expect(titles()).toBe('Hades,Celeste');
+
+        auth.user = BOB;
+        await act(async () => {
+            view.rerender(
+                <WishlistProvider>
+                    <Probe />
+                </WishlistProvider>,
+            );
+        });
+        await settled();
+        expect(titles()).toBe('Hades,Celeste');
+
+        // Reading the answer's body takes more than the one tick `release` gives it, so the
+        // assertion waits a macrotask rather than passing before the answer has been read.
+        await release('/api/wishlist/2', 200);
+        await act(async () => {
+            await new Promise(resolve => setTimeout(resolve, 0));
+        });
+
+        expect(titles()).toBe('Hades,Celeste');
     });
 
     it('clears the wishlist on sign-out', async () => {

@@ -9,3 +9,9 @@ namespace MyVideoGameList.Server.DTOs;
 /// loving one as interchangeable — the reason the wishlist's own DTO is not a list entry either.
 /// </remarks>
 public record FavouriteDto(GameDto Game, DateTimeOffset AddedAt);
+
+/// <summary>
+/// The answer to making a game a favourite: when it became one, which for a game that already was
+/// one is the original time rather than now.
+/// </summary>
+public record FavouriteAddedDto(DateTimeOffset AddedAt);
