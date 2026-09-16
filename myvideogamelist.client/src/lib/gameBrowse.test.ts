@@ -4,7 +4,6 @@ import {
     browseFrom,
     browseParams,
     gamesApiPath,
-    isDefaultBrowse,
     isFiltered,
     yearsFrom,
 } from '@/lib/gameBrowse';
@@ -54,15 +53,10 @@ describe('gamesApiPath', () => {
     });
 });
 
-describe('isFiltered and isDefaultBrowse', () => {
+describe('isFiltered', () => {
     it('does not count the order or a search as a filter', () => {
         expect(isFiltered({ ...EMPTY_BROWSE, sort: 'newest', search: 'x' })).toBe(false);
         expect(isFiltered({ ...EMPTY_BROWSE, year: 2001 })).toBe(true);
-    });
-
-    it('counts anything but the plain catalogue as not the default, the order included', () => {
-        expect(isDefaultBrowse(EMPTY_BROWSE)).toBe(true);
-        expect(isDefaultBrowse({ ...EMPTY_BROWSE, sort: 'popular' })).toBe(false);
     });
 });
 

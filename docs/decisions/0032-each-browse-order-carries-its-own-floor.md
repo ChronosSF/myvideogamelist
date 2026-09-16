@@ -82,7 +82,9 @@ would match nothing, silently. Fixing the mapping is its own piece of work.
 
 `search`, `sort`, `platform`, `genre`, `year` and `minScore`, with every default left out, so the plain
 catalogue has exactly one address — and it is the only one that is indexable; every other combination is
-`noindex, follow`, as a search already was. The loader reads the URL, server-renders the first page, and
+`noindex, follow`, as a search already was. That is decided on the query string itself rather than on what
+the loader parsed from it, because the parse drops what it cannot use: `?sort=bogus` reads as the plain
+catalogue, and would otherwise be indexed as a second copy of it. The loader reads the URL, server-renders the first page, and
 fetches the genres and platforms alongside. If either fails, that one filter is left out and the render is
 `no-store`, so the gap is not pinned at the edge.
 

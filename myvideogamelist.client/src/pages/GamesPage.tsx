@@ -10,7 +10,6 @@ import {
     browseFrom,
     browseParams,
     gamesApiPath,
-    isDefaultBrowse,
     isFiltered,
     yearsFrom,
 } from '@/lib/gameBrowse';
@@ -100,15 +99,19 @@ export function headers({ loaderHeaders }: Route.HeadersArgs) {
     return { 'Cache-Control': loaderHeaders.get('Cache-Control') ?? CACHE_GAMES_LIST };
 }
 
-export function meta({ loaderData }: Route.MetaArgs) {
-    const browse = loaderData?.browse;
+export function meta({ loaderData, location }: Route.MetaArgs) {
+    const search = loaderData?.browse.search ?? '';
 
     // A searched, sorted or filtered listing is kept out of the index: these pages are near-infinite
     // in number and thin in content, which is what search engines call "low-value add" and
     // penalise. The unfiltered browse page stays indexable, and is the one URL without a query.
-    if (browse && !isDefaultBrowse(browse)) {
+    //
+    // Decided on the query string itself, not on the browse parsed from it. The parse drops whatever
+    // it cannot use, so `?sort=bogus`, `?platform=0` and a spelled-out `?sort=rating` all read as the
+    // plain catalogue — and each would be indexed as one more copy of it.
+    if (location.search !== '') {
         return [
-            { title: browse.search ? `${browse.search} - Browse games - MyVideoGameList` : 'Browse games - MyVideoGameList' },
+            { title: search ? `${search} - Browse games - MyVideoGameList` : 'Browse games - MyVideoGameList' },
             { name: 'robots', content: 'noindex, follow' },
         ];
     }

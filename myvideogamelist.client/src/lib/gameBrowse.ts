@@ -79,7 +79,8 @@ export function browseFrom(params: URLSearchParams): GameBrowse {
 
 /**
  * The query string for a browse, leaving out every default. `?sort=rating` and no query at all are
- * one listing, and giving them one URL is what keeps the unfiltered page a single indexable address.
+ * one listing, and giving them one URL is what keeps every link to the unfiltered page on its single
+ * indexable address — the page's `meta` indexes only the URL with no query string.
  */
 export function browseParams(browse: GameBrowse): URLSearchParams {
     const params = new URLSearchParams();
@@ -102,11 +103,6 @@ export function gamesApiPath(offset: number, browse: GameBrowse): string {
 /** Whether anything narrows the listing, the order aside. */
 export function isFiltered(browse: GameBrowse): boolean {
     return browse.platform !== null || browse.genre !== null || browse.year !== null || browse.minScore !== null;
-}
-
-/** Whether this is anything but the plain catalogue in its default order. */
-export function isDefaultBrowse(browse: GameBrowse): boolean {
-    return browseParams(browse).toString() === '';
 }
 
 /**
