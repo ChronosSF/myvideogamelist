@@ -4,7 +4,10 @@ import { type GameBrowse, type GameSort, GAME_SORTS, MIN_SCORES, isFiltered } fr
 
 interface GameBrowseFiltersProps {
     browse: GameBrowse;
-    /** Null when the list could not be loaded: that filter is left out rather than offered empty. */
+    /**
+     * Null when the list could not be loaded: that filter is left out rather than offered empty —
+     * unless the URL already filters by it, which is shown so that it can be seen and cleared.
+     */
     platforms: PlatformDto[] | null;
     genres: GenreDto[] | null;
     years: number[];
@@ -25,6 +28,24 @@ function toNumber(value: string): number | null {
 }
 
 /**
+ * The value the URL filters by when the select does not offer it, or null.
+ *
+ * A stale or hand-edited link can name a platform that is no longer active, a genre IGDB has since
+ * dropped, or a year or score the select does not list, and the listing is still narrowed by it: the
+ * API is sent what the URL says. A select with no option for its value shows its first one instead —
+ * "All platforms" over a result set that is not all platforms — so each select adds the value as an
+ * option of its own, and the controls go on describing what is on the page.
+ */
+function unoffered(value: number | null, offered: readonly number[]): number | null {
+    return value !== null && !offered.includes(value) ? value : null;
+}
+
+/** Newest or highest first, as both of the numeric selects are ordered. */
+function descending(values: readonly number[]): number[] {
+    return [...values].sort((a, b) => b - a);
+}
+
+/**
  * The browse page's order and filters, as plain selects.
  *
  * Native `<select>`s rather than custom menus: each is one choice from a short list, and a native
@@ -39,6 +60,15 @@ export function GameBrowseFilters({ browse, platforms, genres, years, onChange, 
     const id = useId();
     const searching = browse.search !== '';
     const sort = GAME_SORTS.find(s => s.key === browse.sort) ?? GAME_SORTS[0];
+
+    const unofferedPlatform = unoffered(browse.platform, (platforms ?? []).map(platform => platform.id));
+    const unofferedGenre = unoffered(browse.genre, (genres ?? []).map(genre => genre.id));
+    const unofferedYear = unoffered(browse.year, years);
+    const unofferedScore = unoffered(browse.minScore, MIN_SCORES);
+    const yearOptions: readonly number[] = unofferedYear === null ? years : descending([...years, unofferedYear]);
+    const scoreOptions: readonly number[] = unofferedScore === null
+        ? MIN_SCORES
+        : descending([...MIN_SCORES, unofferedScore]);
 
     return (
         <div className="mt-4">
@@ -60,7 +90,7 @@ export function GameBrowseFilters({ browse, platforms, genres, years, onChange, 
                     </select>
                 </div>
 
-                {platforms !== null && platforms.length > 0 && (
+                {((platforms !== null && platforms.length > 0) || unofferedPlatform !== null) && (
                     <div>
                         <label htmlFor={`${id}-platform`} className={labelClass}>Platform</label>
                         <select
@@ -70,14 +100,17 @@ export function GameBrowseFilters({ browse, platforms, genres, years, onChange, 
                             onChange={event => onChange({ platform: toNumber(event.target.value) })}
                         >
                             <option value="">All platforms</option>
-                            {platforms.map(platform => (
+                            {(platforms ?? []).map(platform => (
                                 <option key={platform.id} value={platform.id}>{platform.name}</option>
                             ))}
+                            {unofferedPlatform !== null && (
+                                <option value={unofferedPlatform}>Unlisted platform</option>
+                            )}
                         </select>
                     </div>
                 )}
 
-                {genres !== null && genres.length > 0 && (
+                {((genres !== null && genres.length > 0) || unofferedGenre !== null) && (
                     <div>
                         <label htmlFor={`${id}-genre`} className={labelClass}>Genre</label>
                         <select
@@ -87,9 +120,12 @@ export function GameBrowseFilters({ browse, platforms, genres, years, onChange, 
                             onChange={event => onChange({ genre: toNumber(event.target.value) })}
                         >
                             <option value="">All genres</option>
-                            {genres.map(genre => (
+                            {(genres ?? []).map(genre => (
                                 <option key={genre.id} value={genre.id}>{genre.name}</option>
                             ))}
+                            {unofferedGenre !== null && (
+                                <option value={unofferedGenre}>Unlisted genre</option>
+                            )}
                         </select>
                     </div>
                 )}
@@ -103,7 +139,7 @@ export function GameBrowseFilters({ browse, platforms, genres, years, onChange, 
                         onChange={event => onChange({ year: toNumber(event.target.value) })}
                     >
                         <option value="">Any year</option>
-                        {years.map(year => (
+                        {yearOptions.map(year => (
                             <option key={year} value={year}>{year}</option>
                         ))}
                     </select>
@@ -118,7 +154,7 @@ export function GameBrowseFilters({ browse, platforms, genres, years, onChange, 
                         onChange={event => onChange({ minScore: toNumber(event.target.value) })}
                     >
                         <option value="">Any score</option>
-                        {MIN_SCORES.map(score => (
+                        {scoreOptions.map(score => (
                             <option key={score} value={score}>{`${score} and above`}</option>
                         ))}
                     </select>

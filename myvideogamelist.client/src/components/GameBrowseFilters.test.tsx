@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { GameBrowseFilters } from '@/components/GameBrowseFilters';
 import { EMPTY_BROWSE, type GameBrowse } from '@/lib/gameBrowse';
@@ -91,6 +91,43 @@ describe('GameBrowseFilters', () => {
 
         expect(screen.queryByLabelText('Genre')).not.toBeInTheDocument();
         expect(screen.getByLabelText('Platform')).toBeInTheDocument();
+    });
+
+    it('shows a platform or genre the lists do not offer, rather than claiming all of them', () => {
+        // A stale or hand-edited link still narrows the listing, so "All platforms" would be untrue.
+        renderFilters({ platform: 9, genre: 77 });
+
+        expect(screen.getByLabelText('Platform')).toHaveValue('9');
+        expect(screen.getByRole('option', { name: 'Unlisted platform', selected: true })).toBeInTheDocument();
+        expect(screen.getByLabelText('Genre')).toHaveValue('77');
+        expect(screen.getByRole('option', { name: 'Unlisted genre', selected: true })).toBeInTheDocument();
+    });
+
+    it('shows a year or a score the selects do not offer, in its place among the others', () => {
+        renderFilters({ year: 1960, minScore: 75 });
+
+        expect(screen.getByLabelText('Released')).toHaveValue('1960');
+        expect(screen.getByLabelText('Critic score')).toHaveValue('75');
+        const scores = within(screen.getByLabelText('Critic score')).getAllByRole('option').map(o => o.textContent);
+        expect(scores).toEqual(['Any score', '90 and above', '80 and above', '75 and above', '70 and above', '60 and above']);
+    });
+
+    it('keeps a filter the URL sets on screen when its options could not be loaded, so it can be cleared', async () => {
+        const actor = userEvent.setup();
+        const { onChange } = renderFilters({ genre: 12 }, { genres: null });
+
+        expect(screen.getByLabelText('Genre')).toHaveValue('12');
+
+        await actor.selectOptions(screen.getByLabelText('Genre'), 'All genres');
+        expect(onChange).toHaveBeenCalledWith({ genre: null });
+    });
+
+    it('adds nothing for a value the lists already offer', () => {
+        renderFilters({ platform: 130, year: 2025, minScore: 80 });
+
+        expect(screen.queryByRole('option', { name: 'Unlisted platform' })).not.toBeInTheDocument();
+        expect(within(screen.getByLabelText('Released')).getAllByRole('option')).toHaveLength(4);
+        expect(within(screen.getByLabelText('Critic score')).getAllByRole('option')).toHaveLength(5);
     });
 
     it('offers to clear the filters only when there are some', async () => {

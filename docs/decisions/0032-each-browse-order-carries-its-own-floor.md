@@ -91,6 +91,13 @@ requests and the controls all go through it. A malformed value is dropped there 
 API refuses the same values with a 400 on its own: an unknown order, a year outside 1950–2100, a score
 outside 1–100.
 
+A well-formed value the controls do not offer is honoured, and shown. A stale link can name a platform no
+longer active or a genre IGDB has dropped, and a hand-edited one a year or a score between the offered
+steps. The listing is narrowed by it either way, and a select with no option for its value displays its
+first one — "All platforms" over a page that is not all platforms. So each select adds the value as an
+option of its own ("Unlisted platform", "75 and above"), and keeps it on screen even when that filter's list
+failed to load, where it can be seen and cleared.
+
 A filter change is a new history entry; typing a search still replaces the entry, as before, and a filter
 picked before the search debounce fires carries the typed term with it.
 
