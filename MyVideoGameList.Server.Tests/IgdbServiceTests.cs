@@ -171,21 +171,53 @@ public class BuildQueryTests
 
 public class MapEsrbRatingTests
 {
+    private const int Esrb = 1;
+
+    private static IgdbAgeRating Rating(int? organization, int? ratingCategory) =>
+        new(1, organization, ratingCategory);
+
     [Theory]
     [InlineData(1, "RP")]
+    [InlineData(2, "EC")]
     [InlineData(3, "E")]
     [InlineData(4, "E10+")]
+    [InlineData(5, "T")]
     [InlineData(6, "M")]
     [InlineData(7, "AO")]
-    public void MapsKnownRatings(int value, string expected)
-        => Assert.Equal(expected, IgdbService.MapEsrbRating(value));
+    public void WithAnEsrbRating_MapsItsCategoryToTheShortCode(int ratingCategory, string expected)
+        => Assert.Equal(expected, IgdbService.MapEsrbRating([Rating(Esrb, ratingCategory)]));
+
+    [Fact]
+    public void AmongEveryBoardsRatings_ReadsTheEsrbRow()
+    {
+        // The Witcher 3's rows in the order live IGDB returned them, ESRB last. The organization and
+        // ESRB category ids share a range, so reading the wrong field of the right row still yields
+        // a plausible code — "RP" — rather than failing.
+        var result = IgdbService.MapEsrbRating([
+            Rating(7, 38), Rating(2, 12), Rating(3, 17), Rating(6, 32),
+            Rating(4, 22), Rating(5, 26), Rating(Esrb, 6)
+        ]);
+
+        Assert.Equal("M", result);
+    }
+
+    [Fact]
+    public void WithOnlyOtherBoards_ReturnsNull()
+        => Assert.Null(IgdbService.MapEsrbRating([Rating(organization: 2, ratingCategory: 12)]));
 
     [Theory]
     [InlineData(0)]
     [InlineData(8)]
-    [InlineData(-1)]
-    public void ReturnsNullForUnknownRatings(int value)
-        => Assert.Null(IgdbService.MapEsrbRating(value));
+    [InlineData(null)]
+    public void WithAnUnknownCategory_ReturnsNull(int? ratingCategory)
+        => Assert.Null(IgdbService.MapEsrbRating([Rating(Esrb, ratingCategory)]));
+
+    [Fact]
+    public void WithNoAgeRatings_ReturnsNull()
+    {
+        Assert.Null(IgdbService.MapEsrbRating(null));
+        Assert.Null(IgdbService.MapEsrbRating([]));
+    }
 }
 
 public class MapTimeToBeatTests
