@@ -27,7 +27,7 @@ const listsValue = {
     setScore: vi.fn(async () => true),
     setOwnership: vi.fn(async () => true),
     setNotes: vi.fn(async () => true),
-    deleteEntry: vi.fn(async () => {}),
+    deleteEntry: vi.fn(async () => true),
     view: 'tiles' as const,
     setView: vi.fn(),
     sortFor: () => DEFAULT_SORT,

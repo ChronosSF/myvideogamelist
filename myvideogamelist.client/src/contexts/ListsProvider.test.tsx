@@ -73,6 +73,7 @@ function stubFetch(routes: Routes) {
 /** Surfaces the parts of the context the assertions need, as plain text and buttons. */
 function Probe({ listId = 'playing' as ListId }: { listId?: ListId }) {
     const lists = useLists();
+    const [deleted, setDeleted] = useState('');
 
     return (
         <div>
@@ -83,6 +84,7 @@ function Probe({ listId = 'playing' as ListId }: { listId?: ListId }) {
             <span data-testid="score">{String(lists.scoreFor(1))}</span>
             <span data-testid="found-in">{String(lists.getListFor(1))}</span>
             <span data-testid="pending">{String(lists.isPending(1))}</span>
+            <span data-testid="deleted">{deleted}</span>
             {(['backlog', 'playing', 'on_hold', 'finished', 'dropped'] as ListId[]).map(id => (
                 <span key={id} data-testid={`list-${id}`}>
                     {lists.lists[id].map(e => `${e.game.title}(${e.score ?? '-'})`).join(',')}
@@ -93,7 +95,7 @@ function Probe({ listId = 'playing' as ListId }: { listId?: ListId }) {
             </button>
             <button onClick={() => void lists.removeFromList('playing', 1)}>remove</button>
             <button onClick={() => void lists.setScore(1, 9)}>score 9</button>
-            <button onClick={() => void lists.deleteEntry(1)}>delete entry</button>
+            <button onClick={() => void lists.deleteEntry(1).then(ok => setDeleted(String(ok)))}>delete entry</button>
             <button onClick={() => lists.setView('table')}>use table</button>
             <button onClick={() => lists.setSort(listId, { key: 'score', descending: true })}>sort by score</button>
         </div>
@@ -303,6 +305,24 @@ describe('deleting everything about a game', () => {
 
         await waitFor(() => expect(screen.getByTestId('list-finished')).toHaveTextContent('Celeste(7)'));
         expect(screen.getByTestId('error')).toHaveTextContent('Failed to remove your data');
+    });
+
+    it('answers whether it deleted, for a caller holding its own copy of the entry', async () => {
+        // The game panel shows a score, notes and a review the lists do not carry, and clears them
+        // only on true — a rollback here puts back the lists and nothing else.
+        await renderProvider({ lists: { finished: [CELESTE] } });
+
+        await userEvent.click(screen.getByRole('button', { name: 'delete entry' }));
+
+        await waitFor(() => expect(screen.getByTestId('deleted')).toHaveTextContent('true'));
+    });
+
+    it('answers false when the delete fails', async () => {
+        await renderProvider({ lists: { finished: [CELESTE] }, failing: ['/api/entries/1'] });
+
+        await userEvent.click(screen.getByRole('button', { name: 'delete entry' }));
+
+        await waitFor(() => expect(screen.getByTestId('deleted')).toHaveTextContent('false'));
     });
 });
 

@@ -35,6 +35,13 @@ interface GameUserPanelProps {
 }
 
 /**
+ * Where the panel's own read of the entry stands. Nothing that writes the entry is offered until it
+ * is `ready`: a read that failed is not an empty entry, and a form filled from one would save over a
+ * score, notes or a review the user already has.
+ */
+type EntryStatus = 'loading' | 'ready' | 'failed';
+
+/**
  * Everything this user has recorded about one game, in one place: which list it is in, their
  * score, and a single control that erases the lot.
  *
@@ -65,8 +72,11 @@ export function GameUserPanel({ game, profileVisibility, onCommunityChange }: Ga
     const [notes, setLocalNotes] = useState<string | null>(null);
     const [playthroughs, setPlaythroughs] = useState<PlaythroughDto[]>([]);
     const [review, setReview] = useState<ReviewDto | null>(null);
-    const [loaded, setLoaded] = useState(false);
+    const [entryStatus, setEntryStatus] = useState<EntryStatus>('loading');
+    // Bumped by "Try again", which is what re-runs the read.
+    const [entryAttempt, setEntryAttempt] = useState(0);
     const [confirmingDelete, setConfirmingDelete] = useState(false);
+    const [deleteError, setDeleteError] = useState<string | null>(null);
 
     const [editing, setEditing] = useState<PlaythroughDto | null>(null);
     const [savingPlaythrough, setSavingPlaythrough] = useState(false);
@@ -91,8 +101,9 @@ export function GameUserPanel({ game, profileVisibility, onCommunityChange }: Ga
         setLocalNotes(null);
         setPlaythroughs([]);
         setReview(null);
-        setLoaded(false);
+        setEntryStatus('loading');
         setConfirmingDelete(false);
+        setDeleteError(null);
         setEditing(null);
         setSavingPlaythrough(false);
         setDeletingPlaythroughId(null);
@@ -103,10 +114,10 @@ export function GameUserPanel({ game, profileVisibility, onCommunityChange }: Ga
         setNotesError(null);
     }
 
-    // Which game the panel is showing now, for the two writes below to check once they come back.
-    // The page stays mounted when a link goes from one game to another, so a save that lands after
-    // that must not write the first game's value into the second game's panel. Read only in those
-    // continuations, never during render.
+    // Which game the panel is showing now, for the writes below to check once they come back. The
+    // page stays mounted when a link goes from one game to another, so a save or a delete that lands
+    // after that must not write the first game's outcome into the second game's panel. Read only in
+    // those continuations, never during render.
     const shownGameId = useRef(game.id);
     useEffect(() => {
         shownGameId.current = game.id;
@@ -117,12 +128,19 @@ export function GameUserPanel({ game, profileVisibility, onCommunityChange }: Ga
     const pending = isPending(game.id);
     const wishlisted = wishlist.isWishlisted(game.id);
     const favourite = favourites.isFavourite(game.id);
+    const ready = entryStatus === 'ready';
 
     useEffect(() => {
         const controller = new AbortController();
 
         fetch(`/api/entries/${game.id}`, { credentials: 'include', signal: controller.signal })
-            .then(res => (res.ok ? (res.json() as Promise<EntryDetailDto>) : null))
+            .then(res => {
+                // A 404 is the normal case, a game the user has never touched, and it is an empty
+                // entry. Any other refusal is a read that failed, which is not the same thing.
+                if (res.status === 404) return null;
+                if (!res.ok) throw new Error(`Failed to load the entry (${res.status})`);
+                return res.json() as Promise<EntryDetailDto>;
+            })
             .then(detail => {
                 if (controller.signal.aborted) return;
                 setLocalScore(detail?.entry.score ?? null);
@@ -130,16 +148,22 @@ export function GameUserPanel({ game, profileVisibility, onCommunityChange }: Ga
                 setLocalNotes(detail?.notes ?? null);
                 setPlaythroughs(detail?.playthroughs ?? []);
                 setReview(detail?.review ?? null);
-                setLoaded(true);
+                setEntryStatus('ready');
             })
             .catch(() => {
-                // A 404 is the normal case for a game the user has never touched, and a failure
-                // here should leave the panel usable rather than blocking it.
-                if (!controller.signal.aborted) setLoaded(true);
+                // Including the rejection an unreachable API gives, which no status check sees. The
+                // lists, wishlist and favourite above do not come from this read and stay usable.
+                if (!controller.signal.aborted) setEntryStatus('failed');
             });
 
         return () => controller.abort();
-    }, [game.id]);
+    }, [game.id, entryAttempt]);
+
+    /** From the click rather than the effect, which may not set state synchronously. */
+    const retryEntry = () => {
+        setEntryStatus('loading');
+        setEntryAttempt(attempt => attempt + 1);
+    };
 
     const handleScore = async (next: number | null) => {
         const previous = score;
@@ -177,8 +201,21 @@ export function GameUserPanel({ game, profileVisibility, onCommunityChange }: Ga
     };
 
     const handleDelete = async () => {
+        const forGame = game.id;
         setConfirmingDelete(false);
-        await deleteEntry(game.id);
+        setDeleteError(null);
+
+        const deleted = await deleteEntry(forGame);
+        if (shownGameId.current !== forGame) return;
+
+        // Everything is still recorded, so everything stays on screen. Cleared anyway, the panel
+        // would show an empty game until the next page load, and saving from it would write over
+        // what is still there.
+        if (!deleted) {
+            setDeleteError('Could not delete your data for this game. Please try again.');
+            return;
+        }
+
         setLocalScore(null);
         setLocalOwnership(null);
         setLocalNotes(null);
@@ -189,8 +226,8 @@ export function GameUserPanel({ game, profileVisibility, onCommunityChange }: Ga
         setReview(null);
         setEditing(null);
 
-        // Unconditionally: the provider reports a failed delete by rolling back rather than by
-        // returning, and asking again when nothing changed costs one request and shows the truth.
+        // Nothing is recorded now, which is known without asking — even after a read that failed.
+        setEntryStatus('ready');
         onCommunityChange();
     };
 
@@ -434,6 +471,20 @@ export function GameUserPanel({ game, profileVisibility, onCommunityChange }: Ga
                 )}
             </div>
 
+            {/* Above the first section this read feeds, and not instead of them: shown empty, the
+                forms would invite a save over data that only failed to arrive. */}
+            {entryStatus === 'failed' && (
+                <div className="game-user-panel-section">
+                    <p className="game-user-panel-hint" role="alert">
+                        Your score, ownership, notes, playthroughs and review for this game could not
+                        be loaded, so they cannot be changed just now.{' '}
+                        <button type="button" className="game-user-panel-retry" onClick={retryEntry}>
+                            Try again
+                        </button>
+                    </p>
+                </div>
+            )}
+
             <div className="game-user-panel-section">
                 <p className="game-user-panel-label">Your score</p>
                 <div className="game-user-panel-score">
@@ -441,7 +492,7 @@ export function GameUserPanel({ game, profileVisibility, onCommunityChange }: Ga
                         size="md"
                         score={score}
                         gameTitle={game.title}
-                        disabled={!loaded || pending}
+                        disabled={!ready || pending}
                         onChange={next => void handleScore(next)}
                     />
                     <span className="game-user-panel-hint">
@@ -464,7 +515,7 @@ export function GameUserPanel({ game, profileVisibility, onCommunityChange }: Ga
                                 type="button"
                                 className={`game-user-panel-list-btn game-user-panel-ownership-btn${active ? ' active' : ''}`}
                                 onClick={() => void handleOwnership(active ? null : kind)}
-                                disabled={!loaded || pending}
+                                disabled={!ready || pending}
                                 aria-pressed={active}
                                 title={active ? 'Clear' : `Mark as ${OWNERSHIP_NAMES[kind].toLowerCase()}`}
                             >
@@ -485,7 +536,7 @@ export function GameUserPanel({ game, profileVisibility, onCommunityChange }: Ga
                     key={game.id}
                     notes={notes}
                     onSave={next => void handleNotesSave(next)}
-                    pending={!loaded || pending || savingNotes}
+                    pending={!ready || pending || savingNotes}
                     error={notesError}
                 />
             </div>
@@ -498,14 +549,14 @@ export function GameUserPanel({ game, profileVisibility, onCommunityChange }: Ga
                     onEdit={setEditing}
                     onDelete={playthrough => void handlePlaythroughDelete(playthrough)}
                     busyId={deletingPlaythroughId}
-                    disabled={!loaded || savingPlaythrough}
+                    disabled={!ready || savingPlaythrough}
                 />
                 <PlaythroughForm
                     platforms={game.platforms}
                     editing={editing}
                     onSubmit={input => void handlePlaythroughSubmit(input)}
                     onCancelEdit={() => setEditing(null)}
-                    pending={!loaded || savingPlaythrough}
+                    pending={!ready || savingPlaythrough}
                     error={playthroughError}
                 />
             </div>
@@ -518,7 +569,7 @@ export function GameUserPanel({ game, profileVisibility, onCommunityChange }: Ga
                     profileVisibility={profileVisibility}
                     onSave={input => void handleReviewSave(input)}
                     onDelete={() => void handleReviewDelete()}
-                    pending={!loaded || savingReview}
+                    pending={!ready || savingReview}
                     error={reviewError}
                 />
             </div>
@@ -550,6 +601,9 @@ export function GameUserPanel({ game, profileVisibility, onCommunityChange }: Ga
                         >
                             Delete my data for this game
                         </button>
+                    )}
+                    {deleteError !== null && (
+                        <p className="game-user-panel-hint" role="alert">{deleteError}</p>
                     )}
                 </div>
             )}

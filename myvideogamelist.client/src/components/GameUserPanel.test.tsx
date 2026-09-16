@@ -33,7 +33,7 @@ function contextValue(overrides: Partial<ListsContextValue> = {}): ListsContextV
         setScore: vi.fn(async () => true),
         setOwnership: vi.fn(async () => true),
         setNotes: vi.fn(async () => true),
-        deleteEntry: vi.fn(async () => {}),
+        deleteEntry: vi.fn(async () => true),
         view: 'tiles',
         setView: vi.fn(),
         sortFor: () => DEFAULT_SORT,
@@ -319,6 +319,66 @@ describe('GameUserPanel scoring', () => {
     });
 });
 
+describe('GameUserPanel when the entry cannot be read', () => {
+    /*
+     * Only a 404 means "nothing recorded". Any other failure leaves the score, ownership, notes,
+     * playthroughs and review unknown — and shown as empty, the notes box and the review form would
+     * invite a save over text the user already has.
+     */
+
+    it('does not take a failed read for an empty entry', async () => {
+        stubEntryFetch(null, 500);
+        renderPanel();
+
+        expect(await screen.findByRole('alert')).toHaveTextContent(/could not be loaded/i);
+        expect(screen.getByLabelText('Your score for Celeste')).toBeDisabled();
+        expect(screen.getByRole('button', { name: 'Owned' })).toBeDisabled();
+        expect(screen.getByLabelText('Your notes')).toBeDisabled();
+        expect(screen.getByRole('button', { name: 'Log playthrough' })).toBeDisabled();
+        expect(screen.getByLabelText('What you thought')).toBeDisabled();
+    });
+
+    it('treats an unreachable API the same way', async () => {
+        // fetch rejects rather than returning a bad response, which no status check sees.
+        vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('Network down'); }));
+        renderPanel();
+
+        expect(await screen.findByRole('alert')).toHaveTextContent(/could not be loaded/i);
+        expect(screen.getByLabelText('Your score for Celeste')).toBeDisabled();
+    });
+
+    it('leaves the lists, the wishlist and the favourite usable, since they are not from this read', async () => {
+        stubEntryFetch(null, 500);
+        renderPanel();
+        await screen.findByRole('alert');
+
+        expect(screen.getByRole('button', { name: 'Playing' })).toBeEnabled();
+        expect(screen.getByRole('button', { name: 'Add to wishlist' })).toBeEnabled();
+        expect(screen.getByRole('button', { name: 'Add to favourites' })).toBeEnabled();
+    });
+
+    it('reads it again on retry, and offers the controls once it arrives', async () => {
+        const actor = userEvent.setup();
+        let attempts = 0;
+        vi.stubGlobal('fetch', vi.fn(async () => {
+            attempts++;
+            return attempts === 1
+                ? new Response('nope', { status: 500 })
+                : new Response(
+                    JSON.stringify(entryDetail({ entry: { game: { id: 1, title: 'Celeste' }, score: 8 } })),
+                    { status: 200 });
+        }));
+        renderPanel();
+        await screen.findByRole('alert');
+
+        await actor.click(screen.getByRole('button', { name: 'Try again' }));
+
+        await settled();
+        expect(shownScore()).toBe(8);
+        expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    });
+});
+
 describe('GameUserPanel deleting everything', () => {
     it('offers no delete for a game with nothing recorded', async () => {
         stubEntryFetch(null, 404);
@@ -421,6 +481,34 @@ describe('GameUserPanel deleting everything', () => {
 
         expect(ctx.deleteEntry).not.toHaveBeenCalled();
         expect(screen.getByRole('button', { name: /delete my data/i })).toBeInTheDocument();
+    });
+
+    it('keeps everything on screen, and says so, when the delete fails', async () => {
+        // The provider puts the lists back; the panel's own copy has to stay too, or the game reads
+        // as empty until the next page load while everything is still recorded.
+        stubEntryFetch(7, 200, [playthrough({ id: 5, minutesPlayed: 260 })]);
+        const ctx = renderPanel({ deleteEntry: vi.fn(async () => false) });
+
+        await userEvent.click(await screen.findByRole('button', { name: /delete my data/i }));
+        await userEvent.click(screen.getByRole('button', { name: 'Delete' }));
+
+        expect(await screen.findByRole('alert')).toHaveTextContent(/could not delete your data/i);
+        expect(shownScore()).toBe(7);
+        expect(screen.getByText('4h 20m')).toBeInTheDocument();
+        expect(ctx.onCommunityChange).not.toHaveBeenCalled();
+    });
+
+    it('offers the controls again once everything is deleted, even after a read that failed', async () => {
+        // Nothing is recorded after a delete, which is known without reading it back.
+        stubEntryFetch(null, 500);
+        renderPanel({ getListFor: () => 'backlog', isInList: (id: ListId) => id === 'backlog' });
+        await screen.findByRole('alert');
+
+        await userEvent.click(screen.getByRole('button', { name: /delete my data/i }));
+        await userEvent.click(screen.getByRole('button', { name: 'Delete' }));
+
+        await settled();
+        expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     });
 });
 

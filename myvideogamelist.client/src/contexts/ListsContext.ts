@@ -37,8 +37,12 @@ export interface ListsContextValue {
     setOwnership: (gameId: number, ownership: Ownership | null) => Promise<boolean>;
     /** Replaces the user's private notes on the game. The same lock and the same contract. */
     setNotes: (gameId: number, notes: string | null) => Promise<boolean>;
-    /** Deletes everything recorded about a game. The only call that discards a score. */
-    deleteEntry: (gameId: number) => Promise<void>;
+    /**
+     * Deletes everything recorded about a game. The only call that discards a score. False when
+     * nothing was deleted — the request failed, or another write to the game was still out — so a
+     * caller showing its own copy of the entry knows to keep showing it.
+     */
+    deleteEntry: (gameId: number) => Promise<boolean>;
 
     view: ViewMode;
     setView: (view: ViewMode) => void;

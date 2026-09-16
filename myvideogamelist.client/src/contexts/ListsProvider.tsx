@@ -588,8 +588,8 @@ export function ListsProvider({ children }: { children: ReactNode }) {
     const setNotes = (gameId: number, notes: string | null): Promise<boolean> =>
         writeEntryField(gameId, 'notes', { notes }, 'Failed to save your notes. Please try again.');
 
-    const deleteEntry = async (gameId: number): Promise<void> => {
-        if (state.pending.has(gameId)) return;
+    const deleteEntry = async (gameId: number): Promise<boolean> => {
+        if (state.pending.has(gameId)) return false;
         startPending(gameId);
 
         const origin = locate(state.lists, gameId);
@@ -604,10 +604,15 @@ export function ListsProvider({ children }: { children: ReactNode }) {
             });
 
             // 404 means there was nothing recorded, which is the state the caller wanted anyway.
-            if (res.ok || res.status === 404) dispatch({ type: 'CLEAR_MUTATION_ERROR', session });
-            else rollBack(undo, 'Failed to remove your data. Please try again.');
+            if (res.ok || res.status === 404) {
+                dispatch({ type: 'CLEAR_MUTATION_ERROR', session });
+                return true;
+            }
+            rollBack(undo, 'Failed to remove your data. Please try again.');
+            return false;
         } catch {
             rollBack(undo, 'Failed to remove your data. Please try again.');
+            return false;
         } finally {
             endPending(gameId);
         }
