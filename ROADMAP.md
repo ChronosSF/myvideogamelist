@@ -266,15 +266,19 @@ change, grandfather existing subscribers rather than repricing them.
 
 ### Resilience & correctness
 
-- **Retry + circuit breaker on the IGDB client** (`Microsoft.Extensions.Http.Resilience`). Right now `EnsureSuccessStatusCode` turns any IGDB hiccup into a 500 for the user.
-- **Respect IGDB rate limits** (4 requests/second) with a client-side limiter. `GetUpcomingReleasesAsync` currently pages in an unbounded `while (true)` loop, 500 rows at a time.
-- **Request rate limiting** on the API via the built-in rate limiter, especially on `/api/auth/*`.
-- **Enable Identity lockout** — `PasswordSignInAsync` is called with `lockoutOnFailure: false`, so password guessing is unthrottled.
-- **CSRF protection.** Cookie auth with no antiforgery token means `/api/lists`, `/api/user/theme` and friends are cross-site forgeable; `SameSite=Lax` is mitigation, not a fix. Add antiforgery tokens, or a header-based token check on state-changing calls.
-- **Forwarded headers middleware.** Behind an ALB, `UseHttpsRedirection` and scheme detection misbehave without `UseForwardedHeaders`.
-- **HSTS and security headers** — `UseHsts`, CSP, `X-Content-Type-Options`, `Referrer-Policy`. None are configured.
-- **Global exception handling with ProblemDetails**, so the SPA gets consistent machine-readable errors instead of raw 500s.
-- **`CancellationToken` through controllers → services → HttpClient.**
+> The whole of this section landed together, and the reasoning is in two records: what the API
+> refuses ([0033](docs/decisions/0033-what-the-api-refuses.md)) and how it fails
+> ([0034](docs/decisions/0034-failing-in-one-shape.md)). What is left of it is listed at the end.
+
+- ~~**Retry + circuit breaker on the IGDB client**~~ **DONE.** `Microsoft.Extensions.Http.Resilience`, on the named `Igdb` client: two quick retries, a breaker that stops asking for fifteen seconds once half a sample fails, and a ten-second per-attempt timeout in place of the client's hundred-second default.
+- ~~**Respect IGDB rate limits**~~ **DONE.** Four a second in quarter-second segments, queueing rather than failing, outermost in the pipeline so the wait is not charged to an attempt's timeout. **Per process**, so a second instance doubles what IGDB sees — the shared limit belongs with the distributed cache above.
+- **Request rate limiting** — *partly done, deliberately.* Ten attempts per address per five minutes on login and register, which are the only endpoints browsers call directly and nothing else does. **Not the whole API:** the front end renders on a server of its own, so a limit partitioned by address would put every visitor's server render in one bucket and throttle the site as a single client. The rest belongs at the edge, with the CDN and a WAF.
+- ~~**Enable Identity lockout**~~ **DONE.** Five failures, fifteen minutes. A lockout answers exactly as a wrong password does — announcing it would make five deliberate failures a way to ask whether an address has an account here. The limiter above is the half that may speak, because it knows nothing about who is registered.
+- ~~**CSRF protection**~~ **DONE**, as the header check rather than the token. Every write must carry `X-MVGL-Request`, which a cross-site form cannot add and cross-site script cannot get past a preflight this API does not answer. **Adding a permissive CORS policy would undo it** (0033). On the client every write goes through `apiFetch`.
+- ~~**Forwarded headers middleware**~~ **DONE**, opt-in and fail-fast: enabling it without naming the proxy throws at startup rather than trusting whoever sends the header. `ForwardLimit` is configuration because the right value is a fact about the topology — one balancer is 1, a CDN in front of it is 2.
+- ~~**HSTS and security headers**~~ **DONE, less one directive.** Two sets, because two processes serve different things: `default-src 'none'` for JSON, a document set applied in `entry.server.tsx` so that thrown Responses carry it too. HSTS is a year with subdomains, no preload. **Still open:** a policy naming `script-src`, which needs a per-request nonce for React Router's inline hydration script.
+- ~~**Global exception handling with ProblemDetails**~~ **DONE.** One shape everywhere with a `traceId`, the exception itself in Development only, somebody else's outage as a 502 rather than a 500, and a reader who navigated away as a silent 499 rather than a 5xx alarm.
+- ~~**`CancellationToken` through controllers → services → HttpClient.**~~ **DONE** in Phase 0.
 
 ### Observability
 
@@ -395,7 +399,9 @@ Migrated the client to React Router framework mode with SSR (now on v8, see [ADR
 **Phase 1 — Make it deployable (1–2 weeks)**
 SSR makes this a **two-process** deployment; the container and CDK work in §6 must account for both, plus the layer that routes between them. See [ADR 0003](docs/decisions/0003-two-process-deployment.md) and [ADR 0007](docs/decisions/0007-aws-target-architecture.md).
 
-PostgreSQL swap; Data Protection keys to S3; migrations out of startup; distributed cache; forwarded headers, HSTS, CSRF, lockout; Dockerfile; CDK stack; GitHub Actions OIDC deploy to a dev environment.
+PostgreSQL swap (done locally); ~~forwarded headers, HSTS, CSRF, lockout~~ (done — [0033](docs/decisions/0033-what-the-api-refuses.md), [0034](docs/decisions/0034-failing-in-one-shape.md)); Data Protection keys to S3; migrations out of startup; distributed cache; Dockerfile; CDK stack; GitHub Actions OIDC deploy to a dev environment.
+
+What the hardening pass left for the deployment itself: turning `ForwardedHeaders` on and naming the balancer's subnet, forwarding `X-MVGL-Request` through CloudFront on any behaviour that carries a write, and revisiting `ForwardLimit` once the CDN is in front of the balancer.
 
 **Phase 2 — Make it a real tracker (2–4 weeks)**
 Per-entry scores, dates, hours and notes; full list taxonomy plus Wishlist; profile stats; ~~usernames and public profiles~~ (done — ADR [0027](docs/decisions/0027-usernames-and-public-profiles.md)); email confirmation and password reset; local game-metadata cache table. (It is no longer a prerequisite for the Steam AppID mapping in N1, which shipped against an in-memory cache instead — see ADR [0012](docs/decisions/0012-steam-news-without-a-database.md).)

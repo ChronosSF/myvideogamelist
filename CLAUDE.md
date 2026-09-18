@@ -55,9 +55,12 @@ still work, so the instance should stay in rotation.
 ```
 MyVideoGameList.Server/         ASP.NET Core 10 API
   Controllers/  Services/  Models/  DTOs/  Data/  HealthChecks/
+  Security/                     Rate limits, forwarded headers, security headers, the write guard
+  Errors/                       What each kind of failure leaves as
 MyVideoGameList.Server.Tests/   xUnit tests
 myvideogamelist.client/
   src/root.tsx                  HTML document, providers, global ErrorBoundary
+  src/entry.server.tsx          Owned, not generated. Where every document response gets its headers
   src/routes.ts                 Route table. `/u/:userName` is the one public per-person page
   src/pages/                    Route modules (default export + optional loader/meta)
   src/lib/                      apiUrl(), useStoredNumberSet()
@@ -189,6 +192,39 @@ ROADMAP.md                      Forward-looking plan
   defaults. A rename writes `UserListSettings` and nothing else, the five effective names must differ
   without case, and the names form edits only when `namesStatus` is `ready`: a failed read looks like
   "nothing renamed", and saving from it would reset every list. See `docs/decisions/0031-*`.
+
+- **Every write carries `X-MVGL-Request`, and `apiFetch` is what puts it there.** Cookie
+  authentication means a browser attaches the session to a cross-site request as readily as to one
+  of ours, so the API refuses any `POST`, `PUT`, `PATCH` or `DELETE` without that header — in local
+  development exactly as when deployed. On the client, use `apiFetch` from `@/lib/api` for every
+  write; a bare `fetch` is a 403 that looks like a bug. Calling a write endpoint from curl or
+  Scalar means adding the header by hand. **Never add a permissive CORS policy**: an
+  `Access-Control-Allow-Headers` that admits this header from an arbitrary origin undoes the whole
+  guard. See `docs/decisions/0033-*`.
+
+- **Two processes serve two sets of security headers, and the document set lives in
+  `entry.server.tsx`.** The API's policy is `default-src 'none'` because JSON loads nothing; a page
+  under that policy would be blank, so the document set is separate and is applied in
+  `entry.server.tsx` — the only place every document response passes through, since a thrown
+  `Response` bypasses a route's `headers` export. That file is otherwise `react-router reveal`'s
+  output and must be re-diffed against it on a React Router major. On the API side the headers
+  attach with `OnStarting` rather than on the way in, because `UseExceptionHandler` clears the
+  response — headers included — before writing a 500 or a 502.
+
+- **A third party's failure is a 502, ours is a 500, and a reader who left is a 499.** IGDB calls go
+  through a resilience pipeline: paced at four a second *per process*, retried twice, and broken for
+  fifteen seconds once half a sample fails, so during an outage calls fail immediately with no HTTP
+  request at all. Every error body is a `ProblemDetails` with a `traceId`; the exception itself is
+  included in Development only. `/readyz` still answers 200 while IGDB is down, deliberately. See
+  `docs/decisions/0034-*`.
+
+- **The rate limiter is narrow on purpose, and the lockout says nothing.** Ten attempts per address
+  per five minutes on login and register only — the SSR server calls this API for every visitor, so
+  a limit partitioned by address anywhere a loader reaches would throttle the whole site as one
+  client. Identity locks an account after five failures but answers exactly as it answers a wrong
+  password, because announcing a lockout tells an attacker the account exists. Forwarded headers
+  are off until configured, and turning them on without naming the proxy **fails at startup** rather
+  than trusting whoever sends the header.
 
 - **Never change a game's status without recording an event.** `UserGameEvents` is append-only
   and is the only record that a transition happened — `UserGameLists` holds current state and is

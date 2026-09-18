@@ -43,6 +43,21 @@ paths:
   unbounded `while (true)` against a rate-limited API is a production incident.
 - Cache misses as well as hits, so a bad id cannot hammer the upstream on repeat requests.
 
+## The pipeline and its failures
+
+- Middleware lives in `Security/` and `Errors/`, and the order in `Program.cs` is load-bearing:
+  forwarded headers first, then the exception handler, then security headers, the rate limiter and
+  the write guard. Anything added above the exception handler will not be seen by a failed request.
+- **Do not catch a third party's failure to return a 500.** `HttpRequestException`, a broken circuit
+  and a timeout are turned into a 502 centrally by `UpstreamFailureHandler`; a service that swallows
+  one is deciding on the caller's behalf that a degraded page is better than an honest error. The
+  ones that do degrade deliberately — the home composite, the health check — say so in a comment.
+- **A new endpoint that changes state needs no new guard**, but it does have to use a method that
+  says so. The write guard exempts `GET`, `HEAD` and `OPTIONS`, so a state change behind a `GET` is
+  both forgeable and cacheable.
+- Only `/api/auth/login` and `/api/auth/register` are rate-limited, and adding a policy to anything
+  a loader calls would throttle every visitor at once — see `docs/decisions/0033-*`.
+
 ## Configuration & secrets
 
 - `appsettings.json` holds defaults and documentation only. Secrets come from user secrets
