@@ -175,6 +175,23 @@ public class WishlistServiceTests
     }
 
     [Fact]
+    public async Task GetWishlistAsync_TwoWantedAtOnce_OrdersThemByGameId()
+    {
+        // The timestamp is the server's rather than the row's, so two can share one — a library
+        // import would write a whole wishlist with a single timestamp. Without the tie-break those
+        // rows come back in whatever order the database yields, and a different one each time.
+        using var db = NewDb();
+        var service = NewService(db, IgdbReturning(Game(1, "Celeste"), Game(2, "Hades")));
+
+        await service.AddAsync(UserId, 2);
+        await service.AddAsync(UserId, 1);
+
+        var wishlist = await service.GetWishlistAsync(UserId);
+
+        Assert.Equal(["Celeste", "Hades"], wishlist.Select(w => w.Game.Title));
+    }
+
+    [Fact]
     public async Task GetWishlistAsync_SkipsGamesIgdbCannotResolve()
     {
         // The row stays — the id is still the user's data and IGDB gaps have been transient

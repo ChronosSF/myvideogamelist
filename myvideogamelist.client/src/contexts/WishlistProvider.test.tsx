@@ -220,6 +220,17 @@ describe('WishlistProvider loading', () => {
         expect(screen.getByTestId('has-celeste')).toHaveTextContent('false');
     });
 
+    it('names the wishlist when the request never arrives, rather than quoting the browser', async () => {
+        // A rejected fetch is a TypeError, and its message is whatever the browser says — "Failed to
+        // fetch" — which tells the reader nothing about what is missing or what to do.
+        vi.stubGlobal('fetch', vi.fn(async () => { throw new TypeError('Failed to fetch'); }));
+        renderProvider();
+
+        await settled();
+
+        expect(screen.getByTestId('error')).toHaveTextContent('Failed to load your wishlist.');
+    });
+
     it('recovers on retry, which is the only way out of that state', async () => {
         // Every control stays disabled while the load error stands, so without a retry the user
         // would have to reload the page.
@@ -303,6 +314,23 @@ describe('WishlistProvider adding', () => {
         await click('add hades');
 
         await waitFor(() => expect(titles()).toBe('Celeste,Hades'));
+    });
+
+    it('breaks a tie on the game id, as the endpoint does', async () => {
+        // Two rows can share a timestamp — a library import writes a whole wishlist with one — and
+        // the server then orders them by game id. Sorting on the time alone leaves the client in an
+        // order the next load would change.
+        stubFetch({
+            initial: [item(2, 'Hades', JANUARY)],
+            addedAt: { '/api/wishlist/1': JANUARY },
+        });
+        renderProvider();
+        await settled();
+
+        await click('add celeste');
+
+        await waitFor(() => expect(screen.getByTestId('pending-celeste')).toHaveTextContent('false'));
+        expect(titles()).toBe('Celeste,Hades');
     });
 
     it('keeps a new game at the front once the server confirms it is the newest', async () => {
@@ -436,6 +464,53 @@ describe('WishlistProvider concurrent mutations', () => {
         await release('/api/wishlist/2', 500);
 
         expect(titles()).toBe('Hades');
+    });
+
+    it('keeps a game whose add is still out when a reload lands without it', async () => {
+        /*
+         * The reload's answer was composed before the add reached the database. Taken as it stands,
+         * it drops the optimistic row — and the add's own answer then finds nothing to place, so a
+         * write that succeeded is invisible until the next page load. A theme change is enough to
+         * cause this refetch, because it hands the provider a new user object.
+         */
+        const { release } = stubFetch({
+            loads: [[item(1, 'Celeste', JANUARY)], [item(1, 'Celeste', JANUARY)]],
+            deferred: ['/api/wishlist/2'],
+            addedAt: { '/api/wishlist/2': MARCH },
+        });
+        renderProvider();
+        await settled();
+
+        await click('add hades');
+        expect(titles()).toBe('Hades,Celeste');
+
+        await click('reload');
+        await settled();
+        expect(titles()).toBe('Hades,Celeste');
+
+        await release('/api/wishlist/2', 200);
+
+        await waitFor(() => expect(titles()).toBe('Hades,Celeste'));
+    });
+
+    it('does not put back a game whose removal is still out when a reload lands with it', async () => {
+        const { release } = stubFetch({
+            loads: [[item(1, 'Celeste', JANUARY)], [item(1, 'Celeste', JANUARY)]],
+            deferred: ['/api/wishlist/1'],
+        });
+        renderProvider();
+        await settled();
+
+        await click('remove celeste');
+        expect(titles()).toBe('');
+
+        await click('reload');
+        await settled();
+
+        expect(titles()).toBe('');
+
+        await release('/api/wishlist/1', 204);
+        expect(titles()).toBe('');
     });
 
     it('clears a mutation error once a later mutation succeeds', async () => {

@@ -171,6 +171,22 @@ public class FavouriteServiceTests
     }
 
     [Fact]
+    public async Task GetFavouritesAsync_TwoMadeAtOnce_OrdersThemByGameId()
+    {
+        // As the wishlist does: two rows can share a timestamp, and the order has to be the same
+        // one on every read for the client to be able to keep it.
+        using var db = NewDb();
+        var service = NewService(db, IgdbReturning(Game(1, "Celeste"), Game(2, "Hades")));
+
+        await service.AddAsync(UserId, 2);
+        await service.AddAsync(UserId, 1);
+
+        var favourites = await service.GetFavouritesAsync(UserId);
+
+        Assert.Equal(["Celeste", "Hades"], favourites.Select(f => f.Game.Title));
+    }
+
+    [Fact]
     public async Task GetFavouritesAsync_SkipsGamesIgdbCannotResolve()
     {
         // The row stays — the id is still the user's data — but a game with no metadata is not

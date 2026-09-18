@@ -109,6 +109,48 @@ function has(items: GameAxisItem[], gameId: number): boolean {
 }
 
 /**
+ * The order both endpoints return: newest first, and by game id when two rows joined at the same
+ * moment. The tie-break matters because the timestamps are written by the server rather than by the
+ * row: a library import writes a whole axis with one of them, and without it those games would sit
+ * in one order here and another after a reload.
+ */
+function compareItems(a: GameAxisItem, b: GameAxisItem): number {
+    return Date.parse(b.addedAt) - Date.parse(a.addedAt) || a.game.id - b.game.id;
+}
+
+/**
+ * The list the server sent, with every game that has a write in flight left as this client has it.
+ *
+ * A refetch for the same account — `AuthProvider` hands back a new user object for a theme change,
+ * and the effect below depends on it — can land while an add or a remove is still out, carrying an
+ * answer composed before that write. Taken as it stands it puts back a game whose removal is in
+ * flight, or drops one whose add is; and in the second case the add's confirmation then finds no row
+ * to place, so a write that succeeded looks to have failed until the next load. The pending set is
+ * per game, so nothing else in the answer is held back.
+ */
+function reconciled(loaded: GameAxisItem[], state: GameAxisState): GameAxisItem[] {
+    if (state.pending.size === 0) return loaded;
+
+    const inFlight = (item: GameAxisItem) => state.pending.has(item.game.id);
+
+    // A game being removed is already out of `items`, so it is dropped from the answer as well.
+    const kept = loaded.filter(item => !inFlight(item) || has(state.items, item.game.id));
+
+    // A game being added is not in the answer yet, and stays at the front, where the add put it.
+    const adding = state.items.filter(item => inFlight(item) && !has(loaded, item.game.id));
+
+    return [...adding, ...kept];
+}
+
+/**
+ * A load failure this hook has a message for. Anything else that reaches the catch is reported as
+ * the axis's own "unreachable" message: a rejected `fetch` is a `TypeError` carrying the browser's
+ * wording ("Failed to fetch"), and a body that is not JSON a `SyntaxError` — neither of which says
+ * anything the reader can act on.
+ */
+class AxisLoadError extends Error {}
+
+/**
  * The time a successful add says the game joined, or null when the answer carries none that parses —
  * the item then stays where the add put it, which is the next best place.
  */
@@ -148,8 +190,13 @@ function reducer(state: GameAxisState, action: GameAxisAction): GameAxisState {
         // commit. A result resolving before that cleanup would otherwise land on the account that
         // has already replaced it.
         case 'FETCH_SUCCESS':
-            return ifCurrent(state, action.session, () =>
-                ({ ...state, items: action.items, loading: false, error: null, mutationError: null }));
+            return ifCurrent(state, action.session, () => ({
+                ...state,
+                items: reconciled(action.items, state),
+                loading: false,
+                error: null,
+                mutationError: null,
+            }));
         case 'FETCH_ERROR':
             return ifCurrent(state, action.session, () =>
                 ({ ...state, loading: false, error: action.error }));
@@ -167,16 +214,16 @@ function reducer(state: GameAxisState, action: GameAxisAction): GameAxisState {
         // That answer: the time the server kept for an item this client added. Nearly always a
         // moment after every other item's, so the item stays at the front — but a game another tab
         // had already added keeps the time it really joined, and goes back to it. Only this item
-        // moves, placed among the others by their own timestamps, so nothing else is reordered.
+        // moves, placed among the others in the order the endpoint uses, so nothing else is
+        // reordered.
         case 'CONFIRM_ITEM':
             return ifCurrent(state, action.session, () => {
                 const confirmed = state.items.find(item => item.game.id === action.gameId);
                 if (!confirmed) return state;
 
                 const others = state.items.filter(item => item.game.id !== action.gameId);
-                const joined = Date.parse(action.addedAt);
-                const at = others.findIndex(item => Date.parse(item.addedAt) < joined);
                 const placed = { ...confirmed, addedAt: action.addedAt };
+                const at = others.findIndex(item => compareItems(placed, item) < 0);
 
                 return {
                     ...state,
@@ -192,11 +239,7 @@ function reducer(state: GameAxisState, action: GameAxisAction): GameAxisState {
             return ifCurrent(state, action.session, () =>
                 has(state.items, action.item.game.id)
                     ? state
-                    : {
-                        ...state,
-                        items: [...state.items, action.item]
-                            .sort((a, b) => Date.parse(b.addedAt) - Date.parse(a.addedAt)),
-                    });
+                    : { ...state, items: [...state.items, action.item].sort(compareItems) });
 
         // Both of the above and this one work off whatever the current state is, rather than
         // restoring a snapshot taken before the request. Mutations for different games run
@@ -273,7 +316,7 @@ export function useGameAxis({ endpoint, loadFailed, loadUnreachable, mutationFai
 
         fetch(endpoint, { credentials: 'include', signal: controller.signal })
             .then(res => {
-                if (!res.ok) throw new Error(loadFailed(res.status));
+                if (!res.ok) throw new AxisLoadError(loadFailed(res.status));
                 return res.json() as Promise<GameAxisItem[]>;
             })
             .then(items => {
@@ -286,7 +329,7 @@ export function useGameAxis({ endpoint, loadFailed, loadUnreachable, mutationFai
                 dispatch({
                     type: 'FETCH_ERROR',
                     session: fetchSession,
-                    error: err instanceof Error ? err.message : loadUnreachable,
+                    error: err instanceof AxisLoadError ? err.message : loadUnreachable,
                 });
             });
 

@@ -26,6 +26,10 @@ public class WishlistService(
             .AsNoTracking()
             .Where(w => w.UserId == userId)
             .OrderByDescending(w => w.AddedAt)
+            // As the favourites are: two rows written at the same moment — which a library import
+            // would write a whole wishlist of — would otherwise come back in no particular order,
+            // and in a different one each time.
+            .ThenBy(w => w.GameId)
             .ToListAsync(cancellationToken);
 
         if (items.Count == 0) return [];
