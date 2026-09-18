@@ -1,6 +1,11 @@
-import { describe, expect, it } from 'vitest';
-import { meta } from '@/pages/GamesPage';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { RouterProvider, createMemoryRouter } from 'react-router';
+import { GamesPage, meta } from '@/pages/GamesPage';
 import { EMPTY_BROWSE, type GameBrowse } from '@/lib/gameBrowse';
+import type { GenreDto, PlatformDto } from '@/types/game';
+import { platform } from '@/test/factories';
 import type { Route } from './+types/GamesPage';
 
 type Tag = Partial<Record<'title' | 'name' | 'content', string>>;
@@ -35,5 +40,72 @@ describe('GamesPage meta', () => {
     it('names the search in the title', () => {
         expect(tagsFor('?search=zelda', { search: 'zelda' }))
             .toContainEqual({ title: 'zelda - Browse games - MyVideoGameList' });
+    });
+});
+
+const PLATFORMS: PlatformDto[] = [platform(6, 'PC (Windows)', 'PC'), platform(130, 'Nintendo Switch', 'Switch')];
+const GENRES: GenreDto[] = [{ id: 12, name: 'Role-playing (RPG)', description: null }];
+
+/**
+ * The page in a data router whose loader can be held open, which is the only way to have one
+ * navigation still in flight while the next filter is chosen. The component is handed the plain
+ * catalogue throughout, because that is what a loader that has not answered yet leaves on screen.
+ */
+function renderBrowsePage() {
+    const requested: string[] = [];
+    let release: (() => void) | null = null;
+
+    const router = createMemoryRouter(
+        [{
+            path: '/games',
+            loader: ({ request }) => {
+                requested.push(new URL(request.url).search);
+                // The first load lands, so the page renders; every navigation after it waits.
+                if (requested.length === 1) return null;
+                return new Promise(resolve => { release = () => resolve(null); });
+            },
+            Component: () => (
+                <GamesPage
+                    {...({
+                        loaderData: {
+                            page: { items: [], hasMore: false },
+                            browse: EMPTY_BROWSE,
+                            genres: GENRES,
+                            platforms: PLATFORMS,
+                            currentYear: 2026,
+                        },
+                    } as unknown as Route.ComponentProps)}
+                />
+            ),
+        }],
+        { initialEntries: ['/games'] },
+    );
+
+    render(<RouterProvider router={router} />);
+    return { requested, release: () => release?.() };
+}
+
+describe('GamesPage filters', () => {
+    beforeEach(() => {
+        // The infinite-scroll sentinel is observed on mount, and jsdom has no observer to do it.
+        vi.stubGlobal('IntersectionObserver', class {
+            observe() {}
+            unobserve() {}
+            disconnect() {}
+            takeRecords() { return []; }
+        });
+    });
+
+    it('keeps a filter whose page is still loading when the next one is chosen', async () => {
+        // The reader has already watched the page start loading the platform they picked. Built on
+        // the last loader result that landed, the genre they pick next would go out on its own and
+        // the platform would silently come off.
+        const actor = userEvent.setup();
+        const { requested } = renderBrowsePage();
+
+        await actor.selectOptions(await screen.findByLabelText('Platform'), 'PC (Windows)');
+        await actor.selectOptions(screen.getByLabelText('Genre'), 'Role-playing (RPG)');
+
+        expect(requested).toEqual(['', '?platform=6', '?platform=6&genre=12']);
     });
 });

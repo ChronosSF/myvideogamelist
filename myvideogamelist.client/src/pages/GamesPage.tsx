@@ -196,17 +196,30 @@ export function GamesPage({ loaderData }: Route.ComponentProps) {
         return () => clearTimeout(timer);
     }, [search, activeSearch, pushedSearch, searchParams, setSearchParams]);
 
+    // The browse a navigation is on its way to, when one is out. `browse` is the last loader result
+    // that *landed*, so it is a step behind from the click that starts a navigation until it settles.
+    const pendingBrowse = navigation.location && navigation.location.pathname === '/games'
+        ? browseFrom(new URLSearchParams(navigation.location.search))
+        : null;
+
     /**
      * A change of order or filter, applied to the URL at once.
      *
      * Carries the term in the box rather than the one in the URL, so a filter picked before the
      * search debounce fires does not throw away what was typed. A new history entry, unlike typing:
      * each filter is a deliberate step somebody may want to go back from.
+     *
+     * Built on the browse that is on its way when there is one. Built on `browse`, a second filter
+     * chosen while the first was still loading would be applied to the listing as it was before
+     * it — dropping the first filter, which the reader had already watched the page start on.
      */
     const changeBrowse = (changes: Partial<GameBrowse>) => {
         const trimmed = search.trim();
         setPushedSearch(trimmed);
-        setSearchParams(browseParams({ ...browse, search: trimmed, ...changes }), { preventScrollReset: true });
+        setSearchParams(
+            browseParams({ ...(pendingBrowse ?? browse), search: trimmed, ...changes }),
+            { preventScrollReset: true },
+        );
     };
 
     const clearFilters = () => changeBrowse({ platform: null, genre: null, year: null, minScore: null });
@@ -222,9 +235,7 @@ export function GamesPage({ loaderData }: Route.ComponentProps) {
 
     // Only while the loader is fetching a *different* result set. Without the comparison the list
     // would blank out during any navigation, including leaving for a game page.
-    const pendingKey = navigation.location && navigation.location.pathname === '/games'
-        ? browseParams(browseFrom(new URLSearchParams(navigation.location.search))).toString()
-        : null;
+    const pendingKey = pendingBrowse === null ? null : browseParams(pendingBrowse).toString();
     const loading = navigation.state === 'loading' && pendingKey !== null && pendingKey !== activeKey;
 
     const loadMore = useCallback(() => {
