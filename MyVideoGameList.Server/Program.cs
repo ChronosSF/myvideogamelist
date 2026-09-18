@@ -26,7 +26,9 @@ builder.Services.AddHsts(options =>
     options.IncludeSubDomains = true;
 });
 builder.Services.AddMemoryCache();
-builder.Services.AddHttpClient("Igdb");
+// Retry, a circuit breaker, a per-attempt timeout and IGDB's four-a-second limit.
+// See Services/IgdbResilience.cs.
+builder.Services.AddHttpClient("Igdb").AddIgdbResilience();
 
 // Steam's news API is public and needs no key, but it is a third party on the home page's
 // critical path, so it gets a short timeout of its own rather than the 100s default.
