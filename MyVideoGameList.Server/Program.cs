@@ -61,6 +61,19 @@ builder.Services.AddIdentity<ApplicationUser, IdentityRole>(options =>
     options.User.RequireUniqueEmail = true;
     options.SignIn.RequireConfirmedAccount = false;
 
+    // Lockout after five wrong passwords, for fifteen minutes. Without it a password is
+    // guessable at whatever rate a client can manage, and the per-IP limiter on /api/auth
+    // does not cover the case this does: the same account tried from many addresses.
+    //
+    // A locked account is never announced. Login answers the same 401 it answers a wrong
+    // password with, because "this account is locked" is a way to ask whether an address has
+    // an account here - five deliberate failures against any address would answer it. The
+    // message a person failing repeatedly actually sees comes from the rate limiter, which
+    // partitions by address and so says nothing about who is registered.
+    options.Lockout.MaxFailedAccessAttempts = 5;
+    options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(15);
+    options.Lockout.AllowedForNewUsers = true;
+
     // The username is the public handle at /u/{name}, not an email address, so Identity's own
     // validator is narrowed to the same alphabet UserNamePolicy enforces. Without this the default
     // would also accept "@", "." and "-", and any write that did not happen to go through the
