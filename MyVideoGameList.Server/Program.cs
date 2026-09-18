@@ -3,8 +3,10 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using MyVideoGameList.Server.Data;
+using MyVideoGameList.Server.Errors;
 using MyVideoGameList.Server.HealthChecks;
 using MyVideoGameList.Server.Models;
+using MyVideoGameList.Server.Security;
 using MyVideoGameList.Server.Services;
 using Scalar.AspNetCore;
 
@@ -12,8 +14,43 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddControllers();
 builder.Services.AddOpenApi();
+builder.Services.AddApiRateLimiting();
+
+// One machine-readable shape for every failure, instead of a raw 500 with an HTML body in
+// Development and an empty one everywhere else. The two handlers run in the order they are
+// registered and each declines what is not theirs: a reader who navigated away, and a third
+// party that did not answer.
+builder.Services.AddProblemDetails(options => options.CustomizeProblemDetails = context =>
+{
+    // Correlating a user's report with a log line needs an identifier in both. This is the
+    // request id, not anything about the person.
+    context.ProblemDetails.Extensions["traceId"] = context.HttpContext.TraceIdentifier;
+
+    // The exception, in Development only. The alternative is reading the console beside a
+    // useless response - and putting it in a deployed answer would hand out stack traces.
+    if (context.HttpContext.RequestServices.GetRequiredService<IHostEnvironment>().IsDevelopment()
+        && context.Exception is not null)
+    {
+        context.ProblemDetails.Extensions["exception"] = context.Exception.ToString();
+    }
+});
+builder.Services.AddExceptionHandler<ClientDisconnectHandler>();
+builder.Services.AddExceptionHandler<UpstreamFailureHandler>();
+builder.Services.AddProxyHeaders(builder.Configuration);
+
+// HSTS. A year, subdomains included, so dev.myvideogamelist.net cannot be reached over plain
+// HTTP either. Preload is deliberately off: submission to the browsers' preload list is a
+// commitment that is slow and awkward to undo, and it belongs to whoever owns the domain rather
+// than to a default in a source file.
+builder.Services.AddHsts(options =>
+{
+    options.MaxAge = TimeSpan.FromDays(365);
+    options.IncludeSubDomains = true;
+});
 builder.Services.AddMemoryCache();
-builder.Services.AddHttpClient("Igdb");
+// Retry, a circuit breaker, a per-attempt timeout and IGDB's four-a-second limit.
+// See Services/IgdbResilience.cs.
+builder.Services.AddHttpClient("Igdb").AddIgdbResilience();
 
 // Steam's news API is public and needs no key, but it is a third party on the home page's
 // critical path, so it gets a short timeout of its own rather than the 100s default.
@@ -60,6 +97,19 @@ builder.Services.AddIdentity<ApplicationUser, IdentityRole>(options =>
     options.Password.RequireNonAlphanumeric = false;
     options.User.RequireUniqueEmail = true;
     options.SignIn.RequireConfirmedAccount = false;
+
+    // Lockout after five wrong passwords, for fifteen minutes. Without it a password is
+    // guessable at whatever rate a client can manage, and the per-IP limiter on /api/auth
+    // does not cover the case this does: the same account tried from many addresses.
+    //
+    // A locked account is never announced. Login answers the same 401 it answers a wrong
+    // password with, because "this account is locked" is a way to ask whether an address has
+    // an account here - five deliberate failures against any address would answer it. The
+    // message a person failing repeatedly actually sees comes from the rate limiter, which
+    // partitions by address and so says nothing about who is registered.
+    options.Lockout.MaxFailedAccessAttempts = 5;
+    options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(15);
+    options.Lockout.AllowedForNewUsers = true;
 
     // The username is the public handle at /u/{name}, not an email address, so Identity's own
     // validator is narrowed to the same alphabet UserNamePolicy enforces. Without this the default
@@ -144,12 +194,40 @@ if (app.Environment.IsDevelopment())
     app.MapScalarApiReference();
 }
 
+// First, so that everything after it - the redirect below, the rate limiter's partition key,
+// every logged address - is about the caller rather than about whatever forwarded the request.
+// Off unless configured; see the ForwardedHeaders section in appsettings.json.
+app.UseProxyHeaders();
+
+// Outside everything it is meant to catch, and outside the security headers below for a reason
+// that is easy to get backwards: this middleware clears the response - headers included - before
+// writing its own, so those headers are attached when the response starts rather than on the way
+// in. See SecurityHeadersMiddleware.
+app.UseExceptionHandler();
+
+// Then the headers that say what an answer from this API may be used for. Above the redirect
+// and the rate limiter so that a 307 and a 429 carry them as well as a 200 does.
+app.UseApiSecurityHeaders();
+
 // Only redirect browser traffic. The React Router SSR server calls this API over
 // plain HTTP from the same machine, and a 307 to HTTPS would fail on the dev cert.
+//
+// A TLS-terminating load balancer forwards plain HTTP too, so deployed behind one this
+// redirects every request into a loop unless the forwarded scheme above is being honoured.
 if (!app.Environment.IsDevelopment())
 {
+    app.UseHsts();
     app.UseHttpsRedirection();
 }
+
+// Before authentication, so a caller over the limit is turned away without a database
+// read. Routing has already run by this point, which is what lets the limiter see which
+// endpoint was matched and apply that endpoint's policy.
+app.UseRateLimiter();
+
+// Then the check that a write came from this site's own code. Before authentication because it
+// needs no identity, and a request that fails it is not worth a database read.
+app.UseMiddleware<CsrfHeaderMiddleware>();
 
 app.UseAuthentication();
 app.UseAuthorization();

@@ -45,6 +45,16 @@ component plus optional `loader`, `meta`, `links`, `headers` and `ErrorBoundary`
 - Give every indexable route a `meta` export with title, description and Open Graph tags.
 - Route types come from `react-router typegen`; import them as `./+types/<RouteName>`.
 
+## Talking to the API
+
+- **Every write goes through `apiFetch`** from `@/lib/api`. It adds the session cookie and the
+  `X-MVGL-Request` header the API requires on anything that changes state; a write sent with bare
+  `fetch` is refused with a 403 in development as well as deployed. Reads may use either — several
+  deliberately send `credentials: 'omit'`, which `apiFetch` will not override.
+- Read the error body before showing a message. The API answers `ProblemDetails` (`title`,
+  `detail`, and `errors` keyed by field), and the sentence worth showing is usually inside it — a
+  rate-limited login read as "Login failed" is the case that made this a rule.
+
 ## Optimistic updates
 
 The providers apply a change locally, fire the request, and undo the change if it fails. Two rules
