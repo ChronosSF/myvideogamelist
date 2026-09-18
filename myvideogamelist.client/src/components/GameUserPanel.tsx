@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import type { ProfileVisibility } from '@/types/auth';
 import type { GameDto } from '@/types/game';
 import { type ListId, type Ownership, LIST_IDS, OWNERSHIPS, OWNERSHIP_NAMES } from '@/types/list';
@@ -55,6 +55,13 @@ type EntryStatus = 'loading' | 'ready' | 'failed';
  * toggle, where the change is one field and the gesture has to feel instant; a seven-field form
  * has nothing to gain from showing a row that may be about to vanish, and everything to lose from
  * the user editing it while it does.
+ *
+ * **Mounted per game and per account**, by the key the page gives it: every write here settles after
+ * it was made, and the page stays mounted when a link goes from one game to the next. A panel that
+ * outlived its game would write the first game's saved value, or its error, into the second game's
+ * form — and a marker kept in a ref cannot close that window, because writing it from an effect
+ * lags the commit, which is the same trap ADR 0022 records for the account. Unmounting is the one
+ * guard React applies during the commit itself.
  */
 export function GameUserPanel({ game, profileVisibility, onCommunityChange }: GameUserPanelProps) {
     const {
@@ -89,39 +96,7 @@ export function GameUserPanel({ game, profileVisibility, onCommunityChange }: Ga
     const [savingNotes, setSavingNotes] = useState(false);
     const [notesError, setNotesError] = useState<string | null>(null);
 
-    const [lastGameId, setLastGameId] = useState(game.id);
-
-    // Reset when navigating straight from one game page to another. Adjusted during render
-    // rather than in the effect: resetting in the effect would flash the previous game's score
-    // under the new title for one commit, and trips react-hooks/set-state-in-effect.
-    if (lastGameId !== game.id) {
-        setLastGameId(game.id);
-        setLocalScore(null);
-        setLocalOwnership(null);
-        setLocalNotes(null);
-        setPlaythroughs([]);
-        setReview(null);
-        setEntryStatus('loading');
-        setConfirmingDelete(false);
-        setDeleteError(null);
-        setEditing(null);
-        setSavingPlaythrough(false);
-        setDeletingPlaythroughId(null);
-        setPlaythroughError(null);
-        setSavingReview(false);
-        setReviewError(null);
-        setSavingNotes(false);
-        setNotesError(null);
-    }
-
-    // Which game the panel is showing now, for the writes below to check once they come back. The
-    // page stays mounted when a link goes from one game to another, so a save or a delete that lands
-    // after that must not write the first game's outcome into the second game's panel. Read only in
-    // those continuations, never during render.
-    const shownGameId = useRef(game.id);
-    useEffect(() => {
-        shownGameId.current = game.id;
-    }, [game.id]);
+    const [ownershipError, setOwnershipError] = useState<string | null>(null);
 
     const ownershipLabelId = useId();
     const currentList = getListFor(game.id);
@@ -174,26 +149,27 @@ export function GameUserPanel({ game, profileVisibility, onCommunityChange }: Ga
     };
 
     /**
-     * Shown at once and put back if the save fails, as the score is. The provider takes the
-     * per-game lock, so no other write to this entry can be out at the same time.
+     * Shown at once and put back if the save fails, as the score is — with a message, unlike the
+     * score's revert: a toggle that goes back on its own reads as a click that did not register.
+     * The provider takes the per-game lock, so no other write to this entry can be out at the time.
      */
     const handleOwnership = async (next: Ownership | null) => {
-        const forGame = game.id;
         const previous = ownership;
         setLocalOwnership(next);
+        setOwnershipError(null);
 
-        const saved = await setOwnership(forGame, next);
-        if (!saved && shownGameId.current === forGame) setLocalOwnership(previous);
+        if (!await setOwnership(game.id, next)) {
+            setLocalOwnership(previous);
+            setOwnershipError('Could not save how you have this game. Please try again.');
+        }
     };
 
     /** Not optimistic: the box keeps what was typed until the server has it, as the review does. */
     const handleNotesSave = async (next: string | null) => {
-        const forGame = game.id;
         setSavingNotes(true);
         setNotesError(null);
 
-        const saved = await setNotes(forGame, next);
-        if (shownGameId.current !== forGame) return;
+        const saved = await setNotes(game.id, next);
 
         if (saved) setLocalNotes(next);
         else setNotesError('Could not save your notes. Please try again.');
@@ -201,12 +177,10 @@ export function GameUserPanel({ game, profileVisibility, onCommunityChange }: Ga
     };
 
     const handleDelete = async () => {
-        const forGame = game.id;
         setConfirmingDelete(false);
         setDeleteError(null);
 
-        const deleted = await deleteEntry(forGame);
-        if (shownGameId.current !== forGame) return;
+        const deleted = await deleteEntry(game.id);
 
         // Everything is still recorded, so everything stays on screen. Cleared anyway, the panel
         // would show an empty game until the next page load, and saving from it would write over
@@ -529,11 +503,13 @@ export function GameUserPanel({ game, profileVisibility, onCommunityChange }: Ga
                         ? 'Not recorded. Whether the copy is yours to keep; where you play it goes on a playthrough.'
                         : 'Press it again to clear it.'}
                 </p>
+                {ownershipError !== null && (
+                    <p className="game-user-panel-hint" role="alert">{ownershipError}</p>
+                )}
             </div>
 
             <div className="game-user-panel-section">
                 <EntryNotesForm
-                    key={game.id}
                     notes={notes}
                     onSave={next => void handleNotesSave(next)}
                     pending={!ready || pending || savingNotes}

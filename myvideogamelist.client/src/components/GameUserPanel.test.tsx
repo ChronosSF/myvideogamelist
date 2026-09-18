@@ -1266,7 +1266,9 @@ describe('GameUserPanel ownership and notes', () => {
         expect(screen.getByRole('button', { name: 'Owned' })).toHaveAttribute('aria-pressed', 'false');
     });
 
-    it('puts the previous kind back when the save fails', async () => {
+    it('puts the previous kind back when the save fails, and says why', async () => {
+        // A toggle that goes back on its own is indistinguishable from a click that never
+        // registered, and nothing on this panel renders the provider's own mutation error.
         stubDetail({ ownership: 'owned' });
         renderPanel({ setOwnership: vi.fn(async () => false) });
         await settled();
@@ -1277,6 +1279,23 @@ describe('GameUserPanel ownership and notes', () => {
         await waitFor(() => expect(screen.getByRole('button', { name: 'Owned' }))
             .toHaveAttribute('aria-pressed', 'true'));
         expect(screen.getByRole('button', { name: 'Subscription' })).toHaveAttribute('aria-pressed', 'false');
+        expect(screen.getByRole('alert')).toHaveTextContent(/could not save how you have this game/i);
+    });
+
+    it('takes the ownership message down on the next attempt', async () => {
+        // Neither message here is dismissible, so nothing else would ever take it down.
+        stubEntryFetch(null, 404);
+        const setOwnership = vi.fn(async () => false);
+        renderPanel({ setOwnership });
+        await settled();
+
+        await userEvent.click(screen.getByRole('button', { name: 'Owned' }));
+        expect(await screen.findByRole('alert')).toBeInTheDocument();
+
+        setOwnership.mockImplementation(async () => true);
+        await userEvent.click(screen.getByRole('button', { name: 'Borrowed' }));
+
+        await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument());
     });
 
     it('offers no ownership change while another write to the entry is out', async () => {

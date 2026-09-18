@@ -16,8 +16,8 @@ const MAX_NOTES = 2000;
  *
  * A form with a Save button rather than a field that saves as it is typed in, as the review is: a
  * request per keystroke is a request per keystroke, and a note half-typed when the tab closes is
- * better lost than stored half-finished. The panel remounts this per game, so a draft never follows
- * the reader to the next game's page.
+ * better lost than stored half-finished. The panel around this is itself mounted per game, so a
+ * draft never follows the reader to the next game's page.
  */
 export function EntryNotesForm({ notes, onSave, pending, error }: EntryNotesFormProps) {
     const fieldId = useId();
