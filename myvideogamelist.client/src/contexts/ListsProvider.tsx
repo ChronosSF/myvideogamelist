@@ -6,6 +6,7 @@ import {
 } from '@/types/list';
 import { type SortState, DEFAULT_SORT } from '@/lib/listSort';
 import { useAuth } from '@/hooks/useAuth';
+import { apiFetch } from '@/lib/api';
 import { ListsContext, type SaveListNamesResult } from './ListsContext';
 
 interface ApiListsResponse {
@@ -371,10 +372,9 @@ export function ListsProvider({ children }: { children: ReactNode }) {
 
     /** Sends the whole preference set, matching the endpoint's replace-wholesale contract. */
     const persistPreferences = (view: ViewMode, sorts: Partial<Record<ListId, SortState>>) => {
-        void fetch('/api/user/list-preferences', {
+        void apiFetch('/api/user/list-preferences', {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
             body: JSON.stringify({
                 view,
                 sorts: Object.entries(sorts).map(([status, sort]) => ({
@@ -419,10 +419,9 @@ export function ListsProvider({ children }: { children: ReactNode }) {
         };
 
         try {
-            const res = await fetch('/api/user/list-names', {
+            const res = await apiFetch('/api/user/list-names', {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
-                credentials: 'include',
                 body: JSON.stringify({
                     names: LIST_IDS.map(id => ({ status: id, name: names[id] ?? null })),
                 }),
@@ -501,10 +500,9 @@ export function ListsProvider({ children }: { children: ReactNode }) {
         const undo = restore(origin, game.id);
 
         try {
-            const res = await fetch(`/api/lists/${game.id}`, {
+            const res = await apiFetch(`/api/lists/${game.id}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
-                credentials: 'include',
                 body: JSON.stringify({ status: listId }),
             });
 
@@ -528,9 +526,8 @@ export function ListsProvider({ children }: { children: ReactNode }) {
         const undo = restore(removed, gameId);
 
         try {
-            const res = await fetch(`/api/lists/${gameId}`, {
+            const res = await apiFetch(`/api/lists/${gameId}`, {
                 method: 'DELETE',
-                credentials: 'include',
             });
 
             if (res.ok) dispatch({ type: 'CLEAR_MUTATION_ERROR', session });
@@ -557,10 +554,9 @@ export function ListsProvider({ children }: { children: ReactNode }) {
         const undo = () => dispatch({ type: 'SET_ENTRY_SCORE', session, gameId, score: previous });
 
         try {
-            const res = await fetch(`/api/entries/${gameId}/score`, {
+            const res = await apiFetch(`/api/entries/${gameId}/score`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
-                credentials: 'include',
                 body: JSON.stringify({ score }),
             });
 
@@ -596,10 +592,9 @@ export function ListsProvider({ children }: { children: ReactNode }) {
         startPending(gameId);
 
         try {
-            const res = await fetch(`/api/entries/${gameId}/${field}`, {
+            const res = await apiFetch(`/api/entries/${gameId}/${field}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
-                credentials: 'include',
                 body: JSON.stringify(body),
             });
 
@@ -634,9 +629,8 @@ export function ListsProvider({ children }: { children: ReactNode }) {
         const undo = restore(origin, gameId);
 
         try {
-            const res = await fetch(`/api/entries/${gameId}`, {
+            const res = await apiFetch(`/api/entries/${gameId}`, {
                 method: 'DELETE',
-                credentials: 'include',
             });
 
             // 404 means there was nothing recorded, which is the state the caller wanted anyway.

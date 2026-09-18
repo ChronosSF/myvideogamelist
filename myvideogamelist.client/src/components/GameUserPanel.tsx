@@ -17,6 +17,7 @@ import { PlaythroughForm } from '@/components/PlaythroughForm';
 import { PlaythroughList } from '@/components/PlaythroughList';
 import { ReviewForm } from '@/components/ReviewForm';
 import { EntryNotesForm } from '@/components/EntryNotesForm';
+import { apiFetch } from '@/lib/api';
 import './GameUserPanel.css';
 
 interface GameUserPanelProps {
@@ -221,9 +222,8 @@ export function GameUserPanel({ game, profileVisibility, onCommunityChange }: Ga
             : `/api/entries/${game.id}/playthroughs/${editingId}`;
 
         try {
-            const res = await fetch(url, {
+            const res = await apiFetch(url, {
                 method: editingId === null ? 'POST' : 'PUT',
-                credentials: 'include',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(input),
             });
@@ -250,9 +250,9 @@ export function GameUserPanel({ game, profileVisibility, onCommunityChange }: Ga
         setPlaythroughError(null);
 
         try {
-            const res = await fetch(
+            const res = await apiFetch(
                 `/api/entries/${game.id}/playthroughs/${playthrough.id}`,
-                { method: 'DELETE', credentials: 'include' },
+                { method: 'DELETE' },
             );
 
             if (!res.ok) {
@@ -276,9 +276,8 @@ export function GameUserPanel({ game, profileVisibility, onCommunityChange }: Ga
         try {
             // A PUT, not a POST: there is one review per game, so writing a second replaces the
             // first rather than adding one.
-            const res = await fetch(`/api/entries/${game.id}/review`, {
+            const res = await apiFetch(`/api/entries/${game.id}/review`, {
                 method: 'PUT',
-                credentials: 'include',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(input),
             });
@@ -302,9 +301,8 @@ export function GameUserPanel({ game, profileVisibility, onCommunityChange }: Ga
         setReviewError(null);
 
         try {
-            const res = await fetch(`/api/entries/${game.id}/review`, {
+            const res = await apiFetch(`/api/entries/${game.id}/review`, {
                 method: 'DELETE',
-                credentials: 'include',
             });
 
             if (!res.ok) {

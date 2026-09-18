@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import type { ProfileVisibility, UserProfile } from '@/types/auth';
+import { apiFetch } from '@/lib/api';
 import { AuthContext } from './AuthContext';
 
 function applyTheme(theme: 'dark' | 'light') {
@@ -67,10 +68,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }, []);
 
     const login = async (email: string, password: string, rememberMe: boolean) => {
-        const res = await fetch('/api/auth/login', {
+        const res = await apiFetch('/api/auth/login', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
             body: JSON.stringify({ email, password, rememberMe }),
         });
         if (!res.ok) throw new Error(await problem(res, 'Login failed'));
@@ -81,10 +81,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
 
     const register = async (email: string, password: string, userName: string) => {
-        const res = await fetch('/api/auth/register', {
+        const res = await apiFetch('/api/auth/register', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
             body: JSON.stringify({ email, password, userName }),
         });
         if (!res.ok) throw new Error(await problem(res, 'Registration failed'));
@@ -95,16 +94,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
 
     const logout = async () => {
-        await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
+        await apiFetch('/api/auth/logout', { method: 'POST' });
         setUser(null);
         applyTheme('dark');
     };
 
     const updateTheme = async (theme: 'dark' | 'light') => {
-        const res = await fetch('/api/user/theme', {
+        const res = await apiFetch('/api/user/theme', {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
             body: JSON.stringify({ theme }),
         });
         if (!res.ok) throw new Error('Failed to update theme');
@@ -118,10 +116,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
      * what was typed rather than what was stored would disagree with the URL it just built.
      */
     const updateUserName = async (userName: string) => {
-        const res = await fetch('/api/user/username', {
+        const res = await apiFetch('/api/user/username', {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
             body: JSON.stringify({ userName }),
         });
         if (!res.ok) throw new Error(await problem(res, 'Failed to change your username'));
@@ -130,10 +127,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
 
     const updateProfileVisibility = async (profileVisibility: ProfileVisibility) => {
-        const res = await fetch('/api/user/privacy', {
+        const res = await apiFetch('/api/user/privacy', {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
             body: JSON.stringify({ profileVisibility }),
         });
         if (!res.ok) throw new Error(await problem(res, 'Failed to change your profile visibility'));
@@ -147,10 +143,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
      * `user` is also what empties the list and wishlist providers, which reset on the transition.
      */
     const deleteAccount = async (password: string) => {
-        const res = await fetch('/api/user', {
+        const res = await apiFetch('/api/user', {
             method: 'DELETE',
             headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
             body: JSON.stringify({ password }),
         });
         if (!res.ok) throw new Error(await problem(res, 'Failed to delete your account'));

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useReducer } from 'react';
+import { apiFetch } from '@/lib/api';
 
 export interface UseHiddenPlatformsResult {
     hiddenIds: Set<number>;
@@ -175,9 +176,8 @@ export function useHiddenPlatforms(accountId: string | null): UseHiddenPlatforms
         const account = accountId;
         dispatch({ type: 'SAVE_START', account });
         try {
-            const res = await fetch('/api/user/hidden-platforms', {
+            const res = await apiFetch('/api/user/hidden-platforms', {
                 method: 'PUT',
-                credentials: 'include',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ platformIds: [...hiddenIds] }),
             });

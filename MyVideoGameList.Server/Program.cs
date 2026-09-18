@@ -225,6 +225,10 @@ if (!app.Environment.IsDevelopment())
 // endpoint was matched and apply that endpoint's policy.
 app.UseRateLimiter();
 
+// Then the check that a write came from this site's own code. Before authentication because it
+// needs no identity, and a request that fails it is not worth a database read.
+app.UseMiddleware<CsrfHeaderMiddleware>();
+
 app.UseAuthentication();
 app.UseAuthorization();
 
