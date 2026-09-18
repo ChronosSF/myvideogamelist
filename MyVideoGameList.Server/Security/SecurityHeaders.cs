@@ -23,7 +23,24 @@ public sealed class SecurityHeadersMiddleware(RequestDelegate next)
     /// </summary>
     private const string ContentSecurityPolicy = "default-src 'none'; frame-ancestors 'none'";
 
+    /// <summary>
+    /// Registers the headers to be written when the response starts, rather than writing them
+    /// now. The difference matters on the error path: the exception handler clears the response
+    /// before writing its own, headers included, so anything set on the way in is gone by the
+    /// time a 500 or a 502 goes out - which are the answers least worth sending bare.
+    /// </summary>
     public async Task InvokeAsync(HttpContext context)
+    {
+        context.Response.OnStarting(static state =>
+        {
+            Apply((HttpContext)state);
+            return Task.CompletedTask;
+        }, context);
+
+        await next(context);
+    }
+
+    internal static void Apply(HttpContext context)
     {
         var headers = context.Response.Headers;
 
@@ -41,8 +58,6 @@ public sealed class SecurityHeadersMiddleware(RequestDelegate next)
 
         if (!IsApiDocumentation(context.Request.Path))
             headers.ContentSecurityPolicy = ContentSecurityPolicy;
-
-        await next(context);
     }
 
     /// <summary>

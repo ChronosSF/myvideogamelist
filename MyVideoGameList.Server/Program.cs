@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using MyVideoGameList.Server.Data;
+using MyVideoGameList.Server.Errors;
 using MyVideoGameList.Server.HealthChecks;
 using MyVideoGameList.Server.Models;
 using MyVideoGameList.Server.Security;
@@ -14,6 +15,27 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddControllers();
 builder.Services.AddOpenApi();
 builder.Services.AddApiRateLimiting();
+
+// One machine-readable shape for every failure, instead of a raw 500 with an HTML body in
+// Development and an empty one everywhere else. The two handlers run in the order they are
+// registered and each declines what is not theirs: a reader who navigated away, and a third
+// party that did not answer.
+builder.Services.AddProblemDetails(options => options.CustomizeProblemDetails = context =>
+{
+    // Correlating a user's report with a log line needs an identifier in both. This is the
+    // request id, not anything about the person.
+    context.ProblemDetails.Extensions["traceId"] = context.HttpContext.TraceIdentifier;
+
+    // The exception, in Development only. The alternative is reading the console beside a
+    // useless response - and putting it in a deployed answer would hand out stack traces.
+    if (context.HttpContext.RequestServices.GetRequiredService<IHostEnvironment>().IsDevelopment()
+        && context.Exception is not null)
+    {
+        context.ProblemDetails.Extensions["exception"] = context.Exception.ToString();
+    }
+});
+builder.Services.AddExceptionHandler<ClientDisconnectHandler>();
+builder.Services.AddExceptionHandler<UpstreamFailureHandler>();
 builder.Services.AddProxyHeaders(builder.Configuration);
 
 // HSTS. A year, subdomains included, so dev.myvideogamelist.net cannot be reached over plain
@@ -176,6 +198,12 @@ if (app.Environment.IsDevelopment())
 // every logged address - is about the caller rather than about whatever forwarded the request.
 // Off unless configured; see the ForwardedHeaders section in appsettings.json.
 app.UseProxyHeaders();
+
+// Outside everything it is meant to catch, and outside the security headers below for a reason
+// that is easy to get backwards: this middleware clears the response - headers included - before
+// writing its own, so those headers are attached when the response starts rather than on the way
+// in. See SecurityHeadersMiddleware.
+app.UseExceptionHandler();
 
 // Then the headers that say what an answer from this API may be used for. Above the redirect
 // and the rate limiter so that a 307 and a 429 carry them as well as a 200 does.

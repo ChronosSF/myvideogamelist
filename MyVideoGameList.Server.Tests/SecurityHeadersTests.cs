@@ -5,21 +5,25 @@ namespace MyVideoGameList.Server.Tests;
 
 public class SecurityHeadersTests
 {
-    private static async Task<IHeaderDictionary> HeadersFor(string path)
+    /// <summary>
+    /// Calls what the middleware registers to run when the response starts. The registration
+    /// itself is deliberately not exercised here - a DefaultHttpContext never starts a response,
+    /// so a test of it would assert that a callback was stored and nothing about the headers.
+    /// </summary>
+    private static IHeaderDictionary HeadersFor(string path)
     {
         var context = new DefaultHttpContext();
         context.Request.Path = path;
 
-        var middleware = new SecurityHeadersMiddleware(_ => Task.CompletedTask);
-        await middleware.InvokeAsync(context);
+        SecurityHeadersMiddleware.Apply(context);
 
         return context.Response.Headers;
     }
 
     [Fact]
-    public async Task Invoke_OnAnApiResponse_RefusesSniffingFramingAndLoading()
+    public void Apply_OnAnApiResponse_RefusesSniffingFramingAndLoading()
     {
-        var headers = await HeadersFor("/api/games/1");
+        var headers = HeadersFor("/api/games/1");
 
         Assert.Equal("nosniff", headers.XContentTypeOptions);
         Assert.Equal("DENY", headers.XFrameOptions);
@@ -35,9 +39,9 @@ public class SecurityHeadersTests
     [Theory]
     [InlineData("/scalar/v1")]
     [InlineData("/openapi/v1.json")]
-    public async Task Invoke_OnTheApiReference_LeavesTheContentPolicyOff(string path)
+    public void Apply_OnTheApiReference_LeavesTheContentPolicyOff(string path)
     {
-        var headers = await HeadersFor(path);
+        var headers = HeadersFor(path);
 
         Assert.False(headers.ContentSecurityPolicy.Count > 0);
 
