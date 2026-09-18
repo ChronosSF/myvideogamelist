@@ -26,6 +26,14 @@ describe('browseFrom', () => {
             .toEqual(EMPTY_BROWSE);
     });
 
+    it('drops an id too large for the API to bind, which it answers with a 400', () => {
+        // The filters are 32-bit ints on the server. One digit over, and the request is refused
+        // whole — which the loader renders as a 502 page rather than as a listing.
+        expect(browseFrom(params('platform=2147483648')).platform).toBeNull();
+        expect(browseFrom(params('genre=9007199254740991')).genre).toBeNull();
+        expect(browseFrom(params('platform=2147483647')).platform).toBe(2147483647);
+    });
+
     it('refuses what only looks like a number', () => {
         expect(browseFrom(params('platform=6.5&genre=1e3&year=2024abc')).platform).toBeNull();
         expect(browseFrom(params('genre=1e3')).genre).toBeNull();

@@ -91,7 +91,8 @@ fetches the genres and platforms alongside. If either fails, that one filter is 
 One module, `@/lib/gameBrowse`, turns a query string into a browse and back. The loader, the "load more"
 requests and the controls all go through it. A malformed value is dropped there rather than sent, and the
 API refuses the same values with a 400 on its own: an unknown order, a year outside 1950–2100, a score
-outside 1–100.
+outside 1–100, a platform or genre id past a 32-bit `int` — which does not bind there at all, and so
+refuses the whole request rather than that one filter.
 
 A well-formed value the controls do not offer is honoured, and shown. A stale link can name a platform no
 longer active or a genre IGDB has dropped, and a hand-edited one a year or a score between the offered

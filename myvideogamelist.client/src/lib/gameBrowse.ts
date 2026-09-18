@@ -30,6 +30,13 @@ export const MIN_SCORES = [90, 80, 70, 60] as const;
 const MIN_YEAR = 1950;
 const MAX_YEAR = 2100;
 
+/**
+ * The largest id the API can take: its filters are 32-bit `int`s, and a number above that one does
+ * not merely fall outside their range — it fails to bind at all, so the request is a 400 and the
+ * loader turns that into a 502 page. Dropped here, like every other value the API would refuse.
+ */
+const MAX_ID = 2_147_483_647;
+
 /** Where the year select stops: the early seventies are where there is anything to browse. */
 export const EARLIEST_OFFERED_YEAR = 1970;
 
@@ -52,7 +59,7 @@ export const EMPTY_BROWSE: GameBrowse = {
     minScore: null,
 };
 
-function positiveInt(value: string | null, max = Number.MAX_SAFE_INTEGER): number | null {
+function positiveInt(value: string | null, max = MAX_ID): number | null {
     if (value === null || !/^\d+$/.test(value)) return null;
     const parsed = Number(value);
     return parsed >= 1 && parsed <= max ? parsed : null;
