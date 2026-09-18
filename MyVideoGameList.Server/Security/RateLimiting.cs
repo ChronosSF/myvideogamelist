@@ -54,7 +54,11 @@ public static class RateLimiting
                     Window = Window,
 
                     // The window slides in one-minute steps, so the budget refills gradually
-                    // instead of the whole allowance arriving at once every five minutes.
+                    // rather than the whole allowance arriving at once. A fixed window was
+                    // measured against this: it hands back a Retry-After, but the figure is the
+                    // whole window rather than the time left, so the promise it makes is wrong
+                    // for every caller but the one who arrived at the boundary - and it lets
+                    // twice the budget through across one.
                     SegmentsPerWindow = 5,
 
                     // Refuse rather than queue. A caller over the limit wants an answer, and a
@@ -88,7 +92,10 @@ public static class RateLimiting
         var response = context.HttpContext.Response;
         response.StatusCode = StatusCodes.Status429TooManyRequests;
 
-        var detail = "Too many attempts from this device. Try again later.";
+        // Vague on purpose: the sliding window above reports no RetryAfter metadata - measured,
+        // not assumed - and there is no honest number to give. The branch below is what a limiter
+        // that does report one would take.
+        var detail = "Too many attempts from this device. Wait a few minutes and try again.";
 
         if (context.Lease.TryGetMetadata(MetadataName.RetryAfter, out var retryAfter))
         {

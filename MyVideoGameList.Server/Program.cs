@@ -15,6 +15,16 @@ builder.Services.AddControllers();
 builder.Services.AddOpenApi();
 builder.Services.AddApiRateLimiting();
 builder.Services.AddProxyHeaders(builder.Configuration);
+
+// HSTS. A year, subdomains included, so dev.myvideogamelist.net cannot be reached over plain
+// HTTP either. Preload is deliberately off: submission to the browsers' preload list is a
+// commitment that is slow and awkward to undo, and it belongs to whoever owns the domain rather
+// than to a default in a source file.
+builder.Services.AddHsts(options =>
+{
+    options.MaxAge = TimeSpan.FromDays(365);
+    options.IncludeSubDomains = true;
+});
 builder.Services.AddMemoryCache();
 builder.Services.AddHttpClient("Igdb");
 
@@ -165,6 +175,10 @@ if (app.Environment.IsDevelopment())
 // Off unless configured; see the ForwardedHeaders section in appsettings.json.
 app.UseProxyHeaders();
 
+// Then the headers that say what an answer from this API may be used for. Above the redirect
+// and the rate limiter so that a 307 and a 429 carry them as well as a 200 does.
+app.UseApiSecurityHeaders();
+
 // Only redirect browser traffic. The React Router SSR server calls this API over
 // plain HTTP from the same machine, and a 307 to HTTPS would fail on the dev cert.
 //
@@ -172,6 +186,7 @@ app.UseProxyHeaders();
 // redirects every request into a loop unless the forwarded scheme above is being honoured.
 if (!app.Environment.IsDevelopment())
 {
+    app.UseHsts();
     app.UseHttpsRedirection();
 }
 
