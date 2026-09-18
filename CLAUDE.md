@@ -91,6 +91,9 @@ ROADMAP.md                      Forward-looking plan
   `1`). Filtering on the removed field returns zero rows *silently* rather than erroring, so the
   symptom is an empty feature with a clean log. Suspect this whenever an IGDB filter returns
   nothing — check the field still exists before debugging your own code.
+  `age_ratings.category` and `age_ratings.rating` went the same way — use `organization` (ESRB is
+  `1`) and `rating_category`. *Requesting* a removed field is just as quiet: it is left out of the
+  response, which hid every ESRB badge.
 
 - **Steam news and the trending rail hold no database state**, deliberately, so the pending
   PostgreSQL move stays as cheap as it is today. See `docs/decisions/0012-*`. Keep derived,

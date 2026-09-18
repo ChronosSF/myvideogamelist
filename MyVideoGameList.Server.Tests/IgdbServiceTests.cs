@@ -1,6 +1,12 @@
-﻿using MyVideoGameList.Server.DTOs;
+﻿using System.Net;
+using System.Text;
+using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging.Abstractions;
+using MyVideoGameList.Server.DTOs;
 using MyVideoGameList.Server.Models.Igdb;
 using MyVideoGameList.Server.Services;
+using NSubstitute;
 
 namespace MyVideoGameList.Server.Tests;
 
@@ -171,21 +177,148 @@ public class BuildQueryTests
 
 public class MapEsrbRatingTests
 {
+    private const int Esrb = 1;
+
+    private static IgdbAgeRating Rating(int? organization, int? ratingCategory) =>
+        new(1, organization, ratingCategory);
+
     [Theory]
     [InlineData(1, "RP")]
+    [InlineData(2, "EC")]
     [InlineData(3, "E")]
     [InlineData(4, "E10+")]
+    [InlineData(5, "T")]
     [InlineData(6, "M")]
     [InlineData(7, "AO")]
-    public void MapsKnownRatings(int value, string expected)
-        => Assert.Equal(expected, IgdbService.MapEsrbRating(value));
+    public void WithAnEsrbRating_MapsItsCategoryToTheShortCode(int ratingCategory, string expected)
+        => Assert.Equal(expected, IgdbService.MapEsrbRating([Rating(Esrb, ratingCategory)]));
+
+    [Fact]
+    public void AmongEveryBoardsRatings_ReadsTheEsrbRow()
+    {
+        // The Witcher 3's rows in the order live IGDB returned them, ESRB last. The organization and
+        // ESRB category ids share a range, so reading the wrong field of the right row still yields
+        // a plausible code — "RP" — rather than failing.
+        var result = IgdbService.MapEsrbRating([
+            Rating(7, 38), Rating(2, 12), Rating(3, 17), Rating(6, 32),
+            Rating(4, 22), Rating(5, 26), Rating(Esrb, 6)
+        ]);
+
+        Assert.Equal("M", result);
+    }
+
+    [Fact]
+    public void WithOnlyOtherBoards_ReturnsNull()
+        => Assert.Null(IgdbService.MapEsrbRating([Rating(organization: 2, ratingCategory: 12)]));
 
     [Theory]
     [InlineData(0)]
     [InlineData(8)]
-    [InlineData(-1)]
-    public void ReturnsNullForUnknownRatings(int value)
-        => Assert.Null(IgdbService.MapEsrbRating(value));
+    [InlineData(null)]
+    public void WithAnUnknownCategory_ReturnsNull(int? ratingCategory)
+        => Assert.Null(IgdbService.MapEsrbRating([Rating(Esrb, ratingCategory)]));
+
+    [Fact]
+    public void WithNoAgeRatings_ReturnsNull()
+    {
+        Assert.Null(IgdbService.MapEsrbRating(null));
+        Assert.Null(IgdbService.MapEsrbRating([]));
+    }
+}
+
+/// <summary>
+/// The listing against a stubbed IGDB, over the two joints a mapping test cannot see: the fields the
+/// query actually asks for, and the binding from IGDB's own JSON onto the model. The ESRB bug lived
+/// in exactly that gap — correct C# over fields the query no longer asked for — and every test that
+/// built an <see cref="IgdbAgeRating"/> by hand passed throughout.
+/// </summary>
+public class GetGamesAsyncTests
+{
+    /// <summary>
+    /// The Witcher 3's age ratings as live IGDB returned them, under the fields it returns today.
+    /// Organization 1 is the ESRB and its rating category 6 is "M".
+    /// </summary>
+    private const string GamesPayload = """
+        [
+          {
+            "id": 1942,
+            "name": "The Witcher 3: Wild Hunt",
+            "age_ratings": [
+              { "id": 222156, "organization": 7, "rating_category": 38 },
+              { "id": 32441, "organization": 2, "rating_category": 12 },
+              { "id": 67455, "organization": 3, "rating_category": 17 },
+              { "id": 78139, "organization": 6, "rating_category": 32 },
+              { "id": 46963, "organization": 4, "rating_category": 22 },
+              { "id": 78138, "organization": 5, "rating_category": 26 },
+              { "id": 187952, "organization": 1, "rating_category": 6 }
+            ]
+          }
+        ]
+        """;
+
+    private const string TokenPayload =
+        """{ "access_token": "token", "expires_in": 3600, "token_type": "bearer" }""";
+
+    /// <summary>Answers the token request, then every query with <see cref="GamesPayload"/>.</summary>
+    private sealed class StubHandler : HttpMessageHandler
+    {
+        /// <summary>The Apicalypse query the service sent.</summary>
+        public string? Query { get; private set; }
+
+        protected override async Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            if (request.RequestUri?.Host == "id.twitch.tv") return Json(TokenPayload);
+
+            Query = await request.Content!.ReadAsStringAsync(cancellationToken);
+            return Json(GamesPayload);
+        }
+
+        private static HttpResponseMessage Json(string body) =>
+            new(HttpStatusCode.OK) { Content = new StringContent(body, Encoding.UTF8, "application/json") };
+    }
+
+    private static (IgdbService Service, StubHandler Igdb) NewService()
+    {
+        var handler = new StubHandler();
+
+        var factory = Substitute.For<IHttpClientFactory>();
+        factory.CreateClient("Igdb").Returns(_ => new HttpClient(handler));
+
+        var configuration = Substitute.For<IConfiguration>();
+        configuration["Igdb:ClientId"].Returns("client-id");
+        configuration["Igdb:ClientSecret"].Returns("client-secret");
+
+        var service = new IgdbService(
+            factory, configuration, new MemoryCache(new MemoryCacheOptions()),
+            NullLogger<IgdbService>.Instance);
+
+        return (service, handler);
+    }
+
+    [Fact]
+    public async Task WithAnyQuery_AsksForTheAgeRatingFieldsTheMappingReads()
+    {
+        // The removed `age_ratings.category,age_ratings.rating` answered 200 with rows holding only an
+        // id, so the badge vanished with nothing logged. The same constant feeds the detail query.
+        var (service, igdb) = NewService();
+
+        await service.GetGamesAsync();
+
+        Assert.Contains("age_ratings.organization,age_ratings.rating_category", igdb.Query);
+    }
+
+    [Fact]
+    public async Task WithIgdbsOwnJson_BindsTheAgeRatingsThroughToTheEsrbCode()
+    {
+        // The half no mapping test reaches: snake_case onto Organization and RatingCategory. Misname
+        // either and EsrbRating is null again while every MapEsrbRating test still passes.
+        var (service, _) = NewService();
+
+        var games = await service.GetGamesAsync();
+
+        Assert.Equal("M", Assert.Single(games.Items).EsrbRating);
+    }
 }
 
 public class MapTimeToBeatTests

@@ -55,10 +55,20 @@ public record IgdbWebsite(
     string? Url,
     int Category);
 
+/// <summary>
+/// One rating board's rating of a game. A game rated in several regions carries one row per board.
+/// </summary>
+/// <remarks>
+/// The board is <see cref="Organization"/>, an <c>age_rating_organizations</c> id, and the rating is
+/// <see cref="RatingCategory"/>, an <c>age_rating_categories</c> id — <em>not</em> the older
+/// <c>category</c> and <c>rating</c> fields. IGDB has removed those: asking for them returns each
+/// row with nothing but its id, so every ESRB rating read as absent without an error. Verified
+/// against live IGDB — ESRB is organization 1.
+/// </remarks>
 public record IgdbAgeRating(
     int Id,
-    int Category,
-    int Rating);
+    int? Organization,
+    [property: JsonPropertyName("rating_category")] int? RatingCategory);
 
 public record IgdbGenre(
     int Id,

@@ -43,6 +43,12 @@ public class IgdbService(
     private const int SteamExternalSource = 1;
 
     /// <summary>
+    /// The IGDB <c>age_rating_organizations</c> id for the ESRB. This replaced the old
+    /// <c>age_ratings.category</c> field, which no longer exists — asking for it returns nothing.
+    /// </summary>
+    private const int EsrbOrganization = 1;
+
+    /// <summary>
     /// IGDB <c>popularity_type</c> 5, "24hr Peak Players", sourced from Steam.
     /// </summary>
     /// <remarks>
@@ -101,7 +107,7 @@ public class IgdbService(
         "websites.url,websites.category," +
         "rating,aggregated_rating,aggregated_rating_count," +
         "total_rating,total_rating_count," +
-        "age_ratings.category,age_ratings.rating," +
+        "age_ratings.organization,age_ratings.rating_category," +
         "genres.id,genres.name," +
         "platforms.id,platforms.name,platforms.abbreviation," +
         "involved_companies.company.id,involved_companies.company.name," +
@@ -700,9 +706,7 @@ public class IgdbService(
 
         int? criticScore = g.AggregatedRating.HasValue ? (int)Math.Round(g.AggregatedRating.Value) : null;
 
-        var esrbRating = g.AgeRatings?.FirstOrDefault(r => r.Category == 1) is { } esrb
-            ? MapEsrbRating(esrb.Rating)
-            : null;
+        var esrbRating = MapEsrbRating(g.AgeRatings);
 
         DateOnly? releaseDate = g.FirstReleaseDate.HasValue
             ? DateOnly.FromDateTime(DateTimeOffset.FromUnixTimeSeconds(g.FirstReleaseDate.Value).UtcDateTime)
@@ -860,15 +864,24 @@ public class IgdbService(
             .ToList();
     }
 
-    internal static string? MapEsrbRating(int ratingValue) => ratingValue switch
+    /// <summary>
+    /// The game's ESRB rating as the short code the client shows, or null when the ESRB has not
+    /// rated it. The cases are the <c>age_rating_categories</c> ids IGDB lists under the ESRB.
+    /// </summary>
+    internal static string? MapEsrbRating(List<IgdbAgeRating>? ageRatings)
     {
-        1 => "RP",
-        2 => "EC",
-        3 => "E",
-        4 => "E10+",
-        5 => "T",
-        6 => "M",
-        7 => "AO",
-        _ => null
-    };
+        var esrb = ageRatings?.FirstOrDefault(r => r.Organization == EsrbOrganization);
+
+        return esrb?.RatingCategory switch
+        {
+            1 => "RP",
+            2 => "EC",
+            3 => "E",
+            4 => "E10+",
+            5 => "T",
+            6 => "M",
+            7 => "AO",
+            _ => null
+        };
+    }
 }
