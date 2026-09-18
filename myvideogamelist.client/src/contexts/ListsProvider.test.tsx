@@ -1162,11 +1162,15 @@ describe('list names', () => {
         names?: Record<string, string>;
         /** The preferences read fails, so the names never arrive. */
         preferencesFail?: boolean;
+        /** Holds the second and later preferences reads open, so a rename can land while one is out. */
+        holdPreferences?: boolean;
         /** How the names write answers. Defaults to storing what was sent. */
         save?: { status: number; body?: unknown } | 'reject' | 'hold';
     } = {}) {
         const calls: Recorded[] = [];
         let settle!: (response: Response) => void;
+        let settlePreferences!: (response: Response) => void;
+        let preferenceReads = 0;
 
         vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
             const url = String(input);
@@ -1178,6 +1182,10 @@ describe('list names', () => {
                 return Promise.resolve(new Response(JSON.stringify({ lists: { playing: [CELESTE] } }), { status: 200 }));
             }
             if (method === 'GET' && url === '/api/user/list-preferences') {
+                preferenceReads++;
+                if (options.holdPreferences && preferenceReads > 1) {
+                    return new Promise<Response>(resolve => { settlePreferences = resolve; });
+                }
                 return Promise.resolve(options.preferencesFail
                     ? new Response('nope', { status: 500 })
                     : new Response(JSON.stringify({ view: 'tiles', sorts: {}, names: options.names ?? {} }), { status: 200 }));
@@ -1202,6 +1210,12 @@ describe('list names', () => {
             release: (response: Response) => act(async () => {
                 settle(response);
                 await Promise.resolve();
+            }),
+            /** Answers the held preferences read, with whatever names the server had when it ran. */
+            releasePreferences: (names: Record<string, string>) => act(async () => {
+                settlePreferences(new Response(
+                    JSON.stringify({ view: 'tiles', sorts: {}, names }), { status: 200 }));
+                await new Promise(resolve => setTimeout(resolve, 0));
             }),
         };
     }
@@ -1280,6 +1294,31 @@ describe('list names', () => {
         await userEvent.click(screen.getByRole('button', { name: 'rename finished' }));
 
         await waitFor(() => expect(screen.getByTestId('finished-name')).toHaveTextContent('Beaten, finally'));
+    });
+
+    it('does not let a preferences read that was already out undo a rename', async () => {
+        /*
+         * The answer to that read was composed before the rename reached the database, so applying
+         * it puts the old labels back across the site and the save reads as forgotten. The read is
+         * not an unusual thing to have in flight: `AuthProvider` hands the provider a new user
+         * object for a theme change, and the effect that reads the preferences depends on it.
+         */
+        const { releasePreferences } = namesStub({ holdPreferences: true });
+        const view = mountNames();
+        await settledNames();
+
+        auth.user = { ...ALICE };
+        await act(async () => {
+            view.rerender(<ListsProvider><NamesProbe /></ListsProvider>);
+        });
+
+        await userEvent.click(screen.getByRole('button', { name: 'rename finished' }));
+        await waitFor(() => expect(screen.getByTestId('finished-name')).toHaveTextContent('Beaten'));
+
+        await releasePreferences({});
+
+        expect(screen.getByTestId('finished-name')).toHaveTextContent('Beaten');
+        expect(screen.getByTestId('names-status')).toHaveTextContent('ready');
     });
 
     it('hands back a refusal per list and changes no name', async () => {

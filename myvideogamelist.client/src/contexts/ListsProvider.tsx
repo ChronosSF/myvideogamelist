@@ -31,6 +31,20 @@ interface ListsState {
      * sort, which has a default, but not for a form that would save the defaults over real names.
      */
     namesStatus: 'loading' | 'ready' | 'failed';
+    /**
+     * Whether the user has renamed a list, or changed the view or a sort, since the preferences read
+     * now in flight was started.
+     *
+     * The answer to that read was composed before it arrived. One that lands after a write of the
+     * same fields is therefore older than what is on screen, and applying it puts the previous labels
+     * or the previous view back until the next page load. The read is not rare: `AuthProvider` hands
+     * the provider a new user object for something as ordinary as a theme change, and the effect
+     * below depends on it. Kept per group of fields rather than as one flag, because the read is the
+     * only thing that brings the names at all — dropping the whole answer over a view toggle would
+     * mark the names `ready` at their defaults, which is what a rename form must never be handed.
+     */
+    namesWrittenSinceRead: boolean;
+    viewWrittenSinceRead: boolean;
     loading: boolean;
     /** Set only on the initial fetch failure — triggers the full-page error state. */
     error: string | null;
@@ -110,6 +124,8 @@ const initialState: ListsState = {
     sorts: {},
     names: {},
     namesStatus: 'loading',
+    namesWrittenSinceRead: false,
+    viewWrittenSinceRead: false,
     loading: false,
     error: null,
     mutationError: null,
@@ -135,8 +151,16 @@ function reducer(state: ListsState, action: ListsAction): ListsState {
             // and not the per-user preferences either. Cleared here rather than waiting for the
             // fetch to land, because a fetch that *fails* would otherwise leave the previous
             // account's lists on screen under the new account's error message.
+            // The preferences read starts with this effect run, so what the user had written before
+            // it is the read's own business; only a write that lands while it is out outranks it.
             return action.session === state.session
-                ? { ...state, loading: true, error: null }
+                ? {
+                    ...state,
+                    loading: true,
+                    error: null,
+                    namesWrittenSinceRead: false,
+                    viewWrittenSinceRead: false,
+                }
                 : { ...initialState, session: action.session, loading: true };
         // The fetch results are session-stamped too, and not only because the request is aborted
         // on an account change: the abort runs in the effect cleanup, which is one more thing
@@ -156,14 +180,22 @@ function reducer(state: ListsState, action: ListsAction): ListsState {
             return ifCurrent(state, action.session, () =>
                 ({ ...state, loading: false, error: action.error }));
         case 'PREFERENCES_LOADED':
-            return ifCurrent(state, action.session, () =>
-                ({ ...state, view: action.view, sorts: action.sorts, names: action.names, namesStatus: 'ready' }));
+            // Whatever the user changed while this was out is newer than it, field group by field
+            // group. The names are `ready` either way: the read succeeded, so they are known.
+            return ifCurrent(state, action.session, () => ({
+                ...state,
+                view: state.viewWrittenSinceRead ? state.view : action.view,
+                sorts: state.viewWrittenSinceRead ? state.sorts : action.sorts,
+                names: state.namesWrittenSinceRead ? state.names : action.names,
+                namesStatus: 'ready',
+            }));
         case 'PREFERENCES_FAILED':
             // The lists and every label still work, on the default names; only a names form needs to
             // know that what it would be editing never arrived.
             return ifCurrent(state, action.session, () => ({ ...state, namesStatus: 'failed' }));
         case 'NAMES_SAVED':
-            return ifCurrent(state, action.session, () => ({ ...state, names: action.names, namesStatus: 'ready' }));
+            return ifCurrent(state, action.session, () =>
+                ({ ...state, names: action.names, namesStatus: 'ready', namesWrittenSinceRead: true }));
         // The ones a mutation raises, and therefore the ones that can arrive late. Each carries
         // the session it was captured under; ifCurrent drops it when that has moved on.
         case 'PLACE_ENTRY':
@@ -186,9 +218,13 @@ function reducer(state: ListsState, action: ListsAction): ListsState {
                 return { ...state, lists };
             });
         case 'SET_VIEW':
-            return { ...state, view: action.view };
+            return { ...state, view: action.view, viewWrittenSinceRead: true };
         case 'SET_SORT':
-            return { ...state, sorts: { ...state.sorts, [action.listId]: action.sort } };
+            return {
+                ...state,
+                sorts: { ...state.sorts, [action.listId]: action.sort },
+                viewWrittenSinceRead: true,
+            };
         case 'MUTATION_ERROR':
             return ifCurrent(state, action.session, () => ({ ...state, mutationError: action.error }));
         case 'CLEAR_MUTATION_ERROR':
