@@ -13,14 +13,21 @@ function applyTheme(theme: 'dark' | 'light') {
  * the useful sentence inside `errors`, keyed by field — that is what the username endpoint returns
  * for "taken", "reserved" and "too soon", and reading only `message` would show a generic failure
  * in place of the one thing the user needs to know. `{ errors: [...] }` is Identity's own shape,
- * used by registration. `{ message }` is everything else.
+ * used by registration. `{ message }` is what this API's own auth failures carry, and `detail` or
+ * `title` alone is a plain `ProblemDetails` — a rate-limited login, or anything the framework
+ * answers before a controller runs.
  */
 async function problem(response: Response, fallback: string): Promise<string> {
     try {
         const body: unknown = await response.json();
         if (typeof body !== 'object' || body === null) return fallback;
 
-        const { errors, message } = body as { errors?: unknown; message?: unknown };
+        const { errors, message, detail, title } = body as {
+            errors?: unknown;
+            message?: unknown;
+            detail?: unknown;
+            title?: unknown;
+        };
 
         if (Array.isArray(errors)) return errors.join(' ') || fallback;
 
@@ -31,7 +38,14 @@ async function problem(response: Response, fallback: string): Promise<string> {
             if (first) return first;
         }
 
-        return typeof message === 'string' && message.length > 0 ? message : fallback;
+        // `message` is what this API's own auth failures carry. `detail` and `title` are
+        // ProblemDetails, which is what the framework produces - a rate-limited login being the
+        // one where the fallback ("Login failed") would be actively misleading.
+        for (const candidate of [message, detail, title]) {
+            if (typeof candidate === 'string' && candidate.length > 0) return candidate;
+        }
+
+        return fallback;
     } catch {
         // A body that is not JSON at all — a proxy error page, or an empty 500.
         return fallback;

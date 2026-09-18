@@ -1,8 +1,10 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using MyVideoGameList.Server.DTOs;
 using MyVideoGameList.Server.Models;
+using MyVideoGameList.Server.Security;
 using MyVideoGameList.Server.Services;
 
 namespace MyVideoGameList.Server.Controllers;
@@ -15,6 +17,7 @@ public class AuthController(
     IUserNameClaimService claims) : ControllerBase
 {
     [HttpPost("register")]
+    [EnableRateLimiting(RateLimiting.AuthWrites)]
     public async Task<ActionResult<UserProfileDto>> Register([FromBody] RegisterDto dto)
     {
         // The shape of the username has already been checked by [UserName]; what is left is
@@ -57,6 +60,7 @@ public class AuthController(
     /// </para>
     /// </remarks>
     [HttpPost("login")]
+    [EnableRateLimiting(RateLimiting.AuthWrites)]
     public async Task<ActionResult<UserProfileDto>> Login([FromBody] LoginDto dto)
     {
         var user = await userManager.FindByEmailAsync(dto.Email)

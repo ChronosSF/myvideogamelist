@@ -5,6 +5,7 @@ using Microsoft.Extensions.Diagnostics.HealthChecks;
 using MyVideoGameList.Server.Data;
 using MyVideoGameList.Server.HealthChecks;
 using MyVideoGameList.Server.Models;
+using MyVideoGameList.Server.Security;
 using MyVideoGameList.Server.Services;
 using Scalar.AspNetCore;
 
@@ -12,6 +13,7 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddControllers();
 builder.Services.AddOpenApi();
+builder.Services.AddApiRateLimiting();
 builder.Services.AddMemoryCache();
 builder.Services.AddHttpClient("Igdb");
 
@@ -163,6 +165,11 @@ if (!app.Environment.IsDevelopment())
 {
     app.UseHttpsRedirection();
 }
+
+// Before authentication, so a caller over the limit is turned away without a database
+// read. Routing has already run by this point, which is what lets the limiter see which
+// endpoint was matched and apply that endpoint's policy.
+app.UseRateLimiter();
 
 app.UseAuthentication();
 app.UseAuthorization();
