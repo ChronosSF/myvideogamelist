@@ -138,8 +138,11 @@ export async function loader({ params, request }: Route.LoaderArgs) {
         : null;
 
     // A failed favourites request degrades the render only for somebody who has favourites; for
-    // anybody else the page is the same either way, and there is no failure in it to pin.
-    const degraded = reviews === null || (favourites === null && profile.favourites > 0);
+    // anybody else the page is the same either way, and there is no failure in it to pin. An answer
+    // that resolved none of them reads the same on the page and counts the same here: the service
+    // leaves out a row IGDB cannot resolve, and such gaps have been transient before.
+    const noFavouritesResolved = profile.favourites > 0 && (favourites?.games.length ?? 0) === 0;
+    const degraded = reviews === null || noFavouritesResolved;
 
     return data<ProfilePageData>(
         { profile, reviews, favourites, page },

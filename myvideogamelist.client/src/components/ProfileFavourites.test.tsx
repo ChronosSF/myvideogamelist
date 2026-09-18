@@ -43,4 +43,13 @@ describe('ProfileFavourites', () => {
         expect(screen.getByText('alex has 3 favourites, but they could not be loaded just now.'))
             .toBeInTheDocument();
     });
+
+    it('says the same when the request answered with none of them', () => {
+        // Not only an outage: a row whose game IGDB can no longer resolve is left out of the answer
+        // and still counted on the profile, so the heading would otherwise stand over nothing.
+        renderSection(1, { userName: 'alex', games: [] });
+
+        expect(screen.getByText('alex has 1 favourite, but it could not be loaded just now.'))
+            .toBeInTheDocument();
+    });
 });
