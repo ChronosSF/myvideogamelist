@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { useState } from 'react';
 import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ListsProvider } from '@/contexts/ListsProvider';
@@ -72,6 +73,7 @@ function stubFetch(routes: Routes) {
 /** Surfaces the parts of the context the assertions need, as plain text and buttons. */
 function Probe({ listId = 'playing' as ListId }: { listId?: ListId }) {
     const lists = useLists();
+    const [deleted, setDeleted] = useState('');
 
     return (
         <div>
@@ -82,6 +84,7 @@ function Probe({ listId = 'playing' as ListId }: { listId?: ListId }) {
             <span data-testid="score">{String(lists.scoreFor(1))}</span>
             <span data-testid="found-in">{String(lists.getListFor(1))}</span>
             <span data-testid="pending">{String(lists.isPending(1))}</span>
+            <span data-testid="deleted">{deleted}</span>
             {(['backlog', 'playing', 'on_hold', 'finished', 'dropped'] as ListId[]).map(id => (
                 <span key={id} data-testid={`list-${id}`}>
                     {lists.lists[id].map(e => `${e.game.title}(${e.score ?? '-'})`).join(',')}
@@ -92,7 +95,7 @@ function Probe({ listId = 'playing' as ListId }: { listId?: ListId }) {
             </button>
             <button onClick={() => void lists.removeFromList('playing', 1)}>remove</button>
             <button onClick={() => void lists.setScore(1, 9)}>score 9</button>
-            <button onClick={() => void lists.deleteEntry(1)}>delete entry</button>
+            <button onClick={() => void lists.deleteEntry(1).then(ok => setDeleted(String(ok)))}>delete entry</button>
             <button onClick={() => lists.setView('table')}>use table</button>
             <button onClick={() => lists.setSort(listId, { key: 'score', descending: true })}>sort by score</button>
         </div>
@@ -302,6 +305,24 @@ describe('deleting everything about a game', () => {
 
         await waitFor(() => expect(screen.getByTestId('list-finished')).toHaveTextContent('Celeste(7)'));
         expect(screen.getByTestId('error')).toHaveTextContent('Failed to remove your data');
+    });
+
+    it('answers whether it deleted, for a caller holding its own copy of the entry', async () => {
+        // The game panel shows a score, notes and a review the lists do not carry, and clears them
+        // only on true — a rollback here puts back the lists and nothing else.
+        await renderProvider({ lists: { finished: [CELESTE] } });
+
+        await userEvent.click(screen.getByRole('button', { name: 'delete entry' }));
+
+        await waitFor(() => expect(screen.getByTestId('deleted')).toHaveTextContent('true'));
+    });
+
+    it('answers false when the delete fails', async () => {
+        await renderProvider({ lists: { finished: [CELESTE] }, failing: ['/api/entries/1'] });
+
+        await userEvent.click(screen.getByRole('button', { name: 'delete entry' }));
+
+        await waitFor(() => expect(screen.getByTestId('deleted')).toHaveTextContent('false'));
     });
 });
 
@@ -985,5 +1006,371 @@ describe('across a session change', () => {
         await waitFor(() => expect(playing()).toHaveTextContent('Celeste(7)'));
 
         expect(screen.getByTestId('pending')).toHaveTextContent('false');
+    });
+});
+
+describe("the entry's own fields", () => {
+    /**
+     * Ownership and notes are written under the same per-game lock as a move or a score, and show
+     * in no list, so what these assert is the request, the lock and the result — not the lists.
+     */
+    function fieldsStub(options: { hold?: string[]; failing?: string[]; reject?: string[] } = {}) {
+        const calls: Recorded[] = [];
+        const settlers = new Map<string, (status: number) => void>();
+
+        vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+            const url = String(input);
+            const method = init?.method ?? 'GET';
+            const key = `${method} ${url}`;
+            calls.push({ method, url, body: init?.body ? JSON.parse(String(init.body)) : undefined });
+
+            if (key === 'GET /api/lists') {
+                return Promise.resolve(new Response(JSON.stringify({ lists: { playing: [CELESTE] } }), { status: 200 }));
+            }
+            if (key === 'GET /api/user/list-preferences') {
+                return Promise.resolve(new Response(JSON.stringify({ view: 'tiles', sorts: {} }), { status: 200 }));
+            }
+            if (options.reject?.includes(key)) return Promise.reject(new TypeError('Failed to fetch'));
+            if (options.hold?.includes(key)) {
+                return new Promise<Response>(resolve => {
+                    settlers.set(key, status => resolve(new Response(status === 204 ? null : 'nope', { status })));
+                });
+            }
+            if (options.failing?.includes(key)) return Promise.resolve(new Response('nope', { status: 500 }));
+            return Promise.resolve(new Response(null, { status: 204 }));
+        }));
+
+        return {
+            calls,
+            release: (key: string, status: number) => act(async () => {
+                settlers.get(key)!(status);
+                await Promise.resolve();
+            }),
+        };
+    }
+
+    function FieldsProbe() {
+        const lists = useLists();
+        const [result, setResult] = useState('');
+
+        return (
+            <div>
+                <span data-testid="loading">{String(lists.loading)}</span>
+                <span data-testid="error">{lists.mutationError ?? ''}</span>
+                <span data-testid="pending">{String(lists.isPending(1))}</span>
+                <span data-testid="result">{result}</span>
+                <span data-testid="list-playing">{lists.lists.playing.map(e => `${e.game.title}(${e.score ?? '-'})`).join(',')}</span>
+                <button onClick={() => void lists.setOwnership(1, 'owned').then(ok => setResult(String(ok)))}>own it</button>
+                <button onClick={() => void lists.setOwnership(1, null).then(ok => setResult(String(ok)))}>clear ownership</button>
+                <button onClick={() => void lists.setNotes(1, 'Save is on the laptop.').then(ok => setResult(String(ok)))}>write notes</button>
+                <button onClick={() => void lists.setScore(1, 9)}>score</button>
+            </div>
+        );
+    }
+
+    async function mountFields(options: Parameters<typeof fieldsStub>[0] = {}) {
+        const stub = fieldsStub(options);
+        render(<ListsProvider><FieldsProbe /></ListsProvider>);
+        await waitFor(() => expect(screen.getByTestId('loading')).toHaveTextContent('false'));
+        return stub;
+    }
+
+    const press = (name: string) => userEvent.click(screen.getByRole('button', { name }));
+    const result = () => screen.getByTestId('result');
+
+    it('says how the user has the game through the entry endpoint, touching no list', async () => {
+        const { calls } = await mountFields();
+
+        await press('own it');
+
+        await waitFor(() => expect(result()).toHaveTextContent('true'));
+        const put = calls.find(c => c.url === '/api/entries/1/ownership');
+        expect(put?.method).toBe('PUT');
+        expect(put?.body).toEqual({ ownership: 'owned' });
+        expect(screen.getByTestId('list-playing')).toHaveTextContent('Celeste(7)');
+        expect(calls.some(c => c.url === '/api/lists/1')).toBe(false);
+    });
+
+    it('sends a clear as a null rather than leaving the field out', async () => {
+        const { calls } = await mountFields();
+
+        await press('clear ownership');
+
+        await waitFor(() => expect(result()).toHaveTextContent('true'));
+        expect(calls.find(c => c.url === '/api/entries/1/ownership')?.body).toEqual({ ownership: null });
+    });
+
+    it('saves notes through the entry endpoint', async () => {
+        const { calls } = await mountFields();
+
+        await press('write notes');
+
+        await waitFor(() => expect(result()).toHaveTextContent('true'));
+        expect(calls.find(c => c.url === '/api/entries/1/notes')?.body)
+            .toEqual({ notes: 'Save is on the laptop.' });
+    });
+
+    it('reports a refused save as false, with a message of its own', async () => {
+        await mountFields({ failing: ['PUT /api/entries/1/ownership'] });
+
+        await press('own it');
+
+        await waitFor(() => expect(result()).toHaveTextContent('false'));
+        expect(screen.getByTestId('error')).toHaveTextContent('Failed to save how you have this game');
+    });
+
+    it('reports a request that never arrives as false too', async () => {
+        await mountFields({ reject: ['PUT /api/entries/1/notes'] });
+
+        await press('write notes');
+
+        await waitFor(() => expect(result()).toHaveTextContent('false'));
+        expect(screen.getByTestId('error')).toHaveTextContent('Failed to save your notes');
+    });
+
+    it('holds the game lock while it saves', async () => {
+        const { release } = await mountFields({ hold: ['PUT /api/entries/1/ownership'] });
+
+        await press('own it');
+        expect(screen.getByTestId('pending')).toHaveTextContent('true');
+
+        await release('PUT /api/entries/1/ownership', 204);
+
+        expect(screen.getByTestId('pending')).toHaveTextContent('false');
+        expect(result()).toHaveTextContent('true');
+    });
+
+    it('refuses while another write to the same entry is out', async () => {
+        // A score still saving holds the lock, and a second request for the same row would be the
+        // overlap the lock exists to prevent — so this one is not sent at all.
+        const { calls } = await mountFields({ hold: ['PUT /api/entries/1/score'] });
+
+        await press('score');
+        await press('own it');
+
+        await waitFor(() => expect(result()).toHaveTextContent('false'));
+        expect(calls.some(c => c.url === '/api/entries/1/ownership')).toBe(false);
+    });
+});
+
+describe('list names', () => {
+    /**
+     * The preferences read carries the names; the names write answers with what it stored. Every
+     * other request is a 204, so a stray one is visible in `calls` rather than failing the render.
+     */
+    function namesStub(options: {
+        names?: Record<string, string>;
+        /** The preferences read fails, so the names never arrive. */
+        preferencesFail?: boolean;
+        /** Holds the second and later preferences reads open, so a rename can land while one is out. */
+        holdPreferences?: boolean;
+        /** How the names write answers. Defaults to storing what was sent. */
+        save?: { status: number; body?: unknown } | 'reject' | 'hold';
+    } = {}) {
+        const calls: Recorded[] = [];
+        let settle!: (response: Response) => void;
+        let settlePreferences!: (response: Response) => void;
+        let preferenceReads = 0;
+
+        vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+            const url = String(input);
+            const method = init?.method ?? 'GET';
+            const body = init?.body ? JSON.parse(String(init.body)) : undefined;
+            calls.push({ method, url, body });
+
+            if (method === 'GET' && url === '/api/lists') {
+                return Promise.resolve(new Response(JSON.stringify({ lists: { playing: [CELESTE] } }), { status: 200 }));
+            }
+            if (method === 'GET' && url === '/api/user/list-preferences') {
+                preferenceReads++;
+                if (options.holdPreferences && preferenceReads > 1) {
+                    return new Promise<Response>(resolve => { settlePreferences = resolve; });
+                }
+                return Promise.resolve(options.preferencesFail
+                    ? new Response('nope', { status: 500 })
+                    : new Response(JSON.stringify({ view: 'tiles', sorts: {}, names: options.names ?? {} }), { status: 200 }));
+            }
+            if (method === 'PUT' && url === '/api/user/list-names') {
+                if (options.save === 'reject') return Promise.reject(new TypeError('Failed to fetch'));
+                if (options.save === 'hold') return new Promise<Response>(resolve => { settle = resolve; });
+                if (options.save) {
+                    return Promise.resolve(new Response(JSON.stringify(options.save.body ?? {}), { status: options.save.status }));
+                }
+                const stored: Record<string, string> = {};
+                for (const { status, name } of (body as { names: { status: string; name: string | null }[] }).names) {
+                    if (name !== null) stored[status] = name;
+                }
+                return Promise.resolve(new Response(JSON.stringify({ names: stored }), { status: 200 }));
+            }
+            return Promise.resolve(new Response(null, { status: 204 }));
+        }));
+
+        return {
+            calls,
+            release: (response: Response) => act(async () => {
+                settle(response);
+                await Promise.resolve();
+            }),
+            /** Answers the held preferences read, with whatever names the server had when it ran. */
+            releasePreferences: (names: Record<string, string>) => act(async () => {
+                settlePreferences(new Response(
+                    JSON.stringify({ view: 'tiles', sorts: {}, names }), { status: 200 }));
+                await new Promise(resolve => setTimeout(resolve, 0));
+            }),
+        };
+    }
+
+    function NamesProbe() {
+        const lists = useLists();
+        const [outcome, setOutcome] = useState('');
+
+        return (
+            <div>
+                <span data-testid="names-status">{lists.namesStatus}</span>
+                <span data-testid="finished-name">{lists.nameFor('finished')}</span>
+                <span data-testid="backlog-name">{lists.nameFor('backlog')}</span>
+                <span data-testid="outcome">{outcome}</span>
+                <button onClick={() => void lists.saveListNames({ finished: 'Beaten' })
+                    .then(result => setOutcome(JSON.stringify(result)))}>
+                    rename finished
+                </button>
+            </div>
+        );
+    }
+
+    function mountNames() {
+        return render(<ListsProvider><NamesProbe /></ListsProvider>);
+    }
+
+    const settledNames = () =>
+        waitFor(() => expect(screen.getByTestId('names-status')).not.toHaveTextContent('loading'));
+
+    it('names each list as the user renamed it, and the rest by default', async () => {
+        namesStub({ names: { finished: 'Beaten' } });
+        mountNames();
+        await settledNames();
+
+        expect(screen.getByTestId('names-status')).toHaveTextContent('ready');
+        expect(screen.getByTestId('finished-name')).toHaveTextContent('Beaten');
+        expect(screen.getByTestId('backlog-name')).toHaveTextContent('Backlog');
+    });
+
+    it('says the names never arrived when the preferences fail, and labels by default meanwhile', async () => {
+        // The lists and every label are fine on the defaults; only a form that would save those
+        // defaults over the real names needs to know.
+        namesStub({ preferencesFail: true });
+        mountNames();
+        await settledNames();
+
+        expect(screen.getByTestId('names-status')).toHaveTextContent('failed');
+        expect(screen.getByTestId('finished-name')).toHaveTextContent('Finished');
+    });
+
+    it('sends all five lists, with a null for every one left at its default', async () => {
+        const { calls } = namesStub();
+        mountNames();
+        await settledNames();
+
+        await userEvent.click(screen.getByRole('button', { name: 'rename finished' }));
+
+        await waitFor(() => expect(screen.getByTestId('finished-name')).toHaveTextContent('Beaten'));
+        expect(calls.find(c => c.url === '/api/user/list-names')?.body).toEqual({
+            names: [
+                { status: 'backlog', name: null },
+                { status: 'playing', name: null },
+                { status: 'on_hold', name: null },
+                { status: 'finished', name: 'Beaten' },
+                { status: 'dropped', name: null },
+            ],
+        });
+        expect(screen.getByTestId('outcome')).toHaveTextContent('{"ok":true}');
+    });
+
+    it('adopts the names the server says it stored, not the ones it was sent', async () => {
+        namesStub({ save: { status: 200, body: { names: { finished: 'Beaten, finally' } } } });
+        mountNames();
+        await settledNames();
+
+        await userEvent.click(screen.getByRole('button', { name: 'rename finished' }));
+
+        await waitFor(() => expect(screen.getByTestId('finished-name')).toHaveTextContent('Beaten, finally'));
+    });
+
+    it('does not let a preferences read that was already out undo a rename', async () => {
+        /*
+         * The answer to that read was composed before the rename reached the database, so applying
+         * it puts the old labels back across the site and the save reads as forgotten. The read is
+         * not an unusual thing to have in flight: `AuthProvider` hands the provider a new user
+         * object for a theme change, and the effect that reads the preferences depends on it.
+         */
+        const { releasePreferences } = namesStub({ holdPreferences: true });
+        const view = mountNames();
+        await settledNames();
+
+        auth.user = { ...ALICE };
+        await act(async () => {
+            view.rerender(<ListsProvider><NamesProbe /></ListsProvider>);
+        });
+
+        await userEvent.click(screen.getByRole('button', { name: 'rename finished' }));
+        await waitFor(() => expect(screen.getByTestId('finished-name')).toHaveTextContent('Beaten'));
+
+        await releasePreferences({});
+
+        expect(screen.getByTestId('finished-name')).toHaveTextContent('Beaten');
+        expect(screen.getByTestId('names-status')).toHaveTextContent('ready');
+    });
+
+    it('hands back a refusal per list and changes no name', async () => {
+        namesStub({
+            names: { backlog: 'Someday' },
+            save: {
+                status: 400,
+                body: { errors: { finished: ['Another of your lists is already called "Beaten".'] } },
+            },
+        });
+        mountNames();
+        await settledNames();
+
+        await userEvent.click(screen.getByRole('button', { name: 'rename finished' }));
+
+        await waitFor(() => expect(screen.getByTestId('outcome')).not.toBeEmptyDOMElement());
+        expect(JSON.parse(screen.getByTestId('outcome').textContent!)).toEqual({
+            ok: false,
+            fieldErrors: { finished: 'Another of your lists is already called "Beaten".' },
+            error: null,
+        });
+        expect(screen.getByTestId('finished-name')).toHaveTextContent('Finished');
+        expect(screen.getByTestId('backlog-name')).toHaveTextContent('Someday');
+    });
+
+    it('reports a request that never arrives as a failure about no one list', async () => {
+        namesStub({ save: 'reject' });
+        mountNames();
+        await settledNames();
+
+        await userEvent.click(screen.getByRole('button', { name: 'rename finished' }));
+
+        await waitFor(() => expect(screen.getByTestId('outcome')).toHaveTextContent('"ok":false'));
+        expect(JSON.parse(screen.getByTestId('outcome').textContent!).error).toMatch(/failed to save your list names/i);
+        expect(screen.getByTestId('finished-name')).toHaveTextContent('Finished');
+    });
+
+    it('does not write a save that lands after the account changed over the next account', async () => {
+        const { release } = namesStub({ save: 'hold' });
+        const view = mountNames();
+        await settledNames();
+
+        await userEvent.click(screen.getByRole('button', { name: 'rename finished' }));
+
+        auth.user = BOB;
+        await act(async () => {
+            view.rerender(<ListsProvider><NamesProbe /></ListsProvider>);
+        });
+        await settledNames();
+
+        await release(new Response(JSON.stringify({ names: { finished: 'Beaten' } }), { status: 200 }));
+
+        expect(screen.getByTestId('finished-name')).toHaveTextContent('Finished');
     });
 });

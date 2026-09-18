@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { ProfileStats } from '@/components/ProfileStats';
 import { DEFAULT_SORT } from '@/lib/listSort';
-import { emptyLists, type ListEntryDto, type ListId } from '@/types/list';
+import { emptyLists, LIST_NAMES, type ListEntryDto, type ListId } from '@/types/list';
 import type { PlatformDto } from '@/types/game';
 import type { UserStats } from '@/types/stats';
 import { entry, platform } from '@/test/factories';
@@ -28,11 +28,17 @@ const listsValue = {
     getListFor: () => null,
     scoreFor: () => null,
     setScore: vi.fn(async () => true),
-    deleteEntry: vi.fn(async () => {}),
+    setOwnership: vi.fn(async () => true),
+    setNotes: vi.fn(async () => true),
+    deleteEntry: vi.fn(async () => true),
     view: 'tiles' as const,
     setView: vi.fn(),
     sortFor: () => DEFAULT_SORT,
     setSort: vi.fn(),
+    names: {} as Partial<Record<ListId, string>>,
+    nameFor: (id: ListId) => LIST_NAMES[id],
+    namesStatus: 'ready',
+    saveListNames: vi.fn(async () => ({ ok: true as const })),
 };
 
 vi.mock('@/hooks/useLists', () => ({ useLists: () => listsValue }));
@@ -120,6 +126,7 @@ beforeEach(() => {
     listsValue.lists = emptyLists();
     listsValue.loading = false;
     listsValue.error = null;
+    listsValue.names = {};
 });
 
 describe('ProfileStats while loading and failing', () => {
@@ -452,5 +459,19 @@ describe('ProfileStats most played on', () => {
         expect(within(playedOnSection()).getByText('PC')).toBeInTheDocument();
         expect(fetchMock.mock.calls.map(call => String(call[0])))
             .not.toContain('/api/platforms/active');
+    });
+});
+
+describe('ProfileStats and renamed lists', () => {
+    it('names the lists on the owner\'s own profile as they renamed them', async () => {
+        listsValue.names = { finished: 'Beaten' };
+        stubFetch(stats());
+        renderStats();
+        await settled();
+
+        const breakdown = screen.getByRole('heading', { name: 'Where your games sit' }).closest('section')!;
+        expect(within(breakdown).getByText('Beaten')).toBeInTheDocument();
+        expect(within(breakdown).queryByText('Finished')).not.toBeInTheDocument();
+        expect(within(breakdown).getByText('Backlog')).toBeInTheDocument();
     });
 });

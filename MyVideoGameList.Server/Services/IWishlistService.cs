@@ -9,10 +9,10 @@ public interface IWishlistService
         string userId, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Adds a game to the wishlist. Idempotent: false means it was already there, and the
-    /// original <c>AddedAt</c> is left alone rather than being bumped to now.
+    /// Adds a game to the wishlist, and returns when it joined. Idempotent: for a game already
+    /// there that is the original <c>AddedAt</c>, left alone rather than bumped to now.
     /// </summary>
-    Task<bool> AddAsync(string userId, int gameId, CancellationToken cancellationToken = default);
+    Task<DateTimeOffset> AddAsync(string userId, int gameId, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Takes a game off the wishlist. False when it was not on it. Removes nothing else — the

@@ -21,10 +21,12 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
     public DbSet<ListStatus> ListStatuses { get; set; }
     public DbSet<PlaythroughType> PlaythroughTypes { get; set; }
     public DbSet<Review> Reviews { get; set; }
+    public DbSet<UserFavourite> UserFavourites { get; set; }
     public DbSet<UserGameEntry> UserGameEntries { get; set; }
     public DbSet<UserGameEvent> UserGameEvents { get; set; }
     public DbSet<UserGamePlaythrough> UserGamePlaythroughs { get; set; }
     public DbSet<UserHiddenPlatform> UserHiddenPlatforms { get; set; }
+    public DbSet<UserListSetting> UserListSettings { get; set; }
     public DbSet<UserListSortPreference> UserListSortPreferences { get; set; }
     public DbSet<UserWishlistItem> UserWishlistItems { get; set; }
 
@@ -61,11 +63,20 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
             .HasForeignKey(e => e.StatusId)
             .OnDelete(DeleteBehavior.Restrict);
 
-        // A score out of 10, enforced by the database as well as by the API — the column outlives
-        // any one validation attribute.
+        // A score out of 10 and an ownership from the known set, both enforced by the database as
+        // well as by the API — the columns outlive any one validation attribute. The notes are
+        // bounded to the playthrough notes' length, for the same reason.
+        modelBuilder.Entity<UserGameEntry>().Property(e => e.Ownership).HasMaxLength(16);
+        modelBuilder.Entity<UserGameEntry>().Property(e => e.Notes).HasMaxLength(2000);
         modelBuilder.Entity<UserGameEntry>()
-            .ToTable(t => t.HasCheckConstraint(
-                "CK_UserGameEntries_Score_Range", "\"Score\" IS NULL OR (\"Score\" >= 1 AND \"Score\" <= 10)"));
+            .ToTable(t =>
+            {
+                t.HasCheckConstraint(
+                    "CK_UserGameEntries_Score_Range", "\"Score\" IS NULL OR (\"Score\" >= 1 AND \"Score\" <= 10)");
+                t.HasCheckConstraint(
+                    "CK_UserGameEntries_Ownership",
+                    "\"Ownership\" IS NULL OR \"Ownership\" IN ('owned', 'subscription', 'borrowed')");
+            });
 
         // Sorting a list by "recently added" or "recently moved" is the default view, so both
         // sort keys are indexed per user.
@@ -97,6 +108,22 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
             .HasForeignKey(p => p.StatusId)
             .OnDelete(DeleteBehavior.Restrict);
 
+        // UserListSetting: the sort preference's shape — one row per (user, status), and no row means
+        // the default name. Restrict on the status for the same reason: renaming a list must never be
+        // a way to delete one.
+        modelBuilder.Entity<UserListSetting>().HasKey(s => new { s.UserId, s.StatusId });
+        modelBuilder.Entity<UserListSetting>().Property(s => s.DisplayName).HasMaxLength(ListNamePolicy.MaxLength);
+        modelBuilder.Entity<UserListSetting>()
+            .HasOne(s => s.User)
+            .WithMany()
+            .HasForeignKey(s => s.UserId)
+            .OnDelete(DeleteBehavior.Cascade);
+        modelBuilder.Entity<UserListSetting>()
+            .HasOne(s => s.Status)
+            .WithMany()
+            .HasForeignKey(s => s.StatusId)
+            .OnDelete(DeleteBehavior.Restrict);
+
         // UserWishlistItem: an axis of its own, so no foreign key to UserGameEntry — a wishlisted
         // game usually has no entry yet. Composite PK is what makes wishlisting idempotent.
         modelBuilder.Entity<UserWishlistItem>().HasKey(w => new { w.UserId, w.GameId });
@@ -108,6 +135,18 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
 
         // The wishlist has one order that matters — most recently wanted first.
         modelBuilder.Entity<UserWishlistItem>().HasIndex(w => new { w.UserId, w.AddedAt });
+
+        // UserFavourite: the wishlist's shape exactly, for the same reasons — an axis of its own, so
+        // no foreign key to the entry, and a composite PK that makes favouriting idempotent.
+        modelBuilder.Entity<UserFavourite>().HasKey(f => new { f.UserId, f.GameId });
+        modelBuilder.Entity<UserFavourite>()
+            .HasOne(f => f.User)
+            .WithMany()
+            .HasForeignKey(f => f.UserId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // Read in one order, newest first, by the owner and by their public profile alike.
+        modelBuilder.Entity<UserFavourite>().HasIndex(f => new { f.UserId, f.AddedAt });
 
         // UserHiddenPlatform: composite PK on (UserId, IgdbPlatformId); cascade delete when user is deleted
         modelBuilder.Entity<UserHiddenPlatform>().HasKey(hp => new { hp.UserId, hp.IgdbPlatformId });

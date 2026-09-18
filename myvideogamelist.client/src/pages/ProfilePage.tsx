@@ -4,8 +4,9 @@ import { CACHE_NOT_FOUND, CACHE_PROFILE, PRIVATE_NO_STORE } from '@/lib/cache';
 import { lastPage, pageFrom } from '@/lib/paging';
 import { formatDate, formatHours, formatRate } from '@/lib/stats';
 import { MAX_SCORE } from '@/lib/score';
-import type { PublicProfile, PublicReviews } from '@/types/profile';
+import type { PublicFavourites, PublicProfile, PublicReviews } from '@/types/profile';
 import { ActivityChart } from '@/components/ActivityChart';
+import { ProfileFavourites } from '@/components/ProfileFavourites';
 import { ScoreHistogram } from '@/components/ScoreHistogram';
 import { StatTile } from '@/components/StatTile';
 import { StatusBreakdown } from '@/components/StatusBreakdown';
@@ -18,6 +19,8 @@ interface ProfilePageData {
     profile: PublicProfile;
     /** Null when the reviews request failed. Not the same as having written none. */
     reviews: PublicReviews | null;
+    /** Null when the favourites request failed. Not the same as having none. */
+    favourites: PublicFavourites | null;
     /** Which page of reviews this is. Everything above the reviews is the same on every one. */
     page: number;
 }
@@ -35,8 +38,8 @@ interface ProfilePageData {
  * include `page`**, the same rule `/games` has for `search`, or every visitor is served whichever
  * page populated the edge first.
  *
- * The loader overrides it when the reviews half failed, for the reason the home page does: caching
- * a degraded render pins the failure at the edge long after the failure is over.
+ * The loader overrides it when the reviews or the favourites failed, for the reason the home page
+ * does: caching a degraded render pins the failure at the edge long after the failure is over.
  */
 export function headers({ loaderHeaders }: Route.HeadersArgs) {
     return { 'Cache-Control': loaderHeaders.get('Cache-Control') ?? CACHE_PROFILE };
@@ -67,13 +70,15 @@ export function meta({ loaderData }: Route.MetaArgs) {
 }
 
 /**
- * Two requests, and only one of them may fail the page.
+ * Three requests, and only one of them may fail the page.
  *
  * The profile itself touches no third party, so it either answers or the profile is not there. The
- * reviews need game titles and covers from IGDB, so they can fail while everything else is fine —
- * and they are still fetched here rather than after hydration, because the reviews are the text a
- * crawler came for (ROADMAP D8/D9), and text loaded by an effect is text that was not indexed. The
- * same reasoning is why the pages of them are URLs rather than a "load more" button.
+ * reviews and the favourites need game titles and covers from IGDB, so they can fail while
+ * everything else is fine — and they are still fetched here rather than after hydration, because the
+ * reviews are the text a crawler came for (ROADMAP D8/D9), and text loaded by an effect is text that
+ * was not indexed. The same reasoning is why the pages of them are URLs rather than a "load more"
+ * button. The favourites ride along for the same reason and because a row of covers arriving after
+ * the page would push the whole profile down under the reader.
  *
  * A private profile and an unclaimed username are both a 404 from the API, deliberately, and both
  * become the same page here.
@@ -102,11 +107,12 @@ export async function loader({ params, request }: Route.LoaderArgs) {
     const page = pageFrom(new URL(request.url).searchParams.get('page'));
     if (page === null) throw notFound();
 
-    // `allSettled` rather than `all`: a rejection from the reviews request must not take the
-    // profile down with it, and `all` rejects on the first of either.
-    const [profileResult, reviewsResult] = await Promise.allSettled([
+    // `allSettled` rather than `all`: a rejection from the reviews or the favourites request must not
+    // take the profile down with it, and `all` rejects on the first of any.
+    const [profileResult, reviewsResult, favouritesResult] = await Promise.allSettled([
         fetch(apiUrl(`/api/users/${userName}`)),
         fetch(apiUrl(`/api/users/${userName}/reviews?page=${page}`)),
+        fetch(apiUrl(`/api/users/${userName}/favourites`)),
     ]);
 
     // A rejection is the unreachable-API case, which `!response.ok` never reports.
@@ -127,14 +133,25 @@ export async function loader({ params, request }: Route.LoaderArgs) {
     // page one — uncached, so the failure is not pinned at the edge under this URL either.
     if (reviews !== null && page > lastPage(reviews.total, reviews.pageSize)) throw notFound();
 
+    const favourites = favouritesResult.status === 'fulfilled' && favouritesResult.value.ok
+        ? await favouritesResult.value.json() as PublicFavourites
+        : null;
+
+    // A failed favourites request degrades the render only for somebody who has favourites; for
+    // anybody else the page is the same either way, and there is no failure in it to pin. An answer
+    // that resolved none of them reads the same on the page and counts the same here: the service
+    // leaves out a row IGDB cannot resolve, and such gaps have been transient before.
+    const noFavouritesResolved = profile.favourites > 0 && (favourites?.games.length ?? 0) === 0;
+    const degraded = reviews === null || noFavouritesResolved;
+
     return data<ProfilePageData>(
-        { profile, reviews, page },
-        { headers: { 'Cache-Control': reviews === null ? PRIVATE_NO_STORE : CACHE_PROFILE } },
+        { profile, reviews, favourites, page },
+        { headers: { 'Cache-Control': degraded ? PRIVATE_NO_STORE : CACHE_PROFILE } },
     );
 }
 
 export function ProfilePage({ loaderData }: Route.ComponentProps) {
-    const { profile, reviews } = loaderData;
+    const { profile, reviews, favourites } = loaderData;
     const { activity, library, scores, playtime } = profile;
 
     return (
@@ -157,6 +174,14 @@ export function ProfilePage({ loaderData }: Route.ComponentProps) {
                 </header>
 
                 <section className="profile-stats">
+                    {/* First, before any figure: the favourites are the one part of a profile its
+                        owner chose in order to be looked at. */}
+                    <ProfileFavourites
+                        userName={profile.userName}
+                        count={profile.favourites}
+                        favourites={favourites}
+                    />
+
                     <div className="profile-tiles">
                         <StatTile
                             label="games tracked"

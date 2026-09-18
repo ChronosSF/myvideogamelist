@@ -26,7 +26,7 @@ import './ProfileStats.css';
  */
 export function ProfileStats({ userId }: { userId: string }) {
     const { stats, loading, error, reload } = useUserStats(userId);
-    const { lists, loading: listsLoading, error: listsError } = useLists();
+    const { lists, loading: listsLoading, error: listsError, names } = useLists();
 
     // Every platform name the loaded lists can supply. Memoised because it is rebuilt from every
     // game in every list, and because `missingPlatformIds` below depends on it.
@@ -134,6 +134,7 @@ export function ProfileStats({ userId }: { userId: string }) {
                 <StatusBreakdown
                     title="Where your games sit"
                     byStatus={library.byStatus}
+                    names={names}
                     caption={library.wishlisted === 0
                         ? 'Your wishlist is empty. It is a separate axis, so a wishlisted game can also sit in one of these.'
                         : `Plus ${library.wishlisted} on your wishlist, which is a separate axis — a game can be on it and in a list at once.`}

@@ -1,9 +1,12 @@
 import { useEffect, useReducer, type ReactNode } from 'react';
 import type { GameDto } from '@/types/game';
-import { type ListId, type ListEntryDto, type ViewMode, LIST_IDS, emptyLists } from '@/types/list';
+import {
+    type ListId, type ListEntryDto, type ListNames, type Ownership, type ViewMode,
+    LIST_IDS, LIST_NAMES, emptyLists,
+} from '@/types/list';
 import { type SortState, DEFAULT_SORT } from '@/lib/listSort';
 import { useAuth } from '@/hooks/useAuth';
-import { ListsContext } from './ListsContext';
+import { ListsContext, type SaveListNamesResult } from './ListsContext';
 
 interface ApiListsResponse {
     lists: Record<ListId, ListEntryDto[]>;
@@ -13,12 +16,35 @@ interface ApiPreferencesResponse {
     view: ViewMode;
     /** Only the lists the user has actually changed; everything else uses `DEFAULT_SORT`. */
     sorts: Partial<Record<ListId, { sortKey: SortState['key']; descending: boolean }>>;
+    /** Only the lists the user has renamed; everything else uses `LIST_NAMES`. */
+    names: ListNames;
 }
 
 interface ListsState {
     lists: Record<ListId, ListEntryDto[]>;
     view: ViewMode;
     sorts: Partial<Record<ListId, SortState>>;
+    names: ListNames;
+    /**
+     * Whether `names` came back. Kept apart from `loading` because the names ride on the preferences
+     * request, which fails independently of the lists and used to fail silently — harmless for a
+     * sort, which has a default, but not for a form that would save the defaults over real names.
+     */
+    namesStatus: 'loading' | 'ready' | 'failed';
+    /**
+     * Whether the user has renamed a list, or changed the view or a sort, since the preferences read
+     * now in flight was started.
+     *
+     * The answer to that read was composed before it arrived. One that lands after a write of the
+     * same fields is therefore older than what is on screen, and applying it puts the previous labels
+     * or the previous view back until the next page load. The read is not rare: `AuthProvider` hands
+     * the provider a new user object for something as ordinary as a theme change, and the effect
+     * below depends on it. Kept per group of fields rather than as one flag, because the read is the
+     * only thing that brings the names at all — dropping the whole answer over a view toggle would
+     * mark the names `ready` at their defaults, which is what a rename form must never be handed.
+     */
+    namesWrittenSinceRead: boolean;
+    viewWrittenSinceRead: boolean;
     loading: boolean;
     /** Set only on the initial fetch failure — triggers the full-page error state. */
     error: string | null;
@@ -61,7 +87,11 @@ type ListsAction =
     | { type: 'FETCH_START'; session: string | null }
     | { type: 'FETCH_SUCCESS'; session: string | null; lists: Record<ListId, ListEntryDto[]> }
     | { type: 'FETCH_ERROR'; session: string | null; error: string }
-    | { type: 'PREFERENCES_LOADED'; session: string | null; view: ViewMode; sorts: Partial<Record<ListId, SortState>> }
+    | { type: 'PREFERENCES_LOADED'; session: string | null; view: ViewMode; sorts: Partial<Record<ListId, SortState>>; names: ListNames }
+    | { type: 'PREFERENCES_FAILED'; session: string | null }
+    // Stamped like a mutation, because it is one: a save still out when the account changes must not
+    // write the previous account's names over the next one's.
+    | { type: 'NAMES_SAVED'; session: string | null; names: ListNames }
     /*
      * The three a mutation raises, and the reason they name one game rather than carrying a set of
      * lists. Every one of them is computed inside the reducer from whatever state is current when
@@ -92,6 +122,10 @@ const initialState: ListsState = {
     lists: emptyLists(),
     view: 'tiles',
     sorts: {},
+    names: {},
+    namesStatus: 'loading',
+    namesWrittenSinceRead: false,
+    viewWrittenSinceRead: false,
     loading: false,
     error: null,
     mutationError: null,
@@ -117,8 +151,16 @@ function reducer(state: ListsState, action: ListsAction): ListsState {
             // and not the per-user preferences either. Cleared here rather than waiting for the
             // fetch to land, because a fetch that *fails* would otherwise leave the previous
             // account's lists on screen under the new account's error message.
+            // The preferences read starts with this effect run, so what the user had written before
+            // it is the read's own business; only a write that lands while it is out outranks it.
             return action.session === state.session
-                ? { ...state, loading: true, error: null }
+                ? {
+                    ...state,
+                    loading: true,
+                    error: null,
+                    namesWrittenSinceRead: false,
+                    viewWrittenSinceRead: false,
+                }
                 : { ...initialState, session: action.session, loading: true };
         // The fetch results are session-stamped too, and not only because the request is aborted
         // on an account change: the abort runs in the effect cleanup, which is one more thing
@@ -138,8 +180,22 @@ function reducer(state: ListsState, action: ListsAction): ListsState {
             return ifCurrent(state, action.session, () =>
                 ({ ...state, loading: false, error: action.error }));
         case 'PREFERENCES_LOADED':
+            // Whatever the user changed while this was out is newer than it, field group by field
+            // group. The names are `ready` either way: the read succeeded, so they are known.
+            return ifCurrent(state, action.session, () => ({
+                ...state,
+                view: state.viewWrittenSinceRead ? state.view : action.view,
+                sorts: state.viewWrittenSinceRead ? state.sorts : action.sorts,
+                names: state.namesWrittenSinceRead ? state.names : action.names,
+                namesStatus: 'ready',
+            }));
+        case 'PREFERENCES_FAILED':
+            // The lists and every label still work, on the default names; only a names form needs to
+            // know that what it would be editing never arrived.
+            return ifCurrent(state, action.session, () => ({ ...state, namesStatus: 'failed' }));
+        case 'NAMES_SAVED':
             return ifCurrent(state, action.session, () =>
-                ({ ...state, view: action.view, sorts: action.sorts }));
+                ({ ...state, names: action.names, namesStatus: 'ready', namesWrittenSinceRead: true }));
         // The ones a mutation raises, and therefore the ones that can arrive late. Each carries
         // the session it was captured under; ifCurrent drops it when that has moved on.
         case 'PLACE_ENTRY':
@@ -162,9 +218,13 @@ function reducer(state: ListsState, action: ListsAction): ListsState {
                 return { ...state, lists };
             });
         case 'SET_VIEW':
-            return { ...state, view: action.view };
+            return { ...state, view: action.view, viewWrittenSinceRead: true };
         case 'SET_SORT':
-            return { ...state, sorts: { ...state.sorts, [action.listId]: action.sort } };
+            return {
+                ...state,
+                sorts: { ...state.sorts, [action.listId]: action.sort },
+                viewWrittenSinceRead: true,
+            };
         case 'MUTATION_ERROR':
             return ifCurrent(state, action.session, () => ({ ...state, mutationError: action.error }));
         case 'CLEAR_MUTATION_ERROR':
@@ -287,18 +347,23 @@ export function ListsProvider({ children }: { children: ReactNode }) {
         // Fetched alongside rather than before: preferences only affect presentation, so failing
         // to load them falls back to the defaults rather than blocking the lists themselves.
         fetch('/api/user/list-preferences', { credentials: 'include', signal: controller.signal })
-            .then(res => (res.ok ? (res.json() as Promise<ApiPreferencesResponse>) : null))
+            .then(res => {
+                if (!res.ok) throw new Error(`Failed to load list preferences (${res.status})`);
+                return res.json() as Promise<ApiPreferencesResponse>;
+            })
             .then(data => {
-                if (!data || controller.signal.aborted) return;
+                if (controller.signal.aborted) return;
                 const sorts: Partial<Record<ListId, SortState>> = {};
                 for (const [id, sort] of Object.entries(data.sorts) as [ListId, { sortKey: SortState['key']; descending: boolean }][]) {
                     sorts[id] = { key: sort.sortKey, descending: sort.descending };
                 }
-                dispatch({ type: 'PREFERENCES_LOADED', session: fetchSession, view: data.view, sorts });
+                dispatch({ type: 'PREFERENCES_LOADED', session: fetchSession, view: data.view, sorts, names: data.names ?? {} });
             })
             .catch(() => {
-                // Swallowed by design — the defaults are a perfectly good fallback and a failed
-                // preference load is not worth an error state over the user's actual lists.
+                // No error state over the user's actual lists — the defaults are a perfectly good
+                // fallback for a sort and a label. Recorded all the same, for the one consumer that
+                // must not treat the defaults as the truth: the form that renames the lists.
+                if (!controller.signal.aborted) dispatch({ type: 'PREFERENCES_FAILED', session: fetchSession });
             });
 
         return () => controller.abort();
@@ -335,6 +400,59 @@ export function ListsProvider({ children }: { children: ReactNode }) {
     };
 
     const sortFor = (listId: ListId): SortState => state.sorts[listId] ?? DEFAULT_SORT;
+
+    const nameFor = (listId: ListId): string => state.names[listId] ?? LIST_NAMES[listId];
+
+    /**
+     * Saves every name at once, and adopts the names the server says it stored — normalised there,
+     * so a name typed with a double space is shown as it will be read back.
+     *
+     * Not optimistic. A rename is typed into a form and saved with a button, and a refusal has to
+     * leave the form as the user typed it with a message beside the field, which a name already
+     * applied across the site would contradict.
+     */
+    const saveListNames = async (names: ListNames): Promise<SaveListNamesResult> => {
+        const failed: SaveListNamesResult = {
+            ok: false,
+            fieldErrors: {},
+            error: 'Failed to save your list names. Please try again.',
+        };
+
+        try {
+            const res = await fetch('/api/user/list-names', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({
+                    names: LIST_IDS.map(id => ({ status: id, name: names[id] ?? null })),
+                }),
+            });
+
+            if (res.ok) {
+                const saved = await res.json() as { names: ListNames };
+                dispatch({ type: 'NAMES_SAVED', session, names: saved.names });
+                return { ok: true };
+            }
+
+            if (res.status === 400) {
+                // A ValidationProblemDetails keyed by status key, one message per refused list.
+                const problem = await res.json() as { errors?: Record<string, string[]> };
+                const fieldErrors: Partial<Record<ListId, string>> = {};
+                for (const [key, messages] of Object.entries(problem.errors ?? {})) {
+                    const id = LIST_IDS.find(listId => listId.toLowerCase() === key.toLowerCase());
+                    if (id && messages.length > 0) fieldErrors[id] = messages[0];
+                }
+                return Object.keys(fieldErrors).length > 0
+                    ? { ok: false, fieldErrors, error: null }
+                    : failed;
+            }
+
+            return failed;
+        } catch {
+            // Unreachable, or a body that was not the JSON it claimed to be.
+            return failed;
+        }
+    };
 
     const startPending = (gameId: number) => dispatch({ type: 'START_PENDING', session, gameId });
     const endPending = (gameId: number) => dispatch({ type: 'END_PENDING', session, gameId });
@@ -460,8 +578,54 @@ export function ListsProvider({ children }: { children: ReactNode }) {
         }
     };
 
-    const deleteEntry = async (gameId: number): Promise<void> => {
-        if (state.pending.has(gameId)) return;
+    /**
+     * Writes one of the entry's own fields — how the user has the game, or their notes on it.
+     *
+     * Under the per-game lock, because the row is the one a move or a score writes: with two
+     * requests out for one entry, a failure could be taken for the other's, and a delete racing a
+     * write could have the write recreate the row it just removed. Nothing optimistic happens here —
+     * no list shows either field — so the caller keeps the value on screen and reverts it on false.
+     */
+    const writeEntryField = async (
+        gameId: number,
+        field: 'ownership' | 'notes',
+        body: Record<string, unknown>,
+        failure: string,
+    ): Promise<boolean> => {
+        if (state.pending.has(gameId)) return false;
+        startPending(gameId);
+
+        try {
+            const res = await fetch(`/api/entries/${gameId}/${field}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify(body),
+            });
+
+            if (!res.ok) {
+                dispatch({ type: 'MUTATION_ERROR', session, error: failure });
+                return false;
+            }
+            dispatch({ type: 'CLEAR_MUTATION_ERROR', session });
+            return true;
+        } catch {
+            // A rejection is the unreachable-API case, which `!res.ok` never sees.
+            dispatch({ type: 'MUTATION_ERROR', session, error: failure });
+            return false;
+        } finally {
+            endPending(gameId);
+        }
+    };
+
+    const setOwnership = (gameId: number, ownership: Ownership | null): Promise<boolean> =>
+        writeEntryField(gameId, 'ownership', { ownership }, 'Failed to save how you have this game. Please try again.');
+
+    const setNotes = (gameId: number, notes: string | null): Promise<boolean> =>
+        writeEntryField(gameId, 'notes', { notes }, 'Failed to save your notes. Please try again.');
+
+    const deleteEntry = async (gameId: number): Promise<boolean> => {
+        if (state.pending.has(gameId)) return false;
         startPending(gameId);
 
         const origin = locate(state.lists, gameId);
@@ -476,10 +640,15 @@ export function ListsProvider({ children }: { children: ReactNode }) {
             });
 
             // 404 means there was nothing recorded, which is the state the caller wanted anyway.
-            if (res.ok || res.status === 404) dispatch({ type: 'CLEAR_MUTATION_ERROR', session });
-            else rollBack(undo, 'Failed to remove your data. Please try again.');
+            if (res.ok || res.status === 404) {
+                dispatch({ type: 'CLEAR_MUTATION_ERROR', session });
+                return true;
+            }
+            rollBack(undo, 'Failed to remove your data. Please try again.');
+            return false;
         } catch {
             rollBack(undo, 'Failed to remove your data. Please try again.');
+            return false;
         } finally {
             endPending(gameId);
         }
@@ -509,11 +678,17 @@ export function ListsProvider({ children }: { children: ReactNode }) {
             getListFor,
             scoreFor,
             setScore,
+            setOwnership,
+            setNotes,
             deleteEntry,
             view: state.view,
             setView,
             sortFor,
             setSort,
+            names: state.names,
+            nameFor,
+            namesStatus: state.namesStatus,
+            saveListNames,
         }}>
             {children}
         </ListsContext.Provider>

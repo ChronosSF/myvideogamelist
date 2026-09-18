@@ -54,19 +54,19 @@ public class WishlistServiceTests
         using var db = NewDb();
         var service = NewService(db);
 
-        var added = await service.AddAsync(UserId, 42);
+        var addedAt = await service.AddAsync(UserId, 42);
 
-        Assert.True(added);
+        Assert.Equal(Midday, addedAt);
         var item = db.UserWishlistItems.Single();
         Assert.Equal(42, item.GameId);
         Assert.Equal(Midday, item.AddedAt);
     }
 
     [Fact]
-    public async Task AddAsync_AlreadyWishlisted_KeepsTheOriginalTimestamp()
+    public async Task AddAsync_AlreadyWishlisted_KeepsAndReturnsTheOriginalTimestamp()
     {
         // The wishlist is ordered by when someone started wanting a game, so a second add must
-        // not bump it to the top.
+        // not bump it to the top — and says when that was, for a tab that did not know it was there.
         using var db = NewDb();
         var clock = new FixedClock(Midday);
         var service = NewService(db, clock: clock);
@@ -75,7 +75,7 @@ public class WishlistServiceTests
         clock.Advance(TimeSpan.FromDays(30));
         var addedAgain = await service.AddAsync(UserId, 42);
 
-        Assert.False(addedAgain);
+        Assert.Equal(Midday, addedAgain);
         Assert.Equal(Midday, db.UserWishlistItems.Single().AddedAt);
     }
 
@@ -175,6 +175,23 @@ public class WishlistServiceTests
     }
 
     [Fact]
+    public async Task GetWishlistAsync_TwoWantedAtOnce_OrdersThemByGameId()
+    {
+        // The timestamp is the server's rather than the row's, so two can share one — a library
+        // import would write a whole wishlist with a single timestamp. Without the tie-break those
+        // rows come back in whatever order the database yields, and a different one each time.
+        using var db = NewDb();
+        var service = NewService(db, IgdbReturning(Game(1, "Celeste"), Game(2, "Hades")));
+
+        await service.AddAsync(UserId, 2);
+        await service.AddAsync(UserId, 1);
+
+        var wishlist = await service.GetWishlistAsync(UserId);
+
+        Assert.Equal(["Celeste", "Hades"], wishlist.Select(w => w.Game.Title));
+    }
+
+    [Fact]
     public async Task GetWishlistAsync_SkipsGamesIgdbCannotResolve()
     {
         // The row stays — the id is still the user's data and IGDB gaps have been transient
@@ -221,12 +238,17 @@ public class WishlistServiceTests
     [Fact]
     public async Task AddAsync_SameGameForTwoUsers_IsTwoRows()
     {
+        // The check for a row already there is scoped by user, like the write: somebody else having
+        // wishlisted the game is not this user having done so.
         using var db = NewDb();
-        var service = NewService(db);
+        var clock = new FixedClock(Midday);
+        var service = NewService(db, clock: clock);
 
-        Assert.True(await service.AddAsync(UserId, 42));
-        Assert.True(await service.AddAsync(OtherUserId, 42));
+        await service.AddAsync(UserId, 42);
+        clock.Advance(TimeSpan.FromDays(1));
+        var othersAddedAt = await service.AddAsync(OtherUserId, 42);
 
+        Assert.Equal(Midday.AddDays(1), othersAddedAt);
         Assert.Equal(2, db.UserWishlistItems.Count());
     }
 }

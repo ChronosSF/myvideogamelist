@@ -20,7 +20,7 @@ namespace MyVideoGameList.Server.Models;
 /// thing a user does with it, long before there is a score or a status to record.
 /// </para>
 /// </remarks>
-public class UserWishlistItem
+public class UserWishlistItem : IGameAxisItem
 {
     public required string UserId { get; set; }
 

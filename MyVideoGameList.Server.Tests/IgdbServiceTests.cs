@@ -1,6 +1,12 @@
-﻿using MyVideoGameList.Server.DTOs;
+﻿using System.Net;
+using System.Text;
+using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging.Abstractions;
+using MyVideoGameList.Server.DTOs;
 using MyVideoGameList.Server.Models.Igdb;
 using MyVideoGameList.Server.Services;
+using NSubstitute;
 
 namespace MyVideoGameList.Server.Tests;
 
@@ -59,25 +65,260 @@ public class BuildQueryTests
     [InlineData("back\\slash", "search \"back\\\\slash\";")]
     public void EscapesApicalypseInjectionCharacters(string search, string expected)
         => Assert.Contains(expected, IgdbService.BuildQuery(0, 20, search));
+
+    // ── Orders and filters (ADR 0032) ─────────────────────────────────────────────────
+
+    private static readonly DateTimeOffset Now = new(2026, 9, 15, 12, 0, 0, TimeSpan.Zero);
+
+    private static string Browse(GameBrowseQuery browse, string? search = null) =>
+        IgdbService.BuildQuery(0, 20, search, browse, Now);
+
+    /// <summary>The query's one <c>where</c> clause, split into its conditions.</summary>
+    private static string[] Conditions(string query)
+    {
+        var line = query.Split('\n').Select(l => l.Trim()).SingleOrDefault(l => l.StartsWith("where "));
+        return line is null ? [] : line["where ".Length..].TrimEnd(';').Split(" & ");
+    }
+
+    [Fact]
+    public void Popular_RanksByRatingsHeld_WithTheListedFloorAndNoCritic()
+    {
+        // No critic required: a game players rated heavily and no outlet reviewed belongs near the top.
+        var query = Browse(new GameBrowseQuery(GameSortKeys.Popular));
+
+        Assert.Contains("sort total_rating_count desc;", query);
+        Assert.Equal(["total_rating_count >= 10"], Conditions(query));
+    }
+
+    [Fact]
+    public void Newest_IsReleasedGamesSomebodyNoticed_NewestFirst()
+    {
+        var query = Browse(new GameBrowseQuery(GameSortKeys.Newest));
+
+        Assert.Contains("sort first_release_date desc;", query);
+        Assert.Equal(
+            [$"first_release_date <= {Now.ToUnixTimeSeconds()}", "total_rating_count >= 10", "aggregated_rating_count >= 1"],
+            Conditions(query));
+    }
+
+    [Fact]
+    public void Name_TakesBothFloors_AToZ()
+    {
+        var query = Browse(new GameBrowseQuery(GameSortKeys.Name));
+
+        Assert.Contains("sort name asc;", query);
+        Assert.Equal(["total_rating_count >= 10", "aggregated_rating_count >= 1"], Conditions(query));
+    }
+
+    [Fact]
+    public void Rating_IsStillTheDefault_WithItsCriticFloor()
+    {
+        var query = Browse(GameBrowseQuery.Default);
+
+        Assert.Contains("sort aggregated_rating desc;", query);
+        Assert.Equal(["aggregated_rating_count >= 8"], Conditions(query));
+    }
+
+    [Fact]
+    public void Filters_NarrowTheOrderWithoutReplacingItsFloor()
+    {
+        var query = Browse(new GameBrowseQuery(GameSortKeys.Popular, PlatformId: 130, GenreId: 12));
+
+        Assert.Equal(["platforms = (130)", "genres = (12)", "total_rating_count >= 10"], Conditions(query));
+    }
+
+    [Fact]
+    public void Year_IsTheWholeCalendarYearInUtc()
+    {
+        var query = Browse(new GameBrowseQuery(Year: 2024));
+
+        // 2024-01-01T00:00:00Z and 2025-01-01T00:00:00Z, the second exclusive.
+        Assert.Contains("first_release_date >= 1704067200", Conditions(query));
+        Assert.Contains("first_release_date < 1735689600", Conditions(query));
+    }
+
+    [Fact]
+    public void MinScore_BringsTheCriticFloorWithIt_Once()
+    {
+        // Without the count, "80 and above" is every game a single critic loved. The rating order asks
+        // for the same floor, and the clause is not repeated.
+        var query = Browse(new GameBrowseQuery(MinScore: 80));
+
+        Assert.Equal(["aggregated_rating >= 80", "aggregated_rating_count >= 8"], Conditions(query));
+    }
+
+    [Fact]
+    public void MinScore_UnderAnotherOrder_StillBringsTheCriticFloor()
+    {
+        var query = Browse(new GameBrowseQuery(GameSortKeys.Newest, MinScore: 90));
+
+        Assert.Contains("aggregated_rating >= 90", Conditions(query));
+        Assert.Contains("aggregated_rating_count >= 8", Conditions(query));
+    }
+
+    [Fact]
+    public void Search_KeepsTheFiltersButDropsTheOrderAndItsFloor()
+    {
+        // IGDB answers a search that carries a sort with a 406, and a search must reach thinly rated
+        // games too — so the order's floor goes with the order.
+        var query = Browse(new GameBrowseQuery(GameSortKeys.Popular, PlatformId: 130), search: "zelda");
+
+        Assert.Contains("search \"zelda\";", query);
+        Assert.DoesNotContain("sort ", query);
+        Assert.Equal(["platforms = (130)"], Conditions(query));
+    }
+
+    [Fact]
+    public void Search_WithNoFilters_HasNoWhereClause()
+    {
+        Assert.Empty(Conditions(Browse(new GameBrowseQuery(GameSortKeys.Name), search: "hades")));
+    }
 }
 
 public class MapEsrbRatingTests
 {
+    private const int Esrb = 1;
+
+    private static IgdbAgeRating Rating(int? organization, int? ratingCategory) =>
+        new(1, organization, ratingCategory);
+
     [Theory]
     [InlineData(1, "RP")]
+    [InlineData(2, "EC")]
     [InlineData(3, "E")]
     [InlineData(4, "E10+")]
+    [InlineData(5, "T")]
     [InlineData(6, "M")]
     [InlineData(7, "AO")]
-    public void MapsKnownRatings(int value, string expected)
-        => Assert.Equal(expected, IgdbService.MapEsrbRating(value));
+    public void WithAnEsrbRating_MapsItsCategoryToTheShortCode(int ratingCategory, string expected)
+        => Assert.Equal(expected, IgdbService.MapEsrbRating([Rating(Esrb, ratingCategory)]));
+
+    [Fact]
+    public void AmongEveryBoardsRatings_ReadsTheEsrbRow()
+    {
+        // The Witcher 3's rows in the order live IGDB returned them, ESRB last. The organization and
+        // ESRB category ids share a range, so reading the wrong field of the right row still yields
+        // a plausible code — "RP" — rather than failing.
+        var result = IgdbService.MapEsrbRating([
+            Rating(7, 38), Rating(2, 12), Rating(3, 17), Rating(6, 32),
+            Rating(4, 22), Rating(5, 26), Rating(Esrb, 6)
+        ]);
+
+        Assert.Equal("M", result);
+    }
+
+    [Fact]
+    public void WithOnlyOtherBoards_ReturnsNull()
+        => Assert.Null(IgdbService.MapEsrbRating([Rating(organization: 2, ratingCategory: 12)]));
 
     [Theory]
     [InlineData(0)]
     [InlineData(8)]
-    [InlineData(-1)]
-    public void ReturnsNullForUnknownRatings(int value)
-        => Assert.Null(IgdbService.MapEsrbRating(value));
+    [InlineData(null)]
+    public void WithAnUnknownCategory_ReturnsNull(int? ratingCategory)
+        => Assert.Null(IgdbService.MapEsrbRating([Rating(Esrb, ratingCategory)]));
+
+    [Fact]
+    public void WithNoAgeRatings_ReturnsNull()
+    {
+        Assert.Null(IgdbService.MapEsrbRating(null));
+        Assert.Null(IgdbService.MapEsrbRating([]));
+    }
+}
+
+/// <summary>
+/// The listing against a stubbed IGDB, over the two joints a mapping test cannot see: the fields the
+/// query actually asks for, and the binding from IGDB's own JSON onto the model. The ESRB bug lived
+/// in exactly that gap — correct C# over fields the query no longer asked for — and every test that
+/// built an <see cref="IgdbAgeRating"/> by hand passed throughout.
+/// </summary>
+public class GetGamesAsyncTests
+{
+    /// <summary>
+    /// The Witcher 3's age ratings as live IGDB returned them, under the fields it returns today.
+    /// Organization 1 is the ESRB and its rating category 6 is "M".
+    /// </summary>
+    private const string GamesPayload = """
+        [
+          {
+            "id": 1942,
+            "name": "The Witcher 3: Wild Hunt",
+            "age_ratings": [
+              { "id": 222156, "organization": 7, "rating_category": 38 },
+              { "id": 32441, "organization": 2, "rating_category": 12 },
+              { "id": 67455, "organization": 3, "rating_category": 17 },
+              { "id": 78139, "organization": 6, "rating_category": 32 },
+              { "id": 46963, "organization": 4, "rating_category": 22 },
+              { "id": 78138, "organization": 5, "rating_category": 26 },
+              { "id": 187952, "organization": 1, "rating_category": 6 }
+            ]
+          }
+        ]
+        """;
+
+    private const string TokenPayload =
+        """{ "access_token": "token", "expires_in": 3600, "token_type": "bearer" }""";
+
+    /// <summary>Answers the token request, then every query with <see cref="GamesPayload"/>.</summary>
+    private sealed class StubHandler : HttpMessageHandler
+    {
+        /// <summary>The Apicalypse query the service sent.</summary>
+        public string? Query { get; private set; }
+
+        protected override async Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            if (request.RequestUri?.Host == "id.twitch.tv") return Json(TokenPayload);
+
+            Query = await request.Content!.ReadAsStringAsync(cancellationToken);
+            return Json(GamesPayload);
+        }
+
+        private static HttpResponseMessage Json(string body) =>
+            new(HttpStatusCode.OK) { Content = new StringContent(body, Encoding.UTF8, "application/json") };
+    }
+
+    private static (IgdbService Service, StubHandler Igdb) NewService()
+    {
+        var handler = new StubHandler();
+
+        var factory = Substitute.For<IHttpClientFactory>();
+        factory.CreateClient("Igdb").Returns(_ => new HttpClient(handler));
+
+        var configuration = Substitute.For<IConfiguration>();
+        configuration["Igdb:ClientId"].Returns("client-id");
+        configuration["Igdb:ClientSecret"].Returns("client-secret");
+
+        var service = new IgdbService(
+            factory, configuration, new MemoryCache(new MemoryCacheOptions()),
+            NullLogger<IgdbService>.Instance);
+
+        return (service, handler);
+    }
+
+    [Fact]
+    public async Task WithAnyQuery_AsksForTheAgeRatingFieldsTheMappingReads()
+    {
+        // The removed `age_ratings.category,age_ratings.rating` answered 200 with rows holding only an
+        // id, so the badge vanished with nothing logged. The same constant feeds the detail query.
+        var (service, igdb) = NewService();
+
+        await service.GetGamesAsync();
+
+        Assert.Contains("age_ratings.organization,age_ratings.rating_category", igdb.Query);
+    }
+
+    [Fact]
+    public async Task WithIgdbsOwnJson_BindsTheAgeRatingsThroughToTheEsrbCode()
+    {
+        // The half no mapping test reaches: snake_case onto Organization and RatingCategory. Misname
+        // either and EsrbRating is null again while every MapEsrbRating test still passes.
+        var (service, _) = NewService();
+
+        var games = await service.GetGamesAsync();
+
+        Assert.Equal("M", Assert.Single(games.Items).EsrbRating);
+    }
 }
 
 public class MapTimeToBeatTests

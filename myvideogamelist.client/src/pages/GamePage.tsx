@@ -400,8 +400,13 @@ export function GamePage() {
                     {/* Sidebar */}
                     <aside className="lg:w-64 xl:w-72 space-y-6">
                         {/* Lists, score and the one control that erases both. Keyed on the account
-                            so a different sign-in remounts it: the panel holds that person's score,
-                            playthroughs and review, and its own fetch is keyed on the game alone.
+                            and the game, so that either changing remounts it: the panel holds that
+                            person's score, ownership, notes, playthroughs and review for that one
+                            game, and every write it makes settles after the click. This page stays
+                            mounted from one game to the next, so a panel that was not remounted
+                            would write the previous game's saved value, or its error, into this
+                            game's form — and a marker written from an effect lags the commit, which
+                            is the window ADR 0022 records for the account.
 
                             Until auth answers, the slot holds the signed-out card with nothing in
                             it. That is every server render — the page is shared-cached, so it
@@ -412,7 +417,7 @@ export function GamePage() {
                             is never told to sign in first. */}
                         {!authLoading && user ? (
                             <GameUserPanel
-                                key={user.id}
+                                key={`${user.id}:${game.id}`}
                                 game={game}
                                 profileVisibility={user.profileVisibility}
                                 onCommunityChange={community.reload}

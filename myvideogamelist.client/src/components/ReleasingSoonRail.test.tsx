@@ -4,7 +4,7 @@ import { MemoryRouter } from 'react-router';
 import { ReleasingSoonRail } from '@/components/ReleasingSoonRail';
 import type { UseUpcomingGamesResult } from '@/hooks/useUpcomingGames';
 import { DEFAULT_SORT } from '@/lib/listSort';
-import { emptyLists, type ListEntryDto, type ListId } from '@/types/list';
+import { emptyLists, LIST_NAMES, type ListEntryDto, type ListId } from '@/types/list';
 import type { WishlistItemDto } from '@/types/wishlist';
 import { entry, game, platform } from '@/test/factories';
 
@@ -25,11 +25,17 @@ const listsValue = {
     getListFor: () => null,
     scoreFor: () => null,
     setScore: vi.fn(async () => true),
-    deleteEntry: vi.fn(async () => {}),
+    setOwnership: vi.fn(async () => true),
+    setNotes: vi.fn(async () => true),
+    deleteEntry: vi.fn(async () => true),
     view: 'tiles' as const,
     setView: vi.fn(),
     sortFor: () => DEFAULT_SORT,
     setSort: vi.fn(),
+    names: {},
+    nameFor: (id: ListId) => LIST_NAMES[id],
+    namesStatus: 'ready',
+    saveListNames: vi.fn(async () => ({ ok: true as const })),
 };
 
 const wishlistValue = {

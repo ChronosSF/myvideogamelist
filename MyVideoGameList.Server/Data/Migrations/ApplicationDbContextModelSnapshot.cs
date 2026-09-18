@@ -429,6 +429,24 @@ namespace MyVideoGameList.Server.Data.Migrations
                         });
                 });
 
+            modelBuilder.Entity("MyVideoGameList.Server.Models.UserFavourite", b =>
+                {
+                    b.Property<string>("UserId")
+                        .HasColumnType("text");
+
+                    b.Property<int>("GameId")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("AddedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("UserId", "GameId");
+
+                    b.HasIndex("UserId", "AddedAt");
+
+                    b.ToTable("UserFavourites");
+                });
+
             modelBuilder.Entity("MyVideoGameList.Server.Models.UserGameEntry", b =>
                 {
                     b.Property<int>("Id")
@@ -442,6 +460,14 @@ namespace MyVideoGameList.Server.Data.Migrations
 
                     b.Property<int>("GameId")
                         .HasColumnType("integer");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<string>("Ownership")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
 
                     b.Property<short?>("Score")
                         .HasColumnType("smallint");
@@ -471,6 +497,8 @@ namespace MyVideoGameList.Server.Data.Migrations
 
                     b.ToTable("UserGameEntries", t =>
                         {
+                            t.HasCheckConstraint("CK_UserGameEntries_Ownership", "\"Ownership\" IS NULL OR \"Ownership\" IN ('owned', 'subscription', 'borrowed')");
+
                             t.HasCheckConstraint("CK_UserGameEntries_Score_Range", "\"Score\" IS NULL OR (\"Score\" >= 1 AND \"Score\" <= 10)");
                         });
                 });
@@ -579,6 +607,26 @@ namespace MyVideoGameList.Server.Data.Migrations
                     b.HasKey("UserId", "IgdbPlatformId");
 
                     b.ToTable("UserHiddenPlatforms");
+                });
+
+            modelBuilder.Entity("MyVideoGameList.Server.Models.UserListSetting", b =>
+                {
+                    b.Property<string>("UserId")
+                        .HasColumnType("text");
+
+                    b.Property<short>("StatusId")
+                        .HasColumnType("smallint");
+
+                    b.Property<string>("DisplayName")
+                        .IsRequired()
+                        .HasMaxLength(24)
+                        .HasColumnType("character varying(24)");
+
+                    b.HasKey("UserId", "StatusId");
+
+                    b.HasIndex("StatusId");
+
+                    b.ToTable("UserListSettings");
                 });
 
             modelBuilder.Entity("MyVideoGameList.Server.Models.UserListSortPreference", b =>
@@ -700,6 +748,17 @@ namespace MyVideoGameList.Server.Data.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("MyVideoGameList.Server.Models.UserFavourite", b =>
+                {
+                    b.HasOne("MyVideoGameList.Server.Models.ApplicationUser", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
             modelBuilder.Entity("MyVideoGameList.Server.Models.UserGameEntry", b =>
                 {
                     b.HasOne("MyVideoGameList.Server.Models.ListStatus", "Status")
@@ -777,6 +836,25 @@ namespace MyVideoGameList.Server.Data.Migrations
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("MyVideoGameList.Server.Models.UserListSetting", b =>
+                {
+                    b.HasOne("MyVideoGameList.Server.Models.ListStatus", "Status")
+                        .WithMany()
+                        .HasForeignKey("StatusId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("MyVideoGameList.Server.Models.ApplicationUser", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Status");
 
                     b.Navigation("User");
                 });

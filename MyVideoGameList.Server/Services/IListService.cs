@@ -7,10 +7,11 @@ public interface IListService
     Task<ListsDto> GetListsAsync(string userId, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// What the user has recorded about one game, whether or not it is in any list. Null when they
-    /// have recorded nothing, or when IGDB cannot resolve the game.
+    /// What the user has recorded about one game, whether or not it is in any list — including the
+    /// ownership and notes a list row leaves out. Null when they have recorded nothing, or when
+    /// IGDB cannot resolve the game.
     /// </summary>
-    Task<ListEntryDto?> GetEntryAsync(
+    Task<EntryDto?> GetEntryAsync(
         string userId, int gameId, CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -36,6 +37,22 @@ public interface IListService
     /// <exception cref="ArgumentOutOfRangeException">The score is outside 1–10.</exception>
     Task SetScoreAsync(
         string userId, int gameId, short? score, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Sets how the user has the game — one of <c>OwnershipKinds</c> — or clears it with null.
+    /// Creates the entry to hold a value, but clearing a game with no entry creates nothing.
+    /// Records no event.
+    /// </summary>
+    /// <exception cref="ArgumentException">The value is not one of the known kinds.</exception>
+    Task SetOwnershipAsync(
+        string userId, int gameId, string? ownership, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Replaces the user's notes on the game, trimmed; blank clears them. Creates the entry to hold
+    /// notes, but clearing a game with no entry creates nothing. Records no event.
+    /// </summary>
+    Task SetNotesAsync(
+        string userId, int gameId, string? notes, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Deletes everything the user has recorded about a game — the only path that discards a score.

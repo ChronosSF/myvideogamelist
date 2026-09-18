@@ -32,13 +32,19 @@ namespace MyVideoGameList.Server.DTOs;
 /// How many public reviews this user has written — the count the page needs before it fetches any
 /// of them, and the number that decides whether the section appears at all.
 /// </param>
+/// <param name="Favourites">
+/// How many favourites they have, for the same two reasons. Published because a favourite is the
+/// one thing on the axis made to be shown to other people — see ADR 0029 for why that is not true of
+/// the wishlist, whose size is all that appears here.
+/// </param>
 public record PublicProfileDto(
     string UserName,
     PublicActivityDto Activity,
     LibraryStatsDto Library,
     ScoreStatsDto Scores,
     PublicPlaytimeDto Playtime,
-    int Reviews);
+    int Reviews,
+    int Favourites);
 
 /// <summary>
 /// What the user has done over the last year, and for how long they have been doing it.
@@ -102,3 +108,21 @@ public record PublicReviewDto(
     short? Score,
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt);
+
+/// <summary>
+/// One user's favourite games, as their public profile shows them.
+/// </summary>
+/// <remarks>
+/// <para>
+/// A request of its own, like the reviews, because this is another half that needs IGDB: the covers
+/// and titles. The profile document carries only the count, so an outage costs the covers and not the
+/// page.
+/// </para>
+/// <para>
+/// <see cref="GameRefDto"/> rather than <see cref="GameDto"/>: a showcase is a row of covers that
+/// link to their game pages, and the server-rendered profile has no use for every score and platform
+/// of each. It does not say when each became a favourite either: the order is the whole of what a
+/// reader needs from that, and the dates are the owner's data rather than part of the showcase.
+/// </para>
+/// </remarks>
+public record PublicFavouritesDto(string UserName, IReadOnlyList<GameRefDto> Games);

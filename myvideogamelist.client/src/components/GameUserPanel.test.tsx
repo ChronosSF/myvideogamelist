@@ -4,9 +4,10 @@ import userEvent from '@testing-library/user-event';
 import { GameUserPanel } from '@/components/GameUserPanel';
 import { ListsContext, type ListsContextValue } from '@/contexts/ListsContext';
 import { WishlistContext, type WishlistContextValue } from '@/contexts/WishlistContext';
+import { FavouritesContext, type FavouritesContextValue } from '@/contexts/FavouritesContext';
 import { DEFAULT_SORT } from '@/lib/listSort';
 import type { ProfileVisibility } from '@/types/auth';
-import type { ListId } from '@/types/list';
+import { LIST_NAMES, type ListId } from '@/types/list';
 import type { PlaythroughDto, ReviewDto } from '@/types/playthrough';
 import { entryDetail, game, platform, playthrough, review } from '@/test/factories';
 
@@ -30,11 +31,17 @@ function contextValue(overrides: Partial<ListsContextValue> = {}): ListsContextV
         getListFor: () => null,
         scoreFor: () => null,
         setScore: vi.fn(async () => true),
-        deleteEntry: vi.fn(async () => {}),
+        setOwnership: vi.fn(async () => true),
+        setNotes: vi.fn(async () => true),
+        deleteEntry: vi.fn(async () => true),
         view: 'tiles',
         setView: vi.fn(),
         sortFor: () => DEFAULT_SORT,
         setSort: vi.fn(),
+        names: {},
+        nameFor: (id: ListId) => LIST_NAMES[id],
+        namesStatus: 'ready',
+        saveListNames: vi.fn(async () => ({ ok: true as const })),
         ...overrides,
     };
 }
@@ -55,26 +62,46 @@ function wishlistValue(overrides: Partial<WishlistContextValue> = {}): WishlistC
     };
 }
 
+/** And the favourites are a third, with a third context. */
+function favouritesValue(overrides: Partial<FavouritesContextValue> = {}): FavouritesContextValue {
+    return {
+        items: [],
+        loading: false,
+        error: null,
+        mutationError: null,
+        isFavourite: () => false,
+        isPending: () => false,
+        add: vi.fn(async () => true),
+        remove: vi.fn(async () => true),
+        reload: vi.fn(),
+        ...overrides,
+    };
+}
+
 function renderPanel(
     overrides: Partial<ListsContextValue> = {},
     wishlistOverrides: Partial<WishlistContextValue> = {},
     profileVisibility: ProfileVisibility = 'private',
+    favouritesOverrides: Partial<FavouritesContextValue> = {},
 ) {
     const value = contextValue(overrides);
     const wishlist = wishlistValue(wishlistOverrides);
+    const favourites = favouritesValue(favouritesOverrides);
     const onCommunityChange = vi.fn();
     render(
         <ListsContext.Provider value={value}>
             <WishlistContext.Provider value={wishlist}>
-                <GameUserPanel
-                    game={CELESTE}
-                    profileVisibility={profileVisibility}
-                    onCommunityChange={onCommunityChange}
-                />
+                <FavouritesContext.Provider value={favourites}>
+                    <GameUserPanel
+                        game={CELESTE}
+                        profileVisibility={profileVisibility}
+                        onCommunityChange={onCommunityChange}
+                    />
+                </FavouritesContext.Provider>
             </WishlistContext.Provider>
         </ListsContext.Provider>,
     );
-    return { ...value, wishlist, onCommunityChange };
+    return { ...value, wishlist, favourites, onCommunityChange };
 }
 
 /**
@@ -292,6 +319,66 @@ describe('GameUserPanel scoring', () => {
     });
 });
 
+describe('GameUserPanel when the entry cannot be read', () => {
+    /*
+     * Only a 404 means "nothing recorded". Any other failure leaves the score, ownership, notes,
+     * playthroughs and review unknown — and shown as empty, the notes box and the review form would
+     * invite a save over text the user already has.
+     */
+
+    it('does not take a failed read for an empty entry', async () => {
+        stubEntryFetch(null, 500);
+        renderPanel();
+
+        expect(await screen.findByRole('alert')).toHaveTextContent(/could not be loaded/i);
+        expect(screen.getByLabelText('Your score for Celeste')).toBeDisabled();
+        expect(screen.getByRole('button', { name: 'Owned' })).toBeDisabled();
+        expect(screen.getByLabelText('Your notes')).toBeDisabled();
+        expect(screen.getByRole('button', { name: 'Log playthrough' })).toBeDisabled();
+        expect(screen.getByLabelText('What you thought')).toBeDisabled();
+    });
+
+    it('treats an unreachable API the same way', async () => {
+        // fetch rejects rather than returning a bad response, which no status check sees.
+        vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('Network down'); }));
+        renderPanel();
+
+        expect(await screen.findByRole('alert')).toHaveTextContent(/could not be loaded/i);
+        expect(screen.getByLabelText('Your score for Celeste')).toBeDisabled();
+    });
+
+    it('leaves the lists, the wishlist and the favourite usable, since they are not from this read', async () => {
+        stubEntryFetch(null, 500);
+        renderPanel();
+        await screen.findByRole('alert');
+
+        expect(screen.getByRole('button', { name: 'Playing' })).toBeEnabled();
+        expect(screen.getByRole('button', { name: 'Add to wishlist' })).toBeEnabled();
+        expect(screen.getByRole('button', { name: 'Add to favourites' })).toBeEnabled();
+    });
+
+    it('reads it again on retry, and offers the controls once it arrives', async () => {
+        const actor = userEvent.setup();
+        let attempts = 0;
+        vi.stubGlobal('fetch', vi.fn(async () => {
+            attempts++;
+            return attempts === 1
+                ? new Response('nope', { status: 500 })
+                : new Response(
+                    JSON.stringify(entryDetail({ entry: { game: { id: 1, title: 'Celeste' }, score: 8 } })),
+                    { status: 200 });
+        }));
+        renderPanel();
+        await screen.findByRole('alert');
+
+        await actor.click(screen.getByRole('button', { name: 'Try again' }));
+
+        await settled();
+        expect(shownScore()).toBe(8);
+        expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    });
+});
+
 describe('GameUserPanel deleting everything', () => {
     it('offers no delete for a game with nothing recorded', async () => {
         stubEntryFetch(null, 404);
@@ -336,15 +423,15 @@ describe('GameUserPanel deleting everything', () => {
         expect(screen.getByText(/history of moving it between lists is kept/i)).toBeInTheDocument();
     });
 
-    it('warns that the playthroughs and the review go too', async () => {
-        // Both cascade from the entry, so the confirmation has to name them — the score is not the
-        // only thing being discarded any more.
+    it('warns that the ownership, notes, playthroughs and review go too', async () => {
+        // All of them go with the entry — the playthroughs and review by cascade, the ownership and
+        // notes because they are columns on it — so the confirmation has to name them.
         stubEntryFetch(null, 200, [playthrough({ id: 5 })]);
         renderPanel();
 
         await userEvent.click(await screen.findByRole('button', { name: /delete my data/i }));
 
-        expect(screen.getByText(/score, list placement, playthroughs and review/i))
+        expect(screen.getByText(/score, list placement, ownership, notes, playthroughs\s+and review/i))
             .toBeInTheDocument();
     });
 
@@ -394,6 +481,34 @@ describe('GameUserPanel deleting everything', () => {
 
         expect(ctx.deleteEntry).not.toHaveBeenCalled();
         expect(screen.getByRole('button', { name: /delete my data/i })).toBeInTheDocument();
+    });
+
+    it('keeps everything on screen, and says so, when the delete fails', async () => {
+        // The provider puts the lists back; the panel's own copy has to stay too, or the game reads
+        // as empty until the next page load while everything is still recorded.
+        stubEntryFetch(7, 200, [playthrough({ id: 5, minutesPlayed: 260 })]);
+        const ctx = renderPanel({ deleteEntry: vi.fn(async () => false) });
+
+        await userEvent.click(await screen.findByRole('button', { name: /delete my data/i }));
+        await userEvent.click(screen.getByRole('button', { name: 'Delete' }));
+
+        expect(await screen.findByRole('alert')).toHaveTextContent(/could not delete your data/i);
+        expect(shownScore()).toBe(7);
+        expect(screen.getByText('4h 20m')).toBeInTheDocument();
+        expect(ctx.onCommunityChange).not.toHaveBeenCalled();
+    });
+
+    it('offers the controls again once everything is deleted, even after a read that failed', async () => {
+        // Nothing is recorded after a delete, which is known without reading it back.
+        stubEntryFetch(null, 500);
+        renderPanel({ getListFor: () => 'backlog', isInList: (id: ListId) => id === 'backlog' });
+        await screen.findByRole('alert');
+
+        await userEvent.click(screen.getByRole('button', { name: /delete my data/i }));
+        await userEvent.click(screen.getByRole('button', { name: 'Delete' }));
+
+        await settled();
+        expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     });
 });
 
@@ -589,6 +704,121 @@ describe('GameUserPanel wishlist', () => {
         await settled();
 
         expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    });
+});
+
+describe('GameUserPanel favourite', () => {
+    it('offers to make a favourite of a game that is not one', async () => {
+        stubEntryFetch(null, 404);
+        renderPanel();
+        await settled();
+
+        expect(screen.getByRole('button', { name: 'Add to favourites' }))
+            .toHaveAttribute('aria-pressed', 'false');
+    });
+
+    it('says so for a game that already is one', async () => {
+        stubEntryFetch(null, 404);
+        renderPanel({}, {}, 'private', { isFavourite: () => true });
+        await settled();
+
+        expect(screen.getByRole('button', { name: 'One of your favourites' }))
+            .toHaveAttribute('aria-pressed', 'true');
+    });
+
+    it('passes the whole game when adding, and the id when removing', async () => {
+        stubEntryFetch(null, 404);
+        const ctx = renderPanel();
+        await settled();
+
+        await userEvent.click(screen.getByRole('button', { name: 'Add to favourites' }));
+        expect(ctx.favourites.add).toHaveBeenCalledWith(CELESTE);
+        expect(ctx.favourites.remove).not.toHaveBeenCalled();
+    });
+
+    it('stops it being a favourite when clicked while it is one', async () => {
+        stubEntryFetch(null, 404);
+        const ctx = renderPanel({}, {}, 'private', { isFavourite: () => true });
+        await settled();
+
+        await userEvent.click(screen.getByRole('button', { name: 'One of your favourites' }));
+
+        expect(ctx.favourites.remove).toHaveBeenCalledWith(1);
+    });
+
+    it('is its own axis: a wishlisted, listed game can be a favourite too', async () => {
+        stubEntryFetch(null, 404);
+        const ctx = renderPanel(
+            { isInList: (id: ListId) => id === 'finished', getListFor: () => 'finished' },
+            { isWishlisted: () => true },
+            'private',
+            { isFavourite: () => true },
+        );
+        await settled();
+
+        expect(screen.getByRole('button', { name: 'Finished' })).toHaveAttribute('aria-pressed', 'true');
+        expect(screen.getByRole('button', { name: 'On your wishlist' })).toHaveAttribute('aria-pressed', 'true');
+        expect(screen.getByRole('button', { name: 'One of your favourites' })).toHaveAttribute('aria-pressed', 'true');
+        expect(ctx.wishlist.remove).not.toHaveBeenCalled();
+    });
+
+    it('is disabled while its own mutation is in flight', async () => {
+        stubEntryFetch(null, 404);
+        renderPanel({}, {}, 'private', { isPending: () => true });
+        await settled();
+
+        expect(screen.getByRole('button', { name: 'Add to favourites' })).toBeDisabled();
+    });
+
+    it('stays usable while the wishlist has a mutation in flight', async () => {
+        // Separate pending sets, so the two toggles beside each other never block one another.
+        stubEntryFetch(null, 404);
+        renderPanel({}, { isPending: () => true });
+        await settled();
+
+        expect(screen.getByRole('button', { name: 'Add to wishlist' })).toBeDisabled();
+        expect(screen.getByRole('button', { name: 'Add to favourites' })).toBeEnabled();
+    });
+
+    it('says the public profile shows favourites when it is public', async () => {
+        stubEntryFetch(null, 404);
+        renderPanel({}, {}, 'public');
+        await settled();
+
+        expect(screen.getByText(/favourites are shown on your public profile/i)).toBeInTheDocument();
+    });
+
+    it('says nobody else sees them while the profile is private', async () => {
+        stubEntryFetch(null, 404);
+        renderPanel({}, {}, 'private');
+        await settled();
+
+        expect(screen.getByText(/your profile is private, so nobody else sees them/i)).toBeInTheDocument();
+    });
+
+    it('explains a control stuck by a failed load, and offers a retry', async () => {
+        // Favourites have no page of their own to report this on, unlike the wishlist.
+        const actor = userEvent.setup();
+        stubEntryFetch(null, 404);
+        const ctx = renderPanel({}, {}, 'private', {
+            error: 'Failed to load your favourites (500)',
+            isPending: () => true,
+        });
+        await settled();
+
+        expect(screen.getByRole('alert')).toHaveTextContent(/favourites could not be loaded/i);
+        expect(screen.getByRole('button', { name: 'Add to favourites' })).toBeDisabled();
+
+        await actor.click(screen.getByRole('button', { name: 'Try again' }));
+        expect(ctx.favourites.reload).toHaveBeenCalled();
+    });
+
+    it('surfaces a failed toggle', async () => {
+        stubEntryFetch(null, 404);
+        renderPanel({}, {}, 'private', { mutationError: 'Failed to update your favourites. Please try again.' });
+        await settled();
+
+        expect(screen.getByRole('alert')).toHaveTextContent(/failed to update your favourites/i);
     });
 });
 
@@ -984,5 +1214,181 @@ describe('GameUserPanel review', () => {
         renderPanel();
 
         expect(await screen.findByRole('button', { name: /delete my data/i })).toBeInTheDocument();
+    });
+});
+
+describe('GameUserPanel ownership and notes', () => {
+    /** The entry read, carrying whatever ownership and notes a test gives it. */
+    function stubDetail(detail: { ownership?: 'owned' | 'subscription' | 'borrowed' | null; notes?: string | null } = {}) {
+        const fetchMock = vi.fn(async () => new Response(
+            JSON.stringify(entryDetail({
+                entry: { game: { id: 1, title: 'Celeste' } },
+                ownership: detail.ownership ?? null,
+                notes: detail.notes ?? null,
+            })),
+            { status: 200 },
+        ));
+        vi.stubGlobal('fetch', fetchMock);
+        return fetchMock;
+    }
+
+    const notesBox = () => screen.getByLabelText('Your notes');
+
+    it('shows how the user has the game, from the entry read', async () => {
+        stubDetail({ ownership: 'subscription' });
+        renderPanel();
+        await settled();
+
+        await waitFor(() => expect(screen.getByRole('button', { name: 'Subscription' }))
+            .toHaveAttribute('aria-pressed', 'true'));
+        expect(screen.getByRole('button', { name: 'Owned' })).toHaveAttribute('aria-pressed', 'false');
+    });
+
+    it('marks a kind at once and saves it', async () => {
+        stubEntryFetch(null, 404);
+        const ctx = renderPanel();
+        await settled();
+
+        await userEvent.click(screen.getByRole('button', { name: 'Borrowed' }));
+
+        expect(ctx.setOwnership).toHaveBeenCalledWith(1, 'borrowed');
+        expect(screen.getByRole('button', { name: 'Borrowed' })).toHaveAttribute('aria-pressed', 'true');
+    });
+
+    it('clears it when the kind already on is pressed again', async () => {
+        stubDetail({ ownership: 'owned' });
+        const ctx = renderPanel();
+        await settled();
+
+        await userEvent.click(await screen.findByRole('button', { name: 'Owned', pressed: true }));
+
+        expect(ctx.setOwnership).toHaveBeenCalledWith(1, null);
+        expect(screen.getByRole('button', { name: 'Owned' })).toHaveAttribute('aria-pressed', 'false');
+    });
+
+    it('puts the previous kind back when the save fails, and says why', async () => {
+        // A toggle that goes back on its own is indistinguishable from a click that never
+        // registered, and nothing on this panel renders the provider's own mutation error.
+        stubDetail({ ownership: 'owned' });
+        renderPanel({ setOwnership: vi.fn(async () => false) });
+        await settled();
+        await screen.findByRole('button', { name: 'Owned', pressed: true });
+
+        await userEvent.click(screen.getByRole('button', { name: 'Subscription' }));
+
+        await waitFor(() => expect(screen.getByRole('button', { name: 'Owned' }))
+            .toHaveAttribute('aria-pressed', 'true'));
+        expect(screen.getByRole('button', { name: 'Subscription' })).toHaveAttribute('aria-pressed', 'false');
+        expect(screen.getByRole('alert')).toHaveTextContent(/could not save how you have this game/i);
+    });
+
+    it('takes the ownership message down on the next attempt', async () => {
+        // Neither message here is dismissible, so nothing else would ever take it down.
+        stubEntryFetch(null, 404);
+        const setOwnership = vi.fn(async () => false);
+        renderPanel({ setOwnership });
+        await settled();
+
+        await userEvent.click(screen.getByRole('button', { name: 'Owned' }));
+        expect(await screen.findByRole('alert')).toBeInTheDocument();
+
+        setOwnership.mockImplementation(async () => true);
+        await userEvent.click(screen.getByRole('button', { name: 'Borrowed' }));
+
+        await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument());
+    });
+
+    it('offers no ownership change while another write to the entry is out', async () => {
+        stubEntryFetch(null, 404);
+        renderPanel({ isPending: () => true });
+        await act(async () => {});
+
+        expect(screen.getByRole('button', { name: 'Owned' })).toBeDisabled();
+        expect(screen.getByRole('button', { name: 'Save notes' })).toBeDisabled();
+    });
+
+    it('loads the notes into the box, with nothing to save until they change', async () => {
+        stubDetail({ notes: 'Save is on the old laptop.' });
+        renderPanel();
+        await settled();
+
+        await waitFor(() => expect(notesBox()).toHaveValue('Save is on the old laptop.'));
+        expect(screen.getByRole('button', { name: 'Save notes' })).toBeDisabled();
+    });
+
+    it('says the notes are private', async () => {
+        stubEntryFetch(null, 404);
+        renderPanel();
+        await settled();
+
+        expect(screen.getByText(/only you can see these/i)).toBeInTheDocument();
+    });
+
+    it('saves the notes trimmed', async () => {
+        stubEntryFetch(null, 404);
+        const ctx = renderPanel();
+        await settled();
+
+        await userEvent.type(notesBox(), '  Try the hard mode.  ');
+        await userEvent.click(screen.getByRole('button', { name: 'Save notes' }));
+
+        expect(ctx.setNotes).toHaveBeenCalledWith(1, 'Try the hard mode.');
+        await waitFor(() => expect(screen.getByRole('button', { name: 'Save notes' })).toBeDisabled());
+    });
+
+    it('clears the notes when the box is emptied and saved', async () => {
+        stubDetail({ notes: 'Old thought.' });
+        const ctx = renderPanel();
+        await settled();
+        await waitFor(() => expect(notesBox()).toHaveValue('Old thought.'));
+
+        await userEvent.clear(notesBox());
+        await userEvent.click(screen.getByRole('button', { name: 'Clear notes' }));
+
+        expect(ctx.setNotes).toHaveBeenCalledWith(1, null);
+    });
+
+    it('keeps what was typed and says so when the notes do not save', async () => {
+        stubEntryFetch(null, 404);
+        renderPanel({ setNotes: vi.fn(async () => false) });
+        await settled();
+
+        await userEvent.type(notesBox(), 'Worth keeping.');
+        await userEvent.click(screen.getByRole('button', { name: 'Save notes' }));
+
+        expect(await screen.findByRole('alert')).toHaveTextContent(/could not save your notes/i);
+        expect(notesBox()).toHaveValue('Worth keeping.');
+    });
+
+    it('offers to delete a game that has only ownership and notes', async () => {
+        // Both live on the entry, so the one control that erases the entry has to be there.
+        stubDetail({ ownership: 'borrowed', notes: 'Return it.' });
+        renderPanel();
+
+        expect(await screen.findByRole('button', { name: /delete my data/i })).toBeInTheDocument();
+    });
+
+    it('clears both after deleting everything', async () => {
+        stubDetail({ ownership: 'borrowed', notes: 'Return it.' });
+        renderPanel();
+
+        await userEvent.click(await screen.findByRole('button', { name: /delete my data/i }));
+        await userEvent.click(screen.getByRole('button', { name: 'Delete' }));
+
+        await waitFor(() => expect(notesBox()).toHaveValue(''));
+        expect(screen.getByRole('button', { name: 'Borrowed' })).toHaveAttribute('aria-pressed', 'false');
+    });
+});
+
+describe('GameUserPanel and renamed lists', () => {
+    it('labels the list buttons with the names their owner gave them', async () => {
+        stubEntryFetch(null, 404);
+        const ctx = renderPanel({ nameFor: (id: ListId) => (id === 'backlog' ? 'Pile of Shame' : LIST_NAMES[id]) });
+        await settled();
+
+        await userEvent.click(screen.getByRole('button', { name: 'Pile of Shame' }));
+
+        // The label is the user's; what is sent is still the permanent key.
+        expect(ctx.addToList).toHaveBeenCalledWith('backlog', CELESTE);
     });
 });

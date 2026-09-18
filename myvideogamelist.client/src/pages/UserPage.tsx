@@ -4,8 +4,10 @@ import { useAuth } from '@/hooks/useAuth';
 import { useActivePlatforms } from '@/hooks/useActivePlatforms';
 import { useHiddenPlatforms } from '@/hooks/useHiddenPlatforms';
 import { ProfileStats } from '@/components/ProfileStats';
+import { FavouritesShowcase } from '@/components/FavouritesShowcase';
 import { AccountIdentityCard } from '@/components/AccountIdentityCard';
 import { AccountDataCard } from '@/components/AccountDataCard';
+import { ListNamesCard } from '@/components/ListNamesCard';
 import { PRIVATE_NO_STORE } from '@/lib/cache';
 import './UserPage.css';
 
@@ -203,9 +205,15 @@ export function UserPage() {
                     </section>
 
                     {/* The main column, because what the user has done is the reason they came here
-                        and the theme toggle is not. */}
-                    <div className="user-page-tracking user-card">
-                        <ProfileStats userId={user.id} />
+                        and the theme toggle is not. The favourites open it, as they open the public
+                        profile: a showcase is the part of a profile chosen to be looked at. */}
+                    <div className="user-page-tracking">
+                        <div className="user-card">
+                            <FavouritesShowcase profileVisibility={user.profileVisibility} />
+                        </div>
+                        <div className="user-card">
+                            <ProfileStats userId={user.id} />
+                        </div>
                     </div>
 
                     <section className="user-page-prefs" aria-label="Preferences">
@@ -243,6 +251,10 @@ export function UserPage() {
                             <p className="user-card-hint">Saved automatically</p>
                             {themeError && <p className="user-pref-error" role="alert">{themeError}</p>}
                         </div>
+
+                        {/* Beside the appearance, because both change how the site reads to this
+                            person and to nobody else. */}
+                        <ListNamesCard />
 
                         <div className="user-card">
                             <div className="user-card-label">Upcoming releases — platforms</div>

@@ -7,6 +7,7 @@ import { ListsContext, type ListsContextValue } from '@/contexts/ListsContext';
 import { WishlistContext, type WishlistContextValue } from '@/contexts/WishlistContext';
 import { DEFAULT_SORT } from '@/lib/listSort';
 import { game } from '@/test/factories';
+import { LIST_NAMES, type ListId } from '@/types/list';
 
 // Stable object: the card only reads `user`, and going through the real provider would mean
 // mocking its fetches too.
@@ -37,11 +38,17 @@ function listsValue(overrides: Partial<ListsContextValue> = {}): ListsContextVal
         getListFor: () => null,
         scoreFor: () => null,
         setScore: vi.fn(async () => true),
-        deleteEntry: vi.fn(async () => {}),
+        setOwnership: vi.fn(async () => true),
+        setNotes: vi.fn(async () => true),
+        deleteEntry: vi.fn(async () => true),
         view: 'tiles',
         setView: vi.fn(),
         sortFor: () => DEFAULT_SORT,
         setSort: vi.fn(),
+        names: {},
+        nameFor: (id: ListId) => LIST_NAMES[id],
+        namesStatus: 'ready',
+        saveListNames: vi.fn(async () => ({ ok: true as const })),
         ...overrides,
     };
 }
@@ -61,11 +68,14 @@ function wishlistValue(overrides: Partial<WishlistContextValue> = {}): WishlistC
     };
 }
 
-function renderCard(wishlistOverrides: Partial<WishlistContextValue> = {}) {
+function renderCard(
+    wishlistOverrides: Partial<WishlistContextValue> = {},
+    listsOverrides: Partial<ListsContextValue> = {},
+) {
     const wishlist = wishlistValue(wishlistOverrides);
     render(
         <MemoryRouter>
-            <ListsContext.Provider value={listsValue()}>
+            <ListsContext.Provider value={listsValue(listsOverrides)}>
                 <WishlistContext.Provider value={wishlist}>
                     <GameCard game={CELESTE} />
                 </WishlistContext.Provider>
@@ -174,5 +184,14 @@ describe('GameCard wishlist failure', () => {
         // The shared error belongs to whichever card was clicked last, which is why the card
         // reads its own result instead.
         expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    });
+});
+
+describe('GameCard and renamed lists', () => {
+    it('labels its list buttons with the names their owner gave them', () => {
+        renderCard({}, { nameFor: (id: ListId) => (id === 'dropped' ? 'Nope' : LIST_NAMES[id]) });
+
+        expect(screen.getByRole('button', { name: 'Nope' })).toHaveAttribute('title', 'Add to Nope');
+        expect(screen.queryByRole('button', { name: 'Dropped' })).not.toBeInTheDocument();
     });
 });

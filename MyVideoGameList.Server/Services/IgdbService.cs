@@ -43,6 +43,12 @@ public class IgdbService(
     private const int SteamExternalSource = 1;
 
     /// <summary>
+    /// The IGDB <c>age_rating_organizations</c> id for the ESRB. This replaced the old
+    /// <c>age_ratings.category</c> field, which no longer exists — asking for it returns nothing.
+    /// </summary>
+    private const int EsrbOrganization = 1;
+
+    /// <summary>
     /// IGDB <c>popularity_type</c> 5, "24hr Peak Players", sourced from Steam.
     /// </summary>
     /// <remarks>
@@ -60,6 +66,21 @@ public class IgdbService(
     /// the single-review entries that would otherwise fill the first pages with perfect scores.
     /// </summary>
     private const int MinAggregatedRatingCount = 8;
+
+    /// <summary>
+    /// Ratings — critics' and players' together — a game needs before any browse order that is not the
+    /// critic score will list it.
+    /// </summary>
+    /// <remarks>
+    /// Without a floor, newest first is a page of games released today that nobody has heard of, and
+    /// A to Z fills with shovelware. Ten was checked against live IGDB: it keeps the last month's
+    /// reviewed releases, which held between twelve and thirty ratings, and still admits a series of
+    /// cat-collecting games at twelve to sixteen — which is why the orders that rank by nothing about
+    /// the game also require a critic. See ADR 0032.
+    /// </remarks>
+    private const int MinListedRatingCount = 10;
+
+    private const string GenresEndpoint = "https://api.igdb.com/v4/genres";
 
     /// <summary>
     /// Games per <c>external_games</c> lookup. Deliberately well below <see cref="MaxBatchSize"/>:
@@ -86,7 +107,7 @@ public class IgdbService(
         "websites.url,websites.category," +
         "rating,aggregated_rating,aggregated_rating_count," +
         "total_rating,total_rating_count," +
-        "age_ratings.category,age_ratings.rating," +
+        "age_ratings.organization,age_ratings.rating_category," +
         "genres.id,genres.name," +
         "platforms.id,platforms.name,platforms.abbreviation," +
         "involved_companies.company.id,involved_companies.company.name," +
@@ -182,19 +203,48 @@ public class IgdbService(
     }
 
     public async Task<PagedGamesResponse> GetGamesAsync(
-        int offset = 0, int limit = 20, string? search = null, CancellationToken cancellationToken = default)
+        int offset = 0,
+        int limit = 20,
+        string? search = null,
+        GameBrowseQuery? browse = null,
+        CancellationToken cancellationToken = default)
     {
-        var cacheKey = $"igdb_games|{limit}|{offset}|{search ?? string.Empty}";
+        browse ??= GameBrowseQuery.Default;
+
+        // Every input that changes the query is in the key. The clock that newest-first reads is not:
+        // a page cached for half an hour can miss a game released in that half hour, which is the
+        // same staleness every other page here has.
+        var cacheKey = $"igdb_games|{limit}|{offset}|{search ?? string.Empty}|{browse.Sort}|"
+            + $"{browse.PlatformId}|{browse.GenreId}|{browse.Year}|{browse.MinScore}";
         if (cache.TryGetValue(cacheKey, out PagedGamesResponse? cached) && cached is not null)
             return cached;
 
         var igdbGames = await QueryAsync<IgdbGame>(
-            GamesEndpoint, BuildQuery(offset, limit, search), cancellationToken);
+            GamesEndpoint, BuildQuery(offset, limit, search, browse, DateTimeOffset.UtcNow), cancellationToken);
 
         var games = igdbGames.Select(MapToGameDto).ToList();
         var result = new PagedGamesResponse(games, igdbGames.Count == limit);
 
         cache.Set(cacheKey, result, TimeSpan.FromMinutes(30));
+        return result;
+    }
+
+    public async Task<IReadOnlyList<GenreDto>> GetGenresAsync(CancellationToken cancellationToken = default)
+    {
+        const string cacheKey = "igdb_genres";
+        if (cache.TryGetValue(cacheKey, out IReadOnlyList<GenreDto>? cached) && cached is not null)
+            return cached;
+
+        // IGDB has a couple of dozen genres and adds one rarely, so a day is fresh enough.
+        var rows = await QueryAsync<IgdbGenre>(
+            GenresEndpoint, "fields id,name; sort name asc; limit 100;", cancellationToken);
+
+        IReadOnlyList<GenreDto> result = rows
+            .Where(g => !string.IsNullOrWhiteSpace(g.Name))
+            .Select(g => new GenreDto(g.Id, g.Name, null))
+            .ToList();
+
+        cache.Set(cacheKey, result, TimeSpan.FromHours(24));
         return result;
     }
 
@@ -500,10 +550,54 @@ public class IgdbService(
 
     private sealed record ActivePlatformConfig(int Id, string Name, string Abbreviation);
 
-    internal static string BuildQuery(int offset, int limit, string? search)
+    /// <summary>
+    /// The Apicalypse query behind one page of the browse listing or of a search.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The filters apply to both, and every value in them is an integer the controller has already
+    /// range-checked, so only the search needs escaping.
+    /// </para>
+    /// <para>
+    /// The order and its floor apply only when nobody is searching. A search must reach every game,
+    /// however thinly reviewed (ADR 0016), and IGDB orders search results itself — it answers a
+    /// <c>search</c> that also carries a <c>sort</c> with a 406.
+    /// </para>
+    /// </remarks>
+    /// <param name="now">What "released" means for newest first. Passed in so the query is testable.</param>
+    internal static string BuildQuery(
+        int offset,
+        int limit,
+        string? search,
+        GameBrowseQuery? browse = null,
+        DateTimeOffset? now = null)
     {
+        browse ??= GameBrowseQuery.Default;
+
         var sb = new StringBuilder();
         sb.AppendLine(GameFields);
+
+        var where = new List<string>();
+
+        if (browse.PlatformId is int platformId) where.Add($"platforms = ({platformId})");
+        if (browse.GenreId is int genreId) where.Add($"genres = ({genreId})");
+
+        if (browse.Year is int year)
+        {
+            var from = new DateTimeOffset(year, 1, 1, 0, 0, 0, TimeSpan.Zero).ToUnixTimeSeconds();
+            var to = new DateTimeOffset(year + 1, 1, 1, 0, 0, 0, TimeSpan.Zero).ToUnixTimeSeconds();
+            where.Add($"first_release_date >= {from}");
+            where.Add($"first_release_date < {to}");
+        }
+
+        if (browse.MinScore is int minScore)
+        {
+            // A score floor needs a critic floor, or "80 and above" is every game one critic loved.
+            where.Add($"aggregated_rating >= {minScore}");
+            where.Add($"aggregated_rating_count >= {MinAggregatedRatingCount}");
+        }
+
+        string? sort = null;
 
         if (!string.IsNullOrWhiteSpace(search))
         {
@@ -513,14 +607,46 @@ public class IgdbService(
         }
         else
         {
-            // Sorting the whole catalogue by aggregated_rating puts the long tail first: obscure
-            // DLC, special editions and console re-releases carrying a single perfect review all
-            // score exactly 100. Requiring a minimum number of contributing critics is what makes
-            // the sort mean anything. This applies to the browse listing only — a search must
-            // still reach every game, however thinly reviewed.
-            sb.AppendLine($"where aggregated_rating_count >= {MinAggregatedRatingCount};");
-            sb.AppendLine("sort aggregated_rating desc;");
+            switch (browse.Sort)
+            {
+                case GameSortKeys.Popular:
+                    // Ranked by the ratings IGDB holds, which is a ranking by attention in itself, so
+                    // it needs no critic: a game players rated heavily and no outlet reviewed belongs
+                    // near the top. The floor only keeps the far end of the pages clean.
+                    where.Add($"total_rating_count >= {MinListedRatingCount}");
+                    sort = "total_rating_count desc";
+                    break;
+
+                case GameSortKeys.Newest:
+                    // An order by date says nothing about the game, so it takes both floors: enough
+                    // ratings, and at least one critic. Unreleased games wait for their date.
+                    var released = (now ?? DateTimeOffset.UtcNow).ToUnixTimeSeconds();
+                    where.Add($"first_release_date <= {released}");
+                    where.Add($"total_rating_count >= {MinListedRatingCount}");
+                    where.Add("aggregated_rating_count >= 1");
+                    sort = "first_release_date desc";
+                    break;
+
+                case GameSortKeys.Name:
+                    where.Add($"total_rating_count >= {MinListedRatingCount}");
+                    where.Add("aggregated_rating_count >= 1");
+                    sort = "name asc";
+                    break;
+
+                default:
+                    // Sorting the whole catalogue by aggregated_rating puts the long tail first: obscure
+                    // DLC, special editions and console re-releases carrying a single perfect review
+                    // all score exactly 100. Requiring a minimum number of contributing critics is what
+                    // makes the sort mean anything.
+                    where.Add($"aggregated_rating_count >= {MinAggregatedRatingCount}");
+                    sort = "aggregated_rating desc";
+                    break;
+            }
         }
+
+        // Distinct, because a score filter and the critic-score order ask for the same critic floor.
+        if (where.Count > 0) sb.AppendLine($"where {string.Join(" & ", where.Distinct())};");
+        if (sort is not null) sb.AppendLine($"sort {sort};");
 
         sb.AppendLine($"limit {limit};");
         sb.AppendLine($"offset {offset};");
@@ -580,9 +706,7 @@ public class IgdbService(
 
         int? criticScore = g.AggregatedRating.HasValue ? (int)Math.Round(g.AggregatedRating.Value) : null;
 
-        var esrbRating = g.AgeRatings?.FirstOrDefault(r => r.Category == 1) is { } esrb
-            ? MapEsrbRating(esrb.Rating)
-            : null;
+        var esrbRating = MapEsrbRating(g.AgeRatings);
 
         DateOnly? releaseDate = g.FirstReleaseDate.HasValue
             ? DateOnly.FromDateTime(DateTimeOffset.FromUnixTimeSeconds(g.FirstReleaseDate.Value).UtcDateTime)
@@ -740,15 +864,24 @@ public class IgdbService(
             .ToList();
     }
 
-    internal static string? MapEsrbRating(int ratingValue) => ratingValue switch
+    /// <summary>
+    /// The game's ESRB rating as the short code the client shows, or null when the ESRB has not
+    /// rated it. The cases are the <c>age_rating_categories</c> ids IGDB lists under the ESRB.
+    /// </summary>
+    internal static string? MapEsrbRating(List<IgdbAgeRating>? ageRatings)
     {
-        1 => "RP",
-        2 => "EC",
-        3 => "E",
-        4 => "E10+",
-        5 => "T",
-        6 => "M",
-        7 => "AO",
-        _ => null
-    };
+        var esrb = ageRatings?.FirstOrDefault(r => r.Organization == EsrbOrganization);
+
+        return esrb?.RatingCategory switch
+        {
+            1 => "RP",
+            2 => "EC",
+            3 => "E",
+            4 => "E10+",
+            5 => "T",
+            6 => "M",
+            7 => "AO",
+            _ => null
+        };
+    }
 }

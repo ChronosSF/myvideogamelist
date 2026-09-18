@@ -34,8 +34,10 @@ public record UserDataExportDto(
     IReadOnlyList<PlaythroughExportDto> Playthroughs,
     IReadOnlyList<ReviewExportDto> Reviews,
     IReadOnlyList<WishlistExportDto> Wishlist,
+    IReadOnlyList<FavouriteExportDto> Favourites,
     IReadOnlyList<int> HiddenPlatformIds,
-    IReadOnlyList<ListSortExportDto> ListSortPreferences);
+    IReadOnlyList<ListSortExportDto> ListSortPreferences,
+    IReadOnlyList<ListNameExportDto> ListNames);
 
 /// <summary>
 /// The account row itself — the columns MVGL added to Identity's user, plus the address and the
@@ -76,10 +78,14 @@ public record AccountExportDto(
 /// including a future importer of our own. Null means the game is in none of the user's lists,
 /// which is a real state (ADR 0019) rather than missing data.
 /// </param>
+/// <param name="Ownership">One of <c>OwnershipKinds</c>, already a permanent key, or null.</param>
+/// <param name="Notes">The user's private notes on the game. Theirs, so theirs to take.</param>
 public record EntryExportDto(
     int GameId,
     string? Status,
     int? Score,
+    string? Ownership,
+    string? Notes,
     DateTimeOffset AddedAt,
     DateTimeOffset? StatusChangedAt);
 
@@ -148,10 +154,22 @@ public record ReviewExportDto(
 public record WishlistExportDto(int GameId, DateTimeOffset AddedAt);
 
 /// <summary>
+/// One favourite game. Another axis like the wishlist, so <c>AddedAt</c> is its entire history too
+/// (ADR 0029).
+/// </summary>
+public record FavouriteExportDto(int GameId, DateTimeOffset AddedAt);
+
+/// <summary>
 /// How the user has chosen to sort one status list. Only the lists they actually re-sorted have a
 /// row, here as in the database (ADR 0020).
 /// </summary>
 public record ListSortExportDto(string Status, string SortKey, bool Descending);
+
+/// <summary>
+/// What the user calls one of their lists. Only renamed lists have a row, and the status is its
+/// permanent key, so the name can be applied back to the right list by anything that reads this.
+/// </summary>
+public record ListNameExportDto(string Status, string DisplayName);
 
 /// <summary>
 /// Confirmation for deleting an account: the account's own password, typed again.

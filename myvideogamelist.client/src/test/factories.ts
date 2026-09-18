@@ -73,8 +73,8 @@ export function playthrough(overrides: Partial<PlaythroughDto> = {}): Playthroug
 }
 
 /**
- * What `GET /api/entries/{gameId}` returns: the entry, its playthroughs, and a review that is
- * always null until the review table ships.
+ * What `GET /api/entries/{gameId}` returns: the entry, how the user has it, their notes, its
+ * playthroughs and their review — everything but the entry blank unless a test says otherwise.
  */
 export function entryDetail(
     overrides: Omit<Partial<EntryDetailDto>, 'entry'> & { entry?: Parameters<typeof entry>[0] } = {},
@@ -82,6 +82,8 @@ export function entryDetail(
     const { entry: entryOverrides, ...rest } = overrides;
     return {
         entry: entry(entryOverrides),
+        ownership: null,
+        notes: null,
         playthroughs: [],
         review: null,
         ...rest,

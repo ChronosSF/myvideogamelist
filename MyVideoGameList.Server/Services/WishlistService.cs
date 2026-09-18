@@ -26,6 +26,10 @@ public class WishlistService(
             .AsNoTracking()
             .Where(w => w.UserId == userId)
             .OrderByDescending(w => w.AddedAt)
+            // As the favourites are: two rows written at the same moment — which a library import
+            // would write a whole wishlist of — would otherwise come back in no particular order,
+            // and in a different one each time.
+            .ThenBy(w => w.GameId)
             .ToListAsync(cancellationToken);
 
         if (items.Count == 0) return [];
@@ -44,71 +48,18 @@ public class WishlistService(
             .ToList();
     }
 
-    public async Task<bool> AddAsync(
-        string userId, int gameId, CancellationToken cancellationToken = default)
-    {
-        var exists = await db.UserWishlistItems
-            .AnyAsync(w => w.UserId == userId && w.GameId == gameId, cancellationToken);
+    /// <remarks>
+    /// The race between two adds of the same game is handled in <see cref="GameAxisStore"/>, which
+    /// the favourites share, so the guard cannot be fixed for one axis and missed on the other.
+    /// </remarks>
+    public Task<DateTimeOffset> AddAsync(
+        string userId, int gameId, CancellationToken cancellationToken = default) =>
+        GameAxisStore.AddAsync(
+            db,
+            new UserWishlistItem { UserId = userId, GameId = gameId, AddedAt = timeProvider.GetUtcNow() },
+            cancellationToken);
 
-        // Re-adding keeps the original timestamp. The wishlist is ordered by when someone started
-        // wanting a game, and a double-click should not reorder their list.
-        if (exists) return false;
-
-        var item = new UserWishlistItem
-        {
-            UserId = userId,
-            GameId = gameId,
-            AddedAt = timeProvider.GetUtcNow()
-        };
-        db.UserWishlistItems.Add(item);
-
-        try
-        {
-            await db.SaveChangesAsync(cancellationToken);
-            return true;
-        }
-        catch (DbUpdateException)
-        {
-            // Two requests can both pass the check above — a double-click, or two tabs — and only
-            // one insert can win the composite primary key. A PUT is idempotent, so losing that
-            // race is success, not a 500.
-            //
-            // Confirmed by re-reading rather than by matching a provider-specific SQL state, so
-            // this stays correct on any provider and rethrows anything that is not this race.
-            db.Entry(item).State = EntityState.Detached;
-
-            var wonByAnotherRequest = await db.UserWishlistItems
-                .AnyAsync(w => w.UserId == userId && w.GameId == gameId, cancellationToken);
-
-            if (wonByAnotherRequest) return false;
-            throw;
-        }
-    }
-
-    public async Task<bool> RemoveAsync(
-        string userId, int gameId, CancellationToken cancellationToken = default)
-    {
-        var item = await db.UserWishlistItems
-            .FirstOrDefaultAsync(w => w.UserId == userId && w.GameId == gameId, cancellationToken);
-
-        if (item is null) return false;
-
-        db.UserWishlistItems.Remove(item);
-
-        try
-        {
-            await db.SaveChangesAsync(cancellationToken);
-            return true;
-        }
-        catch (DbUpdateConcurrencyException)
-        {
-            // Another request deleted the same row between the read and the write. The game is
-            // off the wishlist either way, which is exactly what the caller asked for, so this
-            // reports "there was nothing to remove" rather than a 500.
-            //
-            // Safe to swallow only because the delete is keyed and carries no other change: there
-            // is no lost update to worry about, just a row that is already gone.
-            return false;
-        }
-    }
+    public Task<bool> RemoveAsync(
+        string userId, int gameId, CancellationToken cancellationToken = default) =>
+        GameAxisStore.RemoveAsync<UserWishlistItem>(db, userId, gameId, cancellationToken);
 }

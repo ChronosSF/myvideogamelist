@@ -517,13 +517,158 @@ public class ScoreAndEntryTests
         var entry = await service.GetEntryAsync(UserId, 10);
 
         Assert.NotNull(entry);
-        Assert.Equal((short)8, entry.Score);
-        Assert.Equal(10, entry.Game.Id);
+        Assert.Equal((short)8, entry.Entry.Score);
+        Assert.Equal(10, entry.Entry.Game.Id);
     }
 
     [Fact]
     public async Task GetEntryAsync_ReturnsNullWhenNothingIsRecorded()
         => Assert.Null(await NewService(NewDb()).GetEntryAsync(UserId, 999));
+
+    // ------------------------------------------------ ownership and notes
+
+    [Fact]
+    public async Task GetEntryAsync_CarriesTheOwnershipAndTheNotes()
+    {
+        using var db = NewDb();
+        var service = NewService(db, IgdbReturning(Game(10)));
+
+        await service.SetOwnershipAsync(UserId, 10, OwnershipKinds.Borrowed);
+        await service.SetNotesAsync(UserId, 10, "Give it back to Sam.");
+
+        var entry = await service.GetEntryAsync(UserId, 10);
+
+        Assert.NotNull(entry);
+        Assert.Equal(OwnershipKinds.Borrowed, entry.Ownership);
+        Assert.Equal("Give it back to Sam.", entry.Notes);
+    }
+
+    [Fact]
+    public async Task SetOwnershipAsync_OnAnUntrackedGame_CreatesAStatuslessEntryAndNoEvent()
+    {
+        // As a score does: saying you own a game is legitimate without listing it, and it is not a
+        // status transition.
+        using var db = NewDb();
+        var service = NewService(db);
+
+        await service.SetOwnershipAsync(UserId, 10, OwnershipKinds.Owned);
+
+        var entry = Assert.Single(await db.UserGameEntries.ToListAsync());
+        Assert.Equal(OwnershipKinds.Owned, entry.Ownership);
+        Assert.Null(entry.StatusId);
+        Assert.Equal(Midday, entry.AddedAt);
+        Assert.Empty(await db.UserGameEvents.ToListAsync());
+    }
+
+    [Fact]
+    public async Task SetOwnershipAsync_Null_ClearsItAndLeavesEverythingElse()
+    {
+        using var db = NewDb();
+        var service = NewService(db);
+
+        await service.SetListEntryAsync(UserId, 10, ListStatusKeys.Playing);
+        await service.SetScoreAsync(UserId, 10, 6);
+        await service.SetOwnershipAsync(UserId, 10, OwnershipKinds.Subscription);
+        await service.SetOwnershipAsync(UserId, 10, null);
+
+        var entry = Assert.Single(await db.UserGameEntries.ToListAsync());
+        Assert.Null(entry.Ownership);
+        Assert.Equal((short)6, entry.Score);
+        Assert.Equal(db.ListStatuses.Single(s => s.Key == ListStatusKeys.Playing).Id, entry.StatusId);
+    }
+
+    [Fact]
+    public async Task SetOwnershipAsync_ClearingAGameWithNoEntry_CreatesNothing()
+    {
+        // A row holding nothing would switch on "delete my data" for a game the user never touched.
+        using var db = NewDb();
+
+        await NewService(db).SetOwnershipAsync(UserId, 10, null);
+
+        Assert.Empty(await db.UserGameEntries.ToListAsync());
+    }
+
+    [Fact]
+    public async Task SetOwnershipAsync_UnknownValue_Throws()
+    {
+        using var db = NewDb();
+
+        await Assert.ThrowsAsync<ArgumentException>(
+            () => NewService(db).SetOwnershipAsync(UserId, 10, "stolen"));
+        Assert.Empty(await db.UserGameEntries.ToListAsync());
+    }
+
+    [Fact]
+    public async Task SetNotesAsync_TrimsWhatItStores()
+    {
+        using var db = NewDb();
+
+        await NewService(db).SetNotesAsync(UserId, 10, "  Save file is on the old laptop.\n");
+
+        Assert.Equal("Save file is on the old laptop.", Assert.Single(await db.UserGameEntries.ToListAsync()).Notes);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   \n  ")]
+    public async Task SetNotesAsync_Blank_ClearsTheNotes(string? blank)
+    {
+        using var db = NewDb();
+        var service = NewService(db);
+
+        await service.SetNotesAsync(UserId, 10, "Something to remember.");
+        await service.SetNotesAsync(UserId, 10, blank);
+
+        Assert.Null(Assert.Single(await db.UserGameEntries.ToListAsync()).Notes);
+    }
+
+    [Fact]
+    public async Task SetNotesAsync_BlankOnAGameWithNoEntry_CreatesNothing()
+    {
+        using var db = NewDb();
+
+        await NewService(db).SetNotesAsync(UserId, 10, "   ");
+
+        Assert.Empty(await db.UserGameEntries.ToListAsync());
+    }
+
+    [Fact]
+    public async Task TheOwnershipAndNotes_SurviveLeavingEveryList()
+    {
+        // They are on the entry, which is the user's record of the game rather than a list
+        // membership (ADR 0019) — so they go with "delete my data", never with a list toggle.
+        using var db = NewDb();
+        var service = NewService(db);
+
+        await service.SetListEntryAsync(UserId, 10, ListStatusKeys.Finished);
+        await service.SetOwnershipAsync(UserId, 10, OwnershipKinds.Owned);
+        await service.SetNotesAsync(UserId, 10, "Platinum next time.");
+        await service.RemoveListEntryAsync(UserId, 10);
+
+        var entry = Assert.Single(await db.UserGameEntries.ToListAsync());
+        Assert.Null(entry.StatusId);
+        Assert.Equal(OwnershipKinds.Owned, entry.Ownership);
+        Assert.Equal("Platinum next time.", entry.Notes);
+
+        Assert.True(await service.DeleteEntryAsync(UserId, 10));
+        Assert.Empty(await db.UserGameEntries.ToListAsync());
+    }
+
+    [Fact]
+    public async Task SetOwnershipAsync_ScopesToTheUser()
+    {
+        using var db = NewDb();
+        var service = NewService(db);
+
+        await service.SetOwnershipAsync("someone-else", 10, OwnershipKinds.Owned);
+        await service.SetOwnershipAsync(UserId, 10, OwnershipKinds.Borrowed);
+
+        var mine = await db.UserGameEntries.SingleAsync(e => e.UserId == UserId);
+        var theirs = await db.UserGameEntries.SingleAsync(e => e.UserId == "someone-else");
+        Assert.Equal(OwnershipKinds.Borrowed, mine.Ownership);
+        Assert.Equal(OwnershipKinds.Owned, theirs.Ownership);
+    }
 
     // ------------------------------------------------ deleting everything
 

@@ -6,8 +6,8 @@ import type { GameDto } from '@/types/game';
  *
  * These keys are the server's `ListStatus.Key` values and are permanent: they are written into
  * the status event log, so renaming one would reinterpret history that has already been recorded.
- * Display names are a separate concern and will eventually be user-editable, at which point
- * `LIST_NAMES` becomes a fallback for the server-supplied name rather than the only source.
+ * Display names are a separate concern, and the user's own: `LIST_NAMES` holds the defaults, and
+ * `nameFor` on the lists context is what a label should read — see `docs/decisions/0031-*`.
  */
 export type ListId = 'backlog' | 'playing' | 'on_hold' | 'finished' | 'dropped';
 
@@ -23,6 +23,21 @@ export interface ListEntryDto {
     statusChangedAt: string | null;
 }
 
+/**
+ * How the user has a game, mirroring the server's `OwnershipKinds`. A key rather than a label, and
+ * permanent once written, because the export carries it — see `docs/decisions/0030-*`.
+ */
+export type Ownership = 'owned' | 'subscription' | 'borrowed';
+
+/** In the order the panel offers them: keeps, then for now, then somebody else's. */
+export const OWNERSHIPS: Ownership[] = ['owned', 'subscription', 'borrowed'];
+
+export const OWNERSHIP_NAMES: Record<Ownership, string> = {
+    owned: 'Owned',
+    subscription: 'Subscription',
+    borrowed: 'Borrowed',
+};
+
 /** Layout of the list views. Global, unlike the sort order which is per status list. */
 export type ViewMode = 'tiles' | 'table';
 
@@ -37,6 +52,10 @@ export interface GameList {
 /** Lifecycle order, not alphabetical — the set reads as a pipeline. */
 export const LIST_IDS: ListId[] = ['backlog', 'playing', 'on_hold', 'finished', 'dropped'];
 
+/**
+ * The default names, and the only names anywhere the user's own cannot reach — a public profile
+ * reads these, because a rename is a label its owner sees.
+ */
 export const LIST_NAMES: Record<ListId, string> = {
     backlog: 'Backlog',
     playing: 'Playing',
@@ -44,6 +63,12 @@ export const LIST_NAMES: Record<ListId, string> = {
     finished: 'Finished',
     dropped: 'Dropped',
 };
+
+/** What the user calls the lists they have renamed. A list absent from it has its default name. */
+export type ListNames = Partial<Record<ListId, string>>;
+
+/** The server's `ListNamePolicy.MaxLength`, for the input's own limit. */
+export const LIST_NAME_MAX = 24;
 
 /**
  * An empty list per status, so callers never have to guard a missing key. Built from

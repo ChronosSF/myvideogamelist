@@ -71,8 +71,10 @@ public class UserDataExporter(ApplicationDbContext db, TimeProvider clock) : IUs
             { typeof(UserGamePlaythrough), new("playthroughs", ReadPlaythroughsAsync) },
             { typeof(Review), new("reviews", ReadReviewsAsync) },
             { typeof(UserWishlistItem), new("wishlist", ReadWishlistAsync) },
+            { typeof(UserFavourite), new("favourites", ReadFavouritesAsync) },
             { typeof(UserHiddenPlatform), new("hiddenPlatformIds", ReadHiddenPlatformsAsync) },
             { typeof(UserListSortPreference), new("listSortPreferences", ReadListSortPreferencesAsync) },
+            { typeof(UserListSetting), new("listNames", ReadListNamesAsync) },
         };
 
     /// <summary>
@@ -106,12 +108,14 @@ public class UserDataExporter(ApplicationDbContext db, TimeProvider clock) : IUs
         public IReadOnlyList<PlaythroughExportDto> Playthroughs { get; set; } = [];
         public IReadOnlyList<ReviewExportDto> Reviews { get; set; } = [];
         public IReadOnlyList<WishlistExportDto> Wishlist { get; set; } = [];
+        public IReadOnlyList<FavouriteExportDto> Favourites { get; set; } = [];
         public IReadOnlyList<int> HiddenPlatformIds { get; set; } = [];
         public IReadOnlyList<ListSortExportDto> ListSortPreferences { get; set; } = [];
+        public IReadOnlyList<ListNameExportDto> ListNames { get; set; } = [];
 
         public UserDataExportDto ToDocument(DateTimeOffset exportedAt, AccountExportDto account) =>
-            new(exportedAt, account, Entries, Events, Playthroughs, Reviews, Wishlist,
-                HiddenPlatformIds, ListSortPreferences);
+            new(exportedAt, account, Entries, Events, Playthroughs, Reviews, Wishlist, Favourites,
+                HiddenPlatformIds, ListSortPreferences, ListNames);
     }
 
     public async Task<UserDataExportDto> ExportAsync(string userId, CancellationToken cancellationToken)
@@ -160,12 +164,14 @@ public class UserDataExporter(ApplicationDbContext db, TimeProvider clock) : IUs
             .Where(e => e.UserId == draft.UserId)
             .OrderBy(e => e.AddedAt)
             .ThenBy(e => e.GameId)
-            .Select(e => new { e.GameId, e.StatusId, e.Score, e.AddedAt, e.StatusChangedAt })
+            .Select(e => new { e.GameId, e.StatusId, e.Score, e.Ownership, e.Notes, e.AddedAt, e.StatusChangedAt })
             .ToListAsync(cancellationToken);
 
+        // A hand-written projection, so a new column on the entry is exported only when it is added
+        // here — the manifest guard cannot see columns, only tables (ADR 0026 notes the same trap).
         draft.Entries = rows
             .Select(e => new EntryExportDto(
-                e.GameId, Key(draft, e.StatusId), e.Score, e.AddedAt, e.StatusChangedAt))
+                e.GameId, Key(draft, e.StatusId), e.Score, e.Ownership, e.Notes, e.AddedAt, e.StatusChangedAt))
             .ToList();
     }
 
@@ -260,6 +266,18 @@ public class UserDataExporter(ApplicationDbContext db, TimeProvider clock) : IUs
             .ToListAsync(cancellationToken);
     }
 
+    private static async Task ReadFavouritesAsync(
+        ApplicationDbContext db, ExportDraft draft, CancellationToken cancellationToken)
+    {
+        draft.Favourites = await db.UserFavourites
+            .AsNoTracking()
+            .Where(f => f.UserId == draft.UserId)
+            .OrderBy(f => f.AddedAt)
+            .ThenBy(f => f.GameId)
+            .Select(f => new FavouriteExportDto(f.GameId, f.AddedAt))
+            .ToListAsync(cancellationToken);
+    }
+
     /// <remarks>
     /// Bare IGDB platform ids, because that is the whole row: the table is a set of ids the user has
     /// switched off, with nothing else to say about any of them.
@@ -297,6 +315,27 @@ public class UserDataExporter(ApplicationDbContext db, TimeProvider clock) : IUs
             .Select(p => new { Status = Key(draft, p.StatusId), p.SortKey, p.Descending })
             .Where(p => p.Status is not null)
             .Select(p => new ListSortExportDto(p.Status!, p.SortKey, p.Descending))
+            .ToList();
+    }
+
+    /// <remarks>
+    /// In lifecycle order, as the sort preferences are, and skipping a name whose status cannot be
+    /// resolved for the same reason: every key in the document is one something could import against.
+    /// </remarks>
+    private static async Task ReadListNamesAsync(
+        ApplicationDbContext db, ExportDraft draft, CancellationToken cancellationToken)
+    {
+        var rows = await db.UserListSettings
+            .AsNoTracking()
+            .Where(s => s.UserId == draft.UserId)
+            .OrderBy(s => s.StatusId)
+            .Select(s => new { s.StatusId, s.DisplayName })
+            .ToListAsync(cancellationToken);
+
+        draft.ListNames = rows
+            .Select(s => new { Status = Key(draft, s.StatusId), s.DisplayName })
+            .Where(s => s.Status is not null)
+            .Select(s => new ListNameExportDto(s.Status!, s.DisplayName))
             .ToList();
     }
 

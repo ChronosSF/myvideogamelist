@@ -91,6 +91,9 @@ ROADMAP.md                      Forward-looking plan
   `1`). Filtering on the removed field returns zero rows *silently* rather than erroring, so the
   symptom is an empty feature with a clean log. Suspect this whenever an IGDB filter returns
   nothing — check the field still exists before debugging your own code.
+  `age_ratings.category` and `age_ratings.rating` went the same way — use `organization` (ESRB is
+  `1`) and `rating_category`. *Requesting* a removed field is just as quiet: it is left out of the
+  response, which hid every ESRB badge.
 
 - **Steam news and the trending rail hold no database state**, deliberately, so the pending
   PostgreSQL move stays as cheap as it is today. See `docs/decisions/0012-*`. Keep derived,
@@ -101,6 +104,13 @@ ROADMAP.md                      Forward-looking plan
   construction; wanting a game is not exclusive with playing it, so a game sits on the wishlist
   *and* in a list. `AddedAt` is its entire history — do not reach for `UserGameEvents`, and do not
   add a foreign key to `UserGameEntries`, because a wishlisted game usually has no entry at all.
+
+- **Favourites are a second axis on the wishlist's code, so fix either one in the shared place.**
+  `UserFavourites` has the wishlist's shape, and both write through `GameAxisStore` on the server and
+  run on `useGameAxis` on the client — a race guard or a session stamp added to one provider by hand
+  is exactly the drift ADR 0022 records. Each provider keeps its own context and pending set. A
+  favourite is marked with a rosette, never a star, and is published on a public profile where the
+  wishlist shows only its size. See `docs/decisions/0029-*`.
 
 - **`UserName` is the public handle, not the email — and login had to be fixed for it.**
   `SignInManager.PasswordSignInAsync(string, …)` resolves its first argument as a *username*, which
@@ -138,7 +148,9 @@ ROADMAP.md                      Forward-looking plan
   `AspNetUsers`.** `UserOwnedDataTests` walks the EF model and fails otherwise — in both
   directions, so a stale registration for a table you removed fails too. The manifest is
   `UserDataExporter.Manifest`, keyed by entity `Type`, and it is the *only* place to register:
-  `ExportAsync` walks it. Statuses export as their `Key`, never the seeded id. The export is free
+  `ExportAsync` walks it. A new *column* on a registered table trips nothing, because each section is
+  a hand-written projection — add it to that reader too, as `Ownership` and `Notes` were
+  (`docs/decisions/0030-*`). Statuses export as their `Key`, never the seeded id. The export is free
   and stays free — portability is a right, and the paid "Export" in the monetisation table is a
   nicer *format* on top, so do not put an entitlement check on `/api/user/export`. It makes no IGDB
   call, for the same reason the stats do not. See `docs/decisions/0024-*`.
@@ -172,6 +184,12 @@ ROADMAP.md                      Forward-looking plan
   score or review changes, or the section beside it shows the write as though it had failed. See
   `docs/decisions/0028-*`.
 
+- **A list's label reads `nameFor` from the lists context, never `LIST_NAMES`** — except on a public
+  profile, which keeps the defaults because a rename is its owner's alone. `LIST_NAMES` is the
+  defaults. A rename writes `UserListSettings` and nothing else, the five effective names must differ
+  without case, and the names form edits only when `namesStatus` is `ready`: a failed read looks like
+  "nothing renamed", and saving from it would reset every list. See `docs/decisions/0031-*`.
+
 - **Never change a game's status without recording an event.** `UserGameEvents` is append-only
   and is the only record that a transition happened — `UserGameLists` holds current state and is
   overwritten on every move. A direct `UPDATE` to `StatusId` leaves a permanent hole in a history
@@ -184,6 +202,12 @@ ROADMAP.md                      Forward-looking plan
   `aggregated_rating_count >= 8`, and the client suppresses badges below
   `MIN_CRITIC_REVIEWS`. Search is deliberately *not* filtered this way. See
   `docs/decisions/0016-*`.
+
+- **Each browse order carries its own floor, and a search carries none.** Top rated keeps 0016's eight
+  critics; Popular needs ten ratings; Newest and A to Z need ten ratings *and* a critic, because
+  without one they fill with shovelware. The filters apply to a search, but never an order: IGDB
+  answers a `search` with a `sort` with a 406. Every browse parameter is in the URL through
+  `@/lib/gameBrowse`, and all six belong in the CDN cache key. See `docs/decisions/0032-*`.
 
 - **Stars mean the user's own score and nothing else.** One `ScoreInput` — five stars, half-star
   steps, which is exactly the 1–10 the database stores. Everything averaged from other people

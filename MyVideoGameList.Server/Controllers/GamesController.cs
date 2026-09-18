@@ -26,13 +26,34 @@ public class GamesController(
         return Ok(result);
     }
 
+    /// <summary>
+    /// A page of the browse listing, or of a search, with optional filters and an order.
+    /// </summary>
+    /// <remarks>
+    /// Every filter is a bounded integer checked by attribute, which is what lets the query builder
+    /// interpolate them without escaping. An unknown order is a 400 rather than a quiet fall back to
+    /// the default, so a mistyped link says so. See ADR 0032.
+    /// </remarks>
     [HttpGet]
     public async Task<ActionResult<PagedGamesResponse>> GetGames(
         CancellationToken cancellationToken,
         [FromQuery][Range(0, int.MaxValue)] int offset = 0,
-        [FromQuery] string? search = null)
+        [FromQuery] string? search = null,
+        [FromQuery][AllowedValues(
+            null,
+            GameSortKeys.Rating,
+            GameSortKeys.Popular,
+            GameSortKeys.Newest,
+            GameSortKeys.Name)] string? sort = null,
+        [FromQuery][Range(1, int.MaxValue)] int? platform = null,
+        [FromQuery][Range(1, int.MaxValue)] int? genre = null,
+        // First releases before 1950 are not what anybody browses by year for, and the range keeps
+        // the year arithmetic in the query builder well inside DateTimeOffset.
+        [FromQuery][Range(1950, 2100)] int? year = null,
+        [FromQuery][Range(1, 100)] int? minScore = null)
     {
-        var result = await igdbService.GetGamesAsync(offset, PageSize, search, cancellationToken);
+        var browse = new GameBrowseQuery(sort ?? GameSortKeys.Rating, platform, genre, year, minScore);
+        var result = await igdbService.GetGamesAsync(offset, PageSize, search, browse, cancellationToken);
         return Ok(result);
     }
 

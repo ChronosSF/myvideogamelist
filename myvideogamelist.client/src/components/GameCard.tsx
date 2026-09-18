@@ -3,7 +3,7 @@ import { Link } from 'react-router';
 import type { GameDto } from '@/types/game';
 import { hasCriticScore, ratingPercent } from '@/lib/score';
 import { ScoreBadge } from '@/components/ScoreBadge';
-import { type ListId, LIST_IDS, LIST_NAMES } from '@/types/list';
+import { type ListId, LIST_IDS } from '@/types/list';
 import { useLists } from '@/hooks/useLists';
 import { useWishlist } from '@/hooks/useWishlist';
 import { useAuth } from '@/hooks/useAuth';
@@ -16,7 +16,7 @@ interface GameCardProps {
 export function GameCard({ game }: GameCardProps) {
     const releaseYear = game.releaseDate ? new Date(game.releaseDate).getFullYear() : null;
     const { user } = useAuth();
-    const { addToList, removeFromList, isInList, isPending } = useLists();
+    const { addToList, removeFromList, isInList, isPending, nameFor } = useLists();
     const wishlist = useWishlist();
     const [overlayOpen, setOverlayOpen] = useState(false);
 
@@ -136,9 +136,9 @@ export function GameCard({ game }: GameCardProps) {
                                         onClick={e => handleListToggle(e, listId)}
                                         disabled={pending}
                                         aria-pressed={active}
-                                        title={active ? `Remove from ${LIST_NAMES[listId]}` : `Add to ${LIST_NAMES[listId]}`}
+                                        title={active ? `Remove from ${nameFor(listId)}` : `Add to ${nameFor(listId)}`}
                                     >
-                                        <span>{LIST_NAMES[listId]}</span>
+                                        <span>{nameFor(listId)}</span>
                                         {active ? (
                                             <svg className="game-card-list-check" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
