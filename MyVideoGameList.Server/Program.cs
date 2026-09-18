@@ -14,6 +14,7 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddControllers();
 builder.Services.AddOpenApi();
 builder.Services.AddApiRateLimiting();
+builder.Services.AddProxyHeaders(builder.Configuration);
 builder.Services.AddMemoryCache();
 builder.Services.AddHttpClient("Igdb");
 
@@ -159,8 +160,16 @@ if (app.Environment.IsDevelopment())
     app.MapScalarApiReference();
 }
 
+// First, so that everything after it - the redirect below, the rate limiter's partition key,
+// every logged address - is about the caller rather than about whatever forwarded the request.
+// Off unless configured; see the ForwardedHeaders section in appsettings.json.
+app.UseProxyHeaders();
+
 // Only redirect browser traffic. The React Router SSR server calls this API over
 // plain HTTP from the same machine, and a 307 to HTTPS would fail on the dev cert.
+//
+// A TLS-terminating load balancer forwards plain HTTP too, so deployed behind one this
+// redirects every request into a loop unless the forwarded scheme above is being honoured.
 if (!app.Environment.IsDevelopment())
 {
     app.UseHttpsRedirection();
