@@ -1,6 +1,7 @@
 import { useEffect, useReducer, useState } from 'react';
 import type { GameDto } from '@/types/game';
 import { useAuth } from '@/hooks/useAuth';
+import { apiFetch } from '@/lib/api';
 
 /**
  * One game on a per-user axis — the wishlist or the favourites — and when it joined.
@@ -361,9 +362,8 @@ export function useGameAxis({ endpoint, loadFailed, loadUnreachable, mutationFai
         dispatch({ type: 'PREPEND_ITEM', session, item: { game, addedAt: new Date().toISOString() } });
 
         try {
-            const res = await fetch(`${endpoint}/${game.id}`, {
+            const res = await apiFetch(`${endpoint}/${game.id}`, {
                 method: 'PUT',
-                credentials: 'include',
             });
 
             if (res.ok) {
@@ -396,9 +396,8 @@ export function useGameAxis({ endpoint, loadFailed, loadUnreachable, mutationFai
         dispatch({ type: 'DROP_ITEM', session, gameId });
 
         try {
-            const res = await fetch(`${endpoint}/${gameId}`, {
+            const res = await apiFetch(`${endpoint}/${gameId}`, {
                 method: 'DELETE',
-                credentials: 'include',
             });
 
             // 404 means it was not on the axis, which is the state the caller asked for.

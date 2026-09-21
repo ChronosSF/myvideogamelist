@@ -1,8 +1,10 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using MyVideoGameList.Server.DTOs;
 using MyVideoGameList.Server.Models;
+using MyVideoGameList.Server.Security;
 using MyVideoGameList.Server.Services;
 
 namespace MyVideoGameList.Server.Controllers;
@@ -15,6 +17,7 @@ public class AuthController(
     IUserNameClaimService claims) : ControllerBase
 {
     [HttpPost("register")]
+    [EnableRateLimiting(RateLimiting.AuthWrites)]
     public async Task<ActionResult<UserProfileDto>> Register([FromBody] RegisterDto dto)
     {
         // The shape of the username has already been checked by [UserName]; what is left is
@@ -57,6 +60,7 @@ public class AuthController(
     /// </para>
     /// </remarks>
     [HttpPost("login")]
+    [EnableRateLimiting(RateLimiting.AuthWrites)]
     public async Task<ActionResult<UserProfileDto>> Login([FromBody] LoginDto dto)
     {
         var user = await userManager.FindByEmailAsync(dto.Email)
@@ -67,8 +71,10 @@ public class AuthController(
         if (user is null)
             return Unauthorized(new { message = "Invalid email, username or password." });
 
+        // Counting failures is what makes the lockout configured in Program.cs happen at all.
+        // A lockout answers exactly as a wrong password does, for the reason recorded there.
         var result = await signInManager.PasswordSignInAsync(
-            user, dto.Password, dto.RememberMe, lockoutOnFailure: false);
+            user, dto.Password, dto.RememberMe, lockoutOnFailure: true);
 
         if (!result.Succeeded)
             return Unauthorized(new { message = "Invalid email, username or password." });

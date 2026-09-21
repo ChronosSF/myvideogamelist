@@ -1,0 +1,128 @@
+using System.Threading.RateLimiting;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
+
+namespace MyVideoGameList.Server.Security;
+
+/// <summary>
+/// The API's request rate limits.
+/// </summary>
+/// <remarks>
+/// <para>
+/// Only the endpoints that accept a password are limited, and the limit partitions by client
+/// address. That is deliberately narrow: the front end renders on a server of its own
+/// (<c>docs/decisions/0003-two-process-deployment.md</c>), so every loader fetch reaches this API
+/// from that one process. A limit applied to the whole API and partitioned by address would put
+/// every visitor's server render into a single bucket and throttle the site as though it were one
+/// abusive client. Browsers call <c>/api/auth/login</c> and <c>/api/auth/register</c> directly and
+/// nothing else does, which is what makes the address a meaningful partition here and nowhere
+/// else yet. Volume control for the rest belongs at the edge, with the CDN in front of it.
+/// </para>
+/// <para>
+/// This is also the half of the brute-force defence that is allowed to speak. Identity's lockout
+/// counts failures per account and answers a locked account with the same 401 as a wrong password,
+/// because a distinct answer would reveal that the account exists. A limit keyed on the caller's
+/// address reveals nothing about who is registered, so it can say plainly that there have been too
+/// many attempts.
+/// </para>
+/// </remarks>
+public static class RateLimiting
+{
+    /// <summary>The policy guarding the endpoints that take a password.</summary>
+    public const string AuthWrites = "auth-writes";
+
+    /// <summary>
+    /// Attempts allowed per <see cref="Window"/>. Ten is well above what a person mistyping a
+    /// password reaches and far below what guessing needs, and it has to leave room for a
+    /// household or an office sharing one address.
+    /// </summary>
+    private const int PermitLimit = 10;
+
+    private static readonly TimeSpan Window = TimeSpan.FromMinutes(5);
+
+    public static IServiceCollection AddApiRateLimiting(this IServiceCollection services)
+    {
+        services.AddRateLimiter(options =>
+        {
+            options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+
+            options.AddPolicy(AuthWrites, context => RateLimitPartition.GetSlidingWindowLimiter(
+                PartitionKey(context),
+                _ => new SlidingWindowRateLimiterOptions
+                {
+                    PermitLimit = PermitLimit,
+                    Window = Window,
+
+                    // The window slides in one-minute steps, so the budget refills gradually
+                    // rather than the whole allowance arriving at once. A fixed window was
+                    // measured against this: it hands back a Retry-After, but the figure is the
+                    // whole window rather than the time left, so the promise it makes is wrong
+                    // for every caller but the one who arrived at the boundary - and it lets
+                    // twice the budget through across one.
+                    SegmentsPerWindow = 5,
+
+                    // Refuse rather than queue. A caller over the limit wants an answer, and a
+                    // held-open request is a resource an attacker would be delighted to spend.
+                    QueueLimit = 0
+                }));
+
+            options.OnRejected = (context, _) => WriteTooManyRequests(
+                context.HttpContext,
+                context.Lease.TryGetMetadata(MetadataName.RetryAfter, out var retryAfter)
+                    ? retryAfter
+                    : null);
+        });
+
+        return services;
+    }
+
+    /// <summary>
+    /// The client address, or a single shared bucket when there is none. A request with no remote
+    /// address is not normal traffic; putting them together means such requests limit each other
+    /// rather than being exempt.
+    /// </summary>
+    private static string PartitionKey(HttpContext context) =>
+        context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+
+    /// <summary>
+    /// Answers in the same shape as every other error the API produces, so the client's existing
+    /// reader finds a message to show rather than falling back to "login failed" — which is the
+    /// one thing this response must not be mistaken for.
+    /// </summary>
+    /// <remarks>
+    /// Written through <see cref="IProblemDetailsService"/> rather than serialised here, so that
+    /// the customisation registered in <c>Program.cs</c> applies to this response as it does to
+    /// every other: review on #89 caught that the hand-written version was the one error in the
+    /// API carrying no <c>traceId</c>, which is exactly the response somebody is most likely to
+    /// report.
+    /// </remarks>
+    internal static async ValueTask WriteTooManyRequests(HttpContext context, TimeSpan? retryAfter)
+    {
+        context.Response.StatusCode = StatusCodes.Status429TooManyRequests;
+
+        // Vague on purpose: the sliding window above reports no RetryAfter metadata - measured,
+        // not assumed - and there is no honest number to give. The branch below is what a limiter
+        // that does report one would take.
+        var detail = "Too many attempts from this device. Wait a few minutes and try again.";
+
+        if (retryAfter is { } wait)
+        {
+            var seconds = (int)Math.Ceiling(wait.TotalSeconds);
+            context.Response.Headers.RetryAfter = seconds.ToString();
+            detail = $"Too many attempts from this device. Try again in {seconds} seconds.";
+        }
+
+        var problemDetails = context.RequestServices.GetRequiredService<IProblemDetailsService>();
+
+        await problemDetails.TryWriteAsync(new ProblemDetailsContext
+        {
+            HttpContext = context,
+            ProblemDetails = new ProblemDetails
+            {
+                Status = StatusCodes.Status429TooManyRequests,
+                Title = "Too many requests",
+                Detail = detail
+            }
+        });
+    }
+}
