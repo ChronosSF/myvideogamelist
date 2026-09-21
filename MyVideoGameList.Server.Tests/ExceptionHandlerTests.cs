@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using MyVideoGameList.Server.Errors;
 using NSubstitute;
 using Polly.CircuitBreaker;
+using Polly.RateLimiting;
 using Polly.Timeout;
 
 namespace MyVideoGameList.Server.Tests;
@@ -18,6 +19,9 @@ public class ExceptionHandlerTests
 
     private UpstreamFailureHandler Upstream() =>
         new(problemDetails, NullLogger<UpstreamFailureHandler>.Instance);
+
+    private UpstreamBusyHandler Busy() =>
+        new(problemDetails, NullLogger<UpstreamBusyHandler>.Instance);
 
     public ExceptionHandlerTests()
     {
@@ -56,6 +60,47 @@ public class ExceptionHandlerTests
         // here: nothing about retrying it would help.
         Assert.False(handled);
         await problemDetails.DidNotReceive().TryWriteAsync(Arg.Any<ProblemDetailsContext>());
+    }
+
+    [Fact]
+    public async Task TryHandle_WhenOurOwnThrottleRefused_Answers503()
+    {
+        // The queue in front of IGDB filled up. That is this app protecting a third party's limit
+        // under load, not a fault in either - and not the caller's doing, which is why it is not a
+        // 429.
+        var context = new DefaultHttpContext();
+
+        var handled = await Busy()
+            .TryHandleAsync(context, new RateLimiterRejectedException(), CancellationToken.None);
+
+        Assert.True(handled);
+        Assert.Equal(StatusCodes.Status503ServiceUnavailable, context.Response.StatusCode);
+    }
+
+    [Fact]
+    public async Task TryHandle_WhenTheThrottleSaysHowLong_PassesItOn()
+    {
+        var context = new DefaultHttpContext();
+
+        await Busy().TryHandleAsync(
+            context,
+            new RateLimiterRejectedException(TimeSpan.FromSeconds(2.5)),
+            CancellationToken.None);
+
+        Assert.Equal("3", context.Response.Headers.RetryAfter);
+    }
+
+    [Fact]
+    public async Task TryHandle_TheUpstreamHandler_DeclinesOurOwnThrottle()
+    {
+        // The two must not overlap: a full queue is a 503, and saying 502 would blame IGDB for
+        // something it was never asked.
+        var context = new DefaultHttpContext();
+
+        var handled = await Upstream()
+            .TryHandleAsync(context, new RateLimiterRejectedException(), CancellationToken.None);
+
+        Assert.False(handled);
     }
 
     [Fact]

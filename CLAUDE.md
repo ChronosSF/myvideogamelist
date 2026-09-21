@@ -211,10 +211,12 @@ ROADMAP.md                      Forward-looking plan
   attach with `OnStarting` rather than on the way in, because `UseExceptionHandler` clears the
   response — headers included — before writing a 500 or a 502.
 
-- **A third party's failure is a 502, ours is a 500, and a reader who left is a 499.** IGDB calls go
-  through a resilience pipeline: paced at four a second *per process*, retried twice, and broken for
-  fifteen seconds once half a sample fails, so during an outage calls fail immediately with no HTTP
-  request at all. Every error body is a `ProblemDetails` with a `traceId`; the exception itself is
+- **A third party's failure is a 502, our own throttle is a 503, ours is a 500, and a reader who
+  left is a 499.** IGDB calls go through a resilience pipeline — retry outermost, then the breaker,
+  then the four-a-second limiter, then a per-attempt timeout, with a total timeout over all of it.
+  That order is load-bearing: with the limiter outside the retry it would pace *operations*, and
+  three attempts would share one permit. Every error body is a `ProblemDetails` with a `traceId`,
+  which means writing it through `IProblemDetailsService` and never by hand; the exception itself is
   included in Development only. `/readyz` still answers 200 while IGDB is down, deliberately. See
   `docs/decisions/0034-*`.
 

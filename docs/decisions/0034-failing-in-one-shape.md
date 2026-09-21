@@ -62,7 +62,17 @@ framework's 500, which is the honest answer to a bug here: retrying it would not
 The circuit breaker makes this the common case rather than a rare one. Once it opens, every request
 fails immediately with no HTTP call at all, which is the point.
 
-### 3. A reader who navigates away is not a server error
+### 3. Our own throttle is a 503
+
+Past the limiter's sixty-four-deep queue the call is refused, and that refusal used to leave as a
+500 — an application fault, which it is not. It is this app protecting IGDB's documented limit
+under a load spike, so it answers **503** with a sentence that says browsing is busy and the
+reader's own data is unaffected, and passes on `Retry-After` when the limiter supplies one.
+
+503 rather than 429, which the review raising this offered as the alternative: a 429 tells callers
+*they* asked too often, and they did not. The queue they are behind is everybody's.
+
+### 4. A reader who navigates away is not a server error
 
 A cancellation raised while `RequestAborted` is cancelled is swallowed with **499** and no body —
 there is nobody to write one to. Left as a 500 it would be logged as a server error and would fire
@@ -72,7 +82,7 @@ A `TaskCanceledException` with the request still live is the opposite case — a
 of the call — and falls through to the 502 above. Treating it as a disconnect would hide a real
 upstream failure behind a status nobody alarms on.
 
-### 4. One shape for every error body
+### 5. One shape for every error body
 
 `ProblemDetails` everywhere, carrying `traceId` so a user's report can be matched to a log line.
 The exception itself is included **in Development only**, which is what the raw 500 was worth

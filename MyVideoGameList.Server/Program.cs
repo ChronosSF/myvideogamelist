@@ -17,9 +17,9 @@ builder.Services.AddOpenApi();
 builder.Services.AddApiRateLimiting();
 
 // One machine-readable shape for every failure, instead of a raw 500 with an HTML body in
-// Development and an empty one everywhere else. The two handlers run in the order they are
-// registered and each declines what is not theirs: a reader who navigated away, and a third
-// party that did not answer.
+// Development and an empty one everywhere else. The handlers run in the order they are registered
+// and each declines what is not theirs: a reader who navigated away, our own throttle refusing a
+// call under load, and a third party that did not answer.
 builder.Services.AddProblemDetails(options => options.CustomizeProblemDetails = context =>
 {
     // Correlating a user's report with a log line needs an identifier in both. This is the
@@ -35,6 +35,7 @@ builder.Services.AddProblemDetails(options => options.CustomizeProblemDetails = 
     }
 });
 builder.Services.AddExceptionHandler<ClientDisconnectHandler>();
+builder.Services.AddExceptionHandler<UpstreamBusyHandler>();
 builder.Services.AddExceptionHandler<UpstreamFailureHandler>();
 builder.Services.AddProxyHeaders(builder.Configuration);
 
