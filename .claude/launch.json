@@ -1,0 +1,44 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "api",
+      "runtimeExecutable": "dotnet",
+      "runtimeArgs": [
+        "run",
+        "--project",
+        "MyVideoGameList.Server",
+        "--launch-profile",
+        "http"
+      ],
+      "port": 5039
+    },
+    {
+      "name": "client",
+      "url": "https://localhost:58546",
+      "port": 58546
+    },
+    {
+      "name": "client-dev",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "--prefix",
+        "myvideogamelist.client",
+        "run",
+        "dev"
+      ],
+      "port": 58546,
+      "url": "https://localhost:58546"
+    },
+    {
+      "name": "client-dev-as-production",
+      "runtimeExecutable": "cmd",
+      "runtimeArgs": [
+        "/c",
+        "set SITE_URL=https://myvideogamelist.net&& set SITE_INDEXABLE=true&& npm --prefix myvideogamelist.client run dev"
+      ],
+      "port": 58546,
+      "url": "https://localhost:58546"
+    }
+  ]
+}

@@ -42,7 +42,15 @@ component plus optional `loader`, `meta`, `links`, `headers` and `ErrorBoundary`
 - Throw a `Response` from a loader for not-found and upstream failures. The root
   `ErrorBoundary` renders it and the correct HTTP status reaches crawlers — a soft 404 that
   returns 200 is worse than useless for SEO.
-- Give every indexable route a `meta` export with title, description and Open Graph tags.
+- Give every indexable route a `meta` export that returns `pageMeta(...)` from `@/lib/seo` — it is
+  the whole set (title, description, canonical URL, Open Graph, the card), and a leaf's `meta`
+  replaces the root's rather than merging with it, so a hand-written list states half of them. Build
+  its `path` from loader data, never from the request, and return `site: siteConfig()` from the
+  loader: `meta` also runs in the browser, where the environment does not exist. A per-user route
+  adds `NOINDEX` instead, and a `noindex` page gets no canonical URL. See `docs/decisions/0036-*`.
+- A resource route (`src/resources/`) returns its own `Response` and never reaches
+  `entry.server.tsx`. Send it through `resourceResponse`, which adds what that file would have, and
+  state its `Cache-Control` like any other route.
 - Route types come from `react-router typegen`; import them as `./+types/<RouteName>`.
 
 ## Talking to the API

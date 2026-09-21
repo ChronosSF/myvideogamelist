@@ -10,6 +10,7 @@ import type { PlatformDto } from '@/types/game';
 import { sortEntries } from '@/lib/listSort';
 import './ListsPage.css';
 import { PRIVATE_NO_STORE } from '@/lib/cache';
+import { NOINDEX } from '@/lib/seo';
 
 /**
  * This route's whole content is the signed-in user's lists. Stated explicitly rather than left to inherit the root default, so that changing the
@@ -26,6 +27,8 @@ export function meta() {
             name: 'description',
             content: 'Your games across Backlog, Playing, On Hold, Finished and Dropped.',
         },
+        // What a crawler is served here is the signed-out shell, which is a page about nothing.
+        NOINDEX,
     ];
 }
 

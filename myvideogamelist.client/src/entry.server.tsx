@@ -8,14 +8,15 @@ import type { RenderToPipeableStreamOptions } from 'react-dom/server';
 import { renderToPipeableStream } from 'react-dom/server';
 
 import { applySecurityHeaders } from '@/lib/securityHeaders';
+import { applyIndexingHeaders } from '@/lib/seo';
 
 /**
  * The server entry, which React Router generates unless the app provides one.
  *
  * It is owned here for one reason: it is the only place every document response passes through.
  * A route's `headers` export is bypassed by a thrown `Response`, so the 404s and the 502s — the
- * responses most worth being careful with — would go out bare. Everything below except the
- * `applySecurityHeaders` call is `react-router reveal`'s output verbatim, reformatted to this
+ * responses most worth being careful with — would go out bare. Everything below except the two
+ * `apply…Headers` calls is `react-router reveal`'s output verbatim, reformatted to this
  * codebase's style: re-run that command on a React Router major and diff it against this file.
  */
 
@@ -33,6 +34,11 @@ export default function handleRequest(
     // Before either response is built below, so a HEAD, a streamed page and an error boundary
     // all carry them.
     applySecurityHeaders(responseHeaders);
+
+    // `noindex` on everything, from any deployment that has not been told it is the one to index.
+    // Here for the reason the security headers are: a staging site's 404s are as indexable as its
+    // pages, and no route's `meta` reaches those.
+    applyIndexingHeaders(responseHeaders);
 
     // https://httpwg.org/specs/rfc9110.html#HEAD
     if (request.method.toUpperCase() === 'HEAD') {

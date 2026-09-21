@@ -9,6 +9,7 @@ import { AccountIdentityCard } from '@/components/AccountIdentityCard';
 import { AccountDataCard } from '@/components/AccountDataCard';
 import { ListNamesCard } from '@/components/ListNamesCard';
 import { PRIVATE_NO_STORE } from '@/lib/cache';
+import { NOINDEX } from '@/lib/seo';
 import './UserPage.css';
 
 /**
@@ -23,6 +24,8 @@ export function meta() {
     return [
         { title: 'My profile - MyVideoGameList' },
         { name: 'description', content: 'Manage your account settings and preferences.' },
+        // What a crawler is served here is the signed-out shell, which is a page about nothing.
+        NOINDEX,
     ];
 }
 

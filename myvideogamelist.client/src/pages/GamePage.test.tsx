@@ -1,12 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
 import { createRoutesStub } from 'react-router';
-import { GamePage } from '@/pages/GamePage';
+import { GamePage, meta } from '@/pages/GamePage';
 import type { AuthContextValue } from '@/contexts/AuthContext';
 import type { UseGameCommunityResult } from '@/hooks/useGameCommunity';
 import { MIN_MEMBER_SCORES } from '@/lib/score';
 import type { UserProfile } from '@/types/auth';
 import { game, userProfile } from '@/test/factories';
+import type { Route } from './+types/GamePage';
 
 /**
  * Auth, mocked rather than provided: the real provider fetches, and the page only reads `user` and
@@ -146,5 +147,47 @@ describe("GamePage hero's member score", () => {
         renderPage();
 
         expect(screen.queryByText(/^Member score:/)).not.toBeInTheDocument();
+    });
+});
+
+describe('GamePage meta', () => {
+    type Tag = Partial<Record<'title' | 'name' | 'property' | 'content' | 'rel' | 'href', string>>;
+
+    const SITE = { siteUrl: 'https://myvideogamelist.net', indexable: true };
+
+    const tagsFor = (overrides: Parameters<typeof game>[0]) =>
+        meta({ loaderData: { game: game({ id: 26226, title: 'Celeste', ...overrides }), site: SITE } } as unknown as Route.MetaArgs) as Tag[];
+
+    const content = (tags: Tag[], key: string) =>
+        tags.find(tag => tag.property === key || tag.name === key)?.content;
+
+    it('calls itself by its id, whatever address it was reached at', () => {
+        // `/games/026226` and `/games/26226?ref=x` both render this page. The canonical URL comes
+        // from the game the API answered with, so both say they are the same one.
+        const tags = tagsFor({});
+
+        expect(tags.find(tag => tag.rel === 'canonical')?.href).toBe('https://myvideogamelist.net/games/26226');
+        expect(content(tags, 'og:url')).toBe('https://myvideogamelist.net/games/26226');
+    });
+
+    it('shares key art on a large card when IGDB has any', () => {
+        const tags = tagsFor({ backgroundImageUrl: 'https://images.igdb.com/art.jpg', coverImageUrl: 'https://images.igdb.com/cover.jpg' });
+
+        expect(content(tags, 'og:image')).toBe('https://images.igdb.com/art.jpg');
+        expect(content(tags, 'twitter:card')).toBe('summary_large_image');
+    });
+
+    it('falls back to the cover on a small card, which is the crop a portrait survives', () => {
+        const tags = tagsFor({ backgroundImageUrl: null, coverImageUrl: 'https://images.igdb.com/cover.jpg' });
+
+        expect(content(tags, 'og:image')).toBe('https://images.igdb.com/cover.jpg');
+        expect(content(tags, 'twitter:card')).toBe('summary');
+    });
+
+    it('shares no image rather than a broken one when IGDB has neither', () => {
+        const tags = tagsFor({ backgroundImageUrl: null, coverImageUrl: null });
+
+        expect(content(tags, 'og:image')).toBeUndefined();
+        expect(content(tags, 'twitter:card')).toBe('summary');
     });
 });

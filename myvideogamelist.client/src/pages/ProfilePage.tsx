@@ -1,7 +1,8 @@
 import { Link, data } from 'react-router';
 import { apiUrl } from '@/lib/api';
 import { CACHE_NOT_FOUND, CACHE_PROFILE, PRIVATE_NO_STORE } from '@/lib/cache';
-import { lastPage, pageFrom } from '@/lib/paging';
+import { lastPage, pageFrom, pageSearch } from '@/lib/paging';
+import { type SiteConfig, NOINDEX, pageMeta, siteConfig } from '@/lib/seo';
 import { formatDate, formatHours, formatRate } from '@/lib/stats';
 import { MAX_SCORE } from '@/lib/score';
 import type { PublicFavourites, PublicProfile, PublicReviews } from '@/types/profile';
@@ -23,6 +24,8 @@ interface ProfilePageData {
     favourites: PublicFavourites | null;
     /** Which page of reviews this is. Everything above the reviews is the same on every one. */
     page: number;
+    /** For `meta`, which also runs in the browser and cannot read the environment there. */
+    site: SiteConfig;
 }
 
 /**
@@ -49,7 +52,7 @@ export function meta({ loaderData }: Route.MetaArgs) {
     // Undefined when the loader threw, in which case the error boundary supplies the page.
     if (!loaderData?.profile) return [{ title: 'Profile not found - MyVideoGameList' }];
 
-    const { profile, page } = loaderData;
+    const { profile, page, site } = loaderData;
     // Each page of reviews is its own URL, so each gets its own title: two pages indexed under one
     // title read as duplicates of each other.
     const title = page > 1
@@ -60,12 +63,26 @@ export function meta({ loaderData }: Route.MetaArgs) {
         + `${finished === 1 ? 'game' : 'games'} and is tracking ${profile.library.tracked} `
         + 'on MyVideoGameList.';
 
+    // Published, with nothing on it yet. A page of zeroes is not worth a place in an index, and it
+    // leaves by itself the moment its owner records anything. **`SitemapService.ListedProfiles` is
+    // the same test on the server**, and the two have to agree: a sitemap that lists a page marked
+    // `noindex` is reported as an error for every such page.
+    if (profile.library.recorded === 0 && profile.favourites === 0) {
+        return [{ title }, { name: 'description', content: description }, NOINDEX];
+    }
+
     return [
-        { title },
-        { name: 'description', content: description },
-        { property: 'og:title', content: title },
-        { property: 'og:description', content: description },
-        { property: 'og:type', content: 'profile' },
+        ...pageMeta({
+            site,
+            title,
+            description,
+            // The name as its owner capitalised it, which is what the API answers with whatever the
+            // URL said: the lookup ignores case, so `/u/ALICE` renders too, and this is what says
+            // the two are one page. Each page of reviews is a document of its own and says so.
+            path: `/u/${encodeURIComponent(profile.userName)}${pageSearch(page)}`,
+            type: 'profile',
+        }),
+        { property: 'profile:username', content: profile.userName },
     ];
 }
 
@@ -145,7 +162,7 @@ export async function loader({ params, request }: Route.LoaderArgs) {
     const degraded = reviews === null || noFavouritesResolved;
 
     return data<ProfilePageData>(
-        { profile, reviews, favourites, page },
+        { profile, reviews, favourites, page, site: siteConfig() },
         { headers: { 'Cache-Control': degraded ? PRIVATE_NO_STORE : CACHE_PROFILE } },
     );
 }

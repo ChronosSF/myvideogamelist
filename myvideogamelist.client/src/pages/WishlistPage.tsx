@@ -3,6 +3,7 @@ import { GameCard } from '@/components/GameCard';
 import { useWishlist } from '@/hooks/useWishlist';
 import { useAuth } from '@/hooks/useAuth';
 import { PRIVATE_NO_STORE } from '@/lib/cache';
+import { NOINDEX } from '@/lib/seo';
 
 /**
  * The wishlist is one user's data, so it is never cacheable. Declared here rather than inherited
@@ -16,6 +17,8 @@ export function meta() {
     return [
         { title: 'My wishlist - MyVideoGameList' },
         { name: 'description', content: 'Games you want, whatever list they are in.' },
+        // What a crawler is served here is the signed-out shell, which is a page about nothing.
+        NOINDEX,
     ];
 }
 

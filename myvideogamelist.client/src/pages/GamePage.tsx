@@ -14,6 +14,7 @@ import { GameRefRail } from '@/components/GameRefRail';
 import { MultiplayerSummary } from '@/components/MultiplayerSummary';
 import { ScreenshotGallery } from '@/components/ScreenshotGallery';
 import { formatCount } from '@/lib/format';
+import { pageMeta, siteConfig } from '@/lib/seo';
 import { hasCriticScore, hasMemberScore, ratingPercent } from '@/lib/score';
 import { ScoreBadge } from '@/components/ScoreBadge';
 import './GamePage.css';
@@ -62,7 +63,9 @@ export async function loader({ params }: Route.LoaderArgs) {
     if (response.status === 404) throw notFound();
     if (!response.ok) throw badGateway();
 
-    return { game: await response.json() as GameDto };
+    // `site` rides along because `meta` runs in the browser too, where the environment it is read
+    // from does not exist.
+    return { game: await response.json() as GameDto, site: siteConfig() };
 }
 
 /**
@@ -76,21 +79,24 @@ export function headers() {
 export function meta({ loaderData }: Route.MetaArgs) {
     if (!loaderData?.game) return [{ title: 'Game not found - MyVideoGameList' }];
 
-    const { game } = loaderData;
+    const { game, site } = loaderData;
     const year = game.releaseDate ? ` (${new Date(game.releaseDate).getFullYear()})` : '';
     const title = `${game.title}${year} - MyVideoGameList`;
     const description = game.description?.slice(0, 200)
         ?? `Track ${game.title} on MyVideoGameList.`;
 
-    return [
-        { title },
-        { name: 'description', content: description },
-        { property: 'og:type', content: 'video.game' },
-        { property: 'og:title', content: title },
-        { property: 'og:description', content: description },
-        ...(game.coverImageUrl ? [{ property: 'og:image', content: game.coverImageUrl }] : []),
-        { name: 'twitter:card', content: game.coverImageUrl ? 'summary_large_image' : 'summary' },
-    ];
+    // Key art where IGDB has any, because a large card is cropped to a wide rectangle and a
+    // portrait cover comes out of that as a strip across its middle. The cover still beats
+    // nothing, as the small square card it fits.
+    const image = game.backgroundImageUrl
+        ? { url: game.backgroundImageUrl, alt: `${game.title} key art`, wide: true }
+        : game.coverImageUrl
+            ? { url: game.coverImageUrl, alt: `${game.title} cover`, wide: false }
+            : null;
+
+    // The path is built from the id the API answered with, not from the URL: `/games/0012` and
+    // `/games/12?ref=x` both render this page, and both should say they are `/games/12`.
+    return pageMeta({ site, title, description, path: `/games/${game.id}`, image });
 }
 
 export function GamePage() {

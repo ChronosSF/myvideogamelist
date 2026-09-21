@@ -53,6 +53,7 @@ decision, write a new record and mark the old one superseded.
 | [0033](0033-what-the-api-refuses.md) | What the API refuses: guessing, volume, forged writes, and unattributed addresses | Implemented |
 | [0034](0034-failing-in-one-shape.md) | Failing in one shape: IGDB is retried and broken, and every error says so the same way | Implemented |
 | [0035](0035-a-local-copy-of-what-igdb-said.md) | A local copy of what IGDB said, so a library renders without them | Implemented |
+| [0036](0036-what-a-crawler-is-told.md) | What a crawler is told: `noindex` rather than `Disallow`, a sitemap from our own tables, and canonical URLs built from data | Implemented |
 
 **Status** — *Accepted*: decided, not yet built. *Implemented*: decided and in the code.
 *Superseded*: replaced by a later record.

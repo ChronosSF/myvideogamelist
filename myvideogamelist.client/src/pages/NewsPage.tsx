@@ -3,6 +3,7 @@ import { NewsCard } from '@/components/NewsCard';
 import { useAuth } from '@/hooks/useAuth';
 import { useTrackedNews } from '@/hooks/useTrackedNews';
 import { PRIVATE_NO_STORE } from '@/lib/cache';
+import { NOINDEX } from '@/lib/seo';
 
 /**
  * Which games the news is about says what somebody tracks, so the page is theirs alone and never
@@ -17,6 +18,8 @@ export function meta() {
     return [
         { title: 'News for your games - MyVideoGameList' },
         { name: 'description', content: 'Patch notes and announcements from Steam for the games you track.' },
+        // What a crawler is served here is the signed-out shell, which is a page about nothing.
+        NOINDEX,
     ];
 }
 

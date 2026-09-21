@@ -76,6 +76,7 @@ builder.Services.AddScoped<IReviewService, ReviewService>();
 builder.Services.AddScoped<IStatsService, StatsService>();
 builder.Services.AddScoped<IPublicProfileService, PublicProfileService>();
 builder.Services.AddScoped<IGameCommunityService, GameCommunityService>();
+builder.Services.AddScoped<ISitemapService, SitemapService>();
 builder.Services.AddScoped<IUserDataExporter, UserDataExporter>();
 builder.Services.AddScoped<IUserNameClaimService, UserNameClaimService>();
 builder.Services.AddScoped<ITrackedNewsService, TrackedNewsService>();

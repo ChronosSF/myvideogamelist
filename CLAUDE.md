@@ -63,7 +63,8 @@ myvideogamelist.client/
   src/entry.server.tsx          Owned, not generated. Where every document response gets its headers
   src/routes.ts                 Route table. `/u/:userName` is the one public per-person page
   src/pages/                    Route modules (default export + optional loader/meta)
-  src/lib/                      apiUrl(), useStoredNumberSet()
+  src/resources/                Resource routes: robots.txt and the sitemaps. A loader, no component
+  src/lib/                      apiUrl(), useStoredNumberSet(), pageMeta()
 docs/decisions/                 Architecture decision records
 docs/data-model-plan.md         Schema the roadmap implies, by table, with sequencing
 scripts/                        Dev-only tools. These print SQL to stdout and never open a
@@ -270,6 +271,21 @@ ROADMAP.md                      Forward-looking plan
   applies its own default TTL when the origin sends none. The root default is `private,
   no-store` so forgetting fails closed. Policies live together in `@/lib/cache`; see
   `docs/decisions/0013-*`.
+
+- **To keep something out of a search index, say `noindex` — never `Disallow` it.** A crawler
+  refused by robots.txt never requests the page, so it never sees the `noindex`, and the bare URL
+  can still be listed. So `robots.txt` disallows nothing, on purpose: a deployment is indexable only
+  with `SITE_URL` set *and* `SITE_INDEXABLE=true` on the front-end server, and any other sends
+  `X-Robots-Tag: noindex, nofollow` on every response; the per-user pages carry their own `noindex`;
+  and the API sends `X-Robots-Tag: noindex` so that `/api/` can stay crawlable — a crawler rendering
+  a game page has to be able to fetch the member reviews the page fetches. An indexable route
+  returns `pageMeta(...)` from `@/lib/seo` with a `path` **built from loader data, never from the
+  request** (`/u/ALICE` renders, and has to say it is `/u/alice`), and carries `site` in its loader
+  data because `meta` runs in the browser too. The sitemap reads `CachedGames` and public,
+  non-empty profiles and makes no IGDB call; the empty-profile test lives in both
+  `SitemapService.ListedProfiles` and `ProfilePage`'s `meta`, and they must agree. Resource routes
+  bypass `entry.server.tsx`, so they go out through `resourceResponse`. See
+  `docs/decisions/0036-*`.
 
 - **A degraded or error response must never be cacheable.** Caching a failure outlives the
   failure. Note two traps: a thrown `Response`'s headers are replaced by the boundary route's

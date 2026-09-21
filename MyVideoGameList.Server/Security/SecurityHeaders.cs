@@ -56,6 +56,13 @@ public sealed class SecurityHeadersMiddleware(RequestDelegate next)
         // and neither is universal on its own.
         headers.XFrameOptions = "DENY";
 
+        // JSON is not a page, and none of it belongs in a search result. This is here instead of
+        // a `Disallow: /api/` in robots.txt, and the difference matters: a crawler that renders a
+        // page fetches what the page fetches, so disallowing these URLs would hide a game's
+        // member reviews and completion times from the render it indexes. Fetching stays allowed;
+        // indexing the answer does not. See docs/decisions/0036-what-a-crawler-is-told.md.
+        headers["X-Robots-Tag"] = "noindex";
+
         if (!IsApiDocumentation(context.Request.Path))
             headers.ContentSecurityPolicy = ContentSecurityPolicy;
     }

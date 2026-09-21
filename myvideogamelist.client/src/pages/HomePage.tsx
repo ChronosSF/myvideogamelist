@@ -11,6 +11,7 @@ import { TrendingRail } from '@/components/TrendingRail';
 import { NewsCard } from '@/components/NewsCard';
 import { apiUrl } from '@/lib/api';
 import { CACHE_HOME, PRIVATE_NO_STORE } from '@/lib/cache';
+import { type SiteConfig, pageMeta, siteConfig } from '@/lib/seo';
 import type { UserProfile } from '@/types/auth';
 import type { HomeResponse } from '@/types/news';
 import type { Route } from './+types/HomePage';
@@ -27,15 +28,17 @@ export function headers({ loaderHeaders }: Route.HeadersArgs) {
     return { 'Cache-Control': loaderHeaders.get('Cache-Control') ?? CACHE_HOME };
 }
 
-export function meta() {
-    return [
-        { title: 'MyVideoGameList - Track every game you play' },
-        { name: 'description', content: 'Track the games you have played, build a backlog and wishlist, and see what is releasing next across every platform.' },
-        { property: 'og:title', content: 'MyVideoGameList - Track every game you play' },
-        { property: 'og:description', content: 'Track the games you have played, build a backlog and wishlist, and see what is releasing next across every platform.' },
-        { property: 'og:type', content: 'website' },
-    ];
+export function meta({ loaderData }: Route.MetaArgs) {
+    return pageMeta({
+        site: loaderData.site,
+        title: 'MyVideoGameList - Track every game you play',
+        description: 'Track the games you have played, build a backlog and wishlist, and see what is releasing next across every platform.',
+        path: '/',
+    });
 }
+
+/** The shared page's content, and the deployment's public address for `meta` to build URLs from. */
+type HomeData = HomeResponse & { site: SiteConfig };
 
 /**
  * One request for the whole shared page (ROADMAP §3.5).
@@ -45,17 +48,19 @@ export function meta() {
  * opposite of the game route, where an upstream failure genuinely means there is no page.
  */
 export async function loader() {
+    const site = siteConfig();
+
     // A degraded render must not be cached, so it carries its own no-store header. `data()` is
     // how a loader attaches headers to an otherwise plain return value.
-    const degraded = () => data<HomeResponse>(
-        { spotlight: null, popular: [], news: [] },
+    const degraded = () => data<HomeData>(
+        { spotlight: null, popular: [], news: [], site },
         { headers: { 'Cache-Control': PRIVATE_NO_STORE } });
 
     try {
         const response = await fetch(apiUrl('/api/home'));
         if (!response.ok) return degraded();
 
-        return (await response.json()) as HomeResponse;
+        return { ...(await response.json()) as HomeResponse, site } satisfies HomeData;
     } catch {
         // fetch rejects outright when the API is unreachable, rather than returning !ok.
         return degraded();

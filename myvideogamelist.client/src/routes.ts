@@ -14,6 +14,14 @@ export default [
     // reserved list in `UserNamePolicy` for why that is belt as well as braces.
     route('u/:userName', 'pages/ProfilePage.tsx'),
 
+    // What a crawler reads rather than a person. Resource routes: a loader and no component, so
+    // each returns its own Response and none passes through `entry.server.tsx`. Routes rather than
+    // files in `public/`, because what they say depends on the deployment answering — see
+    // `docs/decisions/0036-*`.
+    route('robots.txt', 'resources/robotsTxt.ts'),
+    route('sitemap.xml', 'resources/sitemapIndex.ts'),
+    route('sitemaps/:file', 'resources/sitemapFile.ts'),
+
     // Anything else renders the root ErrorBoundary as a 404.
     route('*', 'pages/NotFoundPage.tsx'),
 ] satisfies RouteConfig;

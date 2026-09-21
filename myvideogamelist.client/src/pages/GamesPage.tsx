@@ -5,6 +5,7 @@ import { GameBrowseFilters } from '@/components/GameBrowseFilters';
 import type { GameDto, GenreDto, PagedGamesResponse, PlatformDto } from '@/types/game';
 import { apiUrl } from '@/lib/api';
 import { CACHE_GAMES_LIST, PRIVATE_NO_STORE } from '@/lib/cache';
+import { pageMeta, siteConfig } from '@/lib/seo';
 import {
     type GameBrowse,
     browseFrom,
@@ -86,6 +87,8 @@ export async function loader({ request }: Route.LoaderArgs) {
             // The server's year, so the year select renders the same options on both sides of
             // hydration even across midnight on New Year's Eve.
             currentYear: new Date().getUTCFullYear(),
+            // For `meta`, which also runs in the browser and cannot read the environment there.
+            site: siteConfig(),
         },
         {
             headers: {
@@ -109,6 +112,9 @@ export function meta({ loaderData, location }: Route.MetaArgs) {
     // Decided on the query string itself, not on the browse parsed from it. The parse drops whatever
     // it cannot use, so `?sort=bogus`, `?platform=0` and a spelled-out `?sort=rating` all read as the
     // plain catalogue — and each would be indexed as one more copy of it.
+    //
+    // No canonical URL beside it. Pointing a `noindex` page at the catalogue would say both "this is
+    // not worth indexing" and "this is a copy of that", and a crawler given both may believe either.
     if (location.search !== '') {
         return [
             { title: search ? `${search} - Browse games - MyVideoGameList` : 'Browse games - MyVideoGameList' },
@@ -116,10 +122,12 @@ export function meta({ loaderData, location }: Route.MetaArgs) {
         ];
     }
 
-    return [
-        { title: 'Browse games - MyVideoGameList' },
-        { name: 'description', content: 'Search and browse games across PC, PlayStation, Xbox and Nintendo, and add them to your lists.' },
-    ];
+    return pageMeta({
+        site: loaderData.site,
+        title: 'Browse games - MyVideoGameList',
+        description: 'Search and browse games across PC, PlayStation, Xbox and Nintendo, and add them to your lists.',
+        path: '/games',
+    });
 }
 
 export function GamesPage({ loaderData }: Route.ComponentProps) {

@@ -8,11 +8,16 @@ import type { GenreDto, PlatformDto } from '@/types/game';
 import { platform } from '@/test/factories';
 import type { Route } from './+types/GamesPage';
 
-type Tag = Partial<Record<'title' | 'name' | 'content', string>>;
+type Tag = Partial<Record<'title' | 'name' | 'content' | 'rel' | 'href', string>>;
+
+const SITE = { siteUrl: 'https://myvideogamelist.net', indexable: true };
 
 /** The tags for a URL whose query string is `query`, with the browse the loader parsed out of it. */
 function tagsFor(query: string, browse: Partial<GameBrowse> = {}): Tag[] {
-    const args = { loaderData: { browse: { ...EMPTY_BROWSE, ...browse } }, location: { search: query } };
+    const args = {
+        loaderData: { browse: { ...EMPTY_BROWSE, ...browse }, site: SITE },
+        location: { search: query },
+    };
     return meta(args as unknown as Route.MetaArgs) as Tag[];
 }
 
@@ -35,6 +40,15 @@ describe('GamesPage meta', () => {
         for (const query of ['?sort=bogus', '?platform=0', '?sort=rating']) {
             expect(noindex(tagsFor(query)), query).toBe(true);
         }
+    });
+
+    it('gives the catalogue a canonical URL, and a listing kept out of the index none', () => {
+        // `noindex` beside a canonical URL pointing elsewhere says two different things about the
+        // page, and a crawler given both may act on either.
+        const canonical = (tags: Tag[]) => tags.find(tag => tag.rel === 'canonical')?.href;
+
+        expect(canonical(tagsFor(''))).toBe('https://myvideogamelist.net/games');
+        expect(canonical(tagsFor('?sort=newest', { sort: 'newest' }))).toBeUndefined();
     });
 
     it('names the search in the title', () => {

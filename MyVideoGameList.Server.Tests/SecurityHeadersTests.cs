@@ -32,6 +32,19 @@ public class SecurityHeadersTests
     }
 
     /// <summary>
+    /// robots.txt leaves <c>/api/</c> crawlable so that a rendering crawler can fetch what a page
+    /// fetches. This header is the other half of that decision: without it the JSON itself is
+    /// indexable, and with a <c>Disallow</c> instead the rendered page loses its member reviews.
+    /// </summary>
+    [Fact]
+    public void Apply_OnAnApiResponse_KeepsTheAnswerOutOfSearchResults()
+    {
+        var headers = HeadersFor("/api/games/1/reviews");
+
+        Assert.Equal("noindex", headers["X-Robots-Tag"]);
+    }
+
+    /// <summary>
     /// The API reference is the one document this process serves, and "load nothing" would
     /// render it blank. It is mapped in Development only, which is why the exemption is narrow
     /// rather than conditional on the environment.

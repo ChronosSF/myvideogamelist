@@ -89,3 +89,20 @@ export const CACHE_PROFILE = sharedCache(300, 3600);
  * origin every time, but not so long that a newly valid URL stays 404 at the edge.
  */
 export const CACHE_NOT_FOUND = sharedCache(60, 300);
+
+/**
+ * robots.txt. It is a function of the deployment's configuration and nothing else, so it changes
+ * only with a deploy — and an hour is how long a changed one may take to be believed.
+ */
+export const CACHE_ROBOTS = sharedCache(3600, 86_400);
+
+/**
+ * The sitemap index, the static pages and the game files. A game page's own window, because a
+ * crawler learning of a new game an hour late loses nothing.
+ *
+ * **The profile files do not use this.** They use `CACHE_PROFILE`, so that a sitemap never goes on
+ * naming a profile for longer than the profile's own page could have been served — a profile
+ * switched back to private is a withdrawal of consent, and ROADMAP D14 lists the file beside the
+ * page for that reason.
+ */
+export const CACHE_SITEMAP = sharedCache(3600, 86_400);
