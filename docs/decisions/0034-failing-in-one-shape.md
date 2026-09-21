@@ -33,7 +33,7 @@ described the identical situation — a third party that did not answer — as a
 | Total timeout | 30s | The ceiling on everything below, retries and queueing included |
 | Retry | 2 attempts, 1s base, exponential with jitter | The caller is a page somebody is watching. This is for riding out a dropped connection or one 429, not persistence |
 | Circuit breaker | 50% of a 30s sample, 8 minimum, 15s break | Retrying into an outage turns one failure into three, and each holds a request open here |
-| Rate limiter | 4 per second, quarter-second segments, queue 64 | IGDB's documented ceiling. A burst queues rather than failing; past the queue's depth it is refused, which §3 turns into a 503 |
+| Rate limiter | Token bucket: four tokens, one back every 250ms, queue 64 | IGDB's documented ceiling. A burst queues rather than failing; past the queue's depth it is refused, which §3 turns into a 503 |
 | Attempt timeout | 10s | A page that is going to fail should fail while the reader is still there. Innermost, so waiting for a permit is not charged to it |
 
 **The order is the design, and the obvious arrangement is wrong.** The first version of this record
@@ -47,6 +47,18 @@ its own. **The breaker stays above the limiter** deliberately, which the review 
 below it, a call that an open circuit is going to refuse would first consume a permit and make real
 calls queue behind a failure already decided. The cost of the new order is latency — three attempts
 may each wait for a permit — so the total timeout bounds the operation from the outside.
+
+**The limiter is a token bucket rather than a window**, which is the second thing review caught
+here, and measurement settled it. A sliding window of four a second over four segments hands out
+all four permits at once and returns them together a second later: acquisitions landed at 0, 0, 0,
+0, 1003, 1003, 1003, 1003ms — an average of four a second made of bursts, not the pacing the code
+claimed. A bucket of four tokens gaining one every 250ms measured 0, 0, 0, 0, 264, 512, 760ms from
+idle and ~247ms apart under sustained load.
+
+A capacity of one, the strict pacing the review suggested, was measured too and rejected: it
+charges 250ms to the second and third call of every cold games page and home composite, which are
+the pages that have to be fast for a crawler, and it buys nothing — four calls inside one second is
+what a limit of four a second allows.
 
 **Retrying a POST is safe here**, which is worth stating because it usually is not. IGDB's query
 protocol is a POST with the query in the body, and this app makes no IGDB writes at all, so a

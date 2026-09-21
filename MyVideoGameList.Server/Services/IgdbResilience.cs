@@ -79,18 +79,29 @@ public static class IgdbResilience
                 BreakDuration = TimeSpan.FromSeconds(15)
             })
 
-            // Four a second in quarter-second steps, so the upcoming-releases loop - ten pages one
-            // after another - is paced rather than spending its whole allowance in the first
-            // instant. A burst waits its turn instead of failing; past the queue's depth it is
-            // refused, and Errors/UpstreamBusyHandler.cs turns that into a 503 rather than letting
-            // our own throttle look like an application fault.
-            .AddRateLimiter(new SlidingWindowRateLimiter(new SlidingWindowRateLimiterOptions
+            // A token bucket rather than a window, and the difference is the whole point: a
+            // sliding window hands out its four permits at once and then returns them together a
+            // second later, which is an average of four a second made of bursts. Measured, with
+            // four a second over four segments: 0, 0, 0, 0, 1003, 1003, 1003, 1003ms.
+            //
+            // This bucket holds four tokens and gains one every 250ms, so an idle app still serves
+            // a page that fans out without waiting - 0, 0, 0, 0, then 264, 512, 760ms - while
+            // sustained load settles into one call every ~247ms. Capacity of one would pace
+            // strictly, and was measured too, but it charges 250ms to the second and third call of
+            // every cold games page and home composite, which are the pages that have to be fast
+            // for a crawler. Nothing is gained: four in one second is what four a second allows.
+            //
+            // A burst waits its turn instead of failing; past the queue's depth it is refused, and
+            // Errors/UpstreamBusyHandler.cs turns that into a 503 rather than letting our own
+            // throttle look like an application fault.
+            .AddRateLimiter(new TokenBucketRateLimiter(new TokenBucketRateLimiterOptions
             {
-                PermitLimit = RequestsPerSecond,
-                Window = TimeSpan.FromSeconds(1),
-                SegmentsPerWindow = 4,
+                TokenLimit = RequestsPerSecond,
+                TokensPerPeriod = 1,
+                ReplenishmentPeriod = TimeSpan.FromSeconds(1.0 / RequestsPerSecond),
                 QueueLimit = 64,
-                QueueProcessingOrder = QueueProcessingOrder.OldestFirst
+                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                AutoReplenishment = true
             }))
 
             // Per attempt, innermost, so waiting for a permit is not charged to it. Well inside the
