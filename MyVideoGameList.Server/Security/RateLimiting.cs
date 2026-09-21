@@ -66,7 +66,11 @@ public static class RateLimiting
                     QueueLimit = 0
                 }));
 
-            options.OnRejected = WriteProblemDetails;
+            options.OnRejected = (context, _) => WriteTooManyRequests(
+                context.HttpContext,
+                context.Lease.TryGetMetadata(MetadataName.RetryAfter, out var retryAfter)
+                    ? retryAfter
+                    : null);
         });
 
         return services;
@@ -85,34 +89,40 @@ public static class RateLimiting
     /// reader finds a message to show rather than falling back to "login failed" — which is the
     /// one thing this response must not be mistaken for.
     /// </summary>
-    private static async ValueTask WriteProblemDetails(
-        OnRejectedContext context,
-        CancellationToken cancellationToken)
+    /// <remarks>
+    /// Written through <see cref="IProblemDetailsService"/> rather than serialised here, so that
+    /// the customisation registered in <c>Program.cs</c> applies to this response as it does to
+    /// every other: review on #89 caught that the hand-written version was the one error in the
+    /// API carrying no <c>traceId</c>, which is exactly the response somebody is most likely to
+    /// report.
+    /// </remarks>
+    internal static async ValueTask WriteTooManyRequests(HttpContext context, TimeSpan? retryAfter)
     {
-        var response = context.HttpContext.Response;
-        response.StatusCode = StatusCodes.Status429TooManyRequests;
+        context.Response.StatusCode = StatusCodes.Status429TooManyRequests;
 
         // Vague on purpose: the sliding window above reports no RetryAfter metadata - measured,
         // not assumed - and there is no honest number to give. The branch below is what a limiter
         // that does report one would take.
         var detail = "Too many attempts from this device. Wait a few minutes and try again.";
 
-        if (context.Lease.TryGetMetadata(MetadataName.RetryAfter, out var retryAfter))
+        if (retryAfter is { } wait)
         {
-            var seconds = (int)Math.Ceiling(retryAfter.TotalSeconds);
-            response.Headers.RetryAfter = seconds.ToString();
+            var seconds = (int)Math.Ceiling(wait.TotalSeconds);
+            context.Response.Headers.RetryAfter = seconds.ToString();
             detail = $"Too many attempts from this device. Try again in {seconds} seconds.";
         }
 
-        await response.WriteAsJsonAsync(
-            new ProblemDetails
+        var problemDetails = context.RequestServices.GetRequiredService<IProblemDetailsService>();
+
+        await problemDetails.TryWriteAsync(new ProblemDetailsContext
+        {
+            HttpContext = context,
+            ProblemDetails = new ProblemDetails
             {
                 Status = StatusCodes.Status429TooManyRequests,
                 Title = "Too many requests",
                 Detail = detail
-            },
-            options: null,
-            contentType: "application/problem+json",
-            cancellationToken);
+            }
+        });
     }
 }

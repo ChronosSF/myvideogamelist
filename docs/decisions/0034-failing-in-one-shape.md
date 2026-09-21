@@ -78,6 +78,11 @@ upstream failure behind a status nobody alarms on.
 The exception itself is included **in Development only**, which is what the raw 500 was worth
 reading for; putting it in a deployed answer would hand out stack traces.
 
+**Everywhere means through `IProblemDetailsService`, not into the shape by hand.** The rate
+limiter's 429 was serialised directly at first and so was the one error in the API with no
+`traceId` — on the response somebody is most likely to report. Review on #89 caught it; the
+customisation only reaches responses written through the service.
+
 The client already read `title` and `detail` on the game page; `AuthProvider` learned to, so the
 one place where the fallback would be actively misleading — a rate-limited login reading as
 "Login failed" — says what actually happened.
