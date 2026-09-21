@@ -70,6 +70,22 @@ Testing with the API stopped, rather than only while healthy, found all three:
    after recovery. The loader now attaches `no-store` via `data()` when it degrades, and the
    `headers` export honours it. **Caching a failure outlives the failure.**
 
+> **Later note.** Item 3 was only half closed, and the Result below claimed more than was tested.
+> The loader counted a rejected `fetch` or a non-OK status as degraded, which is the API being
+> down. With the API up and IGDB down, `HomeService` catches the failure and `/api/home` answers a
+> well-formed **200 with nothing in it**, which the loader passed on as a healthy page. Reproduced
+> by running the API with invalid IGDB credentials: `200`, `public, max-age=0, s-maxage=300,
+> stale-while-revalidate=600`, on the document and on its `/_.data` URL alike.
+>
+> Neither the loader nor a CDN can tell that 200 from a healthy one by looking, so **an endpoint
+> that degrades to a 200 has to say so in its payload.** `HomeResponse` carries `degraded`, set by
+> the same judgement that picks how long the service keeps its own copy, and judged from what came
+> back rather than from the `catch` — an empty trending rail, and an empty news rail beside full
+> covers, both arrive without an exception. The loader reads it failing closed: only an explicit
+> `false` gets the shared policy, so an API older than the SSR build, mid-deploy, costs a slow page
+> rather than a pinned failure. Verified on the wire: IGDB down and API stopped are both
+> `private, no-store`, and a healthy answer is back on the shared policy.
+
 ## Result
 
 All eight routes verified on the wire, healthy and with the API stopped. Degraded and error

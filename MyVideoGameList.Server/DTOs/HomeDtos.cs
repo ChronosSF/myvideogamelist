@@ -14,7 +14,14 @@ namespace MyVideoGameList.Server.DTOs;
 /// </param>
 /// <param name="Popular">Real covers, shown instead of describing the catalogue in the abstract.</param>
 /// <param name="News">Latest Steam news across <paramref name="Popular"/>, newest first. May be empty.</param>
+/// <param name="Degraded">
+/// True when an upstream failed and this answer is missing what it would have supplied. It is
+/// still a 200, deliberately — the page renders without its rails rather than failing — so this
+/// is the only thing that tells a caller not to cache what it builds from it. A CDN cannot tell
+/// one 200 from another, and caching a failure outlives the failure.
+/// </param>
 public record HomeResponse(
     GameDto? Spotlight,
     IEnumerable<GameDto> Popular,
-    IEnumerable<NewsItemDto> News);
+    IEnumerable<NewsItemDto> News,
+    bool Degraded);

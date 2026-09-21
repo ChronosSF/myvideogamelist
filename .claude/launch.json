@@ -14,6 +14,21 @@
       "port": 5039
     },
     {
+      "name": "api-igdb-down",
+      "runtimeExecutable": "dotnet",
+      "runtimeArgs": [
+        "run",
+        "--project",
+        "MyVideoGameList.Server",
+        "--launch-profile",
+        "http",
+        "--",
+        "--Igdb:ClientId=invalid",
+        "--Igdb:ClientSecret=invalid"
+      ],
+      "port": 5039
+    },
+    {
       "name": "client",
       "url": "https://localhost:58546",
       "port": 58546

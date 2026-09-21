@@ -170,7 +170,8 @@ try to fuzzy-match RSS headlines to game titles; it produces false positives. Le
 ~~Every item above adds an IGDB or Steam call to the highest-traffic page. Compose and cache server-side as a
 single `/api/home` response rather than five parallel client fetches.~~ Built: `/api/home` returns the
 spotlight, the trending rail and the news rail in one payload, cached for 15 minutes (1 minute when
-degraded). Measured cold 3.7s / warm 16ms.
+degraded — which the payload says, so that the page built from it is not cached at the edge either;
+see the later note in ADR 0013). Measured cold 3.7s / warm 16ms.
 
 Deliberately carries nothing user-specific so the whole response is cacheable once for every visitor. The
 upcoming timeline stays a separate client fetch because it is filtered by the viewer's hidden platforms.
