@@ -43,17 +43,17 @@ public class ListServiceTests
             Platforms: [], Genres: [], Developers: [], Publishers: [], Details: null);
 
     /// <summary>Returns the given games for any ID lookup, so list composition can be asserted.</summary>
-    private static IIgdbService IgdbReturning(params GameDto[] games)
+    private static IGameCacheService IgdbReturning(params GameDto[] games)
     {
-        var igdb = Substitute.For<IIgdbService>();
-        igdb.GetGamesByIdsAsync(Arg.Any<IEnumerable<int>>(), Arg.Any<CancellationToken>())
+        var igdb = Substitute.For<IGameCacheService>();
+        igdb.GetGamesAsync(Arg.Any<IEnumerable<int>>(), Arg.Any<CancellationToken>())
             .Returns(games);
         return igdb;
     }
 
     private static ListService NewService(
-        ApplicationDbContext db, IIgdbService? igdb = null, TimeProvider? clock = null) =>
-        new(db, igdb ?? Substitute.For<IIgdbService>(), clock ?? new FixedClock(Midday));
+        ApplicationDbContext db, IGameCacheService? igdb = null, TimeProvider? clock = null) =>
+        new(db, igdb ?? Substitute.For<IGameCacheService>(), clock ?? new FixedClock(Midday));
 
     private static short StatusId(ApplicationDbContext db, string key) =>
         db.ListStatuses.Single(s => s.Key == key).Id;
@@ -64,7 +64,7 @@ public class ListServiceTests
     public async Task GetListsAsync_WithNoEntries_ReturnsEveryStatusEmptyWithoutCallingIgdb()
     {
         using var db = NewDb();
-        var igdb = Substitute.For<IIgdbService>();
+        var igdb = Substitute.For<IGameCacheService>();
         var service = NewService(db, igdb);
 
         var result = await service.GetListsAsync(UserId);
@@ -73,7 +73,7 @@ public class ListServiceTests
         Assert.Equal(5, result.Lists.Count);
         Assert.All(result.Lists.Values, games => Assert.Empty(games));
         await igdb.DidNotReceive()
-            .GetGamesByIdsAsync(Arg.Any<IEnumerable<int>>(), Arg.Any<CancellationToken>());
+            .GetGamesAsync(Arg.Any<IEnumerable<int>>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -407,16 +407,16 @@ public class ScoreAndEntryTests
         new(id, title, null, null, null, null, null, null, null, null, null, null, null,
             Platforms: [], Genres: [], Developers: [], Publishers: [], Details: null);
 
-    private static IIgdbService IgdbReturning(params GameDto[] games)
+    private static IGameCacheService IgdbReturning(params GameDto[] games)
     {
-        var igdb = Substitute.For<IIgdbService>();
-        igdb.GetGamesByIdsAsync(Arg.Any<IEnumerable<int>>(), Arg.Any<CancellationToken>())
+        var igdb = Substitute.For<IGameCacheService>();
+        igdb.GetGamesAsync(Arg.Any<IEnumerable<int>>(), Arg.Any<CancellationToken>())
             .Returns(games);
         return igdb;
     }
 
     private static ListService NewService(
-        ApplicationDbContext db, IIgdbService? igdb = null, TimeProvider? clock = null) =>
+        ApplicationDbContext db, IGameCacheService? igdb = null, TimeProvider? clock = null) =>
         new(db, igdb ?? IgdbReturning(Game(10)), clock ?? new FixedClock(Midday));
 
     // ------------------------------------------------ the score stands on its own

@@ -155,7 +155,7 @@ public class PlaythroughServiceTests
     {
         using var db = NewDb();
         var listService = new ListService(
-            db, NSubstitute.Substitute.For<IIgdbService>(), new FixedClock(Midday));
+            db, NSubstitute.Substitute.For<IGameCacheService>(), new FixedClock(Midday));
         await listService.SetListEntryAsync(UserId, GameId, ListStatusKeys.Finished);
 
         await NewService(db).AddAsync(UserId, GameId, Input());

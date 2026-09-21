@@ -63,6 +63,10 @@ builder.Services.AddHttpClient("Steam", client =>
 builder.Services.AddSingleton<IIgdbService, IgdbService>();
 builder.Services.AddSingleton<ISteamNewsService, SteamNewsService>();
 builder.Services.AddSingleton<IHomeService, HomeService>();
+// Game metadata for ids we already hold, from our own tables, refreshed from IGDB as it ages.
+// The four services below that render somebody's library go through this rather than IGDB, so an
+// IGDB outage costs browsing rather than access to a user's own lists. See ADR 0035.
+builder.Services.AddScoped<IGameCacheService, GameCacheService>();
 builder.Services.AddScoped<IListService, ListService>();
 builder.Services.AddScoped<IWishlistService, WishlistService>();
 builder.Services.AddScoped<IFavouriteService, FavouriteService>();

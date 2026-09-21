@@ -15,7 +15,7 @@ namespace MyVideoGameList.Server.Services;
 /// </remarks>
 public class FavouriteService(
     ApplicationDbContext db,
-    IIgdbService igdbService,
+    IGameCacheService gameCache,
     TimeProvider timeProvider) : IFavouriteService
 {
     public async Task<IReadOnlyList<FavouriteDto>> GetFavouritesAsync(
@@ -30,7 +30,7 @@ public class FavouriteService(
 
         if (items.Count == 0) return [];
 
-        var games = (await igdbService.GetGamesByIdsAsync(
+        var games = (await gameCache.GetGamesAsync(
                 items.Select(f => f.GameId).Distinct().ToList(), cancellationToken))
             .ToDictionary(g => g.Id);
 

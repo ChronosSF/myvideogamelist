@@ -46,7 +46,7 @@ public class EntryKeyTests
     }
 
     private static ListService NewService(ApplicationDbContext db) =>
-        new(db, Substitute.For<IIgdbService>(), new FixedClock(Midday));
+        new(db, Substitute.For<IGameCacheService>(), new FixedClock(Midday));
 
     [Fact]
     public void UserGameEntry_IsKeyedOnItsSurrogateIdAlone()

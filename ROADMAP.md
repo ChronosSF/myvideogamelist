@@ -30,7 +30,7 @@ polished game-tracking product that runs on AWS and ships safely on every commit
 | # | Issue | Status |
 |---|---|---|
 | 1 | The `Game` / `Developer` / `Publisher` / `Genre` tables were seeded with 5 hardcoded games and were effectively dead, while `GamesController` read IGDB only. Two sources of truth. | **Fixed** — they were UI scaffolding from before IGDB was wired up. Seed data, controllers, entity classes and all nine tables removed (`DropLocalGameCatalog`). The metadata cache will be designed fresh around IGDB ids |
-| 2 | No local cache of game metadata: every list load fans out to IGDB (`GetGamesByIdsAsync`). If IGDB is down or rate-limits, users cannot see their own lists. | Open — Phase 2. Build it keyed on IGDB ids; do not resurrect the old catalog schema, whose `Platform` ids collided with IGDB's (local 6 = Switch, IGDB 6 = PC) |
+| 2 | No local cache of game metadata: every list load fans out to IGDB (`GetGamesByIdsAsync`). If IGDB is down or rate-limits, users cannot see their own lists. | **Fixed** — `CachedGames` holds one `jsonb` row per IGDB id, refreshed on read after a day and served however stale when IGDB is unreachable. Measured with IGDB deliberately broken: a 27-game list rendered in full while browsing returned 502 (ADR [0035](docs/decisions/0035-a-local-copy-of-what-igdb-said.md)) |
 | 3 | Lists are `playing` / `backlog` / `finished`, but the docs promised Playing, Completed, On Hold, Dropped, Plan to Play and a Wishlist. | Docs corrected to match the code; the taxonomy expansion itself is Phase 2 |
 | 4 | Google/Facebook auth is registered in `Program.cs` but has no challenge/callback endpoints and no UI — half-wired. | Open — blocked on OAuth app registration (D6) |
 | 5 | `WeatherForecastController` template leftovers shipping as public API. | **Fixed** — deleted |
@@ -262,7 +262,7 @@ change, grandfather existing subscribers rather than repricing them.
 - **Stop migrating on startup.** `db.Database.Migrate()` in `Program.cs` races when more than one task boots at once. Run migrations as a discrete pipeline step (a one-off ECS task, or a `dotnet ef bundle` executable) before the new revision takes traffic.
 - **Persist Data Protection keys.** Identity cookies are encrypted with keys that currently live on the local filesystem, so every deploy or scale-out silently signs everyone out. Persist to S3 or DynamoDB with a KMS-backed key. This is the classic ASP.NET-on-AWS gotcha and it must be fixed before the first multi-task deploy.
 - **Distributed cache.** `AddMemoryCache` means each instance fetches its own IGDB token and duplicates every query. Move to Redis (ElastiCache Serverless) behind `IDistributedCache`.
-- **Local game-metadata cache table.** Persist IGDB game rows so lists and profiles render without a live third-party call, refreshed by a background job.
+- ~~**Local game-metadata cache table.**~~ **DONE, less the job.** `CachedGames` persists the mapped `GameDto` per IGDB id, and the lists, wishlist, favourites and public profiles read it rather than IGDB. **Still open:** the background refresh — today a row is refreshed by whoever loads a page after it turns a day old, which the `RefreshedAt` index already supports ordering. Browse and search stay live by design: they are queries over the whole catalogue, not lookups of tracked ids (ADR [0035](docs/decisions/0035-a-local-copy-of-what-igdb-said.md)).
 
 ### Resilience & correctness
 

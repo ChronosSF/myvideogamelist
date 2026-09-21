@@ -107,7 +107,7 @@ flagged as a decision is now moot. `ROADMAP.md` should be amended to match these
 
 | Table | Notes | Roadmap |
 |---|---|---|
-| `CachedGames` | PK is the **IGDB id**. Recommended shape: a `jsonb` payload holding the mapped `GameDto`, plus extracted columns (`Name`, `FirstReleaseDate`, `CoverImageUrl`, `TotalRating`, `RefreshedAt`) for the queries that need to sort and filter. See decision 2 below | §5 data & state, structural issue #2 |
+| `CachedGames` | **Shipped** as `(GameId, Payload jsonb, Title, ReleaseDate, CoverImageUrl, Rating, RefreshedAt)`. The extracted columns took the DTO's own names rather than IGDB's, since the payload is a `GameDto`. A row with a null payload is a **tombstone**: IGDB had no such game, recorded so a withdrawn game still on somebody's list is not asked about on every page load — which the plan did not anticipate. Refreshed on read after a day, and served however stale when IGDB is unreachable, because that is the point of it (ADR [0035](decisions/0035-a-local-copy-of-what-igdb-said.md)) | §5 data & state, structural issue #2 |
 
 ### Community
 
@@ -284,8 +284,16 @@ Order by what is irrecoverable, then by what unblocks the most.
    this database; and the free/paid line had to be drawn explicitly, because `ROADMAP.md` listed
    export as Tier 1 *and* as paid-only. Portability is a right and stays free; the paid export is a
    nicer format on top. The profile page's two buttons followed.
-5. **`CachedGames`**, before public profiles and any SEO-bearing page, because those have to
-   render without a live IGDB call.
+5. ~~**`CachedGames`**, before public profiles and any SEO-bearing page, because those have to
+   render without a live IGDB call.~~ **Shipped** — see ADR
+   [0035](decisions/0035-a-local-copy-of-what-igdb-said.md), and late: public profiles and the
+   game-page community view both shipped first, so for two phases the pages built to be crawled
+   were the ones calling a third party on every render. Nothing was lost by the order, because a
+   cache can be added at any time — this step was sequenced for *reliability*, not for data, and it
+   is the only step here whose lateness cost nothing permanent. Two things came out of it the plan
+   did not anticipate: the tombstone above, and the fact that the four services rendering a library
+   used the IGDB client for nothing else, so the dependency left all four rather than being joined
+   by another.
 6. **Everything else is additive** and can follow its own feature.
 
 ## Guarding it

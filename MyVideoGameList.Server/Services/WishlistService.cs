@@ -16,7 +16,7 @@ namespace MyVideoGameList.Server.Services;
 /// </remarks>
 public class WishlistService(
     ApplicationDbContext db,
-    IIgdbService igdbService,
+    IGameCacheService gameCache,
     TimeProvider timeProvider) : IWishlistService
 {
     public async Task<IReadOnlyList<WishlistItemDto>> GetWishlistAsync(
@@ -34,7 +34,7 @@ public class WishlistService(
 
         if (items.Count == 0) return [];
 
-        var games = (await igdbService.GetGamesByIdsAsync(
+        var games = (await gameCache.GetGamesAsync(
                 items.Select(w => w.GameId).Distinct().ToList(), cancellationToken))
             .ToDictionary(g => g.Id);
 

@@ -7,17 +7,23 @@ namespace MyVideoGameList.Server.Data;
 /// <summary>
 /// Stores user-owned data only. Game metadata is not modelled here: IGDB is the source of
 /// truth, and <see cref="UserGameEntry.GameId"/> holds an IGDB id rather than a local key.
-/// A local metadata cache is planned (see ROADMAP §5) but will be designed around IGDB ids
-/// rather than the local catalog schema this context used to carry.
 /// </summary>
 /// <remarks>
+/// <para>
 /// <see cref="ListStatuses"/> and <see cref="PlaythroughTypes"/> are the exceptions to "user-owned
 /// data only": both are small system-owned lookups seeded by a migration, and they are what the
 /// other tables key against.
+/// </para>
+/// <para>
+/// <see cref="CachedGames"/> is the third exception and a different kind: a copy of what IGDB
+/// answered, keyed on IGDB's own id, so that a shelf of somebody's games renders while IGDB is
+/// unreachable. It is not a catalogue and nothing keys against it.
+/// </para>
 /// </remarks>
 public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options)
     : IdentityDbContext<ApplicationUser>(options)
 {
+    public DbSet<CachedGame> CachedGames { get; set; }
     public DbSet<ListStatus> ListStatuses { get; set; }
     public DbSet<PlaythroughType> PlaythroughTypes { get; set; }
     public DbSet<Review> Reviews { get; set; }
@@ -35,6 +41,7 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
         base.OnModelCreating(modelBuilder);
 
         ConfigureApplicationUsers(modelBuilder);
+        ConfigureCachedGames(modelBuilder);
         ConfigureListStatuses(modelBuilder);
         ConfigurePlaythroughTypes(modelBuilder);
 
@@ -229,6 +236,26 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
                 Id = 5, Key = ListStatusKeys.Dropped, DefaultName = "Dropped", SortOrder = 5,
                 IsStarted = true, IsTerminal = true, CountsAsCompletion = false
             });
+    }
+
+    private static void ConfigureCachedGames(ModelBuilder modelBuilder)
+    {
+        var games = modelBuilder.Entity<CachedGame>();
+
+        // The IGDB id, assigned rather than generated: this table copies their keyspace and never
+        // invents one of its own.
+        games.HasKey(g => g.GameId);
+        games.Property(g => g.GameId).ValueGeneratedNever();
+
+        // jsonb rather than text: it is the shape PostgreSQL indexes and queries if a later
+        // feature needs to read inside the document, and it validates what is written.
+        games.Property(g => g.Payload).HasColumnType("jsonb");
+
+        games.Property(g => g.Title).HasMaxLength(512);
+        games.Property(g => g.CoverImageUrl).HasMaxLength(512);
+
+        // What a refresh job will order by, and what answers "how stale is this shelf".
+        games.HasIndex(g => g.RefreshedAt);
     }
 
     private static void ConfigurePlaythroughTypes(ModelBuilder modelBuilder)

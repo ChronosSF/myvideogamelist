@@ -86,9 +86,16 @@ ROADMAP.md                      Forward-looking plan
   Deployed: `Igdb__ClientId` / `Igdb__ClientSecret` environment variables. User secrets load
   only in the Development environment — running as Production locally will fail IGDB calls.
 
-- **IGDB is the source of truth for game data.** There are no local game/genre/platform
-  tables; they were removed. `UserGameList.GameId` holds an IGDB id and has no foreign key.
-  A local metadata cache is planned but must be keyed on IGDB ids.
+- **IGDB is the source of truth for game data, but a library renders from `CachedGames`.** There
+  are no local game/genre/platform tables; they were removed, and `UserGameEntry.GameId` holds an
+  IGDB id with no foreign key. What exists instead is one `jsonb` row per IGDB id holding the mapped
+  `GameDto`, refreshed on read after a day. **Anything rendering games somebody already tracks —
+  lists, wishlist, favourites, public profiles — goes through `IGameCacheService`, never
+  `IIgdbService`**, because that is what makes those pages survive an IGDB outage; browse, search
+  and the game page's detail query stay live, since no local copy can answer a query over the whole
+  catalogue. A row with a null payload is a tombstone meaning "IGDB has no such game", so a
+  withdrawn game on somebody's list is not asked about on every page load. The table is not
+  user-owned: no cascade, no export manifest entry. See `docs/decisions/0035-*`.
 
 - **IGDB's `external_games.category` no longer exists.** Use `external_game_source` (Steam is
   `1`). Filtering on the removed field returns zero rows *silently* rather than erroring, so the

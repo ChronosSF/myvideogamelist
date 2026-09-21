@@ -36,17 +36,17 @@ public class WishlistServiceTests
         new(id, title, null, null, null, null, null, null, null, null, null, null, null,
             Platforms: [], Genres: [], Developers: [], Publishers: [], Details: null);
 
-    private static IIgdbService IgdbReturning(params GameDto[] games)
+    private static IGameCacheService IgdbReturning(params GameDto[] games)
     {
-        var igdb = Substitute.For<IIgdbService>();
-        igdb.GetGamesByIdsAsync(Arg.Any<IEnumerable<int>>(), Arg.Any<CancellationToken>())
+        var igdb = Substitute.For<IGameCacheService>();
+        igdb.GetGamesAsync(Arg.Any<IEnumerable<int>>(), Arg.Any<CancellationToken>())
             .Returns(games);
         return igdb;
     }
 
     private static WishlistService NewService(
-        ApplicationDbContext db, IIgdbService? igdb = null, TimeProvider? clock = null) =>
-        new(db, igdb ?? Substitute.For<IIgdbService>(), clock ?? new FixedClock(Midday));
+        ApplicationDbContext db, IGameCacheService? igdb = null, TimeProvider? clock = null) =>
+        new(db, igdb ?? Substitute.For<IGameCacheService>(), clock ?? new FixedClock(Midday));
 
     [Fact]
     public async Task AddAsync_NewGame_RecordsItWithTheCurrentTime()
@@ -212,11 +212,11 @@ public class WishlistServiceTests
     public async Task GetWishlistAsync_NoItems_ReturnsEmptyWithoutCallingIgdb()
     {
         using var db = NewDb();
-        var igdb = Substitute.For<IIgdbService>();
+        var igdb = Substitute.For<IGameCacheService>();
         var service = NewService(db, igdb);
 
         Assert.Empty(await service.GetWishlistAsync(UserId));
-        await igdb.DidNotReceive().GetGamesByIdsAsync(
+        await igdb.DidNotReceive().GetGamesAsync(
             Arg.Any<IEnumerable<int>>(), Arg.Any<CancellationToken>());
     }
 

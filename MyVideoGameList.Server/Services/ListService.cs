@@ -11,7 +11,7 @@ namespace MyVideoGameList.Server.Services;
 /// </summary>
 public class ListService(
     ApplicationDbContext db,
-    IIgdbService igdbService,
+    IGameCacheService gameCache,
     TimeProvider timeProvider) : IListService
 {
     /// <summary>Lowest and highest score the API will store.</summary>
@@ -38,7 +38,7 @@ public class ListService(
             return new ListsDto(statuses.ToDictionary(s => s.Key, _ => (IReadOnlyList<ListEntryDto>)[]));
 
         var allIds = entries.Select(e => e.GameId).Distinct().ToList();
-        var games = (await igdbService.GetGamesByIdsAsync(allIds, cancellationToken))
+        var games = (await gameCache.GetGamesAsync(allIds, cancellationToken))
             .ToDictionary(g => g.Id);
 
         IReadOnlyList<ListEntryDto> EntriesForStatus(short statusId) =>
@@ -60,7 +60,7 @@ public class ListService(
 
         if (entry is null) return null;
 
-        var game = (await igdbService.GetGamesByIdsAsync([gameId], cancellationToken)).FirstOrDefault();
+        var game = (await gameCache.GetGamesAsync([gameId], cancellationToken)).FirstOrDefault();
         return game is null ? null : new EntryDto(ToDto(entry, game), entry.Ownership, entry.Notes);
     }
 
