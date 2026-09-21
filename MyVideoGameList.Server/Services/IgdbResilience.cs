@@ -28,25 +28,37 @@ public static class IgdbResilience
     /// </summary>
     private const int RequestsPerSecond = 4;
 
+    /// <summary>
+    /// The order below is the whole design, and the obvious arrangement is wrong.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A Polly pipeline runs outermost first, and the rate limiter used to be outermost. That
+    /// paced <em>operations</em> rather than requests: one permit covered the original call and
+    /// both of its retries, so four permits a second admitted up to twelve requests a second at
+    /// IGDB — three times the limit the limiter exists to keep.
+    /// </para>
+    /// <para>
+    /// So retry is outermost now and the limiter sits below it, where every actual attempt has to
+    /// take a permit of its own. The breaker stays above the limiter deliberately: below it, a
+    /// call that is going to be refused by an open circuit would first consume a permit and make
+    /// real calls queue behind a failure that is already decided.
+    /// </para>
+    /// <para>
+    /// The cost of the new order is latency — three attempts may now each wait for a permit — so a
+    /// total timeout bounds the whole operation from the outside.
+    /// </para>
+    /// </remarks>
     public static IHttpClientBuilder AddIgdbResilience(this IHttpClientBuilder builder)
     {
         builder.AddResilienceHandler("igdb", pipeline => pipeline
 
-            // Outermost, so the wait for a permit is not counted against an attempt's timeout and
-            // a burst queues instead of failing. Four per second in quarter-second steps: the
-            // upcoming-releases loop pages ten times in a row and would otherwise spend its whole
-            // allowance in the first instant.
-            .AddRateLimiter(new SlidingWindowRateLimiter(new SlidingWindowRateLimiterOptions
-            {
-                PermitLimit = RequestsPerSecond,
-                Window = TimeSpan.FromSeconds(1),
-                SegmentsPerWindow = 4,
-                QueueLimit = 64,
-                QueueProcessingOrder = QueueProcessingOrder.OldestFirst
-            }))
+            // The ceiling on everything below, retries and queueing included. Somebody is waiting
+            // for a page; half a minute is already longer than they will.
+            .AddTimeout(TimeSpan.FromSeconds(30))
 
-            // Twice, quickly. The caller is a page somebody is waiting for, so this is about
-            // riding out a dropped connection or a single 429, not about persistence.
+            // Twice, quickly. The caller is a page somebody is watching, so this is about riding
+            // out a dropped connection or a single 429, not about persistence.
             .AddRetry(new HttpRetryStrategyOptions
             {
                 MaxRetryAttempts = 2,
@@ -67,8 +79,23 @@ public static class IgdbResilience
                 BreakDuration = TimeSpan.FromSeconds(15)
             })
 
-            // Per attempt, and well inside the client's own 100-second default: a page that is
-            // going to fail should fail while the reader is still watching.
+            // Four a second in quarter-second steps, so the upcoming-releases loop - ten pages one
+            // after another - is paced rather than spending its whole allowance in the first
+            // instant. A burst waits its turn instead of failing; past the queue's depth it is
+            // refused, and Errors/UpstreamBusyHandler.cs turns that into a 503 rather than letting
+            // our own throttle look like an application fault.
+            .AddRateLimiter(new SlidingWindowRateLimiter(new SlidingWindowRateLimiterOptions
+            {
+                PermitLimit = RequestsPerSecond,
+                Window = TimeSpan.FromSeconds(1),
+                SegmentsPerWindow = 4,
+                QueueLimit = 64,
+                QueueProcessingOrder = QueueProcessingOrder.OldestFirst
+            }))
+
+            // Per attempt, innermost, so waiting for a permit is not charged to it. Well inside the
+            // client's own 100-second default: a page that is going to fail should fail while the
+            // reader is still watching.
             .AddTimeout(TimeSpan.FromSeconds(10)));
 
         return builder;

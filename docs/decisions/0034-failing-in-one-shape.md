@@ -30,10 +30,23 @@ described the identical situation — a third party that did not answer — as a
 
 | Strategy | Setting | Why |
 |---|---|---|
-| Rate limiter | 4 per second, quarter-second segments, queue 64 | IGDB's documented ceiling. Outermost, so waiting for a permit is not charged to an attempt's timeout and a burst queues rather than failing |
+| Total timeout | 30s | The ceiling on everything below, retries and queueing included |
 | Retry | 2 attempts, 1s base, exponential with jitter | The caller is a page somebody is watching. This is for riding out a dropped connection or one 429, not persistence |
 | Circuit breaker | 50% of a 30s sample, 8 minimum, 15s break | Retrying into an outage turns one failure into three, and each holds a request open here |
-| Timeout | 10s per attempt | A page that is going to fail should fail while the reader is still there |
+| Rate limiter | 4 per second, quarter-second segments, queue 64 | IGDB's documented ceiling. A burst queues rather than failing; past the queue's depth it is refused, which §3 turns into a 503 |
+| Attempt timeout | 10s | A page that is going to fail should fail while the reader is still there. Innermost, so waiting for a permit is not charged to it |
+
+**The order is the design, and the obvious arrangement is wrong.** The first version of this record
+had the rate limiter outermost, which paced *operations* rather than requests: one permit covered a
+call and both of its retries, so four permits a second admitted up to twelve requests a second at
+IGDB — three times the limit the limiter exists to keep. Raised in review on the pull request that
+introduced it, and fixed before merge.
+
+So retry is outermost and the limiter sits below it, where every actual attempt takes a permit of
+its own. **The breaker stays above the limiter** deliberately, which the review did not ask for:
+below it, a call that an open circuit is going to refuse would first consume a permit and make real
+calls queue behind a failure already decided. The cost of the new order is latency — three attempts
+may each wait for a permit — so the total timeout bounds the operation from the outside.
 
 **Retrying a POST is safe here**, which is worth stating because it usually is not. IGDB's query
 protocol is a POST with the query in the body, and this app makes no IGDB writes at all, so a
@@ -82,10 +95,10 @@ one place where the fallback would be actively misleading — a rate-limited log
 - **The rate limiter is per process.** Two instances double what IGDB sees. The shared limit belongs
   with the distributed cache, which is also the thing that would stop two instances asking the same
   question twice.
-- **The retry budget is inside the user's wait.** Worst case for one call is now roughly two
-  retries plus backoff inside a ten-second attempt ceiling, rather than one attempt that could hang
-  for a hundred seconds. The composite `/api/home` fans out, so its cold path is bounded by the
-  slowest of those, not their sum.
+- **The retry budget is inside the user's wait**, and so is the queueing. Worst case for one call is
+  the thirty-second total timeout, rather than one attempt that could hang for a hundred seconds.
+  The composite `/api/home` fans out, so its cold path is bounded by the slowest of those, not their
+  sum.
 - Error responses are uncacheable without anything of ours doing it: the framework's handler sets
   `no-store` on them. That happens to be exactly what 0013 requires, but it is the framework's
   behaviour rather than ours, so a route that degrades to a **200** still has to say `no-store`
