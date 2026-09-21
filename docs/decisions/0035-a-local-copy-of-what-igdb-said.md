@@ -61,6 +61,14 @@ A cancellation is deliberately *not* swallowed. A reader who navigated away is n
 treating it as one would hide the cancellation the whole stack propagates
 ([0034](0034-failing-in-one-shape.md)).
 
+**Only the call to IGDB is inside that catch**, which the first version got wrong and review on the
+pull request caught: it wrapped the write as well, so a database hiccup was logged as an IGDB
+outage and threw away games already in hand. The write is tolerated too — a cache that cannot be
+written is a page that is slower next time, where a cache that throws is a page that fails now —
+but it is caught separately, reported as itself, and the answer is whatever IGDB just said. Rows
+left pending are detached either way, so a failed cache write cannot be retried by whatever the
+request saves next and fail that too.
+
 ### 4. An id IGDB cannot answer gets a tombstone
 
 A row with a null payload records that IGDB had no such game when we asked. Without it, a game

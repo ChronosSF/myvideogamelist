@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using MyVideoGameList.Server.Data;
 using MyVideoGameList.Server.DTOs;
+using MyVideoGameList.Server.Models;
 using MyVideoGameList.Server.Services;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
@@ -22,6 +23,24 @@ public class GameCacheServiceTests
     }
 
     private static readonly DateTimeOffset Midday = new(2026, 9, 21, 12, 0, 0, TimeSpan.Zero);
+
+    /// <summary>
+    /// A context whose writes fail, so the caching can be broken without breaking the reads that
+    /// precede it - which is the situation the answer has to survive.
+    /// </summary>
+    private sealed class UnwritableDb(DbContextOptions<ApplicationDbContext> options, Exception failure)
+        : ApplicationDbContext(options)
+    {
+        public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default) =>
+            Task.FromException<int>(failure);
+    }
+
+    private static ApplicationDbContext NewUnwritableDb(Exception failure) =>
+        new UnwritableDb(
+            new DbContextOptionsBuilder<ApplicationDbContext>()
+                .UseInMemoryDatabase(Guid.NewGuid().ToString())
+                .Options,
+            failure);
 
     private static ApplicationDbContext NewDb()
     {
@@ -173,6 +192,43 @@ public class GameCacheServiceTests
         // the cancellation the whole stack is built to propagate.
         await Assert.ThrowsAsync<OperationCanceledException>(
             () => NewService(db, igdb).GetGamesAsync([7]));
+    }
+
+    // ── When the caching itself fails ─────────────────────────────────────────────────
+
+    /// <summary>
+    /// The write is the optimisation, not the answer. Caught in review on #90: the first version
+    /// wrapped the store in the same try as the IGDB call, so a database hiccup was reported as an
+    /// IGDB outage and discarded games already in hand.
+    /// </summary>
+    public static TheoryData<Exception> WriteFailures() =>
+    [
+        new DbUpdateException("another request inserted the same rows"),
+        new TimeoutException("the database did not answer"),
+    ];
+
+    [Theory]
+    [MemberData(nameof(WriteFailures))]
+    public async Task GetGamesAsync_WhenTheWriteFails_StillAnswersWithWhatIgdbSaid(Exception failure)
+    {
+        using var db = NewUnwritableDb(failure);
+
+        var games = await NewService(db, IgdbReturning(Game(7, "Hades"))).GetGamesAsync([7]);
+
+        Assert.Equal("Hades", Assert.Single(games).Title);
+    }
+
+    [Theory]
+    [MemberData(nameof(WriteFailures))]
+    public async Task GetGamesAsync_WhenTheWriteFails_LeavesNothingPendingOnTheContext(Exception failure)
+    {
+        using var db = NewUnwritableDb(failure);
+
+        await NewService(db, IgdbReturning(Game(7))).GetGamesAsync([7]);
+
+        // Rows left pending would be retried by whatever the request saves next, and would fail it
+        // too - turning a cache problem into a failed write of the user's own data.
+        Assert.Empty(db.ChangeTracker.Entries<CachedGame>());
     }
 
     // ── Ids IGDB has no answer for ────────────────────────────────────────────────────

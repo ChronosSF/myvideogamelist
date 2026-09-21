@@ -63,11 +63,14 @@ public class GameCacheService(
     private async Task<IReadOnlyList<GameDto>> RefreshAsync(
         List<int> ask, DateTimeOffset now, CancellationToken cancellationToken)
     {
+        List<GameDto> games;
+
+        // Only the call to IGDB is inside this. Review on #90 caught the first version wrapping the
+        // write as well, which meant a database hiccup was logged as an IGDB outage and threw away
+        // games already in hand.
         try
         {
-            var games = (await igdbService.GetGamesByIdsAsync(ask, cancellationToken)).ToList();
-            await StoreAsync(ask, games, now, cancellationToken);
-            return games;
+            games = (await igdbService.GetGamesByIdsAsync(ask, cancellationToken)).ToList();
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -83,9 +86,49 @@ public class GameCacheService(
 
             return [];
         }
+
+        // Storing is the optimisation, not the answer: whatever happens to the write, the caller
+        // gets what IGDB just said.
+        await StoreAsync(ask, games, now, cancellationToken);
+        return games;
     }
 
+    /// <summary>
+    /// Writes what IGDB said, and never throws for it. A cache that cannot be written is a page
+    /// that is slower next time; a cache that throws is a page that fails now.
+    /// </summary>
     private async Task StoreAsync(
+        List<int> asked, List<GameDto> games, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await WriteAsync(asked, games, now, cancellationToken);
+        }
+        catch (DbUpdateException ex)
+        {
+            // Two requests refreshing the same game at once, which is ordinary: one inserts and the
+            // other loses. Nothing is lost - they were writing the same answer.
+            logger.LogDebug(ex, "A concurrent request had already cached these games");
+            Forget();
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // The database itself. Said plainly rather than as an IGDB failure, which is what the
+            // caller above would otherwise have reported.
+            logger.LogWarning(ex, "Could not cache {Count} games; the answer is unaffected", asked.Count);
+            Forget();
+        }
+
+        // Leave the caller's context as it was found: pending cache rows that failed to save would
+        // otherwise be retried by whatever the request saves next, and fail it too.
+        void Forget()
+        {
+            foreach (var entry in db.ChangeTracker.Entries<CachedGame>().ToList())
+                entry.State = EntityState.Detached;
+        }
+    }
+
+    private async Task WriteAsync(
         List<int> asked, List<GameDto> games, DateTimeOffset now, CancellationToken cancellationToken)
     {
         var fetched = games.ToDictionary(game => game.Id);
@@ -114,20 +157,7 @@ public class GameCacheService(
             row.RefreshedAt = now;
         }
 
-        try
-        {
-            await db.SaveChangesAsync(cancellationToken);
-        }
-        catch (DbUpdateException ex)
-        {
-            // Two requests refreshing the same game at once, which is ordinary: one inserts and
-            // the other loses. Nothing is lost - they were writing the same answer - so the entries
-            // are detached rather than retried, leaving the caller's context clean for its own work.
-            logger.LogDebug(ex, "A concurrent request had already cached these games");
-
-            foreach (var entry in db.ChangeTracker.Entries<CachedGame>().ToList())
-                entry.State = EntityState.Detached;
-        }
+        await db.SaveChangesAsync(cancellationToken);
     }
 
     /// <summary>
