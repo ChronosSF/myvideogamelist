@@ -35,11 +35,14 @@ public sealed class UpstreamFailureHandler(
 
         // Warning rather than error: the app did what it should, and the alarm worth having on
         // this is a rate rather than an occurrence.
+        //
+        // Both values come from the request and the path arrives decoded, so they go through
+        // LogText first - otherwise a crafted URL writes its own line in the log. See LogText.cs.
         logger.LogWarning(
             exception,
             "Upstream call failed while serving {Method} {Path}",
-            httpContext.Request.Method,
-            httpContext.Request.Path);
+            LogText.OneLine(httpContext.Request.Method),
+            LogText.OneLine(httpContext.Request.Path));
 
         httpContext.Response.StatusCode = StatusCodes.Status502BadGateway;
 
