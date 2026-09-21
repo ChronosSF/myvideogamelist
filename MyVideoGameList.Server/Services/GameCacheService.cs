@@ -1,0 +1,177 @@
+using System.Text.Json;
+using Microsoft.EntityFrameworkCore;
+using MyVideoGameList.Server.Data;
+using MyVideoGameList.Server.DTOs;
+using MyVideoGameList.Server.Models;
+
+namespace MyVideoGameList.Server.Services;
+
+/// <inheritdoc cref="IGameCacheService"/>
+public class GameCacheService(
+    ApplicationDbContext db,
+    IIgdbService igdbService,
+    TimeProvider clock,
+    ILogger<GameCacheService> logger) : IGameCacheService
+{
+    /// <summary>
+    /// How long a row is served without asking IGDB again.
+    /// </summary>
+    /// <remarks>
+    /// A day. What this cache holds barely changes — a title, a cover, a release date — and the one
+    /// figure that moves, the player rating, moves slowly and is shown rounded on a card. Shorter
+    /// would spend IGDB's four-a-second allowance re-reading games nobody's shelf has changed;
+    /// much longer would leave a newly released game looking unrated for a week.
+    /// </remarks>
+    internal static readonly TimeSpan RefreshAfter = TimeSpan.FromHours(24);
+
+    /// <summary>
+    /// The same casing the API answers in, so a payload read back matches what was stored and a
+    /// human reading the column sees the shape they see in the browser.
+    /// </summary>
+    private static readonly JsonSerializerOptions PayloadFormat = new(JsonSerializerDefaults.Web);
+
+    public async Task<IReadOnlyList<GameDto>> GetGamesAsync(
+        IEnumerable<int> ids, CancellationToken cancellationToken = default)
+    {
+        var wanted = ids.Distinct().ToList();
+        if (wanted.Count == 0) return [];
+
+        var stored = await db.CachedGames
+            .AsNoTracking()
+            .Where(game => wanted.Contains(game.GameId))
+            .ToDictionaryAsync(game => game.GameId, cancellationToken);
+
+        var now = clock.GetUtcNow();
+
+        // A tombstone counts as known, which is the point of writing one: an id IGDB has no answer
+        // for is left alone for as long as a live one would be.
+        var ask = wanted
+            .Where(id => !stored.TryGetValue(id, out var row) || now - row.RefreshedAt >= RefreshAfter)
+            .ToList();
+
+        var fetched = ask.Count == 0
+            ? []
+            : await RefreshAsync(ask, now, cancellationToken);
+
+        return Merge(wanted, stored, fetched);
+    }
+
+    /// <summary>
+    /// Asks IGDB for the ids that are missing or past <see cref="RefreshAfter"/>, and stores what
+    /// comes back.
+    /// </summary>
+    private async Task<IReadOnlyList<GameDto>> RefreshAsync(
+        List<int> ask, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var games = (await igdbService.GetGamesByIdsAsync(ask, cancellationToken)).ToList();
+            await StoreAsync(ask, games, now, cancellationToken);
+            return games;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // Swallowing an IGDB failure is exactly what this class is for, and the backend rules
+            // ask the deliberate ones to say so: the caller is rendering somebody's own library,
+            // and a stale shelf beats a 502 about a third party. A row nobody has cached yet is
+            // simply absent from the answer, which is how a list already treats a game IGDB does
+            // not return.
+            logger.LogWarning(
+                ex,
+                "IGDB did not answer for {Count} game ids; serving what is already cached",
+                ask.Count);
+
+            return [];
+        }
+    }
+
+    private async Task StoreAsync(
+        List<int> asked, List<GameDto> games, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        var fetched = games.ToDictionary(game => game.Id);
+
+        var rows = await db.CachedGames
+            .Where(game => asked.Contains(game.GameId))
+            .ToDictionaryAsync(game => game.GameId, cancellationToken);
+
+        foreach (var id in asked)
+        {
+            if (!rows.TryGetValue(id, out var row))
+            {
+                row = new CachedGame { GameId = id };
+                db.CachedGames.Add(row);
+            }
+
+            // Absent from the response means IGDB has no such game: the row is written anyway,
+            // without a payload, so the id is not asked about again on every page load.
+            var game = fetched.GetValueOrDefault(id);
+
+            row.Payload = game is null ? null : JsonSerializer.Serialize(game, PayloadFormat);
+            row.Title = game?.Title;
+            row.ReleaseDate = game?.ReleaseDate;
+            row.CoverImageUrl = game?.CoverImageUrl;
+            row.Rating = game?.Rating;
+            row.RefreshedAt = now;
+        }
+
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException ex)
+        {
+            // Two requests refreshing the same game at once, which is ordinary: one inserts and
+            // the other loses. Nothing is lost - they were writing the same answer - so the entries
+            // are detached rather than retried, leaving the caller's context clean for its own work.
+            logger.LogDebug(ex, "A concurrent request had already cached these games");
+
+            foreach (var entry in db.ChangeTracker.Entries<CachedGame>().ToList())
+                entry.State = EntityState.Detached;
+        }
+    }
+
+    /// <summary>
+    /// What was just fetched, then what was already stored — including rows past their refresh
+    /// interval, which is what makes an IGDB outage cost nothing here.
+    /// </summary>
+    private IReadOnlyList<GameDto> Merge(
+        List<int> wanted,
+        Dictionary<int, CachedGame> stored,
+        IReadOnlyList<GameDto> fetched)
+    {
+        var byId = fetched.ToDictionary(game => game.Id);
+        var games = new List<GameDto>(wanted.Count);
+
+        foreach (var id in wanted)
+        {
+            if (byId.TryGetValue(id, out var fresh))
+            {
+                games.Add(fresh);
+                continue;
+            }
+
+            if (stored.TryGetValue(id, out var row) && Read(row) is { } cached)
+                games.Add(cached);
+        }
+
+        return games;
+    }
+
+    private GameDto? Read(CachedGame row)
+    {
+        if (row.Payload is null) return null;
+
+        try
+        {
+            return JsonSerializer.Deserialize<GameDto>(row.Payload, PayloadFormat);
+        }
+        catch (JsonException ex)
+        {
+            // A payload written before a change to GameDto's shape. Dropping it loses one game
+            // from one page until the refresh interval rewrites the row, which is a better failure
+            // than the whole shelf throwing.
+            logger.LogWarning(ex, "Discarding an unreadable cached payload for game {GameId}", row.GameId);
+            return null;
+        }
+    }
+}

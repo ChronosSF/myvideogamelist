@@ -53,7 +53,7 @@ public class FavouriteRaceTests
     }
 
     private static FavouriteService NewService(ApplicationDbContext db) =>
-        new(db, Substitute.For<IIgdbService>(), new FixedClock(Midday));
+        new(db, Substitute.For<IGameCacheService>(), new FixedClock(Midday));
 
     private static UserFavourite Favourite(int gameId, DateTimeOffset? addedAt = null) =>
         new() { UserId = UserId, GameId = gameId, AddedAt = addedAt ?? Midday };

@@ -29,7 +29,7 @@ public class PublicProfileService(
     ApplicationDbContext db,
     ILookupNormalizer normalizer,
     IStatsService stats,
-    IIgdbService igdbService) : IPublicProfileService
+    IGameCacheService gameCache) : IPublicProfileService
 {
     /// <summary>
     /// How many reviews one page carries. Long-form text, so the page is short.
@@ -95,7 +95,7 @@ public class PublicProfileService(
 
         if (gameIds.Count == 0) return new PublicFavouritesDto(user.UserName!, []);
 
-        var games = (await igdbService.GetGamesByIdsAsync(gameIds, cancellationToken))
+        var games = (await gameCache.GetGamesAsync(gameIds, cancellationToken))
             .ToDictionary(g => g.Id);
 
         // A game IGDB no longer returns is dropped, as a review of one is. The profile's count still
@@ -154,7 +154,7 @@ public class PublicProfileService(
 
         var games = rows.Count == 0
             ? []
-            : (await igdbService.GetGamesByIdsAsync(
+            : (await gameCache.GetGamesAsync(
                 rows.Select(r => r.GameId).Distinct().ToList(), cancellationToken))
                 .ToDictionary(g => g.Id);
 

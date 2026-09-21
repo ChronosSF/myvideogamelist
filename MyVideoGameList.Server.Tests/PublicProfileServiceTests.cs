@@ -44,11 +44,11 @@ public class PublicProfileServiceTests
     /// is what makes "the public page and the private one say the same thing" an actual claim.
     /// </summary>
     private static PublicProfileService NewService(
-        ApplicationDbContext db, IIgdbService? igdb = null) =>
+        ApplicationDbContext db, IGameCacheService? igdb = null) =>
         new(db,
             new UpperInvariantLookupNormalizer(),
             new StatsService(db, new FixedClock(Now)),
-            igdb ?? Substitute.For<IIgdbService>());
+            igdb ?? Substitute.For<IGameCacheService>());
 
     private static void AddAccount(
         ApplicationDbContext db,
@@ -121,14 +121,15 @@ public class PublicProfileServiceTests
         new(id, title, null, null, null, null, null, null, null, null, null, null, null,
             [], [], [], [], null);
 
-    private static IIgdbService IgdbKnowing(params GameDto[] games)
+    private static IGameCacheService IgdbKnowing(params GameDto[] games)
     {
-        var igdb = Substitute.For<IIgdbService>();
-        igdb.GetGamesByIdsAsync(Arg.Any<IEnumerable<int>>(), Arg.Any<CancellationToken>())
+        var igdb = Substitute.For<IGameCacheService>();
+        igdb.GetGamesAsync(Arg.Any<IEnumerable<int>>(), Arg.Any<CancellationToken>())
             .Returns(callInfo =>
             {
                 var wanted = callInfo.Arg<IEnumerable<int>>().ToHashSet();
-                return Task.FromResult(games.Where(g => wanted.Contains(g.Id)).AsEnumerable());
+                return Task.FromResult<IReadOnlyList<GameDto>>(
+                    games.Where(g => wanted.Contains(g.Id)).ToList());
             });
         return igdb;
     }
@@ -232,11 +233,11 @@ public class PublicProfileServiceTests
         AddAccount(db, UserId, "alex");
         AddEntry(db, gameId: 11, status: ListStatusKeys.Finished, score: 8);
 
-        var igdb = Substitute.For<IIgdbService>();
+        var igdb = Substitute.For<IGameCacheService>();
         await NewService(db, igdb).GetProfileAsync("alex", default);
 
         await igdb.DidNotReceiveWithAnyArgs()
-            .GetGamesByIdsAsync(Arg.Any<IEnumerable<int>>(), Arg.Any<CancellationToken>());
+            .GetGamesAsync(Arg.Any<IEnumerable<int>>(), Arg.Any<CancellationToken>());
     }
 
     // ── The reviews ───────────────────────────────────────────────────────────────────
@@ -354,7 +355,7 @@ public class PublicProfileServiceTests
         Assert.Equal(1, page.Total);
         Assert.Equal(int.MaxValue, page.Page);
         await igdb.DidNotReceiveWithAnyArgs()
-            .GetGamesByIdsAsync(Arg.Any<IEnumerable<int>>(), Arg.Any<CancellationToken>());
+            .GetGamesAsync(Arg.Any<IEnumerable<int>>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -384,13 +385,13 @@ public class PublicProfileServiceTests
         using var db = NewDb();
         AddAccount(db, UserId, "alex");
 
-        var igdb = Substitute.For<IIgdbService>();
+        var igdb = Substitute.For<IGameCacheService>();
         var page = await NewService(db, igdb).GetReviewsAsync("alex", 1, default);
 
         Assert.NotNull(page);
         Assert.Empty(page.Reviews);
         await igdb.DidNotReceiveWithAnyArgs()
-            .GetGamesByIdsAsync(Arg.Any<IEnumerable<int>>(), Arg.Any<CancellationToken>());
+            .GetGamesAsync(Arg.Any<IEnumerable<int>>(), Arg.Any<CancellationToken>());
     }
 
     // ── The favourites ────────────────────────────────────────────────────────────────
@@ -489,12 +490,12 @@ public class PublicProfileServiceTests
         using var db = NewDb();
         AddAccount(db, UserId, "alex");
 
-        var igdb = Substitute.For<IIgdbService>();
+        var igdb = Substitute.For<IGameCacheService>();
         var favourites = await NewService(db, igdb).GetFavouritesAsync("alex", default);
 
         Assert.NotNull(favourites);
         Assert.Empty(favourites.Games);
         await igdb.DidNotReceiveWithAnyArgs()
-            .GetGamesByIdsAsync(Arg.Any<IEnumerable<int>>(), Arg.Any<CancellationToken>());
+            .GetGamesAsync(Arg.Any<IEnumerable<int>>(), Arg.Any<CancellationToken>());
     }
 }

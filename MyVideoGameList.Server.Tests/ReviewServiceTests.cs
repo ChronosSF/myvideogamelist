@@ -126,7 +126,7 @@ public class ReviewServiceTests
     public async Task UpsertAsync_GameAlreadyInAList_LeavesTheStatusAlone()
     {
         using var db = NewDb();
-        var lists = new ListService(db, Substitute.For<IIgdbService>(), new FixedClock(Midday));
+        var lists = new ListService(db, Substitute.For<IGameCacheService>(), new FixedClock(Midday));
         await lists.SetListEntryAsync(UserId, GameId, ListStatusKeys.Finished);
 
         await NewService(db).UpsertAsync(UserId, GameId, Input());
