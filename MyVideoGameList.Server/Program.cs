@@ -220,14 +220,20 @@ if (!app.Environment.IsDevelopment())
     app.UseHttpsRedirection();
 }
 
-// Before authentication, so a caller over the limit is turned away without a database
-// read. Routing has already run by this point, which is what lets the limiter see which
-// endpoint was matched and apply that endpoint's policy.
-app.UseRateLimiter();
-
-// Then the check that a write came from this site's own code. Before authentication because it
-// needs no identity, and a request that fails it is not worth a database read.
+// The check that a write came from this site's own code, and it comes first because it is the
+// cheapest thing here - no identity, no permit, no database read.
+//
+// Before the limiter rather than after it, which is the order review on #89 corrected: a page
+// anywhere can make a visitor's browser POST here without the header, and if those requests
+// spent permits first, ten of them would exhaust that visitor's login budget and lock them out
+// of their own account for five minutes. Refused here, they cost nothing. Anything that can set
+// the header - our own client, a script, curl - is still limited below.
 app.UseMiddleware<CsrfHeaderMiddleware>();
+
+// Then the limit, before authentication, so a caller over it is turned away without a database
+// read. Routing has already run by this point, which is what lets the limiter see which endpoint
+// was matched and apply that endpoint's policy.
+app.UseRateLimiter();
 
 app.UseAuthentication();
 app.UseAuthorization();

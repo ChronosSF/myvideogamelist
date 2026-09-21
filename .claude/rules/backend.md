@@ -46,8 +46,10 @@ paths:
 ## The pipeline and its failures
 
 - Middleware lives in `Security/` and `Errors/`, and the order in `Program.cs` is load-bearing:
-  forwarded headers first, then the exception handler, then security headers, the rate limiter and
-  the write guard. Anything added above the exception handler will not be seen by a failed request.
+  forwarded headers first, then the exception handler, then security headers, the write guard and
+  the rate limiter. Anything added above the exception handler will not be seen by a failed request,
+  and anything cheap that can refuse a request belongs above the limiter — a request refused after
+  taking a permit has spent somebody's budget to be told no.
 - **Do not catch a third party's failure to return a 500.** `HttpRequestException`, a broken circuit
   and a timeout are turned into a 502 centrally by `UpstreamFailureHandler`; a service that swallows
   one is deciding on the caller's behalf that a degraded page is better than an honest error. The

@@ -78,6 +78,12 @@ buys nothing here. What makes the double submit work is precisely that an attack
 header; this relies on that directly, and has no token to mint, store, rotate, or hand to a
 server-rendered page.
 
+**The guard runs before the rate limiter**, which is not the order this shipped in. A page anywhere
+can make a visitor's browser POST to this API without the header; if those requests took a permit
+before being refused, ten of them would exhaust that visitor's login budget and lock them out of
+their own account for five minutes. The guard needs no identity and no permit, so refusing there
+costs nothing, and anything that *can* set the header is still limited.
+
 On the client every write goes through `apiFetch` in `@/lib/api`, which adds the header and the
 session cookie. A write sent with bare `fetch` is refused in local development exactly as it would
 be in production — a loud way to find out, rather than a quiet one.
