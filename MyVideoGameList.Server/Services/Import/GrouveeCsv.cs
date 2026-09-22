@@ -78,6 +78,7 @@ internal static class GrouveeCsv
 
     private static GrouveeGame ReadGame(IReaderRow row) => new()
     {
+        Id = Int(row, "id") ?? 0,
         Name = Text(row, "name"),
         IgdbId = Int(row, "igdb_id"),
         Rating = Decimal(row, "rating"),

@@ -48,6 +48,12 @@ public class ImportService(
     /// <summary>How much of the file a preset is shown when asked whether it recognises it.</summary>
     private const int SniffLength = 2048;
 
+    /// <summary>
+    /// The <c>UserGameEntry.Notes</c> column's length, which an imported note is cut to rather than
+    /// allowed to fail the commit against.
+    /// </summary>
+    private const int MaxNotesLength = 2000;
+
     public async Task<ImportJobDto> CreateJobAsync(
         string userId, string fileName, string content, CancellationToken cancellationToken = default)
     {
@@ -123,6 +129,7 @@ public class ImportService(
             {
                 UserId = userId,
                 Job = job,
+                SourceRef = payload.SourceRef is { } reference ? Truncate(reference, 64) : null,
                 Title = Truncate(payload.Title, 512),
                 GameId = payload.GameId,
                 MatchKind = matched ? ImportMatchKinds.Matched : ImportMatchKinds.Unmatched,
@@ -313,10 +320,18 @@ public class ImportService(
 
         var gameIds = wanted.Select(w => w.Row.GameId!.Value).Distinct().ToList();
 
+        // **Before anything is added to the context, and that order is load-bearing.**
+        // `IGameCacheService` shares this scoped `DbContext` and calls `SaveChangesAsync` itself
+        // when it refreshes a game from IGDB. Asking it after the entries were created would
+        // commit them early — status-less, origin `manual`, carrying the wrong `AddedAt` — and a
+        // later failure would leave that half-built import behind. Nothing of ours is pending
+        // here, so its save is a no-op for this import.
+        var games = (await gameCache.GetGamesAsync(gameIds, cancellationToken)).ToDictionary(g => g.Id);
+
+        var statuses = await db.ListStatuses.AsNoTracking().ToDictionaryAsync(s => s.Key, s => s.Id, cancellationToken);
+
         var (entries, createdIds) = await EntryStore.FindOrCreateManyAsync(
             db, clock, userId, gameIds, cancellationToken);
-        var statuses = await db.ListStatuses.AsNoTracking().ToDictionaryAsync(s => s.Key, s => s.Id, cancellationToken);
-        var games = (await gameCache.GetGamesAsync(gameIds, cancellationToken)).ToDictionary(g => g.Id);
 
         var existingRuns = await ExistingRunsAsync(userId, entries, createdIds, cancellationToken);
         var wishlisted = await AxisIdsAsync(db.UserWishlistItems, userId, gameIds, cancellationToken);
@@ -347,7 +362,12 @@ public class ImportService(
             // Only fills what is empty. An import is new information about a game, not a correction
             // of what its owner already recorded by hand.
             entry.Score ??= payload.Score;
-            entry.Notes ??= payload.Notes;
+
+            // Truncated to the column's length rather than left to fail. A Grouvee review can run
+            // past 2,000 characters, and a note that long would abort the whole commit on the final
+            // save — losing several hundred games over the tail of one note is the worse trade, and
+            // the source file is still in the user's hands.
+            entry.Notes ??= payload.Notes is { } notes ? Truncate(notes, MaxNotesLength) : null;
 
             foreach (var run in payload.Playthroughs)
             {

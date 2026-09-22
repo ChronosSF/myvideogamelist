@@ -164,9 +164,22 @@ describe('ImportReviewPage', () => {
         expect(screen.getByRole('checkbox', { name: 'Import Metal Gear Solid 3' })).not.toBeChecked();
     });
 
-    it('sends a decision when a row is ticked', async () => {
-        review.review = loaded([row({ decision: 'skip', gameId: null, matchKind: 'unmatched' })]);
+    it('will not let an unmatched row be ticked', async () => {
+        // There is no inline game picker yet (§M4), so a tickable unmatched row would count in
+        // "will import" and then be skipped at commit — a promise the screen cannot keep.
+        review.review = loaded([row({ gameId: null, matchKind: 'unmatched', decision: 'skip' })]);
         renderPage();
+
+        expect(screen.getByRole('checkbox', { name: 'Import Metal Gear Solid 3' })).toBeDisabled();
+    });
+
+    it('sends a decision when a row is ticked', async () => {
+        // A matched row the user has not selected — an already-tracked one is the ordinary case,
+        // since those default to skip. An unmatched row cannot be ticked at all.
+        review.review = loaded([row({ decision: 'skip', alreadyTracked: true })]);
+        renderPage();
+
+        await userEvent.click(screen.getByRole('button', { name: /^All / }));
 
         await userEvent.click(screen.getByRole('checkbox', { name: 'Import Metal Gear Solid 3' }));
 

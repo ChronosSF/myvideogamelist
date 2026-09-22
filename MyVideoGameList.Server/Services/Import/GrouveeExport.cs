@@ -51,6 +51,9 @@ internal sealed class GrouveeAccount
 
 internal sealed class GrouveeGame
 {
+    /// <summary>Grouvee's own game id, carried only for traceability back to the file.</summary>
+    public long Id { get; set; }
+
     public string? Name { get; set; }
 
     /// <summary>IGDB's own id, which is what makes this preset need no matcher. Null on a handful of rows.</summary>

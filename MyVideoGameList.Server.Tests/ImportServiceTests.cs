@@ -442,6 +442,31 @@ public class ImportServiceTests
     }
 
     [Fact]
+    public async Task CommitAsync_ANoteLongerThanTheColumn_IsCutRatherThanFailingTheWholeImport()
+    {
+        // A Grouvee review can run past 2,000 characters. Left alone it would abort the final save
+        // and lose every other game in the file.
+        using var db = NewDb();
+        var service = NewService(db, CacheReturning(Game(379)));
+
+        var jobId = await UploadAsync(service, Export(Entry(review: new string('a', 2500))));
+        await service.CommitAsync(UserId, jobId);
+
+        Assert.Equal(2000, Assert.Single(db.UserGameEntries).Notes!.Length);
+    }
+
+    [Fact]
+    public async Task CreateJobAsync_TheSourcesOwnRowId_IsStoredOnTheRow()
+    {
+        using var db = NewDb();
+        var service = NewService(db, CacheReturning(Game(379)));
+
+        await UploadAsync(service, Export(Entry()));
+
+        Assert.Equal("1", db.ImportRows.Single().SourceRef);
+    }
+
+    [Fact]
     public async Task CommitAsync_ClosesTheJobSoItCannotBeCommittedTwice()
     {
         using var db = NewDb();

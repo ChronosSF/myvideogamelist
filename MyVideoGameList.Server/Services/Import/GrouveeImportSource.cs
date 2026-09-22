@@ -136,6 +136,7 @@ internal sealed class GrouveeImportSource : IImportSource
 
         return new ImportRowPayload(
             Title: title,
+            SourceRef: game.Id > 0 ? game.Id.ToString(CultureInfo.InvariantCulture) : null,
             ReleaseYear: YearOf(game.ReleaseDate),
             GameId: game.IgdbId,
             SourceStatus: shelves.Count > 0 ? string.Join(", ", shelves) : null,
@@ -167,12 +168,13 @@ internal sealed class GrouveeImportSource : IImportSource
             var run = MapPlaythrough(play, fallbackPlatform: null);
             if (run is null) continue;
 
-            // A run already carried by the collection entry is the same run seen twice, so it is
-            // added only to a row this loop created.
+            // Deduplicated by the run's own fields rather than by whether the row already has one.
+            // The play log is mostly a second view of the collection's `dates`, so the same run
+            // does arrive twice — but a game can have several genuinely different runs, and
+            // "the row already has a playthrough" would throw every one after the first away.
             if (index is { } at)
             {
-                if (rows[at].Playthroughs.Count == 0)
-                    rows[at] = rows[at] with { Playthroughs = [run] };
+                rows[at] = rows[at] with { Playthroughs = Merge(rows[at].Playthroughs, run) };
                 continue;
             }
 
@@ -194,6 +196,25 @@ internal sealed class GrouveeImportSource : IImportSource
         }
     }
 
+    /// <summary>
+    /// The runs plus this one, unless it is one of them already.
+    /// </summary>
+    /// <remarks>
+    /// Equality is the dates and the duration, not the platform: the collection's copy of a run
+    /// carries the game's platform as a fallback and the play log's copy carries only what the run
+    /// itself recorded, so comparing it would make two views of one run look like two runs.
+    /// </remarks>
+    private static IReadOnlyList<ImportPlaythroughPayload> Merge(
+        IReadOnlyList<ImportPlaythroughPayload> runs, ImportPlaythroughPayload run)
+    {
+        var already = runs.Any(existing =>
+            existing.StartedOn == run.StartedOn
+            && existing.FinishedOn == run.FinishedOn
+            && existing.MinutesPlayed == run.MinutesPlayed);
+
+        return already ? runs : [.. runs, run];
+    }
+
     private static (int? Index, string? Title) Locate(
         GrouveeGameRef? game, List<ImportRowPayload> rows, Dictionary<int, int> byGameId)
     {
@@ -213,6 +234,9 @@ internal sealed class GrouveeImportSource : IImportSource
     private static ImportRowPayload NewOrphan(string title, GrouveeGameRef? game, IReadOnlySet<int> favourites) =>
         new(
             Title: title,
+            // The play log and the reviews point at a game by name and IGDB id, never by the
+            // collection row's own id, so a row that exists only there has no source reference.
+            SourceRef: null,
             ReleaseYear: null,
             GameId: game?.IgdbId,
             // On no shelf at all, which is not an unrecognised shelf: it is a game the user has

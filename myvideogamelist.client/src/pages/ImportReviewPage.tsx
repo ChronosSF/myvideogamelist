@@ -186,11 +186,19 @@ export function ImportReviewPage() {
                                     key={row.id}
                                     className="flex items-start gap-3 px-3 py-3 bg-slate-800/50 light:bg-white border border-slate-700/70 light:border-slate-200 rounded-lg"
                                 >
+                                    {/* Disabled while no game is matched. There is no inline game
+                                        picker yet (§M4), so ticking such a row would count it in
+                                        "will import" and then have the commit skip it — a promise
+                                        the screen cannot keep. */}
                                     <input
                                         type="checkbox"
-                                        className="mt-1 size-4 shrink-0 accent-blue-500"
+                                        className="mt-1 size-4 shrink-0 accent-blue-500 disabled:opacity-40"
                                         checked={row.decision === IMPORT_DECISION.import}
+                                        disabled={row.gameId === null}
                                         aria-label={`Import ${row.title}`}
+                                        title={row.gameId === null
+                                            ? 'We could not match this to a game, so it cannot be imported yet.'
+                                            : undefined}
                                         onChange={event =>
                                             decide(row, event.target.checked ? IMPORT_DECISION.import : IMPORT_DECISION.skip)}
                                     />

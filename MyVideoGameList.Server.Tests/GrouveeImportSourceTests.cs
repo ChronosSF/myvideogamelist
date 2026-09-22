@@ -266,6 +266,34 @@ public class GrouveeImportSourceTests
     }
 
     [Fact]
+    public void Read_ASecondDistinctRunInThePlayLog_IsKeptAlongsideTheFirst()
+    {
+        // The dedup used to be "does this row already have a playthrough", which threw away every
+        // run after the first. The play log does repeat the collection's runs, but a game can
+        // genuinely have several — three did in the export this was built from.
+        var rows = Source.Read(Document(
+            Game(dates: """[{"date_started": "2024-04-25", "date_finished": "2024-04-28", "seconds_played": 22500, "level_of_completion": "Main Story", "platform": ""}]"""),
+            """
+            , "play_log": [{
+                "date_started": "2026-01-10", "date_finished": "2026-01-20", "seconds_played": 7200,
+                "level_of_completion": "Main Story", "platform": "",
+                "game": {"name": "Metal Gear Solid 3: Snake Eater", "igdb_id": 379}
+              }]
+            """));
+
+        var row = Assert.Single(rows);
+        Assert.Equal(2, row.Playthroughs.Count);
+        Assert.Contains(row.Playthroughs, p => p.MinutesPlayed == 375);
+        Assert.Contains(row.Playthroughs, p => p.MinutesPlayed == 120);
+    }
+
+    [Fact]
+    public void Read_TheSourcesOwnRowId_IsKeptForTraceability()
+    {
+        Assert.Equal("116524", Single(Game()).SourceRef);
+    }
+
+    [Fact]
     public void Read_AReviewForAGameNotInTheCollection_CarriesItsScore()
     {
         var rows = Source.Read(Document(

@@ -128,6 +128,21 @@ export function useImportReview(accountId: string | null, jobId: string): UseImp
     const [busy, setBusy] = useState(false);
     const [result, setResult] = useState<ImportResult | null>(null);
 
+    // These three sit outside `useAccountResource`, so they need its guard applied by hand — a
+    // commit that lands after a sign-out or a move to another job would otherwise render one
+    // account's imported counts and skipped titles under the next one's name. Reset during render,
+    // not in an effect, so there is no committed frame showing the previous job's result.
+    const [resultIdentity, setResultIdentity] = useState(
+        accountId === null ? null : `${accountId}|${jobId}`);
+    const identity = accountId === null ? null : `${accountId}|${jobId}`;
+
+    if (resultIdentity !== identity) {
+        setResultIdentity(identity);
+        setResult(null);
+        setActionError(null);
+        setBusy(false);
+    }
+
     const setDecisions = useCallback(
         async (decisions: ImportRowDecision[]) => {
             if (decisions.length === 0) return;

@@ -54,8 +54,13 @@ namespace MyVideoGameList.Server.Services.Import;
 /// and avoidable here because this is a real date rather than a guessed one.
 /// </param>
 /// <param name="Playthroughs">Zero or more runs. A source with no notion of one produces none.</param>
+/// <param name="SourceRef">
+/// The source's own identifier for this row, when it has one. Kept only so a row can be traced
+/// back to the line of the file it came from while diagnosing a bad import; nothing keys on it.
+/// </param>
 internal sealed record ImportRowPayload(
     string Title,
+    string? SourceRef,
     int? ReleaseYear,
     int? GameId,
     string? SourceStatus,
