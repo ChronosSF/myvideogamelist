@@ -84,6 +84,11 @@ describe('HomePage loader', () => {
 
         expect(policyOf(result)).toBe(PRIVATE_NO_STORE);
         expect(result.data.popular).toHaveLength(1);
+
+        // Recorded as degraded, not merely treated as it. The flag is typed a boolean, so passing
+        // the payload on as it arrived would hand the page an undefined under that name and leave
+        // anything reading it later to repeat the rule the header was chosen by.
+        expect(result.data.degraded).toBe(true);
     });
 
     it('degrades, uncached, when the API answers with an error', async () => {

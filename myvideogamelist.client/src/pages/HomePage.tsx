@@ -65,10 +65,18 @@ export async function loader() {
     // an API older than this build in the middle of a deploy, fails closed like the root's default:
     // what a missing flag costs is a slow page, never a failure pinned at the edge.
     //
-    // `data()` is how a loader attaches headers to an otherwise plain return value.
-    const respond = (home: HomeResponse) => data<HomeData>(
-        { ...home, site },
-        { headers: { 'Cache-Control': home.degraded === false ? CACHE_HOME : PRIVATE_NO_STORE } });
+    // `data()` is how a loader attaches headers to an otherwise plain return value. The flag is
+    // normalized on the way through, so an answer that did not say is *recorded* as degraded rather
+    // than merely treated as one: spread as it arrived, the page would be handed a payload whose
+    // `degraded` is undefined while its type promises a boolean, and the rule — only an explicit
+    // `false` is whole — would be stated here for the header and again by whoever reads it next.
+    const respond = (home: HomeResponse) => {
+        const degraded = home.degraded !== false;
+
+        return data<HomeData>(
+            { ...home, degraded, site },
+            { headers: { 'Cache-Control': degraded ? PRIVATE_NO_STORE : CACHE_HOME } });
+    };
 
     // What is left of the page when the API gave nothing to build it from.
     const nothing = () => respond({ spotlight: null, popular: [], news: [], degraded: true });
