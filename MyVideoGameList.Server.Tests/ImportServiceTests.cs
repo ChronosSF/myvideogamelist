@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using Microsoft.EntityFrameworkCore;
 using MyVideoGameList.Server.Data;
 using MyVideoGameList.Server.DTOs;
@@ -464,6 +465,48 @@ public class ImportServiceTests
         await UploadAsync(service, Export(Entry()));
 
         Assert.Equal("1", db.ImportRows.Single().SourceRef);
+    }
+
+    [Fact]
+    public async Task CommitAsync_AsksTheGameCacheBeforeItCreatesAnyEntry()
+    {
+        // The ordering is load-bearing and nothing else would catch a reorder. IGameCacheService
+        // shares this DbContext and calls SaveChangesAsync when it refreshes a game from IGDB, so
+        // asking it after the entries exist commits them early — status-less, origin `manual`,
+        // carrying the wrong AddedAt — and a later failure leaves that half-built import behind.
+        //
+        // Asserted by looking at the change tracker at the moment the cache is called, because the
+        // substitute that every other test here uses is exactly what hides the real behaviour.
+        using var db = NewDb();
+        var service = NewService(db, CacheThatChecks(db, out var pendingEntriesWhenCalled));
+
+        var jobId = await UploadAsync(service, Export(Entry()));
+        await service.CommitAsync(UserId, jobId);
+
+        Assert.Equal(0, pendingEntriesWhenCalled.Value);
+    }
+
+    /// <summary>
+    /// A cache that records how many entries were waiting to be written when it was asked.
+    /// </summary>
+    private static IGameCacheService CacheThatChecks(ApplicationDbContext db, out StrongBox<int> pending)
+    {
+        var seen = new StrongBox<int>(-1);
+        pending = seen;
+
+        var cache = Substitute.For<IGameCacheService>();
+        cache.GetGamesAsync(Arg.Any<IEnumerable<int>>(), Arg.Any<CancellationToken>())
+            .Returns(_ =>
+            {
+                // Only the commit's own call matters; the review reads through here too.
+                var added = db.ChangeTracker.Entries<UserGameEntry>()
+                    .Count(entry => entry.State == EntityState.Added);
+
+                seen.Value = Math.Max(seen.Value, added);
+                return Task.FromResult<IReadOnlyList<GameDto>>([Game(379)]);
+            });
+
+        return cache;
     }
 
     [Fact]
