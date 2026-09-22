@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations;
 using System.Text;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
@@ -65,13 +66,15 @@ public class ImportController(
     [HttpPost("jobs")]
     [RequestSizeLimit(MaxUploadBytes)]
     public async Task<ActionResult<ImportJobDto>> CreateJob(
-        IFormFile file, CancellationToken cancellationToken)
+        [Required] IFormFile file, CancellationToken cancellationToken)
     {
         var user = await userManager.GetUserAsync(User);
         if (user is null) return Unauthorized();
 
-        if (file is null || file.Length == 0)
-            return Problem("Choose a file to import.", statusCode: StatusCodes.Status400BadRequest);
+        // No hand-rolled guard on the file. A missing part is `[ApiController]`'s automatic 400
+        // from the attribute above, and an empty one is refused by the service with a sentence
+        // saying so — which is both a better message and one fewer user-controlled condition in
+        // front of a write, the shape CodeQL's `cs/user-controlled-bypass` flags.
 
         // UTF-8 with the encoding detected from a byte-order mark if there is one: an export saved
         // by a Windows tool may carry one, and a BOM read as content breaks the first field.
