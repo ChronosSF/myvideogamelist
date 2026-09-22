@@ -496,13 +496,27 @@ public class ImportService(
     /// The uploaded name, reduced to something safe to store and render.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// Any directory part is dropped: a browser should not send one, and a name this application
     /// never opens still should not carry a path it could later be mistaken for. Bounded to the
     /// column's length so a long name is truncated here rather than by the database.
+    /// </para>
+    /// <para>
+    /// Both separators are cut explicitly, rather than by <c>Path.GetFileName</c>. That method
+    /// follows the rules of the <em>host</em>: on Linux, which is where this is deployed, a
+    /// backslash is an ordinary filename character, so it hands back a Windows path whole. The name
+    /// comes from whichever machine the browser is on, and from a client free to send anything at
+    /// all, so which characters separate directories is a property of the input and never of the
+    /// server. Running the tests only on Windows is what hid this.
+    /// </para>
     /// </remarks>
-    private static string SafeFileName(string fileName)
+    private static string SafeFileName(string? fileName)
     {
-        var name = Path.GetFileName(fileName?.Trim() ?? string.Empty);
+        var trimmed = fileName?.Trim() ?? string.Empty;
+
+        var cut = trimmed.LastIndexOfAny(['/', '\\']);
+        var name = cut >= 0 ? trimmed[(cut + 1)..] : trimmed;
+
         return string.IsNullOrWhiteSpace(name) ? "import" : Truncate(name, 260);
     }
 

@@ -183,15 +183,33 @@ public class ImportServiceTests
         Assert.Contains("waiting to be reviewed", error.Message);
     }
 
+    [Theory]
+    [InlineData(@"C:\Users\someone\grouvee_export.json")]
+    [InlineData("/home/someone/grouvee_export.json")]
+    [InlineData(@"..\..\grouvee_export.json")]
+    [InlineData("grouvee_export.json")]
+    public async Task CreateJobAsync_AFileNameWithAPath_KeepsOnlyTheName(string sent)
+    {
+        // Both separators, on every platform. `Path.GetFileName` follows the *host's* rules,
+        // so on Linux — where this is deployed — it treats a backslash as an ordinary filename
+        // character and keeps a Windows path whole. The name comes from whichever machine the
+        // browser is on, so the separator set belongs to the input rather than to the server.
+        // CI on Linux caught this; the Windows-only run before it could not.
+        using var db = NewDb();
+
+        var job = await NewService(db).CreateJobAsync(UserId, sent, Export(Entry()));
+
+        Assert.Equal("grouvee_export.json", job.FileName);
+    }
+
     [Fact]
-    public async Task CreateJobAsync_AFileNameWithAPath_KeepsOnlyTheName()
+    public async Task CreateJobAsync_AFileNameThatIsNothingButAPath_FallsBackRatherThanStoringBlank()
     {
         using var db = NewDb();
 
-        var job = await NewService(db)
-            .CreateJobAsync(UserId, @"C:\Users\someone\grouvee_export.json", Export(Entry()));
+        var job = await NewService(db).CreateJobAsync(UserId, "/home/someone/", Export(Entry()));
 
-        Assert.Equal("grouvee_export.json", job.FileName);
+        Assert.Equal("import", job.FileName);
     }
 
     // ---------------------------------------------------------------- committing
