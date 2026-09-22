@@ -392,6 +392,42 @@ public class UserDataExporterTests
     }
 
     [Fact]
+    public async Task ExportAsync_Entry_CarriesItsOrigin()
+    {
+        // Same trap as the ownership and notes above, and a worse one to fall into: without the
+        // origin, an imported library reads as a history that lost its events rather than as one
+        // that never had any (ADR 0026, ADR 0037).
+        using var db = NewDb();
+        AddAccount(db, UserId, "mine@test.local");
+        db.UserGameEntries.Add(new UserGameEntry
+        {
+            UserId = UserId,
+            GameId = 11,
+            Origin = EntryOrigins.Grouvee,
+            AddedAt = Now
+        });
+        db.SaveChanges();
+
+        var export = await NewExporter(db).ExportAsync(UserId, default);
+
+        Assert.Equal(EntryOrigins.Grouvee, Assert.Single(export.Entries).Origin);
+    }
+
+    [Fact]
+    public async Task ExportAsync_EntryTheUserMadeThemselves_ExportsOriginManual()
+    {
+        // The default has to survive into the document as a value rather than as an empty string:
+        // every row written before the column existed is manual, and says so.
+        using var db = NewDb();
+        AddAccount(db, UserId, "mine@test.local");
+        AddEntry(db, gameId: 11, status: null, score: 7);
+
+        var export = await NewExporter(db).ExportAsync(UserId, default);
+
+        Assert.Equal(EntryOrigins.Manual, Assert.Single(export.Entries).Origin);
+    }
+
+    [Fact]
     public async Task ExportAsync_EntryInNoList_ExportsANullStatus()
     {
         // An entry with no status is a game the user has data about but is not tracking (ADR

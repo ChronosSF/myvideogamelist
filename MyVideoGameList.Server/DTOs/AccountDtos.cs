@@ -80,12 +80,19 @@ public record AccountExportDto(
 /// </param>
 /// <param name="Ownership">One of <c>OwnershipKinds</c>, already a permanent key, or null.</param>
 /// <param name="Notes">The user's private notes on the game. Theirs, so theirs to take.</param>
+/// <param name="Origin">
+/// One of <c>EntryOrigins</c> — what put the row here, <c>manual</c> for anything the user did
+/// themselves. Exported because it is what says whether a status has a transition behind it in
+/// <see cref="UserDataExportDto.Events"/> (ADR 0026): without it, an imported library reads as a
+/// history that simply lost its events.
+/// </param>
 public record EntryExportDto(
     int GameId,
     string? Status,
     int? Score,
     string? Ownership,
     string? Notes,
+    string Origin,
     DateTimeOffset AddedAt,
     DateTimeOffset? StatusChangedAt);
 

@@ -75,6 +75,16 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
         // bounded to the playthrough notes' length, for the same reason.
         modelBuilder.Entity<UserGameEntry>().Property(e => e.Ownership).HasMaxLength(16);
         modelBuilder.Entity<UserGameEntry>().Property(e => e.Notes).HasMaxLength(2000);
+
+        // The default is stated to the database as well as in the CLR property, for the reason
+        // ProfileVisibility's is: a row inserted by a fixture or a support script should carry the
+        // honest value rather than an empty one. No check constraint on purpose — see
+        // `EntryOrigins`, whose set is open by construction because every new import preset adds a
+        // value, and a constraint would turn each one into a migration (ADR 0037).
+        modelBuilder.Entity<UserGameEntry>()
+            .Property(e => e.Origin)
+            .HasMaxLength(32)
+            .HasDefaultValue(EntryOrigins.Manual);
         modelBuilder.Entity<UserGameEntry>()
             .ToTable(t =>
             {
