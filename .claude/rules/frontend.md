@@ -142,7 +142,9 @@ Global styles in `src/index.css`, app shell in `src/App.css` — both imported f
 
 Vitest with jsdom and Testing Library, in `*.test.ts(x)` files beside the code they cover.
 `npm run test` runs once; `npm run test:watch` iterates. `vitest.config.ts` is deliberately
-separate from `vite.config.ts`, which exports the HTTPS dev certificate at module load.
+separate from `vite.config.ts`, which exports the HTTPS dev certificate whenever Vite's command is
+`serve` — and `serve` is the command Vitest runs under, so a shared config would make every test
+run depend on the .NET SDK. A build resolves the same file as `build` and is spared it.
 
 - **Query by role and accessible name**, not by class or test id. A test that finds a button by
   its label breaks when the label stops making sense, which is the point.
