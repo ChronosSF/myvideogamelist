@@ -18,14 +18,18 @@ import type { Route } from './+types/HomePage';
 import './HomePage.css';
 
 /**
- * Normally the shared home policy, but the loader overrides it when it degrades.
+ * Whatever the loader decided, which is the shared home policy only for an answer that is whole.
  *
- * Without that override an IGDB outage would be cached: the page still answers 200, so the CDN
+ * Without the loader's say an IGDB outage would be cached: the page still answers 200, so the CDN
  * would happily pin an empty home page for the full window and keep serving it long after the
  * upstream recovered. Caching a failure outlives the failure.
+ *
+ * The loader states a policy on every return, so the fallback is for a loader that has stopped
+ * doing so, and it fails closed as the root does. Falling back to `CACHE_HOME` would make this a
+ * second place the shared policy is handed out, and the one where nobody had judged the answer.
  */
 export function headers({ loaderHeaders }: Route.HeadersArgs) {
-    return { 'Cache-Control': loaderHeaders.get('Cache-Control') ?? CACHE_HOME };
+    return { 'Cache-Control': loaderHeaders.get('Cache-Control') ?? PRIVATE_NO_STORE };
 }
 
 export function meta({ loaderData }: Route.MetaArgs) {
@@ -50,20 +54,41 @@ type HomeData = HomeResponse & { site: SiteConfig };
 export async function loader() {
     const site = siteConfig();
 
-    // A degraded render must not be cached, so it carries its own no-store header. `data()` is
-    // how a loader attaches headers to an otherwise plain return value.
-    const degraded = () => data<HomeData>(
-        { spotlight: null, popular: [], news: [], site },
-        { headers: { 'Cache-Control': PRIVATE_NO_STORE } });
+    // A degraded render must not be cached, and a 200 from the API does not mean the render is
+    // whole: it answers 200 when IGDB or Steam fails too, so that the page still renders, and its
+    // status cannot say which of the two this is. The payload does. The API already makes that
+    // judgement to decide how long to keep its own copy, and sends it, rather than this loader
+    // guessing from an empty rail — a full rail of covers with no news beside it is degraded as
+    // well, and a guess made here would have to be taught that separately.
+    //
+    // Only an answer that says it is whole gets the shared policy. One that does not say, such as
+    // an API older than this build in the middle of a deploy, fails closed like the root's default:
+    // what a missing flag costs is a slow page, never a failure pinned at the edge.
+    //
+    // `data()` is how a loader attaches headers to an otherwise plain return value. The flag is
+    // normalized on the way through, so an answer that did not say is *recorded* as degraded rather
+    // than merely treated as one: spread as it arrived, the page would be handed a payload whose
+    // `degraded` is undefined while its type promises a boolean, and the rule — only an explicit
+    // `false` is whole — would be stated here for the header and again by whoever reads it next.
+    const respond = (home: HomeResponse) => {
+        const degraded = home.degraded !== false;
+
+        return data<HomeData>(
+            { ...home, degraded, site },
+            { headers: { 'Cache-Control': degraded ? PRIVATE_NO_STORE : CACHE_HOME } });
+    };
+
+    // What is left of the page when the API gave nothing to build it from.
+    const nothing = () => respond({ spotlight: null, popular: [], news: [], degraded: true });
 
     try {
         const response = await fetch(apiUrl('/api/home'));
-        if (!response.ok) return degraded();
+        if (!response.ok) return nothing();
 
-        return { ...(await response.json()) as HomeResponse, site } satisfies HomeData;
+        return respond(await response.json() as HomeResponse);
     } catch {
         // fetch rejects outright when the API is unreachable, rather than returning !ok.
-        return degraded();
+        return nothing();
     }
 }
 

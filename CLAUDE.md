@@ -288,9 +288,11 @@ ROADMAP.md                      Forward-looking plan
   `docs/decisions/0036-*`.
 
 - **A degraded or error response must never be cacheable.** Caching a failure outlives the
-  failure. Note two traps: a thrown `Response`'s headers are replaced by the boundary route's
-  (the root reads `errorHeaders` to honour them), and a loader that degrades to a 200 has to
-  attach `no-store` itself via `data()`.
+  failure. Note three traps: a thrown `Response`'s headers are replaced by the boundary route's
+  (the root reads `errorHeaders` to honour them); a loader that degrades to a 200 has to attach
+  `no-store` itself via `data()`; and an *API* that degrades to a 200 has to say so in its payload,
+  because neither the loader nor a CDN can tell that 200 from a healthy one. `/api/home` does, with
+  `degraded`, and the loader reads it failing closed — only an explicit `false` is shared-cached.
 
 - **`fetch` rejects when the API is unreachable** — it does not return `!response.ok`. A loader
   that only checks `response.ok` turns a dead upstream into an unhandled 500. Wrap it and throw

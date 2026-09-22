@@ -17,4 +17,10 @@ export interface HomeResponse {
     spotlight: GameDto | null;
     popular: GameDto[];
     news: NewsItemDto[];
+    /**
+     * True when an upstream failed and the payload is missing what it would have supplied. The
+     * response is a 200 either way, so this is all that tells the loader not to let the page built
+     * from it be cached.
+     */
+    degraded: boolean;
 }
