@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using MyVideoGameList.Server.Data;
 using MyVideoGameList.Server.DTOs;
@@ -75,6 +76,8 @@ public class UserDataExporter(ApplicationDbContext db, TimeProvider clock) : IUs
             { typeof(UserHiddenPlatform), new("hiddenPlatformIds", ReadHiddenPlatformsAsync) },
             { typeof(UserListSortPreference), new("listSortPreferences", ReadListSortPreferencesAsync) },
             { typeof(UserListSetting), new("listNames", ReadListNamesAsync) },
+            { typeof(ImportJob), new("importJobs", ReadImportJobsAsync) },
+            { typeof(ImportRow), new("importRows", ReadImportRowsAsync) },
         };
 
     /// <summary>
@@ -112,10 +115,12 @@ public class UserDataExporter(ApplicationDbContext db, TimeProvider clock) : IUs
         public IReadOnlyList<int> HiddenPlatformIds { get; set; } = [];
         public IReadOnlyList<ListSortExportDto> ListSortPreferences { get; set; } = [];
         public IReadOnlyList<ListNameExportDto> ListNames { get; set; } = [];
+        public IReadOnlyList<ImportJobExportDto> ImportJobs { get; set; } = [];
+        public IReadOnlyList<ImportRowExportDto> ImportRows { get; set; } = [];
 
         public UserDataExportDto ToDocument(DateTimeOffset exportedAt, AccountExportDto account) =>
             new(exportedAt, account, Entries, Events, Playthroughs, Reviews, Wishlist, Favourites,
-                HiddenPlatformIds, ListSortPreferences, ListNames);
+                HiddenPlatformIds, ListSortPreferences, ListNames, ImportJobs, ImportRows);
     }
 
     public async Task<UserDataExportDto> ExportAsync(string userId, CancellationToken cancellationToken)
@@ -253,6 +258,41 @@ public class UserDataExporter(ApplicationDbContext db, TimeProvider clock) : IUs
             .Select(r => new ReviewExportDto(
                 r.Entry.GameId, r.Body, r.HasSpoilers, r.Visibility, r.CreatedAt, r.UpdatedAt))
             .ToListAsync(cancellationToken);
+    }
+
+    private static async Task ReadImportJobsAsync(
+        ApplicationDbContext db, ExportDraft draft, CancellationToken cancellationToken)
+    {
+        draft.ImportJobs = await db.ImportJobs
+            .AsNoTracking()
+            .Where(j => j.UserId == draft.UserId)
+            .OrderBy(j => j.CreatedAt)
+            .Select(j => new ImportJobExportDto(
+                j.Id, j.Source, j.FileName, j.State, j.RowCount, j.ImportedCount, j.SkippedCount,
+                j.CreatedAt, j.CompletedAt))
+            .ToListAsync(cancellationToken);
+    }
+
+    private static async Task ReadImportRowsAsync(
+        ApplicationDbContext db, ExportDraft draft, CancellationToken cancellationToken)
+    {
+        var rows = await db.ImportRows
+            .AsNoTracking()
+            .Where(r => r.UserId == draft.UserId)
+            .OrderBy(r => r.ImportJobId)
+            .ThenBy(r => r.Id)
+            .Select(r => new { r.ImportJobId, r.SourceRef, r.Title, r.GameId, r.MatchKind, r.Decision, r.Payload })
+            .ToListAsync(cancellationToken);
+
+        // The payload is re-parsed rather than passed through as a string, so the export reads as
+        // one document instead of carrying JSON escaped inside JSON. Deserialize rather than
+        // JsonDocument.Parse: the element has to outlive this method, and a parsed document's
+        // does not.
+        draft.ImportRows = rows
+            .Select(r => new ImportRowExportDto(
+                r.ImportJobId, r.SourceRef, r.Title, r.GameId, r.MatchKind, r.Decision,
+                JsonSerializer.Deserialize<JsonElement>(r.Payload)))
+            .ToList();
     }
 
     private static async Task ReadWishlistAsync(

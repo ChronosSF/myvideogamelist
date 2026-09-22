@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using System.Text.Json;
 
 namespace MyVideoGameList.Server.DTOs;
 
@@ -37,7 +38,9 @@ public record UserDataExportDto(
     IReadOnlyList<FavouriteExportDto> Favourites,
     IReadOnlyList<int> HiddenPlatformIds,
     IReadOnlyList<ListSortExportDto> ListSortPreferences,
-    IReadOnlyList<ListNameExportDto> ListNames);
+    IReadOnlyList<ListNameExportDto> ListNames,
+    IReadOnlyList<ImportJobExportDto> ImportJobs,
+    IReadOnlyList<ImportRowExportDto> ImportRows);
 
 /// <summary>
 /// The account row itself — the columns MVGL added to Identity's user, plus the address and the
@@ -177,6 +180,43 @@ public record ListSortExportDto(string Status, string SortKey, bool Descending);
 /// permanent key, so the name can be applied back to the right list by anything that reads this.
 /// </summary>
 public record ListNameExportDto(string Status, string DisplayName);
+
+/// <summary>
+/// One import the user has run or started, and what came of it.
+/// </summary>
+/// <remarks>
+/// A pending job is data they created and have not finished with, so it is theirs to take like
+/// anything else. The uploaded file is not here because it was never stored — it is parsed into
+/// rows and dropped (see <c>ImportJob</c>).
+/// </remarks>
+public record ImportJobExportDto(
+    Guid Id,
+    string Source,
+    string FileName,
+    string State,
+    int RowCount,
+    int? ImportedCount,
+    int? SkippedCount,
+    DateTimeOffset CreatedAt,
+    DateTimeOffset? CompletedAt);
+
+/// <summary>
+/// One game from an uploaded file, as the importer understood it.
+/// </summary>
+/// <remarks>
+/// <paramref name="Values"/> is the canonical row — status, score, notes, flags and playthroughs —
+/// emitted as nested JSON rather than as an escaped string, so the document reads as a document.
+/// It is what the import <em>would</em> write, which for a job still pending is the only place that
+/// interpretation exists.
+/// </remarks>
+public record ImportRowExportDto(
+    Guid JobId,
+    string? SourceRef,
+    string Title,
+    int? GameId,
+    string MatchKind,
+    string Decision,
+    JsonElement Values);
 
 /// <summary>
 /// Confirmation for deleting an account: the account's own password, typed again.
