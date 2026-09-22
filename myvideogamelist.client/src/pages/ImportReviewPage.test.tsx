@@ -122,6 +122,16 @@ describe('ImportReviewPage', () => {
         expect(screen.getByRole('button', { name: 'Import 1 games' })).toBeInTheDocument();
     });
 
+    it('groups the digits of a large count', () => {
+        // A real export runs to hundreds and the cap is 5,000, so four-digit counts are ordinary
+        // here. They go through formatCount like every other count on the site — which also fixes
+        // the locale to one, so the server render and the hydration cannot disagree.
+        review.review = loaded(Array.from({ length: 1200 }, (_, i) => row({ id: i + 1 })));
+        renderPage();
+
+        expect(screen.getByRole('button', { name: 'Import 1,200 games' })).toBeInTheDocument();
+    });
+
     it('will not commit when nothing is selected', () => {
         review.review = loaded([row({ decision: 'skip' })]);
         renderPage();

@@ -4,6 +4,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useLists } from '@/hooks/useLists';
 import { useImportReview } from '@/hooks/useImport';
 import { downloadSkippedRows } from '@/lib/importReport';
+import { formatCount } from '@/lib/format';
 import { PRIVATE_NO_STORE } from '@/lib/cache';
 import { NOINDEX } from '@/lib/seo';
 import { LIST_IDS, LIST_NAMES, type ListId } from '@/types/list';
@@ -144,13 +145,13 @@ export function ImportReviewPage() {
 
                         <div className="flex flex-wrap items-center gap-2">
                             <FilterButton active={filter === 'attention'} onClick={() => setFilter('attention')}>
-                                Needs you ({rows.filter(needsAttention).length})
+                                Needs you ({formatCount(rows.filter(needsAttention).length)})
                             </FilterButton>
                             <FilterButton active={filter === 'importing'} onClick={() => setFilter('importing')}>
-                                Importing ({review.summary.selected})
+                                Importing ({formatCount(review.summary.selected)})
                             </FilterButton>
                             <FilterButton active={filter === 'all'} onClick={() => setFilter('all')}>
-                                All ({review.summary.total})
+                                All ({formatCount(review.summary.total)})
                             </FilterButton>
 
                             <span className="grow" />
@@ -266,7 +267,7 @@ export function ImportReviewPage() {
                                 className="w-full py-2 text-sm font-semibold text-slate-300 light:text-slate-700 bg-slate-800 light:bg-slate-100 hover:bg-slate-700 light:hover:bg-slate-200 rounded-lg"
                                 onClick={() => setShown(count => count + PAGE)}
                             >
-                                Show more ({visible.length - shown} left)
+                                Show more ({formatCount(visible.length - shown)} left)
                             </button>
                         )}
 
@@ -277,7 +278,7 @@ export function ImportReviewPage() {
                                 onClick={() => void commit()}
                                 className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:hover:bg-blue-600 text-white text-sm font-semibold rounded-lg transition-colors"
                             >
-                                {busy ? 'Importing…' : `Import ${review.summary.selected} games`}
+                                {busy ? 'Importing…' : `Import ${formatCount(review.summary.selected)} games`}
                             </button>
                             <button
                                 type="button"
@@ -309,7 +310,7 @@ function Tile({ label, value }: { label: string; value: number }) {
     return (
         <div className="px-4 py-3 bg-slate-800/50 light:bg-white border border-slate-700/70 light:border-slate-200 rounded-lg">
             <dt className="text-xs text-slate-400 light:text-slate-500">{label}</dt>
-            <dd className="text-xl font-bold text-white light:text-slate-900">{value}</dd>
+            <dd className="text-xl font-bold text-white light:text-slate-900">{formatCount(value)}</dd>
         </div>
     );
 }
@@ -359,8 +360,8 @@ function ResultPanel({ imported, skipped, fileName }: {
         <div className="max-w-2xl mx-auto px-4 py-16 text-center">
             <h1 className="text-2xl font-bold text-white light:text-slate-900 mb-2">Import finished</h1>
             <p className="text-slate-400 light:text-slate-600 mb-8">
-                {imported} {imported === 1 ? 'game is' : 'games are'} now in your lists.
-                {skipped.length > 0 && ` ${skipped.length} ${skipped.length === 1 ? 'was' : 'were'} skipped.`}
+                {formatCount(imported)} {imported === 1 ? 'game is' : 'games are'} now in your lists.
+                {skipped.length > 0 && ` ${formatCount(skipped.length)} ${skipped.length === 1 ? 'was' : 'were'} skipped.`}
             </p>
 
             <div className="flex flex-wrap items-center justify-center gap-3">

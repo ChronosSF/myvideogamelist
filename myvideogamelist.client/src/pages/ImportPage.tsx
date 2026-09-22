@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router';
 import { useAuth } from '@/hooks/useAuth';
 import { useImportJobs, useImportUpload } from '@/hooks/useImport';
 import { IMPORT_STATE } from '@/types/import';
+import { formatCount } from '@/lib/format';
 import { PRIVATE_NO_STORE } from '@/lib/cache';
 import { NOINDEX } from '@/lib/seo';
 
@@ -161,7 +162,7 @@ export function ImportPage() {
                                                     {job.fileName}
                                                 </span>
                                                 <span className="text-slate-400 light:text-slate-500 text-xs shrink-0">
-                                                    {job.rowCount} games — review
+                                                    {formatCount(job.rowCount)} games — review
                                                 </span>
                                             </Link>
                                         </li>
@@ -183,7 +184,8 @@ export function ImportPage() {
                                         >
                                             <span className="text-slate-300 light:text-slate-700 truncate">{job.fileName}</span>
                                             <span className="text-slate-500 light:text-slate-400 text-xs shrink-0">
-                                                {job.importedCount} imported, {job.skippedCount} skipped
+                                                {formatCount(job.importedCount ?? 0)} imported,{' '}
+                                                {formatCount(job.skippedCount ?? 0)} skipped
                                             </span>
                                         </li>
                                     ))}
