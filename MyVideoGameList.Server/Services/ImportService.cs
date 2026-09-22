@@ -371,11 +371,16 @@ public class ImportService(
                 });
             }
 
+            // Both axes order by AddedAt and nothing else, so they take the source's date for the
+            // reason the entry does: stamping the import's own would put an entire imported
+            // wishlist at the top of it and bury everything the user actually wanted recently.
+            var axisAddedAt = payload.AddedAt ?? now;
+
             if (payload.Wishlist && wishlisted.Add(gameId))
-                db.UserWishlistItems.Add(new UserWishlistItem { UserId = userId, GameId = gameId, AddedAt = now });
+                db.UserWishlistItems.Add(new UserWishlistItem { UserId = userId, GameId = gameId, AddedAt = axisAddedAt });
 
             if (payload.Favourite && favourited.Add(gameId))
-                db.UserFavourites.Add(new UserFavourite { UserId = userId, GameId = gameId, AddedAt = now });
+                db.UserFavourites.Add(new UserFavourite { UserId = userId, GameId = gameId, AddedAt = axisAddedAt });
 
             imported++;
         }

@@ -393,8 +393,14 @@ public class ImportServiceTests
             shelves: """{"Wish List": {"date_added": "2025-11-28T00:00:00Z"}}""")));
         await service.CommitAsync(UserId, jobId);
 
-        Assert.Equal(379, Assert.Single(db.UserWishlistItems).GameId);
+        var wanted = Assert.Single(db.UserWishlistItems);
+        Assert.Equal(379, wanted.GameId);
         Assert.Null(Assert.Single(db.UserGameEntries).StatusId);
+
+        // The axis orders by this and nothing else, so it takes the source's date for the reason
+        // the entry does — otherwise an imported wishlist lands on top of everything the user
+        // wanted recently.
+        Assert.Equal(new DateTimeOffset(2021, 10, 2, 0, 0, 0, TimeSpan.Zero), wanted.AddedAt);
     }
 
     [Fact]

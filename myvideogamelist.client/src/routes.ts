@@ -9,6 +9,12 @@ export default [
     route('news', 'pages/NewsPage.tsx'),
     route('user', 'pages/UserPage.tsx'),
 
+    // Bringing a library across from another tracker. The job id is in the URL rather than in
+    // component state so that a review survives closing the tab — §C4 asks for exactly that, and
+    // the alternative is somebody losing a 600-row review to a stray navigation.
+    route('import', 'pages/ImportPage.tsx'),
+    route('import/:jobId', 'pages/ImportReviewPage.tsx'),
+
     // Somebody else's profile, and the only route addressed by a name the user chose. Under `/u/`
     // rather than at the top level so that a username can never collide with a route — see the
     // reserved list in `UserNamePolicy` for why that is belt as well as braces.
