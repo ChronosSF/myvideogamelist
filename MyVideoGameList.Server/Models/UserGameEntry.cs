@@ -127,9 +127,18 @@ public class UserGameEntry
     /// anything that is not this application carries the honest value too.
     /// </summary>
     /// <remarks>
-    /// Current state, like the status: a user who edits an imported entry is not thereby the source
-    /// of it, so this is <em>not</em> reset on a later manual edit. It answers "where did this come
-    /// from", which does not stop being true.
+    /// <para>
+    /// Precisely: <b>what last wrote a status here without recording an event</b>. So
+    /// <see cref="EntryOrigins.Manual"/> means every status this entry has held has a
+    /// <see cref="UserGameEvent"/> behind it, and anything else means it may not.
+    /// </para>
+    /// <para>
+    /// Set by an import whether it creates the entry or writes over one somebody made by hand —
+    /// the eventless status is the thing being marked, not the row's parentage. Never cleared,
+    /// including by a later manual move, which errs towards distrusting a status that is in fact
+    /// accounted for. That direction is the safe one: a false negative costs an auditor a lookup,
+    /// where a false positive would hide exactly the row the column exists to flag.
+    /// </para>
     /// </remarks>
     public string Origin { get; set; } = EntryOrigins.Manual;
 
