@@ -254,6 +254,19 @@ ROADMAP.md                      Forward-looking plan
   no hours. Anything later that assumes "every status has an event" — an activity feed, an audit, a
   backfill — has to consult `Origin`. See `docs/decisions/0026-*` and `0037-*`.
 
+- **Scheduled work is a `BackgroundService`, and there is exactly one.** `ImportRetentionService`
+  sweeps expired import jobs hourly, and is the shape the next one copies (ADR 0038). Three things
+  about it are silent when got wrong: a hosted service is a **singleton**, so it takes
+  `IServiceScopeFactory` and makes a scope per tick rather than injecting the scoped `DbContext`;
+  an exception escaping `ExecuteAsync` **kills the service for the life of the process**, so the
+  loop catches per tick; and it runs **once per ECS task**, so it serialises on
+  `pg_try_advisory_xact_lock` — the transaction-scoped variant, because a session lock survives on
+  a pooled connection after it is returned. Retention is two windows, not §S9's one: seven days
+  from `CompletedAt` for a closed job, thirty from `CreatedAt` for a pending one, because a job
+  nobody finished reviewing has no completion and would otherwise hold a `MaxPendingJobs` slot for
+  ever. **`ExecuteDeleteAsync` needs a relational provider**, so the predicate is an `Expression`
+  the tests run against InMemory and the deletion itself is not unit-tested.
+
 - **A new import preset is an `IImportSource`, not a parser.** The seam is file → canonical rows,
   one level up from the column map `specs/csv-list-import.md` proposed, because Grouvee's export is
   a nested document that no column map can describe. Everything after that seam — the review, the

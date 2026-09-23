@@ -8,6 +8,7 @@ using MyVideoGameList.Server.HealthChecks;
 using MyVideoGameList.Server.Models;
 using MyVideoGameList.Server.Security;
 using MyVideoGameList.Server.Services;
+using MyVideoGameList.Server.Services.Import;
 using Scalar.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -81,6 +82,11 @@ builder.Services.AddScoped<IUserDataExporter, UserDataExporter>();
 builder.Services.AddScoped<IUserNameClaimService, UserNameClaimService>();
 builder.Services.AddScoped<ITrackedNewsService, TrackedNewsService>();
 builder.Services.AddScoped<IImportService, ImportService>();
+
+// The application's only background job: deleting import jobs past their retention (ADR 0038).
+// A hosted service rather than a method somewhere, because nothing requests it — see the class for
+// the scoping, failure and multi-task rules that go with that.
+builder.Services.AddHostedService<ImportRetentionService>();
 
 // The clock, injected so the event log's timestamps are controllable in tests.
 builder.Services.AddSingleton(TimeProvider.System);
