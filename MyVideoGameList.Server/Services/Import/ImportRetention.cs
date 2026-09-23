@@ -44,12 +44,18 @@ internal static class ImportRetention
     /// than the one the retention rule was written to prevent.
     /// </para>
     /// <para>
-    /// Much longer than <see cref="KeepCompleted"/> because the two mean different things: a
-    /// finished job is a receipt, while a pending one is work somebody may still intend to come
-    /// back to. Re-uploading costs them only the file they still have.
+    /// Longer than <see cref="KeepCompleted"/> because the two mean different things: a finished
+    /// job is a receipt, while a pending one is work somebody may still intend to come back to.
+    /// Deleting it costs them the decisions they had already made — the resolved shelves, the
+    /// games they picked — which re-uploading does not give back.
+    /// </para>
+    /// <para>
+    /// A fortnight, so that "I will finish this at the weekend" is respected twice over while the
+    /// slot still frees on a human timescale. The exact number is a judgement; what is not is that
+    /// it must exceed <see cref="KeepCompleted"/>, which has a test of its own.
     /// </para>
     /// </remarks>
-    public static readonly TimeSpan KeepAbandoned = TimeSpan.FromDays(30);
+    public static readonly TimeSpan KeepAbandoned = TimeSpan.FromDays(14);
 
     /// <summary>
     /// The jobs that should no longer exist at <paramref name="now"/>.

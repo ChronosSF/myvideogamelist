@@ -262,7 +262,7 @@ ROADMAP.md                      Forward-looking plan
   by a test — so the loop catches per tick; and it runs **once per ECS task**, so it serialises on
   `pg_try_advisory_xact_lock` — the transaction-scoped variant, because a session lock survives on
   a pooled connection after it is returned. Retention is two windows, not §S9's one: seven days
-  from `CompletedAt` for a closed job, thirty from `CreatedAt` for a pending one, because a job
+  from `CompletedAt` for a closed job, fourteen from `CreatedAt` for a pending one, because a job
   nobody finished reviewing has no completion and would otherwise hold a `MaxPendingJobs` slot for
   ever. **`ExecuteDeleteAsync` needs a relational provider**, so the predicate is an `Expression`
   the tests run against InMemory and the deletion itself is not unit-tested.

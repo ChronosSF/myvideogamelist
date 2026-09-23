@@ -66,7 +66,7 @@ is easy to get wrong:
 | Job | Kept for | Why |
 |---|---|---|
 | `done` or `cancelled` | **7 days** from `CompletedAt` (§S9) | A closed job is a receipt — the result summary and the list of rows that did not import. Nothing here is anybody's only copy: the uploaded file was never stored |
-| `pending` | **30 days** from `CreatedAt` | Work somebody may still intend to come back to. Much longer, because deleting it costs them a review they were part way through |
+| `pending` | **14 days** from `CreatedAt` | Work somebody may still intend to come back to. Longer, because deleting it costs them the decisions they had already made, which re-uploading does not give back |
 
 The second window is not in §S9 and is the fix for the hole above. Deleting an abandoned job also
 frees its `MaxPendingJobs` slot, which is the more important of the two effects.

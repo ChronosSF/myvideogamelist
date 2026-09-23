@@ -116,7 +116,7 @@ public class ImportRetentionTests
         // Without this clause it would live for ever — and hold one of the three MaxPendingJobs
         // slots with it, which eventually locks the account out of importing at all.
         using var db = WithJobs(
-            Job("forgotten.json", ImportJobStates.Pending, Now.AddDays(-31), completedAt: null));
+            Job("forgotten.json", ImportJobStates.Pending, Now.AddDays(-20), completedAt: null));
 
         Assert.Equal(["forgotten.json"], Expired(db));
     }
@@ -129,8 +129,8 @@ public class ImportRetentionTests
         using var db = WithJobs(
             Job("exactly-seven.json", ImportJobStates.Done, Now.AddDays(-40),
                 completedAt: Now - ImportRetention.KeepCompleted),
-            Job("exactly-thirty.json", ImportJobStates.Pending, Now - ImportRetention.KeepAbandoned,
-                completedAt: null));
+            Job("exactly-the-pending-window.json", ImportJobStates.Pending,
+                Now - ImportRetention.KeepAbandoned, completedAt: null));
 
         Assert.Empty(Expired(db));
     }

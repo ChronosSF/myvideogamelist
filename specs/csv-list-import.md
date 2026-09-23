@@ -131,7 +131,35 @@ is addressed. Import is a good forcing function for that cache.
 | S6 | CSV parsing via a real library (CsvHelper). Quoted multi-line review text is guaranteed to appear and hand-rolled splitting will corrupt it |
 | S7 | Upload limits — 5 MB and 5,000 rows, enforced before parsing. Reject non-CSV by content sniff, not by extension |
 | S8 | Commit is one transaction per job, upserting `UserGameList` entries. Existing entries are **not** overwritten by default — the review screen marks them "already in your list" and the user opts in per row |
-| S9 | ~~Jobs and their rows are deleted 7 days after completion. The uploaded file itself is never persisted beyond the job~~ **DONE**, with one correction: a job that is never completed has no completion date, so it also expires 30 days after it was *created*. Without that it would live for ever and hold a `MaxPendingJobs` slot with it. See ADR [0038](../docs/decisions/0038-where-scheduled-work-lives.md) |
+| S9 | ~~Jobs and their rows are deleted 7 days after completion.~~ **DONE**, and amended — see §9.1 below, because one rule was not enough. The uploaded file itself is never persisted beyond the job |
+
+### 5.1 Retention: two windows, not one
+
+As written, §S9 covered only half the jobs there are. `CompletedAt` is set when a job is committed
+or cancelled and never otherwise, so "7 days after completion" is keyed on a timestamp a **pending**
+job does not have. The rule does not delete those rows late; it never selects them at all.
+
+That matters more than the storage it implies, because `MaxPendingJobs` counts pending jobs and
+refuses the fourth. Three uploads somebody opened and walked away from would block every later
+import, citing jobs they have long forgotten. There is a way out — the review screen has a Cancel
+button and `/import` lists unfinished jobs to resume — so it is a dead end rather than a locked
+door, but it is one nobody would expect to find themselves in.
+
+So retention is two rules:
+
+| Job | Deleted | Measured from | Why this length |
+|---|---|---|---|
+| `done`, `cancelled` | **7 days** | `CompletedAt` | A closed job is a receipt: the result summary and the list of rows that did not import. Nothing in it is anyone's only copy, since the uploaded file was never stored and the games are now in their lists |
+| `pending` | **14 days** | `CreatedAt` | Unfinished work. Deleting it discards the decisions already made — resolved shelves, chosen games — which re-uploading does not give back. A fortnight respects "I will finish this at the weekend" while still freeing the slot on a human timescale |
+
+The pending window **must** be the longer of the two. Swapping them would delete reviews in progress
+while keeping receipts nobody reads, so it is asserted by a test rather than left to reading.
+
+Both are deleted by a scheduled sweep rather than on access, because nobody requests a deletion:
+the user whose rows they are has by construction stopped interacting with them. That is the
+application's only background job, and ADR
+[0038](../docs/decisions/0038-where-scheduled-work-lives.md) records what it owes a fleet running
+several copies of itself.
 
 ## 6. Client work
 
