@@ -131,7 +131,7 @@ is addressed. Import is a good forcing function for that cache.
 | S6 | CSV parsing via a real library (CsvHelper). Quoted multi-line review text is guaranteed to appear and hand-rolled splitting will corrupt it |
 | S7 | Upload limits — 5 MB and 5,000 rows, enforced before parsing. Reject non-CSV by content sniff, not by extension |
 | S8 | Commit is one transaction per job, upserting `UserGameList` entries. Existing entries are **not** overwritten by default — the review screen marks them "already in your list" and the user opts in per row |
-| S9 | ~~Jobs and their rows are deleted 7 days after completion.~~ **DONE**, and amended — see §9.1 below, because one rule was not enough. The uploaded file itself is never persisted beyond the job |
+| S9 | ~~Jobs and their rows are deleted 7 days after completion.~~ **DONE**, and amended — see §5.1 below, because one rule was not enough. The uploaded file itself is never persisted beyond the job |
 
 ### 5.1 Retention: two windows, not one
 
