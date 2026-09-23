@@ -427,7 +427,10 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
             .HasForeignKey(j => j.UserId)
             .OnDelete(DeleteBehavior.Cascade);
 
-        // The only order anybody reads jobs in, and what the sweep of finished jobs will scan.
+        // The only order anybody reads jobs in. Written when the retention sweep was still
+        // hypothetical and guessed wrong about it: the sweep's predicate names no user at all, so
+        // a UserId-leading index cannot serve it, and ADR 0038 decides deliberately that none
+        // should — the table it scans is kept small by the sweep itself.
         jobs.HasIndex(j => new { j.UserId, j.CreatedAt });
 
         var rows = modelBuilder.Entity<ImportRow>();
