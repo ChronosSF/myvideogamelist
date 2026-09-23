@@ -25,9 +25,13 @@ namespace MyVideoGameList.Server.Services.Import;
 /// tracker for ever. It takes <see cref="IServiceScopeFactory"/> and makes a scope per sweep.
 /// </item>
 /// <item>
-/// An exception escaping <c>ExecuteAsync</c> <b>ends the service for the lifetime of the
-/// process</b>, silently. So the loop catches per tick: a sweep that fails is logged and retried
-/// on the next one, because the next one is an hour away and nothing depends on this having run.
+/// An exception escaping <c>ExecuteAsync</c> <b>stops the whole host</b>. Since .NET 6 the
+/// default <c>HostOptions.BackgroundServiceExceptionBehavior</c> is <c>StopHost</c>: the exception
+/// is logged and the process exits, so ECS replaces the task. (Before .NET 6 it was the opposite
+/// failure — the service died quietly and the host carried on.) So the loop catches per tick: a
+/// sweep that fails is logged and retried on the next one, because the next one is an hour away
+/// and nothing depends on this having run. The default is pinned by a test, so a runtime that
+/// changes it fails the build rather than making this paragraph quietly wrong again.
 /// </item>
 /// <item>
 /// Several ECS tasks each run their own copy, so the sweep has to be safe to run N times at once.
@@ -82,9 +86,9 @@ internal sealed class ImportRetentionService(
         }
         catch (Exception e)
         {
-            // Swallowed deliberately: letting this reach ExecuteAsync would stop the service for
-            // the rest of the process's life, and a missed sweep costs nothing that the next one
-            // does not fix.
+            // Swallowed deliberately: letting this reach ExecuteAsync would stop the host —
+            // the default since .NET 6 — and take the whole API down over a sweep, when a missed
+            // one costs nothing that the next does not fix.
             logger.LogError(e, "Import retention sweep failed; it will be retried on the next tick.");
         }
     }
@@ -97,10 +101,13 @@ internal sealed class ImportRetentionService(
     /// Several tasks run this at the same moment, and the deletion is idempotent, so correctness
     /// never depended on the lock — what it buys is that the work is done once rather than N times
     /// against a predicate that cannot use an index. <c>pg_try_advisory_xact_lock</c> rather than
-    /// the session-scoped <c>pg_try_advisory_lock</c>, which is the trap: a session lock is held
-    /// until it is released or the connection closes, and with pooling the "session" is a pooled
-    /// connection that goes back into the pool still holding it. The transaction-scoped one is
-    /// released by the commit whatever happens.
+    /// the session-scoped <c>pg_try_advisory_lock</c>, which is the trap: a session lock outlives
+    /// the statement, so a pooled connection goes back into the pool still holding it. The next
+    /// borrower does not inherit it — Npgsql resets a reused connection and PostgreSQL's
+    /// <c>DISCARD ALL</c> ends with <c>pg_advisory_unlock_all()</c> — but until that reuse, or
+    /// pruning after the idle lifetime, the server still holds it and every other task's attempt
+    /// fails. And every exit path here would need its own unlock. The transaction-scoped variant
+    /// is released by the commit or the rollback whatever happens.
     /// </para>
     /// <para>
     /// <c>ExecuteDeleteAsync</c>, so the rows never enter the change tracker. The job's

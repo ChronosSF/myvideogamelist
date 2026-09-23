@@ -256,10 +256,10 @@ ROADMAP.md                      Forward-looking plan
 
 - **Scheduled work is a `BackgroundService`, and there is exactly one.** `ImportRetentionService`
   sweeps expired import jobs hourly, and is the shape the next one copies (ADR 0038). Three things
-  about it are silent when got wrong: a hosted service is a **singleton**, so it takes
+  about it are easy to get wrong: a hosted service is a **singleton**, so it takes
   `IServiceScopeFactory` and makes a scope per tick rather than injecting the scoped `DbContext`;
-  an exception escaping `ExecuteAsync` **kills the service for the life of the process**, so the
-  loop catches per tick; and it runs **once per ECS task**, so it serialises on
+  an exception escaping `ExecuteAsync` **stops the whole host** — the default since .NET 6, pinned
+  by a test — so the loop catches per tick; and it runs **once per ECS task**, so it serialises on
   `pg_try_advisory_xact_lock` — the transaction-scoped variant, because a session lock survives on
   a pooled connection after it is returned. Retention is two windows, not §S9's one: seven days
   from `CompletedAt` for a closed job, thirty from `CreatedAt` for a pending one, because a job

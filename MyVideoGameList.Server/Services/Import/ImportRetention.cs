@@ -39,9 +39,9 @@ internal static class ImportRetention
     /// <b>Not in §S9, which only covers "7 days after completion".</b> A job that is never
     /// committed or cancelled has no completion, so under that rule alone it would live for ever —
     /// and worse than the storage that implies, it would hold one of the three
-    /// <c>ImportService.MaxPendingJobs</c> slots permanently. Three abandoned uploads and that
-    /// account can never import again, which is a harder failure than the one the retention rule
-    /// was written to prevent.
+    /// <c>ImportService.MaxPendingJobs</c> slots indefinitely. Three abandoned uploads and that
+    /// account cannot import again until it goes back and cancels one, which is a harder failure
+    /// than the one the retention rule was written to prevent.
     /// </para>
     /// <para>
     /// Much longer than <see cref="KeepCompleted"/> because the two mean different things: a

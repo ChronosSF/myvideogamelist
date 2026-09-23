@@ -30,10 +30,11 @@ finished is holding data for no reason anyone could state.
 
 The spec says "seven days after completion". A job that is never committed or cancelled has no
 completion, so under that rule alone it lives for ever — and it keeps one of the three
-`MaxPendingJobs` slots with it. **Three abandoned uploads and that account can never import
-again.** That is a harder failure than the storage growth the rule was written to prevent, and it
-is not hypothetical: abandoning a review is the single most likely thing to happen to an import
-that goes wrong.
+`MaxPendingJobs` slots with it. **Three abandoned uploads and that account cannot import again
+until it finds and cancels one of them.** The review screen does offer that, so this is a dead end
+rather than a locked door — but nobody returns to cancel a review they walked away from, which is
+why it is still a harder failure than the storage growth the rule was written to prevent. Abandoning
+a review is the single most likely thing to happen to an import that goes wrong.
 
 ## Decision
 
@@ -45,15 +46,19 @@ plus a queue is enough at this scale; do not add a broker for this" applies with
 as well.
 
 Three properties of hosted services are load-bearing and are commented at the class, because each
-is silent when got wrong:
+is easy to get wrong:
 
 - A `BackgroundService` is a **singleton**, so it cannot take `ApplicationDbContext` by
   constructor injection. It takes `IServiceScopeFactory` and creates a scope per sweep. Capturing
   a scoped context for the process lifetime is how one ends up shared across threads with a change
   tracker that never empties.
-- **An exception escaping `ExecuteAsync` ends the service for the life of the process**, without
-  a crash and without a log entry of its own. So the loop catches per tick and logs; a missed sweep
-  costs nothing the next one does not fix.
+- **An exception escaping `ExecuteAsync` stops the host.** Since .NET 6 the default
+  `HostOptions.BackgroundServiceExceptionBehavior` is `StopHost`: the exception is logged and the
+  process exits, so one failed sweep would take the whole API down and have ECS replace the task.
+  (Before .NET 6 it was the opposite failure — the service died silently and the host carried on —
+  and that stale description is what the first draft of this record shipped.) So the loop catches
+  per tick and logs; a missed sweep costs nothing the next one does not fix. The default is pinned
+  by `ImportRetentionTests`, so a runtime that changes it fails the build.
 - It runs **once per ECS task**, so it must be safe to run N times at once.
 
 ### 2. Two windows, because a pending job means something different
@@ -76,10 +81,17 @@ test that restated the rule would agree with itself rather than with the thing t
 task computes the same predicate — so what it buys is the work being done once rather than N times
 against a predicate no index serves.
 
-**Transaction-scoped, not session-scoped**, and that distinction is the trap. `pg_advisory_lock`
-holds until it is released or the connection closes, and under pooling the "session" is a pooled
-connection that returns to the pool still holding the lock; the next borrower of that connection
-inherits it. The `_xact_` variant is released by the commit or rollback whatever happens.
+**Transaction-scoped, not session-scoped**, and that distinction is the trap — though not quite
+the one first written here. `pg_advisory_lock` outlives the statement, so a pooled connection goes
+back into the pool still holding it. The next borrower does *not* inherit it: Npgsql resets a reused
+connection, and PostgreSQL's `DISCARD ALL` ends with `pg_advisory_unlock_all()` — verified by taking
+a session lock, running `DISCARD ALL`, and watching `pg_locks` go from one advisory lock to none.
+
+What does happen is that the server-side session keeps the lock while the connection sits idle in
+the pool, until it is reused or pruned after Npgsql's connection idle lifetime. So every other
+task's `pg_try_advisory_lock` fails for minutes rather than for ever — and every exit path of the
+sweep would need its own unlock. The `_xact_` variant is released by the commit or the rollback
+whatever happens, which is why it is the right choice regardless.
 
 A task that does not get the lock returns immediately. There is nothing to wait for: the holder is
 deleting exactly the rows this one would have.

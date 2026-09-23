@@ -1,6 +1,6 @@
 # 0037. A tracker import carries the history a platform import cannot
 
-**Status:** Accepted
+**Status:** Implemented
 
 Extends [0026](0026-a-library-import-records-ownership-not-history.md), which scoped the *platform*
 import. Revises `specs/csv-list-import.md`, which was written in August 2026 without a real export

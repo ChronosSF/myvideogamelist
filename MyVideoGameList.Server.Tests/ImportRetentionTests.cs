@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Hosting;
 using MyVideoGameList.Server.Data;
 using MyVideoGameList.Server.Models;
 using MyVideoGameList.Server.Services.Import;
@@ -144,6 +145,24 @@ public class ImportRetentionTests
             Job("d-fresh-pending.json", ImportJobStates.Pending, Now.AddDays(-1), completedAt: null));
 
         Assert.Equal(["a-expired-done.json", "b-expired-pending.json"], Expired(db));
+    }
+
+    [Fact]
+    public void ABackgroundServiceException_StopsTheHostOnThisRuntime()
+    {
+        // The reason ImportRetentionService catches per tick, pinned rather than believed. Since
+        // .NET 6 the default is StopHost: an exception escaping ExecuteAsync is logged and the
+        // *process exits*, so one failed sweep would take the API down and have ECS replace the
+        // task. Before .NET 6 it was the opposite — the service died and the host carried on —
+        // and that stale description is what the first version of this change shipped in four
+        // places.
+        //
+        // Asserted against HostOptions rather than described in a comment, so that a future
+        // runtime changing the default fails here instead of quietly making the reasoning wrong
+        // again.
+        Assert.Equal(
+            BackgroundServiceExceptionBehavior.StopHost,
+            new HostOptions().BackgroundServiceExceptionBehavior);
     }
 
     [Fact]
