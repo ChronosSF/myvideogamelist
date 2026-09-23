@@ -28,6 +28,37 @@ public static class OwnershipKinds
 }
 
 /// <summary>
+/// What put the entry here. Stored as <see cref="UserGameEntry.Origin"/>.
+/// </summary>
+/// <remarks>
+/// <para>
+/// ADR 0026 required this so that "an import writes no <see cref="UserGameEvent"/>" is checkable
+/// rather than folklore. Without it the only trace of an imported row is an <em>absent</em> event,
+/// which is indistinguishable from a bug that dropped one — so the rule reads: a status has an
+/// event behind it unless its entry's origin is not <see cref="Manual"/>.
+/// </para>
+/// <para>
+/// The value names the <em>source</em>, not the act. "grouvee" rather than "import", because
+/// "undo my Grouvee import" is then a query, and because a row whose shape looks odd years from now
+/// says which importer produced it. Every preset adds a value; see ADR 0037.
+/// </para>
+/// <para>
+/// Unlike <see cref="OwnershipKinds"/> and <c>ReviewVisibility</c>, this deliberately has
+/// <b>no check constraint</b>. Those two enumerate closed sets. This one is open by construction —
+/// the whole point of the preset design is that a new source is data rather than code, and a check
+/// constraint would make each one a migration. Its absence here is a decision, not an oversight.
+/// </para>
+/// </remarks>
+public static class EntryOrigins
+{
+    /// <summary>The user did this themselves, in the app. The default, and almost every row.</summary>
+    public const string Manual = "manual";
+
+    /// <summary>Imported from a Grouvee export (ADR 0037).</summary>
+    public const string Grouvee = "grouvee";
+}
+
+/// <summary>
 /// Everything one user has recorded about one game. Their score, when they added it, and — as one
 /// field among several — which status list it currently sits in.
 /// </summary>
@@ -89,6 +120,27 @@ public class UserGameEntry
     /// be read by other people and carries a visibility for that reason. See ADR 0030.
     /// </remarks>
     public string? Notes { get; set; }
+
+    /// <summary>
+    /// One of <see cref="EntryOrigins"/> — what put this row here. Defaults to
+    /// <see cref="EntryOrigins.Manual"/> in the database as well as here, so a row written by
+    /// anything that is not this application carries the honest value too.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Precisely: <b>what last wrote a status here without recording an event</b>. So
+    /// <see cref="EntryOrigins.Manual"/> means every status this entry has held has a
+    /// <see cref="UserGameEvent"/> behind it, and anything else means it may not.
+    /// </para>
+    /// <para>
+    /// Set by an import whether it creates the entry or writes over one somebody made by hand —
+    /// the eventless status is the thing being marked, not the row's parentage. Never cleared,
+    /// including by a later manual move, which errs towards distrusting a status that is in fact
+    /// accounted for. That direction is the safe one: a false negative costs an auditor a lookup,
+    /// where a false positive would hide exactly the row the column exists to flag.
+    /// </para>
+    /// </remarks>
+    public string Origin { get; set; } = EntryOrigins.Manual;
 
     /// <summary>When the user first recorded anything about this game. Never updated afterwards.</summary>
     public DateTimeOffset AddedAt { get; set; }

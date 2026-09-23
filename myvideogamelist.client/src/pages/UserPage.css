@@ -170,6 +170,13 @@
     background: rgba(59, 130, 246, 0.14);
 }
 
+/* A Link wearing the button treatment. Anchors are inline, so without this the padding above
+   overlaps the text around it and the margin from `.user-card-action` does nothing. */
+a.user-btn {
+    display: inline-block;
+    text-decoration: none;
+}
+
 .user-btn-block {
     width: 100%;
     padding-top: 0.5625rem;

@@ -139,6 +139,8 @@ public class UserOwnedDataTests
 
         Assert.Equal(
             [
+                nameof(ImportJob),
+                nameof(ImportRow),
                 nameof(Review),
                 nameof(UserFavourite),
                 nameof(UserGameEntry),

@@ -24,6 +24,8 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
     : IdentityDbContext<ApplicationUser>(options)
 {
     public DbSet<CachedGame> CachedGames { get; set; }
+    public DbSet<ImportJob> ImportJobs { get; set; }
+    public DbSet<ImportRow> ImportRows { get; set; }
     public DbSet<ListStatus> ListStatuses { get; set; }
     public DbSet<PlaythroughType> PlaythroughTypes { get; set; }
     public DbSet<Review> Reviews { get; set; }
@@ -75,6 +77,16 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
         // bounded to the playthrough notes' length, for the same reason.
         modelBuilder.Entity<UserGameEntry>().Property(e => e.Ownership).HasMaxLength(16);
         modelBuilder.Entity<UserGameEntry>().Property(e => e.Notes).HasMaxLength(2000);
+
+        // The default is stated to the database as well as in the CLR property, for the reason
+        // ProfileVisibility's is: a row inserted by a fixture or a support script should carry the
+        // honest value rather than an empty one. No check constraint on purpose — see
+        // `EntryOrigins`, whose set is open by construction because every new import preset adds a
+        // value, and a constraint would turn each one into a migration (ADR 0037).
+        modelBuilder.Entity<UserGameEntry>()
+            .Property(e => e.Origin)
+            .HasMaxLength(32)
+            .HasDefaultValue(EntryOrigins.Manual);
         modelBuilder.Entity<UserGameEntry>()
             .ToTable(t =>
             {
@@ -100,6 +112,7 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
         ConfigureUserGameEvents(modelBuilder);
         ConfigureUserGamePlaythroughs(modelBuilder);
         ConfigureReviews(modelBuilder);
+        ConfigureImports(modelBuilder);
 
         // UserListSortPreference: one row per (user, status); no row means the default sort
         modelBuilder.Entity<UserListSortPreference>().HasKey(p => new { p.UserId, p.StatusId });
@@ -382,6 +395,68 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
         reviews.ToTable(t => t.HasCheckConstraint(
             "CK_Reviews_Visibility",
             "\"Visibility\" IN ('public', 'private')"));
+    }
+
+    /// <summary>
+    /// The two import tables, which have the entry-and-child shape the playthroughs use.
+    /// </summary>
+    /// <remarks>
+    /// Both are user-owned and both are registered in the export manifest. A row reaches its job
+    /// through <c>(ImportJobId, UserId)</c> rather than through the job id alone, so that "this
+    /// row's owner is the job's owner" is a database constraint rather than a promise the service
+    /// has to keep — the same composite key a playthrough and a review carry (ADR 0025).
+    /// </remarks>
+    private static void ConfigureImports(ModelBuilder modelBuilder)
+    {
+        var jobs = modelBuilder.Entity<ImportJob>();
+
+        jobs.HasKey(j => j.Id);
+        jobs.Property(j => j.Source).HasMaxLength(32);
+        jobs.Property(j => j.State).HasMaxLength(16);
+
+        // Long enough for any real filename and short enough that a pathological one cannot be
+        // used to bloat the row. Never a path — see ImportJob.FileName.
+        jobs.Property(j => j.FileName).HasMaxLength(260);
+
+        // The alternate key a row's composite foreign key points at. Uniqueness is already
+        // guaranteed by Id alone; this exists only to be referenced, exactly as the entry's does.
+        jobs.HasAlternateKey(j => new { j.Id, j.UserId });
+
+        jobs.HasOne(j => j.User)
+            .WithMany()
+            .HasForeignKey(j => j.UserId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // The only order anybody reads jobs in, and what the sweep of finished jobs will scan.
+        jobs.HasIndex(j => new { j.UserId, j.CreatedAt });
+
+        var rows = modelBuilder.Entity<ImportRow>();
+
+        rows.HasKey(r => r.Id);
+        rows.Property(r => r.SourceRef).HasMaxLength(64);
+        rows.Property(r => r.Title).HasMaxLength(512);
+        rows.Property(r => r.MatchKind).HasMaxLength(16);
+        rows.Property(r => r.Decision).HasMaxLength(16);
+
+        // jsonb for the reason CachedGame.Payload is: it is a document rather than a set of
+        // columns, and PostgreSQL validates what is written to it.
+        rows.Property(r => r.Payload).HasColumnType("jsonb");
+
+        rows.HasOne(r => r.User)
+            .WithMany()
+            .HasForeignKey(r => r.UserId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        rows.HasOne(r => r.Job)
+            .WithMany()
+            .HasForeignKey(r => new { r.ImportJobId, r.UserId })
+            .HasPrincipalKey(j => new { j.Id, j.UserId })
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // Reading one job's rows is every query this table gets. No second index on ImportJobId
+        // alone: the composite foreign key above already gets one that serves as its prefix, which
+        // is the same reason the playthroughs declare none.
+        rows.HasIndex(r => new { r.ImportJobId, r.Title });
     }
 
     private static void ConfigureUserGameEvents(ModelBuilder modelBuilder)

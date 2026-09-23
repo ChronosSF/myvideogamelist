@@ -1,8 +1,23 @@
 # Spec — Import lists from other game trackers (CSV)
 
-Status: **draft, not started**
+Status: **partly superseded — being built, Grouvee first**
 Relates to: `ROADMAP.md` Tier 2 "Import from Steam / PSN / Xbox / GOG" (line 57) and the
 paid-tier table row "Import from Steam/PSN/Xbox" (line 187).
+
+> **Read `docs/decisions/0037-a-tracker-import-carries-history.md` before this document.**
+> This spec was written in August 2026 from public documentation, without a real export in hand. A
+> genuine 608-row Grouvee export has since falsified three of its premises, and 0037 records what
+> replaced them:
+>
+> - **§4 is wrong for Grouvee.** Their export carries `igdb_id` on 606 of 608 rows, so the fuzzy
+>   matcher (M1–M4) is not on the critical path and is deferred to the first preset that needs it.
+> - **§3's seam is wrong.** Grouvee's export is a nested document — `shelves` is an object, `dates`
+>   is an array of runs — which no column map can express. The interface is `IImportSource`
+>   (file → canonical rows); a flat CSV plus a column map is one implementation of it.
+> - **§7's blockers are all resolved.** Per-entry fields, the five-status taxonomy, playthroughs,
+>   reviews, the wishlist axis and the metadata cache have all shipped.
+>
+> §3.2's status vocabulary, §5's entities and §6's client work stand. §10's order does not.
 
 ---
 

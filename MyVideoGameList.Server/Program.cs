@@ -80,6 +80,7 @@ builder.Services.AddScoped<ISitemapService, SitemapService>();
 builder.Services.AddScoped<IUserDataExporter, UserDataExporter>();
 builder.Services.AddScoped<IUserNameClaimService, UserNameClaimService>();
 builder.Services.AddScoped<ITrackedNewsService, TrackedNewsService>();
+builder.Services.AddScoped<IImportService, ImportService>();
 
 // The clock, injected so the event log's timestamps are controllable in tests.
 builder.Services.AddSingleton(TimeProvider.System);

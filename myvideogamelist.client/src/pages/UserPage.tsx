@@ -259,6 +259,18 @@ export function UserPage() {
                             person and to nobody else. */}
                         <ListNamesCard />
 
+                        {/* Here rather than beside the export in "Your data", which is the
+                            section holding the one thing that cannot be undone — an import is
+                            reviewed before it writes and belongs nowhere near that warning. */}
+                        <div className="user-card">
+                            <div className="user-card-label">Import from another tracker</div>
+                            <p className="user-card-hint">
+                                Bring your games across from Grouvee. You see every game, and what we
+                                made of it, before anything is saved.
+                            </p>
+                            <Link to="/import" className="user-btn user-card-action">Start an import</Link>
+                        </div>
+
                         <div className="user-card">
                             <div className="user-card-label">Upcoming releases — platforms</div>
                             <p className="user-card-hint">

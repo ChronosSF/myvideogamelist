@@ -242,6 +242,25 @@ ROADMAP.md                      Forward-looking plan
   no migration can reconstruct. Go through `ListService`, and note that a move to the status a
   game already holds must record nothing. See `docs/decisions/0018-*`.
 
+- **The import is the one exemption from that rule, and `Origin` is what makes it checkable.**
+  `ImportService` writes statuses without events, because a tracker export records a shelf rather
+  than a transition and an event would carry the import's own timestamp as permanent fabricated
+  history. So `UserGameEntry.Origin` names the source — `manual` means every status that entry has
+  held has an event behind it, anything else means it may not — and it is set whenever the import
+  writes a status, over an existing entry as well as a new one. `StatusChangedAt` stays null for
+  the same reason. **An imported playthrough carries no type**: a typed run with a duration feeds
+  the community medians, and a tracker's completion field is a default rather than its owner's
+  answer — Grouvee's reads "Main Story" on 596 of 608 rows including all 448 that carry no date and
+  no hours. Anything later that assumes "every status has an event" — an activity feed, an audit, a
+  backfill — has to consult `Origin`. See `docs/decisions/0026-*` and `0037-*`.
+
+- **A new import preset is an `IImportSource`, not a parser.** The seam is file → canonical rows,
+  one level up from the column map `specs/csv-list-import.md` proposed, because Grouvee's export is
+  a nested document that no column map can describe. Everything after that seam — the review, the
+  conflict check, the commit, the failure report — is shared and must stay source-agnostic. A row
+  carrying the source's own IGDB id needs no matching at all, which is why the fuzzy matcher does
+  not exist yet: build it with the first preset that has no ids, against a path that already works.
+
 - **A score without its review count is not shippable.** IGDB's `aggregated_rating` is an
   unweighted mean with no minimum, so a game with one perfect review scores 100. Every score in
   `GameDto` travels with its count, the browse query requires
