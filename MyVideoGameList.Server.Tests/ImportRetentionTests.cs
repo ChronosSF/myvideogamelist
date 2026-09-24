@@ -1,7 +1,10 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Options;
 using MyVideoGameList.Server.Data;
 using MyVideoGameList.Server.Models;
+using MyVideoGameList.Server.Services;
 using MyVideoGameList.Server.Services.Import;
 
 namespace MyVideoGameList.Server.Tests;
@@ -182,21 +185,35 @@ public class ImportRetentionTests
     }
 
     [Fact]
-    public void ABackgroundServiceException_StopsTheHostOnThisRuntime()
+    public void AddScheduledWork_LeavesAnEscapingExceptionStoppingTheHost()
     {
-        // The reason ImportRetentionService catches per tick, pinned rather than believed. Since
-        // .NET 6 the default is StopHost: an exception escaping ExecuteAsync is logged and the
-        // *process exits*, so one failed sweep would take the API down and have ECS replace the
-        // task. Before .NET 6 it was the opposite — the service died and the host carried on —
-        // and that stale description is what the first version of this change shipped in four
-        // places.
+        // The reason ImportRetentionService catches per tick, pinned rather than believed. Under
+        // StopHost an exception escaping ExecuteAsync is logged and the *process exits*, so one
+        // failed sweep would take the API down and have ECS replace the task.
         //
-        // Asserted against HostOptions rather than described in a comment, so that a future
-        // runtime changing the default fails here instead of quietly making the reasoning wrong
-        // again.
+        // Resolved out of the application's own registration, not out of `new HostOptions()`. The
+        // first version of this test did the latter, which pins the framework's default and
+        // nothing else: a single Configure<HostOptions> in Program.cs would flip what the
+        // application really does and leave this green, while the class remarks and ADR 0038 went
+        // on claiming the behaviour was pinned. Setting the option in AddScheduledWork and
+        // reading it back through DI is what makes the claim true — see ScheduledWork for why it
+        // is stated there rather than inherited.
+        using var services = new ServiceCollection().AddScheduledWork().BuildServiceProvider();
+
         Assert.Equal(
             BackgroundServiceExceptionBehavior.StopHost,
-            new HostOptions().BackgroundServiceExceptionBehavior);
+            services.GetRequiredService<IOptions<HostOptions>>().Value.BackgroundServiceExceptionBehavior);
+    }
+
+    [Fact]
+    public void AddScheduledWork_RegistersTheRetentionSweep()
+    {
+        // The other half of what that call site promises. An option configured beside a hosted
+        // service that is no longer registered would be a contract about nothing.
+        Assert.Contains(
+            new ServiceCollection().AddScheduledWork(),
+            service => service.ServiceType == typeof(IHostedService)
+                && service.ImplementationType == typeof(ImportRetentionService));
     }
 
     [Fact]

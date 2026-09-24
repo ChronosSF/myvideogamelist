@@ -269,8 +269,11 @@ ROADMAP.md                      Forward-looking plan
   sweeps expired import jobs hourly, and is the shape the next one copies (ADR 0038). Three things
   about it are easy to get wrong: a hosted service is a **singleton**, so it takes
   `IServiceScopeFactory` and makes a scope per tick rather than injecting the scoped `DbContext`;
-  an exception escaping `ExecuteAsync` **stops the whole host** — the default since .NET 6, pinned
-  by a test — so the loop catches per tick; and it runs **once per ECS task**, so it serialises on
+  an exception escaping `ExecuteAsync` **stops the whole host**, so the loop catches per tick —
+  `ScheduledWork.AddScheduledWork` registers every scheduled service and is the **only** place
+  allowed to configure `HostOptions`, which is what lets a test assert that behaviour out of the
+  application's own registration instead of out of a bare `new HostOptions()` that says nothing
+  about us; and it runs **once per ECS task**, so it serialises on
   `pg_try_advisory_xact_lock` — the transaction-scoped variant, because a session lock survives on
   a pooled connection after it is returned. Retention is two windows, not §S9's one: seven days
   from `CompletedAt` for a closed job, fourteen from `UpdatedAt` for a pending one, because a job

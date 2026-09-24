@@ -25,13 +25,14 @@ namespace MyVideoGameList.Server.Services.Import;
 /// tracker for ever. It takes <see cref="IServiceScopeFactory"/> and makes a scope per sweep.
 /// </item>
 /// <item>
-/// An exception escaping <c>ExecuteAsync</c> <b>stops the whole host</b>. Since .NET 6 the
-/// default <c>HostOptions.BackgroundServiceExceptionBehavior</c> is <c>StopHost</c>: the exception
-/// is logged and the process exits, so ECS replaces the task. (Before .NET 6 it was the opposite
-/// failure — the service died quietly and the host carried on.) So the loop catches per tick: a
-/// sweep that fails is logged and retried on the next one, because the next one is an hour away
-/// and nothing depends on this having run. The default is pinned by a test, so a runtime that
-/// changes it fails the build rather than making this paragraph quietly wrong again.
+/// An exception escaping <c>ExecuteAsync</c> <b>stops the whole host</b>: it is logged and the
+/// process exits, so ECS replaces the task. (Before .NET 6 it was the opposite failure — the
+/// service died quietly and the host carried on.) So the loop catches per tick: a sweep that fails
+/// is logged and retried on the next one, because the next one is an hour away and nothing depends
+/// on this having run. <see cref="ScheduledWork"/> sets
+/// <c>HostOptions.BackgroundServiceExceptionBehavior</c> to <c>StopHost</c> rather than inheriting
+/// it, and <c>ImportRetentionTests</c> reads it back out of that registration — so this paragraph
+/// describes what the application configures, not what a framework version happens to default to.
 /// </item>
 /// <item>
 /// Several ECS tasks each run their own copy, so the sweep has to be safe to run N times at once.

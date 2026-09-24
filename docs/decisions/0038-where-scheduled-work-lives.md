@@ -40,7 +40,9 @@ a review is the single most likely thing to happen to an import that goes wrong.
 
 ### 1. Scheduled work is a `BackgroundService`, and this is the first one
 
-`ImportRetentionService`, registered with `AddHostedService` in `Program.cs`. Not a queue, not a
+`ImportRetentionService`, registered by `ScheduledWork.AddScheduledWork` — one call site for
+everything that runs on a schedule, and the only place that configures `HostOptions`, for the
+reason in the second bullet below. Not a queue, not a
 broker, not an external scheduler: the work is one `DELETE` an hour, and §S5's "a hosted service
 plus a queue is enough at this scale; do not add a broker for this" applies with the queue removed
 as well.
@@ -52,13 +54,18 @@ is easy to get wrong:
   constructor injection. It takes `IServiceScopeFactory` and creates a scope per sweep. Capturing
   a scoped context for the process lifetime is how one ends up shared across threads with a change
   tracker that never empties.
-- **An exception escaping `ExecuteAsync` stops the host.** Since .NET 6 the default
-  `HostOptions.BackgroundServiceExceptionBehavior` is `StopHost`: the exception is logged and the
-  process exits, so one failed sweep would take the whole API down and have ECS replace the task.
-  (Before .NET 6 it was the opposite failure — the service died silently and the host carried on —
-  and that stale description is what the first draft of this record shipped.) So the loop catches
-  per tick and logs; a missed sweep costs nothing the next one does not fix. The default is pinned
-  by `ImportRetentionTests`, so a runtime that changes it fails the build.
+- **An exception escaping `ExecuteAsync` stops the host.** It is logged and the process exits, so
+  one failed sweep would take the whole API down and have ECS replace the task. (Before .NET 6 it
+  was the opposite failure — the service died silently and the host carried on — and that stale
+  description is what the first draft of this record shipped.) So the loop catches per tick and
+  logs; a missed sweep costs nothing the next one does not fix. `ScheduledWork.AddScheduledWork`
+  **sets** `HostOptions.BackgroundServiceExceptionBehavior` to `StopHost` rather than inheriting
+  the framework default, and `ImportRetentionTests` resolves it back out of that registration. The
+  first version of this claim was pinned by a test over a bare `new HostOptions()`, which asserts
+  the runtime's default and nothing about this application: a single `Configure<HostOptions>` in
+  `Program.cs` would have flipped the real behaviour and left the test green. Setting the option
+  where the services are registered — and keeping that the only place that touches it — is what
+  makes the sentence above true of us rather than of the framework.
 - It runs **once per ECS task**, so it must be safe to run N times at once.
 
 ### 2. Two windows, because a pending job means something different
