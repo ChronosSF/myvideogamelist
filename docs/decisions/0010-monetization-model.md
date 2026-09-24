@@ -80,6 +80,13 @@ everyone ([0023](0023-profile-statistics-derived-at-read-time.md)) — and it is
 precisely so that it is not the retroactive tightening the last consequence warns against: nobody
 but the owner has an account yet.
 
-Two rules the plan stated beside the table, to read with the consequences above: **one ad
-provider to start** — more providers means more scripts, more consent surface and worse
-performance — and **free-tier limits behind feature flags**, so they can be tuned without a deploy.
+Two rules the plan stated beside the table, to read with the consequences above.
+
+**The ad provider is Google AdSense, and there is no plan for a second one.** The plan said "one
+provider to start"; the owner's decision (2026-09-24) is one provider full stop. More providers
+would mean more scripts, more consent surface and worse performance, and a second one is not
+worth any of that on this site. So nothing is built to abstract over providers — an ad slot is an
+AdSense slot — and the consent banner in M9 has to satisfy Google's requirements for visitors in
+the EEA and the UK, not a generic notion of consent.
+
+**Free-tier limits behind feature flags**, so they can be tuned without a deploy.
