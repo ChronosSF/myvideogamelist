@@ -267,7 +267,10 @@ ROADMAP.md                      Forward-looking plan
   ever. **`UpdatedAt` is the last saved decision, never the upload** — every write to a job stamps
   it, so the pending window is silence rather than a deadline, and a review worked through over
   several weekends is not deleted underneath its owner. **`ExecuteDeleteAsync` needs a relational provider**, so the predicate is an `Expression`
-  the tests run against InMemory and the deletion itself is not unit-tested.
+  the tests run against InMemory and the deletion itself is not unit-tested — change it and verify
+  it against the real container. It deletes **twenty-five jobs per statement and commits each
+  batch**, because one unbounded `DELETE` over a backlog exceeds Npgsql's thirty-second default,
+  rolls back, deletes nothing, and is retried identically every hour for ever.
 
 - **A new import preset is an `IImportSource`, not a parser.** The seam is file → canonical rows,
   one level up from the column map `specs/csv-list-import.md` proposed, because Grouvee's export is

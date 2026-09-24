@@ -107,7 +107,30 @@ whatever happens, which is why it is the right choice regardless.
 A task that does not get the lock returns immediately. There is nothing to wait for: the holder is
 deleting exactly the rows this one would have.
 
-### 4. No index for the predicate
+### 4. In batches, each its own transaction
+
+`ExecuteDeleteAsync` over the whole predicate is one statement, and `Program.cs` configures Npgsql
+without a command timeout, which leaves the thirty-second default. A backlog large enough to exceed
+it does not merely take longer: the statement times out, the transaction rolls back, **nothing** is
+deleted, and the next tick runs the identical statement against the identical backlog an hour
+later. The sweep would be permanently stuck at the moment it was needed most, saying so once an
+hour, and the advisory lock would keep every other task from helping.
+
+So it deletes twenty-five jobs at a time and commits each batch. The cost is not the jobs but the
+`ImportRows` that cascade with them — up to `ImportService.MaxRows` apiece — and twenty-five bounds
+one statement at 125,000 cascaded deletions. A sweep runs at most two hundred batches before leaving
+the rest to the next one; that cap does not bind in practice and exists so that a predicate which
+wrongly matched everything could not loop for ever. Committing per batch is what turns "cannot
+finish" into "makes progress": a batch that fails leaves every batch before it deleted.
+
+Verified against a real PostgreSQL, since InMemory cannot run `ExecuteDelete` at all. Fifty-five
+expired jobs among fifty-eight went in exactly three statements — twenty-five, twenty-five, five —
+each a `DELETE FROM "ImportJobs" WHERE "Id" IN (SELECT ... ORDER BY "CreatedAt" LIMIT @p)`, and
+their 165 `ImportRows` went with them through the cascade. All three that had to survive did: a
+receipt from three days ago, a pending job created forty days ago whose owner saved a decision two
+days ago, and a real job from an earlier session.
+
+### 5. No index for the predicate
 
 It is an `OR` across two nullable columns, which needs two partial indexes to serve properly, and
 the table it scans is kept small by this very sweep. Stated here so that its absence reads as a
