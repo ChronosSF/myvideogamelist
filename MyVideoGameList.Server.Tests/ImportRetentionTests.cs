@@ -219,8 +219,15 @@ public class ImportRetentionTests
     [Fact]
     public void KeepAbandoned_IsLongerThanKeepCompleted()
     {
-        // Not a tautology: swapping the two would silently delete jobs people are part way through
-        // reviewing while keeping receipts nobody reads, and every other test here would pass.
+        // Neither a tautology nor redundant — though for a subtler reason than this comment first
+        // gave. It claimed the tests above would all pass with the two constants swapped, and that
+        // is simply false: swapping them fails four of them, because each names a concrete age and
+        // a concrete expectation.
+        //
+        // What none of those four states is *why* the ages are what they are. Read their failures
+        // alone and the obvious repair is to edit the dates until they pass again, which would
+        // leave a sweep that deletes reviews people are part way through and keeps receipts nobody
+        // reads. This is the one assertion that says the ordering is the point.
         Assert.True(ImportRetention.KeepAbandoned > ImportRetention.KeepCompleted);
     }
 }
