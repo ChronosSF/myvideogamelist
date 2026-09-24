@@ -107,6 +107,25 @@ public class ImportJob
 
     public DateTimeOffset CreatedAt { get; set; }
 
+    /// <summary>
+    /// The last time the job's owner did something with it, and the clock a <em>pending</em> job's
+    /// retention runs against.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Set on upload and moved by every write the review makes — saving decisions, committing,
+    /// cancelling. Without it the abandoned-job window would run from <see cref="CreatedAt"/>, and a
+    /// review somebody worked through over three weekends would be deleted underneath them on the
+    /// fourteenth day along with every decision they had made. That is the exact opposite of why
+    /// that window is the longer of the two. See <c>ImportRetention.KeepAbandoned</c>.
+    /// </para>
+    /// <para>
+    /// <b>Reading the review does not move it.</b> A GET that writes is its own problem, and a job
+    /// left open in a background tab would otherwise never expire at all.
+    /// </para>
+    /// </remarks>
+    public DateTimeOffset UpdatedAt { get; set; }
+
     /// <summary>When the job reached <c>done</c> or <c>cancelled</c>. Null while it is pending.</summary>
     public DateTimeOffset? CompletedAt { get; set; }
 

@@ -580,6 +580,47 @@ public class ImportServiceTests
         Assert.Equal(42, Assert.Single(db.UserGameEntries).GameId);
     }
 
+    // ---------------------------------------------------------- the retention clock
+
+    [Fact]
+    public async Task CreateJobAsync_StartsTheJobsClockAtItsCreation()
+    {
+        // Left at default(DateTimeOffset) the column reads as two thousand years of silence, and
+        // the retention sweep would delete every job on the tick after it was uploaded.
+        using var db = NewDb();
+        await UploadAsync(NewService(db), Export(Entry()));
+
+        var job = await db.ImportJobs.SingleAsync();
+
+        Assert.Equal(Midday, job.UpdatedAt);
+    }
+
+    [Fact]
+    public async Task SetDecisionsAsync_MovesTheJobsClock_SoRetentionMeasuresSilenceAndNotAge()
+    {
+        // ImportRetention deletes a pending job a fortnight after this column last moved, so a
+        // review somebody works through over several sittings has to keep pushing it forward. If
+        // saving decisions stopped writing it the window would quietly become a deadline from
+        // upload, and a part-finished review would be deleted along with every decision made on
+        // it — which no other test here would catch, because the decisions themselves would still
+        // be saved perfectly correctly.
+        using var db = NewDb();
+        var service = NewService(db, CacheReturning(Game(379)));
+        var jobId = await UploadAsync(service, Export(Entry()));
+
+        var row = Assert.Single((await service.GetReviewAsync(UserId, jobId))!.Rows);
+
+        var later = Midday.AddDays(9);
+        await new ImportService(db, CacheReturning(Game(379)), new FixedClock(later))
+            .SetDecisionsAsync(UserId, jobId, new ImportDecisionsDto(
+                [new ImportRowDecisionDto(row.Id, ImportDecisions.Import, null, null)]));
+
+        var job = await db.ImportJobs.SingleAsync();
+
+        Assert.Equal(Midday, job.CreatedAt);
+        Assert.Equal(later, job.UpdatedAt);
+    }
+
     // ---------------------------------------------------------------- scoping
 
     [Fact]

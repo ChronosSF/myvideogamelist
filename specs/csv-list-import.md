@@ -150,7 +150,14 @@ So retention is two rules:
 | Job | Deleted | Measured from | Why this length |
 |---|---|---|---|
 | `done`, `cancelled` | **7 days** | `CompletedAt` | A closed job is a receipt: the result summary and the list of rows that did not import. Nothing in it is anyone's only copy, since the uploaded file was never stored and the games are now in their lists |
-| `pending` | **14 days** | `CreatedAt` | Unfinished work. Deleting it discards the decisions already made — resolved shelves, chosen games — which re-uploading does not give back. A fortnight respects "I will finish this at the weekend" while still freeing the slot on a human timescale |
+| `pending` | **14 days** | `UpdatedAt` | Unfinished work. Deleting it discards the decisions already made — resolved shelves, chosen games — which re-uploading does not give back. A fortnight respects "I will finish this at the weekend" while still freeing the slot on a human timescale |
+
+`UpdatedAt` is the last time the job's owner **saved a decision**, so the pending window is a window
+of silence and not a deadline to finish by. Measured from `CreatedAt` it would delete a review on
+its fourteenth day however hard somebody had been working on it, taking with it the decisions the
+row above promises to protect — the exact failure the longer window exists to prevent. Reading the
+review does not move it: a `GET` that writes is its own problem, and a job left open in a background
+tab would then never expire at all.
 
 The pending window **must** be the longer of the two. Swapping them would delete reviews in progress
 while keeping receipts nobody reads, so it is asserted by a test rather than left to reading.

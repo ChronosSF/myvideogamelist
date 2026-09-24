@@ -262,9 +262,11 @@ ROADMAP.md                      Forward-looking plan
   by a test — so the loop catches per tick; and it runs **once per ECS task**, so it serialises on
   `pg_try_advisory_xact_lock` — the transaction-scoped variant, because a session lock survives on
   a pooled connection after it is returned. Retention is two windows, not §S9's one: seven days
-  from `CompletedAt` for a closed job, fourteen from `CreatedAt` for a pending one, because a job
+  from `CompletedAt` for a closed job, fourteen from `UpdatedAt` for a pending one, because a job
   nobody finished reviewing has no completion and would otherwise hold a `MaxPendingJobs` slot for
-  ever. **`ExecuteDeleteAsync` needs a relational provider**, so the predicate is an `Expression`
+  ever. **`UpdatedAt` is the last saved decision, never the upload** — every write to a job stamps
+  it, so the pending window is silence rather than a deadline, and a review worked through over
+  several weekends is not deleted underneath its owner. **`ExecuteDeleteAsync` needs a relational provider**, so the predicate is an `Expression`
   the tests run against InMemory and the deletion itself is not unit-tested.
 
 - **A new import preset is an `IImportSource`, not a parser.** The seam is file → canonical rows,

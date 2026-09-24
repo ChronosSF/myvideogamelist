@@ -66,10 +66,21 @@ is easy to get wrong:
 | Job | Kept for | Why |
 |---|---|---|
 | `done` or `cancelled` | **7 days** from `CompletedAt` (§S9) | A closed job is a receipt — the result summary and the list of rows that did not import. Nothing here is anybody's only copy: the uploaded file was never stored |
-| `pending` | **14 days** from `CreatedAt` | Work somebody may still intend to come back to. Longer, because deleting it costs them the decisions they had already made, which re-uploading does not give back |
+| `pending` | **14 days** from `UpdatedAt` | Work somebody may still intend to come back to. Longer, because deleting it costs them the decisions they had already made, which re-uploading does not give back |
 
 The second window is not in §S9 and is the fix for the hole above. Deleting an abandoned job also
 frees its `MaxPendingJobs` slot, which is the more important of the two effects.
+
+**`UpdatedAt`, not `CreatedAt`, and the column was added for this.** The first version of this
+record measured the pending window from the upload, which makes the window a deadline to finish by
+rather than a window of silence — so a 5,000-row export somebody resolved across three weekends was
+deleted on day fourteen mid-review, with every decision they had made, and the justification in the
+row above for choosing the *longer* window was false as written. Every write to a job stamps
+`ImportJob.UpdatedAt`: saving decisions, committing, cancelling. Reading the review deliberately
+does not, because a `GET` that writes is its own problem and a job left open in a background tab
+would then never expire at all. The distinction is pinned by
+`ImportRetentionTests.ExpiredAt_APendingJobUploadedLongAgoButWorkedOnRecently_IsKept`, which the
+`CreatedAt` version fails.
 
 The rule lives in `ImportRetention.ExpiredAt` as an **`Expression`**, not a delegate, so the sweep
 translates it to SQL and the tests run *the identical expression* against the in-memory provider. A

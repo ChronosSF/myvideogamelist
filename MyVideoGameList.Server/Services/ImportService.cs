@@ -94,6 +94,8 @@ public class ImportService(
             throw new ImportRejectedException(
                 $"That export has {payloads.Count} games, and the limit is {MaxRows}.");
 
+        var now = clock.GetUtcNow();
+
         var job = new ImportJob
         {
             Id = Guid.NewGuid(),
@@ -102,7 +104,8 @@ public class ImportService(
             FileName = name,
             State = ImportJobStates.Pending,
             RowCount = payloads.Count,
-            CreatedAt = clock.GetUtcNow()
+            CreatedAt = now,
+            UpdatedAt = now
         };
 
         db.ImportJobs.Add(job);
@@ -230,6 +233,11 @@ public class ImportService(
                     ImportPayloadJson.Read(row.Payload) with { Status = status, StatusUnrecognised = false });
         }
 
+        // Working on a review is what keeps it alive: the retention sweep measures a pending job
+        // from this, not from when the file was uploaded, so somebody can take a fortnight per
+        // sitting rather than a fortnight in total.
+        job.UpdatedAt = clock.GetUtcNow();
+
         await db.SaveChangesAsync(cancellationToken);
         return true;
     }
@@ -272,10 +280,13 @@ public class ImportService(
 
         var imported = await WriteAsync(userId, job.Source, wanted, cancellationToken);
 
+        var now = clock.GetUtcNow();
+
         job.State = ImportJobStates.Done;
         job.ImportedCount = imported;
         job.SkippedCount = skipped.Count;
-        job.CompletedAt = clock.GetUtcNow();
+        job.CompletedAt = now;
+        job.UpdatedAt = now;
 
         // One SaveChanges for the entries, the playthroughs, the two axes and the job's own
         // closing state, so a commit is one transaction (§S8) without an explicit one.
@@ -292,8 +303,11 @@ public class ImportService(
 
         if (job is null || job.State != ImportJobStates.Pending) return false;
 
+        var now = clock.GetUtcNow();
+
         job.State = ImportJobStates.Cancelled;
-        job.CompletedAt = clock.GetUtcNow();
+        job.CompletedAt = now;
+        job.UpdatedAt = now;
 
         await db.SaveChangesAsync(cancellationToken);
         return true;

@@ -50,6 +50,14 @@ internal static class ImportRetention
     /// games they picked — which re-uploading does not give back.
     /// </para>
     /// <para>
+    /// Measured from <see cref="ImportJob.UpdatedAt"/> — the last time its owner saved a decision —
+    /// and <b>not</b> from the upload, so this is a window of silence rather than a deadline to
+    /// finish by. A review worked through over three weekends survives; one nobody ever came back
+    /// to does not, which is the only case the window is for. Running it from
+    /// <see cref="ImportJob.CreatedAt"/> would delete a job mid-review along with every decision
+    /// already made on it, which is precisely what the paragraph above says it must not do.
+    /// </para>
+    /// <para>
     /// A fortnight, so that "I will finish this at the weekend" is respected twice over while the
     /// slot still frees on a human timescale. The exact number is a judgement; what is not is that
     /// it must exceed <see cref="KeepCompleted"/>, which has a test of its own.
@@ -62,16 +70,19 @@ internal static class ImportRetention
     /// </summary>
     /// <remarks>
     /// Two clauses rather than one, keyed on whether the job ever completed. <c>CompletedAt</c> is
-    /// set when a job reaches <c>done</c> or <c>cancelled</c> and is null while it is pending, so
-    /// it is both the discriminator and the clock for the first clause.
+    /// set when a job reaches <c>done</c> or <c>cancelled</c> and is null while it is pending, so it
+    /// is the discriminator — and, for a closed job, the clock as well. A pending job is measured
+    /// from <c>UpdatedAt</c>, which every saved decision moves; neither clause reads
+    /// <c>CreatedAt</c>, because when the file was uploaded says nothing about whether anybody
+    /// still wants what came out of it.
     /// </remarks>
     public static Expression<Func<ImportJob, bool>> ExpiredAt(DateTimeOffset now)
     {
         var finishedBefore = now - KeepCompleted;
-        var startedBefore = now - KeepAbandoned;
+        var silentSince = now - KeepAbandoned;
 
         return job =>
             (job.CompletedAt != null && job.CompletedAt < finishedBefore)
-            || (job.CompletedAt == null && job.CreatedAt < startedBefore);
+            || (job.CompletedAt == null && job.UpdatedAt < silentSince);
     }
 }

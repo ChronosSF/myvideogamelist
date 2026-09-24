@@ -37,9 +37,14 @@ public class ImportRetentionTests
         return db;
     }
 
-    /// <summary>One job, described only by the two dates the rule reads.</summary>
+    /// <summary>
+    /// One job, described only by the dates the rule reads. <paramref name="updatedAt"/> defaults
+    /// to the creation date, which is what a job nobody has touched since uploading it looks like —
+    /// so a test that says nothing about it is describing exactly that.
+    /// </summary>
     private static ImportJob Job(
-        string name, string state, DateTimeOffset createdAt, DateTimeOffset? completedAt) =>
+        string name, string state, DateTimeOffset createdAt, DateTimeOffset? completedAt,
+        DateTimeOffset? updatedAt = null) =>
         new()
         {
             Id = Guid.NewGuid(),
@@ -49,6 +54,7 @@ public class ImportRetentionTests
             State = state,
             RowCount = 1,
             CreatedAt = createdAt,
+            UpdatedAt = updatedAt ?? createdAt,
             CompletedAt = completedAt
         };
 
@@ -122,6 +128,33 @@ public class ImportRetentionTests
     }
 
     [Fact]
+    public void ExpiredAt_APendingJobUploadedLongAgoButWorkedOnRecently_IsKept()
+    {
+        // KeepAbandoned is a window of silence, not a deadline to finish by. Somebody resolving
+        // five thousand unmatched titles over a month of weekends has had the job open far longer
+        // than the window, and deleting it would cost them every decision they had made — which is
+        // the reason the window is the longer of the two in the first place. Measuring it from
+        // CreatedAt, as the first version of this did, would select this row.
+        using var db = WithJobs(
+            Job("long-review.json", ImportJobStates.Pending, Now.AddDays(-40), completedAt: null,
+                updatedAt: Now.AddDays(-2)));
+
+        Assert.Empty(Expired(db));
+    }
+
+    [Fact]
+    public void ExpiredAt_APendingJobWhoseLastDecisionIsPastTheWindow_IsSelected()
+    {
+        // The other direction, so the pair pins the clock rather than just the happy case: coming
+        // back once on day three does not buy the job immortality.
+        using var db = WithJobs(
+            Job("given-up-on.json", ImportJobStates.Pending, Now.AddDays(-40), completedAt: null,
+                updatedAt: Now.AddDays(-37)));
+
+        Assert.Equal(["given-up-on.json"], Expired(db));
+    }
+
+    [Fact]
     public void ExpiredAt_AJobOnTheBoundary_IsKept()
     {
         // Exactly at the cutoff is not yet past it, for both clauses. Which side the boundary
@@ -130,7 +163,8 @@ public class ImportRetentionTests
             Job("exactly-seven.json", ImportJobStates.Done, Now.AddDays(-40),
                 completedAt: Now - ImportRetention.KeepCompleted),
             Job("exactly-the-pending-window.json", ImportJobStates.Pending,
-                Now - ImportRetention.KeepAbandoned, completedAt: null));
+                Now.AddDays(-40), completedAt: null,
+                updatedAt: Now - ImportRetention.KeepAbandoned));
 
         Assert.Empty(Expired(db));
     }
