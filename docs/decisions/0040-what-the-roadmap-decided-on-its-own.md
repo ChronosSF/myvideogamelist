@@ -80,7 +80,9 @@ row and table) and by moving `/user` onto the site's layout (the profile's month
 [0010](0010-monetization-model.md), where the decision is. Moving it found a contradiction: the
 plan sold a private profile as a paid feature, and
 [0027](0027-usernames-and-public-profiles.md) had since made private the default for everyone.
-The row is gone, and 0010 says so.
+The row now says private is free, and 0010 says why. The statistics row, which the plan left as
+"basic counts" against "full charts", is drawn figure by figure in
+`specs/profile-statistics-tiers.md`.
 
 ## Consequences
 

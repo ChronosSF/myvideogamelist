@@ -105,7 +105,7 @@ is in the history (`git log -p -- ROADMAP.md`).
 |---|---|---|
 | §1 | Eleven structural issues | All fixed but the half-wired social login — #111 |
 | §2 | Tiers 1–3 | The `feature` issues |
-| §4 | Monetisation | The table is in 0010; the work is M and A above |
+| §4 | Monetisation | The table is in 0010; the statistics tiers are `specs/profile-statistics-tiers.md` and #149; the rest of the work is M and A above |
 | §5 Data & state | PostgreSQL, migrations, keys, cache | PostgreSQL and the migration gate are done — [0008](docs/decisions/0008-postgresql-over-sqlite.md), `CLAUDE.md`; the keys and the migration step are #97; #101; #102 |
 | §5 Resilience | Retry, breaker, limits, lockout, CSRF, headers, errors | Done — [0033](docs/decisions/0033-what-the-api-refuses.md), [0034](docs/decisions/0034-failing-in-one-shape.md); `script-src` is #108; edge rate limiting is #109 |
 | §5 Observability | Health, logs, traces, alarms, `/version` | Health endpoints done; the rest is #103 |

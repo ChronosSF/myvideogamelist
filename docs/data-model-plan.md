@@ -114,7 +114,7 @@ ever needed, is then a performance change made with full history in hand.
 
 | Table | Notes | Issue |
 |---|---|---|
-| `Subscriptions` | `(UserId, StripeCustomerId, StripeSubscriptionId, Status, Tier, CurrentPeriodEnd, CancelAtPeriodEnd, GraceUntil)`. Entitlement is read from here, never inferred from Stripe per request ([0010](decisions/0010-monetization-model.md)) | #142 |
+| `Subscriptions` | `(UserId, StripeCustomerId, StripeSubscriptionId, Status, Tier, CurrentPeriodEnd, CancelAtPeriodEnd, GraceUntil)`. Entitlement is read from here, never inferred from Stripe per request ([0010](decisions/0010-monetization-model.md)); the statistics tiers (#149, `specs/profile-statistics-tiers.md`) are its first consumer, on a configuration-backed stand-in until it exists | #142 |
 | `StripeWebhookEvents` | Processed event ids, for idempotency. Stripe **redelivers** webhooks; without this a retry double-applies a lifecycle event. Not user-owned | #142 |
 | `FeatureFlags` | So free-tier limits are tunable without a deploy. Not user-owned | #142 |
 
