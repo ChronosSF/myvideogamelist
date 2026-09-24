@@ -157,15 +157,21 @@ public class ImportService(
     }
 
     public async Task<IReadOnlyList<ImportJobDto>> GetJobsAsync(
-        string userId, CancellationToken cancellationToken = default) =>
-        await db.ImportJobs
+        string userId, CancellationToken cancellationToken = default)
+    {
+        // Read as rows and mapped here rather than projected in the query, because ExpiresAt is a
+        // method and not an expression a provider can translate. The list is bounded by the
+        // retention windows either side — three unfinished jobs at most, plus a week of receipts —
+        // so materialising it costs nothing worth the second copy of the rule that inlining it
+        // into the projection would need.
+        var jobs = await db.ImportJobs
             .AsNoTracking()
             .Where(j => j.UserId == userId)
             .OrderByDescending(j => j.CreatedAt)
-            .Select(j => new ImportJobDto(
-                j.Id, j.Source, j.FileName, j.State, j.RowCount, j.ImportedCount, j.SkippedCount,
-                j.CreatedAt, j.CompletedAt))
             .ToListAsync(cancellationToken);
+
+        return jobs.Select(ToDto).ToList();
+    }
 
     public async Task<ImportReviewDto?> GetReviewAsync(
         string userId, Guid jobId, CancellationToken cancellationToken = default)
@@ -687,5 +693,6 @@ public class ImportService(
 
     private static ImportJobDto ToDto(ImportJob job) =>
         new(job.Id, job.Source, job.FileName, job.State, job.RowCount, job.ImportedCount,
-            job.SkippedCount, job.CreatedAt, job.CompletedAt);
+            job.SkippedCount, job.CreatedAt, job.CompletedAt,
+            ImportRetention.ExpiresAt(job.CompletedAt, job.UpdatedAt));
 }

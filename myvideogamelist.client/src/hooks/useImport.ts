@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react';
 import { apiFetch } from '@/lib/api';
-import { useAccountResource } from '@/hooks/useAccountResource';
+import { PermanentFetchError, useAccountResource } from '@/hooks/useAccountResource';
 import {
     IMPORT_DECISION,
     type ImportJob,
@@ -97,6 +97,12 @@ export interface UseImportReviewResult {
     error: string | null;
     /** Set when a decision, commit or cancel failed. Separate from `error`, which means the review itself is untrustworthy. */
     actionError: string | null;
+    /**
+     * The job is over rather than briefly unreachable — committed, cancelled, or deleted by
+     * retention. Reloading can only produce the same answer, so the screen offers a way out
+     * instead of a retry.
+     */
+    gone: boolean;
     busy: boolean;
     result: ImportResult | null;
     reload: () => void;
@@ -116,12 +122,23 @@ export interface UseImportReviewResult {
 export function useImportReview(accountId: string | null, jobId: string): UseImportReviewResult {
     const load = useCallback(
         (signal: AbortSignal) =>
-            apiFetch(`/api/import/jobs/${jobId}`, { signal }).then(r =>
-                readJson<ImportReview>(r, 'This import could not be loaded.')),
+            apiFetch(`/api/import/jobs/${jobId}`, { signal }).then(r => {
+                // 404 here is a job's ordinary end, not a hiccup: the API refuses a review of one
+                // that has been committed or cancelled, and retention deletes every job in the
+                // end. Reloading would ask the same question and get the same answer, so this is
+                // marked permanent and the screen stops offering "Try again".
+                if (r.status === 404) {
+                    throw new PermanentFetchError(
+                        'This import is no longer available. Imports are deleted a while after they '
+                        + 'are finished, or after they are left unfinished for too long.');
+                }
+
+                return readJson<ImportReview>(r, 'This import could not be loaded.');
+            }),
         [jobId],
     );
 
-    const { data, loading, error, reload, patch } = useAccountResource<ImportReview>(
+    const { data, loading, error, errorIsPermanent, reload, patch } = useAccountResource<ImportReview>(
         accountId, jobId, load);
 
     const [actionError, setActionError] = useState<string | null>(null);
@@ -206,7 +223,8 @@ export function useImportReview(accountId: string | null, jobId: string): UseImp
     }, [jobId]);
 
     return {
-        review: data, loading, error, actionError, busy, result, reload, setDecisions, commit, cancel,
+        review: data, loading, error, gone: errorIsPermanent, actionError, busy, result, reload,
+        setDecisions, commit, cancel,
     };
 }
 

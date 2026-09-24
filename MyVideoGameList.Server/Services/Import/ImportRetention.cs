@@ -97,6 +97,19 @@ internal static class ImportRetention
     /// <c>CK_ImportJobs_Completion</c>'s job, not a convention this predicate has to trust.
     /// </para>
     /// </remarks>
+    /// <summary>
+    /// When a job will be deleted, by the same rule <see cref="ExpiredAt"/> selects on.
+    /// </summary>
+    /// <remarks>
+    /// Travels on every <c>ImportJobDto</c>, so the client can say how long a review has left
+    /// without being told the windows. A copy of two <c>TimeSpan</c>s in TypeScript is a copy that
+    /// drifts, and the one place it would show is a screen promising somebody their part-finished
+    /// work is safe for longer than it is. <c>ImportRetentionTests</c> asserts that this and the
+    /// predicate agree on both sides of the boundary.
+    /// </remarks>
+    public static DateTimeOffset ExpiresAt(DateTimeOffset? completedAt, DateTimeOffset updatedAt) =>
+        completedAt is { } completed ? completed + KeepCompleted : updatedAt + KeepAbandoned;
+
     public static Expression<Func<ImportJob, bool>> ExpiredAt(DateTimeOffset now)
     {
         var finishedBefore = now - KeepCompleted;

@@ -189,6 +189,13 @@ one is the case that needs a migration.
 The pending window **must** be the longer of the two. Swapping them would delete reviews in progress
 while keeping receipts nobody reads, so it is asserted by a test rather than left to reading.
 
+**The user is told.** Every `ImportJobDto` carries an `expiresAt` computed from these windows, so
+`/import` says when each job goes and the review screen says what keeps an unfinished one alive.
+The date is computed on the server on purpose: the windows are a server decision, and a copy of the
+two numbers in the client would drift — the one place that would show is a screen promising somebody
+their part-finished work is safe for longer than it is. A job that is already gone answers 404, and
+the review screen treats that as the end of the job rather than as something to retry.
+
 Both are deleted by a scheduled sweep rather than on access, because nobody requests a deletion:
 the user whose rows they are has by construction stopped interacting with them. That is the
 application's only background job, and ADR

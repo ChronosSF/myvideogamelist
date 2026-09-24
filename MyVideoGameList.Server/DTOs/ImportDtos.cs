@@ -12,7 +12,12 @@ public record ImportJobDto(
     int? ImportedCount,
     int? SkippedCount,
     DateTimeOffset CreatedAt,
-    DateTimeOffset? CompletedAt);
+    DateTimeOffset? CompletedAt,
+    /// <summary>
+    /// When retention will delete this job. Computed from the same windows the sweep uses, so the
+    /// client can tell somebody how long their review has without holding a copy of the rule.
+    /// </summary>
+    DateTimeOffset ExpiresAt);
 
 /// <summary>
 /// Everything the review screen renders: the job, its rows, and the counts the bulk actions act on.

@@ -62,9 +62,9 @@ public class ImportRetentionTests
         };
 
     /// <summary>The names of the jobs the sweep would delete, which is what every test asserts.</summary>
-    private static List<string> Expired(ApplicationDbContext db) =>
+    private static List<string> Expired(ApplicationDbContext db, DateTimeOffset? at = null) =>
         db.ImportJobs
-            .Where(ImportRetention.ExpiredAt(Now))
+            .Where(ImportRetention.ExpiredAt(at ?? Now))
             .Select(job => job.FileName)
             .OrderBy(name => name)
             .ToList();
@@ -182,6 +182,27 @@ public class ImportRetentionTests
             Job("d-fresh-pending.json", ImportJobStates.Pending, Now.AddDays(-1), completedAt: null));
 
         Assert.Equal(["a-expired-done.json", "b-expired-pending.json"], Expired(db));
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void ExpiresAt_IsTheInstantTheSweepStartsSelectingThatJob(bool completed)
+    {
+        // Two expressions of one rule: the sweep deletes by the predicate, and the client is told
+        // the date so it can say how long a review has left. They have to agree on the boundary
+        // and not approximately — a window changed in one and not the other would put a date on a
+        // screen promising somebody their part-finished work is safe for longer than it is.
+        var updatedAt = Now.AddDays(-30);
+        var completedAt = completed ? Now.AddDays(-20) : (DateTimeOffset?)null;
+        var expiresAt = ImportRetention.ExpiresAt(completedAt, updatedAt);
+
+        using var db = WithJobs(
+            Job("job.json", completed ? ImportJobStates.Done : ImportJobStates.Pending,
+                createdAt: Now.AddDays(-40), completedAt: completedAt, updatedAt: updatedAt));
+
+        Assert.Empty(Expired(db, expiresAt));
+        Assert.Equal(["job.json"], Expired(db, expiresAt.AddTicks(1)));
     }
 
     [Fact]

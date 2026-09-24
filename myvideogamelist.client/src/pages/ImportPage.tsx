@@ -4,6 +4,8 @@ import { useAuth } from '@/hooks/useAuth';
 import { useImportJobs, useImportUpload } from '@/hooks/useImport';
 import { IMPORT_STATE } from '@/types/import';
 import { formatCount } from '@/lib/format';
+import { expiresInWords } from '@/lib/importExpiry';
+import { useHydrated } from '@/lib/useHydrated';
 import { PRIVATE_NO_STORE } from '@/lib/cache';
 import { NOINDEX } from '@/lib/seo';
 
@@ -48,6 +50,12 @@ export function ImportPage() {
 
     const pending = (jobs ?? []).filter(job => job.state === IMPORT_STATE.pending);
     const finished = (jobs ?? []).filter(job => job.state === IMPORT_STATE.done);
+
+    // After hydration only: the phrase is relative to the reader's clock, which the server render
+    // cannot know. The server sends the date, so nothing here holds a copy of the retention
+    // windows — see `@/lib/importExpiry`.
+    const hydrated = useHydrated();
+    const expiresIn = (expiresAt: string) => (hydrated ? expiresInWords(expiresAt) : null);
 
     return (
         <div className="min-h-screen">
@@ -158,8 +166,15 @@ export function ImportPage() {
                                                 to={`/import/${job.id}`}
                                                 className="flex items-center justify-between gap-4 px-4 py-3 bg-slate-800/60 light:bg-white border border-slate-700 light:border-slate-200 rounded-lg hover:border-slate-500 transition-colors"
                                             >
-                                                <span className="text-slate-200 light:text-slate-800 text-sm font-medium truncate">
-                                                    {job.fileName}
+                                                <span className="min-w-0">
+                                                    <span className="block text-slate-200 light:text-slate-800 text-sm font-medium truncate">
+                                                        {job.fileName}
+                                                    </span>
+                                                    {expiresIn(job.expiresAt) && (
+                                                        <span className="block text-slate-500 light:text-slate-500 text-xs mt-0.5">
+                                                            Deleted {expiresIn(job.expiresAt)} if you do not come back to it
+                                                        </span>
+                                                    )}
                                                 </span>
                                                 <span className="text-slate-400 light:text-slate-500 text-xs shrink-0">
                                                     {formatCount(job.rowCount)} games — review
@@ -173,16 +188,29 @@ export function ImportPage() {
 
                         {finished.length > 0 && (
                             <section aria-labelledby="import-done">
-                                <h2 id="import-done" className="text-lg font-semibold text-white light:text-slate-900 mb-3">
+                                <h2 id="import-done" className="text-lg font-semibold text-white light:text-slate-900 mb-1">
                                     Already imported
                                 </h2>
+                                <p className="text-slate-400 light:text-slate-600 text-sm mb-3">
+                                    The games are in your lists. These are only the receipts, and they are
+                                    tidied away a few days after the import finishes.
+                                </p>
                                 <ul className="space-y-2 text-sm">
                                     {finished.map(job => (
                                         <li
                                             key={job.id}
                                             className="flex items-center justify-between gap-4 px-4 py-3 bg-slate-800/40 light:bg-slate-50 border border-slate-800 light:border-slate-200 rounded-lg"
                                         >
-                                            <span className="text-slate-300 light:text-slate-700 truncate">{job.fileName}</span>
+                                            <span className="min-w-0">
+                                                <span className="block text-slate-300 light:text-slate-700 truncate">
+                                                    {job.fileName}
+                                                </span>
+                                                {expiresIn(job.expiresAt) && (
+                                                    <span className="block text-slate-500 light:text-slate-500 text-xs mt-0.5">
+                                                        Receipt deleted {expiresIn(job.expiresAt)}
+                                                    </span>
+                                                )}
+                                            </span>
                                             <span className="text-slate-500 light:text-slate-400 text-xs shrink-0">
                                                 {formatCount(job.importedCount ?? 0)} imported,{' '}
                                                 {formatCount(job.skippedCount ?? 0)} skipped

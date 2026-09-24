@@ -268,7 +268,11 @@ ROADMAP.md                      Forward-looking plan
   `/import/{closedJobId}` renders an empty but fully actionable review over an import that is
   already over. What retention then keeps is a receipt — the job row, its file name and its four
   counts. **The per-row failure report is not stored anywhere**: it is built inside the commit's own
-  response, so §C5's promise is kept by that response and by nothing else.
+  response, so §C5's promise is kept by that response and by nothing else. The client is told when
+  a job dies through `ImportJobDto.ExpiresAt` and **never holds a copy of the retention windows** —
+  two `TimeSpan`s restated in TypeScript would drift, and where it would show is a screen telling
+  somebody their part-finished review is safe for longer than it is. A job already gone answers
+  404, which the review screen renders as the end of that import rather than as a retryable error.
 
 - **Scheduled work is a `BackgroundService`, and there is exactly one.** `ImportRetentionService`
   sweeps expired import jobs hourly, and is the shape the next one copies (ADR 0038). Three things

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router';
@@ -32,6 +32,7 @@ const review: UseImportReviewResult = {
     review: null,
     loading: false,
     error: null,
+    gone: false,
     actionError: null,
     busy: false,
     result: null,
@@ -79,6 +80,7 @@ function loaded(rows: ImportReviewRow[]): ImportReview {
             id: 'job-1', source: 'grouvee', fileName: 'grouvee_export.json', state: 'pending',
             rowCount: rows.length, importedCount: null, skippedCount: null,
             createdAt: '2026-09-22T12:00:00Z', completedAt: null,
+            expiresAt: '2026-10-06T12:00:00Z',
         },
         summary: {
             total: rows.length,
@@ -102,12 +104,15 @@ function renderPage() {
     );
 }
 
+afterEach(() => vi.useRealTimers());
+
 beforeEach(() => {
     auth.user = userProfile();
     auth.loading = false;
     review.review = null;
     review.loading = false;
     review.error = null;
+    review.gone = false;
     review.actionError = null;
     review.busy = false;
     review.result = null;
@@ -261,5 +266,37 @@ describe('ImportReviewPage', () => {
 
         await userEvent.click(within(alert).getByRole('button', { name: 'Try again' }));
         expect(review.reload).toHaveBeenCalled();
+    });
+
+    it('offers a way out rather than a retry for an import that is over', () => {
+        // Every job ends this way in the end — committed, cancelled, or deleted by retention — so
+        // this is the ordinary last state of the screen rather than an edge case. A "Try again"
+        // here reloads a 404 and gets the same 404, for as long as somebody keeps pressing it.
+        review.error = 'This import is no longer available.';
+        review.gone = true;
+        renderPage();
+
+        const alert = screen.getByRole('alert');
+
+        expect(within(alert).queryByRole('button', { name: 'Try again' })).not.toBeInTheDocument();
+        expect(within(alert).getByRole('link', { name: 'Back to your imports' }))
+            .toHaveAttribute('href', '/import');
+    });
+
+    it('says when an unfinished import will be deleted, and what keeps it alive', () => {
+        // The window was undisclosed anywhere in the client, so a review that vanished on day
+        // fifteen did so without warning. The date comes from the API, because the windows are a
+        // server decision and a copy of them here would drift.
+        // Only Date, so userEvent's own timers keep working in the rest of the file. Without a
+        // pinned clock this assertion would pass today and count down to failing tomorrow.
+        vi.useFakeTimers({ toFake: ['Date'] });
+        vi.setSystemTime(new Date('2026-09-24T12:00:00Z'));
+
+        review.review = loaded([row()]);
+        renderPage();
+
+        // `expiresAt` on the fixture is a fortnight after the fixed clock.
+        expect(screen.getByText(/deleted in 12 days/i)).toBeInTheDocument();
+        expect(screen.getByText(/saving any decision starts that over/i)).toBeInTheDocument();
     });
 });
