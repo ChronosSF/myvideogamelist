@@ -288,8 +288,10 @@ ROADMAP.md                      Forward-looking plan
   lock **counts what is waiting** rather than just returning: the try-lock is false when *any*
   session holds the key, so work still expired after six skipped ticks running means the holder is
   not a sweep, and that logs a warning. A stalled sweep is deliberately **not** a `/readyz`
-  failure — the instance still serves. Retention is two windows, not §S9's one: seven days
-  from `CompletedAt` for a closed job, fourteen from `UpdatedAt` for a pending one, because a job
+  failure — the instance still serves. Retention is two windows, not §S9's one, and **which one applies is decided by
+  `CompletedAt`, never by `State`** — `MaxPendingJobs` counts from the same column so the cap and
+  the sweep mean the same jobs, and `CK_ImportJobs_Completion` keeps the two columns agreeing.
+  Seven days from `CompletedAt` for a closed job, fourteen from `UpdatedAt` for an unfinished one, because a job
   nobody finished reviewing has no completion and would otherwise hold a `MaxPendingJobs` slot for
   ever. **`UpdatedAt` is the last saved decision, never the upload** — every write to a job stamps
   it, so the pending window is silence rather than a deadline, and a review worked through over

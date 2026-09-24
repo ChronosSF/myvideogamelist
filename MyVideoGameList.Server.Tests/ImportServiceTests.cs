@@ -665,6 +665,73 @@ public class ImportServiceTests
         Assert.Equal(later, job.UpdatedAt);
     }
 
+    [Fact]
+    public async Task CommitAsync_SetsCompletedAtWithTheState()
+    {
+        // The two are one fact — "is this job over" — and CK_ImportJobs_Completion is what keeps
+        // them saying it together. A terminal state written without a completion would be a row
+        // the seven-day rule never selects and the MaxPendingJobs cap counts for ever. The
+        // in-memory provider does not enforce check constraints, so the pairing is asserted here
+        // rather than left to the one place that would catch it.
+        using var db = NewDb();
+        var service = NewService(db, CacheReturning(Game(379)));
+
+        await service.CommitAsync(UserId, await UploadAsync(service, Export(Entry())));
+
+        var job = await db.ImportJobs.SingleAsync();
+
+        Assert.Equal(ImportJobStates.Done, job.State);
+        Assert.Equal(Midday, job.CompletedAt);
+    }
+
+    [Fact]
+    public async Task CancelAsync_SetsCompletedAtWithTheState()
+    {
+        using var db = NewDb();
+        var service = NewService(db, CacheReturning(Game(379)));
+
+        await service.CancelAsync(UserId, await UploadAsync(service, Export(Entry())));
+
+        var job = await db.ImportJobs.SingleAsync();
+
+        Assert.Equal(ImportJobStates.Cancelled, job.State);
+        Assert.Equal(Midday, job.CompletedAt);
+    }
+
+    [Fact]
+    public async Task CreateJobAsync_AJobThatIsNeitherPendingNorFinished_StillHoldsItsSlot()
+    {
+        // The cap and the sweep have to mean the same thing by "unfinished", or retention frees a
+        // slot the counter never counted. Both now read CompletedAt.
+        //
+        // Constructed with the state ImportJobStates explicitly invites: "Adding mapping or
+        // matching back for a preset that needs them is additive, which is why this is a string."
+        // Such a job has no completion, so retention treats it as unfinished and will free it —
+        // and the cap has to agree. Counting State == pending instead lets this upload through,
+        // which is the whole of the divergence and what makes this test worth its length.
+        using var db = NewDb();
+        var service = NewService(db, CacheReturning(Game(379)));
+
+        for (var i = 0; i < ImportService.MaxPendingJobs - 1; i++)
+            await UploadAsync(service, Export(Entry()));
+
+        db.ImportJobs.Add(new ImportJob
+        {
+            Id = Guid.NewGuid(),
+            UserId = UserId,
+            Source = ImportSources.Grouvee,
+            FileName = "still-matching.json",
+            State = "matching",
+            RowCount = 1,
+            CreatedAt = Midday,
+            UpdatedAt = Midday
+        });
+        await db.SaveChangesAsync();
+
+        await Assert.ThrowsAsync<ImportRejectedException>(
+            () => UploadAsync(service, Export(Entry())));
+    }
+
     // ------------------------------------------------ a closed job keeps no rows
 
     [Fact]

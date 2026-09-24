@@ -179,6 +179,13 @@ row above promises to protect — the exact failure the longer window exists to 
 review does not move it: a `GET` that writes is its own problem, and a job left open in a background
 tab would then never expire at all.
 
+Which window applies is decided by `CompletedAt`, not by `State`: the first is the fact that a job
+is over, the second says only how it ended. `MaxPendingJobs` counts from the same column, so the cap
+and the sweep free and count the same jobs — and a `CK_ImportJobs_Completion` check constraint keeps
+the two columns agreeing, so a state that is neither `pending` nor terminal cannot quietly become a
+job that holds a slot for ever. Adding such a state stays additive and free; adding a new *terminal*
+one is the case that needs a migration.
+
 The pending window **must** be the longer of the two. Swapping them would delete reviews in progress
 while keeping receipts nobody reads, so it is asserted by a test rather than left to reading.
 

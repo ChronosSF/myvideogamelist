@@ -63,12 +63,19 @@ public class ImportService(
         if (string.IsNullOrWhiteSpace(content))
             throw new ImportRejectedException("That file is empty.");
 
-        var pending = await db.ImportJobs
-            .CountAsync(j => j.UserId == userId && j.State == ImportJobStates.Pending, cancellationToken);
+        // Counted by CompletedAt, not by State, so the cap counts exactly what retention frees.
+        // ImportRetention picks its window from the same column; keying the cap on State instead
+        // would let the two diverge the moment a state that is neither pending nor terminal
+        // exists — `matching` for a preset that needs it, which ImportJobStates invites — and a
+        // job of that kind would then hold a slot the sweep never frees, or be deleted under a
+        // rule written for the other kind. CK_ImportJobs_Completion keeps the two columns
+        // agreeing about which jobs those are.
+        var unfinished = await db.ImportJobs
+            .CountAsync(j => j.UserId == userId && j.CompletedAt == null, cancellationToken);
 
-        if (pending >= MaxPendingJobs)
+        if (unfinished >= MaxPendingJobs)
             throw new ImportRejectedException(
-                $"You have {pending} imports waiting to be reviewed. Finish or cancel one before starting another.");
+                $"You have {unfinished} imports waiting to be reviewed. Finish or cancel one before starting another.");
 
         var name = SafeFileName(fileName);
         var source = Detect(name, content)

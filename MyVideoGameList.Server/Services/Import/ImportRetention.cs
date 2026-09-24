@@ -83,11 +83,19 @@ internal static class ImportRetention
     /// </summary>
     /// <remarks>
     /// Two clauses rather than one, keyed on whether the job ever completed. <c>CompletedAt</c> is
-    /// set when a job reaches <c>done</c> or <c>cancelled</c> and is null while it is pending, so it
-    /// is the discriminator — and, for a closed job, the clock as well. A pending job is measured
-    /// from <c>UpdatedAt</c>, which every saved decision moves; neither clause reads
+    /// the discriminator — and, for a closed job, the clock as well. A job that is not over is
+    /// measured from <c>UpdatedAt</c>, which every saved decision moves; neither clause reads
     /// <c>CreatedAt</c>, because when the file was uploaded says nothing about whether anybody
     /// still wants what came out of it.
+    /// <para>
+    /// <b><c>CompletedAt</c> and not <c>State</c>, deliberately.</b> <c>ImportService</c> counts
+    /// unfinished jobs against <c>MaxPendingJobs</c> from the same column, so the cap and this
+    /// sweep free and count exactly the same set. Keying either on <c>State</c> would let them
+    /// diverge as soon as a state exists that is neither <c>pending</c> nor terminal — a
+    /// <c>matching</c> step for a preset that needs one, which <c>ImportJobStates</c> invites —
+    /// and such a job would hold a slot nothing frees. That the two columns agree at all is
+    /// <c>CK_ImportJobs_Completion</c>'s job, not a convention this predicate has to trust.
+    /// </para>
     /// </remarks>
     public static Expression<Func<ImportJob, bool>> ExpiredAt(DateTimeOffset now)
     {

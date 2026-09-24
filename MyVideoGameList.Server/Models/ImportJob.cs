@@ -130,6 +130,14 @@ public class ImportJob
     public DateTimeOffset UpdatedAt { get; set; }
 
     /// <summary>When the job reached <c>done</c> or <c>cancelled</c>. Null while it is pending.</summary>
+    /// <remarks>
+    /// <b>This column, not <see cref="State"/>, is what "is this job over" is read from.</b>
+    /// <c>ImportService</c> counts unfinished jobs against <c>MaxPendingJobs</c> by it and
+    /// <c>ImportRetention</c> chooses between its two windows by it, so the cap and the sweep agree
+    /// about which jobs they mean. <c>State</c> answers the different question of <em>how</em> a
+    /// job ended, which is what the endpoints that act on a review key on. The two are held
+    /// together by <c>CK_ImportJobs_Completion</c> rather than by a convention.
+    /// </remarks>
     public DateTimeOffset? CompletedAt { get; set; }
 
     public ApplicationUser User { get; set; } = null!;
