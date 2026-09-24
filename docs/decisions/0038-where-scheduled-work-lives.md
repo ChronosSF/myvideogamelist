@@ -194,7 +194,14 @@ left alone.
 
 **The rows go through the foreign key's `ON DELETE CASCADE`.** The sweep deletes jobs and never
 mentions `ImportRows`. That constraint is from [0037](0037-a-tracker-import-carries-history.md) and
-a raw `DELETE` is exactly what it exists to handle.
+a raw `DELETE` is exactly what it exists to handle. It is now also **asserted**:
+[0024](0024-the-ownership-contract.md)'s guard only ever looked at foreign keys whose principal is
+`AspNetUsers`, so this one — and a playthrough's to its entry, and a review's — was invisible to it.
+`UserOwnedDataTests.EveryUserOwnedChild_IsDeletedWithItsParent` closes that, over every *required*
+key to a user-owned parent. Weakening the import key to `Restrict` fails that test and, verified,
+no other: 582 still pass while the sweep would start failing with a foreign-key violation an hour
+at a time. An *optional* pointer between siblings is deliberately outside the rule, which is how a
+review's `SetNull` link to the playthrough it describes stays out without being named.
 
 **A deploy sweeps immediately.** The service runs once at startup before starting its timer, rather
 than waiting an hour. A task that has just restarted is when a backlog is most likely, and the

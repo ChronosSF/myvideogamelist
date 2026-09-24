@@ -16,7 +16,9 @@ namespace MyVideoGameList.Server.Services.Import;
 /// <para>
 /// Nothing here deletes <c>ImportRows</c>. A row reaches its job through a foreign key declared
 /// <c>ON DELETE CASCADE</c>, so PostgreSQL removes them with the job and a second statement would
-/// be both redundant and a chance to get the order wrong. In practice only a <em>pending</em> job
+/// be both redundant and a chance to get the order wrong. That the key still says <c>Cascade</c> is
+/// asserted by <c>UserOwnedDataTests</c>, because weakening it would leave this paragraph true of
+/// nothing and the sweep failing into the log once an hour. In practice only a <em>pending</em> job
 /// still has any: closing one deletes its rows in the same transaction, so what the cascade
 /// actually catches is the abandoned review nobody came back to.
 /// </para>

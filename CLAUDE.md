@@ -157,7 +157,12 @@ ROADMAP.md                      Forward-looking plan
 
 - **A new user-owned table has to be registered in the export manifest and cascade from
   `AspNetUsers`.** `UserOwnedDataTests` walks the EF model and fails otherwise — in both
-  directions, so a stale registration for a table you removed fails too. The manifest is
+  directions, so a stale registration for a table you removed fails too. It also checks the other
+  edge: a **required** foreign key to a user-owned *parent* must cascade as well, because a child
+  that cannot exist without its parent must not be left orphaned or block the parent's deletion.
+  That is what makes the import sweep's bare `DELETE FROM "ImportJobs"` safe. An optional pointer
+  between siblings is outside the rule — a review's link to the playthrough it describes is
+  `SetNull`, so deleting one run does not take the prose with it. The manifest is
   `UserDataExporter.Manifest`, keyed by entity `Type`, and it is the *only* place to register:
   `ExportAsync` walks it. A new *column* on a registered table trips nothing, because each section is
   a hand-written projection — add it to that reader too, as `Ownership` and `Notes` were
