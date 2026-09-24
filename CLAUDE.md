@@ -270,7 +270,11 @@ ROADMAP.md                      Forward-looking plan
   the tests run against InMemory and the deletion itself is not unit-tested — change it and verify
   it against the real container. It deletes **twenty-five jobs per statement and commits each
   batch**, because one unbounded `DELETE` over a backlog exceeds Npgsql's thirty-second default,
-  rolls back, deletes nothing, and is retried identically every hour for ever.
+  rolls back, deletes nothing, and is retried identically every hour for ever. And because it
+  deletes rows no request asked it to, **every `ImportService` write stamps the job and treats an
+  `UPDATE` that matches no row as "swept"** — the 404 each endpoint already had, rather than the 500
+  an unclaimed `DbUpdateConcurrencyException` becomes. Anything else that deletes out from under a
+  request owes the same.
 
 - **A new import preset is an `IImportSource`, not a parser.** The seam is file → canonical rows,
   one level up from the column map `specs/csv-list-import.md` proposed, because Grouvee's export is

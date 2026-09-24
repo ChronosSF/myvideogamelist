@@ -30,14 +30,58 @@ public class ImportServiceTests
 
     private static readonly DateTimeOffset Midday = new(2026, 3, 14, 12, 0, 0, TimeSpan.Zero);
 
-    private static ApplicationDbContext NewDb()
+    /// <summary>
+    /// A context over its own store, or — given a <paramref name="name"/> — over one shared with
+    /// another context, which is how the tests at the bottom of this file delete a job from under
+    /// a service that is holding it.
+    /// </summary>
+    private static ApplicationDbContext NewDb(string? name = null)
     {
         var db = new ApplicationDbContext(
             new DbContextOptionsBuilder<ApplicationDbContext>()
-                .UseInMemoryDatabase(Guid.NewGuid().ToString())
+                .UseInMemoryDatabase(name ?? Guid.NewGuid().ToString())
                 .Options);
         db.Database.EnsureCreated();
         return db;
+    }
+
+    /// <summary>
+    /// The retention sweep, as far as these tests need it: the jobs and their rows are gone.
+    /// </summary>
+    /// <remarks>
+    /// Through a second context, so the one under test still has the job tracked and modified —
+    /// which is the state a request is in when the sweep runs, and the state that decides whether
+    /// the write fails loudly or lands nowhere.
+    /// </remarks>
+    private static void Sweep(ApplicationDbContext sweeper)
+    {
+        sweeper.ImportRows.RemoveRange(sweeper.ImportRows.ToList());
+        sweeper.ImportJobs.RemoveRange(sweeper.ImportJobs.ToList());
+        sweeper.SaveChanges();
+    }
+
+    /// <summary>
+    /// A clock that runs <paramref name="onFirstRead"/> before answering, once.
+    /// </summary>
+    /// <remarks>
+    /// How a test gets inside the window between a service reading a job and saving its write to
+    /// it. The retention sweep runs in that window for real, on its own schedule, knowing nothing
+    /// about any request in flight.
+    /// </remarks>
+    private sealed class SweepingClock(DateTimeOffset now, Action onFirstRead) : TimeProvider
+    {
+        private bool swept;
+
+        public override DateTimeOffset GetUtcNow()
+        {
+            if (!swept)
+            {
+                swept = true;
+                onFirstRead();
+            }
+
+            return now;
+        }
     }
 
     private static GameDto Game(int id, string title = "Game", params PlatformDto[] platforms) =>
@@ -619,6 +663,82 @@ public class ImportServiceTests
 
         Assert.Equal(Midday, job.CreatedAt);
         Assert.Equal(later, job.UpdatedAt);
+    }
+
+    // -------------------------------------------------- a job swept mid-request
+
+    // Until retention existed nothing could delete a job somebody was holding, so every method
+    // here could read a job and then write to it without wondering whether it was still there.
+    // The sweep runs on an hourly timer with no idea a request is in flight, so all three writes
+    // now touch the job row itself and treat an update that matches nothing as "it is gone" —
+    // which is the 404 each endpoint was already written to return.
+
+    [Fact]
+    public async Task SetDecisionsAsync_WhenTheJobIsSweptMidRequest_SaysSoRatherThanReportingASave()
+    {
+        // The rows are read in a second round trip, so a swept job leaves that query empty, the
+        // loop over it doing nothing, and SaveChanges writing nothing at all. Without the job's
+        // own clock in that SaveChanges this returns true, the endpoint answers 204, and the user
+        // carries on ticking boxes on a job that no longer exists.
+        var name = Guid.NewGuid().ToString();
+        using var db = NewDb(name);
+        using var sweeper = NewDb(name);
+
+        var jobId = await UploadAsync(NewService(db), Export(Entry()));
+        var row = await db.ImportRows.SingleAsync();
+
+        var service = new ImportService(
+            db, CacheReturning(Game(379)), new SweepingClock(Midday, () => Sweep(sweeper)));
+
+        var saved = await service.SetDecisionsAsync(UserId, jobId, new ImportDecisionsDto(
+            [new ImportRowDecisionDto(row.Id, ImportDecisions.Import, null, null)]));
+
+        Assert.False(saved);
+    }
+
+    [Fact]
+    public async Task CommitAsync_WhenTheJobIsSweptWhileItIsWriting_IsNotFoundRatherThanAnError()
+    {
+        // The real window, reproduced where it really is: WriteAsync asks the game cache for
+        // metadata, which is IGDB-backed and can take seconds behind retries and a breaker. The
+        // closing update then matches no row, and EF's concurrency exception is claimed by none of
+        // the registered error handlers — so unhandled it is a 500 on a method that already has a
+        // 404 for precisely this case.
+        var name = Guid.NewGuid().ToString();
+        using var db = NewDb(name);
+        using var sweeper = NewDb(name);
+
+        var jobId = await UploadAsync(NewService(db), Export(Entry()));
+
+        var cache = Substitute.For<IGameCacheService>();
+        cache.GetGamesAsync(Arg.Any<IEnumerable<int>>(), Arg.Any<CancellationToken>())
+            .Returns(_ =>
+            {
+                Sweep(sweeper);
+                return new[] { Game(379) };
+            });
+
+        var result = await new ImportService(db, cache, new FixedClock(Midday))
+            .CommitAsync(UserId, jobId);
+
+        Assert.Null(result);
+    }
+
+    [Fact]
+    public async Task CancelAsync_WhenTheJobIsSweptMidRequest_IsNotFoundRatherThanAnError()
+    {
+        // The mildest of the three — the sweep did what the request was asking for — and still a
+        // 500 without the same handling.
+        var name = Guid.NewGuid().ToString();
+        using var db = NewDb(name);
+        using var sweeper = NewDb(name);
+
+        var jobId = await UploadAsync(NewService(db), Export(Entry()));
+
+        var service = new ImportService(
+            db, CacheReturning(Game(379)), new SweepingClock(Midday, () => Sweep(sweeper)));
+
+        Assert.False(await service.CancelAsync(UserId, jobId));
     }
 
     // ---------------------------------------------------------------- scoping

@@ -236,9 +236,27 @@ public class ImportService(
         // Working on a review is what keeps it alive: the retention sweep measures a pending job
         // from this, not from when the file was uploaded, so somebody can take a fortnight per
         // sitting rather than a fortnight in total.
+        //
+        // It is also what makes the write detectable. The rows are read in a second round trip, so
+        // a job swept between the two reads leaves that query empty, the loop above doing nothing
+        // and this method returning "saved" for decisions that landed nowhere. Touching the job
+        // puts an UPDATE in this SaveChanges, and an UPDATE that matches no row is an error.
+        //
+        // Marked modified rather than left to EF noticing a new value, so that the detection does
+        // not quietly depend on two saves never reading the same instant off the clock.
         job.UpdatedAt = clock.GetUtcNow();
+        db.Entry(job).Property(j => j.UpdatedAt).IsModified = true;
 
-        await db.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            if (await JobIsGoneAsync(userId, jobId, cancellationToken)) return false;
+            throw;
+        }
+
         return true;
     }
 
@@ -290,7 +308,22 @@ public class ImportService(
 
         // One SaveChanges for the entries, the playthroughs, the two axes and the job's own
         // closing state, so a commit is one transaction (§S8) without an explicit one.
-        await db.SaveChangesAsync(cancellationToken);
+        //
+        // WriteAsync spends real time in IGDB-backed calls between the state check above and this
+        // line, which is long enough for the retention sweep to delete a job that has just crossed
+        // its window. The closing UPDATE then matches nothing and EF throws. Left unhandled that is
+        // a 500 — no registered handler claims a concurrency exception — where the method already
+        // has a 404 for exactly this, and the whole transaction rolls back anyway, so nothing was
+        // written for the user to be told about.
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            if (await JobIsGoneAsync(userId, jobId, cancellationToken)) return null;
+            throw;
+        }
 
         return new ImportResultDto(ToDto(job), skipped);
     }
@@ -309,9 +342,41 @@ public class ImportService(
         job.CompletedAt = now;
         job.UpdatedAt = now;
 
-        await db.SaveChangesAsync(cancellationToken);
+        // The same race as the other two writes, and the least consequential of the three: a job
+        // the sweep has already deleted is one this call was asking to be rid of.
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            if (await JobIsGoneAsync(userId, jobId, cancellationToken)) return false;
+            throw;
+        }
+
         return true;
     }
+
+    /// <summary>
+    /// Whether the job has gone from underneath the request that is holding it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The retention sweep is the only thing that deletes somebody else's job, and it runs on its
+    /// own schedule with no idea a request is in flight. Every write above therefore touches the
+    /// job row, so a job deleted mid-request fails its <c>UPDATE</c> — EF raises
+    /// <see cref="DbUpdateConcurrencyException"/> for an update that matched no rows whether or not
+    /// there is a concurrency token — instead of writing into nothing and reporting success.
+    /// </para>
+    /// <para>
+    /// Asked rather than assumed, because a commit also updates entries the user may have changed
+    /// in another tab. Only a job that has actually gone becomes the 404 the endpoint was written
+    /// to; anything else is a real failure and keeps its 500.
+    /// </para>
+    /// </remarks>
+    private async Task<bool> JobIsGoneAsync(
+        string userId, Guid jobId, CancellationToken cancellationToken) =>
+        !await db.ImportJobs.AnyAsync(j => j.Id == jobId && j.UserId == userId, cancellationToken);
 
     /// <summary>
     /// Writes the chosen rows into the user's library. Adds to the context and does not save.

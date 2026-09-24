@@ -161,6 +161,25 @@ a raw `DELETE` is exactly what it exists to handle.
 than waiting an hour. A task that has just restarted is when a backlog is most likely, and the
 advisory lock makes a whole fleet starting at once a non-event.
 
+**Retention gave request-scoped code a hazard it had never had, and `ImportService` had to answer
+for it.** Until this existed, nothing deleted a job somebody was holding, so every method could read
+a job and then write to it without wondering whether it was still there. `CommitAsync` reads the
+job, checks its state, and then spends seconds inside `IGameCacheService` before its closing write;
+a sweep landing in that window made the closing `UPDATE` match nothing, which EF raises as
+`DbUpdateConcurrencyException`. No registered error handler claims that, so it was a **500** — and
+because the entries, playthroughs and axis rows are in the same `SaveChanges`, the user's whole
+import rolled back after they had finished reviewing it. `SetDecisionsAsync` failed the opposite
+way: it reads its rows in a second round trip, so a swept job left that query empty, the write did
+nothing, and the endpoint answered **204, saved** for decisions that had landed nowhere.
+
+All three writes now stamp `UpdatedAt`, which they owe the clock above in any case, so the job row is
+always part of the `SaveChanges` and an update matching no row becomes the 404 each endpoint was
+already written to return. `SetDecisionsAsync` marks that column modified explicitly rather than
+letting EF notice a new value, so the detection cannot come to depend on two saves never reading the
+same instant off the clock. The exception is translated only after asking whether the job has in
+fact gone; a concurrency failure on anything else is a real failure and keeps its 500.
+**Anything else that starts deleting rows out from under a request owes the same.**
+
 **The next background job copies this.** Whatever it is — CloudFront invalidation (ROADMAP D14), a
 `CachedGames` refresh, scheduled exports — it inherits the scoping rule, the catch-per-tick rule and
 the question of what it owes a fleet running N copies of it.
