@@ -7,9 +7,19 @@ export const IMPORT_STATE = {
     cancelled: 'cancelled',
 } as const;
 
-/** What the importer made of a row: either the file named a game or it did not. */
+/**
+ * What the importer made of a row.
+ *
+ * `unlooked` and `unmatched` are both "no game yet" and mean different things: nobody has searched
+ * for this one, against somebody searched and IGDB had nothing. Only the first is worth another
+ * pass. `ambiguous` means the matcher found games worth offering and would not choose between
+ * them — several IGDB rows carry the title, or the best is a near miss — so such a row carries
+ * `candidates` and imports nothing until its owner picks one. See `ImportMatchKinds` on the server.
+ */
 export const IMPORT_MATCH = {
+    unlooked: 'unlooked',
     matched: 'matched',
+    ambiguous: 'ambiguous',
     unmatched: 'unmatched',
 } as const;
 
@@ -42,7 +52,11 @@ export interface ImportJob {
 export interface ImportReviewSummary {
     total: number;
     matched: number;
+    /** Rows with candidates to choose between. */
+    ambiguous: number;
     unmatched: number;
+    /** Rows no matching pass has been over yet — what is left to look up. */
+    unlooked: number;
     statusUnrecognised: number;
     alreadyTracked: number;
     /** How many rows are set to import — what the commit button counts. */
@@ -60,6 +74,12 @@ export interface ImportReviewRow {
      * rather than the cover, so a null costs a thumbnail and not a row.
      */
     game: GameDto | null;
+    /**
+     * The games the matcher would offer for an ambiguous row, best first. Empty for every other
+     * row — and empty too for a candidate this app holds no metadata for, since a candidate
+     * rendered as a bare id helps nobody choose.
+     */
+    candidates: GameDto[];
     matchKind: string;
     decision: string;
     /** The source's own word for the shelf, shown so the user sees what their file said. */
@@ -81,6 +101,18 @@ export interface ImportReview {
     job: ImportJob;
     summary: ImportReviewSummary;
     rows: ImportReviewRow[];
+}
+
+/**
+ * What one matching pass did.
+ *
+ * Only the rows it examined, never the whole review — a pass resolves a bounded batch and the
+ * client repeats it, so answering with every row would re-send the entire job on each of them.
+ * An empty `examined` is how the client knows to stop.
+ */
+export interface ImportMatchPass {
+    job: ImportJob;
+    examined: ImportReviewRow[];
 }
 
 /** One decision, and optionally a correction to apply with it. */

@@ -8,6 +8,7 @@ using MyVideoGameList.Server.HealthChecks;
 using MyVideoGameList.Server.Models;
 using MyVideoGameList.Server.Security;
 using MyVideoGameList.Server.Services;
+using MyVideoGameList.Server.Services.Import;
 using Scalar.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -81,6 +82,7 @@ builder.Services.AddScoped<IUserDataExporter, UserDataExporter>();
 builder.Services.AddScoped<IUserNameClaimService, UserNameClaimService>();
 builder.Services.AddScoped<ITrackedNewsService, TrackedNewsService>();
 builder.Services.AddScoped<IImportService, ImportService>();
+builder.Services.AddScoped<IImportMatcher, ImportMatcher>();
 
 // Everything that runs on a schedule, plus the host contract those services are written against
 // (ADR 0038). One call rather than a line per service, because what happens when a background

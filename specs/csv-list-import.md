@@ -104,20 +104,65 @@ screen with a dropdown, rather than being silently dropped or silently defaulted
 
 ## 4. Matching — the actual hard part
 
-The mapper is a morning's work. Matching titles to IGDB ids is the feature.
+Matching titles to IGDB ids is the feature for every source that does not carry ids of its own.
+Grouvee does carry them, which is why the first preset shipped without any of this (ADR 0037); it
+exists now, ahead of HowLongToBeat and Backloggery.
 
 | ID | Requirement |
 |---|---|
-| M1 | Match on normalised title plus release year. Normalisation: lowercase, strip punctuation and leading articles, fold roman numerals, drop edition suffixes ("Game of the Year Edition", "Remastered", trademark symbols) |
-| M2 | Confidence tiers: **auto** (exact normalised title, single candidate, year within ±1), **ambiguous** (several candidates, or a fuzzy hit), **none** |
-| M3 | Only auto rows are pre-checked on the review screen. Ambiguous rows show up to 5 candidates with cover art, year and platforms so the user resolves in one click |
-| M4 | The user can search IGDB inline for any unmatched row, and can skip a row entirely |
-| M5 | Batch the IGDB calls. A 500-row import must not be 500 round trips — group by normalised title, use a multi-query, and cache within the job |
-| M6 | Respect IGDB rate limits. Matching runs as a background job, never inside the request that uploads the file |
-| M7 | Persist the resolved match so re-importing the same file is idempotent and the second run is instant |
+| M1 | Match on normalised title plus release year. Normalisation: lowercase, strip accents, punctuation and leading articles, fold roman numerals **up to thirty**, and compare the numbers in a title as a set of their own. Edition suffixes are dropped by a **second, looser key only** — see §4.1. **DONE** |
+| M2 | Confidence tiers: **matched**, **ambiguous**, **unmatched** — defined in §4.1, because "single candidate" does not survive contact with IGDB. **DONE, amended** |
+| M3 | Only matched rows are pre-checked on the review screen. Ambiguous rows show up to 5 candidates with cover art and year so the user resolves in one click. **DONE** |
+| M4 | The user can skip a row entirely **(done)**, and can search IGDB inline for one nothing was found for **(not built)** |
+| M5 | Batch the IGDB calls. A 500-row import must not be 500 round trips — group by normalised title and cache within the job. **DONE**: one search per distinct normalised title, and the games offered are written to `CachedGames` on the way past so the review screen asks for none of them again |
+| M6 | Respect IGDB rate limits. Matching never runs inside the request that uploads the file. **DONE, amended** — it is its own endpoint called repeatedly rather than a background job; see §4.2 |
+| M7 | Persist the resolved match so re-importing the same file is idempotent and the second run is instant. **Not built.** Playthroughs are already idempotent by their own key, so a second import duplicates no data — only the matching work |
 
-M5 and M7 get much cheaper once the roadmap's "no local cache of game metadata" issue (§1 item 2)
-is addressed. Import is a good forcing function for that cache.
+### 4.1 The tiers, and why "single candidate" is not one of them
+
+**IGDB holds a row per release, not a row per game.** A search for "Final Fantasy VII" answers with
+seven entries carrying that exact title, "Resident Evil 2" with six, "Hollow Knight" with two. So a
+tier defined as "exact title, single candidate" would fire for almost nothing anybody owns.
+
+Two keys are computed for every title, and the difference between them is the safety rule: a wrong
+automatic match writes a game its owner never played into a library they will not audit, while a
+missed one costs a click.
+
+- **The conservative key** — M1's normalisation *without* edition suffixes. This is the only key an
+  automatic match may be decided on.
+- **The loose key** — the same, plus a trailing edition, remaster, cut or remake. It may only ever
+  *offer* a candidate. "Dark Souls Remastered" matches "Dark Souls: Remastered" outright and merely
+  offers "Dark Souls".
+
+A row is **matched** when exactly one candidate survives, where surviving means: its conservative
+key is the row's, and either side's year is unknown or they are within one. Several survivors are
+still an answer when one of them has at least twenty-five ratings and at least ten times the next —
+which separates the canonical row from its re-release stubs without separating two genuinely
+different games of one name. It is **ambiguous** when candidates cleared the similarity floor but no
+single one survives that test, and **unmatched** when nothing cleared it.
+
+The decision is made over every candidate that cleared the floor, and the list is cut to five only
+afterwards. Truncating first does not degrade to "ask the user" — it hides the rival that was
+holding the decision open and produces a confident wrong answer instead.
+
+ADR 0040 records the live IGDB measurements each of these numbers comes from.
+
+### 4.2 A pass is bounded and repeated, not queued
+
+`POST /api/import/jobs/{id}/match` looks up a bounded batch of the rows whose file named no game and
+answers with **the rows it examined**; the client merges them into what it holds and calls again
+until a pass examines nothing. Each pass is its own transaction, so closing the tab costs only the
+rows nobody had reached — which is the resumability §C4 asks for, with no queue and no second
+background service. It answers for what it touched rather than for the whole job, because a large
+id-less import is hundreds of passes and re-sending five thousand rows on each is a gigabyte of
+JSON to import one file.
+
+A row says whether it has been looked at — `unlooked` — separately from whether anything was
+found — `unmatched`. Without both, the two are the same row, and every pass spends its whole budget
+re-asking the questions the last one already failed to answer.
+
+An IGDB outage fails the pass with a 502 rather than answering "nothing matched". The difference
+matters: the first is a sentence somebody acts on by trying later, the second by giving up.
 
 ## 5. Server work
 
@@ -241,8 +286,12 @@ platform re-sync stay paid. Export stays paid, as the table already has it.
 
 1. Do we import review text now, when the review feature itself (Tier 2, "community signal") does
    not exist? Suggested: store it on the entry as notes and surface it later.
-2. Backloggery rows have no year and no database id. Is a title-only match worth offering at all,
-   or do we label it "best effort" in the UI and set expectations up front?
+2. ~~Backloggery rows have no year and no database id. Is a title-only match worth offering at all,
+   or do we label it "best effort" in the UI and set expectations up front?~~ **Answered: yes,
+   offer it.** A game with one well-followed IGDB row resolves outright from the title alone — the
+   following signal in §4.1 is what makes that safe without a year. What a title alone cannot do is
+   separate two well-tracked releases of one name, and those become candidate pickers rather than
+   guesses, so no "best effort" disclaimer is needed: the screen shows exactly where it is unsure.
 3. Should a failed match create a placeholder entry so the user does not lose the row, or is the
    downloadable failure CSV (C5) enough? Suggested: the CSV — placeholders pollute lists.
 4. Do we want to be an import target for someone else — that is, should our own export (Tier 2)
@@ -253,7 +302,8 @@ platform re-sync stay paid. Export stays paid, as the table already has it.
 1. Tier 1 per-entry fields and the full taxonomy (prerequisite, already on the roadmap)
 2. S6, S7, S1, S2 — upload, parse, persist a job
 3. C1, C2 and S4 — mapping UI with the Grouvee and HLTB presets
-4. M1–M4 and S5 — matching, plus the review screen (C3)
+4. M1–M4 and S5 — matching, plus the review screen (C3). **Done**, except M4's inline search, and
+   without S5's queue: see §4.2
 5. S8 and C5 — commit and the failure report
 6. Remaining presets: Backloggery, Completionator, Darkadia — data only, no new code
 7. M5–M7 — batching and idempotency, once real import sizes are known

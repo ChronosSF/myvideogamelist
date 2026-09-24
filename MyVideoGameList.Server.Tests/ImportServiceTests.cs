@@ -4,6 +4,7 @@ using MyVideoGameList.Server.Data;
 using MyVideoGameList.Server.DTOs;
 using MyVideoGameList.Server.Models;
 using MyVideoGameList.Server.Services;
+using MyVideoGameList.Server.Services.Import;
 using NSubstitute;
 
 namespace MyVideoGameList.Server.Tests;
@@ -95,8 +96,50 @@ public class ImportServiceTests
         return cache;
     }
 
-    private static ImportService NewService(ApplicationDbContext db, IGameCacheService? cache = null) =>
-        new(db, cache ?? CacheReturning(), new FixedClock(Midday));
+    /// <summary>
+    /// A matcher that has looked at nothing, for the tests that are not about matching.
+    /// </summary>
+    /// <remarks>
+    /// An empty dictionary is the right default rather than a lazy one: it means "no query was
+    /// attempted", which is exactly what happens on every path but <c>MatchAsync</c>, and it leaves
+    /// rows with a null candidate column as an upload does.
+    /// </remarks>
+    private static IImportMatcher NoMatcher()
+    {
+        var matcher = Substitute.For<IImportMatcher>();
+
+        matcher
+            .MatchAsync(Arg.Any<IReadOnlyCollection<ImportMatchQuery>>(), Arg.Any<CancellationToken>())
+            .Returns(new Dictionary<ImportMatchQuery, ImportMatchResult>());
+
+        return matcher;
+    }
+
+    /// <summary>A matcher whose answer for every query it is given is <paramref name="answer"/>.</summary>
+    private static IImportMatcher MatcherAnswering(Func<ImportMatchQuery, ImportMatchResult?> answer)
+    {
+        var matcher = Substitute.For<IImportMatcher>();
+
+        matcher
+            .MatchAsync(Arg.Any<IReadOnlyCollection<ImportMatchQuery>>(), Arg.Any<CancellationToken>())
+            .Returns(call =>
+            {
+                IReadOnlyDictionary<ImportMatchQuery, ImportMatchResult> answers = call
+                    .Arg<IReadOnlyCollection<ImportMatchQuery>>()
+                    .Distinct()
+                    .Select(query => (Query: query, Result: answer(query)))
+                    .Where(pair => pair.Result is not null)
+                    .ToDictionary(pair => pair.Query, pair => pair.Result!);
+
+                return Task.FromResult(answers);
+            });
+
+        return matcher;
+    }
+
+    private static ImportService NewService(
+        ApplicationDbContext db, IGameCacheService? cache = null, IImportMatcher? matcher = null) =>
+        new(db, cache ?? CacheReturning(), matcher ?? NoMatcher(), new FixedClock(Midday));
 
     /// <summary>A minimal Grouvee document, so each test states only what it is about.</summary>
     private static string Export(params string[] games) =>
@@ -110,8 +153,12 @@ public class ImportServiceTests
           }
           """;
 
+    /// <param name="igdbId">
+    /// Written into the document verbatim, so a test can say <c>"null"</c> — the two-in-six-hundred
+    /// case in the real export, and the whole of what a source without ids produces.
+    /// </param>
     private static string Entry(
-        int igdbId = 379,
+        string igdbId = "379",
         string name = "Metal Gear Solid 3",
         string shelves = """{"Played": {"date_added": "2021-10-02T06:54:47Z"}}""",
         string rating = "5",
@@ -151,19 +198,23 @@ public class ImportServiceTests
     }
 
     [Fact]
-    public async Task CreateJobAsync_AMatchedRow_IsPreCheckedAndAnUnmatchedOneIsNot()
+    public async Task CreateJobAsync_AMatchedRow_IsPreCheckedAndARowWithNoIdIsNot()
     {
         using var db = NewDb();
         var service = NewService(db);
 
-        var jobId = await UploadAsync(service, Export(Entry(), Entry(name: "No Id", igdbId: 0).Replace("\"igdb_id\": 0", "\"igdb_id\": null")));
+        var jobId = await UploadAsync(service, Export(Entry(), Entry(name: "No Id", igdbId: "null")));
         var review = await service.GetReviewAsync(UserId, jobId);
 
         var matched = Assert.Single(review!.Rows, r => r.MatchKind == ImportMatchKinds.Matched);
-        var unmatched = Assert.Single(review.Rows, r => r.MatchKind == ImportMatchKinds.Unmatched);
+
+        // `unlooked` rather than `unmatched`, and that is not a detail: `unmatched` means a pass
+        // looked and found nothing, so a row born with it would be out of reach of every matching
+        // pass for ever.
+        var unresolved = Assert.Single(review.Rows, r => r.MatchKind == ImportMatchKinds.Unlooked);
 
         Assert.Equal(ImportDecisions.Import, matched.Decision);
-        Assert.Equal(ImportDecisions.Skip, unmatched.Decision);
+        Assert.Equal(ImportDecisions.Skip, unresolved.Decision);
     }
 
     [Fact]
@@ -613,7 +664,7 @@ public class ImportServiceTests
         var service = NewService(db, CacheReturning(Game(42)));
 
         var jobId = await UploadAsync(service, Export(
-            Entry(name: "Unknown Game").Replace("\"igdb_id\": 379", "\"igdb_id\": null")));
+            Entry(name: "Unknown Game", igdbId: "null")));
 
         var row = Assert.Single((await service.GetReviewAsync(UserId, jobId))!.Rows);
         await service.SetDecisionsAsync(UserId, jobId, new ImportDecisionsDto(
@@ -622,6 +673,268 @@ public class ImportServiceTests
         await service.CommitAsync(UserId, jobId);
 
         Assert.Equal(42, Assert.Single(db.UserGameEntries).GameId);
+    }
+
+    // ---------------------------------------------------------------- matching
+
+    /// <summary>An export of games the file names but does not identify — what matching is for.</summary>
+    private static string Unidentified(params string[] names) =>
+        Export([.. names.Select(name => Entry(name: name, igdbId: "null"))]);
+
+    [Fact]
+    public async Task MatchAsync_ARowTheMatcherResolved_IsMatchedAndPreChecked()
+    {
+        // A resolved row earns exactly what an id in the file earns (§M3): the game, and the tick
+        // beside it. Anything less would mean a preset without ids arrives with every row unchecked
+        // and a person clicking six hundred times.
+        using var db = NewDb();
+        var service = NewService(
+            db,
+            CacheReturning(Game(42)),
+            MatcherAnswering(_ => new ImportMatchResult(ImportMatchKinds.Matched, 42, [])));
+
+        var jobId = await UploadAsync(service, Unidentified("Unknown Game"));
+        var row = Assert.Single((await service.MatchAsync(UserId, jobId))!.Examined);
+
+        Assert.Equal(ImportMatchKinds.Matched, row.MatchKind);
+        Assert.Equal(42, row.GameId);
+        Assert.Equal(ImportDecisions.Import, row.Decision);
+        Assert.Equal(0, (await service.GetReviewAsync(UserId, jobId))!.Summary.Unlooked);
+    }
+
+    [Fact]
+    public async Task MatchAsync_AnswersWithTheRowsItExamined_AndNoOthers()
+    {
+        // The contract the client loops on, and the reason it is not the whole review: a pass
+        // resolves a bounded batch, so answering with every row would re-read and re-send the
+        // entire job on each of the hundred passes a large id-less import takes.
+        using var db = NewDb();
+        var service = NewService(
+            db,
+            CacheReturning(Game(42), Game(379)),
+            MatcherAnswering(_ => new ImportMatchResult(ImportMatchKinds.Matched, 42, [])));
+
+        var jobId = await UploadAsync(service, Export(
+            Entry(name: "Has An Id"),
+            Entry(name: "Has None", igdbId: "null")));
+
+        var examined = Assert.Single((await service.MatchAsync(UserId, jobId))!.Examined);
+
+        Assert.Equal("Has None", examined.Title);
+        Assert.Equal(2, (await service.GetReviewAsync(UserId, jobId))!.Rows.Count);
+    }
+
+    [Fact]
+    public async Task MatchAsync_AnAmbiguousRow_OffersItsCandidatesAndStaysOnSkip()
+    {
+        // The whole point of the middle tier. The row carries everything needed to choose and
+        // chooses nothing, so a review committed without reading it imports no guess.
+        using var db = NewDb();
+        var service = NewService(
+            db,
+            CacheReturning(Game(7, "Silent Hill"), Game(8, "Silent Hill")),
+            MatcherAnswering(_ => new ImportMatchResult(ImportMatchKinds.Ambiguous, null, [7, 8])));
+
+        var jobId = await UploadAsync(service, Unidentified("Silent Hill"));
+        var row = Assert.Single((await service.MatchAsync(UserId, jobId))!.Examined);
+
+        Assert.Equal(ImportMatchKinds.Ambiguous, row.MatchKind);
+        Assert.Null(row.GameId);
+        Assert.Equal(ImportDecisions.Skip, row.Decision);
+        Assert.Equal([7, 8], row.Candidates.Select(game => game.Id));
+        Assert.Equal(1, (await service.GetReviewAsync(UserId, jobId))!.Summary.Ambiguous);
+    }
+
+    [Fact]
+    public async Task MatchAsync_ARowTheMatcherResolvedToAGameAlreadyTracked_StillDefaultsToSkip()
+    {
+        // §S8 does not stop applying because the game was found rather than named. Importing this
+        // row overwrites what its owner recorded by hand, so it stays their decision.
+        using var db = NewDb();
+        db.UserGameEntries.Add(new UserGameEntry { UserId = UserId, GameId = 42, AddedAt = Midday });
+        await db.SaveChangesAsync();
+
+        var service = NewService(
+            db,
+            CacheReturning(Game(42)),
+            MatcherAnswering(_ => new ImportMatchResult(ImportMatchKinds.Matched, 42, [])));
+
+        var jobId = await UploadAsync(service, Unidentified("Unknown Game"));
+        var row = Assert.Single((await service.MatchAsync(UserId, jobId))!.Examined);
+
+        Assert.Equal(42, row.GameId);
+        Assert.True(row.AlreadyTracked);
+        Assert.Equal(ImportDecisions.Skip, row.Decision);
+    }
+
+    [Fact]
+    public async Task MatchAsync_ARowNothingWasFoundFor_IsNotAskedAboutAgain()
+    {
+        // What makes repeating a pass walk an import forwards instead of grinding on its hardest
+        // rows. The matcher answered, and the answer was "nothing" — asking IGDB the identical
+        // question again would spend the next pass's whole budget re-failing.
+        using var db = NewDb();
+        var matcher = MatcherAnswering(_ => new ImportMatchResult(ImportMatchKinds.Unmatched, null, []));
+        var service = NewService(db, matcher: matcher);
+
+        var jobId = await UploadAsync(service, Unidentified("Nothing Like This Exists"));
+
+        await service.MatchAsync(UserId, jobId);
+        var second = await service.MatchAsync(UserId, jobId);
+
+        await matcher.Received(1).MatchAsync(
+            Arg.Any<IReadOnlyCollection<ImportMatchQuery>>(), Arg.Any<CancellationToken>());
+
+        // Nothing left to examine, which is the answer the client stops on.
+        Assert.Empty(second!.Examined);
+        Assert.Equal(1, (await service.GetReviewAsync(UserId, jobId))!.Summary.Unmatched);
+    }
+
+    [Fact]
+    public async Task MatchAsync_ARowThePassRanOutOfBudgetFor_IsTheNextPassesWork()
+    {
+        // The other half of the same rule, and the reason an unanswered query must not be written
+        // down as "unmatched": a row the matcher never reached has to stay indistinguishable from a
+        // freshly uploaded one, or a large import would give up on itself after one pass.
+        using var db = NewDb();
+        var matcher = MatcherAnswering(query => query.Title == "Reached"
+            ? new ImportMatchResult(ImportMatchKinds.Matched, 42, [])
+            : null);
+
+        var service = NewService(db, CacheReturning(Game(42)), matcher);
+
+        var jobId = await UploadAsync(service, Unidentified("Reached", "Never Got To"));
+
+        Assert.Equal("Reached", Assert.Single((await service.MatchAsync(UserId, jobId))!.Examined).Title);
+        Assert.Equal(1, (await service.GetReviewAsync(UserId, jobId))!.Summary.Unlooked);
+
+        await service.MatchAsync(UserId, jobId);
+
+        await matcher.Received(2).MatchAsync(
+            Arg.Any<IReadOnlyCollection<ImportMatchQuery>>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task MatchAsync_ARowTheFileAlreadyIdentified_IsNeverLookedUp()
+    {
+        // ADR 0037's decision 2, still true now that the matcher exists: an id in the file needs no
+        // matching, so a Grouvee import of six hundred games asks IGDB about the two it could not
+        // name and not about the rest.
+        using var db = NewDb();
+        var matcher = MatcherAnswering(_ => new ImportMatchResult(ImportMatchKinds.Unmatched, null, []));
+        var service = NewService(db, CacheReturning(Game(379)), matcher);
+
+        var jobId = await UploadAsync(service, Export(
+            Entry(name: "Has An Id"),
+            Entry(name: "Has None", igdbId: "null")));
+
+        await service.MatchAsync(UserId, jobId);
+
+        await matcher.Received(1).MatchAsync(
+            Arg.Is<IReadOnlyCollection<ImportMatchQuery>>(
+                queries => queries.Count == 1 && queries.Single().Title == "Has None"),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task MatchAsync_NothingLeftToLookAt_AsksTheMatcherNothing()
+    {
+        using var db = NewDb();
+        var matcher = NoMatcher();
+        var service = NewService(db, CacheReturning(Game(379)), matcher);
+
+        var jobId = await UploadAsync(service, Export(Entry()));
+
+        Assert.Empty((await service.MatchAsync(UserId, jobId))!.Examined);
+        await matcher.DidNotReceive().MatchAsync(
+            Arg.Any<IReadOnlyCollection<ImportMatchQuery>>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task MatchAsync_MovesTheJobsClock()
+    {
+        // Matching is somebody working on their review, so it counts as the sign of life the
+        // pending window measures — a person feeding a five-thousand-row import through pass after
+        // pass must not have it deleted underneath them for never saving a decision.
+        using var db = NewDb();
+        var jobId = await UploadAsync(NewService(db), Unidentified("Unknown Game"));
+
+        var later = Midday.AddDays(9);
+        await new ImportService(
+                db,
+                CacheReturning(Game(42)),
+                MatcherAnswering(_ => new ImportMatchResult(ImportMatchKinds.Matched, 42, [])),
+                new FixedClock(later))
+            .MatchAsync(UserId, jobId);
+
+        Assert.Equal(later, (await db.ImportJobs.SingleAsync()).UpdatedAt);
+    }
+
+    [Fact]
+    public async Task MatchAsync_AJobThatIsAlreadyOver_IsNotFound()
+    {
+        using var db = NewDb();
+        var service = NewService(db, CacheReturning(Game(379)));
+
+        var jobId = await UploadAsync(service, Export(Entry()));
+        await service.CommitAsync(UserId, jobId);
+
+        Assert.Null(await service.MatchAsync(UserId, jobId));
+    }
+
+    [Fact]
+    public async Task MatchAsync_AJobBelongingToSomebodyElse_IsNotFound()
+    {
+        using var db = NewDb();
+        var service = NewService(db, CacheReturning(Game(379)));
+
+        var jobId = await UploadAsync(service, Export(Entry()));
+
+        Assert.Null(await service.MatchAsync(OtherUserId, jobId));
+    }
+
+    [Fact]
+    public async Task MatchAsync_WhenTheJobIsSweptMidRequest_IsNotFoundRatherThanAnError()
+    {
+        // The same window the other three writes have, and the widest of them: a pass spends
+        // seconds inside IGDB's rate limiter between reading the job and saving what it found.
+        var name = Guid.NewGuid().ToString();
+        using var db = NewDb(name);
+        using var sweeper = NewDb(name);
+
+        var jobId = await UploadAsync(NewService(db), Unidentified("Unknown Game"));
+
+        var service = new ImportService(
+            db,
+            CacheReturning(Game(42)),
+            MatcherAnswering(_ => new ImportMatchResult(ImportMatchKinds.Matched, 42, [])),
+            new SweepingClock(Midday, () => Sweep(sweeper)));
+
+        Assert.Null(await service.MatchAsync(UserId, jobId));
+    }
+
+    [Fact]
+    public async Task SetDecisionsAsync_ChoosingOneCandidate_LeavesTheOthersBehind()
+    {
+        // A resolved row must stop offering alternatives, or the screen goes on inviting somebody
+        // to pick again from a list that no longer includes what they picked.
+        using var db = NewDb();
+        var service = NewService(
+            db,
+            CacheReturning(Game(7, "Silent Hill"), Game(8, "Silent Hill")),
+            MatcherAnswering(_ => new ImportMatchResult(ImportMatchKinds.Ambiguous, null, [7, 8])));
+
+        var jobId = await UploadAsync(service, Unidentified("Silent Hill"));
+        var row = Assert.Single((await service.MatchAsync(UserId, jobId))!.Examined);
+
+        await service.SetDecisionsAsync(UserId, jobId, new ImportDecisionsDto(
+            [new ImportRowDecisionDto(row.Id, ImportDecisions.Import, 8, null)]));
+
+        var resolved = Assert.Single((await service.GetReviewAsync(UserId, jobId))!.Rows);
+
+        Assert.Equal(ImportMatchKinds.Matched, resolved.MatchKind);
+        Assert.Equal(8, resolved.GameId);
+        Assert.Empty(resolved.Candidates);
     }
 
     // ---------------------------------------------------------- the retention clock
@@ -655,7 +968,7 @@ public class ImportServiceTests
         var row = Assert.Single((await service.GetReviewAsync(UserId, jobId))!.Rows);
 
         var later = Midday.AddDays(9);
-        await new ImportService(db, CacheReturning(Game(379)), new FixedClock(later))
+        await new ImportService(db, CacheReturning(Game(379)), NoMatcher(), new FixedClock(later))
             .SetDecisionsAsync(UserId, jobId, new ImportDecisionsDto(
                 [new ImportRowDecisionDto(row.Id, ImportDecisions.Import, null, null)]));
 
@@ -838,7 +1151,7 @@ public class ImportServiceTests
         var row = await db.ImportRows.SingleAsync();
 
         var service = new ImportService(
-            db, CacheReturning(Game(379)), new SweepingClock(Midday, () => Sweep(sweeper)));
+            db, CacheReturning(Game(379)), NoMatcher(), new SweepingClock(Midday, () => Sweep(sweeper)));
 
         var saved = await service.SetDecisionsAsync(UserId, jobId, new ImportDecisionsDto(
             [new ImportRowDecisionDto(row.Id, ImportDecisions.Import, null, null)]));
@@ -868,7 +1181,7 @@ public class ImportServiceTests
                 return new[] { Game(379) };
             });
 
-        var result = await new ImportService(db, cache, new FixedClock(Midday))
+        var result = await new ImportService(db, cache, NoMatcher(), new FixedClock(Midday))
             .CommitAsync(UserId, jobId);
 
         Assert.Null(result);
@@ -886,7 +1199,7 @@ public class ImportServiceTests
         var jobId = await UploadAsync(NewService(db), Export(Entry()));
 
         var service = new ImportService(
-            db, CacheReturning(Game(379)), new SweepingClock(Midday, () => Sweep(sweeper)));
+            db, CacheReturning(Game(379)), NoMatcher(), new SweepingClock(Midday, () => Sweep(sweeper)));
 
         Assert.False(await service.CancelAsync(UserId, jobId));
     }

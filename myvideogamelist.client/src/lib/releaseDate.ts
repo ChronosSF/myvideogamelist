@@ -16,6 +16,14 @@ export function parseReleaseDate(date: string): Date {
     return new Date(year, month - 1, day);
 }
 
+/**
+ * The year a game came out. Unlike everything below it this reads no clock, so it is safe to render
+ * before hydration.
+ */
+export function releaseYear(date: string): number {
+    return parseReleaseDate(date).getFullYear();
+}
+
 function startOfDay(now: Date): Date {
     const today = new Date(now);
     today.setHours(0, 0, 0, 0);

@@ -312,9 +312,44 @@ ROADMAP.md                      Forward-looking plan
 - **A new import preset is an `IImportSource`, not a parser.** The seam is file → canonical rows,
   one level up from the column map `specs/csv-list-import.md` proposed, because Grouvee's export is
   a nested document that no column map can describe. Everything after that seam — the review, the
-  conflict check, the commit, the failure report — is shared and must stay source-agnostic. A row
-  carrying the source's own IGDB id needs no matching at all, which is why the fuzzy matcher does
-  not exist yet: build it with the first preset that has no ids, against a path that already works.
+  matching, the conflict check, the commit, the failure report — is shared and must stay
+  source-agnostic. A row carrying the source's own IGDB id needs no matching at all, which is why
+  **the upload still makes no network call**: matching is a separate endpoint, for the rows a
+  source could not name, and keeping it there is what stops an IGDB outage turning "store my file"
+  into "nothing matched" (ADR 0037).
+
+- **The matcher would rather not answer, and most of what makes that true is not obvious.**
+  `ImportMatching` decides which IGDB game a title names, and every rule in it exists because a
+  wrong automatic match is pre-checked on the review screen and writes a game its owner never
+  played into a library nobody audits, while a missed one costs a click (ADR 0040). Six things are
+  easy to undo by accident. **There are two keys and only one of them may answer**: `Normalise`
+  decides a match, `WithoutEdition` may only *offer* a candidate — move edition-stripping into the
+  first and "Dark Souls" stops being an offer to somebody importing "Dark Souls Remastered" and
+  becomes a silent answer. **IGDB holds a row per release, not per game**, so §M2's "exact title,
+  single candidate" fires for almost nothing real — seven rows are titled exactly "Final Fantasy
+  VII" — and what separates the canonical row from its re-release stubs is `RatingCount`, read as
+  *how many people track this row* and never as a score. **Truncating a candidate list
+  manufactures confidence rather than costing a match**: the dominance rule can only weigh what it
+  is shown, so `CandidatePool` is a whole page of twenty and the decision is made over everything
+  that cleared the floor, with §M3's cut to five applied afterwards. **The search term is the
+  user's own spelling** (`Tidy`), not the normalised key — IGDB's search is not fuzzy, folds
+  numerals itself, and ranks the real Ocarina of Time lower when the article is stripped, so
+  rewriting the term is guessing at somebody else's tokeniser. **`unlooked` and `unmatched` are
+  different states and both are needed** — nobody has asked, against somebody asked and IGDB had
+  nothing — because collapsing them makes every pass re-ask the questions the last one failed; a row
+  with no id is born `unlooked`, and a pass selects on it. And **an IGDB failure is a 502, never
+  "nothing matched"** — one is a sentence somebody acts on by trying later, the other by giving up.
+  The roman-numeral fold stops at thirty because the cap *is* the guard: `MIX` is a canonical 1009.
+
+- **A matching pass answers with the rows it examined, never the review.** `POST
+  /api/import/jobs/{id}/match` resolves a bounded batch and the client repeats it, so returning the
+  whole job each time is quadratic where it hurts most: the five-thousand-row id-less export this
+  exists for is ~250 passes, and rebuilding the review on each is about a gigabyte of JSON to import
+  one file. The client merges what came back and **stops when a pass hands back no row it moved** —
+  an exact fact rather than a count diffed between snapshots, and the thing standing between a bug
+  and a browser tab hammering IGDB for ever. Every `ImportService` write goes through
+  `SaveTouchingAsync`, which is where the retention stamp and the swept-mid-request 404 live
+  together; a new write that stamps by hand gets one of the two wrong.
 
 - **A score without its review count is not shippable.** IGDB's `aggregated_rating` is an
   unweighted mean with no minimum, so a game with one perfect review scores 100. Every score in
