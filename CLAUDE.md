@@ -279,7 +279,11 @@ ROADMAP.md                      Forward-looking plan
   `db.Database.CreateExecutionStrategy()`, which does nothing today and stops the sweep throwing
   `InvalidOperationException` on the day somebody adds `EnableRetryOnFailure` to `UseNpgsql`:
   **EF refuses a user-initiated transaction under a retrying strategy**, and the sweep would fail
-  into the log once an hour for ever without anything else breaking. Retention is two windows, not §S9's one: seven days
+  into the log once an hour for ever without anything else breaking. A tick that cannot take the
+  lock **counts what is waiting** rather than just returning: the try-lock is false when *any*
+  session holds the key, so work still expired after six skipped ticks running means the holder is
+  not a sweep, and that logs a warning. A stalled sweep is deliberately **not** a `/readyz`
+  failure — the instance still serves. Retention is two windows, not §S9's one: seven days
   from `CompletedAt` for a closed job, fourteen from `UpdatedAt` for a pending one, because a job
   nobody finished reviewing has no completion and would otherwise hold a `MaxPendingJobs` slot for
   ever. **`UpdatedAt` is the last saved decision, never the upload** — every write to a job stamps

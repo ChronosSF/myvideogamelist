@@ -83,6 +83,34 @@ internal sealed class ImportRetentionService(
     /// </remarks>
     private const int MaxBatchesPerSweep = 200;
 
+    /// <summary>
+    /// How many ticks running may find work waiting and the lock unavailable before that stops
+    /// reading as contention and starts reading as a fault.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <c>pg_try_advisory_xact_lock</c> returns false when <b>any</b> session in this database
+    /// holds the key, not only when another copy of this sweep does. A <c>pg_advisory_lock</c>
+    /// taken by hand, or by tooling that leaves its connection open, holds it until that session
+    /// ends — and every task's sweep then returns false for as long as it lasts. Nothing else in
+    /// the application notices, because retention has no caller to fail and its success path is
+    /// deliberately quiet.
+    /// </para>
+    /// <para>
+    /// One skipped tick means nothing: in a fleet of N tasks, N−1 of them skip every hour by
+    /// design. What does not happen normally is skipping <em>while expired jobs are still
+    /// waiting</em>, six ticks running — whichever task did hold the lock would have deleted them.
+    /// That is the signal, and it is why the skip path pays for a count.
+    /// </para>
+    /// </remarks>
+    private const int BlockedTicksBeforeWarning = 6;
+
+    /// <summary>
+    /// Consecutive ticks that found work waiting and could not take the lock. Touched only from
+    /// <see cref="ExecuteAsync"/>'s single loop, so it needs no synchronisation.
+    /// </summary>
+    private int blockedTicks;
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         // Once at startup and then on the timer, rather than waiting an hour for the first sweep.
@@ -135,6 +163,11 @@ internal sealed class ImportRetentionService(
     /// is released by the commit or the rollback whatever happens.
     /// </para>
     /// <para>
+    /// A tick that does not get the lock does not simply return, because "another task is sweeping"
+    /// is an assumption the return value does not support — see
+    /// <see cref="BlockedTicksBeforeWarning"/> and <see cref="NoteBlockedTickAsync"/>.
+    /// </para>
+    /// <para>
     /// <c>ExecuteDeleteAsync</c>, so the rows never enter the change tracker. The job's
     /// <c>ImportRows</c> go with it through the foreign key's <c>ON DELETE CASCADE</c> — a raw
     /// <c>DELETE</c> is exactly what that constraint is there to catch.
@@ -161,24 +194,78 @@ internal sealed class ImportRetentionService(
         // "that was the last of them" test below read a short batch that is not one.
         var now = clock.GetUtcNow();
         var deleted = 0;
+        var swept = false;
 
         for (var batch = 0; batch < MaxBatchesPerSweep; batch++)
         {
             var removed = await DeleteBatchAsync(db, now, cancellationToken);
 
-            // Somebody else is sweeping. Nothing to wait for — they are deleting the same rows.
+            // The lock is held elsewhere. If that is another task's sweep — the ordinary case in a
+            // fleet — there is nothing to wait for, because it is deleting the same rows.
             if (removed is null) break;
 
+            swept = true;
             deleted += removed.Value;
 
             // A short batch means the predicate has run out of rows.
             if (removed < BatchSize) break;
         }
 
-        // Only when it did something. An hourly log line saying "deleted 0" is noise that teaches
-        // people to stop reading the log.
+        if (!swept)
+        {
+            await NoteBlockedTickAsync(db, now, cancellationToken);
+            return;
+        }
+
+        blockedTicks = 0;
+
         if (deleted > 0)
             logger.LogInformation("Import retention deleted {JobCount} expired job(s).", deleted);
+        else
+            // Not Information: an hourly "deleted 0" is noise that teaches people to stop reading
+            // the log. Debug, so that "has it been running at all" still has an answer for anyone
+            // who turns the level up to ask.
+            logger.LogDebug("Import retention swept; nothing had expired.");
+    }
+
+    /// <summary>
+    /// Records a tick that never got the lock, and warns once that stops looking like contention.
+    /// </summary>
+    /// <remarks>
+    /// The one place this sweep spends a query on saying something rather than doing something.
+    /// Without it, a lock held by a session that is not a sweep stops retention for as long as
+    /// that session lives and is indistinguishable in the log from an hour with nothing to delete
+    /// — which is the same silence, and its cost is an account eventually unable to import.
+    /// See <see cref="BlockedTicksBeforeWarning"/>.
+    /// </remarks>
+    private async Task NoteBlockedTickAsync(
+        ApplicationDbContext db, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        var waiting = await db.ImportJobs.CountAsync(ImportRetention.ExpiredAt(now), cancellationToken);
+
+        // Losing the race cost nothing and says nothing: there was no work either way.
+        if (waiting == 0)
+        {
+            blockedTicks = 0;
+            logger.LogDebug("Import retention skipped a tick; the lock was held and nothing had expired.");
+            return;
+        }
+
+        blockedTicks++;
+
+        if (blockedTicks < BlockedTicksBeforeWarning)
+        {
+            logger.LogDebug(
+                "Import retention skipped a tick with {JobCount} job(s) expired ({BlockedTicks} in a row).",
+                waiting, blockedTicks);
+            return;
+        }
+
+        logger.LogWarning(
+            "Import retention has not taken its advisory lock on {LockKey} for {BlockedTicks} ticks "
+            + "running, with {JobCount} expired job(s) still waiting. Another sweep would have "
+            + "deleted them by now, so the lock is probably held by a session that is not a sweep.",
+            LockKey, blockedTicks, waiting);
     }
 
     /// <summary>

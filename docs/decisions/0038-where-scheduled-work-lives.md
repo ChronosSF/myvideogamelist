@@ -117,8 +117,21 @@ task's `pg_try_advisory_lock` fails for minutes rather than for ever — and eve
 sweep would need its own unlock. The `_xact_` variant is released by the commit or the rollback
 whatever happens, which is why it is the right choice regardless.
 
-A task that does not get the lock returns immediately. There is nothing to wait for: the holder is
-deleting exactly the rows this one would have.
+A task that does not get the lock returns immediately. There is nothing to wait for **if the holder
+is another sweep** — and that is an assumption the return value does not support.
+`pg_try_advisory_xact_lock` is false when *any* session in the database holds the key: a
+`pg_advisory_lock` taken by hand, or by tooling that leaves a connection open, holds it until that
+session ends, and every task then skips for as long as it lasts. Retention has no caller to fail
+and its success path is deliberately quiet, so that state used to be indistinguishable in the log
+from an hour with nothing to delete — for ever, ending with an account unable to import.
+
+So a skipped tick counts expired jobs before returning. Nothing waiting means losing the race said
+nothing; work still waiting six ticks running means whichever task *did* hold the lock has not
+deleted it, which is not contention, and that logs a warning naming the key. One skip is normal —
+in a fleet of N tasks, N−1 skip every hour by design — which is why the signal is the conjunction
+and not the skip. Verified by holding the key from `psql` with an expired job seeded: the warning
+arrives, quoting the lock as `5572719981890457684`; releasing the lock and restarting swept the job
+normally.
 
 **The transaction runs inside `CreateExecutionStrategy()`, which today does nothing.** EF refuses a
 user-initiated transaction when a retrying execution strategy is configured, and
@@ -205,6 +218,12 @@ letting EF notice a new value, so the detection cannot come to depend on two sav
 same instant off the clock. The exception is translated only after asking whether the job has in
 fact gone; a concurrency failure on anything else is a real failure and keeps its 500.
 **Anything else that starts deleting rows out from under a request owes the same.**
+
+**A stalled sweep is a log line, not a failed health check.** `/readyz` answers for whether this
+instance can serve requests, and an instance whose retention is stuck serves every request
+perfectly well — taking it out of rotation would turn a storage problem into an availability one.
+That is the same call [0034](0034-failing-in-one-shape.md) makes when it keeps `/readyz` at 200
+through an IGDB outage. Stated here so the absence reads as a decision.
 
 **The next background job copies this.** Whatever it is — CloudFront invalidation (ROADMAP D14), a
 `CachedGames` refresh, scheduled exports — it inherits the scoping rule, the catch-per-tick rule and
