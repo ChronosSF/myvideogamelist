@@ -275,7 +275,11 @@ ROADMAP.md                      Forward-looking plan
   application's own registration instead of out of a bare `new HostOptions()` that says nothing
   about us; and it runs **once per ECS task**, so it serialises on
   `pg_try_advisory_xact_lock` — the transaction-scoped variant, because a session lock survives on
-  a pooled connection after it is returned. Retention is two windows, not §S9's one: seven days
+  a pooled connection after it is returned. That transaction runs inside
+  `db.Database.CreateExecutionStrategy()`, which does nothing today and stops the sweep throwing
+  `InvalidOperationException` on the day somebody adds `EnableRetryOnFailure` to `UseNpgsql`:
+  **EF refuses a user-initiated transaction under a retrying strategy**, and the sweep would fail
+  into the log once an hour for ever without anything else breaking. Retention is two windows, not §S9's one: seven days
   from `CompletedAt` for a closed job, fourteen from `UpdatedAt` for a pending one, because a job
   nobody finished reviewing has no completion and would otherwise hold a `MaxPendingJobs` slot for
   ever. **`UpdatedAt` is the last saved decision, never the upload** — every write to a job stamps

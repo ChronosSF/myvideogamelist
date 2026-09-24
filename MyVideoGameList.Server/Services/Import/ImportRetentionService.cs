@@ -191,28 +191,45 @@ internal sealed class ImportRetentionService(
     private static async Task<int?> DeleteBatchAsync(
         ApplicationDbContext db, DateTimeOffset now, CancellationToken cancellationToken)
     {
-        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        // Through the execution strategy rather than straight into BeginTransactionAsync. Today
+        // that strategy is NonRetryingExecutionStrategy and this wrapper does nothing whatsoever.
+        // It is here for the day somebody adds EnableRetryOnFailure to the UseNpgsql call in
+        // Program.cs — the ordinary hardening for a managed PostgreSQL, and one argument away from
+        // a line that already exists. From that moment a user-initiated transaction outside a
+        // strategy throws InvalidOperationException instead of starting; RunOnceAsync would catch
+        // it, log one line an hour and change nothing else, so retention would stop and nobody
+        // would learn of it until an account ran out of MaxPendingJobs slots.
+        //
+        // Wrapping the whole transaction rather than the delete alone is also what would make a
+        // retry correct: the advisory lock is transaction-scoped, so a retried attempt begins a
+        // new transaction and takes the lock again rather than running without it.
+        var strategy = db.Database.CreateExecutionStrategy();
 
-        // The column must be called `Value`: SqlQuery<T> wraps this as a subquery and projects
-        // `s.Value` from it, so an unaliased `SELECT pg_try_advisory_xact_lock(...)` fails at
-        // runtime with `column s.Value does not exist` — and fails into the log rather than
-        // loudly, because the loop above catches. Verified against a real PostgreSQL, which is
-        // the only way this was ever going to be found.
-        var acquired = await db.Database
-            .SqlQuery<bool>($"SELECT pg_try_advisory_xact_lock({LockKey}) AS \"Value\"")
-            .SingleAsync(cancellationToken);
+        return await strategy.ExecuteAsync<int?>(async token =>
+        {
+            await using var transaction = await db.Database.BeginTransactionAsync(token);
 
-        if (!acquired) return null;
+            // The column must be called `Value`: SqlQuery<T> wraps this as a subquery and projects
+            // `s.Value` from it, so an unaliased `SELECT pg_try_advisory_xact_lock(...)` fails at
+            // runtime with `column s.Value does not exist` — and fails into the log rather than
+            // loudly, because the loop above catches. Verified against a real PostgreSQL, which is
+            // the only way this was ever going to be found.
+            var acquired = await db.Database
+                .SqlQuery<bool>($"SELECT pg_try_advisory_xact_lock({LockKey}) AS \"Value\"")
+                .SingleAsync(token);
 
-        // Oldest first, so a sweep that runs out of batches leaves the least recently expired
-        // behind — and so the order is defined at all, which Take needs to mean anything.
-        var deleted = await db.ImportJobs
-            .Where(ImportRetention.ExpiredAt(now))
-            .OrderBy(job => job.CreatedAt)
-            .Take(BatchSize)
-            .ExecuteDeleteAsync(cancellationToken);
+            if (!acquired) return null;
 
-        await transaction.CommitAsync(cancellationToken);
-        return deleted;
+            // Oldest first, so a sweep that runs out of batches leaves the least recently expired
+            // behind — and so the order is defined at all, which Take needs to mean anything.
+            var deleted = await db.ImportJobs
+                .Where(ImportRetention.ExpiredAt(now))
+                .OrderBy(job => job.CreatedAt)
+                .Take(BatchSize)
+                .ExecuteDeleteAsync(token);
+
+            await transaction.CommitAsync(token);
+            return deleted;
+        }, cancellationToken);
     }
 }

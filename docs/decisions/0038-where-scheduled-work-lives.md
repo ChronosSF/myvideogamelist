@@ -120,6 +120,19 @@ whatever happens, which is why it is the right choice regardless.
 A task that does not get the lock returns immediately. There is nothing to wait for: the holder is
 deleting exactly the rows this one would have.
 
+**The transaction runs inside `CreateExecutionStrategy()`, which today does nothing.** EF refuses a
+user-initiated transaction when a retrying execution strategy is configured, and
+`EnableRetryOnFailure` is the ordinary hardening for a managed PostgreSQL — one argument away from
+the `UseNpgsql` line that already exists in `Program.cs`. Adding it would make every sweep throw
+`InvalidOperationException: The configured execution strategy 'NpgsqlRetryingExecutionStrategy' does
+not support user-initiated transactions`, which `RunOnceAsync` catches, logs once an hour, and
+otherwise absorbs: retention would stop and nothing else in the application would fail, so nobody
+would learn of it until an account ran out of `MaxPendingJobs` slots. Verified by adding
+`EnableRetryOnFailure` locally and watching exactly that exception arrive, then watching the same
+build sweep cleanly with the strategy wrapper in place. The wrapper spans the **whole** transaction
+rather than the delete alone, because the advisory lock is transaction-scoped: a retried attempt
+opens a new transaction and has to take the lock again rather than proceed without it.
+
 ### 4. In batches, each its own transaction
 
 `ExecuteDeleteAsync` over the whole predicate is one statement, and `Program.cs` configures Npgsql
