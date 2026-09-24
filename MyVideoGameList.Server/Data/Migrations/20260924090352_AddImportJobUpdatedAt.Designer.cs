@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using MyVideoGameList.Server.Data;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace MyVideoGameList.Server.Data.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260924090352_AddImportJobUpdatedAt")]
+    partial class AddImportJobUpdatedAt
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -318,10 +321,7 @@ namespace MyVideoGameList.Server.Data.Migrations
 
                     b.HasIndex("UserId", "CreatedAt");
 
-                    b.ToTable("ImportJobs", t =>
-                        {
-                            t.HasCheckConstraint("CK_ImportJobs_Completion", "(\"State\" IN ('done', 'cancelled')) = (\"CompletedAt\" IS NOT NULL)");
-                        });
+                    b.ToTable("ImportJobs");
                 });
 
             modelBuilder.Entity("MyVideoGameList.Server.Models.ImportRow", b =>

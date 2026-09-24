@@ -157,7 +157,12 @@ ROADMAP.md                      Forward-looking plan
 
 - **A new user-owned table has to be registered in the export manifest and cascade from
   `AspNetUsers`.** `UserOwnedDataTests` walks the EF model and fails otherwise — in both
-  directions, so a stale registration for a table you removed fails too. The manifest is
+  directions, so a stale registration for a table you removed fails too. It also checks the other
+  edge: a **required** foreign key to a user-owned *parent* must cascade as well, because a child
+  that cannot exist without its parent must not be left orphaned or block the parent's deletion.
+  That is what makes the import sweep's bare `DELETE FROM "ImportJobs"` safe. An optional pointer
+  between siblings is outside the rule — a review's link to the playthrough it describes is
+  `SetNull`, so deleting one run does not take the prose with it. The manifest is
   `UserDataExporter.Manifest`, keyed by entity `Type`, and it is the *only* place to register:
   `ExportAsync` walks it. A new *column* on a registered table trips nothing, because each section is
   a hand-written projection — add it to that reader too, as `Ownership` and `Notes` were
@@ -253,6 +258,56 @@ ROADMAP.md                      Forward-looking plan
   answer — Grouvee's reads "Main Story" on 596 of 608 rows including all 448 that carry no date and
   no hours. Anything later that assumes "every status has an event" — an activity feed, an audit, a
   backfill — has to consult `Origin`. See `docs/decisions/0026-*` and `0037-*`.
+
+- **A closed import has no rows, and a review is only ever of a pending job.** A commit or a cancel
+  deletes the job's `ImportRow`s in the same `SaveChangesAsync` that closes it (ADR 0037, ADR 0039),
+  because by then everything a row held has become a `UserGameEntry` or a count on the job and
+  nothing re-serves it. Two things follow that are easy to undo by accident: `CommitAsync` reads its
+  rows **tracked**, since attaching no-tracking copies in order to delete them throws whenever the
+  same scope already holds those rows; and `GetReviewAsync` scopes to `State == pending`, or
+  `/import/{closedJobId}` renders an empty but fully actionable review over an import that is
+  already over. What retention then keeps is a receipt — the job row, its file name and its four
+  counts. **The per-row failure report is not stored anywhere**: it is built inside the commit's own
+  response, so §C5's promise is kept by that response and by nothing else. The client is told when
+  a job dies through `ImportJobDto.ExpiresAt` and **never holds a copy of the retention windows** —
+  two `TimeSpan`s restated in TypeScript would drift, and where it would show is a screen telling
+  somebody their part-finished review is safe for longer than it is. A job already gone answers
+  404, which the review screen renders as the end of that import rather than as a retryable error.
+
+- **Scheduled work is a `BackgroundService`, and there is exactly one.** `ImportRetentionService`
+  sweeps expired import jobs hourly, and is the shape the next one copies (ADR 0038). Three things
+  about it are easy to get wrong: a hosted service is a **singleton**, so it takes
+  `IServiceScopeFactory` and makes a scope per tick rather than injecting the scoped `DbContext`;
+  an exception escaping `ExecuteAsync` **stops the whole host**, so the loop catches per tick —
+  `ScheduledWork.AddScheduledWork` registers every scheduled service and is the **only** place
+  allowed to configure `HostOptions`, which is what lets a test assert that behaviour out of the
+  application's own registration instead of out of a bare `new HostOptions()` that says nothing
+  about us; and it runs **once per ECS task**, so it serialises on
+  `pg_try_advisory_xact_lock` — the transaction-scoped variant, because a session lock survives on
+  a pooled connection after it is returned. That transaction runs inside
+  `db.Database.CreateExecutionStrategy()`, which does nothing today and stops the sweep throwing
+  `InvalidOperationException` on the day somebody adds `EnableRetryOnFailure` to `UseNpgsql`:
+  **EF refuses a user-initiated transaction under a retrying strategy**, and the sweep would fail
+  into the log once an hour for ever without anything else breaking. A tick that cannot take the
+  lock **counts what is waiting** rather than just returning: the try-lock is false when *any*
+  session holds the key, so work still expired after six skipped ticks running means the holder is
+  not a sweep, and that logs a warning. A stalled sweep is deliberately **not** a `/readyz`
+  failure — the instance still serves. Retention is two windows, not §S9's one, and **which one applies is decided by
+  `CompletedAt`, never by `State`** — `MaxPendingJobs` counts from the same column so the cap and
+  the sweep mean the same jobs, and `CK_ImportJobs_Completion` keeps the two columns agreeing.
+  Seven days from `CompletedAt` for a closed job, fourteen from `UpdatedAt` for an unfinished one, because a job
+  nobody finished reviewing has no completion and would otherwise hold a `MaxPendingJobs` slot for
+  ever. **`UpdatedAt` is the last saved decision, never the upload** — every write to a job stamps
+  it, so the pending window is silence rather than a deadline, and a review worked through over
+  several weekends is not deleted underneath its owner. **`ExecuteDeleteAsync` needs a relational provider**, so the predicate is an `Expression`
+  the tests run against InMemory and the deletion itself is not unit-tested — change it and verify
+  it against the real container. It deletes **twenty-five jobs per statement and commits each
+  batch**, because one unbounded `DELETE` over a backlog exceeds Npgsql's thirty-second default,
+  rolls back, deletes nothing, and is retried identically every hour for ever. And because it
+  deletes rows no request asked it to, **every `ImportService` write stamps the job and treats an
+  `UPDATE` that matches no row as "swept"** — the 404 each endpoint already had, rather than the 500
+  an unclaimed `DbUpdateConcurrencyException` becomes. Anything else that deletes out from under a
+  request owes the same.
 
 - **A new import preset is an `IImportSource`, not a parser.** The seam is file → canonical rows,
   one level up from the column map `specs/csv-list-import.md` proposed, because Grouvee's export is

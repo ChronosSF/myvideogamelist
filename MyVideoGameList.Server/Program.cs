@@ -82,6 +82,11 @@ builder.Services.AddScoped<IUserNameClaimService, UserNameClaimService>();
 builder.Services.AddScoped<ITrackedNewsService, TrackedNewsService>();
 builder.Services.AddScoped<IImportService, ImportService>();
 
+// Everything that runs on a schedule, plus the host contract those services are written against
+// (ADR 0038). One call rather than a line per service, because what happens when a background
+// service throws is part of the same decision and is configured there.
+builder.Services.AddScheduledWork();
+
 // The clock, injected so the event log's timestamps are controllable in tests.
 builder.Services.AddSingleton(TimeProvider.System);
 

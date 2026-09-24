@@ -427,7 +427,24 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
             .HasForeignKey(j => j.UserId)
             .OnDelete(DeleteBehavior.Cascade);
 
-        // The only order anybody reads jobs in, and what the sweep of finished jobs will scan.
+        // CompletedAt says whether a job is over; State says how it ended. That is two columns and
+        // one fact, and the database is what keeps them agreeing: ImportService counts unfinished
+        // jobs against MaxPendingJobs by CompletedAt and ImportRetention chooses its window from
+        // the same column, so a row where the two disagree either holds a slot the sweep never
+        // frees or is deleted under the rule written for the other kind.
+        //
+        // The terminal states are named rather than the whole set, so ImportJobStates keeps its
+        // promise: adding `mapping` or `matching` for a preset that needs one is still additive
+        // and free, because a state that is not terminal simply has no completion. Adding a new
+        // *terminal* state is the one case that needs a migration, and it should be deliberate.
+        jobs.ToTable(t => t.HasCheckConstraint(
+            "CK_ImportJobs_Completion",
+            "(\"State\" IN ('done', 'cancelled')) = (\"CompletedAt\" IS NOT NULL)"));
+
+        // The only order anybody reads jobs in. Written when the retention sweep was still
+        // hypothetical and guessed wrong about it: the sweep's predicate names no user at all, so
+        // a UserId-leading index cannot serve it, and ADR 0038 decides deliberately that none
+        // should — the table it scans is kept small by the sweep itself.
         jobs.HasIndex(j => new { j.UserId, j.CreatedAt });
 
         var rows = modelBuilder.Entity<ImportRow>();

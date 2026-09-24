@@ -32,6 +32,11 @@ export interface ImportJob {
     skippedCount: number | null;
     createdAt: string;
     completedAt: string | null;
+    /**
+     * When retention will delete this job. Computed on the server from the same windows the sweep
+     * uses, so nothing here has to know how long a job is kept — see `ImportRetention`.
+     */
+    expiresAt: string;
 }
 
 export interface ImportReviewSummary {

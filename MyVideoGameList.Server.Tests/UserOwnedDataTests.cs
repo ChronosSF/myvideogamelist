@@ -94,6 +94,45 @@ public class UserOwnedDataTests
     }
 
     [Fact]
+    public void EveryUserOwnedChild_IsDeletedWithItsParent()
+    {
+        // The guard above answers "does this vanish when its owner does", which every child passes
+        // through its own UserId. It says nothing about the other edge: a playthrough reaching its
+        // entry, a row reaching its import job. Those foreign keys have a principal that is not
+        // ApplicationUser, so CascadesFromItsUserIdColumn cannot see them.
+        //
+        // That gap has a caller. ImportRetentionService deletes jobs with a raw DELETE and never
+        // mentions ImportRows, on the stated grounds that the foreign key carries them; weaken it
+        // to Restrict — a plausible edit for a soft delete or an audit trail — and every other test
+        // here still passes while the hourly sweep starts failing with a 23503 and swallowing it
+        // into the log for ever. The same is true of an entry's playthroughs and reviews, where
+        // the failure would reach a user deleting a game instead.
+        using var db = NewDb();
+
+        var missing = db.Model.GetEntityTypes()
+            .Where(Ours)
+            .SelectMany(entity => entity.GetForeignKeys())
+            // A parent of ours that is itself somebody's data. Excludes AspNetUsers, which the
+            // guard above owns, and the system lookups, which must *not* cascade.
+            .Where(fk => Ours(fk.PrincipalEntityType) && fk.PrincipalEntityType.FindProperty("UserId") is not null)
+            // Required, so the child cannot exist without the parent and the database must not be
+            // able to leave it orphaned. An *optional* pointer to a sibling is a different thing
+            // and is deliberately not cascaded: a review names the playthrough it is about, and
+            // deleting the record of one run must not take the prose with it. That one is SetNull,
+            // and this clause is what keeps it out rather than a name in an exclusion list.
+            .Where(fk => fk.IsRequired)
+            .Where(fk => fk.DeleteBehavior != DeleteBehavior.Cascade)
+            .Select(fk => $"{fk.DeclaringEntityType.ClrType.Name} -> {fk.PrincipalEntityType.ClrType.Name}")
+            .ToList();
+
+        Assert.Empty(missing);
+    }
+
+    /// <summary>Ours rather than Identity's, by the assembly the type comes from.</summary>
+    private static bool Ours(IEntityType entity) =>
+        entity.ClrType.Assembly == typeof(UserGameEntry).Assembly;
+
+    [Fact]
     public void EveryUserOwnedTable_IsNamedInTheExportManifest()
     {
         // The half the data-model plan asked for and could not have before there was an export to

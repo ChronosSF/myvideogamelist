@@ -131,7 +131,76 @@ is addressed. Import is a good forcing function for that cache.
 | S6 | CSV parsing via a real library (CsvHelper). Quoted multi-line review text is guaranteed to appear and hand-rolled splitting will corrupt it |
 | S7 | Upload limits — 5 MB and 5,000 rows, enforced before parsing. Reject non-CSV by content sniff, not by extension |
 | S8 | Commit is one transaction per job, upserting `UserGameList` entries. Existing entries are **not** overwritten by default — the review screen marks them "already in your list" and the user opts in per row |
-| S9 | Jobs and their rows are deleted 7 days after completion. The uploaded file itself is never persisted beyond the job |
+| S9 | ~~Jobs and their rows are deleted 7 days after completion.~~ **DONE**, and amended twice — see §5.1 below. A job's rows go at the moment it closes rather than a week later, and the job row itself has two windows rather than one. The uploaded file is never persisted at all |
+
+### 5.1 Retention: the rows go at commit, the job keeps two windows
+
+#### A job and its rows do not have the same lifetime
+
+§S9 treats them as one thing. They are not. An `ImportRow` is the review's working state — the
+parsed title, the game it matched, the decision its owner made about it — and when the job closes
+every one of those has either become a library entry or been counted into the job's `skippedCount`.
+
+Nothing reads them again. `/import` shows a finished import as its counts and does not link it, the
+per-row failure report §C5 promises travels in the commit's **own response** rather than being
+stored, and the review screen refuses a job that is not pending — otherwise it would render an
+empty but fully actionable "nothing is saved until you finish" over an import that is already over.
+So a closed job's rows were up to 5,000 `jsonb` rows apiece that no screen could render, kept for a
+week, carried in their owner's data export, and swept an hour at a time by a background service.
+
+**A commit or a cancel deletes the job's rows in the same transaction that closes it.** §S8 already
+demands that transaction; putting the deletion inside it is what stops "the library is written" and
+"the rows are gone" from being two states that can come apart. Everything below is therefore about
+the job row alone — a few hundred bytes naming a file and four counts.
+
+#### The job row: two windows, not one
+
+As written, §S9 covered only half the jobs there are. `CompletedAt` is set when a job is committed
+or cancelled and never otherwise, so "7 days after completion" is keyed on a timestamp a **pending**
+job does not have. The rule does not delete those rows late; it never selects them at all.
+
+That matters more than the storage it implies, because `MaxPendingJobs` counts pending jobs and
+refuses the fourth. Three uploads somebody opened and walked away from would block every later
+import, citing jobs they have long forgotten. There is a way out — the review screen has a Cancel
+button and `/import` lists unfinished jobs to resume — so it is a dead end rather than a locked
+door, but it is one nobody would expect to find themselves in.
+
+So retention is two rules:
+
+| Job | Deleted | Measured from | Why this length |
+|---|---|---|---|
+| `done`, `cancelled` | **7 days** | `CompletedAt` | A receipt, and by now the whole of that import: which file, when, how many went in, how many were passed over. Nothing in it is anyone's only copy — the uploaded file was never stored and the games are in their lists |
+| `pending` | **14 days** | `UpdatedAt` | Unfinished work. Deleting it discards the decisions already made — resolved shelves, chosen games — which re-uploading does not give back. A fortnight respects "I will finish this at the weekend" while still freeing the slot on a human timescale |
+
+`UpdatedAt` is the last time the job's owner **saved a decision**, so the pending window is a window
+of silence and not a deadline to finish by. Measured from `CreatedAt` it would delete a review on
+its fourteenth day however hard somebody had been working on it, taking with it the decisions the
+row above promises to protect — the exact failure the longer window exists to prevent. Reading the
+review does not move it: a `GET` that writes is its own problem, and a job left open in a background
+tab would then never expire at all.
+
+Which window applies is decided by `CompletedAt`, not by `State`: the first is the fact that a job
+is over, the second says only how it ended. `MaxPendingJobs` counts from the same column, so the cap
+and the sweep free and count the same jobs — and a `CK_ImportJobs_Completion` check constraint keeps
+the two columns agreeing, so a state that is neither `pending` nor terminal cannot quietly become a
+job that holds a slot for ever. Adding such a state stays additive and free; adding a new *terminal*
+one is the case that needs a migration.
+
+The pending window **must** be the longer of the two. Swapping them would delete reviews in progress
+while keeping receipts nobody reads, so it is asserted by a test rather than left to reading.
+
+**The user is told.** Every `ImportJobDto` carries an `expiresAt` computed from these windows, so
+`/import` says when each job goes and the review screen says what keeps an unfinished one alive.
+The date is computed on the server on purpose: the windows are a server decision, and a copy of the
+two numbers in the client would drift — the one place that would show is a screen promising somebody
+their part-finished work is safe for longer than it is. A job that is already gone answers 404, and
+the review screen treats that as the end of the job rather than as something to retry.
+
+Both are deleted by a scheduled sweep rather than on access, because nobody requests a deletion:
+the user whose rows they are has by construction stopped interacting with them. That is the
+application's only background job, and ADR
+[0038](../docs/decisions/0038-where-scheduled-work-lives.md) records what it owes a fleet running
+several copies of itself.
 
 ## 6. Client work
 

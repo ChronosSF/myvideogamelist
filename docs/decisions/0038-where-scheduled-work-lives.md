@@ -1,0 +1,237 @@
+# 0038. Where scheduled work lives, and what a sweep owes a fleet
+
+**Status:** Implemented
+
+Completes `specs/csv-list-import.md` §S9, which [0037](0037-a-tracker-import-carries-history.md)
+shipped without. Extends [0012](0012-steam-news-without-a-database.md), which is the other record
+about work that no request asks for.
+
+## Context
+
+Everything this application does is request-scoped. A user acts, a controller handles it, a scoped
+service writes, and the `DbContext` lives and dies with the request. That is true of every service
+in `Services/` without exception, and it is why there has never been an `IHostedService` in the
+project.
+
+Import retention does not fit. §S9 says jobs and their rows are deleted seven days after
+completion, and nobody requests a deletion — the user whose rows they are has, by construction,
+stopped interacting with them. So the feature needs a kind of component the codebase did not have,
+and the first one sets the pattern the next will copy.
+
+Two things made this urgent rather than tidy. The automated review on
+[#93](https://github.com/ChronosSF/myvideogamelist/pull/93) pointed out that **`MaxPendingJobs`
+stops counting once a job closes**, so the cap bounds concurrent reviews and not storage at all: an
+account can import repeatedly and every job it ever ran stays, with up to 5,000 `jsonb` rows each,
+in the table *and* in every `GetJobs` response and data export. And retention here is not only
+about disk. The rows are somebody's parsed library; keeping them after the job they belong to is
+finished is holding data for no reason anyone could state.
+
+### §S9 has a hole
+
+The spec says "seven days after completion". A job that is never committed or cancelled has no
+completion, so under that rule alone it lives for ever — and it keeps one of the three
+`MaxPendingJobs` slots with it. **Three abandoned uploads and that account cannot import again
+until it finds and cancels one of them.** The review screen does offer that, so this is a dead end
+rather than a locked door — but nobody returns to cancel a review they walked away from, which is
+why it is still a harder failure than the storage growth the rule was written to prevent. Abandoning
+a review is the single most likely thing to happen to an import that goes wrong.
+
+## Decision
+
+### 1. Scheduled work is a `BackgroundService`, and this is the first one
+
+`ImportRetentionService`, registered by `ScheduledWork.AddScheduledWork` — one call site for
+everything that runs on a schedule, and the only place that configures `HostOptions`, for the
+reason in the second bullet below. Not a queue, not a
+broker, not an external scheduler: the work is one `DELETE` an hour, and §S5's "a hosted service
+plus a queue is enough at this scale; do not add a broker for this" applies with the queue removed
+as well.
+
+Three properties of hosted services are load-bearing and are commented at the class, because each
+is easy to get wrong:
+
+- A `BackgroundService` is a **singleton**, so it cannot take `ApplicationDbContext` by
+  constructor injection. It takes `IServiceScopeFactory` and creates a scope per sweep. Capturing
+  a scoped context for the process lifetime is how one ends up shared across threads with a change
+  tracker that never empties.
+- **An exception escaping `ExecuteAsync` stops the host.** It is logged and the process exits, so
+  one failed sweep would take the whole API down and have ECS replace the task. (Before .NET 6 it
+  was the opposite failure — the service died silently and the host carried on — and that stale
+  description is what the first draft of this record shipped.) So the loop catches per tick and
+  logs; a missed sweep costs nothing the next one does not fix. `ScheduledWork.AddScheduledWork`
+  **sets** `HostOptions.BackgroundServiceExceptionBehavior` to `StopHost` rather than inheriting
+  the framework default, and `ImportRetentionTests` resolves it back out of that registration. The
+  first version of this claim was pinned by a test over a bare `new HostOptions()`, which asserts
+  the runtime's default and nothing about this application: a single `Configure<HostOptions>` in
+  `Program.cs` would have flipped the real behaviour and left the test green. Setting the option
+  where the services are registered — and keeping that the only place that touches it — is what
+  makes the sentence above true of us rather than of the framework.
+- It runs **once per ECS task**, so it must be safe to run N times at once.
+
+### 2. Two windows, because a pending job means something different
+
+| Job | Kept for | Why |
+|---|---|---|
+| `done` or `cancelled` | **7 days** from `CompletedAt` (§S9) | A closed job is a receipt — the result summary and the list of rows that did not import. Nothing here is anybody's only copy: the uploaded file was never stored |
+| `pending` | **14 days** from `UpdatedAt` | Work somebody may still intend to come back to. Longer, because deleting it costs them the decisions they had already made, which re-uploading does not give back |
+
+The second window is not in §S9 and is the fix for the hole above. Deleting an abandoned job also
+frees its `MaxPendingJobs` slot, which is the more important of the two effects.
+
+**What the first window keeps is now much smaller than this record first assumed.**
+[0039](0039-an-imports-rows-die-with-its-review.md) deletes a job's `ImportRow`s in the transaction
+that closes it, so by the time the seven days start there is nothing left but the job row itself —
+a few hundred bytes naming a file and four counts. The volume this sweep still moves is entirely in
+the second window, where an abandoned review keeps its rows.
+
+**`UpdatedAt`, not `CreatedAt`, and the column was added for this.** The first version of this
+record measured the pending window from the upload, which makes the window a deadline to finish by
+rather than a window of silence — so a 5,000-row export somebody resolved across three weekends was
+deleted on day fourteen mid-review, with every decision they had made, and the justification in the
+row above for choosing the *longer* window was false as written. Every write to a job stamps
+`ImportJob.UpdatedAt`: saving decisions, committing, cancelling. Reading the review deliberately
+does not, because a `GET` that writes is its own problem and a job left open in a background tab
+would then never expire at all. The distinction is pinned by
+`ImportRetentionTests.ExpiredAt_APendingJobUploadedLongAgoButWorkedOnRecently_IsKept`, which the
+`CreatedAt` version fails.
+
+The rule lives in `ImportRetention.ExpiredAt` as an **`Expression`**, not a delegate, so the sweep
+translates it to SQL and the tests run *the identical expression* against the in-memory provider. A
+test that restated the rule would agree with itself rather than with the thing that deletes rows.
+
+### 3. One task sweeps, through a transaction-scoped advisory lock
+
+`pg_try_advisory_xact_lock`. Correctness never depended on it — the delete is idempotent and every
+task computes the same predicate — so what it buys is the work being done once rather than N times
+against a predicate no index serves.
+
+**Transaction-scoped, not session-scoped**, and that distinction is the trap — though not quite
+the one first written here. `pg_advisory_lock` outlives the statement, so a pooled connection goes
+back into the pool still holding it. The next borrower does *not* inherit it: Npgsql resets a reused
+connection, and PostgreSQL's `DISCARD ALL` ends with `pg_advisory_unlock_all()` — verified by taking
+a session lock, running `DISCARD ALL`, and watching `pg_locks` go from one advisory lock to none.
+
+What does happen is that the server-side session keeps the lock while the connection sits idle in
+the pool, until it is reused or pruned after Npgsql's connection idle lifetime. So every other
+task's `pg_try_advisory_lock` fails for minutes rather than for ever — and every exit path of the
+sweep would need its own unlock. The `_xact_` variant is released by the commit or the rollback
+whatever happens, which is why it is the right choice regardless.
+
+A task that does not get the lock returns immediately. There is nothing to wait for **if the holder
+is another sweep** — and that is an assumption the return value does not support.
+`pg_try_advisory_xact_lock` is false when *any* session in the database holds the key: a
+`pg_advisory_lock` taken by hand, or by tooling that leaves a connection open, holds it until that
+session ends, and every task then skips for as long as it lasts. Retention has no caller to fail
+and its success path is deliberately quiet, so that state used to be indistinguishable in the log
+from an hour with nothing to delete — for ever, ending with an account unable to import.
+
+So a skipped tick counts expired jobs before returning. Nothing waiting means losing the race said
+nothing; work still waiting six ticks running means whichever task *did* hold the lock has not
+deleted it, which is not contention, and that logs a warning naming the key. One skip is normal —
+in a fleet of N tasks, N−1 skip every hour by design — which is why the signal is the conjunction
+and not the skip. Verified by holding the key from `psql` with an expired job seeded: the warning
+arrives, quoting the lock as `5572719981890457684`; releasing the lock and restarting swept the job
+normally.
+
+**The transaction runs inside `CreateExecutionStrategy()`, which today does nothing.** EF refuses a
+user-initiated transaction when a retrying execution strategy is configured, and
+`EnableRetryOnFailure` is the ordinary hardening for a managed PostgreSQL — one argument away from
+the `UseNpgsql` line that already exists in `Program.cs`. Adding it would make every sweep throw
+`InvalidOperationException: The configured execution strategy 'NpgsqlRetryingExecutionStrategy' does
+not support user-initiated transactions`, which `RunOnceAsync` catches, logs once an hour, and
+otherwise absorbs: retention would stop and nothing else in the application would fail, so nobody
+would learn of it until an account ran out of `MaxPendingJobs` slots. Verified by adding
+`EnableRetryOnFailure` locally and watching exactly that exception arrive, then watching the same
+build sweep cleanly with the strategy wrapper in place. The wrapper spans the **whole** transaction
+rather than the delete alone, because the advisory lock is transaction-scoped: a retried attempt
+opens a new transaction and has to take the lock again rather than proceed without it.
+
+### 4. In batches, each its own transaction
+
+`ExecuteDeleteAsync` over the whole predicate is one statement, and `Program.cs` configures Npgsql
+without a command timeout, which leaves the thirty-second default. A backlog large enough to exceed
+it does not merely take longer: the statement times out, the transaction rolls back, **nothing** is
+deleted, and the next tick runs the identical statement against the identical backlog an hour
+later. The sweep would be permanently stuck at the moment it was needed most, saying so once an
+hour, and the advisory lock would keep every other task from helping.
+
+So it deletes twenty-five jobs at a time and commits each batch. The cost is not the jobs but the
+`ImportRows` that cascade with them — up to `ImportService.MaxRows` apiece — and twenty-five bounds
+one statement at 125,000 cascaded deletions. A sweep runs at most two hundred batches before leaving
+the rest to the next one; that cap does not bind in practice and exists so that a predicate which
+wrongly matched everything could not loop for ever. Committing per batch is what turns "cannot
+finish" into "makes progress": a batch that fails leaves every batch before it deleted.
+
+Verified against a real PostgreSQL, since InMemory cannot run `ExecuteDelete` at all. Fifty-five
+expired jobs among fifty-eight went in exactly three statements — twenty-five, twenty-five, five —
+each a `DELETE FROM "ImportJobs" WHERE "Id" IN (SELECT ... ORDER BY "CreatedAt" LIMIT @p)`, and
+their 165 `ImportRows` went with them through the cascade. All three that had to survive did: a
+receipt from three days ago, a pending job created forty days ago whose owner saved a decision two
+days ago, and a real job from an earlier session.
+
+### 5. No index for the predicate
+
+It is an `OR` across two nullable columns, which needs two partial indexes to serve properly, and
+the table it scans is kept small by this very sweep. Stated here so that its absence reads as a
+decision. Revisit if it ever appears in a slow query log.
+
+## Consequences
+
+**`ExecuteDeleteAsync` needs a relational provider, so the deletion itself is not unit-tested.**
+The suite runs on EF InMemory. This is the same line [0024](0024-the-ownership-contract.md)'s
+`UserOwnedDataTests` already draws when it declines to assert cascade *behaviour* and asserts the
+*model* instead: the predicate is tested, the execution is the provider's.
+
+**What that left uncovered was found by running it.** The first version asked for the lock with
+``SqlQuery<bool>($"SELECT pg_try_advisory_xact_lock({key})")``, which fails at runtime with
+`column s.Value does not exist` — `SqlQuery<T>` wraps the statement as a subquery and projects
+`s.Value`, so the scalar has to be aliased. It compiled, it passed every test, and because the loop
+catches per tick it failed **into the log** rather than loudly. It was caught by seeding expired
+rows into a real PostgreSQL and watching the sweep run, which was the only thing that could have
+caught it. The verified behaviour: of four jobs, the two expired ones were deleted, their
+`ImportRows` went with them through the cascade, and a ten-day-old *pending* job was correctly
+left alone.
+
+**The rows go through the foreign key's `ON DELETE CASCADE`.** The sweep deletes jobs and never
+mentions `ImportRows`. That constraint is from [0037](0037-a-tracker-import-carries-history.md) and
+a raw `DELETE` is exactly what it exists to handle. It is now also **asserted**:
+[0024](0024-the-ownership-contract.md)'s guard only ever looked at foreign keys whose principal is
+`AspNetUsers`, so this one — and a playthrough's to its entry, and a review's — was invisible to it.
+`UserOwnedDataTests.EveryUserOwnedChild_IsDeletedWithItsParent` closes that, over every *required*
+key to a user-owned parent. Weakening the import key to `Restrict` fails that test and, verified,
+no other: 582 still pass while the sweep would start failing with a foreign-key violation an hour
+at a time. An *optional* pointer between siblings is deliberately outside the rule, which is how a
+review's `SetNull` link to the playthrough it describes stays out without being named.
+
+**A deploy sweeps immediately.** The service runs once at startup before starting its timer, rather
+than waiting an hour. A task that has just restarted is when a backlog is most likely, and the
+advisory lock makes a whole fleet starting at once a non-event.
+
+**Retention gave request-scoped code a hazard it had never had, and `ImportService` had to answer
+for it.** Until this existed, nothing deleted a job somebody was holding, so every method could read
+a job and then write to it without wondering whether it was still there. `CommitAsync` reads the
+job, checks its state, and then spends seconds inside `IGameCacheService` before its closing write;
+a sweep landing in that window made the closing `UPDATE` match nothing, which EF raises as
+`DbUpdateConcurrencyException`. No registered error handler claims that, so it was a **500** — and
+because the entries, playthroughs and axis rows are in the same `SaveChanges`, the user's whole
+import rolled back after they had finished reviewing it. `SetDecisionsAsync` failed the opposite
+way: it reads its rows in a second round trip, so a swept job left that query empty, the write did
+nothing, and the endpoint answered **204, saved** for decisions that had landed nowhere.
+
+All three writes now stamp `UpdatedAt`, which they owe the clock above in any case, so the job row is
+always part of the `SaveChanges` and an update matching no row becomes the 404 each endpoint was
+already written to return. `SetDecisionsAsync` marks that column modified explicitly rather than
+letting EF notice a new value, so the detection cannot come to depend on two saves never reading the
+same instant off the clock. The exception is translated only after asking whether the job has in
+fact gone; a concurrency failure on anything else is a real failure and keeps its 500.
+**Anything else that starts deleting rows out from under a request owes the same.**
+
+**A stalled sweep is a log line, not a failed health check.** `/readyz` answers for whether this
+instance can serve requests, and an instance whose retention is stuck serves every request
+perfectly well — taking it out of rotation would turn a storage problem into an availability one.
+That is the same call [0034](0034-failing-in-one-shape.md) makes when it keeps `/readyz` at 200
+through an IGDB outage. Stated here so the absence reads as a decision.
+
+**The next background job copies this.** Whatever it is — CloudFront invalidation (ROADMAP D14), a
+`CachedGames` refresh, scheduled exports — it inherits the scoping rule, the catch-per-tick rule and
+the question of what it owes a fleet running N copies of it.

@@ -269,7 +269,7 @@ public class UserDataExporter(ApplicationDbContext db, TimeProvider clock) : IUs
             .OrderBy(j => j.CreatedAt)
             .Select(j => new ImportJobExportDto(
                 j.Id, j.Source, j.FileName, j.State, j.RowCount, j.ImportedCount, j.SkippedCount,
-                j.CreatedAt, j.CompletedAt))
+                j.CreatedAt, j.UpdatedAt, j.CompletedAt))
             .ToListAsync(cancellationToken);
     }
 

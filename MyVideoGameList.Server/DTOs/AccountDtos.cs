@@ -198,6 +198,7 @@ public record ImportJobExportDto(
     int? ImportedCount,
     int? SkippedCount,
     DateTimeOffset CreatedAt,
+    DateTimeOffset UpdatedAt,
     DateTimeOffset? CompletedAt);
 
 /// <summary>

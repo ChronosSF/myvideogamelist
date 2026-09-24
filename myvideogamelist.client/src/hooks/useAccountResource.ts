@@ -1,5 +1,20 @@
 import { useCallback, useEffect, useReducer, useState } from 'react';
 
+/**
+ * A failure that retrying cannot fix: the thing asked for is gone rather than briefly out of
+ * reach.
+ *
+ * `load` throws one of these so the screen can offer something other than a button whose only
+ * possible outcome is the same answer again. Anything else is treated as transient, which is the
+ * safe default — a retry that might work beats one that cannot.
+ */
+export class PermanentFetchError extends Error {
+    constructor(message: string) {
+        super(message);
+        this.name = 'PermanentFetchError';
+    }
+}
+
 export interface AccountResourceState<T> {
     /**
      * The account and subject this data belongs to, as one string. Compared inside the reducer, so
@@ -9,17 +24,19 @@ export interface AccountResourceState<T> {
     data: T | null;
     loading: boolean;
     error: string | null;
+    /** Whether retrying the failed read could ever succeed. Always false while `error` is null. */
+    errorIsPermanent: boolean;
 }
 
 export type AccountResourceAction<T> =
     | { type: 'RESET' }
     | { type: 'FETCH_START'; identity: string }
     | { type: 'FETCH_SUCCESS'; identity: string; data: T }
-    | { type: 'FETCH_ERROR'; identity: string; error: string }
+    | { type: 'FETCH_ERROR'; identity: string; error: string; permanent: boolean }
     | { type: 'PATCH'; identity: string; apply: (data: T) => T };
 
 function initial<T>(identity: string | null): AccountResourceState<T> {
-    return { identity, data: null, loading: identity !== null, error: null };
+    return { identity, data: null, loading: identity !== null, error: null, errorIsPermanent: false };
 }
 
 /**
@@ -40,15 +57,15 @@ export function accountResourceReducer<T>(
             // that *fails* would otherwise leave the previous data up underneath the new error.
             // The same identity asking again is a reload, and keeps what it has.
             return action.identity === state.identity
-                ? { ...state, loading: true, error: null }
+                ? { ...state, loading: true, error: null, errorIsPermanent: false }
                 : initial<T>(action.identity);
         case 'FETCH_SUCCESS':
             return action.identity === state.identity
-                ? { ...state, loading: false, error: null, data: action.data }
+                ? { ...state, loading: false, error: null, errorIsPermanent: false, data: action.data }
                 : state;
         case 'FETCH_ERROR':
             return action.identity === state.identity
-                ? { ...state, loading: false, error: action.error }
+                ? { ...state, loading: false, error: action.error, errorIsPermanent: action.permanent }
                 : state;
         case 'PATCH':
             return action.identity === state.identity && state.data !== null
@@ -61,6 +78,8 @@ export interface UseAccountResourceResult<T> {
     data: T | null;
     loading: boolean;
     error: string | null;
+    /** Whether retrying would only produce the same failure. See `PermanentFetchError`. */
+    errorIsPermanent: boolean;
     reload: () => void;
     /** Applies a local change, dropped if the account or subject has moved on since. */
     patch: (apply: (data: T) => T) => void;
@@ -130,6 +149,7 @@ export function useAccountResource<T>(
                     type: 'FETCH_ERROR',
                     identity,
                     error: err instanceof Error ? err.message : 'Something went wrong.',
+                    permanent: err instanceof PermanentFetchError,
                 });
             });
 
@@ -145,5 +165,12 @@ export function useAccountResource<T>(
         [identity],
     );
 
-    return { data: state.data, loading: state.loading, error: state.error, reload, patch };
+    return {
+        data: state.data,
+        loading: state.loading,
+        error: state.error,
+        errorIsPermanent: state.errorIsPermanent,
+        reload,
+        patch,
+    };
 }

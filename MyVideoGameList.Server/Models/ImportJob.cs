@@ -61,8 +61,11 @@ public static class ImportJobStates
 /// export earns nothing and is one more thing to leak.
 /// </para>
 /// <para>
-/// The counts are stored rather than derived, because the rows do not outlive the job by much —
-/// a finished job is disposable and its summary is not.
+/// The counts are stored rather than derived, because the rows do not outlive the review at all:
+/// the commit or the cancel that closes a job deletes its <see cref="ImportRow"/>s in the same
+/// transaction, so by the time anybody reads a closed job there is nothing left to count. This row
+/// is then the whole of what that import is, which is why <c>GetReviewAsync</c> refuses a job that
+/// is not pending rather than serving an empty review of one.
 /// </para>
 /// </remarks>
 public class ImportJob
@@ -107,7 +110,34 @@ public class ImportJob
 
     public DateTimeOffset CreatedAt { get; set; }
 
+    /// <summary>
+    /// The last time the job's owner did something with it, and the clock a <em>pending</em> job's
+    /// retention runs against.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Set on upload and moved by every write the review makes — saving decisions, committing,
+    /// cancelling. Without it the abandoned-job window would run from <see cref="CreatedAt"/>, and a
+    /// review somebody worked through over three weekends would be deleted underneath them on the
+    /// fourteenth day along with every decision they had made. That is the exact opposite of why
+    /// that window is the longer of the two. See <c>ImportRetention.KeepAbandoned</c>.
+    /// </para>
+    /// <para>
+    /// <b>Reading the review does not move it.</b> A GET that writes is its own problem, and a job
+    /// left open in a background tab would otherwise never expire at all.
+    /// </para>
+    /// </remarks>
+    public DateTimeOffset UpdatedAt { get; set; }
+
     /// <summary>When the job reached <c>done</c> or <c>cancelled</c>. Null while it is pending.</summary>
+    /// <remarks>
+    /// <b>This column, not <see cref="State"/>, is what "is this job over" is read from.</b>
+    /// <c>ImportService</c> counts unfinished jobs against <c>MaxPendingJobs</c> by it and
+    /// <c>ImportRetention</c> chooses between its two windows by it, so the cap and the sweep agree
+    /// about which jobs they mean. <c>State</c> answers the different question of <em>how</em> a
+    /// job ended, which is what the endpoints that act on a review key on. The two are held
+    /// together by <c>CK_ImportJobs_Completion</c> rather than by a convention.
+    /// </remarks>
     public DateTimeOffset? CompletedAt { get; set; }
 
     public ApplicationUser User { get; set; } = null!;

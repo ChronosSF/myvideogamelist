@@ -63,12 +63,19 @@ public class ImportService(
         if (string.IsNullOrWhiteSpace(content))
             throw new ImportRejectedException("That file is empty.");
 
-        var pending = await db.ImportJobs
-            .CountAsync(j => j.UserId == userId && j.State == ImportJobStates.Pending, cancellationToken);
+        // Counted by CompletedAt, not by State, so the cap counts exactly what retention frees.
+        // ImportRetention picks its window from the same column; keying the cap on State instead
+        // would let the two diverge the moment a state that is neither pending nor terminal
+        // exists — `matching` for a preset that needs it, which ImportJobStates invites — and a
+        // job of that kind would then hold a slot the sweep never frees, or be deleted under a
+        // rule written for the other kind. CK_ImportJobs_Completion keeps the two columns
+        // agreeing about which jobs those are.
+        var unfinished = await db.ImportJobs
+            .CountAsync(j => j.UserId == userId && j.CompletedAt == null, cancellationToken);
 
-        if (pending >= MaxPendingJobs)
+        if (unfinished >= MaxPendingJobs)
             throw new ImportRejectedException(
-                $"You have {pending} imports waiting to be reviewed. Finish or cancel one before starting another.");
+                $"You have {unfinished} imports waiting to be reviewed. Finish or cancel one before starting another.");
 
         var name = SafeFileName(fileName);
         var source = Detect(name, content)
@@ -94,6 +101,8 @@ public class ImportService(
             throw new ImportRejectedException(
                 $"That export has {payloads.Count} games, and the limit is {MaxRows}.");
 
+        var now = clock.GetUtcNow();
+
         var job = new ImportJob
         {
             Id = Guid.NewGuid(),
@@ -102,7 +111,8 @@ public class ImportService(
             FileName = name,
             State = ImportJobStates.Pending,
             RowCount = payloads.Count,
-            CreatedAt = clock.GetUtcNow()
+            CreatedAt = now,
+            UpdatedAt = now
         };
 
         db.ImportJobs.Add(job);
@@ -147,22 +157,35 @@ public class ImportService(
     }
 
     public async Task<IReadOnlyList<ImportJobDto>> GetJobsAsync(
-        string userId, CancellationToken cancellationToken = default) =>
-        await db.ImportJobs
+        string userId, CancellationToken cancellationToken = default)
+    {
+        // Read as rows and mapped here rather than projected in the query, because ExpiresAt is a
+        // method and not an expression a provider can translate. The list is bounded by the
+        // retention windows either side — three unfinished jobs at most, plus a week of receipts —
+        // so materialising it costs nothing worth the second copy of the rule that inlining it
+        // into the projection would need.
+        var jobs = await db.ImportJobs
             .AsNoTracking()
             .Where(j => j.UserId == userId)
             .OrderByDescending(j => j.CreatedAt)
-            .Select(j => new ImportJobDto(
-                j.Id, j.Source, j.FileName, j.State, j.RowCount, j.ImportedCount, j.SkippedCount,
-                j.CreatedAt, j.CompletedAt))
             .ToListAsync(cancellationToken);
+
+        return jobs.Select(ToDto).ToList();
+    }
 
     public async Task<ImportReviewDto?> GetReviewAsync(
         string userId, Guid jobId, CancellationToken cancellationToken = default)
     {
+        // Pending, not merely owned by this user. A review is something you do to a job nobody has
+        // decided yet, and a closed one has no rows left to review — the commit or the cancel that
+        // closed it deleted them. Without this the screen renders an empty but fully actionable
+        // "nothing is saved until you finish" over a job that is already over. Nothing in the
+        // client links a closed job, so what this closes is a stale bookmark.
         var job = await db.ImportJobs
             .AsNoTracking()
-            .FirstOrDefaultAsync(j => j.Id == jobId && j.UserId == userId, cancellationToken);
+            .FirstOrDefaultAsync(
+                j => j.Id == jobId && j.UserId == userId && j.State == ImportJobStates.Pending,
+                cancellationToken);
 
         if (job is null) return null;
 
@@ -230,7 +253,30 @@ public class ImportService(
                     ImportPayloadJson.Read(row.Payload) with { Status = status, StatusUnrecognised = false });
         }
 
-        await db.SaveChangesAsync(cancellationToken);
+        // Working on a review is what keeps it alive: the retention sweep measures a pending job
+        // from this, not from when the file was uploaded, so somebody can take a fortnight per
+        // sitting rather than a fortnight in total.
+        //
+        // It is also what makes the write detectable. The rows are read in a second round trip, so
+        // a job swept between the two reads leaves that query empty, the loop above doing nothing
+        // and this method returning "saved" for decisions that landed nowhere. Touching the job
+        // puts an UPDATE in this SaveChanges, and an UPDATE that matches no row is an error.
+        //
+        // Marked modified rather than left to EF noticing a new value, so that the detection does
+        // not quietly depend on two saves never reading the same instant off the clock.
+        job.UpdatedAt = clock.GetUtcNow();
+        db.Entry(job).Property(j => j.UpdatedAt).IsModified = true;
+
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            if (await JobIsGoneAsync(userId, jobId, cancellationToken)) return false;
+            throw;
+        }
+
         return true;
     }
 
@@ -242,8 +288,11 @@ public class ImportService(
 
         if (job is null || job.State != ImportJobStates.Pending) return null;
 
+        // Tracked, unlike every other read of these rows, because this one ends by deleting them.
+        // Attaching no-tracking copies instead would throw the moment anything else in the same
+        // scope already held them — which is exactly what a caller that created the job and
+        // committed it through one context does.
         var rows = await db.ImportRows
-            .AsNoTracking()
             .Where(r => r.ImportJobId == jobId && r.UserId == userId)
             .OrderBy(r => r.Id)
             .ToListAsync(cancellationToken);
@@ -272,14 +321,42 @@ public class ImportService(
 
         var imported = await WriteAsync(userId, job.Source, wanted, cancellationToken);
 
+        var now = clock.GetUtcNow();
+
         job.State = ImportJobStates.Done;
         job.ImportedCount = imported;
         job.SkippedCount = skipped.Count;
-        job.CompletedAt = clock.GetUtcNow();
+        job.CompletedAt = now;
+        job.UpdatedAt = now;
+
+        // The rows die with the review they belong to. Everything they held has either become a
+        // library entry or been counted into SkippedCount above, and nothing reads them again:
+        // GetReviewAsync refuses a closed job and /import shows a finished one as its counts. Up
+        // to MaxRows of jsonb per import, kept for a week, that no screen could render.
+        //
+        // RemoveRange over the rows already read rather than ExecuteDeleteAsync: it joins the one
+        // SaveChanges below, so §S8's "a commit is one transaction" survives — an ExecuteDelete
+        // runs on its own and could leave the library written and the rows behind, or the reverse.
+        db.ImportRows.RemoveRange(rows);
 
         // One SaveChanges for the entries, the playthroughs, the two axes and the job's own
         // closing state, so a commit is one transaction (§S8) without an explicit one.
-        await db.SaveChangesAsync(cancellationToken);
+        //
+        // WriteAsync spends real time in IGDB-backed calls between the state check above and this
+        // line, which is long enough for the retention sweep to delete a job that has just crossed
+        // its window. The closing UPDATE then matches nothing and EF throws. Left unhandled that is
+        // a 500 — no registered handler claims a concurrency exception — where the method already
+        // has a 404 for exactly this, and the whole transaction rolls back anyway, so nothing was
+        // written for the user to be told about.
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            if (await JobIsGoneAsync(userId, jobId, cancellationToken)) return null;
+            throw;
+        }
 
         return new ImportResultDto(ToDto(job), skipped);
     }
@@ -292,12 +369,58 @@ public class ImportService(
 
         if (job is null || job.State != ImportJobStates.Pending) return false;
 
-        job.State = ImportJobStates.Cancelled;
-        job.CompletedAt = clock.GetUtcNow();
+        // Read to be deleted, which is the one place this costs a query it did not make before.
+        // Cancelling is rare and deliberate, and the alternative — ExecuteDeleteAsync — would take
+        // the deletion out of the SaveChanges below and let a cancelled job keep its rows.
+        var rows = await db.ImportRows
+            .Where(r => r.ImportJobId == jobId && r.UserId == userId)
+            .ToListAsync(cancellationToken);
 
-        await db.SaveChangesAsync(cancellationToken);
+        var now = clock.GetUtcNow();
+
+        job.State = ImportJobStates.Cancelled;
+        job.CompletedAt = now;
+        job.UpdatedAt = now;
+
+        // A cancelled job keeps no rows either, and has even less claim to them than a committed
+        // one: nothing it held was written anywhere.
+        db.ImportRows.RemoveRange(rows);
+
+        // The same race as the other two writes, and the least consequential of the three: a job
+        // the sweep has already deleted is one this call was asking to be rid of.
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            if (await JobIsGoneAsync(userId, jobId, cancellationToken)) return false;
+            throw;
+        }
+
         return true;
     }
+
+    /// <summary>
+    /// Whether the job has gone from underneath the request that is holding it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The retention sweep is the only thing that deletes somebody else's job, and it runs on its
+    /// own schedule with no idea a request is in flight. Every write above therefore touches the
+    /// job row, so a job deleted mid-request fails its <c>UPDATE</c> — EF raises
+    /// <see cref="DbUpdateConcurrencyException"/> for an update that matched no rows whether or not
+    /// there is a concurrency token — instead of writing into nothing and reporting success.
+    /// </para>
+    /// <para>
+    /// Asked rather than assumed, because a commit also updates entries the user may have changed
+    /// in another tab. Only a job that has actually gone becomes the 404 the endpoint was written
+    /// to; anything else is a real failure and keeps its 500.
+    /// </para>
+    /// </remarks>
+    private async Task<bool> JobIsGoneAsync(
+        string userId, Guid jobId, CancellationToken cancellationToken) =>
+        !await db.ImportJobs.AnyAsync(j => j.Id == jobId && j.UserId == userId, cancellationToken);
 
     /// <summary>
     /// Writes the chosen rows into the user's library. Adds to the context and does not save.
@@ -570,5 +693,6 @@ public class ImportService(
 
     private static ImportJobDto ToDto(ImportJob job) =>
         new(job.Id, job.Source, job.FileName, job.State, job.RowCount, job.ImportedCount,
-            job.SkippedCount, job.CreatedAt, job.CompletedAt);
+            job.SkippedCount, job.CreatedAt, job.CompletedAt,
+            ImportRetention.ExpiresAt(job.CompletedAt, job.UpdatedAt));
 }

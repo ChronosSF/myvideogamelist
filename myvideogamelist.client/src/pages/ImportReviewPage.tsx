@@ -4,6 +4,8 @@ import { useAuth } from '@/hooks/useAuth';
 import { useLists } from '@/hooks/useLists';
 import { useImportReview } from '@/hooks/useImport';
 import { downloadSkippedRows } from '@/lib/importReport';
+import { expiresInWords } from '@/lib/importExpiry';
+import { useHydrated } from '@/lib/useHydrated';
 import { formatCount } from '@/lib/format';
 import { PRIVATE_NO_STORE } from '@/lib/cache';
 import { NOINDEX } from '@/lib/seo';
@@ -41,8 +43,13 @@ export function ImportReviewPage() {
     const navigate = useNavigate();
     const { nameFor, namesStatus } = useLists();
 
-    const { review, loading, error, actionError, busy, result, reload, setDecisions, commit, cancel } =
+    const { review, loading, error, gone, actionError, busy, result, reload, setDecisions, commit, cancel } =
         useImportReview(user?.id ?? null, jobId);
+
+    // After hydration only: the phrase is relative to the reader's clock, which the server render
+    // cannot know. See `useHydrated`.
+    const hydrated = useHydrated();
+    const expiresIn = hydrated && review ? expiresInWords(review.job.expiresAt) : null;
 
     const [filter, setFilter] = useState<Filter>('attention');
     const [shown, setShown] = useState(PAGE);
@@ -103,6 +110,12 @@ export function ImportReviewPage() {
                     <p className="text-slate-400 light:text-slate-600 text-sm">
                         {review ? `${review.job.fileName} — nothing is saved until you finish.` : 'Loading…'}
                     </p>
+                    {expiresIn && (
+                        <p className="text-slate-500 light:text-slate-500 text-xs mt-1">
+                            An import left unfinished is deleted {expiresIn}, along with the decisions
+                            made on it. Saving any decision starts that over.
+                        </p>
+                    )}
                 </div>
             </div>
 
@@ -116,13 +129,25 @@ export function ImportReviewPage() {
                 {!loading && error && (
                     <div className="text-center py-16" role="alert">
                         <p className="text-red-300 font-medium mb-3">{error}</p>
-                        <button
-                            type="button"
-                            onClick={reload}
-                            className="px-4 py-2 bg-red-700 hover:bg-red-600 text-white text-sm font-semibold rounded-lg"
-                        >
-                            Try again
-                        </button>
+                        {/* A job that is over cannot come back, and this is now how every job ends:
+                            committed, cancelled, or deleted by retention. Offering the reload that
+                            produced the 404 would only produce it again. */}
+                        {gone ? (
+                            <Link
+                                to="/import"
+                                className="inline-block px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white text-sm font-semibold rounded-lg"
+                            >
+                                Back to your imports
+                            </Link>
+                        ) : (
+                            <button
+                                type="button"
+                                onClick={reload}
+                                className="px-4 py-2 bg-red-700 hover:bg-red-600 text-white text-sm font-semibold rounded-lg"
+                            >
+                                Try again
+                            </button>
+                        )}
                     </div>
                 )}
 

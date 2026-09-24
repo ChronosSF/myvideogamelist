@@ -30,14 +30,58 @@ public class ImportServiceTests
 
     private static readonly DateTimeOffset Midday = new(2026, 3, 14, 12, 0, 0, TimeSpan.Zero);
 
-    private static ApplicationDbContext NewDb()
+    /// <summary>
+    /// A context over its own store, or — given a <paramref name="name"/> — over one shared with
+    /// another context, which is how the tests at the bottom of this file delete a job from under
+    /// a service that is holding it.
+    /// </summary>
+    private static ApplicationDbContext NewDb(string? name = null)
     {
         var db = new ApplicationDbContext(
             new DbContextOptionsBuilder<ApplicationDbContext>()
-                .UseInMemoryDatabase(Guid.NewGuid().ToString())
+                .UseInMemoryDatabase(name ?? Guid.NewGuid().ToString())
                 .Options);
         db.Database.EnsureCreated();
         return db;
+    }
+
+    /// <summary>
+    /// The retention sweep, as far as these tests need it: the jobs and their rows are gone.
+    /// </summary>
+    /// <remarks>
+    /// Through a second context, so the one under test still has the job tracked and modified —
+    /// which is the state a request is in when the sweep runs, and the state that decides whether
+    /// the write fails loudly or lands nowhere.
+    /// </remarks>
+    private static void Sweep(ApplicationDbContext sweeper)
+    {
+        sweeper.ImportRows.RemoveRange(sweeper.ImportRows.ToList());
+        sweeper.ImportJobs.RemoveRange(sweeper.ImportJobs.ToList());
+        sweeper.SaveChanges();
+    }
+
+    /// <summary>
+    /// A clock that runs <paramref name="onFirstRead"/> before answering, once.
+    /// </summary>
+    /// <remarks>
+    /// How a test gets inside the window between a service reading a job and saving its write to
+    /// it. The retention sweep runs in that window for real, on its own schedule, knowing nothing
+    /// about any request in flight.
+    /// </remarks>
+    private sealed class SweepingClock(DateTimeOffset now, Action onFirstRead) : TimeProvider
+    {
+        private bool swept;
+
+        public override DateTimeOffset GetUtcNow()
+        {
+            if (!swept)
+            {
+                swept = true;
+                onFirstRead();
+            }
+
+            return now;
+        }
     }
 
     private static GameDto Game(int id, string title = "Game", params PlatformDto[] platforms) =>
@@ -578,6 +622,273 @@ public class ImportServiceTests
         await service.CommitAsync(UserId, jobId);
 
         Assert.Equal(42, Assert.Single(db.UserGameEntries).GameId);
+    }
+
+    // ---------------------------------------------------------- the retention clock
+
+    [Fact]
+    public async Task CreateJobAsync_StartsTheJobsClockAtItsCreation()
+    {
+        // Left at default(DateTimeOffset) the column reads as two thousand years of silence, and
+        // the retention sweep would delete every job on the tick after it was uploaded.
+        using var db = NewDb();
+        await UploadAsync(NewService(db), Export(Entry()));
+
+        var job = await db.ImportJobs.SingleAsync();
+
+        Assert.Equal(Midday, job.UpdatedAt);
+    }
+
+    [Fact]
+    public async Task SetDecisionsAsync_MovesTheJobsClock_SoRetentionMeasuresSilenceAndNotAge()
+    {
+        // ImportRetention deletes a pending job a fortnight after this column last moved, so a
+        // review somebody works through over several sittings has to keep pushing it forward. If
+        // saving decisions stopped writing it the window would quietly become a deadline from
+        // upload, and a part-finished review would be deleted along with every decision made on
+        // it — which no other test here would catch, because the decisions themselves would still
+        // be saved perfectly correctly.
+        using var db = NewDb();
+        var service = NewService(db, CacheReturning(Game(379)));
+        var jobId = await UploadAsync(service, Export(Entry()));
+
+        var row = Assert.Single((await service.GetReviewAsync(UserId, jobId))!.Rows);
+
+        var later = Midday.AddDays(9);
+        await new ImportService(db, CacheReturning(Game(379)), new FixedClock(later))
+            .SetDecisionsAsync(UserId, jobId, new ImportDecisionsDto(
+                [new ImportRowDecisionDto(row.Id, ImportDecisions.Import, null, null)]));
+
+        var job = await db.ImportJobs.SingleAsync();
+
+        Assert.Equal(Midday, job.CreatedAt);
+        Assert.Equal(later, job.UpdatedAt);
+    }
+
+    [Fact]
+    public async Task CommitAsync_SetsCompletedAtWithTheState()
+    {
+        // The two are one fact — "is this job over" — and CK_ImportJobs_Completion is what keeps
+        // them saying it together. A terminal state written without a completion would be a row
+        // the seven-day rule never selects and the MaxPendingJobs cap counts for ever. The
+        // in-memory provider does not enforce check constraints, so the pairing is asserted here
+        // rather than left to the one place that would catch it.
+        using var db = NewDb();
+        var service = NewService(db, CacheReturning(Game(379)));
+
+        await service.CommitAsync(UserId, await UploadAsync(service, Export(Entry())));
+
+        var job = await db.ImportJobs.SingleAsync();
+
+        Assert.Equal(ImportJobStates.Done, job.State);
+        Assert.Equal(Midday, job.CompletedAt);
+    }
+
+    [Fact]
+    public async Task CancelAsync_SetsCompletedAtWithTheState()
+    {
+        using var db = NewDb();
+        var service = NewService(db, CacheReturning(Game(379)));
+
+        await service.CancelAsync(UserId, await UploadAsync(service, Export(Entry())));
+
+        var job = await db.ImportJobs.SingleAsync();
+
+        Assert.Equal(ImportJobStates.Cancelled, job.State);
+        Assert.Equal(Midday, job.CompletedAt);
+    }
+
+    [Fact]
+    public async Task CreateJobAsync_AJobThatIsNeitherPendingNorFinished_StillHoldsItsSlot()
+    {
+        // The cap and the sweep have to mean the same thing by "unfinished", or retention frees a
+        // slot the counter never counted. Both now read CompletedAt.
+        //
+        // Constructed with the state ImportJobStates explicitly invites: "Adding mapping or
+        // matching back for a preset that needs them is additive, which is why this is a string."
+        // Such a job has no completion, so retention treats it as unfinished and will free it —
+        // and the cap has to agree. Counting State == pending instead lets this upload through,
+        // which is the whole of the divergence and what makes this test worth its length.
+        using var db = NewDb();
+        var service = NewService(db, CacheReturning(Game(379)));
+
+        for (var i = 0; i < ImportService.MaxPendingJobs - 1; i++)
+            await UploadAsync(service, Export(Entry()));
+
+        db.ImportJobs.Add(new ImportJob
+        {
+            Id = Guid.NewGuid(),
+            UserId = UserId,
+            Source = ImportSources.Grouvee,
+            FileName = "still-matching.json",
+            State = "matching",
+            RowCount = 1,
+            CreatedAt = Midday,
+            UpdatedAt = Midday
+        });
+        await db.SaveChangesAsync();
+
+        await Assert.ThrowsAsync<ImportRejectedException>(
+            () => UploadAsync(service, Export(Entry())));
+    }
+
+    // ------------------------------------------------ a closed job keeps no rows
+
+    [Fact]
+    public async Task CommitAsync_DeletesTheRowsItJustCommitted()
+    {
+        // The rows are the review's working state, not a record of it. Everything they held has
+        // either become a library entry or been counted into SkippedCount, and nothing re-serves
+        // them — so at up to MaxRows of jsonb per import they were much the largest thing this
+        // feature stored, kept for a week after the last screen that could render them.
+        using var db = NewDb();
+        var service = NewService(db, CacheReturning(Game(379)));
+
+        var jobId = await UploadAsync(service, Export(Entry()));
+        Assert.NotEmpty(db.ImportRows);
+
+        await service.CommitAsync(UserId, jobId);
+
+        Assert.Empty(db.ImportRows);
+    }
+
+    [Fact]
+    public async Task CommitAsync_KeepsTheJobItselfAndEveryCountOnIt()
+    {
+        // The other half of the same decision, and the half that is easy to break: deleting the
+        // rows must leave the receipt. One row naming the file and saying how it went is what
+        // /import lists, and it is now the whole of what retention keeps for seven days.
+        using var db = NewDb();
+        var service = NewService(db, CacheReturning(Game(379)));
+
+        await service.CommitAsync(UserId, await UploadAsync(service, Export(Entry())));
+
+        var job = Assert.Single(await service.GetJobsAsync(UserId));
+
+        Assert.Equal(ImportJobStates.Done, job.State);
+        Assert.Equal("grouvee_export.json", job.FileName);
+        Assert.Equal(1, job.RowCount);
+        Assert.Equal(1, job.ImportedCount);
+        Assert.Equal(0, job.SkippedCount);
+    }
+
+    [Fact]
+    public async Task CancelAsync_DeletesTheRowsNobodyDecided()
+    {
+        // A cancelled job has even less claim to its rows than a committed one: nothing they held
+        // was written anywhere, so there is not even a library to reconcile them against.
+        using var db = NewDb();
+        var service = NewService(db, CacheReturning(Game(379)));
+
+        var jobId = await UploadAsync(service, Export(Entry()));
+        await service.CancelAsync(UserId, jobId);
+
+        Assert.Empty(db.ImportRows);
+        Assert.Equal(ImportJobStates.Cancelled, Assert.Single(db.ImportJobs).State);
+    }
+
+    [Fact]
+    public async Task GetReviewAsync_ACommittedJob_IsNotFound()
+    {
+        // It has no rows left, so a review of it would render empty — and, worse, actionable: the
+        // screen's heading says nothing is saved until you finish and it offers a commit button
+        // that cannot work. The client links only pending jobs, so this is what a stale bookmark
+        // gets, and 404 is what that screen already knows how to say.
+        using var db = NewDb();
+        var service = NewService(db, CacheReturning(Game(379)));
+
+        var jobId = await UploadAsync(service, Export(Entry()));
+        await service.CommitAsync(UserId, jobId);
+
+        Assert.Null(await service.GetReviewAsync(UserId, jobId));
+    }
+
+    [Fact]
+    public async Task GetReviewAsync_ACancelledJob_IsNotFound()
+    {
+        using var db = NewDb();
+        var service = NewService(db, CacheReturning(Game(379)));
+
+        var jobId = await UploadAsync(service, Export(Entry()));
+        await service.CancelAsync(UserId, jobId);
+
+        Assert.Null(await service.GetReviewAsync(UserId, jobId));
+    }
+
+    // -------------------------------------------------- a job swept mid-request
+
+    // Until retention existed nothing could delete a job somebody was holding, so every method
+    // here could read a job and then write to it without wondering whether it was still there.
+    // The sweep runs on an hourly timer with no idea a request is in flight, so all three writes
+    // now touch the job row itself and treat an update that matches nothing as "it is gone" —
+    // which is the 404 each endpoint was already written to return.
+
+    [Fact]
+    public async Task SetDecisionsAsync_WhenTheJobIsSweptMidRequest_SaysSoRatherThanReportingASave()
+    {
+        // The rows are read in a second round trip, so a swept job leaves that query empty, the
+        // loop over it doing nothing, and SaveChanges writing nothing at all. Without the job's
+        // own clock in that SaveChanges this returns true, the endpoint answers 204, and the user
+        // carries on ticking boxes on a job that no longer exists.
+        var name = Guid.NewGuid().ToString();
+        using var db = NewDb(name);
+        using var sweeper = NewDb(name);
+
+        var jobId = await UploadAsync(NewService(db), Export(Entry()));
+        var row = await db.ImportRows.SingleAsync();
+
+        var service = new ImportService(
+            db, CacheReturning(Game(379)), new SweepingClock(Midday, () => Sweep(sweeper)));
+
+        var saved = await service.SetDecisionsAsync(UserId, jobId, new ImportDecisionsDto(
+            [new ImportRowDecisionDto(row.Id, ImportDecisions.Import, null, null)]));
+
+        Assert.False(saved);
+    }
+
+    [Fact]
+    public async Task CommitAsync_WhenTheJobIsSweptWhileItIsWriting_IsNotFoundRatherThanAnError()
+    {
+        // The real window, reproduced where it really is: WriteAsync asks the game cache for
+        // metadata, which is IGDB-backed and can take seconds behind retries and a breaker. The
+        // closing update then matches no row, and EF's concurrency exception is claimed by none of
+        // the registered error handlers — so unhandled it is a 500 on a method that already has a
+        // 404 for precisely this case.
+        var name = Guid.NewGuid().ToString();
+        using var db = NewDb(name);
+        using var sweeper = NewDb(name);
+
+        var jobId = await UploadAsync(NewService(db), Export(Entry()));
+
+        var cache = Substitute.For<IGameCacheService>();
+        cache.GetGamesAsync(Arg.Any<IEnumerable<int>>(), Arg.Any<CancellationToken>())
+            .Returns(_ =>
+            {
+                Sweep(sweeper);
+                return new[] { Game(379) };
+            });
+
+        var result = await new ImportService(db, cache, new FixedClock(Midday))
+            .CommitAsync(UserId, jobId);
+
+        Assert.Null(result);
+    }
+
+    [Fact]
+    public async Task CancelAsync_WhenTheJobIsSweptMidRequest_IsNotFoundRatherThanAnError()
+    {
+        // The mildest of the three — the sweep did what the request was asking for — and still a
+        // 500 without the same handling.
+        var name = Guid.NewGuid().ToString();
+        using var db = NewDb(name);
+        using var sweeper = NewDb(name);
+
+        var jobId = await UploadAsync(NewService(db), Export(Entry()));
+
+        var service = new ImportService(
+            db, CacheReturning(Game(379)), new SweepingClock(Midday, () => Sweep(sweeper)));
+
+        Assert.False(await service.CancelAsync(UserId, jobId));
     }
 
     // ---------------------------------------------------------------- scoping
