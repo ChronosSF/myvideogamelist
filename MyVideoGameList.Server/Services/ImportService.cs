@@ -163,9 +163,16 @@ public class ImportService(
     public async Task<ImportReviewDto?> GetReviewAsync(
         string userId, Guid jobId, CancellationToken cancellationToken = default)
     {
+        // Pending, not merely owned by this user. A review is something you do to a job nobody has
+        // decided yet, and a closed one has no rows left to review — the commit or the cancel that
+        // closed it deleted them. Without this the screen renders an empty but fully actionable
+        // "nothing is saved until you finish" over a job that is already over. Nothing in the
+        // client links a closed job, so what this closes is a stale bookmark.
         var job = await db.ImportJobs
             .AsNoTracking()
-            .FirstOrDefaultAsync(j => j.Id == jobId && j.UserId == userId, cancellationToken);
+            .FirstOrDefaultAsync(
+                j => j.Id == jobId && j.UserId == userId && j.State == ImportJobStates.Pending,
+                cancellationToken);
 
         if (job is null) return null;
 
@@ -268,8 +275,11 @@ public class ImportService(
 
         if (job is null || job.State != ImportJobStates.Pending) return null;
 
+        // Tracked, unlike every other read of these rows, because this one ends by deleting them.
+        // Attaching no-tracking copies instead would throw the moment anything else in the same
+        // scope already held them — which is exactly what a caller that created the job and
+        // committed it through one context does.
         var rows = await db.ImportRows
-            .AsNoTracking()
             .Where(r => r.ImportJobId == jobId && r.UserId == userId)
             .OrderBy(r => r.Id)
             .ToListAsync(cancellationToken);
@@ -306,6 +316,16 @@ public class ImportService(
         job.CompletedAt = now;
         job.UpdatedAt = now;
 
+        // The rows die with the review they belong to. Everything they held has either become a
+        // library entry or been counted into SkippedCount above, and nothing reads them again:
+        // GetReviewAsync refuses a closed job and /import shows a finished one as its counts. Up
+        // to MaxRows of jsonb per import, kept for a week, that no screen could render.
+        //
+        // RemoveRange over the rows already read rather than ExecuteDeleteAsync: it joins the one
+        // SaveChanges below, so §S8's "a commit is one transaction" survives — an ExecuteDelete
+        // runs on its own and could leave the library written and the rows behind, or the reverse.
+        db.ImportRows.RemoveRange(rows);
+
         // One SaveChanges for the entries, the playthroughs, the two axes and the job's own
         // closing state, so a commit is one transaction (§S8) without an explicit one.
         //
@@ -336,11 +356,22 @@ public class ImportService(
 
         if (job is null || job.State != ImportJobStates.Pending) return false;
 
+        // Read to be deleted, which is the one place this costs a query it did not make before.
+        // Cancelling is rare and deliberate, and the alternative — ExecuteDeleteAsync — would take
+        // the deletion out of the SaveChanges below and let a cancelled job keep its rows.
+        var rows = await db.ImportRows
+            .Where(r => r.ImportJobId == jobId && r.UserId == userId)
+            .ToListAsync(cancellationToken);
+
         var now = clock.GetUtcNow();
 
         job.State = ImportJobStates.Cancelled;
         job.CompletedAt = now;
         job.UpdatedAt = now;
+
+        // A cancelled job keeps no rows either, and has even less claim to them than a committed
+        // one: nothing it held was written anywhere.
+        db.ImportRows.RemoveRange(rows);
 
         // The same race as the other two writes, and the least consequential of the three: a job
         // the sweep has already deleted is one this call was asking to be rid of.

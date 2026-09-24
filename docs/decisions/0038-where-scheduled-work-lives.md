@@ -71,6 +71,12 @@ is easy to get wrong:
 The second window is not in §S9 and is the fix for the hole above. Deleting an abandoned job also
 frees its `MaxPendingJobs` slot, which is the more important of the two effects.
 
+**What the first window keeps is now much smaller than this record first assumed.**
+[0039](0039-an-imports-rows-die-with-its-review.md) deletes a job's `ImportRow`s in the transaction
+that closes it, so by the time the seven days start there is nothing left but the job row itself —
+a few hundred bytes naming a file and four counts. The volume this sweep still moves is entirely in
+the second window, where an abandoned review keeps its rows.
+
 **`UpdatedAt`, not `CreatedAt`, and the column was added for this.** The first version of this
 record measured the pending window from the upload, which makes the window a deadline to finish by
 rather than a window of silence — so a 5,000-row export somebody resolved across three weekends was

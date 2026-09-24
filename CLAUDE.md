@@ -254,6 +254,17 @@ ROADMAP.md                      Forward-looking plan
   no hours. Anything later that assumes "every status has an event" — an activity feed, an audit, a
   backfill — has to consult `Origin`. See `docs/decisions/0026-*` and `0037-*`.
 
+- **A closed import has no rows, and a review is only ever of a pending job.** A commit or a cancel
+  deletes the job's `ImportRow`s in the same `SaveChangesAsync` that closes it (ADR 0037, ADR 0039),
+  because by then everything a row held has become a `UserGameEntry` or a count on the job and
+  nothing re-serves it. Two things follow that are easy to undo by accident: `CommitAsync` reads its
+  rows **tracked**, since attaching no-tracking copies in order to delete them throws whenever the
+  same scope already holds those rows; and `GetReviewAsync` scopes to `State == pending`, or
+  `/import/{closedJobId}` renders an empty but fully actionable review over an import that is
+  already over. What retention then keeps is a receipt — the job row, its file name and its four
+  counts. **The per-row failure report is not stored anywhere**: it is built inside the commit's own
+  response, so §C5's promise is kept by that response and by nothing else.
+
 - **Scheduled work is a `BackgroundService`, and there is exactly one.** `ImportRetentionService`
   sweeps expired import jobs hourly, and is the shape the next one copies (ADR 0038). Three things
   about it are easy to get wrong: a hosted service is a **singleton**, so it takes

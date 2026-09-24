@@ -61,8 +61,11 @@ public static class ImportJobStates
 /// export earns nothing and is one more thing to leak.
 /// </para>
 /// <para>
-/// The counts are stored rather than derived, because the rows do not outlive the job by much —
-/// a finished job is disposable and its summary is not.
+/// The counts are stored rather than derived, because the rows do not outlive the review at all:
+/// the commit or the cancel that closes a job deletes its <see cref="ImportRow"/>s in the same
+/// transaction, so by the time anybody reads a closed job there is nothing left to count. This row
+/// is then the whole of what that import is, which is why <c>GetReviewAsync</c> refuses a job that
+/// is not pending rather than serving an empty review of one.
 /// </para>
 /// </remarks>
 public class ImportJob

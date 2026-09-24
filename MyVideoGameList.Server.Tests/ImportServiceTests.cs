@@ -665,6 +665,89 @@ public class ImportServiceTests
         Assert.Equal(later, job.UpdatedAt);
     }
 
+    // ------------------------------------------------ a closed job keeps no rows
+
+    [Fact]
+    public async Task CommitAsync_DeletesTheRowsItJustCommitted()
+    {
+        // The rows are the review's working state, not a record of it. Everything they held has
+        // either become a library entry or been counted into SkippedCount, and nothing re-serves
+        // them — so at up to MaxRows of jsonb per import they were much the largest thing this
+        // feature stored, kept for a week after the last screen that could render them.
+        using var db = NewDb();
+        var service = NewService(db, CacheReturning(Game(379)));
+
+        var jobId = await UploadAsync(service, Export(Entry()));
+        Assert.NotEmpty(db.ImportRows);
+
+        await service.CommitAsync(UserId, jobId);
+
+        Assert.Empty(db.ImportRows);
+    }
+
+    [Fact]
+    public async Task CommitAsync_KeepsTheJobItselfAndEveryCountOnIt()
+    {
+        // The other half of the same decision, and the half that is easy to break: deleting the
+        // rows must leave the receipt. One row naming the file and saying how it went is what
+        // /import lists, and it is now the whole of what retention keeps for seven days.
+        using var db = NewDb();
+        var service = NewService(db, CacheReturning(Game(379)));
+
+        await service.CommitAsync(UserId, await UploadAsync(service, Export(Entry())));
+
+        var job = Assert.Single(await service.GetJobsAsync(UserId));
+
+        Assert.Equal(ImportJobStates.Done, job.State);
+        Assert.Equal("grouvee_export.json", job.FileName);
+        Assert.Equal(1, job.RowCount);
+        Assert.Equal(1, job.ImportedCount);
+        Assert.Equal(0, job.SkippedCount);
+    }
+
+    [Fact]
+    public async Task CancelAsync_DeletesTheRowsNobodyDecided()
+    {
+        // A cancelled job has even less claim to its rows than a committed one: nothing they held
+        // was written anywhere, so there is not even a library to reconcile them against.
+        using var db = NewDb();
+        var service = NewService(db, CacheReturning(Game(379)));
+
+        var jobId = await UploadAsync(service, Export(Entry()));
+        await service.CancelAsync(UserId, jobId);
+
+        Assert.Empty(db.ImportRows);
+        Assert.Equal(ImportJobStates.Cancelled, Assert.Single(db.ImportJobs).State);
+    }
+
+    [Fact]
+    public async Task GetReviewAsync_ACommittedJob_IsNotFound()
+    {
+        // It has no rows left, so a review of it would render empty — and, worse, actionable: the
+        // screen's heading says nothing is saved until you finish and it offers a commit button
+        // that cannot work. The client links only pending jobs, so this is what a stale bookmark
+        // gets, and 404 is what that screen already knows how to say.
+        using var db = NewDb();
+        var service = NewService(db, CacheReturning(Game(379)));
+
+        var jobId = await UploadAsync(service, Export(Entry()));
+        await service.CommitAsync(UserId, jobId);
+
+        Assert.Null(await service.GetReviewAsync(UserId, jobId));
+    }
+
+    [Fact]
+    public async Task GetReviewAsync_ACancelledJob_IsNotFound()
+    {
+        using var db = NewDb();
+        var service = NewService(db, CacheReturning(Game(379)));
+
+        var jobId = await UploadAsync(service, Export(Entry()));
+        await service.CancelAsync(UserId, jobId);
+
+        Assert.Null(await service.GetReviewAsync(UserId, jobId));
+    }
+
     // -------------------------------------------------- a job swept mid-request
 
     // Until retention existed nothing could delete a job somebody was holding, so every method

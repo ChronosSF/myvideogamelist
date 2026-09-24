@@ -131,9 +131,29 @@ is addressed. Import is a good forcing function for that cache.
 | S6 | CSV parsing via a real library (CsvHelper). Quoted multi-line review text is guaranteed to appear and hand-rolled splitting will corrupt it |
 | S7 | Upload limits — 5 MB and 5,000 rows, enforced before parsing. Reject non-CSV by content sniff, not by extension |
 | S8 | Commit is one transaction per job, upserting `UserGameList` entries. Existing entries are **not** overwritten by default — the review screen marks them "already in your list" and the user opts in per row |
-| S9 | ~~Jobs and their rows are deleted 7 days after completion.~~ **DONE**, and amended — see §5.1 below, because one rule was not enough. The uploaded file itself is never persisted beyond the job |
+| S9 | ~~Jobs and their rows are deleted 7 days after completion.~~ **DONE**, and amended twice — see §5.1 below. A job's rows go at the moment it closes rather than a week later, and the job row itself has two windows rather than one. The uploaded file is never persisted at all |
 
-### 5.1 Retention: two windows, not one
+### 5.1 Retention: the rows go at commit, the job keeps two windows
+
+#### A job and its rows do not have the same lifetime
+
+§S9 treats them as one thing. They are not. An `ImportRow` is the review's working state — the
+parsed title, the game it matched, the decision its owner made about it — and when the job closes
+every one of those has either become a library entry or been counted into the job's `skippedCount`.
+
+Nothing reads them again. `/import` shows a finished import as its counts and does not link it, the
+per-row failure report §C5 promises travels in the commit's **own response** rather than being
+stored, and the review screen refuses a job that is not pending — otherwise it would render an
+empty but fully actionable "nothing is saved until you finish" over an import that is already over.
+So a closed job's rows were up to 5,000 `jsonb` rows apiece that no screen could render, kept for a
+week, carried in their owner's data export, and swept an hour at a time by a background service.
+
+**A commit or a cancel deletes the job's rows in the same transaction that closes it.** §S8 already
+demands that transaction; putting the deletion inside it is what stops "the library is written" and
+"the rows are gone" from being two states that can come apart. Everything below is therefore about
+the job row alone — a few hundred bytes naming a file and four counts.
+
+#### The job row: two windows, not one
 
 As written, §S9 covered only half the jobs there are. `CompletedAt` is set when a job is committed
 or cancelled and never otherwise, so "7 days after completion" is keyed on a timestamp a **pending**
@@ -149,7 +169,7 @@ So retention is two rules:
 
 | Job | Deleted | Measured from | Why this length |
 |---|---|---|---|
-| `done`, `cancelled` | **7 days** | `CompletedAt` | A closed job is a receipt: the result summary and the list of rows that did not import. Nothing in it is anyone's only copy, since the uploaded file was never stored and the games are now in their lists |
+| `done`, `cancelled` | **7 days** | `CompletedAt` | A receipt, and by now the whole of that import: which file, when, how many went in, how many were passed over. Nothing in it is anyone's only copy — the uploaded file was never stored and the games are in their lists |
 | `pending` | **14 days** | `UpdatedAt` | Unfinished work. Deleting it discards the decisions already made — resolved shelves, chosen games — which re-uploading does not give back. A fortnight respects "I will finish this at the weekend" while still freeing the slot on a human timescale |
 
 `UpdatedAt` is the last time the job's owner **saved a decision**, so the pending window is a window

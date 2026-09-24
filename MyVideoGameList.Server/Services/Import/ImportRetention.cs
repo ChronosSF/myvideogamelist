@@ -16,7 +16,9 @@ namespace MyVideoGameList.Server.Services.Import;
 /// <para>
 /// Nothing here deletes <c>ImportRows</c>. A row reaches its job through a foreign key declared
 /// <c>ON DELETE CASCADE</c>, so PostgreSQL removes them with the job and a second statement would
-/// be both redundant and a chance to get the order wrong.
+/// be both redundant and a chance to get the order wrong. In practice only a <em>pending</em> job
+/// still has any: closing one deletes its rows in the same transaction, so what the cascade
+/// actually catches is the abandoned review nobody came back to.
 /// </para>
 /// </remarks>
 internal static class ImportRetention
@@ -25,9 +27,18 @@ internal static class ImportRetention
     /// How long a finished job is kept after it finished. <c>specs/csv-list-import.md</c> §S9.
     /// </summary>
     /// <remarks>
-    /// Long enough that somebody can come back to the result summary and the list of rows that did
-    /// not import, which is the only thing a closed job is still good for. The uploaded file was
-    /// never stored, so nothing here is the user's only copy of anything.
+    /// <para>
+    /// By this point a closed job is one small row and nothing else — the commit or the cancel that
+    /// closed it deleted its <c>ImportRow</c>s — so these seven days keep a receipt: which file was
+    /// imported, when, how many games went in and how many were passed over. That is exactly what
+    /// <c>/import</c> lists, and it is the only thing left to keep.
+    /// </para>
+    /// <para>
+    /// Nothing here is anybody's only copy of anything. The uploaded file was never stored, the
+    /// games are in their lists, and the per-row failure report §C5 promises travels in the commit's
+    /// own response rather than being persisted — so it is already gone when the tab closes, with
+    /// or without this window.
+    /// </para>
     /// </remarks>
     public static readonly TimeSpan KeepCompleted = TimeSpan.FromDays(7);
 
