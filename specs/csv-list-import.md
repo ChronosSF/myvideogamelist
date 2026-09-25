@@ -1,8 +1,9 @@
 # Spec — Import lists from other game trackers (CSV)
 
-Status: **partly superseded — being built, Grouvee first**
-Relates to: `ROADMAP.md` Tier 2 "Import from Steam / PSN / Xbox / GOG" (line 57) and the
-paid-tier table row "Import from Steam/PSN/Xbox" (line 187).
+Status: **partly superseded — Grouvee ships; every preset after it is tracked in issue
+[#125](https://github.com/ChronosSF/myvideogamelist/issues/125)**
+Relates to: `ROADMAP.md` Tier 2's "Import from another tracker (CSV/JSON)" and "Import from Steam /
+PSN / Xbox / GOG" entries, and the paid-tier table's "Import from Steam/PSN/Xbox" row.
 
 > **Read `docs/decisions/0037-a-tracker-import-carries-history.md` before this document.**
 > This spec was written in August 2026 from public documentation, without a real export in hand. A
@@ -10,14 +11,17 @@ paid-tier table row "Import from Steam/PSN/Xbox" (line 187).
 > replaced them:
 >
 > - **§4 is wrong for Grouvee.** Their export carries `igdb_id` on 606 of 608 rows, so the fuzzy
->   matcher (M1–M4) is not on the critical path and is deferred to the first preset that needs it.
+>   matcher was not on the critical path and was deferred. It has since been built ahead of the
+>   preset that needs it, against live IGDB —
+>   [0040](../docs/decisions/0040-matching-a-title-to-a-game.md) amends §4's own tiers, because
+>   "exact title, single candidate" describes almost nothing real.
 > - **§3's seam is wrong.** Grouvee's export is a nested document — `shelves` is an object, `dates`
 >   is an array of runs — which no column map can express. The interface is `IImportSource`
 >   (file → canonical rows); a flat CSV plus a column map is one implementation of it.
-> - **§7's blockers are all resolved.** Per-entry fields, the five-status taxonomy, playthroughs,
->   reviews, the wishlist axis and the metadata cache have all shipped.
+> - **§7's blockers are all resolved.** §7 now records which decision shipped each one.
 >
-> §3.2's status vocabulary, §5's entities and §6's client work stand. §10's order does not.
+> §3.2's status vocabulary, §5's entities and §6's client work stand. §7 and §10 have been
+> rewritten against what shipped.
 
 ---
 
@@ -258,14 +262,30 @@ several copies of itself.
 | C5 | Result summary: imported, skipped, failed, with a downloadable CSV of the rows that did not import, so nothing is silently lost |
 | C6 | Empty and error states in the pattern the lists page already uses (roadmap Tier 2) |
 
-## 7. Blocked on
+## 7. Prerequisites — all shipped
 
-- **Tier 1 per-entry tracking data.** `UserGameList` today stores only `UserId`, `GameId` and
-  `ListType`. Score, dates, hours and notes have nowhere to land. We could ship import before that,
-  but it would discard most of what makes a Grouvee or HLTB export worth importing — and users
-  import once. **Do the per-entry fields first.**
-- **Full list taxonomy** (see §3.2).
-- Local game-metadata cache, for M5 and M7 — desirable, not strictly blocking.
+This section listed three blockers. All three are resolved, which is what let the import ship at
+all. They are recorded rather than deleted, because why each one mattered is part of why the import
+has the shape it does.
+
+- **Tier 1 per-entry tracking data.** A score
+  ([0019](../docs/decisions/0019-entry-survives-leaving-every-list.md)), ownership and private notes
+  ([0030](../docs/decisions/0030-ownership-and-notes-belong-to-the-entry.md)) land on the entry; a
+  run's dates, hours and platform land on a **playthrough**
+  ([0025](../docs/decisions/0025-playthroughs-and-reviews.md)). That split is what lets an import
+  carry a replay on a second platform as a second row rather than an overwrite, and it is why
+  §3.1's `hoursPlayed` and `startedOn` / `finishedOn` are not entry columns.
+- **Full list taxonomy.** The five statuses ship as a seeded `ListStatuses` lookup, with the
+  wishlist as a separate axis rather than a sixth status
+  ([0018](../docs/decisions/0018-append-only-status-event-log.md),
+  [0022](../docs/decisions/0022-entry-surrogate-key-and-the-wishlist-axis.md)). §3.2's instruction
+  to write presets against this taxonomy rather than the old three-value one is now a description of
+  the code instead of a warning about it.
+- **A local game-metadata cache**, wanted for M5 and M7 and called desirable rather than blocking.
+  `CachedGames` ships — one `jsonb` row per IGDB id
+  ([0035](../docs/decisions/0035-a-local-copy-of-what-igdb-said.md)) — and M5 turned out to need it
+  after all: a matching pass writes the games it offered into the cache on the way past, so the
+  review screen that renders them asks IGDB for none of them.
 
 ## 8. Entitlement — a note on the roadmap's pricing
 
@@ -297,16 +317,40 @@ platform re-sync stay paid. Export stays paid, as the table already has it.
 4. Do we want to be an import target for someone else — that is, should our own export (Tier 2)
    round-trip through this importer? Cheap to guarantee, worth doing.
 
-## 10. Suggested order
+## 10. What is left, and in what order
 
-1. Tier 1 per-entry fields and the full taxonomy (prerequisite, already on the roadmap)
-2. S6, S7, S1, S2 — upload, parse, persist a job
-3. C1, C2 and S4 — mapping UI with the Grouvee and HLTB presets
-4. M1–M4 and S5 — matching, plus the review screen (C3). **Done**, except M4's inline search, and
-   without S5's queue: see §4.2
-5. S8 and C5 — commit and the failure report
-6. Remaining presets: Backloggery, Completionator, Darkadia — data only, no new code
-7. M5–M7 — batching and idempotency, once real import sizes are known
+**Shipped:** S1–S3, S6–S9, C3–C6, M1–M3, M5 and M6.
+
+**Superseded rather than pending** — these will not be built as written: S5's queue, because a
+matching pass is bounded and repeated instead (§4.2); C2's column-mapping table, because there is no
+column map (§3's seam is `IImportSource`); and S4's preset JSON with it, because a preset is now code
+rather than data. C1 shipped as a Grouvee section rather than a source picker, and grows one section
+per preset below.
+
+**Left**, tracked in [#125](https://github.com/ChronosSF/myvideogamelist/issues/125):
+
+1. **HowLongToBeat** ([#153](https://github.com/ChronosSF/myvideogamelist/issues/153)) — the next
+   preset, and the first to put the matcher in front of a real file. Its completion tiers are the
+   one place a source's completion field might be its owner's own answer rather than a default,
+   which is what it would take to earn an exception to 0037's "an imported playthrough carries no
+   type".
+2. **M4's inline search** ([#158](https://github.com/ChronosSF/myvideogamelist/issues/158)) —
+   resolving a row from the row. The endpoints exist; it is a screen.
+3. **Backloggery** ([#154](https://github.com/ChronosSF/myvideogamelist/issues/154)) — no ids and no
+   release year, so 2 comes first: a preset whose failures cannot be resolved by hand loses data.
+   This is also the file that should move §4.1's similarity floor off its reasoned value.
+4. **Completionator** ([#155](https://github.com/ChronosSF/myvideogamelist/issues/155)) and
+   **Darkadia** ([#156](https://github.com/ChronosSF/myvideogamelist/issues/156)) — one
+   `IImportSource` each, and no new server machinery. Completionator's completion percentage and
+   achievements have nowhere to land; Darkadia carries review prose, which reopens §9 (1) now that
+   reviews exist to store it in.
+5. **VGCollect** ([#157](https://github.com/ChronosSF/myvideogamelist/issues/157)) — ownership
+   rather than progression, so
+   [0026](../docs/decisions/0026-a-library-import-records-ownership-not-history.md)'s shape rather
+   than this spec's, and last for that reason.
+6. **M7's persisted match** ([#159](https://github.com/ChronosSF/myvideogamelist/issues/159)) —
+   after a real re-import has shown what going without it costs. Wants a decision record before
+   code.
 
 ## 11. Sources
 
