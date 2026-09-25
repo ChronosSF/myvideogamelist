@@ -212,6 +212,17 @@ no `UserGameEvents` written, no `StatusChangedAt`, no playthroughs from rows who
 `seconds_played` is 0 and whose dates are `"None"`, and no `ImportRow`s left behind
 ([0039](0039-an-imports-rows-die-with-its-review.md)).
 
+Re-run after the following floor was extended to loosened candidates, the same file on a fresh
+account gave exactly what the change predicted and nothing more: "Ocarina of Time" fell back to
+unmatched, Shadow of the Colossus lost the two zero-rating editions padding its picker, and all
+fourteen matched rows reached the same ids as before. **Ratchet & Clank kept all four of its
+candidates, including a 2026 entry with no ratings** — every one of them is titled exactly "Ratchet
+& Clank", and an exact title is exempt. That is the exemption doing its job rather than a gap in
+the rule, and it is the shape of what the rule costs: IGDB's placeholder future entries can pad a
+picker whenever they share a name exactly. Worth watching when a real id-less export arrives, not
+worth narrowing the exemption for — dropping it fails eleven tests, all of them about games nobody
+has rated still being matchable under their own name.
+
 ## Consequences
 
 **`ImportMatchKinds` went from two states to four.** 0037 left `ambiguous` out on the grounds that
