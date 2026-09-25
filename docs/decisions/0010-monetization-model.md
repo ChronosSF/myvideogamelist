@@ -47,7 +47,7 @@ actual cost rather than artificial gating.
 ## The line, as drawn — added 2026-09-24
 
 The plan that carried this table has moved to GitHub issues
-([0040](0040-what-the-roadmap-decided-on-its-own.md)), so the free/paid line it drew is recorded
+([0041](0041-what-the-roadmap-decided-on-its-own.md)), so the free/paid line it drew is recorded
 here, where the decision is. These are the limits the last consequence above says to set before
 launch. Two rows have been overtaken since the table was drawn and are stated as they now stand:
 export, which [0024](0024-the-ownership-contract.md) made free in its JSON form; and import, which

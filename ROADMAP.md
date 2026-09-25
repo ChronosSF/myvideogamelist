@@ -3,7 +3,7 @@
 MyVideoGameList's plan is its GitHub issues, not this file. This file is the index: how the
 issues are organised, what deliberately is not an issue, and where each identifier the old plan
 handed out now points — because code comments and decision records still cite them. Why the plan
-moved is [0040](docs/decisions/0040-what-the-roadmap-decided-on-its-own.md).
+moved is [0041](docs/decisions/0041-what-the-roadmap-decided-on-its-own.md).
 
 ## The issues
 
@@ -64,7 +64,7 @@ is in the history (`git log -p -- ROADMAP.md`).
 | N7 | Degrade for games with no Steam presence | Done — `GameNewsPanel.tsx` |
 | §3.2 | Signed-out landing | Done, less the sign-up call to action on the rails — #127 |
 | §3.3 | Calendar accuracy | Done — [0004](docs/decisions/0004-release-dates-for-calendar.md); the month view is #129 |
-| §3.4 | Steam news | N1–N7 above; RSS was considered and parked — 0040 |
+| §3.4 | Steam news | N1–N7 above; RSS was considered and parked — 0041 |
 | §3.5 | `/api/home` as one endpoint | Done — 0012's Result; `IHomeService.cs` on what stays out of it |
 
 ### Domain, email and SEO (D)

@@ -408,7 +408,7 @@ on something, `gh issue view <n>`: the issue says what is already decided, with 
 records and specs, and what is still open. A follow-up noticed mid-task goes into an issue — a
 new one, or a checklist line on the feature's — never into a plan file. `ROADMAP.md` is the map
 from the old plan's identifiers (`D12`, `N3`, `P5`, …), which code comments and records still
-cite, to where each item lives now. See `docs/decisions/0040-*`.
+cite, to where each item lives now. See `docs/decisions/0041-*`.
 
 ## Decisions
 

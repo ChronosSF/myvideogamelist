@@ -2,7 +2,7 @@
 
 Short records of decisions that shaped this codebase, and the reasoning behind them.
 
-The plan is the repository's GitHub issues ([0040](0040-what-the-roadmap-decided-on-its-own.md));
+The plan is the repository's GitHub issues ([0041](0041-what-the-roadmap-decided-on-its-own.md));
 `ROADMAP.md` maps the old plan's identifiers to them. These records are the *why*, and they
 outlive both. Read the relevant one before changing anything it covers.
 
@@ -59,7 +59,7 @@ grow a forward pointer when a later record or an issue closes something it left 
 | [0037](0037-a-tracker-import-carries-history.md) | A tracker import carries the history a platform import cannot | Implemented |
 | [0038](0038-where-scheduled-work-lives.md) | Where scheduled work lives, and what a sweep owes a fleet | Implemented |
 | [0039](0039-an-imports-rows-die-with-its-review.md) | An import's rows die with its review, so retention keeps only the receipt | Implemented |
-| [0040](0040-what-the-roadmap-decided-on-its-own.md) | The plan moves to GitHub issues, and what the roadmap decided on its own | Implemented |
+| [0041](0041-what-the-roadmap-decided-on-its-own.md) | The plan moves to GitHub issues, and what the roadmap decided on its own | Implemented |
 
 **Status** — *Accepted*: decided, not yet built. *Implemented*: decided and in the code.
 *Superseded*: replaced by a later record.
