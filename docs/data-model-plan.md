@@ -1,67 +1,38 @@
 # Data model plan
 
-How the database grows from three tables to the schema the roadmap implies, and — more to the
-point — how to avoid discovering a missing column after it is expensive.
+The tables the product still needs, organised by what has to be persisted, and the two
+constraints every table answers to. The tables that exist are the EF model —
+`ApplicationDbContext` is the truth, and the records in `docs/decisions/` say why each has the
+shape it has. What is still to be built is tracked as GitHub issues; this document is the schema
+those issues imply, cross-cut by table, so that a column is not discovered missing after it is
+expensive.
 
-`ROADMAP.md` is organised by **feature**. This document is the same roadmap organised by **what
-has to be persisted**, because the two views miss different things. Read it alongside
-`docs/decisions/` for the reasoning behind what is deliberately *not* in the database.
-
-## Where we start
-
-| Table | Shape | Serves |
-|---|---|---|
-| `AspNet*` | ASP.NET Identity, unmodified | Auth |
-| `ApplicationUser` | Identity plus `Theme`, `ListView`, `ProfileVisibility` and `UserNameChangedAt` | Presentation preferences, and who may read the profile |
-| `UserGameEntries` | PK `(UserId, GameId)`, nullable `StatusId` FK, `Score`, `AddedAt`, `StatusChangedAt` | The user's record of a game |
-| `ListStatuses` | Seeded lookup, five rows, semantic flags | The taxonomy |
-| `UserGameEvents` | Append-only status transitions | Activity, streaks, trends |
-| `UserHiddenPlatforms` | PK `(UserId, IgdbPlatformId)` | Platform filter |
-
-Three migrations exist, the latest being `20260826084035_AddScoreAndEntryTimestamps`. There is no production deployment and no
-user data to preserve, which means **breaking shape changes are currently free**. Every
-structural decision below gets harder the day real accounts exist, so the ones marked
-*structural* are worth making now even if the feature that needs them is phases away.
-
-## Why things get missed
+## Why a table gets missed
 
 Two failure modes, and only one of them is about forgetting a column.
 
 **Data that cannot be backfilled.** Most schema gaps are recoverable: add a column, ship a
-migration, users fill it in. History is not. If a status change is applied as an in-place
-`UPDATE`, the fact that it happened is never written anywhere, and no future migration can recover
-it. `ListService` used to do exactly that, so "finished 12 games in 2026" was unanswerable for
-every month before `UserGameEvents` shipped — which is why it went first, and why the window on it
-had already partly closed. Being late in this category costs data rather than effort.
+migration, users fill it in. History is not — a status change applied as an in-place `UPDATE` is
+never written anywhere, and no later migration can recover it. That is why `UserGameEvents` went
+first ([0018](decisions/0018-append-only-status-event-log.md)), and it is the test to apply to any
+table below: *if this arrives a year late, is anything lost?* A timestamp on a new relation passes
+it cheaply, which is why the wishlist and favourites write no events
+([0022](decisions/0022-entry-surrogate-key-and-the-wishlist-axis.md)).
 
-The log then paid for itself immediately in an unplanned way: when `AddedAt` and `StatusChangedAt`
-were added to the entry table, both could be **backfilled from the events** rather than invented.
-Nothing else in this document has that property.
+**Cross-cutting constraints.** Account deletion and data export are obligations on *every*
+user-owned table, including the ones added a year from now. `UserOwnedDataTests` makes the
+omission fail the build rather than a compliance review: an entity carrying a `UserId` must
+cascade from `AspNetUsers` on that column and be registered in `UserDataExporter.Manifest`, in
+both directions ([0024](decisions/0024-the-ownership-contract.md)); a child of another user-owned
+table carries its own `UserId` and reaches its parent through a composite key
+([0025](decisions/0025-playthroughs-and-reviews.md)). Every table below that holds a user's data is
+subject to both.
 
-**Cross-cutting constraints.** Tier 1 requires self-service account deletion with data export.
-That is not a feature of one table; it is an obligation on *every* user-owned table, forever,
-including the ones added a year from now. Miss one and it surfaces as a compliance defect at the
-worst possible moment. The fix is mechanical rather than diligent — see **Guarding it** below.
+## The five statuses
 
-## The inventory
-
-Grouped by concern, with the roadmap item each row serves. **Structural** marks the ones that
-change existing shapes rather than adding to them.
-
-### Account and identity
-
-| Table / change | Notes | Roadmap |
-|---|---|---|
-| ~~`ApplicationUser` + `Username`~~ | **DONE, and not as a new column.** Identity's own `UserName` became the handle, so the case-insensitive unique index it already maintains over `NormalizedUserName` *is* the namespace constraint — a second column would have meant a second uniqueness rule to keep in step. The reserved-name list this row predicted lives in `UserNamePolicy`. Login had to stop resolving its first argument as a username, which is the breakage worth knowing about. Pre-existing accounts were backfilled deterministically from the email local part. See ADR [0027](decisions/0027-usernames-and-public-profiles.md) | Tier 1 public profiles |
-| `ApplicationUser` + profile columns | `ProfileVisibility` **ships**, defaulting to `private` — a default is not consent, and it is what made the email-derived backfill above safe. `DisplayName`, `AvatarUrl` and `Bio` are still open and are all additive. **`CreatedAt` is deliberately not added**: the public profile says "tracking games here since" from the event log's first entry instead, because backfilling a join date for accounts that predate the column would be inventing a fact | Tier 1 |
-| `ApplicationUser` + locale columns | `Region`, `Currency` — ITAD is region-aware and a EUR user must not be shown USD prices | ITAD P6 |
-| `ExternalAccountLinks` | `(UserId, Provider, ExternalId)`. Identity's `AspNetUserLogins` covers OAuth sign-in, but a SteamID64 held for *import* is not a login credential and does not belong there | Tier 2 import, Tier 1 social login |
-
-### The five statuses
-
-Predefined at P0, system-owned, and the source of every interesting statistic. A game is in
-**exactly one** of them. The flags exist so that no query has to hardcode a list of keys — add a
-sixth status later and the aggregates keep working.
+Seeded, system-owned, and the source of every statistic. A game is in exactly one of them; the
+flags exist so that no query hardcodes a list of keys
+([0018](decisions/0018-append-only-status-event-log.md)).
 
 | Key | Default name | Order | Started | Terminal | Completion |
 |---|---|---|---|---|---|
@@ -71,151 +42,50 @@ sixth status later and the aggregates keep working.
 | `finished` | Finished | 4 | ✓ | ✓ | ✓ |
 | `dropped` | Dropped | 5 | ✓ | ✓ | — |
 
-`IsStarted` separates games that have been touched from ones merely intended. `IsTerminal` marks
-a game as resolved either way, which is the denominator of a completion rate. `CountsAsCompletion`
-is the numerator, and is a flag rather than `Key = 'finished'` so that a later "Mastered" or
-"100%" status joins the count without editing every query.
+A sixth status is two lookup rows and no migration of user data: the flags carry it into every
+aggregate, the per-list preference tables are created lazily per status
+([0020](decisions/0020-list-view-preferences-in-the-database.md),
+[0031](decisions/0031-a-list-rename-is-a-label-its-owner-sees.md)), and a rename changes a label
+and never what a list means.
 
-Ordering is lifecycle, not alphabetical, because the list reads as a pipeline in the UI.
+## Tables still to build
 
-**Two consequences worth knowing:**
+None of these changes an existing shape — the surrogate key
+([0022](decisions/0022-entry-surrogate-key-and-the-wishlist-axis.md)) was the last structural
+change — so each can follow its own feature. The last column is the issue that builds it.
 
-*No data migration.* Keeping `backlog` and `finished` as keys — rather than the roadmap's earlier
-"Plan to Play" and "Completed" — means the three existing values survive untouched and the two
-new statuses are additive lookup rows. The ambiguous `backlog` split that this document previously
-flagged as a decision is now moot. `ROADMAP.md` should be amended to match these five names.
+### Account and identity
 
-*On Hold breaks naive duration.* See decision 6.
-
-### The tracker — the heart of it
-
-| Table / change | Notes | Roadmap |
+| Table / change | Notes | Issue |
 |---|---|---|
-| `UserGameEvents` | **Ship first.** Append-only: `(Id, UserId, GameId, FromStatusId, ToStatusId, OccurredAt)`. Both status ids are nullable FKs — null *from* means the game was not tracked before, null *to* means it was removed. **No FK to the entry**, because removals are events and the log has to outlive the row it describes. **Status transitions only** — no custom-list column and no event-type discriminator, see decision 7. Indexes on `(UserId, OccurredAt)`, `(GameId, OccurredAt)`, `(ToStatusId, OccurredAt)` | Tier 1 activity history, H6, Tier 3 feed and wrapped |
-| `UserGameEntries` | **Partly shipped** — the rename, a nullable `StatusId`, `Score`, `AddedAt` and `StatusChangedAt` (ADR [0019](decisions/0019-entry-survives-leaving-every-list.md)), and the surrogate `Id` with `(UserId, GameId)` kept unique by index (ADR [0022](decisions/0022-entry-surrogate-key-and-the-wishlist-axis.md)). `Ownership` (`owned` / `subscription` / `borrowed`, check-constrained) and `Notes` have shipped with their UI, nullable as this row predicted, private, and on the single-entry read rather than the list row (ADR [0030](decisions/0030-ownership-and-notes-belong-to-the-entry.md)). Still open: `Origin` (`manual` / `steam` / …), which a library import needs so that its exemption from the event log is a fact you can query rather than a missing row you have to infer (ADR [0026](decisions/0026-a-library-import-records-ownership-not-history.md)). Deliberately holds **no playtime or platform** — those belong to a playthrough. Indexed on `(GameId, Score)` as well as per user, because the community reads ask about one game across every user and every other index here leads with `UserId` (ADR [0028](decisions/0028-a-games-community-view.md)) | Tier 1 per-entry tracking |
-| `UserGamePlaythroughs` | **Shipped** as `(Id, UserId, UserGameEntryId, TypeId, PlatformId, MinutesPlayed, StartedOn, FinishedOn, Notes, CreatedAt, UpdatedAt)`. One row per time through the game, so a replay on a different platform is a second row rather than an overwrite. This is where playtime, platform and dates live. Carries its own `UserId` — the guard below keys on that column — and reaches its entry by a composite key on `(UserGameEntryId, UserId)`, so the database refuses a row whose owner is not the entry's owner. Writes no events (ADR [0025](decisions/0025-playthroughs-and-reviews.md)) | Tier 1 per-entry tracking, completion states, profile stats |
-| `PlaythroughTypes` | **Shipped.** Lookup: Rushed, Normally, Completionist — **the same three tiers IGDB reports**, so MVGL averages bucket into the same shape and the two sources sit side by side on the game page. Keys are permanent; IGDB's own spellings are deliberately not stored, and the mapping between the two vocabularies lives in one constant on the client | Tier 1 completion states |
-| `ListStatuses` | **Ship with the event log.** System-owned lookup, seeded with all five at P0 and never deleted from. Carries semantic flags, not just names — see [the five statuses](#the-five-statuses). Replaces the hardcoded `ValidListTypes` set in `ListService` | Tier 1 taxonomy |
-| `UserListSettings` | **Shipped** as planned, `(UserId, StatusId, DisplayName)`. Lazily created: no row means "use `DefaultName`", and a name set back to the default removes its row. This is what makes the defaults renameable without any statistic having to care, because everything else keys on `StatusId`. Replaced as a whole through its own endpoint; the five effective names must differ without case, and a rename is the owner's alone — a public profile uses the defaults (ADR [0031](decisions/0031-a-list-rename-is-a-label-its-owner-sees.md)) | Tier 1 taxonomy |
-| `UserListSortPreferences` | **Shipped.** `(UserId, StatusId, SortKey, Descending)`, one row per list the user has actually re-sorted. The same lazily-created shape `UserListSettings` will use, and the reason a sixth status needs no migration (ADR [0020](decisions/0020-list-view-preferences-in-the-database.md)) | Tier 2 list views |
-| `UserWishlistItems` | **Shipped** as `(UserId, GameId, AddedAt)` with no foreign key to the entry — a wishlisted game usually has no entry at all. A separate axis, not a status: the five statuses are exclusive by construction and wanting a game is not exclusive with playing it. Records no events; `AddedAt` is the whole history. Named `UserWishlistItems` rather than this document's earlier `UserWishlist`, to match every other table here. See ADR [0022](decisions/0022-entry-surrogate-key-and-the-wishlist-axis.md) | Tier 1, H4, ITAD P5/P7 |
-| `Reviews` | **Shipped** as `(Id, UserId, UserGameEntryId, Body, HasSpoilers, Visibility, PlaythroughId?, CreatedAt, UpdatedAt)`. One per user per game, hung off the entry rather than the playthrough, with an optional pointer to the playthrough it is about (`SetNull`, so deleting a run does not take the prose). The **score is not here** — it lives on the entry, because a score with no prose is the common case and must not require a review row. `Visibility` shipped with the table rather than later, because a default is a consent decision (ADR [0025](decisions/0025-playthroughs-and-reviews.md)) | Tier 1 per-entry, Tier 2 community signal |
-| `UserFavourites` | **Shipped** as `(UserId, GameId, AddedAt)` — the wishlist's shape exactly, with the timestamp decision 7 gives every axis that is not a status, which this row originally lacked. A separate table because a favourite is explicitly independent of list membership, so it must be expressible with no entry at all. Records no events. Its writes and the wishlist's are one piece of code, `GameAxisStore`, keyed on `IGameAxisItem`. See ADR [0029](decisions/0029-favourites-are-an-axis-and-a-showcase.md) | Tier 1 favourites |
-| `Tags` + `UserGameEntryTags` | User-scoped tags, not a global vocabulary | Tier 3 |
+| `ApplicationUser` + `DisplayName`, `AvatarUrl`, `Bio` | Additive. `CreatedAt` is deliberately not added: the public profile says "tracking games here since" from the event log's first entry, because backfilling a join date for accounts that predate the column would be inventing a fact ([0027](decisions/0027-usernames-and-public-profiles.md)) | #119 |
+| `ApplicationUser` + `Region`, `Currency` | ITAD is region-aware and a EUR user must not be shown USD prices | #132 |
+| `ExternalAccountLinks` | `(UserId, Provider, ExternalId)`. Identity's `AspNetUserLogins` covers OAuth sign-in, but a SteamID64 held for *import* is not a login credential and does not belong there | #124 |
+| A `friends` value on `ProfileVisibility` and `Review.Visibility` | One additive migration in each of two columns; the "narrower wins" rule in [0027](decisions/0027-usernames-and-public-profiles.md) already says how they combine | #120 |
+| A username history table | Tombstones on released names, so a rename cannot hand somebody's inbound links to a stranger. A bigger commitment than the rename cooldown that makes its absence survivable ([0027](decisions/0027-usernames-and-public-profiles.md)) | #146 |
 
-### Local IGDB metadata cache
+### The tracker
 
-| Table | Notes | Roadmap |
+| Table / change | Notes | Issue |
 |---|---|---|
-| `CachedGames` | **Shipped** as `(GameId, Payload jsonb, Title, ReleaseDate, CoverImageUrl, Rating, RefreshedAt)`. The extracted columns took the DTO's own names rather than IGDB's, since the payload is a `GameDto`. A row with a null payload is a **tombstone**: IGDB had no such game, recorded so a withdrawn game still on somebody's list is not asked about on every page load — which the plan did not anticipate. Refreshed on read after a day, and served however stale when IGDB is unreachable, because that is the point of it (ADR [0035](decisions/0035-a-local-copy-of-what-igdb-said.md)) | §5 data & state, structural issue #2 |
+| `UserGameEntries` + a position | A manual backlog order. Sparse, per status, re-sequenced on the client; nothing statistical reads it, and sorting otherwise stays client-side ([0020](decisions/0020-list-view-preferences-in-the-database.md)) | #116 |
+| `Tags` + `UserGameEntryTags` | User-scoped tags, not a global vocabulary | #135 |
 
 ### Community
 
-`Reviews` itself is in the tracker group above — writing one is part of tracking a game, not a
-separate community act. What belongs here is everything built *on top* of other people's reviews.
+`Reviews` is a tracker table — writing one is part of tracking a game. What belongs here is
+everything built *on top of* other people's reviews and lists.
 
-| Table | Notes | Roadmap |
+| Table | Notes | Issue |
 |---|---|---|
-| `ReviewVotes` | `(UserId, ReviewId, IsHelpful)`. The last piece of the community signal: the game-page review list it would order ships without it, most recent first (ADR [0028](decisions/0028-a-games-community-view.md)) | Tier 2 helpful-votes |
-| `UserFollows` | `(FollowerId, FolloweeId, CreatedAt)` | Tier 3 |
-| `CustomLists` | `(Id, UserId, Name, Slug, Description, Visibility, IsRanked, CreatedAt)`. The free tier caps at 3, so the count is enforced against this table | Tier 3, §4.2 |
-| `CustomListItems` | `(CustomListId, GameId, Position, Note, AddedAt)`. That timestamp is what lets the activity feed show custom-list additions without a parallel event log — see decision 7 | Tier 3 |
-| `CustomListLikes` | `(UserId, CustomListId)` | Tier 3 |
+| `ReviewVotes` | `(UserId, ReviewId, IsHelpful)`. The game-page review list ships without it, most recent first ([0028](decisions/0028-a-games-community-view.md)) | #121 |
+| `UserFollows` | `(FollowerId, FolloweeId, CreatedAt)`. The activity feed needs no table of its own — it is `UserGameEvents` joined to this. It has to read `Origin`: an imported status has no event behind it ([0026](decisions/0026-a-library-import-records-ownership-not-history.md), [0037](decisions/0037-a-tracker-import-carries-history.md)) | #120 |
+| `CustomLists` | `(Id, UserId, Name, Slug, Description, Visibility, IsRanked, CreatedAt)`. The free tier caps at three, enforced against this table ([0010](decisions/0010-monetization-model.md)) | #134 |
+| `CustomListItems` | `(CustomListId, GameId, Position, Note, AddedAt)`. `AddedAt` is what lets the feed show list additions without a second event log — see below | #134 |
+| `CustomListLikes` | `(UserId, CustomListId)` | #134 |
 
-The activity feed needs **no table of its own** — it is `UserGameEvents` joined to `UserFollows`.
-That is the event log paying for itself a second time.
-
-### Notifications and prices
-
-| Table | Notes | Roadmap |
-|---|---|---|
-| `Notifications` | `(Id, UserId, Type, Payload jsonb, ReadAt, CreatedAt)` | Tier 2 release notifications, ITAD P5/P8 |
-| `NotificationPreferences` | Per type, per channel. A table rather than columns on the user, because the type list grows | Tier 2, §4.2 |
-| `PriceAlerts` | `(UserId, GameId, ThresholdCents, Currency, IsActive, LastNotifiedPriceCents)`. That last column is what makes alerting idempotent without storing full price history. The free tier caps at 5 | ITAD P5/P6 |
-| `PriceHistory` | Only if the paid history charts need more than ITAD returns on demand. ITAD serves history itself, so **defer this** and re-fetch rather than mirroring their database | ITAD P4, §4.2 |
-| `EmailDeliveries` | Dedupe and retry for release and price emails. Needed as soon as an email sender exists, which account lifecycle blocks on anyway | Tier 1, Tier 2 |
-
-### Billing
-
-| Table | Notes | Roadmap |
-|---|---|---|
-| `Subscriptions` | `(UserId, StripeCustomerId, StripeSubscriptionId, Status, Tier, CurrentPeriodEnd, CancelAtPeriodEnd, GraceUntil)`. Entitlement is read from here, never inferred from Stripe per request | M2 |
-| `StripeWebhookEvents` | Processed event ids, for idempotency. Stripe **redelivers** webhooks; without this a retry double-applies. M2 does not spell this out and it is the classic way this goes wrong | M2 |
-| `FeatureFlags` | So free-tier limits are tunable without a deploy | M7 |
-| `ImportJobs` | `(Id, UserId, Source, Status, StartedAt, CompletedAt, Stats jsonb, Error)`. Also the record of whether a free user has spent their one-time import | §4.2, Tier 2 |
-
-### Deliberately not in the database
-
-Recorded here so nobody "completes" the schema by adding them:
-
-- **Steam news and the trending rail** — derived, regenerable, TTL'd. `IMemoryCache`, moving to
-  Redis. ADR [0012](decisions/0012-steam-news-without-a-database.md).
-- **The IGDB access token** — cache only.
-- **Current prices** — cache. Only alert thresholds and last-notified prices are durable.
-- **Data Protection keys** — S3 or DynamoDB with KMS, per §5. Not a table.
-
-The IGDB→Steam AppID map is the ambiguous one. It is regenerable, so ADR 0012 keeps it in cache
-today — but once `CachedGames` exists the AppID is just another IGDB-sourced field of a cached
-game, and storing it there is consistent rather than a violation. Decide it explicitly when the
-cache table lands.
-
-## Decisions worth making before the migrations
-
-**1. Fix all five status keys at P0, and keep the ones that already exist.** `backlog`, `playing`,
-`on_hold`, `finished`, `dropped`. Naming them this way rather than the roadmap's earlier "Plan to
-Play" and "Completed" is what turns the taxonomy expansion from a data migration into two
-additive lookup rows — the three values in the database today survive untouched, and no existing
-row has to be reassigned to a meaning the user never chose. Keys are permanent once written into
-the event log, so this is the moment to be sure of them. Amend `ROADMAP.md` to match.
-
-**2. `CachedGames` should be `jsonb`, not a normalised catalogue.** The last normalised catalogue
-is what issue #1 in the roadmap is about: nine tables whose `Platform` ids collided with IGDB's
-(local 6 = Switch, IGDB 6 = PC). One row per IGDB id with the mapped DTO as `jsonb`, plus a
-handful of extracted columns for sorting and filtering, cannot collide with anything, needs no
-migration when IGDB adds a field, and is a shape PostgreSQL indexes well. The purpose is
-rendering lists when IGDB is unreachable, not re-implementing IGDB.
-
-**3. Give `UserGameEntries` a surrogate key.** *(Done — ADR
-[0022](decisions/0022-entry-surrogate-key-and-the-wishlist-axis.md).)* This stops being a nicety
-the moment playthroughs exist. Playthroughs, reviews and tags all hang off an entry, and with the composite
-`(UserId, GameId)` every one of them carries both columns in its own key and in every join. A
-surrogate `Id` with a unique index on `(UserId, GameId)` keeps the same constraint and makes the
-children clean.
-
-**4. Playthrough types mirror IGDB's tiers exactly, and their averages carry counts.** *(Done — ADR
-[0025](decisions/0025-playthroughs-and-reviews.md).)* Rushed /
-Normally / Completionist are deliberately the same three buckets as IGDB's `hastily` / `normally`
-/ `completely`. That is what lets the game page show "IGDB: 45h / 119h / 174h" against
-"MVGL members: 51h / 130h / —" as two readable rows from two sources rather than one blended
-figure of unclear provenance. Two rules follow:
-
-- Every MVGL average is subject to ADR [0016](decisions/0016-scores-carry-their-sample-size.md) —
-  no bucket is shown without the number of playthroughs behind it. An average over two members
-  is exactly as uninformative as an IGDB critic score from one review.
-- Use the **median**, not the mean. Self-reported playtime has a long idle-hours tail, and one
-  person who left the game running over a weekend should not move the number.
-
-**5. Events and playthroughs are not the same log, and both are needed.** An event records a
-status *transition* and is append-only and immutable — that is what makes streaks, the activity
-feed and "finished 12 games in 2026" answerable, and what cannot be backfilled. A playthrough is
-a user-editable record of *playing* the game, and it is what completion counts, playtime averages
-and most-played-platform are computed from. They diverge in a real case: replaying a game already
-marked Completed adds a playthrough without any status transition at all.
-
-**6. On Hold makes naive playthrough duration wrong, and the event log is what fixes it.** The
-tempting calculation for "how long does this take in calendar time" is
-`finished.OccurredAt − first playing.OccurredAt`. Add On Hold and that breaks badly: somebody who
-plays for two weeks, shelves the game for eight months, then comes back for three days reads as a
-nine-month playthrough.
-
-The correct figure is the sum of the intervals during which the status was actually `playing` —
-order a game's events by `OccurredAt` and add up `next.OccurredAt − current.OccurredAt` for every
-event whose `ToStatusId` is `playing`. That is computable *only* because the log records the
-intermediate transitions, which is the clearest argument for recording every one of them rather
-than just the terminal state. Call the resulting metric active time, not elapsed time.
-
-**7. The event log records status transitions only, and custom lists are a different relation.**
-The five statuses and custom lists differ in shape, not just in policy:
+**Custom lists are a different relation from the five statuses, not a sixth one.** They differ in
+shape, not just in policy:
 
 | | The five statuses | Custom lists |
 |---|---|---|
@@ -224,108 +94,47 @@ The five statuses and custom lists differ in shape, not just in policy:
 | Transition | `backlog → playing` has two endpoints | Being added to a list has no *from* |
 | Statistics | The canonical source | Not meaningfully aggregatable |
 
-Forcing both into one table means nullable columns on every row and a discriminator that every
-statistical query has to filter on. So `UserGameEvents` stays typed and narrow.
+Forcing both into one table means nullable columns on every row and a discriminator every
+statistical query has to filter on, so `UserGameEvents` stays typed and narrow
+([0018](decisions/0018-append-only-status-event-log.md)). The feed unions
+`CustomListItems.AddedAt` with the events at query time; a denormalised feed table, if one is
+ever needed, is then a performance change made with full history in hand.
 
-The activity feed still shows custom-list additions — it reads `CustomListItems.AddedAt` and
-unions it with status events at query time. That is safe to defer by this document's own test:
-the timestamp captures the data the moment the table exists, so nothing is ever lost. A
-denormalised feed table, if the feed ever needs one, is then a performance change made with full
-history in hand. The wishlist axis gets the same treatment — a timestamp column, not events.
+### Notifications and prices
 
-**8. Renaming a default list is cosmetic, and repurposing it must not be possible.** Renaming
-Finished to "Beaten" writes to `UserListSettings.DisplayName` and nothing else in the system
-notices, because every statistic keys on `StatusId`. Letting somebody turn Finished *into*
-Dropped, on the other hand, would silently corrupt every aggregate they appear in with no way to
-detect it afterwards. Rename changes the label; it never changes what the list means.
+| Table | Notes | Issue |
+|---|---|---|
+| `Notifications` | `(Id, UserId, Type, Payload jsonb, ReadAt, CreatedAt)` | #122 |
+| `NotificationPreferences` | Per type, per channel. A table rather than columns on the user, because the type list grows | #122 |
+| `PriceAlerts` | `(UserId, GameId, ThresholdCents, Currency, IsActive, LastNotifiedPriceCents)`. The last column makes alerting idempotent without storing price history. The free tier caps at five | #132 |
+| `PriceHistory` | Only if the paid history charts need more than ITAD returns on demand. ITAD serves history itself, so **defer this** and re-fetch rather than mirror their database | #131 |
+| `EmailDeliveries` | Dedupe and retry for release and price emails. Needed as soon as an email sender exists | #100 |
 
-## Sequencing
+### Billing
 
-Order by what is irrecoverable, then by what unblocks the most.
+| Table | Notes | Issue |
+|---|---|---|
+| `Subscriptions` | `(UserId, StripeCustomerId, StripeSubscriptionId, Status, Tier, CurrentPeriodEnd, CancelAtPeriodEnd, GraceUntil)`. Entitlement is read from here, never inferred from Stripe per request ([0010](decisions/0010-monetization-model.md)); the statistics tiers (#149, `specs/profile-statistics-tiers.md`) are its first consumer, on a configuration-backed stand-in until it exists | #142 |
+| `StripeWebhookEvents` | Processed event ids, for idempotency. Stripe **redelivers** webhooks; without this a retry double-applies a lifecycle event. Not user-owned | #142 |
+| `FeatureFlags` | So free-tier limits are tunable without a deploy. Not user-owned | #142 |
 
-1. ~~**`ListStatuses` seeded with all five, the `ListType` string migrated to that foreign key, and
-   `UserGameEvents` written from `SetListEntryAsync` and `RemoveListEntryAsync`.**~~ **Shipped** —
-   see ADR [0018](decisions/0018-append-only-status-event-log.md). `UserListSettings` was left out
-   deliberately: it is additive, nothing is lost by waiting, and it only matters once there is a
-   settings UI to rename from. The event log is
-   the only item whose lateness costs data rather than effort, and the lookup rides along because
-   the string-to-key change is trivial today and tedious later. Guard the writes so a move to the
-   status a game already holds records nothing — the optimistic-update UI will send those, and
-   unguarded they inflate every count computed later.
+`ImportJobs` was on this list as the record of whether a free user has spent their one-time
+import. It shipped as `ImportJob` with the tracker import
+([0037](decisions/0037-a-tracker-import-carries-history.md)); the entitlement question is
+`specs/csv-list-import.md` §8.
 
-   This step also forces `ListsDto` to change shape. It currently has one property per status
-   (`Playing`, `Backlog`, `Finished`), mirrored by three hardcoded keys in four places in
-   `ListsProvider.tsx`. Five statuses make that untenable and custom lists would anyway, so it
-   becomes a collection keyed by status — a bigger client change than the server one, and the
-   reason this step is not quite a one-file job.
-2. ~~**`UserGameEntries` and the wishlist axis.**~~ **Shipped** — see ADR
-   [0022](decisions/0022-entry-surrogate-key-and-the-wishlist-axis.md). The surrogate key and
-   `UserWishlistItems` landed in one migration against nine rows, which is the whole reason this
-   step came second: a primary-key change is cheapest when the table is smallest. `Ownership` and
-   `Notes` were deliberately left for whenever there is UI for them, because a nullable column is
-   additive and the key change was not. The guard test below landed here too, five tables late.
-3. ~~**`UserGamePlaythroughs`, `PlaythroughTypes` and `Reviews`.**~~ **Shipped** — see ADR
-   [0025](decisions/0025-playthroughs-and-reviews.md). The three things a user actually enters
-   about a game they have played, and the reason the entry table needs a surrogate key. Three
-   things came out of it that this plan did not anticipate. Both children carry their own `UserId`,
-   because the guard below selects user-owned entities by that property and a child keyed only
-   through the entry would escape it silently; consistency with the entry is then a composite
-   foreign key rather than a convention. Neither table writes an event, which is decision 5 above
-   applied rather than discovered. And `Reviews.Visibility` shipped with the table instead of
-   waiting for public profiles, because defaulting it later would silently change what an already
-   written review meant.
-4. ~~**The ownership contract** — cascade behaviour and the export enumeration, plus the guard
-   below.~~ **Shipped** — see ADR [0024](decisions/0024-the-ownership-contract.md).
-   `GET /api/user/export` returns one JSON document built by walking a type-keyed manifest, and
-   `DELETE /api/user` is a single `UserManager.DeleteAsync` that the cascades carry. The guard below
-   now runs in both directions, so a user-owned table that is unregistered *or* a registration whose
-   table has gone both fail the build. Two things came out of it that the plan did not anticipate:
-   statuses export as their `Key` rather than their seeded id, because the ids mean nothing outside
-   this database; and the free/paid line had to be drawn explicitly, because `ROADMAP.md` listed
-   export as Tier 1 *and* as paid-only. Portability is a right and stays free; the paid export is a
-   nicer format on top. The profile page's two buttons followed.
-5. ~~**`CachedGames`**, before public profiles and any SEO-bearing page, because those have to
-   render without a live IGDB call.~~ **Shipped** — see ADR
-   [0035](decisions/0035-a-local-copy-of-what-igdb-said.md), and late: public profiles and the
-   game-page community view both shipped first, so for two phases the pages built to be crawled
-   were the ones calling a third party on every render. Nothing was lost by the order, because a
-   cache can be added at any time — this step was sequenced for *reliability*, not for data, and it
-   is the only step here whose lateness cost nothing permanent. Two things came out of it the plan
-   did not anticipate: the tombstone above, and the fact that the four services rendering a library
-   used the IGDB client for nothing else, so the dependency left all four rather than being joined
-   by another.
-6. **Everything else is additive** and can follow its own feature.
+## Deliberately not in the database
 
-## Guarding it
+Recorded so nobody "completes" the schema by adding them:
 
-The way not to miss a table is not to be careful — it is to make the omission fail a build.
+- **Steam news and the trending rail** — derived, regenerable, TTL'd. `IMemoryCache`, moving
+  to Redis ([0012](decisions/0012-steam-news-without-a-database.md)).
+- **The IGDB access token** — cache only.
+- **Current prices** — cache. Only alert thresholds and last-notified prices are durable.
+- **Data Protection keys** — outside the application's tables
+  ([0007](decisions/0007-aws-target-architecture.md)); exactly where is a deployment decision.
 
-Every table above except `CachedGames`, `ListStatuses`, `PlaythroughTypes`, `FeatureFlags` and
-`StripeWebhookEvents`
-is user-owned, and each one has to be covered by both account deletion and data export. A test
-that walks the EF Core model, selects every entity type carrying a `UserId`, and asserts each is
-handled by the deletion path and named in the export manifest will fail the moment somebody adds
-a user-owned table and forgets — which is the only reliable moment to find out.
-
-Worth writing that test with the *second* such table, not the twentieth.
-
-**Both halves now exist**, five tables in, as `UserOwnedDataTests`.
-
-*Deletion* is asserted against the model: an entity carrying a `UserId` must have a cascading
-foreign key from `AspNetUsers` tied to *that column*, so an orphaned `UserId` alongside an unrelated
-cascade does not satisfy it. That plus the `ON DELETE CASCADE` the migrations emit is what makes
-account deletion a single `UserManager.DeleteAsync` with no list of tables in it.
-
-*Export* is asserted against `UserDataExporter.Manifest`, a registry keyed by entity `Type` — keyed
-by type, not by table name, so the comparison is against the model itself rather than against
-strings somebody has to keep in step with a rename. The guard runs **in both directions**: every
-user-owned entity must be a manifest key, and every manifest key must still be such an entity, so an
-unregistered new table and a stale registration for a removed one each fail. The manifest is the
-only place a new table has to be registered; `ExportAsync` walks it.
-
-The inventory tripwire remains, and still fails the moment a sixth user-owned table appears at all.
-
-What is deliberately *not* asserted is a deletion actually cascading. These tests run on the EF
-in-memory provider, which cascades only to rows the context happens to be tracking, so such a test
-would pass or fail on fixture ordering rather than on the constraint it names. See ADR
-[0024](decisions/0024-the-ownership-contract.md).
+The IGDB→Steam AppID map is the ambiguous one: regenerable, so 0012 keeps it in cache — but
+since `CachedGames` exists ([0035](decisions/0035-a-local-copy-of-what-igdb-said.md)) it is also
+just another IGDB-sourced field of a cached game. Both records leave it parked; it is
+#145.
