@@ -459,6 +459,9 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
         // columns, and PostgreSQL validates what is written to it.
         rows.Property(r => r.Payload).HasColumnType("jsonb");
 
+        // Left to Npgsql's native integer[] rather than given jsonb like the payload beside it:
+        // this is a list of ids, not a document, and nothing has to parse it to read one.
+
         rows.HasOne(r => r.User)
             .WithMany()
             .HasForeignKey(r => r.UserId)

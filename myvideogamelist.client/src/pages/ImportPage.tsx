@@ -154,6 +154,17 @@ export function ImportPage() {
                             </p>
                         )}
 
+                        {/* §C6's empty state, and the one this page shows most often: an account
+                            that has never imported is exactly the account reading these
+                            instructions. Without it the fetch resolves and the bottom half of the
+                            screen simply goes blank, which reads as something having failed. */}
+                        {!loading && !error && jobs?.length === 0 && (
+                            <p className="text-slate-400 light:text-slate-600 text-sm" role="status">
+                                You have not imported anything yet. Once you upload a file it stays here
+                                until you finish reviewing it, so you can close this page and come back.
+                            </p>
+                        )}
+
                         {pending.length > 0 && (
                             <section aria-labelledby="import-pending">
                                 <h2 id="import-pending" className="text-lg font-semibold text-white light:text-slate-900 mb-3">

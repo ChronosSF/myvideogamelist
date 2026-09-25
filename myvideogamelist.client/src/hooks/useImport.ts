@@ -3,7 +3,9 @@ import { apiFetch } from '@/lib/api';
 import { PermanentFetchError, useAccountResource } from '@/hooks/useAccountResource';
 import {
     IMPORT_DECISION,
+    IMPORT_MATCH,
     type ImportJob,
+    type ImportMatchPass,
     type ImportResult,
     type ImportReview,
     type ImportRowDecision,
@@ -104,9 +106,13 @@ export interface UseImportReviewResult {
      */
     gone: boolean;
     busy: boolean;
+    /** A matching run is in flight. Separate from `busy`, which stops the whole screen. */
+    matching: boolean;
     result: ImportResult | null;
     reload: () => void;
     setDecisions: (decisions: ImportRowDecision[]) => Promise<void>;
+    /** Looks up the rows whose file named no game, a batch at a time, until none is left. */
+    match: () => Promise<void>;
     commit: () => Promise<void>;
     cancel: () => Promise<boolean>;
 }
@@ -143,6 +149,7 @@ export function useImportReview(accountId: string | null, jobId: string): UseImp
 
     const [actionError, setActionError] = useState<string | null>(null);
     const [busy, setBusy] = useState(false);
+    const [matching, setMatching] = useState(false);
     const [result, setResult] = useState<ImportResult | null>(null);
 
     // These three sit outside `useAccountResource`, so they need its guard applied by hand — a
@@ -158,6 +165,7 @@ export function useImportReview(accountId: string | null, jobId: string): UseImp
         setResult(null);
         setActionError(null);
         setBusy(false);
+        setMatching(false);
     }
 
     const setDecisions = useCallback(
@@ -194,6 +202,42 @@ export function useImportReview(accountId: string | null, jobId: string): UseImp
         [data, jobId, patch],
     );
 
+    /**
+     * One matching pass after another until nothing is left to look up.
+     *
+     * The server resolves a bounded batch per call — IGDB is paced at four requests a second, and a
+     * request that tried to walk five thousand rows would be a timeout rather than a feature — so
+     * the loop lives here, where each answer can be put on screen as it lands and the person
+     * watching sees the count fall instead of a spinner.
+     *
+     * It stops when a pass moves nothing out of the unlooked state, which covers both ways this can
+     * end: a pass with nothing left to examine returns no rows at all, and a server that has
+     * stopped making progress returns rows that did not move. The second matters — without it a
+     * browser tab asks a rate-limited third party the same question for ever.
+     */
+    const match = useCallback(async () => {
+        setMatching(true);
+        setActionError(null);
+
+        try {
+            for (;;) {
+                const response = await apiFetch(`/api/import/jobs/${jobId}/match`, { method: 'POST' });
+                const pass = await readJson<ImportMatchPass>(response, 'Those games could not be looked up.');
+
+                patch(review => merge(review, pass));
+
+                if (!pass.examined.some(row => row.matchKind !== IMPORT_MATCH.unlooked)) return;
+            }
+        } catch (err) {
+            // Whatever was resolved before the failure is already on screen and already saved: each
+            // pass is its own transaction, so this reports the pass that failed rather than undoing
+            // the ones that did not.
+            setActionError(err instanceof Error ? err.message : 'Those games could not be looked up.');
+        } finally {
+            setMatching(false);
+        }
+    }, [jobId, patch]);
+
     const commit = useCallback(async () => {
         setBusy(true);
         setActionError(null);
@@ -223,8 +267,8 @@ export function useImportReview(accountId: string | null, jobId: string): UseImp
     }, [jobId]);
 
     return {
-        review: data, loading, error, gone: errorIsPermanent, actionError, busy, result, reload,
-        setDecisions, commit, cancel,
+        review: data, loading, error, gone: errorIsPermanent, actionError, busy, matching, result,
+        reload, setDecisions, match, commit, cancel,
     };
 }
 
@@ -240,7 +284,12 @@ function applyDecisions(review: ImportReview, decisions: ImportRowDecision[]): I
             ...row,
             decision: decision.decision,
             ...(decision.status ? { status: decision.status, statusUnrecognised: false } : {}),
-            ...(decision.gameId ? { gameId: decision.gameId, matchKind: 'matched' } : {}),
+
+            // The alternatives go with the question, exactly as the server drops them: a row whose
+            // game has been chosen must stop offering a list that no longer includes the choice.
+            ...(decision.gameId
+                ? { gameId: decision.gameId, matchKind: IMPORT_MATCH.matched, candidates: [] }
+                : {}),
         };
     });
 
@@ -252,16 +301,26 @@ function restoreRows(review: ImportReview, before: Map<number, ImportReview['row
     return { ...review, rows, summary: recount(review, rows) };
 }
 
+/** Puts what a matching pass examined back over the rows it examined. */
+function merge(review: ImportReview, pass: ImportMatchPass): ImportReview {
+    const examined = new Map(pass.examined.map(row => [row.id, row]));
+    const rows = review.rows.map(row => examined.get(row.id) ?? row);
+
+    return { ...review, job: pass.job, rows, summary: recount(review, rows) };
+}
+
 /**
  * The counts the screen reads, recomputed from the rows rather than adjusted by a delta — a delta
  * has to be right about what changed, and this cannot be.
+ *
+ * Only the two the screen actually reads and local changes actually move. The rest of the summary
+ * is the server's own count from the last read: recomputing figures nobody renders would be three
+ * more counting rules to keep in step with the ones that produced them.
  */
 function recount(review: ImportReview, rows: ImportReview['rows']): ImportReview['summary'] {
     return {
         ...review.summary,
         selected: rows.filter(row => row.decision === IMPORT_DECISION.import).length,
-        statusUnrecognised: rows.filter(row => row.statusUnrecognised).length,
-        unmatched: rows.filter(row => row.gameId === null).length,
-        matched: rows.filter(row => row.gameId !== null).length,
+        unlooked: rows.filter(row => row.matchKind === IMPORT_MATCH.unlooked).length,
     };
 }

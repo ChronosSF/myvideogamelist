@@ -4,14 +4,16 @@ import { MemoryRouter } from 'react-router';
 import { ListsPage } from '@/pages/ListsPage';
 import type { AuthContextValue } from '@/contexts/AuthContext';
 import type { ListsContextValue } from '@/contexts/ListsContext';
+import type { WishlistContextValue } from '@/contexts/WishlistContext';
 import { DEFAULT_SORT } from '@/lib/listSort';
 import type { UserProfile } from '@/types/auth';
 import { emptyLists, LIST_NAMES, type ListId } from '@/types/list';
-import { userProfile } from '@/test/factories';
+import { entry, userProfile } from '@/test/factories';
 
 /**
  * Auth and the lists, mocked rather than provided: both real providers fetch, and the page only
- * reads what they hold.
+ * reads what they hold. The wishlist is here for the same reason and for one more: a populated
+ * list renders `GameCard`, whose heart reads the wishlist, so its real hook would throw.
  *
  * One module-level object each, handed back on every call and never a fresh literal — a new object
  * per render re-runs any effect depending on it, which ends in a heap crash rather than an
@@ -54,8 +56,21 @@ const lists: ListsContextValue = {
     saveListNames: vi.fn(async () => ({ ok: true as const })),
 };
 
+const wishlist: WishlistContextValue = {
+    items: [],
+    loading: false,
+    error: null,
+    mutationError: null,
+    isWishlisted: () => false,
+    isPending: () => false,
+    add: vi.fn(async () => true),
+    remove: vi.fn(async () => true),
+    reload: vi.fn(),
+};
+
 vi.mock('@/hooks/useAuth', () => ({ useAuth: () => auth }));
 vi.mock('@/hooks/useLists', () => ({ useLists: () => lists }));
+vi.mock('@/hooks/useWishlist', () => ({ useWishlist: () => wishlist }));
 
 /** `/api/auth/me` has come back, with an account or with nobody. */
 function authAnswered(user: UserProfile | null) {
@@ -72,6 +87,7 @@ beforeEach(() => {
     // has not been told whose lists to fetch, so it is not loading anything either.
     auth.user = null;
     auth.loading = true;
+    lists.lists = emptyLists();
     lists.loading = false;
     lists.error = null;
     lists.nameFor = (id: ListId) => LIST_NAMES[id];
@@ -114,6 +130,41 @@ describe('ListsPage once auth has answered', () => {
         expect(screen.getByText(/no games in playing yet/i)).toBeInTheDocument();
         expect(screen.queryByRole('status')).not.toBeInTheDocument();
         expect(screen.queryByText(/sign in to manage your game lists/i)).not.toBeInTheDocument();
+    });
+});
+
+describe('ListsPage when nothing is tracked yet', () => {
+    const importLink = { name: /bring your games across/i };
+
+    it('offers browsing and an import', () => {
+        // The importer is otherwise linked from one card on the account page. Somebody whose games
+        // are all still in another tracker is here, now, looking at nothing — see the comment on
+        // the empty state and `specs/csv-list-import.md` §1.
+        authAnswered(userProfile());
+        renderPage();
+
+        expect(screen.getByRole('link', { name: 'Browse Games' })).toHaveAttribute('href', '/games');
+        expect(screen.getByRole('link', importLink)).toHaveAttribute('href', '/import');
+    });
+
+    it('offers neither once the list has games in it', () => {
+        authAnswered(userProfile());
+        lists.lists = { ...emptyLists(), playing: [entry({ game: { id: 7, title: 'Hollow Knight' } })] };
+        renderPage();
+
+        expect(screen.queryByRole('link', { name: 'Browse Games' })).not.toBeInTheDocument();
+        expect(screen.queryByRole('link', importLink)).not.toBeInTheDocument();
+    });
+
+    it('drops only the import offer when the library has games but this tab does not', () => {
+        // Four of the five tabs are empty for most accounts, so an offer tied to `entries` would
+        // invite somebody who finished importing months ago to import again, more or less for ever.
+        authAnswered(userProfile());
+        lists.lists = { ...emptyLists(), finished: [entry({ game: { id: 7, title: 'Hollow Knight' } })] };
+        renderPage();
+
+        expect(screen.getByRole('link', { name: 'Browse Games' })).toBeInTheDocument();
+        expect(screen.queryByRole('link', importLink)).not.toBeInTheDocument();
     });
 });
 

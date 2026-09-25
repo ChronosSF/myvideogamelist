@@ -57,6 +57,7 @@ decision, write a new record and mark the old one superseded.
 | [0037](0037-a-tracker-import-carries-history.md) | A tracker import carries the history a platform import cannot | Implemented |
 | [0038](0038-where-scheduled-work-lives.md) | Where scheduled work lives, and what a sweep owes a fleet | Implemented |
 | [0039](0039-an-imports-rows-die-with-its-review.md) | An import's rows die with its review, so retention keeps only the receipt | Implemented |
+| [0040](0040-matching-a-title-to-a-game.md) | Matching a title to a game, when we would rather not answer | Implemented |
 
 **Status** — *Accepted*: decided, not yet built. *Implemented*: decided and in the code.
 *Superseded*: replaced by a later record.

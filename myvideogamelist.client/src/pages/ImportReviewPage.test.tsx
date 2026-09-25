@@ -5,8 +5,7 @@ import { MemoryRouter, Route, Routes } from 'react-router';
 import { ImportReviewPage } from '@/pages/ImportReviewPage';
 import type { AuthContextValue } from '@/contexts/AuthContext';
 import type { UseImportReviewResult } from '@/hooks/useImport';
-import type { ImportReview, ImportReviewRow } from '@/types/import';
-import { userProfile } from '@/test/factories';
+import { game, importReview, importRow, userProfile } from '@/test/factories';
 
 /**
  * Auth, the lists context and the review hook, all mocked: each of the real ones fetches, and the
@@ -35,9 +34,11 @@ const review: UseImportReviewResult = {
     gone: false,
     actionError: null,
     busy: false,
+    matching: false,
     result: null,
     reload: vi.fn(),
     setDecisions: vi.fn(async () => {}),
+    match: vi.fn(async () => {}),
     commit: vi.fn(async () => {}),
     cancel: vi.fn(async () => true),
 };
@@ -51,48 +52,8 @@ vi.mock('@/hooks/useAuth', () => ({ useAuth: () => auth }));
 vi.mock('@/hooks/useLists', () => ({ useLists: () => lists }));
 vi.mock('@/hooks/useImport', () => ({ useImportReview: () => review }));
 
-function row(overrides: Partial<ImportReviewRow> = {}): ImportReviewRow {
-    return {
-        id: 1,
-        title: 'Metal Gear Solid 3',
-        releaseYear: 2004,
-        gameId: 379,
-        game: null,
-        matchKind: 'matched',
-        decision: 'import',
-        sourceStatus: 'Played',
-        status: 'finished',
-        statusUnrecognised: false,
-        score: 10,
-        wishlist: false,
-        favourite: false,
-        hasNotes: false,
-        playthroughCount: 0,
-        minutesPlayed: null,
-        alreadyTracked: false,
-        ...overrides,
-    };
-}
-
-function loaded(rows: ImportReviewRow[]): ImportReview {
-    return {
-        job: {
-            id: 'job-1', source: 'grouvee', fileName: 'grouvee_export.json', state: 'pending',
-            rowCount: rows.length, importedCount: null, skippedCount: null,
-            createdAt: '2026-09-22T12:00:00Z', completedAt: null,
-            expiresAt: '2026-10-06T12:00:00Z',
-        },
-        summary: {
-            total: rows.length,
-            matched: rows.filter(r => r.gameId !== null).length,
-            unmatched: rows.filter(r => r.gameId === null).length,
-            statusUnrecognised: rows.filter(r => r.statusUnrecognised).length,
-            alreadyTracked: rows.filter(r => r.alreadyTracked).length,
-            selected: rows.filter(r => r.decision === 'import').length,
-        },
-        rows,
-    };
-}
+const row = importRow;
+const loaded = importReview;
 
 function renderPage() {
     return render(
@@ -115,6 +76,7 @@ beforeEach(() => {
     review.gone = false;
     review.actionError = null;
     review.busy = false;
+    review.matching = false;
     review.result = null;
     vi.clearAllMocks();
 });
@@ -170,8 +132,9 @@ describe('ImportReviewPage', () => {
     });
 
     it('will not let an unmatched row be ticked', async () => {
-        // There is no inline game picker yet (§M4), so a tickable unmatched row would count in
-        // "will import" and then be skipped at commit — a promise the screen cannot keep.
+        // A tickable unmatched row would count in "will import" and then be skipped at commit — a
+        // promise the screen cannot keep. An ambiguous row is ticked by choosing a candidate; this
+        // one has none to choose from, and §M4's free-text search is not built.
         review.review = loaded([row({ gameId: null, matchKind: 'unmatched', decision: 'skip' })]);
         renderPage();
 
@@ -281,6 +244,98 @@ describe('ImportReviewPage', () => {
         expect(within(alert).queryByRole('button', { name: 'Try again' })).not.toBeInTheDocument();
         expect(within(alert).getByRole('link', { name: 'Back to your imports' }))
             .toHaveAttribute('href', '/import');
+    });
+
+    it('offers to look up the games the file did not identify', async () => {
+        // Offered rather than done on arrival: it spends IGDB's budget and takes real time, so it
+        // is somebody asking for it rather than something that happens to them.
+        review.review = loaded([
+            row({ id: 1, title: 'No Id Here', gameId: null, matchKind: 'unlooked', decision: 'skip' }),
+        ]);
+        renderPage();
+
+        await userEvent.click(screen.getByRole('button', { name: 'Find these games' }));
+        expect(review.match).toHaveBeenCalled();
+    });
+
+    it('stops offering a lookup once every row has been looked at', () => {
+        // A row a pass has already been over is `unmatched` rather than `unlooked` and will not
+        // move by asking again. A button that stayed would invite somebody to spend a minute on a
+        // search that finds nothing twice.
+        review.review = loaded([
+            row({
+                id: 1, title: 'Nothing Like This Exists',
+                gameId: null, matchKind: 'unmatched', decision: 'skip',
+            }),
+        ]);
+        renderPage();
+
+        expect(screen.queryByRole('button', { name: 'Find these games' })).not.toBeInTheDocument();
+    });
+
+    it('says a search is running and how much is left', () => {
+        review.matching = true;
+        review.review = loaded([
+            row({ id: 1, gameId: null, matchKind: 'unlooked', decision: 'skip' }),
+        ]);
+        renderPage();
+
+        expect(screen.getByRole('button', { name: /Searching… 1 left/ })).toBeDisabled();
+    });
+
+    it('lets an ambiguous row be resolved by choosing one of its candidates', async () => {
+        // §M3. IGDB holds a row per release, so a search for a popular game answers with several
+        // entries carrying its exact title — this is the ordinary outcome for one, not an edge
+        // case. The row is resolved by recognising a cover and a year rather than by reading ids.
+        review.review = loaded([
+            row({
+                id: 1, title: 'Resident Evil 2', releaseYear: null,
+                gameId: null, matchKind: 'ambiguous', decision: 'skip',
+                candidates: [
+                    game({ id: 19686, title: 'Resident Evil 2', releaseDate: '2019-01-25' }),
+                    game({ id: 880, title: 'Resident Evil 2', releaseDate: '1998-01-21' }),
+                ],
+            }),
+        ]);
+        renderPage();
+
+        await userEvent.click(screen.getByRole('button', { name: 'Use Resident Evil 2 (1998)' }));
+
+        // Choosing also selects it: somebody who has just said "that one" has said they want it.
+        expect(review.setDecisions).toHaveBeenCalledWith([
+            { rowId: 1, decision: 'import', gameId: 880 },
+        ]);
+    });
+
+    it('tells an ambiguous row apart from one nothing was found for', () => {
+        // Both are unimportable until somebody acts, and the two need different actions — one is a
+        // choice on screen, the other is not. Labelling both "No game matched" would send somebody
+        // looking for a picker that is not there.
+        review.review = loaded([
+            row({
+                id: 1, title: 'Hollow Knight', gameId: null, matchKind: 'ambiguous', decision: 'skip',
+                candidates: [game({ id: 14593, title: 'Hollow Knight', releaseDate: '2017-02-24' })],
+            }),
+            row({ id: 2, title: 'Nothing Like This', gameId: null, matchKind: 'unmatched', decision: 'skip' }),
+        ]);
+        renderPage();
+
+        expect(screen.getByText('Which one is it?')).toBeInTheDocument();
+        expect(screen.getByText('No game matched')).toBeInTheDocument();
+    });
+
+    it('will not let an ambiguous row be ticked before a game is chosen', () => {
+        // Ticking it would count it in "will import" and then have the commit skip it, which is a
+        // promise the screen cannot keep.
+        review.review = loaded([
+            row({
+                id: 1, title: 'Hollow Knight', gameId: null, matchKind: 'ambiguous', decision: 'skip',
+                candidates: [game({ id: 14593, title: 'Hollow Knight', releaseDate: '2017-02-24' })],
+            }),
+        ]);
+        renderPage();
+
+        expect(screen.getByRole('checkbox', { name: 'Import Hollow Knight' })).toBeDisabled();
     });
 
     it('says when an unfinished import will be deleted, and what keeps it alive', () => {
