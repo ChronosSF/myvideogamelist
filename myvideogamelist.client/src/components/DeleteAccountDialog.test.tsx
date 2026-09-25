@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { DeleteAccountDialog } from '@/components/DeleteAccountDialog';
 import { useDataExport } from '@/hooks/useDataExport';
 import { downloadDataExport } from '@/lib/dataExport';
+import { mousePress } from '@/test/press';
 
 vi.mock('@/lib/dataExport', () => ({ downloadDataExport: vi.fn(async () => {}) }));
 
@@ -132,6 +133,16 @@ describe('DeleteAccountDialog closing', () => {
 
         await actor.click(dialog());
         expect(onCancel).toHaveBeenCalledTimes(1);
+    });
+
+    it('stays open when a selection started in the password ends on the backdrop', () => {
+        // The DOM fires that release's `click` at the dialog element, which is also where a click on
+        // the backdrop lands — so reading the click alone took the dialog away mid-selection.
+        renderDialog();
+
+        mousePress(password(), dialog());
+
+        expect(onCancel).not.toHaveBeenCalled();
     });
 
     it('tells the page when the browser closes it anyway', () => {

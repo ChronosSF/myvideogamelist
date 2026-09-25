@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useAuth } from '@/hooks/useAuth';
+import { useDismissOnOutsidePress } from '@/lib/useDismissOnOutsidePress';
 import './LoginDialog.css';
 
 interface Props {
@@ -14,6 +15,10 @@ export function LoginDialog({ onClose, onSwitchToRegister }: Props) {
     const [rememberMe, setRememberMe] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
+
+    // Both halves of the press have to land on the overlay. Selecting the contents of a field and
+    // releasing past the dialog's edge is not a click beside it, whatever `click` reports.
+    const dismiss = useDismissOnOutsidePress(onClose);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -30,8 +35,8 @@ export function LoginDialog({ onClose, onSwitchToRegister }: Props) {
     };
 
     return (
-        <div className="dialog-overlay" onClick={onClose} role="dialog" aria-modal="true" aria-labelledby="login-title">
-            <div className="dialog-panel dialog-panel-rel" onClick={e => e.stopPropagation()}>
+        <div className="dialog-overlay" {...dismiss} role="dialog" aria-modal="true" aria-labelledby="login-title">
+            <div className="dialog-panel dialog-panel-rel">
                 <button className="dialog-close" onClick={onClose} aria-label="Close">
                     <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
