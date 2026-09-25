@@ -97,6 +97,11 @@ is not a landslide; the least-followed canonical row measured, Wario Land 4, has
 people track this row**, not of how good the game is. That is a different claim from the one
 [0016](0016-scores-carry-their-sample-size.md) makes about scores, and it is why no score is read.
 
+The same floor gates a second thing, which the first live run found. A candidate reached only by
+**loosening** — an edition suffix stripped, or a near miss scored — must clear `MinimumFollowing`
+to be offered at all. An exact title is exempt, so a genuinely obscure game still matches on its
+own name. See the run below for what that is protecting against.
+
 ### 4. The search term is the user's own spelling
 
 IGDB decides which candidates exist; we only rank them. So the term sent is
@@ -169,6 +174,43 @@ their import; "IGDB is unreachable" is one they act on by trying again later. Th
 and becomes the 502 `UpstreamFailureHandler` makes of every third-party failure
 ([0034](0034-failing-in-one-shape.md)), and because a failed pass writes nothing, repeating it is
 free.
+
+## What the first run against real IGDB showed
+
+`scripts/make-matcher-fixture.mjs` emits a Grouvee-shaped export with no ids and twenty-seven rows
+chosen to land on a different branch each, together with the outcome predicted for every one. Run
+through the whole pipeline — upload, two matching passes, commit — it came back **14 matched, 6
+ambiguous, 7 unmatched against a predicted 14/6/7**, and every matched row reached the id this
+record names.
+
+Two rows landed elsewhere, and they cancelled out in the totals:
+
+**"Ocarina of Time" was answered with "Ocarina of Time Redux" — a ROM hack with no ratings — as its
+only candidate.** Stripping `redux` collapses that title onto the famous name, while the real
+game's own title is too far from the bare subtitle to score. Decision 1 argued the edition list
+could be generous *because nothing it produces can be matched automatically*, and that was true:
+this was offered, not chosen. What it missed is that IGDB's long tail is full of hacks, bundles and
+fan projects wearing famous names, and a **sole plausible wrong answer is worse than none** — it is
+what teaches somebody clicking through six hundred rows to stop reading them. The same search
+padded the Shadow of the Colossus picker with two zero-rating editions and the Ratchet & Clank one
+with a 2026 entry. Hence the second use of `MinimumFollowing` in decision 3.
+
+**"Portal 2 Game of the Year Edition" was unmatched rather than ambiguous**, because IGDB returns
+nothing resembling Portal 2 for that whole string. A recall limit rather than a scoring one, and
+not something this end can fix.
+
+The run also confirmed what the pool size is for. The canonical Ocarina of Time sits **sixth** in
+IGDB's results and Super Mario Bros. 3 **seventh**; both matched correctly at twenty, and both
+would have resolved to an unrated stub at ten.
+
+And it confirmed the two rows worth arguing about when the similarity floor is retuned: "Ocarina of
+Time" and "Pokemon Red" both fail it with the right game present in the results — the first against
+"The Legend of Zelda: Ocarina of Time", the second against "Pokémon Red Version".
+
+The commit half held too, against PostgreSQL rather than the in-memory provider the unit tests use:
+no `UserGameEvents` written, no `StatusChangedAt`, no playthroughs from rows whose
+`seconds_played` is 0 and whose dates are `"None"`, and no `ImportRow`s left behind
+([0039](0039-an-imports-rows-die-with-its-review.md)).
 
 ## Consequences
 

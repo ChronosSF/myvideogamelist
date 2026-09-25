@@ -274,7 +274,7 @@ public class ImportMatchingTests
         // The single most important rule here. "Dark Souls" is plainly worth putting in front of
         // somebody importing "Dark Souls Remastered" — and just as plainly not worth choosing for
         // them, because the two are separate rows in IGDB and only they know which they played.
-        var result = Resolve("Dark Souls Remastered", null, Candidate(11, "Dark Souls", 2011));
+        var result = Resolve("Dark Souls Remastered", null, Candidate(11, "Dark Souls", 2011, 1400));
 
         Assert.Equal(ImportMatchKinds.Ambiguous, result.Kind);
         Assert.Null(result.GameId);
@@ -289,8 +289,8 @@ public class ImportMatchingTests
         // exact one.
         var result = Resolve(
             "Dark Souls Remastered", null,
-            Candidate(11, "Dark Souls", 2011),
-            Candidate(12, "Dark Souls Remastered", 2018));
+            Candidate(11, "Dark Souls", 2011, 1400),
+            Candidate(12, "Dark Souls Remastered", 2018, 577));
 
         Assert.Equal(ImportMatchKinds.Matched, result.Kind);
         Assert.Equal(12, result.GameId);
@@ -310,6 +310,37 @@ public class ImportMatchingTests
 
         Assert.Equal(ImportMatchKinds.Ambiguous, result.Kind);
         Assert.Equal([4], result.Candidates);
+    }
+
+    [Fact]
+    public void Resolve_AnUntrackedDerivativeWearingAFamousName_IsNotOffered()
+    {
+        // Found by running this against live IGDB, not reasoned about. Asking for "Ocarina of Time"
+        // answered with "Ocarina of Time Redux" — a ROM hack with no ratings — as the *only*
+        // candidate, because stripping `redux` collapses it onto the famous name while the real
+        // game's own title, "The Legend of Zelda: Ocarina of Time", scores too far away to be
+        // offered. A sole plausible wrong answer is worse than none.
+        //
+        // Both rows here are real ids and real figures from that run.
+        var result = Resolve(
+            "Ocarina of Time", null,
+            Candidate(172478, "Ocarina of Time Redux", 2020, 0),
+            Candidate(1029, "The Legend of Zelda: Ocarina of Time", 1998, 2168));
+
+        Assert.Equal(ImportMatchKinds.Unmatched, result.Kind);
+        Assert.Empty(result.Candidates);
+    }
+
+    [Fact]
+    public void Resolve_AnObscureGameUnderItsOwnExactName_IsStillMatched()
+    {
+        // The exemption that keeps the rule above from being a popularity contest. An exact title
+        // needs no corroboration, so a game nobody has rated is matched on its own name — which is
+        // most of what a long tracker library actually contains.
+        var result = Resolve("Some Tiny Indie Game", null, Candidate(5, "Some Tiny Indie Game", 2019, 0));
+
+        Assert.Equal(ImportMatchKinds.Matched, result.Kind);
+        Assert.Equal(5, result.GameId);
     }
 
     [Fact]

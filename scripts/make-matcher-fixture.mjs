@@ -172,21 +172,21 @@ const CASES = [
     {
         title: 'Portal 2 Game of the Year Edition',
         expect: 'ambiguous',
-        evidence: 'predicted',
+        evidence: 'measured',
         why: 'No such IGDB row. The loose key reaches "Portal 2", which is worth offering and must never be chosen: the generous key can only ever offer.',
     },
     {
         title: 'Ratchet & Clank',
         expect: 'ambiguous',
-        evidence: 'predicted',
-        why: 'The ampersand becomes "and" on both sides. The 2002 original and the 2016 reimagining share the title exactly, so this turns on whether their followings are within a factor of ten.',
+        evidence: 'measured',
+        why: 'The ampersand becomes "and" on both sides. The 2002 original and the 2016 reimagining share the title exactly and are within a factor of ten of each other, so the row is offered rather than answered.',
     },
 
     // ---------------------------------------------------------- should refuse to answer, on purpose
     {
         title: 'Dark Souls 4',
         expect: 'unmatched',
-        evidence: 'predicted',
+        evidence: 'measured',
         why: 'A game that does not exist. "Dark Souls III" shares nine of eleven letter pairs with it and is a different number, so it must not be offered — this is the number guard, and an offer here is the guard failing.',
     },
     {
@@ -199,7 +199,7 @@ const CASES = [
         title: 'Ocarina of Time',
         expect: 'unmatched',
         evidence: 'measured',
-        why: 'IGDB does return the right game, and the subtitle alone is too far from the full title to clear the similarity floor. A miss rather than a mistake — and one of the two rows worth arguing about when the floor is retuned.',
+        why: 'IGDB does return the right game, and the subtitle alone is too far from the full title to clear the similarity floor. This row is why ImportMatching.MinimumFollowing gates loosened candidates: before that, the only thing offered here was "Ocarina of Time Redux", a ROM hack with no ratings that the edition list collapses onto the famous name. A miss rather than a mistake — and one of the two rows worth arguing about when the floor is retuned.',
     },
     {
         title: 'Pokemon Red',
@@ -216,13 +216,13 @@ const CASES = [
     {
         title: 'Zzzqqx Nonexistent Game',
         expect: 'unmatched',
-        evidence: 'predicted',
+        evidence: 'measured',
         why: 'Nothing comes back. The ordinary end of a row that cannot be placed, and what the failure report is built from (§C5).',
     },
     {
         title: '- ??? -',
         expect: 'unmatched',
-        evidence: 'predicted',
+        evidence: 'measured',
         why: 'Nothing survives normalising, so this is answered without a search at all. It still has to be *answered*: an unanswered row would be offered to every future pass for ever.',
     },
 ];

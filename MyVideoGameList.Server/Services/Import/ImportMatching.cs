@@ -122,13 +122,29 @@ internal static class ImportMatching
     internal const int DominantFollowing = 10;
 
     /// <summary>
-    /// The fewest ratings a leader needs before its lead counts for anything.
+    /// The fewest ratings a candidate needs before it counts for anything.
     /// </summary>
     /// <remarks>
-    /// Without this, one rating against none is a landslide, and an obscure game with two IGDB rows
-    /// would be resolved by a coin toss dressed as evidence. Every canonical entry measured is far
-    /// above this — the smallest, Wario Land 4, has 79 — so it costs nothing where the signal is
-    /// real and withholds it where there is none.
+    /// <para>
+    /// Two jobs, both about not mistaking an untracked row for evidence. A leader needs this much
+    /// before its lead over a rival means anything, or one rating against none is a landslide and
+    /// an obscure game with two IGDB rows is resolved by a coin toss dressed as evidence.
+    /// </para>
+    /// <para>
+    /// And a candidate reached only by <em>loosening</em> — an edition suffix stripped, or a near
+    /// miss scored — needs it to be offered at all. Found by running the matcher against live IGDB:
+    /// "Ocarina of Time" was answered with "Ocarina of Time Redux", a ROM hack with no ratings,
+    /// as its <b>only</b> candidate, because stripping <c>redux</c> collapses it onto the famous
+    /// name while the real game's own title is too far away to score. IGDB's long tail is full of
+    /// these — the same search offered two zero-rating Shadow of the Colossus editions beside the
+    /// three real releases. A sole plausible wrong answer is worse than none, because it is what
+    /// teaches somebody clicking through six hundred rows to stop reading them.
+    /// </para>
+    /// <para>
+    /// An exact title is exempt from the second rule, so a genuinely obscure game still matches on
+    /// its own name. Every canonical entry measured clears this comfortably — the smallest, Wario
+    /// Land 4, has 79.
+    /// </para>
     /// </remarks>
     internal const int MinimumFollowing = 25;
 
@@ -155,6 +171,11 @@ internal static class ImportMatching
             // floor, so it costs nothing for the candidates a search returns that are nothing like
             // the row.
             .Where(candidate => candidate.Keys.Numbers.SetEquals(wanted.Numbers))
+
+            // A candidate reached only by loosening — an edition stripped, or a near miss scored —
+            // has to be a game somebody actually tracks. An exact title needs no such corroboration
+            // and is deliberately exempt, so a genuinely obscure game still matches on its own name.
+            .Where(candidate => candidate.Exact || candidate.Candidate.RatingCount >= MinimumFollowing)
 
             // An exact key always scores 1, so it sorts first without being named here. The year
             // gap breaks the tie between two of them, which is what puts the 2019 Resident Evil 2
