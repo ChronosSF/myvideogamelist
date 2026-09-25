@@ -34,10 +34,10 @@ attribute. The v8 upgrade is a separate, later change — since done, see
   component, so ESLint's `react-refresh/only-export-components` needed `allowExportNames`.
 - Route types are generated into `.react-router/`. Bare `tsc` fails; `npm run typecheck`
   runs `react-router typegen` first.
-- SSR bans `window`/`document`/`localStorage` during render. This surfaced a real bug: the
-  upcoming timeline read `localStorage` in a `useState` initializer, which would have
-  produced a hydration mismatch. Replaced with `useSyncExternalStore`
-  (`@/lib/useStoredNumberSet`).
+- SSR bans `window`/`document`/`localStorage` during render. This surfaced a real bug: a
+  component read `localStorage` in a `useState` initializer, which would have produced a
+  hydration mismatch. Replaced with `useSyncExternalStore`, whose server snapshot is what
+  both the server render and hydration see.
 - ~~**Only the game route has a loader so far.**~~ `HomePage` and `GamesPage` now have loaders
   too. `ListsPage` and `UserPage` remain client-side, which is correct — they are authenticated
   views with nothing to index. Adding a loader to `/games` also moved its search term into the

@@ -21,7 +21,7 @@ decision, write a new record and mark the old one superseded.
 | [0001](0001-igdb-as-source-of-truth.md) | IGDB is the source of truth for game data | Implemented |
 | [0002](0002-server-side-rendering.md) | Server-side rendering via React Router framework mode | Implemented |
 | [0003](0003-two-process-deployment.md) | Two processes; the SSR server does not proxy `/api` | Implemented |
-| [0004](0004-release-dates-for-calendar.md) | The upcoming calendar is built on `release_dates` | Implemented |
+| [0004](0004-release-dates-for-calendar.md) | Upcoming releases are built on `release_dates` | Implemented |
 | [0005](0005-secrets-handling.md) | Secrets come from user secrets and environment variables | Implemented |
 | [0006](0006-codeql-buildless.md) | CodeQL runs buildless (`build-mode: none`) | Implemented |
 | [0007](0007-aws-target-architecture.md) | ECS Fargate, Aurora Serverless v2, CloudFront | Partly superseded by 0014, 0015 |

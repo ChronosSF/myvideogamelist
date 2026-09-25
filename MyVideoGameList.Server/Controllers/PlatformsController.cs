@@ -9,8 +9,8 @@ namespace MyVideoGameList.Server.Controllers;
 public class PlatformsController(IIgdbService igdbService) : ControllerBase
 {
     /// <summary>
-    /// Returns the active platforms configured in app settings (ActivePlatforms),
-    /// used to populate the platform preference settings for the upcoming releases timeline.
+    /// Returns the active platforms configured in app settings (ActivePlatforms), which the browse
+    /// filter offers and the profile statistics name platforms from.
     /// </summary>
     [HttpGet("active")]
     public async Task<ActionResult<IEnumerable<PlatformDto>>> GetActivePlatforms()

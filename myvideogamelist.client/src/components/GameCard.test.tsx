@@ -126,7 +126,7 @@ describe('GameCard wishlist control', () => {
 });
 
 describe('GameCard wishlist failure', () => {
-    // Cards appear on Games, Home and the timeline, none of which render the provider's shared
+    // Cards appear on Games and Lists, neither of which renders the wishlist provider's shared
     // mutationError. Without something on the card itself, a failed toggle would just snap the
     // heart back with no explanation.
     it('says so when the toggle fails', async () => {

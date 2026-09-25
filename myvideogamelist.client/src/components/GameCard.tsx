@@ -23,7 +23,7 @@ export function GameCard({ game }: GameCardProps) {
     const wishlisted = wishlist.isWishlisted(game.id);
 
     /**
-     * Cards appear on Games, Home and the timeline, and none of those render the provider's
+     * Cards appear on Games and Lists, and neither of those renders the wishlist provider's
      * `mutationError` — so without something here a failed toggle would just quietly snap the
      * heart back. Read off the return value rather than the shared error, because that error
      * belongs to whichever card was clicked last and not necessarily to this one.

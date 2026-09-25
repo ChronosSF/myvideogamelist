@@ -1,22 +1,10 @@
 import { useMemo } from 'react';
 import { Link } from 'react-router';
 import { useLists } from '@/hooks/useLists';
+import { useUpcomingGames } from '@/hooks/useUpcomingGames';
 import { useWishlist } from '@/hooks/useWishlist';
-import type { UseUpcomingGamesResult } from '@/hooks/useUpcomingGames';
 import { formatReleaseDay } from '@/lib/releaseDate';
 import { releasingSoon, type ReleasingSoonItem } from '@/lib/releasingSoon';
-
-interface Props {
-    /** The calendar's own request, lifted to the page so the two share one fetch. */
-    upcoming: UseUpcomingGamesResult;
-    hiddenPlatformIds: ReadonlySet<number>;
-    hiddenPlatformsLoading: boolean;
-    /**
-     * Set when the preference could not be read. The empty set beside it then is not the user's
-     * answer, and crossing releases with it would name games on platforms they have hidden.
-     */
-    hiddenPlatformsLoadError: string | null;
-}
 
 /** Why a game is on the rail, in the fewest words that say it. */
 function reason(item: ReleasingSoonItem): string {
@@ -28,10 +16,14 @@ function reason(item: ReleasingSoonItem): string {
  * Releases from the user's wishlist and backlog, soonest first, above everything else on the home
  * page (ROADMAP H4 — "3 games you're waiting for drop this week" beats a firehose of every release).
  *
- * The roadmap called it "your week". It covers the calendar's whole window instead, because that is
- * what the calendar fetches, and a week-long slice of one person's wishlist and backlog will often be
- * empty — a section that is rarely there is one nobody learns to look for. The dates on each game say
- * which releases are close.
+ * The roadmap called it "your week". It covers the upcoming-releases endpoint's whole window instead,
+ * because that is what the endpoint returns, and a week-long slice of one person's wishlist and
+ * backlog will often be empty — a section that is rarely there is one nobody learns to look for. The
+ * dates on each game say which releases are close.
+ *
+ * Fetches the releases itself rather than being handed them by the page, because nothing else on the
+ * page reads them: asked for at the page, they would be fetched for every signed-out visitor and
+ * shown to none of them.
  *
  * Silent until everything it crosses has loaded, silent when any of it failed, and silent when
  * nothing matches: it sits above a page that works perfectly well without it, and a partial answer
@@ -40,12 +32,8 @@ function reason(item: ReleasingSoonItem): string {
  * Reads the reader's clock for "Today" and "Tomorrow", which is safe only because the signed-in half
  * of the home page never server-renders: auth is unknown until a client fetch answers.
  */
-export function ReleasingSoonRail({
-    upcoming,
-    hiddenPlatformIds,
-    hiddenPlatformsLoading,
-    hiddenPlatformsLoadError,
-}: Props) {
+export function ReleasingSoonRail() {
+    const upcoming = useUpcomingGames();
     const { lists, loading: listsLoading, error: listsError } = useLists();
     const { items: wishlist, loading: wishlistLoading, error: wishlistError } = useWishlist();
 
@@ -53,15 +41,10 @@ export function ReleasingSoonRail({
         upcoming.games,
         new Set(wishlist.map(item => item.game.id)),
         new Set(lists.backlog.map(entry => entry.game.id)),
-        hiddenPlatformIds,
-    ), [upcoming.games, wishlist, lists.backlog, hiddenPlatformIds]);
+    ), [upcoming.games, wishlist, lists.backlog]);
 
-    if (upcoming.loading || listsLoading || wishlistLoading || hiddenPlatformsLoading) return null;
-    // The hidden platforms included, unlike the calendar below, which shows every platform when the
-    // preference fails. The calendar is everybody's releases with a filter row the reader can still
-    // use; this rail is a claim about which releases are theirs, and it would be the wrong claim.
-    if (upcoming.error !== null || listsError !== null || wishlistError !== null
-        || hiddenPlatformsLoadError !== null) return null;
+    if (upcoming.loading || listsLoading || wishlistLoading) return null;
+    if (upcoming.error !== null || listsError !== null || wishlistError !== null) return null;
     if (items.length === 0) return null;
 
     return (
@@ -82,7 +65,7 @@ export function ReleasingSoonRail({
             >
                 {items.map((item, index) => {
                     const { game } = item;
-                    const where = item.platforms.map(p => p.abbreviation || p.name).join(', ');
+                    const where = game.platforms.map(p => p.abbreviation || p.name).join(', ');
 
                     return (
                         <li key={game.id} className="shrink-0 snap-start w-32 sm:w-36">

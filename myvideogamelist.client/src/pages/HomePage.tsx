@@ -4,9 +4,6 @@ import { ContinuePlayingRail } from '@/components/ContinuePlayingRail';
 import { HomeStatsStrip } from '@/components/HomeStatsStrip';
 import { PlayNextPicker } from '@/components/PlayNextPicker';
 import { ReleasingSoonRail } from '@/components/ReleasingSoonRail';
-import { UpcomingTimeline } from '@/components/UpcomingTimeline';
-import { useHiddenPlatforms } from '@/hooks/useHiddenPlatforms';
-import { useUpcomingGames, type UseUpcomingGamesResult } from '@/hooks/useUpcomingGames';
 import { TrendingRail } from '@/components/TrendingRail';
 import { NewsCard } from '@/components/NewsCard';
 import { apiUrl } from '@/lib/api';
@@ -36,7 +33,7 @@ export function meta({ loaderData }: Route.MetaArgs) {
     return pageMeta({
         site: loaderData.site,
         title: 'MyVideoGameList - Track every game you play',
-        description: 'Track the games you have played, build a backlog and wishlist, and see what is releasing next across every platform.',
+        description: 'Track the games you have played, build a backlog and wishlist, and see when the games you are waiting for come out.',
         path: '/',
     });
 }
@@ -47,9 +44,9 @@ type HomeData = HomeResponse & { site: SiteConfig };
 /**
  * One request for the whole shared page (ROADMAP §3.5).
  *
- * A failure here degrades rather than throws: the calendar below loads separately on the
- * client and still works, so a dead IGDB should cost the rails and nothing more. That is the
- * opposite of the game route, where an upstream failure genuinely means there is no page.
+ * A failure here degrades rather than throws: a dead IGDB should cost the rails and nothing more.
+ * That is the opposite of the game route, where an upstream failure genuinely means there is no
+ * page.
  */
 export async function loader() {
     const site = siteConfig();
@@ -126,13 +123,7 @@ function SectionHeading({ id, title, subtitle, action }: {
  * cookie-varying SSR render and a CloudFront behaviour to match, which is ROADMAP D12's problem
  * rather than this component's.
  */
-function SignedInHero({ user, upcoming, hiddenPlatformIds, hiddenPlatformsLoading, hiddenPlatformsLoadError }: {
-    user: UserProfile;
-    upcoming: UseUpcomingGamesResult;
-    hiddenPlatformIds: ReadonlySet<number>;
-    hiddenPlatformsLoading: boolean;
-    hiddenPlatformsLoadError: string | null;
-}) {
+function SignedInHero({ user }: { user: UserProfile }) {
     return (
         <section className="signed-in-hero">
             <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8 sm:py-10">
@@ -170,12 +161,7 @@ function SignedInHero({ user, upcoming, hiddenPlatformIds, hiddenPlatformsLoadin
 
                 {/* Brings its own heading, because unlike the two above it has nothing to say when
                     nothing matches and disappears whole. */}
-                <ReleasingSoonRail
-                    upcoming={upcoming}
-                    hiddenPlatformIds={hiddenPlatformIds}
-                    hiddenPlatformsLoading={hiddenPlatformsLoading}
-                    hiddenPlatformsLoadError={hiddenPlatformsLoadError}
-                />
+                <ReleasingSoonRail />
             </div>
         </section>
     );
@@ -261,36 +247,18 @@ export function HomePage({ loaderData }: Route.ComponentProps) {
     const { spotlight, popular, news } = loaderData;
     const { user, loading } = useAuth();
 
-    // Both fetched here rather than inside the calendar, because the Releasing Soon rail crosses the
-    // same two with the user's lists: one request each for two consumers. The preference is keyed on
-    // the account rather than on "is anybody signed in", because this page outlives a sign-out.
-    const upcoming = useUpcomingGames();
-    const {
-        hiddenIds: hiddenPlatformIds,
-        loading: hiddenPlatformsLoading,
-        loadError: hiddenPlatformsLoadError,
-    } = useHiddenPlatforms(user?.id ?? null);
-
     return (
         <div className="min-h-screen">
             {/* The landing hero while auth is still unknown, which includes every server render.
                 The alternative — nothing until `me` answers — flashes an empty page at the one
                 visitor the pitch is written for. */}
             {user && !loading
-                ? (
-                    <SignedInHero
-                        user={user}
-                        upcoming={upcoming}
-                        hiddenPlatformIds={hiddenPlatformIds}
-                        hiddenPlatformsLoading={hiddenPlatformsLoading}
-                        hiddenPlatformsLoadError={hiddenPlatformsLoadError}
-                    />
-                )
+                ? <SignedInHero user={user} />
                 : <LandingHero spotlight={spotlight} />}
 
-            {/* Everything below is the same for both. Trending, the news and the calendar are
-                worth seeing whether or not anybody is signed in, and duplicating them into two
-                branches is how the two drift. */}
+            {/* Everything below is the same for both. Trending and the news are worth seeing
+                whether or not anybody is signed in, and duplicating them into two branches is how
+                the two drift. */}
             <div className="max-w-6xl mx-auto px-4 sm:px-6">
                 {popular.length > 0 && (
                     <section className="py-10 sm:py-12" aria-labelledby="trending-heading">
@@ -326,11 +294,6 @@ export function HomePage({ loaderData }: Route.ComponentProps) {
                     </section>
                 )}
             </div>
-
-            {/* A client-side fetch rather than part of the loader: the calendar is filtered by the
-                viewer's hidden platforms, so unlike everything above it cannot be cached once for
-                everyone. */}
-            <UpcomingTimeline upcoming={upcoming} hiddenPlatformIds={hiddenPlatformIds} />
         </div>
     );
 }

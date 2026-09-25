@@ -73,7 +73,6 @@ public class UserDataExporter(ApplicationDbContext db, TimeProvider clock) : IUs
             { typeof(Review), new("reviews", ReadReviewsAsync) },
             { typeof(UserWishlistItem), new("wishlist", ReadWishlistAsync) },
             { typeof(UserFavourite), new("favourites", ReadFavouritesAsync) },
-            { typeof(UserHiddenPlatform), new("hiddenPlatformIds", ReadHiddenPlatformsAsync) },
             { typeof(UserListSortPreference), new("listSortPreferences", ReadListSortPreferencesAsync) },
             { typeof(UserListSetting), new("listNames", ReadListNamesAsync) },
             { typeof(ImportJob), new("importJobs", ReadImportJobsAsync) },
@@ -112,7 +111,6 @@ public class UserDataExporter(ApplicationDbContext db, TimeProvider clock) : IUs
         public IReadOnlyList<ReviewExportDto> Reviews { get; set; } = [];
         public IReadOnlyList<WishlistExportDto> Wishlist { get; set; } = [];
         public IReadOnlyList<FavouriteExportDto> Favourites { get; set; } = [];
-        public IReadOnlyList<int> HiddenPlatformIds { get; set; } = [];
         public IReadOnlyList<ListSortExportDto> ListSortPreferences { get; set; } = [];
         public IReadOnlyList<ListNameExportDto> ListNames { get; set; } = [];
         public IReadOnlyList<ImportJobExportDto> ImportJobs { get; set; } = [];
@@ -120,7 +118,7 @@ public class UserDataExporter(ApplicationDbContext db, TimeProvider clock) : IUs
 
         public UserDataExportDto ToDocument(DateTimeOffset exportedAt, AccountExportDto account) =>
             new(exportedAt, account, Entries, Events, Playthroughs, Reviews, Wishlist, Favourites,
-                HiddenPlatformIds, ListSortPreferences, ListNames, ImportJobs, ImportRows);
+                ListSortPreferences, ListNames, ImportJobs, ImportRows);
     }
 
     public async Task<UserDataExportDto> ExportAsync(string userId, CancellationToken cancellationToken)
@@ -316,21 +314,6 @@ public class UserDataExporter(ApplicationDbContext db, TimeProvider clock) : IUs
             .OrderBy(f => f.AddedAt)
             .ThenBy(f => f.GameId)
             .Select(f => new FavouriteExportDto(f.GameId, f.AddedAt))
-            .ToListAsync(cancellationToken);
-    }
-
-    /// <remarks>
-    /// Bare IGDB platform ids, because that is the whole row: the table is a set of ids the user has
-    /// switched off, with nothing else to say about any of them.
-    /// </remarks>
-    private static async Task ReadHiddenPlatformsAsync(
-        ApplicationDbContext db, ExportDraft draft, CancellationToken cancellationToken)
-    {
-        draft.HiddenPlatformIds = await db.UserHiddenPlatforms
-            .AsNoTracking()
-            .Where(hp => hp.UserId == draft.UserId)
-            .OrderBy(hp => hp.IgdbPlatformId)
-            .Select(hp => hp.IgdbPlatformId)
             .ToListAsync(cancellationToken);
     }
 

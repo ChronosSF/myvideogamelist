@@ -1,9 +1,31 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { headers, loader } from '@/pages/HomePage';
+import { render, screen } from '@testing-library/react';
+import { MemoryRouter } from 'react-router';
+import { HomePage, headers, loader } from '@/pages/HomePage';
+import type { AuthContextValue } from '@/contexts/AuthContext';
 import { CACHE_HOME, PRIVATE_NO_STORE } from '@/lib/cache';
 import { game } from '@/test/factories';
 import type { HomeResponse, NewsItemDto } from '@/types/news';
 import type { Route } from './+types/HomePage';
+
+/**
+ * A visitor nobody has signed in as, once `/api/auth/me` has said so. One module-level object handed
+ * back on every call, never a fresh literal — a new object per render re-runs any effect depending on
+ * it, which ends in a heap crash rather than an assertion failure.
+ */
+const auth: AuthContextValue = {
+    user: null,
+    loading: false,
+    login: vi.fn(async () => {}),
+    register: vi.fn(async () => {}),
+    logout: vi.fn(async () => {}),
+    updateTheme: vi.fn(async () => {}),
+    updateUserName: vi.fn(async () => {}),
+    updateProfileVisibility: vi.fn(async () => {}),
+    deleteAccount: vi.fn(async () => {}),
+};
+
+vi.mock('@/hooks/useAuth', () => ({ useAuth: () => auth }));
 
 const SITE = { siteUrl: 'https://myvideogamelist.net', indexable: true };
 
@@ -108,6 +130,25 @@ describe('HomePage loader', () => {
 
         expect(policyOf(result)).toBe(PRIVATE_NO_STORE);
         expect(result.data).toEqual({ ...NOTHING, site: SITE });
+    });
+});
+
+describe('HomePage for a signed-out visitor', () => {
+    it('asks the API for nothing from the browser', () => {
+        // Everything a visitor sees arrives through the loader, cached once for everybody. The
+        // upcoming releases are asked for by the Releasing soon rail, which only a signed-in user
+        // sees — fetched at the page, they were requested for every visitor and shown to none.
+        const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+            throw new Error(`unexpected fetch: ${String(input)}`);
+        });
+        vi.stubGlobal('fetch', fetchMock);
+        const home: HomeResponse = { spotlight: null, popular: [game()], news: [NEWS], degraded: false };
+        const props = { loaderData: { ...home, site: SITE } } as unknown as Route.ComponentProps;
+
+        render(<MemoryRouter><HomePage {...props} /></MemoryRouter>);
+
+        expect(screen.getByRole('heading', { name: 'Trending right now' })).toBeInTheDocument();
+        expect(fetchMock).not.toHaveBeenCalled();
     });
 });
 
