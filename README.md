@@ -2,7 +2,7 @@
 
 A personal video game tracking app — think [MyAnimeList](https://myanimelist.net/), [IMDb](https://www.imdb.com/), or [Trakt.tv](https://trakt.tv/), but for video games.
 
-Keep track of every game you've played, build your wishlist, manage your backlog, and discover what's coming next across all major platforms.
+Keep track of every game you've played, build your wishlist, manage your backlog, and see when the games you're waiting for come out.
 
 ---
 
@@ -10,7 +10,7 @@ Keep track of every game you've played, build your wishlist, manage your backlog
 
 - **Game Lists** — Organise your games into lists: *Playing*, *Completed*, *On Hold*, *Dropped*, and *Plan to Play (Backlog)*
 - **Wishlist** — Save games you want to buy or try
-- **Upcoming Releases** — Browse upcoming titles across PC, PlayStation, Xbox, Nintendo Switch, and more
+- **Releasing Soon** — Games on your wishlist and in your backlog that come out in the next 30 days, on your home page
 - **Game Details** — View release dates, platforms, genres, and descriptions
 - **User Profiles** — Track your own stats and history
 

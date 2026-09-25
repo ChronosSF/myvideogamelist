@@ -38,9 +38,9 @@ public static class ListViewModes
 /// who has never changed a sort has no rows here at all.
 /// </summary>
 /// <remarks>
-/// A row per (user, status) rather than a JSON blob on the user, matching
-/// <see cref="UserHiddenPlatform"/>: it keeps the preference relational and queryable, and adding a
-/// sixth status needs no migration because a missing row already means "use the default".
+/// A row per (user, status) rather than a JSON blob on the user: it keeps the preference relational
+/// and queryable, and adding a sixth status needs no migration because a missing row already means
+/// "use the default".
 /// </remarks>
 public class UserListSortPreference
 {

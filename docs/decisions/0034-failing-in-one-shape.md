@@ -13,7 +13,7 @@ attempt followed by `EnsureSuccessStatusCode`. Three things followed from that:
 - **A bad afternoon at IGDB was thousands of them**, each one paying the full wait, and each one
   adding to whatever IGDB was already struggling with.
 - **Nothing paced the calls**, though IGDB documents a limit of four a second and
-  `GetUpcomingReleasesAsync` pages ten times in a row to fill the calendar.
+  `GetUpcomingReleasesAsync` pages ten times in a row to fill a month of upcoming releases.
 
 Meanwhile an unhandled exception left as a raw 500 — an HTML developer page in Development that a
 JSON client cannot read, an empty body everywhere else — and a reader who navigated away

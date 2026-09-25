@@ -114,8 +114,7 @@ export function isFiltered(browse: GameBrowse): boolean {
 
 /**
  * The years the filter offers, newest first, ending at this one. Next year's games have too few
- * ratings for any order's floor, so offering it would only ever lead to an empty page — upcoming
- * games are the calendar's job.
+ * ratings for any order's floor, so offering it would only ever lead to an empty page.
  */
 export function yearsFrom(currentYear: number): number[] {
     const years: number[] = [];

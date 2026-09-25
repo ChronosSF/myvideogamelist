@@ -17,9 +17,8 @@ business than a lot of outbound clicks.
 Freemium at roughly **$3/month or $25–30/year**. The free tier is ad-supported; the paid
 tier removes ads and unlocks depth.
 
-**The core tracking loop stays unlimited and free** — unlimited games, all lists, wishlist,
-calendar. Capping the core loop is what kills trackers. Sell depth, convenience and quiet,
-not access.
+**The core tracking loop stays unlimited and free** — unlimited games, all lists, wishlist.
+Capping the core loop is what kills trackers. Sell depth, convenience and quiet, not access.
 
 Paid tier: no ads, unlimited custom lists, full stats and yearly recap, unlimited price and
 bundle alerts, import re-sync, export, private profile, email notifications.

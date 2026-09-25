@@ -36,7 +36,6 @@ public record UserDataExportDto(
     IReadOnlyList<ReviewExportDto> Reviews,
     IReadOnlyList<WishlistExportDto> Wishlist,
     IReadOnlyList<FavouriteExportDto> Favourites,
-    IReadOnlyList<int> HiddenPlatformIds,
     IReadOnlyList<ListSortExportDto> ListSortPreferences,
     IReadOnlyList<ListNameExportDto> ListNames,
     IReadOnlyList<ImportJobExportDto> ImportJobs,

@@ -2,9 +2,9 @@
  * Release dates as the upcoming-releases endpoint sends them: a bare `YYYY-MM-DD`, one per game per
  * day, with no time and no timezone.
  *
- * Everything here reads the reader's clock, so it belongs only in output rendered after hydration —
- * the timeline, which fetches on the client, and the signed-in half of the home page, which never
- * server-renders. See `useHydrated` for why.
+ * Everything here reads the reader's clock, so it belongs only in output rendered after hydration,
+ * such as the signed-in half of the home page, which never server-renders. See `useHydrated` for
+ * why.
  */
 
 /**
@@ -20,10 +20,6 @@ function startOfDay(now: Date): Date {
     const today = new Date(now);
     today.setHours(0, 0, 0, 0);
     return today;
-}
-
-export function isReleaseToday(date: string, now: Date = new Date()): boolean {
-    return parseReleaseDate(date).getTime() === startOfDay(now).getTime();
 }
 
 /** "Today", "Tomorrow", or a short date such as "Sat, Sep 19". */
