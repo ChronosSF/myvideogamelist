@@ -1,9 +1,8 @@
 # Spec — Import lists from other game trackers (CSV)
 
-Status: **partly superseded — Grouvee ships; every preset after it is tracked in issue
-[#125](https://github.com/ChronosSF/myvideogamelist/issues/125)**
-Relates to: `ROADMAP.md` Tier 2's "Import from another tracker (CSV/JSON)" and "Import from Steam /
-PSN / Xbox / GOG" entries, and the paid-tier table's "Import from Steam/PSN/Xbox" row.
+Status: **partly superseded — Grouvee ships; the presets after it are not built**
+Relates to: the Steam import (#124), the next tracker presets and the matcher (#125), and the
+import row of the paid-tier table in ADR [0010](../docs/decisions/0010-monetization-model.md).
 
 > **Read `docs/decisions/0037-a-tracker-import-carries-history.md` before this document.**
 > This spec was written in August 2026 from public documentation, without a real export in hand. A
