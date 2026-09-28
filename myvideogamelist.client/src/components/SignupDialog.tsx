@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { USERNAME_MAX_LENGTH, USERNAME_MIN_LENGTH, userNameProblem } from '@/types/auth';
+import { useDismissOnOutsidePress } from '@/lib/useDismissOnOutsidePress';
 import './LoginDialog.css';
 
 interface Props {
@@ -16,6 +17,10 @@ export function SignupDialog({ onClose, onSwitchToLogin }: Props) {
     const [confirm, setConfirm] = useState('');
     const [error, setError] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
+
+    // The same guard as the sign-in dialog, from the same place: this overlay is that one copied,
+    // and a fix applied to one of them by hand is the drift ADR 0022 records.
+    const dismiss = useDismissOnOutsidePress(onClose);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -46,8 +51,8 @@ export function SignupDialog({ onClose, onSwitchToLogin }: Props) {
     };
 
     return (
-        <div className="dialog-overlay" onClick={onClose} role="dialog" aria-modal="true" aria-labelledby="signup-title">
-            <div className="dialog-panel dialog-panel-rel" onClick={e => e.stopPropagation()}>
+        <div className="dialog-overlay" {...dismiss} role="dialog" aria-modal="true" aria-labelledby="signup-title">
+            <div className="dialog-panel dialog-panel-rel">
                 <button className="dialog-close" onClick={onClose} aria-label="Close">
                     <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />

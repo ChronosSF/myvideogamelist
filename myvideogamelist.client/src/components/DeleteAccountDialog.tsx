@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import type { UseDataExportResult } from '@/hooks/useDataExport';
+import { useDismissOnOutsidePress } from '@/lib/useDismissOnOutsidePress';
 import './LoginDialog.css';
 
 interface Props {
@@ -73,6 +74,11 @@ export function DeleteAccountDialog({ userName, onCancel, onDelete, exporter }: 
         if (!busy) onCancel();
     };
 
+    // A press on the backdrop is delivered to the `<dialog>` element itself; one on the panel is
+    // not. Both halves have to land there, or selecting the password and releasing past the panel's
+    // edge dismisses the dialog — `click` reports that release as a click on the backdrop.
+    const dismiss = useDismissOnOutsidePress(cancel);
+
     const handleSubmit = async (event: React.FormEvent) => {
         event.preventDefault();
         // The disabled button already blocks Enter in a browser; this is the same rule for any other
@@ -113,10 +119,7 @@ export function DeleteAccountDialog({ userName, onCancel, onDelete, exporter }: 
             // not go on holding a dialog nobody can see, whose button would then open nothing. A
             // download still running stays held: its state is the card's, not this dialog's.
             onClose={onCancel}
-            // A click on the backdrop lands on the dialog element itself; one on the panel does not.
-            onClick={event => {
-                if (event.target === event.currentTarget) cancel();
-            }}
+            {...dismiss}
         >
             <div className="dialog-panel">
                 <h2 id={titleId} className="dialog-title">Delete your account?</h2>
