@@ -2,8 +2,9 @@
 
 Short records of decisions that shaped this codebase, and the reasoning behind them.
 
-`ROADMAP.md` is the plan and gets rewritten as phases land. These records are the *why*,
-and they outlive the plan. Read the relevant one before changing anything it covers.
+The plan is the repository's GitHub issues ([0041](0041-what-the-roadmap-decided-on-its-own.md));
+`ROADMAP.md` maps the old plan's identifiers to them. These records are the *why*, and they
+outlive both. Read the relevant one before changing anything it covers.
 
 ## Writing one
 
@@ -12,13 +13,14 @@ Copy the shape of an existing record: **Context** (what forced a choice), **Deci
 
 Add one when you make a call that future work would otherwise have to reverse-engineer,
 especially when you rejected a plausible alternative. Records are append-only: to change a
-decision, write a new record and mark the old one superseded.
+decision, write a new record and mark the old one superseded. A record's **Status** line may
+grow a forward pointer when a later record or an issue closes something it left open.
 
 ## Index
 
 | # | Decision | Status |
 |---|---|---|
-| [0001](0001-igdb-as-source-of-truth.md) | IGDB is the source of truth for game data | Implemented |
+| [0001](0001-igdb-as-source-of-truth.md) | IGDB is the source of truth for game data | Implemented; the cache it called for is 0035 |
 | [0002](0002-server-side-rendering.md) | Server-side rendering via React Router framework mode | Implemented |
 | [0003](0003-two-process-deployment.md) | Two processes; the SSR server does not proxy `/api` | Implemented |
 | [0004](0004-release-dates-for-calendar.md) | The upcoming calendar is built on `release_dates` | Implemented |
@@ -27,9 +29,9 @@ decision, write a new record and mark the old one superseded.
 | [0007](0007-aws-target-architecture.md) | ECS Fargate, Aurora Serverless v2, CloudFront | Partly superseded by 0014, 0015 |
 | [0008](0008-postgresql-over-sqlite.md) | PostgreSQL replaces SQLite before deployment | Implemented locally; hosting pending |
 | [0009](0009-itad-without-affiliate-revenue.md) | Integrate IsThereAnyDeal and forgo the affiliate revenue | Accepted |
-| [0010](0010-monetization-model.md) | Ad-supported free tier plus a paid subscription | Accepted |
+| [0010](0010-monetization-model.md) | Ad-supported free tier plus a paid subscription | Accepted; the free/paid line is drawn in it, the statistics tiers in `specs/profile-statistics-tiers.md` |
 | [0011](0011-react-router-8-upgrade.md) | Upgrade to React Router 8 | Implemented |
-| [0012](0012-steam-news-without-a-database.md) | Steam news is cached in memory, not stored in the database | Implemented |
+| [0012](0012-steam-news-without-a-database.md) | Steam news is cached in memory, not stored in the database | Implemented; N3 and the AppID question are open issues |
 | [0013](0013-http-caching-policy.md) | Every route declares its own `Cache-Control` | Implemented |
 | [0014](0014-rds-postgresql-over-aurora.md) | Managed PostgreSQL on RDS, not Aurora Serverless v2 | Accepted |
 | [0015](0015-fargate-confirmed-and-nat-less-networking.md) | ECS Fargate confirmed, with NAT-less networking | Accepted |
@@ -43,8 +45,8 @@ decision, write a new record and mark the old one superseded.
 | [0023](0023-profile-statistics-derived-at-read-time.md) | Profile statistics are derived at read time, and split by what they depend on | Implemented |
 | [0024](0024-the-ownership-contract.md) | One export manifest for every user-owned table, guarded in both directions | Implemented |
 | [0025](0025-playthroughs-and-reviews.md) | Playthroughs and reviews: what a user records about actually playing a game | Implemented |
-| [0026](0026-a-library-import-records-ownership-not-history.md) | A library import records ownership, not history | Accepted |
-| [0027](0027-usernames-and-public-profiles.md) | Usernames are a namespace, and a profile is published only when asked | Implemented |
+| [0026](0026-a-library-import-records-ownership-not-history.md) | A library import records ownership, not history | Accepted; its framework shipped in 0037, the Steam source is an open issue |
+| [0027](0027-usernames-and-public-profiles.md) | Usernames are a namespace, and a profile is published only when asked | Implemented; the sitemap is 0036, D14 is an open issue |
 | [0028](0028-a-games-community-view.md) | A game's community view: every score counts, only published reviews are listed, and neither is server-rendered | Implemented |
 | [0029](0029-favourites-are-an-axis-and-a-showcase.md) | Favourites are an axis like the wishlist, share its code, and are shown on the profile | Implemented |
 | [0030](0030-ownership-and-notes-belong-to-the-entry.md) | Ownership and notes belong to the entry, stay private, and are written under the game's lock | Implemented |
@@ -57,6 +59,7 @@ decision, write a new record and mark the old one superseded.
 | [0037](0037-a-tracker-import-carries-history.md) | A tracker import carries the history a platform import cannot | Implemented |
 | [0038](0038-where-scheduled-work-lives.md) | Where scheduled work lives, and what a sweep owes a fleet | Implemented |
 | [0039](0039-an-imports-rows-die-with-its-review.md) | An import's rows die with its review, so retention keeps only the receipt | Implemented |
+| [0041](0041-what-the-roadmap-decided-on-its-own.md) | The plan moves to GitHub issues, and what the roadmap decided on its own | Implemented |
 
 **Status** — *Accepted*: decided, not yet built. *Implemented*: decided and in the code.
 *Superseded*: replaced by a later record.

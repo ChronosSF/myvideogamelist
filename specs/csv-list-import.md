@@ -1,8 +1,8 @@
 # Spec — Import lists from other game trackers (CSV)
 
 Status: **partly superseded — being built, Grouvee first**
-Relates to: `ROADMAP.md` Tier 2 "Import from Steam / PSN / Xbox / GOG" (line 57) and the
-paid-tier table row "Import from Steam/PSN/Xbox" (line 187).
+Relates to: the Steam import (#124), the next tracker presets and the matcher (#125), and the
+import row of the paid-tier table in ADR [0010](../docs/decisions/0010-monetization-model.md).
 
 > **Read `docs/decisions/0037-a-tracker-import-carries-history.md` before this document.**
 > This spec was written in August 2026 from public documentation, without a real export in hand. A

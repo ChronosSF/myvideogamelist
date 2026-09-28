@@ -1,6 +1,6 @@
 # 0026. A library import records ownership, not history
 
-**Status:** Accepted
+**Status:** Accepted. The framework this needs — the `Origin` column, the job tables and the `IImportSource` seam — shipped with [0037](0037-a-tracker-import-carries-history.md); the Steam source itself is an open GitHub issue.
 
 ## Context
 

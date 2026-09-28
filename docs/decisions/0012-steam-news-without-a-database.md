@@ -1,6 +1,6 @@
 # 0012. Steam news is cached in memory, not stored in the database
 
-**Status:** Implemented
+**Status:** Implemented. Two things below stayed open and are now GitHub issues: the background refresh (N3), whose objection to a per-instance job [0038](0038-where-scheduled-work-lives.md) has since answered, and whether the Steam AppID map moves into `CachedGames`, which [0035](0035-a-local-copy-of-what-igdb-said.md) made answerable.
 
 > **Later note.** The Context below describes the PostgreSQL move as pending, which it was when
 > this was written. PostgreSQL has since landed locally ([0008](0008-postgresql-over-sqlite.md),

@@ -66,10 +66,10 @@ myvideogamelist.client/
   src/resources/                Resource routes: robots.txt and the sitemaps. A loader, no component
   src/lib/                      apiUrl(), useStoredNumberSet(), pageMeta()
 docs/decisions/                 Architecture decision records
-docs/data-model-plan.md         Schema the roadmap implies, by table, with sequencing
+docs/data-model-plan.md         The tables not built yet, and the two constraints every table answers to
 scripts/                        Dev-only tools. These print SQL to stdout and never open a
                                 database connection — piping to psql stays a deliberate act
-ROADMAP.md                      Forward-looking plan
+ROADMAP.md                      Not the plan any more: where it lives (GitHub issues), and the old IDs' map
 ```
 
 ## Things that will bite you
@@ -398,9 +398,21 @@ ROADMAP.md                      Forward-looking plan
 Path-scoped conventions live in `.claude/rules/`: `backend.md` for C# and `frontend.md`
 for the client. They load automatically when you work on matching files.
 
+## Open work
+
+The plan is the repository's GitHub issues, not a file. `gh issue list --label feature` is the
+product work, `--label platform` the deployment, operations and quality work, and
+`--label question` a decision still open with no feature attached; a `needs: …` label names the
+gate an issue waits behind, and the pinned **What's next** issue holds the order. Before starting
+on something, `gh issue view <n>`: the issue says what is already decided, with links to the
+records and specs, and what is still open. A follow-up noticed mid-task goes into an issue — a
+new one, or a checklist line on the feature's — never into a plan file. `ROADMAP.md` is the map
+from the old plan's identifiers (`D12`, `N3`, `P5`, …), which code comments and records still
+cite, to where each item lives now. See `docs/decisions/0041-*`.
+
 ## Decisions
 
 `docs/decisions/` records architectural decisions and the reasoning behind them. Read the
 relevant record before changing anything it covers, and add one when you make a call that
-future work would otherwise have to reverse-engineer. `ROADMAP.md` is the plan; the ADRs
-are why the code is the way it is.
+future work would otherwise have to reverse-engineer. The ADRs are why the code is the way it
+is; the issues are what is still to do.
