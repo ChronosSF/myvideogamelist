@@ -1,6 +1,6 @@
 # 0001. IGDB is the source of truth for game data
 
-**Status:** Implemented
+**Status:** Implemented. The metadata cache the consequences below call for is [0035](0035-a-local-copy-of-what-igdb-said.md).
 
 ## Context
 
