@@ -43,3 +43,50 @@ actual cost rather than artificial gating.
 - **Set the free-tier limits before launch.** Trakt took sustained backlash for retroactively
   repricing legacy subscribers and tightening free limits after the fact. If pricing must
   change later, grandfather existing subscribers.
+
+## The line, as drawn — added 2026-09-24
+
+The plan that carried this table has moved to GitHub issues
+([0041](0041-what-the-roadmap-decided-on-its-own.md)), so the free/paid line it drew is recorded
+here, where the decision is. These are the limits the last consequence above says to set before
+launch. Two rows have been overtaken since the table was drawn and are stated as they now stand:
+export, which [0024](0024-the-ownership-contract.md) made free in its JSON form; and import, which
+`specs/csv-list-import.md` §8 argues belongs on the free side for tracker files, with the recurring
+platform re-sync as the paid half. One row changed sign: the plan sold a private profile as paid,
+and [0027](0027-usernames-and-public-profiles.md) has since made private the default for everyone,
+so keeping a profile private is free.
+
+| | Free | Paid |
+|---|---|---|
+| Games tracked, all lists, wishlist | Unlimited | Unlimited |
+| Upcoming calendar, game pages, browse, search | ✅ | ✅ |
+| **Ads** | Shown | **Removed** |
+| Custom lists | Up to 3 | Unlimited |
+| Profile statistics | Counts — games tracked, per status, the wishlist's size, favourites, reviews | Everything derived beyond a count: completion rate, mean score and distribution, the monthly chart, streaks, time to finish, hours, the platform and genre breakdowns. Shown to visitors too, when the profile is public — the owner's entitlement decides, never the viewer's |
+| Private profile | ✅ — the default, for everyone (0027) | ✅ |
+| Yearly wrapped / recap | — | ✅ |
+| Price-drop alerts | 5 tracked games | Unlimited |
+| Price history | Current + best price | Full history charts and all-time low |
+| Bundle & giveaway alerts | — | ✅ |
+| Import | Tracker files, capped — the spec proposes three jobs a month | Platform re-sync, unlimited |
+| Export | **JSON, free** — portability is a right (0024) | CSV, re-importable, column selection, scheduled |
+| Release notifications | In-app | In-app + email |
+| Early access to new features | — | ✅ |
+| Supporter badge on profile | — | ✅ |
+
+The statistics row was drawn on 2026-09-24, figure by figure, in `specs/profile-statistics-tiers.md`;
+#149 builds it. It is the one row that takes something away — the full page shipped free for
+everyone ([0023](0023-profile-statistics-derived-at-read-time.md)) — and it is drawn before launch
+precisely so that it is not the retroactive tightening the last consequence warns against: nobody
+but the owner has an account yet.
+
+Two rules the plan stated beside the table, to read with the consequences above.
+
+**The ad provider is Google AdSense, and there is no plan for a second one.** The plan said "one
+provider to start"; the owner's decision (2026-09-24) is one provider full stop. More providers
+would mean more scripts, more consent surface and worse performance, and a second one is not
+worth any of that on this site. So nothing is built to abstract over providers — an ad slot is an
+AdSense slot — and the consent banner in M9 has to satisfy Google's requirements for visitors in
+the EEA and the UK, not a generic notion of consent.
+
+**Free-tier limits behind feature flags**, so they can be tuned without a deploy.
