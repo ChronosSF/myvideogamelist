@@ -210,6 +210,10 @@ public record ImportJobExportDto(
 /// It is what the import <em>would</em> write, which for a job still pending is the only place that
 /// interpretation exists.
 /// </remarks>
+/// <param name="Candidates">
+/// The IGDB games the matcher offered, which is what a <c>MatchKind</c> of <c>ambiguous</c> means
+/// in a document that would otherwise state the verdict and not the alternatives.
+/// </param>
 public record ImportRowExportDto(
     Guid JobId,
     string? SourceRef,
@@ -217,6 +221,7 @@ public record ImportRowExportDto(
     int? GameId,
     string MatchKind,
     string Decision,
+    IReadOnlyList<int> Candidates,
     JsonElement Values);
 
 /// <summary>

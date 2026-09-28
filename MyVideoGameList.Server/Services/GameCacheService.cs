@@ -56,6 +56,41 @@ public class GameCacheService(
         return Merge(wanted, stored, fetched);
     }
 
+    public async Task StoreAsync(
+        IReadOnlyCollection<GameDto> games, CancellationToken cancellationToken = default)
+    {
+        // Deduplicated by the caller's data rather than trusted from it: the write below indexes
+        // the list by id, and two copies of one game would take the whole write down with an
+        // exception the caller never asked for.
+        var distinct = games.DistinctBy(game => game.Id).ToList();
+        if (distinct.Count == 0) return;
+
+        var now = clock.GetUtcNow();
+        var ids = distinct.Select(game => game.Id).ToList();
+
+        // Rows already inside the refresh interval are left alone. A warm has no better answer for
+        // them than the refresh that wrote them, and callers hand over overlapping sets seconds
+        // apart — an import's matching passes offer many of the same games again and again — so
+        // without this one import rewrites the same jsonb rows hundreds of times, and the write-ahead
+        // log carries every one.
+        var fresh = await db.CachedGames
+            .AsNoTracking()
+            .Where(game => ids.Contains(game.GameId))
+            .Select(game => new { game.GameId, game.RefreshedAt })
+            .ToListAsync(cancellationToken);
+
+        var known = fresh
+            .Where(game => now - game.RefreshedAt < RefreshAfter)
+            .Select(game => game.GameId)
+            .ToHashSet();
+
+        var wanted = distinct.Where(game => !known.Contains(game.Id)).ToList();
+        if (wanted.Count == 0) return;
+
+        await StoreAsync(
+            wanted.Select(game => game.Id).ToList(), wanted, now, cancellationToken);
+    }
+
     /// <summary>
     /// Asks IGDB for the ids that are missing or past <see cref="RefreshAfter"/>, and stores what
     /// comes back.

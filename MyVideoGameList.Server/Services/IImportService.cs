@@ -19,11 +19,18 @@ public sealed class ImportRejectedException(string message) : Exception(message)
 /// exemption in one service is what stops it leaking into the ordinary one.
 /// </para>
 /// <para>
-/// There is no background job and no queue. The spec expected one because it expected a matching
-/// pass against IGDB; Grouvee carries the ids, so the upload is parse-and-persist with no network
-/// call in it at all, and the review reads game metadata through <see cref="IGameCacheService"/>
-/// exactly as the lists page does for the same number of games. If a preset that needs real
-/// matching arrives, that is when to add the queue §S5 describes — not before.
+/// <b>The upload still makes no network call, and there is still no queue.</b> The spec expected
+/// both, because it expected every row to need matching against IGDB; Grouvee carries the ids, so
+/// storing a file is parse-and-persist, and the review reads game metadata through
+/// <see cref="IGameCacheService"/> exactly as the lists page does for the same number of games.
+/// Matching now exists for the rows no source resolved, and it is its own endpoint rather than part
+/// of the upload — which keeps a third party out of the path of storing somebody's file, and keeps
+/// an IGDB outage from turning a whole import into "nothing matched" (ADR 0037).
+/// </para>
+/// <para>
+/// <see cref="MatchAsync"/> is bounded and repeatable rather than queued, so §S5's hosted service
+/// is still not needed: a pass is an ordinary request that either succeeds whole or writes nothing,
+/// and asking again is what advances a large import. See ADR 0040.
 /// </para>
 /// </remarks>
 public interface IImportService
@@ -46,6 +53,26 @@ public interface IImportService
     /// are the same answer, so the endpoint cannot be used to ask whether an id is in use.
     /// </remarks>
     Task<ImportReviewDto?> GetReviewAsync(
+        string userId, Guid jobId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Looks up a bounded batch of the rows whose source named no game, and records what it found.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Only rows no pass has already been over, so calling this repeatedly walks an import instead
+    /// of re-asking the same unanswerable questions: a row the matcher could not resolve becomes
+    /// <c>unmatched</c>, which says it has been looked at. The answer carries the rows the pass
+    /// examined and nothing else — an empty list is the signal to stop.
+    /// </para>
+    /// <para>
+    /// A write, deliberately, although it reads like a query. It changes rows, it moves the job's
+    /// retention clock, and it spends somebody else's rate limit — none of which belongs behind a
+    /// <c>GET</c> (ADR 0033).
+    /// </para>
+    /// </remarks>
+    /// <returns>What the pass examined, or null when there is no such pending job.</returns>
+    Task<ImportMatchPassDto?> MatchAsync(
         string userId, Guid jobId, CancellationToken cancellationToken = default);
 
     /// <summary>

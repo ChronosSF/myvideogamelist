@@ -36,10 +36,22 @@ public record ImportReviewDto(
 /// commit.
 /// </param>
 /// <param name="Selected">How many rows are currently set to import — what the commit button says.</param>
+/// <param name="Ambiguous">
+/// Rows the matcher found candidates for but would not choose between. What the review screen
+/// counts to say how much is left to resolve by hand.
+/// </param>
+/// <param name="Unlooked">
+/// Rows no matching pass has been over yet. This is what tells the screen there is more matching to
+/// do — an <c>unmatched</c> row <em>has</em> been looked at and will not change by asking again, so
+/// counting the two together would leave a "find matches" button that never stopped offering
+/// itself.
+/// </param>
 public record ImportReviewSummaryDto(
     int Total,
     int Matched,
+    int Ambiguous,
     int Unmatched,
+    int Unlooked,
     int StatusUnrecognised,
     int AlreadyTracked,
     int Selected);
@@ -54,6 +66,12 @@ public record ImportReviewSummaryDto(
 /// cover art, so a null here costs a thumbnail rather than a row.
 /// </param>
 /// <param name="Status">One of <c>ListStatusKeys</c>, or null for a row that will carry no status.</param>
+/// <param name="Candidates">
+/// The games the matcher would offer for an <c>ambiguous</c> row, best first, so the user resolves
+/// it in one click (<c>specs/csv-list-import.md</c> §M3). Empty for every other row, and empty as
+/// well for a candidate id this app holds no metadata for — the same rule <paramref name="Game"/>
+/// follows, since a candidate nobody can see is not a candidate.
+/// </param>
 /// <param name="AlreadyTracked">
 /// The user already has an entry for this game. Such a row defaults to <c>skip</c>, and importing
 /// it overwrites what is there — which is why it is opt-in per row.
@@ -64,6 +82,7 @@ public record ImportReviewRowDto(
     int? ReleaseYear,
     int? GameId,
     GameDto? Game,
+    IReadOnlyList<GameDto> Candidates,
     string MatchKind,
     string Decision,
     string? SourceStatus,
@@ -76,6 +95,25 @@ public record ImportReviewRowDto(
     int PlaythroughCount,
     int? MinutesPlayed,
     bool AlreadyTracked);
+
+/// <summary>
+/// What one matching pass did.
+/// </summary>
+/// <remarks>
+/// <para>
+/// <b>Only the rows the pass examined, never the whole review.</b> A pass resolves a bounded batch
+/// and the client runs it until nothing is left, so answering with every row would re-read,
+/// re-serialise and re-send the entire job on each of them — for the five-thousand-row id-less
+/// export this exists for, that is gigabytes of JSON to import one file. The client merges these
+/// into the review it already holds.
+/// </para>
+/// <para>
+/// No summary, for the same reason: the counts are facts about rows the client has, so it recounts
+/// rather than being told. And <paramref name="Examined"/> is what it stops on — a pass that
+/// examined nothing has nothing left to examine.
+/// </para>
+/// </remarks>
+public record ImportMatchPassDto(ImportJobDto Job, IReadOnlyList<ImportReviewRowDto> Examined);
 
 /// <summary>
 /// The user's decisions about some rows. Only the rows named are touched, so the review screen can

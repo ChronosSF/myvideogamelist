@@ -17,6 +17,7 @@ namespace MyVideoGameList.Server.Services;
 public class ImportService(
     ApplicationDbContext db,
     IGameCacheService gameCache,
+    IImportMatcher matcher,
     TimeProvider clock) : IImportService
 {
     /// <summary>
@@ -47,6 +48,18 @@ public class ImportService(
 
     /// <summary>How much of the file a preset is shown when asked whether it recognises it.</summary>
     private const int SniffLength = 2048;
+
+    /// <summary>
+    /// How many rows one matching pass reads in order to fill the matcher's budget of titles.
+    /// </summary>
+    /// <remarks>
+    /// Larger than <c>ImportMatcher.MaxLookups</c> and not equal to it, because the matcher's bound
+    /// is on <em>distinct</em> titles and a library repeats them — a platform-per-row export lists
+    /// the same game three times. Reading a hundred rows to find twenty questions costs one query
+    /// and makes a pass worth more; the matcher answers what it can and the rest stay unlooked-at
+    /// for the next one.
+    /// </remarks>
+    internal const int MaxMatchRows = 100;
 
     /// <summary>
     /// The <c>UserGameEntry.Notes</c> column's length, which an imported note is cut to rather than
@@ -142,7 +155,10 @@ public class ImportService(
                 SourceRef = payload.SourceRef is { } reference ? Truncate(reference, 64) : null,
                 Title = Truncate(payload.Title, 512),
                 GameId = payload.GameId,
-                MatchKind = matched ? ImportMatchKinds.Matched : ImportMatchKinds.Unmatched,
+
+                // Not `unmatched` — nothing has looked yet, and saying otherwise would put this
+                // row out of reach of every matching pass. See ImportMatchKinds.Unlooked.
+                MatchKind = matched ? ImportMatchKinds.Matched : ImportMatchKinds.Unlooked,
 
                 // Only matched rows with nothing in their way are pre-checked (§M3). An unmatched
                 // row needs the user to say which game it is before it can mean anything, and a
@@ -195,10 +211,16 @@ public class ImportService(
             .OrderBy(r => r.Id)
             .ToListAsync(cancellationToken);
 
-        var gameIds = rows.Where(r => r.GameId is not null).Select(r => r.GameId!.Value).Distinct().ToList();
+        // Matched games and candidate games in one list, so a screen full of choices still costs
+        // one lookup rather than one per row.
+        var gameIds = rows.Where(r => r.GameId is not null).Select(r => r.GameId!.Value)
+            .Concat(rows.SelectMany(r => r.Candidates))
+            .Distinct()
+            .ToList();
 
         // Through the cache rather than IGDB, so the review renders during an outage — the same
-        // reason a list does (ADR 0035).
+        // reason a list does (ADR 0035). A matching pass stores what it offered on the way past,
+        // so the candidates are usually already here.
         var games = (await gameCache.GetGamesAsync(gameIds, cancellationToken)).ToDictionary(g => g.Id);
         var tracked = await TrackedGameIdsAsync(userId, gameIds, cancellationToken);
 
@@ -207,12 +229,89 @@ public class ImportService(
         var summary = new ImportReviewSummaryDto(
             Total: dtos.Count,
             Matched: dtos.Count(r => r.MatchKind == ImportMatchKinds.Matched),
+            Ambiguous: dtos.Count(r => r.MatchKind == ImportMatchKinds.Ambiguous),
             Unmatched: dtos.Count(r => r.MatchKind == ImportMatchKinds.Unmatched),
+            Unlooked: dtos.Count(r => r.MatchKind == ImportMatchKinds.Unlooked),
             StatusUnrecognised: dtos.Count(r => r.StatusUnrecognised),
             AlreadyTracked: dtos.Count(r => r.AlreadyTracked),
             Selected: dtos.Count(r => r.Decision == ImportDecisions.Import));
 
         return new ImportReviewDto(ToDto(job), summary, dtos);
+    }
+
+    public async Task<ImportMatchPassDto?> MatchAsync(
+        string userId, Guid jobId, CancellationToken cancellationToken = default)
+    {
+        var job = await db.ImportJobs
+            .FirstOrDefaultAsync(j => j.Id == jobId && j.UserId == userId, cancellationToken);
+
+        if (job is null || job.State != ImportJobStates.Pending) return null;
+
+        // Rows nothing has looked at, which is what makes repeating a pass walk the job forwards:
+        // a row the matcher already failed to place is `unmatched` rather than `unlooked`, and
+        // asking IGDB the same question an hour later would spend the whole budget on rows that
+        // cannot move.
+        var rows = await db.ImportRows
+            .Where(r => r.ImportJobId == jobId && r.UserId == userId
+                && r.MatchKind == ImportMatchKinds.Unlooked)
+            .OrderBy(r => r.Id)
+            .Take(MaxMatchRows)
+            .ToListAsync(cancellationToken);
+
+        if (rows.Count == 0) return new ImportMatchPassDto(ToDto(job), []);
+
+        var queries = rows.ToDictionary(
+            row => row.Id,
+            row => new ImportMatchQuery(row.Title, ImportPayloadJson.Read(row.Payload).ReleaseYear));
+
+        // **Every read happens before anything of ours is pending on the context, and that order is
+        // load-bearing** — the same trap WriteAsync carries a comment about. Both the matcher and
+        // the cache read below go through IGameCacheService, which shares this scoped DbContext and
+        // saves through it, so a row mutated first would be committed by somebody else's write.
+        //
+        // The matcher is not wrapped in a catch, deliberately: an IGDB failure here becomes the 502
+        // UpstreamFailureHandler makes of every third-party failure (ADR 0034). Answering "nothing
+        // matched" during an outage would tell somebody their library is unrecognisable when it is
+        // merely unreachable, and nothing has been written, so repeating the pass is free.
+        var results = await matcher.MatchAsync(queries.Values.ToList(), cancellationToken);
+
+        // Every game any result named, matched or merely offered. One list, so the library check
+        // that decides the defaults and the metadata that renders the rows are each read once.
+        var named = results.Values
+            .SelectMany(result => result.GameId is { } id ? result.Candidates.Append(id) : result.Candidates)
+            .Distinct()
+            .ToList();
+
+        var games = (await gameCache.GetGamesAsync(named, cancellationToken)).ToDictionary(g => g.Id);
+        var tracked = await TrackedGameIdsAsync(userId, named, cancellationToken);
+
+        var examined = new List<ImportRow>(rows.Count);
+
+        foreach (var row in rows)
+        {
+            // Absent means the matcher ran out of budget before reaching this row, which is not an
+            // answer. Leaving it `unlooked` is what puts it at the front of the next pass.
+            if (!results.TryGetValue(queries[row.Id], out var result)) continue;
+
+            row.MatchKind = result.Kind;
+            row.GameId = result.GameId;
+            row.Candidates = [.. result.Candidates];
+
+            // Pre-checked on the same terms an id in the file earns (§M3): resolved beyond doubt,
+            // and with nothing already in its way. An ambiguous row stays on skip, because nobody
+            // has chosen anything yet.
+            if (result.GameId is { } gameId && !tracked.Contains(gameId))
+                row.Decision = ImportDecisions.Import;
+
+            examined.Add(row);
+        }
+
+        // Matching is work on the review, so it keeps the job alive exactly as saving a decision
+        // does.
+        if (!await SaveTouchingAsync(job, clock.GetUtcNow(), cancellationToken)) return null;
+
+        return new ImportMatchPassDto(
+            ToDto(job), examined.Select(row => ToReviewDto(row, games, tracked)).ToList());
     }
 
     public async Task<bool> SetDecisionsAsync(
@@ -241,11 +340,15 @@ public class ImportService(
                 ? ImportDecisions.Import
                 : ImportDecisions.Skip;
 
-            // Picking a game for an unmatched row is what makes it importable (§M4).
+            // Picking a game for an unmatched or ambiguous row is what makes it importable (§M4).
             if (decision.GameId is { } gameId)
             {
                 row.GameId = gameId;
                 row.MatchKind = ImportMatchKinds.Matched;
+
+                // The alternatives go with the question they answered. Keeping them would leave a
+                // resolved row offering the user a list of games that are not the one they chose.
+                row.Candidates = [];
             }
 
             if (decision.Status is { } status && statuses.Contains(status))
@@ -253,31 +356,7 @@ public class ImportService(
                     ImportPayloadJson.Read(row.Payload) with { Status = status, StatusUnrecognised = false });
         }
 
-        // Working on a review is what keeps it alive: the retention sweep measures a pending job
-        // from this, not from when the file was uploaded, so somebody can take a fortnight per
-        // sitting rather than a fortnight in total.
-        //
-        // It is also what makes the write detectable. The rows are read in a second round trip, so
-        // a job swept between the two reads leaves that query empty, the loop above doing nothing
-        // and this method returning "saved" for decisions that landed nowhere. Touching the job
-        // puts an UPDATE in this SaveChanges, and an UPDATE that matches no row is an error.
-        //
-        // Marked modified rather than left to EF noticing a new value, so that the detection does
-        // not quietly depend on two saves never reading the same instant off the clock.
-        job.UpdatedAt = clock.GetUtcNow();
-        db.Entry(job).Property(j => j.UpdatedAt).IsModified = true;
-
-        try
-        {
-            await db.SaveChangesAsync(cancellationToken);
-        }
-        catch (DbUpdateConcurrencyException)
-        {
-            if (await JobIsGoneAsync(userId, jobId, cancellationToken)) return false;
-            throw;
-        }
-
-        return true;
+        return await SaveTouchingAsync(job, clock.GetUtcNow(), cancellationToken);
     }
 
     public async Task<ImportResultDto?> CommitAsync(
@@ -327,7 +406,6 @@ public class ImportService(
         job.ImportedCount = imported;
         job.SkippedCount = skipped.Count;
         job.CompletedAt = now;
-        job.UpdatedAt = now;
 
         // The rows die with the review they belong to. Everything they held has either become a
         // library entry or been counted into SkippedCount above, and nothing reads them again:
@@ -344,19 +422,8 @@ public class ImportService(
         //
         // WriteAsync spends real time in IGDB-backed calls between the state check above and this
         // line, which is long enough for the retention sweep to delete a job that has just crossed
-        // its window. The closing UPDATE then matches nothing and EF throws. Left unhandled that is
-        // a 500 — no registered handler claims a concurrency exception — where the method already
-        // has a 404 for exactly this, and the whole transaction rolls back anyway, so nothing was
-        // written for the user to be told about.
-        try
-        {
-            await db.SaveChangesAsync(cancellationToken);
-        }
-        catch (DbUpdateConcurrencyException)
-        {
-            if (await JobIsGoneAsync(userId, jobId, cancellationToken)) return null;
-            throw;
-        }
+        // its window — which is the race SaveTouchingAsync turns into this method's own 404.
+        if (!await SaveTouchingAsync(job, now, cancellationToken)) return null;
 
         return new ImportResultDto(ToDto(job), skipped);
     }
@@ -380,21 +447,55 @@ public class ImportService(
 
         job.State = ImportJobStates.Cancelled;
         job.CompletedAt = now;
-        job.UpdatedAt = now;
 
         // A cancelled job keeps no rows either, and has even less claim to them than a committed
         // one: nothing it held was written anywhere.
         db.ImportRows.RemoveRange(rows);
 
-        // The same race as the other two writes, and the least consequential of the three: a job
-        // the sweep has already deleted is one this call was asking to be rid of.
+        // The same race as the other writes, and the least consequential of them: a job the sweep
+        // has already deleted is one this call was asking to be rid of.
+        return await SaveTouchingAsync(job, now, cancellationToken);
+    }
+
+    /// <summary>
+    /// Stamps the job's clock, saves, and says whether the job was still there to save.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Every write this service makes owes both halves of this, so they are written once. Touching
+    /// the job is what <em>keeps</em> it: retention measures a pending job from <c>UpdatedAt</c>
+    /// rather than from the upload, so somebody can take a fortnight per sitting rather than a
+    /// fortnight in total.
+    /// </para>
+    /// <para>
+    /// It is also what makes the write detectable. A method's rows are read in a separate round
+    /// trip, so a job swept between the two leaves that query empty and the method reporting
+    /// success for changes that landed nowhere. An <c>UPDATE</c> on the job cannot land nowhere
+    /// quietly — EF raises <see cref="DbUpdateConcurrencyException"/> for one matching no rows —
+    /// and this turns that into the 404 each endpoint already has.
+    /// </para>
+    /// <para>
+    /// The timestamp is passed in rather than read here, so a caller that also sets
+    /// <c>CompletedAt</c> stamps one instant on both columns.
+    /// </para>
+    /// <para>
+    /// Marked modified rather than left to EF noticing a new value, so the detection does not
+    /// quietly depend on two saves never reading the same instant off the clock.
+    /// </para>
+    /// </remarks>
+    private async Task<bool> SaveTouchingAsync(
+        ImportJob job, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        job.UpdatedAt = now;
+        db.Entry(job).Property(j => j.UpdatedAt).IsModified = true;
+
         try
         {
             await db.SaveChangesAsync(cancellationToken);
         }
         catch (DbUpdateConcurrencyException)
         {
-            if (await JobIsGoneAsync(userId, jobId, cancellationToken)) return false;
+            if (await JobIsGoneAsync(job.UserId, job.Id, cancellationToken)) return false;
             throw;
         }
 
@@ -677,6 +778,14 @@ public class ImportService(
             ReleaseYear: payload.ReleaseYear,
             GameId: row.GameId,
             Game: row.GameId is { } id ? games.GetValueOrDefault(id) : null,
+
+            // In the matcher's own order, and without the ones this app holds no metadata for.
+            // A candidate is offered so somebody can look at a cover and a year and recognise
+            // their game; one that would render as a bare id helps nobody choose.
+            Candidates: row.Candidates
+                .Select(games.GetValueOrDefault)
+                .OfType<GameDto>()
+                .ToList(),
             MatchKind: row.MatchKind,
             Decision: row.Decision,
             SourceStatus: payload.SourceStatus,

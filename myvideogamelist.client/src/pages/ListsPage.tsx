@@ -54,6 +54,10 @@ export function ListsPage() {
     const entries = lists[activeTab];
     const sort = sortFor(activeTab);
 
+    // Nothing tracked anywhere, which is not the same as nothing on this tab: an account with four
+    // hundred games and an empty On Hold shelf has an empty `entries` every time it opens that tab.
+    const libraryEmpty = LIST_IDS.every(id => lists[id].length === 0);
+
     // Options come from the platforms actually present across the user's lists, so the filter
     // never offers a choice that would match nothing.
     const platforms = useMemo<PlatformDto[]>(() => {
@@ -211,6 +215,24 @@ export function ListsPage() {
                                 </svg>
                                 Browse Games
                             </Link>
+
+                            {/* Retyping a few hundred games is the single biggest reason people
+                                abandon a new tracker — the premise the whole importer rests on
+                                (`specs/csv-list-import.md` §1) — and an empty library is the only
+                                moment that person is still here to be told there is a way out of
+                                it. The importer's one other link is a card on the account page,
+                                which is where somebody goes to run it a second time rather than
+                                where a new account looks. Quiet, and second, because browsing is
+                                still the right first move for somebody who tracked nothing
+                                anywhere. */}
+                            {libraryEmpty && (
+                                <Link
+                                    to="/import"
+                                    className="block mt-4 text-blue-400 light:text-blue-700 text-sm font-semibold hover:underline"
+                                >
+                                    Bring your games across from another tracker
+                                </Link>
+                            )}
                         </div>
                     </div>
                 )}

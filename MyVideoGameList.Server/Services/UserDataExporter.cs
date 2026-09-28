@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using MyVideoGameList.Server.Data;
 using MyVideoGameList.Server.DTOs;
 using MyVideoGameList.Server.Models;
+using MyVideoGameList.Server.Services.Import;
 
 namespace MyVideoGameList.Server.Services;
 
@@ -281,7 +282,11 @@ public class UserDataExporter(ApplicationDbContext db, TimeProvider clock) : IUs
             .Where(r => r.UserId == draft.UserId)
             .OrderBy(r => r.ImportJobId)
             .ThenBy(r => r.Id)
-            .Select(r => new { r.ImportJobId, r.SourceRef, r.Title, r.GameId, r.MatchKind, r.Decision, r.Payload })
+            .Select(r => new
+            {
+                r.ImportJobId, r.SourceRef, r.Title, r.GameId, r.MatchKind, r.Decision,
+                r.Candidates, r.Payload
+            })
             .ToListAsync(cancellationToken);
 
         // The payload is re-parsed rather than passed through as a string, so the export reads as
@@ -291,7 +296,7 @@ public class UserDataExporter(ApplicationDbContext db, TimeProvider clock) : IUs
         draft.ImportRows = rows
             .Select(r => new ImportRowExportDto(
                 r.ImportJobId, r.SourceRef, r.Title, r.GameId, r.MatchKind, r.Decision,
-                JsonSerializer.Deserialize<JsonElement>(r.Payload)))
+                r.Candidates, JsonSerializer.Deserialize<JsonElement>(r.Payload)))
             .ToList();
     }
 
