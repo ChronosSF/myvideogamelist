@@ -1,6 +1,6 @@
 # 0027. Usernames are a namespace, and a profile is published only when asked
 
-**Status:** Implemented
+**Status:** Implemented. Of the consequences below, the sitemap is [0036](0036-what-a-crawler-is-told.md), and the edge invalidation on withdrawal (D14) is an open GitHub issue.
 
 ## Context
 

@@ -95,6 +95,32 @@ public class ImportController(
         }
     }
 
+    /// <summary>
+    /// Asks IGDB about a batch of the rows whose file named no game, and answers with what it
+    /// examined.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A <c>POST</c> although it reads like a search. It writes what it finds onto the rows, moves
+    /// the job's retention clock and spends a third party's rate limit, so putting it behind a
+    /// <c>GET</c> would make it both forgeable and cacheable (ADR 0033).
+    /// </para>
+    /// <para>
+    /// One call resolves a bounded batch, so a large import is several calls. The client repeats it
+    /// until a pass comes back having examined nothing, which is what makes closing the tab cost
+    /// nothing (§C4).
+    /// </para>
+    /// </remarks>
+    [HttpPost("jobs/{jobId:guid}/match")]
+    public async Task<ActionResult<ImportMatchPassDto>> Match(Guid jobId, CancellationToken cancellationToken)
+    {
+        var user = await userManager.GetUserAsync(User);
+        if (user is null) return Unauthorized();
+
+        var pass = await importService.MatchAsync(user.Id, jobId, cancellationToken);
+        return pass is null ? NotFound() : Ok(pass);
+    }
+
     /// <summary>Records what the user decided about some rows before committing.</summary>
     [HttpPatch("jobs/{jobId:guid}/rows")]
     public async Task<IActionResult> SetDecisions(

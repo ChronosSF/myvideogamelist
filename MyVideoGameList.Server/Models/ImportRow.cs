@@ -4,19 +4,43 @@ namespace MyVideoGameList.Server.Models;
 /// How confidently a row was resolved to an IGDB game.
 /// </summary>
 /// <remarks>
-/// <c>ambiguous</c> is deliberately absent until something can produce it. Grouvee's export carries
-/// IGDB ids, so its rows are resolved or they are not; the fuzzy matcher that produces candidate
-/// lists is the next preset's problem, and a state nothing writes is a state nothing tests
-/// (ADR 0037, decision 2).
+/// Only <see cref="Matched"/> is ever pre-checked on the review screen, which is the whole reason
+/// there are three of these rather than a number: the other two are both "somebody has to look at
+/// this", and telling them apart is what decides whether the screen offers a choice or asks for a
+/// search. See <c>ImportMatching</c>.
 /// </remarks>
 public static class ImportMatchKinds
 {
-    /// <summary>The source named an IGDB game and we have it.</summary>
+    /// <summary>
+    /// The source named no game and no matching pass has looked for one yet.
+    /// </summary>
+    /// <remarks>
+    /// <b>Distinct from <see cref="Unmatched"/>, and that distinction is what makes matching
+    /// resumable.</b> One means nobody has asked, the other means somebody asked and IGDB had no
+    /// answer. Collapse them and a row the matcher could not place is indistinguishable from one it
+    /// has never seen, so every pass spends its whole budget re-asking the same unanswerable
+    /// questions instead of reaching the rows behind them. It is a state of the row, so it lives in
+    /// the column that holds the row's state rather than being inferred from a null elsewhere.
+    /// </remarks>
+    public const string Unlooked = "unlooked";
+
+    /// <summary>
+    /// The source named an IGDB game and we have it, or the matcher found exactly one answer it
+    /// could not be wrong about.
+    /// </summary>
     public const string Matched = "matched";
 
     /// <summary>
-    /// No id in the source, or an id IGDB no longer knows. Never imported without the user
-    /// choosing a game for it, and carried into the failure report if they do not.
+    /// The matcher found games worth offering but no single answer — several titles identical, a
+    /// near miss, or years that disagree. <c>ImportRow.Candidates</c> holds them, and the row is
+    /// not imported until its owner picks one (<c>specs/csv-list-import.md</c> §M3).
+    /// </summary>
+    public const string Ambiguous = "ambiguous";
+
+    /// <summary>
+    /// A matching pass looked and found nothing worth offering — or the source named an id IGDB no
+    /// longer knows. Never imported without the user choosing a game for it, and carried into the
+    /// failure report if they do not.
     /// </summary>
     public const string Unmatched = "unmatched";
 }
@@ -97,6 +121,17 @@ public class ImportRow
 
     /// <summary>One of <see cref="ImportMatchKinds"/>.</summary>
     public required string MatchKind { get; set; }
+
+    /// <summary>
+    /// The IGDB ids the matcher thought this row might be, best first.
+    /// </summary>
+    /// <remarks>
+    /// Populated only for <see cref="ImportMatchKinds.Ambiguous"/>, and empty for every other kind:
+    /// whether a pass has <em>looked</em> is <see cref="MatchKind"/>'s to say, not this column's.
+    /// A plain array rather than a document, because that is what it is — PostgreSQL stores it as
+    /// <c>integer[]</c> and nothing has to serialise it on the way past.
+    /// </remarks>
+    public List<int> Candidates { get; set; } = [];
 
     /// <summary>One of <see cref="ImportDecisions"/>. Defaulted on creation, then the user's to change.</summary>
     public required string Decision { get; set; }

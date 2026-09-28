@@ -1,5 +1,13 @@
 import type { UserProfile } from '@/types/auth';
 import type { GameDto, PlatformDto } from '@/types/game';
+import {
+    IMPORT_DECISION,
+    IMPORT_MATCH,
+    IMPORT_STATE,
+    type ImportJob,
+    type ImportReview,
+    type ImportReviewRow,
+} from '@/types/import';
 import type { ListEntryDto } from '@/types/list';
 import type { EntryDetailDto, PlaythroughDto, ReviewDto } from '@/types/playthrough';
 
@@ -101,6 +109,74 @@ export function review(overrides: Partial<ReviewDto> = {}): ReviewDto {
         createdAt: '2026-01-01T00:00:00+00:00',
         updatedAt: '2026-01-01T00:00:00+00:00',
         ...overrides,
+    };
+}
+
+/** One import, as `/api/import/jobs` returns it. */
+export function importJob(overrides: Partial<ImportJob> = {}): ImportJob {
+    return {
+        id: 'job-1',
+        source: 'grouvee',
+        fileName: 'grouvee_export.json',
+        state: IMPORT_STATE.pending,
+        rowCount: 1,
+        importedCount: null,
+        skippedCount: null,
+        createdAt: '2026-09-22T12:00:00Z',
+        completedAt: null,
+        expiresAt: '2026-10-06T12:00:00Z',
+        ...overrides,
+    };
+}
+
+/** One row of a review. Eighteen fields, of which a test usually cares about two. */
+export function importRow(overrides: Partial<ImportReviewRow> = {}): ImportReviewRow {
+    return {
+        id: 1,
+        title: 'Metal Gear Solid 3',
+        releaseYear: 2004,
+        gameId: 379,
+        game: null,
+        candidates: [],
+        matchKind: IMPORT_MATCH.matched,
+        decision: IMPORT_DECISION.import,
+        sourceStatus: 'Played',
+        status: 'finished',
+        statusUnrecognised: false,
+        score: 10,
+        wishlist: false,
+        favourite: false,
+        hasNotes: false,
+        playthroughCount: 0,
+        minutesPlayed: null,
+        alreadyTracked: false,
+        ...overrides,
+    };
+}
+
+/**
+ * A whole review, with the summary derived from the rows rather than restated.
+ *
+ * Derived, because a fixture that stated its own counts would let a test assert against a summary
+ * the API could never produce — and the counting rules are the interesting part of more than one
+ * of these tests.
+ */
+export function importReview(rows: ImportReviewRow[], job: Partial<ImportJob> = {}): ImportReview {
+    const count = (kind: string) => rows.filter(row => row.matchKind === kind).length;
+
+    return {
+        job: importJob({ rowCount: rows.length, ...job }),
+        summary: {
+            total: rows.length,
+            matched: count(IMPORT_MATCH.matched),
+            ambiguous: count(IMPORT_MATCH.ambiguous),
+            unmatched: count(IMPORT_MATCH.unmatched),
+            unlooked: count(IMPORT_MATCH.unlooked),
+            statusUnrecognised: rows.filter(row => row.statusUnrecognised).length,
+            alreadyTracked: rows.filter(row => row.alreadyTracked).length,
+            selected: rows.filter(row => row.decision === IMPORT_DECISION.import).length,
+        },
+        rows,
     };
 }
 

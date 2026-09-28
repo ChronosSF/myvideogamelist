@@ -32,4 +32,34 @@ public interface IGameCacheService
     /// </remarks>
     Task<IReadOnlyList<GameDto>> GetGamesAsync(
         IEnumerable<int> ids, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Stores games the caller already has from IGDB, so that reading them back costs nothing.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// For the caller that went to IGDB for some other reason — the import matcher searches for
+    /// titles and gets whole games back — and knows those games are about to be rendered through
+    /// this cache. Without it the next read asks IGDB again for ids that were in hand a moment
+    /// before.
+    /// </para>
+    /// <para>
+    /// It stores only what it is given and writes no tombstone: an id absent from the list is one
+    /// the caller said nothing about, not one IGDB has no answer for. That distinction belongs to
+    /// <see cref="GetGamesAsync"/>, which is the method that actually asked. A row already inside
+    /// the refresh interval is left as it is, since this has no newer answer for it.
+    /// </para>
+    /// <para>
+    /// <b>Browse and search deliberately do not call this</b>, although they hold twenty mapped
+    /// games each and throw them away. This table is a copy of what IGDB said about games somebody
+    /// <em>tracks</em> (ADR 0035), nothing sweeps it, and filling it from every page of a listing
+    /// would grow it without bound with games nobody has. A caller belongs here when the games it
+    /// is storing are about to be read back through this cache.
+    /// </para>
+    /// <para>
+    /// Never throws for the write. A cache that cannot be written is a page that is slower next
+    /// time; a cache that throws is the caller's real work failing for an optimisation.
+    /// </para>
+    /// </remarks>
+    Task StoreAsync(IReadOnlyCollection<GameDto> games, CancellationToken cancellationToken = default);
 }

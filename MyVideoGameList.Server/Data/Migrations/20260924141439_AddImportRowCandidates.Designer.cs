@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using MyVideoGameList.Server.Data;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
@@ -12,9 +13,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace MyVideoGameList.Server.Data.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260924141439_AddImportRowCandidates")]
+    partial class AddImportRowCandidates
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -745,6 +748,19 @@ namespace MyVideoGameList.Server.Data.Migrations
                         });
                 });
 
+            modelBuilder.Entity("MyVideoGameList.Server.Models.UserHiddenPlatform", b =>
+                {
+                    b.Property<string>("UserId")
+                        .HasColumnType("text");
+
+                    b.Property<int>("IgdbPlatformId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("UserId", "IgdbPlatformId");
+
+                    b.ToTable("UserHiddenPlatforms");
+                });
+
             modelBuilder.Entity("MyVideoGameList.Server.Models.UserListSetting", b =>
                 {
                     b.Property<string>("UserId")
@@ -992,6 +1008,17 @@ namespace MyVideoGameList.Server.Data.Migrations
                     b.Navigation("Entry");
 
                     b.Navigation("Type");
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("MyVideoGameList.Server.Models.UserHiddenPlatform", b =>
+                {
+                    b.HasOne("MyVideoGameList.Server.Models.ApplicationUser", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
 
                     b.Navigation("User");
                 });
