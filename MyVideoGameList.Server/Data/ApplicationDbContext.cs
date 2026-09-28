@@ -33,7 +33,6 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
     public DbSet<UserGameEntry> UserGameEntries { get; set; }
     public DbSet<UserGameEvent> UserGameEvents { get; set; }
     public DbSet<UserGamePlaythrough> UserGamePlaythroughs { get; set; }
-    public DbSet<UserHiddenPlatform> UserHiddenPlatforms { get; set; }
     public DbSet<UserListSetting> UserListSettings { get; set; }
     public DbSet<UserListSortPreference> UserListSortPreferences { get; set; }
     public DbSet<UserWishlistItem> UserWishlistItems { get; set; }
@@ -167,14 +166,6 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
 
         // Read in one order, newest first, by the owner and by their public profile alike.
         modelBuilder.Entity<UserFavourite>().HasIndex(f => new { f.UserId, f.AddedAt });
-
-        // UserHiddenPlatform: composite PK on (UserId, IgdbPlatformId); cascade delete when user is deleted
-        modelBuilder.Entity<UserHiddenPlatform>().HasKey(hp => new { hp.UserId, hp.IgdbPlatformId });
-        modelBuilder.Entity<UserHiddenPlatform>()
-            .HasOne(hp => hp.User)
-            .WithMany()
-            .HasForeignKey(hp => hp.UserId)
-            .OnDelete(DeleteBehavior.Cascade);
     }
 
     /// <summary>

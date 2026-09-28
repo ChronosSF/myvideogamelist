@@ -19,9 +19,9 @@ This is the category of bug that is easy to introduce and annoying to diagnose.
 
 - `window`, `document` and `localStorage` **do not exist on the server**. Never touch them
   during render or inside a `useState` initializer.
-- For persisted browser-only state, follow `@/lib/useStoredNumberSet`: `useSyncExternalStore`
-  with an empty server snapshot. Reading in an effect also works but commits a throwaway
-  render first, and `getSnapshot` must return a stable reference or React loops.
+- For browser-only state, use `useSyncExternalStore` with a fixed server snapshot, as
+  `@/lib/useHydrated` does. Reading in an effect also works but commits a throwaway render
+  first, and `getSnapshot` must return a stable reference or React loops.
 - Server-side loaders have no origin to resolve a relative URL against. Use `apiUrl()` from
   `@/lib/api` for any fetch that can run during SSR.
 - **Never format in the runtime's default locale during render.** A bare `toLocaleString()`, or an

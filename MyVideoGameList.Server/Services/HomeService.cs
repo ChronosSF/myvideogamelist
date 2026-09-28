@@ -46,8 +46,7 @@ public class HomeService(
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            // The home page still renders: the hero keeps its gradient and the calendar, which
-            // loads separately on the client, is unaffected.
+            // The home page still renders, and the hero keeps its gradient.
             logger.LogWarning(ex, "IGDB unavailable while composing the home page.");
             popular = [];
         }

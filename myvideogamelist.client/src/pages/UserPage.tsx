@@ -1,8 +1,6 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { useAuth } from '@/hooks/useAuth';
-import { useActivePlatforms } from '@/hooks/useActivePlatforms';
-import { useHiddenPlatforms } from '@/hooks/useHiddenPlatforms';
 import { ProfileStats } from '@/components/ProfileStats';
 import { FavouritesShowcase } from '@/components/FavouritesShowcase';
 import { AccountIdentityCard } from '@/components/AccountIdentityCard';
@@ -60,20 +58,6 @@ export function UserPage() {
      * to somebody who has just deleted theirs, and correct itself a frame later.
      */
     const [accountDeleted, setAccountDeleted] = useState(false);
-
-    // Nothing on the signed-out page needs the platform list, so it is not asked for until somebody
-    // is signed in.
-    const platforms = useActivePlatforms(user !== null);
-    const {
-        hiddenIds,
-        loading: hiddenLoading,
-        saving,
-        loadError: hiddenLoadError,
-        saveError: hiddenSaveError,
-        setHiddenIds,
-        save,
-    } = useHiddenPlatforms(user?.id ?? null);
-    const [saveSuccess, setSaveSuccess] = useState(false);
 
     // `loading` before `user`: the server render never knows who is signed in, and neither does the
     // first client render, so without it every visit opened on "sign in" and then replaced it.
@@ -135,24 +119,6 @@ export function UserPage() {
         navigate('/');
     };
 
-    const togglePlatformHidden = (id: number, visible: boolean) => {
-        setSaveSuccess(false);
-        setHiddenIds(prev => {
-            const next = new Set(prev);
-            if (visible) next.delete(id); else next.add(id);
-            return next;
-        });
-    };
-
-    const handleSaveHiddenPlatforms = async () => {
-        try {
-            await save();
-            setSaveSuccess(true);
-        } catch {
-            setSaveSuccess(false);
-        }
-    };
-
     // Stays on this page rather than navigating home: the confirmation is only worth anything
     // where the person who asked for it is looking. See `accountDeleted` for the ordering.
     const handleDeleteAccount = async (password: string) => {
@@ -166,23 +132,6 @@ export function UserPage() {
     };
 
     const isLight = user.theme === 'light';
-    const platformsReady = !platforms.loading && !hiddenLoading;
-
-    /*
-     * Both requests have to have worked, and they fail differently.
-     *
-     * A failed list leaves the previous one in the hook, so a grid of checkboxes under "could not
-     * be loaded" would be two answers to one question, and saving from it would write a preference
-     * chosen against a list we had just said we do not trust.
-     *
-     * A failed preference is worse, because it does not look like a failure: it leaves an empty
-     * set, which is exactly what "nothing hidden" looks like. Every box would render ticked, and
-     * one press of Save would write that over whatever the user had chosen.
-     */
-    const platformsUsable = platformsReady
-        && platforms.error === null
-        && hiddenLoadError === null
-        && platforms.platforms.length > 0;
 
     return (
         <div className="min-h-screen">
@@ -269,80 +218,6 @@ export function UserPage() {
                                 made of it, before anything is saved.
                             </p>
                             <Link to="/import" className="user-btn user-card-action">Start an import</Link>
-                        </div>
-
-                        <div className="user-card">
-                            <div className="user-card-label">Upcoming releases — platforms</div>
-                            <p className="user-card-hint">
-                                Platforms unchecked here will be hidden from the filter row on the home page timeline.
-                                Games available only on hidden platforms will not appear.
-                            </p>
-
-                            {!platformsReady && (
-                                <p className="user-card-hint">Loading platforms…</p>
-                            )}
-
-                            {/* Its own message rather than the empty one: the list comes from IGDB,
-                                and "no active platforms" would blame the platforms for an outage.
-                                A live region, because it replaces the loading line after a request
-                                that nobody was watching happen. */}
-                            {platformsReady && platforms.error !== null && (
-                                <p className="user-pref-error" role="alert">
-                                    The platform list could not be loaded just now.
-                                </p>
-                            )}
-
-                            {/* The list can be fine while the preference is not, and then there is
-                                nothing to tick the boxes from. */}
-                            {platformsReady && hiddenLoadError !== null && (
-                                <p className="user-pref-error" role="alert">
-                                    Your hidden platforms could not be loaded, so they cannot be
-                                    changed just now.
-                                </p>
-                            )}
-
-                            {platformsReady && platforms.error === null && hiddenLoadError === null
-                                && platforms.platforms.length === 0 && (
-                                <p className="user-card-hint">No active platforms found.</p>
-                            )}
-
-                            {platformsUsable && (
-                                <div className="platform-prefs-grid">
-                                    {platforms.platforms.map(p => {
-                                        const visible = !hiddenIds.has(p.id);
-                                        return (
-                                            <label key={p.id} className={`platform-pref-label${visible ? ' checked' : ''}`}>
-                                                <input
-                                                    type="checkbox"
-                                                    checked={visible}
-                                                    onChange={e => togglePlatformHidden(p.id, e.target.checked)}
-                                                    aria-label={p.name}
-                                                />
-                                                <span className="platform-pref-name" title={p.name}>
-                                                    {p.abbreviation || p.name}
-                                                </span>
-                                            </label>
-                                        );
-                                    })}
-                                </div>
-                            )}
-
-                            {/* A live region for the same reason: a save that fails moves nothing
-                                else on screen, since the set the user ticked is left as it was. */}
-                            {hiddenSaveError && (
-                                <p className="user-pref-error" role="alert">{hiddenSaveError}</p>
-                            )}
-
-                            {platformsUsable && (
-                                <button
-                                    type="button"
-                                    className="user-btn user-btn-block"
-                                    onClick={handleSaveHiddenPlatforms}
-                                    disabled={saving}
-                                >
-                                    {saving ? 'Saving…' : saveSuccess ? '✓ Saved' : 'Save preferences'}
-                                </button>
-                            )}
                         </div>
 
                         <button type="button" className="user-logout-btn" onClick={handleLogout}>

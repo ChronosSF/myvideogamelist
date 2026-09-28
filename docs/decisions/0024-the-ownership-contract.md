@@ -94,8 +94,8 @@ comment says the same thing at the point where that edit would be made.
 
 **6. Deletion is one `userManager.DeleteAsync`, and that is the whole point.** Every user-owned
 table cascades from `AspNetUsers` through its own `UserId` column, so the account row going away
-takes the entries, the event log, the wishlist, the hidden platforms and the sort preferences with
-it, in one transaction. The controller holds no list of tables to fall out of date. What makes that
+takes the entries, the event log, the wishlist and the sort preferences with it, in one
+transaction. The controller holds no list of tables to fall out of date. What makes that
 safe is not the controller but the model, and the model is what the guard asserts — which is why
 this record treats the cascade test and the deletion endpoint as one decision rather than two.
 

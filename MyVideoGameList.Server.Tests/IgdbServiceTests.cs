@@ -570,7 +570,7 @@ public class ComposeUpcomingTests
     [Fact]
     public void OverridesTheGamesOwnReleaseDate()
     {
-        // The game's first_release_date is 2020; the timeline must show the upcoming date instead.
+        // The game's first_release_date is 2020; the entry must carry the upcoming date instead.
         var rows = new List<IgdbReleaseDate> { Row(1, 100, Switch.Id, Unix(2026, 6, 10)) };
         var games = new Dictionary<int, GameDto> { [100] = Game(100, "Port", Pc, Switch) };
 

@@ -1,7 +1,7 @@
 namespace MyVideoGameList.Server.DTOs;
 
 /// <summary>
-/// Everything the home page needs above the calendar, in one response.
+/// Everything the home page shows every visitor alike, in one response.
 /// </summary>
 /// <remarks>
 /// Composed server-side rather than left as three client fetches, per ROADMAP §3.5: the home

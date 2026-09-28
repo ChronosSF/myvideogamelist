@@ -9,9 +9,10 @@ import type { WishlistItemDto } from '@/types/wishlist';
 import { entry, game, platform } from '@/test/factories';
 
 /**
- * Both providers, mocked rather than provided: the real ones fetch, and the rail only reads what they
- * hold. One module-level object each, handed back every call — a fresh literal per render re-runs any
- * effect depending on it, which ends in a heap crash rather than an assertion failure.
+ * Both providers and the releases, mocked rather than provided: the real ones fetch, and the rail
+ * only reads what they hold. One module-level object each, handed back every call — a fresh literal
+ * per render re-runs any effect depending on it, which ends in a heap crash rather than an assertion
+ * failure.
  */
 const listsValue = {
     lists: emptyLists() as Record<ListId, ListEntryDto[]>,
@@ -50,8 +51,15 @@ const wishlistValue = {
     reload: vi.fn(),
 };
 
+const upcomingValue: UseUpcomingGamesResult = {
+    games: [],
+    loading: false,
+    error: null,
+};
+
 vi.mock('@/hooks/useLists', () => ({ useLists: () => listsValue }));
 vi.mock('@/hooks/useWishlist', () => ({ useWishlist: () => wishlistValue }));
+vi.mock('@/hooks/useUpcomingGames', () => ({ useUpcomingGames: () => upcomingValue }));
 
 const PC = platform(6, 'PC (Microsoft Windows)', 'PC');
 const PS5 = platform(167, 'PlayStation 5', 'PS5');
@@ -60,26 +68,10 @@ const HADES_II = game({ id: 1, title: 'Hades II', releaseDate: '2026-09-18', pla
 const SILKSONG = game({ id: 2, title: 'Silksong', releaseDate: '2026-09-16', platforms: [PC] });
 const UNRELATED = game({ id: 3, title: 'Somebody Else\'s Game', releaseDate: '2026-09-16', platforms: [PC] });
 
-function upcoming(overrides: Partial<UseUpcomingGamesResult> = {}): UseUpcomingGamesResult {
-    return { games: [HADES_II, SILKSONG, UNRELATED], loading: false, error: null, ...overrides };
-}
-
-const noneHidden = new Set<number>();
-
-function renderRail(
-    result: UseUpcomingGamesResult = upcoming(),
-    hidden: ReadonlySet<number> = noneHidden,
-    hiddenLoading = false,
-    hiddenLoadError: string | null = null,
-) {
+function renderRail() {
     return render(
         <MemoryRouter>
-            <ReleasingSoonRail
-                upcoming={result}
-                hiddenPlatformIds={hidden}
-                hiddenPlatformsLoading={hiddenLoading}
-                hiddenPlatformsLoadError={hiddenLoadError}
-            />
+            <ReleasingSoonRail />
         </MemoryRouter>,
     );
 }
@@ -89,6 +81,9 @@ beforeEach(() => {
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(new Date(2026, 8, 15, 12));
 
+    upcomingValue.games = [HADES_II, SILKSONG, UNRELATED];
+    upcomingValue.loading = false;
+    upcomingValue.error = null;
     listsValue.lists = { ...emptyLists(), backlog: [entry({ game: { id: HADES_II.id, title: HADES_II.title } })] };
     listsValue.loading = false;
     listsValue.error = null;
@@ -119,14 +114,6 @@ describe('ReleasingSoonRail', () => {
         expect(hades).toHaveTextContent('In your backlog');
     });
 
-    it('applies the hidden platforms, as the calendar does', () => {
-        renderRail(upcoming(), new Set([PS5.id]));
-
-        const [, hades] = screen.getAllByRole('listitem');
-        expect(hades).toHaveTextContent('Fri, Sep 18 · PC');
-        expect(hades).not.toHaveTextContent('PS5');
-    });
-
     it('is a named, focusable region because it scrolls on its own', () => {
         renderRail();
 
@@ -145,10 +132,9 @@ describe('ReleasingSoonRail staying out of the way', () => {
     });
 
     it.each([
-        ['the releases', () => renderRail(upcoming({ loading: true, games: [] }))],
+        ['the releases', () => { upcomingValue.loading = true; upcomingValue.games = []; return renderRail(); }],
         ['the lists', () => { listsValue.loading = true; return renderRail(); }],
         ['the wishlist', () => { wishlistValue.loading = true; return renderRail(); }],
-        ['the hidden platforms', () => renderRail(upcoming(), noneHidden, true)],
     ])('renders nothing while %s are loading', (_what, renderIt) => {
         const { container } = renderIt();
 
@@ -156,12 +142,9 @@ describe('ReleasingSoonRail staying out of the way', () => {
     });
 
     it.each([
-        ['the releases', () => renderRail(upcoming({ error: 'Failed to load upcoming releases (500)' }))],
+        ['the releases', () => { upcomingValue.error = 'Failed to load upcoming releases (500)'; return renderRail(); }],
         ['the lists', () => { listsValue.error = 'Failed to load lists (500)'; return renderRail(); }],
         ['the wishlist', () => { wishlistValue.error = 'Failed to load your wishlist (500)'; return renderRail(); }],
-        // The empty set a failed read leaves is not "nothing hidden", and treating it as that would
-        // name releases on platforms the user has hidden.
-        ['the hidden platforms', () => renderRail(upcoming(), noneHidden, false, 'Failed to load hidden platforms (500)')],
     ])('renders nothing when %s failed, rather than a partial answer', (_what, renderIt) => {
         const { container } = renderIt();
 

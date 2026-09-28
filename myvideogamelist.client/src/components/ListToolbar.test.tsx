@@ -155,8 +155,8 @@ describe('ListToolbar platform filter', () => {
     });
 
     it('says that the filter is not saved', async () => {
-        // This sentence is what keeps the transient filter from being read as the saved, global
-        // hidden-platforms preference. If it disappears, the two controls become indistinguishable.
+        // This sentence is what keeps the transient filter from being read as a saved preference —
+        // one that, still applied on the next visit, would look like games had vanished.
         renderToolbar();
 
         await userEvent.click(screen.getByRole('button', { name: /all platforms/i }));

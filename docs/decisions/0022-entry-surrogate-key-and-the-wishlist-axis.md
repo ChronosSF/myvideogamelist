@@ -168,13 +168,13 @@ yet, so it joins when there is one. ASP.NET Identity's own tables carry a `UserI
 cascade check, but are scoped out of the inventory — the framework owns their lifecycle.
 
 **What this unblocks:** playthroughs, `PlaythroughTypes` and reviews (the plan's step 3, which
-needed the surrogate key); H4 "your week", which surfaces wishlist and backlog releases above the
-general timeline; and the IsThereAnyDeal work, whose flagship feature is a price-drop alert on a
-wishlisted game.
+needed the surrogate key); H4 "your week", which surfaces wishlist and backlog releases on the home
+page; and the IsThereAnyDeal work, whose flagship feature is a price-drop alert on a wishlisted
+game.
 
 **A card reports its own failure, because the shared error has nowhere to appear.** `GameCard`
-renders on Games, Home and the upcoming timeline, and none of those pages show the provider's
-`mutationError` — so a failed toggle would have snapped the heart back with no explanation. `add`
+renders on Games and Lists, and neither page shows the wishlist provider's `mutationError` — so a
+failed toggle would have snapped the heart back with no explanation. `add`
 and `remove` therefore return whether the wishlist ended up holding what was asked for, following
 `setScore` on the lists context, and the card renders its own result rather than the shared error,
 which belongs to whichever card was clicked last. The message sits in the card body, not the hover

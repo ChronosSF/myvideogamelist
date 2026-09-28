@@ -18,10 +18,8 @@ interface ListToolbarProps {
 /**
  * The controls above a list: layout, sort order, and a platform filter.
  *
- * The platform filter here is **transient and local to this view**, unlike the hidden-platforms
- * setting on the user page which is a saved, global preference for browsing. They are deliberately
- * worded and placed differently — two platform controls that looked alike but behaved differently
- * would be worse than either alone.
+ * The platform filter here is **transient and local to this view**, and says so in words: a filter
+ * silently still applied on the next visit is how people conclude their games have vanished.
  */
 export function ListToolbar({
     view,

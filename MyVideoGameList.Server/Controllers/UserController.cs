@@ -228,8 +228,8 @@ public class UserController(
         var saved = await userManager.UpdateAsync(user);
         if (!saved.Succeeded) return NotSaved(saved);
 
-        // Replace wholesale, the same way hidden platforms are handled: the client owns the full
-        // set and sends it, so there is no partial-update ambiguity.
+        // Replace wholesale: the client owns the full set and sends it, so there is no
+        // partial-update ambiguity.
         var existing = await db.UserListSortPreferences
             .Where(p => p.UserId == user.Id)
             .ToListAsync(cancellationToken);
@@ -252,43 +252,6 @@ public class UserController(
             });
 
         await db.UserListSortPreferences.AddRangeAsync(rows, cancellationToken);
-        await db.SaveChangesAsync(cancellationToken);
-
-        return NoContent();
-    }
-
-    [HttpGet("hidden-platforms")]
-    public async Task<ActionResult<IEnumerable<int>>> GetHiddenPlatforms(CancellationToken cancellationToken)
-    {
-        var user = await userManager.GetUserAsync(User);
-        if (user == null) return Unauthorized();
-
-        var ids = await db.UserHiddenPlatforms
-            .Where(hp => hp.UserId == user.Id)
-            .Select(hp => hp.IgdbPlatformId)
-            .ToListAsync(cancellationToken);
-
-        return Ok(ids);
-    }
-
-    [HttpPut("hidden-platforms")]
-    public async Task<IActionResult> UpdateHiddenPlatforms(
-        [FromBody] UpdateHiddenPlatformsDto dto, CancellationToken cancellationToken)
-    {
-        var user = await userManager.GetUserAsync(User);
-        if (user == null) return Unauthorized();
-
-        var existing = await db.UserHiddenPlatforms
-            .Where(hp => hp.UserId == user.Id)
-            .ToListAsync(cancellationToken);
-
-        db.UserHiddenPlatforms.RemoveRange(existing);
-
-        var newEntries = dto.PlatformIds
-            .Distinct()
-            .Select(id => new UserHiddenPlatform { UserId = user.Id, IgdbPlatformId = id });
-
-        await db.UserHiddenPlatforms.AddRangeAsync(newEntries, cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
 
         return NoContent();
@@ -367,9 +330,9 @@ public class UserController(
     /// <para>
     /// One <c>DeleteAsync</c>, deliberately. Every user-owned table cascades from
     /// <c>AspNetUsers</c> through its own <c>UserId</c> column, so the account row going away takes
-    /// the entries, the event log, the wishlist, the hidden platforms and the sort preferences with
-    /// it — in one transaction, with no list of tables here to fall out of date. What makes that
-    /// safe is not this method but the model: <c>UserOwnedDataTests</c> fails the build if a
+    /// the entries, the event log, the wishlist and the sort preferences with it — in one
+    /// transaction, with no list of tables here to fall out of date. What makes that safe is not
+    /// this method but the model: <c>UserOwnedDataTests</c> fails the build if a
     /// user-owned entity is ever added without that cascade. See
     /// <c>docs/decisions/0024-the-ownership-contract.md</c>.
     /// </para>

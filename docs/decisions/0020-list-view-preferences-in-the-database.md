@@ -36,10 +36,8 @@ padding out five entries.
 
 **The platform filter is not persisted.** It is a momentary question ("what have I got on Switch")
 rather than a standing preference, and a filter silently still applied on the next visit is how
-people conclude their games have vanished. It also has to stay visibly distinct from
-`UserHiddenPlatforms`, which *is* a saved global preference for browsing — two platform controls
-that look alike and behave differently would be worse than either alone, so the filter panel says
-in words that it applies to this view only.
+people conclude their games have vanished — so the filter panel says in words that it applies to
+this view only.
 
 **Sorting and filtering run on the client.** A user's lists are already fetched whole — there is no
 pagination — so sorting server-side would mean a round trip to reorder an array that is already in

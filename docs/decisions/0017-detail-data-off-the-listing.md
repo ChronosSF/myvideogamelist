@@ -10,7 +10,7 @@ series and language support. Almost all of it comes from fields on IGDB's `/game
 we were simply not requesting.
 
 One field list served every game query — the browse listing, the trending rail, the upcoming
-timeline, the id lookups behind a user's lists, and the detail page. Adding the new fields to
+releases, the id lookups behind a user's lists, and the detail page. Adding the new fields to
 that shared list would have added them everywhere. The cost is not theoretical: Elden Ring alone
 returns 10 screenshots, 29 language-support rows, and three sets of ten related games with their
 covers. Multiplied by a page of twenty results, the browse endpoint would carry several hundred

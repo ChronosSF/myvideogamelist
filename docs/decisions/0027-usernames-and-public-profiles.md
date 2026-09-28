@@ -247,9 +247,7 @@ transition is applied during render, and every completion is stamped with the ac
 fetched for and dropped on a mismatch. The first cut had the first two and not the third, on the
 reading that the `AbortController` covered it. It does not — the abort runs in the effect cleanup,
 after the commit, and a response landing in between would have been written under the new
-account's name. `useHiddenPlatforms` had the same gap and is now keyed on the account for the same
-reason: it is mounted on the home page's timeline, which outlives a sign-out, and the boolean it
-used to take cannot tell one account from the next.
+account's name.
 
 ## Consequences
 

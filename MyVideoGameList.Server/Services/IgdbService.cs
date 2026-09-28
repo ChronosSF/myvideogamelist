@@ -33,7 +33,7 @@ public class IgdbService(
     /// </summary>
     private const int MaxPages = 10;
 
-    /// <summary>How far ahead the upcoming-releases timeline looks.</summary>
+    /// <summary>How far ahead the upcoming releases look.</summary>
     private const int UpcomingWindowDays = 30;
 
     /// <summary>
@@ -318,7 +318,7 @@ public class IgdbService(
     }
 
     /// <summary>
-    /// Builds the upcoming-releases timeline from the <c>release_dates</c> endpoint rather than
+    /// Builds the upcoming releases from the <c>release_dates</c> endpoint rather than
     /// <c>first_release_date</c>. A game already out on PC but launching on Switch next week has a
     /// <c>first_release_date</c> in the past and would never appear otherwise.
     /// </summary>
@@ -379,7 +379,7 @@ public class IgdbService(
 
     /// <summary>
     /// Collapses release rows into one entry per (game, date), carrying only the platforms actually
-    /// releasing on that date so the timeline's platform filter stays meaningful.
+    /// releasing on that date, so a staggered launch names the right platforms on each of its dates.
     /// </summary>
     internal static List<GameDto> ComposeUpcoming(
         List<IgdbReleaseDate> releaseRows, Dictionary<int, GameDto> gamesById)
@@ -427,7 +427,7 @@ public class IgdbService(
     {
         if (limit <= 0) return [];
 
-        // Refresh hourly, on the same clock-hour key the upcoming timeline uses.
+        // Refresh hourly, on the same clock-hour key the upcoming releases use.
         var cacheKey = $"igdb_trending|{limit}|{DateTimeOffset.UtcNow:yyyyMMddHH}";
         if (cache.TryGetValue(cacheKey, out IEnumerable<GameDto>? cached) && cached is not null)
             return cached;

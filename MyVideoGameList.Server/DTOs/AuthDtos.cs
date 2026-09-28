@@ -41,8 +41,6 @@ public record UserProfileDto(
 
 public record UpdateThemeDto(string Theme);
 
-public record UpdateHiddenPlatformsDto(IEnumerable<int> PlatformIds);
-
 /// <summary>A rename. The one field, validated the same way registration validates it.</summary>
 public record UpdateUserNameDto([Required][UserName] string UserName);
 

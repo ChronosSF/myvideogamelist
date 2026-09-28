@@ -63,7 +63,7 @@ Top rated.
 
 ### 2. Four filters, all in the same clause, all applying to a search
 
-- **Platform**, from `ActivePlatforms` — the same list the calendar's preference uses.
+- **Platform**, from `ActivePlatforms` — the platforms configured in app settings.
 - **Genre**, from IGDB's own genres through `GET /api/genres`, cached for a day. IGDB is the source of truth
   for what a genre is ([0001](0001-igdb-as-source-of-truth.md)), and the ids are what the filter sends.
 - **Release year**, as the whole UTC calendar year of first release. The select runs from this year back

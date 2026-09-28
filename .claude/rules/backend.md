@@ -46,7 +46,7 @@ paths:
   That is what lets a list, a wishlist, a shelf of favourites or a public profile survive an IGDB
   outage, and it is where the tombstone rule above is enforced for good rather than for a process
   lifetime. Reach for `IIgdbService` directly only for queries over the whole catalogue — browse,
-  search, the calendar — or for the game page's detail fields. See `docs/decisions/0035-*`.
+  search, upcoming releases — or for the game page's detail fields. See `docs/decisions/0035-*`.
 
 ## The pipeline and its failures
 

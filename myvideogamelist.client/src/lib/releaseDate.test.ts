@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatReleaseDay, isReleaseToday, parseReleaseDate } from '@/lib/releaseDate';
+import { formatReleaseDay, parseReleaseDate } from '@/lib/releaseDate';
 
 /** Late evening, local time, so a date parsed as UTC midnight would land on the wrong day. */
 const NOW = new Date(2026, 8, 15, 23, 30);
@@ -25,12 +25,5 @@ describe('formatReleaseDay', () => {
 
     it('crosses a month end', () => {
         expect(formatReleaseDay('2026-10-01', new Date(2026, 8, 30, 12))).toBe('Tomorrow');
-    });
-});
-
-describe('isReleaseToday', () => {
-    it('is true only for the reader\'s own today', () => {
-        expect(isReleaseToday('2026-09-15', NOW)).toBe(true);
-        expect(isReleaseToday('2026-09-16', NOW)).toBe(false);
     });
 });
