@@ -171,6 +171,41 @@ public record IgdbReleaseDate(
     int? Platform);
 
 /// <summary>
+/// A <c>release_dates</c> row as the release calendar asks for it: with how much of the date is known,
+/// the release's status, and its platform expanded, so that naming the platform does not depend on the
+/// game's own platform list being current.
+/// </summary>
+/// <remarks>
+/// <see cref="DateFormat"/> is 0 for a day, 1 a month, 2 a year, 3 to 6 a quarter and 7 "to be
+/// decided". For anything but a day, <see cref="Date"/> is a stand-in — the first of the month, the last
+/// day of the quarter or of the year — so <see cref="Y"/> and <see cref="M"/> are what say which period
+/// it is. All three verified against live responses on 2026-09-29.
+/// </remarks>
+public record IgdbConnectedReleaseDate(
+    int Id,
+    long? Date,
+    int? Game,
+    IgdbPlatform? Platform,
+    [property: JsonPropertyName("date_format")] int? DateFormat,
+    int? Status,
+    int? Y,
+    int? M);
+
+/// <summary>
+/// A game as the release calendar needs it: its type, the game it is DLC for or an edition of, and its
+/// series. <see cref="ParentGame"/> and <see cref="VersionParent"/> are asked for bare, so they arrive
+/// as ids rather than as the objects <see cref="IgdbGame"/> expands them into.
+/// </summary>
+public record IgdbCalendarGame(
+    int Id,
+    string Name,
+    IgdbCover? Cover,
+    [property: JsonPropertyName("game_type")] int? GameType,
+    [property: JsonPropertyName("parent_game")] int? ParentGame,
+    [property: JsonPropertyName("version_parent")] int? VersionParent,
+    List<IgdbNamedEntity>? Collections);
+
+/// <summary>
 /// A row from the IGDB <c>external_games</c> endpoint, which maps an IGDB game onto its
 /// identifier on another storefront. <see cref="Uid"/> is that store's own id — for Steam
 /// it is the AppID used by the Steam web API.

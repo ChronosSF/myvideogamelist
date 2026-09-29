@@ -4,6 +4,7 @@ using System.Text.Json;
 using Microsoft.Extensions.Caching.Memory;
 using MyVideoGameList.Server.DTOs;
 using MyVideoGameList.Server.Models.Igdb;
+using MyVideoGameList.Server.Services.Releases;
 
 namespace MyVideoGameList.Server.Services;
 
@@ -519,6 +520,201 @@ public class IgdbService(
         cache.Set(cacheKey, result, TimeSpan.FromHours(24));
         return result;
     }
+
+    /// <summary>What the release calendar asks of a game; see <see cref="IgdbCalendarGame"/>.</summary>
+    private const string CalendarGameFields =
+        "fields id,name,cover.image_id,game_type,parent_game,version_parent,collections.name;";
+
+    /// <summary>
+    /// How long a calendar game is kept. A game's type, parent and series barely change, and its name
+    /// and cover rarely; six hours keeps a renamed game from lingering for a day.
+    /// </summary>
+    private static readonly TimeSpan CalendarGameLifetime = TimeSpan.FromHours(6);
+
+    /// <summary>
+    /// The most games one release query names. 1,500 is the largest library measured in a single query
+    /// (spec §10: 26 KB, 0.7 s, one page); a bigger one is split rather than sent as a query nobody has
+    /// seen IGDB accept.
+    /// </summary>
+    private const int RelationChunkSize = 1500;
+
+    private static string CalendarGameKey(int id) => $"igdb_calendar_game|{id}";
+
+    public async Task<IReadOnlyDictionary<int, CalendarGame>> GetCalendarGamesAsync(
+        IEnumerable<int> ids, CancellationToken cancellationToken = default)
+    {
+        var found = new Dictionary<int, CalendarGame>();
+        var missing = new List<int>();
+
+        // Per game rather than per request: the same games come up for everybody, since a series' next
+        // entry is on the calendar of everybody who played its last one.
+        foreach (var id in ids.Distinct())
+        {
+            if (!cache.TryGetValue(CalendarGameKey(id), out CalendarGame? known)) missing.Add(id);
+            else if (known is not null) found[id] = known;
+        }
+
+        foreach (var chunk in missing.Chunk(MaxBatchSize))
+        {
+            var query = new StringBuilder()
+                .AppendLine(CalendarGameFields)
+                .AppendLine($"where id = ({string.Join(',', chunk)});")
+                .AppendLine($"limit {chunk.Length};")
+                .ToString();
+
+            var answered = (await QueryAsync<IgdbCalendarGame>(GamesEndpoint, query, cancellationToken))
+                .ToDictionary(g => g.Id, MapToCalendarGame);
+
+            foreach (var id in chunk)
+            {
+                // Misses are kept too, for an hour, so a game IGDB has withdrawn is not asked about again
+                // on every page load of whoever still has it on a list.
+                var game = answered.GetValueOrDefault(id);
+                cache.Set(CalendarGameKey(id), game, game is null ? TimeSpan.FromHours(1) : CalendarGameLifetime);
+                if (game is not null) found[id] = game;
+            }
+        }
+
+        return found;
+    }
+
+    public async Task<ConnectedReleaseRows> GetConnectedReleaseRowsAsync(
+        IReadOnlyCollection<int> gameIds,
+        IReadOnlyCollection<int> seriesIds,
+        DateOnly from,
+        DateOnly to,
+        bool withPeriods,
+        CancellationToken cancellationToken = default)
+    {
+        var rows = new Dictionary<int, ReleaseRow>();
+        var truncated = false;
+
+        foreach (var relations in BuildRelationFilters(gameIds, seriesIds))
+        {
+            var lastPageWasFull = false;
+
+            for (var page = 0; page < MaxPages; page++)
+            {
+                var query = BuildConnectedReleasesQuery(relations, from, to, withPeriods, page * MaxBatchSize);
+                var batch = await QueryAsync<IgdbConnectedReleaseDate>(ReleaseDatesEndpoint, query, cancellationToken);
+
+                // Keyed by the row, because the series query can find a row the games query found too.
+                foreach (var row in batch.Select(MapToReleaseRow).OfType<ReleaseRow>())
+                    rows.TryAdd(row.Id, row);
+
+                lastPageWasFull = batch.Count == MaxBatchSize;
+                if (!lastPageWasFull) break;
+            }
+
+            if (lastPageWasFull)
+            {
+                truncated = true;
+                logger.LogWarning(
+                    "Connected releases hit the {MaxPages}-page ceiling for {GameCount} games; the answer is partial.",
+                    MaxPages, gameIds.Count);
+            }
+        }
+
+        return new ConnectedReleaseRows(rows.Values.OrderBy(r => r.Date).ThenBy(r => r.Id).ToList(), truncated);
+    }
+
+    /// <summary>
+    /// The three relations of spec §3.2 as Apicalypse filters: the games themselves, the games whose
+    /// <c>parent_game</c> or <c>version_parent</c> is one of them, and the games in their series.
+    /// </summary>
+    /// <remarks>
+    /// One filter — so one query — for any library up to <see cref="RelationChunkSize"/> games, which is
+    /// what was measured. A bigger one is split into a filter per chunk of games and per chunk of series,
+    /// each its own query, rather than one query longer than any IGDB has been seen to accept.
+    /// </remarks>
+    internal static List<string> BuildRelationFilters(IReadOnlyCollection<int> gameIds, IReadOnlyCollection<int> seriesIds)
+    {
+        var byGame = gameIds.Distinct().Order().Chunk(RelationChunkSize)
+            .Select(chunk => string.Join(',', chunk))
+            .Select(ids => $"game = ({ids}) | game.parent_game = ({ids}) | game.version_parent = ({ids})")
+            .ToList();
+
+        var bySeries = seriesIds.Distinct().Order().Chunk(RelationChunkSize)
+            .Select(chunk => $"game.collections = ({string.Join(',', chunk)})")
+            .ToList();
+
+        if (byGame.Count == 0) return [];
+
+        return byGame.Count == 1 && bySeries.Count <= 1
+            ? [string.Join(" | ", byGame.Concat(bySeries))]
+            : [.. byGame, .. bySeries];
+    }
+
+    /// <summary>
+    /// One page of the release query: the rows a relation filter reaches, dated in the window.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A row known to the day is selected by its date. A row known only to a month, quarter or year
+    /// cannot be: its stored date is a stand-in — the first of the month, the last day of the quarter or
+    /// of the year (spec §4) — so a year-only 2027 is the 31st of December 2027, and a window ending in
+    /// September 2027 would never reach it. Those rows are asked for across the widest range whose
+    /// stand-ins could belong to a period overlapping the window — from a month before it to a year
+    /// after — and <see cref="ConnectedReleases"/> keeps the ones that really overlap.
+    /// </para>
+    /// <para>
+    /// Sorted by id, not by date, so that paging is stable: rows sharing a date could otherwise move
+    /// between pages and be skipped or read twice.
+    /// </para>
+    /// </remarks>
+    internal static string BuildConnectedReleasesQuery(
+        string relations, DateOnly from, DateOnly to, bool withPeriods, int offset)
+    {
+        // A row with no date_format is an old one, from before IGDB recorded it, and was dated to the day.
+        var days = $"(date_format = 0 | date_format = null) & date >= {UnixDay(from)} & date < {UnixDay(to)}";
+        var window = withPeriods
+            ? $"({days}) | (date_format = (1,2,3,4,5,6) & date >= {UnixDay(from.AddDays(-31))} & date < {UnixDay(to.AddDays(366))})"
+            : days;
+
+        return new StringBuilder()
+            .AppendLine("fields game,date,date_format,y,m,status,platform.name,platform.abbreviation;")
+            .AppendLine($"where ({relations}) & ({window});")
+            .AppendLine("sort id asc;")
+            .AppendLine($"limit {MaxBatchSize};")
+            .AppendLine($"offset {offset};")
+            .ToString();
+    }
+
+    /// <summary>Midnight UTC on the day, which is where IGDB puts a date known to the day.</summary>
+    private static long UnixDay(DateOnly day) =>
+        new DateTimeOffset(day.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero).ToUnixTimeSeconds();
+
+    private static ReleaseRow? MapToReleaseRow(IgdbConnectedReleaseDate row)
+    {
+        if (row.Game is not int gameId || row.Date is not long seconds) return null;
+
+        var platform = row.Platform is { } p
+            ? new PlatformDto(p.Id, p.Name, p.Abbreviation ?? p.Name, null, null)
+            : null;
+
+        return new ReleaseRow(
+            row.Id,
+            gameId,
+            DateOnly.FromDateTime(DateTimeOffset.FromUnixTimeSeconds(seconds).UtcDateTime),
+            row.DateFormat,
+            row.Y,
+            row.M,
+            platform,
+            row.Status);
+    }
+
+    private static CalendarGame MapToCalendarGame(IgdbCalendarGame g) =>
+        new(
+            g.Id,
+            g.Name,
+            g.Cover?.ImageId is { } coverId ? $"{ImageBaseUrl}/t_cover_big/{coverId}.jpg" : null,
+            g.GameType,
+            g.ParentGame,
+            g.VersionParent,
+            (g.Collections ?? [])
+                .Where(c => !string.IsNullOrWhiteSpace(c.Name))
+                .Select(c => new SeriesRef(c.Id, c.Name!))
+                .ToList());
 
     public Task<IEnumerable<PlatformDto>> GetActivePlatformsAsync()
     {
