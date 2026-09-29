@@ -83,6 +83,9 @@ builder.Services.AddScoped<IUserNameClaimService, UserNameClaimService>();
 builder.Services.AddScoped<ITrackedNewsService, TrackedNewsService>();
 builder.Services.AddScoped<IImportService, ImportService>();
 builder.Services.AddScoped<IImportMatcher, ImportMatcher>();
+// What is coming for a user's games. Asks IGDB directly rather than through the game cache: what it
+// finds is mostly games nobody tracks yet — a sequel, a DLC — which is catalogue, not somebody's shelf.
+builder.Services.AddScoped<IConnectedReleaseService, ConnectedReleaseService>();
 
 // Everything that runs on a schedule, plus the host contract those services are written against
 // (ADR 0038). One call rather than a line per service, because what happens when a background

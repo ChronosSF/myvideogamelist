@@ -106,6 +106,14 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   `1`) and `rating_category`. *Requesting* a removed field is just as quiet: it is left out of the
   response, which hid every ESRB badge.
 
+- **An IGDB release date is not always a day.** `release_dates.date_format` says how much of it is
+  known — 0 the day, 1 the month, 2 the year, 3 to 6 a quarter, 7 nothing — and for anything but a
+  day the stored `date` is a stand-in: the month's first day, the quarter's or the year's last. Read
+  the period from `y`, `m` and `date_format`, and never select imprecise rows by `date` alone: a
+  year-only 2027 is stored as 31 December and falls outside every window that ends before then.
+  `IgdbService.BuildConnectedReleasesQuery` is the worked example; see
+  `specs/release-timeline-and-calendar.md` §4 and §8.1.
+
 - **Steam news and the trending rail hold no database state**, deliberately, so the pending
   PostgreSQL move stays as cheap as it is today. See `docs/decisions/0012-*`. Keep derived,
   regenerable, TTL'd data in `IMemoryCache`; do not add a table for it.
