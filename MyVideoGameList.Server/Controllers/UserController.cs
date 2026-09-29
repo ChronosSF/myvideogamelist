@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using MyVideoGameList.Server.Data;
 using MyVideoGameList.Server.DTOs;
 using MyVideoGameList.Server.Models;
+using MyVideoGameList.Server.Security;
 using MyVideoGameList.Server.Services;
 
 namespace MyVideoGameList.Server.Controllers;
@@ -21,6 +22,7 @@ public class UserController(
     IUserNameClaimService claims,
     ITrackedNewsService trackedNews,
     IListNameService listNames,
+    AdminAccounts admins,
     TimeProvider clock) : ControllerBase
 {
     [HttpPut("theme")]
@@ -382,8 +384,9 @@ public class UserController(
 
     /// <summary>
     /// The same projection <c>AuthController</c> returns, so an endpoint that changes part of the
-    /// profile hands back the whole of it in the shape the client already holds.
+    /// profile hands back the whole of it in the shape the client already holds — the admin flag
+    /// included, or a rename would take the admin page's link out of the navbar.
     /// </summary>
-    private static UserProfileDto Profile(ApplicationUser user) =>
-        new(user.Id, user.Email!, user.UserName!, user.Theme, user.ProfileVisibility);
+    private UserProfileDto Profile(ApplicationUser user) =>
+        UserProfileDto.For(user, admins.IsAdmin(user.Id));
 }
