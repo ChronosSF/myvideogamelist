@@ -19,16 +19,23 @@ namespace MyVideoGameList.Server.Data;
 /// answered, keyed on IGDB's own id, so that a shelf of somebody's games renders while IGDB is
 /// unreachable. It is not a catalogue and nothing keys against it.
 /// </para>
+/// <para>
+/// <see cref="CuratedEvents"/> and <see cref="ShowcaseNames"/> are the last: the release calendar's
+/// reference data, entered by an admin rather than seeded, because what they hold — a store's sale
+/// dates, the names of the shows worth watching — changes too often for a migration.
+/// </para>
 /// </remarks>
 public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options)
     : IdentityDbContext<ApplicationUser>(options)
 {
     public DbSet<CachedGame> CachedGames { get; set; }
+    public DbSet<CuratedEvent> CuratedEvents { get; set; }
     public DbSet<ImportJob> ImportJobs { get; set; }
     public DbSet<ImportRow> ImportRows { get; set; }
     public DbSet<ListStatus> ListStatuses { get; set; }
     public DbSet<PlaythroughType> PlaythroughTypes { get; set; }
     public DbSet<Review> Reviews { get; set; }
+    public DbSet<ShowcaseName> ShowcaseNames { get; set; }
     public DbSet<UserFavourite> UserFavourites { get; set; }
     public DbSet<UserGameEntry> UserGameEntries { get; set; }
     public DbSet<UserGameEvent> UserGameEvents { get; set; }
@@ -45,6 +52,7 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
         ConfigureCachedGames(modelBuilder);
         ConfigureListStatuses(modelBuilder);
         ConfigurePlaythroughTypes(modelBuilder);
+        ConfigureReleaseCalendar(modelBuilder);
 
         // UserGameEntry: surrogate PK, with (UserId, GameId) kept unique by index rather than by
         // being the key. Children — playthroughs, reviews, tags — hang off the single column;
@@ -286,6 +294,50 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
             {
                 Id = 3, Key = PlaythroughTypeKeys.Completionist, DefaultName = "Completionist", SortOrder = 3
             });
+    }
+
+    /// <summary>
+    /// The release calendar's reference data: the dates an admin enters, and the showcase names an
+    /// IGDB event is matched against (<c>specs/release-timeline-and-calendar.md</c> §5–§7).
+    /// </summary>
+    /// <remarks>
+    /// Neither table is anybody's data, and neither grows: a few dozen events a year and a dozen
+    /// names. So there is no index beyond the key and the one uniqueness rule below — a scan of
+    /// either is cheaper than keeping one.
+    /// </remarks>
+    private static void ConfigureReleaseCalendar(ModelBuilder modelBuilder)
+    {
+        var events = modelBuilder.Entity<CuratedEvent>();
+
+        events.HasKey(e => e.Id);
+        events.Property(e => e.Kind).HasMaxLength(16);
+        events.Property(e => e.Store).HasMaxLength(16);
+        events.Property(e => e.Name).HasMaxLength(CuratedEvent.NameMaxLength);
+        events.Property(e => e.Url).HasMaxLength(CuratedEvent.UrlMaxLength);
+
+        events.ToTable(t =>
+        {
+            // The kind decides how the calendar draws an event, so the database refuses one it does
+            // not know as well as the API does. The store is a label and stays open; see
+            // CuratedEventStores.
+            t.HasCheckConstraint(
+                "CK_CuratedEvents_Kind",
+                "\"Kind\" IN ('sale', 'fest', 'showcase')");
+
+            // A last day before the first is a typo, and one the calendar would draw as a bar
+            // running backwards.
+            t.HasCheckConstraint(
+                "CK_CuratedEvents_Days",
+                "\"EndsOn\" >= \"StartsOn\"");
+        });
+
+        var names = modelBuilder.Entity<ShowcaseName>();
+
+        names.HasKey(n => n.Id);
+        names.Property(n => n.Prefix).HasMaxLength(ShowcaseName.PrefixMaxLength);
+
+        // The same name twice is a form submitted twice, never a second show.
+        names.HasIndex(n => n.Prefix).IsUnique();
     }
 
     private static void ConfigureUserGamePlaythroughs(ModelBuilder modelBuilder)

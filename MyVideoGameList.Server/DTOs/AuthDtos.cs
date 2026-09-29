@@ -27,17 +27,34 @@ public record LoginDto(string Email, string Password, bool RememberMe = false);
 /// The signed-in user, as every page needs them.
 /// </summary>
 /// <remarks>
+/// <para>
 /// <paramref name="UserName"/> is what the navbar renders and what <c>/u/{userName}</c> is built
 /// from; the email is still here because the account settings page shows it, but nothing public
 /// does. <paramref name="ProfileVisibility"/> travels with them so the client can tell whether
 /// there is a public page to link to at all, without a second request on every page load.
+/// </para>
+/// <para>
+/// <paramref name="IsAdmin"/> is there for the same reason, so the navbar can link to the admin page
+/// (spec §7, A6). It decides what the client shows and nothing else: every admin endpoint asks the
+/// policy for itself.
+/// </para>
 /// </remarks>
 public record UserProfileDto(
     string Id,
     string Email,
     string UserName,
     string Theme,
-    string ProfileVisibility);
+    string ProfileVisibility,
+    bool IsAdmin)
+{
+    /// <summary>
+    /// The one projection, for every endpoint that answers with the signed-in user — signing in,
+    /// <c>me</c>, and each change to the profile — so that none of them can hand the client a
+    /// profile that is missing something the others carry.
+    /// </summary>
+    public static UserProfileDto For(ApplicationUser user, bool isAdmin) =>
+        new(user.Id, user.Email!, user.UserName!, user.Theme, user.ProfileVisibility, isAdmin);
+}
 
 public record UpdateThemeDto(string Theme);
 

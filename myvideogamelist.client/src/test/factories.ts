@@ -188,6 +188,7 @@ export function userProfile(overrides: Partial<UserProfile> = {}): UserProfile {
         userName: 'alex',
         theme: 'dark',
         profileVisibility: 'private',
+        isAdmin: false,
         ...overrides,
     };
 }

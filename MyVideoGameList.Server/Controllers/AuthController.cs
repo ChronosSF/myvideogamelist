@@ -14,7 +14,8 @@ namespace MyVideoGameList.Server.Controllers;
 public class AuthController(
     UserManager<ApplicationUser> userManager,
     SignInManager<ApplicationUser> signInManager,
-    IUserNameClaimService claims) : ControllerBase
+    IUserNameClaimService claims,
+    AdminAccounts admins) : ControllerBase
 {
     [HttpPost("register")]
     [EnableRateLimiting(RateLimiting.AuthWrites)]
@@ -100,9 +101,9 @@ public class AuthController(
     }
 
     /// <summary>
-    /// One shape for the signed-in user, so the three endpoints that return it cannot disagree
-    /// about what it contains.
+    /// The account id is the one the user was just resolved to, not the request's principal: on a
+    /// sign-in or a registration the request itself is still anonymous.
     /// </summary>
-    private static UserProfileDto Profile(ApplicationUser user) =>
-        new(user.Id, user.Email!, user.UserName!, user.Theme, user.ProfileVisibility);
+    private UserProfileDto Profile(ApplicationUser user) =>
+        UserProfileDto.For(user, admins.IsAdmin(user.Id));
 }
