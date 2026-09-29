@@ -100,6 +100,18 @@ statistical query has to filter on, so `UserGameEvents` stays typed and narrow
 `CustomListItems.AddedAt` with the events at query time; a denormalised feed table, if one is
 ever needed, is then a performance change made with full history in hand.
 
+### The release calendar
+
+System-owned reference data, entered on an admin page rather than by any user
+([`specs/release-timeline-and-calendar.md`](../specs/release-timeline-and-calendar.md) §7). Neither
+table may carry a `UserId` column, even for an audit trail: `UserOwnedDataTests` would take it for a
+user's data and demand a cascade and an export section.
+
+| Table | Notes | Issue |
+|---|---|---|
+| `CuratedEvents` | `(Id, Kind, Store, Name, StartsOn, EndsOn, Url, CreatedAt, UpdatedAt)`. Store sales, Steam's Next Fest, and showcases IGDB does not have yet. Days, not times — stores start sales at different hours in different regions | the spec |
+| `ShowcaseNames` | `(Id, Prefix)`. An IGDB event is shown on the calendar only when its name starts with one of these ("Nintendo Direct", "State of Play", …) | the spec |
+
 ### Notifications and prices
 
 | Table | Notes | Issue |
@@ -129,6 +141,9 @@ Recorded so nobody "completes" the schema by adding them:
 
 - **Steam news and the trending rail** — derived, regenerable, TTL'd. `IMemoryCache`, moving
   to Redis ([0012](decisions/0012-steam-news-without-a-database.md)).
+- **A user's connected releases** — asked of IGDB on request and cached in memory for the same
+  reason ([`specs/release-timeline-and-calendar.md`](../specs/release-timeline-and-calendar.md)
+  §8.1). Only the curated events above are stored.
 - **The IGDB access token** — cache only.
 - **Current prices** — cache. Only alert thresholds and last-notified prices are durable.
 - **Data Protection keys** — outside the application's tables
