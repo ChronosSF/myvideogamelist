@@ -22,10 +22,15 @@ public sealed class ProxyHeadersOptions
     public bool Enabled { get; set; }
 
     /// <summary>
-    /// How many entries to consume from the right of <c>X-Forwarded-For</c>. One per proxy that
-    /// appends to it: a load balancer alone is 1, a CDN in front of that is 2. Too high and a
-    /// caller can pick their own address by sending the header themselves; too low and the
-    /// address belongs to the nearest proxy rather than to the person.
+    /// How many entries to consume from the right of <c>X-Forwarded-For</c>, each checked
+    /// against the trust list before the next is taken. Too high and a caller can pick their own
+    /// address by sending the header themselves; too low and the address belongs to the nearest
+    /// proxy rather than to the person. A load balancer alone is 1. A CDN in front of it is
+    /// <em>not</em> simply 2: the second hop is checked against the same trust list, and the
+    /// CDN's address is never among the balancer's subnets, so the middleware stops at the edge
+    /// server's address with nothing in the log. The deployment instead has the balancer preserve
+    /// the header it received, so the right-most entry is the viewer's and this stays 1 — which is
+    /// safe only while nothing but the CDN can reach the balancer. See docs/decisions/0043-*.
     /// </summary>
     public int ForwardLimit { get; set; } = 1;
 

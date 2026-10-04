@@ -5,7 +5,9 @@
 network topology by [0015](0015-fargate-confirmed-and-nat-less-networking.md). The Fargate,
 CloudFront, CDK and OIDC decisions stand. The Data Protection key store named below, "S3 or
 DynamoDB with a KMS key", is settled as Systems Manager Parameter Store by
-[0042](0042-where-the-key-ring-lives.md).
+[0042](0042-where-the-key-ring-lives.md). The stack layout, the migration task and the
+correction to the `UseHttpsRedirection` warning below are
+[0043](0043-what-the-deployment-walkthrough-settled.md).
 
 ## Context
 

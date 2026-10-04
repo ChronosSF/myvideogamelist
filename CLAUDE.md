@@ -254,7 +254,11 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   client. Identity locks an account after five failures but answers exactly as it answers a wrong
   password, because announcing a lockout tells an attacker the account exists. Forwarded headers
   are off until configured, and turning them on without naming the proxy **fails at startup** rather
-  than trusting whoever sends the header.
+  than trusting whoever sends the header. Behind CloudFront, **`ForwardLimit` stays 1**: the
+  middleware checks each hop against the trust list, and the CDN's address is never in the
+  balancer's subnets, so raising it to 2 quietly leaves the limiter partitioned by edge server. The
+  balancer preserves the header instead, which is safe only while nothing but CloudFront can reach
+  it. See `docs/decisions/0043-*`.
 
 - **Never change a game's status without recording an event.** `UserGameEvents` is append-only
   and is the only record that a transition happened — `UserGameLists` holds current state and is
