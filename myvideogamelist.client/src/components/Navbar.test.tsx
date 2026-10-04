@@ -34,6 +34,7 @@ const ALEX: UserProfile = {
     userName: 'alex',
     theme: 'dark',
     profileVisibility: 'private',
+    isAdmin: false,
 };
 
 /** `/api/auth/me` has come back, with an account or with nobody. */
@@ -302,6 +303,26 @@ describe('Navbar user menu', () => {
         await actor.click(screen.getByRole('button', { name: 'User menu' }));
 
         expect(screen.getByRole('menuitem', { name: 'My public page' })).toHaveAttribute('href', '/u/alex');
+    });
+
+    it('links an admin to the admin page', async () => {
+        authAnswered({ ...ALEX, isAdmin: true });
+        const actor = userEvent.setup();
+        renderNavbar();
+
+        await actor.click(screen.getByRole('button', { name: 'User menu' }));
+
+        expect(screen.getByRole('menuitem', { name: 'Admin' })).toHaveAttribute('href', '/admin');
+    });
+
+    it('offers nobody else a link to the admin page', async () => {
+        authAnswered(ALEX);
+        const actor = userEvent.setup();
+        renderNavbar();
+
+        await actor.click(screen.getByRole('button', { name: 'User menu' }));
+
+        expect(screen.queryByRole('menuitem', { name: 'Admin' })).not.toBeInTheDocument();
     });
 
     it('closes when the page behind it is clicked', async () => {

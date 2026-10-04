@@ -17,6 +17,11 @@ export interface UserProfile {
      * to, without a second request for a one-word answer.
      */
     profileVisibility: ProfileVisibility;
+    /**
+     * Whether the navbar links to the admin page. Presentation only: every admin endpoint asks the
+     * server's policy for itself, so a client that believed this wrongly would be refused, not let in.
+     */
+    isAdmin: boolean;
 }
 
 /**

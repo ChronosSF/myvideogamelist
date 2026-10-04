@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using MyVideoGameList.Server.Data;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
@@ -12,9 +13,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace MyVideoGameList.Server.Data.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260929080912_AddReleaseCalendarCuration")]
+    partial class AddReleaseCalendarCuration
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -318,8 +321,6 @@ namespace MyVideoGameList.Server.Data.Migrations
                             t.HasCheckConstraint("CK_CuratedEvents_Days", "\"EndsOn\" >= \"StartsOn\"");
 
                             t.HasCheckConstraint("CK_CuratedEvents_Kind", "\"Kind\" IN ('sale', 'fest', 'showcase')");
-
-                            t.HasCheckConstraint("CK_CuratedEvents_Store", "\"Store\" IS NULL OR \"Store\" IN ('steam', 'epic', 'playstation', 'xbox', 'nintendo', 'gog')");
                         });
                 });
 
@@ -630,11 +631,6 @@ namespace MyVideoGameList.Server.Data.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
-                    b.Property<string>("NormalizedPrefix")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)");
-
                     b.Property<string>("Prefix")
                         .IsRequired()
                         .HasMaxLength(100)
@@ -642,7 +638,7 @@ namespace MyVideoGameList.Server.Data.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("NormalizedPrefix")
+                    b.HasIndex("Prefix")
                         .IsUnique();
 
                     b.ToTable("ShowcaseNames");
