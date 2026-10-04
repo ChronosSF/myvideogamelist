@@ -82,6 +82,22 @@ public interface IImportService
         string userId, Guid jobId, ImportDecisionsDto decisions, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Puts every row the file says was played, without saying how that ended, into one list — or,
+    /// given null, back into none. Returns false when there is no such pending job.
+    /// </summary>
+    /// <remarks>
+    /// The rows are found here rather than named by the caller, so the group answered for is
+    /// exactly the one the review counted (ADR 0045). Like every other decision on a review it
+    /// writes nothing to the library; the commit does.
+    /// </remarks>
+    /// <exception cref="ArgumentOutOfRangeException">
+    /// <paramref name="status"/> is not one of the list statuses. The endpoint refuses that with a
+    /// 400 before it gets here.
+    /// </exception>
+    Task<bool> SetPlayedStatusAsync(
+        string userId, Guid jobId, string? status, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Writes every row marked <c>import</c> into the user's library, in one transaction, and
     /// closes the job.
     /// </summary>

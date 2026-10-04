@@ -233,6 +233,7 @@ public class ImportService(
             Unmatched: dtos.Count(r => r.MatchKind == ImportMatchKinds.Unmatched),
             Unlooked: dtos.Count(r => r.MatchKind == ImportMatchKinds.Unlooked),
             StatusUnrecognised: dtos.Count(r => r.StatusUnrecognised),
+            PlayedUnresolved: dtos.Count(r => r.PlayedUnresolved),
             AlreadyTracked: dtos.Count(r => r.AlreadyTracked),
             Selected: dtos.Count(r => r.Decision == ImportDecisions.Import));
 
@@ -359,6 +360,37 @@ public class ImportService(
         return await SaveTouchingAsync(job, clock.GetUtcNow(), cancellationToken);
     }
 
+    public async Task<bool> SetPlayedStatusAsync(
+        string userId, Guid jobId, string? status, CancellationToken cancellationToken = default)
+    {
+        var job = await db.ImportJobs
+            .FirstOrDefaultAsync(j => j.Id == jobId && j.UserId == userId, cancellationToken);
+
+        if (job is null || job.State != ImportJobStates.Pending) return false;
+
+        // Thrown rather than ignored, unlike a bad status in SetDecisionsAsync: the endpoint's
+        // attribute has already refused anything that is not a list, so reaching this is a caller's
+        // bug, and storing the key would have the commit pass over every row in the group quietly.
+        if (status is not null && !(await StatusKeysAsync(cancellationToken)).Contains(status))
+            throw new ArgumentOutOfRangeException(nameof(status), status, "Not a list status.");
+
+        // Every row of the job, because the group is marked in the payload rather than in a column.
+        // The review reads every row to render the screen, so this is a read it already pays for.
+        var rows = await db.ImportRows
+            .Where(r => r.ImportJobId == jobId && r.UserId == userId)
+            .ToListAsync(cancellationToken);
+
+        foreach (var row in rows)
+        {
+            var payload = ImportPayloadJson.Read(row.Payload);
+            if (!payload.PlayedUnresolved || payload.Status == status) continue;
+
+            row.Payload = ImportPayloadJson.Write(payload with { Status = status });
+        }
+
+        return await SaveTouchingAsync(job, clock.GetUtcNow(), cancellationToken);
+    }
+
     public async Task<ImportResultDto?> CommitAsync(
         string userId, Guid jobId, CancellationToken cancellationToken = default)
     {
@@ -398,7 +430,7 @@ public class ImportService(
             wanted.Add((row, payload));
         }
 
-        var imported = await WriteAsync(userId, job.Source, wanted, cancellationToken);
+        var (imported, unlisted) = await WriteAsync(userId, job.Source, wanted, cancellationToken);
 
         var now = clock.GetUtcNow();
 
@@ -425,7 +457,7 @@ public class ImportService(
         // its window — which is the race SaveTouchingAsync turns into this method's own 404.
         if (!await SaveTouchingAsync(job, now, cancellationToken)) return null;
 
-        return new ImportResultDto(ToDto(job), skipped);
+        return new ImportResultDto(ToDto(job), skipped, unlisted);
     }
 
     public async Task<bool> CancelAsync(
@@ -534,13 +566,16 @@ public class ImportService(
     /// <c>StatusChangedAt</c> stays null so an imported library does not bury everything the user
     /// actually touched at the top of "recently moved".
     /// </remarks>
-    private async Task<int> WriteAsync(
+    /// <returns>
+    /// How many rows were written, and how many of the games written are in no list afterwards.
+    /// </returns>
+    private async Task<(int Imported, int Unlisted)> WriteAsync(
         string userId,
         string source,
         IReadOnlyList<(ImportRow Row, ImportRowPayload Payload)> wanted,
         CancellationToken cancellationToken)
     {
-        if (wanted.Count == 0) return 0;
+        if (wanted.Count == 0) return (0, 0);
 
         var gameIds = wanted.Select(w => w.Row.GameId!.Value).Distinct().ToList();
 
@@ -629,7 +664,12 @@ public class ImportService(
             imported++;
         }
 
-        return imported;
+        // Read off the entries once every row is applied, rather than counted from the rows: two
+        // rows can name one game, and an entry the user already had keeps a status the row did not
+        // carry, so neither "rows without a status" nor "rows written" is how many are in no list.
+        var unlisted = gameIds.Count(id => entries[id].StatusId is null);
+
+        return (imported, unlisted);
     }
 
     /// <summary>
@@ -791,6 +831,7 @@ public class ImportService(
             SourceStatus: payload.SourceStatus,
             Status: payload.Status,
             StatusUnrecognised: payload.StatusUnrecognised,
+            PlayedUnresolved: payload.PlayedUnresolved,
             Score: payload.Score,
             Wishlist: payload.Wishlist,
             Favourite: payload.Favourite,
