@@ -219,7 +219,7 @@ export function ImportReviewPage() {
                             </div>
                         )}
 
-                        {/* ADR 0043. Asked once for every game the file says was played without
+                        {/* ADR 0045. Asked once for every game the file says was played without
                             saying how that ended. The import still guesses nothing — no list stays
                             the default — but nobody has to place hundreds of games one at a time
                             afterwards, from game pages that are the only place such a game shows. */}

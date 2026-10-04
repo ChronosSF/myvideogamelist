@@ -75,7 +75,7 @@ public record ImportReviewSummaryDto(
 /// <param name="Status">One of <c>ListStatusKeys</c>, or null for a row that will carry no status.</param>
 /// <param name="PlayedUnresolved">
 /// The file says this game was played and not how that ended, so its status is whatever list its
-/// owner chose for every such row at once — none until they choose (ADR 0043).
+/// owner chose for every such row at once — none until they choose (ADR 0045).
 /// </param>
 /// <param name="Candidates">
 /// The games the matcher would offer for an <c>ambiguous</c> row, best first, so the user resolves
@@ -162,7 +162,7 @@ public record ImportRowDecisionDto(
 /// <para>
 /// One answer for the group rather than a status per row, because that is the question being
 /// asked: a file that does not say how hundreds of games ended is not asking about each of them,
-/// and making somebody answer row by row is the problem restated (ADR 0043). The request names a
+/// and making somebody answer row by row is the problem restated (ADR 0045). The request names a
 /// list and never a row, so which rows are in the group is the server's to decide, and is exactly
 /// the set the review counted.
 /// </para>

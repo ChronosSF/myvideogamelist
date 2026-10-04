@@ -48,7 +48,7 @@ namespace MyVideoGameList.Server.Services.Import;
 /// </para>
 /// <para>
 /// What the flag adds is that its owner can answer for all of them at once on the review screen
-/// (ADR 0043), so a long-time tracker's library does not land in no list one game at a time. It is
+/// (ADR 0045), so a long-time tracker's library does not land in no list one game at a time. It is
 /// not the same fact as a null <paramref name="Status"/>, which a game only on the wishlist, or only
 /// in a play log, has as well.
 /// </para>

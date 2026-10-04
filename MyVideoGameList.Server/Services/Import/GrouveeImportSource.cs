@@ -276,7 +276,7 @@ internal sealed class GrouveeImportSource : IImportSource
     /// </para>
     /// <para>
     /// That bucket is flagged as well as left without a status, so the review screen can ask about
-    /// it once (ADR 0043). It is most of a long-time user's library rather than an edge case:
+    /// it once (ADR 0045). It is most of a long-time user's library rather than an edge case:
     /// Grouvee added playthroughs, and with them finish dates, after it already had shelves, so a
     /// game shelved before then has no finish date unless its owner went back and added one.
     /// </para>

@@ -1,4 +1,4 @@
-# 0043. An import asks once about what it will not guess
+# 0045. An import asks once about what it will not guess
 
 **Status:** Implemented
 **Amends:** [0037](0037-a-tracker-import-carries-history.md), decision 3

@@ -136,7 +136,7 @@ public class GrouveeImportSourceTests
     [Fact]
     public void Read_PlayedWithoutAFinishDate_IsInTheGroupItsOwnerCanAnswerForAtOnce()
     {
-        // ADR 0043. No status is still invented for it — the flag is what lets the review screen
+        // ADR 0045. No status is still invented for it — the flag is what lets the review screen
         // ask its owner once for every such game, instead of leaving most of a long-time user's
         // library in no list.
         var row = Single(Game());

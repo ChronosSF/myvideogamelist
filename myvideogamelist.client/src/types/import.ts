@@ -94,7 +94,7 @@ export interface ImportReviewRow {
     statusUnrecognised: boolean;
     /**
      * The file says this game was played and not how that ended, so its `status` is whatever list
-     * its owner chose for every such row at once, and null until they choose (ADR 0043).
+     * its owner chose for every such row at once, and null until they choose (ADR 0045).
      */
     playedUnresolved: boolean;
     score: number | null;

@@ -87,7 +87,7 @@ public interface IImportService
     /// </summary>
     /// <remarks>
     /// The rows are found here rather than named by the caller, so the group answered for is
-    /// exactly the one the review counted (ADR 0043). Like every other decision on a review it
+    /// exactly the one the review counted (ADR 0045). Like every other decision on a review it
     /// writes nothing to the library; the commit does.
     /// </remarks>
     /// <exception cref="ArgumentOutOfRangeException">

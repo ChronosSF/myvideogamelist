@@ -721,7 +721,7 @@ public class ImportServiceTests
     [Fact]
     public async Task SetPlayedStatusAsync_PutsEveryUnresolvedGameInThatList_AndNoOtherRow()
     {
-        // ADR 0043: one answer for the whole group. The rows beside it have an answer of their own
+        // ADR 0045: one answer for the whole group. The rows beside it have an answer of their own
         // already, or a question of their own still to be asked, and the group's must reach neither.
         using var db = NewDb();
         var service = NewService(db);

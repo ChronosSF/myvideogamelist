@@ -232,7 +232,7 @@ describe('ImportReviewPage', () => {
     });
 
     it('asks once which list the games played with no word on how they ended go into', async () => {
-        // ADR 0043. Hundreds of rows in a long-time user's export, and one question for all of
+        // ADR 0045. Hundreds of rows in a long-time user's export, and one question for all of
         // them — answered here, it is a status in a list the moment the import finishes.
         review.review = loaded([
             row({ id: 1, status: null, playedUnresolved: true }),

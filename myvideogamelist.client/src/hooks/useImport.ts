@@ -118,7 +118,7 @@ export interface UseImportReviewResult {
     setDecisions: (decisions: ImportRowDecision[]) => Promise<void>;
     /**
      * Puts every row the file says was played, without saying how that ended, into one list — or,
-     * given null, back into none (ADR 0043).
+     * given null, back into none (ADR 0045).
      */
     setPlayedStatus: (status: string | null) => Promise<void>;
     /** Looks up the rows whose file named no game, a batch at a time, until none is left. */

@@ -141,7 +141,7 @@ public class ImportController(
     /// <remarks>
     /// A <c>PUT</c>, because it sets the group's answer to a value rather than adding to anything:
     /// sending the same list twice leaves the review exactly as sending it once did. The body names
-    /// a list and never a row, so which rows are in the group is decided by the server (ADR 0043).
+    /// a list and never a row, so which rows are in the group is decided by the server (ADR 0045).
     /// </remarks>
     [HttpPut("jobs/{jobId:guid}/played-status")]
     public async Task<IActionResult> SetPlayedStatus(

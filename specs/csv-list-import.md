@@ -112,7 +112,7 @@ is one, and so is a played game in a platform import. Such a row carries no stat
 bucket). The review screen asks once, for all such rows together, which list they go into: no list
 by default, or any of the five. It is most of a long-time Grouvee user's library, because Grouvee
 added finish dates after it already had shelves, and without the one question those games would land
-where no list shows them. See [0043](../docs/decisions/0043-an-import-asks-once-about-what-it-will-not-guess.md).
+where no list shows them. See [0045](../docs/decisions/0045-an-import-asks-once-about-what-it-will-not-guess.md).
 
 ## 4. Matching — the actual hard part
 
