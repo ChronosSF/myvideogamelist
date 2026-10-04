@@ -29,13 +29,29 @@ namespace MyVideoGameList.Server.Services.Import;
 /// <param name="Status">
 /// One of <c>ListStatusKeys</c>, or null. Null is a real and common answer: it is what a game the
 /// user has played but not resolved becomes (ADR 0026, ADR 0037), and it is also what an
-/// unrecognised shelf leaves behind — <paramref name="StatusUnrecognised"/> is what tells those
-/// two apart.
+/// unrecognised shelf leaves behind — <paramref name="PlayedUnresolved"/> and
+/// <paramref name="StatusUnrecognised"/> are what tell those apart. On a played-but-unresolved row
+/// this is the only field that changes after upload: it holds whatever list its owner chose for the
+/// whole group, or null while they have chosen none.
 /// </param>
 /// <param name="StatusUnrecognised">
 /// True when the preset did not understand <paramref name="SourceStatus"/>. Those rows are grouped
 /// on the review screen with a dropdown rather than being silently dropped or silently defaulted
 /// to Backlog, which is the rule `specs/csv-list-import.md` §3.2 sets.
+/// </param>
+/// <param name="PlayedUnresolved">
+/// <para>
+/// True when the file says the game was played and not how that ended: Grouvee's Played shelf with
+/// no finish date, and what a played game in a platform import will be (ADR 0026). Such a row
+/// carries no status of its own, because choosing between Finished, Dropped and On Hold for it is
+/// the guess both of those records refuse.
+/// </para>
+/// <para>
+/// What the flag adds is that its owner can answer for all of them at once on the review screen
+/// (ADR 0043), so a long-time tracker's library does not land in no list one game at a time. It is
+/// not the same fact as a null <paramref name="Status"/>, which a game only on the wishlist, or only
+/// in a play log, has as well.
+/// </para>
 /// </param>
 /// <param name="Score">
 /// Normalised to our 1–10, from whatever the source uses. Five-star, hundred-point and letter
@@ -66,6 +82,7 @@ internal sealed record ImportRowPayload(
     string? SourceStatus,
     string? Status,
     bool StatusUnrecognised,
+    bool PlayedUnresolved,
     short? Score,
     bool Wishlist,
     bool Favourite,

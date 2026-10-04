@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using MyVideoGameList.Server.Models;
 
 namespace MyVideoGameList.Server.DTOs;
 
@@ -46,6 +47,11 @@ public record ImportReviewDto(
 /// counting the two together would leave a "find matches" button that never stopped offering
 /// itself.
 /// </param>
+/// <param name="PlayedUnresolved">
+/// Rows the file says were played without saying how that ended — the group
+/// <c>PUT jobs/{id}/played-status</c> answers for at once. A fact about the file, so it does not
+/// move while the review is worked through, whatever list the group is given.
+/// </param>
 public record ImportReviewSummaryDto(
     int Total,
     int Matched,
@@ -53,6 +59,7 @@ public record ImportReviewSummaryDto(
     int Unmatched,
     int Unlooked,
     int StatusUnrecognised,
+    int PlayedUnresolved,
     int AlreadyTracked,
     int Selected);
 
@@ -66,6 +73,10 @@ public record ImportReviewSummaryDto(
 /// cover art, so a null here costs a thumbnail rather than a row.
 /// </param>
 /// <param name="Status">One of <c>ListStatusKeys</c>, or null for a row that will carry no status.</param>
+/// <param name="PlayedUnresolved">
+/// The file says this game was played and not how that ended, so its status is whatever list its
+/// owner chose for every such row at once — none until they choose (ADR 0043).
+/// </param>
 /// <param name="Candidates">
 /// The games the matcher would offer for an <c>ambiguous</c> row, best first, so the user resolves
 /// it in one click (<c>specs/csv-list-import.md</c> §M3). Empty for every other row, and empty as
@@ -88,6 +99,7 @@ public record ImportReviewRowDto(
     string? SourceStatus,
     string? Status,
     bool StatusUnrecognised,
+    bool PlayedUnresolved,
     short? Score,
     bool Wishlist,
     bool Favourite,
@@ -144,6 +156,32 @@ public record ImportRowDecisionDto(
     string? Status);
 
 /// <summary>
+/// The list every played-but-unresolved row goes into, chosen once for all of them.
+/// </summary>
+/// <remarks>
+/// <para>
+/// One answer for the group rather than a status per row, because that is the question being
+/// asked: a file that does not say how hundreds of games ended is not asking about each of them,
+/// and making somebody answer row by row is the problem restated (ADR 0043). The request names a
+/// list and never a row, so which rows are in the group is the server's to decide, and is exactly
+/// the set the review counted.
+/// </para>
+/// <para>
+/// Null puts them back in no list, which is where they start. It is allowed by name: without
+/// <c>null</c> in the list, <see cref="AllowedValuesAttribute"/> refuses it.
+/// </para>
+/// </remarks>
+public record ImportPlayedStatusDto(
+    [AllowedValues(
+        null,
+        ListStatusKeys.Backlog,
+        ListStatusKeys.Playing,
+        ListStatusKeys.OnHold,
+        ListStatusKeys.Finished,
+        ListStatusKeys.Dropped)]
+    string? Status);
+
+/// <summary>
 /// What a commit did, and what it did not do.
 /// </summary>
 /// <param name="Skipped">
@@ -151,6 +189,11 @@ public record ImportRowDecisionDto(
 /// built from — the promise of §C5 is that nothing is silently lost, and a count alone does not
 /// keep it.
 /// </param>
-public record ImportResultDto(ImportJobDto Job, IReadOnlyList<ImportSkippedRowDto> Skipped);
+/// <param name="Unlisted">
+/// How many of the games the commit wrote are in no list afterwards. The result screen says so,
+/// because "now in your lists" is false of them: an entry with no status appears in no list
+/// (ADR 0019), and only the game's own page shows it.
+/// </param>
+public record ImportResultDto(ImportJobDto Job, IReadOnlyList<ImportSkippedRowDto> Skipped, int Unlisted);
 
 public record ImportSkippedRowDto(string Title, string? SourceStatus, string Reason);

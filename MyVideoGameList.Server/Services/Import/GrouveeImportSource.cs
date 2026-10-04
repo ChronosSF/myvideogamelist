@@ -132,7 +132,7 @@ internal sealed class GrouveeImportSource : IImportSource
         var shelves = game.Shelves?.Keys.ToList() ?? [];
         var playthroughs = MapPlaythroughs(game.Dates, game.Platforms?.Keys.FirstOrDefault());
         var finished = playthroughs.Any(p => p.FinishedOn is not null);
-        var (status, unrecognised) = MapShelves(shelves, finished);
+        var (status, unrecognised, unresolved) = MapShelves(shelves, finished);
 
         return new ImportRowPayload(
             Title: title,
@@ -142,6 +142,7 @@ internal sealed class GrouveeImportSource : IImportSource
             SourceStatus: shelves.Count > 0 ? string.Join(", ", shelves) : null,
             Status: status,
             StatusUnrecognised: unrecognised,
+            PlayedUnresolved: unresolved,
             Score: MapRating(game.Rating),
             Wishlist: shelves.Any(IsWishlistShelf),
             Favourite: game.IgdbId is { } id && favourites.Contains(id),
@@ -244,6 +245,12 @@ internal sealed class GrouveeImportSource : IImportSource
             SourceStatus: null,
             Status: null,
             StatusUnrecognised: false,
+
+            // Not in the played-but-unresolved group either. Taking a game off every shelf is
+            // something the user did, which says they stopped tracking it rather than that how it
+            // ended is unknown, so the one answer the review screen takes for that group is not
+            // applied to it.
+            PlayedUnresolved: false,
             Score: null,
             Wishlist: false,
             Favourite: game?.IgdbId is { } id && favourites.Contains(id),
@@ -268,26 +275,35 @@ internal sealed class GrouveeImportSource : IImportSource
     /// what 0026 exists to refuse. In the export this was built from it is 448 of 608 rows.
     /// </para>
     /// <para>
+    /// That bucket is flagged as well as left without a status, so the review screen can ask about
+    /// it once (ADR 0043). It is most of a long-time user's library rather than an edge case:
+    /// Grouvee added playthroughs, and with them finish dates, after it already had shelves, so a
+    /// game shelved before then has no finish date unless its owner went back and added one.
+    /// </para>
+    /// <para>
     /// Precedence matters when a game sits on several shelves, which Grouvee permits: current state
     /// wins, so Playing beats Played beats Backlog. A game on Played and Playing is one somebody is
     /// replaying, and Playing is the truer answer about now.
     /// </para>
     /// </remarks>
-    private static (string? Status, bool Unrecognised) MapShelves(
+    private static (string? Status, bool Unrecognised, bool PlayedUnresolved) MapShelves(
         IReadOnlyList<string> shelves, bool finished)
     {
-        if (shelves.Count == 0) return (null, false);
+        if (shelves.Count == 0) return (null, false, false);
 
-        if (shelves.Any(s => Is(s, ShelfPlaying))) return (ListStatusKeys.Playing, false);
-        if (shelves.Any(s => Is(s, ShelfPlayed))) return (finished ? ListStatusKeys.Finished : null, false);
-        if (shelves.Any(s => Is(s, ShelfBacklog))) return (ListStatusKeys.Backlog, false);
+        if (shelves.Any(s => Is(s, ShelfPlaying))) return (ListStatusKeys.Playing, false, false);
+
+        if (shelves.Any(s => Is(s, ShelfPlayed)))
+            return finished ? (ListStatusKeys.Finished, false, false) : (null, false, true);
+
+        if (shelves.Any(s => Is(s, ShelfBacklog))) return (ListStatusKeys.Backlog, false, false);
 
         // The wishlist is an axis rather than a status (ADR 0022), so a game only wishlisted has no
         // status and nothing was misunderstood.
-        if (shelves.All(IsWishlistShelf)) return (null, false);
+        if (shelves.All(IsWishlistShelf)) return (null, false, false);
 
         // A shelf the user invented. Never defaulted to Backlog — the review screen asks.
-        return (null, true);
+        return (null, true, false);
     }
 
     private static bool IsWishlistShelf(string shelf) => Is(shelf, ShelfWishList);

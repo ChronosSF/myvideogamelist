@@ -1,3 +1,5 @@
+using System.ComponentModel.DataAnnotations;
+using System.Reflection;
 using System.Runtime.CompilerServices;
 using Microsoft.EntityFrameworkCore;
 using MyVideoGameList.Server.Data;
@@ -674,6 +676,257 @@ public class ImportServiceTests
 
         Assert.Equal(42, Assert.Single(db.UserGameEntries).GameId);
     }
+
+    // ---------------------------------------------------------------- played, with no word on how it ended
+
+    /// <summary>A run with a finish date, which is what puts a Played game in Finished.</summary>
+    private const string FinishedRun =
+        """[{"date_started": "None", "date_finished": "2022-09-23", "seconds_played": 0, "level_of_completion": "Main Story", "platform": ""}]""";
+
+    /// <summary>
+    /// Two games the played-but-unresolved group is for, and three rows beside them that it must
+    /// leave alone: one with an answer of its own, and two with no status for other reasons.
+    /// </summary>
+    private static string PlayedMix() => Export(
+        Entry(igdbId: "1", name: "Unresolved One"),
+        Entry(igdbId: "2", name: "Unresolved Two"),
+        Entry(igdbId: "3", name: "Finished", dates: FinishedRun),
+        Entry(igdbId: "4", name: "Only Wanted", shelves: """{"Wish List": {"date_added": "2025-11-28T00:00:00Z"}}"""),
+        Entry(igdbId: "5", name: "Custom Shelf", shelves: """{"Gave Up On": {"date_added": "2025-11-28T00:00:00Z"}}"""));
+
+    private static async Task<Dictionary<string, ImportReviewRowDto>> RowsByTitleAsync(
+        ImportService service, Guid jobId) =>
+        (await service.GetReviewAsync(UserId, jobId))!.Rows.ToDictionary(row => row.Title);
+
+    private static AllowedValuesAttribute PlayedStatusValues() =>
+        typeof(ImportPlayedStatusDto).GetConstructors().Single().GetParameters()
+            .Single(p => p.Name == nameof(ImportPlayedStatusDto.Status))
+            .GetCustomAttribute<AllowedValuesAttribute>()!;
+
+    [Fact]
+    public async Task GetReviewAsync_CountsTheGamesPlayedWithNoWordOnHowTheyEnded()
+    {
+        using var db = NewDb();
+        var service = NewService(db);
+        var jobId = await UploadAsync(service, PlayedMix());
+
+        var review = (await service.GetReviewAsync(UserId, jobId))!;
+
+        Assert.Equal(2, review.Summary.PlayedUnresolved);
+        Assert.Equal(
+            new[] { "Unresolved One", "Unresolved Two" },
+            review.Rows.Where(row => row.PlayedUnresolved).Select(row => row.Title));
+    }
+
+    [Fact]
+    public async Task SetPlayedStatusAsync_PutsEveryUnresolvedGameInThatList_AndNoOtherRow()
+    {
+        // ADR 0043: one answer for the whole group. The rows beside it have an answer of their own
+        // already, or a question of their own still to be asked, and the group's must reach neither.
+        using var db = NewDb();
+        var service = NewService(db);
+        var jobId = await UploadAsync(service, PlayedMix());
+
+        Assert.True(await service.SetPlayedStatusAsync(UserId, jobId, ListStatusKeys.Dropped));
+
+        var rows = await RowsByTitleAsync(service, jobId);
+        Assert.Equal(ListStatusKeys.Dropped, rows["Unresolved One"].Status);
+        Assert.Equal(ListStatusKeys.Dropped, rows["Unresolved Two"].Status);
+        Assert.Equal(ListStatusKeys.Finished, rows["Finished"].Status);
+        Assert.Null(rows["Only Wanted"].Status);
+        Assert.Null(rows["Custom Shelf"].Status);
+        Assert.True(rows["Custom Shelf"].StatusUnrecognised);
+    }
+
+    [Fact]
+    public async Task SetPlayedStatusAsync_Null_PutsThemBackInNoList()
+    {
+        // No list is where the group starts, so changing one's mind has to be able to get back
+        // there — and the rows stay in the group, so the question can be answered again.
+        using var db = NewDb();
+        var service = NewService(db);
+        var jobId = await UploadAsync(service, PlayedMix());
+
+        await service.SetPlayedStatusAsync(UserId, jobId, ListStatusKeys.Finished);
+        await service.SetPlayedStatusAsync(UserId, jobId, null);
+
+        var rows = await RowsByTitleAsync(service, jobId);
+        Assert.Null(rows["Unresolved One"].Status);
+        Assert.Null(rows["Unresolved Two"].Status);
+        Assert.True(rows["Unresolved One"].PlayedUnresolved);
+        Assert.Equal(ListStatusKeys.Finished, rows["Finished"].Status);
+    }
+
+    [Fact]
+    public async Task CommitAsync_AfterTheGroupIsAnswered_WritesThatStatusAsAnImportedOne()
+    {
+        // The answer is its owner's, but it is still a status the import wrote without an event, so
+        // it is marked exactly as a finish date in the file would have been: the origin names the
+        // source and StatusChangedAt stays null (ADR 0026, ADR 0037).
+        using var db = NewDb();
+        var service = NewService(db, CacheReturning(Game(379)));
+        var jobId = await UploadAsync(service, Export(Entry()));
+
+        await service.SetPlayedStatusAsync(UserId, jobId, ListStatusKeys.Finished);
+        await service.CommitAsync(UserId, jobId);
+
+        var entry = Assert.Single(db.UserGameEntries);
+        Assert.Equal(db.ListStatuses.Single(s => s.Key == ListStatusKeys.Finished).Id, entry.StatusId);
+        Assert.Equal(ImportSources.Grouvee, entry.Origin);
+        Assert.Null(entry.StatusChangedAt);
+        Assert.Empty(db.UserGameEvents);
+    }
+
+    [Fact]
+    public async Task SetPlayedStatusAsync_AStatusThatIsNotAList_IsRefusedAndStoresNothing()
+    {
+        // Stored, a key like this would have the commit pass over every row in the group without a
+        // word, which is why it throws here rather than being ignored as SetDecisionsAsync ignores one.
+        using var db = NewDb();
+        var service = NewService(db);
+        var jobId = await UploadAsync(service, PlayedMix());
+
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(
+            () => service.SetPlayedStatusAsync(UserId, jobId, "not-a-status"));
+
+        Assert.Null((await RowsByTitleAsync(service, jobId))["Unresolved One"].Status);
+    }
+
+    [Fact]
+    public async Task SetPlayedStatusAsync_MovesTheJobsClock()
+    {
+        // Answering the group is work on the review like any other decision, so it keeps the job
+        // alive in the same way. See SetDecisionsAsync_MovesTheJobsClock_….
+        using var db = NewDb();
+        var jobId = await UploadAsync(NewService(db), PlayedMix());
+
+        var later = Midday.AddDays(9);
+        await new ImportService(db, CacheReturning(), NoMatcher(), new FixedClock(later))
+            .SetPlayedStatusAsync(UserId, jobId, ListStatusKeys.Finished);
+
+        Assert.Equal(later, (await db.ImportJobs.SingleAsync()).UpdatedAt);
+    }
+
+    [Fact]
+    public async Task SetPlayedStatusAsync_AJobThatIsAlreadyOver_IsNotFound()
+    {
+        using var db = NewDb();
+        var service = NewService(db, CacheReturning(Game(379)));
+        var jobId = await UploadAsync(service, Export(Entry()));
+        await service.CommitAsync(UserId, jobId);
+
+        Assert.False(await service.SetPlayedStatusAsync(UserId, jobId, ListStatusKeys.Finished));
+    }
+
+    [Fact]
+    public async Task SetPlayedStatusAsync_AJobBelongingToSomebodyElse_IsNotFoundAndUntouched()
+    {
+        using var db = NewDb();
+        var service = NewService(db);
+        var jobId = await UploadAsync(service, PlayedMix());
+
+        Assert.False(await service.SetPlayedStatusAsync(OtherUserId, jobId, ListStatusKeys.Finished));
+        Assert.Null((await RowsByTitleAsync(service, jobId))["Unresolved One"].Status);
+    }
+
+    [Fact]
+    public async Task SetPlayedStatusAsync_WhenTheJobIsSweptMidRequest_SaysSoRatherThanReportingASave()
+    {
+        // The window every write on a review has: retention deletes the job between the read and
+        // the save, and the endpoint has to answer 404 rather than 204 for a change that landed
+        // nowhere.
+        var name = Guid.NewGuid().ToString();
+        using var db = NewDb(name);
+        using var sweeper = NewDb(name);
+
+        var jobId = await UploadAsync(NewService(db), PlayedMix());
+
+        var service = new ImportService(
+            db, CacheReturning(), NoMatcher(), new SweepingClock(Midday, () => Sweep(sweeper)));
+
+        Assert.False(await service.SetPlayedStatusAsync(UserId, jobId, ListStatusKeys.Finished));
+    }
+
+    [Fact]
+    public async Task GetReviewAsync_ARowStoredBeforeTheGroupExisted_ReadsAsOutsideIt()
+    {
+        // A job uploaded before the flag existed carries payloads without it, and a review of one
+        // must still open — as a review with nobody in the group, which is what it was.
+        using var db = NewDb();
+        var service = NewService(db);
+        var jobId = await UploadAsync(service, Export(Entry()));
+
+        var stored = await db.ImportRows.SingleAsync();
+        Assert.Contains("\"playedUnresolved\":true,", stored.Payload);
+        stored.Payload = stored.Payload.Replace("\"playedUnresolved\":true,", "");
+        await db.SaveChangesAsync();
+
+        Assert.False(Assert.Single((await service.GetReviewAsync(UserId, jobId))!.Rows).PlayedUnresolved);
+    }
+
+    [Fact]
+    public async Task CommitAsync_SaysHowManyOfTheGamesItWroteAreInNoList()
+    {
+        // "Now in your lists" was false of every unresolved game the result screen counted: an entry
+        // with no status appears in no list (ADR 0019). Counted per game rather than per row, and
+        // this file names one game twice.
+        using var db = NewDb();
+        var service = NewService(db, CacheReturning(Game(1), Game(2), Game(3)));
+        var jobId = await UploadAsync(service, Export(
+            Entry(igdbId: "1", name: "Unresolved"),
+            Entry(igdbId: "1", name: "Unresolved, Again"),
+            Entry(igdbId: "2", name: "Finished", dates: FinishedRun),
+            Entry(igdbId: "3", name: "Also Unresolved")));
+
+        var result = await service.CommitAsync(UserId, jobId);
+
+        Assert.Equal(4, result!.Job.ImportedCount);
+        Assert.Equal(2, result.Unlisted);
+    }
+
+    [Fact]
+    public async Task CommitAsync_AGameTheUserHadAlreadyListed_IsNotCountedInNoList()
+    {
+        // The row carries no status, so the commit leaves the one its owner set: the game is in a
+        // list whatever the row said, and counting rows rather than entries would say otherwise.
+        using var db = NewDb();
+        db.UserGameEntries.Add(new UserGameEntry
+        {
+            UserId = UserId, GameId = 379, AddedAt = Midday,
+            StatusId = db.ListStatuses.Single(s => s.Key == ListStatusKeys.Backlog).Id
+        });
+        await db.SaveChangesAsync();
+
+        var service = NewService(db, CacheReturning(Game(379)));
+        var jobId = await UploadAsync(service, Export(Entry()));
+        var row = Assert.Single((await service.GetReviewAsync(UserId, jobId))!.Rows);
+        await service.SetDecisionsAsync(UserId, jobId, new ImportDecisionsDto(
+            [new ImportRowDecisionDto(row.Id, ImportDecisions.Import, null, null)]));
+
+        var result = await service.CommitAsync(UserId, jobId);
+
+        Assert.Equal(0, result!.Unlisted);
+    }
+
+    [Fact]
+    public void ImportPlayedStatusDto_AcceptsExactlyTheListsAndNull()
+    {
+        // Against the seeded statuses rather than a second copy of the keys, so a list added to one
+        // and not the other fails here instead of as a 400 nobody can explain. Null is how the group
+        // goes back to no list, and AllowedValues refuses null unless it is one of its values.
+        using var db = NewDb();
+        var allowed = PlayedStatusValues().Values;
+
+        Assert.Equal(db.ListStatuses.Select(s => s.Key).Order(), allowed.OfType<string>().Order());
+        Assert.Contains(null, allowed);
+    }
+
+    [Theory]
+    [InlineData("FINISHED")]
+    [InlineData("wishlist")]
+    [InlineData("")]
+    public void ImportPlayedStatusDto_RefusesAnythingElse(string value) =>
+        Assert.False(PlayedStatusValues().IsValid(value));
 
     // ---------------------------------------------------------------- matching
 
