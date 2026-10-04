@@ -9,3 +9,10 @@ Dockerfile
 .dockerignore
 *.pem
 .vscode
+
+# Vite reads .env files during `npm run build` and bakes VITE_* values into the bundle, and
+# `COPY . .` would hand a developer's local ones to the builder. The repository ignores them for
+# the same reason; so does the context.
+.env
+.env.*
+*.local
