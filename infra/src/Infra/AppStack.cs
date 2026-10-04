@@ -48,11 +48,18 @@ public sealed class AppStack : Stack
         ssrTargets.AddTarget(ssrService);
 
         // Plain HTTP is redirected here, by the balancer; the API never redirects (ADR 0044).
-        alb.AddRedirect();
+        //
+        // Open = false on both listeners, because CDK otherwise "opens" an internet-facing
+        // balancer by adding 0.0.0.0/0 ingress on each listener port to its security group - which
+        // here is the data stack's, and would silently undo the allowedCidr and CloudFront-only
+        // rules it holds. Every ingress rule the balancer has is owned by DataStack and nothing
+        // else; the review on #175 caught this.
+        alb.AddRedirect(new ApplicationLoadBalancerRedirectConfig { Open = false });
 
         var https = alb.AddListener("Https", new BaseApplicationListenerProps
         {
             Port = 443,
+            Open = false,
             Certificates = [ListenerCertificate.FromCertificateManager(data.Certificate)],
             DefaultTargetGroups = [ssrTargets],
         });

@@ -24,3 +24,13 @@ cdk deploy Mvgl-dev-Data --profile mvgl-dev -c env=dev -c allowedCidr=<your ip>/
 
 The long-lived stacks are deployed from a developer machine; the pipeline deploys `Migrate` and
 `App` only, as the deploy role the `Data` stack creates.
+
+## Things that will bite you
+
+- **Every ingress rule on the balancer is owned by `DataStack`, and both listeners are
+  `Open = false`.** CDK otherwise "opens" an internet-facing balancer by writing `0.0.0.0/0`
+  ingress for each listener port into its security group - which is the data stack's, so a
+  synth that includes the application stack would silently undo the `allowedCidr` and
+  CloudFront-only rules the data stack holds, and the next `Data` deploy would apply it. Read the
+  balancer group's inline `SecurityGroupIngress` in the synthesised Data template, not only the
+  standalone ingress resources, when checking this.
