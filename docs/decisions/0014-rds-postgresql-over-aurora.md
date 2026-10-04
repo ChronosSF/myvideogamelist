@@ -1,7 +1,9 @@
 # 0014. Managed PostgreSQL on RDS, not Aurora Serverless v2
 
 **Status:** Accepted — supersedes the engine choice in [0007](0007-aws-target-architecture.md)
-and confirms the direction of [0008](0008-postgresql-over-sqlite.md)
+and confirms the direction of [0008](0008-postgresql-over-sqlite.md). The credits this record
+counts on are not the runway: joining an Organization ended them, and the Credits page is the
+record of what is held — [0044](0044-what-the-deployment-walkthrough-settled.md).
 
 ## Context
 

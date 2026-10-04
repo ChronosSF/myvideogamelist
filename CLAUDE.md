@@ -87,6 +87,20 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   Deployed: `Igdb__ClientId` / `Igdb__ClientSecret` environment variables. User secrets load
   only in the Development environment — running as Production locally will fail IGDB calls.
 
+- **The key ring is shared through Parameter Store, and a deployment that names no store does not
+  start.** The Data Protection keys sign the Identity cookie and seal the review cursor, and a ring
+  nobody persists is remade by every process — so a deploy signs everyone out, with a clean log.
+  `AddDataProtectionKeys` therefore persists to the path in `DataProtection:ParameterPath`, falls
+  back to the user-profile ring in Development only, and otherwise **fails at startup** unless
+  `DataProtection:AllowEphemeralKeys` says the loss is meant, which it is only for running the
+  production image on a developer machine. Two things the code cannot check: the task role needs
+  `ssm:GetParametersByPath` and `ssm:PutParameter` on that path — not `ssm:DeleteParameter`,
+  because nothing deletes keys — and the repository is built on the first protect rather than at
+  boot, so a wrong policy fails the first sign-in. Keep `SetApplicationName("MyVideoGameList")` — the default discriminator is the content
+  root path, and changing the image's working directory would orphan every cookie while the keys
+  stayed readable. One path per environment, so dev and prod cannot read each other's cookies. The
+  proof is a session surviving a redeploy, which no local test can give. See
+  `docs/decisions/0043-*`.
 - **Nobody is an admin until named, in Development too.** `/admin` and its endpoints sit behind one
   policy that reads account ids from `Admin:AccountIds`, so name your own:
   `dotnet user-secrets set "Admin:AccountIds:0" "<account id>"`. An id, never a username — a name
@@ -245,7 +259,11 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   client. Identity locks an account after five failures but answers exactly as it answers a wrong
   password, because announcing a lockout tells an attacker the account exists. Forwarded headers
   are off until configured, and turning them on without naming the proxy **fails at startup** rather
-  than trusting whoever sends the header.
+  than trusting whoever sends the header. Behind CloudFront, **`ForwardLimit` stays 1**: the
+  middleware checks each hop against the trust list, and the CDN's address is never in the
+  balancer's subnets, so raising it to 2 quietly leaves the limiter partitioned by edge server. The
+  balancer preserves the header instead, which is safe only while nothing but CloudFront can reach
+  it. See `docs/decisions/0044-*`.
 
 - **Never change a game's status without recording an event.** `UserGameEvents` is append-only
   and is the only record that a transition happened — `UserGameLists` holds current state and is
