@@ -83,6 +83,7 @@ builder.Services.AddScoped<IUserNameClaimService, UserNameClaimService>();
 builder.Services.AddScoped<ITrackedNewsService, TrackedNewsService>();
 builder.Services.AddScoped<IImportService, ImportService>();
 builder.Services.AddScoped<IImportMatcher, ImportMatcher>();
+builder.Services.AddScoped<ICalendarCurationService, CalendarCurationService>();
 
 // Everything that runs on a schedule, plus the host contract those services are written against
 // (ADR 0038). One call rather than a line per service, because what happens when a background
@@ -162,6 +163,9 @@ builder.Services.ConfigureApplicationCookie(options =>
 // not sign everyone out; left to the user-profile default on a developer machine; and refused,
 // at startup, anywhere else that names no store. See docs/decisions/0043-*.
 builder.Services.AddDataProtectionKeys(builder.Configuration, builder.Environment);
+// The accounts that may use the admin page, named by id in configuration, and the one policy every
+// admin endpoint sits behind. See Security/AdminPolicy.cs and the release calendar spec, §7.
+builder.Services.AddAdminPolicy(builder.Configuration);
 
 // External social login providers.
 // Credentials are supplied via environment variables or user secrets and are

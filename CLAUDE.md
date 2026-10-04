@@ -55,7 +55,7 @@ still work, so the instance should stay in rotation.
 ```
 MyVideoGameList.Server/         ASP.NET Core 10 API
   Controllers/  Services/  Models/  DTOs/  Data/  HealthChecks/
-  Security/                     Rate limits, forwarded headers, security headers, the write guard
+  Security/                     Rate limits, forwarded headers, security headers, the write guard, the admin policy
   Errors/                       What each kind of failure leaves as
 MyVideoGameList.Server.Tests/   xUnit tests
 myvideogamelist.client/
@@ -101,6 +101,11 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   stayed readable. One path per environment, so dev and prod cannot read each other's cookies. The
   proof is a session surviving a redeploy, which no local test can give. See
   `docs/decisions/0043-*`.
+- **Nobody is an admin until named, in Development too.** `/admin` and its endpoints sit behind one
+  policy that reads account ids from `Admin:AccountIds`, so name your own:
+  `dotnet user-secrets set "Admin:AccountIds:0" "<account id>"`. An id, never a username — a name
+  can be given up and claimed by somebody else. A later admin page goes behind the same policy, on
+  the controller's class, and edits reference data only, never a user's. See `docs/decisions/0042-*`.
 
 - **IGDB is the source of truth for game data, but a library renders from `CachedGames`.** There
   are no local game/genre/platform tables; they were removed, and `UserGameEntry.GameId` holds an

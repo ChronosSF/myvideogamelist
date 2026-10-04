@@ -1,8 +1,10 @@
 # Spec — What is coming for your games: a two-week line and a release calendar
 
-Status: **proposed — nothing built (2026-09-28)**
-Relates to: #129 (the old month view, which this replaces), #128 (IGDB showcases on the home page),
-#122 (release notifications, which need the same "what is connected to my games" answer), ADR
+Status: **accepted — being built under #162; the admin page (#163) is done**
+Relates to: #129 (the old month view, which this replaces), #128 (the showcases and sales for signed-out
+visitors — §9's fifth question), #122 (release notifications, which need the same "what is connected to
+my games" answer), ADR [0042](../docs/decisions/0042-admins-are-named-in-configuration.md) (the admin
+model §7 specifies), ADR
 [0004](../docs/decisions/0004-release-dates-for-calendar.md) (releases come from `release_dates`), ADR
 [0012](../docs/decisions/0012-steam-news-without-a-database.md) (derived data lives in memory, not in
 tables), ADR [0015](../docs/decisions/0015-fargate-confirmed-and-nat-less-networking.md) (the database
@@ -43,7 +45,7 @@ whole view.
 
 | # | Requirement |
 |---|---|
-| L1 | One horizontal line in the signed-in hero, from today to thirteen days ahead. It replaces the Releasing soon rail, which covered wishlist and backlog releases only (§8.3) |
+| L1 | One horizontal line in the signed-in hero, from today to thirteen days ahead — above Trending and the news, which matter less to somebody who has signed in than their own games do. It replaces the Releasing soon rail, which covered wishlist and backlog releases only (§8.3) |
 | L2 | Only entries known to the day (§4). A release known only to its month, quarter or year never appears on the line; it waits in the calendar |
 | L3 | A release is a point on its day. A sale or a showcase that spans days is a span across them. Showcases and sales are marked as what they are and carry no cover |
 | L4 | Every entry says why it is there (§3.4) |
@@ -161,7 +163,7 @@ shown.
 
 | # | Rule |
 |---|---|
-| E1 | An IGDB event is shown when its name starts with one of a list of showcase names kept on the admin page (§7): "Nintendo Direct", "State of Play", "Summer Game Fest", "The Game Awards", "Xbox Games Showcase", "Gamescom Opening Night Live" and so on. A prefix, not a substring: "Day of the Devs: Summer Game Fest Digital Showcase" is a satellite show, and does not start with "Summer Game Fest" |
+| E1 | An IGDB event is shown when its name starts with one of a list of showcase names kept on the admin page (§7), ignoring case: "Nintendo Direct", "State of Play", "Summer Game Fest", "The Game Awards", "Xbox Games Showcase", "Gamescom Opening Night Live" and so on. A prefix, not a substring: "Day of the Devs: Summer Game Fest Digital Showcase" is a satellite show, and does not start with "Summer Game Fest". The list starts empty and is filled on the page — no migration seeds it, so that it is kept in one place |
 | E2 | A showcase IGDB does not have yet can be added by hand on the admin page, as a curated event (§6) |
 | E3 | "Features a game you track" is left for later. An event's `games` appear to be filled in around the broadcast — the one future event had none — so it could only be said of a show that has already aired |
 
@@ -210,14 +212,15 @@ kept. Admin pages go wrong in specific ways, and each rule below answers one of 
 | A3 | The page edits curated events and the showcase names (§5), and nothing else — no user's data, no accounts | An admin page that grows into a database editor |
 | A4 | Writes go through `apiFetch` with `X-MVGL-Request` ([0033](../docs/decisions/0033-what-the-api-refuses.md)); the page is `NOINDEX` and `private, no-store` | The forged writes and cached responses every other page is already guarded against |
 | A5 | Its two tables carry no `UserId` column, not even to record who changed a row | `UserOwnedDataTests` selects user-owned tables by that column, and would demand a cascade from the account and an export section for rows that belong to nobody |
-| A6 | `/api/auth/me` says whether the account is an admin, so the navbar can link to the page | — |
+| A6 | `/api/auth/me`, and every other endpoint that answers with the signed-in user, says whether the account is an admin, so the navbar can link to the page | A rename that answered without the flag, and took the link away until the next page load |
 
 A1 follows the statistics tiers' stand-in (`specs/profile-statistics-tiers.md` §4), a named list of
 account ids from configuration, with one difference: that list grants everything in Development and
 this one grants nothing it does not name. Identity's role tables already exist — `Program.cs`
 registers `IdentityRole` — but a role still needs its first member put there by some means, and on
 a database nobody can reach, that means configuration anyway. Roles become worth having with a
-second kind of admin.
+second kind of admin. [0042](../docs/decisions/0042-admins-are-named-in-configuration.md) records the
+model for whatever admin page comes next; the key is `Admin:AccountIds`.
 
 ## 8. Server and client work
 
@@ -254,7 +257,7 @@ should be one service that both call.
 |---|---|
 | B1 | `GET /api/user/releases?from=&to=` — the user's connected releases in the window, each with its relation and the game or games in the set that brought it in; `no-store` |
 | B2 | `GET /api/calendar/events?from=&to=` — showcases and curated events. The same for everybody, so cacheable once for everybody, with a `degraded` flag when IGDB failed, as `/api/home` has |
-| B3 | Admin endpoints for curated events and showcase names, behind A1's policy |
+| B3 | Admin endpoints for curated events and showcase names, behind A1's policy and `no-store`: `/api/admin/calendar/events` (list and add; replace and remove by id) and `/api/admin/calendar/showcase-names` (list and add; remove by id). A name already on the list, in any letter case, is refused as a problem with the field |
 | B4 | A migration adding the two tables, `CuratedEvents` and `ShowcaseNames` (`docs/data-model-plan.md`). Neither is user-owned (A5) |
 | B5 | Tests for §3.3's rules against recorded IGDB rows, and for the policy refusing a non-admin |
 | B6 | Once the line ships, retire `/api/games/upcoming` and `GetUpcomingReleasesAsync`. 0004's reasoning — `release_dates`, not `first_release_date` — carries over to B1 |
@@ -331,9 +334,11 @@ made of IGDB's most-rated main games.
 
 ## 11. What is left, and in what order
 
+Each step is a sub-issue of #162.
+
 1. The admin page, its two tables and A1's policy (§7) — small, and it unblocks the sales and the
-   showcases.
-2. The releases service and B1, with §3.3's rules under test.
-3. B2, and the two-week line in place of the Releasing soon rail.
-4. The calendar.
-5. Retiring `/api/games/upcoming` (B6).
+   showcases. #163, done.
+2. The releases service and B1, with §3.3's rules under test. #164.
+3. B2, and the two-week line in place of the Releasing soon rail. #165.
+4. The calendar. #166.
+5. Retiring `/api/games/upcoming` (B6), with the line. #165.

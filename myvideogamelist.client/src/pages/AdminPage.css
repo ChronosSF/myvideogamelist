@@ -1,0 +1,297 @@
+/*
+ * The admin page. Its cards, fields and buttons copy the settings page's (UserPage.css) rather than
+ * inventing a look: it is a page one person uses a few times a year, and it should read as part of
+ * the same site when they do.
+ */
+
+.admin-card {
+    padding: 1.5rem;
+    background: #1e293b;
+    border: 1px solid rgba(51, 65, 85, 0.6);
+    border-radius: 1rem;
+}
+
+[data-theme='light'] .admin-card {
+    background: #ffffff;
+    border-color: rgba(203, 213, 225, 0.8);
+}
+
+.admin-card + .admin-card {
+    margin-top: 1.5rem;
+}
+
+.admin-card-title {
+    font-size: 1.125rem;
+    font-weight: 700;
+    color: #f1f5f9;
+}
+
+[data-theme='light'] .admin-card-title {
+    color: #0f172a;
+}
+
+.admin-hint {
+    margin-top: 0.375rem;
+    font-size: 0.8125rem;
+    line-height: 1.5;
+    color: #94a3b8;
+}
+
+[data-theme='light'] .admin-hint {
+    color: #64748b;
+}
+
+.admin-error {
+    margin: 0.5rem 0 0;
+    font-size: 0.8125rem;
+    color: #fca5a5;
+}
+
+[data-theme='light'] .admin-error {
+    color: #b91c1c;
+}
+
+/* ── Forms ───────────────────────────────────────────────────────────────── */
+
+.admin-form {
+    display: grid;
+    gap: 0.875rem;
+    margin-top: 1.25rem;
+}
+
+/* Two to a row from sm up: kind beside store, first day beside last. Stacked on a phone. */
+.admin-form-row {
+    display: grid;
+    gap: 0.875rem;
+}
+
+@media (min-width: 640px) {
+    .admin-form-row {
+        grid-template-columns: 1fr 1fr;
+    }
+}
+
+.admin-field {
+    display: grid;
+    gap: 0.3125rem;
+}
+
+.admin-field label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #94a3b8;
+}
+
+[data-theme='light'] .admin-field label {
+    color: #64748b;
+}
+
+.admin-field input,
+.admin-field select {
+    width: 100%;
+    padding: 0.4375rem 0.75rem;
+    background: #0f172a;
+    border: 1px solid rgba(71, 85, 105, 0.7);
+    border-radius: 0.5rem;
+    color: #f1f5f9;
+    font-size: 0.9375rem;
+    outline: none;
+    /* The native date picker's icon, and the select's own menu, in the theme's colours. */
+    color-scheme: dark;
+}
+
+.admin-field input:focus,
+.admin-field select:focus {
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+}
+
+.admin-field input[aria-invalid='true'],
+.admin-field select[aria-invalid='true'] {
+    border-color: #f87171;
+}
+
+[data-theme='light'] .admin-field input,
+[data-theme='light'] .admin-field select {
+    background: #f8fafc;
+    border-color: rgba(148, 163, 184, 0.7);
+    color: #0f172a;
+    color-scheme: light;
+}
+
+[data-theme='light'] .admin-field input[aria-invalid='true'],
+[data-theme='light'] .admin-field select[aria-invalid='true'] {
+    border-color: #dc2626;
+}
+
+.admin-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+/* ── Buttons ─────────────────────────────────────────────────────────────── */
+
+.admin-btn {
+    flex-shrink: 0;
+    padding: 0.4375rem 0.875rem;
+    background: rgba(59, 130, 246, 0.15);
+    color: #93c5fd;
+    border: 1px solid rgba(59, 130, 246, 0.35);
+    border-radius: 0.5rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+}
+
+.admin-btn:hover:not(:disabled) {
+    background: rgba(59, 130, 246, 0.25);
+    border-color: rgba(59, 130, 246, 0.55);
+}
+
+.admin-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+[data-theme='light'] .admin-btn {
+    background: rgba(59, 130, 246, 0.08);
+    color: #1d4ed8;
+    border-color: rgba(59, 130, 246, 0.4);
+}
+
+[data-theme='light'] .admin-btn:hover:not(:disabled) {
+    background: rgba(59, 130, 246, 0.14);
+}
+
+/* Quieter, for the button beside the one that does the work: Cancel, Keep. */
+.admin-btn-quiet {
+    background: transparent;
+    color: #cbd5e1;
+    border-color: rgba(71, 85, 105, 0.7);
+}
+
+.admin-btn-quiet:hover:not(:disabled) {
+    background: rgba(71, 85, 105, 0.3);
+    border-color: rgba(100, 116, 139, 0.8);
+}
+
+[data-theme='light'] .admin-btn-quiet {
+    background: transparent;
+    color: #334155;
+    border-color: rgba(148, 163, 184, 0.7);
+}
+
+[data-theme='light'] .admin-btn-quiet:hover:not(:disabled) {
+    background: rgba(148, 163, 184, 0.15);
+}
+
+.admin-btn-danger {
+    background: rgba(239, 68, 68, 0.1);
+    color: #fca5a5;
+    border-color: rgba(239, 68, 68, 0.35);
+}
+
+.admin-btn-danger:hover:not(:disabled) {
+    background: rgba(239, 68, 68, 0.2);
+    border-color: rgba(239, 68, 68, 0.55);
+}
+
+[data-theme='light'] .admin-btn-danger {
+    background: rgba(239, 68, 68, 0.06);
+    color: #b91c1c;
+    border-color: rgba(239, 68, 68, 0.4);
+}
+
+[data-theme='light'] .admin-btn-danger:hover:not(:disabled) {
+    background: rgba(239, 68, 68, 0.12);
+}
+
+/* ── Lists ───────────────────────────────────────────────────────────────── */
+
+.admin-list {
+    margin-top: 1.25rem;
+    border-top: 1px solid rgba(51, 65, 85, 0.6);
+}
+
+[data-theme='light'] .admin-list {
+    border-top-color: rgba(203, 213, 225, 0.8);
+}
+
+.admin-list > li {
+    padding: 0.875rem 0;
+    border-bottom: 1px solid rgba(51, 65, 85, 0.6);
+}
+
+[data-theme='light'] .admin-list > li {
+    border-bottom-color: rgba(203, 213, 225, 0.8);
+}
+
+.admin-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+}
+
+.admin-row-name {
+    font-weight: 600;
+    color: #f1f5f9;
+}
+
+[data-theme='light'] .admin-row-name {
+    color: #0f172a;
+}
+
+.admin-row-meta {
+    margin-top: 0.125rem;
+    font-size: 0.8125rem;
+    color: #94a3b8;
+}
+
+[data-theme='light'] .admin-row-meta {
+    color: #64748b;
+}
+
+.admin-row-meta a {
+    color: #93c5fd;
+}
+
+[data-theme='light'] .admin-row-meta a {
+    color: #1d4ed8;
+}
+
+.admin-kind {
+    display: inline-block;
+    margin-right: 0.375rem;
+    padding: 0 0.4375rem;
+    border-radius: 9999px;
+    background: rgba(148, 163, 184, 0.15);
+    font-size: 0.6875rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: #cbd5e1;
+}
+
+[data-theme='light'] .admin-kind {
+    background: rgba(148, 163, 184, 0.2);
+    color: #334155;
+}
+
+.admin-past {
+    margin-top: 1rem;
+}
+
+.admin-past summary {
+    cursor: pointer;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: #94a3b8;
+}
+
+[data-theme='light'] .admin-past summary {
+    color: #64748b;
+}

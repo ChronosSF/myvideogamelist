@@ -100,18 +100,6 @@ statistical query has to filter on, so `UserGameEvents` stays typed and narrow
 `CustomListItems.AddedAt` with the events at query time; a denormalised feed table, if one is
 ever needed, is then a performance change made with full history in hand.
 
-### The release calendar
-
-System-owned reference data, entered on an admin page rather than by any user
-([`specs/release-timeline-and-calendar.md`](../specs/release-timeline-and-calendar.md) §7). Neither
-table may carry a `UserId` column, even for an audit trail: `UserOwnedDataTests` would take it for a
-user's data and demand a cascade and an export section.
-
-| Table | Notes | Issue |
-|---|---|---|
-| `CuratedEvents` | `(Id, Kind, Store, Name, StartsOn, EndsOn, Url, CreatedAt, UpdatedAt)`. Store sales, Steam's Next Fest, and showcases IGDB does not have yet. Days, not times — stores start sales at different hours in different regions | the spec |
-| `ShowcaseNames` | `(Id, Prefix)`. An IGDB event is shown on the calendar only when its name starts with one of these ("Nintendo Direct", "State of Play", …) | the spec |
-
 ### Notifications and prices
 
 | Table | Notes | Issue |
@@ -135,6 +123,12 @@ import. It shipped as `ImportJob` with the tracker import
 ([0037](decisions/0037-a-tracker-import-carries-history.md)); the entitlement question is
 `specs/csv-list-import.md` §8.
 
+`CuratedEvents` and `ShowcaseNames`, the release calendar's hand-entered reference data, were on
+this list too and shipped with its admin page (#163,
+[0042](decisions/0042-admins-are-named-in-configuration.md)). They are system-owned, so neither
+carries a `UserId` column — not even for an audit trail, which `UserOwnedDataTests` would take for a
+user's data.
+
 ## Deliberately not in the database
 
 Recorded so nobody "completes" the schema by adding them:
@@ -143,7 +137,7 @@ Recorded so nobody "completes" the schema by adding them:
   to Redis ([0012](decisions/0012-steam-news-without-a-database.md)).
 - **A user's connected releases** — asked of IGDB on request and cached in memory for the same
   reason ([`specs/release-timeline-and-calendar.md`](../specs/release-timeline-and-calendar.md)
-  §8.1). Only the curated events above are stored.
+  §8.1). Only the curated events are stored.
 - **The IGDB access token** — cache only.
 - **Current prices** — cache. Only alert thresholds and last-notified prices are durable.
 - **Data Protection keys** — outside the application's tables
