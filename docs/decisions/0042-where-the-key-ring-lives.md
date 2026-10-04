@@ -84,10 +84,13 @@ because the path is empty.
 
 ## Consequences
 
-- **The task role needs `ssm:GetParametersByPath`, `ssm:PutParameter` and `ssm:DeleteParameter`
-  on the path**, the last because on .NET 9 and later the package's repository is deletable. A
-  policy missing one of them fails the first sign-in after a deploy, not the deploy — see above —
-  so the first thing to do after step 7.8 of the guide is to sign in, redeploy, and reload.
+- **The task role needs `ssm:GetParametersByPath` and `ssm:PutParameter` on the path, and
+  nothing else.** The package's README also lists `ssm:DeleteParameter`, for the key deletion its
+  repository supports on .NET 9 and later — but deletion happens only when something calls
+  `IDeletableKeyManager.DeleteKeys`, and nothing here does, so the task role does not get it: a
+  role that can delete the keys that mint every session is a capability nobody asked for. A
+  policy missing one of the two fails the first sign-in after a deploy, not the deploy — see
+  above — so the first thing to do after the first deploy is to sign in, redeploy, and reload.
 - **One path per environment, and the paths must differ.** Dev and prod reading the same ring
   would make a dev cookie valid in prod. The path is the environment boundary, and it is set in
   the task definition, not in an `appsettings` file.

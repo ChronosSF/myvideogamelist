@@ -94,9 +94,9 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   back to the user-profile ring in Development only, and otherwise **fails at startup** unless
   `DataProtection:AllowEphemeralKeys` says the loss is meant, which it is only for running the
   production image on a developer machine. Two things the code cannot check: the task role needs
-  `ssm:GetParametersByPath`, `ssm:PutParameter` and `ssm:DeleteParameter` on that path, and the
-  repository is built on the first protect rather than at boot, so a wrong policy fails the first
-  sign-in. Keep `SetApplicationName("MyVideoGameList")` — the default discriminator is the content
+  `ssm:GetParametersByPath` and `ssm:PutParameter` on that path — not `ssm:DeleteParameter`,
+  because nothing deletes keys — and the repository is built on the first protect rather than at
+  boot, so a wrong policy fails the first sign-in. Keep `SetApplicationName("MyVideoGameList")` — the default discriminator is the content
   root path, and changing the image's working directory would orphan every cookie while the keys
   stayed readable. One path per environment, so dev and prod cannot read each other's cookies. The
   proof is a session surviving a redeploy, which no local test can give. See

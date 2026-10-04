@@ -127,8 +127,10 @@ one rotates on a schedule, ECS reads secrets only when a task starts, and a runn
 left holding a password that no longer works. **The password travels as `PGPASSWORD` beside a
 password-free `ConnectionStrings__DefaultConnection`** — `SSL Mode=Require`, since RDS refuses
 unencrypted connections from PostgreSQL 15 on — which Npgsql documents among the PostgreSQL
-environment variables it honours. 0005 names the variable; the password simply exists in one place
-rather than inside it. The IGDB secret is created by CDK with a placeholder and set by hand, so the
+environment variables it honours ("behaves the same as the password connection parameter"), and
+which was verified by running the API image with the password only in `PGPASSWORD`: `/readyz`
+reports the database reachable, and reports it unreachable with a wrong value. 0005 names the
+variable; the password simply exists in one place rather than inside it. The IGDB secret is created by CDK with a placeholder and set by hand, so the
 real value never passes through CloudFormation or the repository. 0005 judged rotating the IGDB
 secret unnecessary; it costs a minute and is done before the secret goes anywhere near AWS.
 
