@@ -87,6 +87,21 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   Deployed: `Igdb__ClientId` / `Igdb__ClientSecret` environment variables. User secrets load
   only in the Development environment — running as Production locally will fail IGDB calls.
 
+- **The key ring is shared through Parameter Store, and a deployment that names no store does not
+  start.** The Data Protection keys sign the Identity cookie and seal the review cursor, and a ring
+  nobody persists is remade by every process — so a deploy signs everyone out, with a clean log.
+  `AddDataProtectionKeys` therefore persists to the path in `DataProtection:ParameterPath`, falls
+  back to the user-profile ring in Development only, and otherwise **fails at startup** unless
+  `DataProtection:AllowEphemeralKeys` says the loss is meant, which it is only for running the
+  production image on a developer machine. Two things the code cannot check: the task role needs
+  `ssm:GetParametersByPath`, `ssm:PutParameter` and `ssm:DeleteParameter` on that path, and the
+  repository is built on the first protect rather than at boot, so a wrong policy fails the first
+  sign-in. Keep `SetApplicationName("MyVideoGameList")` — the default discriminator is the content
+  root path, and changing the image's working directory would orphan every cookie while the keys
+  stayed readable. One path per environment, so dev and prod cannot read each other's cookies. The
+  proof is a session surviving a redeploy, which no local test can give. See
+  `docs/decisions/0042-*`.
+
 - **IGDB is the source of truth for game data, but a library renders from `CachedGames`.** There
   are no local game/genre/platform tables; they were removed, and `UserGameEntry.GameId` holds an
   IGDB id with no foreign key. What exists instead is one `jsonb` row per IGDB id holding the mapped

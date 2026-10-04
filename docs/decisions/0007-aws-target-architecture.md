@@ -3,7 +3,9 @@
 **Status:** Accepted — not yet built. Two parts are superseded: the database engine by
 [0014](0014-rds-postgresql-over-aurora.md), and the App Runner fallback plus the unstated
 network topology by [0015](0015-fargate-confirmed-and-nat-less-networking.md). The Fargate,
-CloudFront, CDK and OIDC decisions stand.
+CloudFront, CDK and OIDC decisions stand. The Data Protection key store named below, "S3 or
+DynamoDB with a KMS key", is settled as Systems Manager Parameter Store by
+[0042](0042-where-the-key-ring-lives.md).
 
 ## Context
 
