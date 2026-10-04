@@ -83,6 +83,7 @@ builder.Services.AddScoped<IUserNameClaimService, UserNameClaimService>();
 builder.Services.AddScoped<ITrackedNewsService, TrackedNewsService>();
 builder.Services.AddScoped<IImportService, ImportService>();
 builder.Services.AddScoped<IImportMatcher, ImportMatcher>();
+builder.Services.AddScoped<ICalendarCurationService, CalendarCurationService>();
 // What is coming for a user's games. Asks IGDB directly rather than through the game cache: what it
 // finds is mostly games nobody tracks yet — a sequel, a DLC — which is catalogue, not somebody's shelf.
 builder.Services.AddScoped<IConnectedReleaseService, ConnectedReleaseService>();
@@ -159,6 +160,10 @@ builder.Services.ConfigureApplicationCookie(options =>
         return Task.CompletedTask;
     };
 });
+
+// The accounts that may use the admin page, named by id in configuration, and the one policy every
+// admin endpoint sits behind. See Security/AdminPolicy.cs and the release calendar spec, §7.
+builder.Services.AddAdminPolicy(builder.Configuration);
 
 // External social login providers.
 // Credentials are supplied via environment variables or user secrets and are

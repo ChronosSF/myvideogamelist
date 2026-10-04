@@ -15,6 +15,10 @@ export default [
     route('import', 'pages/ImportPage.tsx'),
     route('import/:jobId', 'pages/ImportReviewPage.tsx'),
 
+    // The release calendar's hand-kept data. Linked from the navbar only for an admin, and guarded by
+    // the API's policy rather than by that — see the release calendar spec, §7.
+    route('admin', 'pages/AdminPage.tsx'),
+
     // Somebody else's profile, and the only route addressed by a name the user chose. Under `/u/`
     // rather than at the top level so that a username can never collide with a route — see the
     // reserved list in `UserNamePolicy` for why that is belt as well as braces.
