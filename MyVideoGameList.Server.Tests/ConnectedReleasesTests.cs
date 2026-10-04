@@ -11,8 +11,8 @@ namespace MyVideoGameList.Server.Tests;
 /// Every game, id, type, parent, series, date and status below was read from IGDB on 2026-09-29, for a
 /// library of Kingdom Hearts III, Grand Theft Auto V, The Witcher 3, Street Fighter 6, Hollow Knight:
 /// Silksong, Resident Evil 2, Final Fantasy VII Remake and Xenoblade Chronicles 3 — only the memberships
-/// are chosen per test. Where a test needs a shape the recording did not have, the row is marked as
-/// made up and says why.
+/// are chosen per test. The few read later, for a shape that library did not have, say when. Where a
+/// test needs a shape no recording had, the row is marked as made up and says why.
 /// </remarks>
 public class ConnectedReleasesTests
 {
@@ -23,6 +23,7 @@ public class ConnectedReleasesTests
     private static readonly PlatformDto Switch2 = new(508, "Nintendo Switch 2", "Switch 2", null, null);
     private static readonly PlatformDto Android = new(34, "Android", "Android", null, null);
     private static readonly PlatformDto Ios = new(39, "iOS", "iOS", null, null);
+    private static readonly PlatformDto XboxOne = new(49, "Xbox One", "XONE", null, null);
 
     private static readonly SeriesRef KingdomHearts = new(272, "Kingdom Hearts");
     private static readonly SeriesRef ResidentEvil = new(83, "Resident Evil");
@@ -73,12 +74,19 @@ public class ConnectedReleasesTests
     private static readonly CalendarGame WitcherCompleteEdition = Game(119402, "The Witcher 3: Wild Hunt - Complete Edition", IgdbGameTypes.Bundle, versionParent: 1942);
     private static readonly CalendarGame WitcherTenthAnniversary = Game(372654, "The Witcher 3: Wild Hunt - Complete Edition: 10th Anniversary Edition", IgdbGameTypes.MainGame, versionParent: 119402);
 
+    // Read on 2026-10-04: Rust's console port carries a version_parent as well as a parent_game, and an
+    // edition of the port carries one in turn.
+    private static readonly CalendarGame Rust = Game(3277, "Rust", IgdbGameTypes.MainGame);
+    private static readonly CalendarGame RustConsoleEdition = Game(145149, "Rust: Console Edition", IgdbGameTypes.Port, parent: 3277, versionParent: 3277);
+    private static readonly CalendarGame RustConsoleUltimate = Game(164658, "Rust: Console Edition - Ultimate", IgdbGameTypes.MainGame, versionParent: 145149);
+
     private static readonly Dictionary<int, CalendarGame> Games = new[]
     {
         KingdomHeartsIii, GtaV, WitcherIii, StreetFighter6, Silksong, ResidentEvil2, ResidentEvil2Original, FfviiRemake, XenobladeIii,
         WitcherIiiRemastered, EverCrisis, KingdomHeartsHd28, KingdomHearts02, ReMind, KingdomHeartsFinalMix, SfArjunPass,
         SfArjunCharacter, SfTifaPass, ResidentEvil2Deluxe, ResidentEvil3, GtaVi, GtaViUltimate, XenobladeIiiSwitch2, SeaOfSorrow,
         Evercold, KingdomHeartsIv, ReVeronica, WitcherCompleteEdition, WitcherTenthAnniversary,
+        Rust, RustConsoleEdition, RustConsoleUltimate,
     }.ToDictionary(g => g.Id);
 
     private static ReleaseRow Row(int id, CalendarGame game, string date, PlatformDto platform, int? status = IgdbReleaseStatuses.FullRelease, int dateFormat = 0)
@@ -228,6 +236,29 @@ public class ConnectedReleasesTests
     }
 
     [Fact]
+    public void Compose_AnEditionOfAPort_IsThePort_AndOneReleaseWithIt()
+    {
+        // F3 stops at a product of its own. "Rust: Console Edition - Ultimate" is an edition of the console
+        // port, and on 21 May 2021 the port and the edition both reached PS4 and Xbox One. Folded on past
+        // the port to Rust, the edition would have been a second release that day, and a wrong one.
+        var set = Set((Rust, SetMembership.List, ListStatusKeys.Finished));
+        List<ReleaseRow> rows =
+        [
+            Row(713878, RustConsoleEdition, "2021-05-21", Ps4),
+            Row(713879, RustConsoleEdition, "2021-05-21", XboxOne),
+            Row(724703, RustConsoleUltimate, "2021-05-21", XboxOne),
+            Row(724704, RustConsoleUltimate, "2021-05-21", Ps4),
+        ];
+
+        var entries = ConnectedReleases.Compose(set, Games, rows, new DateOnly(2021, 5, 21), new DateOnly(2021, 5, 22));
+
+        var release = Assert.Single(Assert.Single(entries).Releases);
+        Assert.Equal("Rust: Console Edition", release.Game.Name);
+        Assert.Equal([Ps4, XboxOne], release.Platforms);
+        Assert.Equal(new ReleaseReason(ReleaseRelation.Child, 3277, "Rust", SetMembership.List, ListStatusKeys.Finished, null), release.Reason);
+    }
+
+    [Fact]
     public void Compose_TheNextInASeries_IsThereBecauseOfTheSeries()
     {
         // R3: Grand Theft Auto VI, because somebody finished Grand Theft Auto V.
@@ -357,6 +388,14 @@ public class ConnectedReleasesTests
         var remaster = Game(1, "A Remaster", IgdbGameTypes.Remaster, versionParent: WitcherIii.Id);
 
         Assert.Equal(remaster, ConnectedReleases.Fold(remaster, Games));
+    }
+
+    [Fact]
+    public void Fold_AnEditionOfAPort_StopsAtThePort()
+    {
+        // The chain can pass through a bundle, as the Witcher 3's does, but not through a port: the port's own
+        // version_parent is Rust, and the port is still a product of its own.
+        Assert.Equal(RustConsoleEdition, ConnectedReleases.Fold(RustConsoleUltimate, Games));
     }
 
     [Theory]

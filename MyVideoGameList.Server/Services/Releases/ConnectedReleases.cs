@@ -129,10 +129,18 @@ internal static class ConnectedReleases
     /// Edition" is Grand Theft Auto VI.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// Only a main game with a <c>version_parent</c> is an edition. Of 500 games carrying one, checked
     /// live on 2026-09-29, 426 were main games and 61 bundles, which F2 drops anyway; the ten remasters,
     /// expanded games and ports among them are products of their own, and folding one would hide that it
     /// is new.
+    /// </para>
+    /// <para>
+    /// The same holds above an edition. The chain can pass through a bundle — the Witcher 3's "Complete
+    /// Edition" is one — but a remaster, expanded game or port ends it, although it carries a
+    /// <c>version_parent</c> of its own: "Rust: Console Edition - Ultimate" is an edition of Rust's console
+    /// port, so it is the port, and not Rust. IGDB held seven such editions on 2026-10-04.
+    /// </para>
     /// </remarks>
     internal static CalendarGame Fold(CalendarGame released, IReadOnlyDictionary<int, CalendarGame> games)
     {
@@ -143,6 +151,8 @@ internal static class ConnectedReleases
         {
             if (shown.VersionParentId is not int parentId || !games.TryGetValue(parentId, out var parent)) break;
             shown = parent;
+
+            if ((parent.GameType ?? IgdbGameTypes.MainGame) is not (IgdbGameTypes.MainGame or IgdbGameTypes.Bundle)) break;
         }
 
         return shown;
