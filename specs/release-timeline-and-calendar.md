@@ -1,6 +1,6 @@
 # Spec — What is coming for your games: a two-week line and a release calendar
 
-Status: **accepted — being built under #162; the admin page (#163) is done**
+Status: **accepted — being built under #162; the admin page (#163) and the connected releases (#164) are done**
 Relates to: #129 (the old month view, which this replaces), #128 (the showcases and sales for signed-out
 visitors — §9's fifth question), #122 (release notifications, which need the same "what is connected to
 my games" answer), ADR [0042](../docs/decisions/0042-admins-are-named-in-configuration.md) (the admin
@@ -360,7 +360,7 @@ Each step is a sub-issue of #162.
 
 1. The admin page, its two tables and A1's policy (§7) — small, and it unblocks the sales and the
    showcases. #163, done.
-2. The releases service and B1, with §3.3's rules under test. #164.
+2. The releases service and B1, with §3.3's rules under test. #164, done.
 3. B2, and the two-week line in place of the Releasing soon rail. #165.
 4. The calendar. #166.
 5. Retiring `/api/games/upcoming` (B6), with the line. #165.
