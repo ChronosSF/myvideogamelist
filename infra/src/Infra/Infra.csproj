@@ -10,9 +10,10 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- CDK Construct Library dependencies -->
-    <PackageReference Include="Amazon.CDK.Lib" Version="[2.271.0,3.0.0)" />
-    <PackageReference Include="Constructs" Version="10.*" />
+    <!-- Pinned exactly: a floating range would let a later restore change the synthesised
+         templates with no change to the source, and Dependabot bumps them on purpose. -->
+    <PackageReference Include="Amazon.CDK.Lib" Version="2.271.0" />
+    <PackageReference Include="Constructs" Version="10.8.1" />
 
     <!-- jsii Roslyn analyzers (un-comment to obtain compile-time checks for missing required props
     <PackageReference Include="Amazon.Jsii.Analyzers" Version="*" PrivateAssets="all" />

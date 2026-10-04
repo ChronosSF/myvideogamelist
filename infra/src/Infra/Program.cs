@@ -31,14 +31,16 @@ internal static class Program
         // CloudFront reads certificates from us-east-1 and nowhere else.
         var edge = new Amazon.CDK.Environment { Account = account, Region = "us-east-1" };
 
+        // The three long-lived stacks refuse deletion: a mistake in one of them is a zone whose
+        // name servers are delegated to, or a database. The two per-release stacks stay disposable.
         // The zone is referenced from the certificate stack in another Region, which CDK carries
         // over with a parameter rather than a CloudFormation export; both sides must opt in.
         var dns = new DnsStack(app, site.StackName("Dns"),
-            new StackProps { Env = regional, CrossRegionReferences = true }, site);
+            new StackProps { Env = regional, CrossRegionReferences = true, TerminationProtection = true }, site);
         _ = new EdgeCertStack(app, site.StackName("EdgeCert"),
-            new StackProps { Env = edge, CrossRegionReferences = true }, site, dns.Zone);
+            new StackProps { Env = edge, CrossRegionReferences = true, TerminationProtection = true }, site, dns.Zone);
         var data = new DataStack(app, site.StackName("Data"),
-            new StackProps { Env = regional }, site, dns.Zone, allowedCidr);
+            new StackProps { Env = regional, TerminationProtection = true }, site, dns.Zone, allowedCidr);
 
         if (imageTag is not null)
         {

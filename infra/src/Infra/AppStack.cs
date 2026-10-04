@@ -72,13 +72,10 @@ public sealed class AppStack : Stack
         });
 
         // The hostname is the zone's own name, so the alias sits at the zone apex. Milestone 2
-        // points it at CloudFront instead.
+        // points it at CloudFront instead. An A record only: the balancer is IPv4-only and the VPC
+        // has no IPv6 allocation, so an AAAA alias would answer nothing. CloudFront, which is
+        // dual-stack, gets the AAAA in milestone 2.
         _ = new ARecord(this, "Alias", new ARecordProps
-        {
-            Zone = zone,
-            Target = RecordTarget.FromAlias(new LoadBalancerTarget(alb)),
-        });
-        _ = new AaaaRecord(this, "AliasIpv6", new AaaaRecordProps
         {
             Zone = zone,
             Target = RecordTarget.FromAlias(new LoadBalancerTarget(alb)),

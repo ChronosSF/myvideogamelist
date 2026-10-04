@@ -19,6 +19,9 @@ public sealed class DnsStack : Stack
             ZoneName = site.Host,
             Comment = $"{site.Host}: delegated from the apex zone by NS records",
         });
+        // The stated lifetime, enforced: a deleted stack leaves the zone - and its name servers,
+        // which the apex zone's delegation names - in place.
+        Zone.ApplyRemovalPolicy(RemovalPolicy.RETAIN);
 
         // What the apex zone's NS record for this name has to say.
         _ = new CfnOutput(this, "NameServers", new CfnOutputProps
