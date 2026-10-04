@@ -667,8 +667,12 @@ public class IgdbService(
     {
         // A row with no date_format is an old one, from before IGDB recorded it, and was dated to the day.
         var days = $"(date_format = 0 | date_format = null) & date >= {UnixDay(from)} & date < {UnixDay(to)}";
+
+        // Widened in seconds rather than with AddDays: a window starting on DateOnly's first day, or ending on
+        // its last, is one validation accepts, and stepping a month or a year past either end would throw —
+        // a 500 for a well-formed request. IGDB is simply asked about seconds no row has.
         var window = withPeriods
-            ? $"({days}) | (date_format = (1,2,3,4,5,6) & date >= {UnixDay(from.AddDays(-31))} & date < {UnixDay(to.AddDays(366))})"
+            ? $"({days}) | (date_format = (1,2,3,4,5,6) & date >= {UnixDay(from) - 31 * TimeSpan.SecondsPerDay} & date < {UnixDay(to) + 366 * TimeSpan.SecondsPerDay})"
             : days;
 
         return new StringBuilder()

@@ -68,6 +68,22 @@ public class ConnectedReleaseQueryTests
             query);
     }
 
+    [Theory]
+    [InlineData("0001-01-01", "0001-01-02")]
+    [InlineData("9999-12-30", "9999-12-31")]
+    public void BuildConnectedReleasesQuery_AWindowAtEitherEndOfWhatADateCanHold_IsStillWidened(string from, string to)
+    {
+        // Validation accepts any window that ends after it starts and within 400 days, so a month before one
+        // starting on the first day there is, or a year after one ending on the last, has to be reachable
+        // without stepping outside DateOnly — where it would throw, and a well-formed request would be a 500.
+        var first = DateOnly.Parse(from);
+        var last = DateOnly.Parse(to);
+
+        var query = IgdbService.BuildConnectedReleasesQuery("game = (1)", first, last, withPeriods: true, offset: 0);
+
+        Assert.Contains($"date >= {Unix(first) - 31 * 86_400} & date < {Unix(last) + 366 * 86_400})", query);
+    }
+
     [Fact]
     public void BuildConnectedReleasesQuery_PagesInIdOrder()
     {
