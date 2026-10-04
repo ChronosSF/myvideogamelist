@@ -1,0 +1,11 @@
+# Build context for this directory's Dockerfile. The image installs its own node_modules and
+# produces its own build/, so the local copies of both must stay out, along with the generated
+# route types and anything that is a developer's rather than the application's.
+node_modules
+build
+.react-router
+coverage
+Dockerfile
+.dockerignore
+*.pem
+.vscode

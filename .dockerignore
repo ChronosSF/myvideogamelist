@@ -1,0 +1,9 @@
+# Build context for MyVideoGameList.Server/Dockerfile, which is the repository root so that the
+# root NuGet.Config applies. An allowlist: everything is excluded, then the two things the image
+# needs are let back in, minus their build output. The client, the tests, the docs and .git never
+# enter the context, so a local node_modules or bin/ cannot bloat a build or leak into an image.
+*
+!NuGet.Config
+!MyVideoGameList.Server/
+MyVideoGameList.Server/bin/
+MyVideoGameList.Server/obj/
