@@ -29,12 +29,15 @@ wrong application, and abandoning an experiment is closing an account. The same 
 separate stacks was the alternative: one bootstrap fewer, at the cost of all of that, and with
 Identity Center already running a second account is a profile name and nothing else.
 
-**The Region is chosen by where the owner and the expected signed-in users are** (D-1): cached
-pages come from the edge, but every API call and every cache miss goes to the Region, and an EU
-Region keeps members' email addresses in the EU. With no reason to prefer anywhere, `us-east-1`
-is cheapest and saves a step. Whatever is chosen, two things live in `us-east-1` regardless: the
-certificate CloudFront uses, and so a second CDK bootstrap and a stack of its own, and the Service
-Quotas entries for Organizations.
+**The Region is Frankfurt, `eu-central-1`** (D-1). Cached pages come from the edge, but every
+API call, every signed-in page and every cache miss goes to the Region, and the owner and the
+expected early users are in Europe; an EU Region also keeps members' email addresses in the EU,
+and the owner's other application already runs there. It costs about 13% more than `us-east-1`
+for this stack — about $74 a month always on against $65 — which on the working pattern below
+shrinks to a couple of dollars, because the idle floor is storage and zones. Two things live in
+`us-east-1` regardless: the certificate CloudFront uses, and so a second CDK bootstrap and the
+`EdgeCert` stack, and the Service Quotas entries for Organizations. Where IGDB's API is served
+from was not checked, so no Region is claimed to be closer to it.
 
 **`mvgl-prod` is created now, empty, to start the SES clock** (D-2). The SES sandbox is per account
 and per Region, so production access has to be requested from the account and Region production
@@ -60,7 +63,7 @@ charged.
 
 ### The cost, and what an idle environment pays for
 
-**Always on is about $65 to $74 a month, not the $40 that 0015 quotes.** 0015's own lines still
+**Always on is about $74 a month in Frankfurt, $65 in Virginia, not the $40 that 0015 quotes.** 0015's own lines still
 hold — RDS 12, storage 2, the balancer 17, a task 9, a zone 0.50 — but it priced one Fargate task
 where 0003's design has two, and it missed the public IPv4 charge of $0.005 per address-hour that
 has applied since February 2024 to every public address in a VPC: one per task and one per
@@ -250,9 +253,9 @@ client image is [#106](https://github.com/ChronosSF/myvideogamelist/issues/106).
   0033's "a CDN in front of it is 2" and 0007's and 0033's redirect warning are all wrong as
   written and are left as written, with a status line pointing here. `appsettings.json` and
   `ProxyHeadersOptions` say the corrected thing, since a comment is not a record.
-- **D-1 and D-2 are the owner's.** The Region, and whether to create `mvgl-prod` early, are
-  recorded here as the walkthrough recommended them and are overturned by editing this record's
-  status line, not by a new record.
+- **D-1 is decided; D-2 is recorded as recommended.** Frankfurt is the owner's choice. Whether
+  to create `mvgl-prod` early is recorded as the walkthrough recommended it and is overturned by
+  editing this record's status line, not by a new record.
 - **Nothing here is proved.** This is the plan the environment is built to; the figures are to be
   amended once seen on a bill, and the two things the code cannot test — a session surviving a
   redeploy (0042) and the viewer's address surviving two hops — are the first things verified after
