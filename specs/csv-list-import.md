@@ -105,6 +105,15 @@ Dropped and On Hold irrecoverably, and re-importing later is not something users
 Anything unmapped lands in a "these N rows had a status we didn't recognise" bucket on the review
 screen with a dropdown, rather than being silently dropped or silently defaulted to backlog.
 
+A row the file says was **played without saying how that ended** is a different case: its status is
+understood, and what the file leaves out is the outcome. Grouvee's Played shelf with no finish date
+is one, and so is a played game in a platform import. Such a row carries no status
+([0026](../docs/decisions/0026-a-library-import-records-ownership-not-history.md)'s ambiguous
+bucket). The review screen asks once, for all such rows together, which list they go into: no list
+by default, or any of the five. It is most of a long-time Grouvee user's library, because Grouvee
+added finish dates after it already had shelves, and without the one question those games would land
+where no list shows them. See [0043](../docs/decisions/0043-an-import-asks-once-about-what-it-will-not-guess.md).
+
 ## 4. Matching — the actual hard part
 
 Matching titles to IGDB ids is the feature for every source that does not carry ids of its own.
@@ -258,8 +267,9 @@ several copies of itself.
 | C2 | Column mapping table — our field, their column, a live preview of the first three values |
 | C3 | Review screen — virtualised list grouped into auto / ambiguous / unmatched, a bulk "accept all auto", and a per-row candidate picker with cover art |
 | C4 | Progress state while matching runs, resumable — the user can close the tab and come back to the job |
-| C5 | Result summary: imported, skipped, failed, with a downloadable CSV of the rows that did not import, so nothing is silently lost |
+| C5 | Result summary: imported, skipped, failed, with a downloadable CSV of the rows that did not import, so nothing is silently lost. It also says how many imported games are in no list, since only their own game pages show those |
 | C6 | Empty and error states in the pattern the lists page already uses (roadmap Tier 2) |
+| C7 | One question for every row played without an outcome (§3.2): which list they all go into, no list by default, changeable until the commit |
 
 ## 7. Prerequisites — all shipped
 
@@ -318,7 +328,7 @@ platform re-sync stay paid. Export stays paid, as the table already has it.
 
 ## 10. What is left, and in what order
 
-**Shipped:** S1–S3, S6–S9, C3–C6, M1–M3, M5 and M6.
+**Shipped:** S1–S3, S6–S9, C3–C7, M1–M3, M5 and M6.
 
 **Superseded rather than pending** — these will not be built as written: S5's queue, because a
 matching pass is bounded and repeated instead (§4.2); C2's column-mapping table, because there is no
