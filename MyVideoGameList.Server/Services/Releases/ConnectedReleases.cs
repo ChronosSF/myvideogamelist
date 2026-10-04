@@ -186,8 +186,11 @@ internal static class ConnectedReleases
         if (released.Id != shown.Id) Offer(ReleaseRelation.Itself, released.Id, null);
 
         // R2. A remaster, expanded game or port that IGDB links by version_parent rather than
-        // parent_game is still a child: F3 left it standing as its own game.
-        foreach (var parentId in new[] { shown.ParentGameId, released.ParentGameId, shown.VersionParentId }.OfType<int>().Distinct())
+        // parent_game is still a child: F3 left it standing as its own game. So is an edition whose own
+        // version_parent is in the set, although F3 has folded it past that game — the query found it by
+        // that link: with only the Witcher 3's Complete Edition on a list, its 10th Anniversary Edition is
+        // shown as the game, and the Complete Edition is why.
+        foreach (var parentId in new[] { shown.ParentGameId, released.ParentGameId, shown.VersionParentId, released.VersionParentId }.OfType<int>().Distinct())
             Offer(ReleaseRelation.Child, parentId, null);
 
         // R3, through any series the release shares with a game in the set.

@@ -236,6 +236,30 @@ public class ConnectedReleasesTests
     }
 
     [Fact]
+    public void Compose_AnEditionOfTheEditionInTheSet_IsItsChild()
+    {
+        // Only the Witcher 3's Complete Edition is wishlisted. Its 10th Anniversary Edition is an edition of
+        // it, so the query reaches it through game.version_parent, and F3 shows it as the game — which is not
+        // in the set. What connects it is the edition's own version_parent, which the fold has passed by.
+        // The rows were read on 2026-10-04: 10 October 2025, on three platforms.
+        var set = Set((WitcherCompleteEdition, SetMembership.Wishlist, null));
+        List<ReleaseRow> rows =
+        [
+            Row(818558, WitcherTenthAnniversary, "2025-10-10", Pc),
+            Row(818560, WitcherTenthAnniversary, "2025-10-10", Ps5),
+            Row(818561, WitcherTenthAnniversary, "2025-10-10", SeriesXs),
+        ];
+
+        var entries = ConnectedReleases.Compose(set, Games, rows, new DateOnly(2025, 10, 10), new DateOnly(2025, 10, 11));
+
+        var release = Assert.Single(Assert.Single(entries).Releases);
+        Assert.Equal("The Witcher 3: Wild Hunt", release.Game.Name);
+        Assert.Equal(
+            new ReleaseReason(ReleaseRelation.Child, 119402, "The Witcher 3: Wild Hunt - Complete Edition", SetMembership.Wishlist, null, null),
+            release.Reason);
+    }
+
+    [Fact]
     public void Compose_AnEditionOfAPort_IsThePort_AndOneReleaseWithIt()
     {
         // F3 stops at a product of its own. "Rust: Console Edition - Ultimate" is an edition of the console
