@@ -1,6 +1,10 @@
 using System.ComponentModel.DataAnnotations;
+using System.Reflection;
+using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Metadata;
 using MyVideoGameList.Server.Data;
 using MyVideoGameList.Server.DTOs;
 using MyVideoGameList.Server.Models;
@@ -199,16 +203,30 @@ public class CalendarCurationServiceTests
     }
 
     [Fact]
-    public async Task AddShowcaseNameAsync_LosingTheInsertRace_IsAlreadyListedRatherThanThrowing()
+    public async Task AddShowcaseNameAsync_KeepsTheNameAsTypedBesideTheFormTheIndexIsOn()
     {
-        // Raised by hand, as in the favourites' race tests: the in-memory provider enforces no unique
-        // index, so it never produces the DbUpdateException PostgreSQL's would become.
+        using var db = NewDb(Guid.NewGuid().ToString());
+
+        await new CalendarCurationService(db, new ManualClock(Midday)).AddShowcaseNameAsync("State of Play");
+
+        var stored = await db.ShowcaseNames.SingleAsync();
+        Assert.Equal("State of Play", stored.Prefix);
+        Assert.Equal("STATE OF PLAY", stored.NormalizedPrefix);
+    }
+
+    [Fact]
+    public async Task AddShowcaseNameAsync_LosingTheInsertRaceToAnotherLetterCase_IsAlreadyListedRatherThanThrowing()
+    {
+        // The race review on #167 described: "summer game fest" saved by another request after this
+        // one's check. The index is on the normalised name, so PostgreSQL refuses the second insert; it
+        // is raised by hand here, as in the favourites' race tests, because the in-memory provider
+        // enforces no unique index at all.
         var store = Guid.NewGuid().ToString();
         using var otherRequest = NewDb(store);
 
         using var db = NewDb(store, new CommitsCompetingWrite(async () =>
         {
-            otherRequest.ShowcaseNames.Add(new ShowcaseName { Prefix = "Summer Game Fest" });
+            otherRequest.ShowcaseNames.Add(new ShowcaseName { Prefix = "summer game fest", NormalizedPrefix = "SUMMER GAME FEST" });
             await otherRequest.SaveChangesAsync();
             throw new DbUpdateException("duplicate key value violates unique constraint");
         }));
@@ -281,5 +299,52 @@ public class CalendarCurationServiceTests
 
         var problem = Assert.Single(input.Validate(new ValidationContext(input)));
         Assert.Equal([nameof(CuratedEventInputDto.Url)], problem.MemberNames);
+    }
+}
+
+/// <summary>
+/// The rules the database keeps for the release calendar's reference data, read off the model the
+/// migrations are generated from. The in-memory provider enforces neither a unique index nor a check
+/// constraint, so no service test can see either one — and both were wrong once (review on #167).
+/// </summary>
+public class ReleaseCalendarModelTests
+{
+    /// <summary>The design-time model: check constraints are not kept in the runtime one.</summary>
+    private static IModel Model()
+    {
+        using var db = new ApplicationDbContext(
+            new DbContextOptionsBuilder<ApplicationDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
+        return db.GetService<IDesignTimeModel>().Model;
+    }
+
+    private static IEnumerable<string> AllowedByTheApi(string parameter) =>
+        typeof(CuratedEventInputDto).GetConstructors().Single()
+            .GetParameters().Single(p => p.Name == parameter)
+            .GetCustomAttribute<AllowedValuesAttribute>()!.Values
+            .OfType<string>();
+
+    private static IEnumerable<string> AllowedByTheDatabase(string constraint) =>
+        Regex.Matches(
+                Model().FindEntityType(typeof(CuratedEvent))!.GetCheckConstraints().Single(c => c.ModelName == constraint).Sql,
+                "'([a-z_]+)'")
+            .Select(m => m.Groups[1].Value);
+
+    [Fact]
+    public void ShowcaseNames_AreUniqueOnTheNormalisedName()
+    {
+        // On Prefix itself, "Nintendo Direct" and "nintendo direct" added at once could both get in.
+        var unique = Assert.Single(Model().FindEntityType(typeof(ShowcaseName))!.GetIndexes(), i => i.IsUnique);
+
+        Assert.Equal([nameof(ShowcaseName.NormalizedPrefix)], unique.Properties.Select(p => p.Name));
+    }
+
+    [Theory]
+    [InlineData(nameof(CuratedEventInputDto.Kind), "CK_CuratedEvents_Kind")]
+    [InlineData(nameof(CuratedEventInputDto.Store), "CK_CuratedEvents_Store")]
+    public void CuratedEvents_TheDatabaseAndTheApi_AcceptTheSameValues(string parameter, string constraint)
+    {
+        // A value one accepts and the other refuses is either a 500 on saving or, as the store was, a
+        // row the edit form cannot show and clears on saving.
+        Assert.Equal(AllowedByTheApi(parameter).Order(), AllowedByTheDatabase(constraint).Order());
     }
 }

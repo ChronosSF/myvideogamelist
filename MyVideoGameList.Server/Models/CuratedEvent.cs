@@ -27,9 +27,11 @@ public static class CuratedEventKinds
 /// The stores a curated event can belong to: the six whose sale announcements spec §6 checked.
 /// </summary>
 /// <remarks>
-/// Closed at the API and open in the database, the reverse of <see cref="CuratedEventKinds"/>. The
-/// store is a label rather than something the calendar branches on, so a row naming one the client
-/// does not know still draws, and adding a store then needs no migration.
+/// Closed at the API and in the database, as <see cref="CuratedEventKinds"/> is. It was open in the
+/// database at first, on the grounds that a label the client did not know would still draw and a new
+/// store would need no migration; review on #167 found the cost. The edit form offers the stores it
+/// knows, so it showed any other as none — and saving the event cleared it. A new store is a constant,
+/// a migration and a label on the client, together.
 /// </remarks>
 public static class CuratedEventStores
 {

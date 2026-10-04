@@ -14,7 +14,10 @@ export const CURATED_EVENT_KIND_LABELS: Record<CuratedEventKind, string> = {
     showcase: 'Showcase',
 };
 
-/** The stores the server accepts, mirroring `CuratedEventStores`. */
+/**
+ * The stores, mirroring `CuratedEventStores`. Closed at the API and in the database alike, so an
+ * event never names one this list does not have.
+ */
 export const CURATED_EVENT_STORES = ['steam', 'epic', 'playstation', 'xbox', 'nintendo', 'gog'] as const;
 
 export type CuratedEventStore = (typeof CURATED_EVENT_STORES)[number];
@@ -28,12 +31,9 @@ const STORE_LABELS: Record<CuratedEventStore, string> = {
     gog: 'GOG',
 };
 
-/**
- * A store's name for people. The database keeps the store open while the API closes it, so a value
- * this does not know is shown as it is rather than as nothing.
- */
-export function storeLabel(store: string): string {
-    return (STORE_LABELS as Record<string, string | undefined>)[store] ?? store;
+/** A store's name for people. */
+export function storeLabel(store: CuratedEventStore): string {
+    return STORE_LABELS[store];
 }
 
 /** The lengths the server refuses past — `CuratedEvent` and `ShowcaseName`. */
@@ -44,8 +44,7 @@ export const SHOWCASE_NAME_MAX = 100;
 export interface CuratedEvent {
     id: number;
     kind: CuratedEventKind;
-    /** Open in the database — see `storeLabel`. */
-    store: string | null;
+    store: CuratedEventStore | null;
     name: string;
     /** The first day, `YYYY-MM-DD`. A day rather than an instant, shown as the day it names. */
     startsOn: string;

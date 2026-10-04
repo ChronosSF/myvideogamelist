@@ -23,6 +23,21 @@ public class ShowcaseName
 
     public int Id { get; set; }
 
-    /// <summary>Compared with the start of an event's name, ignoring case.</summary>
+    /// <summary>Compared with the start of an event's name, ignoring case. Kept as the admin typed it.</summary>
     public required string Prefix { get; set; }
+
+    /// <summary>
+    /// <see cref="Prefix"/> in upper case, and the column the unique index is on.
+    /// </summary>
+    /// <remarks>
+    /// A name is on the list once in any letter case, because the match against an event's name
+    /// ignores case. An index over <see cref="Prefix"/> itself held only the spelling, so two requests
+    /// adding "Nintendo Direct" and "nintendo direct" at once could both pass the service's check and
+    /// both get in — which review on #167 caught. Identity keeps a username unique the same way, over
+    /// <c>NormalizedUserName</c>.
+    /// </remarks>
+    public required string NormalizedPrefix { get; set; }
+
+    /// <summary>The one normalisation, so that the check and the index cannot disagree about a name.</summary>
+    public static string Normalise(string prefix) => prefix.ToUpperInvariant();
 }

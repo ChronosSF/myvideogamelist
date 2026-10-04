@@ -26,10 +26,14 @@ interface Draft {
 function draftFrom(event: CuratedEvent | undefined): Draft {
     if (!event) return { kind: 'sale', store: 'steam', name: '', startsOn: '', endsOn: '', url: '' };
 
-    const store = (CURATED_EVENT_STORES as readonly string[]).includes(event.store ?? '')
-        ? (event.store as CuratedEventStore)
-        : '';
-    return { kind: event.kind, store, name: event.name, startsOn: event.startsOn, endsOn: event.endsOn, url: event.url };
+    return {
+        kind: event.kind,
+        store: event.store ?? '',
+        name: event.name,
+        startsOn: event.startsOn,
+        endsOn: event.endsOn,
+        url: event.url,
+    };
 }
 
 /** What can be said before a round trip. The server checks all of it again, and more. */

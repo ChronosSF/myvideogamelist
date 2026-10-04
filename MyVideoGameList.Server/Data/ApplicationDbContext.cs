@@ -318,11 +318,16 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
         events.ToTable(t =>
         {
             // The kind decides how the calendar draws an event, so the database refuses one it does
-            // not know as well as the API does. The store is a label and stays open; see
-            // CuratedEventStores.
+            // not know as well as the API does.
             t.HasCheckConstraint(
                 "CK_CuratedEvents_Kind",
                 "\"Kind\" IN ('sale', 'fest', 'showcase')");
+
+            // So is the store, for the edit form's sake: it offers the stores it knows, so it could
+            // only show any other as none, and clear it on saving. See CuratedEventStores.
+            t.HasCheckConstraint(
+                "CK_CuratedEvents_Store",
+                "\"Store\" IS NULL OR \"Store\" IN ('steam', 'epic', 'playstation', 'xbox', 'nintendo', 'gog')");
 
             // A last day before the first is a typo, and one the calendar would draw as a bar
             // running backwards.
@@ -335,9 +340,12 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
 
         names.HasKey(n => n.Id);
         names.Property(n => n.Prefix).HasMaxLength(ShowcaseName.PrefixMaxLength);
+        names.Property(n => n.NormalizedPrefix).HasMaxLength(ShowcaseName.PrefixMaxLength);
 
-        // The same name twice is a form submitted twice, never a second show.
-        names.HasIndex(n => n.Prefix).IsUnique();
+        // The same name twice is a form submitted twice, never a second show — and "twice" ignores
+        // letter case, as the match against IGDB's event names does. Hence the normalised column: an
+        // index on Prefix let two adds of one name in different cases both in at once.
+        names.HasIndex(n => n.NormalizedPrefix).IsUnique();
     }
 
     private static void ConfigureUserGamePlaythroughs(ModelBuilder modelBuilder)

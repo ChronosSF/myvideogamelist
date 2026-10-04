@@ -67,9 +67,10 @@ public class CalendarCurationService(ApplicationDbContext db, TimeProvider clock
         string prefix, CancellationToken cancellationToken = default)
     {
         var wanted = Tidy(prefix);
-        if (await IsListedAsync(wanted, cancellationToken)) return null;
+        var normalised = ShowcaseName.Normalise(wanted);
+        if (await IsListedAsync(normalised, cancellationToken)) return null;
 
-        var added = new ShowcaseName { Prefix = wanted };
+        var added = new ShowcaseName { Prefix = wanted, NormalizedPrefix = normalised };
         db.ShowcaseNames.Add(added);
 
         try
@@ -79,10 +80,11 @@ public class CalendarCurationService(ApplicationDbContext db, TimeProvider clock
         catch (DbUpdateException)
         {
             // The check above and the unique index disagree only when two requests add the same name
-            // at once — a form submitted twice. Confirmed by reading again rather than by matching a
-            // provider's error code, as GameAxisStore does, so anything else is rethrown.
+            // at once, in any letter case — a form submitted twice. Confirmed by reading again rather
+            // than by matching a provider's error code, as GameAxisStore does, so anything else is
+            // rethrown.
             db.Entry(added).State = EntityState.Detached;
-            if (await IsListedAsync(wanted, cancellationToken)) return null;
+            if (await IsListedAsync(normalised, cancellationToken)) return null;
             throw;
         }
 
@@ -113,15 +115,9 @@ public class CalendarCurationService(ApplicationDbContext db, TimeProvider clock
         }
     }
 
-    /// <summary>
-    /// Compared in memory rather than in SQL: the table is a dozen rows, and this way case is ignored
-    /// exactly as the match against IGDB's event names will ignore it.
-    /// </summary>
-    private async Task<bool> IsListedAsync(string prefix, CancellationToken cancellationToken)
-    {
-        var listed = await db.ShowcaseNames.AsNoTracking().Select(n => n.Prefix).ToListAsync(cancellationToken);
-        return listed.Any(name => string.Equals(name, prefix, StringComparison.OrdinalIgnoreCase));
-    }
+    /// <summary>Asked of the normalised column, which is the one the unique index is on.</summary>
+    private Task<bool> IsListedAsync(string normalised, CancellationToken cancellationToken) =>
+        db.ShowcaseNames.AsNoTracking().AnyAsync(n => n.NormalizedPrefix == normalised, cancellationToken);
 
     private static void Apply(CuratedEvent target, CuratedEventInputDto input, DateTimeOffset now)
     {
