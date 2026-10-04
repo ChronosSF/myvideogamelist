@@ -1,0 +1,23 @@
+# Build context for MyVideoGameList.Server/Dockerfile, which is the repository root so that the
+# root NuGet.Config applies. An allowlist: everything is excluded, then the two things the image
+# needs are let back in, minus their build output. The client, the tests, the docs and .git never
+# enter the context, so a local node_modules or bin/ cannot bloat a build or leak into an image.
+*
+!NuGet.Config
+!MyVideoGameList.Server/
+MyVideoGameList.Server/bin/
+MyVideoGameList.Server/obj/
+
+# A directory negation admits every file under it, tracked or not. The root .gitignore keeps
+# appsettings.*.json overrides out of the repository because a developer may hold a
+# Production or Staging one with real values, and `dotnet publish` would copy it into the
+# image. So every override stays out, and only the committed Development file - container-only
+# credentials, by ADR 0005 not a secret - is let back in. The same for the other files that are
+# a developer's rather than the application's.
+MyVideoGameList.Server/appsettings.*.json
+!MyVideoGameList.Server/appsettings.Development.json
+MyVideoGameList.Server/Properties/launchSettings.json
+MyVideoGameList.Server/**/*.user
+MyVideoGameList.Server/**/secrets.json
+MyVideoGameList.Server/**/.env
+MyVideoGameList.Server/**/.env.*
