@@ -160,7 +160,7 @@ builder.Services.ConfigureApplicationCookie(options =>
 // The key ring that cookie above is signed with, and the review cursor sealed with. Shared through
 // Systems Manager Parameter Store wherever more than one process serves the site, so a deploy does
 // not sign everyone out; left to the user-profile default on a developer machine; and refused,
-// at startup, anywhere else that names no store. See docs/decisions/0042-*.
+// at startup, anywhere else that names no store. See docs/decisions/0043-*.
 builder.Services.AddDataProtectionKeys(builder.Configuration, builder.Environment);
 
 // External social login providers.

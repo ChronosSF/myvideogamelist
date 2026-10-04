@@ -1,4 +1,4 @@
-# 0042. The key ring lives in Parameter Store, under a name that does not move, and never nowhere by accident
+# 0043. The key ring lives in Parameter Store, under a name that does not move, and never nowhere by accident
 
 **Status:** Implemented in the code; proved only by a deploy. Settles the Data Protection key store
 that [0007](0007-aws-target-architecture.md) named as "S3 or DynamoDB with a KMS key" and

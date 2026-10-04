@@ -4,7 +4,7 @@
 and adds the network topology it left unstated. The cost baseline below is about $65–74 a month,
 not $40: it priced one Fargate task where the design has two and missed the public IPv4 charge;
 and the credits it says to collect first are no longer earnable —
-[0043](0043-what-the-deployment-walkthrough-settled.md).
+[0044](0044-what-the-deployment-walkthrough-settled.md).
 
 ## Context
 

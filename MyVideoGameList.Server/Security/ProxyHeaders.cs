@@ -30,7 +30,7 @@ public sealed class ProxyHeadersOptions
     /// CDN's address is never among the balancer's subnets, so the middleware stops at the edge
     /// server's address with nothing in the log. The deployment instead has the balancer preserve
     /// the header it received, so the right-most entry is the viewer's and this stays 1 — which is
-    /// safe only while nothing but the CDN can reach the balancer. See docs/decisions/0043-*.
+    /// safe only while nothing but the CDN can reach the balancer. See docs/decisions/0044-*.
     /// </summary>
     public int ForwardLimit { get; set; } = 1;
 

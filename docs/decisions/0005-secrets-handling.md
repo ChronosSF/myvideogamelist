@@ -2,7 +2,7 @@
 
 **Status:** Implemented. Deployed, the database password travels as `PGPASSWORD` beside a
 password-free `ConnectionStrings__DefaultConnection`, and the IGDB secret was rotated after all —
-[0043](0043-what-the-deployment-walkthrough-settled.md).
+[0044](0044-what-the-deployment-walkthrough-settled.md).
 
 ## Context
 

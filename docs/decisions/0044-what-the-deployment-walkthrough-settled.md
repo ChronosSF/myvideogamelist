@@ -1,10 +1,10 @@
-# 0043. What the deployment walkthrough settled, and where it found the records wrong
+# 0044. What the deployment walkthrough settled, and where it found the records wrong
 
 **Status:** Accepted — decided, not yet built. Amends [0005](0005-secrets-handling.md),
 [0007](0007-aws-target-architecture.md), [0013](0013-http-caching-policy.md),
 [0014](0014-rds-postgresql-over-aurora.md), [0015](0015-fargate-confirmed-and-nat-less-networking.md),
 [0033](0033-what-the-api-refuses.md) and [0036](0036-what-a-crawler-is-told.md), each of which
-now points here. The key store is [0042](0042-where-the-key-ring-lives.md). The deferred list is
+now points here. The key store is [0043](0043-where-the-key-ring-lives.md). The deferred list is
 [#109](https://github.com/ChronosSF/myvideogamelist/issues/109).
 
 ## Context
@@ -270,7 +270,7 @@ client image is [#106](https://github.com/ChronosSF/myvideogamelist/issues/106).
   editing this record's status line, not by a new record.
 - **Nothing here is proved.** This is the plan the environment is built to; the figures are to be
   amended once seen on a bill, and the two things the code cannot test — a session surviving a
-  redeploy (0042) and the viewer's address surviving two hops — are the first things verified after
+  redeploy (0043) and the viewer's address surviving two hops — are the first things verified after
   each milestone.
 - **What is deliberately left for later** is #109: an internal balancer behind a CloudFront VPC
   origin, which removes the balancer's two addresses and the side door with them; HSTS on documents

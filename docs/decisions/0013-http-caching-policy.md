@@ -2,7 +2,7 @@
 
 **Status:** Implemented. What CloudFront has to do to honour these headers — a cache policy with
 a minimum TTL of 0, explicit uncached behaviours shaped for `.data` URLs, an error caching TTL of
-0, and an invalidation after every deploy — is [0043](0043-what-the-deployment-walkthrough-settled.md).
+0, and an invalidation after every deploy — is [0044](0044-what-the-deployment-walkthrough-settled.md).
 
 ## Context
 

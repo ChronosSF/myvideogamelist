@@ -100,7 +100,7 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   root path, and changing the image's working directory would orphan every cookie while the keys
   stayed readable. One path per environment, so dev and prod cannot read each other's cookies. The
   proof is a session surviving a redeploy, which no local test can give. See
-  `docs/decisions/0042-*`.
+  `docs/decisions/0043-*`.
 
 - **IGDB is the source of truth for game data, but a library renders from `CachedGames`.** There
   are no local game/genre/platform tables; they were removed, and `UserGameEntry.GameId` holds an
@@ -258,7 +258,7 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   middleware checks each hop against the trust list, and the CDN's address is never in the
   balancer's subnets, so raising it to 2 quietly leaves the limiter partitioned by edge server. The
   balancer preserves the header instead, which is safe only while nothing but CloudFront can reach
-  it. See `docs/decisions/0043-*`.
+  it. See `docs/decisions/0044-*`.
 
 - **Never change a game's status without recording an event.** `UserGameEvents` is append-only
   and is the only record that a transition happened — `UserGameLists` holds current state and is

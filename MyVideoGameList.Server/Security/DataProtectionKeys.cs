@@ -11,7 +11,7 @@ namespace MyVideoGameList.Server.Security;
 /// cookies and a deploy signs everyone out. That failure is silent — the log is clean and every
 /// user sees "please sign in again" — which is why, outside Development, a ring that is persisted
 /// nowhere is a startup failure unless the configuration says in so many words that it is meant.
-/// See <c>docs/decisions/0042-*</c>.
+/// See <c>docs/decisions/0043-*</c>.
 /// </remarks>
 public sealed class DataProtectionKeysOptions
 {

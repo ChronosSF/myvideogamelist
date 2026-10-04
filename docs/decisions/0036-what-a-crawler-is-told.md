@@ -3,7 +3,7 @@
 **Status:** Implemented. The basic auth that keeps dev private is a CloudFront Function on every
 behaviour, with the three public community endpoints exempt because the browser withholds
 `Authorization` from a `credentials: 'omit'` request —
-[0043](0043-what-the-deployment-walkthrough-settled.md).
+[0044](0044-what-the-deployment-walkthrough-settled.md).
 
 ## Context
 
