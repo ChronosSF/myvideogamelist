@@ -22,6 +22,27 @@ namespace MyVideoGameList.Server.Data.Migrations
                 nullable: false,
                 defaultValue: "");
 
+            // The rows the first migration allowed and this one's index and constraint refuse, cleared
+            // first, so that no database holding them fails here and blocks a deployment (review on #167).
+            //
+            // A name in two letter cases keeps its earliest row. The match against an event's name
+            // ignores case, so the later ones matched exactly the same events, and the calendar loses
+            // nothing by their going.
+            migrationBuilder.Sql(
+                """
+                DELETE FROM "ShowcaseNames" AS later
+                USING "ShowcaseNames" AS earlier
+                WHERE upper(later."Prefix") = upper(earlier."Prefix") AND later."Id" > earlier."Id";
+                """);
+
+            // A store the page does not know becomes none — which is what the edit form already showed
+            // for it. The event, its days and its link stay.
+            migrationBuilder.Sql(
+                """
+                UPDATE "CuratedEvents" SET "Store" = NULL
+                WHERE "Store" NOT IN ('steam', 'epic', 'playstation', 'xbox', 'nintendo', 'gog');
+                """);
+
             // Names already on the list get theirs before the index goes on, or all of them would be ""
             // and the second would collide. upper() rather than ToUpperInvariant, which the application
             // writes with: the two agree on ASCII, which showcase names are written in, and this only
