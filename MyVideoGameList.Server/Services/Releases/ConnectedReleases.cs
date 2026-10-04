@@ -255,16 +255,19 @@ internal static class ConnectedReleases
     {
         var entries = new List<ReleaseEntry>();
 
-        foreach (var group in releases.GroupBy(r => (r.Precision, r.Starts, Key: GroupKeyOf(r, setSeries, games))))
+        foreach (var period in releases.GroupBy(r => (r.Precision, r.Starts)))
         {
-            if (group.Key.Key is { } key && group.Count() > 1)
+            foreach (var (key, group) in GroupsIn(period, setSeries, games))
             {
-                var members = group.OrderBy(r => r.Reason, ReasonOrder).ThenBy(r => r.Game.Name, StringComparer.OrdinalIgnoreCase).ToList();
-                entries.Add(new ReleaseEntry(group.Key.Precision, group.Key.Starts, key.Name, members));
-            }
-            else
-            {
-                entries.AddRange(group.Select(r => new ReleaseEntry(r.Precision, r.Starts, null, [r])));
+                if (key is not null && group.Count > 1)
+                {
+                    var members = group.OrderBy(r => r.Reason, ReasonOrder).ThenBy(r => r.Game.Name, StringComparer.OrdinalIgnoreCase).ToList();
+                    entries.Add(new ReleaseEntry(period.Key.Precision, period.Key.Starts, key.Name, members));
+                }
+                else
+                {
+                    entries.AddRange(group.Select(r => new ReleaseEntry(r.Precision, r.Starts, null, [r])));
+                }
             }
         }
 
@@ -275,18 +278,51 @@ internal static class ConnectedReleases
             .ToList();
     }
 
-    private static GroupKey? GroupKeyOf(
-        ConnectedRelease release,
+    /// <summary>One period's releases, in the groups F6 makes of them: by series, then by the game they are DLC for.</summary>
+    /// <remarks>
+    /// A game can be in several of the set's series, so the series a release groups under is chosen across the
+    /// period rather than from the release alone: the series the most of them share takes its releases first,
+    /// then the one the most of the rest share, a tie going to the lowest id. Read from each release's own
+    /// reason, two releases with a series in common could each cite a different one and stay apart — on
+    /// 1 February 2026 Final Fantasy VII Remake and its Episode Intermission did, because IGDB lists their
+    /// series in different orders and the reason takes the first.
+    /// </remarks>
+    private static List<(GroupKey? Key, List<ConnectedRelease> Group)> GroupsIn(
+        IEnumerable<ConnectedRelease> period,
         IReadOnlyDictionary<int, List<int>> setSeries,
         IReadOnlyDictionary<int, CalendarGame> games)
     {
-        var series = release.Reason.Series
-            ?? release.Game.Series.Where(s => setSeries.ContainsKey(s.Id)).OrderBy(s => s.Id).FirstOrDefault();
-        if (series is not null) return new GroupKey($"series:{series.Id}", series.Name);
+        // Every series each release shares with the set: its game's, and the one its reason names, which can
+        // be an edition's.
+        var left = period
+            .Select(r => (Release: r, Series: r.Game.Series.Append(r.Reason.Series).OfType<SeriesRef>()
+                .Where(s => setSeries.ContainsKey(s.Id)).DistinctBy(s => s.Id).ToList()))
+            .ToList();
 
-        return release.Game.ParentGameId is int parentId && games.TryGetValue(parentId, out var parent)
-            ? new GroupKey($"game:{parentId}", parent.Name)
-            : null;
+        var groups = new List<(GroupKey?, List<ConnectedRelease>)>();
+        while (left
+                   .SelectMany(l => l.Series)
+                   .GroupBy(s => s.Id)
+                   .Where(shared => shared.Count() > 1)
+                   .OrderByDescending(shared => shared.Count())
+                   .ThenBy(shared => shared.Key)
+                   .Select(shared => shared.First())
+                   .FirstOrDefault() is { } series)
+        {
+            groups.Add((new GroupKey($"series:{series.Id}", series.Name),
+                left.Where(l => l.Series.Any(s => s.Id == series.Id)).Select(l => l.Release).ToList()));
+            left.RemoveAll(l => l.Series.Any(s => s.Id == series.Id));
+        }
+
+        // What no series gathered, by the game it is DLC for: F6's "with no series between them".
+        foreach (var byParent in left.GroupBy(l => l.Release.Game.ParentGameId is int parentId && games.TryGetValue(parentId, out var parent)
+                     ? new GroupKey($"game:{parentId}", parent.Name)
+                     : null))
+        {
+            groups.Add((byParent.Key, byParent.Select(l => l.Release).ToList()));
+        }
+
+        return groups;
     }
 
     /// <summary>The series the set's games are in, and which of the set's games are in each.</summary>

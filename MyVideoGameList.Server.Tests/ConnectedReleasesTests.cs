@@ -80,13 +80,18 @@ public class ConnectedReleasesTests
     private static readonly CalendarGame RustConsoleEdition = Game(145149, "Rust: Console Edition", IgdbGameTypes.Port, parent: 3277, versionParent: 3277);
     private static readonly CalendarGame RustConsoleUltimate = Game(164658, "Rust: Console Edition - Ultimate", IgdbGameTypes.MainGame, versionParent: 145149);
 
+    // Read on 2026-10-04: the Remake's first DLC, in the same series as the Remake, which IGDB lists in
+    // another order — Final Fantasy first, where the Remake's list starts with the Compilation.
+    private static readonly SeriesRef FfviiRemakeSeries = new(9321, "Final Fantasy VII Remake");
+    private static readonly CalendarGame EpisodeIntermission = Game(144037, "Final Fantasy VII Remake: Episode Intermission", IgdbGameTypes.Dlc, parent: 11169, series: [FinalFantasy, CompilationOfFfvii, FfviiRemakeSeries, FinalFantasyVii]);
+
     private static readonly Dictionary<int, CalendarGame> Games = new[]
     {
         KingdomHeartsIii, GtaV, WitcherIii, StreetFighter6, Silksong, ResidentEvil2, ResidentEvil2Original, FfviiRemake, XenobladeIii,
         WitcherIiiRemastered, EverCrisis, KingdomHeartsHd28, KingdomHearts02, ReMind, KingdomHeartsFinalMix, SfArjunPass,
         SfArjunCharacter, SfTifaPass, ResidentEvil2Deluxe, ResidentEvil3, GtaVi, GtaViUltimate, XenobladeIiiSwitch2, SeaOfSorrow,
         Evercold, KingdomHeartsIv, ReVeronica, WitcherCompleteEdition, WitcherTenthAnniversary,
-        Rust, RustConsoleEdition, RustConsoleUltimate,
+        Rust, RustConsoleEdition, RustConsoleUltimate, EpisodeIntermission,
     }.ToDictionary(g => g.Id);
 
     private static ReleaseRow Row(int id, CalendarGame game, string date, PlatformDto platform, int? status = IgdbReleaseStatuses.FullRelease, int dateFormat = 0)
@@ -205,6 +210,30 @@ public class ConnectedReleasesTests
             Assert.Equal(ReleaseRelation.Child, r.Reason.Relation);
             Assert.Equal(ListStatusKeys.Playing, r.Reason.ListKey);
         });
+    }
+
+    [Fact]
+    public void Compose_ReleasesInSeveralOfTheSameSeries_AreOneGroup()
+    {
+        // F6 when series overlap. Somebody is playing Final Fantasy VII: Ever Crisis, which is in Final Fantasy,
+        // Final Fantasy VII and the Compilation of Final Fantasy VII. On 1 February 2026 the Remake and its
+        // Episode Intermission reached Switch 2 and Xbox Series together, both in all three — but IGDB lists
+        // their series in different orders, so the Remake's reason cites the Compilation and the DLC's cites
+        // Final Fantasy. Grouped by the reason's series, they were two entries. Rows read on 2026-10-04.
+        var set = Set((EverCrisis, SetMembership.List, ListStatusKeys.Playing));
+        List<ReleaseRow> rows =
+        [
+            Row(866051, FfviiRemake, "2026-02-01", Switch2),
+            Row(866053, FfviiRemake, "2026-02-01", SeriesXs),
+            Row(866055, EpisodeIntermission, "2026-02-01", Switch2),
+            Row(866057, EpisodeIntermission, "2026-02-01", SeriesXs),
+        ];
+
+        var entry = Assert.Single(ConnectedReleases.Compose(set, Games, rows, new DateOnly(2026, 2, 1), new DateOnly(2026, 2, 2)));
+
+        // A tie between series goes to the lowest id, which is Final Fantasy's.
+        Assert.Equal("Final Fantasy", entry.GroupName);
+        Assert.Equal(["Final Fantasy VII Remake", "Final Fantasy VII Remake: Episode Intermission"], entry.Releases.Select(r => r.Game.Name));
     }
 
     [Fact]
