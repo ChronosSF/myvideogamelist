@@ -1,0 +1,37 @@
+# Version updates, weekly, one PR per ecosystem and directory. Without this file Dependabot
+# opens security updates only, so a pinned version - the CDK library in infra/, pinned on purpose
+# so that synthesis cannot change under an unchanged source - would never move at all.
+version: 2
+updates:
+  - package-ecosystem: nuget
+    directories:
+      - /MyVideoGameList.Server
+      - /MyVideoGameList.Server.Tests
+      - /infra/src/Infra
+    schedule:
+      interval: weekly
+    groups:
+      # One PR for the framework's own packages, which move together on patch Tuesday.
+      dotnet:
+        patterns:
+          - "Microsoft.AspNetCore.*"
+          - "Microsoft.EntityFrameworkCore.*"
+          - "Microsoft.Extensions.*"
+      # One PR for the CDK library and its constructs package, which move together.
+      cdk:
+        patterns:
+          - "Amazon.CDK.*"
+          - "Constructs"
+  - package-ecosystem: npm
+    directory: /myvideogamelist.client
+    schedule:
+      interval: weekly
+    groups:
+      react-router:
+        patterns:
+          - "react-router"
+          - "@react-router/*"
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
