@@ -124,6 +124,14 @@ public record ImportReviewRowDto(
 /// rather than being told. And <paramref name="Examined"/> is what it stops on — a pass that
 /// examined nothing has nothing left to examine.
 /// </para>
+/// <para>
+/// <b>Only the match in each row is current.</b> A pass reads its rows before its call to IGDB, and
+/// a write that lands meanwhile — the played group's list, a shelf's status — changes the payload
+/// in the database but not the copy these rows were built from. The two never write the same
+/// column, so nothing is lost, but the client takes the game, the candidates and the match kind
+/// from here, and a decision only where the pass pre-checked one, and keeps the rest of each row
+/// as it already holds it.
+/// </para>
 /// </remarks>
 public record ImportMatchPassDto(ImportJobDto Job, IReadOnlyList<ImportReviewRowDto> Examined);
 

@@ -143,6 +143,95 @@ describe('useImportReview.match', () => {
 });
 
 /**
+ * A pass's answer, put back over a screen that has moved on since the pass read its rows: the match
+ * is the pass's to give, and the list each row goes into is not.
+ */
+describe('useImportReview.match, putting a pass back', () => {
+    const JOB = 'job-1';
+
+    /** An id-less row in the played group, and an id-less one on a shelf nobody recognised. */
+    const onScreen = () => [
+        importRow({
+            id: 1, gameId: null, matchKind: IMPORT_MATCH.unlooked, decision: 'skip',
+            status: null, playedUnresolved: true,
+        }),
+        importRow({
+            id: 2, gameId: null, matchKind: IMPORT_MATCH.unlooked, decision: 'skip',
+            status: null, statusUnrecognised: true, sourceStatus: 'Gave Up On',
+        }),
+    ];
+
+    /**
+     * What the pass hands back, read before either change below: both rows still carry no list.
+     * The first resolves to a game the user does not have, which the pass pre-checks; the second
+     * to one they already track, whose decision the pass leaves alone.
+     */
+    const answered = () => [
+        importRow({
+            id: 1, gameId: 42, matchKind: IMPORT_MATCH.matched, decision: 'import',
+            status: null, playedUnresolved: true, alreadyTracked: false,
+        }),
+        importRow({
+            id: 2, gameId: 43, matchKind: IMPORT_MATCH.matched, decision: 'skip',
+            status: null, statusUnrecognised: true, sourceStatus: 'Gave Up On', alreadyTracked: true,
+        }),
+    ];
+
+    function stubAnswering() {
+        let passes = 0;
+
+        vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+            const url = String(input);
+
+            if (init?.method === undefined) return Promise.resolve(Response.json(importReview(onScreen())));
+            if (init.method === 'PUT' || init.method === 'PATCH') return Promise.resolve(new Response(null, { status: 204 }));
+
+            if (url.endsWith('/match') && init.method === 'POST') {
+                return Promise.resolve(Response.json({ job: importJob(), examined: passes++ === 0 ? answered() : [] }));
+            }
+
+            throw new Error(`unexpected fetch: ${init.method} ${url}`);
+        }));
+    }
+
+    function Probe() {
+        const { review, setPlayedStatus, setDecisions, match } = useImportReview('user-1', JOB);
+
+        return (
+            <div>
+                <span data-testid="rows">
+                    {review?.rows.map(row => `${row.id}:${row.status ?? 'none'}:${row.decision}:${row.gameId ?? '-'}`).join(' ') ?? '-'}
+                </span>
+                <button type="button" onClick={() => void setPlayedStatus('finished')}>Finished</button>
+                <button
+                    type="button"
+                    onClick={() => void setDecisions([{ rowId: 2, decision: 'import', status: 'dropped' }])}
+                >
+                    Dropped
+                </button>
+                <button type="button" onClick={() => void match()}>Find these games</button>
+            </div>
+        );
+    }
+
+    afterEach(() => vi.unstubAllGlobals());
+
+    it('takes the match from the pass and keeps the lists chosen on screen', async () => {
+        stubAnswering();
+        render(<Probe />);
+        await waitFor(() => expect(screen.getByTestId('rows')).toHaveTextContent('1:none:skip:-'));
+
+        await act(() => userEvent.click(screen.getByRole('button', { name: 'Finished' })));
+        await act(() => userEvent.click(screen.getByRole('button', { name: 'Dropped' })));
+        await act(() => userEvent.click(screen.getByRole('button', { name: 'Find these games' })));
+
+        // Both lists survive the pass's older copy. The first row's tick is the pass's own; the
+        // second keeps the one chosen on screen, because the pass set none for a game already held.
+        expect(screen.getByTestId('rows')).toHaveTextContent('1:finished:import:42 2:dropped:import:43');
+    });
+});
+
+/**
  * One list for the played-but-unresolved group: one request that names only the list, and an undo
  * that puts back what that request changed and nothing beside it.
  */

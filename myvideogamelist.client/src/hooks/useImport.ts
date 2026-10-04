@@ -428,10 +428,36 @@ function restoreRows(review: ImportReview, before: Map<number, ImportReview['row
     return { ...review, rows, summary: recount(review, rows) };
 }
 
-/** Puts what a matching pass examined back over the rows it examined. */
+/**
+ * Puts a matching pass's answer over the rows it examined: which game each one is, and nothing the
+ * pass did not decide.
+ *
+ * A pass reads its rows before its slow call to IGDB, so the rest of each row it hands back is as
+ * old as that read. The list a row goes into can have changed on this screen since — the played
+ * group's choice reaches an id-less row the pass is examining — and taking the pass's copy would put
+ * the old list back on screen while the server held the new one, which is what the commit imports.
+ * The decision is the pass's only where it set one: it pre-checks a row it resolved to a game the
+ * user does not have (`ImportService.MatchAsync`), and leaves every other row's decision as it was.
+ */
 function merge(review: ImportReview, pass: ImportMatchPass): ImportReview {
     const examined = new Map(pass.examined.map(row => [row.id, row]));
-    const rows = review.rows.map(row => examined.get(row.id) ?? row);
+
+    const rows = review.rows.map(row => {
+        const answer = examined.get(row.id);
+        if (!answer) return row;
+
+        const preChecked = answer.gameId !== null && !answer.alreadyTracked;
+
+        return {
+            ...row,
+            gameId: answer.gameId,
+            game: answer.game,
+            candidates: answer.candidates,
+            matchKind: answer.matchKind,
+            alreadyTracked: answer.alreadyTracked,
+            decision: preChecked ? answer.decision : row.decision,
+        };
+    });
 
     return { ...review, job: pass.job, rows, summary: recount(review, rows) };
 }
