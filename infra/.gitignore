@@ -1,0 +1,3 @@
+# CDK asset staging and synthesised templates. Build output is covered by the root .gitignore.
+.cdk.staging
+cdk.out
