@@ -39,13 +39,23 @@ shrinks to a couple of dollars, because the idle floor is storage and zones. Two
 `EdgeCert` stack, and the Service Quotas entries for Organizations. Where IGDB's API is served
 from was not checked, so no Region is claimed to be closer to it.
 
-**`mvgl-prod` is created now, empty, to start the SES clock** (D-2). The SES sandbox is per account
+**`mvgl-prod` is created now, empty, and holds the domain** (D-2). The SES sandbox is per account
 and per Region, so production access has to be requested from the account and Region production
 will send from, and a request made in `mvgl-dev` is wasted. An empty account costs nothing. The
-domain identity, DKIM and DMARC go in first, because AWS says a verified domain helps the review.
-Whether a request for a site not yet public is accepted could not be verified; if it is declined,
-it is resubmitted once something is live at the URL. The rest is
-[#100](https://github.com/ChronosSF/myvideogamelist/issues/100).
+domain identity with Easy DKIM and a DMARC record go in first, because AWS says a verified domain
+helps the review. **The production access request itself waits until something is live at the
+domain.** The owner's other application only got through AWS's review after a "coming soon" page
+was put at its URL, and a production environment for this one is not paid for yet; the sandbox,
+which delivers to verified addresses, is enough to build and test every email feature in dev. The
+request belongs with [#98](https://github.com/ChronosSF/myvideogamelist/issues/98). The rest of
+email is [#100](https://github.com/ChronosSF/myvideogamelist/issues/100).
+
+**The apex zone lives in Route 53, in `mvgl-prod`.** The registrar's nameservers had never been
+given a zone to serve — they refused queries for the domain — so there was nothing to delegate
+`dev.` out of. A hosted zone for `myvideogamelist.net` was created in the production account,
+the registrar pointed at its four nameservers, and the DKIM and DMARC records placed there; the
+`dev.` zone in `mvgl-dev` is delegated from it by NS records. The production CDK app will look
+the zone up rather than create it. It is the first charge in that account, 50 cents a month.
 
 **The credits 0014 and 0015 counted on are not the runway.** Both, and the old roadmap, treated
 roughly $200 of new-account credits and a six-month Free plan as what pays for dev. By AWS's Free
