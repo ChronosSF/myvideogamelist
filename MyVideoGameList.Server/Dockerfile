@@ -5,7 +5,7 @@
 #   docker build -t mvgl-api:local -f MyVideoGameList.Server/Dockerfile .
 #
 # Three stages. `build` publishes the application; `bundle` produces the EF migration bundle
-# that the migration task runs before each release (ADR 0007, 0043); `final` is the runtime
+# that the migration task runs before each release (ADR 0007, 0044); `final` is the runtime
 # image with both. Nothing environment-specific and no secret is baked in: the task
 # definition supplies ASPNETCORE_ENVIRONMENT, the connection string, PGPASSWORD and the IGDB
 # credentials (ADR 0005).
@@ -27,7 +27,7 @@ FROM build AS bundle
 # are set. EF's tooling assumes Development unless told otherwise, and the deployed bundle runs
 # as Production, so it is generated as Production too. The host refuses to build with an empty
 # connection string, and refuses to build as Production without a Data Protection key store
-# (ADR 0042) - both are right for a running service and both are meaningless here, where no
+# (ADR 0043) - both are right for a running service and both are meaningless here, where no
 # connection is opened and nothing is protected. The connection string below reaches nothing.
 ENV ASPNETCORE_ENVIRONMENT=Production \
     ConnectionStrings__DefaultConnection="Host=localhost;Database=bundle" \

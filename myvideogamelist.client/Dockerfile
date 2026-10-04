@@ -6,7 +6,7 @@
 #
 # Two stages: a full `node:24` to build, and `node:24-slim` to run. Nothing environment-specific
 # is baked in: API_BASE_URL, SITE_URL and SITE_INDEXABLE come from the task definition (ADR 0036,
-# 0043). The build needs no .NET SDK and no dev certificate, because vite.config.ts does its
+# 0044). The build needs no .NET SDK and no dev certificate, because vite.config.ts does its
 # certificate work only when Vite's command is `serve`.
 
 FROM node:24 AS build
