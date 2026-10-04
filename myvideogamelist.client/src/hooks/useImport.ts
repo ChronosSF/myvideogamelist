@@ -108,9 +108,19 @@ export interface UseImportReviewResult {
     busy: boolean;
     /** A matching run is in flight. Separate from `busy`, which stops the whole screen. */
     matching: boolean;
+    /**
+     * The played-but-unresolved group's list is being saved. The choice waits for it, so a second
+     * answer cannot race the first and be rolled back over by it.
+     */
+    savingPlayedStatus: boolean;
     result: ImportResult | null;
     reload: () => void;
     setDecisions: (decisions: ImportRowDecision[]) => Promise<void>;
+    /**
+     * Puts every row the file says was played, without saying how that ended, into one list — or,
+     * given null, back into none (ADR 0043).
+     */
+    setPlayedStatus: (status: string | null) => Promise<void>;
     /** Looks up the rows whose file named no game, a batch at a time, until none is left. */
     match: () => Promise<void>;
     commit: () => Promise<void>;
@@ -150,12 +160,13 @@ export function useImportReview(accountId: string | null, jobId: string): UseImp
     const [actionError, setActionError] = useState<string | null>(null);
     const [busy, setBusy] = useState(false);
     const [matching, setMatching] = useState(false);
+    const [savingPlayedStatus, setSavingPlayedStatus] = useState(false);
     const [result, setResult] = useState<ImportResult | null>(null);
 
-    // These three sit outside `useAccountResource`, so they need its guard applied by hand — a
-    // commit that lands after a sign-out or a move to another job would otherwise render one
-    // account's imported counts and skipped titles under the next one's name. Reset during render,
-    // not in an effect, so there is no committed frame showing the previous job's result.
+    // These sit outside `useAccountResource`, so they need its guard applied by hand — a commit
+    // that lands after a sign-out or a move to another job would otherwise render one account's
+    // imported counts and skipped titles under the next one's name. Reset during render, not in an
+    // effect, so there is no committed frame showing the previous job's result.
     const [resultIdentity, setResultIdentity] = useState(
         accountId === null ? null : `${accountId}|${jobId}`);
     const identity = accountId === null ? null : `${accountId}|${jobId}`;
@@ -166,6 +177,7 @@ export function useImportReview(accountId: string | null, jobId: string): UseImp
         setActionError(null);
         setBusy(false);
         setMatching(false);
+        setSavingPlayedStatus(false);
     }
 
     const setDecisions = useCallback(
@@ -197,6 +209,42 @@ export function useImportReview(accountId: string | null, jobId: string): UseImp
             } catch (err) {
                 patch(review => restoreRows(review, before));
                 setActionError(err instanceof Error ? err.message : 'That change was not saved.');
+            }
+        },
+        [data, jobId, patch],
+    );
+
+    /**
+     * One list for every played-but-unresolved row, or none.
+     *
+     * Applied locally first, like a decision, and undone on failure by putting back each row's own
+     * status rather than the row: a box ticked on one of them meanwhile is not this request's to
+     * undo. The server finds the rows itself, so the request names only the list.
+     */
+    const setPlayedStatus = useCallback(
+        async (status: string | null) => {
+            const before = new Map(
+                (data?.rows ?? []).filter(row => row.playedUnresolved).map(row => [row.id, row.status]));
+
+            if (before.size === 0) return;
+
+            patch(review => withPlayedStatus(review, () => status));
+            setActionError(null);
+            setSavingPlayedStatus(true);
+
+            try {
+                const response = await apiFetch(`/api/import/jobs/${jobId}/played-status`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ status }),
+                });
+
+                if (!response.ok) throw new Error(await problem(response, 'That change was not saved.'));
+            } catch (err) {
+                patch(review => withPlayedStatus(review, row => before.get(row.id) ?? null));
+                setActionError(err instanceof Error ? err.message : 'That change was not saved.');
+            } finally {
+                setSavingPlayedStatus(false);
             }
         },
         [data, jobId, patch],
@@ -267,9 +315,21 @@ export function useImportReview(accountId: string | null, jobId: string): UseImp
     }, [jobId]);
 
     return {
-        review: data, loading, error, gone: errorIsPermanent, actionError, busy, matching, result,
-        reload, setDecisions, match, commit, cancel,
+        review: data, loading, error, gone: errorIsPermanent, actionError, busy, matching,
+        savingPlayedStatus, result, reload, setDecisions, setPlayedStatus, match, commit, cancel,
     };
+}
+
+/**
+ * Gives every played-but-unresolved row the status `statusFor` names, and touches nothing else on
+ * any row. No recount: which rows are selected does not change with the list they are going into.
+ */
+function withPlayedStatus(
+    review: ImportReview,
+    statusFor: (row: ImportReview['rows'][number]) => string | null,
+): ImportReview {
+    const rows = review.rows.map(row => (row.playedUnresolved ? { ...row, status: statusFor(row) } : row));
+    return { ...review, rows };
 }
 
 /** Applies decisions to the rows they name, and recounts what the commit button reads. */

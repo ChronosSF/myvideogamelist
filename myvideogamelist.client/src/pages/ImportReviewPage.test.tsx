@@ -35,9 +35,11 @@ const review: UseImportReviewResult = {
     actionError: null,
     busy: false,
     matching: false,
+    savingPlayedStatus: false,
     result: null,
     reload: vi.fn(),
     setDecisions: vi.fn(async () => {}),
+    setPlayedStatus: vi.fn(async () => {}),
     match: vi.fn(async () => {}),
     commit: vi.fn(async () => {}),
     cancel: vi.fn(async () => true),
@@ -77,6 +79,7 @@ beforeEach(() => {
     review.actionError = null;
     review.busy = false;
     review.matching = false;
+    review.savingPlayedStatus = false;
     review.result = null;
     vi.clearAllMocks();
 });
@@ -194,6 +197,7 @@ describe('ImportReviewPage', () => {
                 { title: 'One', sourceStatus: null, reason: 'No game was matched to it.' },
                 { title: 'Two', sourceStatus: 'Played', reason: 'You chose not to import it.' },
             ],
+            unlisted: 0,
         };
         renderPage();
 
@@ -206,10 +210,74 @@ describe('ImportReviewPage', () => {
         review.result = {
             job: { ...loaded([]).job, state: 'done', importedCount: 3, skippedCount: 0 },
             skipped: [],
+            unlisted: 0,
         };
         renderPage();
 
         expect(screen.queryByRole('button', { name: 'Download what was skipped' })).not.toBeInTheDocument();
+    });
+
+    it('says how many imported games are in no list, rather than that all are in your lists', () => {
+        // The sentence this replaces was false of 457 games in the export that found it: a game
+        // with no status shows in no list (ADR 0019), only on its own page.
+        review.result = {
+            job: { ...loaded([]).job, state: 'done', importedCount: 617, skippedCount: 0 },
+            skipped: [],
+            unlisted: 9,
+        };
+        renderPage();
+
+        expect(screen.getByText(/617 games were imported\. 9 of them are in no list/)).toBeInTheDocument();
+        expect(screen.queryByText(/now in your lists/)).not.toBeInTheDocument();
+    });
+
+    it('asks once which list the games played with no word on how they ended go into', async () => {
+        // ADR 0043. Hundreds of rows in a long-time user's export, and one question for all of
+        // them — answered here, it is a status in a list the moment the import finishes.
+        review.review = loaded([
+            row({ id: 1, status: null, playedUnresolved: true }),
+            row({ id: 2, status: null, playedUnresolved: true }),
+            row({ id: 3 }),
+        ]);
+        renderPage();
+
+        expect(screen.getByText(/You played 2 of these games/)).toBeInTheDocument();
+
+        const choice = screen.getByRole('combobox', { name: 'Put them in' });
+        expect(choice).toHaveValue('');
+
+        await userEvent.selectOptions(choice, 'finished');
+        expect(review.setPlayedStatus).toHaveBeenCalledWith('finished');
+    });
+
+    it('names the lists as their owner renamed them, and can go back to no list', async () => {
+        // No list is where the group starts, so it has to stay one choice away — and the lists
+        // read as their owner named them (ADR 0031).
+        review.review = loaded([row({ id: 1, status: 'finished', playedUnresolved: true })]);
+        renderPage();
+
+        const choice = screen.getByRole('combobox', { name: 'Put it in' });
+        expect(choice).toHaveDisplayValue('Beaten');
+
+        await userEvent.selectOptions(choice, 'No list');
+        expect(review.setPlayedStatus).toHaveBeenCalledWith(null);
+    });
+
+    it('holds the choice while the last one is being saved', () => {
+        // Two answers in flight at once could land in either order, and the first one failing would
+        // roll back over the second.
+        review.review = loaded([row({ id: 1, status: null, playedUnresolved: true })]);
+        review.savingPlayedStatus = true;
+        renderPage();
+
+        expect(screen.getByRole('combobox', { name: 'Put it in' })).toBeDisabled();
+    });
+
+    it('does not ask when the file said how every game it lists ended', () => {
+        review.review = loaded([row({ id: 1 }), row({ id: 2, status: null, wishlist: true })]);
+        renderPage();
+
+        expect(screen.queryByRole('combobox', { name: /^Put / })).not.toBeInTheDocument();
     });
 
     it('tells a signed-out visitor to sign in', () => {

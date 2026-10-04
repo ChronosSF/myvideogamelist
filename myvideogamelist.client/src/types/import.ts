@@ -58,6 +58,11 @@ export interface ImportReviewSummary {
     /** Rows no matching pass has been over yet — what is left to look up. */
     unlooked: number;
     statusUnrecognised: number;
+    /**
+     * Rows the file says were played without saying how that ended — the group the review screen
+     * asks about once. A fact about the file, so it stays put whatever list the group is given.
+     */
+    playedUnresolved: number;
     alreadyTracked: number;
     /** How many rows are set to import — what the commit button counts. */
     selected: number;
@@ -87,6 +92,11 @@ export interface ImportReviewRow {
     /** One of our status keys, or null for a row that will carry no status. */
     status: string | null;
     statusUnrecognised: boolean;
+    /**
+     * The file says this game was played and not how that ended, so its `status` is whatever list
+     * its owner chose for every such row at once, and null until they choose (ADR 0043).
+     */
+    playedUnresolved: boolean;
     score: number | null;
     wishlist: boolean;
     favourite: boolean;
@@ -133,4 +143,9 @@ export interface ImportResult {
     job: ImportJob;
     /** Every row that did not import, with the reason. What the failure report is built from. */
     skipped: ImportSkippedRow[];
+    /**
+     * How many of the games written are in no list afterwards. An entry with no status shows in no
+     * list, only on its game's own page, so "now in your lists" is false of these (ADR 0019).
+     */
+    unlisted: number;
 }

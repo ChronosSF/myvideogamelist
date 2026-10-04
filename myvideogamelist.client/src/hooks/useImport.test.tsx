@@ -141,3 +141,90 @@ describe('useImportReview.match', () => {
         expect(new Headers((init as RequestInit).headers).has('X-MVGL-Request')).toBe(true);
     });
 });
+
+/**
+ * One list for the played-but-unresolved group: one request that names only the list, and an undo
+ * that puts back what that request changed and nothing beside it.
+ */
+describe('useImportReview.setPlayedStatus', () => {
+    const JOB = 'job-1';
+
+    /** Two rows in the group, and one with an answer of its own that the group must not touch. */
+    const rows = () => [
+        importRow({ id: 1, status: null, playedUnresolved: true }),
+        importRow({ id: 2, status: null, playedUnresolved: true }),
+        importRow({ id: 3, status: 'finished' }),
+    ];
+
+    function stubSaving(answer: 'saved' | 'failed') {
+        const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+            const url = String(input);
+
+            if (url === `/api/import/jobs/${JOB}` && init?.method === undefined) {
+                return Promise.resolve(Response.json(importReview(rows())));
+            }
+
+            if (url === `/api/import/jobs/${JOB}/played-status` && init?.method === 'PUT') {
+                return Promise.resolve(answer === 'saved'
+                    ? new Response(null, { status: 204 })
+                    : Response.json({ detail: 'That change was not saved.' }, { status: 500 }));
+            }
+
+            throw new Error(`unexpected fetch: ${init?.method ?? 'GET'} ${url}`);
+        });
+
+        vi.stubGlobal('fetch', fetchMock);
+        return fetchMock;
+    }
+
+    function Probe() {
+        const { review, actionError, setPlayedStatus } = useImportReview('user-1', JOB);
+
+        return (
+            <div>
+                <span data-testid="statuses">
+                    {review?.rows.map(row => row.status ?? 'none').join(',') ?? '-'}
+                </span>
+                <span data-testid="action-error">{actionError ?? 'none'}</span>
+                <button type="button" onClick={() => void setPlayedStatus('dropped')}>Dropped</button>
+            </div>
+        );
+    }
+
+    const statuses = () => screen.getByTestId('statuses');
+
+    async function renderAndChoose() {
+        render(<Probe />);
+        await waitFor(() => expect(statuses()).toHaveTextContent('none,none,finished'));
+        await act(() => userEvent.click(screen.getByRole('button', { name: 'Dropped' })));
+    }
+
+    afterEach(() => vi.unstubAllGlobals());
+
+    it('puts every row of the group in the list with one request that names only the list', async () => {
+        // The server decides which rows are in the group, so the request carries no row ids — and
+        // it is a write, so it goes out with the header the API refuses one without (ADR 0033).
+        const fetchMock = stubSaving('saved');
+
+        await renderAndChoose();
+
+        expect(statuses()).toHaveTextContent('dropped,dropped,finished');
+
+        const [, init] = fetchMock.mock.calls.find(
+            ([, options]) => (options as RequestInit | undefined)?.method === 'PUT')!;
+
+        expect(JSON.parse(String((init as RequestInit).body))).toEqual({ status: 'dropped' });
+        expect(new Headers((init as RequestInit).headers).has('X-MVGL-Request')).toBe(true);
+    });
+
+    it('puts back what it changed when the save fails, and says so', async () => {
+        // Back to each row's own status, not to one shared value: the third row was Finished all
+        // along and is not the group's to reset.
+        stubSaving('failed');
+
+        await renderAndChoose();
+
+        expect(statuses()).toHaveTextContent('none,none,finished');
+        expect(screen.getByTestId('action-error')).toHaveTextContent('That change was not saved.');
+    });
+});
