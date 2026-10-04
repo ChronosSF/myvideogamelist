@@ -127,6 +127,18 @@ public class ConnectedReleaseService(
             await AddAsync(games, ancestors, cancellationToken);
         }
 
+        // The games what is shown is DLC for, which F6 names a group of them after. That game need not be in
+        // the set — somebody can wishlist two Street Fighter 6 characters without Street Fighter 6 — and the
+        // group cannot be named after a game nobody described. Asked after the editions, because what is
+        // shown is what an edition folds into.
+        var parents = fetched.Rows
+            .Select(r => games.GetValueOrDefault(r.GameId))
+            .OfType<CalendarGame>()
+            .Select(g => ConnectedReleases.Fold(g, games).ParentGameId)
+            .OfType<int>()
+            .ToList();
+        await AddAsync(games, parents, cancellationToken);
+
         var answer = new IgdbAnswer(games, fetched.Rows);
 
         // A partial answer is never kept (§8.1): the next request gets another try at all of it.

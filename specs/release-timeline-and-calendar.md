@@ -255,8 +255,9 @@ a year's last day, up to a year after it — and kept only if its period, read f
 For a 1,500-game library that release query was 26 KB, and came back as one page of 332 rows in
 0.7 s. A bigger library is split into a query per 1,500 games, and one for its series, rather than
 sent as a query longer than any IGDB has been seen to accept. The games each row names — and, for
-F3, the editions they are editions of, a generation at a time — are one more `games` query, and each
-game is cached on its own for six hours, since the same games come up for everybody.
+F3, the editions they are editions of, a generation at a time, and for F6 the games they are DLC for,
+which name a group even when they are not in the set — are one more `games` query each, and each game
+is cached on its own for six hours, since the same games come up for everybody.
 
 IGDB's answer is cached for an hour under a key built from the set's game ids, so adding a game to a
 list changes it at once and two identical sets share one answer. It is IGDB's answer that is cached,

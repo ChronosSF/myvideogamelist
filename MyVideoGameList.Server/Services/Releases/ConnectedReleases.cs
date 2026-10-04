@@ -49,7 +49,8 @@ internal static class ConnectedReleases
 
     /// <param name="set">The user's games, each under its strongest membership.</param>
     /// <param name="games">
-    /// Every game IGDB described: the set's own, each row's, and the editions' ancestors.
+    /// Every game IGDB described: the set's own, each row's, the editions' ancestors, and the games what is
+    /// shown is DLC for.
     /// </param>
     /// <param name="to">Exclusive, like every window here.</param>
     public static IReadOnlyList<ReleaseEntry> Compose(

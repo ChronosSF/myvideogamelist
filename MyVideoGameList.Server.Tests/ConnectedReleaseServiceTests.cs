@@ -253,4 +253,46 @@ public class ConnectedReleaseServiceTests
         Assert.Equal([[1942], [372654], [119402]], asked);
         Assert.Equal("The Witcher 3: Wild Hunt", Assert.Single(entry.Releases).Title);
     }
+
+    [Fact]
+    public async Task GetAsync_DlcForAGameOutsideTheSet_FetchesThatGameToNameTheirGroup()
+    {
+        // F6 groups DLC for one game on one day under that game's name, and the game need not be in the set:
+        // somebody can wishlist both of Street Fighter 6's Arjun DLC without it. As recorded on 2026-09-29,
+        // both are due on 13 October 2026 on Switch 2 and PC, and neither is in a series.
+        using var db = NewDb();
+        db.UserWishlistItems.Add(new UserWishlistItem { UserId = UserId, GameId = 404718 });
+        db.UserWishlistItems.Add(new UserWishlistItem { UserId = UserId, GameId = 407142 });
+        await db.SaveChangesAsync();
+
+        var known = new CalendarGame[]
+        {
+            new(191692, "Street Fighter 6", null, IgdbGameTypes.MainGame, null, null, [new SeriesRef(219, "Street Fighter")]),
+            new(404718, "Street Fighter 6: Year 4 - Arjun", null, IgdbGameTypes.Dlc, 191692, null, []),
+            new(407142, "Street Fighter 6: Additional Character - Arjun & Outfit 2", null, IgdbGameTypes.Dlc, 191692, null, []),
+        }.ToDictionary(g => g.Id);
+        var day = new DateOnly(2026, 10, 13);
+        var switch2 = new PlatformDto(508, "Nintendo Switch 2", "Switch 2", null, null);
+        var pc = new PlatformDto(6, "PC (Microsoft Windows)", "PC", null, null);
+
+        var igdb = Substitute.For<IIgdbService>();
+        igdb.GetCalendarGamesAsync(Arg.Any<IEnumerable<int>>(), Arg.Any<CancellationToken>())
+            .Returns(call => Task.FromResult<IReadOnlyDictionary<int, CalendarGame>>(
+                call.Arg<IEnumerable<int>>().Where(known.ContainsKey).ToDictionary(id => id, id => known[id])));
+        igdb.GetConnectedReleaseRowsAsync(
+                Arg.Any<IReadOnlyCollection<int>>(), Arg.Any<IReadOnlyCollection<int>>(),
+                Arg.Any<DateOnly>(), Arg.Any<DateOnly>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
+            .Returns(new ConnectedReleaseRows(
+            [
+                new(962456, 404718, day, 0, 2026, 10, switch2, 6),
+                new(962457, 404718, day, 0, 2026, 10, pc, 6),
+                new(963709, 407142, day, 0, 2026, 10, switch2, 6),
+                new(963710, 407142, day, 0, 2026, 10, pc, 6),
+            ], false));
+
+        var entry = Assert.Single(await NewService(db, igdb).GetAsync(UserId, day, day.AddDays(1), withPeriods: false));
+
+        Assert.Equal("Street Fighter 6", entry.GroupName);
+        Assert.Equal(2, entry.Releases.Count);
+    }
 }
