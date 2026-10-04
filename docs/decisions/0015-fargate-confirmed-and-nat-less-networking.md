@@ -1,7 +1,10 @@
 # 0015. ECS Fargate confirmed, with NAT-less networking
 
 **Status:** Accepted — revisits the compute alternatives in [0007](0007-aws-target-architecture.md)
-and adds the network topology it left unstated
+and adds the network topology it left unstated. The cost baseline below is about $65–74 a month,
+not $40: it priced one Fargate task where the design has two and missed the public IPv4 charge;
+and the credits it says to collect first are no longer earnable —
+[0044](0044-what-the-deployment-walkthrough-settled.md).
 
 ## Context
 
