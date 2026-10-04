@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useReducer, useState } from 'react';
 import { apiFetch } from '@/lib/api';
 import { PermanentFetchError, useAccountResource } from '@/hooks/useAccountResource';
 import {
@@ -109,10 +109,13 @@ export interface UseImportReviewResult {
     /** A matching run is in flight. Separate from `busy`, which stops the whole screen. */
     matching: boolean;
     /**
-     * The played-but-unresolved group's list is being saved. The choice waits for it, so a second
-     * answer cannot race the first and be rolled back over by it.
+     * A change to the review is still on its way to the server: a decision, or the played group's
+     * list. Both are on screen before the server has them, so the commit waits for them — sent past
+     * one, it would import what the server held before the change while the screen showed the
+     * change. The played group's choice waits too, so a second answer cannot race the first and be
+     * rolled back over by it.
      */
-    savingPlayedStatus: boolean;
+    saving: boolean;
     result: ImportResult | null;
     reload: () => void;
     setDecisions: (decisions: ImportRowDecision[]) => Promise<void>;
@@ -157,28 +160,13 @@ export function useImportReview(accountId: string | null, jobId: string): UseImp
     const { data, loading, error, errorIsPermanent, reload, patch } = useAccountResource<ImportReview>(
         accountId, jobId, load);
 
-    const [actionError, setActionError] = useState<string | null>(null);
-    const [busy, setBusy] = useState(false);
-    const [matching, setMatching] = useState(false);
-    const [savingPlayedStatus, setSavingPlayedStatus] = useState(false);
-    const [result, setResult] = useState<ImportResult | null>(null);
-
-    // These sit outside `useAccountResource`, so they need its guard applied by hand — a commit
-    // that lands after a sign-out or a move to another job would otherwise render one account's
-    // imported counts and skipped titles under the next one's name. Reset during render, not in an
-    // effect, so there is no committed frame showing the previous job's result.
-    const [resultIdentity, setResultIdentity] = useState(
-        accountId === null ? null : `${accountId}|${jobId}`);
     const identity = accountId === null ? null : `${accountId}|${jobId}`;
+    const [actions, dispatch] = useReducer(reviewActionReducer, identity, idle);
 
-    if (resultIdentity !== identity) {
-        setResultIdentity(identity);
-        setResult(null);
-        setActionError(null);
-        setBusy(false);
-        setMatching(false);
-        setSavingPlayedStatus(false);
-    }
+    // Idempotent by the condition, as in `useAccountResource`: React re-renders at once, the
+    // identity then matches, and nothing loops. Applied during render, so there is no committed
+    // frame showing the previous job's result.
+    if (actions.identity !== identity) dispatch({ type: 'RESET', identity });
 
     const setDecisions = useCallback(
         async (decisions: ImportRowDecision[]) => {
@@ -196,8 +184,9 @@ export function useImportReview(accountId: string | null, jobId: string): UseImp
             );
 
             patch(review => applyDecisions(review, decisions));
-            setActionError(null);
+            dispatch({ type: 'WRITE_START', identity });
 
+            let error: string | null = null;
             try {
                 const response = await apiFetch(`/api/import/jobs/${jobId}/rows`, {
                     method: 'PATCH',
@@ -208,10 +197,12 @@ export function useImportReview(accountId: string | null, jobId: string): UseImp
                 if (!response.ok) throw new Error(await problem(response, 'That change was not saved.'));
             } catch (err) {
                 patch(review => restoreRows(review, before));
-                setActionError(err instanceof Error ? err.message : 'That change was not saved.');
+                error = err instanceof Error ? err.message : 'That change was not saved.';
+            } finally {
+                dispatch({ type: 'WRITE_END', identity, error });
             }
         },
-        [data, jobId, patch],
+        [data, identity, jobId, patch],
     );
 
     /**
@@ -229,9 +220,9 @@ export function useImportReview(accountId: string | null, jobId: string): UseImp
             if (before.size === 0) return;
 
             patch(review => withPlayedStatus(review, () => status));
-            setActionError(null);
-            setSavingPlayedStatus(true);
+            dispatch({ type: 'WRITE_START', identity });
 
+            let error: string | null = null;
             try {
                 const response = await apiFetch(`/api/import/jobs/${jobId}/played-status`, {
                     method: 'PUT',
@@ -242,12 +233,12 @@ export function useImportReview(accountId: string | null, jobId: string): UseImp
                 if (!response.ok) throw new Error(await problem(response, 'That change was not saved.'));
             } catch (err) {
                 patch(review => withPlayedStatus(review, row => before.get(row.id) ?? null));
-                setActionError(err instanceof Error ? err.message : 'That change was not saved.');
+                error = err instanceof Error ? err.message : 'That change was not saved.';
             } finally {
-                setSavingPlayedStatus(false);
+                dispatch({ type: 'WRITE_END', identity, error });
             }
         },
-        [data, jobId, patch],
+        [data, identity, jobId, patch],
     );
 
     /**
@@ -264,9 +255,9 @@ export function useImportReview(accountId: string | null, jobId: string): UseImp
      * browser tab asks a rate-limited third party the same question for ever.
      */
     const match = useCallback(async () => {
-        setMatching(true);
-        setActionError(null);
+        dispatch({ type: 'MATCH_START', identity });
 
+        let error: string | null = null;
         try {
             for (;;) {
                 const response = await apiFetch(`/api/import/jobs/${jobId}/match`, { method: 'POST' });
@@ -280,44 +271,120 @@ export function useImportReview(accountId: string | null, jobId: string): UseImp
             // Whatever was resolved before the failure is already on screen and already saved: each
             // pass is its own transaction, so this reports the pass that failed rather than undoing
             // the ones that did not.
-            setActionError(err instanceof Error ? err.message : 'Those games could not be looked up.');
+            error = err instanceof Error ? err.message : 'Those games could not be looked up.';
         } finally {
-            setMatching(false);
+            dispatch({ type: 'MATCH_END', identity, error });
         }
-    }, [jobId, patch]);
+    }, [identity, jobId, patch]);
+
+    // Read off the state rather than kept in a ref, so it is the count this render shows: the
+    // button is disabled on the same value, and this refuses the call a stale handler could make.
+    const saving = actions.writes > 0;
 
     const commit = useCallback(async () => {
-        setBusy(true);
-        setActionError(null);
+        if (saving) return;
+
+        dispatch({ type: 'BUSY_START', identity });
         try {
             const response = await apiFetch(`/api/import/jobs/${jobId}/commit`, { method: 'POST' });
-            setResult(await readJson<ImportResult>(response, 'The import could not be finished.'));
+            const result = await readJson<ImportResult>(response, 'The import could not be finished.');
+            dispatch({ type: 'BUSY_END', identity, error: null, result });
         } catch (err) {
-            setActionError(err instanceof Error ? err.message : 'The import could not be finished.');
-        } finally {
-            setBusy(false);
+            dispatch({
+                type: 'BUSY_END',
+                identity,
+                error: err instanceof Error ? err.message : 'The import could not be finished.',
+            });
         }
-    }, [jobId]);
+    }, [identity, jobId, saving]);
 
     const cancel = useCallback(async () => {
-        setBusy(true);
-        setActionError(null);
+        dispatch({ type: 'BUSY_START', identity });
         try {
             const response = await apiFetch(`/api/import/jobs/${jobId}`, { method: 'DELETE' });
             if (!response.ok) throw new Error(await problem(response, 'That import could not be cancelled.'));
+            dispatch({ type: 'BUSY_END', identity, error: null });
             return true;
         } catch (err) {
-            setActionError(err instanceof Error ? err.message : 'That import could not be cancelled.');
+            dispatch({
+                type: 'BUSY_END',
+                identity,
+                error: err instanceof Error ? err.message : 'That import could not be cancelled.',
+            });
             return false;
-        } finally {
-            setBusy(false);
         }
-    }, [jobId]);
+    }, [identity, jobId]);
 
     return {
-        review: data, loading, error, gone: errorIsPermanent, actionError, busy, matching,
-        savingPlayedStatus, result, reload, setDecisions, setPlayedStatus, match, commit, cancel,
+        review: data, loading, error, gone: errorIsPermanent,
+        actionError: actions.actionError, busy: actions.busy, matching: actions.matching, saving,
+        result: actions.result, reload, setDecisions, setPlayedStatus, match, commit, cancel,
     };
+}
+
+/**
+ * What the review's own actions are doing, beside whose review it is.
+ *
+ * Outside `useAccountResource`, so its guard is written here, in the same three parts (ADR 0022):
+ * the identity lives in this state rather than in a ref, the move to a new one is applied during
+ * render, and every completion is stamped with the identity it was started for and dropped on a
+ * mismatch. The reset alone is not enough. A commit or a save still on its way when somebody moves
+ * to another job lands after the reset, and would otherwise put its result or its error on that
+ * job's screen, or end a save the new job has in flight.
+ */
+interface ReviewActionState {
+    identity: string | null;
+    /** Set when a decision, the played group's list, a lookup, a commit or a cancel failed. */
+    actionError: string | null;
+    /** A commit or a cancel is on its way. */
+    busy: boolean;
+    matching: boolean;
+    /** Changes to the review still on their way to the server. What `saving` is read from. */
+    writes: number;
+    result: ImportResult | null;
+}
+
+type ReviewAction =
+    | { type: 'RESET'; identity: string | null }
+    | { type: 'WRITE_START'; identity: string | null }
+    | { type: 'WRITE_END'; identity: string | null; error: string | null }
+    | { type: 'MATCH_START'; identity: string | null }
+    | { type: 'MATCH_END'; identity: string | null; error: string | null }
+    | { type: 'BUSY_START'; identity: string | null }
+    | { type: 'BUSY_END'; identity: string | null; error: string | null; result?: ImportResult };
+
+function idle(identity: string | null): ReviewActionState {
+    return { identity, actionError: null, busy: false, matching: false, writes: 0, result: null };
+}
+
+/**
+ * Every action but the reset names the review it was started for, and one that names another is
+ * dropped whole. A start clears the last error, so a banner nobody can dismiss goes on the next
+ * attempt; an end that failed sets it, and one that succeeded leaves whatever another failure set.
+ */
+function reviewActionReducer(state: ReviewActionState, action: ReviewAction): ReviewActionState {
+    if (action.type === 'RESET') return idle(action.identity);
+    if (action.identity !== state.identity) return state;
+
+    switch (action.type) {
+        case 'WRITE_START':
+            return { ...state, writes: state.writes + 1, actionError: null };
+        case 'WRITE_END':
+            return { ...state, writes: state.writes - 1, actionError: action.error ?? state.actionError };
+        case 'MATCH_START':
+            return { ...state, matching: true, actionError: null };
+        case 'MATCH_END':
+            return { ...state, matching: false, actionError: action.error ?? state.actionError };
+        case 'BUSY_START':
+            return { ...state, busy: true, actionError: null };
+        case 'BUSY_END':
+            return {
+                ...state,
+                busy: false,
+                actionError: action.error ?? state.actionError,
+                result: action.result ?? state.result,
+            };
+    }
 }
 
 /**

@@ -228,3 +228,119 @@ describe('useImportReview.setPlayedStatus', () => {
         expect(screen.getByTestId('action-error')).toHaveTextContent('That change was not saved.');
     });
 });
+
+/**
+ * A change still on its way: the commit waits for it, and when it lands it lands only on the
+ * import it was started for.
+ */
+describe('useImportReview, a change still on its way', () => {
+    const rowsOf = () => [
+        importRow({ id: 1, status: null, playedUnresolved: true }),
+        importRow({ id: 2, status: 'finished' }),
+    ];
+
+    /** A response the test hands over when it chooses, so a request can be held in flight. */
+    function held() {
+        let settle!: (response: Response) => void;
+        const response = new Promise<Response>(resolve => { settle = resolve; });
+        return { response, settle };
+    }
+
+    /** Every review answers at once; each import's save answers only when its `held` is settled. */
+    function stub(saves: Record<string, ReturnType<typeof held>>) {
+        const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+            const url = String(input);
+            const job = /\/api\/import\/jobs\/([^/]+)/.exec(url)?.[1] ?? '';
+
+            if (init?.method === undefined) return Promise.resolve(Response.json(importReview(rowsOf())));
+
+            if (url.endsWith('/played-status') && init.method === 'PUT') return saves[job].response;
+
+            if (url.endsWith('/commit') && init.method === 'POST') {
+                return Promise.resolve(Response.json({
+                    job: importJob({ state: 'done', importedCount: 2, skippedCount: 0 }),
+                    skipped: [],
+                    unlisted: 0,
+                }));
+            }
+
+            throw new Error(`unexpected fetch: ${init.method} ${url}`);
+        });
+
+        vi.stubGlobal('fetch', fetchMock);
+        return fetchMock;
+    }
+
+    function Probe({ jobId }: { jobId: string }) {
+        const { review, saving, actionError, result, setPlayedStatus, commit } = useImportReview('user-1', jobId);
+
+        return (
+            <div>
+                <span data-testid="loaded">{review ? jobId : '-'}</span>
+                <span data-testid="statuses">{review?.rows.map(row => row.status ?? 'none').join(',') ?? '-'}</span>
+                <span data-testid="saving">{String(saving)}</span>
+                <span data-testid="action-error">{actionError ?? 'none'}</span>
+                <span data-testid="result">{result ? 'done' : 'none'}</span>
+                <button type="button" onClick={() => void setPlayedStatus('finished')}>Finished</button>
+                <button type="button" onClick={() => void commit()}>Import</button>
+            </div>
+        );
+    }
+
+    const text = (id: string) => screen.getByTestId(id);
+    const commits = (fetchMock: ReturnType<typeof stub>) =>
+        fetchMock.mock.calls.filter(([url]) => String(url).endsWith('/commit')).length;
+
+    async function loadAndChoose(jobId: string) {
+        await waitFor(() => expect(text('loaded')).toHaveTextContent(jobId));
+        await act(() => userEvent.click(screen.getByRole('button', { name: 'Finished' })));
+    }
+
+    afterEach(() => vi.unstubAllGlobals());
+
+    it('holds the commit back until the change has landed', async () => {
+        // Sent past the change, the commit would read the rows as they were before it, and import
+        // the group into no list while the screen showed it in Finished.
+        const save = held();
+        const fetchMock = stub({ 'job-a': save });
+
+        render(<Probe jobId="job-a" />);
+        await loadAndChoose('job-a');
+        expect(text('saving')).toHaveTextContent('true');
+
+        await act(() => userEvent.click(screen.getByRole('button', { name: 'Import' })));
+        expect(commits(fetchMock)).toBe(0);
+
+        await act(async () => save.settle(new Response(null, { status: 204 })));
+        expect(text('saving')).toHaveTextContent('false');
+
+        await act(() => userEvent.click(screen.getByRole('button', { name: 'Import' })));
+        expect(commits(fetchMock)).toBe(1);
+        expect(text('result')).toHaveTextContent('done');
+    });
+
+    it('lands only on the import it was started for', async () => {
+        // A save for one import still on its way when somebody moves to another. Its failure, its
+        // rollback and its end all belong to the first import: none of them may show an error on
+        // the second, undo the second's choice, or end the save the second has in flight.
+        const first = held();
+        const second = held();
+        stub({ 'job-a': first, 'job-b': second });
+
+        const { rerender } = render(<Probe jobId="job-a" />);
+        await loadAndChoose('job-a');
+
+        rerender(<Probe jobId="job-b" />);
+        await loadAndChoose('job-b');
+
+        await act(async () => first.settle(
+            Response.json({ detail: 'That change was not saved.' }, { status: 500 })));
+
+        expect(text('action-error')).toHaveTextContent('none');
+        expect(text('statuses')).toHaveTextContent('finished,finished');
+        expect(text('saving')).toHaveTextContent('true');
+
+        await act(async () => second.settle(new Response(null, { status: 204 })));
+        expect(text('saving')).toHaveTextContent('false');
+    });
+});

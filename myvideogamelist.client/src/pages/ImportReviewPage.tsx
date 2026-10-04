@@ -52,7 +52,7 @@ export function ImportReviewPage() {
     const { nameFor, namesStatus } = useLists();
 
     const {
-        review, loading, error, gone, actionError, busy, matching, savingPlayedStatus, result,
+        review, loading, error, gone, actionError, busy, matching, saving, result,
         reload, setDecisions, setPlayedStatus, match, commit, cancel,
     } = useImportReview(user?.id ?? null, jobId);
 
@@ -228,7 +228,7 @@ export function ImportReviewPage() {
                                 id={playedChoiceId}
                                 count={review.summary.playedUnresolved}
                                 status={playedStatus}
-                                disabled={busy || savingPlayedStatus}
+                                disabled={busy || saving}
                                 label={label}
                                 onChoose={status => void setPlayedStatus(status)}
                             />
@@ -395,9 +395,13 @@ export function ImportReviewPage() {
                         )}
 
                         <div className="flex flex-wrap items-center gap-3 pt-2 border-t border-slate-800 light:border-slate-200">
+                            {/* Held while a change is still on its way. Every change is on screen
+                                before the server has it, and a commit sent past one would import
+                                what the server held before it — a list chosen a moment earlier,
+                                shown and then quietly not applied. */}
                             <button
                                 type="button"
-                                disabled={busy || review.summary.selected === 0}
+                                disabled={busy || saving || review.summary.selected === 0}
                                 onClick={() => void commit()}
                                 className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:hover:bg-blue-600 text-white text-sm font-semibold rounded-lg transition-colors"
                             >

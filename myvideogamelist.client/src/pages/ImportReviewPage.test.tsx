@@ -35,7 +35,7 @@ const review: UseImportReviewResult = {
     actionError: null,
     busy: false,
     matching: false,
-    savingPlayedStatus: false,
+    saving: false,
     result: null,
     reload: vi.fn(),
     setDecisions: vi.fn(async () => {}),
@@ -79,7 +79,7 @@ beforeEach(() => {
     review.actionError = null;
     review.busy = false;
     review.matching = false;
-    review.savingPlayedStatus = false;
+    review.saving = false;
     review.result = null;
     vi.clearAllMocks();
 });
@@ -267,10 +267,20 @@ describe('ImportReviewPage', () => {
         // Two answers in flight at once could land in either order, and the first one failing would
         // roll back over the second.
         review.review = loaded([row({ id: 1, status: null, playedUnresolved: true })]);
-        review.savingPlayedStatus = true;
+        review.saving = true;
         renderPage();
 
         expect(screen.getByRole('combobox', { name: 'Put it in' })).toBeDisabled();
+    });
+
+    it('holds the import back while a change is still being saved', () => {
+        // A list chosen and Import pressed straight after could commit before the list reached the
+        // server, and import the games into no list while the screen showed them in one.
+        review.review = loaded([row({ id: 1, status: 'finished', playedUnresolved: true })]);
+        review.saving = true;
+        renderPage();
+
+        expect(screen.getByRole('button', { name: /^Import 1/ })).toBeDisabled();
     });
 
     it('does not ask when the file said how every game it lists ended', () => {
