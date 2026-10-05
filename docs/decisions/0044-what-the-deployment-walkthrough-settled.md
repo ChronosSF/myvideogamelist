@@ -80,11 +80,11 @@ has applied since February 2024 to every public address in a VPC: one per task a
 balancer node, four here, about $14.60. Prices from the AWS Price List files of September 2026;
 the numbers are to be amended once seen on a bill.
 
-**The balancer, not the containers, is what an idle environment pays for.** Scaling both services
-to zero saves about 25 and leaves 40. Stopping the database as well leaves 28, and RDS restarts a
-stopped instance by itself after seven days. Destroying the application stack and stopping the
-database leaves the idle floor of about $4.20: storage, secrets, zones, images. On eight hours a
-day, twenty-two days a month, that is about $19. **Destroying the stack is the lever that matters**,
+**The balancer, not the containers, is what an idle environment pays for.** In Frankfurt, scaling
+both services to zero saves about 28 and leaves 46. Stopping the database as well leaves 32, and
+RDS restarts a stopped instance by itself after seven days. Destroying the application stack and
+stopping the database leaves the idle floor of about $4.64: storage, secrets, zones, images. On
+eight hours a day, twenty-two days a month, that is about $21. **Destroying the stack is the lever that matters**,
 which is why the CDK app is split the way the next section splits it. Fargate Spot and ARM64
 images change the rate rather than the hours and are below.
 
