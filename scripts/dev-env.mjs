@@ -267,11 +267,30 @@ function park() {
     status();
 }
 
+/**
+ * A stopped instance is pinned to its availability zone, and a small class can be out of
+ * capacity there for a while - the first resume of this environment was refused with
+ * InsufficientDBInstanceCapacity. That is AWS's problem, not a mistake, and the answer is to ask
+ * again: once a minute, for up to twenty minutes, saying so each time.
+ */
+async function startDatabase(attempts = 20) {
+    for (let i = 1; i <= attempts; i++) {
+        const r = aws(['rds', 'start-db-instance', '--db-instance-identifier', NAMES.database,
+            '--query', 'DBInstance.DBInstanceStatus'], { allowFailure: true });
+        if (r.ok) return;
+        if (!/InsufficientDBInstanceCapacity/.test(r.error)) fail(r.error);
+        note(`  No capacity for the database's instance class in its availability zone right now `
+            + `(attempt ${i} of ${attempts}). Asking again in a minute…`);
+        if (i < attempts) await new Promise((resolve) => setTimeout(resolve, 60_000));
+    }
+    fail('AWS had no capacity for the database for twenty minutes. Try again later, or change the instance class in DataStack.');
+}
+
 async function resume() {
     const db = databaseStatus();
     if (db === null) fail(`Database ${NAMES.database} does not exist. Deploy ${NAMES.dataStack} first.`);
     if (db === 'stopped') {
-        aws(['rds', 'start-db-instance', '--db-instance-identifier', NAMES.database, '--query', 'DBInstance.DBInstanceStatus']);
+        await startDatabase();
         note('Database starting — AWS says this can take from minutes to hours. Waiting…');
     } else if (db === 'stopping') {
         fail('The database is still stopping. Wait until it reports "stopped", then run this again.');

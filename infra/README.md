@@ -36,6 +36,14 @@ is destroying the `App` stack; stopping the database afterwards reaches the idle
 
 ## Things that will bite you
 
+- **A stopped database may refuse to start, for a while.** A Single-AZ instance is pinned to its
+  availability zone, and the small classes run out of capacity there now and then: the first
+  resume of this environment was refused with `InsufficientDBInstanceCapacity`, and the same
+  request succeeded a few minutes later. That is AWS's weather, not a mistake. `dev-env.mjs
+  resume` asks again once a minute for up to twenty minutes; by hand, retry `start-db-instance`.
+  If it persists, the way out is a different instance class in `DataStack`, not a different zone -
+  a Single-AZ instance cannot be moved.
+
 - **`cdk deploy` deploys a stack's dependencies too, and the `Data` stack synthesised without
   `allowedCidr` admits CloudFront only.** So `cdk deploy Mvgl-dev-App -c imageTag=…` on its own
   also redeploys `Data`, and silently replaces the balancer's allow rule with the prefix list -
