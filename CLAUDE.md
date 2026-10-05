@@ -45,6 +45,7 @@ Open `https://localhost:58546`.
 | `docker compose up -d --wait` | Local PostgreSQL. `--wait` blocks until it accepts connections |
 | `docker compose down` | Stops it, keeping data. **`down -v` destroys the data volume** |
 | `node scripts/seed-demo-history.mjs --email <account>` | Months of demo tracking history, so the profile stats have something to show. Prints SQL — pipe it to psql. `--email` is mandatory and **replaces that account's lists**, so use a `@test.local` one |
+| `node scripts/dev-env.mjs status\|park\|resume\|allow` | The AWS dev environment, through the signed-in `mvgl-dev` profile: `park` destroys the App stack, stops the database and gates the pipeline off; `resume` is the reverse at the newest pushed tag; `allow` redeploys the Data stack admitting this machine's address at the balancer, the only way in until CloudFront. Every deploy is `--exclusively`, so the Data stack is never touched by accident. See ADR 0044 |
 
 Health endpoints: `/healthz` (liveness, no dependency checks) and `/readyz` (database and
 IGDB reachability). A degraded IGDB returns 200, not 503 — browsing breaks but stored lists
@@ -67,8 +68,10 @@ myvideogamelist.client/
   src/lib/                      apiUrl(), useHydrated(), pageMeta()
 docs/decisions/                 Architecture decision records
 docs/data-model-plan.md         The tables not built yet, and the two constraints every table answers to
-scripts/                        Dev-only tools. These print SQL to stdout and never open a
-                                database connection — piping to psql stays a deliberate act
+scripts/                        Dev-only tools. The seeding tools print SQL to stdout and never open
+                                a database connection — piping to psql stays a deliberate act.
+                                dev-env.mjs is the exception: it acts on AWS, through a signed-in
+                                CLI profile, and prints every command before running it
 ROADMAP.md                      Not the plan any more: where it lives (GitHub issues), and the old IDs' map
 ```
 
