@@ -60,6 +60,13 @@ function option(name, fallback) {
 const ENV = option('--env', 'dev');
 const PROFILE = option('--profile', `mvgl-${ENV}`);
 
+/**
+ * The one repository the deploy role trusts (infra/src/Infra/Site.cs), and so the only one whose
+ * gate means anything. Pinned rather than inferred from the checkout, so a fork or another clone
+ * cannot set a same-named variable somewhere else and carry on as though it had gated the pipeline.
+ */
+const REPOSITORY = 'ChronosSF/myvideogamelist';
+
 /** Every name the stacks agree on, as infra/src/Infra/Site.cs derives them. */
 const NAMES = {
     cluster: `mvgl-${ENV}`,
@@ -183,7 +190,13 @@ function services() {
 /** Every tagged image in a repository, newest push first. */
 function taggedImages(repository) {
     const r = aws(['ecr', 'describe-images', '--repository-name', repository,
-        '--query', 'reverse(sort_by(imageDetails[?imageTags], &imagePushedAt))[].{tags:imageTags,pushed:imagePushedAt}']);
+        '--query', 'reverse(sort_by(imageDetails[?imageTags], &imagePushedAt))[].{tags:imageTags,pushed:imagePushedAt}'],
+        { allowFailure: true });
+    if (!r.ok) {
+        // Before the Data stack exists there is no repository, and that is "no tags", not an error.
+        if (/RepositoryNotFoundException/.test(r.error)) return [];
+        fail(r.error);
+    }
     return Array.isArray(r.value) ? r.value : [];
 }
 
@@ -235,7 +248,7 @@ async function healthy(attempts = 8) {
 // ---------------------------------------------------------------------------------------------
 
 function gate(value) {
-    const r = gh(['variable', 'set', NAMES.gateVariable, '--env', NAMES.gitHubEnvironment, '--body', String(value)]);
+    const r = gh(['variable', 'set', NAMES.gateVariable, '--repo', REPOSITORY, '--env', NAMES.gitHubEnvironment, '--body', String(value)]);
     if (r.ok) {
         note(`${NAMES.gateVariable} = ${value} on the GitHub environment "${NAMES.gitHubEnvironment}"`);
         return;
@@ -252,7 +265,7 @@ function gate(value) {
 }
 
 function gateValue() {
-    const r = gh(['variable', 'get', NAMES.gateVariable, '--env', NAMES.gitHubEnvironment]);
+    const r = gh(['variable', 'get', NAMES.gateVariable, '--repo', REPOSITORY, '--env', NAMES.gitHubEnvironment]);
     return r.ok ? r.out : null;
 }
 
