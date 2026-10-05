@@ -45,6 +45,7 @@
  */
 
 import { spawnSync } from 'node:child_process';
+import { existsSync, realpathSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -85,8 +86,8 @@ const COST = {
 };
 
 // ---------------------------------------------------------------------------------------------
-// Running things. `aws` and `gh` are executables and run directly; `cdk` is an npm shim, which
-// on Windows is a .cmd and needs a shell. Nothing here passes user input into a shell string.
+// Running things. `aws` and `gh` are executables and run directly; `cdk` is run as the Node
+// program it is. No shell is involved anywhere, on any platform.
 // ---------------------------------------------------------------------------------------------
 
 function show(cmd, args) {
@@ -105,19 +106,29 @@ function aws(args, { allowFailure = false } = {}) {
     return { ok: true, value: text === '' ? null : JSON.parse(text) };
 }
 
+/**
+ * The CDK CLI is a Node program behind an npm shim - on Windows a .cmd that only a shell can
+ * start. Rather than build a command line for a shell out of arguments, which is a thing nobody
+ * should have to trust, find the program the shim points at and run it with this Node directly.
+ */
+function cdkEntry() {
+    for (const dir of (process.env.PATH ?? '').split(path.delimiter)) {
+        for (const shim of ['cdk', 'cdk.cmd']) {
+            if (!existsSync(path.join(dir, shim))) continue;
+            // npm's global layout: the shim beside node_modules/aws-cdk.
+            const entry = path.join(dir, 'node_modules', 'aws-cdk', 'bin', 'cdk');
+            if (existsSync(entry)) return entry;
+            // Elsewhere the shim is a symlink to the program itself.
+            try { return realpathSync(path.join(dir, shim)); } catch { /* keep looking */ }
+        }
+    }
+    fail('The CDK CLI is not on the PATH: npm install -g aws-cdk');
+}
+
 function cdk(args) {
     const full = ['--profile', PROFILE, '-c', `env=${ENV}`, ...args];
     show('cdk', full);
-    // Every argument is a name, a tag, a CIDR or a flag of this script's own; refuse anything
-    // else, because on Windows the line below is parsed by cmd.exe.
-    for (const a of full) {
-        if (!/^[A-Za-z0-9_./=:-]+$/.test(a)) fail(`Refusing to pass "${a}" to cdk.`);
-    }
-    // On Windows the CDK CLI is an npm .cmd shim, which only cmd.exe can start; everywhere else
-    // it is an executable and runs directly.
-    const r = process.platform === 'win32'
-        ? spawnSync('cmd.exe', ['/d', '/s', '/c', `cdk ${full.join(' ')}`], { cwd: INFRA, stdio: 'inherit' })
-        : spawnSync('cdk', full, { cwd: INFRA, stdio: 'inherit' });
+    const r = spawnSync(process.execPath, [cdkEntry(), ...full], { cwd: INFRA, stdio: 'inherit' });
     if (r.status !== 0) fail(`cdk ${args[0]} ${args[1]} failed with exit code ${r.status}`);
 }
 
