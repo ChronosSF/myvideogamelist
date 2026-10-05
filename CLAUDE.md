@@ -80,7 +80,18 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
 - **Migrations auto-apply in Development only.** Everywhere else they are a deliberate
   deployment step, because several ECS tasks booting at once would race each other through the
   same migration. A deployed instance will start against an un-migrated database and fail on
-  first query rather than silently migrating.
+  first query rather than silently migrating. Deployed, that step is the migration task the
+  `Deploy dev` workflow runs before the application stack, from the bundle baked into the API
+  image; a non-zero exit stops the release.
+
+- **A merge to master builds and pushes dev's images, and deploys only when the environment is
+  awake.** `DEV_DEPLOY_ENABLED` on the `dev` GitHub environment is the gate, set by
+  `scripts/dev-env.mjs park` and `resume` and by nothing else: deploying the application stack
+  recreates it if it was destroyed, so an unconditional deploy-on-merge would silently un-park the
+  environment and start the balancer billing again. Every deploy of `Migrate` or `App`, in the
+  workflow and in the script, is `--exclusively`, because the `Data` stack synthesised without
+  `allowedCidr` admits CloudFront only and would otherwise be redeployed as a dependency. See
+  `docs/decisions/0044-*` and `infra/README.md`.
 
 - **The PostgreSQL container volume mounts at `/var/lib/postgresql`, not `.../data`.**
   PostgreSQL 18 images changed this and refuse to start if they find data at the old path. The
