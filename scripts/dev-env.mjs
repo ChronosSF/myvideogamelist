@@ -118,8 +118,10 @@ function cdkEntry() {
             // npm's global layout: the shim beside node_modules/aws-cdk.
             const entry = path.join(dir, 'node_modules', 'aws-cdk', 'bin', 'cdk');
             if (existsSync(entry)) return entry;
-            // Elsewhere the shim is a symlink to the program itself.
-            try { return realpathSync(path.join(dir, shim)); } catch { /* keep looking */ }
+            // Elsewhere the shim is a symlink to the program itself. A .cmd never is.
+            if (shim === 'cdk') {
+                try { return realpathSync(path.join(dir, shim)); } catch { /* keep looking */ }
+            }
         }
     }
     fail('The CDK CLI is not on the PATH: npm install -g aws-cdk');
@@ -178,11 +180,25 @@ function services() {
     return r.ok && Array.isArray(r.value) ? r.value : [];
 }
 
-/** The tag of the most recently pushed tagged image in a repository, or null. */
-function newestTag(repository) {
+/** Every tagged image in a repository, newest push first. */
+function taggedImages(repository) {
     const r = aws(['ecr', 'describe-images', '--repository-name', repository,
-        '--query', 'sort_by(imageDetails[?imageTags], &imagePushedAt)[-1].imageTags[0]']);
-    return r.value;
+        '--query', 'reverse(sort_by(imageDetails[?imageTags], &imagePushedAt))[].{tags:imageTags,pushed:imagePushedAt}']);
+    return Array.isArray(r.value) ? r.value : [];
+}
+
+/**
+ * The newest tag present in both repositories, or null. A release is one tag pushed to both;
+ * one that is half-pushed, or whose second push failed, must not be the one chosen - and must
+ * not stop an older complete one from being.
+ */
+function newestCommonTag() {
+    const ssrTags = new Set(taggedImages(NAMES.ssrRepository).flatMap((image) => image.tags));
+    for (const image of taggedImages(NAMES.apiRepository)) {
+        const tag = image.tags.find((t) => ssrTags.has(t));
+        if (tag) return tag;
+    }
+    return null;
 }
 
 function hasTag(repository, tag) {
@@ -222,10 +238,17 @@ function gate(value) {
     const r = gh(['variable', 'set', NAMES.gateVariable, '--env', NAMES.gitHubEnvironment, '--body', String(value)]);
     if (r.ok) {
         note(`${NAMES.gateVariable} = ${value} on the GitHub environment "${NAMES.gitHubEnvironment}"`);
-    } else {
-        note(`Could not set ${NAMES.gateVariable} on the GitHub environment "${NAMES.gitHubEnvironment}" — `
-            + `fine if the pipeline does not exist yet. gh said: ${r.error || r.out}`);
+        return;
     }
+    // Only a missing environment is the "no pipeline yet" case. Anything else - an expired gh
+    // login, a wrong repository, no permission - would leave the gate saying the opposite of
+    // what the environment is, which is the one thing this script exists to prevent.
+    if (/HTTP 404/.test(r.error)) {
+        note(`The GitHub environment "${NAMES.gitHubEnvironment}" does not exist yet, so there is no pipeline to gate.`);
+        return;
+    }
+    fail(`Could not set ${NAMES.gateVariable} on the GitHub environment "${NAMES.gitHubEnvironment}": ${r.error || r.out}\n`
+        + 'Is gh signed in, and run from a checkout of the repository? Fix that, then run this command again.');
 }
 
 function gateValue() {
@@ -242,7 +265,7 @@ function status() {
     const data = stackStatus(NAMES.dataStack);
     const db = databaseStatus();
     const running = services();
-    const tag = newestTag(NAMES.apiRepository);
+    const tag = newestCommonTag();
     const gateNow = gateValue();
 
     console.log(`Environment: ${ENV} (profile ${PROFILE})`);
@@ -250,7 +273,7 @@ function status() {
     console.log(`  ${NAMES.appStack}:  ${app ?? 'absent'}`);
     console.log(`  database ${NAMES.database}: ${db ?? 'absent'}`);
     console.log(`  services: ${running.length === 0 ? 'none' : running.map((s) => `${s.name} ${s.running}/${s.desired}`).join(', ')}`);
-    console.log(`  newest image tag: ${tag ?? 'none pushed yet'}`);
+    console.log(`  newest tag in both repositories: ${tag ?? 'none pushed yet'}`);
     console.log(`  ${NAMES.gateVariable}: ${gateNow ?? 'not set (no pipeline environment yet)'}`);
 
     const appUp = app !== null && !/DELETE/.test(app);
@@ -263,6 +286,10 @@ function status() {
 }
 
 function park() {
+    // The gate first: a merge that lands while the stack is being destroyed must not redeploy
+    // it, and if the gate cannot be set at all, nothing is torn down.
+    gate(false);
+
     const app = stackStatus(NAMES.appStack);
     if (app === null) {
         note(`${NAMES.appStack} is already gone.`);
@@ -275,14 +302,21 @@ function park() {
     // Only now the database: /healthz checks no dependency, so with the database stopped first
     // ECS would keep both tasks running, and billing, while every page failed.
     const db = databaseStatus();
-    if (db === 'available') {
+    if (db === null) {
+        note(`Database ${NAMES.database}: absent.`);
+    } else if (db === 'stopped' || db === 'stopping') {
+        note(`Database ${NAMES.database}: already ${db}.`);
+    } else {
+        // Starting, backing up, modifying: a stop is refused until it is available, and a park
+        // that quietly skipped it would leave the instance billing while reporting the idle floor.
+        if (db !== 'available') {
+            note(`Database ${NAMES.database} is "${db}". Waiting for it to be available so it can be stopped…`);
+            aws(['rds', 'wait', 'db-instance-available', '--db-instance-identifier', NAMES.database]);
+        }
         aws(['rds', 'stop-db-instance', '--db-instance-identifier', NAMES.database, '--query', 'DBInstance.DBInstanceStatus']);
         note(`Database ${NAMES.database}: stopping. Instance hours stop; storage and backups keep billing.`);
-    } else {
-        note(`Database ${NAMES.database}: ${db ?? 'absent'} — not touched.`);
     }
 
-    gate(false);
     console.log('');
     status();
 }
@@ -321,11 +355,12 @@ async function resume() {
         aws(['rds', 'wait', 'db-instance-available', '--db-instance-identifier', NAMES.database]);
     }
 
-    const tag = option('--tag', null) ?? newestTag(NAMES.apiRepository);
-    if (!tag) fail(`No tagged image in ${NAMES.apiRepository}. Build and push a release first (ADR 0044, Phase 7).`);
-    if (!hasTag(NAMES.apiRepository, tag) || !hasTag(NAMES.ssrRepository, tag)) {
-        fail(`Tag ${tag} is not in both ${NAMES.apiRepository} and ${NAMES.ssrRepository}.`);
+    const chosen = option('--tag', null);
+    if (chosen && (!hasTag(NAMES.apiRepository, chosen) || !hasTag(NAMES.ssrRepository, chosen))) {
+        fail(`Tag ${chosen} is not in both ${NAMES.apiRepository} and ${NAMES.ssrRepository}.`);
     }
+    const tag = chosen ?? newestCommonTag();
+    if (!tag) fail(`No tag is present in both ${NAMES.apiRepository} and ${NAMES.ssrRepository}. Build and push a release first (ADR 0044, Phase 7).`);
     note(`Deploying ${NAMES.appStack} at image tag ${tag}.`);
 
     // --exclusively: the Data stack is not redeployed as a dependency, so the balancer's allow
@@ -336,12 +371,13 @@ async function resume() {
     aws(['ecs', 'wait', 'services-stable', '--cluster', NAMES.cluster, '--services', 'api', 'ssr']);
 
     note(`Checking https://${NAMES.host}/healthz — a new alias can take a moment to resolve.`);
-    if (await healthy()) {
-        note('Healthy.');
-    } else {
-        note(`Not reachable from here. Until the CloudFront phase the balancer admits one address; if yours `
-            + `changed, run: node scripts/dev-env.mjs allow`);
+    if (!(await healthy())) {
+        // The gate stays off: an environment that cannot be shown to answer is not one a merge
+        // should deploy to. This command is safe to repeat once the cause is fixed.
+        fail(`https://${NAMES.host}/healthz did not answer Healthy, so the gate stays off. Until the CloudFront phase `
+            + 'the balancer admits one address: if yours changed, run `node scripts/dev-env.mjs allow`, then `resume` again.');
     }
+    note('Healthy.');
 
     gate(true);
     console.log('');
@@ -350,7 +386,8 @@ async function resume() {
 
 async function allow() {
     const cidr = option('--cidr', null) ?? `${await publicAddress()}/32`;
-    if (!/^\d{1,3}(\.\d{1,3}){3}\/\d{1,2}$/.test(cidr)) fail(`Not an IPv4 CIDR: ${cidr}`);
+    const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})\/(\d{1,2})$/.exec(cidr);
+    if (!m || m.slice(1, 5).some((octet) => Number(octet) > 255) || Number(m[5]) > 32) fail(`Not an IPv4 CIDR: ${cidr}`);
     note(`Redeploying ${NAMES.dataStack} with the balancer admitting ${cidr}. Until the CloudFront phase this is the only way in.`);
     cdk(['deploy', NAMES.dataStack, '--exclusively', '-c', `allowedCidr=${cidr}`, '--require-approval', 'never']);
 }
