@@ -60,27 +60,30 @@ jobs:
 
       # The repositories are immutable: a tag is pushed once. A re-run for the same commit - to
       # deploy after the environment was resumed, say - finds its images already there and skips
-      # the build rather than being refused by the push.
+      # the build rather than being refused by the push. Tracked per repository, so a run that
+      # died between the two pushes is finished by the next one rather than blocked by it.
       - name: Already pushed?
         id: pushed
         env:
           TAG: ${{ steps.release.outputs.tag }}
         run: |
           have() { aws ecr describe-images --repository-name "$1" --image-ids "imageTag=$TAG" >/dev/null 2>&1; }
-          if have mvgl/api && have mvgl/ssr; then
-            echo "Images $TAG are already in both repositories."
-            echo "yes=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "yes=false" >> "$GITHUB_OUTPUT"
-          fi
+          for repo in api ssr; do
+            if have "mvgl/$repo"; then
+              echo "mvgl/$repo:$TAG is already pushed."
+              echo "$repo=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "$repo=false" >> "$GITHUB_OUTPUT"
+            fi
+          done
 
       - uses: docker/setup-buildx-action@v4
-        if: steps.pushed.outputs.yes != 'true'
+        if: steps.pushed.outputs.api != 'true' || steps.pushed.outputs.ssr != 'true'
 
       # provenance: false, because the attestation manifest BuildKit otherwise pushes alongside
       # shows in ECR as an untagged image and counts against the lifecycle rule's twenty.
       - name: Build and push the API image
-        if: steps.pushed.outputs.yes != 'true'
+        if: steps.pushed.outputs.api != 'true'
         uses: docker/build-push-action@v7
         with:
           context: .
@@ -93,7 +96,7 @@ jobs:
           cache-to: type=gha,scope=api,mode=max
 
       - name: Build and push the SSR image
-        if: steps.pushed.outputs.yes != 'true'
+        if: steps.pushed.outputs.ssr != 'true'
         uses: docker/build-push-action@v7
         with:
           context: myvideogamelist.client
@@ -175,9 +178,15 @@ jobs:
         if: env.AWAKE == 'true'
         run: |
           set -euo pipefail
+          # A group can hold more than one target for a while - the old task draining beside the
+          # new one - so the test is "at least one healthy and nothing unhealthy", not one word.
           for key in ApiTargetGroupArn SsrTargetGroupArn; do
             ARN=$(aws cloudformation describe-stacks --stack-name Mvgl-dev-App --query "Stacks[0].Outputs[?OutputKey=='$key'].OutputValue" --output text)
-            STATE=$(aws elbv2 describe-target-health --target-group-arn "$ARN" --query "TargetHealthDescriptions[].TargetHealth.State" --output text)
-            echo "$key: $STATE"
-            [ "$STATE" = "healthy" ] || { echo "::error::$key is $STATE"; exit 1; }
+            STATES=$(aws elbv2 describe-target-health --target-group-arn "$ARN" --query "TargetHealthDescriptions[].TargetHealth.State" --output text | tr '\t' ' ')
+            echo "$key: $STATES"
+            case " $STATES " in
+              *" unhealthy "*) echo "::error::$key has an unhealthy target"; exit 1 ;;
+              *" healthy "*) ;;
+              *) echo "::error::$key has no healthy target"; exit 1 ;;
+            esac
           done

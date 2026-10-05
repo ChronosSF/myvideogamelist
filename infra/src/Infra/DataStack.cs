@@ -263,7 +263,12 @@ public sealed class DataStack : Stack
         {
             Sid = "ReadStackOutputs",
             Actions = ["cloudformation:DescribeStacks"],
-            Resources = [$"arn:{Aws.PARTITION}:cloudformation:{Region}:{Account}:stack/Mvgl-{site.Env}-*/*"],
+            // The two stacks it reads, by name - not every stack of this environment's.
+            Resources =
+            [
+                $"arn:{Aws.PARTITION}:cloudformation:{Region}:{Account}:stack/{site.StackName("Data")}/*",
+                $"arn:{Aws.PARTITION}:cloudformation:{Region}:{Account}:stack/{site.StackName("App")}/*",
+            ],
         }));
         role.AddToPolicy(new PolicyStatement(new PolicyStatementProps
         {
