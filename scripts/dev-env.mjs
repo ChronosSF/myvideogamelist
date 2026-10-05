@@ -108,7 +108,16 @@ function aws(args, { allowFailure = false } = {}) {
 function cdk(args) {
     const full = ['--profile', PROFILE, '-c', `env=${ENV}`, ...args];
     show('cdk', full);
-    const r = spawnSync('cdk', full, { cwd: INFRA, stdio: 'inherit', shell: process.platform === 'win32' });
+    // Every argument is a name, a tag, a CIDR or a flag of this script's own; refuse anything
+    // else, because on Windows the line below is parsed by cmd.exe.
+    for (const a of full) {
+        if (!/^[A-Za-z0-9_./=:-]+$/.test(a)) fail(`Refusing to pass "${a}" to cdk.`);
+    }
+    // On Windows the CDK CLI is an npm .cmd shim, which only cmd.exe can start; everywhere else
+    // it is an executable and runs directly.
+    const r = process.platform === 'win32'
+        ? spawnSync('cmd.exe', ['/d', '/s', '/c', `cdk ${full.join(' ')}`], { cwd: INFRA, stdio: 'inherit' })
+        : spawnSync('cdk', full, { cwd: INFRA, stdio: 'inherit' });
     if (r.status !== 0) fail(`cdk ${args[0]} ${args[1]} failed with exit code ${r.status}`);
 }
 
