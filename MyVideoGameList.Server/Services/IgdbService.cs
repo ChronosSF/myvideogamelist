@@ -35,9 +35,6 @@ public class IgdbService(
     /// </summary>
     private const int MaxPages = 10;
 
-    /// <summary>How far ahead the upcoming releases look.</summary>
-    private const int UpcomingWindowDays = 30;
-
     /// <summary>
     /// The IGDB <c>external_game_source</c> identifying a Steam store entry. This replaced the
     /// old <c>category</c> field, which no longer exists — filtering on it matches nothing.
@@ -320,103 +317,6 @@ public class IgdbService(
     }
 
     /// <summary>
-    /// Builds the upcoming releases from the <c>release_dates</c> endpoint rather than
-    /// <c>first_release_date</c>. A game already out on PC but launching on Switch next week has a
-    /// <c>first_release_date</c> in the past and would never appear otherwise.
-    /// </summary>
-    public async Task<IEnumerable<GameDto>> GetUpcomingReleasesAsync(CancellationToken cancellationToken = default)
-    {
-        var nowOffset = DateTimeOffset.UtcNow;
-        var nowUnix = nowOffset.ToUnixTimeSeconds();
-        var endUnix = nowOffset.AddDays(UpcomingWindowDays).ToUnixTimeSeconds();
-
-        // Refresh hourly so the list stays current without hammering the API
-        var cacheKey = $"igdb_upcoming|{nowOffset:yyyyMMddHH}";
-        if (cache.TryGetValue(cacheKey, out IEnumerable<GameDto>? cached) && cached is not null)
-            return cached;
-
-        var releaseRows = await FetchReleaseDatesAsync(nowUnix, endUnix, cancellationToken);
-
-        var gameIds = releaseRows
-            .Select(r => r.Game!.Value)
-            .Distinct()
-            .ToList();
-
-        var gamesById = (await FetchGamesByIdsAsync(gameIds, cancellationToken))
-            .ToDictionary(g => g.Id);
-
-        var result = ComposeUpcoming(releaseRows, gamesById);
-
-        cache.Set(cacheKey, result, TimeSpan.FromHours(1));
-        return result;
-    }
-
-    private async Task<List<IgdbReleaseDate>> FetchReleaseDatesAsync(
-        long fromUnix, long toUnix, CancellationToken cancellationToken)
-    {
-        var rows = new List<IgdbReleaseDate>();
-
-        for (var page = 0; page < MaxPages; page++)
-        {
-            var query = new StringBuilder()
-                .AppendLine("fields game,date,platform;")
-                .AppendLine($"where date >= {fromUnix} & date <= {toUnix} & game != null;")
-                .AppendLine("sort date asc;")
-                .AppendLine($"limit {MaxBatchSize};")
-                .AppendLine($"offset {page * MaxBatchSize};")
-                .ToString();
-
-            var batch = await QueryAsync<IgdbReleaseDate>(ReleaseDatesEndpoint, query, cancellationToken);
-            rows.AddRange(batch.Where(r => r.Game.HasValue && r.Date.HasValue));
-
-            if (batch.Count < MaxBatchSize) return rows;
-        }
-
-        logger.LogWarning(
-            "Upcoming releases hit the {MaxPages}-page ceiling ({RowCount} rows); results may be truncated.",
-            MaxPages, rows.Count);
-
-        return rows;
-    }
-
-    /// <summary>
-    /// Collapses release rows into one entry per (game, date), carrying only the platforms actually
-    /// releasing on that date, so a staggered launch names the right platforms on each of its dates.
-    /// </summary>
-    internal static List<GameDto> ComposeUpcoming(
-        List<IgdbReleaseDate> releaseRows, Dictionary<int, GameDto> gamesById)
-    {
-        var composed = new List<GameDto>();
-
-        var grouped = releaseRows
-            .Where(r => gamesById.ContainsKey(r.Game!.Value))
-            .GroupBy(r => (
-                GameId: r.Game!.Value,
-                Date: DateOnly.FromDateTime(DateTimeOffset.FromUnixTimeSeconds(r.Date!.Value).UtcDateTime)));
-
-        foreach (var group in grouped)
-        {
-            var game = gamesById[group.Key.GameId];
-
-            // Resolve the releasing platform IDs against the platform list already on the game
-            var releasingIds = group
-                .Where(r => r.Platform.HasValue)
-                .Select(r => r.Platform!.Value)
-                .ToHashSet();
-
-            var platforms = game.Platforms.Where(p => releasingIds.Contains(p.Id)).ToList();
-
-            // If IGDB gave no platform on the release row, fall back to the game's full platform list
-            // rather than dropping the entry entirely.
-            if (platforms.Count == 0) platforms = game.Platforms.ToList();
-
-            composed.Add(game with { ReleaseDate = group.Key.Date, Platforms = platforms });
-        }
-
-        return composed.OrderBy(g => g.ReleaseDate).ThenBy(g => g.Title).ToList();
-    }
-
-    /// <summary>
     /// The games with the highest current player counts, most popular first.
     /// </summary>
     /// <remarks>
@@ -429,7 +329,7 @@ public class IgdbService(
     {
         if (limit <= 0) return [];
 
-        // Refresh hourly, on the same clock-hour key the upcoming releases use.
+        // Refresh hourly, on a clock-hour key.
         var cacheKey = $"igdb_trending|{limit}|{DateTimeOffset.UtcNow:yyyyMMddHH}";
         if (cache.TryGetValue(cacheKey, out IEnumerable<GameDto>? cached) && cached is not null)
             return cached;

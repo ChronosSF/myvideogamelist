@@ -1,6 +1,8 @@
 # 0004. Upcoming releases are built on `release_dates`
 
-**Status:** Implemented
+**Status:** Implemented; `/api/games/upcoming` and `GetUpcomingReleasesAsync` were retired with the
+Releasing soon rail by #165, and the reasoning carries over to `/api/user/releases` (#164), which reads
+`release_dates` too
 
 ## Context
 

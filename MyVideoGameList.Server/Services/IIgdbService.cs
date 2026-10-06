@@ -23,8 +23,6 @@ public interface IIgdbService
     Task<IEnumerable<GameDto>> GetGamesByIdsAsync(
         IEnumerable<int> ids, CancellationToken cancellationToken = default);
 
-    Task<IEnumerable<GameDto>> GetUpcomingReleasesAsync(CancellationToken cancellationToken = default);
-
     /// <summary>
     /// The most-played games right now, most popular first. Only games with cover art are
     /// returned, since the sole consumer is a rail of covers.
