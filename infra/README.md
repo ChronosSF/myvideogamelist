@@ -65,6 +65,12 @@ CloudFront section, and `Edge.cs` says it again beside each one. Three things ar
   aws cloudfront-keyvaluestore put-key --profile mvgl-dev --kvs-arn <BasicAuthStoreArn output> --if-match "$(aws cloudfront-keyvaluestore describe-key-value-store --profile mvgl-dev --kvs-arn <BasicAuthStoreArn output> --query ETag --output text)" --key basic-auth --value "Basic $(printf '%s' '<user>:<password>' | base64)"
   ```
 
+  Keep the pair to letters and digits. Nothing in the chain forbids other characters - the
+  function compares the whole header byte for byte - but what a shell stores and what a browser
+  sends for punctuation or accented letters are two encodings that have to agree, and the first
+  pair set here did not pass the browser's prompt until it was simplified. Change the pair with
+  the same command, then update the GitHub secret, or the smoke test fails with a 401.
+
   Three paths are exempt, because the client fetches them with `credentials: 'omit'` and the
   browser then withholds the `Authorization` header too: a game's reviews, community scores and
   community times (ADR 0044, D-8). The exemption is a regular expression in
