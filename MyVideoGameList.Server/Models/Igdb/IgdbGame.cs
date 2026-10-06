@@ -236,3 +236,19 @@ public record IgdbPopularityPrimitive(
     int Id,
     [property: JsonPropertyName("game_id")] int? GameId,
     double? Value);
+
+/// <summary>
+/// A row from the IGDB <c>events</c> endpoint: a showcase, a festival or a convention.
+/// </summary>
+/// <remarks>
+/// <see cref="StartTime"/> and <see cref="EndTime"/> are Unix seconds, and some older rows have no end.
+/// IGDB's <c>time_zone</c> is not asked for: it is an abbreviation, and an unreliable one — the June 2026
+/// showcases were "PST" although Los Angeles was on daylight time — while the instants are exact. All
+/// verified against live responses on 2026-10-06.
+/// </remarks>
+public record IgdbEvent(
+    int Id,
+    string? Name,
+    [property: JsonPropertyName("start_time")] long? StartTime,
+    [property: JsonPropertyName("end_time")] long? EndTime,
+    [property: JsonPropertyName("live_stream_url")] string? LiveStreamUrl);
