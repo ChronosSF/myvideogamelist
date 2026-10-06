@@ -1,6 +1,6 @@
 # Spec — What is coming for your games: a two-week line and a release calendar
 
-Status: **accepted — being built under #162; the admin page (#163) is done**
+Status: **accepted — being built under #162; the admin page (#163) and the connected releases (#164) are done**
 Relates to: #129 (the old month view, which this replaces), #128 (the showcases and sales for signed-out
 visitors — §9's fifth question), #122 (release notifications, which need the same "what is connected to
 my games" answer), ADR [0042](../docs/decisions/0042-admins-are-named-in-configuration.md) (the admin
@@ -116,17 +116,20 @@ packs and 17 bundles, so the rules will have more to do than one six-month windo
 |---|---|---|
 | F1 | Keep game types 0 Main Game, 1 DLC, 2 Expansion, 4 Standalone Expansion, 6 Episode, 7 Season, 8 Remake, 9 Remaster, 10 Expanded Game and 11 Port | What a player would call a release |
 | F2 | Drop 3 Bundle, 5 Mod, 12 Fork, 13 Pack / Addon and 14 Update | Mods alone were 117 of the demo library's 320 children. Update is a judgement call (§9): Silksong's "Sea of Sorrow" is one |
-| F3 | Fold an edition — anything with a `version_parent` — into the game it is an edition of | "Grand Theft Auto VI: Ultimate Edition" is Grand Theft Auto VI, on the same day |
+| F3 | Fold an edition — a main game (type 0) with a `version_parent` — into the game it is an edition of, following a chain of editions to its end; the chain can pass through a bundle. A remaster, expanded game or port that carries a `version_parent` is not folded: it is a product of its own, and a child of that game (R2). It also ends a chain, so an edition of one is shown as it | "Grand Theft Auto VI: Ultimate Edition" is Grand Theft Auto VI, on the same day. Of 500 games carrying a `version_parent` on 2026-09-29, 426 were main games and 61 bundles (F2 drops those), and ten were remasters, expanded games and ports. The Witcher 3's "10th Anniversary Edition" is an edition of its "Complete Edition", a bundle, which is an edition of the game. "Rust: Console Edition - Ultimate" is an edition of Rust's console port, which carries a `version_parent` of its own, and is the port |
 | F4 | Keep release statuses 6 Full Release and 3 Early Access, and rows with no status. Drop 1 Alpha, 2 Beta, 4 Offline, 5 Cancelled, 34 Advanced Access, 35 Digital Compatibility Release and 36 Next-Gen Optimization Patch Release | Offline is a shutdown date — Final Fantasy VII: Ever Crisis on 6 Oct — not a release. Advanced Access opens a game early to buyers of one edition, and would list the game twice. 35 and 36 are an old game sold unchanged on a newer console, or patched for one |
-| F5 | One entry per game and date, its platforms merged | As ADR 0004 already does |
-| F6 | Entries on the same day in the same series group into one | Eight of the 300-game test's ten entries in two weeks were Kingdom Hearts games arriving on Switch 2, PS5 and Xbox on the same day |
+| F5 | One entry per game and period, its platforms merged. Where the same game on the same platform is also known more precisely inside that period — a region's day beside another's month — only the precise one is kept | As ADR 0004 already does, and so that "Oct 2026" does not sit beside "16 Oct 2026" as a second release |
+| F6 | Entries in the same period that belong together group into one: the same series, or — with no series between them — DLC for the same game. Where they share several series, the series is chosen across the period, not per entry: the one the most of them share takes its entries first, then the next among the rest, a tie going to the lowest id. The group is named after the series or the game, and its strongest reason (§3.4) is the one shown | Eight of the 300-game test's ten entries in two weeks were Kingdom Hearts games arriving on Switch 2, PS5 and Xbox on the same day. On 13 October 2026 Street Fighter 6 had two DLC rows for one character, "Year 4 - Arjun" and "Additional Character - Arjun & Outfit 2", and neither is in a series. On 1 February 2026 Final Fantasy VII Remake and its Episode Intermission came to Switch 2 and Xbox Series together, both in Final Fantasy, Final Fantasy VII and the Compilation of Final Fantasy VII, which IGDB lists in a different order for each |
 
 ### 3.4 Every entry says why it is there
 
 An entry names the game in the user's set that brought it in, and the relation: "On your wishlist —
 out on Switch 2", "Expansion for Elden Ring, a favourite", "New in the God of War series — you
 finished God of War". When several of the user's games bring in the same entry, the strongest reason
-is the one shown — a favourite before the wishlist before a list, and R1 before R2 before R3.
+is the one shown: the relation first, R1 before R2 before R3, and then the membership, a favourite
+before the wishlist before a list. The relation leads because it is the more specific claim — "Re Mind
+is DLC for Kingdom Hearts III, which you finished" says more than "Re Mind is in the Kingdom Hearts
+series, like your favourite Kingdom Hearts 0.2".
 
 ## 4. Most dates are not days
 
@@ -135,8 +138,11 @@ IGDB's `date_format` says how much of a release date is known: 0 the day, 1 the 
 2026-09-28, 1,661 were known to the day, 305 to the month, 1,516 to a quarter and 2,835 to the year.
 
 The stored `date` of an imprecise row is a stand-in. A year-only "2026" is stored as 31 December
-2026 and a month-only "Jan 2027" as 1 January 2027. Placed by that date, a year's worth of
-"sometime in 2026" would pile up on New Year's Eve.
+2026, a month-only "Jan 2027" as 1 January 2027, and a quarter-only "Q1 2027" as the quarter's last
+day, 31 March 2027. Every such row also carries `y` and `m`, and those — with `date_format` — are what
+say which period it is. Placed by the stored date, a year's worth of "sometime in 2026" would pile up
+on New Year's Eve; selected by it, a window ending in September 2027 would never reach a year-only
+2027 at all (§8.1).
 
 | # | Rule |
 |---|---|
@@ -232,17 +238,32 @@ releases is stored.
 
 A user's releases take two kinds of IGDB request: the series of the games in the set (a `games`
 query, 500 games to a page), then one `release_dates` query that filters through the game, paging
-at 500 rows.
+at 500 rows in id order so that rows sharing a date cannot move between pages.
 
 ```
 where (game = (…) | game.parent_game = (…) | game.version_parent = (…) | game.collections = (…))
-  & date >= {from} & date < {to}
+  & (((date_format = 0 | date_format = null) & date >= {from} & date < {to})
+     | (date_format = (1,2,3,4,5,6) & date >= {from − 31 days} & date < {to + 366 days}))
 ```
 
+A row known to the day is selected by its date. A row known only to a month, quarter or year cannot
+be, because its date is a stand-in (§4): it is asked for across every date a period overlapping the
+window could be stored under — a month's first day, up to a month before the window; a quarter's or
+a year's last day, up to a year after it — and kept only if its period, read from `y`, `m` and
+`date_format`, overlaps the window. The line asks for days alone and leaves the second clause out.
+
 For a 1,500-game library that release query was 26 KB, and came back as one page of 332 rows in
-0.7 s. The answer is cached for an hour under a key built from the set itself, so adding a game to a
-list changes it at once and two identical sets share one answer. A failed or partial answer is never
-cached. The "no date" list is one more query, on `date_format = 7` with no date range.
+0.7 s. A bigger library is split into a query per 1,500 games, and one for its series, rather than
+sent as a query longer than any IGDB has been seen to accept. The games each row names — and, for
+F3, the editions they are editions of, a generation at a time, and for F6 the games they are DLC for,
+which name a group even when they are not in the set — are one more `games` query each, and each game
+is cached on its own for six hours, since the same games come up for everybody.
+
+IGDB's answer is cached for an hour under a key built from the set's game ids, so adding a game to a
+list changes it at once and two identical sets share one answer. It is IGDB's answer that is cached,
+not the entries: moving a game from the wishlist to Playing changes the reasons without changing a
+single row, so the rules run on every request. A failed or partial answer is never cached. The "no
+date" list is one more query, on `date_format = 7` with no date range.
 
 When IGDB is down, the releases are missing and say so. The curated sales still show, because they
 are ours.
@@ -255,7 +276,7 @@ should be one service that both call.
 
 | # | Requirement |
 |---|---|
-| B1 | `GET /api/user/releases?from=&to=` — the user's connected releases in the window, each with its relation and the game or games in the set that brought it in; `no-store` |
+| B1 | `GET /api/user/releases?from=&to=&precision=` — the user's connected releases in the window, `to` exclusive and at most 400 days after `from`, grouped by F6 and each with its reason (§3.4); `precision=day`, the default, for the line, and `any` for the calendar's bands as well; `no-store` |
 | B2 | `GET /api/calendar/events?from=&to=` — showcases and curated events. The same for everybody, so cacheable once for everybody, with a `degraded` flag when IGDB failed, as `/api/home` has |
 | B3 | Admin endpoints for curated events and showcase names, behind A1's policy and `no-store`: `/api/admin/calendar/events` (list and add; replace and remove by id) and `/api/admin/calendar/showcase-names` (list and add; remove by id). A name already on the list, in any letter case, is refused as a problem with the field |
 | B4 | A migration adding the two tables, `CuratedEvents` and `ShowcaseNames` (`docs/data-model-plan.md`). Neither is user-owned (A5) |
@@ -284,8 +305,8 @@ should be one service that both call.
    on the shared home page, and this spec puts them on the signed-in line.
 6. **Shutdowns.** A game the user tracks going offline is dropped with every other Offline row
    (F4). It might be worth an entry of its own.
-7. **A game with a stream of DLC.** F6 groups by series and day; a game with dozens of DLC a year
-   may need a cap of its own.
+7. **A game with a stream of DLC.** F6 groups DLC for one game on one day. A game with dozens of DLC
+   a year, spread over as many days, may still need a cap of its own.
 
 ## 10. Evidence — taken on 2026-09-28
 
@@ -301,6 +322,9 @@ should be one service that both call.
 | `games` fields examined | `game_type` (there is no `category` any more), `collections`, `franchises`, `parent_game`, `version_parent`, `dlcs`, `expansions`, `standalone_expansions`, `remakes`, `remasters`, `expanded_games`, `hypes` |
 | `events` fields | `name`, `description`, `slug`, `start_time`, `end_time`, `time_zone`, `live_stream_url`, `games`, `videos`, `event_logo`, `event_networks` |
 | Filtering through the game | `release_dates` filters on `game.collections`, `game.parent_game` and `game.version_parent`, and expands `game.name` and the like in `fields` |
+| Stored dates, 2026-09-29 | Day: midnight UTC. Month: its first day. Quarter: its last day ("Q1 2027" is 31 March 2027). Year: 31 December. Each carries `y` and `m`. The query of §8.1, `date_format = null` included, parses and answers |
+| `version_parent`, 2026-09-29 | Of 500 games carrying one: 426 main games (editions), 61 bundles, 5 expanded games, 3 remasters, 3 DLC and 2 ports. Remakes, remasters and expanded games are linked by `parent_game` — Persona 4 Revival, the Witcher 3 Remastered, Xenoblade Chronicles 3's Switch 2 edition |
+| Editions of a product, 2026-10-04 | All of IGDB held 130 remasters, expanded games and ports carrying a `version_parent` — 34, 74 and 22 — and seven games whose `version_parent` is one of those: six main games and a bundle. "Rust: Console Edition - Ultimate" (164658) is an edition of "Rust: Console Edition" (145149), a port whose `parent_game` and `version_parent` are both Rust (3277) |
 
 ### Measurements
 
@@ -338,7 +362,7 @@ Each step is a sub-issue of #162.
 
 1. The admin page, its two tables and A1's policy (§7) — small, and it unblocks the sales and the
    showcases. #163, done.
-2. The releases service and B1, with §3.3's rules under test. #164.
+2. The releases service and B1, with §3.3's rules under test. #164, done.
 3. B2, and the two-week line in place of the Releasing soon rail. #165.
 4. The calendar. #166.
 5. Retiring `/api/games/upcoming` (B6), with the line. #165.
