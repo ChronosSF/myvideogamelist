@@ -95,6 +95,13 @@ would; a resume creates a new distribution with a new id, and nothing is cached 
 `resume` proves the door is on - a 401 without credentials - and, with `MVGL_DEV_BASIC_AUTH` set
 to the pair as `user:password`, that `/healthz` answers through it.
 
+`node scripts/dev-check.mjs` is the acceptance test, the walkthrough's Phase 11 as a program: run
+it after any change to the stacks and after every resume. Without the pair it checks the door,
+the three exempt paths and the redirect; with it, health, the crawler headers, `SITE_URL`, every
+route's `Cache-Control`, where the cache hits and where it never may, that a 404 is a 404, and
+that the write guard survives the edge. `--alb <dns name>` adds the check that the balancer does
+not answer directly.
+
 ## Things that will bite you
 
 - **A stopped database may refuse to start, for a while.** A Single-AZ instance is pinned to its
