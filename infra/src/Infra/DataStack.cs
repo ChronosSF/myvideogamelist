@@ -255,6 +255,27 @@ public sealed class DataStack : Stack
             Actions = ["ecs:DescribeTasks", "ecs:DescribeServices", "elasticloadbalancing:DescribeTargetHealth"],
             Resources = ["*"],
         }));
+        // The workflow reads the task subnets, the API security group and the target groups from
+        // stack outputs rather than carrying copies of them, and prints the migration bundle's
+        // log so a failed release says why. Reads only, on this environment's stacks and that one
+        // log group.
+        role.AddToPolicy(new PolicyStatement(new PolicyStatementProps
+        {
+            Sid = "ReadStackOutputs",
+            Actions = ["cloudformation:DescribeStacks"],
+            // The two stacks it reads, by name - not every stack of this environment's.
+            Resources =
+            [
+                $"arn:{Aws.PARTITION}:cloudformation:{Region}:{Account}:stack/{site.StackName("Data")}/*",
+                $"arn:{Aws.PARTITION}:cloudformation:{Region}:{Account}:stack/{site.StackName("App")}/*",
+            ],
+        }));
+        role.AddToPolicy(new PolicyStatement(new PolicyStatementProps
+        {
+            Sid = "ReadTheMigrationLog",
+            Actions = ["logs:FilterLogEvents", "logs:GetLogEvents", "logs:DescribeLogStreams"],
+            Resources = [$"arn:{Aws.PARTITION}:logs:{Region}:{Account}:log-group:{site.LogGroup("migrate")}:*"],
+        }));
 
         return role;
     }

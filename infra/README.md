@@ -25,6 +25,26 @@ cdk deploy Mvgl-dev-Data --profile mvgl-dev -c env=dev -c allowedCidr=<your ip>/
 The long-lived stacks are deployed from a developer machine; the pipeline deploys `Migrate` and
 `App` only, as the deploy role the `Data` stack creates.
 
+## The pipeline
+
+`.github/workflows/deploy-dev.yml` runs after every green CI run of a push to master, and by
+hand. CI runs on pull requests too, and a fork's branch called `master` passes the branch
+filter, so the automatic path also requires the triggering run to be a `push` to this
+repository - without that, a green CI run would hand the AWS role to anybody's code. The job
+assumes the deploy role through OIDC - no AWS key is stored in GitHub - builds both images and
+pushes them tagged with the commit, and then stops unless `DEV_DEPLOY_ENABLED` is `true` on the
+`dev` GitHub environment. Awake, it deploys `Migrate`, runs the migration task and fails the
+release on a non-zero exit, deploys `App`, waits for both services and checks target health.
+Both deploys are `--exclusively`, and the `App` deploy only ever *updates* the stack: the gate is
+read once, when the job starts, so a park that began mid-run would otherwise be undone by a job
+that recreates the stack over a stopped database. Creating `App` is `resume`'s job alone. A
+re-run for a commit whose images are already in ECR skips the build; the repositories are
+immutable, so it could not push them again anyway.
+
+The `dev` environment holds four variables, none secret: `AWS_ROLE_ARN`, `AWS_REGION`,
+`AWS_ACCOUNT_ID` and `DEV_DEPLOY_ENABLED`, and admits deployments from `master` only.
+`scripts/dev-env.mjs park` and `resume` set the gate; nothing else should.
+
 ## Parking and resuming
 
 The balancer, not the containers, is what an idle environment pays for, so the lever that matters
