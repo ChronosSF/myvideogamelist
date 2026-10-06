@@ -4,14 +4,20 @@ namespace Infra;
 
 /// <summary>
 /// One app, parameterised by context. <c>env</c> prefixes every stack and resource name;
-/// <c>imageTag</c> is the git SHA the two images were pushed under, and the application and
-/// migration stacks exist only when it is supplied, so the long-lived stacks deploy without one and
-/// nothing ever falls back to <c>latest</c>; <c>allowedCidr</c> is the one address the balancer
-/// admits before CloudFront exists. The Region comes from the profile; nothing here names one except
-/// the certificate stack's <c>us-east-1</c>. See ADR 0044.
+/// <c>imageTag</c> is the git SHA the two images were pushed under, and without it the application
+/// and migration stacks carry an error the CLI refuses to deploy over, so the long-lived stacks
+/// deploy without one and nothing ever falls back to <c>latest</c>; <c>allowedCidr</c> is the one
+/// address the balancer admits before CloudFront exists. The Region comes from the profile; nothing
+/// here names one except the certificate stack's <c>us-east-1</c>. See ADR 0044.
 /// </summary>
 internal static class Program
 {
+    /// <summary>
+    /// What the two per-release stacks are synthesised with when no <c>imageTag</c> is given. It is
+    /// never deployed: the stacks carrying it carry an error too.
+    /// </summary>
+    private const string NoImageTag = "unset";
+
     private static void Main()
     {
         var app = new App();
@@ -42,12 +48,27 @@ internal static class Program
         var data = new DataStack(app, site.StackName("Data"),
             new StackProps { Env = regional, TerminationProtection = true }, site, dns.Zone, allowedCidr);
 
-        if (imageTag is not null)
+        // The two per-release stacks exist in every synthesis, tag or no tag, because the Data
+        // stack's cross-stack outputs are derived from what consumes them. Cross-stack references
+        // are "weak" here (cdk.json): the consumer reads the producer's output at deployment time
+        // with Fn::GetStackOutput, and CloudFormation lets the producer drop that output at any
+        // time - unlike an export, which it refuses to remove while something imports it. So a
+        // Data deploy synthesised without these two stacks stripped every output they read, with a
+        // clean log, and the next release failed with "output was not found". Without a tag the two
+        // carry an error instead, which the CLI refuses to deploy over - and which a Data deploy,
+        // not selecting them, never meets.
+        var tag = imageTag ?? NoImageTag;
+        var migrate = new MigrateStack(app, site.StackName("Migrate"),
+            new StackProps { Env = regional }, site, data, tag);
+        var application = new AppStack(app, site.StackName("App"),
+            new StackProps { Env = regional }, site, dns.Zone, data, tag);
+        if (imageTag is null)
         {
-            _ = new MigrateStack(app, site.StackName("Migrate"),
-                new StackProps { Env = regional }, site, data, imageTag);
-            _ = new AppStack(app, site.StackName("App"),
-                new StackProps { Env = regional }, site, dns.Zone, data, imageTag);
+            foreach (var stack in new Stack[] { migrate, application })
+            {
+                Annotations.Of(stack).AddError(
+                    $"{stack.StackName} deploys an image, so name it: -c imageTag=<sha>. The long-lived stacks need no tag.");
+            }
         }
 
         app.Synth();

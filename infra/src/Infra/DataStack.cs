@@ -233,6 +233,11 @@ public sealed class DataStack : Stack
         }));
         ApiRepository.GrantPullPush(role);
         SsrRepository.GrantPullPush(role);
+        // The workflow asks whether a tag is already pushed before building, and GrantPullPush does
+        // not cover the asking: without this, the answer was always "no", every run rebuilt, and the
+        // push into an immutable repository succeeded only while the rebuilt digest was identical.
+        ApiRepository.Grant(role, "ecr:DescribeImages");
+        SsrRepository.Grant(role, "ecr:DescribeImages");
         role.AddToPolicy(new PolicyStatement(new PolicyStatementProps
         {
             Sid = "RunTheMigrationTask",
