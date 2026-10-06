@@ -76,13 +76,18 @@ jobs:
         env:
           TAG: ${{ steps.release.outputs.tag }}
         run: |
-          have() { aws ecr describe-images --repository-name "$1" --image-ids "imageTag=$TAG" >/dev/null 2>&1; }
+          set -euo pipefail
           for repo in api ssr; do
-            if have "mvgl/$repo"; then
+            # Only "no such image" means not pushed. Anything else - a denied DescribeImages, which
+            # is how the first run went - would otherwise read as "not pushed" and send a rebuild
+            # into an immutable repository, where the push succeeds only while the digest is the same.
+            if OUT=$(aws ecr describe-images --repository-name "mvgl/$repo" --image-ids "imageTag=$TAG" 2>&1 >/dev/null); then
               echo "mvgl/$repo:$TAG is already pushed."
               echo "$repo=true" >> "$GITHUB_OUTPUT"
-            else
+            elif [[ "$OUT" == *ImageNotFoundException* ]]; then
               echo "$repo=false" >> "$GITHUB_OUTPUT"
+            else
+              echo "$OUT"; exit 1
             fi
           done
 
