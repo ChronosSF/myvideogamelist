@@ -21,11 +21,8 @@
  *   node scripts/dev-env.mjs status             what exists, and which cost row that is
  *   node scripts/dev-env.mjs park               destroy the App stack, stop the database, gate off
  *   node scripts/dev-env.mjs resume             start the database, deploy App at the newest tag,
- *                                               wait for both services, check /healthz, gate on
+ *                                               wait for both services, check the site, gate on
  *   node scripts/dev-env.mjs resume --tag <sha> the same, at a tag of your choosing
- *   node scripts/dev-env.mjs allow [--cidr x/32] redeploy the Data stack admitting this address
- *                                               (or the one given) at the balancer; until the
- *                                               CloudFront phase, the only way in
  *
  * Options on every command: --env <name> (default dev), --profile <aws profile> (default
  * mvgl-<env>). Everything goes through `aws --profile`, `cdk --profile` and `gh`, so it does
@@ -33,15 +30,18 @@
  * mvgl-dev` first. Unlike the other tools in this directory, which only print SQL, this one acts
  * on AWS — every command it runs is printed before it runs.
  *
+ * The site is behind basic auth at the edge (ADR 0046), so `resume` proves the door is on - a 401
+ * without credentials - and, when MVGL_DEV_BASIC_AUTH holds the pair as `user:password`, that
+ * /healthz answers Healthy through it. Without the variable the gate still goes on: target health
+ * is what `ecs wait services-stable` already proved, and the variable is the stronger proof.
+ *
  * ---------------------------------------------------------------------------------------------
  * WHAT IT DOES NOT DO
  * ---------------------------------------------------------------------------------------------
- * It never touches the long-lived stacks by accident. `cdk deploy` deploys a stack's
- * dependencies too, and the Data stack synthesised without `allowedCidr` admits CloudFront only —
- * so an App deploy without `--exclusively` silently replaces the balancer's allow rule. Every
- * deploy here is `--exclusively`, and the Data stack is redeployed only by `allow`, which always
- * passes the address. It never deletes the database, the zone, a secret or an image: parking
- * leaves everything a resume needs. And it never chooses a tag that is not already in ECR.
+ * It never touches the long-lived stacks. `cdk deploy` deploys a stack's dependencies too, so
+ * every deploy here is `--exclusively`, and nothing here deploys the Data stack at all. It never
+ * deletes the database, the zone, a secret or an image: parking leaves everything a resume needs.
+ * And it never chooses a tag that is not already in ECR.
  */
 
 import { spawnSync } from 'node:child_process';
@@ -220,19 +220,24 @@ function hasTag(repository, tag) {
     return r.ok && r.value === 1;
 }
 
-async function publicAddress() {
-    const response = await fetch('https://checkip.amazonaws.com', { signal: AbortSignal.timeout(10_000) });
-    return (await response.text()).trim();
-}
-
-async function healthy(attempts = 8) {
+/**
+ * The site answers through the distribution, behind basic auth at the edge (ADR 0046). Without
+ * the pair the proof is the 401 that says the door is on; with MVGL_DEV_BASIC_AUTH set to
+ * `user:password`, the proof is /healthz answering Healthy through CloudFront, the balancer and
+ * its origin-verify rule. A new distribution can take a few minutes to answer by its alias. A
+ * function error rather than a 401 means the store has no key: the function fails closed.
+ */
+async function healthy(attempts = 18) {
     const url = `https://${NAMES.host}/healthz`;
+    const pair = process.env.MVGL_DEV_BASIC_AUTH;
+    const headers = pair ? { authorization: `Basic ${Buffer.from(pair).toString('base64')}` } : {};
+    const expecting = pair ? '200 Healthy' : 'a 401 at the door';
     for (let i = 1; i <= attempts; i++) {
         try {
-            const response = await fetch(url, { signal: AbortSignal.timeout(15_000) });
+            const response = await fetch(url, { headers, signal: AbortSignal.timeout(15_000) });
             const body = (await response.text()).trim();
-            if (response.status === 200 && body === 'Healthy') return true;
-            note(`  ${url}: ${response.status} ${body}`);
+            if (pair ? response.status === 200 && body === 'Healthy' : response.status === 401) return true;
+            note(`  ${url}: ${response.status} ${body.slice(0, 80)} (attempt ${i} of ${attempts}, expecting ${expecting})`);
         } catch (error) {
             note(`  ${url}: ${error.cause?.code ?? error.name} (attempt ${i} of ${attempts})`);
         }
@@ -310,6 +315,7 @@ function park() {
         // Synthesised without an imageTag the application stack carries an error, and whether the
         // CLI acts on a destroy over one is not something to find out while parking; for a destroy
         // any value names it (the walkthrough's lever 3). Nothing in the data stack is touched.
+        note(`Destroying ${NAMES.appStack}. The distribution goes with it, which alone takes several minutes.`);
         cdk(['destroy', NAMES.appStack, '-c', 'imageTag=parked', '--force']);
     }
 
@@ -377,39 +383,33 @@ async function resume() {
     if (!tag) fail(`No tag is present in both ${NAMES.apiRepository} and ${NAMES.ssrRepository}. Build and push a release first (ADR 0044, Phase 7).`);
     note(`Deploying ${NAMES.appStack} at image tag ${tag}.`);
 
-    // --exclusively: the Data stack is not redeployed as a dependency, so the balancer's allow
-    // rule stays what `allow` last set it to.
+    // --exclusively: the Data stack is not redeployed as a dependency. The stack includes the
+    // distribution, so this takes several minutes longer than the services alone would.
     cdk(['deploy', NAMES.appStack, '--exclusively', '-c', `imageTag=${tag}`, '--require-approval', 'never']);
 
     note('Waiting for both services to be stable…');
     aws(['ecs', 'wait', 'services-stable', '--cluster', NAMES.cluster, '--services', 'api', 'ssr']);
 
-    note(`Checking https://${NAMES.host}/healthz — a new alias can take a moment to resolve.`);
+    note(`Checking https://${NAMES.host}/healthz through the distribution — a new one can take a few minutes to answer by its alias.`);
     if (!(await healthy())) {
         // The gate stays off: an environment that cannot be shown to answer is not one a merge
         // should deploy to. This command is safe to repeat once the cause is fixed.
-        fail(`https://${NAMES.host}/healthz did not answer Healthy, so the gate stays off. Until the CloudFront phase `
-            + 'the balancer admits one address: if yours changed, run `node scripts/dev-env.mjs allow`, then `resume` again.');
+        fail(`https://${NAMES.host}/healthz did not answer as expected, so the gate stays off. A function error rather `
+            + 'than a 401 means the basic-auth key is not in the store: set it, then `resume` again.');
     }
-    note('Healthy.');
+    note(process.env.MVGL_DEV_BASIC_AUTH
+        ? 'Healthy, through the distribution.'
+        : 'The door is on: a 401 without credentials. Set MVGL_DEV_BASIC_AUTH to user:password for the stronger check.');
 
     gate(true);
     console.log('');
     status();
 }
 
-async function allow() {
-    const cidr = option('--cidr', null) ?? `${await publicAddress()}/32`;
-    const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})\/(\d{1,2})$/.exec(cidr);
-    if (!m || m.slice(1, 5).some((octet) => Number(octet) > 255) || Number(m[5]) > 32) fail(`Not an IPv4 CIDR: ${cidr}`);
-    note(`Redeploying ${NAMES.dataStack} with the balancer admitting ${cidr}. Until the CloudFront phase this is the only way in.`);
-    cdk(['deploy', NAMES.dataStack, '--exclusively', '-c', `allowedCidr=${cidr}`, '--require-approval', 'never']);
-}
-
-const COMMANDS = { status, park, resume, allow };
+const COMMANDS = { status, park, resume };
 
 if (!COMMANDS[COMMAND]) {
-    console.error('Usage: node scripts/dev-env.mjs <status|park|resume|allow> [--env dev] [--profile mvgl-dev] [--tag <sha>] [--cidr x.x.x.x/32]');
+    console.error('Usage: node scripts/dev-env.mjs <status|park|resume> [--env dev] [--profile mvgl-dev] [--tag <sha>]');
     process.exit(1);
 }
 

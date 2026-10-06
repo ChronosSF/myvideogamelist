@@ -13,8 +13,8 @@ name: Deploy dev
 # exchanges it for an hour of credentials on a role whose trust policy admits exactly one subject:
 # a job in this repository that declares the `dev` environment, whose deployments are restricted to
 # master. Everything the job deploys, it deploys as the CDK bootstrap roles; the long-lived stacks
-# are never deployed here, and both deploys are `--exclusively` so the Data stack - which,
-# synthesised without `allowedCidr`, admits CloudFront only - is never touched as a dependency.
+# are never deployed here, and both deploys are `--exclusively` so that the Data stack is never
+# redeployed as a dependency by a job that was only ever meant to deploy these two.
 
 on:
   workflow_run:
@@ -211,15 +211,32 @@ jobs:
         if: env.AWAKE == 'true' && steps.app.outputs.present == 'true'
         run: aws ecs wait services-stable --cluster mvgl-dev --services api ssr
 
-      # Until CloudFront exists the balancer admits one address, and it is not this runner's, so
-      # the proof is target health. From the CloudFront phase this becomes /readyz and / through
-      # the distribution, with the basic-auth pair as the one secret the workflow holds.
-      - name: Smoke test
+      # A cached page names hashed bundles the new container no longer has, because the bundles are
+      # served by the SSR container and not from S3: without this, a deploy leaves cached pages
+      # pointing at scripts that 404 (ADR 0044). A wildcard counts as one path, and the first
+      # thousand a month are free. The id is read from the stack, since it changes on every resume.
+      - name: Invalidate the distribution
         if: env.AWAKE == 'true' && steps.app.outputs.present == 'true'
         run: |
           set -euo pipefail
-          # A group can hold more than one target for a while - the old task draining beside the
-          # new one - so the test is "at least one healthy and nothing unhealthy", not one word.
+          ID=$(aws cloudformation describe-stacks --stack-name Mvgl-dev-App --query "Stacks[0].Outputs[?OutputKey=='DistributionId'].OutputValue" --output text)
+          INVALIDATION=$(aws cloudfront create-invalidation --distribution-id "$ID" --paths "/*" --query "Invalidation.Id" --output text)
+          echo "Invalidation $INVALIDATION of distribution $ID"
+          aws cloudfront wait invalidation-completed --distribution-id "$ID" --id "$INVALIDATION"
+
+      # Target health first: a group can hold more than one target for a while - the old task
+      # draining beside the new one - so that test is "at least one healthy and nothing unhealthy".
+      # Then the whole chain, through the distribution. Without the basic-auth pair every path is
+      # a 401, which proves the function is on the door; with it, /readyz is the API answering
+      # through CloudFront, the balancer and its origin-verify rule, and / is the SSR server doing
+      # the same. The pair is the one secret the workflow holds (ADR 0046), and the checks that need
+      # it are skipped with a warning until it is set on the environment.
+      - name: Smoke test
+        if: env.AWAKE == 'true' && steps.app.outputs.present == 'true'
+        env:
+          BASIC_AUTH: ${{ secrets.DEV_BASIC_AUTH }}
+        run: |
+          set -euo pipefail
           for key in ApiTargetGroupArn SsrTargetGroupArn; do
             ARN=$(aws cloudformation describe-stacks --stack-name Mvgl-dev-App --query "Stacks[0].Outputs[?OutputKey=='$key'].OutputValue" --output text)
             STATES=$(aws elbv2 describe-target-health --target-group-arn "$ARN" --query "TargetHealthDescriptions[].TargetHealth.State" --output text | tr '\t' ' ')
@@ -229,4 +246,23 @@ jobs:
               *" healthy "*) ;;
               *) echo "::error::$key has no healthy target"; exit 1 ;;
             esac
+          done
+          SITE=https://dev.myvideogamelist.net
+          STATUS=$(curl -sS -o /dev/null -w "%{http_code}" "$SITE/healthz")
+          echo "$SITE/healthz without credentials: $STATUS"
+          if [ "$STATUS" != "401" ]; then
+            echo "::error::Expected a 401 without credentials and got $STATUS: the door is not on."
+            exit 1
+          fi
+          if [ -z "$BASIC_AUTH" ]; then
+            echo "::warning::DEV_BASIC_AUTH is not set on the dev environment, so the authenticated checks were skipped."
+            exit 0
+          fi
+          for path in /readyz /; do
+            STATUS=$(curl -sS -o /dev/null -w "%{http_code}" -u "$BASIC_AUTH" "$SITE$path")
+            echo "$SITE$path: $STATUS"
+            if [ "$STATUS" != "200" ]; then
+              echo "::error::$path answered $STATUS through the distribution."
+              exit 1
+            fi
           done

@@ -1,4 +1,5 @@
 using Amazon.CDK;
+using Amazon.CDK.AWS.CertificateManager;
 using Amazon.CDK.AWS.EC2;
 using Amazon.CDK.AWS.ECS;
 using Amazon.CDK.AWS.ElasticLoadBalancingV2;
@@ -12,16 +13,18 @@ using Constructs;
 namespace Infra;
 
 /// <summary>
-/// The disposable stack: the balancer, both services, their log groups and the DNS alias. Destroying
-/// it is the pause lever that matters, because the balancer, not the containers, is what an idle
-/// environment pays for (ADR 0044). Milestone 1 is this stack behind the balancer alone; CloudFront
-/// joins it in milestone 2.
+/// The disposable stack: the balancer, both services, their log groups, the distribution in front of
+/// the balancer, and the DNS alias. Destroying it is the pause lever that matters, because the
+/// balancer, not the containers, is what an idle environment pays for (ADR 0044). The distribution
+/// lives here because its origin is the balancer this stack creates and destroys, which is also why
+/// a park and a resume take several minutes longer than they did before it (ADR 0046).
 /// </summary>
 public sealed class AppStack : Stack
 {
     private const string Production = "Production";
 
-    public AppStack(Construct scope, string id, IStackProps props, Site site, IHostedZone zone, DataStack data, string imageTag)
+    public AppStack(Construct scope, string id, IStackProps props, Site site, IHostedZone zone, DataStack data,
+        ICertificate edgeCertificate, string imageTag)
         : base(scope, id, props)
     {
         var albSubnets = data.Vpc.SelectSubnets(new SubnetSelection { SubnetGroupName = "alb" });
@@ -38,6 +41,11 @@ public sealed class AppStack : Stack
             SecurityGroup = data.AlbSecurityGroup,
             VpcSubnets = new SubnetSelection { SubnetGroupName = "alb" },
             IdleTimeout = Duration.Seconds(60),
+            // The balancer preserves X-Forwarded-For rather than appending CloudFront's address to
+            // it, so the right-most entry is the viewer and the API's ForwardLimit stays 1 (D-7).
+            // Trustworthy only because nothing but CloudFront reaches the balancer: the prefix list
+            // in DataStack, and the origin-verify header the listener requires below.
+            XffHeaderProcessingMode = XffHeaderProcessingMode.PRESERVE,
         });
 
         // Thirty seconds rather than the default three hundred, or every deploy waits five minutes
@@ -47,26 +55,37 @@ public sealed class AppStack : Stack
         apiTargets.AddTarget(apiService);
         ssrTargets.AddTarget(ssrService);
 
-        // Plain HTTP is redirected here, by the balancer; the API never redirects (ADR 0044).
+        // One listener, on 443. The port-80 redirect went with CloudFront: the balancer's group
+        // admits CloudFront's prefix list on 443 only (DataStack), so nothing could reach port 80,
+        // and the viewer's plain HTTP is redirected by the distribution instead. The API never
+        // redirects (ADR 0044).
         //
-        // Open = false on both listeners, because CDK otherwise "opens" an internet-facing
-        // balancer by adding 0.0.0.0/0 ingress on each listener port to its security group - which
-        // here is the data stack's, and would silently undo the allowedCidr and CloudFront-only
-        // rules it holds. Every ingress rule the balancer has is owned by DataStack and nothing
-        // else; the review on #175 caught this.
-        alb.AddRedirect(new ApplicationLoadBalancerRedirectConfig { Open = false });
-
+        // Open = false, because CDK otherwise "opens" an internet-facing balancer by adding
+        // 0.0.0.0/0 ingress on the listener port to its security group - which here is the data
+        // stack's, and would silently undo the CloudFront-only rule it holds. Every ingress rule the
+        // balancer has is owned by DataStack and nothing else; the review on #175 caught this.
+        //
+        // The prefix list proves only that a request came through *some* distribution, so ours
+        // sends a header whose value is a secret, the listener's default action is a 403, and every
+        // forwarding rule requires the header (ADR 0046). The value is a Secrets Manager dynamic
+        // reference, which CloudFormation resolves at deploy time: it is in no template.
+        var originVerify = data.OriginVerify.SecretValue.UnsafeUnwrap();
+        var fromOurDistribution = ListenerCondition.HttpHeader(site.OriginVerifyHeader, [originVerify]);
         var https = alb.AddListener("Https", new BaseApplicationListenerProps
         {
             Port = 443,
             Open = false,
             Certificates = [ListenerCertificate.FromCertificateManager(data.Certificate)],
-            DefaultTargetGroups = [ssrTargets],
+            DefaultAction = ListenerAction.FixedResponse(403, new FixedResponseOptions
+            {
+                ContentType = "text/plain",
+                MessageBody = "This balancer answers its own distribution only.",
+            }),
         });
         https.AddTargetGroups("Api", new AddApplicationTargetGroupsProps
         {
             Priority = 10,
-            Conditions = [ListenerCondition.PathPatterns(["/api/*"])],
+            Conditions = [fromOurDistribution, ListenerCondition.PathPatterns(["/api/*"])],
             TargetGroups = [apiTargets],
         });
         // Not under /api/, so without this rule they would reach the SSR server and 404. Exposed in
@@ -74,23 +93,31 @@ public sealed class AppStack : Stack
         https.AddTargetGroups("Health", new AddApplicationTargetGroupsProps
         {
             Priority = 20,
-            Conditions = [ListenerCondition.PathPatterns(["/healthz", "/readyz"])],
+            Conditions = [fromOurDistribution, ListenerCondition.PathPatterns(["/healthz", "/readyz"])],
             TargetGroups = [apiTargets],
         });
-
-        // The hostname is the zone's own name, so the alias sits at the zone apex. Milestone 2
-        // points it at CloudFront instead. An A record only: the balancer is IPv4-only and the VPC
-        // has no IPv6 allocation, so an AAAA alias would answer nothing. CloudFront, which is
-        // dual-stack, gets the AAAA in milestone 2.
-        _ = new ARecord(this, "Alias", new ARecordProps
+        https.AddTargetGroups("Ssr", new AddApplicationTargetGroupsProps
         {
-            Zone = zone,
-            Target = RecordTarget.FromAlias(new LoadBalancerTarget(alb)),
+            Priority = 30,
+            Conditions = [fromOurDistribution],
+            TargetGroups = [ssrTargets],
         });
+
+        var edge = new Edge(this, "Edge", site, alb, edgeCertificate, data.BasicAuthStore, originVerify);
+
+        // The hostname is the zone's own name, so the alias sits at the zone apex, and it names the
+        // distribution: the balancer is in no DNS record. A and AAAA both, since CloudFront is
+        // dual-stack where the balancer was IPv4-only.
+        var target = RecordTarget.FromAlias(new CloudFrontTarget(edge.Distribution));
+        _ = new ARecord(this, "Alias", new ARecordProps { Zone = zone, Target = target });
+        _ = new AaaaRecord(this, "AliasV6", new AaaaRecordProps { Zone = zone, Target = target });
 
         _ = new CfnOutput(this, "LoadBalancerDnsName", new CfnOutputProps { Value = alb.LoadBalancerDnsName });
         _ = new CfnOutput(this, "ApiTargetGroupArn", new CfnOutputProps { Value = apiTargets.TargetGroupArn });
         _ = new CfnOutput(this, "SsrTargetGroupArn", new CfnOutputProps { Value = ssrTargets.TargetGroupArn });
+        // What the pipeline invalidates after a deploy, read from here rather than copied anywhere.
+        _ = new CfnOutput(this, "DistributionId", new CfnOutputProps { Value = edge.Distribution.DistributionId });
+        _ = new CfnOutput(this, "DistributionDomainName", new CfnOutputProps { Value = edge.Distribution.DistributionDomainName });
     }
 
     private FargateTaskDefinition ApiTask(Site site, DataStack data, ISelectedSubnets albSubnets, string imageTag)
