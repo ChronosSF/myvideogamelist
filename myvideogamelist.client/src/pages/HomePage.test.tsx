@@ -135,9 +135,10 @@ describe('HomePage loader', () => {
 
 describe('HomePage for a signed-out visitor', () => {
     it('asks the API for nothing from the browser', () => {
-        // Everything a visitor sees arrives through the loader, cached once for everybody. The
-        // upcoming releases are asked for by the Releasing soon rail, which only a signed-in user
-        // sees — fetched at the page, they were requested for every visitor and shown to none.
+        // Everything a visitor sees arrives through the loader, cached once for everybody. What is
+        // coming for somebody's games is asked for by the two-week line, which only a signed-in user
+        // sees — the Releasing soon rail before it learned that fetching at the page requested the
+        // releases for every visitor and showed them to none.
         const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
             throw new Error(`unexpected fetch: ${String(input)}`);
         });

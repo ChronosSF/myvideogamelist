@@ -39,3 +39,49 @@ export function localToday(now: Date = new Date()): string {
     const date = String(now.getDate()).padStart(2, '0');
     return `${now.getFullYear()}-${month}-${date}`;
 }
+
+const DAY_MS = 86_400_000;
+
+/** The day as a count of days since 1970, in UTC, where every day is exactly as long as the next. */
+function dayNumber(day: string): number {
+    const [year, month, date] = day.split('-').map(Number);
+    return Date.UTC(year, month - 1, date) / DAY_MS;
+}
+
+/**
+ * The day `count` days after `day`, or before it for a negative count. Counted in UTC rather than
+ * on the reader's clock, so that a day which is 23 or 25 hours long where they live — the night the
+ * clocks change — is still one day. Reads no clock.
+ */
+export function addDays(day: string, count: number): string {
+    const moved = new Date((dayNumber(day) + count) * DAY_MS);
+    const month = String(moved.getUTCMonth() + 1).padStart(2, '0');
+    const date = String(moved.getUTCDate()).padStart(2, '0');
+    return `${moved.getUTCFullYear()}-${month}-${date}`;
+}
+
+/** How many days `day` is after `from`: negative before it. Reads no clock. */
+export function daysBetween(from: string, day: string): number {
+    return dayNumber(day) - dayNumber(from);
+}
+
+const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const MONTH_NAMES = [
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December',
+];
+
+/**
+ * The parts of a day a line of days labels itself with — "Tue", "Oct", 6 — and the whole of it for
+ * whoever cannot see the line, "Tuesday, October 6". From the string alone, like `formatDaySpan`.
+ */
+export function dayLabel(day: string): { weekday: string; month: string; date: number; full: string } {
+    const [year, month, date] = day.split('-').map(Number);
+    const weekday = WEEKDAYS[new Date(Date.UTC(year, month - 1, date)).getUTCDay()];
+    return {
+        weekday: weekday.slice(0, 3),
+        month: MONTHS[month - 1],
+        date,
+        full: `${weekday}, ${MONTH_NAMES[month - 1]} ${date}`,
+    };
+}
