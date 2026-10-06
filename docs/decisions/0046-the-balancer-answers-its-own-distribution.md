@@ -1,6 +1,6 @@
 # 0046. The balancer answers its own distribution, and what else the CloudFront phase settled
 
-**Status:** Accepted; built by [#97](https://github.com/ChronosSF/myvideogamelist/issues/97)
+**Status:** Implemented; verified against the environment on 2026-10-06 by `scripts/dev-check.mjs`, all checks passing
 **Amends:** [0044](0044-what-the-deployment-walkthrough-settled.md), the CloudFront section
 
 ## Context

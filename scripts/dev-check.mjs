@@ -6,14 +6,16 @@
  * browser would ask it, so a pass means the whole chain answered: CloudFront, the basic-auth
  * function, the balancer's prefix-list rule and origin-verify rule, and the two processes.
  *
- *   node scripts/dev-check.mjs [--env dev] [--game <igdb id>] [--alb <balancer dns name>]
+ *   node scripts/dev-check.mjs [--env dev] [--game <igdb id>] [--alb <balancer dns name>] [--limiter]
  *
  * Without MVGL_DEV_BASIC_AUTH it checks only what needs no credential: that the door is on, that
  * the three exempt paths answer, that plain HTTP redirects, and - with --alb - that the balancer
  * does not answer directly. With the pair as `user:password` it checks the rest: health, the
  * crawler headers, SITE_URL, every route's Cache-Control, that the cache hits where it should and
- * never where it must not, that a 404 is a 404, and that the write guard survives the edge. Prints
- * one line per check and exits 1 if any failed. Nothing here writes anything anywhere.
+ * never where it must not, that a 404 is a 404, and that the write guard survives the edge; with
+ * --limiter, that the eleventh wrong password is a 429, at the cost of the caller's own login
+ * budget for five minutes. Prints one line per check and exits 1 if any failed. Nothing here
+ * writes anything anywhere: the one POST that reaches the API is a sign-out by nobody.
  */
 
 const ARGS = process.argv.slice(2);
@@ -36,11 +38,12 @@ function report(ok, what, detail = '') {
     console.log(`${ok ? 'ok  ' : 'FAIL'} ${what}${detail ? `: ${detail}` : ''}`);
 }
 
-async function get(path, { auth = false, method = 'GET', headers = {}, redirect = 'follow', base = SITE } = {}) {
+async function get(path, { auth = false, method = 'GET', headers = {}, payload = undefined, redirect = 'follow', base = SITE } = {}) {
     const response = await fetch(`${base}${path}`, {
         method,
         redirect,
         headers: { ...(auth && AUTH ? AUTH : {}), ...headers },
+        body: payload,
         signal: AbortSignal.timeout(45_000),
     });
     const body = await response.text();
@@ -154,6 +157,27 @@ async function cacheBehaviour() {
     }
 }
 
+/**
+ * Opt-in, because it spends the caller's own login budget for five minutes: ten wrong passwords
+ * for an account that does not exist are 401s, and the eleventh is a 429 from the limiter behind
+ * the edge. What this cannot show from outside is *which* address the limiter partitioned on -
+ * the viewer's, as D-7 intends, or the edge's - because the API logs nothing about the address;
+ * it shows that the limiter is on and that one caller's attempts land in one bucket.
+ */
+async function limiter() {
+    const email = `nobody-${stamp()}@test.local`;
+    const attempt = () => get('/api/auth/login', {
+        auth: true,
+        method: 'POST',
+        headers: { 'X-MVGL-Request': '1', 'content-type': 'application/json' },
+        payload: JSON.stringify({ email, password: 'not-the-password' }),
+    });
+    const statuses = [];
+    for (let i = 0; i < 11; i++) statuses.push((await attempt()).status);
+    report(statuses.slice(0, 10).every((s) => s === 401) && statuses[10] === 429,
+        'the eleventh wrong password in five minutes is a 429', statuses.join(' '));
+}
+
 async function writeGuard() {
     // ADR 0033: no header is a 403 from the guard; the header and nobody signed in is a 401. A 403
     // on the second means CloudFront stripped X-MVGL-Request, which /api/*'s AllViewer must not.
@@ -172,6 +196,7 @@ try {
         await cacheHeaders();
         await cacheBehaviour();
         await writeGuard();
+        if (ARGS.includes('--limiter')) await limiter();
     }
 } catch (error) {
     report(false, 'a request failed outright', error.cause?.code ?? error.message);
