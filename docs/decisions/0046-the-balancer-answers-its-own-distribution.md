@@ -32,9 +32,12 @@ every other reference in this app, which puts an order on the first deploy.
    the header condition beside its path condition. The value reaches both sides as a CloudFormation
    dynamic reference, resolved at deploy time, so it is in no template, no output and no log. The
    prefix list stays: it is what refuses the TCP connection before TLS, and two independent gates
-   are cheaper than one perfect one. Rotation is a Data deploy with a new generated value, then an
-   App deploy; the site is a 403 in between. #109's VPC origin retires all of this by making the
-   balancer internal, and nothing here stands in its way.
+   are cheaper than one perfect one. Rotation is not a redeploy: CloudFormation generates the
+   value once, on creation, and re-resolves a dynamic reference only for a resource whose template
+   changed, so a new value has to be written to the secret and then carried into the distribution
+   and the listener by an App deploy with a change that touches both - which nothing provides yet,
+   and #109 lists. #109's VPC origin retires all of this by making the balancer internal, and
+   nothing here stands in its way.
 
 2. **The distribution lives in the application stack.** Its origin is the balancer that stack
    creates, its alias is the record that stack owns, and a distribution with no origin is not

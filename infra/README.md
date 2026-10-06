@@ -80,8 +80,13 @@ CloudFront section, and `Edge.cs` says it again beside each one. Three things ar
   came through *some* distribution; the `X-Origin-Verify` header, whose value is the
   `mvgl/<env>/origin-verify` secret, proves it came through ours, and the listener's default action
   is a 403. The value reaches the distribution and the listener as a Secrets Manager dynamic
-  reference, so it is in no template and in no output. Rotating it is a `Data` deploy with a new
-  generated value followed by an `App` deploy, in that order, and the site is a 403 in between.
+  reference, so it is in no template and in no output. **Rotating it is not a redeploy**:
+  CloudFormation generates the value once, on creation, and re-resolves a dynamic reference only
+  for a resource whose template changed, so deploying `Data` and `App` again with nothing changed
+  rotates nothing and renames nothing. The procedure is a new value written with `aws secretsmanager
+  put-secret-value`, then an `App` deploy with a change that touches the origin's custom header and
+  the listener's rules, which nothing here provides yet (#109). Until it does, the value lives as
+  long as the secret.
 
 - **The first deploy of this phase has an order**, because every cross-stack reference is resolved
   when the consuming stack deploys: `EdgeCert` in `us-east-1` (its certificate output is new),

@@ -45,7 +45,8 @@ Open `https://localhost:58546`.
 | `docker compose up -d --wait` | Local PostgreSQL. `--wait` blocks until it accepts connections |
 | `docker compose down` | Stops it, keeping data. **`down -v` destroys the data volume** |
 | `node scripts/seed-demo-history.mjs --email <account>` | Months of demo tracking history, so the profile stats have something to show. Prints SQL — pipe it to psql. `--email` is mandatory and **replaces that account's lists**, so use a `@test.local` one |
-| `node scripts/dev-env.mjs status\|park\|resume\|allow` | The AWS dev environment, through the signed-in `mvgl-dev` profile: `park` destroys the App stack, stops the database and gates the pipeline off; `resume` is the reverse at the newest pushed tag; `allow` redeploys the Data stack admitting this machine's address at the balancer, the only way in until CloudFront. Every deploy is `--exclusively`, so the Data stack is never touched by accident. See ADR 0044 |
+| `node scripts/dev-env.mjs status\|park\|resume` | The AWS dev environment, through the signed-in `mvgl-dev` profile: `park` destroys the App stack (the distribution with it), stops the database and gates the pipeline off; `resume` is the reverse at the newest pushed tag, proving the site answers through the door. Every deploy is `--exclusively`, so the Data stack is never touched by accident. See ADR 0044, 0046 |
+| `node scripts/dev-check.mjs` | The dev environment's acceptance test, through the distribution. Run it after any stack change and after every resume; with `MVGL_DEV_BASIC_AUTH` set to the basic-auth pair it checks everything, without it only the door |
 
 Health endpoints: `/healthz` (liveness, no dependency checks) and `/readyz` (database and
 IGDB reachability). A degraded IGDB returns 200, not 503 — browsing breaks but stored lists
@@ -89,9 +90,11 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   `scripts/dev-env.mjs park` and `resume` and by nothing else: deploying the application stack
   recreates it if it was destroyed, so an unconditional deploy-on-merge would silently un-park the
   environment and start the balancer billing again. Every deploy of `Migrate` or `App`, in the
-  workflow and in the script, is `--exclusively`, because the `Data` stack synthesised without
-  `allowedCidr` admits CloudFront only and would otherwise be redeployed as a dependency. See
-  `docs/decisions/0044-*` and `infra/README.md`.
+  workflow and in the script, is `--exclusively`, so that the long-lived `Data` stack is never
+  redeployed as a dependency by something that only meant to deploy a release. The balancer admits
+  CloudFront's prefix list and nothing else, and its listener answers only the distribution that
+  sends the origin-verify header; the site is behind basic auth at the edge, with three public
+  aggregate endpoints exempt. See `docs/decisions/0044-*`, `0046-*` and `infra/README.md`.
 
 - **The PostgreSQL container volume mounts at `/var/lib/postgresql`, not `.../data`.**
   PostgreSQL 18 images changed this and refuse to start if they find data at the old path. The

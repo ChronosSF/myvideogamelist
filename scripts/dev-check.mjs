@@ -77,11 +77,16 @@ async function theDoor() {
         'plain HTTP is redirected to HTTPS', `${http.status} -> ${http.headers.get('location')}`);
 
     if (ALB) {
+        // Only a timeout or a refused connection means the security group did its job. Any other
+        // error - a certificate name mismatch, say, since the balancer's certificate is for the
+        // site and not for its own name - means TCP and TLS both completed, which is the opposite.
         try {
             await fetch(`https://${ALB}/healthz`, { signal: AbortSignal.timeout(10_000) });
             report(false, 'the balancer does not answer directly', 'it answered');
         } catch (error) {
-            report(true, 'the balancer does not answer directly', error.cause?.code ?? error.name);
+            const code = error.cause?.code ?? error.name;
+            const unreachable = error.name === 'TimeoutError' || ['UND_ERR_CONNECT_TIMEOUT', 'ETIMEDOUT', 'ECONNREFUSED'].includes(code);
+            report(unreachable, 'the balancer does not answer directly', unreachable ? code : `reachable: ${code}`);
         }
     }
 }
