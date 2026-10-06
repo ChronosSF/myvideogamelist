@@ -61,6 +61,23 @@ jobs:
       - name: Test
         run: dotnet test MyVideoGameList.Server.Tests/MyVideoGameList.Server.Tests.csproj --no-build --verbosity normal
 
+  # The CDK app compiles, so a construct renamed by a library bump or a stack edited without
+  # building is caught here rather than on the next deploy. Synthesis is not run: it needs
+  # credentials for the context lookups, and the long-lived stacks are deployed from a developer
+  # machine on purpose (ADR 0044).
+  infrastructure:
+    name: Infrastructure
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Build
+        run: dotnet build infra/src/Infra/Infra.csproj
+
   codeql:
     name: CodeQL (${{ matrix.language }})
     runs-on: ubuntu-latest

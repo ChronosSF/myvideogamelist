@@ -118,6 +118,7 @@ public class GrouveeImportSourceTests
 
         Assert.Equal(ListStatusKeys.Finished, row.Status);
         Assert.False(row.StatusUnrecognised);
+        Assert.False(row.PlayedUnresolved);
     }
 
     [Fact]
@@ -130,6 +131,30 @@ public class GrouveeImportSourceTests
         Assert.Null(row.Status);
         Assert.False(row.StatusUnrecognised);
         Assert.Equal("Played", row.SourceStatus);
+    }
+
+    [Fact]
+    public void Read_PlayedWithoutAFinishDate_IsInTheGroupItsOwnerCanAnswerForAtOnce()
+    {
+        // ADR 0045. No status is still invented for it — the flag is what lets the review screen
+        // ask its owner once for every such game, instead of leaving most of a long-time user's
+        // library in no list.
+        var row = Single(Game());
+
+        Assert.True(row.PlayedUnresolved);
+    }
+
+    [Fact]
+    public void Read_PlayedAndWishedFor_IsStillUnresolved()
+    {
+        // The wishlist is an axis rather than a status, so it says nothing about how playing the
+        // game ended and must not take the row out of the group.
+        var row = Single(Game(
+            shelves: """{"Played": {"date_added": "2021-10-02T06:54:47Z"}, "Wish List": {"date_added": "2025-11-28T00:00:00Z"}}"""));
+
+        Assert.True(row.PlayedUnresolved);
+        Assert.True(row.Wishlist);
+        Assert.Null(row.Status);
     }
 
     [Fact]
@@ -158,6 +183,9 @@ public class GrouveeImportSourceTests
         Assert.True(row.Wishlist);
         Assert.Null(row.Status);
         Assert.False(row.StatusUnrecognised);
+
+        // No status, but not for want of knowing how it ended: nobody has played it.
+        Assert.False(row.PlayedUnresolved);
     }
 
     [Fact]
@@ -182,6 +210,18 @@ public class GrouveeImportSourceTests
     }
 
     [Fact]
+    public void Read_PlayingAndPlayedWithNoFinishDate_IsPlayingAndNotUnresolved()
+    {
+        // Playing is an answer, so a game being replayed is not in the group the review screen
+        // asks about: putting the group in Finished must not take it out of Playing.
+        var row = Single(Game(
+            shelves: """{"Played": {"date_added": "2021-10-02T06:54:47Z"}, "Playing": {"date_added": "2025-11-28T00:00:00Z"}}"""));
+
+        Assert.Equal(ListStatusKeys.Playing, row.Status);
+        Assert.False(row.PlayedUnresolved);
+    }
+
+    [Fact]
     public void Read_ACustomShelf_IsFlaggedRatherThanDefaulted()
     {
         // The rule from the spec §3.2: an unrecognised status is surfaced for the user to resolve,
@@ -191,6 +231,9 @@ public class GrouveeImportSourceTests
         Assert.Null(row.Status);
         Assert.True(row.StatusUnrecognised);
         Assert.Equal("Abandoned Forever", row.SourceStatus);
+
+        // Asked about row by row, and not swept up in the group's one answer.
+        Assert.False(row.PlayedUnresolved);
     }
 
     [Fact]
@@ -246,6 +289,10 @@ public class GrouveeImportSourceTests
         Assert.Null(orphan.Status);
         Assert.False(orphan.StatusUnrecognised);
         Assert.Equal(120, Assert.Single(orphan.Playthroughs).MinutesPlayed);
+
+        // Taken off every shelf, which is its owner saying they stopped tracking it — so the
+        // answer the review screen takes for unresolved Played games is not applied to it.
+        Assert.False(orphan.PlayedUnresolved);
     }
 
     [Fact]

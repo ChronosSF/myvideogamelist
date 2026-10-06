@@ -45,6 +45,8 @@ Open `https://localhost:58546`.
 | `docker compose up -d --wait` | Local PostgreSQL. `--wait` blocks until it accepts connections |
 | `docker compose down` | Stops it, keeping data. **`down -v` destroys the data volume** |
 | `node scripts/seed-demo-history.mjs --email <account>` | Months of demo tracking history, so the profile stats have something to show. Prints SQL — pipe it to psql. `--email` is mandatory and **replaces that account's lists**, so use a `@test.local` one |
+| `node scripts/dev-env.mjs status\|park\|resume` | The AWS dev environment, through the signed-in `mvgl-dev` profile: `park` destroys the App stack (the distribution with it), stops the database and gates the pipeline off; `resume` is the reverse at the newest pushed tag, proving the site answers through the door. Every deploy is `--exclusively`, so the Data stack is never touched by accident. See ADR 0044, 0046 |
+| `node scripts/dev-check.mjs` | The dev environment's acceptance test, through the distribution. Run it after any stack change and after every resume; with `MVGL_DEV_BASIC_AUTH` set to the basic-auth pair it checks everything, without it only the door |
 
 Health endpoints: `/healthz` (liveness, no dependency checks) and `/readyz` (database and
 IGDB reachability). A degraded IGDB returns 200, not 503 — browsing breaks but stored lists
@@ -67,8 +69,10 @@ myvideogamelist.client/
   src/lib/                      apiUrl(), useHydrated(), pageMeta()
 docs/decisions/                 Architecture decision records
 docs/data-model-plan.md         The tables not built yet, and the two constraints every table answers to
-scripts/                        Dev-only tools. These print SQL to stdout and never open a
-                                database connection — piping to psql stays a deliberate act
+scripts/                        Dev-only tools. The seeding tools print SQL to stdout and never open
+                                a database connection — piping to psql stays a deliberate act.
+                                dev-env.mjs is the exception: it acts on AWS, through a signed-in
+                                CLI profile, and prints every command before running it
 ROADMAP.md                      Not the plan any more: where it lives (GitHub issues), and the old IDs' map
 ```
 
@@ -77,7 +81,20 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
 - **Migrations auto-apply in Development only.** Everywhere else they are a deliberate
   deployment step, because several ECS tasks booting at once would race each other through the
   same migration. A deployed instance will start against an un-migrated database and fail on
-  first query rather than silently migrating.
+  first query rather than silently migrating. Deployed, that step is the migration task the
+  `Deploy dev` workflow runs before the application stack, from the bundle baked into the API
+  image; a non-zero exit stops the release.
+
+- **A merge to master builds and pushes dev's images, and deploys only when the environment is
+  awake.** `DEV_DEPLOY_ENABLED` on the `dev` GitHub environment is the gate, set by
+  `scripts/dev-env.mjs park` and `resume` and by nothing else: deploying the application stack
+  recreates it if it was destroyed, so an unconditional deploy-on-merge would silently un-park the
+  environment and start the balancer billing again. Every deploy of `Migrate` or `App`, in the
+  workflow and in the script, is `--exclusively`, so that the long-lived `Data` stack is never
+  redeployed as a dependency by something that only meant to deploy a release. The balancer admits
+  CloudFront's prefix list and nothing else, and its listener answers only the distribution that
+  sends the origin-verify header; the site is behind basic auth at the edge, with three public
+  aggregate endpoints exempt. See `docs/decisions/0044-*`, `0046-*` and `infra/README.md`.
 
 - **The PostgreSQL container volume mounts at `/var/lib/postgresql`, not `.../data`.**
   PostgreSQL 18 images changed this and refuse to start if they find data at the old path. The
@@ -87,6 +104,20 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   Deployed: `Igdb__ClientId` / `Igdb__ClientSecret` environment variables. User secrets load
   only in the Development environment — running as Production locally will fail IGDB calls.
 
+- **The key ring is shared through Parameter Store, and a deployment that names no store does not
+  start.** The Data Protection keys sign the Identity cookie and seal the review cursor, and a ring
+  nobody persists is remade by every process — so a deploy signs everyone out, with a clean log.
+  `AddDataProtectionKeys` therefore persists to the path in `DataProtection:ParameterPath`, falls
+  back to the user-profile ring in Development only, and otherwise **fails at startup** unless
+  `DataProtection:AllowEphemeralKeys` says the loss is meant, which it is only for running the
+  production image on a developer machine. Two things the code cannot check: the task role needs
+  `ssm:GetParametersByPath` and `ssm:PutParameter` on that path — not `ssm:DeleteParameter`,
+  because nothing deletes keys — and the repository is built on the first protect rather than at
+  boot, so a wrong policy fails the first sign-in. Keep `SetApplicationName("MyVideoGameList")` — the default discriminator is the content
+  root path, and changing the image's working directory would orphan every cookie while the keys
+  stayed readable. One path per environment, so dev and prod cannot read each other's cookies. The
+  proof is a session surviving a redeploy, which no local test can give. See
+  `docs/decisions/0043-*`.
 - **Nobody is an admin until named, in Development too.** `/admin` and its endpoints sit behind one
   policy that reads account ids from `Admin:AccountIds`, so name your own:
   `dotnet user-secrets set "Admin:AccountIds:0" "<account id>"`. An id, never a username — a name
@@ -253,7 +284,11 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   client. Identity locks an account after five failures but answers exactly as it answers a wrong
   password, because announcing a lockout tells an attacker the account exists. Forwarded headers
   are off until configured, and turning them on without naming the proxy **fails at startup** rather
-  than trusting whoever sends the header.
+  than trusting whoever sends the header. Behind CloudFront, **`ForwardLimit` stays 1**: the
+  middleware checks each hop against the trust list, and the CDN's address is never in the
+  balancer's subnets, so raising it to 2 quietly leaves the limiter partitioned by edge server. The
+  balancer preserves the header instead, which is safe only while nothing but CloudFront can reach
+  it. See `docs/decisions/0044-*`.
 
 - **Never change a game's status without recording an event.** `UserGameEvents` is append-only
   and is the only record that a transition happened — `UserGameLists` holds current state and is

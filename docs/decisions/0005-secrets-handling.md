@@ -1,6 +1,8 @@
 # 0005. Secrets come from user secrets and environment variables
 
-**Status:** Implemented
+**Status:** Implemented. Deployed, the database password travels as `PGPASSWORD` beside a
+password-free `ConnectionStrings__DefaultConnection`, and the IGDB secret was rotated after all —
+[0044](0044-what-the-deployment-walkthrough-settled.md).
 
 ## Context
 

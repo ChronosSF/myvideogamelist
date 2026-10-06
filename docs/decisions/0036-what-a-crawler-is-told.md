@@ -1,6 +1,9 @@
 # 0036. What a crawler is told, and which deployment tells it
 
-**Status:** Implemented
+**Status:** Implemented. The basic auth that keeps dev private is a CloudFront Function on every
+behaviour, with the three public community endpoints exempt because the browser withholds
+`Authorization` from a `credentials: 'omit'` request —
+[0044](0044-what-the-deployment-walkthrough-settled.md).
 
 ## Context
 

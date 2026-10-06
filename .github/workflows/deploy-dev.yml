@@ -1,0 +1,268 @@
+name: Deploy dev
+
+# Every green CI run on master builds both images and pushes them to ECR tagged with the commit,
+# at a cost of cents, so ECR holds an image for every commit that reached master. Only an awake
+# environment is deployed: the DEV_DEPLOY_ENABLED variable on the `dev` GitHub environment is the
+# gate, because deploying the application stack *recreates* it if it was destroyed, and an
+# unconditional deploy-on-merge would silently un-park the environment and start the balancer
+# billing again (ADR 0044, D-6). `node scripts/dev-env.mjs park|resume` sets the gate. The gate
+# is read once, when the job starts, so the job also refuses to create a stack it finds gone:
+# it only ever updates the application stack, and creating it is `resume`'s job alone.
+#
+# No AWS key is stored in GitHub. The job proves who it is with a token GitHub signs, and AWS
+# exchanges it for an hour of credentials on a role whose trust policy admits exactly one subject:
+# a job in this repository that declares the `dev` environment, whose deployments are restricted to
+# master. Everything the job deploys, it deploys as the CDK bootstrap roles; the long-lived stacks
+# are never deployed here, and both deploys are `--exclusively` so that the Data stack is never
+# redeployed as a dependency by a job that was only ever meant to deploy these two.
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+# Two deploys never interleave; a second merge waits for the first.
+concurrency:
+  group: deploy-dev
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Build, push, and deploy when awake
+    # workflow_run fires on a failed CI too, and on CI runs for pull requests - a fork's branch
+    # called master passes the branch filter - so a green run alone would hand this repository's
+    # AWS role to anybody's code. Only a green run of a push to this repository's master deploys;
+    # a manual run always may, since dispatching one takes write access.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_repository.full_name == github.repository)
+    runs-on: ubuntu-latest
+    environment: dev
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      REGISTRY: ${{ vars.AWS_ACCOUNT_ID }}.dkr.ecr.${{ vars.AWS_REGION }}.amazonaws.com
+      AWAKE: ${{ vars.DEV_DEPLOY_ENABLED }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # The commit CI tested, not whatever master is by the time this runs.
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Name the release
+        id: release
+        run: echo "tag=$(git rev-parse --short=12 HEAD)" >> "$GITHUB_OUTPUT"
+
+      - uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - uses: aws-actions/amazon-ecr-login@v2
+
+      # The repositories are immutable: a tag is pushed once. A re-run for the same commit - to
+      # deploy after the environment was resumed, say - finds its images already there and skips
+      # the build rather than being refused by the push. Tracked per repository, so a run that
+      # died between the two pushes is finished by the next one rather than blocked by it.
+      - name: Already pushed?
+        id: pushed
+        env:
+          TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          set -euo pipefail
+          for repo in api ssr; do
+            # Only "no such image" means not pushed. Anything else - a denied DescribeImages, which
+            # is how the first run went - would otherwise read as "not pushed" and send a rebuild
+            # into an immutable repository, where the push succeeds only while the digest is the same.
+            if OUT=$(aws ecr describe-images --repository-name "mvgl/$repo" --image-ids "imageTag=$TAG" 2>&1 >/dev/null); then
+              echo "mvgl/$repo:$TAG is already pushed."
+              echo "$repo=true" >> "$GITHUB_OUTPUT"
+            elif [[ "$OUT" == *ImageNotFoundException* ]]; then
+              echo "$repo=false" >> "$GITHUB_OUTPUT"
+            else
+              echo "$OUT"; exit 1
+            fi
+          done
+
+      - uses: docker/setup-buildx-action@v4
+        if: steps.pushed.outputs.api != 'true' || steps.pushed.outputs.ssr != 'true'
+
+      # provenance: false, because the attestation manifest BuildKit otherwise pushes alongside
+      # shows in ECR as an untagged image and counts against the lifecycle rule's twenty.
+      - name: Build and push the API image
+        if: steps.pushed.outputs.api != 'true'
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: MyVideoGameList.Server/Dockerfile
+          platforms: linux/amd64
+          push: true
+          provenance: false
+          tags: ${{ env.REGISTRY }}/mvgl/api:${{ steps.release.outputs.tag }}
+          cache-from: type=gha,scope=api
+          cache-to: type=gha,scope=api,mode=max
+
+      - name: Build and push the SSR image
+        if: steps.pushed.outputs.ssr != 'true'
+        uses: docker/build-push-action@v7
+        with:
+          context: myvideogamelist.client
+          platforms: linux/amd64
+          push: true
+          provenance: false
+          tags: ${{ env.REGISTRY }}/mvgl/ssr:${{ steps.release.outputs.tag }}
+          cache-from: type=gha,scope=ssr
+          cache-to: type=gha,scope=ssr,mode=max
+
+      - name: Parked?
+        if: env.AWAKE != 'true'
+        env:
+          TAG: ${{ steps.release.outputs.tag }}
+        run: echo "DEV_DEPLOY_ENABLED is not true, so the environment is parked. Images $TAG are pushed; nothing is deployed."
+
+      # ---- Everything below runs only when the environment is awake. ----
+
+      - uses: actions/setup-dotnet@v6
+        if: env.AWAKE == 'true'
+        with:
+          dotnet-version: '10.0.x'
+
+      - uses: actions/setup-node@v7
+        if: env.AWAKE == 'true'
+        with:
+          node-version: '24.x'
+
+      - name: Install the CDK CLI
+        if: env.AWAKE == 'true'
+        run: npm install -g aws-cdk
+
+      - name: Deploy the migration task definition
+        if: env.AWAKE == 'true'
+        working-directory: infra
+        env:
+          TAG: ${{ steps.release.outputs.tag }}
+        run: cdk deploy Mvgl-dev-Migrate --exclusively -c env=dev -c "imageTag=$TAG" --require-approval never
+
+      # Before anything serves traffic: outside Development the application never migrates by
+      # itself, and a deployed API against an un-migrated database passes /healthz and fails on
+      # its first query. A non-zero exit stops the release here.
+      - name: Run the migrations
+        if: env.AWAKE == 'true'
+        run: |
+          set -euo pipefail
+          output() { aws cloudformation describe-stacks --stack-name Mvgl-dev-Data --query "Stacks[0].Outputs[?OutputKey=='$1'].OutputValue" --output text; }
+          SUBNETS=$(output TaskSubnetIds)
+          SG=$(output ApiSecurityGroupId)
+          TASK=$(aws ecs run-task --cluster mvgl-dev --task-definition mvgl-dev-migrate --launch-type FARGATE \
+            --network-configuration "awsvpcConfiguration={subnets=[$SUBNETS],securityGroups=[$SG],assignPublicIp=ENABLED}" \
+            --query "tasks[0].taskArn" --output text)
+          echo "Migration task: $TASK"
+          aws ecs wait tasks-stopped --cluster mvgl-dev --tasks "$TASK"
+          EXIT=$(aws ecs describe-tasks --cluster mvgl-dev --tasks "$TASK" --query "tasks[0].containers[0].exitCode" --output text)
+          echo "::group::Migration log"
+          aws logs tail /mvgl/dev/migrate --since 30m --format short || true
+          echo "::endgroup::"
+          if [ "$EXIT" != "0" ]; then
+            echo "::error::The migration task exited with $EXIT. Nothing was deployed."
+            exit 1
+          fi
+
+      # The gate was read once, when this job started. A park that began since then has destroyed
+      # the application stack or is destroying it, and deploying now would recreate it over a
+      # database the park is about to stop - the silent un-park D-6 exists to prevent, and one the
+      # smoke test cannot see, since /healthz asks nothing of the database. So this workflow only
+      # ever *updates* the stack; creating it is `dev-env.mjs resume`'s job alone. A park that
+      # starts a moment after this check fails one side or the other loudly: CloudFormation refuses
+      # to update a stack being deleted, and to delete one being updated.
+      - name: Is the application stack still there?
+        id: app
+        if: env.AWAKE == 'true'
+        env:
+          TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          set -euo pipefail
+          if STATUS=$(aws cloudformation describe-stacks --stack-name Mvgl-dev-App --query "Stacks[0].StackStatus" --output text 2>&1); then :
+          elif [[ "$STATUS" == *"does not exist"* ]]; then STATUS=ABSENT
+          else echo "$STATUS"; exit 1
+          fi
+          echo "Mvgl-dev-App: $STATUS"
+          case "$STATUS" in
+            ABSENT|DELETE_*)
+              echo "::warning::The environment was parked while this run was in flight. Images $TAG are pushed; nothing is deployed."
+              echo "present=false" >> "$GITHUB_OUTPUT" ;;
+            *) echo "present=true" >> "$GITHUB_OUTPUT" ;;
+          esac
+
+      - name: Deploy the application stack
+        if: env.AWAKE == 'true' && steps.app.outputs.present == 'true'
+        working-directory: infra
+        env:
+          TAG: ${{ steps.release.outputs.tag }}
+        run: cdk deploy Mvgl-dev-App --exclusively -c env=dev -c "imageTag=$TAG" --require-approval never
+
+      - name: Wait for both services
+        if: env.AWAKE == 'true' && steps.app.outputs.present == 'true'
+        run: aws ecs wait services-stable --cluster mvgl-dev --services api ssr
+
+      # A cached page names hashed bundles the new container no longer has, because the bundles are
+      # served by the SSR container and not from S3: without this, a deploy leaves cached pages
+      # pointing at scripts that 404 (ADR 0044). A wildcard counts as one path, and the first
+      # thousand a month are free. The id is read from the stack, since it changes on every resume.
+      - name: Invalidate the distribution
+        if: env.AWAKE == 'true' && steps.app.outputs.present == 'true'
+        run: |
+          set -euo pipefail
+          ID=$(aws cloudformation describe-stacks --stack-name Mvgl-dev-App --query "Stacks[0].Outputs[?OutputKey=='DistributionId'].OutputValue" --output text)
+          INVALIDATION=$(aws cloudfront create-invalidation --distribution-id "$ID" --paths "/*" --query "Invalidation.Id" --output text)
+          echo "Invalidation $INVALIDATION of distribution $ID"
+          aws cloudfront wait invalidation-completed --distribution-id "$ID" --id "$INVALIDATION"
+
+      # Target health first: a group can hold more than one target for a while - the old task
+      # draining beside the new one - so that test is "at least one healthy and nothing unhealthy".
+      # Then the whole chain, through the distribution. Without the basic-auth pair every path is
+      # a 401, which proves the function is on the door; with it, /readyz is the API answering
+      # through CloudFront, the balancer and its origin-verify rule, and / is the SSR server doing
+      # the same. The pair is the one secret the workflow holds (ADR 0046), and the checks that need
+      # it are skipped with a warning until it is set on the environment.
+      - name: Smoke test
+        if: env.AWAKE == 'true' && steps.app.outputs.present == 'true'
+        env:
+          BASIC_AUTH: ${{ secrets.DEV_BASIC_AUTH }}
+        run: |
+          set -euo pipefail
+          for key in ApiTargetGroupArn SsrTargetGroupArn; do
+            ARN=$(aws cloudformation describe-stacks --stack-name Mvgl-dev-App --query "Stacks[0].Outputs[?OutputKey=='$key'].OutputValue" --output text)
+            STATES=$(aws elbv2 describe-target-health --target-group-arn "$ARN" --query "TargetHealthDescriptions[].TargetHealth.State" --output text | tr '\t' ' ')
+            echo "$key: $STATES"
+            case " $STATES " in
+              *" unhealthy "*) echo "::error::$key has an unhealthy target"; exit 1 ;;
+              *" healthy "*) ;;
+              *) echo "::error::$key has no healthy target"; exit 1 ;;
+            esac
+          done
+          SITE=https://dev.myvideogamelist.net
+          STATUS=$(curl -sS -o /dev/null -w "%{http_code}" "$SITE/healthz")
+          echo "$SITE/healthz without credentials: $STATUS"
+          if [ "$STATUS" != "401" ]; then
+            echo "::error::Expected a 401 without credentials and got $STATUS: the door is not on."
+            exit 1
+          fi
+          if [ -z "$BASIC_AUTH" ]; then
+            echo "::warning::DEV_BASIC_AUTH is not set on the dev environment, so the authenticated checks were skipped."
+            exit 0
+          fi
+          for path in /readyz /; do
+            STATUS=$(curl -sS -o /dev/null -w "%{http_code}" -u "$BASIC_AUTH" "$SITE$path")
+            echo "$SITE$path: $STATUS"
+            if [ "$STATUS" != "200" ]; then
+              echo "::error::$path answered $STATUS through the distribution."
+              exit 1
+            fi
+          done

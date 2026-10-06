@@ -135,6 +135,27 @@ public class ImportController(
     }
 
     /// <summary>
+    /// Puts every row the file says was played, without saying how that ended, into one list — or
+    /// back into none.
+    /// </summary>
+    /// <remarks>
+    /// A <c>PUT</c>, because it sets the group's answer to a value rather than adding to anything:
+    /// sending the same list twice leaves the review exactly as sending it once did. The body names
+    /// a list and never a row, so which rows are in the group is decided by the server (ADR 0045).
+    /// </remarks>
+    [HttpPut("jobs/{jobId:guid}/played-status")]
+    public async Task<IActionResult> SetPlayedStatus(
+        Guid jobId, [FromBody] ImportPlayedStatusDto body, CancellationToken cancellationToken)
+    {
+        var user = await userManager.GetUserAsync(User);
+        if (user is null) return Unauthorized();
+
+        return await importService.SetPlayedStatusAsync(user.Id, jobId, body.Status, cancellationToken)
+            ? NoContent()
+            : NotFound();
+    }
+
+    /// <summary>
     /// Writes the chosen rows into the library and closes the job.
     /// </summary>
     /// <remarks>

@@ -141,3 +141,295 @@ describe('useImportReview.match', () => {
         expect(new Headers((init as RequestInit).headers).has('X-MVGL-Request')).toBe(true);
     });
 });
+
+/**
+ * A pass's answer, put back over a screen that has moved on since the pass read its rows: the match
+ * is the pass's to give, and the list each row goes into is not.
+ */
+describe('useImportReview.match, putting a pass back', () => {
+    const JOB = 'job-1';
+
+    /** An id-less row in the played group, and an id-less one on a shelf nobody recognised. */
+    const onScreen = () => [
+        importRow({
+            id: 1, gameId: null, matchKind: IMPORT_MATCH.unlooked, decision: 'skip',
+            status: null, playedUnresolved: true,
+        }),
+        importRow({
+            id: 2, gameId: null, matchKind: IMPORT_MATCH.unlooked, decision: 'skip',
+            status: null, statusUnrecognised: true, sourceStatus: 'Gave Up On',
+        }),
+    ];
+
+    /**
+     * What the pass hands back, read before either change below: both rows still carry no list.
+     * The first resolves to a game the user does not have, which the pass pre-checks; the second
+     * to one they already track, whose decision the pass leaves alone.
+     */
+    const answered = () => [
+        importRow({
+            id: 1, gameId: 42, matchKind: IMPORT_MATCH.matched, decision: 'import',
+            status: null, playedUnresolved: true, alreadyTracked: false,
+        }),
+        importRow({
+            id: 2, gameId: 43, matchKind: IMPORT_MATCH.matched, decision: 'skip',
+            status: null, statusUnrecognised: true, sourceStatus: 'Gave Up On', alreadyTracked: true,
+        }),
+    ];
+
+    function stubAnswering() {
+        let passes = 0;
+
+        vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+            const url = String(input);
+
+            if (init?.method === undefined) return Promise.resolve(Response.json(importReview(onScreen())));
+            if (init.method === 'PUT' || init.method === 'PATCH') return Promise.resolve(new Response(null, { status: 204 }));
+
+            if (url.endsWith('/match') && init.method === 'POST') {
+                return Promise.resolve(Response.json({ job: importJob(), examined: passes++ === 0 ? answered() : [] }));
+            }
+
+            throw new Error(`unexpected fetch: ${init.method} ${url}`);
+        }));
+    }
+
+    function Probe() {
+        const { review, setPlayedStatus, setDecisions, match } = useImportReview('user-1', JOB);
+
+        return (
+            <div>
+                <span data-testid="rows">
+                    {review?.rows.map(row => `${row.id}:${row.status ?? 'none'}:${row.decision}:${row.gameId ?? '-'}`).join(' ') ?? '-'}
+                </span>
+                <button type="button" onClick={() => void setPlayedStatus('finished')}>Finished</button>
+                <button
+                    type="button"
+                    onClick={() => void setDecisions([{ rowId: 2, decision: 'import', status: 'dropped' }])}
+                >
+                    Dropped
+                </button>
+                <button type="button" onClick={() => void match()}>Find these games</button>
+            </div>
+        );
+    }
+
+    afterEach(() => vi.unstubAllGlobals());
+
+    it('takes the match from the pass and keeps the lists chosen on screen', async () => {
+        stubAnswering();
+        render(<Probe />);
+        await waitFor(() => expect(screen.getByTestId('rows')).toHaveTextContent('1:none:skip:-'));
+
+        await act(() => userEvent.click(screen.getByRole('button', { name: 'Finished' })));
+        await act(() => userEvent.click(screen.getByRole('button', { name: 'Dropped' })));
+        await act(() => userEvent.click(screen.getByRole('button', { name: 'Find these games' })));
+
+        // Both lists survive the pass's older copy. The first row's tick is the pass's own; the
+        // second keeps the one chosen on screen, because the pass set none for a game already held.
+        expect(screen.getByTestId('rows')).toHaveTextContent('1:finished:import:42 2:dropped:import:43');
+    });
+});
+
+/**
+ * One list for the played-but-unresolved group: one request that names only the list, and an undo
+ * that puts back what that request changed and nothing beside it.
+ */
+describe('useImportReview.setPlayedStatus', () => {
+    const JOB = 'job-1';
+
+    /** Two rows in the group, and one with an answer of its own that the group must not touch. */
+    const rows = () => [
+        importRow({ id: 1, status: null, playedUnresolved: true }),
+        importRow({ id: 2, status: null, playedUnresolved: true }),
+        importRow({ id: 3, status: 'finished' }),
+    ];
+
+    function stubSaving(answer: 'saved' | 'failed') {
+        const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+            const url = String(input);
+
+            if (url === `/api/import/jobs/${JOB}` && init?.method === undefined) {
+                return Promise.resolve(Response.json(importReview(rows())));
+            }
+
+            if (url === `/api/import/jobs/${JOB}/played-status` && init?.method === 'PUT') {
+                return Promise.resolve(answer === 'saved'
+                    ? new Response(null, { status: 204 })
+                    : Response.json({ detail: 'That change was not saved.' }, { status: 500 }));
+            }
+
+            throw new Error(`unexpected fetch: ${init?.method ?? 'GET'} ${url}`);
+        });
+
+        vi.stubGlobal('fetch', fetchMock);
+        return fetchMock;
+    }
+
+    function Probe() {
+        const { review, actionError, setPlayedStatus } = useImportReview('user-1', JOB);
+
+        return (
+            <div>
+                <span data-testid="statuses">
+                    {review?.rows.map(row => row.status ?? 'none').join(',') ?? '-'}
+                </span>
+                <span data-testid="action-error">{actionError ?? 'none'}</span>
+                <button type="button" onClick={() => void setPlayedStatus('dropped')}>Dropped</button>
+            </div>
+        );
+    }
+
+    const statuses = () => screen.getByTestId('statuses');
+
+    async function renderAndChoose() {
+        render(<Probe />);
+        await waitFor(() => expect(statuses()).toHaveTextContent('none,none,finished'));
+        await act(() => userEvent.click(screen.getByRole('button', { name: 'Dropped' })));
+    }
+
+    afterEach(() => vi.unstubAllGlobals());
+
+    it('puts every row of the group in the list with one request that names only the list', async () => {
+        // The server decides which rows are in the group, so the request carries no row ids — and
+        // it is a write, so it goes out with the header the API refuses one without (ADR 0033).
+        const fetchMock = stubSaving('saved');
+
+        await renderAndChoose();
+
+        expect(statuses()).toHaveTextContent('dropped,dropped,finished');
+
+        const [, init] = fetchMock.mock.calls.find(
+            ([, options]) => (options as RequestInit | undefined)?.method === 'PUT')!;
+
+        expect(JSON.parse(String((init as RequestInit).body))).toEqual({ status: 'dropped' });
+        expect(new Headers((init as RequestInit).headers).has('X-MVGL-Request')).toBe(true);
+    });
+
+    it('puts back what it changed when the save fails, and says so', async () => {
+        // Back to each row's own status, not to one shared value: the third row was Finished all
+        // along and is not the group's to reset.
+        stubSaving('failed');
+
+        await renderAndChoose();
+
+        expect(statuses()).toHaveTextContent('none,none,finished');
+        expect(screen.getByTestId('action-error')).toHaveTextContent('That change was not saved.');
+    });
+});
+
+/**
+ * A change still on its way: the commit waits for it, and when it lands it lands only on the
+ * import it was started for.
+ */
+describe('useImportReview, a change still on its way', () => {
+    const rowsOf = () => [
+        importRow({ id: 1, status: null, playedUnresolved: true }),
+        importRow({ id: 2, status: 'finished' }),
+    ];
+
+    /** A response the test hands over when it chooses, so a request can be held in flight. */
+    function held() {
+        let settle!: (response: Response) => void;
+        const response = new Promise<Response>(resolve => { settle = resolve; });
+        return { response, settle };
+    }
+
+    /** Every review answers at once; each import's save answers only when its `held` is settled. */
+    function stub(saves: Record<string, ReturnType<typeof held>>) {
+        const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+            const url = String(input);
+            const job = /\/api\/import\/jobs\/([^/]+)/.exec(url)?.[1] ?? '';
+
+            if (init?.method === undefined) return Promise.resolve(Response.json(importReview(rowsOf())));
+
+            if (url.endsWith('/played-status') && init.method === 'PUT') return saves[job].response;
+
+            if (url.endsWith('/commit') && init.method === 'POST') {
+                return Promise.resolve(Response.json({
+                    job: importJob({ state: 'done', importedCount: 2, skippedCount: 0 }),
+                    skipped: [],
+                    unlisted: 0,
+                }));
+            }
+
+            throw new Error(`unexpected fetch: ${init.method} ${url}`);
+        });
+
+        vi.stubGlobal('fetch', fetchMock);
+        return fetchMock;
+    }
+
+    function Probe({ jobId }: { jobId: string }) {
+        const { review, saving, actionError, result, setPlayedStatus, commit } = useImportReview('user-1', jobId);
+
+        return (
+            <div>
+                <span data-testid="loaded">{review ? jobId : '-'}</span>
+                <span data-testid="statuses">{review?.rows.map(row => row.status ?? 'none').join(',') ?? '-'}</span>
+                <span data-testid="saving">{String(saving)}</span>
+                <span data-testid="action-error">{actionError ?? 'none'}</span>
+                <span data-testid="result">{result ? 'done' : 'none'}</span>
+                <button type="button" onClick={() => void setPlayedStatus('finished')}>Finished</button>
+                <button type="button" onClick={() => void commit()}>Import</button>
+            </div>
+        );
+    }
+
+    const text = (id: string) => screen.getByTestId(id);
+    const commits = (fetchMock: ReturnType<typeof stub>) =>
+        fetchMock.mock.calls.filter(([url]) => String(url).endsWith('/commit')).length;
+
+    async function loadAndChoose(jobId: string) {
+        await waitFor(() => expect(text('loaded')).toHaveTextContent(jobId));
+        await act(() => userEvent.click(screen.getByRole('button', { name: 'Finished' })));
+    }
+
+    afterEach(() => vi.unstubAllGlobals());
+
+    it('holds the commit back until the change has landed', async () => {
+        // Sent past the change, the commit would read the rows as they were before it, and import
+        // the group into no list while the screen showed it in Finished.
+        const save = held();
+        const fetchMock = stub({ 'job-a': save });
+
+        render(<Probe jobId="job-a" />);
+        await loadAndChoose('job-a');
+        expect(text('saving')).toHaveTextContent('true');
+
+        await act(() => userEvent.click(screen.getByRole('button', { name: 'Import' })));
+        expect(commits(fetchMock)).toBe(0);
+
+        await act(async () => save.settle(new Response(null, { status: 204 })));
+        expect(text('saving')).toHaveTextContent('false');
+
+        await act(() => userEvent.click(screen.getByRole('button', { name: 'Import' })));
+        expect(commits(fetchMock)).toBe(1);
+        expect(text('result')).toHaveTextContent('done');
+    });
+
+    it('lands only on the import it was started for', async () => {
+        // A save for one import still on its way when somebody moves to another. Its failure, its
+        // rollback and its end all belong to the first import: none of them may show an error on
+        // the second, undo the second's choice, or end the save the second has in flight.
+        const first = held();
+        const second = held();
+        stub({ 'job-a': first, 'job-b': second });
+
+        const { rerender } = render(<Probe jobId="job-a" />);
+        await loadAndChoose('job-a');
+
+        rerender(<Probe jobId="job-b" />);
+        await loadAndChoose('job-b');
+
+        await act(async () => first.settle(
+            Response.json({ detail: 'That change was not saved.' }, { status: 500 })));
+
+        expect(text('action-error')).toHaveTextContent('none');
+        expect(text('statuses')).toHaveTextContent('finished,finished');
+        expect(text('saving')).toHaveTextContent('true');
+
+        await act(async () => second.settle(new Response(null, { status: 204 })));
+        expect(text('saving')).toHaveTextContent('false');
+    });
+});

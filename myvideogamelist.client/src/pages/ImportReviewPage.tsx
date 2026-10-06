@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useId, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { useAuth } from '@/hooks/useAuth';
 import { useLists } from '@/hooks/useLists';
@@ -39,6 +39,12 @@ type Filter = 'attention' | 'importing' | 'all';
  */
 const PAGE = 100;
 
+/**
+ * What the played-but-unresolved choice shows when its rows disagree. Only a write from outside this
+ * screen can cause that, since the one request that sets the group sets every row of it.
+ */
+const MIXED = 'mixed';
+
 export function ImportReviewPage() {
     const { jobId = '' } = useParams();
     const { user, loading: authLoading } = useAuth();
@@ -46,9 +52,11 @@ export function ImportReviewPage() {
     const { nameFor, namesStatus } = useLists();
 
     const {
-        review, loading, error, gone, actionError, busy, matching, result,
-        reload, setDecisions, match, commit, cancel,
+        review, loading, error, gone, actionError, busy, matching, saving, result,
+        reload, setDecisions, setPlayedStatus, match, commit, cancel,
     } = useImportReview(user?.id ?? null, jobId);
+
+    const playedChoiceId = useId();
 
     // After hydration only: the phrase is relative to the reader's clock, which the server render
     // cannot know. See `useHydrated`.
@@ -76,6 +84,13 @@ export function ImportReviewPage() {
     // filter's own label, and the list itself — over up to five thousand rows.
     const attention = useMemo(() => rows.filter(needsAttention), [rows]);
 
+    // The played-but-unresolved group's list, read back off its rows rather than held beside them,
+    // so the choice can never say one thing while the rows say another.
+    const playedStatus = useMemo(() => {
+        const statuses = new Set(rows.filter(row => row.playedUnresolved).map(row => row.status));
+        return statuses.size > 1 ? MIXED : ([...statuses][0] ?? null);
+    }, [rows]);
+
     const visible = useMemo(() => {
         if (filter === 'importing') return rows.filter(r => r.decision === IMPORT_DECISION.import);
         if (filter === 'attention') return attention;
@@ -102,6 +117,7 @@ export function ImportReviewPage() {
         return (
             <ResultPanel
                 imported={result.job.importedCount ?? 0}
+                unlisted={result.unlisted}
                 skipped={result.skipped}
                 fileName={result.job.fileName}
             />
@@ -201,6 +217,21 @@ export function ImportReviewPage() {
                                         : 'Find these games'}
                                 </button>
                             </div>
+                        )}
+
+                        {/* ADR 0045. Asked once for every game the file says was played without
+                            saying how that ended. The import still guesses nothing — no list stays
+                            the default — but nobody has to place hundreds of games one at a time
+                            afterwards, from game pages that are the only place such a game shows. */}
+                        {review.summary.playedUnresolved > 0 && (
+                            <PlayedChoice
+                                id={playedChoiceId}
+                                count={review.summary.playedUnresolved}
+                                status={playedStatus}
+                                disabled={busy || saving}
+                                label={label}
+                                onChoose={status => void setPlayedStatus(status)}
+                            />
                         )}
 
                         <div className="flex flex-wrap items-center gap-2">
@@ -364,9 +395,13 @@ export function ImportReviewPage() {
                         )}
 
                         <div className="flex flex-wrap items-center gap-3 pt-2 border-t border-slate-800 light:border-slate-200">
+                            {/* Held while a change is still on its way. Every change is on screen
+                                before the server has it, and a commit sent past one would import
+                                what the server held before it — a list chosen a moment earlier,
+                                shown and then quietly not applied. */}
                             <button
                                 type="button"
-                                disabled={busy || review.summary.selected === 0}
+                                disabled={busy || saving || review.summary.selected === 0}
                                 onClick={() => void commit()}
                                 className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:hover:bg-blue-600 text-white text-sm font-semibold rounded-lg transition-colors"
                             >
@@ -396,6 +431,62 @@ export function ImportReviewPage() {
  */
 function needsAttention(row: ImportReviewRow): boolean {
     return row.gameId === null || row.statusUnrecognised;
+}
+
+/**
+ * The one question about the games the file says were played and not how that ended: which list
+ * they all go into, if any.
+ *
+ * A labelled select rather than a "mark them finished" button, because Finished is the likeliest
+ * answer and not the only one, and because no list has to stay reachable — it is where the group
+ * starts, and changing one's mind has to be able to get back there.
+ */
+function PlayedChoice({ id, count, status, disabled, label, onChoose }: {
+    id: string;
+    count: number;
+    /** A status key, null for no list, or `MIXED` when the rows disagree. */
+    status: string | null;
+    disabled: boolean;
+    label: (status: string | null) => string;
+    onChoose: (status: string | null) => void;
+}) {
+    const one = count === 1;
+
+    return (
+        <div className="flex flex-wrap items-center gap-3 px-4 py-3 bg-blue-950/40 light:bg-blue-50 border border-blue-800/50 light:border-blue-200 rounded-lg">
+            <div className="grow basis-72 text-sm">
+                <p className="text-slate-200 light:text-slate-800 font-medium">
+                    {one
+                        ? 'You played one of these games, but your file does not say whether you finished it.'
+                        : `You played ${formatCount(count)} of these games, but your file does not say whether you finished them.`}
+                </p>
+                <p className="text-slate-400 light:text-slate-600 mt-0.5">
+                    {one
+                        ? 'Left in no list it is still imported, score and playthroughs included, but none of your lists will show it.'
+                        : 'Left in no list they are still imported, scores and playthroughs included, but none of your lists will show them.'}
+                </p>
+            </div>
+
+            <div className="flex items-center gap-2 text-sm">
+                <label htmlFor={id} className="text-slate-300 light:text-slate-700 whitespace-nowrap">
+                    {one ? 'Put it in' : 'Put them in'}
+                </label>
+                <select
+                    id={id}
+                    className="bg-slate-900 light:bg-white border border-slate-600 light:border-slate-300 rounded px-2 py-1.5 text-slate-200 light:text-slate-800 disabled:opacity-50"
+                    value={status ?? ''}
+                    disabled={disabled}
+                    onChange={event => onChoose(event.target.value || null)}
+                >
+                    <option value="">No list</option>
+                    {LIST_IDS.map(listId => (
+                        <option key={listId} value={listId}>{label(listId)}</option>
+                    ))}
+                    {status === MIXED && <option value={MIXED} disabled>Some of each</option>}
+                </select>
+            </div>
+        </div>
+    );
 }
 
 /** A game's cover, or the space one would take. */
@@ -476,10 +567,13 @@ function Badge({ children, tone = 'slate' }: { children: React.ReactNode; tone?:
  * What the import did, and what it did not.
  *
  * The skipped rows are downloadable rather than only counted: §C5's promise is that nothing is
- * silently lost, and a number does not tell somebody which games to add by hand.
+ * silently lost, and a number does not tell somebody which games to add by hand. The games in no
+ * list are said out loud for the same reason — "now in your lists" was once the whole sentence, and
+ * it was false of three-quarters of a real library.
  */
-function ResultPanel({ imported, skipped, fileName }: {
+function ResultPanel({ imported, unlisted, skipped, fileName }: {
     imported: number;
+    unlisted: number;
     skipped: { title: string; sourceStatus: string | null; reason: string }[];
     fileName: string;
 }) {
@@ -487,7 +581,12 @@ function ResultPanel({ imported, skipped, fileName }: {
         <div className="max-w-2xl mx-auto px-4 py-16 text-center">
             <h1 className="text-2xl font-bold text-white light:text-slate-900 mb-2">Import finished</h1>
             <p className="text-slate-400 light:text-slate-600 mb-8">
-                {formatCount(imported)} {imported === 1 ? 'game is' : 'games are'} now in your lists.
+                {unlisted === 0
+                    ? `${formatCount(imported)} ${imported === 1 ? 'game is' : 'games are'} now in your lists.`
+                    : `${formatCount(imported)} ${imported === 1 ? 'game was' : 'games were'} imported. `
+                        + (unlisted === 1
+                            ? '1 of them is in no list, so it is on its own game page rather than in your lists.'
+                            : `${formatCount(unlisted)} of them are in no list, so they are on their own game pages rather than in your lists.`)}
                 {skipped.length > 0 && ` ${formatCount(skipped.length)} ${skipped.length === 1 ? 'was' : 'were'} skipped.`}
             </p>
 

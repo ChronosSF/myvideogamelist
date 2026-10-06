@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <!-- Roll forward to future major versions of the netcoreapp as needed -->
+    <RollForward>Major</RollForward>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Pinned exactly: a floating range would let a later restore change the synthesised
+         templates with no change to the source, and Dependabot bumps them on purpose. -->
+    <PackageReference Include="Amazon.CDK.Lib" Version="2.272.0" />
+    <PackageReference Include="Constructs" Version="10.8.1" />
+
+    <!-- jsii Roslyn analyzers (un-comment to obtain compile-time checks for missing required props
+    <PackageReference Include="Amazon.Jsii.Analyzers" Version="*" PrivateAssets="all" />
+    -->
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The CloudFront Function's source, read at synthesis from beside the built assembly rather
+         than from a working directory nobody controls. -->
+    <None Include="functions\**" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

@@ -129,7 +129,7 @@ export function importJob(overrides: Partial<ImportJob> = {}): ImportJob {
     };
 }
 
-/** One row of a review. Eighteen fields, of which a test usually cares about two. */
+/** One row of a review. Nineteen fields, of which a test usually cares about two. */
 export function importRow(overrides: Partial<ImportReviewRow> = {}): ImportReviewRow {
     return {
         id: 1,
@@ -143,6 +143,7 @@ export function importRow(overrides: Partial<ImportReviewRow> = {}): ImportRevie
         sourceStatus: 'Played',
         status: 'finished',
         statusUnrecognised: false,
+        playedUnresolved: false,
         score: 10,
         wishlist: false,
         favourite: false,
@@ -173,6 +174,7 @@ export function importReview(rows: ImportReviewRow[], job: Partial<ImportJob> = 
             unmatched: count(IMPORT_MATCH.unmatched),
             unlooked: count(IMPORT_MATCH.unlooked),
             statusUnrecognised: rows.filter(row => row.statusUnrecognised).length,
+            playedUnresolved: rows.filter(row => row.playedUnresolved).length,
             alreadyTracked: rows.filter(row => row.alreadyTracked).length,
             selected: rows.filter(row => row.decision === IMPORT_DECISION.import).length,
         },
