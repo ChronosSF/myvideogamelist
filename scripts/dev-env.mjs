@@ -307,7 +307,8 @@ function park() {
     if (app === null) {
         note(`${NAMES.appStack} is already gone.`);
     } else {
-        // The application stack is instantiated only when an imageTag is supplied; for a destroy
+        // Synthesised without an imageTag the application stack carries an error, and whether the
+        // CLI acts on a destroy over one is not something to find out while parking; for a destroy
         // any value names it (the walkthrough's lever 3). Nothing in the data stack is touched.
         cdk(['destroy', NAMES.appStack, '-c', 'imageTag=parked', '--force']);
     }

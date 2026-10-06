@@ -13,9 +13,9 @@ Five stacks, split by lifetime, named `Mvgl-<env>-<part>`:
 | `Migrate` | each release | the task that runs the migration bundle |
 | `App` | disposable | the balancer, both services, the DNS alias |
 
-Context: `env` (required), `imageTag` (the git SHA; `Migrate` and `App` exist only when it is
-given, so nothing falls back to `latest`), `allowedCidr` (the one address the balancer admits
-before CloudFront exists; absent, it admits CloudFront only).
+Context: `env` (required), `imageTag` (the git SHA; without it `Migrate` and `App` synthesise
+with an error the CLI refuses to deploy over, so nothing falls back to `latest`), `allowedCidr`
+(the one address the balancer admits before CloudFront exists; absent, it admits CloudFront only).
 
 ```bash
 cdk synth --profile mvgl-dev -c env=dev -c imageTag=<sha>
@@ -71,6 +71,19 @@ is destroying the `App` stack; stopping the database afterwards reaches the idle
   one address that was allowed. Until the CloudFront phase, every deploy of `Migrate` or `App`
   either passes `allowedCidr` as well or uses `--exclusively`; `scripts/dev-env.mjs` always uses
   `--exclusively`, and so must the pipeline, which has no address to pass.
+
+- **Cross-stack references are weak, so `Data`'s outputs are only as complete as the synthesis
+  that deployed it.** `cdk.json` sets `defaultCrossStackReferences` to `weak`: `Migrate` and `App`
+  read what they need from `Data` at deployment time with `Fn::GetStackOutput`, and `Data` emits
+  one output per thing they read - derived from the consumers present in the synthesis. Unlike an
+  export, CloudFormation removes such an output without complaint while a deployed stack still
+  reads it. The first Data redeploy after the first release was synthesised without an image tag,
+  so the two stacks were not in the app, every one of those outputs was dropped with a clean log,
+  and the next resume failed with "output … was not found". That is why `Program.cs` now puts the
+  two stacks in every synthesis, carrying an error instead of an image when no tag is given, and
+  why the deployed Migrate stack kept working throughout: a weak reference is resolved only when
+  its own stack deploys. If the error ever returns, `cdk diff Mvgl-dev-Data` with any tag shows
+  the outputs it would add back, and deploying it is the whole fix.
 
 - **Every ingress rule on the balancer is owned by `DataStack`, and both listeners are
   `Open = false`.** CDK otherwise "opens" an internet-facing balancer by writing `0.0.0.0/0`
