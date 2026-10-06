@@ -5,7 +5,9 @@ name: Deploy dev
 # environment is deployed: the DEV_DEPLOY_ENABLED variable on the `dev` GitHub environment is the
 # gate, because deploying the application stack *recreates* it if it was destroyed, and an
 # unconditional deploy-on-merge would silently un-park the environment and start the balancer
-# billing again (ADR 0044, D-6). `node scripts/dev-env.mjs park|resume` sets the gate.
+# billing again (ADR 0044, D-6). `node scripts/dev-env.mjs park|resume` sets the gate. The gate
+# is read once, when the job starts, so the job also refuses to create a stack it finds gone:
+# it only ever updates the application stack, and creating it is `resume`'s job alone.
 #
 # No AWS key is stored in GitHub. The job proves who it is with a token GitHub signs, and AWS
 # exchanges it for an hour of credentials on a role whose trust policy admits exactly one subject:
@@ -33,8 +35,15 @@ concurrency:
 jobs:
   deploy:
     name: Build, push, and deploy when awake
-    # workflow_run fires on a failed CI too. Only a green one deploys; a manual run always may.
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    # workflow_run fires on a failed CI too, and on CI runs for pull requests - a fork's branch
+    # called master passes the branch filter - so a green run alone would hand this repository's
+    # AWS role to anybody's code. Only a green run of a push to this repository's master deploys;
+    # a manual run always may, since dispatching one takes write access.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_repository.full_name == github.repository)
     runs-on: ubuntu-latest
     environment: dev
     env:
@@ -160,22 +169,48 @@ jobs:
             exit 1
           fi
 
-      - name: Deploy the application stack
+      # The gate was read once, when this job started. A park that began since then has destroyed
+      # the application stack or is destroying it, and deploying now would recreate it over a
+      # database the park is about to stop - the silent un-park D-6 exists to prevent, and one the
+      # smoke test cannot see, since /healthz asks nothing of the database. So this workflow only
+      # ever *updates* the stack; creating it is `dev-env.mjs resume`'s job alone. A park that
+      # starts a moment after this check fails one side or the other loudly: CloudFormation refuses
+      # to update a stack being deleted, and to delete one being updated.
+      - name: Is the application stack still there?
+        id: app
         if: env.AWAKE == 'true'
+        env:
+          TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          set -euo pipefail
+          if STATUS=$(aws cloudformation describe-stacks --stack-name Mvgl-dev-App --query "Stacks[0].StackStatus" --output text 2>&1); then :
+          elif [[ "$STATUS" == *"does not exist"* ]]; then STATUS=ABSENT
+          else echo "$STATUS"; exit 1
+          fi
+          echo "Mvgl-dev-App: $STATUS"
+          case "$STATUS" in
+            ABSENT|DELETE_*)
+              echo "::warning::The environment was parked while this run was in flight. Images $TAG are pushed; nothing is deployed."
+              echo "present=false" >> "$GITHUB_OUTPUT" ;;
+            *) echo "present=true" >> "$GITHUB_OUTPUT" ;;
+          esac
+
+      - name: Deploy the application stack
+        if: env.AWAKE == 'true' && steps.app.outputs.present == 'true'
         working-directory: infra
         env:
           TAG: ${{ steps.release.outputs.tag }}
         run: cdk deploy Mvgl-dev-App --exclusively -c env=dev -c "imageTag=$TAG" --require-approval never
 
       - name: Wait for both services
-        if: env.AWAKE == 'true'
+        if: env.AWAKE == 'true' && steps.app.outputs.present == 'true'
         run: aws ecs wait services-stable --cluster mvgl-dev --services api ssr
 
       # Until CloudFront exists the balancer admits one address, and it is not this runner's, so
       # the proof is target health. From the CloudFront phase this becomes /readyz and / through
       # the distribution, with the basic-auth pair as the one secret the workflow holds.
       - name: Smoke test
-        if: env.AWAKE == 'true'
+        if: env.AWAKE == 'true' && steps.app.outputs.present == 'true'
         run: |
           set -euo pipefail
           # A group can hold more than one target for a while - the old task draining beside the
