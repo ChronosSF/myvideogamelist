@@ -1,6 +1,6 @@
 # 0044. What the deployment walkthrough settled, and where it found the records wrong
 
-**Status:** Accepted — decided, not yet built. Amends [0005](0005-secrets-handling.md),
+**Status:** Accepted — decided, not yet built; the CloudFront section is amended by [0046](0046-the-balancer-answers-its-own-distribution.md). Amends [0005](0005-secrets-handling.md),
 [0007](0007-aws-target-architecture.md), [0013](0013-http-caching-policy.md),
 [0014](0014-rds-postgresql-over-aurora.md), [0015](0015-fargate-confirmed-and-nat-less-networking.md),
 [0033](0033-what-the-api-refuses.md) and [0036](0036-what-a-crawler-is-told.md), each of which

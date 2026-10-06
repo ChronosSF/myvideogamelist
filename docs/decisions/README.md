@@ -65,6 +65,7 @@ grow a forward pointer when a later record or an issue closes something it left 
 | [0043](0043-where-the-key-ring-lives.md) | The key ring lives in Parameter Store, under a name that does not move, and never nowhere by accident | Implemented; proved only by a deploy |
 | [0044](0044-what-the-deployment-walkthrough-settled.md) | What the deployment walkthrough settled, and where it found the records wrong | Accepted; built by #97 |
 | [0045](0045-an-import-asks-once-about-what-it-will-not-guess.md) | An import asks once about what it will not guess: one list for every game played without an outcome | Implemented |
+| [0046](0046-the-balancer-answers-its-own-distribution.md) | The balancer answers its own distribution, and what else the CloudFront phase settled | Implemented |
 
 **Status** — *Accepted*: decided, not yet built. *Implemented*: decided and in the code.
 *Superseded*: replaced by a later record.

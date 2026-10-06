@@ -6,9 +6,8 @@ namespace Infra;
 /// One app, parameterised by context. <c>env</c> prefixes every stack and resource name;
 /// <c>imageTag</c> is the git SHA the two images were pushed under, and without it the application
 /// and migration stacks carry an error the CLI refuses to deploy over, so the long-lived stacks
-/// deploy without one and nothing ever falls back to <c>latest</c>; <c>allowedCidr</c> is the one
-/// address the balancer admits before CloudFront exists. The Region comes from the profile; nothing
-/// here names one except the certificate stack's <c>us-east-1</c>. See ADR 0044.
+/// deploy without one and nothing ever falls back to <c>latest</c>. The Region comes from the
+/// profile; nothing here names one except the certificate stack's <c>us-east-1</c>. See ADR 0044.
 /// </summary>
 internal static class Program
 {
@@ -25,7 +24,6 @@ internal static class Program
         var env = app.Node.TryGetContext("env") as string
             ?? throw new InvalidOperationException("Name the environment: cdk <command> -c env=dev");
         var imageTag = app.Node.TryGetContext("imageTag") as string;
-        var allowedCidr = app.Node.TryGetContext("allowedCidr") as string;
 
         var site = new Site(env);
         var account = System.Environment.GetEnvironmentVariable("CDK_DEFAULT_ACCOUNT");
@@ -43,10 +41,10 @@ internal static class Program
         // over with a parameter rather than a CloudFormation export; both sides must opt in.
         var dns = new DnsStack(app, site.StackName("Dns"),
             new StackProps { Env = regional, CrossRegionReferences = true, TerminationProtection = true }, site);
-        _ = new EdgeCertStack(app, site.StackName("EdgeCert"),
+        var edgeCert = new EdgeCertStack(app, site.StackName("EdgeCert"),
             new StackProps { Env = edge, CrossRegionReferences = true, TerminationProtection = true }, site, dns.Zone);
         var data = new DataStack(app, site.StackName("Data"),
-            new StackProps { Env = regional, TerminationProtection = true }, site, dns.Zone, allowedCidr);
+            new StackProps { Env = regional, TerminationProtection = true }, site, dns.Zone);
 
         // The two per-release stacks exist in every synthesis, tag or no tag, because the Data
         // stack's cross-stack outputs are derived from what consumes them. Cross-stack references
@@ -60,8 +58,10 @@ internal static class Program
         var tag = imageTag ?? NoImageTag;
         var migrate = new MigrateStack(app, site.StackName("Migrate"),
             new StackProps { Env = regional }, site, data, tag);
+        // The distribution presents the us-east-1 certificate, carried over the same way the zone is
+        // carried into the certificate stack; the application stack opts in on its side.
         var application = new AppStack(app, site.StackName("App"),
-            new StackProps { Env = regional }, site, dns.Zone, data, tag);
+            new StackProps { Env = regional, CrossRegionReferences = true }, site, dns.Zone, data, edgeCert.Certificate, tag);
         if (imageTag is null)
         {
             foreach (var stack in new Stack[] { migrate, application })

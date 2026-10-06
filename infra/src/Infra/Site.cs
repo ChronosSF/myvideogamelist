@@ -33,4 +33,13 @@ public sealed record Site(string Env)
     public string GitHubSubject => $"repo:ChronosSF/myvideogamelist:environment:{Env}";
 
     public string LogGroup(string part) => $"/mvgl/{Env}/{part}";
+
+    /// <summary>
+    /// The header the distribution sends and the balancer's listener requires, and the secret its
+    /// value lives in. The managed prefix list proves only that a request came through <em>some</em>
+    /// distribution; this proves it was ours (ADR 0046).
+    /// </summary>
+    public string OriginVerifyHeader => "X-Origin-Verify";
+
+    public string OriginVerifySecretName => $"mvgl/{Env}/origin-verify";
 }

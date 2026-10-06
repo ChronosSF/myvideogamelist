@@ -20,4 +20,10 @@
     -->
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- The CloudFront Function's source, read at synthesis from beside the built assembly rather
+         than from a working directory nobody controls. -->
+    <None Include="functions\**" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>

@@ -15,9 +15,9 @@ namespace Infra;
 /// <summary>
 /// Everything long-lived: the network and every security group, the database and its secret, the
 /// image repositories, the cluster and its private namespace, the regional certificate, the deploy
-/// role GitHub assumes, and the store the basic-auth credential lives in. The application stack can
-/// be destroyed and recreated without touching any of it, which is the pause lever that matters
-/// (ADR 0044).
+/// role GitHub assumes, the store the basic-auth credential lives in, and the secret the distribution
+/// proves itself to the balancer with. The application stack can be destroyed and recreated without
+/// touching any of it, which is the pause lever that matters (ADR 0044).
 /// </summary>
 public sealed class DataStack : Stack
 {
@@ -33,8 +33,9 @@ public sealed class DataStack : Stack
     public Amazon.CDK.AWS.ECS.Cluster Cluster { get; }
     public ICertificate Certificate { get; }
     public KeyValueStore BasicAuthStore { get; }
+    public Secret OriginVerify { get; }
 
-    public DataStack(Construct scope, string id, IStackProps props, Site site, IHostedZone zone, string? allowedCidr)
+    public DataStack(Construct scope, string id, IStackProps props, Site site, IHostedZone zone)
         : base(scope, id, props)
     {
         // Two availability zones because a balancer and an RDS subnet group each need two; no NAT
@@ -61,24 +62,18 @@ public sealed class DataStack : Stack
         SsrSecurityGroup = Group("Ssr", "the SSR tasks", allowAllOutbound: true);
         var dbSecurityGroup = Group("Db", "the database", allowAllOutbound: false);
 
-        if (allowedCidr is not null)
+        // Only CloudFront's origin-facing addresses may reach the balancer. The managed list counts
+        // as 55 rules against a default quota of 60 per group, so it fits on one port and not on
+        // two, which is why the balancer has no port-80 listener. It proves that a request came
+        // through some distribution; that it came through ours is the origin-verify header below,
+        // which the balancer's listener requires (ADR 0046). Before CloudFront existed this group
+        // admitted one address instead, the owner's; that parameter is gone, so nothing can quietly
+        // reopen the balancer to an address.
+        var cloudFront = PrefixList.FromLookup(this, "CloudFrontOrigins", new PrefixListLookupOptions
         {
-            // Before CloudFront exists, dev is kept private by admitting one address: the owner's.
-            AlbSecurityGroup.AddIngressRule(Peer.Ipv4(allowedCidr), Port.Tcp(443), "HTTPS from the allowed address");
-            AlbSecurityGroup.AddIngressRule(Peer.Ipv4(allowedCidr), Port.Tcp(80), "HTTP from the allowed address, to be redirected");
-        }
-        else
-        {
-            // With the parameter absent, only CloudFront's origin-facing addresses may reach the
-            // balancer, so forgetting it fails closed: unreachable rather than public. The managed
-            // list counts as 55 rules against a default quota of 60 per group, so it fits on one
-            // port, and the port-80 listener is not reachable from anywhere once this applies.
-            var cloudFront = PrefixList.FromLookup(this, "CloudFrontOrigins", new PrefixListLookupOptions
-            {
-                PrefixListName = "com.amazonaws.global.cloudfront.origin-facing",
-            });
-            AlbSecurityGroup.AddIngressRule(Peer.PrefixList(cloudFront.PrefixListId), Port.Tcp(443), "HTTPS from CloudFront only");
-        }
+            PrefixListName = "com.amazonaws.global.cloudfront.origin-facing",
+        });
+        AlbSecurityGroup.AddIngressRule(Peer.PrefixList(cloudFront.PrefixListId), Port.Tcp(443), "HTTPS from CloudFront only");
 
         ApiSecurityGroup.AddIngressRule(AlbSecurityGroup, Port.Tcp(8080), "from the balancer");
         ApiSecurityGroup.AddIngressRule(SsrSecurityGroup, Port.Tcp(8080), "from the SSR server");
@@ -125,6 +120,22 @@ public sealed class DataStack : Stack
             {
                 SecretStringTemplate = "{\"ClientId\":\"set-me\"}",
                 GenerateStringKey = "ClientSecret",
+            },
+        });
+
+        // What the distribution sends in its origin-verify header and the balancer's listener
+        // requires (ADR 0046). Generated here and read by the application stack as a dynamic
+        // reference, so the value is in no template; letters and digits only, because it travels
+        // in a header and a listener rule compares it. Long-lived so that a resume, which recreates
+        // both the distribution and the listener, finds the same value on both sides.
+        OriginVerify = new Secret(this, "OriginVerify", new SecretProps
+        {
+            SecretName = site.OriginVerifySecretName,
+            Description = "The value of the header CloudFront sends to the balancer, which the listener requires",
+            GenerateSecretString = new SecretStringGenerator
+            {
+                ExcludePunctuation = true,
+                PasswordLength = 40,
             },
         });
 
@@ -280,6 +291,16 @@ public sealed class DataStack : Stack
             Sid = "ReadTheMigrationLog",
             Actions = ["logs:FilterLogEvents", "logs:GetLogEvents", "logs:DescribeLogStreams"],
             Resources = [$"arn:{Aws.PARTITION}:logs:{Region}:{Account}:log-group:{site.LogGroup("migrate")}:*"],
+        }));
+        // Every deploy invalidates `/*`: a cached page names hashed bundles the new container no
+        // longer has, because the bundles are served by the SSR container and not from S3 (ADR
+        // 0044). Distributions are global, so the ARN has no Region; any distribution of this
+        // account, since the one that exists is recreated on every resume with a new id.
+        role.AddToPolicy(new PolicyStatement(new PolicyStatementProps
+        {
+            Sid = "InvalidateAfterADeploy",
+            Actions = ["cloudfront:CreateInvalidation", "cloudfront:GetInvalidation"],
+            Resources = [$"arn:{Aws.PARTITION}:cloudfront::{Account}:distribution/*"],
         }));
 
         return role;
