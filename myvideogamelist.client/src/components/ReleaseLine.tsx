@@ -1,10 +1,12 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { Link } from 'react-router';
+import { useLists } from '@/hooks/useLists';
 import { useReleaseLine } from '@/hooks/useReleaseLine';
 import { dayLabel, formatDaySpan } from '@/lib/daySpan';
 import { layoutLine, type LineDay, type LineEvent } from '@/lib/releaseLine';
 import { entryReason, platformNames, showsPlatformsApart } from '@/lib/releaseReason';
 import { CURATED_EVENT_KIND_LABELS } from '@/types/calendarAdmin';
+import type { GameDto } from '@/types/game';
 import type { ConnectedRelease, ReleaseEntry } from '@/types/releases';
 import './ReleaseLine.css';
 
@@ -27,26 +29,152 @@ function Cover({ release, eager }: { release: ConnectedRelease; eager: boolean }
     );
 }
 
+/**
+ * The release as the lists provider adds a game: what the line knows of it, and nothing it does not.
+ * The Backlog's card shows the rest once the lists are next read.
+ */
+function asGame(release: ConnectedRelease): GameDto {
+    return {
+        id: release.gameId,
+        title: release.title,
+        description: null,
+        // Not the line's day. For a game reaching a new platform that is not when it came out, and a
+        // wrong year on the card is worse than none until the lists are next read.
+        releaseDate: null,
+        coverImageUrl: release.coverImageUrl,
+        backgroundImageUrl: null,
+        trailerUrl: null,
+        website: null,
+        rating: null,
+        ratingCount: null,
+        criticScore: null,
+        criticScoreCount: null,
+        esrbRating: null,
+        platforms: release.platforms,
+        genres: [],
+        developers: [],
+        publishers: [],
+        details: null,
+    };
+}
+
+/**
+ * The one thing the line lets somebody do with a release: put it in the Backlog. The lists' own cards
+ * offer every status, and on a line about what is coming the only one that fits is "I want to play
+ * that".
+ *
+ * Only for a game in no list. "Add to Backlog" on a game that is in one would move it, so a finished
+ * game reaching a new platform would leave Finished at a click — and until the lists have loaded every
+ * game looks as though it were in none, which is why nothing is offered before then.
+ *
+ * The provider does the rest, as it does for every card: the optimistic change, the per-game lock, the
+ * rollback, and the event the move records.
+ */
+function useBacklog(release: ConnectedRelease) {
+    const { loading, error, getListFor, addToList, isPending, nameFor } = useLists();
+
+    // This card asked. A failed add is rolled back by the provider, and its error is shared by every
+    // card on the page, so whether this one's request was the one that failed is read off the game:
+    // asked, no longer pending, and still in no list.
+    const [asked, setAsked] = useState(false);
+
+    const known = !loading && error === null;
+    const list = known ? getListFor(release.gameId) : null;
+    const pending = isPending(release.gameId);
+
+    return {
+        canAdd: known && list === null,
+        pending,
+        failed: asked && known && !pending && list === null,
+        // Said once the game is in a list — except of the game itself, whose reason already says where
+        // it is ("You finished it"), unless it got there from this card.
+        listedIn: list !== null && (asked || release.reason.relation !== 'itself') ? nameFor(list) : null,
+        backlog: nameFor('backlog'),
+        add: () => {
+            setAsked(true);
+            void addToList('backlog', asGame(release));
+        },
+    };
+}
+
+/** One release on its own: the card the lists' rails use, with the one action that fits here. */
+function ReleaseCard({ entry, release, eager }: { entry: ReleaseEntry; release: ConnectedRelease; eager: boolean }) {
+    const backlog = useBacklog(release);
+
+    return (
+        <div className="release-line-card">
+            <div className="release-line-art">
+                {/* Out of the tab order and hidden from screen readers: the title below is the same
+                    link, and a link a screen reader meets twice is one too many. */}
+                <Link to={`/games/${release.gameId}`} tabIndex={-1} aria-hidden="true" className="release-line-link">
+                    <Cover release={release} eager={eager} />
+                </Link>
+                {backlog.canAdd && (
+                    <button
+                        type="button"
+                        className="release-line-add"
+                        disabled={backlog.pending}
+                        onClick={backlog.add}
+                        // The visible words first, so that saying them to a voice control reaches it;
+                        // the title after, so that a screen reader can tell one card's from the next.
+                        aria-label={`Add to ${backlog.backlog}: ${release.title}`}
+                    >
+                        Add to {backlog.backlog}
+                    </button>
+                )}
+            </div>
+            <Link to={`/games/${release.gameId}`} className="release-line-link">
+                <p className="release-line-title">{release.title}</p>
+            </Link>
+            {release.earlyAccess && <p className="release-line-badge">Early access</p>}
+            {showsPlatformsApart(release) && (
+                <p className="release-line-platforms">{platformNames(release.platforms)}</p>
+            )}
+            <p className="release-line-reason">{entryReason(entry)}</p>
+            {backlog.listedIn !== null && <p className="release-line-listed">In {backlog.listedIn}</p>}
+            {/* In the card rather than on the cover, which shows the button only on hover — a message
+                that disappears when the pointer moves away is no message. */}
+            {backlog.failed && (
+                <p className="release-line-add-error" role="alert">Could not add it to {backlog.backlog}.</p>
+            )}
+        </div>
+    );
+}
+
+/** One release in a group's list: its name, where it arrives, and the same one action, smaller. */
+function GroupMember({ release }: { release: ConnectedRelease }) {
+    const backlog = useBacklog(release);
+
+    return (
+        <li>
+            <Link to={`/games/${release.gameId}`}>{release.title}</Link>
+            {release.platforms.length > 0 && <span> · {platformNames(release.platforms)}</span>}
+            {backlog.canAdd && (
+                <button
+                    type="button"
+                    className="release-line-add-inline"
+                    disabled={backlog.pending}
+                    onClick={backlog.add}
+                    aria-label={`Add to ${backlog.backlog}: ${release.title}`}
+                    title={`Add to ${backlog.backlog}`}
+                >
+                    +
+                </button>
+            )}
+            {backlog.listedIn !== null && <span className="release-line-listed"> · In {backlog.listedIn}</span>}
+            {backlog.failed && (
+                <span className="release-line-add-error" role="alert"> · Could not add it.</span>
+            )}
+        </li>
+    );
+}
+
 /** One release, or a group of them (F6), on its day: a cover, a name, and why it is there (L4, L5). */
 function EntryCard({ entry, eager }: { entry: ReleaseEntry; eager: boolean }) {
     const [first] = entry.releases;
     const count = entry.releases.length;
 
-    if (count === 1) {
-        return (
-            <div className="release-line-card">
-                <Link to={`/games/${first.gameId}`} className="release-line-link">
-                    <Cover release={first} eager={eager} />
-                    <p className="release-line-title">{first.title}</p>
-                </Link>
-                {first.earlyAccess && <p className="release-line-badge">Early access</p>}
-                {showsPlatformsApart(first) && (
-                    <p className="release-line-platforms">{platformNames(first.platforms)}</p>
-                )}
-                <p className="release-line-reason">{entryReason(entry)}</p>
-            </div>
-        );
-    }
+    if (count === 1) return <ReleaseCard entry={entry} release={first} eager={eager} />;
 
     // A group is named after its series or its game and shown with its first cover; what is in it is
     // one click away rather than eight covers wide.
@@ -62,12 +190,7 @@ function EntryCard({ entry, eager }: { entry: ReleaseEntry; eager: boolean }) {
             <details className="release-line-group">
                 <summary>Show all {count}</summary>
                 <ul>
-                    {entry.releases.map(release => (
-                        <li key={release.gameId}>
-                            <Link to={`/games/${release.gameId}`}>{release.title}</Link>
-                            {release.platforms.length > 0 && <span> · {platformNames(release.platforms)}</span>}
-                        </li>
-                    ))}
+                    {entry.releases.map(release => <GroupMember key={release.gameId} release={release} />)}
                 </ul>
             </details>
         </div>

@@ -3,8 +3,10 @@ import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { ReleaseLine } from '@/components/ReleaseLine';
+import type { ListsContextValue } from '@/contexts/ListsContext';
 import type { UseReleaseLineResult } from '@/hooks/useReleaseLine';
 import { calendarEvents, connectedRelease, platform, releaseEntry } from '@/test/factories';
+import { LIST_NAMES, type ListId } from '@/types/list';
 
 /**
  * The hook mocked rather than its endpoints: what is tested here is what the line draws from what it
@@ -18,6 +20,22 @@ const line: UseReleaseLineResult = {
 };
 
 vi.mock('@/hooks/useReleaseLine', () => ({ useReleaseLine: () => line }));
+
+/**
+ * The lists, as far as the Backlog button reads them: which list each game is in, whether they have
+ * loaded, and the add. Hoisted and handed back whole for the reason the line's value is.
+ */
+const listed = new Map<number, ListId>();
+const lists = {
+    loading: false,
+    error: null as string | null,
+    getListFor: (gameId: number) => listed.get(gameId) ?? null,
+    isPending: () => false,
+    nameFor: (id: ListId) => LIST_NAMES[id],
+    addToList: vi.fn(async () => {}),
+} as unknown as ListsContextValue;
+
+vi.mock('@/hooks/useLists', () => ({ useLists: () => lists }));
 
 const SWITCH_2 = platform(508, 'Nintendo Switch 2', 'Switch 2');
 
@@ -50,6 +68,14 @@ function renderLine() {
 beforeEach(() => {
     line.releases = { data: [], loading: false, error: null };
     line.events = { data: calendarEvents(), loading: false, error: null };
+
+    listed.clear();
+    Object.assign(lists, {
+        loading: false,
+        error: null,
+        nameFor: (id: ListId) => LIST_NAMES[id],
+        addToList: vi.fn(async () => {}),
+    });
 });
 
 describe('ReleaseLine', () => {
@@ -167,5 +193,88 @@ describe('ReleaseLine', () => {
         renderLine();
 
         expect(screen.getByText('The showcases and sales could not be loaded just now.')).toBeInTheDocument();
+    });
+});
+
+describe('ReleaseLine, adding a release to the Backlog', () => {
+    const SEPARATE_WAYS = releaseEntry('2026-10-16', [connectedRelease({
+        gameId: 245411,
+        title: 'Resident Evil 4: Separate Ways',
+        kind: 'dlc',
+        coverImageUrl: 'https://images.igdb.com/igdb/image/upload/t_cover_big/sw.jpg',
+        platforms: [SWITCH_2],
+        reason: { relation: 'child', gameId: 132181, title: 'Resident Evil 4', membership: 'list', list: 'finished' },
+    })]);
+
+    it('offers it for a release in no list, and adds what the line knows of it', async () => {
+        line.releases.data = [SEPARATE_WAYS];
+        lists.addToList = vi.fn(async (_list: ListId, game: { id: number }) => {
+            listed.set(game.id, 'backlog');
+        });
+        renderLine();
+
+        await userEvent.click(screen.getByRole('button', { name: 'Add to Backlog: Resident Evil 4: Separate Ways' }));
+
+        expect(lists.addToList).toHaveBeenCalledWith('backlog', expect.objectContaining({
+            id: 245411,
+            title: 'Resident Evil 4: Separate Ways',
+            coverImageUrl: 'https://images.igdb.com/igdb/image/upload/t_cover_big/sw.jpg',
+            platforms: [SWITCH_2],
+            releaseDate: null,
+        }));
+        expect(screen.getByText('In Backlog')).toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: /Add to Backlog/ })).not.toBeInTheDocument();
+    });
+
+    it('offers nothing until the lists have loaded, when every game looks as though it were in none', () => {
+        // A click then would move a finished game to the Backlog.
+        line.releases.data = [SEPARATE_WAYS];
+        lists.loading = true;
+        renderLine();
+
+        expect(screen.queryByRole('button', { name: /Add to Backlog/ })).not.toBeInTheDocument();
+    });
+
+    it('offers nothing for a game already in a list, since adding it would move it', () => {
+        line.releases.data = [SEPARATE_WAYS, RESIDENT_EVIL_2];
+        listed.set(245411, 'dropped');
+        listed.set(19686, 'finished');
+        renderLine();
+
+        expect(screen.queryByRole('button', { name: /Add to Backlog/ })).not.toBeInTheDocument();
+        // Said of a connected release; of the game itself, its reason already says where it is.
+        expect(screen.getByText('In Dropped')).toBeInTheDocument();
+        expect(screen.queryByText('In Finished')).not.toBeInTheDocument();
+    });
+
+    it('calls the Backlog what the user calls it', () => {
+        line.releases.data = [SEPARATE_WAYS];
+        lists.nameFor = (id: ListId) => (id === 'backlog' ? 'Up Next' : LIST_NAMES[id]);
+        renderLine();
+
+        expect(screen.getByRole('button', { name: 'Add to Up Next: Resident Evil 4: Separate Ways' }))
+            .toHaveTextContent('Add to Up Next');
+    });
+
+    it('says so where the message stays put when the add did not stick', async () => {
+        // The provider rolled it back: asked, no longer pending, and still in no list.
+        line.releases.data = [SEPARATE_WAYS];
+        renderLine();
+
+        await userEvent.click(screen.getByRole('button', { name: /Add to Backlog/ }));
+
+        expect(screen.getByRole('alert')).toHaveTextContent('Could not add it to Backlog.');
+    });
+
+    it('offers it beside each release in a group, for that release alone', async () => {
+        line.releases.data = [KINGDOM_HEARTS];
+        listed.set(19560, 'finished');
+        renderLine();
+
+        await userEvent.click(screen.getByText('Show all 2'));
+        await userEvent.click(screen.getByRole('button', { name: 'Add to Backlog: Kingdom Hearts HD 1.5 + 2.5 ReMIX' }));
+
+        expect(lists.addToList).toHaveBeenCalledWith('backlog', expect.objectContaining({ id: 2350 }));
+        expect(screen.queryByRole('button', { name: 'Add to Backlog: Kingdom Hearts III' })).not.toBeInTheDocument();
     });
 });
