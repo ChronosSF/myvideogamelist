@@ -200,7 +200,9 @@ public class StatsService(ApplicationDbContext db, TimeProvider clock) : IStatsS
     /// <para>
     /// For every playthrough, whatever <see cref="UserGameEntry.Origin"/> says. The precedence
     /// already makes our own tracking win, and a finish date on a game nobody ever moved to Finished
-    /// is a real finish whether it was typed here or into another tracker.
+    /// is a real finish whether it was typed here or into another tracker. Nor would the origin find
+    /// every imported run if it were asked: an import sets it only where it writes a status, so a run
+    /// imported onto an entry it left in no list carries <see cref="EntryOrigins.Manual"/>.
     /// </para>
     /// <para>
     /// Three things stay events-only. Drops, because a playthrough cannot say a game was dropped;

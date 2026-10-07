@@ -311,9 +311,10 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   of that kind they count its playthroughs' dates — finishes from `FinishedOn` unless it has a move
   to Finished, its first start from its earliest date unless it has a move to a started status — so
   a status change always takes precedence, per game and per kind, and every playthrough is read
-  whatever its entry's origin. Drops, the median time to finish and the transition count stay
-  events-only, `LogStartedAt` stays the first status change, and no event is ever synthesised to make
-  an import count. See `docs/decisions/0026-*`, `0037-*` and `0047-*`.
+  whatever its entry's origin — which would not find every imported run anyway, since the import
+  sets it only where it writes a status. Drops, the median time to finish and the transition count
+  stay events-only, `LogStartedAt` stays the first status change, and no event is ever synthesised
+  to make an import count. See `docs/decisions/0026-*`, `0037-*` and `0047-*`.
 
 - **A closed import has no rows, and a review is only ever of a pending job.** A commit or a cancel
   deletes the job's `ImportRow`s in the same `SaveChangesAsync` that closes it (ADR 0037, ADR 0039),

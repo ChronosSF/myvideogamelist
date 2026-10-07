@@ -85,12 +85,17 @@ The rule reads every playthrough, whatever `Origin` says. The precedence already
 tracking win wherever there is any, and a finish date on a game nobody ever moved to Finished is a
 real finish whether it was typed into another tracker or logged here —
 [0025](0025-playthroughs-and-reviews.md) §4 makes logging a run of a game in no list a legitimate
-thing to do. `Origin` marks a *status* that may have no event behind it (0026 §4). Keying a
-statistic about *playing* on it would make a date its owner corrected after an import count
+thing to do. `Origin` marks a *status* that may have no event behind it (0026 §4), and it is not a
+reliable mark of an imported *run*: the import sets it only where it writes a status, so a run it
+imported onto an entry it left in no list carries `manual`. The owner's account has seven such runs,
+all written by the import, and one of them is one of July 2026's five starts. Keying the rule on
+`Origin` would drop them, and would make a date its owner corrected after an import count
 differently from the same date typed afresh.
 
-Counting imported entries only would be one predicate, and is the alternative if this reading turns
-out to be the wrong one.
+Counting imported runs only is the alternative if this reading turns out to be the wrong one, and it
+is not the one predicate it looks like. A playthrough carries no origin of its own, and an import's
+rows are gone once it commits ([0039](0039-an-imports-rows-die-with-its-review.md)), so the nearest
+predicate is the entry's `Origin` — which would miss those seven.
 
 ### 4. What stays events-only
 
