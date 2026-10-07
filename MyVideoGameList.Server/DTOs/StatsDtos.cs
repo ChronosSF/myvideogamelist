@@ -57,17 +57,27 @@ public record LibraryStatsDto(
 public record ScoreStatsDto(int Scored, double? Mean, IReadOnlyList<int> Distribution);
 
 /// <summary>
-/// What the user has <em>done</em>, which only <c>UserGameEvents</c> can answer — the entry table
-/// is overwritten in place on every move.
+/// What the user has <em>done</em>: the status changes in <c>UserGameEvents</c> — the entry table
+/// is overwritten in place on every move — and, for a game those say nothing about, the dates on
+/// its playthroughs.
 /// </summary>
+/// <remarks>
+/// A status change always takes precedence, per game and per kind of act. A game with a change to
+/// Finished counts its finishes from those changes alone, and a game with a change to any started
+/// status takes its first start from them; only the rest are counted from their playthroughs.
+/// Drops, <paramref name="Transitions"/> and <paramref name="TimeToFinish"/> come from the log
+/// alone. See ADR 0047.
+/// </remarks>
 /// <param name="LogStartedAt">
-/// The user's earliest recorded event, or null if they have none. The client needs this to avoid
-/// drawing empty months for a period the log did not exist for: the log shipped in August 2026 and
-/// was not backfilled, so "no activity" and "no records" are different claims.
+/// The user's earliest status change, or null if they have none — never a playthrough's date, so
+/// that "tracking here since" stays a claim about this app. The log shipped in August 2026 and was
+/// not backfilled, and an import writes no events, so an account can have months on its chart and
+/// no log start at all.
 /// </param>
 /// <param name="Months">
-/// Most recent last, at most twelve, and never reaching back before
-/// <paramref name="LogStartedAt"/>.
+/// Most recent last, at most twelve, and never reaching back before the earliest record: the first
+/// status change, or the earliest month a playthrough's date is counted in, whichever is sooner. So
+/// the chart can begin before <paramref name="LogStartedAt"/>.
 /// </param>
 /// <param name="Transitions">Every recorded status change, all time.</param>
 /// <param name="CurrentStreakMonths">
@@ -83,8 +93,20 @@ public record ActivityStatsDto(
     int LongestStreakMonths,
     ActiveTimeDto? TimeToFinish);
 
-/// <param name="Month">ISO <c>yyyy-MM</c>, in UTC.</param>
-/// <param name="Started">Games moved into a status flagged <c>IsStarted</c> for the first time.</param>
+/// <param name="Month">
+/// ISO <c>yyyy-MM</c> — in UTC for a status change, and as written for a playthrough's date, which
+/// is a calendar day with no zone to convert from.
+/// </param>
+/// <param name="Started">
+/// Games started for the first time: moved into a status flagged <c>IsStarted</c>, or, for a game
+/// with no such move, by the earliest date on its playthroughs — a start date, or a finish date
+/// where a run recorded no start.
+/// </param>
+/// <param name="Finished">
+/// Distinct games finished: by their moves to Finished, or by their playthroughs' finish dates if
+/// they have none.
+/// </param>
+/// <param name="Dropped">Distinct games moved to Dropped. A playthrough has no way to say that.</param>
 public record ActivityMonthDto(string Month, int Started, int Finished, int Dropped);
 
 /// <summary>

@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using MyVideoGameList.Server.Data;
+using MyVideoGameList.Server.DTOs;
 using MyVideoGameList.Server.Models;
 using MyVideoGameList.Server.Services;
 
@@ -45,7 +46,12 @@ public class StatsServiceTests
         new(db, new FixedClock(now ?? Now));
 
     private static void AddEntry(
-        ApplicationDbContext db, int gameId, string? status, short? score = null, string userId = UserId)
+        ApplicationDbContext db,
+        int gameId,
+        string? status,
+        short? score = null,
+        string userId = UserId,
+        string origin = EntryOrigins.Manual)
     {
         db.UserGameEntries.Add(new UserGameEntry
         {
@@ -53,6 +59,7 @@ public class StatsServiceTests
             GameId = gameId,
             StatusId = status is null ? null : StatusId(db, status),
             Score = score,
+            Origin = origin,
             AddedAt = Now
         });
         db.SaveChanges();
@@ -66,7 +73,9 @@ public class StatsServiceTests
         int gameId,
         int? platformId = 6,
         int? minutesPlayed = 600,
-        string userId = UserId)
+        string userId = UserId,
+        DateOnly? startedOn = null,
+        DateOnly? finishedOn = null)
     {
         var entry = db.UserGameEntries.FirstOrDefault(e => e.UserId == userId && e.GameId == gameId);
         if (entry is null)
@@ -81,10 +90,34 @@ public class StatsServiceTests
             Entry = entry,
             PlatformId = platformId,
             MinutesPlayed = minutesPlayed,
+            StartedOn = startedOn,
+            FinishedOn = finishedOn,
             CreatedAt = Now,
             UpdatedAt = Now
         });
         db.SaveChanges();
+    }
+
+    /// <summary>
+    /// A game as a Grouvee import leaves it: a status with no event behind it, the source named in
+    /// <c>Origin</c>, and a playthrough carrying whichever dates the export had (ADR 0037). Further
+    /// runs go on the same entry through <see cref="AddPlaythrough"/>.
+    /// </summary>
+    private static void AddImported(
+        ApplicationDbContext db,
+        int gameId,
+        DateOnly? startedOn = null,
+        DateOnly? finishedOn = null,
+        string userId = UserId)
+    {
+        AddEntry(
+            db,
+            gameId,
+            finishedOn is null ? ListStatusKeys.Playing : ListStatusKeys.Finished,
+            userId: userId,
+            origin: EntryOrigins.Grouvee);
+        AddPlaythrough(
+            db, gameId, minutesPlayed: null, userId: userId, startedOn: startedOn, finishedOn: finishedOn);
     }
 
     /// <summary>One transition. `null` at either end is a real event: a first add, or a removal.</summary>
@@ -645,5 +678,286 @@ public class StatsServiceTests
 
         Assert.Equal(0, playtime.Playthroughs);
         Assert.Empty(playtime.ByPlatform);
+    }
+
+    // -----------------------------------------------------------------------------------
+    // A playthrough's dates in the activity figures — a status change first, the dates second
+    // -----------------------------------------------------------------------------------
+
+    /// <summary>The chart's months by label, for a test about what lands in which.</summary>
+    private static async Task<Dictionary<string, ActivityMonthDto>> MonthsOf(ApplicationDbContext db) =>
+        (await NewService(db).GetStatsAsync(UserId, default)).Activity.Months.ToDictionary(m => m.Month);
+
+    [Fact]
+    public async Task GetStatsAsync_ImportedFinishDatesAndNoEvents_CountAsFinishes()
+    {
+        // The case #194 is about. An import writes no events (ADR 0026 §2), so an imported library
+        // used to chart nothing at all, however many dated finishes it carried.
+        using var db = NewDb();
+        AddImported(db, 1, finishedOn: new DateOnly(2026, 4, 12));
+        AddImported(db, 2, finishedOn: new DateOnly(2026, 5, 3));
+        AddImported(db, 3, finishedOn: new DateOnly(2026, 5, 28));
+
+        var activity = (await NewService(db).GetStatsAsync(UserId, default)).Activity;
+
+        Assert.Equal(["2026-04", "2026-05", "2026-06"], activity.Months.Select(m => m.Month));
+        Assert.Equal([1, 2, 0], activity.Months.Select(m => m.Finished));
+    }
+
+    [Fact]
+    public async Task GetStatsAsync_NoEventsAtAll_StillChartsAndKeepsAStreak()
+    {
+        // The owner's own account in miniature: a whole library imported and not one status change.
+        // Nothing about the dates needs the log to exist.
+        using var db = NewDb();
+        AddImported(db, 1, finishedOn: new DateOnly(2026, 3, 9));
+        AddImported(db, 2, finishedOn: new DateOnly(2026, 4, 20));
+        AddImported(db, 3, finishedOn: new DateOnly(2026, 5, 1));
+
+        var activity = (await NewService(db).GetStatsAsync(UserId, default)).Activity;
+
+        Assert.Equal(["2026-03", "2026-04", "2026-05", "2026-06"], activity.Months.Select(m => m.Month));
+        // June has no finish yet, so the run is anchored to May, exactly as it is for status changes.
+        Assert.Equal(3, activity.CurrentStreakMonths);
+        Assert.Equal(3, activity.LongestStreakMonths);
+        // And there is still no log to have begun: a date is not a status change.
+        Assert.Null(activity.LogStartedAt);
+        Assert.Equal(0, activity.Transitions);
+    }
+
+    [Fact]
+    public async Task GetStatsAsync_AFinishEventAndAFinishDateInDifferentMonths_CountOnlyTheEventMonth()
+    {
+        // One finish recorded both ways across a month boundary: a run logged as finished on the
+        // 30th of April, and the game moved to Finished on the 2nd of May. The status change is our
+        // own tracking and takes precedence. A union would make it two finishes and a streak.
+        using var db = NewDb();
+        AddEvent(db, 1, null, ListStatusKeys.Playing, new DateTimeOffset(2026, 4, 10, 9, 0, 0, TimeSpan.Zero));
+        AddEvent(db, 1, ListStatusKeys.Playing, ListStatusKeys.Finished, new DateTimeOffset(2026, 5, 2, 9, 0, 0, TimeSpan.Zero));
+        AddPlaythrough(db, gameId: 1, startedOn: new DateOnly(2026, 4, 10), finishedOn: new DateOnly(2026, 4, 30));
+
+        var activity = (await NewService(db).GetStatsAsync(UserId, default)).Activity;
+
+        var months = activity.Months.ToDictionary(m => m.Month);
+        Assert.Equal(0, months["2026-04"].Finished);
+        Assert.Equal(1, months["2026-05"].Finished);
+        Assert.Equal(1, activity.LongestStreakMonths);
+    }
+
+    [Fact]
+    public async Task GetStatsAsync_AFinishDateWithNoFinishEvent_CountsBesideOtherEvents()
+    {
+        // Precedence is per kind of act, not per game as a whole. A move to Playing says when the
+        // game was started and nothing about whether it was ever finished, so the date still
+        // answers that.
+        using var db = NewDb();
+        AddEvent(db, 1, null, ListStatusKeys.Backlog, new DateTimeOffset(2026, 4, 1, 9, 0, 0, TimeSpan.Zero));
+        AddEvent(db, 1, ListStatusKeys.Backlog, ListStatusKeys.Playing, new DateTimeOffset(2026, 4, 20, 9, 0, 0, TimeSpan.Zero));
+        AddPlaythrough(db, gameId: 1, finishedOn: new DateOnly(2026, 5, 17));
+
+        var months = await MonthsOf(db);
+
+        Assert.Equal(1, months["2026-04"].Started);
+        Assert.Equal(1, months["2026-05"].Finished);
+    }
+
+    [Fact]
+    public async Task GetStatsAsync_NoStartEvent_StartsFromTheEarliestPlaythroughDate()
+    {
+        // Two runs of one game: started once, in March, however often it was played after that.
+        using var db = NewDb();
+        AddImported(db, 1, startedOn: new DateOnly(2026, 3, 14), finishedOn: new DateOnly(2026, 3, 30));
+        AddPlaythrough(db, gameId: 1, startedOn: new DateOnly(2026, 5, 2));
+
+        var months = await MonthsOf(db);
+
+        Assert.Equal(1, months["2026-03"].Started);
+        Assert.Equal(0, months["2026-05"].Started);
+    }
+
+    [Fact]
+    public async Task GetStatsAsync_AFinishDateWithNoStartDate_CountsAsStartedThatMonth()
+    {
+        // 94 rows of the real Grouvee export carry a finish and no start (ADR 0037). A game that was
+        // finished had been started by then — the reading ADR 0023 gives a game ticked off straight
+        // from the backlog — and without it the chart would show finishes nobody ever started.
+        using var db = NewDb();
+        AddImported(db, 1, finishedOn: new DateOnly(2026, 4, 12));
+
+        var april = (await MonthsOf(db))["2026-04"];
+
+        Assert.Equal(1, april.Started);
+        Assert.Equal(1, april.Finished);
+    }
+
+    [Fact]
+    public async Task GetStatsAsync_AStartEvent_OutranksAnEarlierStartDate()
+    {
+        using var db = NewDb();
+        AddEvent(db, 1, null, ListStatusKeys.Playing, new DateTimeOffset(2026, 5, 6, 9, 0, 0, TimeSpan.Zero));
+        AddPlaythrough(db, gameId: 1, startedOn: new DateOnly(2026, 2, 20));
+
+        var activity = (await NewService(db).GetStatsAsync(UserId, default)).Activity;
+
+        // Started when the log says. And the overridden date does not drag the chart back to
+        // February either — only a date that is counted extends it, or the chart would open on three
+        // months of nothing with no visible reason for them.
+        Assert.Equal(["2026-05", "2026-06"], activity.Months.Select(m => m.Month));
+        Assert.Equal(1, activity.Months[0].Started);
+    }
+
+    [Fact]
+    public async Task GetStatsAsync_AnImportedGamePickedUpAgain_StartsByTheLogAndFinishesByTheDate()
+    {
+        // The one place the two sources disagree, pinned so that it stays a decision (ADR 0047). The
+        // move back to Playing is a status change and settles the start; nothing has moved the game
+        // to Finished here, so the imported date still settles that — and the chart shows a finish
+        // in a month before the start it counts.
+        using var db = NewDb();
+        AddImported(db, 1, finishedOn: new DateOnly(2026, 3, 8));
+        AddEvent(db, 1, ListStatusKeys.Finished, ListStatusKeys.Playing, new DateTimeOffset(2026, 5, 6, 9, 0, 0, TimeSpan.Zero));
+
+        var months = await MonthsOf(db);
+
+        Assert.Equal(0, months["2026-03"].Started);
+        Assert.Equal(1, months["2026-03"].Finished);
+        Assert.Equal(1, months["2026-05"].Started);
+    }
+
+    [Fact]
+    public async Task GetStatsAsync_RunsFinishedTwiceInOneMonth_CountOnceAndAgainInALaterMonth()
+    {
+        // At most one finish per game per month, as for status changes, and a finish of the same
+        // game in a later month is a finish of its own.
+        using var db = NewDb();
+        AddImported(db, 1, startedOn: new DateOnly(2026, 4, 1), finishedOn: new DateOnly(2026, 4, 3));
+        AddPlaythrough(db, gameId: 1, startedOn: new DateOnly(2026, 4, 10), finishedOn: new DateOnly(2026, 4, 25));
+        AddPlaythrough(db, gameId: 1, startedOn: new DateOnly(2026, 5, 30), finishedOn: new DateOnly(2026, 6, 2));
+
+        var months = await MonthsOf(db);
+
+        Assert.Equal([1, 0, 1], new[] { "2026-04", "2026-05", "2026-06" }.Select(m => months[m].Finished));
+    }
+
+    [Fact]
+    public async Task GetStatsAsync_Months_ReachBackToTheEarliestCountedDate()
+    {
+        // An imported finish from before the log began stays on the chart. Starting at the first
+        // event would drop it — and "finished this year" with it — the moment its owner moved a
+        // single game here.
+        using var db = NewDb();
+        var firstChange = new DateTimeOffset(2026, 5, 6, 9, 0, 0, TimeSpan.Zero);
+        AddImported(db, 1, finishedOn: new DateOnly(2026, 2, 14));
+        AddEvent(db, 2, null, ListStatusKeys.Playing, firstChange);
+
+        var activity = (await NewService(db).GetStatsAsync(UserId, default)).Activity;
+
+        Assert.Equal("2026-02", activity.Months[0].Month);
+        Assert.Equal(1, activity.Months[0].Finished);
+        // The log still began when it began. A playthrough's date says when a game was played, not
+        // when anybody started tracking here.
+        Assert.Equal(firstChange, activity.LogStartedAt);
+    }
+
+    [Fact]
+    public async Task GetStatsAsync_Months_FromAnOldDateAreStillCappedAtTwelve()
+    {
+        // An import can carry a decade. The chart shows the last year of it, and the streak record
+        // still reaches all the way back, as it does for status changes.
+        using var db = NewDb();
+        foreach (var month in new[] { 1, 2, 3 })
+            AddImported(db, month, finishedOn: new DateOnly(2019, month, 10));
+
+        var activity = (await NewService(db).GetStatsAsync(UserId, default)).Activity;
+
+        Assert.Equal(12, activity.Months.Count);
+        Assert.Equal("2025-07", activity.Months[0].Month);
+        Assert.Equal(0, activity.Months.Sum(m => m.Finished));
+        Assert.Equal(3, activity.LongestStreakMonths);
+        Assert.Equal(0, activity.CurrentStreakMonths);
+    }
+
+    [Fact]
+    public async Task GetStatsAsync_ADateInAMonthNotYetBegun_IsNotCounted()
+    {
+        // A typed date can be wrong in a way our clock cannot. July has not begun, so a finish in it
+        // has not happened — and must not stretch a one-month streak into two.
+        using var db = NewDb();
+        AddImported(db, 1, finishedOn: new DateOnly(2026, 6, 3));
+        AddImported(db, 2, finishedOn: new DateOnly(2026, 7, 2));
+
+        var activity = (await NewService(db).GetStatsAsync(UserId, default)).Activity;
+
+        Assert.Equal(["2026-06"], activity.Months.Select(m => m.Month));
+        Assert.Equal(1, activity.Months[0].Finished);
+        Assert.Equal(1, activity.Months[0].Started);
+        Assert.Equal(1, activity.LongestStreakMonths);
+    }
+
+    [Fact]
+    public async Task GetStatsAsync_DatesOnARunLoggedHere_CountAsWellAsImportedOnes()
+    {
+        // Every playthrough, not only imported ones (ADR 0047). A finish date logged here on a game
+        // that was never moved to Finished is as real a finish as one typed into another tracker,
+        // and the precedence already lets our own status changes win wherever there are any.
+        using var db = NewDb();
+        AddPlaythrough(db, gameId: 1, finishedOn: new DateOnly(2026, 5, 20));
+
+        var may = (await MonthsOf(db))["2026-05"];
+
+        Assert.Equal(1, may.Finished);
+    }
+
+    [Fact]
+    public async Task GetStatsAsync_PlaythroughDates_LeaveDropsTransitionsAndTimeToFinishAlone()
+    {
+        // A playthrough cannot say a game was dropped, the transition count is a count of status
+        // changes, and a run's calendar span is not time spent in Playing (ADR 0018). So a dated
+        // import adds to none of the three.
+        using var db = NewDb();
+        var may = new DateTimeOffset(2026, 5, 1, 0, 0, 0, TimeSpan.Zero);
+        AddEvent(db, 1, null, ListStatusKeys.Playing, may);
+        AddEvent(db, 1, ListStatusKeys.Playing, ListStatusKeys.Finished, may.AddDays(3));
+        AddEvent(db, 2, null, ListStatusKeys.Playing, may);
+        AddEvent(db, 2, ListStatusKeys.Playing, ListStatusKeys.Dropped, may.AddDays(1));
+        AddImported(db, 3, startedOn: new DateOnly(2026, 3, 1), finishedOn: new DateOnly(2026, 3, 21));
+
+        var activity = (await NewService(db).GetStatsAsync(UserId, default)).Activity;
+
+        Assert.Equal(4, activity.Transitions);
+        Assert.Equal(1, activity.Months.Sum(m => m.Dropped));
+        Assert.Equal(1, activity.Months.Single(m => m.Month == "2026-05").Dropped);
+        Assert.NotNull(activity.TimeToFinish);
+        Assert.Equal(1, activity.TimeToFinish.Samples);
+        Assert.Equal(72, activity.TimeToFinish.MedianHours, precision: 6);
+    }
+
+    [Fact]
+    public async Task GetStatsAsync_Streak_RunsAcrossBothSources()
+    {
+        // Imported finishes in April and May, and one marked Finished here in June: one run of
+        // three, because a streak is about months with a finish in them, not where each was written.
+        using var db = NewDb();
+        AddImported(db, 1, finishedOn: new DateOnly(2026, 4, 11));
+        AddImported(db, 2, finishedOn: new DateOnly(2026, 5, 19));
+        AddEvent(db, 3, null, ListStatusKeys.Playing, new DateTimeOffset(2026, 6, 1, 9, 0, 0, TimeSpan.Zero));
+        AddEvent(db, 3, ListStatusKeys.Playing, ListStatusKeys.Finished, new DateTimeOffset(2026, 6, 10, 9, 0, 0, TimeSpan.Zero));
+
+        var activity = (await NewService(db).GetStatsAsync(UserId, default)).Activity;
+
+        Assert.Equal(3, activity.CurrentStreakMonths);
+        Assert.Equal(3, activity.LongestStreakMonths);
+    }
+
+    [Fact]
+    public async Task GetStatsAsync_AnotherUsersPlaythroughDates_AreNotCounted()
+    {
+        using var db = NewDb();
+        AddImported(db, 1, finishedOn: new DateOnly(2026, 5, 2), userId: OtherUserId);
+
+        var activity = (await NewService(db).GetStatsAsync(UserId, default)).Activity;
+
+        Assert.Empty(activity.Months);
+        Assert.Equal(0, activity.LongestStreakMonths);
     }
 }
