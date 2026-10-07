@@ -15,8 +15,10 @@ const SERIES = [
  * answering it. Leaving it out would make a month of clearing the backlog by abandoning it look
  * like a month of doing nothing.
  *
- * The months come from the server already trimmed to where the event log begins, so an empty
- * column here means a quiet month rather than one that predates any records.
+ * The months come from the server already trimmed to the earliest record — the first status change,
+ * or the earliest playthrough date counted where a game has no status change to go by (ADR 0047) —
+ * so no column here predates every record. An empty one is a month with nothing recorded in it,
+ * which the dates on an import do not always fill.
  */
 export function ActivityChart({ months }: { months: ActivityMonth[] }) {
     const tallest = Math.max(
@@ -71,9 +73,11 @@ export function ActivityChart({ months }: { months: ActivityMonth[] }) {
                 </ol>
             </div>
 
+            {/* Not "nothing moved between lists": a move to the backlog is one and is not drawn,
+                and the bars count playthrough dates as well as moves. */}
             {!anything && (
                 <p className="profile-caption">
-                    Nothing moved between lists in these months.
+                    Nothing recorded as started, finished or dropped in these months.
                 </p>
             )}
         </div>

@@ -260,13 +260,54 @@ describe('ProfileStats headline figures', () => {
 });
 
 describe('ProfileStats activity', () => {
-    it('says when the log begins, so an absent month is not read as a quiet one', async () => {
+    it('says when the log begins and what fills in around it, so an absent month is not read as a quiet one', async () => {
         stubFetch(stats());
         renderStats();
         await settled();
 
-        expect(screen.getByText(/17 changes recorded since 2 April 2026/i)).toBeInTheDocument();
-        expect(screen.getByText(/months before that are not shown/i)).toBeInTheDocument();
+        const caption = screen.getByText(/17 status changes recorded since 2 April 2026/i);
+        // Since ADR 0047 the chart can start before the log does, so "months before that are not
+        // shown" would no longer be true. It starts at the earliest record of either kind.
+        expect(caption).toHaveTextContent(/the dates on your playthroughs count instead/i);
+        expect(caption).toHaveTextContent(/nothing before the earliest record is shown/i);
+        expect(screen.queryByText(/months before that are not shown/i)).not.toBeInTheDocument();
+    });
+
+    it('charts an imported library that has no status changes, and says where the months come from', async () => {
+        // The owner's own account: a whole library imported, which writes no events, and a chart
+        // drawn from the dates on its playthroughs alone.
+        stubFetch(stats({
+            activity: {
+                logStartedAt: null,
+                months: [
+                    { month: '2026-05', started: 2, finished: 2, dropped: 0 },
+                    { month: '2026-06', started: 1, finished: 1, dropped: 0 },
+                ],
+                transitions: 0,
+                currentStreakMonths: 2,
+                longestStreakMonths: 8,
+                timeToFinish: null,
+            },
+        }));
+        renderStats();
+        await settled();
+
+        expect(screen.getByText('2026-05: started 2, finished 2, dropped 0')).toBeInTheDocument();
+        expect(screen.getByText(/no status changes recorded here yet, so this counts the dates on your playthroughs/i))
+            .toBeInTheDocument();
+        expect(screen.queryByText(/no status changes or playthrough dates recorded yet/i)).not.toBeInTheDocument();
+    });
+
+    it('names both sources when there is nothing to chart', async () => {
+        // A month needs a status change or a dated playthrough, so an empty chart lacks both — and
+        // the reader can supply either.
+        stubFetch(stats({
+            activity: { ...stats().activity, logStartedAt: null, months: [], transitions: 0 },
+        }));
+        renderStats();
+        await settled();
+
+        expect(screen.getByText('No status changes or playthrough dates recorded yet.')).toBeInTheDocument();
     });
 
     it('labels every month with all three counts for assistive tech', async () => {

@@ -180,13 +180,19 @@ export function ProfilePage({ loaderData }: Route.ComponentProps) {
                     </span>
                     <div>
                         <h1 className="public-profile-name">{profile.userName}</h1>
-                        <p className="public-profile-since">
-                            {/* Not a join date — there is no such column, and inventing one for
-                                accounts that predate it would be inventing a fact. */}
-                            {activity.trackingSince === null
-                                ? 'Has not tracked anything here yet.'
-                                : `Tracking games here since ${formatDate(activity.trackingSince)}.`}
-                        </p>
+                        {/* Not a join date — there is no such column, and inventing one for
+                            accounts that predate it would be inventing a fact. It is the first
+                            status change, never an imported date (ADR 0047), so a library that was
+                            imported and never moved has none — and is not "nothing tracked" either,
+                            with its games on the page below. That case says nothing rather than
+                            something untrue. */}
+                        {activity.trackingSince !== null ? (
+                            <p className="public-profile-since">
+                                {`Tracking games here since ${formatDate(activity.trackingSince)}.`}
+                            </p>
+                        ) : library.recorded === 0 ? (
+                            <p className="public-profile-since">Has not tracked anything here yet.</p>
+                        ) : null}
                     </div>
                 </header>
 
@@ -255,7 +261,7 @@ export function ProfilePage({ loaderData }: Route.ComponentProps) {
                     <section className="profile-section">
                         <h3 className="profile-section-title">What they start and finish</h3>
                         {activity.months.length === 0
-                            ? <p className="profile-empty">No status changes recorded yet.</p>
+                            ? <p className="profile-empty">No status changes or playthrough dates recorded yet.</p>
                             : <ActivityChart months={activity.months} />}
                         {activity.longestStreakMonths > 0 && (
                             <p className="profile-caption">
