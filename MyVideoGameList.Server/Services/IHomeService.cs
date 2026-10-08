@@ -9,8 +9,8 @@ public interface IHomeService
     /// </summary>
     /// <remarks>
     /// Deliberately carries nothing user-specific, so the whole response is cacheable once for
-    /// every visitor. The personalised parts of the page — the user's own lists, and which of
-    /// their games are releasing soon — stay as separate client-side calls.
+    /// every visitor. The personalised parts of the page — the user's own lists, and what is
+    /// coming for their games in the next two weeks — stay as separate client-side calls.
     /// </remarks>
     Task<HomeResponse> GetHomeAsync(CancellationToken cancellationToken = default);
 }

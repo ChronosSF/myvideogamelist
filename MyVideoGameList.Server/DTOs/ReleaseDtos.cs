@@ -24,13 +24,19 @@ public record ReleaseWindowQuery(
     /// </summary>
     public const int MaxDays = 400;
 
-    public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
-    {
-        if (From is not { } from || To is not { } to) yield break;
+    public IEnumerable<ValidationResult> Validate(ValidationContext validationContext) => ValidateWindow(From, To);
 
-        if (to <= from)
+    /// <summary>
+    /// What makes a window of days one the calendar answers — the releases' and the events' alike, since
+    /// the line and the calendar ask both about the same days.
+    /// </summary>
+    internal static IEnumerable<ValidationResult> ValidateWindow(DateOnly? from, DateOnly? to)
+    {
+        if (from is not { } first || to is not { } end) yield break;
+
+        if (end <= first)
             yield return new ValidationResult("The window has to end after it starts.", [nameof(To)]);
-        else if (to.DayNumber - from.DayNumber > MaxDays)
+        else if (end.DayNumber - first.DayNumber > MaxDays)
             yield return new ValidationResult($"The window can be at most {MaxDays} days long.", [nameof(To)]);
     }
 }

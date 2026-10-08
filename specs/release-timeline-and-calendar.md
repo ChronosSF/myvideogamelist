@@ -1,6 +1,6 @@
 # Spec — What is coming for your games: a two-week line and a release calendar
 
-Status: **accepted — being built under #162; the admin page (#163) and the connected releases (#164) are done**
+Status: **accepted — being built under #162; the admin page (#163), the connected releases (#164) and the two-week line (#165) are done**
 Relates to: #129 (the old month view, which this replaces), #128 (the showcases and sales for signed-out
 visitors — §9's fifth question), #122 (release notifications, which need the same "what is connected to
 my games" answer), ADR [0042](../docs/decisions/0042-admins-are-named-in-configuration.md) (the admin
@@ -50,7 +50,7 @@ whole view.
 | L3 | A release is a point on its day. A sale or a showcase that spans days is a span across them. Showcases and sales are marked as what they are and carry no cover |
 | L4 | Every entry says why it is there (§3.4) |
 | L5 | Entries grouped by §3.3's F6 appear as one ("Kingdom Hearts — 8 releases") |
-| L6 | A link to the calendar, always shown |
+| L6 | A link to the calendar, always shown — added with the calendar (#166), since until then it would be a link to a page that is not there |
 | L7 | Signed-in users only, and rendered even when empty, with a line saying nothing is due in the next two weeks — a section that comes and goes is one nobody learns to look for |
 
 ### 2.2 The calendar — `/calendar`
@@ -124,12 +124,24 @@ packs and 17 bundles, so the rules will have more to do than one six-month windo
 ### 3.4 Every entry says why it is there
 
 An entry names the game in the user's set that brought it in, and the relation: "On your wishlist —
-out on Switch 2", "Expansion for Elden Ring, a favourite", "New in the God of War series — you
+out on Switch 2", "Expansion for Elden Ring, a favourite", "From the God of War series — you
 finished God of War". When several of the user's games bring in the same entry, the strongest reason
 is the one shown: the relation first, R1 before R2 before R3, and then the membership, a favourite
 before the wishlist before a list. The relation leads because it is the more specific claim — "Re Mind
 is DLC for Kingdom Hearts III, which you finished" says more than "Re Mind is in the Kingdom Hearts
 series, like your favourite Kingdom Hearts 0.2".
+
+A list is said as what the user did with the game — finished it, is playing it, put it on hold, plans
+to play it — never by the list's name. A rename is a label its owner sees
+([0031](../docs/decisions/0031-a-list-rename-is-a-label-its-owner-sees.md)), and "you finished God of
+War" stays true whatever Finished is called, where "in your Finished" would print a default the owner
+may have replaced. A series is "from", not "new in", because what a series brings in can be an old
+game reaching a new platform.
+
+A group (F6) says its strongest reason as the group's: "Includes Kingdom Hearts III, which you
+finished", or "Connected to Kingdom Hearts III" when that reason is one release's DLC, so that eight
+releases are not all called DLC. A run of DLC for one game is the group that can be called what it
+is: "DLC for Street Fighter 6, which you're playing".
 
 ## 4. Most dates are not days
 
@@ -172,6 +184,7 @@ shown.
 | E1 | An IGDB event is shown when its name starts with one of a list of showcase names kept on the admin page (§7), ignoring case: "Nintendo Direct", "State of Play", "Summer Game Fest", "The Game Awards", "Xbox Games Showcase", "Gamescom Opening Night Live" and so on. A prefix, not a substring: "Day of the Devs: Summer Game Fest Digital Showcase" is a satellite show, and does not start with "Summer Game Fest". The list starts empty and is filled on the page — no migration seeds it, so that it is kept in one place |
 | E2 | A showcase IGDB does not have yet can be added by hand on the admin page, as a curated event (§6) |
 | E3 | "Features a game you track" is left for later. An event's `games` appear to be filled in around the broadcast — the one future event had none — so it could only be said of a show that has already aired |
+| E4 | An IGDB event is an instant, not a day, and is drawn on the reader's own day at its start time. A show at three in the afternoon in Los Angeles airs after midnight in Sofia, and only the reader's clock can say which. So the server asks IGDB for a day either side of the window, in UTC, and the browser keeps what falls on the reader's days. `time_zone` is not read: it is an abbreviation, and on 2026-10-06 the June 2026 shows were "PST" while Los Angeles was on daylight time |
 
 ## 6. Store sales, entered by hand
 
@@ -277,7 +290,7 @@ should be one service that both call.
 | # | Requirement |
 |---|---|
 | B1 | `GET /api/user/releases?from=&to=&precision=` — the user's connected releases in the window, `to` exclusive and at most 400 days after `from`, grouped by F6 and each with its reason (§3.4); `precision=day`, the default, for the line, and `any` for the calendar's bands as well; `no-store` |
-| B2 | `GET /api/calendar/events?from=&to=` — showcases and curated events. The same for everybody, so cacheable once for everybody, with a `degraded` flag when IGDB failed, as `/api/home` has |
+| B2 | `GET /api/calendar/events?from=&to=` — showcases and curated events. The same for everybody, so cacheable once for everybody, with a `degraded` flag when IGDB failed, as `/api/home` has. Only IGDB's part is cached, an hour per window, and the curated events and the showcase names are read on every request, so an admin's edit shows at once. With no showcase names on the list, IGDB is not asked |
 | B3 | Admin endpoints for curated events and showcase names, behind A1's policy and `no-store`: `/api/admin/calendar/events` (list and add; replace and remove by id) and `/api/admin/calendar/showcase-names` (list and add; remove by id). A name already on the list, in any letter case, is refused as a problem with the field |
 | B4 | A migration adding the two tables, `CuratedEvents` and `ShowcaseNames` (`docs/data-model-plan.md`). Neither is user-owned (A5) |
 | B5 | Tests for §3.3's rules against recorded IGDB rows, and for the policy refusing a non-admin |
@@ -363,6 +376,6 @@ Each step is a sub-issue of #162.
 1. The admin page, its two tables and A1's policy (§7) — small, and it unblocks the sales and the
    showcases. #163, done.
 2. The releases service and B1, with §3.3's rules under test. #164, done.
-3. B2, and the two-week line in place of the Releasing soon rail. #165.
-4. The calendar. #166.
-5. Retiring `/api/games/upcoming` (B6), with the line. #165.
+3. B2, and the two-week line in place of the Releasing soon rail. #165, done.
+4. The calendar, and the line's link to it (L6). #166.
+5. Retiring `/api/games/upcoming` (B6), with the line. #165, done.

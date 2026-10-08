@@ -23,8 +23,6 @@ public interface IIgdbService
     Task<IEnumerable<GameDto>> GetGamesByIdsAsync(
         IEnumerable<int> ids, CancellationToken cancellationToken = default);
 
-    Task<IEnumerable<GameDto>> GetUpcomingReleasesAsync(CancellationToken cancellationToken = default);
-
     /// <summary>
     /// The most-played games right now, most popular first. Only games with cover art are
     /// returned, since the sole consumer is a rail of covers.
@@ -62,6 +60,21 @@ public interface IIgdbService
         DateOnly from,
         DateOnly to,
         bool withPeriods,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// IGDB's events — showcases, festivals, conventions — that overlap a window of days somewhere on
+    /// Earth, earliest first. Every one of them: which are worth showing is the caller's choice.
+    /// </summary>
+    /// <remarks>
+    /// An event is an instant and a day is somebody's local one, so the window is asked for from a day
+    /// before <paramref name="from"/> to a day after <paramref name="to"/>, in UTC. That is wider than the
+    /// days for every reader, and the reader's own clock narrows it.
+    /// </remarks>
+    /// <param name="to">Exclusive.</param>
+    Task<IReadOnlyList<GameEvent>> GetEventsAsync(
+        DateOnly from,
+        DateOnly to,
         CancellationToken cancellationToken = default);
 
     /// <summary>

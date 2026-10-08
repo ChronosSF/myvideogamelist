@@ -21,6 +21,7 @@ public class IgdbService(
     private const string ExternalGamesEndpoint = "https://api.igdb.com/v4/external_games";
     private const string PopularityEndpoint = "https://api.igdb.com/v4/popularity_primitives";
     private const string TimeToBeatEndpoint = "https://api.igdb.com/v4/game_time_to_beats";
+    private const string EventsEndpoint = "https://api.igdb.com/v4/events";
 
     // Buffer (in seconds) subtracted from the token's reported expiry so we refresh before it actually expires
     private const int TokenExpiryBufferSeconds = 120;
@@ -33,9 +34,6 @@ public class IgdbService(
     /// any realistic window, and stops a bad filter from paging forever against IGDB's rate limit.
     /// </summary>
     private const int MaxPages = 10;
-
-    /// <summary>How far ahead the upcoming releases look.</summary>
-    private const int UpcomingWindowDays = 30;
 
     /// <summary>
     /// The IGDB <c>external_game_source</c> identifying a Steam store entry. This replaced the
@@ -319,103 +317,6 @@ public class IgdbService(
     }
 
     /// <summary>
-    /// Builds the upcoming releases from the <c>release_dates</c> endpoint rather than
-    /// <c>first_release_date</c>. A game already out on PC but launching on Switch next week has a
-    /// <c>first_release_date</c> in the past and would never appear otherwise.
-    /// </summary>
-    public async Task<IEnumerable<GameDto>> GetUpcomingReleasesAsync(CancellationToken cancellationToken = default)
-    {
-        var nowOffset = DateTimeOffset.UtcNow;
-        var nowUnix = nowOffset.ToUnixTimeSeconds();
-        var endUnix = nowOffset.AddDays(UpcomingWindowDays).ToUnixTimeSeconds();
-
-        // Refresh hourly so the list stays current without hammering the API
-        var cacheKey = $"igdb_upcoming|{nowOffset:yyyyMMddHH}";
-        if (cache.TryGetValue(cacheKey, out IEnumerable<GameDto>? cached) && cached is not null)
-            return cached;
-
-        var releaseRows = await FetchReleaseDatesAsync(nowUnix, endUnix, cancellationToken);
-
-        var gameIds = releaseRows
-            .Select(r => r.Game!.Value)
-            .Distinct()
-            .ToList();
-
-        var gamesById = (await FetchGamesByIdsAsync(gameIds, cancellationToken))
-            .ToDictionary(g => g.Id);
-
-        var result = ComposeUpcoming(releaseRows, gamesById);
-
-        cache.Set(cacheKey, result, TimeSpan.FromHours(1));
-        return result;
-    }
-
-    private async Task<List<IgdbReleaseDate>> FetchReleaseDatesAsync(
-        long fromUnix, long toUnix, CancellationToken cancellationToken)
-    {
-        var rows = new List<IgdbReleaseDate>();
-
-        for (var page = 0; page < MaxPages; page++)
-        {
-            var query = new StringBuilder()
-                .AppendLine("fields game,date,platform;")
-                .AppendLine($"where date >= {fromUnix} & date <= {toUnix} & game != null;")
-                .AppendLine("sort date asc;")
-                .AppendLine($"limit {MaxBatchSize};")
-                .AppendLine($"offset {page * MaxBatchSize};")
-                .ToString();
-
-            var batch = await QueryAsync<IgdbReleaseDate>(ReleaseDatesEndpoint, query, cancellationToken);
-            rows.AddRange(batch.Where(r => r.Game.HasValue && r.Date.HasValue));
-
-            if (batch.Count < MaxBatchSize) return rows;
-        }
-
-        logger.LogWarning(
-            "Upcoming releases hit the {MaxPages}-page ceiling ({RowCount} rows); results may be truncated.",
-            MaxPages, rows.Count);
-
-        return rows;
-    }
-
-    /// <summary>
-    /// Collapses release rows into one entry per (game, date), carrying only the platforms actually
-    /// releasing on that date, so a staggered launch names the right platforms on each of its dates.
-    /// </summary>
-    internal static List<GameDto> ComposeUpcoming(
-        List<IgdbReleaseDate> releaseRows, Dictionary<int, GameDto> gamesById)
-    {
-        var composed = new List<GameDto>();
-
-        var grouped = releaseRows
-            .Where(r => gamesById.ContainsKey(r.Game!.Value))
-            .GroupBy(r => (
-                GameId: r.Game!.Value,
-                Date: DateOnly.FromDateTime(DateTimeOffset.FromUnixTimeSeconds(r.Date!.Value).UtcDateTime)));
-
-        foreach (var group in grouped)
-        {
-            var game = gamesById[group.Key.GameId];
-
-            // Resolve the releasing platform IDs against the platform list already on the game
-            var releasingIds = group
-                .Where(r => r.Platform.HasValue)
-                .Select(r => r.Platform!.Value)
-                .ToHashSet();
-
-            var platforms = game.Platforms.Where(p => releasingIds.Contains(p.Id)).ToList();
-
-            // If IGDB gave no platform on the release row, fall back to the game's full platform list
-            // rather than dropping the entry entirely.
-            if (platforms.Count == 0) platforms = game.Platforms.ToList();
-
-            composed.Add(game with { ReleaseDate = group.Key.Date, Platforms = platforms });
-        }
-
-        return composed.OrderBy(g => g.ReleaseDate).ThenBy(g => g.Title).ToList();
-    }
-
-    /// <summary>
     /// The games with the highest current player counts, most popular first.
     /// </summary>
     /// <remarks>
@@ -428,7 +329,7 @@ public class IgdbService(
     {
         if (limit <= 0) return [];
 
-        // Refresh hourly, on the same clock-hour key the upcoming releases use.
+        // Refresh hourly, on a clock-hour key.
         var cacheKey = $"igdb_trending|{limit}|{DateTimeOffset.UtcNow:yyyyMMddHH}";
         if (cache.TryGetValue(cacheKey, out IEnumerable<GameDto>? cached) && cached is not null)
             return cached;
@@ -719,6 +620,101 @@ public class IgdbService(
                 .Where(c => !string.IsNullOrWhiteSpace(c.Name))
                 .Select(c => new SeriesRef(c.Id, c.Name!))
                 .ToList());
+
+    /// <summary>
+    /// How long IGDB's events for a window are kept. They are added late — half of a year's events
+    /// three days or less before they began (spec §5) — so an hour, not a day.
+    /// </summary>
+    private static readonly TimeSpan EventsLifetime = TimeSpan.FromHours(1);
+
+    public async Task<IReadOnlyList<GameEvent>> GetEventsAsync(
+        DateOnly from, DateOnly to, CancellationToken cancellationToken = default)
+    {
+        // The same for everybody, so one copy per window serves every reader whose day it is.
+        var cacheKey = $"igdb_events|{from:yyyy-MM-dd}|{to:yyyy-MM-dd}";
+        if (cache.TryGetValue(cacheKey, out IReadOnlyList<GameEvent>? cached) && cached is not null)
+            return cached;
+
+        var events = new Dictionary<int, GameEvent>();
+        var lastPageWasFull = false;
+
+        for (var page = 0; page < MaxPages; page++)
+        {
+            var batch = await QueryAsync<IgdbEvent>(
+                EventsEndpoint, BuildEventsQuery(from, to, page * MaxBatchSize), cancellationToken);
+
+            foreach (var e in batch.Select(MapToGameEvent).OfType<GameEvent>())
+                events.TryAdd(e.Id, e);
+
+            lastPageWasFull = batch.Count == MaxBatchSize;
+            if (!lastPageWasFull) break;
+        }
+
+        IReadOnlyList<GameEvent> result = events.Values.OrderBy(e => e.StartsAt).ThenBy(e => e.Id).ToList();
+
+        // A year holds about two hundred events, so this is a bug rather than a busy year — and a partial
+        // answer is not kept, as a partial set of releases is not.
+        if (lastPageWasFull)
+        {
+            logger.LogWarning("IGDB events hit the {MaxPages}-page ceiling; the answer is partial.", MaxPages);
+            return result;
+        }
+
+        cache.Set(cacheKey, result, EventsLifetime);
+        return result;
+    }
+
+    /// <summary>
+    /// One page of the events overlapping a window: begun before it ends, and not ended before it starts.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Widened by a day at each end, in UTC, because a reader's day is a local one: the first day of the
+    /// window starts at 10:00 UTC the day before in Kiribati and the last ends at noon UTC the day after in
+    /// Baker Island. Done in seconds rather than with <c>AddDays</c>, so that a window at either end of what
+    /// a <see cref="DateOnly"/> can hold is a number IGDB has no rows for rather than an exception.
+    /// </para>
+    /// <para>
+    /// An event IGDB gave no end is taken to be the instant it starts. Sorted by id so that paging is
+    /// stable, as the release query is.
+    /// </para>
+    /// </remarks>
+    internal static string BuildEventsQuery(DateOnly from, DateOnly to, int offset)
+    {
+        var starts = UnixDay(from) - TimeSpan.SecondsPerDay;
+        var ends = UnixDay(to) + TimeSpan.SecondsPerDay;
+
+        return new StringBuilder()
+            .AppendLine("fields name,start_time,end_time,live_stream_url;")
+            .AppendLine($"where start_time < {ends} & (end_time >= {starts} | (end_time = null & start_time >= {starts}));")
+            .AppendLine("sort id asc;")
+            .AppendLine($"limit {MaxBatchSize};")
+            .AppendLine($"offset {offset};")
+            .ToString();
+    }
+
+    /// <summary>Null for a row with nothing to show: no name, or no time to put it at.</summary>
+    internal static GameEvent? MapToGameEvent(IgdbEvent e)
+    {
+        if (string.IsNullOrWhiteSpace(e.Name) || e.StartTime is not long starts) return null;
+
+        var startsAt = DateTimeOffset.FromUnixTimeSeconds(starts);
+
+        // An end before the start is a typo, and drawing it would be drawing nothing.
+        DateTimeOffset? endsAt = e.EndTime is long ends && ends >= starts ? DateTimeOffset.FromUnixTimeSeconds(ends) : null;
+
+        return new GameEvent(e.Id, e.Name.Trim(), startsAt, endsAt, WebAddress(e.LiveStreamUrl));
+    }
+
+    /// <summary>
+    /// The address when it is one a link can point at, and null otherwise. The client renders it as a link,
+    /// as it does a curated event's, so it is held to the same two schemes.
+    /// </summary>
+    private static string? WebAddress(string? url) =>
+        Uri.TryCreate(url?.Trim(), UriKind.Absolute, out var address)
+        && (address.Scheme == Uri.UriSchemeHttps || address.Scheme == Uri.UriSchemeHttp)
+            ? address.AbsoluteUri
+            : null;
 
     public Task<IEnumerable<PlatformDto>> GetActivePlatformsAsync()
     {

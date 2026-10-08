@@ -1,10 +1,7 @@
 /**
- * Release dates as the upcoming-releases endpoint sends them: a bare `YYYY-MM-DD`, one per game per
- * day, with no time and no timezone.
- *
- * Everything here reads the reader's clock, so it belongs only in output rendered after hydration,
- * such as the signed-in half of the home page, which never server-renders. See `useHydrated` for
- * why.
+ * Release dates as the API sends them: a bare `YYYY-MM-DD`, with no time and no timezone — a day,
+ * shown as the day it names (`specs/release-timeline-and-calendar.md` §4, D3). Neither function
+ * here reads the clock, so both are safe to render before hydration.
  */
 
 /**
@@ -16,29 +13,7 @@ export function parseReleaseDate(date: string): Date {
     return new Date(year, month - 1, day);
 }
 
-/**
- * The year a game came out. Unlike everything below it this reads no clock, so it is safe to render
- * before hydration.
- */
+/** The year a game came out. */
 export function releaseYear(date: string): number {
     return parseReleaseDate(date).getFullYear();
-}
-
-function startOfDay(now: Date): Date {
-    const today = new Date(now);
-    today.setHours(0, 0, 0, 0);
-    return today;
-}
-
-/** "Today", "Tomorrow", or a short date such as "Sat, Sep 19". */
-export function formatReleaseDay(date: string, now: Date = new Date()): string {
-    const day = parseReleaseDate(date);
-    const today = startOfDay(now);
-    const tomorrow = new Date(today);
-    tomorrow.setDate(today.getDate() + 1);
-
-    if (day.getTime() === today.getTime()) return 'Today';
-    if (day.getTime() === tomorrow.getTime()) return 'Tomorrow';
-
-    return day.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
 }

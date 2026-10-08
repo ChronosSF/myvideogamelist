@@ -3,7 +3,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { ContinuePlayingRail } from '@/components/ContinuePlayingRail';
 import { HomeStatsStrip } from '@/components/HomeStatsStrip';
 import { PlayNextPicker } from '@/components/PlayNextPicker';
-import { ReleasingSoonRail } from '@/components/ReleasingSoonRail';
+import { ReleaseLine } from '@/components/ReleaseLine';
 import { TrendingRail } from '@/components/TrendingRail';
 import { NewsCard } from '@/components/NewsCard';
 import { apiUrl } from '@/lib/api';
@@ -159,9 +159,10 @@ function SignedInHero({ user }: { user: UserProfile }) {
                 </h2>
                 <PlayNextPicker />
 
-                {/* Brings its own heading, because unlike the two above it has nothing to say when
-                    nothing matches and disappears whole. */}
-                <ReleasingSoonRail />
+                {/* Last in the hero, so directly above Trending and the news, which matter less to
+                    somebody signed in than their own games do (L1). Brings its own heading, because
+                    its sentence for an empty two weeks belongs inside the line it describes. */}
+                <ReleaseLine userId={user.id} />
             </div>
         </section>
     );

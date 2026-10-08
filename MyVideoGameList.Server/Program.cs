@@ -84,6 +84,7 @@ builder.Services.AddScoped<ITrackedNewsService, TrackedNewsService>();
 builder.Services.AddScoped<IImportService, ImportService>();
 builder.Services.AddScoped<IImportMatcher, ImportMatcher>();
 builder.Services.AddScoped<ICalendarCurationService, CalendarCurationService>();
+builder.Services.AddScoped<ICalendarEventService, CalendarEventService>();
 // What is coming for a user's games. Asks IGDB directly rather than through the game cache: what it
 // finds is mostly games nobody tracks yet — a sequel, a DLC — which is catalogue, not somebody's shelf.
 builder.Services.AddScoped<IConnectedReleaseService, ConnectedReleaseService>();

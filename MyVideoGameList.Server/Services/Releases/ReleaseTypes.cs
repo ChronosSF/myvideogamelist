@@ -114,6 +114,23 @@ public sealed record ReleaseEntry(
     IReadOnlyList<ConnectedRelease> Releases);
 
 /// <summary>
+/// One of IGDB's <c>events</c> — a showcase, a festival, a convention — as instants rather than days.
+/// </summary>
+/// <remarks>
+/// Kept as instants all the way to the browser, unlike a release or a curated sale. A day is somebody's
+/// local one, and a show that airs at three in the afternoon in Los Angeles airs after midnight in Sofia:
+/// only the reader's own clock can say which day to draw it on.
+/// </remarks>
+/// <param name="EndsAt">Null for an event IGDB gave no end.</param>
+/// <param name="LiveStreamUrl">Where to watch it; only ever an <c>http</c> or <c>https</c> address.</param>
+public sealed record GameEvent(
+    int Id,
+    string Name,
+    DateTimeOffset StartsAt,
+    DateTimeOffset? EndsAt,
+    string? LiveStreamUrl);
+
+/// <summary>
 /// IGDB's <c>game_types</c>, as read from a live response on 2026-09-28. The values IGDB assigns
 /// rather than ours, so nothing here may be renumbered.
 /// </summary>
