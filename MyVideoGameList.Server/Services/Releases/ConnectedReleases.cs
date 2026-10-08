@@ -41,8 +41,11 @@ internal static class ConnectedReleases
     /// <summary>A row's period: the day, or the whole month, quarter or year it is known to.</summary>
     internal readonly record struct Period(ReleasePrecision Precision, DateOnly Starts, DateOnly Ends);
 
-    /// <summary>A row that survived the filters, with the game it is shown as and why.</summary>
-    private sealed record Kept(ReleaseRow Row, CalendarGame Shown, Period Period, ReleaseReason Reason);
+    /// <summary>A row the filters let through, with the game it is shown as and the period it is known to.</summary>
+    private sealed record Known(ReleaseRow Row, CalendarGame Released, CalendarGame Shown, Period Period);
+
+    /// <summary>A known row inside the window, and why it is shown.</summary>
+    private sealed record Kept(Known Known, ReleaseReason Reason);
 
     /// <summary>What an F6 group is named after: a series, or the game a run of DLC belongs to.</summary>
     private sealed record GroupKey(string Id, string Name);
@@ -51,6 +54,10 @@ internal static class ConnectedReleases
     /// <param name="games">
     /// Every game IGDB described: the set's own, each row's, the editions' ancestors, and the games what is
     /// shown is DLC for.
+    /// </param>
+    /// <param name="rows">
+    /// The rows in the window, and any outside it that IGDB was asked for so that F5 can compare a band
+    /// with what is known inside the rest of its period. Only rows inside the window are shown.
     /// </param>
     /// <param name="to">Exclusive, like every window here.</param>
     public static IReadOnlyList<ReleaseEntry> Compose(
@@ -62,35 +69,121 @@ internal static class ConnectedReleases
     {
         var setSeries = SeriesOf(set, games);
 
-        var kept = new List<Kept>();
+        var known = new List<Known>();
         foreach (var row in rows)
         {
             // A game IGDB would not describe is one nothing can be said about.
             if (!games.TryGetValue(row.GameId, out var released)) continue;
 
-            // F1, F2. A row without a type is an old one, and old games were main games.
-            if (!KeptTypes.Contains(released.GameType ?? IgdbGameTypes.MainGame)) continue;
+            if (!IsRelease(released, row.Status)) continue;
+            if (PeriodOf(row) is not { } period) continue;
 
-            // F4: a shutdown, a cancellation, an alpha, an old game sold unchanged on a new console.
-            if (row.Status is not (null or IgdbReleaseStatuses.FullRelease or IgdbReleaseStatuses.EarlyAccess)) continue;
-
-            if (PeriodOf(row) is not { } period || period.Starts >= to || period.Ends < from) continue;
-
-            // F3, then the relation of whatever the row is shown as.
+            // F3.
             var shown = Fold(released, games);
-            if (BestReason(released, shown, set, setSeries, games) is not { } reason) continue;
+            if (!IsAnnounced(released) || !IsAnnounced(shown)) continue;
 
-            kept.Add(new Kept(row, shown, period, reason));
+            known.Add(new Known(row, released, shown, period));
+        }
+
+        var kept = new List<Kept>();
+        foreach (var k in known)
+        {
+            if (k.Period.Starts >= to || k.Period.Ends < from) continue;
+
+            // The relation of whatever the row is shown as.
+            if (BestReason(k.Released, k.Shown, set, setSeries, games) is not { } reason) continue;
+
+            kept.Add(new Kept(k, reason));
         }
 
         var releases = kept
-            .Where(k => !HasFinerRow(k, kept))
-            .GroupBy(k => (k.Shown.Id, k.Period.Precision, k.Period.Starts))
+            .Where(k => !HasFinerRow(k.Known, known))
+            .GroupBy(k => (k.Known.Shown.Id, k.Known.Period.Precision, k.Known.Period.Starts))
             .Select(ToRelease)
             .ToList();
 
         return Group(releases, setSeries, games);
     }
+
+    /// <summary>
+    /// K4: the connected games IGDB has no date for at all, each with every platform it is announced
+    /// for, grouped as F6 groups a period's — the strongest reason first, then by name.
+    /// </summary>
+    /// <param name="rows">The undated rows IGDB found through the set's relations.</param>
+    /// <remarks>
+    /// A game with a date anywhere is not undated, whatever one platform's row says. The query only asks
+    /// about games with no <c>first_release_date</c>, but what a row is shown as is decided here, and an
+    /// edition with no date of its own folds into a game that may well have one (F3) — "Devil May Cry 5:
+    /// Lenticular Edition" was to be decided on 2026-10-08, and Devil May Cry 5 came out in 2019.
+    /// </remarks>
+    public static IReadOnlyList<UndatedEntry> ComposeUndated(
+        IReadOnlyDictionary<int, SetMember> set,
+        IReadOnlyDictionary<int, CalendarGame> games,
+        IEnumerable<UndatedRow> rows)
+    {
+        var setSeries = SeriesOf(set, games);
+
+        var kept = new List<(UndatedRow Row, CalendarGame Shown, ReleaseReason Reason)>();
+        foreach (var row in rows)
+        {
+            if (!games.TryGetValue(row.GameId, out var released)) continue;
+            if (!IsRelease(released, row.Status)) continue;
+
+            var shown = Fold(released, games);
+            if (released.Dated || shown.Dated) continue;
+            if (!IsAnnounced(released) || !IsAnnounced(shown)) continue;
+            if (BestReason(released, shown, set, setSeries, games) is not { } reason) continue;
+
+            kept.Add((row, shown, reason));
+        }
+
+        var releases = kept
+            .GroupBy(k => k.Shown.Id)
+            .Select(rowsOfGame =>
+            {
+                var first = rowsOfGame.First();
+                return new UndatedRelease(
+                    first.Shown,
+                    MergedPlatforms(rowsOfGame.Select(k => k.Row.Platform)),
+                    EarlyAccess: rowsOfGame.All(k => k.Row.Status == IgdbReleaseStatuses.EarlyAccess),
+                    rowsOfGame.Select(k => k.Reason).OrderBy(r => r, ReasonOrder).First());
+            })
+            .ToList();
+
+        var entries = new List<UndatedEntry>();
+        foreach (var (key, group) in GroupsIn(releases, setSeries, games))
+        {
+            if (key is not null && group.Count > 1)
+                entries.Add(new UndatedEntry(key.Name, [.. group.OrderBy(r => r.Reason, ReasonOrder).ThenBy(r => r.Game.Name, StringComparer.OrdinalIgnoreCase)]));
+            else
+                entries.AddRange(group.Select(r => new UndatedEntry(null, [r])));
+        }
+
+        // The most connected first — what the user tracks itself before its DLC before its series — since
+        // nothing else orders a list with no dates.
+        return entries
+            .OrderBy(e => e.Releases[0].Reason.Relation)
+            .ThenBy(e => e.Releases[0].Reason.Membership)
+            .ThenBy(e => e.GroupName ?? e.Releases[0].Game.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    /// <summary>
+    /// F1, F2 and F4: what a player would call a release, and a row of it that is one — not a shutdown, a
+    /// cancellation, an alpha, or an old game sold unchanged on a new console.
+    /// </summary>
+    /// <remarks>A game without a type is an old one, and old games were main games.</remarks>
+    private static bool IsRelease(CalendarGame released, int? rowStatus) =>
+        KeptTypes.Contains(released.GameType ?? IgdbGameTypes.MainGame)
+        && rowStatus is null or IgdbReleaseStatuses.FullRelease or IgdbReleaseStatuses.EarlyAccess;
+
+    /// <summary>
+    /// F4, for the game as a whole: one IGDB marks cancelled or rumoured is not coming, whatever its rows
+    /// still say. "Metro Rivals: New York" was cancelled with three "2026" rows still marked Full Release
+    /// on 2026-10-08.
+    /// </summary>
+    private static bool IsAnnounced(CalendarGame game) =>
+        game.GameStatus is not (IgdbGameStatuses.Cancelled or IgdbGameStatuses.Rumored);
 
     /// <summary>
     /// The period a row is known to (spec §4), from its <c>date_format</c> and its year and month —
@@ -206,38 +299,56 @@ internal static class ConnectedReleases
     }
 
     /// <summary>
-    /// Whether the same game on the same platform has a row that says more, inside this row's period —
-    /// "Oct 2026" beside "16 Oct 2026" is the same release known twice, and only the day is worth showing.
+    /// Whether the same game on the same platform, in the same phase, has a row that says more inside this
+    /// row's period — "Oct 2026" beside "16 Oct 2026" is the same release known twice, and only the day is
+    /// worth showing.
     /// </summary>
-    private static bool HasFinerRow(Kept coarse, List<Kept> kept) =>
+    /// <remarks>
+    /// <para>
+    /// Compared with every row known, not only the window's: a band can run past the window, and a day
+    /// outside it still says when the release is. Little Witch in the Woods was "2026" on Switch beside
+    /// "16 Sep 2026" on 2026-10-08, and a calendar opening on 1 October would otherwise show it as due
+    /// sometime in a year it had already come out in.
+    /// </para>
+    /// <para>
+    /// The phase is early access, or a full release with or without its status: an early-access day and a
+    /// full release known only to its year are different milestones, not one known twice. Starseeker:
+    /// Astroneer Expeditions entered early access on 11 June 2026 with its full release "2026".
+    /// </para>
+    /// </remarks>
+    private static bool HasFinerRow(Known coarse, List<Known> known) =>
         coarse.Period.Precision != ReleasePrecision.Day
-        && kept.Any(other =>
+        && known.Any(other =>
             other.Shown.Id == coarse.Shown.Id
             && other.Row.Platform?.Id == coarse.Row.Platform?.Id
+            && IsEarlyAccess(other.Row) == IsEarlyAccess(coarse.Row)
             && other.Period.Precision < coarse.Period.Precision
             && other.Period.Starts >= coarse.Period.Starts
             && other.Period.Starts <= coarse.Period.Ends);
 
+    private static bool IsEarlyAccess(ReleaseRow row) => row.Status == IgdbReleaseStatuses.EarlyAccess;
+
     /// <summary>F5: one release per game and period, its platforms merged.</summary>
     private static ConnectedRelease ToRelease(IGrouping<(int, ReleasePrecision, DateOnly), Kept> rows)
     {
-        var first = rows.First();
-
-        var platforms = rows
-            .Select(k => k.Row.Platform)
-            .OfType<PlatformDto>()
-            .DistinctBy(p => p.Id)
-            .OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase)
-            .ToList();
+        var first = rows.First().Known;
 
         return new ConnectedRelease(
             first.Shown,
             first.Period.Precision,
             first.Period.Starts,
-            platforms,
-            EarlyAccess: rows.All(k => k.Row.Status == IgdbReleaseStatuses.EarlyAccess),
+            MergedPlatforms(rows.Select(k => k.Known.Row.Platform)),
+            EarlyAccess: rows.All(k => IsEarlyAccess(k.Known.Row)),
             rows.Select(k => k.Reason).OrderBy(r => r, ReasonOrder).First());
     }
+
+    /// <summary>Every platform once, by name.</summary>
+    private static List<PlatformDto> MergedPlatforms(IEnumerable<PlatformDto?> platforms) =>
+        platforms
+            .OfType<PlatformDto>()
+            .DistinctBy(p => p.Id)
+            .OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
 
     /// <summary>
     /// F6: releases in the same period that belong together become one entry — the same series, or,
@@ -278,7 +389,10 @@ internal static class ConnectedReleases
             .ToList();
     }
 
-    /// <summary>One period's releases, in the groups F6 makes of them: by series, then by the game they are DLC for.</summary>
+    /// <summary>
+    /// One period's releases — or the undated ones, which are one list — in the groups F6 makes of them: by
+    /// series, then by the game they are DLC for.
+    /// </summary>
     /// <remarks>
     /// A game can be in several of the set's series, so the series a release groups under is chosen across the
     /// period rather than from the release alone: the series the most of them share takes its releases first,
@@ -287,10 +401,11 @@ internal static class ConnectedReleases
     /// 1 February 2026 Final Fantasy VII Remake and its Episode Intermission did, because IGDB lists their
     /// series in different orders and the reason takes the first.
     /// </remarks>
-    private static List<(GroupKey? Key, List<ConnectedRelease> Group)> GroupsIn(
-        IEnumerable<ConnectedRelease> period,
+    private static List<(GroupKey? Key, List<T> Group)> GroupsIn<T>(
+        IEnumerable<T> period,
         IReadOnlyDictionary<int, List<int>> setSeries,
         IReadOnlyDictionary<int, CalendarGame> games)
+        where T : IShownRelease
     {
         // Every series each release shares with the set: its game's, and the one its reason names, which can
         // be an edition's.
@@ -299,7 +414,7 @@ internal static class ConnectedReleases
                 .Where(s => setSeries.ContainsKey(s.Id)).DistinctBy(s => s.Id).ToList()))
             .ToList();
 
-        var groups = new List<(GroupKey?, List<ConnectedRelease>)>();
+        var groups = new List<(GroupKey?, List<T>)>();
         while (left
                    .SelectMany(l => l.Series)
                    .GroupBy(s => s.Id)

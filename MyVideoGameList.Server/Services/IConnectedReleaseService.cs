@@ -26,4 +26,9 @@ public interface IConnectedReleaseService
         DateOnly to,
         bool withPeriods,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The user's connected games that IGDB has no date for at all (K4), grouped and each with its reason.
+    /// </summary>
+    Task<IReadOnlyList<UndatedEntryDto>> GetUndatedAsync(string userId, CancellationToken cancellationToken = default);
 }

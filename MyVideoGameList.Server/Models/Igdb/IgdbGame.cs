@@ -177,10 +177,27 @@ public record IgdbConnectedReleaseDate(
     int? M);
 
 /// <summary>
+/// A <c>release_dates</c> row with no date — <c>date_format</c> 7, "to be decided" — which IGDB sends with
+/// no <c>date</c>, <c>y</c> or <c>m</c> at all. Verified against live responses on 2026-10-08.
+/// </summary>
+public record IgdbUndatedReleaseDate(
+    int Id,
+    int? Game,
+    IgdbPlatform? Platform,
+    int? Status);
+
+/// <summary>
 /// A game as the release calendar needs it: its type, the game it is DLC for or an edition of, and its
 /// series. <see cref="ParentGame"/> and <see cref="VersionParent"/> are asked for bare, so they arrive
 /// as ids rather than as the objects <see cref="IgdbGame"/> expands them into.
 /// </summary>
+/// <remarks>
+/// <see cref="FirstReleaseDate"/> is absent for a game whose every release row is "to be decided", and
+/// set from a row known only to its year as readily as from a day: "Metro Rivals: New York", known only to
+/// be "2026", had 31 December 2026. A dated row whose status is not a release does not set it — "Tavernia"
+/// had only a beta day besides its undated rows, and none. <see cref="GameStatus"/> is absent for most
+/// games. Both verified against live responses on 2026-10-08.
+/// </remarks>
 public record IgdbCalendarGame(
     int Id,
     string Name,
@@ -188,7 +205,9 @@ public record IgdbCalendarGame(
     [property: JsonPropertyName("game_type")] int? GameType,
     [property: JsonPropertyName("parent_game")] int? ParentGame,
     [property: JsonPropertyName("version_parent")] int? VersionParent,
-    List<IgdbNamedEntity>? Collections);
+    List<IgdbNamedEntity>? Collections,
+    [property: JsonPropertyName("first_release_date")] long? FirstReleaseDate = null,
+    [property: JsonPropertyName("game_status")] int? GameStatus = null);
 
 /// <summary>
 /// A row from the IGDB <c>external_games</c> endpoint, which maps an IGDB game onto its

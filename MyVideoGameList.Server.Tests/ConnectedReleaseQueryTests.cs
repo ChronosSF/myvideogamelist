@@ -95,11 +95,36 @@ public class ConnectedReleaseQueryTests
         Assert.Contains("offset 500;", query);
         Assert.Contains("fields game,date,date_format,y,m,status,platform.name,platform.abbreviation;", query);
     }
+
+    [Fact]
+    public void BuildReleaseRowsQuery_AsksForTheGamesAndTheirEditions_OverTheDays_WhateverThePrecision()
+    {
+        // F5 compares the game a row is shown as, so an edition's day counts; and a month, a quarter or a
+        // year inside a band is as much finer than it as a day is.
+        var query = IgdbService.BuildReleaseRowsQuery([130577, 52189], new DateOnly(2026, 1, 1), new DateOnly(2027, 1, 1), offset: 0);
+
+        Assert.Contains(
+            $"where (game = (130577,52189) | game.version_parent = (130577,52189)) & date >= {Unix(new DateOnly(2026, 1, 1))} & date < {Unix(new DateOnly(2027, 1, 1))};",
+            query);
+        Assert.DoesNotContain("date_format", query.Split('\n').Single(l => l.StartsWith("where ")));
+        Assert.Contains("sort id asc;", query);
+    }
+
+    [Fact]
+    public void BuildUndatedReleasesQuery_AsksOnlyForGamesWithNoDateAnywhere()
+    {
+        var query = IgdbService.BuildUndatedReleasesQuery("game = (472) | game.collections = (6)", offset: 1000);
+
+        Assert.Contains("where (game = (472) | game.collections = (6)) & date_format = 7 & game.first_release_date = null;", query);
+        Assert.Contains("fields game,status,platform.name,platform.abbreviation;", query);
+        Assert.Contains("sort id asc;", query);
+        Assert.Contains("offset 1000;", query);
+    }
 }
 
 /// <summary>
-/// The calendar's two queries against IGDB's own JSON, recorded on 2026-09-29 — the joint no test of
-/// the rules can reach. <c>parent_game</c> asked for bare arrives as a number where
+/// The calendar's queries against IGDB's own JSON, recorded on 2026-09-29 and, for the games with no date
+/// and the cancelled one, on 2026-10-08 — the joint no test of the rules can reach. <c>parent_game</c> asked for bare arrives as a number where
 /// <c>IgdbGame</c> would read an object, and a misnamed <c>date_format</c> would read every row as
 /// known to the day, with nothing logged.
 /// </summary>
@@ -130,7 +155,23 @@ public class CalendarIgdbJsonTests
           {
             "id": 407999, "cover": { "id": 600579, "image_id": "cocver" },
             "name": "Grand Theft Auto VI: Ultimate Edition", "version_parent": 52189, "game_type": 0
+          },
+          {
+            "id": 81249, "cover": { "id": 91183, "image_id": "co1ycv" }, "name": "The Elder Scrolls VI",
+            "collections": [ { "id": 6, "name": "The Elder Scrolls" } ], "game_type": 0
+          },
+          {
+            "id": 373617, "cover": { "id": 498680, "image_id": "coaos8" }, "first_release_date": 1798675200,
+            "name": "Metro Rivals: New York", "game_status": 6, "game_type": 0
           }
+        ]
+        """;
+
+    /// <summary>Recorded on 2026-10-08: no date, no year and no month, and here no status either.</summary>
+    private const string UndatedRowsPayload = """
+        [
+          { "id": 209899, "game": 81249, "platform": { "id": 169, "abbreviation": "Series X|S", "name": "Xbox Series X|S" } },
+          { "id": 209900, "game": 81249, "platform": { "id": 6, "abbreviation": "PC", "name": "PC (Microsoft Windows)" } }
         ]
         """;
 
@@ -147,8 +188,11 @@ public class CalendarIgdbJsonTests
         {
             if (request.RequestUri?.Host == "id.twitch.tv") return Json(TokenPayload);
 
-            Queries.Add(await request.Content!.ReadAsStringAsync(cancellationToken));
-            return Json(request.RequestUri!.AbsolutePath.EndsWith("/release_dates") ? ReleaseRowsPayload : GamesPayload);
+            var query = await request.Content!.ReadAsStringAsync(cancellationToken);
+            Queries.Add(query);
+
+            if (!request.RequestUri!.AbsolutePath.EndsWith("/release_dates")) return Json(GamesPayload);
+            return Json(query.Contains("date_format = 7") ? UndatedRowsPayload : ReleaseRowsPayload);
         }
 
         private static HttpResponseMessage Json(string body) =>
@@ -208,6 +252,34 @@ public class CalendarIgdbJsonTests
         Assert.Equal(52189, ultimate.VersionParentId);
         Assert.Null(ultimate.ParentGameId);
         Assert.Empty(ultimate.Series);
+    }
+
+    [Fact]
+    public async Task GetCalendarGamesAsync_BindsWhetherIgdbHasAnyDateAndTheGamesStatus()
+    {
+        var (service, _) = NewService();
+
+        var games = await service.GetCalendarGamesAsync([81249, 373617]);
+
+        Assert.Equal((false, null), (games[81249].Dated, games[81249].GameStatus));
+        Assert.Equal((true, IgdbGameStatuses.Cancelled), (games[373617].Dated, games[373617].GameStatus));
+    }
+
+    [Fact]
+    public async Task GetUndatedReleaseRowsAsync_BindsARowWithNoDate()
+    {
+        var (service, igdb) = NewService();
+
+        var answer = await service.GetUndatedReleaseRowsAsync([472], [6]);
+
+        Assert.False(answer.Truncated);
+        Assert.Equal(
+            [
+                new UndatedRow(209899, 81249, new PlatformDto(169, "Xbox Series X|S", "Series X|S", null, null), null),
+                new UndatedRow(209900, 81249, new PlatformDto(6, "PC (Microsoft Windows)", "PC", null, null), null),
+            ],
+            answer.Rows);
+        Assert.Contains("game.first_release_date = null", Assert.Single(igdb.Queries));
     }
 
     [Fact]
