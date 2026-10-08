@@ -121,6 +121,7 @@ public sealed class Edge : Construct
             ["/news*"] = uncached,
             ["/import*"] = uncached,
             ["/admin*"] = uncached,
+            ["/calendar*"] = uncached,
         };
 
         Distribution = new Distribution(this, "Distribution", new DistributionProps

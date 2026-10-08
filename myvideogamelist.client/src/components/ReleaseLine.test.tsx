@@ -123,6 +123,12 @@ describe('ReleaseLine', () => {
         expect(screen.getByText('Nothing connected to your games is due in the next two weeks.')).toBeInTheDocument();
     });
 
+    it('links to the whole calendar, empty or not (L6)', () => {
+        renderLine();
+
+        expect(screen.getByRole('link', { name: 'The whole calendar' })).toHaveAttribute('href', '/calendar');
+    });
+
     it('says it is still looking while the releases load', () => {
         line.releases = { data: null, loading: true, error: null };
         renderLine();

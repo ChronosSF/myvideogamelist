@@ -1,0 +1,871 @@
+/*
+ * The release calendar. A month is one grid of seven columns whose rows come from `layoutMonth`: per
+ * week, a row for the dates, a row per lane of bars, and a row for the releases. The days, the bars and
+ * the padding days of the months either side are three layers laid over the same tracks with subgrid,
+ * as on the two-week line, so a bar crosses exactly the days it covers.
+ *
+ * Below `md` the same lists become a list: the month's sales and showcases first, then only the days
+ * with something on them, each under its whole date.
+ *
+ * Every selector names a class of its own. These rules are unlayered, so a bare `span` here would
+ * outrank Tailwind's `sr-only` and put the screen-reader text on screen.
+ */
+
+/* One column no wider than the page: a grid item's minimum is its content's, and the months' list is
+   thirteen months wide where it scrolls. */
+.calendar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2rem;
+}
+
+/* ── The months ──────────────────────────────────────────────────────────── */
+
+.calendar-months ol {
+    display: flex;
+    gap: 0.375rem;
+    margin: 0 -1rem;
+    padding: 0 1rem 0.375rem;
+    overflow-x: auto;
+    list-style: none;
+}
+
+/* All thirteen in a row once a row can hold them, sharing it evenly; scrolled through until then,
+   rather than wrapped onto a second row that reads as a second year. */
+@media (min-width: 640px) {
+    .calendar-months ol {
+        margin: 0;
+        padding: 0 0 0.375rem;
+    }
+}
+
+@media (min-width: 1024px) {
+    .calendar-months ol {
+        display: grid;
+        grid-template-columns: repeat(13, minmax(0, 1fr));
+        padding: 0;
+        overflow: visible;
+    }
+
+    .calendar-month {
+        min-width: 0;
+    }
+}
+
+/* Positioned, so that its screen-reader text is placed inside it: positioned against the page, the text
+   of a month scrolled out of the strip would widen the page by the strip's overflow. */
+.calendar-month {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-width: 3.75rem;
+    padding: 0.375rem 0.5rem;
+    border: 1px solid var(--app-border);
+    border-radius: 0.5rem;
+    font-size: 0.75rem;
+    line-height: 1.3;
+    color: #94a3b8;
+    transition: background-color 0.12s, border-color 0.12s, color 0.12s;
+}
+
+.calendar-month:hover {
+    border-color: rgba(59, 130, 246, 0.5);
+    color: #e2e8f0;
+}
+
+.calendar-month:focus-visible,
+.calendar-step:focus-visible,
+.calendar-entry-cover:focus-visible,
+.calendar-entry-title:focus-visible,
+.calendar-more:focus-visible,
+.calendar-retry:focus-visible,
+.calendar-entry-add:focus-visible,
+.calendar-entry-add-inline:focus-visible {
+    outline: 2px solid #3b82f6;
+    outline-offset: 2px;
+}
+
+.calendar-month[aria-current='page'] {
+    border-color: rgba(59, 130, 246, 0.6);
+    background: rgba(37, 99, 235, 0.2);
+    color: #93c5fd;
+}
+
+.calendar-month-name {
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.calendar-month-year {
+    font-weight: 400;
+    opacity: 0.8;
+}
+
+.calendar-month-count {
+    font-size: 0.6875rem;
+    font-variant-numeric: tabular-nums;
+}
+
+[data-theme='light'] .calendar-month {
+    color: #475569;
+}
+
+[data-theme='light'] .calendar-month:hover {
+    color: #0f172a;
+}
+
+[data-theme='light'] .calendar-month[aria-current='page'] {
+    border-color: #93c5fd;
+    background: #dbeafe;
+    color: #1e40af;
+}
+
+/* ── The month's heading ─────────────────────────────────────────────────── */
+
+.calendar-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 0.75rem;
+}
+
+.calendar-month-heading {
+    font-size: 1.375rem;
+    font-weight: 700;
+    color: #fff;
+}
+
+[data-theme='light'] .calendar-month-heading {
+    color: #0f172a;
+}
+
+.calendar-steps {
+    display: flex;
+    gap: 0.375rem;
+}
+
+.calendar-step {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.25rem;
+    height: 2.25rem;
+    border: 1px solid var(--app-border);
+    border-radius: 0.5rem;
+    font-size: 1.25rem;
+    line-height: 1;
+    color: #cbd5e1;
+}
+
+.calendar-step:hover {
+    border-color: rgba(59, 130, 246, 0.5);
+    color: #fff;
+}
+
+.calendar-step[data-off] {
+    opacity: 0.35;
+}
+
+[data-theme='light'] .calendar-step {
+    color: #334155;
+}
+
+[data-theme='light'] .calendar-step:hover {
+    color: #0f172a;
+}
+
+/* ── What the calendar says instead ──────────────────────────────────────── */
+
+.calendar-note {
+    margin: 0 0 0.75rem;
+    font-size: 0.875rem;
+    color: #94a3b8;
+}
+
+[data-theme='light'] .calendar-note {
+    color: #475569;
+}
+
+.calendar-retry,
+.calendar-more {
+    padding: 0;
+    border: none;
+    background: none;
+    color: #60a5fa;
+    font-weight: 500;
+    cursor: pointer;
+}
+
+.calendar-retry:hover,
+.calendar-more:hover {
+    text-decoration: underline;
+}
+
+[data-theme='light'] .calendar-retry,
+[data-theme='light'] .calendar-more {
+    color: #2563eb;
+}
+
+.calendar-more {
+    margin-top: 0.5rem;
+    font-size: 0.8125rem;
+}
+
+/* ── A release ───────────────────────────────────────────────────────────── */
+
+.calendar-entry-list,
+.calendar-day-entries {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+/* A band's and the undated list's: as many columns as fit. */
+.calendar-entry-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+    gap: 0.625rem 1rem;
+}
+
+/* A container, so that a card can tell how wide its day is. */
+.calendar-day-entries {
+    display: grid;
+    gap: 0.5rem;
+    container-type: inline-size;
+}
+
+.calendar-entry {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+    min-width: 0;
+}
+
+/* A day too narrow for a cover beside the words puts the cover above them, so that a title is not broken
+   into a letter or two a line. */
+@container (max-width: 8.5rem) {
+    .calendar-entry {
+        flex-direction: column;
+        gap: 0.375rem;
+    }
+}
+
+.calendar-entry-art {
+    position: relative;
+    flex: none;
+}
+
+.calendar-entry-cover {
+    display: block;
+    border-radius: 0.3rem;
+}
+
+.calendar-thumb {
+    display: block;
+    width: 2.25rem;
+    aspect-ratio: 3 / 4;
+    overflow: hidden;
+    border: 1px solid var(--app-border);
+    border-radius: 0.3rem;
+    background: #1e293b;
+}
+
+.calendar-thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+[data-theme='light'] .calendar-thumb {
+    background: #f1f5f9;
+}
+
+/* A group: its first cover with the edge of the rest behind it. */
+.calendar-entry-stack {
+    position: relative;
+    display: block;
+    margin: 0.1875rem 0.1875rem 0 0;
+}
+
+.calendar-entry-stack::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    transform: translate(0.1875rem, -0.1875rem);
+    border: 1px solid var(--app-border);
+    border-radius: 0.3rem;
+    background: #1e293b;
+    opacity: 0.7;
+}
+
+[data-theme='light'] .calendar-entry-stack::before {
+    background: #e2e8f0;
+}
+
+.calendar-entry-stack .calendar-thumb {
+    position: relative;
+}
+
+.calendar-entry-text {
+    min-width: 0;
+    flex: 1;
+}
+
+.calendar-entry-title {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    line-height: 1.3;
+    color: #e2e8f0;
+    overflow-wrap: anywhere;
+}
+
+a.calendar-entry-title:hover {
+    color: #60a5fa;
+}
+
+[data-theme='light'] .calendar-entry-title {
+    color: #1e293b;
+}
+
+[data-theme='light'] a.calendar-entry-title:hover {
+    color: #2563eb;
+}
+
+.calendar-entry-platforms {
+    margin-top: 0.0625rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    color: #93c5fd;
+}
+
+[data-theme='light'] .calendar-entry-platforms {
+    color: #1d4ed8;
+}
+
+.calendar-entry-badge {
+    display: inline-block;
+    margin-top: 0.125rem;
+    padding: 0 0.375rem;
+    border: 1px solid rgba(245, 158, 11, 0.45);
+    border-radius: 9999px;
+    font-size: 0.625rem;
+    font-weight: 600;
+    color: #fcd34d;
+}
+
+[data-theme='light'] .calendar-entry-badge {
+    border-color: #fcd34d;
+    color: #b45309;
+}
+
+.calendar-entry-reason {
+    margin-top: 0.125rem;
+    font-size: 0.6875rem;
+    line-height: 1.35;
+    color: #94a3b8;
+}
+
+[data-theme='light'] .calendar-entry-reason {
+    color: #475569;
+}
+
+.calendar-entry-listed {
+    margin-top: 0.125rem;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    color: #86efac;
+}
+
+[data-theme='light'] .calendar-entry-listed {
+    color: #15803d;
+}
+
+.calendar-entry-error {
+    margin-top: 0.125rem;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    color: #fca5a5;
+}
+
+[data-theme='light'] .calendar-entry-error {
+    color: #b91c1c;
+}
+
+/* Add to Backlog, on the cover's corner: shown on hover and on focus, as the lists' controls are, and
+   always where nothing can hover, or a phone would never see it. */
+.calendar-entry-add {
+    position: absolute;
+    right: -0.5rem;
+    bottom: -0.375rem;
+    width: 1.375rem;
+    height: 1.375rem;
+    border: 1px solid rgba(96, 165, 250, 0.6);
+    border-radius: 9999px;
+    background: #1e293b;
+    color: #93c5fd;
+    font-size: 0.9375rem;
+    font-weight: 700;
+    line-height: 1;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.15s, background-color 0.12s, color 0.12s;
+}
+
+.calendar-entry:hover .calendar-entry-add,
+.calendar-entry-add:focus-visible,
+.calendar-entry-add:disabled {
+    opacity: 1;
+}
+
+@media (hover: none) {
+    .calendar-entry-add {
+        opacity: 1;
+    }
+}
+
+.calendar-entry-add:hover:not(:disabled) {
+    background: #3b82f6;
+    color: #fff;
+}
+
+.calendar-entry-add:disabled {
+    cursor: default;
+}
+
+[data-theme='light'] .calendar-entry-add {
+    border-color: #93c5fd;
+    background: #fff;
+    color: #1d4ed8;
+}
+
+.calendar-entry-group {
+    margin-top: 0.25rem;
+    font-size: 0.6875rem;
+}
+
+.calendar-entry-group summary {
+    cursor: pointer;
+    color: #60a5fa;
+    font-weight: 500;
+}
+
+.calendar-entry-group ul {
+    display: grid;
+    gap: 0.25rem;
+    margin: 0.25rem 0 0;
+    padding: 0;
+    list-style: none;
+    color: #94a3b8;
+}
+
+.calendar-entry-group a {
+    color: #cbd5e1;
+}
+
+.calendar-entry-group a:hover {
+    color: #60a5fa;
+}
+
+[data-theme='light'] .calendar-entry-group summary {
+    color: #2563eb;
+}
+
+[data-theme='light'] .calendar-entry-group ul {
+    color: #475569;
+}
+
+[data-theme='light'] .calendar-entry-group a {
+    color: #1e293b;
+}
+
+.calendar-entry-add-inline {
+    margin-left: 0.25rem;
+    padding: 0 0.3rem;
+    border: 1px solid rgba(96, 165, 250, 0.5);
+    border-radius: 0.3rem;
+    background: transparent;
+    color: #93c5fd;
+    font-weight: 700;
+    line-height: 1.3;
+    cursor: pointer;
+}
+
+.calendar-entry-add-inline:hover:not(:disabled) {
+    background: rgba(59, 130, 246, 0.2);
+}
+
+[data-theme='light'] .calendar-entry-add-inline {
+    border-color: #93c5fd;
+    color: #1d4ed8;
+}
+
+/* ── The bands ───────────────────────────────────────────────────────────── */
+
+.calendar-bands {
+    display: grid;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+}
+
+/* Dashed, where the grid is solid: a period, not a day. */
+.calendar-band {
+    padding: 0.75rem;
+    border: 1px dashed rgba(100, 116, 139, 0.55);
+    border-radius: 0.75rem;
+    background: rgba(15, 23, 42, 0.4);
+}
+
+[data-theme='light'] .calendar-band {
+    border-color: #cbd5e1;
+    background: #fff;
+}
+
+.calendar-band-label {
+    margin-bottom: 0.625rem;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: #e2e8f0;
+}
+
+.calendar-band-months {
+    font-weight: 400;
+    color: #94a3b8;
+}
+
+[data-theme='light'] .calendar-band-label {
+    color: #1e293b;
+}
+
+[data-theme='light'] .calendar-band-months {
+    color: #64748b;
+}
+
+/* ── The grid ────────────────────────────────────────────────────────────── */
+
+.calendar-weekdays {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    padding-bottom: 0.375rem;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: #64748b;
+}
+
+.calendar-weekdays span {
+    padding: 0 0.5rem;
+}
+
+/* The lines between the days are the grid's own background showing through a one-pixel gap. */
+.calendar-grid {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: 1px;
+    overflow: hidden;
+    border: 1px solid var(--app-border);
+    border-radius: 0.75rem;
+    background: var(--app-border);
+}
+
+.calendar-pads,
+.calendar-days,
+.calendar-bars {
+    display: grid;
+    grid-template-columns: subgrid;
+    grid-template-rows: subgrid;
+    grid-column: 1 / -1;
+    grid-row: 1 / -1;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+/* Over the days, which have nothing in these rows; only the bars themselves take a click. */
+.calendar-bars {
+    position: relative;
+    z-index: 1;
+    pointer-events: none;
+}
+
+.calendar-pad,
+.calendar-day {
+    min-width: 0;
+    background: var(--app-bg);
+}
+
+.calendar-pad {
+    padding: 0.375rem 0.5rem;
+    font-size: 0.75rem;
+    color: #475569;
+    background: rgba(15, 23, 42, 0.75);
+}
+
+[data-theme='light'] .calendar-pad {
+    color: #cbd5e1;
+    background: #f1f5f9;
+}
+
+.calendar-day {
+    display: grid;
+    grid-template-rows: subgrid;
+}
+
+.calendar-day[data-today] {
+    background: color-mix(in srgb, #3b82f6 12%, var(--app-bg));
+}
+
+.calendar-date {
+    grid-row: 1;
+    margin: 0;
+    padding: 0.375rem 0.5rem 0.25rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #94a3b8;
+}
+
+.calendar-day[data-past] .calendar-date {
+    color: #475569;
+}
+
+.calendar-day[data-today] .calendar-date {
+    color: #93c5fd;
+}
+
+[data-theme='light'] .calendar-date {
+    color: #475569;
+}
+
+[data-theme='light'] .calendar-day[data-past] .calendar-date {
+    color: #94a3b8;
+}
+
+[data-theme='light'] .calendar-day[data-today] .calendar-date {
+    color: #1d4ed8;
+}
+
+.calendar-date-full {
+    display: none;
+}
+
+.calendar-day-entries {
+    grid-row: -2 / -1;
+    padding: 0.25rem 0.5rem 0.5rem;
+}
+
+.calendar-day[data-past] .calendar-day-entries {
+    opacity: 0.7;
+}
+
+/* ── A sale, a fest, a showcase ──────────────────────────────────────────── */
+
+/* The name on a line of its own, above the kind and the time, so that it is the name a narrow bar
+   keeps. The markup has the kind first, which is the order it is read in. */
+.calendar-bar {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-areas:
+        'name name'
+        'kind detail';
+    column-gap: 0.375rem;
+    align-items: baseline;
+    min-width: 0;
+    margin: 0.0625rem 0.25rem;
+    padding: 0.1875rem 0.5rem;
+    border: 1px solid;
+    border-radius: 0.4rem;
+    font-size: 0.6875rem;
+    line-height: 1.3;
+    white-space: nowrap;
+    overflow: hidden;
+    pointer-events: auto;
+}
+
+/* Square where it runs on into the week before or after, or off the month. */
+.calendar-bar[data-continues-before] {
+    margin-left: 0;
+    border-left: none;
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+}
+
+.calendar-bar[data-continues-after] {
+    margin-right: 0;
+    border-right: none;
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+}
+
+.calendar-bar-kind {
+    grid-area: kind;
+    font-size: 0.5625rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+}
+
+.calendar-bar-name {
+    grid-area: name;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: inherit;
+    font-weight: 600;
+}
+
+a.calendar-bar-name:hover {
+    text-decoration: underline;
+}
+
+.calendar-bar-detail {
+    grid-area: detail;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-size: 0.625rem;
+    opacity: 0.85;
+}
+
+.calendar-bar[data-kind='sale'] {
+    border-color: rgba(16, 185, 129, 0.45);
+    background: color-mix(in srgb, #10b981 16%, var(--app-bg));
+    color: #6ee7b7;
+}
+
+.calendar-bar[data-kind='fest'] {
+    border-color: rgba(245, 158, 11, 0.45);
+    background: color-mix(in srgb, #f59e0b 16%, var(--app-bg));
+    color: #fcd34d;
+}
+
+.calendar-bar[data-kind='showcase'] {
+    border-color: rgba(139, 92, 246, 0.5);
+    background: color-mix(in srgb, #8b5cf6 18%, var(--app-bg));
+    color: #c4b5fd;
+}
+
+[data-theme='light'] .calendar-bar[data-kind='sale'] {
+    border-color: #6ee7b7;
+    background: #ecfdf5;
+    color: #047857;
+}
+
+[data-theme='light'] .calendar-bar[data-kind='fest'] {
+    border-color: #fcd34d;
+    background: #fffbeb;
+    color: #b45309;
+}
+
+[data-theme='light'] .calendar-bar[data-kind='showcase'] {
+    border-color: #c4b5fd;
+    background: #f5f3ff;
+    color: #6d28d9;
+}
+
+/* ── Announced, no date ──────────────────────────────────────────────────── */
+
+.calendar-section-heading {
+    font-size: 1.125rem;
+    font-weight: 600;
+    color: #fff;
+}
+
+.calendar-section-lead {
+    margin: 0.125rem 0 0.875rem;
+    font-size: 0.875rem;
+    color: #94a3b8;
+}
+
+[data-theme='light'] .calendar-section-heading {
+    color: #0f172a;
+}
+
+[data-theme='light'] .calendar-section-lead {
+    color: #475569;
+}
+
+/* ── Below md: the month as a list ───────────────────────────────────────── */
+
+@media (max-width: 767.98px) {
+    .calendar-weekdays,
+    .calendar-pads {
+        display: none;
+    }
+
+    .calendar-grid {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+        overflow: visible;
+        border: none;
+        border-radius: 0;
+        background: none;
+    }
+
+    .calendar-days {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+
+    .calendar-day {
+        display: block;
+        padding-bottom: 0.5rem;
+        border-bottom: 1px solid var(--app-border);
+        background: none;
+    }
+
+    .calendar-day:not([data-has-entries]) {
+        display: none;
+    }
+
+    .calendar-day[data-today] {
+        background: none;
+    }
+
+    .calendar-date {
+        padding: 0 0 0.375rem;
+    }
+
+    .calendar-date-number {
+        display: none;
+    }
+
+    .calendar-date-full {
+        display: inline;
+    }
+
+    .calendar-day-entries {
+        padding: 0;
+    }
+
+    /* The month's sales and showcases, each once, above its days. */
+    .calendar-bars {
+        order: -1;
+        display: flex;
+        flex-direction: column;
+        gap: 0.375rem;
+        pointer-events: auto;
+    }
+
+    .calendar-bar,
+    .calendar-bar[data-continues-before],
+    .calendar-bar[data-continues-after] {
+        margin: 0;
+        border: 1px solid;
+        border-radius: 0.4rem;
+    }
+
+    .calendar-bar:not([data-first]) {
+        display: none;
+    }
+}

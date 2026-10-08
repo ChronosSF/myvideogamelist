@@ -55,14 +55,23 @@ export interface ConnectedRelease {
 }
 
 /**
- * One thing the line draws: a release, or several on the same day that belong together (F6) —
- * "Kingdom Hearts — 8 releases". A group's releases come strongest reason first.
+ * One thing the line or the calendar draws: a release, or several in the same period that belong
+ * together (F6) — "Kingdom Hearts — 8 releases". A group's releases come strongest reason first.
  */
 export interface ReleaseEntry {
     precision: ReleasePrecision;
     /** The day, `YYYY-MM-DD`, or the first day of the month, quarter or year. */
     starts: string;
     /** What the releases have in common, when there are several. */
+    groupName: string | null;
+    releases: ConnectedRelease[];
+}
+
+/**
+ * A connected game IGDB has no date for at all (K4), or several that belong together (F6) — what the
+ * calendar lists under "Announced, no date". It has no precision and no day, because there is none.
+ */
+export interface UndatedEntry {
     groupName: string | null;
     releases: ConnectedRelease[];
 }
