@@ -145,12 +145,4 @@ public class GamesController(
             return ValidationProblem(ModelState);
         }
     }
-
-    [HttpGet("upcoming")]
-    public async Task<ActionResult<IEnumerable<GameDto>>> GetUpcomingReleases(
-        CancellationToken cancellationToken)
-    {
-        var result = await igdbService.GetUpcomingReleasesAsync(cancellationToken);
-        return Ok(result);
-    }
 }

@@ -1,8 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatReleaseDay, parseReleaseDate } from '@/lib/releaseDate';
-
-/** Late evening, local time, so a date parsed as UTC midnight would land on the wrong day. */
-const NOW = new Date(2026, 8, 15, 23, 30);
+import { parseReleaseDate, releaseYear } from '@/lib/releaseDate';
 
 describe('parseReleaseDate', () => {
     it('is the local calendar day, not UTC midnight', () => {
@@ -13,17 +10,9 @@ describe('parseReleaseDate', () => {
     });
 });
 
-describe('formatReleaseDay', () => {
-    it('says today and tomorrow in words', () => {
-        expect(formatReleaseDay('2026-09-15', NOW)).toBe('Today');
-        expect(formatReleaseDay('2026-09-16', NOW)).toBe('Tomorrow');
-    });
-
-    it('gives any other day as a short date', () => {
-        expect(formatReleaseDay('2026-09-19', NOW)).toBe('Sat, Sep 19');
-    });
-
-    it('crosses a month end', () => {
-        expect(formatReleaseDay('2026-10-01', new Date(2026, 8, 30, 12))).toBe('Tomorrow');
+describe('releaseYear', () => {
+    it('is the year of the day named, wherever the reader is', () => {
+        // New Year's Day at UTC midnight is still the old year west of Greenwich.
+        expect(releaseYear('2027-01-01')).toBe(2027);
     });
 });

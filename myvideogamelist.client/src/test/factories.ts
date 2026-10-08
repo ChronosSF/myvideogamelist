@@ -10,6 +10,7 @@ import {
 } from '@/types/import';
 import type { ListEntryDto } from '@/types/list';
 import type { EntryDetailDto, PlaythroughDto, ReviewDto } from '@/types/playthrough';
+import type { CalendarEvents, ConnectedRelease, ReleaseEntry, ReleaseReason } from '@/types/releases';
 
 /**
  * Fixture builders for the two DTOs the list views are built on.
@@ -193,4 +194,44 @@ export function userProfile(overrides: Partial<UserProfile> = {}): UserProfile {
         isAdmin: false,
         ...overrides,
     };
+}
+
+/** Why a release is on the line: by default the game itself, on the wishlist. */
+export function reason(overrides: Partial<ReleaseReason> = {}): ReleaseReason {
+    return {
+        relation: 'itself',
+        gameId: 1,
+        title: 'A Game',
+        membership: 'wishlist',
+        list: null,
+        series: null,
+        ...overrides,
+    };
+}
+
+/** One release, as `/api/user/releases` carries it inside an entry. */
+export function connectedRelease(
+    overrides: Omit<Partial<ConnectedRelease>, 'reason'> & { reason?: Partial<ReleaseReason> } = {},
+): ConnectedRelease {
+    const { reason: why, ...rest } = overrides;
+    return {
+        gameId: 1,
+        title: 'A Game',
+        coverImageUrl: null,
+        kind: 'game',
+        platforms: [],
+        earlyAccess: false,
+        reason: reason(why),
+        ...rest,
+    };
+}
+
+/** One thing the line draws, known to the day: a single release unless a test gives it several. */
+export function releaseEntry(starts: string, releases: ConnectedRelease[] = [connectedRelease()], groupName: string | null = null): ReleaseEntry {
+    return { precision: 'day', starts, groupName, releases };
+}
+
+/** What `/api/calendar/events` answers: nothing, unless a test says otherwise. */
+export function calendarEvents(overrides: Partial<CalendarEvents> = {}): CalendarEvents {
+    return { curated: [], showcases: [], degraded: false, ...overrides };
 }

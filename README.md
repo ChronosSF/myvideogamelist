@@ -10,7 +10,7 @@ Keep track of every game you've played, build your wishlist, manage your backlog
 
 - **Game Lists** — Organise your games into lists: *Playing*, *Completed*, *On Hold*, *Dropped*, and *Plan to Play (Backlog)*
 - **Wishlist** — Save games you want to buy or try
-- **Releasing Soon** — Games on your wishlist and in your backlog that come out in the next 30 days, on your home page
+- **Coming Up** — The next two weeks for your games on your home page: a new platform, DLC, a remaster or the next in the series, each saying why it is there, beside the big showcases and store sales
 - **Game Details** — View release dates, platforms, genres, and descriptions
 - **User Profiles** — Track your own stats and history
 

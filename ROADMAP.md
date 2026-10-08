@@ -49,7 +49,7 @@ is in the history (`git log -p -- ROADMAP.md`).
 | H1 | Fork the home page on auth | Done — [0027](docs/decisions/0027-usernames-and-public-profiles.md) §11 |
 | H2 | Drop the "Rate" feature card | Done, with the home page redesign |
 | H3 | Continue Playing rail | Done — 0027 §11; `ContinuePlayingRail.tsx` |
-| H4 | "Your week", built as the Releasing soon rail | Done — `releasingSoon.ts` and `ReleasingSoonRail.tsx` say why it covers the whole window |
+| H4 | "Your week", built as the Releasing soon rail | Done, then replaced by the two-week line — #165; `ReleaseLine.tsx` |
 | H5 | Play-next picker | Done — `PlayNextPicker.tsx` |
 | H6 | Stats strip | Done — `HomeStatsStrip.tsx` |
 | H7 | Trending rail | Done — [0012](docs/decisions/0012-steam-news-without-a-database.md) |
