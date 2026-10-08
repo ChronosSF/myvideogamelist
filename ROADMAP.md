@@ -63,7 +63,7 @@ is in the history (`git log -p -- ROADMAP.md`).
 | N6 | The `/news` page | Done — `TrackedNewsService.cs` says why the order is the feature |
 | N7 | Degrade for games with no Steam presence | Done — `GameNewsPanel.tsx` |
 | §3.2 | Signed-out landing | Done, less the sign-up call to action on the rails — #127 |
-| §3.3 | Calendar accuracy | Done — [0004](docs/decisions/0004-release-dates-for-calendar.md); the month view became the release calendar, #162 |
+| §3.3 | Calendar accuracy | Done — [0004](docs/decisions/0004-release-dates-for-calendar.md); the month view became the release calendar, #166; `ReleaseCalendar.tsx` |
 | §3.4 | Steam news | N1–N7 above; RSS was considered and parked — 0041 |
 | §3.5 | `/api/home` as one endpoint | Done — 0012's Result; `IHomeService.cs` on what stays out of it |
 

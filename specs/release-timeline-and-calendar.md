@@ -1,6 +1,6 @@
 # Spec — What is coming for your games: a two-week line and a release calendar
 
-Status: **accepted — being built under #162; the admin page (#163), the connected releases (#164) and the two-week line (#165) are done**
+Status: **accepted — built under #162: the admin page (#163), the connected releases (#164), the two-week line (#165) and the calendar (#166). §9's first, second, third and sixth questions are still open, and its fifth is #128**
 Relates to: #129 (the old month view, which this replaces), #128 (the showcases and sales for signed-out
 visitors — §9's fifth question), #122 (release notifications, which need the same "what is connected to
 my games" answer), ADR [0042](../docs/decisions/0042-admins-are-named-in-configuration.md) (the admin
@@ -50,17 +50,17 @@ whole view.
 | L3 | A release is a point on its day. A sale or a showcase that spans days is a span across them. Showcases and sales are marked as what they are and carry no cover |
 | L4 | Every entry says why it is there (§3.4) |
 | L5 | Entries grouped by §3.3's F6 appear as one ("Kingdom Hearts — 8 releases") |
-| L6 | A link to the calendar, always shown — added with the calendar (#166), since until then it would be a link to a page that is not there |
+| L6 | A link to the calendar, always shown |
 | L7 | Signed-in users only, and rendered even when empty, with a line saying nothing is due in the next two weeks — a section that comes and goes is one nobody learns to look for |
 
 ### 2.2 The calendar — `/calendar`
 
 | # | Requirement |
 |---|---|
-| K1 | A month grid, opening on the current month, navigable forward to a horizon of N months (open — §9) |
-| K2 | Entries known to the day in their day's cell; sales and multi-day showcases as bars across their days |
-| K3 | Entries known only to the month, quarter or year in a band for that period, never on an invented day (§4) |
-| K4 | An "Announced, no date" list of connected games IGDB has no date for at all |
+| K1 | A month grid, Monday first, opening on the current month and reaching the same month a year later — thirteen months, §9's fourth question settled at the year it leaned to. All of them are listed above the grid, each with how much is on its days and in its own band, and the month is in the address (`?month=2027-02`), so that it can be linked to and the back button steps back through the months. A month the calendar does not reach opens the first |
+| K2 | Entries known to the day in their day's cell; sales and multi-day showcases as bars across their days, a piece per week, with only an event's first piece in the month read out, with all of its dates. Below `md` the month is a list instead: its sales and showcases once each, then the days with something on them |
+| K3 | Entries known only to the month, quarter or year in a band for that period, above the grid, never on an invented day (§4). A quarter's band is in each of its three months and a year's in each of its twelve: "sometime in 2027" is as true of March as of June. Beyond the first few months the bands are most of what there is (§10) |
+| K4 | An "Announced, no date" list of connected games IGDB has no date for at all, below the grid and the same in every month: games with no `first_release_date`, folded first (F3) and left out when what they fold into has one, and none IGDB marks cancelled or rumoured (F4). A game of the user's own is "announced for" its platforms rather than "out on" them |
 | K5 | Every entry says why it is there (§3.4), as on the line |
 | K6 | Signed-in only; `NOINDEX` and `private, no-store`, like every other per-user page |
 
@@ -117,8 +117,8 @@ packs and 17 bundles, so the rules will have more to do than one six-month windo
 | F1 | Keep game types 0 Main Game, 1 DLC, 2 Expansion, 4 Standalone Expansion, 6 Episode, 7 Season, 8 Remake, 9 Remaster, 10 Expanded Game and 11 Port | What a player would call a release |
 | F2 | Drop 3 Bundle, 5 Mod, 12 Fork, 13 Pack / Addon and 14 Update | Mods alone were 117 of the demo library's 320 children. Update is a judgement call (§9): Silksong's "Sea of Sorrow" is one |
 | F3 | Fold an edition — a main game (type 0) with a `version_parent` — into the game it is an edition of, following a chain of editions to its end; the chain can pass through a bundle. A remaster, expanded game or port that carries a `version_parent` is not folded: it is a product of its own, and a child of that game (R2). It also ends a chain, so an edition of one is shown as it | "Grand Theft Auto VI: Ultimate Edition" is Grand Theft Auto VI, on the same day. Of 500 games carrying a `version_parent` on 2026-09-29, 426 were main games and 61 bundles (F2 drops those), and ten were remasters, expanded games and ports. The Witcher 3's "10th Anniversary Edition" is an edition of its "Complete Edition", a bundle, which is an edition of the game. "Rust: Console Edition - Ultimate" is an edition of Rust's console port, which carries a `version_parent` of its own, and is the port |
-| F4 | Keep release statuses 6 Full Release and 3 Early Access, and rows with no status. Drop 1 Alpha, 2 Beta, 4 Offline, 5 Cancelled, 34 Advanced Access, 35 Digital Compatibility Release and 36 Next-Gen Optimization Patch Release | Offline is a shutdown date — Final Fantasy VII: Ever Crisis on 6 Oct — not a release. Advanced Access opens a game early to buyers of one edition, and would list the game twice. 35 and 36 are an old game sold unchanged on a newer console, or patched for one |
-| F5 | One entry per game and period, its platforms merged. Where the same game on the same platform is also known more precisely inside that period — a region's day beside another's month — only the precise one is kept | As ADR 0004 already does, and so that "Oct 2026" does not sit beside "16 Oct 2026" as a second release |
+| F4 | Keep release statuses 6 Full Release and 3 Early Access, and rows with no status. Drop 1 Alpha, 2 Beta, 4 Offline, 5 Cancelled, 34 Advanced Access, 35 Digital Compatibility Release and 36 Next-Gen Optimization Patch Release. Drop every row of a game IGDB marks cancelled or rumoured — `game_status` 6 or 7 — whatever its rows say | Offline is a shutdown date — Final Fantasy VII: Ever Crisis on 6 Oct — not a release. Advanced Access opens a game early to buyers of one edition, and would list the game twice. 35 and 36 are an old game sold unchanged on a newer console, or patched for one. A cancelled game's rows can outlive it: on 2026-10-08 "Metro Rivals: New York" was marked cancelled with three "2026" rows still marked Full Release, and Fallout Extreme was still "to be decided" on the Xbox and the PS2 |
+| F5 | One entry per game and period, its platforms merged. Where the same game on the same platform, in the same phase, is also known more precisely inside that period — a region's day beside another's month — only the precise one is kept. The phase is early access, or a full release with or without its status. The comparison takes in what is known outside the window too, where a band's period runs past it (§8.1) | As ADR 0004 already does, and so that "Oct 2026" does not sit beside "16 Oct 2026" as a second release. An early-access day and a full release known only to its year are two milestones, not one known twice: Starseeker: Astroneer Expeditions entered early access on 11 June 2026 with its full release "2026". And a band can be outlived just outside the window: Little Witch in the Woods was "2026" on Switch and came out on Switch on 16 September, so a calendar opening on 1 October would have shown it as due sometime in a year it was already out in |
 | F6 | Entries in the same period that belong together group into one: the same series, or — with no series between them — DLC for the same game. Where they share several series, the series is chosen across the period, not per entry: the one the most of them share takes its entries first, then the next among the rest, a tie going to the lowest id. The group is named after the series or the game, and its strongest reason (§3.4) is the one shown | Eight of the 300-game test's ten entries in two weeks were Kingdom Hearts games arriving on Switch 2, PS5 and Xbox on the same day. On 13 October 2026 Street Fighter 6 had two DLC rows for one character, "Year 4 - Arjun" and "Additional Character - Arjun & Outfit 2", and neither is in a series. On 1 February 2026 Final Fantasy VII Remake and its Episode Intermission came to Switch 2 and Xbox Series together, both in Final Fantasy, Final Fantasy VII and the Compilation of Final Fantasy VII, which IGDB lists in a different order for each |
 
 ### 3.4 Every entry says why it is there
@@ -265,6 +265,15 @@ window could be stored under — a month's first day, up to a month before the w
 a year's last day, up to a year after it — and kept only if its period, read from `y`, `m` and
 `date_format`, overlaps the window. The line asks for days alone and leaves the second clause out.
 
+A band whose period runs past the window — "2026" in a calendar opening on 1 October 2026, "Q4 2027" in
+one that ends on 1 November 2027 — is compared (F5) with what is known in the rest of its period, which
+the window did not ask about. So when any band does, one more query asks for every dated row of those
+bands' games, and of their editions, from the first such period's start to the last one's end: about one
+more page at 1,500 games, as measured on #168, where widening the whole window to the years at either end
+of it would ask about every game. A finer row inside a band's period is stored inside it too — a day on
+itself, a month on its first day, a quarter on its last — so the band's own days are the range to ask.
+Those rows are compared and never shown.
+
 For a 1,500-game library that release query was 26 KB, and came back as one page of 332 rows in
 0.7 s. A bigger library is split into a query per 1,500 games, and one for its series, rather than
 sent as a query longer than any IGDB has been seen to accept. The games each row names — and, for
@@ -276,7 +285,13 @@ IGDB's answer is cached for an hour under a key built from the set's game ids, s
 list changes it at once and two identical sets share one answer. It is IGDB's answer that is cached,
 not the entries: moving a game from the wishlist to Playing changes the reasons without changing a
 single row, so the rules run on every request. A failed or partial answer is never cached. The "no
-date" list is one more query, on `date_format = 7` with no date range.
+date" list is one more query, on `date_format = 7` with no date range, for games with no
+`first_release_date`, which is IGDB's own word for a game with no date anywhere. A row to be decided is no
+news about a game with a date elsewhere: of 399 games a 300-game library reached through undated rows on
+2026-10-08, 124 had a dated row as well, such as Far Cry 4, "to be decided" on Stadia. That answer is
+cached for an hour per set too. `first_release_date` cannot say which day a release is, which is why
+[0004](../docs/decisions/0004-release-dates-for-calendar.md) set it aside, but its absence is exactly
+K4's "no date at all".
 
 When IGDB is down, the releases are missing and say so. The curated sales still show, because they
 are ours.
@@ -295,6 +310,7 @@ should be one service that both call.
 | B4 | A migration adding the two tables, `CuratedEvents` and `ShowcaseNames` (`docs/data-model-plan.md`). Neither is user-owned (A5) |
 | B5 | Tests for §3.3's rules against recorded IGDB rows, and for the policy refusing a non-admin |
 | B6 | Once the line ships, retire `/api/games/upcoming` and `GetUpcomingReleasesAsync`. 0004's reasoning — `release_dates`, not `first_release_date` — carries over to B1 |
+| B7 | `GET /api/user/releases/undated` — the connected games IGDB has no date for at all (K4), grouped by F6 and each with its reason, the most connected first: the game itself before its children before its series. `no-store`, and no window, since there are no dates to put one around |
 
 ### 8.3 Client
 
@@ -313,7 +329,9 @@ should be one service that both call.
 2. **Updates.** Type 14 is dropped by default (F2), which also drops the occasional real content
    drop such as Silksong's "Sea of Sorrow".
 3. **Steam's themed fests.** Not entered by default (S2).
-4. **The calendar's horizon.** Six months held eighteen entries for the demo library.
+4. **The calendar's horizon.** Settled on #166 at a year: the month the calendar opens on and the twelve
+   after it (K1), which is also what one request may ask for. Six months held eighteen entries for the demo
+   library, and beyond the first few months most of what there is is known only to its year (§10).
 5. **Signed-out visitors.** Nothing, or the showcases and sales on their own? #128 wanted showcases
    on the shared home page, and this spec puts them on the signed-in line.
 6. **Shutdowns.** A game the user tracks going offline is dropped with every other Offline row
@@ -330,6 +348,8 @@ should be one service that both call.
 | `game_types` | 0 Main Game, 1 DLC, 2 Expansion, 3 Bundle, 4 Standalone Expansion, 5 Mod, 6 Episode, 7 Season, 8 Remake, 9 Remaster, 10 Expanded Game, 11 Port, 12 Fork, 13 Pack / Addon, 14 Update |
 | `date_formats` | 0 YYYYMMDD, 1 YYYYMM, 2 YYYY, 3 YYYYQ1, 4 YYYYQ2, 5 YYYYQ3, 6 YYYYQ4, 7 TBD |
 | `release_date_statuses` | 1 Alpha, 2 Beta, 3 Early Access, 4 Offline, 5 Cancelled, 6 Full Release, 34 Advanced Access, 35 Digital Compatibility Release, 36 Next-Gen Optimization Patch Release |
+| `game_statuses`, 2026-10-08 | 0 Released, 2 Alpha, 3 Beta, 4 Early Access, 5 Offline, 6 Cancelled, 7 Rumored, 8 Delisted. Absent for most games |
+| Undated rows, 2026-10-08 | A row with `date_format` 7 has no `date`, `y` or `m` at all, and a comparison with a date never matches one. `games.first_release_date` is absent for a game whose every row is undated, set from a year-only row as readily as from a day ("Metro Rivals: New York", known only to be "2026", had 31 December 2026), and not set by a beta day ("Tavernia" had one, and no `first_release_date`). For the 368 games of IGDB's latest 500 undated rows, its absence matched "no dated row" for 367; the other was Tavernia |
 | `collection_membership_types` | 1 Member (52,056 memberships), 2 Spin-off (2,146) |
 | `release_dates` fields | `game`, `date`, `human`, `date_format`, `release_region`, `platform`, `status`, `y`, `m`. There is no `category` or `region` any more |
 | `games` fields examined | `game_type` (there is no `category` any more), `collections`, `franchises`, `parent_game`, `version_parent`, `dlcs`, `expansions`, `standalone_expansions`, `remakes`, `remasters`, `expanded_games`, `hypes` |
@@ -351,6 +371,8 @@ made of IGDB's most-rated main games.
 | One release query for a whole library | 34 games: 0.33 s · 300 games and 159 series (5 KB): 0.30 s · 700 and 322 (12 KB): 0.67 s · 1,500 and 616 (26 KB): 0.71 s, in one page |
 | Release rows dated within twelve months, by precision | 6,317: 1,661 to the day, 305 to the month, 1,516 to a quarter, 2,835 to the year |
 | IGDB events in the year to 2026-09-28 | 184. Added before they began by a median of 3 days; 75% within 11, 90% within 35; 32 added after they began; one future event |
+| A calendar from 1 Oct 2026 to 1 Nov 2027, before F3 and F6, on 2026-10-08 | Demo library: seven entries on October's days and four or fewer a month after, two in 2026's band and six in 2027's. 1,500 games: 38 on October's days, 11 on November's and 10 on December's, then six or fewer a month; 7 in Q4 2026's band, 9 in Q2 2027's, 19 in 2026's and 29 in 2027's |
+| Undated, 2026-10-08 | A 300-game library reached 529 undated rows on 399 games, 180 of them mods, and 124 of the 399 had a dated row as well. Of the rest, F1, F2 and F4 and IGDB's cancelled and rumoured left about thirty: The Elder Scrolls VI, Persona 6, the God of War remakes, the Witcher remake and the like |
 
 ### Store sales sources
 
@@ -377,5 +399,5 @@ Each step is a sub-issue of #162.
    showcases. #163, done.
 2. The releases service and B1, with §3.3's rules under test. #164, done.
 3. B2, and the two-week line in place of the Releasing soon rail. #165, done.
-4. The calendar, and the line's link to it (L6). #166.
+4. The calendar, and the line's link to it (L6). #166, done.
 5. Retiring `/api/games/upcoming` (B6), with the line. #165, done.
