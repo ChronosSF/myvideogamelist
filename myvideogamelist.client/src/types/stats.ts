@@ -33,14 +33,26 @@ export interface ScoreStats {
     distribution: number[];
 }
 
+/**
+ * What the user started, finished and dropped. Counted from their status changes and, where a game
+ * has none of the kind to go by, from the dates on its playthroughs — a status change always takes
+ * precedence (ADR 0047). Drops, `transitions` and `timeToFinish` come from status changes alone.
+ */
 export interface ActivityStats {
     /**
-     * The user's earliest event, or null when they have none. The chart starts here rather than a
-     * fixed twelve months back, because the log was not backfilled and an empty month before it
-     * would claim inactivity where there is only an absence of records.
+     * The user's first status change, or null when they have none — never a playthrough's date, so
+     * "tracking here since" stays a claim about this app. An imported library can have months and
+     * no log start at all.
      */
     logStartedAt: string | null;
+    /**
+     * At most twelve, starting at the earliest record rather than a fixed twelve months back: the
+     * first status change, or the earliest playthrough date counted, which can come before it. An
+     * empty month before every record would claim inactivity where there is only an absence of
+     * records, so there is none.
+     */
     months: ActivityMonth[];
+    /** Status changes, all time. Playthrough dates are not changes and are not counted here. */
     transitions: number;
     currentStreakMonths: number;
     longestStreakMonths: number;

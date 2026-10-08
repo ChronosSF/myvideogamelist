@@ -149,13 +149,21 @@ export function ProfileStats({ userId }: { userId: string }) {
             <section className="profile-section">
                 <h3 className="profile-section-title">What you start and finish</h3>
                 {activity.months.length === 0
-                    ? <p className="profile-empty">No status changes recorded yet.</p>
+                    ? <p className="profile-empty">No status changes or playthrough dates recorded yet.</p>
                     : <ActivityChart months={activity.months} />}
-                {activity.logStartedAt !== null && activity.months.length > 0 && (
+                {/* Two sources since ADR 0047, so the chart can start before the first status
+                    change — the log's start is no longer why a month is missing, and this used to
+                    say it was. A status change wins wherever there is one; the dates fill in for a
+                    game whose changes say nothing about its start or its finish. */}
+                {activity.months.length > 0 && (
                     <p className="profile-caption">
-                        {`${activity.transitions} ${activity.transitions === 1 ? 'change' : 'changes'} recorded since `}
-                        {formatDate(activity.logStartedAt)}
-                        {'. Months before that are not shown, because nothing was being recorded then.'}
+                        {activity.logStartedAt === null
+                            ? 'No status changes recorded here yet, so this counts the dates on your playthroughs. '
+                            : `${activity.transitions} status ${activity.transitions === 1 ? 'change' : 'changes'} `
+                                + `recorded since ${formatDate(activity.logStartedAt)}. Where those say nothing `
+                                + 'about a game\'s start or finish, the dates on your playthroughs count instead. '}
+                        Nothing before the earliest record is shown, and a quiet month may only be an
+                        unrecorded one.
                     </p>
                 )}
             </section>

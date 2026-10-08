@@ -80,6 +80,31 @@ describe('HomeStatsStrip', () => {
         await waitFor(() =>
             expect(screen.getByText('month finishing streak')).toBeInTheDocument());
     });
+
+    it('counts an imported library\'s finishes although it has no status changes', async () => {
+        // The case #194 was about: a whole library imported, which writes no events, so
+        // `transitions` is zero — and the months carry the finishes its playthroughs' dates record
+        // (ADR 0047). The strip hides only when nothing is recorded *and* nothing ever moved, and a
+        // playthrough always hangs off an entry, so this is never the empty case.
+        mockStats(stats({
+            activity: {
+                logStartedAt: null,
+                months: [
+                    { month: `${YEAR - 1}-12`, started: 1, finished: 3, dropped: 0 },
+                    { month: `${YEAR}-01`, started: 2, finished: 2, dropped: 0 },
+                    { month: `${YEAR}-02`, started: 2, finished: 13, dropped: 0 },
+                ],
+                transitions: 0,
+                currentStreakMonths: 3,
+                longestStreakMonths: 8,
+                timeToFinish: null,
+            },
+        }));
+        render(<HomeStatsStrip userId="user-1" />);
+
+        await waitFor(() => expect(screen.getByText('finished this year')).toBeInTheDocument());
+        expect(screen.getByText('15')).toBeInTheDocument();
+    });
 });
 
 describe('HomeStatsStrip when there is nothing to show', () => {

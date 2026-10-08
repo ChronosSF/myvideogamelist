@@ -42,10 +42,10 @@ grow a forward pointer when a later record or an issue closes something it left 
 | [0020](0020-list-view-preferences-in-the-database.md) | List view preferences live in the database; sorting is client-side | Implemented |
 | [0021](0021-one-control-for-a-score.md) | Stars are the user's own score; every aggregate is a number out of 100 | Implemented |
 | [0022](0022-entry-surrogate-key-and-the-wishlist-axis.md) | The entry gets a surrogate key, and the wishlist is an axis rather than a status | Implemented |
-| [0023](0023-profile-statistics-derived-at-read-time.md) | Profile statistics are derived at read time, and split by what they depend on | Implemented |
+| [0023](0023-profile-statistics-derived-at-read-time.md) | Profile statistics are derived at read time, and split by what they depend on | Implemented; §4's chart amended by 0047 |
 | [0024](0024-the-ownership-contract.md) | One export manifest for every user-owned table, guarded in both directions | Implemented |
 | [0025](0025-playthroughs-and-reviews.md) | Playthroughs and reviews: what a user records about actually playing a game | Implemented |
-| [0026](0026-a-library-import-records-ownership-not-history.md) | A library import records ownership, not history | Accepted; its framework shipped in 0037, the Steam source is an open issue |
+| [0026](0026-a-library-import-records-ownership-not-history.md) | A library import records ownership, not history | Accepted; its framework shipped in 0037, the Steam source is an open issue; §3 amended by 0047 |
 | [0027](0027-usernames-and-public-profiles.md) | Usernames are a namespace, and a profile is published only when asked | Implemented; the sitemap is 0036, D14 is an open issue |
 | [0028](0028-a-games-community-view.md) | A game's community view: every score counts, only published reviews are listed, and neither is server-rendered | Implemented |
 | [0029](0029-favourites-are-an-axis-and-a-showcase.md) | Favourites are an axis like the wishlist, share its code, and are shown on the profile | Implemented |
@@ -66,6 +66,7 @@ grow a forward pointer when a later record or an issue closes something it left 
 | [0044](0044-what-the-deployment-walkthrough-settled.md) | What the deployment walkthrough settled, and where it found the records wrong | Accepted; built by #97 |
 | [0045](0045-an-import-asks-once-about-what-it-will-not-guess.md) | An import asks once about what it will not guess: one list for every game played without an outcome | Implemented |
 | [0046](0046-the-balancer-answers-its-own-distribution.md) | The balancer answers its own distribution, and what else the CloudFront phase settled | Implemented |
+| [0047](0047-a-playthroughs-dates-count-and-a-status-change-comes-first.md) | A playthrough's dates count in the activity figures, and a status change comes first | Implemented |
 
 **Status** — *Accepted*: decided, not yet built. *Implemented*: decided and in the code.
 *Superseded*: replaced by a later record.

@@ -35,8 +35,11 @@ export interface PublicActivity {
     /**
      * Their earliest recorded status change, or null when they have none. Not a join date — no
      * such column exists — so the page says "tracking games here since", which is what it means.
+     * Never a playthrough's date either (ADR 0047): an imported library nobody has moved since has
+     * none, and still has games, which is why null alone does not mean "nothing tracked".
      */
     trackingSince: string | null;
+    /** The same months the owner's page shows, so they can begin before `trackingSince`. */
     months: ActivityMonth[];
     currentStreakMonths: number;
     longestStreakMonths: number;

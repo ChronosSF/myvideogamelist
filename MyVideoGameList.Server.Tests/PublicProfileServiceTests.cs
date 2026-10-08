@@ -240,6 +240,36 @@ public class PublicProfileServiceTests
             .GetGamesAsync(Arg.Any<IEnumerable<int>>(), Arg.Any<CancellationToken>());
     }
 
+    [Fact]
+    public async Task GetProfileAsync_PlaythroughFinishDates_ReachTheChartAsCountsButNotTrackingSince()
+    {
+        // ADR 0047 on the public page. A finish date with no status change behind it is counted on
+        // the chart and in the streak — a count per month and the length of a run, the kind of
+        // figure 0027 §8 already publishes — while "tracking here since" stays the first status
+        // change, of which this account has none. Nothing else about the run crosses: no date, no
+        // game, no duration.
+        using var db = NewDb();
+        AddAccount(db, UserId, "alex");
+        var entry = AddEntry(db, gameId: 11, status: ListStatusKeys.Finished);
+        db.UserGamePlaythroughs.Add(new UserGamePlaythrough
+        {
+            UserId = UserId,
+            Entry = entry,
+            FinishedOn = new DateOnly(2026, 8, 20),
+            CreatedAt = Now,
+            UpdatedAt = Now
+        });
+        db.SaveChanges();
+
+        var profile = await NewService(db).GetProfileAsync("alex", default);
+
+        Assert.NotNull(profile);
+        Assert.Equal(["2026-08", "2026-09"], profile.Activity.Months.Select(m => m.Month));
+        Assert.Equal(1, profile.Activity.Months[0].Finished);
+        Assert.Equal(1, profile.Activity.CurrentStreakMonths);
+        Assert.Null(profile.Activity.TrackingSince);
+    }
+
     // ── The reviews ───────────────────────────────────────────────────────────────────
 
     [Fact]

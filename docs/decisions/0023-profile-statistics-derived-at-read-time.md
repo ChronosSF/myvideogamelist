@@ -1,6 +1,6 @@
 # 0023. Profile statistics are derived at read time, and split by what they depend on
 
-**Status:** Implemented
+**Status:** Implemented. §4 is amended by [0047](0047-a-playthroughs-dates-count-and-a-status-change-comes-first.md): "started" and the finishes also come from a playthrough's dates where a game has no status change of that kind, and the chart starts at the earliest record rather than the first event.
 
 ## Context
 

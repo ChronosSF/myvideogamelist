@@ -306,7 +306,15 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   the community medians, and a tracker's completion field is a default rather than its owner's
   answer — Grouvee's reads "Main Story" on 596 of 608 rows including all 448 that carry no date and
   no hours. Anything later that assumes "every status has an event" — an activity feed, an audit, a
-  backfill — has to consult `Origin`. See `docs/decisions/0026-*` and `0037-*`.
+  backfill — has to consult `Origin`. **The activity statistics are the reader that no longer
+  assumes it**, and they do not consult `Origin` either: for a game whose status changes say nothing
+  of that kind they count its playthroughs' dates — finishes from `FinishedOn` unless it has a move
+  to Finished, its first start from its earliest date unless it has a move to a started status — so
+  a status change always takes precedence, per game and per kind, and every playthrough is read
+  whatever its entry's origin — which would not find every imported run anyway, since the import
+  sets it only where it writes a status. Drops, the median time to finish and the transition count
+  stay events-only, `LogStartedAt` stays the first status change, and no event is ever synthesised
+  to make an import count. See `docs/decisions/0026-*`, `0037-*` and `0047-*`.
 
 - **A closed import has no rows, and a review is only ever of a pending job.** A commit or a cancel
   deletes the job's `ImportRow`s in the same `SaveChangesAsync` that closes it (ADR 0037, ADR 0039),

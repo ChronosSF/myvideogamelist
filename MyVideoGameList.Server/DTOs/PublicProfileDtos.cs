@@ -53,9 +53,14 @@ public record PublicProfileDto(
 /// Their earliest recorded status change, or null when they have none. Not a join date: no such
 /// column exists, and inventing one for accounts that predate it would be inventing a fact. What
 /// this says — "has been tracking games here since June" — is true and is derived from the log.
+/// Never a playthrough's date either, which says when a game was played and not when anybody began
+/// tracking here (ADR 0047), so an imported library with no status change since has none.
 /// </param>
 /// <param name="Months">
-/// The same months <c>ActivityStatsDto</c> carries, trimmed by the server to where the log begins.
+/// The same months <c>ActivityStatsDto</c> carries, trimmed by the server to the earliest record —
+/// which can be a playthrough's date before <paramref name="TrackingSince"/>. Counts and nothing
+/// else: a playthrough's dates reach this document only as the month a game was counted in, never
+/// as a date, a game or a duration, which is the same kind of figure the months always published.
 /// </param>
 public record PublicActivityDto(
     DateTimeOffset? TrackingSince,
