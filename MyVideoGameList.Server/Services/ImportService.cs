@@ -588,6 +588,7 @@ public class ImportService(
         var games = (await gameCache.GetGamesAsync(gameIds, cancellationToken)).ToDictionary(g => g.Id);
 
         var statuses = await db.ListStatuses.AsNoTracking().ToDictionaryAsync(s => s.Key, s => s.Id, cancellationToken);
+        var types = await db.PlaythroughTypes.AsNoTracking().ToDictionaryAsync(t => t.Key, t => t.Id, cancellationToken);
 
         var (entries, createdIds) = await EntryStore.FindOrCreateManyAsync(
             db, clock, userId, gameIds, cancellationToken);
@@ -638,9 +639,10 @@ public class ImportService(
                     UserId = userId,
                     Entry = entry,
 
-                    // No TypeId, deliberately — ADR 0037 decision 4. A typed run carrying minutes
-                    // feeds the community medians, and the source's completion field is a default
-                    // rather than its owner's answer.
+                    // Already in our vocabulary — the source translated its own (ADR 0049). A typed
+                    // run carrying minutes feeds the community medians, so this is the one field
+                    // here that other members read.
+                    TypeId = run.Type is { } typeKey && types.TryGetValue(typeKey, out var typeId) ? typeId : null,
                     PlatformId = ResolvePlatform(run.PlatformName, games.GetValueOrDefault(gameId)),
                     MinutesPlayed = run.MinutesPlayed,
                     StartedOn = run.StartedOn,
@@ -741,13 +743,15 @@ public class ImportService(
             .ToListAsync(cancellationToken);
 
         return [.. rows.Select(r => RunKey(
-            r.GameId, new ImportPlaythroughPayload(r.StartedOn, r.FinishedOn, r.MinutesPlayed, null)))];
+            r.GameId, new ImportPlaythroughPayload(r.StartedOn, r.FinishedOn, r.MinutesPlayed, null, null)))];
     }
 
     /// <summary>
     /// What makes two runs the same run: the game, the dates and the duration. Not the platform —
     /// the source may or may not have said, and an import that ran twice should not produce a
-    /// second copy because the second pass resolved a platform name the first did not.
+    /// second copy because the second pass resolved a platform name the first did not. Not the type
+    /// either: a run imported before ADR 0049 carries none, and importing the same file again must
+    /// not add a typed twin beside it.
     /// </summary>
     private static string RunKey(int gameId, ImportPlaythroughPayload run) =>
         $"{gameId}|{run.StartedOn:O}|{run.FinishedOn:O}|{run.MinutesPlayed}";

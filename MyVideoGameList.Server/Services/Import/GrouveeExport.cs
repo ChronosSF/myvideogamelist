@@ -99,10 +99,9 @@ internal sealed class GrouveePlay
     public long SecondsPlayed { get; set; }
 
     /// <summary>
-    /// Read and deliberately never used. It is the field that would decide whether a run counts
-    /// towards the community medians, and it is a default rather than a statement — declared here
-    /// so that the next person to look for it finds this sentence instead of adding it.
-    /// See <see cref="ImportPlaythroughPayload"/> and ADR 0037 decision 4.
+    /// <c>"Main Story"</c>, <c>"Main Story + Extras"</c>, <c>"100% Completion"</c> or null. Becomes
+    /// the run's type through <c>GrouveeImportSource.MapCompletion</c>, which is the only thing that
+    /// should read it (ADR 0049).
     /// </summary>
     public string? LevelOfCompletion { get; set; }
 

@@ -302,12 +302,15 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   history. So `UserGameEntry.Origin` names the source — `manual` means every status that entry has
   held has an event behind it, anything else means it may not — and it is set whenever the import
   writes a status, over an existing entry as well as a new one. `StatusChangedAt` stays null for
-  the same reason. **An imported playthrough carries no type**: a typed run with a duration feeds
-  the community medians, and a tracker's completion field is a default rather than its owner's
-  answer — Grouvee's reads "Main Story" on 596 of 608 rows including all 448 that carry no date and
-  no hours. Anything later that assumes "every status has an event" — an activity feed, an audit, a
-  backfill — has to consult `Origin`. **The activity statistics are the reader that no longer
-  assumes it**, and they do not consult `Origin` either: for a game whose status changes say nothing
+  the same reason. **An imported playthrough's type is the source's completion level, translated
+  by the source**: Grouvee's "Main Story" and "Main Story + Extras" are `normally`, "100% Completion"
+  is `completionist`, and nothing imported is `rushed`. A typed run with a duration feeds the
+  community medians, so only strings seen in a real export are mapped and anything else stays
+  untyped, and a level alone never makes a run — every game Grouvee shelves gets an empty row reading
+  "Main Story" (`docs/decisions/0049-*`). Anything later that assumes "every status has an event" —
+  an activity feed, an audit, a backfill — has to consult `Origin`. **The activity statistics are
+  the reader that no longer assumes it**, and they do not consult `Origin` either: for a game whose
+  status changes say nothing
   of that kind they count its playthroughs' dates — finishes from `FinishedOn` unless it has a move
   to Finished, its first start from its earliest date unless it has a move to a started status — so
   a status change always takes precedence, per game and per kind, and every playthrough is read

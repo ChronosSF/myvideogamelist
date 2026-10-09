@@ -392,21 +392,72 @@ public class ImportServiceTests
     }
 
     [Fact]
-    public async Task CommitAsync_APlaythrough_CarriesItsMinutesAndNoType()
+    public async Task CommitAsync_APlaythrough_CarriesItsMinutesAndTheSourcesType()
     {
-        // ADR 0037 decision 4. A typed run with a duration feeds the community medians, and the
-        // source's completion level is a default rather than its owner's answer.
+        // ADR 0049. The source has already translated its level into our key; the commit resolves
+        // the key to the seeded row, which is what puts a run with minutes into the medians.
         using var db = NewDb();
         var service = NewService(db, CacheReturning(Game(379)));
 
         var jobId = await UploadAsync(service, Export(Entry(
-            dates: """[{"date_started": "2024-04-25", "date_finished": "2024-04-28", "seconds_played": 22500, "level_of_completion": "Completionist", "platform": ""}]""")));
+            dates: """[{"date_started": "2024-04-25", "date_finished": "2024-04-28", "seconds_played": 22500, "level_of_completion": "100% Completion", "platform": ""}]""")));
         await service.CommitAsync(UserId, jobId);
 
         var run = Assert.Single(db.UserGamePlaythroughs);
-        Assert.Null(run.TypeId);
+        var completionist = db.PlaythroughTypes.Single(t => t.Key == PlaythroughTypeKeys.Completionist);
+        Assert.Equal(completionist.Id, run.TypeId);
         Assert.Equal(375, run.MinutesPlayed);
         Assert.Equal(new DateOnly(2024, 4, 25), run.StartedOn);
+    }
+
+    [Fact]
+    public async Task CommitAsync_ARunWithNoLevel_IsWrittenUntyped()
+    {
+        using var db = NewDb();
+        var service = NewService(db, CacheReturning(Game(379)));
+
+        var jobId = await UploadAsync(service, Export(Entry(
+            dates: """[{"date_started": "2024-04-25", "date_finished": "2024-04-28", "seconds_played": 22500, "level_of_completion": null, "platform": ""}]""")));
+        await service.CommitAsync(UserId, jobId);
+
+        Assert.Null(Assert.Single(db.UserGamePlaythroughs).TypeId);
+    }
+
+    [Fact]
+    public async Task CommitAsync_ARunAlreadyImportedUntyped_GetsNoTypedTwin()
+    {
+        // A run imported before ADR 0049 carries no type. Importing the same file again matches it
+        // on its dates and duration and leaves it alone, rather than adding a typed copy beside it.
+        using var db = NewDb();
+        var service = NewService(db, CacheReturning(Game(379)));
+        const string untyped = """[{"date_started": "2024-04-25", "date_finished": "2024-04-28", "seconds_played": 22500, "level_of_completion": null, "platform": ""}]""";
+        const string typed = """[{"date_started": "2024-04-25", "date_finished": "2024-04-28", "seconds_played": 22500, "level_of_completion": "Main Story", "platform": ""}]""";
+
+        await service.CommitAsync(UserId, await UploadAsync(service, Export(Entry(dates: untyped))));
+
+        var secondJob = await UploadAsync(service, Export(Entry(dates: typed)));
+        var row = Assert.Single((await service.GetReviewAsync(UserId, secondJob))!.Rows);
+        await service.SetDecisionsAsync(UserId, secondJob, new ImportDecisionsDto(
+            [new ImportRowDecisionDto(row.Id, ImportDecisions.Import, null, null)]));
+        await service.CommitAsync(UserId, secondJob);
+
+        Assert.Null(Assert.Single(db.UserGamePlaythroughs).TypeId);
+    }
+
+    [Fact]
+    public void ImportPayloadJson_ARunStoredBeforeTheTypeExisted_ReadsBackUntyped()
+    {
+        // A pending job uploaded before ADR 0049 holds payloads with no `type` at all. They must
+        // still read, and commit their runs untyped as they would have on the day of the upload.
+        const string stored = """
+            {"title": "Metal Gear Solid 3: Snake Eater", "gameId": 379, "status": "finished",
+             "playthroughs": [{"startedOn": "2024-04-25", "finishedOn": "2024-04-28", "minutesPlayed": 375, "platformName": null}]}
+            """;
+
+        var run = Assert.Single(ImportPayloadJson.Read(stored).Playthroughs);
+
+        Assert.Null(run.Type);
+        Assert.Equal(375, run.MinutesPlayed);
     }
 
     [Fact]

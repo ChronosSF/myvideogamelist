@@ -9,8 +9,9 @@ namespace MyVideoGameList.Server.Tests;
 /// <remarks>
 /// The fixtures below are small but every one of them is copied from the structure of a genuine
 /// 608-row export rather than invented — the <c>"None"</c> strings, the zero seconds and the
-/// defaulted completion level are the three things in that file that turn into plausible wrong
-/// answers rather than into errors, so each has a test of its own.
+/// "Main Story" written onto every shelved game are the three things in that file that turn into
+/// plausible wrong answers rather than into errors, so each has a test of its own. The completion
+/// levels are the exact strings two real exports carried.
 /// </remarks>
 public class GrouveeImportSourceTests
 {
@@ -93,19 +94,55 @@ public class GrouveeImportSourceTests
         Assert.Equal(new DateOnly(2024, 4, 28), run.FinishedOn);
     }
 
-    [Fact]
-    public void Read_APlaythrough_CarriesNoType()
+    [Theory]
+    [InlineData("Main Story", PlaythroughTypeKeys.Normally)]
+    [InlineData("Main Story + Extras", PlaythroughTypeKeys.Normally)]
+    [InlineData("100% Completion", PlaythroughTypeKeys.Completionist)]
+    public void Read_ACompletionLevel_BecomesOurType(string level, string expected)
     {
-        // The whole of ADR 0037 decision 4, asserted where it would be undone: the source field
-        // says "Main Story" and must not reach a type, because a typed run with a duration feeds
-        // the community medians and that label is a default rather than the user's answer.
+        // ADR 0049. Grouvee's "Main Story" means the game was finished, not that it was hurried, so
+        // it lands with "Main Story + Extras" on normally, and nothing an import writes is rushed.
+        var row = Single(Game(
+            dates: $$"""[{"date_started": "2024-04-25", "date_finished": "2024-04-28", "seconds_played": 22500, "level_of_completion": "{{level}}", "platform": ""}]"""));
+
+        Assert.Equal(expected, Assert.Single(row.Playthroughs).Type);
+    }
+
+    [Fact]
+    public void Read_NoCompletionLevel_LeavesTheRunUntyped()
+    {
+        // What Grouvee leaves on a run nobody gave a level — eight of them in a real export.
+        var row = Single(Game(
+            dates: """[{"date_started": "2025-03-09", "date_finished": "2025-05-03", "seconds_played": 65400, "level_of_completion": null, "platform": ""}]"""));
+
+        var run = Assert.Single(row.Playthroughs);
+        Assert.Null(run.Type);
+        Assert.Equal(1090, run.MinutesPlayed);
+    }
+
+    [Fact]
+    public void Read_ACompletionLevelNoExportHasCarried_LeavesTheRunUntypedRatherThanGuessing()
+    {
+        // "Completionist" is the word a fixture once invented for Grouvee's top level; the real one
+        // is "100% Completion". A typed run with minutes feeds the community medians, so a level
+        // nobody has seen in a real file costs a type rather than a guess.
         var row = Single(Game(
             dates: """[{"date_started": "2024-04-25", "date_finished": "2024-04-28", "seconds_played": 22500, "level_of_completion": "Completionist", "platform": ""}]"""));
 
-        // There is no type on the payload at all, which is what makes this structural rather than
-        // a rule somebody has to remember. The assertion is that the run survives without one.
-        Assert.Single(row.Playthroughs);
-        Assert.Equal(375, row.Playthroughs[0].MinutesPlayed);
+        var run = Assert.Single(row.Playthroughs);
+        Assert.Null(run.Type);
+        Assert.Equal(375, run.MinutesPlayed);
+    }
+
+    [Fact]
+    public void Read_ACompletionLevelOnItsOwn_IsNotARun()
+    {
+        // Every game Grouvee shelves gets a play-log row reading "Main Story" and nothing else — 448
+        // of them in a real export. A level is a type for a run, never a reason to make one.
+        var row = Single(Game(
+            dates: """[{"date_started": "None", "date_finished": "None", "seconds_played": 0, "level_of_completion": "100% Completion", "platform": ""}]"""));
+
+        Assert.Empty(row.Playthroughs);
     }
 
     [Fact]
@@ -383,6 +420,23 @@ public class GrouveeImportSourceTests
     {
         Assert.Throws<ImportParseException>(() => Source.Read("""{"something": "else"}"""));
         Assert.Throws<ImportParseException>(() => Source.Read("not json at all"));
+    }
+
+    [Fact]
+    public void Read_TheCsvForm_MapsTheCompletionLevelAsTheJsonDoes()
+    {
+        // The CSV carries the same run as quoted JSON in its `dates` column, doubled quotes and all,
+        // and a real one held exactly the levels the JSON did.
+        const string csv =
+            "id,name,shelves,dates,igdb_id\n"
+            + "195642,Split Fiction,\"{\"\"Played\"\": {\"\"date_added\"\": \"\"2025-05-04T05:32:42Z\"\"}}\","
+            + "\"[{\"\"date_started\"\": \"\"2025-03-09\"\", \"\"date_finished\"\": \"\"2025-05-03\"\", "
+            + "\"\"seconds_played\"\": 65400, \"\"level_of_completion\"\": \"\"100% Completion\"\", \"\"platform\"\": \"\"\"\"}]\","
+            + "325594\n";
+
+        var row = Assert.Single(Source.Read(csv));
+
+        Assert.Equal(PlaythroughTypeKeys.Completionist, Assert.Single(row.Playthroughs).Type);
     }
 
     [Fact]

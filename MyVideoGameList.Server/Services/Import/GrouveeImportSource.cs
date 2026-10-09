@@ -27,8 +27,9 @@ namespace MyVideoGameList.Server.Services.Import;
 /// zero-minute run.
 /// </item>
 /// <item>
-/// <c>level_of_completion</c> is a <b>default</b>, not a statement — see
-/// <see cref="ImportPlaythroughPayload"/> for why it is therefore read and discarded.
+/// <c>level_of_completion</c> reads <b>"Main Story"</b> on every row Grouvee creates when a game is
+/// shelved, so on its own it is not a run. It is read as a type only on a run that carries a date or
+/// a duration — see <see cref="MapCompletion"/>.
 /// </item>
 /// </list>
 /// </remarks>
@@ -338,6 +339,8 @@ internal sealed class GrouveeImportSource : IImportSource
             ? (int?)Math.Max(1, (int)Math.Round(play.SecondsPlayed / 60d))
             : null;
 
+        // The completion level is deliberately not part of this test. Every row Grouvee creates on
+        // shelving says "Main Story", so a level on its own is the shelving default, not a run.
         if (started is null && finished is null && minutes is null) return null;
 
         // The column's check constraint refuses it, and a run that finished before it started is
@@ -345,8 +348,33 @@ internal sealed class GrouveeImportSource : IImportSource
         if (started is not null && finished is not null && finished < started)
             started = null;
 
-        return new ImportPlaythroughPayload(started, finished, minutes, platform);
+        return new ImportPlaythroughPayload(
+            started, finished, minutes, platform, MapCompletion(play.LevelOfCompletion));
     }
+
+    /// <summary>
+    /// Grouvee's completion level onto our playthrough types, or null for anything else.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Grouvee's three levels are not our three tiers, and the mapping is coarser on purpose. Its
+    /// "Main Story" means the game was finished, not that it was hurried, so it and "Main Story +
+    /// Extras" are both <em>normally</em>. Only "100% Completion" is <em>completionist</em>, and no
+    /// imported run is ever <em>rushed</em> (ADR 0049).
+    /// </para>
+    /// <para>
+    /// The strings are exactly what real exports carry, in the JSON form and the CSV one alike — and
+    /// <c>null</c>, which Grouvee leaves on a run nobody gave a level. Anything else stays untyped
+    /// rather than guessed at, so a level Grouvee adds later costs a type rather than skewing a
+    /// median other members read.
+    /// </para>
+    /// </remarks>
+    private static string? MapCompletion(string? level) => Clean(level) switch
+    {
+        "Main Story" or "Main Story + Extras" => PlaythroughTypeKeys.Normally,
+        "100% Completion" => PlaythroughTypeKeys.Completionist,
+        _ => null
+    };
 
     /// <summary>Grouvee's five stars onto our ten points. A clean doubling, and the same scale.</summary>
     private static short? MapRating(decimal? rating)
