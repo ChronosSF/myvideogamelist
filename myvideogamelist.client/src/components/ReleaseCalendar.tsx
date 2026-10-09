@@ -474,13 +474,15 @@ export function ReleaseCalendar({ userId }: { userId: string }) {
                 {note}
                 {eventsNote}
 
+                {/* The grid first, under the month's name: the days are what the calendar is for, and what
+                    is known only to a period is the less certain part of the month. */}
+                <MonthGrid month={month} layout={layout} today={today} />
+
                 {bands.length > 0 && (
                     <div className="calendar-bands">
                         {bands.map(band => <Band key={`${band.precision}|${band.starts}`} band={band} />)}
                     </div>
                 )}
-
-                <MonthGrid month={month} layout={layout} today={today} />
             </section>
 
             <section className="calendar-undated" aria-labelledby="calendar-undated-heading">
