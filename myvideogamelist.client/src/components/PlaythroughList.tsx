@@ -1,6 +1,6 @@
 import type { PlatformDto } from '@/types/game';
 import type { PlaythroughDto } from '@/types/playthrough';
-import { playthroughTypeLabel } from '@/types/playthrough';
+import { playthroughLabel } from '@/types/playthrough';
 import { formatExactMinutes } from '@/lib/duration';
 
 interface PlaythroughListProps {
@@ -44,7 +44,7 @@ export function PlaythroughList({
                 <li key={playthrough.id} className="game-user-panel-playthrough">
                     <p className="game-user-panel-playthrough-head">
                         <span className="game-user-panel-playthrough-type">
-                            {playthroughTypeLabel(playthrough.type) ?? 'In progress'}
+                            {playthroughLabel(playthrough)}
                         </span>
                         <span className="game-user-panel-playthrough-meta">
                             {platformName(playthrough.platformId, platforms)}

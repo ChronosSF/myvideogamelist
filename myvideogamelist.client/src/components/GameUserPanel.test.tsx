@@ -869,11 +869,24 @@ describe('GameUserPanel playthroughs', () => {
         expect(await screen.findByText('Unknown platform')).toBeInTheDocument();
     });
 
-    it('calls an untyped playthrough in progress rather than blank', async () => {
-        stubEntryFetch(null, 200, [playthrough({ id: 5, type: null })]);
+    it('calls an untyped playthrough with no finish date in progress rather than blank', async () => {
+        stubEntryFetch(null, 200, [playthrough({ id: 5, type: null, startedOn: '2026-05-01' })]);
         renderPanel();
 
         expect(await screen.findByText('In progress')).toBeInTheDocument();
+    });
+
+    it('calls an untyped playthrough with a finish date finished, not in progress', async () => {
+        // Every imported run is this shape: the import never sets a type (ADR 0037), but most of
+        // its runs ended, and "In progress" above "finished 12 June 2026" contradicts itself.
+        stubEntryFetch(null, 200, [
+            playthrough({ id: 5, type: null, startedOn: '2026-05-01', finishedOn: '2026-06-12' }),
+        ]);
+        renderPanel();
+
+        const row = within(await screen.findByRole('list'));
+        expect(row.getByText('Finished')).toBeInTheDocument();
+        expect(row.queryByText('In progress')).not.toBeInTheDocument();
     });
 
     it('invites a first one when there are none', async () => {
@@ -1152,6 +1165,18 @@ describe('GameUserPanel review', () => {
         const select = await screen.findByLabelText('About which playthrough');
         expect(within(select).getByRole('option', { name: 'The game in general' })).toBeInTheDocument();
         expect(within(select).getByRole('option', { name: '1. Completionist' })).toBeInTheDocument();
+    });
+
+    it('names an untyped playthrough by whether it ended', async () => {
+        stubEntryFetch(null, 200, [
+            playthrough({ id: 5, type: null, finishedOn: '2026-06-12' }),
+            playthrough({ id: 6, type: null }),
+        ]);
+        renderPanel();
+
+        const select = await screen.findByLabelText('About which playthrough');
+        expect(within(select).getByRole('option', { name: '1. Finished' })).toBeInTheDocument();
+        expect(within(select).getByRole('option', { name: '2. In progress' })).toBeInTheDocument();
     });
 
     it('does not offer that select when nothing has been logged', async () => {

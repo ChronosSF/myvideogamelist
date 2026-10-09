@@ -1,7 +1,7 @@
 import { useId, useState } from 'react';
 import type { ProfileVisibility } from '@/types/auth';
 import type { PlaythroughDto, ReviewDto, ReviewInputDto } from '@/types/playthrough';
-import { playthroughTypeLabel } from '@/types/playthrough';
+import { playthroughLabel } from '@/types/playthrough';
 
 interface ReviewFormProps {
     /** The review already written, or null when there is none yet. */
@@ -133,7 +133,7 @@ export function ReviewForm({
                         <option value="">The game in general</option>
                         {playthroughs.map((playthrough, index) => (
                             <option key={playthrough.id} value={playthrough.id}>
-                                {`${index + 1}. ${playthroughTypeLabel(playthrough.type) ?? 'In progress'}`}
+                                {`${index + 1}. ${playthroughLabel(playthrough)}`}
                             </option>
                         ))}
                     </select>
