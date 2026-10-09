@@ -138,6 +138,30 @@ Tailwind utilities inline, plus a scoped `ComponentName.css` per component where
 Global styles in `src/index.css`, app shell in `src/App.css` — both imported from
 `src/root.tsx`, since there is no `index.html` in framework mode.
 
+**Every colour is a token from `src/theme.css`** (`docs/decisions/0049-*`). `npm run lint` fails on
+any other, so build new styling on these from the start:
+
+- **Surfaces:** `bg-page` for the page, `bg-surface` for a card, panel, menu or dialog, `bg-raised`
+  for what sits on a surface or is hovered, and `bg-sunken` for scrims.
+- **Lines:** `border-line` for borders and dividers, `border-line-strong` for the edge of an input or
+  a floating panel.
+- **Text, strongest first:** `text-fg-strong` for headings, `text-fg` for body text, then
+  `text-fg-soft`, `text-fg-muted`, `text-fg-faint` and `text-fg-dim`.
+- **The primary is a scale.** `text-primary-400` for a link or the active tab, `bg-primary-600` or
+  `bg-primary-500` for a filled button with `text-on-primary`, and `ring-focus` or `outline-focus` for
+  keyboard focus.
+- **Colours that carry meaning are scales named for the meaning,** such as `danger-300` for an
+  error's words, and stay the same in every palette. Score colours still come from `@/lib/score`.
+- **The brand's colours** (`brand-navy`, `brand-lime`, `brand-light`) are the logo's.
+
+In a stylesheet the same tokens are `var(--color-surface)`. For a translucent colour, use the token
+with an opacity: `bg-surface/60`, or `color-mix(in srgb, var(--color-surface) 60%, transparent)`.
+When nothing fits, add a token, named for its job rather than its look. Don't write a hex, an
+`rgb()`, a palette class like `text-slate-400`, or `var(--color-slate-400)` in its place.
+Translucent black and white, for shadows and scrims, are the one exception.
+
+There is one theme, dark: no `light:` variant and no `[data-theme='light']` rules (ADR 0048).
+
 ## Tests
 
 Vitest with jsdom and Testing Library, in `*.test.ts(x)` files beside the code they cover.

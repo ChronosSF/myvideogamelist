@@ -35,9 +35,10 @@ Open `https://localhost:58546`.
 | Command | Notes |
 |---|---|
 | `npm run dev` | Dev server: SSR plus the `/api` proxy to ASP.NET |
-| `npm run lint` | ESLint |
+| `npm run lint` | ESLint, then `scripts/check-colours.mjs`: every colour is a token |
 | `npm run typecheck` | `react-router typegen && tsc -b` — use this, never bare `tsc` |
 | `npm run test` | Vitest, jsdom + Testing Library. `npm run test:watch` to iterate |
+| `npm run visual` | Before-and-after screenshots of the pages, compared pixel by pixel, for a change meant to look the same. Needs two dev servers and a seeded account; `visual/playwright.config.ts` says how. Not run by CI |
 | `npm run build` | Production build |
 | `dotnet test MyVideoGameList.Server.Tests/MyVideoGameList.Server.Tests.csproj` | Server unit tests |
 | `dotnet ef migrations add <Name>` | From `MyVideoGameList.Server/` |
@@ -426,6 +427,22 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   (critic score, IGDB player rating) is a number out of 100 in a `ScoreBadge`. Do not add a second
   score control, and do not put stars on an aggregate: that mix-up is what
   `docs/decisions/0021-*` exists to prevent.
+
+- **Every colour is a token from `src/theme.css`, and `npm run lint` refuses any other.** Style
+  anything new with them:
+  - as classes, such as `bg-surface`, `text-fg-muted`, `border-line` and `bg-primary-600`;
+  - as `var(--color-surface)` in a stylesheet;
+  - with an opacity on the token for a translucent colour: `bg-page/95`, or
+    `color-mix(in srgb, var(--color-page) 95%, transparent)`.
+
+  Never write a hex, an `rgb()`, a named colour or a Tailwind palette class such as `text-slate-400`,
+  and not `var(--color-slate-400)` either. When no token fits, add one to `theme.css`, named for its
+  job, not its look. The one exception is translucent black and white, for shadows and scrims.
+
+  There is one theme, dark, and no `light:` variant (ADR 0048). Until #209 is finished,
+  `scripts/colour-baseline.json` lists the files not yet moved, with how many raw colours each still
+  has. Fewer is welcome: record it with `node scripts/check-colours.mjs --update`. More is refused. A
+  change meant to look the same is checked with `npm run visual`. See `docs/decisions/0049-*`.
 
 - **Two game field lists, and putting a field in the wrong one fails quietly.**
   `GameListFieldList` feeds every query; `GameDetailFieldList` is concatenated onto it only by

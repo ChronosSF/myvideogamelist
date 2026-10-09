@@ -68,6 +68,7 @@ grow a forward pointer when a later record or an issue closes something it left 
 | [0046](0046-the-balancer-answers-its-own-distribution.md) | The balancer answers its own distribution, and what else the CloudFront phase settled | Implemented |
 | [0047](0047-a-playthroughs-dates-count-and-a-status-change-comes-first.md) | A playthrough's dates count in the activity figures, and a status change comes first | Implemented |
 | [0048](0048-one-theme-dark.md) | One theme, dark, and palettes are variations of it | Implemented; the palettes are #208 |
+| [0049](0049-every-colour-is-a-token.md) | Every colour is a token, named for its job, in one file | Implemented for the shell; the rest of the client moves under #209 |
 
 **Status** — *Accepted*: decided, not yet built. *Implemented*: decided and in the code.
 *Superseded*: replaced by a later record.

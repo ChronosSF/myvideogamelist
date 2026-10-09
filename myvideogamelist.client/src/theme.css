@@ -1,0 +1,70 @@
+/*
+ * The palette: the one file where a colour is written (ADR 0049).
+ *
+ * Every colour the client draws is one of these tokens, named for what it is for. Through @theme each
+ * `--color-x` is a Tailwind colour, so the classes are `bg-surface`, `text-fg-muted`, `border-line`; a
+ * stylesheet writes `var(--color-surface)`. A token made translucent is still the token: `bg-page/95`
+ * as a class, `color-mix(in srgb, var(--color-page) 95%, transparent)` in a stylesheet.
+ * `npm run lint` refuses a colour written anywhere else (`scripts/check-colours.mjs`).
+ *
+ * One theme, dark (ADR 0048). The palettes of #208 will give the surfaces, the lines and the primary
+ * other values; the text stays light, and the colours that carry meaning and the brand's stay as they
+ * are in every palette.
+ *
+ * The values are Tailwind 4's, and the comments name the colour each was, which is all they are: the
+ * token is the name to use. Before the tokens, the stylesheets wrote Tailwind 3's hex for the same
+ * names, which is a shade or two away, so a token is the one value where there had been two.
+ *
+ * `static`, so that every token is on :root whether or not a class uses it: a stylesheet reads them as
+ * variables, and a palette will set them there.
+ */
+@theme static {
+    /* ── Surfaces, deepest first ──────────────────────────────────────────── */
+
+    --color-sunken: oklch(12.9% 0.042 264.695);   /* Under the page: scrims, the deep end of a fade over an image. slate-950 */
+    --color-page: oklch(20.8% 0.042 265.755);     /* The page. slate-900 */
+    --color-surface: oklch(27.9% 0.041 260.031);  /* What sits on the page: a card, a panel, a menu, a dialog. slate-800 */
+    --color-raised: oklch(37.2% 0.044 257.287);   /* What sits on a surface, or a surface under the pointer. slate-700 */
+
+    /* ── Lines ────────────────────────────────────────────────────────────── */
+
+    --color-line: oklch(37.2% 0.044 257.287 / 0.6);         /* Borders and dividers. slate-700 at 60% */
+    --color-line-strong: oklch(44.6% 0.043 257.281 / 0.7);  /* The edge of a control or a floating panel. slate-600 at 70% */
+
+    /* ── Text, strongest first ────────────────────────────────────────────── */
+
+    --color-fg-strong: #fff;                      /* Headings, and what has to stand out. white */
+    --color-fg: oklch(96.8% 0.007 247.896);       /* Body text, and the page's own colour. slate-100 */
+    --color-fg-soft: oklch(86.9% 0.022 252.894);  /* Text a step back: a menu item, a dialog's explanation. slate-300 */
+    --color-fg-muted: oklch(70.4% 0.04 256.788);  /* Descriptions, labels, a button that is not the main one. slate-400 */
+    --color-fg-faint: oklch(55.4% 0.046 257.417); /* Metadata, hints, the heading over a section. slate-500 */
+    --color-fg-dim: oklch(44.6% 0.043 257.281);   /* Placeholders, and what is deliberately barely there. slate-600 */
+
+    /* ── The primary: links, what is selected, the main button ───────────── */
+
+    --color-primary-200: oklch(88.2% 0.059 254.128);
+    --color-primary-300: oklch(80.9% 0.105 251.813);  /* Text in the primary under the pointer, or on a tint of it */
+    --color-primary-400: oklch(70.7% 0.165 254.624);  /* Text and icons in the primary: a link, the active tab */
+    --color-primary-500: oklch(62.3% 0.214 259.815);  /* A filled button, with 600 for its other state; the base of the primary's tints */
+    --color-primary-600: oklch(54.6% 0.245 262.881);
+    --color-primary-800: oklch(42.4% 0.199 265.638);
+    --color-primary-900: oklch(37.9% 0.146 265.522);
+    --color-primary-950: oklch(28.2% 0.091 267.935);  /* The deep tint behind a page's header */
+    --color-on-primary: #fff;                         /* Text on a filled primary */
+    --color-focus: var(--color-primary-500);          /* The keyboard focus ring and outline */
+
+    /* ── Colours that carry meaning: the same in every palette ────────────── */
+
+    --color-danger-300: oklch(80.8% 0.114 19.571);   /* An error's words */
+    --color-danger-400: oklch(70.4% 0.191 22.216);
+    --color-danger-500: oklch(63.7% 0.237 25.331);   /* The base of an error's tints */
+    --color-danger-600: oklch(57.7% 0.245 27.325);   /* The button that cannot be undone */
+    --color-danger-700: oklch(50.5% 0.213 27.518);
+    --color-danger-900: oklch(39.6% 0.141 25.723);
+
+    /* ── The brand: the logo's colours, the same in every palette ─────────── */
+
+    --color-brand-navy: #182b4d;
+    --color-brand-lime: #a3e635;
+    --color-brand-light: #f8fafc;
+}

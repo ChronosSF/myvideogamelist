@@ -1,5 +1,6 @@
 import { useId, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
+import { PageHeader } from '@/components/PageHeader';
 import { useAuth } from '@/hooks/useAuth';
 import { useLists } from '@/hooks/useLists';
 import { useImportReview } from '@/hooks/useImport';
@@ -126,22 +127,19 @@ export function ImportReviewPage() {
 
     return (
         <div className="min-h-screen">
-            <div className="bg-gradient-to-b from-blue-950/60 to-slate-900 border-b border-slate-700/50">
-                <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-                    <h1 className="text-2xl sm:text-3xl font-bold text-white mb-1">
-                        Review your import
-                    </h1>
-                    <p className="text-slate-400 text-sm">
-                        {review ? `${review.job.fileName} — nothing is saved until you finish.` : 'Loading…'}
+            <PageHeader
+                title="Review your import"
+                width="6xl"
+                compact
+                description={review ? `${review.job.fileName} — nothing is saved until you finish.` : 'Loading…'}
+            >
+                {expiresIn && (
+                    <p className="text-slate-500 text-xs mt-1">
+                        An import left unfinished is deleted {expiresIn}, along with the decisions
+                        made on it. Saving any decision starts that over.
                     </p>
-                    {expiresIn && (
-                        <p className="text-slate-500 text-xs mt-1">
-                            An import left unfinished is deleted {expiresIn}, along with the decisions
-                            made on it. Saving any decision starts that over.
-                        </p>
-                    )}
-                </div>
-            </div>
+                )}
+            </PageHeader>
 
             <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
                 {(authLoading || loading) && (

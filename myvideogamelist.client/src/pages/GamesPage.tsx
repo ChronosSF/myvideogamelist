@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { data, useNavigation, useSearchParams } from 'react-router';
 import { GameCard } from '@/components/GameCard';
 import { GameBrowseFilters } from '@/components/GameBrowseFilters';
+import { PageHeader } from '@/components/PageHeader';
 import type { GameDto, GenreDto, PagedGamesResponse, PlatformDto } from '@/types/game';
 import { apiUrl } from '@/lib/api';
 import { CACHE_GAMES_LIST, PRIVATE_NO_STORE } from '@/lib/cache';
@@ -300,45 +301,40 @@ export function GamesPage({ loaderData }: Route.ComponentProps) {
 
     return (
         <div className="min-h-screen">
-            {/* Page header */}
-            <div className="bg-gradient-to-b from-blue-950/60 to-slate-900 border-b border-slate-700/50">
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
-                    <h1 className="text-3xl sm:text-4xl font-bold text-white mb-2">Games</h1>
-                    <p className="text-slate-400 text-sm sm:text-base">
-                        {loading ? 'Loading…' : `${games.length} game${games.length !== 1 ? 's' : ''} loaded${hasMore ? ' so far' : ''}`}
-                    </p>
-
-                    {/* Search */}
-                    <div className="mt-5 relative max-w-sm">
-                        <svg
-                            className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 pointer-events-none"
-                            fill="none"
-                            stroke="currentColor"
-                            viewBox="0 0 24 24"
-                            aria-hidden="true"
-                        >
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M17 11A6 6 0 115 11a6 6 0 0112 0z" />
-                        </svg>
-                        <input
-                            type="search"
-                            placeholder="Search games…"
-                            value={search}
-                            onChange={e => setSearch(e.target.value)}
-                            className="w-full pl-9 pr-4 py-2 bg-slate-800 border border-slate-600 rounded-lg text-white placeholder-slate-500 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                            aria-label="Search games"
-                        />
-                    </div>
-
-                    <GameBrowseFilters
-                        browse={browse}
-                        platforms={platforms}
-                        genres={genres}
-                        years={yearsFrom(currentYear)}
-                        onChange={changeBrowse}
-                        onClear={clearFilters}
+            <PageHeader
+                title="Games"
+                description={loading ? 'Loading…' : `${games.length} game${games.length !== 1 ? 's' : ''} loaded${hasMore ? ' so far' : ''}`}
+            >
+                {/* Search */}
+                <div className="mt-5 relative max-w-sm">
+                    <svg
+                        className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 pointer-events-none"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                        aria-hidden="true"
+                    >
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M17 11A6 6 0 115 11a6 6 0 0112 0z" />
+                    </svg>
+                    <input
+                        type="search"
+                        placeholder="Search games…"
+                        value={search}
+                        onChange={e => setSearch(e.target.value)}
+                        className="w-full pl-9 pr-4 py-2 bg-slate-800 border border-slate-600 rounded-lg text-white placeholder-slate-500 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        aria-label="Search games"
                     />
                 </div>
-            </div>
+
+                <GameBrowseFilters
+                    browse={browse}
+                    platforms={platforms}
+                    genres={genres}
+                    years={yearsFrom(currentYear)}
+                    onChange={changeBrowse}
+                    onClear={clearFilters}
+                />
+            </PageHeader>
 
             {/* Content */}
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">

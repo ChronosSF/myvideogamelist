@@ -2,8 +2,8 @@
     position: sticky;
     top: 0;
     z-index: 50;
-    background: var(--nav-bg, rgba(15, 23, 42, 0.95));
-    border-bottom: 1px solid var(--nav-border, rgba(51, 65, 85, 0.5));
+    background: color-mix(in srgb, var(--color-page) 95%, transparent);
+    border-bottom: 1px solid var(--color-line);
     transition: background 0.2s, border-color 0.2s;
 }
 
@@ -26,7 +26,7 @@
     border-radius: 0.5rem;
     font-size: 0.875rem;
     font-weight: 500;
-    color: var(--nbtn-ghost, #94a3b8);
+    color: var(--color-fg-muted);
     background: none;
     border: none;
     cursor: pointer;
@@ -34,7 +34,7 @@
 }
 
 .navbar-btn-ghost:hover {
-    color: var(--nbtn-ghost-hover, #f1f5f9);
+    color: var(--color-fg);
     background: rgba(255, 255, 255, 0.08);
 }
 
@@ -43,15 +43,15 @@
     border-radius: 0.5rem;
     font-size: 0.875rem;
     font-weight: 600;
-    color: #ffffff;
-    background: #3b82f6;
+    color: var(--color-on-primary);
+    background: var(--color-primary-500);
     border: none;
     cursor: pointer;
     transition: background 0.15s;
 }
 
 .navbar-btn-primary:hover {
-    background: #2563eb;
+    background: var(--color-primary-600);
 }
 
 /* Main menu: the nav links behind a button, below md */
@@ -62,7 +62,7 @@
     width: 2.5rem;
     height: 2.5rem;
     border-radius: 0.5rem;
-    color: var(--nbtn-ghost, #94a3b8);
+    color: var(--color-fg-muted);
     background: none;
     border: none;
     cursor: pointer;
@@ -71,7 +71,7 @@
 
 .navbar-menu-btn:hover,
 .navbar-menu-btn[aria-expanded='true'] {
-    color: var(--nbtn-ghost-hover, #f1f5f9);
+    color: var(--color-fg);
     background: rgba(255, 255, 255, 0.08);
 }
 
@@ -83,8 +83,8 @@
     top: calc(100% + 1px);
     left: 0;
     right: 0;
-    background: var(--nav-menu-bg, #0f172a);
-    border-bottom: 1px solid var(--nav-border, rgba(51, 65, 85, 0.5));
+    background: var(--color-page);
+    border-bottom: 1px solid var(--color-line);
     box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.4);
     animation: dd-in 0.12s ease;
 }
@@ -96,7 +96,7 @@
     position: fixed;
     inset: 0;
     z-index: 40;
-    background: rgba(2, 6, 23, 0.6);
+    background: color-mix(in srgb, var(--color-sunken) 60%, transparent);
     animation: navbar-fade-in 0.12s ease;
 }
 
@@ -126,8 +126,8 @@
     width: 1.75rem;
     height: 1.75rem;
     border-radius: 50%;
-    background: #3b82f6;
-    color: #ffffff;
+    background: var(--color-primary-500);
+    color: var(--color-on-primary);
     font-size: 0.75rem;
     font-weight: 700;
     display: flex;
@@ -159,8 +159,8 @@
     right: 0;
     z-index: 50;
     min-width: 14rem;
-    background: var(--dd-bg, #1e293b);
-    border: 1px solid var(--dd-border, rgba(51, 65, 85, 0.8));
+    background: var(--color-surface);
+    border: 1px solid var(--color-line-strong);
     border-radius: 0.75rem;
     box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.4);
     overflow: hidden;
@@ -175,8 +175,8 @@
 .navbar-dropdown-email {
     padding: 0.75rem 1rem;
     font-size: 0.8125rem;
-    color: var(--dd-email, #64748b);
-    border-bottom: 1px solid var(--dd-sep, rgba(51, 65, 85, 0.5));
+    color: var(--color-fg-faint);
+    border-bottom: 1px solid var(--color-line);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -189,7 +189,7 @@
     width: 100%;
     padding: 0.625rem 1rem;
     font-size: 0.9375rem;
-    color: var(--dd-text, #cbd5e1);
+    color: var(--color-fg-soft);
     background: none;
     border: none;
     cursor: pointer;
@@ -199,17 +199,17 @@
 
 .navbar-dropdown-item:hover {
     background: rgba(255, 255, 255, 0.07);
-    color: #ffffff;
+    color: var(--color-fg-strong);
 }
 
 .navbar-dropdown-logout {
-    color: #fca5a5;
-    border-top: 1px solid var(--dd-sep, rgba(51, 65, 85, 0.5));
+    color: var(--color-danger-300);
+    border-top: 1px solid var(--color-line);
 }
 
 .navbar-dropdown-logout:hover {
-    background: rgba(239, 68, 68, 0.1) !important;
-    color: #fca5a5 !important;
+    background: color-mix(in srgb, var(--color-danger-500) 10%, transparent) !important;
+    color: var(--color-danger-300) !important;
 }
 
 /* Below sm the links are in the main menu, so the bar holds the menu button, the logo and the
