@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import { useAddToBacklog } from '@/hooks/useAddToBacklog';
+import { useFavouriteToggle } from '@/hooks/useFavouriteToggle';
 import { useReleaseCalendar, type CalendarRead } from '@/hooks/useReleaseCalendar';
 import { startTime } from '@/lib/calendarEvents';
 import { dayLabel, formatDaySpan } from '@/lib/daySpan';
@@ -54,9 +55,33 @@ function Thumb({ release }: { release: ConnectedRelease }) {
     );
 }
 
-/** One release on its own: its cover, its name, why it is there (K5), and Add to Backlog. */
+/** The rosette the game page marks a favourite with: never a star, which is the user's own score (ADR 0021). */
+function Rosette({ filled }: { filled: boolean }) {
+    return (
+        <svg fill={filled ? 'currentColor' : 'none'} stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+            <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 15a6 6 0 100-12 6 6 0 000 12zM8.2 13.7L7 21l5-3 5 3-1.2-7.3"
+            />
+        </svg>
+    );
+}
+
+/** Whether a card's reason already says the game is a favourite: "A favourite of yours". */
+function reasonSaysFavourite(release: ConnectedRelease): boolean {
+    const { reason } = release;
+    return reason.relation === 'itself' && reason.membership === 'favourite' && reason.gameId === release.gameId;
+}
+
+/**
+ * One release on its own: its cover, its name, why it is there (K5), and what can be done with it from
+ * here — put it in the Backlog, or make it a favourite.
+ */
 function ReleaseItem({ entry, release, undated }: { entry: Drawn; release: ConnectedRelease; undated: boolean }) {
     const backlog = useAddToBacklog(release);
+    const favourite = useFavouriteToggle(release);
 
     return (
         <div className="calendar-entry">
@@ -65,19 +90,43 @@ function ReleaseItem({ entry, release, undated }: { entry: Drawn; release: Conne
                 <Link to={`/games/${release.gameId}`} tabIndex={-1} aria-hidden="true" className="calendar-entry-cover">
                     <Thumb release={release} />
                 </Link>
-                {backlog.canAdd && (
-                    <button
-                        type="button"
-                        className="calendar-entry-add"
-                        disabled={backlog.pending}
-                        onClick={backlog.add}
-                        // The visible words of the line's button first, for voice control; the title
-                        // after, so that a screen reader can tell one card's from the next.
-                        aria-label={`Add to ${backlog.backlog}: ${release.title}`}
-                        title={`Add to ${backlog.backlog}`}
+                {(backlog.canAdd || favourite.canToggle) && (
+                    // One pill for both, on the cover's foot, rather than a circle each: two circles on a
+                    // cover this small would be busier than the cover. Shown as the lists' controls are,
+                    // and kept up while a change is on its way.
+                    <div
+                        className="calendar-entry-actions"
+                        data-busy={backlog.pending || (favourite.canToggle && favourite.pending) || undefined}
                     >
-                        +
-                    </button>
+                        {backlog.canAdd && (
+                            <button
+                                type="button"
+                                className="calendar-entry-action"
+                                disabled={backlog.pending}
+                                onClick={backlog.add}
+                                // The visible words of the line's button first, for voice control; the
+                                // title after, so that a screen reader can tell one card's from the next.
+                                aria-label={`Add to ${backlog.backlog}: ${release.title}`}
+                                title={`Add to ${backlog.backlog}`}
+                            >
+                                +
+                            </button>
+                        )}
+                        {favourite.canToggle && (
+                            <button
+                                type="button"
+                                className="calendar-entry-action"
+                                data-kind="favourite"
+                                disabled={favourite.pending}
+                                onClick={favourite.toggle}
+                                aria-pressed={favourite.favourite}
+                                aria-label={`Favourite: ${release.title}`}
+                                title={favourite.favourite ? 'Remove from favourites' : 'Add to favourites'}
+                            >
+                                <Rosette filled={favourite.favourite} />
+                            </button>
+                        )}
+                    </div>
                 )}
             </div>
             <div className="calendar-entry-text">
@@ -88,17 +137,26 @@ function ReleaseItem({ entry, release, undated }: { entry: Drawn; release: Conne
                 )}
                 <p className="calendar-entry-reason">{entryReason(entry, { undated })}</p>
                 {backlog.listedIn !== null && <p className="calendar-entry-listed">In {backlog.listedIn}</p>}
+                {/* Said in words, as the Backlog is, since the toggle that shows it is up only on hover —
+                    except where the reason says it already. */}
+                {favourite.favourite && !reasonSaysFavourite(release) && (
+                    <p className="calendar-entry-favourite">One of your favourites</p>
+                )}
                 {backlog.failed && (
                     <p className="calendar-entry-error" role="alert">Could not add it to {backlog.backlog}.</p>
+                )}
+                {favourite.failed && (
+                    <p className="calendar-entry-error" role="alert">Could not change your favourites.</p>
                 )}
             </div>
         </div>
     );
 }
 
-/** One release in a group's list: its name, where it arrives, and the same one action. */
+/** One release in a group's list: its name, where it arrives, and the same two actions, inline. */
 function GroupMember({ release }: { release: ConnectedRelease }) {
     const backlog = useAddToBacklog(release);
+    const favourite = useFavouriteToggle(release);
 
     return (
         <li>
@@ -116,8 +174,25 @@ function GroupMember({ release }: { release: ConnectedRelease }) {
                     +
                 </button>
             )}
+            {favourite.canToggle && (
+                <button
+                    type="button"
+                    className="calendar-entry-add-inline"
+                    data-kind="favourite"
+                    disabled={favourite.pending}
+                    onClick={favourite.toggle}
+                    aria-pressed={favourite.favourite}
+                    aria-label={`Favourite: ${release.title}`}
+                    title={favourite.favourite ? 'Remove from favourites' : 'Add to favourites'}
+                >
+                    <Rosette filled={favourite.favourite} />
+                </button>
+            )}
             {backlog.listedIn !== null && <span className="calendar-entry-listed"> · In {backlog.listedIn}</span>}
             {backlog.failed && <span className="calendar-entry-error" role="alert"> · Could not add it.</span>}
+            {favourite.failed && (
+                <span className="calendar-entry-error" role="alert"> · Could not change your favourites.</span>
+            )}
         </li>
     );
 }
