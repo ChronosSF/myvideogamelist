@@ -57,12 +57,20 @@ function EntryList({ entries, undated = false, label }: { entries: readonly Card
  * What is known only to the month, the quarter or the year the month is in (K3): never put on a day IGDB
  * has not named, so a band for the period. Keyed by its period, so that a band opened in one month is
  * still open in the next month it is in.
+ *
+ * How many posters it has is how wide it asks to be, which decides whether it shares a row with the band
+ * beside it — a sum only the stylesheet can do, since it is about the width of the screen.
  */
 function Band({ band }: { band: MonthBand }) {
     const id = `calendar-band-${band.precision}`;
 
     return (
-        <section className="calendar-band" data-precision={band.precision} aria-labelledby={id}>
+        <section
+            className="calendar-band"
+            data-precision={band.precision}
+            aria-labelledby={id}
+            style={{ '--band-entries': band.entries.length } as React.CSSProperties}
+        >
             <h3 id={id} className="calendar-band-label">
                 {band.label}
                 {/* The space outside the span: inside it, it is lost from the region's name. */}
