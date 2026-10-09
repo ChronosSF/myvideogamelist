@@ -1,8 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
-import { Rosette } from '@/components/Rosette';
-import { useAddToBacklog } from '@/hooks/useAddToBacklog';
-import { useFavouriteToggle } from '@/hooks/useFavouriteToggle';
+import { ReleaseCard, type CardEntry } from '@/components/ReleaseCard';
 import { useReleaseCalendar, type CalendarRead } from '@/hooks/useReleaseCalendar';
 import { startTime } from '@/lib/calendarEvents';
 import { dayLabel, formatDaySpan } from '@/lib/daySpan';
@@ -17,208 +15,18 @@ import {
     type MonthBand,
     type MonthLayout,
 } from '@/lib/releaseCalendar';
-import { entryReason, platformNames, showsPlatformsApart } from '@/lib/releaseReason';
 import { CURATED_EVENT_KIND_LABELS } from '@/types/calendarAdmin';
-import type { ConnectedRelease, ReleaseEntry } from '@/types/releases';
 import './ReleaseCalendar.css';
 
-/** How many entries a band or the undated list shows before "Show all": two rows at full width. */
-const SHOWN_AT_FIRST = 10;
+/** How many entries a band or the undated list shows before "Show all": about two rows at full width. */
+const SHOWN_AT_FIRST = 12;
 
-/** One thing the calendar draws: an entry with a date, or one announced with none. */
-type Drawn = Pick<ReleaseEntry, 'groupName' | 'releases'>;
-
-function entryKey(entry: Drawn): string {
+function entryKey(entry: CardEntry): string {
     return `${entry.groupName ?? ''}|${entry.releases.map(r => r.gameId).join(',')}`;
 }
 
-/**
- * IGDB's cover at the size the calendar draws it, which is a thumbnail: the API sends the big one, three
- * times as wide, for the line's cards.
- */
-function coverAt(url: string, size: 't_cover_small' | 't_cover_small_2x'): string {
-    return url.replace('/t_cover_big/', `/${size}/`);
-}
-
-function Thumb({ release }: { release: ConnectedRelease }) {
-    const url = release.coverImageUrl;
-    return (
-        <span className="calendar-thumb">
-            {url && (
-                <img
-                    src={coverAt(url, 't_cover_small')}
-                    srcSet={`${coverAt(url, 't_cover_small')} 1x, ${coverAt(url, 't_cover_small_2x')} 2x`}
-                    alt=""
-                    loading="lazy"
-                />
-            )}
-        </span>
-    );
-}
-
-/** Whether a card's reason already says the game is a favourite: "A favourite of yours". */
-function reasonSaysFavourite(release: ConnectedRelease): boolean {
-    const { reason } = release;
-    return reason.relation === 'itself' && reason.membership === 'favourite' && reason.gameId === release.gameId;
-}
-
-/**
- * One release on its own: its cover, its name, why it is there (K5), and what can be done with it from
- * here — put it in the Backlog, or make it a favourite.
- */
-function ReleaseItem({ entry, release, undated }: { entry: Drawn; release: ConnectedRelease; undated: boolean }) {
-    const backlog = useAddToBacklog(release);
-    const favourite = useFavouriteToggle(release);
-
-    return (
-        <div className="calendar-entry">
-            <div className="calendar-entry-art">
-                {/* Out of the tab order and hidden from screen readers: the title is the same link. */}
-                <Link to={`/games/${release.gameId}`} tabIndex={-1} aria-hidden="true" className="calendar-entry-cover">
-                    <Thumb release={release} />
-                </Link>
-                {(backlog.canAdd || favourite.canToggle) && (
-                    // One pill for both, on the cover's foot, rather than a circle each: two circles on a
-                    // cover this small would be busier than the cover. Shown as the lists' controls are,
-                    // and kept up while a change is on its way.
-                    <div
-                        className="calendar-entry-actions"
-                        data-busy={backlog.pending || (favourite.canToggle && favourite.pending) || undefined}
-                    >
-                        {backlog.canAdd && (
-                            <button
-                                type="button"
-                                className="calendar-entry-action"
-                                disabled={backlog.pending}
-                                onClick={backlog.add}
-                                // The visible words of the line's button first, for voice control; the
-                                // title after, so that a screen reader can tell one card's from the next.
-                                aria-label={`Add to ${backlog.backlog}: ${release.title}`}
-                                title={`Add to ${backlog.backlog}`}
-                            >
-                                +
-                            </button>
-                        )}
-                        {favourite.canToggle && (
-                            <button
-                                type="button"
-                                className="calendar-entry-action"
-                                data-kind="favourite"
-                                disabled={favourite.pending}
-                                onClick={favourite.toggle}
-                                aria-pressed={favourite.favourite}
-                                aria-label={`Favourite: ${release.title}`}
-                                title={favourite.favourite ? 'Remove from favourites' : 'Add to favourites'}
-                            >
-                                <Rosette filled={favourite.favourite} />
-                            </button>
-                        )}
-                    </div>
-                )}
-            </div>
-            <div className="calendar-entry-text">
-                <Link to={`/games/${release.gameId}`} className="calendar-entry-title">{release.title}</Link>
-                {release.earlyAccess && <p className="calendar-entry-badge">Early access</p>}
-                {showsPlatformsApart(release) && (
-                    <p className="calendar-entry-platforms">{platformNames(release.platforms)}</p>
-                )}
-                <p className="calendar-entry-reason">{entryReason(entry, { undated })}</p>
-                {backlog.listedIn !== null && <p className="calendar-entry-listed">In {backlog.listedIn}</p>}
-                {/* Said in words, as the Backlog is, since the toggle that shows it is up only on hover —
-                    except where the reason says it already. */}
-                {favourite.favourite && !reasonSaysFavourite(release) && (
-                    <p className="calendar-entry-favourite">One of your favourites</p>
-                )}
-                {backlog.failed && (
-                    <p className="calendar-entry-error" role="alert">Could not add it to {backlog.backlog}.</p>
-                )}
-                {favourite.failed && (
-                    <p className="calendar-entry-error" role="alert">Could not change your favourites.</p>
-                )}
-            </div>
-        </div>
-    );
-}
-
-/** One release in a group's list: its name, where it arrives, and the same two actions, inline. */
-function GroupMember({ release }: { release: ConnectedRelease }) {
-    const backlog = useAddToBacklog(release);
-    const favourite = useFavouriteToggle(release);
-
-    return (
-        <li>
-            <Link to={`/games/${release.gameId}`}>{release.title}</Link>
-            {release.platforms.length > 0 && <span> · {platformNames(release.platforms)}</span>}
-            {backlog.canAdd && (
-                <button
-                    type="button"
-                    className="calendar-entry-add-inline"
-                    disabled={backlog.pending}
-                    onClick={backlog.add}
-                    aria-label={`Add to ${backlog.backlog}: ${release.title}`}
-                    title={`Add to ${backlog.backlog}`}
-                >
-                    +
-                </button>
-            )}
-            {favourite.canToggle && (
-                <button
-                    type="button"
-                    className="calendar-entry-add-inline"
-                    data-kind="favourite"
-                    disabled={favourite.pending}
-                    onClick={favourite.toggle}
-                    aria-pressed={favourite.favourite}
-                    aria-label={`Favourite: ${release.title}`}
-                    title={favourite.favourite ? 'Remove from favourites' : 'Add to favourites'}
-                >
-                    <Rosette filled={favourite.favourite} />
-                </button>
-            )}
-            {backlog.listedIn !== null && <span className="calendar-entry-listed"> · In {backlog.listedIn}</span>}
-            {backlog.failed && <span className="calendar-entry-error" role="alert"> · Could not add it.</span>}
-            {favourite.failed && (
-                <span className="calendar-entry-error" role="alert"> · Could not change your favourites.</span>
-            )}
-        </li>
-    );
-}
-
-/**
- * A release, or a group of them (F6): named after its series or its game, with what is in it one click
- * away, as on the line.
- */
-function Entry({ entry, undated = false }: { entry: Drawn; undated?: boolean }) {
-    const [first] = entry.releases;
-    const count = entry.releases.length;
-
-    if (count === 1) return <ReleaseItem entry={entry} release={first} undated={undated} />;
-
-    const cover = entry.releases.find(r => r.coverImageUrl !== null) ?? first;
-    return (
-        <div className="calendar-entry">
-            <div className="calendar-entry-art">
-                <span className="calendar-entry-stack">
-                    <Thumb release={cover} />
-                </span>
-            </div>
-            <div className="calendar-entry-text">
-                <p className="calendar-entry-title">{entry.groupName ?? first.title}</p>
-                <p className="calendar-entry-platforms">{count} releases</p>
-                <p className="calendar-entry-reason">{entryReason(entry, { undated })}</p>
-                <details className="calendar-entry-group">
-                    <summary>Show all {count}</summary>
-                    <ul>
-                        {entry.releases.map(release => <GroupMember key={release.gameId} release={release} />)}
-                    </ul>
-                </details>
-            </div>
-        </div>
-    );
-}
-
 /** A list of entries that shows the first few and keeps the rest one click away. */
-function EntryList({ entries, undated = false, label }: { entries: readonly Drawn[]; undated?: boolean; label: string }) {
+function EntryList({ entries, undated = false, label }: { entries: readonly CardEntry[]; undated?: boolean; label: string }) {
     const [expanded, setExpanded] = useState(false);
     const shown = expanded ? entries : entries.slice(0, SHOWN_AT_FIRST);
 
@@ -227,7 +35,7 @@ function EntryList({ entries, undated = false, label }: { entries: readonly Draw
             <ul className="calendar-entry-list" aria-label={label}>
                 {shown.map(entry => (
                     <li key={entryKey(entry)}>
-                        <Entry entry={entry} undated={undated} />
+                        <ReleaseCard entry={entry} undated={undated} />
                     </li>
                 ))}
             </ul>
@@ -292,7 +100,7 @@ function DayCell({ day, layout, today }: { day: CalendarDay; layout: MonthLayout
                 <ul className="calendar-day-entries" aria-label={`Due on ${label.full}`}>
                     {day.entries.map(entry => (
                         <li key={entryKey(entry)}>
-                            <Entry entry={entry} />
+                            <ReleaseCard entry={entry} />
                         </li>
                     ))}
                 </ul>

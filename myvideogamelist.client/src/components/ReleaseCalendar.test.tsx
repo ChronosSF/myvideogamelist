@@ -247,30 +247,17 @@ describe('ReleaseCalendar, favourites', () => {
         expect(favourites.add).toHaveBeenCalledWith(expect.objectContaining({ id: 389000, title: 'God of War Laufey' }));
     });
 
-    it('says a favourite is one, and takes it back off', async () => {
+    it('shows a favourite as one, and takes it back off', async () => {
         calendar.releases.data = [LAUFEY];
         favoured.add(389000);
         const actor = userEvent.setup();
         renderCalendar();
 
-        expect(screen.getByText('One of your favourites')).toBeInTheDocument();
         const toggle = screen.getByRole('button', { name: 'Favourite: God of War Laufey' });
         expect(toggle).toHaveAttribute('aria-pressed', 'true');
         await actor.click(toggle);
 
         expect(favourites.remove).toHaveBeenCalledWith(389000);
-    });
-
-    it('does not say it twice where the reason already does', () => {
-        calendar.undated.data = [{
-            groupName: null,
-            releases: [connectedRelease({ gameId: 81249, title: 'The Elder Scrolls VI', reason: { relation: 'itself', gameId: 81249, membership: 'favourite' } })],
-        }];
-        favoured.add(81249);
-        renderCalendar();
-
-        expect(screen.getByText('A favourite of yours — announced')).toBeInTheDocument();
-        expect(screen.queryByText('One of your favourites')).not.toBeInTheDocument();
     });
 
     it('offers nothing until the favourites have loaded, when every game looks as though it were none', () => {
@@ -332,8 +319,8 @@ describe('ReleaseCalendar, announced with no date', () => {
         expect(screen.getByText('Nothing connected to your games is waiting on a date.')).toBeInTheDocument();
     });
 
-    it('shows the first ten and keeps the rest a click away', async () => {
-        calendar.undated.data = Array.from({ length: 12 }, (_, index): UndatedEntry => ({
+    it('shows the first twelve and keeps the rest a click away', async () => {
+        calendar.undated.data = Array.from({ length: 14 }, (_, index): UndatedEntry => ({
             groupName: null,
             releases: [connectedRelease({ gameId: index + 1, title: `Game ${index + 1}` })],
         }));
@@ -341,9 +328,9 @@ describe('ReleaseCalendar, announced with no date', () => {
         renderCalendar();
 
         const list = screen.getByRole('list', { name: 'Announced, no date' });
-        expect(within(list).getAllByRole('listitem')).toHaveLength(10);
-
-        await actor.click(screen.getByRole('button', { name: 'Show all 12' }));
         expect(within(list).getAllByRole('listitem')).toHaveLength(12);
+
+        await actor.click(screen.getByRole('button', { name: 'Show all 14' }));
+        expect(within(list).getAllByRole('listitem')).toHaveLength(14);
     });
 });
