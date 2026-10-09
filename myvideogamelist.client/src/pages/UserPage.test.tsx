@@ -21,7 +21,6 @@ const auth: AuthContextValue = {
     login: vi.fn(async () => {}),
     register: vi.fn(async () => {}),
     logout: vi.fn(async () => {}),
-    updateTheme: vi.fn(async () => {}),
     updateUserName: vi.fn(async () => {}),
     updateProfileVisibility: vi.fn(async () => {}),
     deleteAccount: vi.fn(async () => {}),
@@ -74,8 +73,6 @@ beforeEach(() => {
     // Where every visit starts, the server render included: nobody known yet.
     auth.user = null;
     auth.loading = true;
-    vi.mocked(auth.updateTheme).mockReset();
-    vi.mocked(auth.updateTheme).mockResolvedValue(undefined);
 });
 
 describe('UserPage before the account is known', () => {
@@ -151,23 +148,5 @@ describe('UserPage account deletion', () => {
         expect(await screen.findByText('Password is incorrect.')).toBeInTheDocument();
         expect(screen.getByRole('dialog', { name: 'Delete your account?' })).toBeInTheDocument();
         expect(screen.queryByText('Your account has been deleted.')).not.toBeInTheDocument();
-    });
-});
-
-describe('UserPage appearance', () => {
-    beforeEach(() => authAnswered(userProfile()));
-
-    it('names the switch for the state it turns on, not the action', async () => {
-        // "Switch to light mode, checked" says nothing about which mode is on.
-        const actor = userEvent.setup();
-        stubFetch();
-        renderPage();
-
-        const toggle = screen.getByRole('checkbox', { name: 'Light mode' });
-        expect(toggle).not.toBeChecked();
-
-        await actor.click(toggle);
-
-        await waitFor(() => expect(auth.updateTheme).toHaveBeenCalledWith('light'));
     });
 });

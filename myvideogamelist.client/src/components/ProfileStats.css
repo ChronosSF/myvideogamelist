@@ -20,10 +20,6 @@
     color: #ffffff;
 }
 
-[data-theme='light'] .profile-heading {
-    color: #0f172a;
-}
-
 .profile-section {
     display: flex;
     flex-direction: column;
@@ -39,10 +35,6 @@
     color: #94a3b8;
 }
 
-[data-theme='light'] .profile-section-title {
-    color: #64748b;
-}
-
 .profile-caption,
 .profile-empty {
     margin: 0;
@@ -51,20 +43,11 @@
     color: #94a3b8;
 }
 
-[data-theme='light'] .profile-caption,
-[data-theme='light'] .profile-empty {
-    color: #64748b;
-}
-
 .profile-figure {
     margin: 0;
     font-size: 1.75rem;
     font-weight: 700;
     color: #ffffff;
-}
-
-[data-theme='light'] .profile-figure {
-    color: #0f172a;
 }
 
 .profile-error {
@@ -78,12 +61,6 @@
     background: rgba(127, 29, 29, 0.2);
     border: 1px solid rgba(185, 28, 28, 0.5);
     border-radius: 0.5rem;
-}
-
-[data-theme='light'] .profile-error {
-    color: #b91c1c;
-    background: #fef2f2;
-    border-color: #fecaca;
 }
 
 .profile-error p {
@@ -180,21 +157,12 @@
     border-radius: 0.65rem;
 }
 
-[data-theme='light'] .profile-stat-tile {
-    background: #ffffff;
-    border-color: #e2e8f0;
-}
-
 .profile-stat-value {
     margin: 0;
     font-size: 1.6rem;
     font-weight: 700;
     line-height: 1.1;
     color: #ffffff;
-}
-
-[data-theme='light'] .profile-stat-value {
-    color: #0f172a;
 }
 
 .profile-stat-label {
@@ -204,19 +172,11 @@
     color: #cbd5e1;
 }
 
-[data-theme='light'] .profile-stat-label {
-    color: #334155;
-}
-
 .profile-stat-hint {
     margin: 0.3rem 0 0;
     font-size: 0.75rem;
     line-height: 1.4;
     color: #94a3b8;
-}
-
-[data-theme='light'] .profile-stat-hint {
-    color: #64748b;
 }
 
 /* Ranked bars — statuses, platforms, genres */
@@ -246,10 +206,6 @@
     color: #cbd5e1;
 }
 
-[data-theme='light'] .profile-ranked-row {
-    color: #334155;
-}
-
 .profile-ranked-name {
     overflow: hidden;
     text-overflow: ellipsis;
@@ -261,10 +217,6 @@
     background: rgba(51, 65, 85, 0.6);
     border-radius: 999px;
     overflow: hidden;
-}
-
-[data-theme='light'] .profile-ranked-track {
-    background: #e2e8f0;
 }
 
 .profile-ranked-fill {
@@ -289,10 +241,6 @@
     color: #94a3b8;
 }
 
-[data-theme='light'] .profile-ranked-count {
-    color: #64748b;
-}
-
 /* Two sections side by side. The minimum keeps a ranked bar's track long enough to compare once the
    fixed name and count columns have taken their share; below twice that, the pair stacks. It is
    capped at the container, because a bare 18rem is a floor the track keeps even when there is less
@@ -314,10 +262,6 @@
     font-variant-numeric: tabular-nums;
 }
 
-[data-theme='light'] .profile-chart-tick {
-    color: #64748b;
-}
-
 /* Monthly activity */
 
 .profile-legend {
@@ -329,10 +273,6 @@
     list-style: none;
     font-size: 0.75rem;
     color: #94a3b8;
-}
-
-[data-theme='light'] .profile-legend {
-    color: #64748b;
 }
 
 .profile-legend li {

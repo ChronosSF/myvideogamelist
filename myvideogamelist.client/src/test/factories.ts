@@ -189,7 +189,6 @@ export function userProfile(overrides: Partial<UserProfile> = {}): UserProfile {
         id: 'user-1',
         email: 'alex@test.local',
         userName: 'alex',
-        theme: 'dark',
         profileVisibility: 'private',
         isAdmin: false,
         ...overrides,

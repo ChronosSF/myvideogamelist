@@ -25,22 +25,6 @@ public class UserController(
     AdminAccounts admins,
     TimeProvider clock) : ControllerBase
 {
-    [HttpPut("theme")]
-    public async Task<IActionResult> UpdateTheme([FromBody] UpdateThemeDto dto)
-    {
-        if (dto.Theme != "light" && dto.Theme != "dark")
-            return BadRequest(new { message = "Theme must be 'light' or 'dark'." });
-
-        var user = await userManager.GetUserAsync(User);
-        if (user == null) return Unauthorized();
-
-        user.Theme = dto.Theme;
-        var saved = await userManager.UpdateAsync(user);
-        if (!saved.Succeeded) return NotSaved(saved);
-
-        return NoContent();
-    }
-
     /// <summary>
     /// How long an account must wait between renames.
     /// </summary>
@@ -340,8 +324,7 @@ public class UserController(
     /// </para>
     /// <para>
     /// No cancellation token: <see cref="UserManager{TUser}"/> takes none, and a deletion abandoned
-    /// halfway is not a state worth inviting. Matches <see cref="UpdateTheme"/>, which is likewise
-    /// a single Identity write.
+    /// halfway is not a state worth inviting.
     /// </para>
     /// </remarks>
     [HttpDelete]

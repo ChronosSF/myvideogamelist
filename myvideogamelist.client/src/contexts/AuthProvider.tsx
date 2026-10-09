@@ -3,10 +3,6 @@ import type { ProfileVisibility, UserProfile } from '@/types/auth';
 import { apiFetch } from '@/lib/api';
 import { AuthContext } from './AuthContext';
 
-function applyTheme(theme: 'dark' | 'light') {
-    document.documentElement.setAttribute('data-theme', theme);
-}
-
 /**
  * The message a failed write should show the user.
  *
@@ -60,10 +56,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     useEffect(() => {
         fetch('/api/auth/me', { credentials: 'include' })
             .then(res => (res.ok ? res.json() : null))
-            .then((data: UserProfile | null) => {
-                setUser(data);
-                applyTheme(data?.theme ?? 'dark');
-            })
+            .then((data: UserProfile | null) => setUser(data))
             .finally(() => setLoading(false));
     }, []);
 
@@ -75,9 +68,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         });
         if (!res.ok) throw new Error(await problem(res, 'Login failed'));
 
-        const data: UserProfile = await res.json();
-        setUser(data);
-        applyTheme(data.theme);
+        setUser(await res.json() as UserProfile);
     };
 
     const register = async (email: string, password: string, userName: string) => {
@@ -88,26 +79,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         });
         if (!res.ok) throw new Error(await problem(res, 'Registration failed'));
 
-        const data: UserProfile = await res.json();
-        setUser(data);
-        applyTheme(data.theme);
+        setUser(await res.json() as UserProfile);
     };
 
     const logout = async () => {
         await apiFetch('/api/auth/logout', { method: 'POST' });
         setUser(null);
-        applyTheme('dark');
-    };
-
-    const updateTheme = async (theme: 'dark' | 'light') => {
-        const res = await apiFetch('/api/user/theme', {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ theme }),
-        });
-        if (!res.ok) throw new Error('Failed to update theme');
-        setUser(prev => (prev ? { ...prev, theme } : null));
-        applyTheme(theme);
     };
 
     /**
@@ -151,7 +128,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (!res.ok) throw new Error(await problem(res, 'Failed to delete your account'));
 
         setUser(null);
-        applyTheme('dark');
     };
 
     return (
@@ -162,7 +138,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 login,
                 register,
                 logout,
-                updateTheme,
                 updateUserName,
                 updateProfileVisibility,
                 deleteAccount,

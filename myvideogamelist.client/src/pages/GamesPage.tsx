@@ -301,10 +301,10 @@ export function GamesPage({ loaderData }: Route.ComponentProps) {
     return (
         <div className="min-h-screen">
             {/* Page header */}
-            <div className="bg-gradient-to-b from-blue-950/60 to-slate-900 light:from-blue-50/80 light:to-slate-50 border-b border-slate-700/50 light:border-slate-200">
+            <div className="bg-gradient-to-b from-blue-950/60 to-slate-900 border-b border-slate-700/50">
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
-                    <h1 className="text-3xl sm:text-4xl font-bold text-white light:text-slate-900 mb-2">Games</h1>
-                    <p className="text-slate-400 light:text-slate-600 text-sm sm:text-base">
+                    <h1 className="text-3xl sm:text-4xl font-bold text-white mb-2">Games</h1>
+                    <p className="text-slate-400 text-sm sm:text-base">
                         {loading ? 'Loading…' : `${games.length} game${games.length !== 1 ? 's' : ''} loaded${hasMore ? ' so far' : ''}`}
                     </p>
 
@@ -324,7 +324,7 @@ export function GamesPage({ loaderData }: Route.ComponentProps) {
                             placeholder="Search games…"
                             value={search}
                             onChange={e => setSearch(e.target.value)}
-                            className="w-full pl-9 pr-4 py-2 bg-slate-800 light:bg-white border border-slate-600 light:border-slate-300 rounded-lg text-white light:text-slate-900 placeholder-slate-500 light:placeholder-slate-400 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            className="w-full pl-9 pr-4 py-2 bg-slate-800 border border-slate-600 rounded-lg text-white placeholder-slate-500 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                             aria-label="Search games"
                         />
                     </div>
@@ -346,7 +346,7 @@ export function GamesPage({ loaderData }: Route.ComponentProps) {
                     <div className="flex items-center justify-center py-24">
                         <div className="flex flex-col items-center gap-4">
                             <div className="w-10 h-10 border-4 border-blue-500/30 border-t-blue-500 rounded-full animate-spin" aria-label="Loading" />
-                            <p className="text-slate-400 light:text-slate-600 text-sm">Loading games…</p>
+                            <p className="text-slate-400 text-sm">Loading games…</p>
                         </div>
                     </div>
                 )}
@@ -369,14 +369,14 @@ export function GamesPage({ loaderData }: Route.ComponentProps) {
                             <svg className="w-14 h-14 text-slate-700 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
                             </svg>
-                            <p className="text-slate-400 light:text-slate-600 font-medium">
+                            <p className="text-slate-400 font-medium">
                                 {activeSearch ? 'No games match your search.' : narrowed ? 'No games match these filters.' : 'No games found.'}
                             </p>
                             {/* The one empty page the reader cannot explain from what they chose: a
                                 year's games rarely have eight critic reviews until long after release,
                                 so Top rated for a recent year is empty by construction. */}
                             {!activeSearch && browse.sort === 'rating' && isFiltered(browse) && (
-                                <p className="text-slate-500 light:text-slate-500 text-sm mt-2">
+                                <p className="text-slate-500 text-sm mt-2">
                                     Top rated only ranks games with at least eight critic reviews, which
                                     recent and niche games often do not have yet. Popular or Newest
                                     reach further.
@@ -385,7 +385,7 @@ export function GamesPage({ loaderData }: Route.ComponentProps) {
                             {isFiltered(browse) && (
                                 <button
                                     type="button"
-                                    className="mt-4 text-blue-400 light:text-blue-700 text-sm font-semibold hover:underline"
+                                    className="mt-4 text-blue-400 text-sm font-semibold hover:underline"
                                     onClick={clearFilters}
                                 >
                                     Clear filters
@@ -406,7 +406,7 @@ export function GamesPage({ loaderData }: Route.ComponentProps) {
                 {/* Infinite-scroll sentinel / load-more indicator */}
                 <div ref={sentinelRef} className="mt-8 flex justify-center">
                     {loadingMore && (
-                        <div className="flex items-center gap-3 text-slate-400 light:text-slate-600 text-sm">
+                        <div className="flex items-center gap-3 text-slate-400 text-sm">
                             <div className="w-5 h-5 border-2 border-blue-500/30 border-t-blue-500 rounded-full animate-spin" aria-label="Loading more" />
                             Loading more games…
                         </div>

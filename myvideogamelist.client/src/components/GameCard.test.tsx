@@ -13,12 +13,11 @@ import { LIST_NAMES, type ListId } from '@/types/list';
 // mocking its fetches too.
 vi.mock('@/hooks/useAuth', () => {
     const value = {
-        user: { id: 'u1', email: 'alice@test.local', theme: 'dark' },
+        user: { id: 'u1', email: 'alice@test.local' },
         loading: false,
         login: vi.fn(),
         register: vi.fn(),
         logout: vi.fn(),
-        updateTheme: vi.fn(),
     };
     return { useAuth: () => value };
 });

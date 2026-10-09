@@ -20,7 +20,6 @@ const auth: AuthContextValue = {
     login: vi.fn(async () => {}),
     register: vi.fn(async () => {}),
     logout: vi.fn(async () => {}),
-    updateTheme: vi.fn(async () => {}),
     updateUserName: vi.fn(async () => {}),
     updateProfileVisibility: vi.fn(async () => {}),
     deleteAccount: vi.fn(async () => {}),
@@ -32,7 +31,6 @@ const ALEX: UserProfile = {
     id: 'user-1',
     email: 'alex@test.local',
     userName: 'alex',
-    theme: 'dark',
     profileVisibility: 'private',
     isAdmin: false,
 };

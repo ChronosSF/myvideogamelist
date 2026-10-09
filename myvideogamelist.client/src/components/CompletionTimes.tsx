@@ -137,24 +137,24 @@ function TierRow({ title, cells, footnote }: TierRowProps) {
 
     return (
         <div>
-            <h3 className="text-xs font-medium text-slate-400 light:text-slate-500 mb-2">{title}</h3>
+            <h3 className="text-xs font-medium text-slate-400 mb-2">{title}</h3>
 
             <dl className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 {cells.map(cell => (
                     <div
                         key={cell.key}
-                        className="bg-slate-800/60 light:bg-white border border-slate-700/50 light:border-slate-200 rounded-xl px-4 py-3"
+                        className="bg-slate-800/60 border border-slate-700/50 rounded-xl px-4 py-3"
                     >
-                        <dt className="text-xs text-slate-500 light:text-slate-400 uppercase tracking-wider">
+                        <dt className="text-xs text-slate-500 uppercase tracking-wider">
                             {cell.label}
                         </dt>
-                        <dd className="mt-1 text-2xl font-semibold text-white light:text-slate-900 leading-none">
+                        <dd className="mt-1 text-2xl font-semibold text-white leading-none">
                             {cell.value ?? '—'}
                         </dd>
 
                         {/* Decorative: the figure above already states the value. */}
                         <div
-                            className="mt-2.5 h-1 rounded-full bg-slate-700/60 light:bg-slate-200 overflow-hidden"
+                            className="mt-2.5 h-1 rounded-full bg-slate-700/60 overflow-hidden"
                             aria-hidden="true"
                         >
                             <div
@@ -163,14 +163,14 @@ function TierRow({ title, cells, footnote }: TierRowProps) {
                             />
                         </div>
 
-                        <p className="mt-2 text-xs text-slate-500 light:text-slate-400 leading-snug">
+                        <p className="mt-2 text-xs text-slate-500 leading-snug">
                             {cell.caption}
                         </p>
                     </div>
                 ))}
             </dl>
 
-            <p className="mt-3 text-xs text-slate-500 light:text-slate-400">{footnote}</p>
+            <p className="mt-3 text-xs text-slate-500">{footnote}</p>
         </div>
     );
 }
