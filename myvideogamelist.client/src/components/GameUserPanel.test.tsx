@@ -877,8 +877,9 @@ describe('GameUserPanel playthroughs', () => {
     });
 
     it('calls an untyped playthrough with a finish date finished, not in progress', async () => {
-        // Every imported run is this shape: the import never sets a type (ADR 0037), but most of
-        // its runs ended, and "In progress" above "finished 12 June 2026" contradicts itself.
+        // An imported run whose source recorded no completion level arrives like this, and so does
+        // one logged with the type left blank. "In progress" above "finished 12 June 2026" contradicts
+        // itself.
         stubEntryFetch(null, 200, [
             playthrough({ id: 5, type: null, startedOn: '2026-05-01', finishedOn: '2026-06-12' }),
         ]);

@@ -140,9 +140,9 @@ export const PLAYTHROUGH_TIERS = [
  * has ended.
  *
  * A missing type is not the same as a run still going. It is how a run looks while somebody is
- * playing, but it is also every imported run, which never carries a type because the source's
- * completion field is a default rather than its owner's answer (ADR 0037, decision 4) — and most of
- * those have a finish date. Calling one "In progress" contradicts the date printed beneath it.
+ * playing, but also how one looks when nobody said how thoroughly it was played: a run logged with
+ * the type left blank, or an imported one whose source recorded no completion level. Those usually
+ * have a finish date, and calling one "In progress" contradicts the date printed beneath it.
  */
 export function playthroughLabel(playthrough: Pick<PlaythroughDto, 'type' | 'finishedOn'>): string {
     return PLAYTHROUGH_TIERS.find(tier => tier.key === playthrough.type)?.label
