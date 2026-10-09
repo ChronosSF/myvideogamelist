@@ -9,11 +9,6 @@
     background: linear-gradient(180deg, rgba(30, 58, 138, 0.25), transparent);
 }
 
-[data-theme='light'] .signed-in-hero {
-    border-bottom-color: #e2e8f0;
-    background: linear-gradient(180deg, rgba(219, 234, 254, 0.7), transparent);
-}
-
 /* ── The figures ─────────────────────────────────────────────────────────── */
 
 .home-strip {
@@ -38,11 +33,6 @@
     background: rgba(15, 23, 42, 0.4);
 }
 
-[data-theme='light'] .home-strip-item {
-    border-color: #e2e8f0;
-    background: #fff;
-}
-
 .home-strip-item dd {
     margin: 0;
     font-size: 1.5rem;
@@ -51,19 +41,11 @@
     color: #f1f5f9;
 }
 
-[data-theme='light'] .home-strip-item dd {
-    color: #0f172a;
-}
-
 .home-strip-item dt {
     font-size: 0.75rem;
     text-transform: uppercase;
     letter-spacing: 0.05em;
     color: #94a3b8;
-}
-
-[data-theme='light'] .home-strip-item dt {
-    color: #475569;
 }
 
 /* ── Continue playing ────────────────────────────────────────────────────── */
@@ -92,28 +74,12 @@
     cursor: default;
 }
 
-[data-theme='light'] .continue-finish-btn {
-    border-color: #cbd5e1;
-    background: #f8fafc;
-    color: #334155;
-}
-
-[data-theme='light'] .continue-finish-btn:hover:not(:disabled) {
-    border-color: #16a34a;
-    color: #15803d;
-}
-
 .continue-empty {
     padding: 1.25rem;
     border: 1px dashed rgba(71, 85, 105, 0.7);
     border-radius: 0.75rem;
     font-size: 0.875rem;
     color: #94a3b8;
-}
-
-[data-theme='light'] .continue-empty {
-    border-color: #cbd5e1;
-    color: #475569;
 }
 
 .continue-empty-link {
@@ -125,10 +91,6 @@
 
 .continue-empty-link:hover {
     text-decoration: underline;
-}
-
-[data-theme='light'] .continue-empty-link {
-    color: #2563eb;
 }
 
 /* ── Play next ───────────────────────────────────────────────────────────── */
@@ -144,11 +106,6 @@
     background: rgba(15, 23, 42, 0.4);
 }
 
-[data-theme='light'] .play-next {
-    border-color: #e2e8f0;
-    background: #fff;
-}
-
 /* The rail's cover proportions at a smaller size, so the two read as the same kind of thing. */
 .play-next-cover {
     flex-shrink: 0;
@@ -158,11 +115,6 @@
     border: 1px solid rgba(51, 65, 85, 0.5);
     border-radius: 0.5rem;
     background: #1e293b;
-}
-
-[data-theme='light'] .play-next-cover {
-    border-color: #e2e8f0;
-    background: #f1f5f9;
 }
 
 .play-next-cover img {
@@ -192,22 +144,10 @@
     color: #60a5fa;
 }
 
-[data-theme='light'] .play-next-title a {
-    color: #0f172a;
-}
-
-[data-theme='light'] .play-next-title a:hover {
-    color: #2563eb;
-}
-
 .play-next-meta {
     margin-top: 0.25rem;
     font-size: 0.8125rem;
     color: #94a3b8;
-}
-
-[data-theme='light'] .play-next-meta {
-    color: #475569;
 }
 
 .play-next-actions {
@@ -240,25 +180,8 @@
     cursor: default;
 }
 
-[data-theme='light'] .play-next-btn {
-    border-color: #cbd5e1;
-    background: #f8fafc;
-    color: #334155;
-}
-
-[data-theme='light'] .play-next-btn:hover:not(:disabled) {
-    border-color: #2563eb;
-    color: #1d4ed8;
-}
-
 .play-next-btn-primary {
     border-color: rgba(59, 130, 246, 0.5);
     background: rgba(59, 130, 246, 0.15);
     color: #bfdbfe;
-}
-
-[data-theme='light'] .play-next-btn-primary {
-    border-color: rgba(37, 99, 235, 0.45);
-    background: rgba(59, 130, 246, 0.08);
-    color: #1d4ed8;
 }

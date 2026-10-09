@@ -36,17 +36,9 @@
     background: rgba(51, 65, 85, 0.8);
 }
 
-[data-theme='light'] .score-columns-bar.empty {
-    background: #e2e8f0;
-}
-
 .score-columns-tick {
     margin-top: 0.3rem;
     font-size: 0.6875rem;
     color: #94a3b8;
     font-variant-numeric: tabular-nums;
-}
-
-[data-theme='light'] .score-columns-tick {
-    color: #64748b;
 }

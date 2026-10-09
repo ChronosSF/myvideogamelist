@@ -8,7 +8,7 @@ afterEach(() => {
 
 /**
  * jsdom does not implement these, and components under test use them:
- * `scrollIntoView` on navigation, and `matchMedia` via anything reading the theme.
+ * `scrollIntoView` on navigation, and `matchMedia` for anything that reads a media query.
  * Stubbed here rather than in each test so a component gaining one does not break a suite.
  */
 Object.defineProperty(window.HTMLElement.prototype, 'scrollIntoView', {

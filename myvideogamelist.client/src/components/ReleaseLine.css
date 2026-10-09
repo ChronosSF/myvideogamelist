@@ -42,11 +42,6 @@
     overflow: hidden;
 }
 
-[data-theme='light'] .release-line {
-    border-color: #e2e8f0;
-    background: #fff;
-}
-
 .release-line-days,
 .release-line-events {
     display: grid;
@@ -87,18 +82,6 @@
     background: rgba(59, 130, 246, 0.1);
 }
 
-[data-theme='light'] .release-line-day {
-    border-left-color: #e2e8f0;
-}
-
-[data-theme='light'] .release-line-day:first-child {
-    border-left: none;
-}
-
-[data-theme='light'] .release-line-day[data-today] {
-    background: rgba(59, 130, 246, 0.07);
-}
-
 .release-line-date {
     grid-column: 1 / -1;
     grid-row: 1;
@@ -124,14 +107,6 @@
 
 .release-line-day[data-today] .release-line-date {
     color: #93c5fd;
-}
-
-[data-theme='light'] .release-line-date {
-    color: #64748b;
-}
-
-[data-theme='light'] .release-line-day[data-today] .release-line-date {
-    color: #1d4ed8;
 }
 
 /* ── A release ───────────────────────────────────────────────────────────── */
@@ -230,24 +205,6 @@ a.release-line-event-name:hover {
     color: #c4b5fd;
 }
 
-[data-theme='light'] .release-line-event[data-kind='sale'] {
-    border-color: #6ee7b7;
-    background: #ecfdf5;
-    color: #047857;
-}
-
-[data-theme='light'] .release-line-event[data-kind='fest'] {
-    border-color: #fcd34d;
-    background: #fffbeb;
-    color: #b45309;
-}
-
-[data-theme='light'] .release-line-event[data-kind='showcase'] {
-    border-color: #c4b5fd;
-    background: #f5f3ff;
-    color: #6d28d9;
-}
-
 /* ── What the line says when it has nothing to draw ──────────────────────── */
 
 .release-line-note {
@@ -262,16 +219,8 @@ a.release-line-event-name:hover {
     color: #94a3b8;
 }
 
-[data-theme='light'] .release-line-note {
-    color: #475569;
-}
-
 .release-line-events-note {
     margin-top: 0.5rem;
     font-size: 0.75rem;
     color: #94a3b8;
-}
-
-[data-theme='light'] .release-line-events-note {
-    color: #475569;
 }

@@ -59,12 +59,12 @@ export function ImportPage() {
 
     return (
         <div className="min-h-screen">
-            <div className="bg-gradient-to-b from-blue-950/60 to-slate-900 light:from-blue-50/80 light:to-slate-50 border-b border-slate-700/50 light:border-slate-200">
+            <div className="bg-gradient-to-b from-blue-950/60 to-slate-900 border-b border-slate-700/50">
                 <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
-                    <h1 className="text-3xl sm:text-4xl font-bold text-white light:text-slate-900 mb-1">
+                    <h1 className="text-3xl sm:text-4xl font-bold text-white mb-1">
                         Import your games
                     </h1>
-                    <p className="text-slate-400 light:text-slate-600 text-sm sm:text-base">
+                    <p className="text-slate-400 text-sm sm:text-base">
                         Bring your library across from another tracker. You see everything before
                         anything is saved.
                     </p>
@@ -73,7 +73,7 @@ export function ImportPage() {
 
             <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
                 {signedOut && (
-                    <p className="text-center text-slate-400 light:text-slate-600 font-medium py-24">
+                    <p className="text-center text-slate-400 font-medium py-24">
                         Sign in to import your games.
                     </p>
                 )}
@@ -81,13 +81,13 @@ export function ImportPage() {
                 {signedIn && (
                     <>
                         <section aria-labelledby="import-source">
-                            <h2 id="import-source" className="text-lg font-semibold text-white light:text-slate-900 mb-1">
+                            <h2 id="import-source" className="text-lg font-semibold text-white mb-1">
                                 From Grouvee
                             </h2>
-                            <p className="text-slate-400 light:text-slate-600 text-sm mb-4">
-                                In Grouvee, open <span className="text-slate-300 light:text-slate-700">Settings → Export</span>{' '}
+                            <p className="text-slate-400 text-sm mb-4">
+                                In Grouvee, open <span className="text-slate-300">Settings → Export</span>{' '}
                                 and download your collection. Either format works, though the{' '}
-                                <span className="text-slate-300 light:text-slate-700">JSON</span> one carries a little more —
+                                <span className="text-slate-300">JSON</span> one carries a little more —
                                 games you played and later took off your shelves are only in that file.
                             </p>
 
@@ -98,7 +98,7 @@ export function ImportPage() {
                                 className={`flex flex-col items-center justify-center gap-3 w-full px-6 py-12 border-2 border-dashed rounded-xl cursor-pointer transition-colors ${
                                     dragging
                                         ? 'border-blue-500 bg-blue-500/10'
-                                        : 'border-slate-700 light:border-slate-300 hover:border-slate-500 light:hover:border-slate-400'
+                                        : 'border-slate-700 hover:border-slate-500'
                                 }`}
                                 onDragOver={event => {
                                     event.preventDefault();
@@ -111,13 +111,13 @@ export function ImportPage() {
                                     void send(event.dataTransfer.files[0]);
                                 }}
                             >
-                                <svg className="w-10 h-10 text-slate-600 light:text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                                <svg className="w-10 h-10 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 16a4 4 0 01-.88-7.9A5 5 0 1115.9 6H16a5 5 0 011 9.9M9 19l3-3m0 0l3 3m-3-3v12" />
                                 </svg>
-                                <span className="text-slate-300 light:text-slate-700 font-medium">
+                                <span className="text-slate-300 font-medium">
                                     {uploading ? 'Reading your file…' : 'Drop your export here, or choose a file'}
                                 </span>
-                                <span className="text-slate-500 light:text-slate-400 text-xs">
+                                <span className="text-slate-500 text-xs">
                                     .json or .csv, up to 5 MB
                                 </span>
                                 <input
@@ -143,7 +143,7 @@ export function ImportPage() {
                         </section>
 
                         {loading && (
-                            <p className="text-slate-400 light:text-slate-600 text-sm" role="status">
+                            <p className="text-slate-400 text-sm" role="status">
                                 Looking for imports you have already started…
                             </p>
                         )}
@@ -159,7 +159,7 @@ export function ImportPage() {
                             instructions. Without it the fetch resolves and the bottom half of the
                             screen simply goes blank, which reads as something having failed. */}
                         {!loading && !error && jobs?.length === 0 && (
-                            <p className="text-slate-400 light:text-slate-600 text-sm" role="status">
+                            <p className="text-slate-400 text-sm" role="status">
                                 You have not imported anything yet. Once you upload a file it stays here
                                 until you finish reviewing it, so you can close this page and come back.
                             </p>
@@ -167,7 +167,7 @@ export function ImportPage() {
 
                         {pending.length > 0 && (
                             <section aria-labelledby="import-pending">
-                                <h2 id="import-pending" className="text-lg font-semibold text-white light:text-slate-900 mb-3">
+                                <h2 id="import-pending" className="text-lg font-semibold text-white mb-3">
                                     Waiting for you
                                 </h2>
                                 <ul className="space-y-2">
@@ -175,19 +175,19 @@ export function ImportPage() {
                                         <li key={job.id}>
                                             <Link
                                                 to={`/import/${job.id}`}
-                                                className="flex items-center justify-between gap-4 px-4 py-3 bg-slate-800/60 light:bg-white border border-slate-700 light:border-slate-200 rounded-lg hover:border-slate-500 transition-colors"
+                                                className="flex items-center justify-between gap-4 px-4 py-3 bg-slate-800/60 border border-slate-700 rounded-lg hover:border-slate-500 transition-colors"
                                             >
                                                 <span className="min-w-0">
-                                                    <span className="block text-slate-200 light:text-slate-800 text-sm font-medium truncate">
+                                                    <span className="block text-slate-200 text-sm font-medium truncate">
                                                         {job.fileName}
                                                     </span>
                                                     {expiresIn(job.expiresAt) && (
-                                                        <span className="block text-slate-500 light:text-slate-500 text-xs mt-0.5">
+                                                        <span className="block text-slate-500 text-xs mt-0.5">
                                                             Deleted {expiresIn(job.expiresAt)} if you do not come back to it
                                                         </span>
                                                     )}
                                                 </span>
-                                                <span className="text-slate-400 light:text-slate-500 text-xs shrink-0">
+                                                <span className="text-slate-400 text-xs shrink-0">
                                                     {formatCount(job.rowCount)} games — review
                                                 </span>
                                             </Link>
@@ -199,10 +199,10 @@ export function ImportPage() {
 
                         {finished.length > 0 && (
                             <section aria-labelledby="import-done">
-                                <h2 id="import-done" className="text-lg font-semibold text-white light:text-slate-900 mb-1">
+                                <h2 id="import-done" className="text-lg font-semibold text-white mb-1">
                                     Already imported
                                 </h2>
-                                <p className="text-slate-400 light:text-slate-600 text-sm mb-3">
+                                <p className="text-slate-400 text-sm mb-3">
                                     The games are in your lists. These are only the receipts, and they are
                                     tidied away a few days after the import finishes.
                                 </p>
@@ -210,19 +210,19 @@ export function ImportPage() {
                                     {finished.map(job => (
                                         <li
                                             key={job.id}
-                                            className="flex items-center justify-between gap-4 px-4 py-3 bg-slate-800/40 light:bg-slate-50 border border-slate-800 light:border-slate-200 rounded-lg"
+                                            className="flex items-center justify-between gap-4 px-4 py-3 bg-slate-800/40 border border-slate-800 rounded-lg"
                                         >
                                             <span className="min-w-0">
-                                                <span className="block text-slate-300 light:text-slate-700 truncate">
+                                                <span className="block text-slate-300 truncate">
                                                     {job.fileName}
                                                 </span>
                                                 {expiresIn(job.expiresAt) && (
-                                                    <span className="block text-slate-500 light:text-slate-500 text-xs mt-0.5">
+                                                    <span className="block text-slate-500 text-xs mt-0.5">
                                                         Receipt deleted {expiresIn(job.expiresAt)}
                                                     </span>
                                                 )}
                                             </span>
-                                            <span className="text-slate-500 light:text-slate-400 text-xs shrink-0">
+                                            <span className="text-slate-500 text-xs shrink-0">
                                                 {formatCount(job.importedCount ?? 0)} imported,{' '}
                                                 {formatCount(job.skippedCount ?? 0)} skipped
                                             </span>

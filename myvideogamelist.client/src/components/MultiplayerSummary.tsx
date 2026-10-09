@@ -43,19 +43,19 @@ export function MultiplayerSummary({ modes }: MultiplayerSummaryProps) {
             {labels.map(label => (
                 <span
                     key={label}
-                    className="px-2.5 py-1 bg-purple-900/40 light:bg-purple-50 text-purple-300 light:text-purple-700 text-xs font-medium rounded-full border border-purple-800/50 light:border-purple-200"
+                    className="px-2.5 py-1 bg-purple-900/40 text-purple-300 text-xs font-medium rounded-full border border-purple-800/50"
                 >
                     {label}
                 </span>
             ))}
 
             {online !== null && (
-                <span className="text-xs text-slate-400 light:text-slate-500">
+                <span className="text-xs text-slate-400">
                     Up to {online} online
                 </span>
             )}
             {offline !== null && (
-                <span className="text-xs text-slate-400 light:text-slate-500">
+                <span className="text-xs text-slate-400">
                     Up to {offline} locally
                 </span>
             )}

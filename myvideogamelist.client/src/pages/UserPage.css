@@ -66,14 +66,9 @@
     border-radius: 1rem;
 }
 
-[data-theme='light'] .user-card {
-    background: #ffffff;
-    border-color: rgba(203, 213, 225, 0.8);
-}
-
 /*
  * The label and the hint share ProfileStats' secondary text colours. The slate-500 and slate-400
- * they used before measured under 3:1 against the card in both themes.
+ * they used before measured under 3:1 against the card.
  */
 .user-card-label {
     margin-bottom: 0.375rem;
@@ -84,10 +79,6 @@
     color: #94a3b8;
 }
 
-[data-theme='light'] .user-card-label {
-    color: #64748b;
-}
-
 .user-card-value {
     min-width: 0;
     font-size: 1rem;
@@ -95,10 +86,6 @@
     color: #f1f5f9;
     /* An email address or a username can be one long word, and this card may be in a sidebar. */
     overflow-wrap: anywhere;
-}
-
-[data-theme='light'] .user-card-value {
-    color: #0f172a;
 }
 
 /*
@@ -120,18 +107,10 @@
     color: #94a3b8;
 }
 
-[data-theme='light'] .user-card-hint {
-    color: #64748b;
-}
-
 .user-pref-error {
     margin: 0.5rem 0;
     font-size: 0.8125rem;
     color: #fca5a5;
-}
-
-[data-theme='light'] .user-pref-error {
-    color: #b91c1c;
 }
 
 /* ── Buttons ─────────────────────────────────────────────────────────────── */
@@ -158,16 +137,6 @@
 .user-btn:disabled {
     opacity: 0.6;
     cursor: not-allowed;
-}
-
-[data-theme='light'] .user-btn {
-    background: rgba(59, 130, 246, 0.08);
-    color: #1d4ed8;
-    border-color: rgba(59, 130, 246, 0.4);
-}
-
-[data-theme='light'] .user-btn:hover:not(:disabled) {
-    background: rgba(59, 130, 246, 0.14);
 }
 
 /* A Link wearing the button treatment. Anchors are inline, so without this the padding above
@@ -201,16 +170,6 @@ a.user-btn {
     border-color: rgba(239, 68, 68, 0.55);
 }
 
-[data-theme='light'] .user-btn-danger {
-    background: rgba(239, 68, 68, 0.06);
-    color: #b91c1c;
-    border-color: rgba(239, 68, 68, 0.4);
-}
-
-[data-theme='light'] .user-btn-danger:hover:not(:disabled) {
-    background: rgba(239, 68, 68, 0.12);
-}
-
 .user-logout-btn {
     width: 100%;
     padding: 0.6875rem 1rem;
@@ -229,37 +188,8 @@ a.user-btn {
     border-color: rgba(239, 68, 68, 0.4);
 }
 
-[data-theme='light'] .user-logout-btn {
-    background: rgba(239, 68, 68, 0.06);
-    color: #b91c1c;
-    border-color: rgba(239, 68, 68, 0.3);
-}
+/* ── Toggle switch ───────────────────────────────────────────────────────── */
 
-[data-theme='light'] .user-logout-btn:hover {
-    background: rgba(239, 68, 68, 0.12);
-}
-
-/* ── Appearance ──────────────────────────────────────────────────────────── */
-
-.theme-toggle-wrap {
-    display: flex;
-    flex-shrink: 0;
-    align-items: center;
-    gap: 0.625rem;
-}
-
-.theme-icon {
-    width: 1.125rem;
-    height: 1.125rem;
-    flex-shrink: 0;
-    color: #64748b;
-}
-
-[data-theme='light'] .theme-icon {
-    color: #94a3b8;
-}
-
-/* Toggle switch */
 .toggle {
     position: relative;
     width: 2.75rem;
@@ -331,10 +261,6 @@ a.user-btn {
     color: #94a3b8;
 }
 
-[data-theme='light'] .list-names-field label {
-    color: #64748b;
-}
-
 /* The username box's look, without its flex growth: these stack rather than share a row. */
 .list-names-field input {
     width: 100%;
@@ -356,16 +282,6 @@ a.user-btn {
     border-color: #f87171;
 }
 
-[data-theme='light'] .list-names-field input {
-    background: #f8fafc;
-    border-color: rgba(148, 163, 184, 0.7);
-    color: #0f172a;
-}
-
-[data-theme='light'] .list-names-field input[aria-invalid='true'] {
-    border-color: #dc2626;
-}
-
 .list-names-field .user-pref-error {
     margin: 0;
 }
@@ -382,10 +298,6 @@ a.user-btn {
     margin: 1.25rem 0 1rem;
 }
 
-[data-theme='light'] .user-card-rule {
-    border-top-color: #e2e8f0;
-}
-
 .username-form {
     margin-top: 0.5rem;
 }
@@ -400,10 +312,6 @@ a.user-btn {
 .username-at {
     font-size: 1rem;
     color: #94a3b8;
-}
-
-[data-theme='light'] .username-at {
-    color: #64748b;
 }
 
 .username-input {
@@ -426,12 +334,6 @@ a.user-btn {
     box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
 }
 
-[data-theme='light'] .username-input {
-    background: #f8fafc;
-    border-color: rgba(148, 163, 184, 0.7);
-    color: #0f172a;
-}
-
 .username-actions {
     display: flex;
     align-items: center;
@@ -451,14 +353,6 @@ a.user-btn {
     color: #e2e8f0;
 }
 
-[data-theme='light'] .username-cancel {
-    color: #475569;
-}
-
-[data-theme='light'] .username-cancel:hover:not(:disabled) {
-    color: #0f172a;
-}
-
 .username-link {
     margin-top: 0.75rem;
     font-size: 0.875rem;
@@ -471,8 +365,4 @@ a.user-btn {
 
 .username-link a:hover {
     text-decoration: underline;
-}
-
-[data-theme='light'] .username-link a {
-    color: #2563eb;
 }

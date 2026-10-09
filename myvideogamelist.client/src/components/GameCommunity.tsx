@@ -54,7 +54,7 @@ export function GameCommunity({ community, viewer }: GameCommunityProps) {
             {scores !== null && scores.scored > 0 && <MemberScore scores={scores} />}
 
             {total === null ? (
-                <p className="text-sm text-slate-400 light:text-slate-500">
+                <p className="text-sm text-slate-400">
                     Reviews could not be loaded just now.
                 </p>
             ) : hasReviews && (
@@ -68,7 +68,7 @@ export function GameCommunity({ community, viewer }: GameCommunityProps) {
 function MemberScore({ scores }: { scores: CommunityScores }) {
     if (!hasMemberScore(scores)) {
         return (
-            <p className="text-sm text-slate-400 light:text-slate-500">
+            <p className="text-sm text-slate-400">
                 {`Only ${scores.scored} ${scores.scored === 1 ? 'member has' : 'members have'} scored this so far. `}
                 {`A member score is shown once ${MIN_MEMBER_SCORES} have.`}
             </p>
@@ -76,9 +76,9 @@ function MemberScore({ scores }: { scores: CommunityScores }) {
     }
 
     return (
-        <div className="grid gap-5 sm:grid-cols-[auto_minmax(0,24rem)] sm:items-end bg-slate-800/60 light:bg-white border border-slate-700/50 light:border-slate-200 rounded-xl px-4 py-4">
+        <div className="grid gap-5 sm:grid-cols-[auto_minmax(0,24rem)] sm:items-end bg-slate-800/60 border border-slate-700/50 rounded-xl px-4 py-4">
             <div>
-                <p className="text-xs text-slate-400 light:text-slate-500 uppercase tracking-wider mb-1.5">
+                <p className="text-xs text-slate-400 uppercase tracking-wider mb-1.5">
                     Member score
                 </p>
                 {/* Out of 100 and in a badge, beside the critics' and the players': it is an
@@ -86,7 +86,7 @@ function MemberScore({ scores }: { scores: CommunityScores }) {
                 <ScoreBadge kind="members" percent={ratingPercent(scores.mean)} count={scores.scored} />
                 {/* For the eye only. The badge's own accessible name already ends "from N scores",
                     and a screen reader would otherwise read the count out twice in a row. */}
-                <p className="mt-2 text-xs text-slate-400 light:text-slate-500" aria-hidden="true">
+                <p className="mt-2 text-xs text-slate-400" aria-hidden="true">
                     {`from ${formatCount(scores.scored)} ${scores.scored === 1 ? 'score' : 'scores'}`}
                 </p>
             </div>
@@ -138,18 +138,18 @@ function MemberReviews({ community, viewer, reviews, total }: MemberReviewsProps
                         type="button"
                         onClick={loadMore}
                         disabled={loadingMore}
-                        className="px-4 py-2 rounded-lg text-sm font-medium bg-slate-800 light:bg-white border border-slate-700 light:border-slate-300 text-slate-200 light:text-slate-800 hover:border-blue-500 disabled:opacity-60 disabled:cursor-wait transition-colors"
+                        className="px-4 py-2 rounded-lg text-sm font-medium bg-slate-800 border border-slate-700 text-slate-200 hover:border-blue-500 disabled:opacity-60 disabled:cursor-wait transition-colors"
                     >
                         {loadingMore ? 'Loading…' : 'Show more reviews'}
                     </button>
-                    <span className="text-xs text-slate-400 light:text-slate-500">
+                    <span className="text-xs text-slate-400">
                         {`Showing ${reviews.length} of ${total}.`}
                     </span>
                 </div>
             )}
 
             {moreFailed && (
-                <p className="mt-2 text-sm text-red-400 light:text-red-700" role="alert">
+                <p className="mt-2 text-sm text-red-400" role="alert">
                     Could not load more reviews. Please try again.
                 </p>
             )}
@@ -178,7 +178,7 @@ function GameReviewCard({ review, isViewer }: { review: GameReview; isViewer: bo
                                 {review.userName}
                             </Link>
                             {isViewer && (
-                                <span className="ml-2 px-1.5 py-0.5 rounded text-xs font-medium bg-blue-500/15 text-blue-300 light:bg-blue-50 light:text-blue-700">
+                                <span className="ml-2 px-1.5 py-0.5 rounded text-xs font-medium bg-blue-500/15 text-blue-300">
                                     You
                                 </span>
                             )}

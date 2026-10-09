@@ -119,8 +119,8 @@ describe('ListNamesCard', () => {
     });
 
     it('keeps a half-typed name when the same names arrive again', async () => {
-        // The provider refetches whenever the account object changes — toggling the theme on this
-        // page does it — and a fresh copy of unchanged names must not wipe the form.
+        // The provider refetches whenever the account object changes — making the profile public on
+        // this page does it — and a fresh copy of unchanged names must not wipe the form.
         const actor = userEvent.setup();
         lists.names = { finished: 'Beaten' };
         const view = render(<ListNamesCard />);

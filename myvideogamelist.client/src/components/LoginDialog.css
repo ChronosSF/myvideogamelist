@@ -21,11 +21,6 @@
     animation: dlg-in 0.15s ease;
 }
 
-[data-theme='light'] .dialog-panel {
-    --dlg-bg: #ffffff;
-    --dlg-border: rgba(203, 213, 225, 0.8);
-}
-
 @keyframes dlg-in {
     from { opacity: 0; transform: translateY(-8px) scale(0.97); }
     to   { opacity: 1; transform: translateY(0)   scale(1); }
@@ -36,10 +31,6 @@
     font-weight: 700;
     color: var(--dlg-title, #f1f5f9);
     margin: 0 0 1.5rem;
-}
-
-[data-theme='light'] .dialog-title {
-    --dlg-title: #0f172a;
 }
 
 .dialog-field {
@@ -55,10 +46,6 @@
     color: var(--dlg-label, #94a3b8);
 }
 
-[data-theme='light'] .dialog-label {
-    color: #475569;
-}
-
 .dialog-input {
     padding: 0.625rem 0.875rem;
     background: var(--dlg-input-bg, #0f172a);
@@ -70,12 +57,6 @@
     transition: border-color 0.15s;
     width: 100%;
     box-sizing: border-box;
-}
-
-[data-theme='light'] .dialog-input {
-    background: #f8fafc;
-    border-color: rgba(148, 163, 184, 0.7);
-    color: #0f172a;
 }
 
 .dialog-input:focus {
@@ -96,10 +77,6 @@
     margin: 0;
 }
 
-[data-theme='light'] .dialog-hint {
-    color: #64748b;
-}
-
 .dialog-checkbox-row {
     display: flex;
     align-items: center;
@@ -110,10 +87,6 @@
     cursor: pointer;
 }
 
-[data-theme='light'] .dialog-checkbox-row {
-    color: #475569;
-}
-
 .dialog-error {
     padding: 0.625rem 0.875rem;
     background: rgba(239, 68, 68, 0.1);
@@ -122,11 +95,6 @@
     color: #fca5a5;
     font-size: 0.875rem;
     margin-bottom: 1rem;
-}
-
-/* The dark theme's pink is a pale text on a pale panel in the light one. */
-[data-theme='light'] .dialog-error {
-    color: #b91c1c;
 }
 
 /* ── Confirmation dialogs ────────────────────────────────────────────────── */
@@ -165,17 +133,9 @@ html:has(.dialog-modal[open]) {
     color: #cbd5e1;
 }
 
-[data-theme='light'] .dialog-text {
-    color: #334155;
-}
-
 .dialog-text strong {
     color: #f1f5f9;
     overflow-wrap: anywhere;
-}
-
-[data-theme='light'] .dialog-text strong {
-    color: #0f172a;
 }
 
 /* An offer beside the decision rather than part of it, so it wraps under its prompt on a phone. */
@@ -191,11 +151,6 @@ html:has(.dialog-modal[open]) {
     border-radius: 0.5rem;
     font-size: 0.875rem;
     color: #94a3b8;
-}
-
-[data-theme='light'] .dialog-export {
-    border-color: #cbd5e1;
-    color: #475569;
 }
 
 .dialog-actions {
@@ -228,15 +183,6 @@ html:has(.dialog-modal[open]) {
 
 .dialog-btn-secondary:hover:not(:disabled) {
     background: rgba(255, 255, 255, 0.06);
-}
-
-[data-theme='light'] .dialog-btn-secondary {
-    color: #0f172a;
-    border-color: #cbd5e1;
-}
-
-[data-theme='light'] .dialog-btn-secondary:hover:not(:disabled) {
-    background: #f1f5f9;
 }
 
 /* A solid fill, unlike every other red on the site, because this is the one that cannot be undone. */
@@ -278,10 +224,6 @@ html:has(.dialog-modal[open]) {
     text-align: center;
     font-size: 0.875rem;
     color: var(--dlg-label, #94a3b8);
-}
-
-[data-theme='light'] .dialog-footer {
-    color: #475569;
 }
 
 .dialog-footer button {

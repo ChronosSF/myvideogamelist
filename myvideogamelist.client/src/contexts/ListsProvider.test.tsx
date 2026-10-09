@@ -7,8 +7,8 @@ import { useLists } from '@/hooks/useLists';
 import type { ListId, ListEntryDto } from '@/types/list';
 import { entry, game } from '@/test/factories';
 
-const ALICE = { id: 'u1', email: 'alice@test.local', theme: 'dark' };
-const BOB = { id: 'u2', email: 'bob@test.local', theme: 'dark' };
+const ALICE = { id: 'u1', email: 'alice@test.local' };
+const BOB = { id: 'u2', email: 'bob@test.local' };
 
 // The provider only reads `user` and `loading`, and going through the real AuthProvider would
 // mean mocking its fetches too.
@@ -24,7 +24,6 @@ const auth = {
     login: vi.fn(),
     register: vi.fn(),
     logout: vi.fn(),
-    updateTheme: vi.fn(),
 };
 
 vi.mock('@/hooks/useAuth', () => ({ useAuth: () => auth }));
@@ -1301,7 +1300,8 @@ describe('list names', () => {
          * The answer to that read was composed before the rename reached the database, so applying
          * it puts the old labels back across the site and the save reads as forgotten. The read is
          * not an unusual thing to have in flight: `AuthProvider` hands the provider a new user
-         * object for a theme change, and the effect that reads the preferences depends on it.
+         * object when the profile is made public, and the effect that reads the preferences
+         * depends on it.
          */
         const { releasePreferences } = namesStub({ holdPreferences: true });
         const view = mountNames();
