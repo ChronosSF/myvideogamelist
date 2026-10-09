@@ -622,10 +622,11 @@ a.calendar-bar-name:hover {
     /* A poster beside its words rather than above them, a card a row — in the days, the bands and the
        undated list alike: as a grid of posters, a day or a band with one release had it alone at the left
        of the screen, its words in a column a third of the screen wide. Where a row has room for two, two
-       share it, and one alone still takes the row. */
+       share it, and one alone still takes the row — and no more than the row, on a screen narrower than a
+       card, rather than scrolling the page sideways. */
     .calendar-day-entries,
     .calendar-entry-list {
-        grid-template-columns: repeat(auto-fit, minmax(19rem, 1fr));
+        grid-template-columns: repeat(auto-fit, minmax(min(19rem, 100%), 1fr));
         gap: 1.25rem 1.5rem;
     }
 
