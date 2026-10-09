@@ -66,7 +66,11 @@
 
 /* ── A day ───────────────────────────────────────────────────────────────── */
 
+/* Positioned, so that its screen-reader date is placed inside it. Placed against the page instead, the
+   dates of the days scrolled out of view widened the page by the line's overflow, and a phone could
+   scroll the whole home page sideways. */
 .release-line-day {
+    position: relative;
     display: grid;
     grid-template-columns: subgrid;
     grid-template-rows: subgrid;
