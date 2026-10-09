@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
+import { Rosette } from '@/components/Rosette';
 import { useAddToBacklog } from '@/hooks/useAddToBacklog';
 import { useFavouriteToggle } from '@/hooks/useFavouriteToggle';
 import { useReleaseCalendar, type CalendarRead } from '@/hooks/useReleaseCalendar';
@@ -52,20 +53,6 @@ function Thumb({ release }: { release: ConnectedRelease }) {
                 />
             )}
         </span>
-    );
-}
-
-/** The rosette the game page marks a favourite with: never a star, which is the user's own score (ADR 0021). */
-function Rosette({ filled }: { filled: boolean }) {
-    return (
-        <svg fill={filled ? 'currentColor' : 'none'} stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-            <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M12 15a6 6 0 100-12 6 6 0 000 12zM8.2 13.7L7 21l5-3 5 3-1.2-7.3"
-            />
-        </svg>
     );
 }
 

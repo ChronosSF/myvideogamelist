@@ -1,6 +1,8 @@
 import { useMemo } from 'react';
 import { Link } from 'react-router';
+import { Rosette } from '@/components/Rosette';
 import { useAddToBacklog } from '@/hooks/useAddToBacklog';
+import { useFavouriteToggle } from '@/hooks/useFavouriteToggle';
 import { useReleaseLine } from '@/hooks/useReleaseLine';
 import { startTime } from '@/lib/calendarEvents';
 import { dayLabel, formatDaySpan } from '@/lib/daySpan';
@@ -20,9 +22,13 @@ function Cover({ release, eager }: { release: ConnectedRelease; eager: boolean }
     );
 }
 
-/** One release on its own: the card the lists' rails use, with the one action that fits here. */
+/**
+ * One release on its own: the card the lists' rails use, with the two actions that fit here — put it in
+ * the Backlog, or make it a favourite.
+ */
 function ReleaseCard({ entry, release, eager }: { entry: ReleaseEntry; release: ConnectedRelease; eager: boolean }) {
     const backlog = useAddToBacklog(release);
+    const favourite = useFavouriteToggle(release);
 
     return (
         <div className="release-line-card">
@@ -32,6 +38,21 @@ function ReleaseCard({ entry, release, eager }: { entry: ReleaseEntry; release: 
                 <Link to={`/games/${release.gameId}`} tabIndex={-1} aria-hidden="true" className="release-line-link">
                     <Cover release={release} eager={eager} />
                 </Link>
+                {favourite.canToggle && (
+                    // In the cover's corner, where it stays once the game is a favourite: the mark is the
+                    // state as well as the way to change it.
+                    <button
+                        type="button"
+                        className="release-line-favourite"
+                        disabled={favourite.pending}
+                        onClick={favourite.toggle}
+                        aria-pressed={favourite.favourite}
+                        aria-label={`Favourite: ${release.title}`}
+                        title={favourite.favourite ? 'Remove from favourites' : 'Add to favourites'}
+                    >
+                        <Rosette filled={favourite.favourite} />
+                    </button>
+                )}
                 {backlog.canAdd && (
                     <button
                         type="button"
@@ -60,13 +81,17 @@ function ReleaseCard({ entry, release, eager }: { entry: ReleaseEntry; release: 
             {backlog.failed && (
                 <p className="release-line-add-error" role="alert">Could not add it to {backlog.backlog}.</p>
             )}
+            {favourite.failed && (
+                <p className="release-line-add-error" role="alert">Could not change your favourites.</p>
+            )}
         </div>
     );
 }
 
-/** One release in a group's list: its name, where it arrives, and the same one action, smaller. */
+/** One release in a group's list: its name, where it arrives, and the same two actions, smaller. */
 function GroupMember({ release }: { release: ConnectedRelease }) {
     const backlog = useAddToBacklog(release);
+    const favourite = useFavouriteToggle(release);
 
     return (
         <li>
@@ -84,9 +109,26 @@ function GroupMember({ release }: { release: ConnectedRelease }) {
                     +
                 </button>
             )}
+            {favourite.canToggle && (
+                <button
+                    type="button"
+                    className="release-line-add-inline"
+                    data-kind="favourite"
+                    disabled={favourite.pending}
+                    onClick={favourite.toggle}
+                    aria-pressed={favourite.favourite}
+                    aria-label={`Favourite: ${release.title}`}
+                    title={favourite.favourite ? 'Remove from favourites' : 'Add to favourites'}
+                >
+                    <Rosette filled={favourite.favourite} />
+                </button>
+            )}
             {backlog.listedIn !== null && <span className="release-line-listed"> · In {backlog.listedIn}</span>}
             {backlog.failed && (
                 <span className="release-line-add-error" role="alert"> · Could not add it.</span>
+            )}
+            {favourite.failed && (
+                <span className="release-line-add-error" role="alert"> · Could not change your favourites.</span>
             )}
         </li>
     );
