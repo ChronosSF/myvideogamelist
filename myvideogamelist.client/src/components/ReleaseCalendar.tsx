@@ -10,15 +10,15 @@ import {
     monthBands,
     monthName,
     monthTotals,
+    undatedBands,
     type CalendarBar,
     type CalendarDay,
-    type MonthBand,
     type MonthLayout,
 } from '@/lib/releaseCalendar';
 import { CURATED_EVENT_KIND_LABELS } from '@/types/calendarAdmin';
 import './ReleaseCalendar.css';
 
-/** How many entries a band or the undated list shows before "Show all": about two rows at full width. */
+/** How many entries a band shows before "Show all": about two rows at full width. */
 const SHOWN_AT_FIRST = 12;
 
 function entryKey(entry: CardEntry): string {
@@ -53,30 +53,38 @@ function EntryList({ entries, undated = false, label }: { entries: readonly Card
     );
 }
 
+interface BandProps {
+    /** Unique on the page: the band is named by its heading. */
+    id: string;
+    label: string;
+    /** After the label, quieter: the months a quarter is. */
+    detail?: string | null;
+    entries: readonly CardEntry[];
+    /** Whether IGDB has no date for any of it, which its cards' reasons say (K4). */
+    undated?: boolean;
+}
+
 /**
- * What is known only to the month, the quarter or the year the month is in (K3): never put on a day IGDB
- * has not named, so a band for the period. Keyed by its period, so that a band opened in one month is
- * still open in the next month it is in.
+ * Entries under a name: in a month, what is known only to its month, quarter or year (K3), never put on a
+ * day IGDB has not named; in the undated list, what is announced with no date and is one kind of thing to
+ * the user's games — their DLC, say (K4).
  *
  * How many posters it has is how wide it asks to be, which decides whether it shares a row with the band
  * beside it — a sum only the stylesheet can do, since it is about the width of the screen.
  */
-function Band({ band }: { band: MonthBand }) {
-    const id = `calendar-band-${band.precision}`;
-
+function Band({ id, label, detail = null, entries, undated = false }: BandProps) {
     return (
         <section
             className="calendar-band"
-            data-precision={band.precision}
             aria-labelledby={id}
-            style={{ '--band-entries': band.entries.length } as React.CSSProperties}
+            style={{ '--band-entries': entries.length } as React.CSSProperties}
         >
             <h3 id={id} className="calendar-band-label">
-                {band.label}
+                {label}
                 {/* The space outside the span: inside it, it is lost from the region's name. */}
-                {band.months !== null && <> <span className="calendar-band-months">· {band.months}</span></>}
+                {detail !== null && <> <span className="calendar-band-months">· {detail}</span></>}
             </h3>
-            <EntryList entries={band.entries} label={band.label} />
+            <EntryList entries={entries} undated={undated} label={label} />
         </section>
     );
 }
@@ -314,6 +322,7 @@ export function ReleaseCalendar({ userId }: { userId: string }) {
     const layout = useMemo(() => layoutMonth(month, entries ?? [], events.data), [month, entries, events.data]);
     const bands = useMemo(() => monthBands(month, entries ?? []), [month, entries]);
     const totals = useMemo(() => monthTotals(entries ?? []), [entries]);
+    const undatedGroups = useMemo(() => undatedBands(undated.data ?? []), [undated.data]);
 
     const { label } = monthName(month);
     const onDays = layout.days.reduce((total, day) => total + day.entries.length, 0);
@@ -360,7 +369,17 @@ export function ReleaseCalendar({ userId }: { userId: string }) {
 
                 {bands.length > 0 && (
                     <div className="calendar-bands">
-                        {bands.map(band => <Band key={`${band.precision}|${band.starts}`} band={band} />)}
+                        {/* Keyed by its period, so that a band opened in one month is still open in the next
+                            month it is in. */}
+                        {bands.map(band => (
+                            <Band
+                                key={`${band.precision}|${band.starts}`}
+                                id={`calendar-band-${band.precision}`}
+                                label={band.label}
+                                detail={band.months}
+                                entries={band.entries}
+                            />
+                        ))}
                     </div>
                 )}
             </section>
@@ -375,8 +394,20 @@ export function ReleaseCalendar({ userId }: { userId: string }) {
                 {undated.data !== null && undated.data.length === 0 && (
                     <p className="calendar-note">Nothing connected to your games is waiting on a date.</p>
                 )}
-                {undated.data !== null && undated.data.length > 0 && (
-                    <EntryList entries={undated.data} undated label="Announced, no date" />
+                {/* In bands for what each is to the user's game, laid out as the month's are: a list with no
+                    dates has nothing else to order it by. */}
+                {undatedGroups.length > 0 && (
+                    <div className="calendar-bands">
+                        {undatedGroups.map(band => (
+                            <Band
+                                key={band.kind}
+                                id={`calendar-undated-${band.kind}`}
+                                label={band.label}
+                                entries={band.entries}
+                                undated
+                            />
+                        ))}
+                    </div>
                 )}
             </section>
         </div>

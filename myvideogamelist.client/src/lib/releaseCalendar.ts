@@ -1,12 +1,13 @@
 import { eventDays, type DayEvent } from '@/lib/calendarEvents';
 import { addDays, daysBetween } from '@/lib/daySpan';
-import type { CalendarEvents, ReleaseEntry, ReleasePrecision } from '@/types/releases';
+import type { CalendarEvents, ReleaseEntry, ReleaseKind, ReleasePrecision, UndatedEntry } from '@/types/releases';
 
 /**
  * Where everything on the calendar goes (`specs/release-timeline-and-calendar.md` §2.2): a month as a
  * grid of weeks, Monday first, with each release in its day's cell (K2), each sale and showcase as a bar
- * across its days, a piece per week, and what is known only to the month, the quarter or the year in a
- * band for that period (K3).
+ * across its days, a piece per week, what is known only to the month, the quarter or the year in a band
+ * for that period (K3), and what is announced with no date at all in a band for what it is to the user's
+ * game (K4).
  *
  * Pure, and reads no clock, so that the placing is tested apart from the drawing; the component turns it
  * into a CSS grid.
@@ -246,6 +247,59 @@ export function monthBands(month: string, entries: readonly ReleaseEntry[]): Mon
 
     return bands
         .map(band => ({ ...band, entries: entries.filter(e => e.precision === band.precision && e.starts === band.starts) }))
+        .filter(band => band.entries.length > 0);
+}
+
+/** What a game announced with no date is to the user's game, which decides its band (K4). */
+export type UndatedKind = 'yours' | 'addons' | 'versions' | 'series';
+
+/** A band of the undated list: the entries that are one kind of thing to the user's games. */
+export interface UndatedBand {
+    kind: UndatedKind;
+    /** "DLC and expansions". */
+    label: string;
+    entries: UndatedEntry[];
+}
+
+/**
+ * The bands in the order the list reads: the game itself, its children, its series — the order the server
+ * sends the entries in — with what is added to a game before the game made again.
+ */
+const UNDATED_BANDS: readonly { kind: UndatedKind; label: string }[] = [
+    { kind: 'yours', label: 'Your games' },
+    { kind: 'addons', label: 'DLC and expansions' },
+    { kind: 'versions', label: 'Remakes, remasters and ports' },
+    { kind: 'series', label: 'From the same series' },
+];
+
+/** What a child adds to its game, where the rest of a game's children make it again. */
+const ADD_ONS: ReadonlySet<ReleaseKind> = new Set<ReleaseKind>(['dlc', 'expansion', 'standalone_expansion', 'episode', 'season']);
+
+/**
+ * The band an entry goes in, from its strongest release — the one whose reason a group is shown with, so
+ * that a group's band and what its card says agree. The relation decides (§3.2): the game itself, a child
+ * of it, or a game from its series. A child is then what it is: something added to the game, or the game
+ * made again — remade, remastered, ported, or a new edition of it.
+ */
+function undatedKind(entry: UndatedEntry): UndatedKind {
+    const [strongest] = entry.releases;
+    switch (strongest.reason.relation) {
+        case 'itself':
+            return 'yours';
+        case 'child':
+            return ADD_ONS.has(strongest.kind) ? 'addons' : 'versions';
+        case 'series':
+            return 'series';
+    }
+}
+
+/**
+ * The undated list in bands for what each entry is to the user's game, leaving out any with nothing in
+ * it. Each band keeps the order the entries came in.
+ */
+export function undatedBands(entries: readonly UndatedEntry[]): UndatedBand[] {
+    return UNDATED_BANDS
+        .map(band => ({ ...band, entries: entries.filter(e => undatedKind(e) === band.kind) }))
         .filter(band => band.entries.length > 0);
 }
 

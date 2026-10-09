@@ -8,9 +8,10 @@ import {
     layoutMonth,
     monthBands,
     monthTotals,
+    undatedBands,
 } from '@/lib/releaseCalendar';
 import { calendarEvents, connectedRelease, releaseEntry } from '@/test/factories';
-import type { CalendarCuratedEvent, ReleaseEntry, ReleasePrecision } from '@/types/releases';
+import type { CalendarCuratedEvent, ReleaseEntry, ReleaseKind, ReleasePrecision, ReleaseRelation, UndatedEntry } from '@/types/releases';
 
 function sale(startsOn: string, endsOn: string, id = 1): CalendarCuratedEvent {
     return {
@@ -168,6 +169,66 @@ describe('monthBands', () => {
 
     it('has nothing for a month in another quarter and year', () => {
         expect(monthBands('2027-01', entries)).toEqual([]);
+    });
+});
+
+describe('undatedBands', () => {
+    function undated(gameId: number, relation: ReleaseRelation, kind: ReleaseKind = 'game'): UndatedEntry {
+        return { groupName: null, releases: [connectedRelease({ gameId, kind, reason: { relation } })] };
+    }
+
+    const ids = (entries: UndatedEntry[]) => entries.map(e => e.releases[0].gameId);
+
+    it("puts each entry in the band for what it is to the user's game, the game itself first", () => {
+        const bands = undatedBands([
+            undated(1, 'itself'),
+            undated(2, 'child', 'dlc'),
+            undated(3, 'child', 'remake'),
+            undated(4, 'child', 'expansion'),
+            undated(5, 'child', 'port'),
+            undated(6, 'series'),
+            undated(7, 'series', 'remake'),
+        ]);
+
+        expect(bands.map(b => [b.kind, b.label, ids(b.entries)])).toEqual([
+            ['yours', 'Your games', [1]],
+            ['addons', 'DLC and expansions', [2, 4]],
+            ['versions', 'Remakes, remasters and ports', [3, 5]],
+            ['series', 'From the same series', [6, 7]],
+        ]);
+    });
+
+    it('counts every add-on as one, and every other child as the game made again', () => {
+        const addOns: ReleaseKind[] = ['dlc', 'expansion', 'standalone_expansion', 'episode', 'season'];
+        const madeAgain: ReleaseKind[] = ['game', 'remake', 'remaster', 'expanded_game', 'port'];
+
+        const bands = undatedBands([...addOns, ...madeAgain].map((kind, index) => undated(index + 1, 'child', kind)));
+
+        expect(bands.map(b => [b.kind, b.entries.map(e => e.releases[0].kind)])).toEqual([
+            ['addons', addOns],
+            ['versions', madeAgain],
+        ]);
+    });
+
+    it('keeps a game the user tracks among their games, whatever IGDB calls it', () => {
+        expect(undatedBands([undated(1, 'itself', 'dlc')]).map(b => b.kind)).toEqual(['yours']);
+    });
+
+    it('puts a group where its strongest release goes, which is the reason its card gives', () => {
+        const group: UndatedEntry = {
+            groupName: 'Street Fighter',
+            releases: [
+                connectedRelease({ gameId: 1, kind: 'dlc', reason: { relation: 'child' } }),
+                connectedRelease({ gameId: 2, reason: { relation: 'series' } }),
+            ],
+        };
+
+        expect(undatedBands([group]).map(b => [b.kind, b.entries])).toEqual([['addons', [group]]]);
+    });
+
+    it('leaves out a band with nothing in it, and has none for an empty list', () => {
+        expect(undatedBands([undated(1, 'series')]).map(b => b.kind)).toEqual(['series']);
+        expect(undatedBands([])).toEqual([]);
     });
 });
 

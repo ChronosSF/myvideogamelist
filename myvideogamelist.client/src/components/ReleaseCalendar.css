@@ -514,9 +514,10 @@ a.calendar-bar-name:hover {
 
 /* ── Announced, no date ──────────────────────────────────────────────────── */
 
+/* As large as the month's name, which it sits under the same way: above bands with names of their own. */
 .calendar-section-heading {
-    font-size: 1.125rem;
-    font-weight: 600;
+    font-size: 1.375rem;
+    font-weight: 700;
     color: #fff;
 }
 

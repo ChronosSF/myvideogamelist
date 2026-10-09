@@ -313,13 +313,49 @@ describe('ReleaseCalendar, announced with no date', () => {
             .toBeInTheDocument();
     });
 
+    it("bands what is announced by what it is to the user's game", () => {
+        calendar.undated.data = [
+            ELDER_SCROLLS_VI,
+            {
+                groupName: null,
+                releases: [connectedRelease({
+                    gameId: 174982,
+                    title: 'Warframe Mobile',
+                    kind: 'port',
+                    reason: { relation: 'child', gameId: 2903, title: 'Warframe', membership: 'wishlist' },
+                })],
+            },
+            {
+                groupName: null,
+                releases: [connectedRelease({
+                    gameId: 405088,
+                    title: 'Persona 6',
+                    reason: { relation: 'series', gameId: 114283, title: 'Persona 5 Royal', membership: 'list', list: 'on_hold', series: 'Persona' },
+                })],
+            },
+        ];
+        renderCalendar();
+
+        const section = screen.getByRole('region', { name: 'Announced, no date' });
+        expect(within(section).getAllByRole('heading', { level: 3 }).map(h => h.textContent))
+            .toEqual(['Your games', 'Remakes, remasters and ports', 'From the same series']);
+
+        expect(within(screen.getByRole('region', { name: 'Your games' })).getByRole('link', { name: 'The Elder Scrolls VI' }))
+            .toBeInTheDocument();
+        const versions = within(screen.getByRole('region', { name: 'Remakes, remasters and ports' }));
+        expect(versions.getByRole('link', { name: 'Warframe Mobile' })).toBeInTheDocument();
+        expect(versions.getByText('Port of Warframe, on your wishlist')).toBeInTheDocument();
+        expect(within(screen.getByRole('region', { name: 'From the same series' })).getByRole('link', { name: 'Persona 6' }))
+            .toBeInTheDocument();
+    });
+
     it('says when nothing is waiting on a date', () => {
         renderCalendar();
 
         expect(screen.getByText('Nothing connected to your games is waiting on a date.')).toBeInTheDocument();
     });
 
-    it('shows the first twelve and keeps the rest a click away', async () => {
+    it('shows the first twelve of a band and keeps the rest a click away', async () => {
         calendar.undated.data = Array.from({ length: 14 }, (_, index): UndatedEntry => ({
             groupName: null,
             releases: [connectedRelease({ gameId: index + 1, title: `Game ${index + 1}` })],
@@ -327,7 +363,7 @@ describe('ReleaseCalendar, announced with no date', () => {
         const actor = userEvent.setup();
         renderCalendar();
 
-        const list = screen.getByRole('list', { name: 'Announced, no date' });
+        const list = screen.getByRole('list', { name: 'Your games' });
         expect(within(list).getAllByRole('listitem')).toHaveLength(12);
 
         await actor.click(screen.getByRole('button', { name: 'Show all 14' }));
