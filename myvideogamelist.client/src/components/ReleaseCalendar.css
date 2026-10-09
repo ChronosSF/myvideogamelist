@@ -367,7 +367,7 @@
     color: #1d4ed8;
 }
 
-.calendar-date-full {
+.calendar-date-words {
     display: none;
 }
 
@@ -553,23 +553,137 @@ a.calendar-bar-name:hover {
         background: none;
     }
 
+    /* A diary's date: the day's number large, with its weekday and month beside it. */
     .calendar-date {
-        padding: 0 0 0.375rem;
+        padding: 0.25rem 0 0.75rem;
+    }
+
+    .calendar-date time {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
     }
 
     .calendar-date-number {
-        display: none;
+        min-width: 2.5rem;
+        font-size: 2.25rem;
+        font-weight: 700;
+        font-variant-numeric: tabular-nums;
+        line-height: 1;
+        color: #f1f5f9;
     }
 
-    .calendar-date-full {
-        display: inline;
+    .calendar-date-words {
+        display: flex;
+        flex-direction: column;
+        font-size: 0.9375rem;
+        line-height: 1.25;
     }
 
-    /* Two posters a row on a phone, rather than one as wide as the screen. */
+    .calendar-date-weekday {
+        font-weight: 600;
+        color: #e2e8f0;
+    }
+
+    .calendar-date-month {
+        font-weight: 500;
+        color: #94a3b8;
+    }
+
+    .calendar-day[data-today] .calendar-date-number,
+    .calendar-day[data-today] .calendar-date-weekday {
+        color: #93c5fd;
+    }
+
+    .calendar-day[data-past] .calendar-date-number,
+    .calendar-day[data-past] .calendar-date-weekday {
+        color: #64748b;
+    }
+
+    [data-theme='light'] .calendar-date-number,
+    [data-theme='light'] .calendar-date-weekday {
+        color: #0f172a;
+    }
+
+    [data-theme='light'] .calendar-date-month {
+        color: #64748b;
+    }
+
+    [data-theme='light'] .calendar-day[data-today] .calendar-date-number,
+    [data-theme='light'] .calendar-day[data-today] .calendar-date-weekday {
+        color: #1d4ed8;
+    }
+
+    [data-theme='light'] .calendar-day[data-past] .calendar-date-number,
+    [data-theme='light'] .calendar-day[data-past] .calendar-date-weekday {
+        color: #94a3b8;
+    }
+
+    /* A poster beside its words rather than above them, a card a row — in the days, the bands and the
+       undated list alike: as a grid of posters, a day or a band with one release had it alone at the left
+       of the screen, its words in a column a third of the screen wide. Where a row has room for two, two
+       share it, and one alone still takes the row. */
+    .calendar-day-entries,
+    .calendar-entry-list {
+        grid-template-columns: repeat(auto-fit, minmax(19rem, 1fr));
+        gap: 1.25rem 1.5rem;
+    }
+
     .calendar-day-entries {
-        grid-template-columns: repeat(auto-fill, minmax(8.5rem, 1fr));
-        gap: 1rem 0.875rem;
         padding: 0;
+    }
+
+    .calendar .release-card {
+        display: flex;
+        align-items: flex-start;
+        gap: 1rem;
+    }
+
+    .calendar .release-card-art,
+    .calendar .release-card-stack {
+        flex: none;
+        width: 7.5rem;
+    }
+
+    .calendar .release-card-text {
+        flex: 1;
+        min-width: 0;
+    }
+
+    .calendar .release-card-title {
+        margin-top: 0;
+        font-size: 1.125rem;
+        line-height: 1.3;
+        -webkit-line-clamp: 3;
+    }
+
+    .calendar .release-card-count,
+    .calendar .release-card-platforms {
+        margin-top: 0.25rem;
+        font-size: 0.875rem;
+        white-space: normal;
+    }
+
+    .calendar .release-card-badge {
+        margin-top: 0.375rem;
+        font-size: 0.75rem;
+    }
+
+    .calendar .release-card-reason {
+        margin-top: 0.5rem;
+        font-size: 0.9375rem;
+        line-height: 1.4;
+    }
+
+    .calendar .release-card-listed,
+    .calendar .release-card-add-error {
+        margin-top: 0.375rem;
+        font-size: 0.8125rem;
+    }
+
+    .calendar .release-card-group {
+        margin-top: 0.5rem;
+        font-size: 0.875rem;
     }
 
     /* The month's sales and showcases, each once, above its days. */

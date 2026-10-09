@@ -89,10 +89,12 @@ function DayCell({ day, layout, today }: { day: CalendarDay; layout: MonthLayout
             <p className="calendar-date">
                 <time dateTime={day.day}>
                     <span className="sr-only">{isToday ? `Today, ${label.full}` : label.full}</span>
-                    {/* A paper calendar's number in the grid; the whole of it where the month is a list. */}
+                    {/* A paper calendar's number in the grid. Where the month is a list, a diary's: the
+                        number large, with its weekday and month beside it. */}
                     <span aria-hidden="true" className="calendar-date-number">{label.date}</span>
-                    <span aria-hidden="true" className="calendar-date-full">
-                        {isToday ? 'Today' : label.weekday}, {label.month} {label.date}
+                    <span aria-hidden="true" className="calendar-date-words">
+                        <span className="calendar-date-weekday">{isToday ? 'Today' : label.longWeekday}</span>
+                        <span className="calendar-date-month">{label.longMonth}</span>
                     </span>
                 </time>
             </p>

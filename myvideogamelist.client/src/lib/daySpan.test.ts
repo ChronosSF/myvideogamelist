@@ -51,7 +51,14 @@ describe('daysBetween', () => {
 
 describe('dayLabel', () => {
     it('names the weekday and the month from the string alone', () => {
-        expect(dayLabel('2026-10-06')).toEqual({ weekday: 'Tue', month: 'Oct', date: 6, full: 'Tuesday, October 6' });
+        expect(dayLabel('2026-10-06')).toEqual({
+            weekday: 'Tue',
+            month: 'Oct',
+            date: 6,
+            longWeekday: 'Tuesday',
+            longMonth: 'October',
+            full: 'Tuesday, October 6',
+        });
         expect(dayLabel('2027-01-01').full).toBe('Friday, January 1');
     });
 });

@@ -72,16 +72,26 @@ const MONTH_NAMES = [
 ];
 
 /**
- * The parts of a day a line of days labels itself with — "Tue", "Oct", 6 — and the whole of it for
- * whoever cannot see the line, "Tuesday, October 6". From the string alone, like `formatDaySpan`.
+ * The parts of a day a line of days labels itself with — "Tue", "Oct", 6 — their long forms for a date
+ * written out large, "Tuesday" and "October", and the whole of it for whoever cannot see the line,
+ * "Tuesday, October 6". From the string alone, like `formatDaySpan`.
  */
-export function dayLabel(day: string): { weekday: string; month: string; date: number; full: string } {
+export function dayLabel(day: string): {
+    weekday: string;
+    month: string;
+    date: number;
+    longWeekday: string;
+    longMonth: string;
+    full: string;
+} {
     const [year, month, date] = day.split('-').map(Number);
     const weekday = WEEKDAYS[new Date(Date.UTC(year, month - 1, date)).getUTCDay()];
     return {
         weekday: weekday.slice(0, 3),
         month: MONTHS[month - 1],
         date,
+        longWeekday: weekday,
+        longMonth: MONTH_NAMES[month - 1],
         full: `${weekday}, ${MONTH_NAMES[month - 1]} ${date}`,
     };
 }

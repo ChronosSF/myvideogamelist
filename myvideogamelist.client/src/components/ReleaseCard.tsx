@@ -75,23 +75,26 @@ function SingleRelease({ entry, release, eager, undated }: Required<ReleaseCardP
                     </button>
                 )}
             </div>
-            <Link to={`/games/${release.gameId}`} className="release-card-link">
-                <p className="release-card-title">{release.title}</p>
-            </Link>
-            {release.earlyAccess && <p className="release-card-badge">Early access</p>}
-            {showsPlatformsApart(release) && (
-                <p className="release-card-platforms">{platformNames(release.platforms)}</p>
-            )}
-            <p className="release-card-reason">{entryReason(entry, { undated })}</p>
-            {backlog.listedIn !== null && <p className="release-card-listed">In {backlog.listedIn}</p>}
-            {/* In the card rather than on the cover, which shows the buttons only on hover — a message
-                that disappears when the pointer moves away is no message. */}
-            {backlog.failed && (
-                <p className="release-card-add-error" role="alert">Could not add it to {backlog.backlog}.</p>
-            )}
-            {favourite.failed && (
-                <p className="release-card-add-error" role="alert">Could not change your favourites.</p>
-            )}
+            {/* The words in one box, under the cover or — where a layout wants — beside it. */}
+            <div className="release-card-text">
+                <Link to={`/games/${release.gameId}`} className="release-card-link">
+                    <p className="release-card-title">{release.title}</p>
+                </Link>
+                {release.earlyAccess && <p className="release-card-badge">Early access</p>}
+                {showsPlatformsApart(release) && (
+                    <p className="release-card-platforms">{platformNames(release.platforms)}</p>
+                )}
+                <p className="release-card-reason">{entryReason(entry, { undated })}</p>
+                {backlog.listedIn !== null && <p className="release-card-listed">In {backlog.listedIn}</p>}
+                {/* In the card rather than on the cover, which shows the buttons only on hover — a message
+                    that disappears when the pointer moves away is no message. */}
+                {backlog.failed && (
+                    <p className="release-card-add-error" role="alert">Could not add it to {backlog.backlog}.</p>
+                )}
+                {favourite.failed && (
+                    <p className="release-card-add-error" role="alert">Could not change your favourites.</p>
+                )}
+            </div>
         </div>
     );
 }
@@ -162,15 +165,17 @@ export function ReleaseCard({ entry, eager = false, undated = false }: ReleaseCa
             <div className="release-card-stack">
                 <Cover release={cover} eager={eager} />
             </div>
-            <p className="release-card-title">{entry.groupName ?? first.title}</p>
-            <p className="release-card-count">{count} releases</p>
-            <p className="release-card-reason">{entryReason(entry, { undated })}</p>
-            <details className="release-card-group">
-                <summary>Show all {count}</summary>
-                <ul>
-                    {entry.releases.map(release => <GroupMember key={release.gameId} release={release} />)}
-                </ul>
-            </details>
+            <div className="release-card-text">
+                <p className="release-card-title">{entry.groupName ?? first.title}</p>
+                <p className="release-card-count">{count} releases</p>
+                <p className="release-card-reason">{entryReason(entry, { undated })}</p>
+                <details className="release-card-group">
+                    <summary>Show all {count}</summary>
+                    <ul>
+                        {entry.releases.map(release => <GroupMember key={release.gameId} release={release} />)}
+                    </ul>
+                </details>
+            </div>
         </div>
     );
 }
