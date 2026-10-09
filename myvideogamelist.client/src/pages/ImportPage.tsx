@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router';
+import { PageHeader } from '@/components/PageHeader';
 import { useAuth } from '@/hooks/useAuth';
 import { useImportJobs, useImportUpload } from '@/hooks/useImport';
 import { IMPORT_STATE } from '@/types/import';
@@ -59,17 +60,11 @@ export function ImportPage() {
 
     return (
         <div className="min-h-screen">
-            <div className="bg-gradient-to-b from-blue-950/60 to-slate-900 border-b border-slate-700/50">
-                <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
-                    <h1 className="text-3xl sm:text-4xl font-bold text-white mb-1">
-                        Import your games
-                    </h1>
-                    <p className="text-slate-400 text-sm sm:text-base">
-                        Bring your library across from another tracker. You see everything before
-                        anything is saved.
-                    </p>
-                </div>
-            </div>
+            <PageHeader
+                title="Import your games"
+                width="4xl"
+                description="Bring your library across from another tracker. You see everything before anything is saved."
+            />
 
             <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
                 {signedOut && (

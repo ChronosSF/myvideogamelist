@@ -66,7 +66,7 @@
     align-items: center;
     min-width: 3.75rem;
     padding: 0.375rem 0.5rem;
-    border: 1px solid var(--app-border);
+    border: 1px solid var(--color-line);
     border-radius: 0.5rem;
     font-size: 0.75rem;
     line-height: 1.3;
@@ -135,7 +135,7 @@
     justify-content: center;
     width: 2.25rem;
     height: 2.25rem;
-    border: 1px solid var(--app-border);
+    border: 1px solid var(--color-line);
     border-radius: 0.5rem;
     font-size: 1.25rem;
     line-height: 1;
@@ -258,9 +258,9 @@
     grid-template-columns: repeat(7, minmax(0, 1fr));
     gap: 1px;
     overflow: hidden;
-    border: 1px solid var(--app-border);
+    border: 1px solid var(--color-line);
     border-radius: 0.75rem;
-    background: var(--app-border);
+    background: var(--color-line);
 }
 
 .calendar-pads,
@@ -286,7 +286,7 @@
 .calendar-pad,
 .calendar-day {
     min-width: 0;
-    background: var(--app-bg);
+    background: var(--color-page);
 }
 
 .calendar-pad {
@@ -302,7 +302,7 @@
 }
 
 .calendar-day[data-today] {
-    background: color-mix(in srgb, #3b82f6 12%, var(--app-bg));
+    background: color-mix(in srgb, #3b82f6 12%, var(--color-page));
 }
 
 .calendar-date {
@@ -413,19 +413,19 @@ a.calendar-bar-name:hover {
 
 .calendar-bar[data-kind='sale'] {
     border-color: rgba(16, 185, 129, 0.45);
-    background: color-mix(in srgb, #10b981 16%, var(--app-bg));
+    background: color-mix(in srgb, #10b981 16%, var(--color-page));
     color: #6ee7b7;
 }
 
 .calendar-bar[data-kind='fest'] {
     border-color: rgba(245, 158, 11, 0.45);
-    background: color-mix(in srgb, #f59e0b 16%, var(--app-bg));
+    background: color-mix(in srgb, #f59e0b 16%, var(--color-page));
     color: #fcd34d;
 }
 
 .calendar-bar[data-kind='showcase'] {
     border-color: rgba(139, 92, 246, 0.5);
-    background: color-mix(in srgb, #8b5cf6 18%, var(--app-bg));
+    background: color-mix(in srgb, #8b5cf6 18%, var(--color-page));
     color: #c4b5fd;
 }
 
@@ -476,7 +476,7 @@ a.calendar-bar-name:hover {
     .calendar-day {
         display: block;
         padding-bottom: 0.5rem;
-        border-bottom: 1px solid var(--app-border);
+        border-bottom: 1px solid var(--color-line);
         background: none;
     }
 

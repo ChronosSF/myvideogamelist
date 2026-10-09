@@ -15,7 +15,7 @@ export function SectionHeading({ children, id }: SectionHeadingProps) {
     return (
         <h2
             id={id}
-            className="text-sm font-semibold uppercase tracking-widest text-slate-500 mb-3"
+            className="text-sm font-semibold uppercase tracking-widest text-fg-faint mb-3"
         >
             {children}
         </h2>

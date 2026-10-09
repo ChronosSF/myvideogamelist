@@ -1,5 +1,6 @@
 import { Link } from 'react-router';
 import { GameCard } from '@/components/GameCard';
+import { PageHeader } from '@/components/PageHeader';
 import { useWishlist } from '@/hooks/useWishlist';
 import { useAuth } from '@/hooks/useAuth';
 import { PRIVATE_NO_STORE } from '@/lib/cache';
@@ -41,23 +42,17 @@ export function WishlistPage() {
 
     return (
         <div className="min-h-screen">
-            <div className="bg-gradient-to-b from-blue-950/60 to-slate-900 border-b border-slate-700/50">
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
-                    <h1 className="text-3xl sm:text-4xl font-bold text-white mb-1">
-                        My Wishlist
-                    </h1>
-                    <p className="text-slate-400 text-sm sm:text-base">
-                        Games you want. Separate from your lists, so a game can sit here and in
-                        Backlog at the same time.
+            <PageHeader
+                title="My Wishlist"
+                description="Games you want. Separate from your lists, so a game can sit here and in Backlog at the same time."
+            >
+                {items.length > 0 && (
+                    <p className="text-slate-500 text-xs mt-3">
+                        {items.length} {items.length === 1 ? 'game' : 'games'}, most recently
+                        added first.
                     </p>
-                    {items.length > 0 && (
-                        <p className="text-slate-500 text-xs mt-3">
-                            {items.length} {items.length === 1 ? 'game' : 'games'}, most recently
-                            added first.
-                        </p>
-                    )}
-                </div>
-            </div>
+                )}
+            </PageHeader>
 
             {/* A failed toggle is shown beside the wishlist, never instead of it: the rollback has
                 already put the list back, so hiding it would discard something perfectly good. */}

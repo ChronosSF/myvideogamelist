@@ -13,7 +13,8 @@
     "typecheck": "react-router typegen && tsc -b",
     "lint": "eslint . && node scripts/check-colours.mjs",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "visual": "playwright test -c visual/playwright.config.ts"
   },
   "dependencies": {
     "@react-router/dev": "^8.4.0",
@@ -28,6 +29,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.39.4",
+    "@playwright/test": "1.63.0",
     "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^16.3.3",
     "@testing-library/user-event": "^14.6.6",
