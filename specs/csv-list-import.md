@@ -91,6 +91,7 @@ Everything maps into this shape before anything touches the database:
 | `score` | | Normalised to our 1–10 scale (5-star, 100-point and letter grades all occur in the wild) |
 | `hoursPlayed` | | HLTB gives `h:mm`, Completionator gives a decimal |
 | `startedOn` / `finishedOn` | | Several date formats; parse with an explicit culture, never `DateTime.Parse` on the ambient one |
+| `playthroughType` | | A run's completion level, mapped through the preset's own vocabulary onto `rushed` / `normally` / `completionist`. Only values seen in a real export are mapped — anything else is no type, because a typed run with hours feeds the community medians. A level on its own is not a run ([0049](../docs/decisions/0049-an-imported-run-takes-its-type-from-the-source.md)) |
 | `notes` / `review` | | Long text, may contain newlines and commas — the parser must handle quoted multi-line fields |
 | `isFavourite` / `isWishlist` | | Some services model these as a shelf, some as a flag |
 
@@ -339,10 +340,10 @@ per preset below.
 **Left**, tracked in [#125](https://github.com/ChronosSF/myvideogamelist/issues/125):
 
 1. **HowLongToBeat** ([#153](https://github.com/ChronosSF/myvideogamelist/issues/153)) — the next
-   preset, and the first to put the matcher in front of a real file. Its completion tiers are the
-   one place a source's completion field might be its owner's own answer rather than a default,
-   which is what it would take to earn an exception to 0037's "an imported playthrough carries no
-   type".
+   preset, and the first to put the matcher in front of a real file. Its completion tiers map onto
+   our playthrough types as Grouvee's levels do
+   ([0049](../docs/decisions/0049-an-imported-run-takes-its-type-from-the-source.md)), from the
+   strings a real HowLongToBeat export carries.
 2. **M4's inline search** ([#158](https://github.com/ChronosSF/myvideogamelist/issues/158)) —
    resolving a row from the row. The endpoints exist; it is a screen.
 3. **Backloggery** ([#154](https://github.com/ChronosSF/myvideogamelist/issues/154)) — no ids and no

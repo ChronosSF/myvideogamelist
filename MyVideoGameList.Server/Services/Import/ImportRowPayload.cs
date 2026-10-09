@@ -94,19 +94,9 @@ internal sealed record ImportRowPayload(
 /// One run through a game, as the source recorded it.
 /// </summary>
 /// <remarks>
-/// <para>
-/// There is deliberately <b>no type</b>. Our three — rushed, normally, completionist — are what
-/// decide whether a run counts towards the community medians (ADR 0016, ADR 0025), and a tracker's
-/// completion field is not reliably a statement: Grouvee's reads "Main Story" on 596 of 608 rows,
-/// including all 448 that carry no date and no hours at all, because that is what it writes into
-/// the row it creates when a game is shelved.
-/// </para>
-/// <para>
-/// So an imported run keeps its dates and its duration and carries no type, which means it shows on
-/// its owner's profile and in their own playtime figures and contributes nothing to a figure other
-/// members read. A typeless playthrough is already a supported shape, so this needs no special case
-/// anywhere. See ADR 0037, decision 4.
-/// </para>
+/// The dates, the duration and the platform are the source's own record and carry over as they are.
+/// The type is the source's completion field translated through the preset's vocabulary, as a shelf
+/// and a rating already are — ADR 0049, which amends ADR 0037 decision 4.
 /// </remarks>
 /// <param name="MinutesPlayed">
 /// Never zero. A source that writes 0 for "not recorded" — Grouvee's <c>seconds_played</c> does —
@@ -117,8 +107,21 @@ internal sealed record ImportRowPayload(
 /// Free text, resolved to an IGDB platform id at commit time if it resolves at all. A name we
 /// cannot place leaves the platform null rather than failing the run.
 /// </param>
+/// <param name="Type">
+/// <para>
+/// One of <c>PlaythroughTypeKeys</c>, never the source's own wording, so that everything after the
+/// seam stays source-agnostic. A typed run with a duration counts towards the community medians
+/// (ADR 0016, ADR 0025), so this is null whenever the source recorded nothing — and whenever it
+/// recorded a value the preset has not seen in a real export, rather than a guess at what it means.
+/// </para>
+/// <para>
+/// Absent from a payload stored before the field existed, which reads back as null: that job's runs
+/// commit untyped, as they would have when it was uploaded.
+/// </para>
+/// </param>
 internal sealed record ImportPlaythroughPayload(
     DateOnly? StartedOn,
     DateOnly? FinishedOn,
     int? MinutesPlayed,
-    string? PlatformName);
+    string? PlatformName,
+    string? Type);
