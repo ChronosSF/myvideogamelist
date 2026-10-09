@@ -3,6 +3,7 @@ import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { ReleaseLine } from '@/components/ReleaseLine';
+import type { FavouritesContextValue } from '@/contexts/FavouritesContext';
 import type { ListsContextValue } from '@/contexts/ListsContext';
 import type { UseReleaseLineResult } from '@/hooks/useReleaseLine';
 import { calendarEvents, connectedRelease, platform, releaseEntry } from '@/test/factories';
@@ -36,6 +37,19 @@ const lists = {
 } as unknown as ListsContextValue;
 
 vi.mock('@/hooks/useLists', () => ({ useLists: () => lists }));
+
+/** The favourites, as far as the toggle reads them. Hoisted and handed back whole, as above. */
+const favoured = new Set<number>();
+const favourites = {
+    loading: false,
+    error: null as string | null,
+    isFavourite: (gameId: number) => favoured.has(gameId),
+    isPending: () => false,
+    add: vi.fn(async () => true),
+    remove: vi.fn(async () => true),
+} as unknown as FavouritesContextValue;
+
+vi.mock('@/hooks/useFavourites', () => ({ useFavourites: () => favourites }));
 
 const SWITCH_2 = platform(508, 'Nintendo Switch 2', 'Switch 2');
 
@@ -76,6 +90,9 @@ beforeEach(() => {
         nameFor: (id: ListId) => LIST_NAMES[id],
         addToList: vi.fn(async () => {}),
     });
+
+    favoured.clear();
+    Object.assign(favourites, { loading: false, error: null, add: vi.fn(async () => true), remove: vi.fn(async () => true) });
 });
 
 describe('ReleaseLine', () => {
@@ -121,6 +138,12 @@ describe('ReleaseLine', () => {
         renderLine();
 
         expect(screen.getByText('Nothing connected to your games is due in the next two weeks.')).toBeInTheDocument();
+    });
+
+    it('links to the whole calendar, empty or not (L6)', () => {
+        renderLine();
+
+        expect(screen.getByRole('link', { name: 'The whole calendar' })).toHaveAttribute('href', '/calendar');
     });
 
     it('says it is still looking while the releases load', () => {
@@ -276,5 +299,59 @@ describe('ReleaseLine, adding a release to the Backlog', () => {
 
         expect(lists.addToList).toHaveBeenCalledWith('backlog', expect.objectContaining({ id: 2350 }));
         expect(screen.queryByRole('button', { name: 'Add to Backlog: Kingdom Hearts III' })).not.toBeInTheDocument();
+    });
+});
+
+describe('ReleaseLine, favourites', () => {
+    it('makes a release a favourite from its cover, whatever list it is in', async () => {
+        line.releases.data = [RESIDENT_EVIL_2];
+        listed.set(19686, 'finished');
+        renderLine();
+
+        const toggle = screen.getByRole('button', { name: 'Favourite: Resident Evil 2' });
+        expect(toggle).toHaveAttribute('aria-pressed', 'false');
+        await userEvent.click(toggle);
+
+        expect(favourites.add).toHaveBeenCalledWith(expect.objectContaining({ id: 19686, title: 'Resident Evil 2' }));
+    });
+
+    it('shows a favourite as one, and takes it back off', async () => {
+        line.releases.data = [RESIDENT_EVIL_2];
+        favoured.add(19686);
+        renderLine();
+
+        const toggle = screen.getByRole('button', { name: 'Favourite: Resident Evil 2' });
+        expect(toggle).toHaveAttribute('aria-pressed', 'true');
+        await userEvent.click(toggle);
+
+        expect(favourites.remove).toHaveBeenCalledWith(19686);
+    });
+
+    it('offers nothing until the favourites have loaded, when every game looks as though it were none', () => {
+        line.releases.data = [RESIDENT_EVIL_2];
+        Object.assign(favourites, { loading: true });
+        renderLine();
+
+        expect(screen.queryByRole('button', { name: /^Favourite:/ })).not.toBeInTheDocument();
+    });
+
+    it('says so in the card when the change did not stick', async () => {
+        line.releases.data = [RESIDENT_EVIL_2];
+        Object.assign(favourites, { add: vi.fn(async () => false) });
+        renderLine();
+
+        await userEvent.click(screen.getByRole('button', { name: 'Favourite: Resident Evil 2' }));
+
+        expect(await screen.findByRole('alert')).toHaveTextContent('Could not change your favourites.');
+    });
+
+    it('offers it beside each release in a group', async () => {
+        line.releases.data = [KINGDOM_HEARTS];
+        renderLine();
+
+        await userEvent.click(screen.getByText('Show all 2'));
+        await userEvent.click(screen.getByRole('button', { name: 'Favourite: Kingdom Hearts HD 1.5 + 2.5 ReMIX' }));
+
+        expect(favourites.add).toHaveBeenCalledWith(expect.objectContaining({ id: 2350 }));
     });
 });

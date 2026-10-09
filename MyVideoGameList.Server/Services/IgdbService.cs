@@ -424,7 +424,7 @@ public class IgdbService(
 
     /// <summary>What the release calendar asks of a game; see <see cref="IgdbCalendarGame"/>.</summary>
     private const string CalendarGameFields =
-        "fields id,name,cover.image_id,game_type,parent_game,version_parent,collections.name;";
+        "fields id,name,cover.image_id,game_type,parent_game,version_parent,collections.name,first_release_date,game_status;";
 
     /// <summary>
     /// How long a calendar game is kept. A game's type, parent and series barely change, and its name
@@ -487,36 +487,106 @@ public class IgdbService(
         bool withPeriods,
         CancellationToken cancellationToken = default)
     {
-        var rows = new Dictionary<int, ReleaseRow>();
+        var (rows, truncated) = await ReadReleaseDatesAsync<IgdbConnectedReleaseDate, ReleaseRow>(
+            BuildRelationFilters(gameIds, seriesIds)
+                .Select(relations => (Func<int, string>)(offset => BuildConnectedReleasesQuery(relations, from, to, withPeriods, offset))),
+            MapToReleaseRow,
+            row => row.Id,
+            cancellationToken);
+
+        if (truncated)
+        {
+            logger.LogWarning(
+                "Connected releases hit the {MaxPages}-page ceiling for {GameCount} games; the answer is partial.",
+                MaxPages, gameIds.Count);
+        }
+
+        return new ConnectedReleaseRows(rows.OrderBy(r => r.Date).ThenBy(r => r.Id).ToList(), truncated);
+    }
+
+    public async Task<ConnectedReleaseRows> GetReleaseRowsAsync(
+        IReadOnlyCollection<int> gameIds,
+        DateOnly from,
+        DateOnly to,
+        CancellationToken cancellationToken = default)
+    {
+        var (rows, truncated) = await ReadReleaseDatesAsync<IgdbConnectedReleaseDate, ReleaseRow>(
+            gameIds.Distinct().Order().Chunk(RelationChunkSize)
+                .Select(chunk => (Func<int, string>)(offset => BuildReleaseRowsQuery(chunk, from, to, offset))),
+            MapToReleaseRow,
+            row => row.Id,
+            cancellationToken);
+
+        if (truncated)
+        {
+            logger.LogWarning(
+                "Release rows around the calendar hit the {MaxPages}-page ceiling for {GameCount} games; the answer is partial.",
+                MaxPages, gameIds.Count);
+        }
+
+        return new ConnectedReleaseRows(rows.OrderBy(r => r.Date).ThenBy(r => r.Id).ToList(), truncated);
+    }
+
+    public async Task<UndatedReleaseRows> GetUndatedReleaseRowsAsync(
+        IReadOnlyCollection<int> gameIds,
+        IReadOnlyCollection<int> seriesIds,
+        CancellationToken cancellationToken = default)
+    {
+        var (rows, truncated) = await ReadReleaseDatesAsync<IgdbUndatedReleaseDate, UndatedRow>(
+            BuildRelationFilters(gameIds, seriesIds)
+                .Select(relations => (Func<int, string>)(offset => BuildUndatedReleasesQuery(relations, offset))),
+            MapToUndatedRow,
+            row => row.Id,
+            cancellationToken);
+
+        if (truncated)
+        {
+            logger.LogWarning(
+                "Undated releases hit the {MaxPages}-page ceiling for {GameCount} games; the answer is partial.",
+                MaxPages, gameIds.Count);
+        }
+
+        return new UndatedReleaseRows(rows.OrderBy(r => r.Id).ToList(), truncated);
+    }
+
+    /// <summary>
+    /// Every page of each query, at most <see cref="MaxPages"/> of each, and whether any of them stopped at
+    /// that ceiling with more to read.
+    /// </summary>
+    /// <remarks>
+    /// Keyed by the row, because one row can be found by more than one query: the series query finds rows
+    /// the games query found too.
+    /// </remarks>
+    /// <param name="queries">Each query, given the offset of the page it is to read.</param>
+    private async Task<(IReadOnlyCollection<TRow> Rows, bool Truncated)> ReadReleaseDatesAsync<TIgdb, TRow>(
+        IEnumerable<Func<int, string>> queries,
+        Func<TIgdb, TRow?> map,
+        Func<TRow, int> idOf,
+        CancellationToken cancellationToken)
+        where TRow : class
+    {
+        var rows = new Dictionary<int, TRow>();
         var truncated = false;
 
-        foreach (var relations in BuildRelationFilters(gameIds, seriesIds))
+        foreach (var query in queries)
         {
             var lastPageWasFull = false;
 
             for (var page = 0; page < MaxPages; page++)
             {
-                var query = BuildConnectedReleasesQuery(relations, from, to, withPeriods, page * MaxBatchSize);
-                var batch = await QueryAsync<IgdbConnectedReleaseDate>(ReleaseDatesEndpoint, query, cancellationToken);
+                var batch = await QueryAsync<TIgdb>(ReleaseDatesEndpoint, query(page * MaxBatchSize), cancellationToken);
 
-                // Keyed by the row, because the series query can find a row the games query found too.
-                foreach (var row in batch.Select(MapToReleaseRow).OfType<ReleaseRow>())
-                    rows.TryAdd(row.Id, row);
+                foreach (var row in batch.Select(map).OfType<TRow>())
+                    rows.TryAdd(idOf(row), row);
 
                 lastPageWasFull = batch.Count == MaxBatchSize;
                 if (!lastPageWasFull) break;
             }
 
-            if (lastPageWasFull)
-            {
-                truncated = true;
-                logger.LogWarning(
-                    "Connected releases hit the {MaxPages}-page ceiling for {GameCount} games; the answer is partial.",
-                    MaxPages, gameIds.Count);
-            }
+            truncated |= lastPageWasFull;
         }
 
-        return new ConnectedReleaseRows(rows.Values.OrderBy(r => r.Date).ThenBy(r => r.Id).ToList(), truncated);
+        return (rows.Values, truncated);
     }
 
     /// <summary>
@@ -585,6 +655,63 @@ public class IgdbService(
             .ToString();
     }
 
+    /// <summary>
+    /// One page of the rows F5 compares a band with where its period runs past the window: every dated row
+    /// of the games, and of their editions, stored from one day to another, whatever its precision.
+    /// </summary>
+    /// <remarks>
+    /// Editions as well, because F5 compares the game a row is shown as: the Ultimate Edition's day hides
+    /// the game's year (F3). A finer row inside a band's period is stored inside it too — a day on itself, a
+    /// month on its first day, a quarter on its last — so the band's own days are the range to ask. A row
+    /// with no date is never matched by a comparison with one, which was checked live on 2026-10-08.
+    /// </remarks>
+    /// <param name="to">Exclusive.</param>
+    internal static string BuildReleaseRowsQuery(IReadOnlyCollection<int> gameIds, DateOnly from, DateOnly to, int offset)
+    {
+        var ids = string.Join(',', gameIds);
+
+        return new StringBuilder()
+            .AppendLine("fields game,date,date_format,y,m,status,platform.name,platform.abbreviation;")
+            .AppendLine($"where (game = ({ids}) | game.version_parent = ({ids})) & date >= {UnixDay(from)} & date < {UnixDay(to)};")
+            .AppendLine("sort id asc;")
+            .AppendLine($"limit {MaxBatchSize};")
+            .AppendLine($"offset {offset};")
+            .ToString();
+    }
+
+    /// <summary>
+    /// One page of the rows a relation filter reaches that have no date at all (K4), for games IGDB has no
+    /// date for anywhere.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A row to be decided is no news about a game that has a date elsewhere. Of 399 games a 300-game library
+    /// reached through undated rows on 2026-10-08, 124 had a dated row as well — Far Cry 4 is "to be
+    /// decided" on Stadia — so only games with no <c>first_release_date</c> are asked about, which is IGDB's
+    /// own word for a game with no date anywhere.
+    /// </para>
+    /// <para>
+    /// No date range: there is nothing to range over. Sorted by id, as every paged query here is.
+    /// </para>
+    /// </remarks>
+    internal static string BuildUndatedReleasesQuery(string relations, int offset) =>
+        new StringBuilder()
+            .AppendLine("fields game,status,platform.name,platform.abbreviation;")
+            .AppendLine($"where ({relations}) & date_format = 7 & game.first_release_date = null;")
+            .AppendLine("sort id asc;")
+            .AppendLine($"limit {MaxBatchSize};")
+            .AppendLine($"offset {offset};")
+            .ToString();
+
+    private static UndatedRow? MapToUndatedRow(IgdbUndatedReleaseDate row) =>
+        row.Game is int gameId
+            ? new UndatedRow(row.Id, gameId, MapToReleasePlatform(row.Platform), row.Status)
+            : null;
+
+    /// <summary>A row's platform as the calendar names it: by its abbreviation where IGDB has one.</summary>
+    private static PlatformDto? MapToReleasePlatform(IgdbPlatform? platform) =>
+        platform is { } p ? new PlatformDto(p.Id, p.Name, p.Abbreviation ?? p.Name, null, null) : null;
+
     /// <summary>Midnight UTC on the day, which is where IGDB puts a date known to the day.</summary>
     private static long UnixDay(DateOnly day) =>
         new DateTimeOffset(day.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero).ToUnixTimeSeconds();
@@ -593,10 +720,6 @@ public class IgdbService(
     {
         if (row.Game is not int gameId || row.Date is not long seconds) return null;
 
-        var platform = row.Platform is { } p
-            ? new PlatformDto(p.Id, p.Name, p.Abbreviation ?? p.Name, null, null)
-            : null;
-
         return new ReleaseRow(
             row.Id,
             gameId,
@@ -604,7 +727,7 @@ public class IgdbService(
             row.DateFormat,
             row.Y,
             row.M,
-            platform,
+            MapToReleasePlatform(row.Platform),
             row.Status);
     }
 
@@ -619,7 +742,9 @@ public class IgdbService(
             (g.Collections ?? [])
                 .Where(c => !string.IsNullOrWhiteSpace(c.Name))
                 .Select(c => new SeriesRef(c.Id, c.Name!))
-                .ToList());
+                .ToList(),
+            Dated: g.FirstReleaseDate is not null,
+            g.GameStatus);
 
     /// <summary>
     /// How long IGDB's events for a window are kept. They are added late — half of a year's events

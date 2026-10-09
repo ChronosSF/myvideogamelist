@@ -9,8 +9,8 @@ namespace MyVideoGameList.Server.Controllers;
 
 /// <summary>
 /// What is coming for the signed-in user's games (<c>specs/release-timeline-and-calendar.md</c> §8.2,
-/// B1): the two-week line asks for fourteen days known to the day, the calendar for its months with the
-/// month, quarter and year bands as well.
+/// B1 and B7): the two-week line asks for fourteen days known to the day, the calendar for its months
+/// with the month, quarter and year bands as well, and for what is announced with no date at all.
 /// </summary>
 /// <remarks>
 /// <c>no-store</c>, like every answer about one person. The service keeps IGDB's answer in memory for an
@@ -38,5 +38,18 @@ public class UserReleasesController(
 
         return Ok(await releases.GetAsync(
             user.Id, from, to, window.Precision == ReleaseWindowQuery.AnyPrecision, cancellationToken));
+    }
+
+    /// <summary>
+    /// The connected games IGDB has no date for at all — the calendar's "Announced, no date" (K4). No
+    /// window, because there are no dates to put one around.
+    /// </summary>
+    [HttpGet("undated")]
+    public async Task<ActionResult<IReadOnlyList<UndatedEntryDto>>> GetUndated(CancellationToken cancellationToken)
+    {
+        var user = await userManager.GetUserAsync(User);
+        if (user is null) return Unauthorized();
+
+        return Ok(await releases.GetUndatedAsync(user.Id, cancellationToken));
     }
 }

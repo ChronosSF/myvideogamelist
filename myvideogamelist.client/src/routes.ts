@@ -9,6 +9,10 @@ export default [
     route('news', 'pages/NewsPage.tsx'),
     route('user', 'pages/UserPage.tsx'),
 
+    // What is coming for the user's games, a month at a time. The month is a query parameter rather
+    // than a path segment, so that `/calendar` is always the month it opens on.
+    route('calendar', 'pages/CalendarPage.tsx'),
+
     // Bringing a library across from another tracker. The job id is in the URL rather than in
     // component state so that a review survives closing the tab — §C4 asks for exactly that, and
     // the alternative is somebody losing a 600-row review to a stray navigation.

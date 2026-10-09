@@ -54,6 +54,15 @@ public record ReleaseEntryDto(
     string? GroupName,
     IReadOnlyList<ConnectedReleaseDto> Releases);
 
+/// <summary>
+/// One thing the calendar lists under "Announced, no date" (K4): a connected game IGDB has no date for at
+/// all, or several that belong together (F6). No precision and no day, because there is none.
+/// </summary>
+/// <param name="GroupName">What the releases have in common when there are several — "God of War".</param>
+public record UndatedEntryDto(
+    string? GroupName,
+    IReadOnlyList<ConnectedReleaseDto> Releases);
+
 /// <param name="Kind">
 /// What the release is, from IGDB's game type: <c>game</c>, <c>dlc</c>, <c>expansion</c>,
 /// <c>standalone_expansion</c>, <c>episode</c>, <c>season</c>, <c>remake</c>, <c>remaster</c>,

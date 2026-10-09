@@ -113,8 +113,16 @@ export function showsPlatformsApart(release: ConnectedRelease): boolean {
     return release.reason.relation !== 'itself' && release.platforms.length > 0;
 }
 
-/** Why one release is on the line. */
-export function releaseReason(release: ConnectedRelease): string {
+export interface ReasonOptions {
+    /**
+     * Whether IGDB has no date for it at all (K4). A game of the user's own is then "announced for" its
+     * platforms rather than "out on" them.
+     */
+    undated?: boolean;
+}
+
+/** Why one release is on the line or the calendar. */
+export function releaseReason(release: ConnectedRelease, { undated = false }: ReasonOptions = {}): string {
     const { reason } = release;
     const name = reason.title;
 
@@ -127,6 +135,8 @@ export function releaseReason(release: ConnectedRelease): string {
                 : capitalise(sentence(reason, name));
 
             const where = platformNames(release.platforms);
+            if (undated) return where !== '' ? `${who} — announced for ${where}` : `${who} — announced`;
+
             const what = release.earlyAccess ? 'early access' : 'out';
             if (where !== '') return `${who} — ${what} on ${where}`;
             return release.earlyAccess ? `${who} — early access` : who;
@@ -143,13 +153,13 @@ export function releaseReason(release: ConnectedRelease): string {
 }
 
 /**
- * Why an entry is on the line: its release's reason, or for a group (F6) the strongest of its
- * releases', which come strongest first. Said of the group rather than of its first member — "DLC for
- * Kingdom Hearts III" would read as though all eight were.
+ * Why an entry is on the line or the calendar: its release's reason, or for a group (F6) the strongest
+ * of its releases', which come strongest first. Said of the group rather than of its first member —
+ * "DLC for Kingdom Hearts III" would read as though all eight were.
  */
-export function entryReason(entry: ReleaseEntry): string {
+export function entryReason(entry: Pick<ReleaseEntry, 'releases'>, options: ReasonOptions = {}): string {
     const [strongest] = entry.releases;
-    if (entry.releases.length === 1) return releaseReason(strongest);
+    if (entry.releases.length === 1) return releaseReason(strongest, options);
 
     const { reason } = strongest;
     const name = reason.title;

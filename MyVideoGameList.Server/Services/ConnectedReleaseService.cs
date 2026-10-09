@@ -42,6 +42,9 @@ public class ConnectedReleaseService(
     /// <summary>IGDB's answer for one set and window: every game it described, and the rows.</summary>
     private sealed record IgdbAnswer(IReadOnlyDictionary<int, CalendarGame> Games, IReadOnlyList<ReleaseRow> Rows);
 
+    /// <summary>IGDB's answer about one set's undated releases: every game it described, and the rows.</summary>
+    private sealed record UndatedAnswer(IReadOnlyDictionary<int, CalendarGame> Games, IReadOnlyList<UndatedRow> Rows);
+
     public async Task<IReadOnlyList<ReleaseEntryDto>> GetAsync(
         string userId,
         DateOnly from,
@@ -99,6 +102,36 @@ public class ConnectedReleaseService(
         return set;
     }
 
+    /// <summary>
+    /// The connected games IGDB has no date for at all (K4), grouped and each with its reason — the
+    /// calendar's "Announced, no date".
+    /// </summary>
+    public async Task<IReadOnlyList<UndatedEntryDto>> GetUndatedAsync(string userId, CancellationToken cancellationToken = default)
+    {
+        var set = await ReadSetAsync(userId, cancellationToken);
+        if (set.Count == 0) return [];
+
+        var ids = set.Keys.Order().ToList();
+        var key = $"connected_undated|{Fingerprint(ids)}";
+        if (!cache.TryGetValue(key, out UndatedAnswer? answer) || answer is null)
+        {
+            var games = new Dictionary<int, CalendarGame>(await igdb.GetCalendarGamesAsync(ids, cancellationToken));
+            var seriesIds = games.Values.SelectMany(g => g.Series).Select(s => s.Id).Distinct().ToList();
+
+            var fetched = await igdb.GetUndatedReleaseRowsAsync(ids, seriesIds, cancellationToken);
+            await DescribeAsync(games, fetched.Rows.Select(r => r.GameId), cancellationToken);
+
+            answer = new UndatedAnswer(games, fetched.Rows);
+            if (!fetched.Truncated) cache.Set(key, answer, AnswerLifetime);
+        }
+
+        return ConnectedReleases.ComposeUndated(set, answer.Games, answer.Rows)
+            .Select(entry => new UndatedEntryDto(entry.GroupName, entry.Releases
+                .Select(r => ToDto(r.Game, r.Platforms, r.EarlyAccess, r.Reason))
+                .ToList()))
+            .ToList();
+    }
+
     private async Task<IgdbAnswer> AskIgdbAsync(
         IEnumerable<int> setIds,
         DateOnly from,
@@ -116,8 +149,74 @@ public class ConnectedReleaseService(
         var seriesIds = games.Values.SelectMany(g => g.Series).Select(s => s.Id).Distinct().ToList();
 
         var fetched = await igdb.GetConnectedReleaseRowsAsync(ids, seriesIds, from, to, withPeriods, cancellationToken);
+        await DescribeAsync(games, fetched.Rows.Select(r => r.GameId), cancellationToken);
 
-        await AddAsync(games, fetched.Rows.Select(r => r.GameId), cancellationToken);
+        var rows = fetched.Rows;
+        var truncated = fetched.Truncated;
+
+        if (withPeriods && BandsPastTheWindow(fetched.Rows, games, from, to) is { } around)
+        {
+            var more = await igdb.GetReleaseRowsAsync(around.GameIds, around.From, around.To, cancellationToken);
+            await DescribeAsync(games, more.Rows.Select(r => r.GameId), cancellationToken);
+
+            // The window's own rows for those games come back too.
+            var known = rows.Select(r => r.Id).ToHashSet();
+            rows = [.. rows, .. more.Rows.Where(r => !known.Contains(r.Id))];
+            truncated |= more.Truncated;
+        }
+
+        var answer = new IgdbAnswer(games, rows);
+
+        // A partial answer is never kept (§8.1): the next request gets another try at all of it.
+        if (!truncated) cache.Set(key, answer, AnswerLifetime);
+        return answer;
+    }
+
+    /// <summary>
+    /// The games the rows' bands are of, and the days of their periods, where a band runs past the window —
+    /// what F5 has to see the rest of, or a band would stand for a release whose day is known just outside
+    /// it.
+    /// </summary>
+    /// <remarks>
+    /// A calendar opening on 1 October asks nothing about September, so "2026" on Switch would stand beside
+    /// nothing although the same game came out on Switch on 16 September. One more query, for only the games
+    /// with such a band and only over their periods, rather than the whole window widened to the years at
+    /// either end of it. The game each band is shown as is asked about too, since an edition's day hides its
+    /// game's year (F3). Null when no band runs past the window.
+    /// </remarks>
+    internal static (IReadOnlyCollection<int> GameIds, DateOnly From, DateOnly To)? BandsPastTheWindow(
+        IEnumerable<ReleaseRow> rows,
+        IReadOnlyDictionary<int, CalendarGame> games,
+        DateOnly from,
+        DateOnly to)
+    {
+        var ids = new HashSet<int>();
+        DateOnly? first = null, last = null;
+
+        foreach (var row in rows)
+        {
+            if (ConnectedReleases.PeriodOf(row) is not { Precision: not ReleasePrecision.Day } period) continue;
+            if (period.Starts >= to || period.Ends < from) continue;
+            if (period.Starts >= from && period.Ends < to) continue;
+
+            ids.Add(row.GameId);
+            if (games.TryGetValue(row.GameId, out var released)) ids.Add(ConnectedReleases.Fold(released, games).Id);
+
+            if (first is null || period.Starts < first) first = period.Starts;
+            if (last is null || period.Ends > last) last = period.Ends;
+        }
+
+        return first is { } starts && last is { } ends ? (ids, starts, ends.AddDays(1)) : null;
+    }
+
+    /// <summary>
+    /// Adds what the rules need to know about the games the rows name: the games themselves, the games
+    /// editions fold into (F3), and the games what is shown is DLC for (F6).
+    /// </summary>
+    private async Task DescribeAsync(Dictionary<int, CalendarGame> games, IEnumerable<int> rowGameIds, CancellationToken cancellationToken)
+    {
+        var released = rowGameIds.Distinct().ToList();
+        await AddAsync(games, released, cancellationToken);
 
         // The games editions fold into (F3), a generation at a time.
         for (var round = 0; round < EditionRounds; round++)
@@ -131,19 +230,13 @@ public class ConnectedReleaseService(
         // the set — somebody can wishlist two Street Fighter 6 characters without Street Fighter 6 — and the
         // group cannot be named after a game nobody described. Asked after the editions, because what is
         // shown is what an edition folds into.
-        var parents = fetched.Rows
-            .Select(r => games.GetValueOrDefault(r.GameId))
+        var parents = released
+            .Select(games.GetValueOrDefault)
             .OfType<CalendarGame>()
             .Select(g => ConnectedReleases.Fold(g, games).ParentGameId)
             .OfType<int>()
             .ToList();
         await AddAsync(games, parents, cancellationToken);
-
-        var answer = new IgdbAnswer(games, fetched.Rows);
-
-        // A partial answer is never kept (§8.1): the next request gets another try at all of it.
-        if (!fetched.Truncated) cache.Set(key, answer, AnswerLifetime);
-        return answer;
     }
 
     private async Task AddAsync(Dictionary<int, CalendarGame> games, IEnumerable<int> ids, CancellationToken cancellationToken)
@@ -166,30 +259,34 @@ public class ConnectedReleaseService(
         new(Precision(entry.Precision), entry.Starts, entry.GroupName, entry.Releases.Select(ToDto).ToList());
 
     private static ConnectedReleaseDto ToDto(ConnectedRelease release) =>
+        ToDto(release.Game, release.Platforms, release.EarlyAccess, release.Reason);
+
+    private static ConnectedReleaseDto ToDto(
+        CalendarGame game, IReadOnlyList<PlatformDto> platforms, bool earlyAccess, ReleaseReason reason) =>
         new(
-            release.Game.Id,
-            release.Game.Name,
-            release.Game.CoverImageUrl,
-            Kind(release.Game.GameType),
-            release.Platforms,
-            release.EarlyAccess,
+            game.Id,
+            game.Name,
+            game.CoverImageUrl,
+            Kind(game.GameType),
+            platforms,
+            earlyAccess,
             new ReleaseReasonDto(
-                release.Reason.Relation switch
+                reason.Relation switch
                 {
                     ReleaseRelation.Itself => "itself",
                     ReleaseRelation.Child => "child",
                     _ => "series",
                 },
-                release.Reason.ViaGameId,
-                release.Reason.ViaTitle,
-                release.Reason.Membership switch
+                reason.ViaGameId,
+                reason.ViaTitle,
+                reason.Membership switch
                 {
                     SetMembership.Favourite => "favourite",
                     SetMembership.Wishlist => "wishlist",
                     _ => "list",
                 },
-                release.Reason.ListKey,
-                release.Reason.Series?.Name));
+                reason.ListKey,
+                reason.Series?.Name));
 
     private static string Precision(ReleasePrecision precision) => precision switch
     {

@@ -63,6 +63,26 @@ public interface IIgdbService
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Every dated release row of the games and of their editions, stored from one day to another,
+    /// whatever its precision — what F5 compares a band with where its period runs past the window.
+    /// </summary>
+    /// <param name="to">Exclusive.</param>
+    Task<ConnectedReleaseRows> GetReleaseRowsAsync(
+        IReadOnlyCollection<int> gameIds,
+        DateOnly from,
+        DateOnly to,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The release rows connected to a set of games, as <see cref="GetConnectedReleaseRowsAsync"/> finds
+    /// them, that have no date at all, for games IGDB has no date for anywhere (K4).
+    /// </summary>
+    Task<UndatedReleaseRows> GetUndatedReleaseRowsAsync(
+        IReadOnlyCollection<int> gameIds,
+        IReadOnlyCollection<int> seriesIds,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// IGDB's events — showcases, festivals, conventions — that overlap a window of days somewhere on
     /// Earth, earliest first. Every one of them: which are worth showing is the caller's choice.
     /// </summary>

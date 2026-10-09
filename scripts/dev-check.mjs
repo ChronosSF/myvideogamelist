@@ -131,6 +131,7 @@ async function cacheHeaders() {
         '/news': 'private, no-store',
         '/import': 'private, no-store',
         '/admin': 'private, no-store',
+        '/calendar': 'private, no-store',
     };
     for (const [path, policy] of Object.entries(expected)) {
         const r = await get(path, { auth: true });

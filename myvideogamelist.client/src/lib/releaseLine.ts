@@ -1,5 +1,5 @@
-import { addDays, daysBetween, localToday } from '@/lib/daySpan';
-import type { CuratedEventKind } from '@/types/calendarAdmin';
+import { eventDays, type DayEvent } from '@/lib/calendarEvents';
+import { addDays, daysBetween } from '@/lib/daySpan';
 import type { CalendarEvents, ReleaseEntry } from '@/types/releases';
 
 /**
@@ -33,17 +33,7 @@ export interface LineDay {
     span: number;
 }
 
-export interface LineEvent {
-    /** Unique across both kinds of source. */
-    key: string;
-    kind: CuratedEventKind;
-    name: string;
-    url: string | null;
-    /** The days it runs on the reader's calendar, `YYYY-MM-DD`, the last inclusive. */
-    startsOn: string;
-    endsOn: string;
-    /** A showcase's start, for its time on the reader's clock; null for a curated event, which is days. */
-    startsAt: string | null;
+export interface LineEvent extends DayEvent {
     /** Whether it began before the line does, or goes on after it ends. */
     continuesBefore: boolean;
     continuesAfter: boolean;
@@ -75,51 +65,10 @@ export function lineDays(today: string): string[] {
     return Array.from({ length: LINE_DAYS }, (_, index) => addDays(today, index));
 }
 
-/**
- * The days an IGDB showcase is on, on the reader's own calendar. The end is taken a millisecond
- * early, so that a show ending at midnight is not drawn across the day after it as well.
- */
-function showcaseDays(startsAt: string, endsAt: string | null): { startsOn: string; endsOn: string } {
-    const starts = Date.parse(startsAt);
-    const startsOn = localToday(new Date(starts));
-    if (endsAt === null) return { startsOn, endsOn: startsOn };
-
-    const endsOn = localToday(new Date(Math.max(starts, Date.parse(endsAt) - 1)));
-    return { startsOn, endsOn };
-}
-
 /** Every event that is on the line, clipped to it, earliest first and the longest first among those. */
 function place(today: string, events: CalendarEvents | null): Placed[] {
-    if (events === null) return [];
-
-    const all: Placed['event'][] = [
-        ...events.curated.map(e => ({
-            key: `curated-${e.id}`,
-            kind: e.kind,
-            name: e.name,
-            url: e.url,
-            startsOn: e.startsOn,
-            endsOn: e.endsOn,
-            startsAt: null,
-            continuesBefore: false,
-            continuesAfter: false,
-        })),
-        // Asked for a day either side of the line, since the server cannot know whose day it is.
-        // Here it is known, and what falls outside is left out below.
-        ...events.showcases.map(s => ({
-            key: `igdb-${s.id}`,
-            kind: 'showcase' as const,
-            name: s.name,
-            url: s.url,
-            ...showcaseDays(s.startsAt, s.endsAt),
-            startsAt: s.startsAt,
-            continuesBefore: false,
-            continuesAfter: false,
-        })),
-    ];
-
     const placed: Placed[] = [];
-    for (const event of all) {
+    for (const event of eventDays(events)) {
         const first = daysBetween(today, event.startsOn);
         const last = daysBetween(today, event.endsOn);
         if (last < 0 || first >= LINE_DAYS) continue;

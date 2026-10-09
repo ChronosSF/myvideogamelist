@@ -45,6 +45,14 @@ describe('releaseReason for the game itself (R1)', () => {
 
         expect(releaseReason(release)).toBe('Grand Theft Auto VI: Ultimate Edition is on your wishlist — out on PS5');
     });
+
+    it('says a game with no date at all is announced, not out (K4)', () => {
+        const release = connectedRelease({ platforms: [PS5, SWITCH_2], reason: { membership: 'favourite' } });
+
+        expect(releaseReason(release, { undated: true })).toBe('A favourite of yours — announced for PS5, Switch 2');
+        expect(releaseReason(connectedRelease(), { undated: true })).toBe('On your wishlist — announced');
+        expect(entryReason({ releases: [release] }, { undated: true })).toBe('A favourite of yours — announced for PS5, Switch 2');
+    });
 });
 
 describe('releaseReason for a child of the game (R2)', () => {

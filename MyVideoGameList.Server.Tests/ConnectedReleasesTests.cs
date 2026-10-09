@@ -469,4 +469,178 @@ public class ConnectedReleasesTests
     {
         Assert.Null(ConnectedReleases.PeriodOf(new ReleaseRow(1, 1, new DateOnly(2027, 12, 31), 7, 2027, 12, null, null)));
     }
+
+    // Read on 2026-10-08, for the calendar's shapes: a band beside a day outside the window, an early-access
+    // day inside a full release's year, a cancelled game still carrying dates, and games with no date at all.
+    private static readonly PlatformDto Switch = new(130, "Nintendo Switch", "Switch", null, null);
+    private static readonly PlatformDto Xbox = new(11, "Xbox", "XBOX", null, null);
+    private static readonly PlatformDto Ps2 = new(8, "PlayStation 2", "PS2", null, null);
+
+    private static readonly SeriesRef ElderScrolls = new(6, "The Elder Scrolls");
+    private static readonly SeriesRef Fallout = new(3, "Fallout");
+    private static readonly SeriesRef GodOfWar = new(70, "God of War");
+
+    private static readonly CalendarGame LittleWitch = Game(130577, "Little Witch in the Woods", IgdbGameTypes.MainGame);
+    private static readonly CalendarGame Starseeker = Game(338089, "Starseeker: Astroneer Expeditions", IgdbGameTypes.MainGame);
+    private static readonly CalendarGame MetroRivals = Game(373617, "Metro Rivals: New York", IgdbGameTypes.MainGame) with { GameStatus = IgdbGameStatuses.Cancelled };
+    private static readonly CalendarGame Skyrim = Game(472, "The Elder Scrolls V: Skyrim", IgdbGameTypes.MainGame, series: ElderScrolls);
+    private static readonly CalendarGame ElderScrollsVi = Game(81249, "The Elder Scrolls VI", IgdbGameTypes.MainGame, series: ElderScrolls) with { Dated = false };
+    private static readonly CalendarGame Fallout4 = Game(9630, "Fallout 4", IgdbGameTypes.MainGame, series: Fallout);
+    private static readonly CalendarGame FalloutExtreme = Game(12508, "Fallout Extreme", IgdbGameTypes.MainGame, series: Fallout) with { Dated = false, GameStatus = IgdbGameStatuses.Cancelled };
+    private static readonly CalendarGame DevilMayCry5 = Game(76253, "Devil May Cry 5", IgdbGameTypes.MainGame, series: new SeriesRef(17, "Devil May Cry"));
+    private static readonly CalendarGame DevilMayCry5Lenticular = Game(422194, "Devil May Cry 5: Lenticular Edition", IgdbGameTypes.MainGame, versionParent: 76253) with { Dated = false };
+    private static readonly CalendarGame GodOfWar2018 = Game(19560, "God of War", IgdbGameTypes.MainGame, series: GodOfWar);
+    private static readonly CalendarGame GodOfWarRemake = Game(389450, "God of War Remake", IgdbGameTypes.Remake, parent: 549, series: GodOfWar) with { Dated = false };
+    private static readonly CalendarGame GodOfWarIiRemake = Game(389451, "God of War II Remake", IgdbGameTypes.Remake, parent: 551, series: GodOfWar) with { Dated = false };
+    private static readonly CalendarGame GodOfWarIiiRemake = Game(389452, "God of War III Remake", IgdbGameTypes.Remake, parent: 499, series: GodOfWar) with { Dated = false };
+
+    private static readonly Dictionary<int, CalendarGame> LaterGames = new[]
+    {
+        LittleWitch, Starseeker, MetroRivals, Skyrim, ElderScrollsVi, Fallout4, FalloutExtreme, DevilMayCry5,
+        DevilMayCry5Lenticular, GodOfWar2018, GodOfWarRemake, GodOfWarIiRemake, GodOfWarIiiRemake,
+    }.ToDictionary(g => g.Id);
+
+    private static readonly List<UndatedRow> RecordedUndated =
+    [
+        new(35891, FalloutExtreme.Id, Xbox, null),
+        new(35892, FalloutExtreme.Id, Ps2, null),
+        new(209899, ElderScrollsVi.Id, SeriesXs, null),
+        new(209900, ElderScrollsVi.Id, Pc, null),
+        new(874107, GodOfWarRemake.Id, Ps5, IgdbReleaseStatuses.FullRelease),
+        new(874108, GodOfWarIiRemake.Id, Ps5, IgdbReleaseStatuses.FullRelease),
+        new(874110, GodOfWarIiiRemake.Id, Ps5, IgdbReleaseStatuses.FullRelease),
+        new(975060, DevilMayCry5Lenticular.Id, Ps4, null),
+        new(975061, DevilMayCry5Lenticular.Id, XboxOne, null),
+    ];
+
+    [Fact]
+    public void Compose_ABandWhoseDayIsKnownOutsideTheWindow_IsNotShown()
+    {
+        // F5 at the window's edge: Little Witch in the Woods was "2026" on Switch and came out on Switch on
+        // 16 September. A calendar opening on 1 October is handed that day by the query around its bands,
+        // and shows no "sometime in 2026" for a game that is already out.
+        var set = Set((LittleWitch, SetMembership.Wishlist, null));
+        List<ReleaseRow> rows =
+        [
+            Row(885337, LittleWitch, "2026-12-31", Switch, dateFormat: 2),
+            Row(955733, LittleWitch, "2026-09-16", Switch, status: null),
+            Row(966172, LittleWitch, "2026-09-17", XboxOne),
+        ];
+
+        Assert.Empty(ConnectedReleases.Compose(set, LaterGames, rows, new DateOnly(2026, 10, 1), new DateOnly(2027, 11, 1)));
+
+        // Without the day, which is what the window alone would have fetched, the band stands.
+        var band = Assert.Single(ConnectedReleases.Compose(set, LaterGames, rows.Take(1), new DateOnly(2026, 10, 1), new DateOnly(2027, 11, 1)));
+        Assert.Equal(ReleasePrecision.Year, band.Precision);
+    }
+
+    [Fact]
+    public void Compose_AnEarlyAccessDay_DoesNotHideTheFullReleaseKnownOnlyToItsYear()
+    {
+        // F5 across phases: Starseeker entered early access on 11 June 2026 on four platforms, with its full
+        // release "2026" on those four and on Switch. Two milestones, not one release known twice. Its April
+        // beta rows are F4's to drop.
+        var set = Set((Starseeker, SetMembership.Wishlist, null));
+        List<ReleaseRow> rows =
+        [
+            Row(903374, Starseeker, "2026-04-30", Pc, status: 2),
+            Row(903371, Starseeker, "2026-12-31", Switch, dateFormat: 2),
+            Row(903375, Starseeker, "2026-12-31", Pc, dateFormat: 2),
+            Row(903377, Starseeker, "2026-12-31", Ps5, dateFormat: 2),
+            Row(903379, Starseeker, "2026-12-31", SeriesXs, dateFormat: 2),
+            Row(916217, Starseeker, "2026-12-31", Switch2, dateFormat: 2),
+            Row(916218, Starseeker, "2026-06-11", Switch2, IgdbReleaseStatuses.EarlyAccess),
+            Row(916219, Starseeker, "2026-06-11", Pc, IgdbReleaseStatuses.EarlyAccess),
+            Row(916220, Starseeker, "2026-06-11", Ps5, IgdbReleaseStatuses.EarlyAccess),
+            Row(916221, Starseeker, "2026-06-11", SeriesXs, IgdbReleaseStatuses.EarlyAccess),
+        ];
+
+        var releases = ConnectedReleases.Compose(set, LaterGames, rows, new DateOnly(2026, 6, 1), new DateOnly(2027, 7, 1))
+            .SelectMany(e => e.Releases)
+            .ToList();
+
+        Assert.Equal(2, releases.Count);
+        var earlyAccess = Assert.Single(releases, r => r.Precision == ReleasePrecision.Day);
+        Assert.Equal((new DateOnly(2026, 6, 11), true), (earlyAccess.Starts, earlyAccess.EarlyAccess));
+        var full = Assert.Single(releases, r => r.Precision == ReleasePrecision.Year);
+        Assert.False(full.EarlyAccess);
+        Assert.Equal([Switch, Switch2, Pc, Ps5, SeriesXs], full.Platforms);
+    }
+
+    [Fact]
+    public void Compose_ACancelledGame_IsNotComing_WhateverItsRowsSay()
+    {
+        // F4 for a game as a whole: Metro Rivals: New York was cancelled with its "2026" rows still marked
+        // Full Release.
+        var set = Set((MetroRivals, SetMembership.Wishlist, null));
+        List<ReleaseRow> rows =
+        [
+            Row(821164, MetroRivals, "2026-12-31", Pc, dateFormat: 2),
+            Row(821165, MetroRivals, "2026-12-31", SeriesXs, dateFormat: 2),
+            Row(821166, MetroRivals, "2026-12-31", Ps5, dateFormat: 2),
+        ];
+
+        Assert.Empty(ConnectedReleases.Compose(set, LaterGames, rows, new DateOnly(2026, 10, 1), new DateOnly(2027, 11, 1)));
+    }
+
+    [Fact]
+    public void ComposeUndated_AGameWithNoDateAnywhere_IsListedWithEveryPlatformItIsAnnouncedFor()
+    {
+        // K4 and R3: The Elder Scrolls VI, for somebody who finished Skyrim.
+        var set = Set((Skyrim, SetMembership.List, ListStatusKeys.Finished));
+
+        var entry = Assert.Single(ConnectedReleases.ComposeUndated(set, LaterGames, RecordedUndated));
+
+        Assert.Null(entry.GroupName);
+        var release = Assert.Single(entry.Releases);
+        Assert.Equal(ElderScrollsVi, release.Game);
+        Assert.Equal([Pc, SeriesXs], release.Platforms);
+        Assert.False(release.EarlyAccess);
+        Assert.Equal(new ReleaseReason(ReleaseRelation.Series, Skyrim.Id, Skyrim.Name, SetMembership.List, ListStatusKeys.Finished, ElderScrolls), release.Reason);
+    }
+
+    [Fact]
+    public void ComposeUndated_ACancelledGame_IsNotAnnounced()
+    {
+        // IGDB marks Fallout Extreme cancelled, and still holds it "to be decided" on the Xbox and the PS2.
+        var set = Set((Fallout4, SetMembership.List, ListStatusKeys.Finished));
+
+        Assert.Empty(ConnectedReleases.ComposeUndated(set, LaterGames, RecordedUndated));
+    }
+
+    [Fact]
+    public void ComposeUndated_AnEditionOfAGameWithADate_IsNotUndated()
+    {
+        // F3 before K4: the Lenticular Edition has no date, and folds into Devil May Cry 5, which came out in 2019.
+        var set = Set((DevilMayCry5, SetMembership.List, ListStatusKeys.Finished));
+
+        Assert.Empty(ConnectedReleases.ComposeUndated(set, LaterGames, RecordedUndated));
+    }
+
+    [Fact]
+    public void ComposeUndated_RemakesInOneSeries_AreOneGroup()
+    {
+        // F6 over a list with no periods: God of War's three remakes, announced together for PS5.
+        var set = Set((GodOfWar2018, SetMembership.List, ListStatusKeys.Finished));
+
+        var entry = Assert.Single(ConnectedReleases.ComposeUndated(set, LaterGames, RecordedUndated));
+
+        Assert.Equal("God of War", entry.GroupName);
+        Assert.Equal(["God of War II Remake", "God of War III Remake", "God of War Remake"], entry.Releases.Select(r => r.Game.Name));
+        Assert.All(entry.Releases, r => Assert.Equal([Ps5], r.Platforms));
+    }
+
+    [Fact]
+    public void ComposeUndated_TheGameItself_ComesBeforeWhatIsInASeries()
+    {
+        // Nothing dates the list, so the most connected leads: a wishlisted game itself before a series.
+        var set = Set(
+            (GodOfWar2018, SetMembership.List, ListStatusKeys.Finished),
+            (ElderScrollsVi, SetMembership.Wishlist, null));
+
+        var entries = ConnectedReleases.ComposeUndated(set, LaterGames, RecordedUndated);
+
+        Assert.Equal(["The Elder Scrolls VI", "God of War"], entries.Select(e => e.GroupName ?? e.Releases[0].Game.Name));
+        Assert.Equal(ReleaseRelation.Itself, entries[0].Releases[0].Reason.Relation);
+    }
 }

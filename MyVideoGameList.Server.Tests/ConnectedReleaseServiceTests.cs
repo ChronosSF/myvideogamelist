@@ -295,4 +295,165 @@ public class ConnectedReleaseServiceTests
         Assert.Equal("Street Fighter 6", entry.GroupName);
         Assert.Equal(2, entry.Releases.Count);
     }
+
+    // Read on 2026-10-08: Little Witch in the Woods was "2026" on Switch, and came out on Switch on 16 September.
+    private static readonly CalendarGame LittleWitch = new(130577, "Little Witch in the Woods", null, IgdbGameTypes.MainGame, null, null, []);
+    private static readonly PlatformDto Switch = new(130, "Nintendo Switch", "Switch", null, null);
+    private static readonly ReleaseRow LittleWitch2026 = new(885337, 130577, new DateOnly(2026, 12, 31), 2, 2026, 12, Switch, 6);
+    private static readonly ReleaseRow LittleWitchSeptember16 = new(955733, 130577, new DateOnly(2026, 9, 16), 0, 2026, 9, Switch, null);
+
+    private static readonly DateOnly CalendarFrom = new(2026, 10, 1);
+    private static readonly DateOnly CalendarTo = new(2027, 11, 1);
+
+    /// <summary>An IGDB that knows Little Witch in the Woods, its "2026" in the window and its day before it.</summary>
+    private static IIgdbService LittleWitchIgdb()
+    {
+        var igdb = Substitute.For<IIgdbService>();
+        igdb.GetCalendarGamesAsync(Arg.Any<IEnumerable<int>>(), Arg.Any<CancellationToken>())
+            .Returns(call => Task.FromResult<IReadOnlyDictionary<int, CalendarGame>>(
+                call.Arg<IEnumerable<int>>().Where(id => id == LittleWitch.Id).ToDictionary(id => id, _ => LittleWitch)));
+        igdb.GetConnectedReleaseRowsAsync(
+                Arg.Any<IReadOnlyCollection<int>>(), Arg.Any<IReadOnlyCollection<int>>(),
+                Arg.Any<DateOnly>(), Arg.Any<DateOnly>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
+            .Returns(new ConnectedReleaseRows([LittleWitch2026], false));
+        igdb.GetReleaseRowsAsync(Arg.Any<IReadOnlyCollection<int>>(), Arg.Any<DateOnly>(), Arg.Any<DateOnly>(), Arg.Any<CancellationToken>())
+            .Returns(new ConnectedReleaseRows([LittleWitchSeptember16, LittleWitch2026], false));
+        return igdb;
+    }
+
+    [Fact]
+    public async Task GetAsync_ForTheCalendar_ABandPastTheWindow_IsComparedWithTheRestOfItsPeriod()
+    {
+        // F5 at the window's edge: the year's band is asked about over the whole year, which finds the day.
+        using var db = NewDb();
+        db.UserWishlistItems.Add(new UserWishlistItem { UserId = UserId, GameId = LittleWitch.Id });
+        await db.SaveChangesAsync();
+        var igdb = LittleWitchIgdb();
+
+        Assert.Empty(await NewService(db, igdb).GetAsync(UserId, CalendarFrom, CalendarTo, withPeriods: true));
+
+        await igdb.Received(1).GetReleaseRowsAsync(
+            Arg.Is<IReadOnlyCollection<int>>(ids => ids.SequenceEqual(new[] { LittleWitch.Id })),
+            new DateOnly(2026, 1, 1), new DateOnly(2027, 1, 1), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task GetAsync_ForTheLine_NeverAsksAroundTheWindow()
+    {
+        // Days only: there is no band to compare.
+        using var db = NewDb();
+        db.UserWishlistItems.Add(new UserWishlistItem { UserId = UserId, GameId = LittleWitch.Id });
+        await db.SaveChangesAsync();
+        var igdb = LittleWitchIgdb();
+
+        await NewService(db, igdb).GetAsync(UserId, CalendarFrom, CalendarFrom.AddDays(14), withPeriods: false);
+
+        await igdb.DidNotReceive().GetReleaseRowsAsync(
+            Arg.Any<IReadOnlyCollection<int>>(), Arg.Any<DateOnly>(), Arg.Any<DateOnly>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public void BandsPastTheWindow_ABandInsideTheWindow_AsksNothing()
+    {
+        // "Q4 2026" is October to December, all of it inside a window from 1 October.
+        var quarter = LittleWitch2026 with { DateFormat = 6 };
+        var games = new Dictionary<int, CalendarGame> { [LittleWitch.Id] = LittleWitch };
+
+        Assert.Null(ConnectedReleaseService.BandsPastTheWindow([quarter, LittleWitchSeptember16], games, CalendarFrom, CalendarTo));
+    }
+
+    [Fact]
+    public void BandsPastTheWindow_BandsAtBothEnds_AreAskedAboutFromTheFirstPeriodToTheLast()
+    {
+        // "2026" runs from before the window, "Q4 2027" past it; between them, the whole of each.
+        var games = new Dictionary<int, CalendarGame> { [LittleWitch.Id] = LittleWitch, [WitcherIii.Id] = WitcherIii };
+        var q4Of2027 = new ReleaseRow(2, WitcherIii.Id, new DateOnly(2027, 12, 31), 6, 2027, 12, Switch, null);
+
+        var around = ConnectedReleaseService.BandsPastTheWindow([LittleWitch2026, q4Of2027], games, CalendarFrom, CalendarTo);
+
+        Assert.NotNull(around);
+        Assert.Equal([WitcherIii.Id, LittleWitch.Id], around.Value.GameIds.Order());
+        Assert.Equal((new DateOnly(2026, 1, 1), new DateOnly(2028, 1, 1)), (around.Value.From, around.Value.To));
+    }
+
+    [Fact]
+    public void BandsPastTheWindow_AnEditionsBand_AsksAboutTheGameItIsShownAs()
+    {
+        // F3: the edition's year is hidden by the game's day as readily as by its own.
+        var tenth = new CalendarGame(372654, "The Witcher 3: Wild Hunt - Complete Edition: 10th Anniversary Edition", null, IgdbGameTypes.MainGame, null, 1942, []);
+        var games = new Dictionary<int, CalendarGame> { [WitcherIii.Id] = WitcherIii, [tenth.Id] = tenth };
+        var band = new ReleaseRow(1, tenth.Id, new DateOnly(2026, 12, 31), 2, 2026, 12, Switch, null);
+
+        var around = ConnectedReleaseService.BandsPastTheWindow([band], games, CalendarFrom, CalendarTo);
+
+        Assert.Equal([WitcherIii.Id, tenth.Id], around?.GameIds.Order());
+    }
+
+    /// <summary>An IGDB with The Elder Scrolls VI to be decided, for somebody who finished Skyrim.</summary>
+    private static IIgdbService UndatedIgdb()
+    {
+        var skyrim = new CalendarGame(472, "The Elder Scrolls V: Skyrim", null, IgdbGameTypes.MainGame, null, null, [new SeriesRef(6, "The Elder Scrolls")]);
+        var elderScrollsVi = new CalendarGame(81249, "The Elder Scrolls VI", null, IgdbGameTypes.MainGame, null, null, [new SeriesRef(6, "The Elder Scrolls")], Dated: false);
+        var known = new[] { skyrim, elderScrollsVi }.ToDictionary(g => g.Id);
+
+        var igdb = Substitute.For<IIgdbService>();
+        igdb.GetCalendarGamesAsync(Arg.Any<IEnumerable<int>>(), Arg.Any<CancellationToken>())
+            .Returns(call => Task.FromResult<IReadOnlyDictionary<int, CalendarGame>>(
+                call.Arg<IEnumerable<int>>().Where(known.ContainsKey).ToDictionary(id => id, id => known[id])));
+        igdb.GetUndatedReleaseRowsAsync(Arg.Any<IReadOnlyCollection<int>>(), Arg.Any<IReadOnlyCollection<int>>(), Arg.Any<CancellationToken>())
+            .Returns(new UndatedReleaseRows(
+            [
+                new UndatedRow(209899, 81249, new PlatformDto(169, "Xbox Series X|S", "Series X|S", null, null), null),
+                new UndatedRow(209900, 81249, new PlatformDto(6, "PC (Microsoft Windows)", "PC", null, null), null),
+            ], false));
+        return igdb;
+    }
+
+    [Fact]
+    public async Task GetUndatedAsync_SaysWhatIsAnnouncedAndWhy_InTheApisWords()
+    {
+        using var db = NewDb();
+        Track(db, 472, ListStatusKeys.Finished);
+        await db.SaveChangesAsync();
+        var igdb = UndatedIgdb();
+
+        var entry = Assert.Single(await NewService(db, igdb).GetUndatedAsync(UserId));
+
+        Assert.Null(entry.GroupName);
+        var release = Assert.Single(entry.Releases);
+        Assert.Equal(("The Elder Scrolls VI", "game"), (release.Title, release.Kind));
+        Assert.Equal(["PC", "Series X|S"], release.Platforms.Select(p => p.Abbreviation));
+        Assert.Equal(new ReleaseReasonDto("series", 472, "The Elder Scrolls V: Skyrim", "list", ListStatusKeys.Finished, "The Elder Scrolls"), release.Reason);
+        await igdb.Received(1).GetUndatedReleaseRowsAsync(
+            Arg.Is<IReadOnlyCollection<int>>(ids => ids.SequenceEqual(new[] { 472 })),
+            Arg.Is<IReadOnlyCollection<int>>(ids => ids.SequenceEqual(new[] { 6 })),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task GetUndatedAsync_TheSameSetAgain_IsAnsweredFromMemory()
+    {
+        using var db = NewDb();
+        Track(db, 472, ListStatusKeys.Finished);
+        await db.SaveChangesAsync();
+        var igdb = UndatedIgdb();
+        var service = NewService(db, igdb);
+
+        await service.GetUndatedAsync(UserId);
+        await service.GetUndatedAsync(UserId);
+
+        await igdb.Received(1).GetUndatedReleaseRowsAsync(
+            Arg.Any<IReadOnlyCollection<int>>(), Arg.Any<IReadOnlyCollection<int>>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task GetUndatedAsync_WithNothingTracked_AsksIgdbNothing()
+    {
+        using var db = NewDb();
+        var igdb = UndatedIgdb();
+
+        Assert.Empty(await NewService(db, igdb).GetUndatedAsync(UserId));
+        await igdb.DidNotReceive().GetUndatedReleaseRowsAsync(
+            Arg.Any<IReadOnlyCollection<int>>(), Arg.Any<IReadOnlyCollection<int>>(), Arg.Any<CancellationToken>());
+    }
 }
