@@ -336,12 +336,13 @@ export function ReleaseCalendar({ userId }: { userId: string }) {
         note = <p className="calendar-note">Nothing connected to your games is due in {label}.</p>;
     }
 
-    // The showcases come from IGDB and the sales from us, so a degraded answer still has every sale.
+    // The showcases come from IGDB and the sales from us, so a degraded answer still has every sale. Asking
+    // again is worth offering for either: the server keeps IGDB's events only when IGDB answers.
     let eventsNote: React.ReactNode = null;
     if (events.error !== null) {
         eventsNote = <Failure read={events}>The showcases and sales could not be loaded just now.</Failure>;
     } else if (events.data?.degraded) {
-        eventsNote = <p className="calendar-note">The showcases could not be loaded just now.</p>;
+        eventsNote = <Failure read={events}>The showcases could not be loaded just now.</Failure>;
     }
 
     const previous = index > 0 ? months[index - 1] : null;

@@ -202,11 +202,16 @@ describe('ReleaseCalendar, a month', () => {
         expect(calendar.releases.reload).toHaveBeenCalledTimes(1);
     });
 
-    it('says the showcases are missing rather than that there are none', () => {
+    it('says the showcases are missing rather than that there are none, and asks again when told to', async () => {
         calendar.events.data = calendarEvents({ degraded: true });
+        const actor = userEvent.setup();
         renderCalendar();
 
-        expect(screen.getByText('The showcases could not be loaded just now.')).toBeInTheDocument();
+        const alert = screen.getByRole('alert');
+        expect(alert).toHaveTextContent('The showcases could not be loaded just now.');
+
+        await actor.click(within(alert).getByRole('button', { name: 'Try again' }));
+        expect(calendar.events.reload).toHaveBeenCalledTimes(1);
     });
 });
 
