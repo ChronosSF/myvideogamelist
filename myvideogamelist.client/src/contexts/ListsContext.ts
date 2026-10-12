@@ -17,6 +17,12 @@ export interface ListsContextValue {
     loading: boolean;
     error: string | null;
     mutationError: string | null;
+    /**
+     * Fetches the lists again for the account on screen, keeping what is shown until the answer
+     * lands. For a write that went around this provider — an import's commit — and left it out of
+     * date: it loads once per account, and would show the old lists until the next page load.
+     */
+    reload: () => void;
     isPending: (gameId: number) => boolean;
 
     addToList: (listId: ListId, game: GameDto) => Promise<void>;

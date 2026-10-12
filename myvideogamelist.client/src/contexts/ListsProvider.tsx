@@ -1,4 +1,4 @@
-import { useEffect, useReducer, type ReactNode } from 'react';
+import { useEffect, useReducer, useState, type ReactNode } from 'react';
 import type { GameDto } from '@/types/game';
 import {
     type ListId, type ListEntryDto, type ListNames, type Ownership, type ViewMode,
@@ -176,7 +176,7 @@ function reducer(state: ListsState, action: ListsAction): ListsState {
                 mutationError: null,
                 // Spread over a complete empty set, so a status the server has not sent yet
                 // still resolves to [] rather than undefined.
-                lists: { ...emptyLists(), ...action.lists },
+                lists: reconciled({ ...emptyLists(), ...action.lists }, state),
             }));
         case 'FETCH_ERROR':
             return ifCurrent(state, action.session, () =>
@@ -280,9 +280,33 @@ function locate(lists: Record<ListId, ListEntryDto[]>, gameId: number): EntryOri
     return null;
 }
 
+/**
+ * The lists the server sent, with every game that has a write in flight left as this client has it.
+ *
+ * A second fetch for the same account — a `reload`, or the one `AuthProvider` causes by handing the
+ * provider a new user object — can land while a move, a removal or a score is still out, carrying
+ * an answer composed before that write. Taken as it stands it puts the game back where it was, and
+ * the write's success then changes nothing on screen, so a move that worked looks undone until the
+ * next page load. `useGameAxis` does the same for the wishlist and the favourites. The pending set
+ * is per game, so nothing else in the answer is held back.
+ */
+function reconciled(
+    loaded: Record<ListId, ListEntryDto[]>,
+    state: ListsState,
+): Record<ListId, ListEntryDto[]> {
+    let lists = loaded;
+    for (const gameId of state.pending) {
+        const held = locate(state.lists, gameId);
+        lists = without(lists, gameId);
+        if (held) lists[held.listId] = [...lists[held.listId], held.entry];
+    }
+    return lists;
+}
+
 export function ListsProvider({ children }: { children: ReactNode }) {
     const { user, loading: authLoading } = useAuth();
     const [state, dispatch] = useReducer(reducer, initialState);
+    const [reloadToken, setReloadToken] = useState(0);
 
     /**
      * The account every mutation below stamps its actions with — see `ListsState.session` for what
@@ -369,7 +393,11 @@ export function ListsProvider({ children }: { children: ReactNode }) {
             });
 
         return () => controller.abort();
-    }, [user, authLoading]);
+    }, [user, authLoading, reloadToken]);
+
+    // The same account asking again: `FETCH_START` keeps the lists on screen, and the answer goes
+    // through `reconciled` so a write still on its way is not undone by it.
+    const reload = () => setReloadToken(token => token + 1);
 
     /** Sends the whole preference set, matching the endpoint's replace-wholesale contract. */
     const persistPreferences = (view: ViewMode, sorts: Partial<Record<ListId, SortState>>) => {
@@ -666,6 +694,7 @@ export function ListsProvider({ children }: { children: ReactNode }) {
             loading: state.loading,
             error: state.error,
             mutationError: state.mutationError,
+            reload,
             isPending,
             addToList,
             removeFromList,

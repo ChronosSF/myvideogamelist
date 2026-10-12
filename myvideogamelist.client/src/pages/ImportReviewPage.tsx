@@ -2,6 +2,8 @@ import { useId, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { useAuth } from '@/hooks/useAuth';
 import { useLists } from '@/hooks/useLists';
+import { useWishlist } from '@/hooks/useWishlist';
+import { useFavourites } from '@/hooks/useFavourites';
 import { useImportReview } from '@/hooks/useImport';
 import { downloadSkippedRows } from '@/lib/importReport';
 import { expiresInWords } from '@/lib/importExpiry';
@@ -49,12 +51,29 @@ export function ImportReviewPage() {
     const { jobId = '' } = useParams();
     const { user, loading: authLoading } = useAuth();
     const navigate = useNavigate();
-    const { nameFor, namesStatus } = useLists();
+    const { nameFor, namesStatus, reload: reloadLists } = useLists();
+    const { reload: reloadWishlist } = useWishlist();
+    const { reload: reloadFavourites } = useFavourites();
 
     const {
         review, loading, error, gone, actionError, busy, matching, saving, result,
         reload, setDecisions, setPlayedStatus, match, commit, cancel,
     } = useImportReview(user?.id ?? null, jobId);
+
+    /**
+     * Commits, then has the lists, the wishlist and the favourites fetched again.
+     *
+     * The import writes all three on the server, around the providers that hold them. Each loads
+     * once per account and lives above every page, so without this the lists stay as they were
+     * before the import until the page is reloaded — empty, for somebody importing into an empty
+     * account.
+     */
+    const commitAndRefresh = async () => {
+        if (!(await commit())) return;
+        reloadLists();
+        reloadWishlist();
+        reloadFavourites();
+    };
 
     const playedChoiceId = useId();
 
@@ -402,7 +421,7 @@ export function ImportReviewPage() {
                             <button
                                 type="button"
                                 disabled={busy || saving || review.summary.selected === 0}
-                                onClick={() => void commit()}
+                                onClick={() => void commitAndRefresh()}
                                 className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:hover:bg-blue-600 text-white text-sm font-semibold rounded-lg transition-colors"
                             >
                                 {busy ? 'Importing…' : `Import ${formatCount(review.summary.selected)} games`}

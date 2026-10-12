@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { ImportReviewPage } from '@/pages/ImportReviewPage';
@@ -8,8 +8,8 @@ import type { UseImportReviewResult } from '@/hooks/useImport';
 import { game, importReview, importRow, userProfile } from '@/test/factories';
 
 /**
- * Auth, the lists context and the review hook, all mocked: each of the real ones fetches, and the
- * page only reads what they hold.
+ * Auth, the lists, wishlist and favourites contexts and the review hook, all mocked: each of the
+ * real ones fetches, and the page only reads what they hold or asks them to fetch again.
  *
  * One module-level object each, handed back on every call rather than a fresh literal — a new
  * object per render re-runs any effect depending on it, which ends in a heap crash rather than a
@@ -40,17 +40,23 @@ const review: UseImportReviewResult = {
     setDecisions: vi.fn(async () => {}),
     setPlayedStatus: vi.fn(async () => {}),
     match: vi.fn(async () => {}),
-    commit: vi.fn(async () => {}),
+    commit: vi.fn(async () => true),
     cancel: vi.fn(async () => true),
 };
 
 const lists = {
     nameFor: (id: string) => (id === 'finished' ? 'Beaten' : id),
     namesStatus: 'ready' as const,
+    reload: vi.fn(),
 };
+
+const wishlist = { reload: vi.fn() };
+const favourites = { reload: vi.fn() };
 
 vi.mock('@/hooks/useAuth', () => ({ useAuth: () => auth }));
 vi.mock('@/hooks/useLists', () => ({ useLists: () => lists }));
+vi.mock('@/hooks/useWishlist', () => ({ useWishlist: () => wishlist }));
+vi.mock('@/hooks/useFavourites', () => ({ useFavourites: () => favourites }));
 vi.mock('@/hooks/useImport', () => ({ useImportReview: () => review }));
 
 const row = importRow;
@@ -106,6 +112,35 @@ describe('ImportReviewPage', () => {
         renderPage();
 
         expect(screen.getByRole('button', { name: /^Import 0/ })).toBeDisabled();
+    });
+
+    it('has the lists, the wishlist and the favourites fetched again once the import is written', async () => {
+        // The import writes all three around the providers that hold them, which load once per
+        // account — without this the lists read as empty until the page is reloaded.
+        review.review = loaded([row()]);
+        vi.mocked(review.commit).mockResolvedValueOnce(true);
+        renderPage();
+
+        await userEvent.click(screen.getByRole('button', { name: 'Import 1 games' }));
+
+        await waitFor(() => expect(lists.reload).toHaveBeenCalledOnce());
+        expect(wishlist.reload).toHaveBeenCalledOnce();
+        expect(favourites.reload).toHaveBeenCalledOnce();
+    });
+
+    it('fetches nothing again when the import was not written', async () => {
+        review.review = loaded([row()]);
+        vi.mocked(review.commit).mockResolvedValueOnce(false);
+        renderPage();
+
+        await userEvent.click(screen.getByRole('button', { name: 'Import 1 games' }));
+        await waitFor(() => expect(review.commit).toHaveBeenCalledOnce());
+        // A macrotask, so every continuation of the commit has run before the assertions.
+        await new Promise(resolve => setTimeout(resolve, 0));
+
+        expect(lists.reload).not.toHaveBeenCalled();
+        expect(wishlist.reload).not.toHaveBeenCalled();
+        expect(favourites.reload).not.toHaveBeenCalled();
     });
 
     it('opens on the rows that need a decision', async () => {
