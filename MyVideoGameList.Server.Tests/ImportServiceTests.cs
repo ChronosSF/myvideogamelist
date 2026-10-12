@@ -394,7 +394,7 @@ public class ImportServiceTests
     [Fact]
     public async Task CommitAsync_APlaythrough_CarriesItsMinutesAndTheSourcesType()
     {
-        // ADR 0049. The source has already translated its level into our key; the commit resolves
+        // ADR 0050. The source has already translated its level into our key; the commit resolves
         // the key to the seeded row, which is what puts a run with minutes into the medians.
         using var db = NewDb();
         var service = NewService(db, CacheReturning(Game(379)));
@@ -426,7 +426,7 @@ public class ImportServiceTests
     [Fact]
     public async Task CommitAsync_ARunAlreadyImportedUntyped_GetsNoTypedTwin()
     {
-        // A run imported before ADR 0049 carries no type. Importing the same file again matches it
+        // A run imported before ADR 0050 carries no type. Importing the same file again matches it
         // on its dates and duration and leaves it alone, rather than adding a typed copy beside it.
         using var db = NewDb();
         var service = NewService(db, CacheReturning(Game(379)));
@@ -447,7 +447,7 @@ public class ImportServiceTests
     [Fact]
     public void ImportPayloadJson_ARunStoredBeforeTheTypeExisted_ReadsBackUntyped()
     {
-        // A pending job uploaded before ADR 0049 holds payloads with no `type` at all. They must
+        // A pending job uploaded before ADR 0050 holds payloads with no `type` at all. They must
         // still read, and commit their runs untyped as they would have on the day of the upload.
         const string stored = """
             {"title": "Metal Gear Solid 3: Snake Eater", "gameId": 379, "status": "finished",

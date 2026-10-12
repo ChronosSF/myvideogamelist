@@ -96,7 +96,7 @@ internal sealed record ImportRowPayload(
 /// <remarks>
 /// The dates, the duration and the platform are the source's own record and carry over as they are.
 /// The type is the source's completion field translated through the preset's vocabulary, as a shelf
-/// and a rating already are — ADR 0049, which amends ADR 0037 decision 4.
+/// and a rating already are — ADR 0050, which amends ADR 0037 decision 4.
 /// </remarks>
 /// <param name="MinutesPlayed">
 /// Never zero. A source that writes 0 for "not recorded" — Grouvee's <c>seconds_played</c> does —

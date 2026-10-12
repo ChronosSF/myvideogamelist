@@ -307,7 +307,7 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   is `completionist`, and nothing imported is `rushed`. A typed run with a duration feeds the
   community medians, so only strings seen in a real export are mapped and anything else stays
   untyped, and a level alone never makes a run — every game Grouvee shelves gets an empty row reading
-  "Main Story" (`docs/decisions/0049-*`). Anything later that assumes "every status has an event" —
+  "Main Story" (`docs/decisions/0050-*`). Anything later that assumes "every status has an event" —
   an activity feed, an audit, a backfill — has to consult `Origin`. **The activity statistics are
   the reader that no longer assumes it**, and they do not consult `Origin` either: for a game whose
   status changes say nothing

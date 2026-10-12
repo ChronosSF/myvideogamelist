@@ -639,7 +639,7 @@ public class ImportService(
                     UserId = userId,
                     Entry = entry,
 
-                    // Already in our vocabulary — the source translated its own (ADR 0049). A typed
+                    // Already in our vocabulary — the source translated its own (ADR 0050). A typed
                     // run carrying minutes feeds the community medians, so this is the one field
                     // here that other members read.
                     TypeId = run.Type is { } typeKey && types.TryGetValue(typeKey, out var typeId) ? typeId : null,
@@ -750,7 +750,7 @@ public class ImportService(
     /// What makes two runs the same run: the game, the dates and the duration. Not the platform —
     /// the source may or may not have said, and an import that ran twice should not produce a
     /// second copy because the second pass resolved a platform name the first did not. Not the type
-    /// either: a run imported before ADR 0049 carries none, and importing the same file again must
+    /// either: a run imported before ADR 0050 carries none, and importing the same file again must
     /// not add a typed twin beside it.
     /// </summary>
     private static string RunKey(int gameId, ImportPlaythroughPayload run) =>

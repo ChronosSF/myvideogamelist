@@ -360,7 +360,7 @@ internal sealed class GrouveeImportSource : IImportSource
     /// Grouvee's three levels are not our three tiers, and the mapping is coarser on purpose. Its
     /// "Main Story" means the game was finished, not that it was hurried, so it and "Main Story +
     /// Extras" are both <em>normally</em>. Only "100% Completion" is <em>completionist</em>, and no
-    /// imported run is ever <em>rushed</em> (ADR 0049).
+    /// imported run is ever <em>rushed</em> (ADR 0050).
     /// </para>
     /// <para>
     /// The strings are exactly what real exports carry, in the JSON form and the CSV one alike — and

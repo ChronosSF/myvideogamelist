@@ -1,4 +1,4 @@
-# 0049. An imported run takes its type from the source's completion level
+# 0050. An imported run takes its type from the source's completion level
 
 **Status:** Implemented
 **Amends:** [0037](0037-a-tracker-import-carries-history.md), decision 4

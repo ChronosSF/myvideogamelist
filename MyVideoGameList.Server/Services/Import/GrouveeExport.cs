@@ -101,7 +101,7 @@ internal sealed class GrouveePlay
     /// <summary>
     /// <c>"Main Story"</c>, <c>"Main Story + Extras"</c>, <c>"100% Completion"</c> or null. Becomes
     /// the run's type through <c>GrouveeImportSource.MapCompletion</c>, which is the only thing that
-    /// should read it (ADR 0049).
+    /// should read it (ADR 0050).
     /// </summary>
     public string? LevelOfCompletion { get; set; }
 

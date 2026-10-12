@@ -100,7 +100,7 @@ public class GrouveeImportSourceTests
     [InlineData("100% Completion", PlaythroughTypeKeys.Completionist)]
     public void Read_ACompletionLevel_BecomesOurType(string level, string expected)
     {
-        // ADR 0049. Grouvee's "Main Story" means the game was finished, not that it was hurried, so
+        // ADR 0050. Grouvee's "Main Story" means the game was finished, not that it was hurried, so
         // it lands with "Main Story + Extras" on normally, and nothing an import writes is rushed.
         var row = Single(Game(
             dates: $$"""[{"date_started": "2024-04-25", "date_finished": "2024-04-28", "seconds_played": 22500, "level_of_completion": "{{level}}", "platform": ""}]"""));
