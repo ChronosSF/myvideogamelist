@@ -44,8 +44,9 @@ light theme repeated every one of them (ADR 0048). Two things made it worse than
 - **Translucent black and white are not tokens.** They shade whatever is under them rather than
   colouring it: shadows, scrims, the sheen of a hovered button.
 - **`npm run lint` refuses a colour written anywhere else** (`scripts/check-colours.mjs`). That covers
-  a hex, an `rgb()`, a named colour, a palette class, and Tailwind's palette read as a variable
-  (`var(--color-slate-400)`).
+  a hex, an `rgb()`, a palette class, Tailwind's palette read as a variable
+  (`var(--color-slate-400)`), and in a stylesheet a named colour. A component is not searched for
+  named colours: there `white` is as likely to be a word, and the only ones are the logo mask's.
   - While #209 moves the client over, the rule is a ratchet. `scripts/colour-baseline.json` lists the
     files not yet moved, with how many raw colours each still has.
   - A file must match its count. A new file must have none.

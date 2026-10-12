@@ -5,10 +5,14 @@
  *    theme that no longer exists, so either is an error wherever it appears.
  *
  * 2. Every colour is a token from `src/theme.css` (ADR 0049). A colour written anywhere else is an
- *    error: a hex, an `rgb()` or `hsl()`, a named colour, or a Tailwind palette class such as
- *    `text-slate-400` or `bg-[#123456]`. Translucent black and white are allowed, because they shade
- *    whatever is under them rather than colouring it: shadows, scrims, a hover's sheen. Tests style
- *    nothing and are not checked.
+ *    error: a hex, an `rgb()` or `hsl()`, a Tailwind palette class such as `text-slate-400` or
+ *    `bg-[#123456]`, and in a stylesheet a named colour. Translucent black and white are allowed,
+ *    because they shade whatever is under them rather than colouring it: shadows, scrims, a hover's
+ *    sheen. Tests style nothing and are not checked.
+ *
+ *    A component is not searched for named colours. In a script, `white` is as likely to be a word as a
+ *    colour, and the client writes none in an inline style or an SVG attribute except the logo's mask,
+ *    whose white and black are not colours anybody sees.
  *
  * Rule 2 is a ratchet while #209 moves the client onto the tokens. `scripts/colour-baseline.json` says
  * how many raw colours each file not yet moved still has. A file must have exactly that many: more is
