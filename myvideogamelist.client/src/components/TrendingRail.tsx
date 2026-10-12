@@ -26,9 +26,9 @@ export function TrendingRail({ games }: TrendingRailProps) {
                 <li key={game.id} className="shrink-0 snap-start">
                     <Link
                         to={`/games/${game.id}`}
-                        className="group block w-32 sm:w-36 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded-xl"
+                        className="group block w-32 sm:w-36 focus:outline-none focus-visible:ring-2 focus-visible:ring-focus rounded-xl"
                     >
-                        <div className="relative aspect-[3/4] rounded-xl overflow-hidden bg-slate-800 border border-slate-700/50 group-hover:border-blue-500/60 transition-all duration-300 group-hover:-translate-y-1 shadow-lg">
+                        <div className="relative aspect-[3/4] rounded-xl overflow-hidden bg-surface border border-line group-hover:border-primary-500/60 transition-all duration-300 group-hover:-translate-y-1 shadow-lg">
                             {game.coverImageUrl && (
                                 <img
                                     src={game.coverImageUrl}
@@ -41,14 +41,14 @@ export function TrendingRail({ games }: TrendingRailProps) {
                             )}
 
                             <span
-                                className="absolute top-1.5 left-1.5 w-6 h-6 rounded-md bg-slate-950/80 backdrop-blur-sm text-xs font-bold text-white flex items-center justify-center"
+                                className="absolute top-1.5 left-1.5 w-6 h-6 rounded-md bg-sunken/80 backdrop-blur-sm text-xs font-bold text-fg-strong flex items-center justify-center"
                                 aria-hidden="true"
                             >
                                 {index + 1}
                             </span>
                         </div>
 
-                        <p className="mt-2 text-sm font-medium text-slate-200 leading-snug line-clamp-2 group-hover:text-blue-400 transition-colors">
+                        <p className="mt-2 text-sm font-medium text-fg leading-snug line-clamp-2 group-hover:text-primary-400 transition-colors">
                             {game.title}
                         </p>
                     </Link>

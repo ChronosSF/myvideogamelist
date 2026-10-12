@@ -42,7 +42,7 @@ export function NewsCard({ item, showGame = true }: NewsCardProps) {
     const age = !valid ? '' : hydrated ? relativeAge(published) : absoluteDate(published);
 
     return (
-        <article className="group flex gap-4 p-4 rounded-xl bg-slate-800/60 border border-slate-700/50 hover:border-blue-600/50 transition-colors">
+        <article className="group flex gap-4 p-4 rounded-xl bg-surface/60 border border-line hover:border-primary-600/50 transition-colors">
             {showGame && item.gameCoverUrl && (
                 <Link
                     to={`/games/${item.gameId}`}
@@ -53,7 +53,7 @@ export function NewsCard({ item, showGame = true }: NewsCardProps) {
                         src={item.gameCoverUrl}
                         alt=""
                         loading="lazy"
-                        className="w-14 h-20 object-cover rounded-lg border border-slate-700/50"
+                        className="w-14 h-20 object-cover rounded-lg border border-line"
                     />
                 </Link>
             )}
@@ -64,19 +64,19 @@ export function NewsCard({ item, showGame = true }: NewsCardProps) {
                         <>
                             <Link
                                 to={`/games/${item.gameId}`}
-                                className="text-blue-400 hover:underline font-medium truncate max-w-[45%]"
+                                className="text-primary-400 hover:underline font-medium truncate max-w-[45%]"
                             >
                                 {item.gameTitle}
                             </Link>
-                            <span className="text-slate-600" aria-hidden="true">•</span>
+                            <span className="text-fg-dim" aria-hidden="true">•</span>
                         </>
                     )}
-                    <span className="text-slate-500 truncate">{item.source}</span>
-                    {age && <span className="text-slate-600" aria-hidden="true">•</span>}
+                    <span className="text-fg-faint truncate">{item.source}</span>
+                    {age && <span className="text-fg-dim" aria-hidden="true">•</span>}
                     {age && (
                         <time
                             dateTime={item.publishedAt}
-                            className="text-slate-500 shrink-0"
+                            className="text-fg-faint shrink-0"
                         >
                             {age}
                         </time>
@@ -92,13 +92,13 @@ export function NewsCard({ item, showGame = true }: NewsCardProps) {
                     href={item.url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="block font-semibold text-white leading-snug group-hover:text-blue-400 transition-colors"
+                    className="block font-semibold text-fg-strong leading-snug group-hover:text-primary-400 transition-colors"
                 >
                     {item.title}
                 </a>
 
                 {item.excerpt && (
-                    <p className="mt-1.5 text-sm text-slate-400 leading-relaxed line-clamp-2">
+                    <p className="mt-1.5 text-sm text-fg-muted leading-relaxed line-clamp-2">
                         {item.excerpt}
                     </p>
                 )}
