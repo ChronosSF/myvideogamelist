@@ -340,8 +340,10 @@ per preset below.
 **Left**, tracked in [#125](https://github.com/ChronosSF/myvideogamelist/issues/125):
 
 1. **HowLongToBeat** ([#153](https://github.com/ChronosSF/myvideogamelist/issues/153)) — the next
-   preset, and the first to put the matcher in front of a real file. Its completion tiers map onto
-   our playthrough types as Grouvee's levels do
+   preset, and the first to put the matcher in front of a real file. Whether its times are its
+   owner's own or HowLongToBeat's community estimates is still open, and only the owner's belong on
+   a playthrough. If they are the owner's, its completion tiers map onto our playthrough types as
+   Grouvee's levels do
    ([0050](../docs/decisions/0050-an-imported-run-takes-its-type-from-the-source.md)), from the
    strings a real HowLongToBeat export carries.
 2. **M4's inline search** ([#158](https://github.com/ChronosSF/myvideogamelist/issues/158)) —

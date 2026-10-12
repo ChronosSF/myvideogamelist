@@ -94,7 +94,9 @@ somebody edits them. With nothing live, that is development data only.
 **A job uploaded before this change commits its runs untyped.** Its stored payloads have no `type`,
 which reads back as null. That is what the job would have done on the day it was uploaded.
 
-**The question 0037 left for HowLongToBeat is answered.** `specs/csv-list-import.md` held back a typed
-import until a source's completion field could be shown to be its owner's answer. Grouvee's has been,
-on the rows that become runs. A later preset maps its tiers the same way, from strings seen in a real
-export of it.
+**The question 0037 left for HowLongToBeat is half answered.** `specs/csv-list-import.md` held back a
+typed import until a source's completion field could be shown to be its owner's answer. Grouvee's has
+been, on the rows that become runs. A later preset maps its tiers the same way, from strings seen in a
+real export of it, but only once that export is shown to hold its owner's own runs. For HowLongToBeat
+that is still open (#153): its three time columns may be the community's estimates, and those belong
+on no playthrough at all.
