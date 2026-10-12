@@ -63,8 +63,25 @@
     --color-danger-700: oklch(50.5% 0.213 27.518);
     --color-danger-900: oklch(39.6% 0.141 25.723);
 
-    --color-success-300: oklch(87.1% 0.15 154.449);  /* Something done, in words: a finish under the pointer */
+    --color-success-300: oklch(87.1% 0.15 154.449);  /* Something done or already so, in words: a finish under the pointer, the list a game is in */
     --color-success-500: oklch(72.3% 0.219 149.579); /* The same as an edge, and the base of its tints */
+
+    --color-favourite-300: oklch(81.1% 0.111 293.571); /* The favourite's violet: its words, and its mark on a dark ground */
+    --color-favourite-400: oklch(70.2% 0.183 293.541); /* The edge of a favourite's mark once the game is one */
+    --color-favourite-500: oklch(60.6% 0.25 292.717);  /* The edge of the control that makes a favourite, and the base of its tints */
+    --color-favourite-600: oklch(54.1% 0.281 293.009); /* That control under the pointer */
+    --color-favourite-700: oklch(49.1% 0.27 292.581);  /* That control once the game is a favourite */
+
+    --color-early-access-300: oklch(87.9% 0.169 91.605); /* Early access, a game playable before it is finished: its words */
+    --color-early-access-500: oklch(76.9% 0.188 70.08);  /* Its edge */
+
+    /* The kinds of event on the two-week line and the calendar: 300 for the words, 500 for the edge and the tint */
+    --color-sale-300: oklch(84.5% 0.143 164.978);
+    --color-sale-500: oklch(69.6% 0.17 162.48);
+    --color-fest-300: oklch(87.9% 0.169 91.605);
+    --color-fest-500: oklch(76.9% 0.188 70.08);
+    --color-showcase-300: oklch(81.1% 0.111 293.571);
+    --color-showcase-500: oklch(60.6% 0.25 292.717);
 
     /* ── The brand: the logo's colours, the same in every palette ─────────── */
 
