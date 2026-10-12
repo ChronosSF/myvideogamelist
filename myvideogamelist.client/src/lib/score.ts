@@ -107,18 +107,18 @@ function band(percent: number): 'good' | 'mixed' | 'poor' {
  */
 export function scoreBandSolid(percent: number): string {
     switch (band(percent)) {
-        case 'good': return 'bg-green-500 text-white';
-        case 'mixed': return 'bg-yellow-500 text-slate-900';
-        case 'poor': return 'bg-red-500 text-white';
+        case 'good': return 'bg-score-good-500 text-fg-strong';
+        case 'mixed': return 'bg-score-mixed-500 text-on-score-mixed';
+        case 'poor': return 'bg-score-poor-500 text-fg-strong';
     }
 }
 
 /** Tinted pill, for a badge sitting in a row of other metadata. */
 export function scoreBandTint(percent: number): string {
     switch (band(percent)) {
-        case 'good': return 'bg-green-500/15 text-green-300';
-        case 'mixed': return 'bg-yellow-500/15 text-yellow-300';
-        case 'poor': return 'bg-red-500/15 text-red-300';
+        case 'good': return 'bg-score-good-500/15 text-score-good-300';
+        case 'mixed': return 'bg-score-mixed-500/15 text-score-mixed-300';
+        case 'poor': return 'bg-score-poor-500/15 text-score-poor-300';
     }
 }
 
@@ -128,9 +128,9 @@ export function scoreBandTint(percent: number): string {
  */
 export function scoreBandSubtle(percent: number): string {
     switch (band(percent)) {
-        case 'good': return 'text-green-400';
-        case 'mixed': return 'text-yellow-400';
-        case 'poor': return 'text-red-400';
+        case 'good': return 'text-score-good-400';
+        case 'mixed': return 'text-score-mixed-400';
+        case 'poor': return 'text-score-poor-400';
     }
 }
 
