@@ -41,12 +41,12 @@ export function CalendarPage() {
                     the first client render has to match it. */}
                 {loading && (
                     <div className="flex justify-center py-24" role="status">
-                        <div className="w-10 h-10 border-4 border-blue-500/30 border-t-blue-500 rounded-full animate-spin" aria-hidden="true" />
+                        <div className="w-10 h-10 border-4 border-primary-500/30 border-t-primary-500 rounded-full animate-spin" aria-hidden="true" />
                         <span className="sr-only">Loading…</span>
                     </div>
                 )}
                 {!loading && user === null && (
-                    <p className="py-24 text-center text-slate-400 font-medium">
+                    <p className="py-24 text-center text-fg-muted font-medium">
                         Sign in to see what is coming for your games.
                     </p>
                 )}

@@ -70,27 +70,27 @@
     border-radius: 0.5rem;
     font-size: 0.75rem;
     line-height: 1.3;
-    color: #94a3b8;
+    color: var(--color-fg-muted);
     transition: background-color 0.12s, border-color 0.12s, color 0.12s;
 }
 
 .calendar-month:hover {
-    border-color: rgba(59, 130, 246, 0.5);
-    color: #e2e8f0;
+    border-color: color-mix(in srgb, var(--color-primary-500) 50%, transparent);
+    color: var(--color-fg);
 }
 
 .calendar-month:focus-visible,
 .calendar-step:focus-visible,
 .calendar-more:focus-visible,
 .calendar-retry:focus-visible {
-    outline: 2px solid #3b82f6;
+    outline: 2px solid var(--color-focus);
     outline-offset: 2px;
 }
 
 .calendar-month[aria-current='page'] {
-    border-color: rgba(59, 130, 246, 0.6);
-    background: rgba(37, 99, 235, 0.2);
-    color: #93c5fd;
+    border-color: color-mix(in srgb, var(--color-primary-500) 60%, transparent);
+    background: color-mix(in srgb, var(--color-primary-600) 20%, transparent);
+    color: var(--color-primary-300);
 }
 
 .calendar-month-name {
@@ -121,7 +121,7 @@
 .calendar-month-heading {
     font-size: 1.375rem;
     font-weight: 700;
-    color: #fff;
+    color: var(--color-fg-strong);
 }
 
 .calendar-steps {
@@ -139,12 +139,12 @@
     border-radius: 0.5rem;
     font-size: 1.25rem;
     line-height: 1;
-    color: #cbd5e1;
+    color: var(--color-fg-soft);
 }
 
 .calendar-step:hover {
-    border-color: rgba(59, 130, 246, 0.5);
-    color: #fff;
+    border-color: color-mix(in srgb, var(--color-primary-500) 50%, transparent);
+    color: var(--color-fg-strong);
 }
 
 .calendar-step[data-off] {
@@ -156,7 +156,7 @@
 .calendar-note {
     margin: 0 0 0.75rem;
     font-size: 0.875rem;
-    color: #94a3b8;
+    color: var(--color-fg-muted);
 }
 
 .calendar-retry,
@@ -164,7 +164,7 @@
     padding: 0;
     border: none;
     background: none;
-    color: #60a5fa;
+    color: var(--color-primary-400);
     font-weight: 500;
     cursor: pointer;
 }
@@ -216,9 +216,9 @@
     flex: 1 1 max(50% - 0.5rem, var(--band-line));
     min-width: 0;
     padding: 0.75rem;
-    border: 1px dashed rgba(100, 116, 139, 0.55);
+    border: 1px dashed var(--color-line-strong);
     border-radius: 0.75rem;
-    background: rgba(15, 23, 42, 0.4);
+    background: color-mix(in srgb, var(--color-page) 40%, transparent);
 }
 
 /* A heading over the posters, larger than their titles. */
@@ -227,12 +227,12 @@
     font-size: 1.125rem;
     font-weight: 600;
     line-height: 1.3;
-    color: #e2e8f0;
+    color: var(--color-fg);
 }
 
 .calendar-band-months {
     font-weight: 400;
-    color: #94a3b8;
+    color: var(--color-fg-muted);
 }
 
 /* ── The grid ────────────────────────────────────────────────────────────── */
@@ -245,7 +245,7 @@
     font-weight: 600;
     letter-spacing: 0.04em;
     text-transform: uppercase;
-    color: #64748b;
+    color: var(--color-fg-faint);
 }
 
 .calendar-weekdays span {
@@ -292,8 +292,8 @@
 .calendar-pad {
     padding: 0.375rem 0.5rem;
     font-size: 0.75rem;
-    color: #475569;
-    background: rgba(15, 23, 42, 0.75);
+    color: var(--color-fg-dim);
+    background: color-mix(in srgb, var(--color-page) 75%, transparent);
 }
 
 .calendar-day {
@@ -302,7 +302,7 @@
 }
 
 .calendar-day[data-today] {
-    background: color-mix(in srgb, #3b82f6 12%, var(--color-page));
+    background: color-mix(in srgb, var(--color-primary-500) 12%, var(--color-page));
 }
 
 .calendar-date {
@@ -311,15 +311,15 @@
     padding: 0.375rem 0.5rem 0.25rem;
     font-size: 0.75rem;
     font-weight: 600;
-    color: #94a3b8;
+    color: var(--color-fg-muted);
 }
 
 .calendar-day[data-past] .calendar-date {
-    color: #475569;
+    color: var(--color-fg-dim);
 }
 
 .calendar-day[data-today] .calendar-date {
-    color: #93c5fd;
+    color: var(--color-primary-300);
 }
 
 .calendar-date-words {
@@ -412,21 +412,21 @@ a.calendar-bar-name:hover {
 }
 
 .calendar-bar[data-kind='sale'] {
-    border-color: rgba(16, 185, 129, 0.45);
-    background: color-mix(in srgb, #10b981 16%, var(--color-page));
-    color: #6ee7b7;
+    border-color: color-mix(in srgb, var(--color-sale-500) 45%, transparent);
+    background: color-mix(in srgb, var(--color-sale-500) 16%, var(--color-page));
+    color: var(--color-sale-300);
 }
 
 .calendar-bar[data-kind='fest'] {
-    border-color: rgba(245, 158, 11, 0.45);
-    background: color-mix(in srgb, #f59e0b 16%, var(--color-page));
-    color: #fcd34d;
+    border-color: color-mix(in srgb, var(--color-fest-500) 45%, transparent);
+    background: color-mix(in srgb, var(--color-fest-500) 16%, var(--color-page));
+    color: var(--color-fest-300);
 }
 
 .calendar-bar[data-kind='showcase'] {
-    border-color: rgba(139, 92, 246, 0.5);
-    background: color-mix(in srgb, #8b5cf6 18%, var(--color-page));
-    color: #c4b5fd;
+    border-color: color-mix(in srgb, var(--color-showcase-500) 50%, transparent);
+    background: color-mix(in srgb, var(--color-showcase-500) 18%, var(--color-page));
+    color: var(--color-showcase-300);
 }
 
 /* ── Announced, no date ──────────────────────────────────────────────────── */
@@ -435,13 +435,13 @@ a.calendar-bar-name:hover {
 .calendar-section-heading {
     font-size: 1.375rem;
     font-weight: 700;
-    color: #fff;
+    color: var(--color-fg-strong);
 }
 
 .calendar-section-lead {
     margin: 0.125rem 0 0.875rem;
     font-size: 0.875rem;
-    color: #94a3b8;
+    color: var(--color-fg-muted);
 }
 
 /* ── Below md: the month as a list ───────────────────────────────────────── */
@@ -505,7 +505,7 @@ a.calendar-bar-name:hover {
         font-weight: 700;
         font-variant-numeric: tabular-nums;
         line-height: 1;
-        color: #f1f5f9;
+        color: var(--color-fg);
     }
 
     .calendar-date-words {
@@ -517,22 +517,22 @@ a.calendar-bar-name:hover {
 
     .calendar-date-weekday {
         font-weight: 600;
-        color: #e2e8f0;
+        color: var(--color-fg);
     }
 
     .calendar-date-month {
         font-weight: 500;
-        color: #94a3b8;
+        color: var(--color-fg-muted);
     }
 
     .calendar-day[data-today] .calendar-date-number,
     .calendar-day[data-today] .calendar-date-weekday {
-        color: #93c5fd;
+        color: var(--color-primary-300);
     }
 
     .calendar-day[data-past] .calendar-date-number,
     .calendar-day[data-past] .calendar-date-weekday {
-        color: #64748b;
+        color: var(--color-fg-faint);
     }
 
     /* A poster beside its words rather than above them, a card a row — in the days, the bands and the
