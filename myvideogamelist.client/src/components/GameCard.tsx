@@ -54,12 +54,12 @@ export function GameCard({ game }: GameCardProps) {
 
     return (
         <article
-            className="game-card-root bg-slate-800 light:bg-white rounded-xl overflow-hidden flex flex-col shadow-lg hover:shadow-blue-900/40 light:hover:shadow-slate-200/80 hover:shadow-xl transition-all duration-300 hover:-translate-y-1 border border-slate-700 light:border-slate-200 hover:border-blue-600/50"
+            className="game-card-root bg-slate-800 rounded-xl overflow-hidden flex flex-col shadow-lg hover:shadow-blue-900/40 hover:shadow-xl transition-all duration-300 hover:-translate-y-1 border border-slate-700 hover:border-blue-600/50"
             onMouseLeave={() => setOverlayOpen(false)}
         >
             {/* Cover Image */}
             <div
-                className={`relative aspect-[3/4] bg-slate-900 light:bg-slate-100 overflow-hidden${user ? ' cursor-pointer' : ''}`}
+                className={`relative aspect-[3/4] bg-slate-900 overflow-hidden${user ? ' cursor-pointer' : ''}`}
                 onClick={user ? () => setOverlayOpen(o => !o) : undefined}
                 role={user ? 'button' : undefined}
                 tabIndex={user ? 0 : undefined}
@@ -75,7 +75,7 @@ export function GameCard({ game }: GameCardProps) {
                         loading="lazy"
                     />
                 ) : (
-                    <div className="w-full h-full flex items-center justify-center text-slate-600 light:text-slate-400">
+                    <div className="w-full h-full flex items-center justify-center text-slate-600">
                         <svg className="w-16 h-16" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M15 10l4.553-2.069A1 1 0 0121 8.82v6.361a1 1 0 01-1.447.894L15 14M3 8a2 2 0 012-2h10a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8z" />
                         </svg>
@@ -188,13 +188,13 @@ export function GameCard({ game }: GameCardProps) {
                 )}
 
                 <div className="flex items-start justify-between gap-2">
-                    <h3 className="text-white light:text-slate-900 font-semibold text-sm leading-snug line-clamp-2">
-                        <Link to={`/games/${game.id}`} className="hover:text-blue-400 light:hover:text-blue-700 transition-colors">
+                    <h3 className="text-white font-semibold text-sm leading-snug line-clamp-2">
+                        <Link to={`/games/${game.id}`} className="hover:text-blue-400 transition-colors">
                             {game.title}
                         </Link>
                     </h3>
                     {releaseYear && (
-                        <span className="text-slate-500 light:text-slate-400 text-xs shrink-0 mt-0.5">{releaseYear}</span>
+                        <span className="text-slate-500 text-xs shrink-0 mt-0.5">{releaseYear}</span>
                     )}
                 </div>
 
@@ -216,7 +216,7 @@ export function GameCard({ game }: GameCardProps) {
                         {game.genres.slice(0, 3).map(genre => (
                             <span
                                 key={genre.id}
-                                className="px-2 py-0.5 bg-blue-900/50 text-blue-300 border-blue-800/50 light:bg-blue-50 light:text-blue-800 light:border-blue-200 text-xs rounded-full border"
+                                className="px-2 py-0.5 bg-blue-900/50 text-blue-300 border-blue-800/50 text-xs rounded-full border"
                             >
                                 {genre.name}
                             </span>
@@ -226,7 +226,7 @@ export function GameCard({ game }: GameCardProps) {
 
                 {/* Description */}
                 {game.description && (
-                    <p className="text-slate-400 light:text-slate-500 text-xs leading-relaxed line-clamp-3 pt-1">
+                    <p className="text-slate-400 text-xs leading-relaxed line-clamp-3 pt-1">
                         {game.description}
                     </p>
                 )}
@@ -234,18 +234,18 @@ export function GameCard({ game }: GameCardProps) {
                 {/* Platforms, pinned to the foot of the card. The only auto margin in the body: a
                     second one would split the free space and leave the description floating. */}
                 {game.platforms.length > 0 && (
-                    <div className="flex flex-wrap gap-1 mt-auto pt-2 border-t border-slate-700 light:border-slate-200">
+                    <div className="flex flex-wrap gap-1 mt-auto pt-2 border-t border-slate-700">
                         {game.platforms.slice(0, 4).map(platform => (
                             <span
                                 key={platform.id}
-                                className="px-1.5 py-0.5 bg-slate-700 light:bg-slate-100 text-slate-400 light:text-slate-600 text-xs rounded"
+                                className="px-1.5 py-0.5 bg-slate-700 text-slate-400 text-xs rounded"
                                 title={platform.name}
                             >
                                 {platform.abbreviation || platform.name}
                             </span>
                         ))}
                         {game.platforms.length > 4 && (
-                            <span className="px-1.5 py-0.5 text-slate-500 light:text-slate-400 text-xs">
+                            <span className="px-1.5 py-0.5 text-slate-500 text-xs">
                                 +{game.platforms.length - 4}
                             </span>
                         )}

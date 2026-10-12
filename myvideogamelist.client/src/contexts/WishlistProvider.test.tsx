@@ -6,8 +6,8 @@ import { useWishlist } from '@/hooks/useWishlist';
 import type { WishlistItemDto } from '@/types/wishlist';
 import { game } from '@/test/factories';
 
-const ALICE = { id: 'u1', email: 'alice@test.local', theme: 'dark' };
-const BOB = { id: 'u2', email: 'bob@test.local', theme: 'dark' };
+const ALICE = { id: 'u1', email: 'alice@test.local' };
+const BOB = { id: 'u2', email: 'bob@test.local' };
 
 /**
  * Mutable so a test can switch accounts, but handed back as one stable object.
@@ -22,7 +22,6 @@ const auth = {
     login: vi.fn(),
     register: vi.fn(),
     logout: vi.fn(),
-    updateTheme: vi.fn(),
 };
 
 vi.mock('@/hooks/useAuth', () => ({ useAuth: () => auth }));
@@ -470,8 +469,8 @@ describe('WishlistProvider concurrent mutations', () => {
         /*
          * The reload's answer was composed before the add reached the database. Taken as it stands,
          * it drops the optimistic row — and the add's own answer then finds nothing to place, so a
-         * write that succeeded is invisible until the next page load. A theme change is enough to
-         * cause this refetch, because it hands the provider a new user object.
+         * write that succeeded is invisible until the next page load. Making the profile public is
+         * enough to cause this refetch, because it hands the provider a new user object.
          */
         const { release } = stubFetch({
             loads: [[item(1, 'Celeste', JANUARY)], [item(1, 'Celeste', JANUARY)]],

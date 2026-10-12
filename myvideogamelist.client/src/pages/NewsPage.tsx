@@ -43,12 +43,12 @@ export function NewsPage() {
 
     return (
         <div className="min-h-screen">
-            <div className="bg-gradient-to-b from-blue-950/60 to-slate-900 light:from-blue-50/80 light:to-slate-50 border-b border-slate-700/50 light:border-slate-200">
+            <div className="bg-gradient-to-b from-blue-950/60 to-slate-900 border-b border-slate-700/50">
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
-                    <h1 className="text-3xl sm:text-4xl font-bold text-white light:text-slate-900 mb-1">
+                    <h1 className="text-3xl sm:text-4xl font-bold text-white mb-1">
                         News for your games
                     </h1>
-                    <p className="text-slate-400 light:text-slate-600 text-sm sm:text-base">
+                    <p className="text-slate-400 text-sm sm:text-base">
                         Patch notes and announcements from Steam for the games in your lists and on
                         your wishlist.
                     </p>
@@ -58,7 +58,7 @@ export function NewsPage() {
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
                 {signedOut && (
                     <div className="flex items-center justify-center py-24">
-                        <p className="text-slate-400 light:text-slate-600 font-medium">
+                        <p className="text-slate-400 font-medium">
                             Sign in to see news for the games you track.
                         </p>
                     </div>
@@ -69,7 +69,7 @@ export function NewsPage() {
                     <div className="flex items-center justify-center py-24">
                         <div className="flex flex-col items-center gap-4" role="status">
                             <div className="w-10 h-10 border-4 border-blue-500/30 border-t-blue-500 rounded-full animate-spin" aria-hidden="true" />
-                            <p className="text-slate-400 light:text-slate-600 text-sm">Loading news for your games…</p>
+                            <p className="text-slate-400 text-sm">Loading news for your games…</p>
                         </div>
                     </div>
                 )}
@@ -77,8 +77,8 @@ export function NewsPage() {
                 {signedIn && !loading && error !== null && (
                     <div className="flex items-center justify-center py-24" role="alert">
                         <div className="bg-red-900/20 border border-red-700/50 rounded-xl p-8 max-w-md text-center">
-                            <p className="text-red-300 light:text-red-700 font-medium mb-1">Failed to load news</p>
-                            <p className="text-red-400/70 light:text-red-700/80 text-sm mb-4">{error}</p>
+                            <p className="text-red-300 font-medium mb-1">Failed to load news</p>
+                            <p className="text-red-400/70 text-sm mb-4">{error}</p>
                             <button
                                 type="button"
                                 className="inline-flex items-center gap-1.5 px-4 py-2 bg-red-700 hover:bg-red-600 text-white text-sm font-semibold rounded-lg transition-colors"
@@ -96,10 +96,10 @@ export function NewsPage() {
                 {ready && news.length === 0 && (
                     <div className="flex items-center justify-center py-24">
                         <div className="text-center max-w-md">
-                            <p className="text-slate-300 light:text-slate-700 font-medium mb-2">
+                            <p className="text-slate-300 font-medium mb-2">
                                 No news for your games right now.
                             </p>
-                            <p className="text-slate-400 light:text-slate-600 text-sm mb-5">
+                            <p className="text-slate-400 text-sm mb-5">
                                 News comes from Steam, so a game with no Steam page never has any. Add
                                 what you are playing or waiting for, and its patch notes will turn up
                                 here.
@@ -126,7 +126,7 @@ export function NewsPage() {
                         </div>
 
                         {/* Says what the list is not, since it is not everything. */}
-                        <p className="mt-6 text-xs text-slate-500 light:text-slate-600">
+                        <p className="mt-6 text-xs text-slate-500">
                             What you are playing counts first, then your wishlist and backlog. When
                             there are more games than can be followed at once, finished and dropped
                             games are the ones left out.

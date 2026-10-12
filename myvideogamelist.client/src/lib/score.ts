@@ -116,9 +116,9 @@ export function scoreBandSolid(percent: number): string {
 /** Tinted pill, for a badge sitting in a row of other metadata. */
 export function scoreBandTint(percent: number): string {
     switch (band(percent)) {
-        case 'good': return 'bg-green-500/15 text-green-300 light:bg-green-50 light:text-green-700';
-        case 'mixed': return 'bg-yellow-500/15 text-yellow-300 light:bg-yellow-50 light:text-yellow-700';
-        case 'poor': return 'bg-red-500/15 text-red-300 light:bg-red-50 light:text-red-700';
+        case 'good': return 'bg-green-500/15 text-green-300';
+        case 'mixed': return 'bg-yellow-500/15 text-yellow-300';
+        case 'poor': return 'bg-red-500/15 text-red-300';
     }
 }
 
@@ -128,9 +128,9 @@ export function scoreBandTint(percent: number): string {
  */
 export function scoreBandSubtle(percent: number): string {
     switch (band(percent)) {
-        case 'good': return 'text-green-400 light:text-green-700';
-        case 'mixed': return 'text-yellow-400 light:text-yellow-700';
-        case 'poor': return 'text-red-400 light:text-red-600';
+        case 'good': return 'text-green-400';
+        case 'mixed': return 'text-yellow-400';
+        case 'poor': return 'text-red-400';
     }
 }
 

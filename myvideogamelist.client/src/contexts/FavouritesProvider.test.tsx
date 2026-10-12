@@ -6,8 +6,8 @@ import { useFavourites } from '@/hooks/useFavourites';
 import type { FavouriteDto } from '@/types/favourite';
 import { game } from '@/test/factories';
 
-const ALICE = { id: 'u1', email: 'alice@test.local', theme: 'dark' };
-const BOB = { id: 'u2', email: 'bob@test.local', theme: 'dark' };
+const ALICE = { id: 'u1', email: 'alice@test.local' };
+const BOB = { id: 'u2', email: 'bob@test.local' };
 
 /** One stable object, reassigned per test — see WishlistProvider.test.tsx for why never a literal. */
 const auth = {
@@ -16,7 +16,6 @@ const auth = {
     login: vi.fn(),
     register: vi.fn(),
     logout: vi.fn(),
-    updateTheme: vi.fn(),
 };
 
 vi.mock('@/hooks/useAuth', () => ({ useAuth: () => auth }));

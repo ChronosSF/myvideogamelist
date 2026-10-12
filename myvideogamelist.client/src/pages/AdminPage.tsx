@@ -22,10 +22,10 @@ export function meta() {
 /** The band every other page opens with, so this one reads as part of the same site. */
 function PageHeader() {
     return (
-        <div className="bg-gradient-to-b from-blue-950/60 to-slate-900 light:from-blue-50/80 light:to-slate-50 border-b border-slate-700/50 light:border-slate-200">
+        <div className="bg-gradient-to-b from-blue-950/60 to-slate-900 border-b border-slate-700/50">
             <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
-                <h1 className="text-3xl sm:text-4xl font-bold text-white light:text-slate-900 mb-1">Admin</h1>
-                <p className="text-slate-400 light:text-slate-600 text-sm sm:text-base">
+                <h1 className="text-3xl sm:text-4xl font-bold text-white mb-1">Admin</h1>
+                <p className="text-slate-400 text-sm sm:text-base">
                     The release calendar&apos;s hand-kept dates, and the showcases it shows from IGDB.
                 </p>
             </div>
@@ -39,7 +39,7 @@ function Notice({ children, busy = false }: { children: React.ReactNode; busy?: 
             {busy && (
                 <div className="w-10 h-10 border-4 border-blue-500/30 border-t-blue-500 rounded-full animate-spin" aria-hidden="true" />
             )}
-            <p className="text-slate-400 light:text-slate-600 text-sm">{children}</p>
+            <p className="text-slate-400 text-sm">{children}</p>
         </div>
     );
 }

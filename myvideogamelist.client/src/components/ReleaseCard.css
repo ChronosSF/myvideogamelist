@@ -43,11 +43,6 @@
     border-color: rgba(59, 130, 246, 0.6);
 }
 
-[data-theme='light'] .release-card-cover {
-    border-color: #e2e8f0;
-    background: #f1f5f9;
-}
-
 /* A group: its first cover with the edges of the rest behind it. */
 .release-card-stack {
     position: relative;
@@ -79,12 +74,6 @@
     z-index: 1;
 }
 
-[data-theme='light'] .release-card-stack::before,
-[data-theme='light'] .release-card-stack::after {
-    border-color: #cbd5e1;
-    background: #f1f5f9;
-}
-
 .release-card-title {
     margin-top: 0.5rem;
     font-size: 0.875rem;
@@ -102,14 +91,6 @@
     color: #60a5fa;
 }
 
-[data-theme='light'] .release-card-title {
-    color: #1e293b;
-}
-
-[data-theme='light'] .release-card-link:hover .release-card-title {
-    color: #2563eb;
-}
-
 .release-card-count,
 .release-card-platforms {
     margin-top: 0.125rem;
@@ -119,11 +100,6 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-}
-
-[data-theme='light'] .release-card-count,
-[data-theme='light'] .release-card-platforms {
-    color: #1d4ed8;
 }
 
 .release-card-badge {
@@ -137,20 +113,11 @@
     color: #fcd34d;
 }
 
-[data-theme='light'] .release-card-badge {
-    border-color: #fcd34d;
-    color: #b45309;
-}
-
 .release-card-reason {
     margin-top: 0.25rem;
     font-size: 0.75rem;
     line-height: 1.35;
     color: #94a3b8;
-}
-
-[data-theme='light'] .release-card-reason {
-    color: #475569;
 }
 
 .release-card-group {
@@ -179,22 +146,6 @@
 
 .release-card-group a:hover {
     color: #60a5fa;
-}
-
-[data-theme='light'] .release-card-group summary {
-    color: #2563eb;
-}
-
-[data-theme='light'] .release-card-group ul {
-    color: #475569;
-}
-
-[data-theme='light'] .release-card-group a {
-    color: #1e293b;
-}
-
-[data-theme='light'] .release-card-group a:hover {
-    color: #2563eb;
 }
 
 /* ── Adding a release to the Backlog ─────────────────────────────────────── */
@@ -352,16 +303,6 @@
     height: 0.8125rem;
 }
 
-[data-theme='light'] .release-card-add-inline {
-    border-color: #93c5fd;
-    color: #1d4ed8;
-}
-
-[data-theme='light'] .release-card-add-inline[data-kind='favourite'] {
-    border-color: #c4b5fd;
-    color: #6d28d9;
-}
-
 .release-card-listed {
     margin-top: 0.25rem;
     font-size: 0.6875rem;
@@ -369,19 +310,11 @@
     color: #86efac;
 }
 
-[data-theme='light'] .release-card-listed {
-    color: #15803d;
-}
-
 .release-card-add-error {
     margin-top: 0.25rem;
     font-size: 0.6875rem;
     font-weight: 600;
     color: #fca5a5;
-}
-
-[data-theme='light'] .release-card-add-error {
-    color: #b91c1c;
 }
 
 /* Add to Backlog in its words, or as a + where the cover is too narrow for them. */

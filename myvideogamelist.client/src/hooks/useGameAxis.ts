@@ -122,12 +122,12 @@ function compareItems(a: GameAxisItem, b: GameAxisItem): number {
 /**
  * The list the server sent, with every game that has a write in flight left as this client has it.
  *
- * A refetch for the same account — `AuthProvider` hands back a new user object for a theme change,
- * and the effect below depends on it — can land while an add or a remove is still out, carrying an
- * answer composed before that write. Taken as it stands it puts back a game whose removal is in
- * flight, or drops one whose add is; and in the second case the add's confirmation then finds no row
- * to place, so a write that succeeded looks to have failed until the next load. The pending set is
- * per game, so nothing else in the answer is held back.
+ * A refetch for the same account — `AuthProvider` hands back a new user object when the profile is
+ * made public, and the effect below depends on it — can land while an add or a remove is still out,
+ * carrying an answer composed before that write. Taken as it stands it puts back a game whose
+ * removal is in flight, or drops one whose add is; and in the second case the add's confirmation
+ * then finds no row to place, so a write that succeeded looks to have failed until the next load.
+ * The pending set is per game, so nothing else in the answer is held back.
  */
 function reconciled(loaded: GameAxisItem[], state: GameAxisState): GameAxisItem[] {
     if (state.pending.size === 0) return loaded;

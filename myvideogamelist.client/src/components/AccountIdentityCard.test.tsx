@@ -16,7 +16,6 @@ const authValue = {
     login: vi.fn(async () => {}),
     register: vi.fn(async () => {}),
     logout: vi.fn(async () => {}),
-    updateTheme: vi.fn(async () => {}),
     updateUserName: vi.fn(async () => {}),
     updateProfileVisibility: vi.fn(async () => {}),
 };
@@ -28,7 +27,6 @@ function user(overrides: Partial<UserProfile> = {}): UserProfile {
         id: 'user-1',
         email: 'alex@test.local',
         userName: 'alex',
-        theme: 'dark',
         profileVisibility: 'private',
         isAdmin: false,
         ...overrides,

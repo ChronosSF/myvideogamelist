@@ -106,7 +106,7 @@ export function ImportReviewPage() {
 
     if (signedOut) {
         return (
-            <p className="text-center text-slate-400 light:text-slate-600 font-medium py-24">
+            <p className="text-center text-slate-400 font-medium py-24">
                 Sign in to review your import.
             </p>
         );
@@ -126,16 +126,16 @@ export function ImportReviewPage() {
 
     return (
         <div className="min-h-screen">
-            <div className="bg-gradient-to-b from-blue-950/60 to-slate-900 light:from-blue-50/80 light:to-slate-50 border-b border-slate-700/50 light:border-slate-200">
+            <div className="bg-gradient-to-b from-blue-950/60 to-slate-900 border-b border-slate-700/50">
                 <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-                    <h1 className="text-2xl sm:text-3xl font-bold text-white light:text-slate-900 mb-1">
+                    <h1 className="text-2xl sm:text-3xl font-bold text-white mb-1">
                         Review your import
                     </h1>
-                    <p className="text-slate-400 light:text-slate-600 text-sm">
+                    <p className="text-slate-400 text-sm">
                         {review ? `${review.job.fileName} — nothing is saved until you finish.` : 'Loading…'}
                     </p>
                     {expiresIn && (
-                        <p className="text-slate-500 light:text-slate-500 text-xs mt-1">
+                        <p className="text-slate-500 text-xs mt-1">
                             An import left unfinished is deleted {expiresIn}, along with the decisions
                             made on it. Saving any decision starts that over.
                         </p>
@@ -145,7 +145,7 @@ export function ImportReviewPage() {
 
             <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
                 {(authLoading || loading) && (
-                    <p className="text-slate-400 light:text-slate-600 text-sm py-16 text-center" role="status">
+                    <p className="text-slate-400 text-sm py-16 text-center" role="status">
                         Loading your import…
                     </p>
                 )}
@@ -199,8 +199,8 @@ export function ImportReviewPage() {
                             real time, so it is somebody asking for it. Absent once every row has
                             been looked at, because asking again would return the same answers. */}
                         {review.summary.unlooked > 0 && (
-                            <div className="flex flex-wrap items-center gap-3 px-4 py-3 bg-blue-950/40 light:bg-blue-50 border border-blue-800/50 light:border-blue-200 rounded-lg">
-                                <p className="text-sm text-slate-300 light:text-slate-700 grow">
+                            <div className="flex flex-wrap items-center gap-3 px-4 py-3 bg-blue-950/40 border border-blue-800/50 rounded-lg">
+                                <p className="text-sm text-slate-300 grow">
                                     {formatCount(review.summary.unlooked)}{' '}
                                     {review.summary.unlooked === 1 ? 'game was' : 'games were'} exported
                                     without an id. We can search for {review.summary.unlooked === 1 ? 'it' : 'them'} by
@@ -249,14 +249,14 @@ export function ImportReviewPage() {
 
                             <button
                                 type="button"
-                                className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-800 light:bg-slate-100 text-slate-300 light:text-slate-700 hover:bg-slate-700 light:hover:bg-slate-200"
+                                className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700"
                                 onClick={() => bulk(rows.filter(r => r.gameId !== null), IMPORT_DECISION.import)}
                             >
                                 Select every matched game
                             </button>
                             <button
                                 type="button"
-                                className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-800 light:bg-slate-100 text-slate-300 light:text-slate-700 hover:bg-slate-700 light:hover:bg-slate-200"
+                                className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700"
                                 onClick={() => bulk(rows, IMPORT_DECISION.skip)}
                             >
                                 Clear all
@@ -264,7 +264,7 @@ export function ImportReviewPage() {
                         </div>
 
                         {visible.length === 0 && (
-                            <p className="text-slate-400 light:text-slate-600 text-sm py-12 text-center">
+                            <p className="text-slate-400 text-sm py-12 text-center">
                                 {filter === 'attention'
                                     ? 'Nothing needs a decision — every game was matched and understood.'
                                     : 'No games here.'}
@@ -275,7 +275,7 @@ export function ImportReviewPage() {
                             {visible.slice(0, shown).map(row => (
                                 <li
                                     key={row.id}
-                                    className="flex items-start gap-3 px-3 py-3 bg-slate-800/50 light:bg-white border border-slate-700/70 light:border-slate-200 rounded-lg"
+                                    className="flex items-start gap-3 px-3 py-3 bg-slate-800/50 border border-slate-700/70 rounded-lg"
                                 >
                                     {/* Disabled while no game is matched — ticking such a row would
                                         count it in "will import" and then have the commit skip it,
@@ -298,14 +298,14 @@ export function ImportReviewPage() {
                                     <Cover url={row.game?.coverImageUrl} className="w-9 h-12" />
 
                                     <div className="min-w-0 grow">
-                                        <p className="text-slate-100 light:text-slate-900 text-sm font-medium truncate">
+                                        <p className="text-slate-100 text-sm font-medium truncate">
                                             {row.title}
                                             {row.releaseYear !== null && (
-                                                <span className="text-slate-500 light:text-slate-400 font-normal"> ({row.releaseYear})</span>
+                                                <span className="text-slate-500 font-normal"> ({row.releaseYear})</span>
                                             )}
                                         </p>
 
-                                        <p className="text-xs text-slate-400 light:text-slate-500 mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1">
+                                        <p className="text-xs text-slate-400 mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1">
                                             <span>{label(row.status)}</span>
                                             {row.score !== null && <span>· {row.score}/10</span>}
                                             {row.playthroughCount > 0 && (
@@ -332,7 +332,7 @@ export function ImportReviewPage() {
                                             just said "that one" has said they want it. */}
                                         {row.candidates.length > 0 && (
                                             <div className="mt-2">
-                                                <p className="text-xs text-slate-400 light:text-slate-500 mb-1.5">
+                                                <p className="text-xs text-slate-400 mb-1.5">
                                                     We found {row.candidates.length === 1 ? 'a close match' : 'more than one'}.
                                                     Which did you play?
                                                 </p>
@@ -356,12 +356,12 @@ export function ImportReviewPage() {
                                         {/* An unrecognised shelf is asked about rather than
                                             defaulted — the rule from the spec §3.2. */}
                                         {row.statusUnrecognised && (
-                                            <label className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-400 light:text-slate-500">
+                                            <label className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-400">
                                                 <span>
                                                     Your file said “{row.sourceStatus}”, which we do not know. Put it in:
                                                 </span>
                                                 <select
-                                                    className="bg-slate-900 light:bg-white border border-slate-600 light:border-slate-300 rounded px-2 py-1 text-slate-200 light:text-slate-800"
+                                                    className="bg-slate-900 border border-slate-600 rounded px-2 py-1 text-slate-200"
                                                     defaultValue=""
                                                     onChange={event => {
                                                         if (!event.target.value) return;
@@ -387,14 +387,14 @@ export function ImportReviewPage() {
                         {visible.length > shown && (
                             <button
                                 type="button"
-                                className="w-full py-2 text-sm font-semibold text-slate-300 light:text-slate-700 bg-slate-800 light:bg-slate-100 hover:bg-slate-700 light:hover:bg-slate-200 rounded-lg"
+                                className="w-full py-2 text-sm font-semibold text-slate-300 bg-slate-800 hover:bg-slate-700 rounded-lg"
                                 onClick={() => setShown(count => count + PAGE)}
                             >
                                 Show more ({formatCount(visible.length - shown)} left)
                             </button>
                         )}
 
-                        <div className="flex flex-wrap items-center gap-3 pt-2 border-t border-slate-800 light:border-slate-200">
+                        <div className="flex flex-wrap items-center gap-3 pt-2 border-t border-slate-800">
                             {/* Held while a change is still on its way. Every change is on screen
                                 before the server has it, and a commit sent past one would import
                                 what the server held before it — a list chosen a moment earlier,
@@ -413,7 +413,7 @@ export function ImportReviewPage() {
                                 onClick={async () => {
                                     if (await cancel()) await navigate('/import');
                                 }}
-                                className="px-4 py-2.5 text-sm font-semibold text-slate-400 light:text-slate-600 hover:text-slate-200 light:hover:text-slate-900"
+                                className="px-4 py-2.5 text-sm font-semibold text-slate-400 hover:text-slate-200"
                             >
                                 Cancel this import
                             </button>
@@ -453,14 +453,14 @@ function PlayedChoice({ id, count, status, disabled, label, onChoose }: {
     const one = count === 1;
 
     return (
-        <div className="flex flex-wrap items-center gap-3 px-4 py-3 bg-blue-950/40 light:bg-blue-50 border border-blue-800/50 light:border-blue-200 rounded-lg">
+        <div className="flex flex-wrap items-center gap-3 px-4 py-3 bg-blue-950/40 border border-blue-800/50 rounded-lg">
             <div className="grow basis-72 text-sm">
-                <p className="text-slate-200 light:text-slate-800 font-medium">
+                <p className="text-slate-200 font-medium">
                     {one
                         ? 'You played one of these games, but your file does not say whether you finished it.'
                         : `You played ${formatCount(count)} of these games, but your file does not say whether you finished them.`}
                 </p>
-                <p className="text-slate-400 light:text-slate-600 mt-0.5">
+                <p className="text-slate-400 mt-0.5">
                     {one
                         ? 'Left in no list it is still imported, score and playthroughs included, but none of your lists will show it.'
                         : 'Left in no list they are still imported, scores and playthroughs included, but none of your lists will show them.'}
@@ -468,12 +468,12 @@ function PlayedChoice({ id, count, status, disabled, label, onChoose }: {
             </div>
 
             <div className="flex items-center gap-2 text-sm">
-                <label htmlFor={id} className="text-slate-300 light:text-slate-700 whitespace-nowrap">
+                <label htmlFor={id} className="text-slate-300 whitespace-nowrap">
                     {one ? 'Put it in' : 'Put them in'}
                 </label>
                 <select
                     id={id}
-                    className="bg-slate-900 light:bg-white border border-slate-600 light:border-slate-300 rounded px-2 py-1.5 text-slate-200 light:text-slate-800 disabled:opacity-50"
+                    className="bg-slate-900 border border-slate-600 rounded px-2 py-1.5 text-slate-200 disabled:opacity-50"
                     value={status ?? ''}
                     disabled={disabled}
                     onChange={event => onChoose(event.target.value || null)}
@@ -493,7 +493,7 @@ function PlayedChoice({ id, count, status, disabled, label, onChoose }: {
 function Cover({ url, className }: { url?: string | null; className: string }) {
     return url
         ? <img src={url} alt="" className={`${className} object-cover rounded shrink-0`} loading="lazy" />
-        : <div className={`${className} rounded bg-slate-700/60 light:bg-slate-200 shrink-0`} aria-hidden="true" />;
+        : <div className={`${className} rounded bg-slate-700/60 shrink-0`} aria-hidden="true" />;
 }
 
 /**
@@ -511,13 +511,13 @@ function CandidateButton({ candidate, onChoose }: { candidate: GameDto; onChoose
             type="button"
             aria-label={`Use ${candidate.title}${year === null ? '' : ` (${year})`}`}
             onClick={onChoose}
-            className="flex items-center gap-2 pl-1 pr-2.5 py-1 bg-slate-900/60 light:bg-slate-50 border border-slate-600 light:border-slate-300 hover:border-blue-500 rounded-lg text-left transition-colors"
+            className="flex items-center gap-2 pl-1 pr-2.5 py-1 bg-slate-900/60 border border-slate-600 hover:border-blue-500 rounded-lg text-left transition-colors"
         >
             <Cover url={candidate.coverImageUrl} className="w-6 h-8" />
-            <span className="text-xs text-slate-200 light:text-slate-800 font-medium">
+            <span className="text-xs text-slate-200 font-medium">
                 {candidate.title}
                 {year !== null && (
-                    <span className="text-slate-500 light:text-slate-400 font-normal">{' '}({year})</span>
+                    <span className="text-slate-500 font-normal">{' '}({year})</span>
                 )}
             </span>
         </button>
@@ -526,9 +526,9 @@ function CandidateButton({ candidate, onChoose }: { candidate: GameDto; onChoose
 
 function Tile({ label, value }: { label: string; value: number }) {
     return (
-        <div className="px-4 py-3 bg-slate-800/50 light:bg-white border border-slate-700/70 light:border-slate-200 rounded-lg">
-            <dt className="text-xs text-slate-400 light:text-slate-500">{label}</dt>
-            <dd className="text-xl font-bold text-white light:text-slate-900">{formatCount(value)}</dd>
+        <div className="px-4 py-3 bg-slate-800/50 border border-slate-700/70 rounded-lg">
+            <dt className="text-xs text-slate-400">{label}</dt>
+            <dd className="text-xl font-bold text-white">{formatCount(value)}</dd>
         </div>
     );
 }
@@ -546,7 +546,7 @@ function FilterButton({ active, onClick, children }: {
             className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${
                 active
                     ? 'bg-blue-600 text-white'
-                    : 'bg-slate-800 light:bg-slate-100 text-slate-300 light:text-slate-700 hover:bg-slate-700 light:hover:bg-slate-200'
+                    : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
             }`}
         >
             {children}
@@ -556,9 +556,9 @@ function FilterButton({ active, onClick, children }: {
 
 function Badge({ children, tone = 'slate' }: { children: React.ReactNode; tone?: 'slate' | 'amber' | 'red' }) {
     const tones = {
-        slate: 'bg-slate-700/60 text-slate-300 light:bg-slate-100 light:text-slate-600',
-        amber: 'bg-amber-900/40 text-amber-300 light:bg-amber-100 light:text-amber-700',
-        red: 'bg-red-900/40 text-red-300 light:bg-red-100 light:text-red-700',
+        slate: 'bg-slate-700/60 text-slate-300',
+        amber: 'bg-amber-900/40 text-amber-300',
+        red: 'bg-red-900/40 text-red-300',
     };
     return <span className={`px-1.5 py-0.5 rounded text-[11px] font-medium ${tones[tone]}`}>{children}</span>;
 }
@@ -579,8 +579,8 @@ function ResultPanel({ imported, unlisted, skipped, fileName }: {
 }) {
     return (
         <div className="max-w-2xl mx-auto px-4 py-16 text-center">
-            <h1 className="text-2xl font-bold text-white light:text-slate-900 mb-2">Import finished</h1>
-            <p className="text-slate-400 light:text-slate-600 mb-8">
+            <h1 className="text-2xl font-bold text-white mb-2">Import finished</h1>
+            <p className="text-slate-400 mb-8">
                 {unlisted === 0
                     ? `${formatCount(imported)} ${imported === 1 ? 'game is' : 'games are'} now in your lists.`
                     : `${formatCount(imported)} ${imported === 1 ? 'game was' : 'games were'} imported. `
@@ -602,7 +602,7 @@ function ResultPanel({ imported, unlisted, skipped, fileName }: {
                     <button
                         type="button"
                         onClick={() => downloadSkippedRows(skipped, `${fileName}-skipped.csv`)}
-                        className="px-4 py-2.5 text-sm font-semibold text-slate-300 light:text-slate-700 bg-slate-800 light:bg-slate-100 hover:bg-slate-700 light:hover:bg-slate-200 rounded-lg"
+                        className="px-4 py-2.5 text-sm font-semibold text-slate-300 bg-slate-800 hover:bg-slate-700 rounded-lg"
                     >
                         Download what was skipped
                     </button>

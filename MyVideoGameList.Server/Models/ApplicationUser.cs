@@ -18,6 +18,15 @@ public static class ProfileVisibility
 
 public class ApplicationUser : IdentityUser
 {
+    /// <summary>
+    /// The account's palette. There is one, dark, and nothing sets this any more (ADR 0048).
+    /// </summary>
+    /// <remarks>
+    /// Kept rather than dropped because the palettes in #208 store the choice here, and kept in the
+    /// export with the rest of the account. An account that chose the light theme before it was
+    /// removed still says <c>light</c>; whatever reads this again must treat a value it does not know
+    /// as dark.
+    /// </remarks>
     public string Theme { get; set; } = "dark";
 
     /// <summary>

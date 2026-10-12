@@ -21,7 +21,7 @@ import './GamePage.css';
 
 function InfoChip({ label }: { label: string }) {
     return (
-        <span className="px-2.5 py-1 bg-slate-700/60 light:bg-slate-100 text-slate-300 light:text-slate-700 text-xs font-medium rounded-lg border border-slate-600/40 light:border-slate-200">
+        <span className="px-2.5 py-1 bg-slate-700/60 text-slate-300 text-xs font-medium rounded-lg border border-slate-600/40">
             {label}
         </span>
     );
@@ -161,7 +161,7 @@ export function GamePage() {
                         {/* Breadcrumb */}
                         <Link
                             to="/games"
-                            className="inline-flex items-center gap-1 text-xs text-slate-400 light:text-slate-500 hover:text-blue-400 transition-colors mb-2"
+                            className="inline-flex items-center gap-1 text-xs text-slate-400 hover:text-blue-400 transition-colors mb-2"
                         >
                             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -169,21 +169,21 @@ export function GamePage() {
                             Games
                         </Link>
 
-                        <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-white light:text-slate-900 leading-tight mb-2">
+                        <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-white leading-tight mb-2">
                             {game.title}
                             {releaseYear && (
-                                <span className="text-slate-400 light:text-slate-500 font-normal text-xl ml-2">({releaseYear})</span>
+                                <span className="text-slate-400 font-normal text-xl ml-2">({releaseYear})</span>
                             )}
                         </h1>
 
                         {/* A DLC or expansion page that does not say what it belongs to reads as a
                             standalone game with a strangely narrow scope. */}
                         {details?.parentGame && (
-                            <p className="text-sm text-slate-400 light:text-slate-500 mb-2">
+                            <p className="text-sm text-slate-400 mb-2">
                                 Add-on for{' '}
                                 <Link
                                     to={`/games/${details.parentGame.id}`}
-                                    className="text-blue-400 light:text-blue-700 hover:text-blue-300 light:hover:text-blue-800 font-medium transition-colors"
+                                    className="text-blue-400 hover:text-blue-300 font-medium transition-colors"
                                 >
                                     {details.parentGame.name}
                                 </Link>
@@ -225,7 +225,7 @@ export function GamePage() {
                                 />
                             )}
                             {releaseDate && (
-                                <span className="text-slate-400 light:text-slate-500 text-xs">{releaseDate}</span>
+                                <span className="text-slate-400 text-xs">{releaseDate}</span>
                             )}
                         </div>
                     </div>
@@ -241,7 +241,7 @@ export function GamePage() {
                         {game.description && (
                             <section>
                                 <SectionHeading>About</SectionHeading>
-                                <p className="text-slate-300 light:text-slate-700 text-sm leading-relaxed whitespace-pre-line">
+                                <p className="text-slate-300 text-sm leading-relaxed whitespace-pre-line">
                                     {game.description}
                                 </p>
                             </section>
@@ -261,7 +261,7 @@ export function GamePage() {
                                     {game.genres.map(genre => (
                                         <span
                                             key={genre.id}
-                                            className="px-3 py-1 bg-blue-900/40 light:bg-blue-50 text-blue-300 light:text-blue-700 text-xs font-medium rounded-full border border-blue-800/50 light:border-blue-200"
+                                            className="px-3 py-1 bg-blue-900/40 text-blue-300 text-xs font-medium rounded-full border border-blue-800/50"
                                         >
                                             {genre.name}
                                         </span>
@@ -323,7 +323,7 @@ export function GamePage() {
                                             <SectionHeading>Developer{game.developers.length > 1 ? 's' : ''}</SectionHeading>
                                             <div className="flex flex-col gap-1.5">
                                                 {game.developers.map(dev => (
-                                                    <span key={dev.id} className="text-slate-300 light:text-slate-700 text-sm font-medium">
+                                                    <span key={dev.id} className="text-slate-300 text-sm font-medium">
                                                         {dev.name}
                                                     </span>
                                                 ))}
@@ -335,7 +335,7 @@ export function GamePage() {
                                             <SectionHeading>Publisher{game.publishers.length > 1 ? 's' : ''}</SectionHeading>
                                             <div className="flex flex-col gap-1.5">
                                                 {game.publishers.map(pub => (
-                                                    <span key={pub.id} className="text-slate-300 light:text-slate-700 text-sm font-medium">
+                                                    <span key={pub.id} className="text-slate-300 text-sm font-medium">
                                                         {pub.name}
                                                     </span>
                                                 ))}
@@ -429,19 +429,19 @@ export function GamePage() {
                                 onCommunityChange={community.reload}
                             />
                         ) : (
-                            <div className="bg-slate-800/60 light:bg-white border border-slate-700/50 light:border-slate-200 rounded-xl p-5 text-center">
-                                <p className="text-slate-400 light:text-slate-600 text-xs mb-3">
+                            <div className="bg-slate-800/60 border border-slate-700/50 rounded-xl p-5 text-center">
+                                <p className="text-slate-400 text-xs mb-3">
                                     {authLoading ? <>&nbsp;</> : 'Sign in to track this game.'}
                                 </p>
                             </div>
                         )}
 
                         {/* Info card */}
-                        <div className="bg-slate-800/60 light:bg-white border border-slate-700/50 light:border-slate-200 rounded-xl p-5 space-y-4">
+                        <div className="bg-slate-800/60 border border-slate-700/50 rounded-xl p-5 space-y-4">
                             {releaseDate && (
                                 <div>
-                                    <p className="text-xs text-slate-500 light:text-slate-400 uppercase tracking-wider mb-1">Release Date</p>
-                                    <p className="text-sm text-slate-200 light:text-slate-800 font-medium">{releaseDate}</p>
+                                    <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Release Date</p>
+                                    <p className="text-sm text-slate-200 font-medium">{releaseDate}</p>
                                 </div>
                             )}
 
@@ -449,13 +449,13 @@ export function GamePage() {
                                 tooltip. ADR 0016: a score without its count is not shippable. */}
                             {hasCriticScore(game) && (
                                 <div>
-                                    <p className="text-xs text-slate-500 light:text-slate-400 uppercase tracking-wider mb-1">Critic Score</p>
+                                    <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Critic Score</p>
                                     <ScoreBadge
                                         kind="critics"
                                         percent={game.criticScore!}
                                         count={game.criticScoreCount}
                                     />
-                                    <span className="ml-2 text-xs text-slate-500 light:text-slate-400">
+                                    <span className="ml-2 text-xs text-slate-500">
                                         from {formatCount(game.criticScoreCount!)} reviews
                                     </span>
                                 </div>
@@ -463,14 +463,14 @@ export function GamePage() {
 
                             {game.rating !== null && (
                                 <div>
-                                    <p className="text-xs text-slate-500 light:text-slate-400 uppercase tracking-wider mb-1">Player Rating</p>
+                                    <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Player Rating</p>
                                     <ScoreBadge
                                         kind="players"
                                         percent={ratingPercent(game.rating)}
                                         count={game.ratingCount}
                                     />
                                     {game.ratingCount !== null && (
-                                        <span className="ml-2 text-xs text-slate-500 light:text-slate-400">
+                                        <span className="ml-2 text-xs text-slate-500">
                                             from {formatCount(game.ratingCount)} ratings
                                         </span>
                                     )}
@@ -479,8 +479,8 @@ export function GamePage() {
 
                             {game.esrbRating && (
                                 <div>
-                                    <p className="text-xs text-slate-500 light:text-slate-400 uppercase tracking-wider mb-1">ESRB Rating</p>
-                                    <span className="px-2 py-0.5 bg-slate-700 light:bg-slate-100 border border-slate-600 light:border-slate-200 text-slate-200 light:text-slate-700 text-sm font-mono rounded">
+                                    <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">ESRB Rating</p>
+                                    <span className="px-2 py-0.5 bg-slate-700 border border-slate-600 text-slate-200 text-sm font-mono rounded">
                                         {game.esrbRating}
                                     </span>
                                 </div>
@@ -488,8 +488,8 @@ export function GamePage() {
 
                             {series.length > 0 && (
                                 <div>
-                                    <p className="text-xs text-slate-500 light:text-slate-400 uppercase tracking-wider mb-1">Series</p>
-                                    <p className="text-sm text-slate-200 light:text-slate-800 font-medium">
+                                    <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Series</p>
+                                    <p className="text-sm text-slate-200 font-medium">
                                         {series.join(', ')}
                                     </p>
                                 </div>
@@ -497,8 +497,8 @@ export function GamePage() {
 
                             {details && details.playerPerspectives.length > 0 && (
                                 <div>
-                                    <p className="text-xs text-slate-500 light:text-slate-400 uppercase tracking-wider mb-1">Perspective</p>
-                                    <p className="text-sm text-slate-200 light:text-slate-800 font-medium">
+                                    <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Perspective</p>
+                                    <p className="text-sm text-slate-200 font-medium">
                                         {details.playerPerspectives.join(', ')}
                                     </p>
                                 </div>
@@ -506,10 +506,10 @@ export function GamePage() {
 
                             {details && details.gameEngines.length > 0 && (
                                 <div>
-                                    <p className="text-xs text-slate-500 light:text-slate-400 uppercase tracking-wider mb-1">
+                                    <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">
                                         Engine{details.gameEngines.length > 1 ? 's' : ''}
                                     </p>
-                                    <p className="text-sm text-slate-200 light:text-slate-800 font-medium">
+                                    <p className="text-sm text-slate-200 font-medium">
                                         {details.gameEngines.join(', ')}
                                     </p>
                                 </div>
@@ -519,17 +519,17 @@ export function GamePage() {
                                 A native <details> needs no JavaScript and so survives SSR intact. */}
                             {details && details.languages.length > 0 && (
                                 <details className="group">
-                                    <summary className="text-xs text-slate-500 light:text-slate-400 uppercase tracking-wider cursor-pointer hover:text-slate-300 light:hover:text-slate-600 transition-colors">
+                                    <summary className="text-xs text-slate-500 uppercase tracking-wider cursor-pointer hover:text-slate-300 transition-colors">
                                         Languages ({details.languages.length})
                                     </summary>
                                     <ul className="mt-2 space-y-1.5">
                                         {details.languages.map(entry => (
                                             <li key={entry.language} className="text-xs">
-                                                <span className="text-slate-200 light:text-slate-800 font-medium">
+                                                <span className="text-slate-200 font-medium">
                                                     {entry.language}
                                                 </span>
                                                 {entry.supportTypes.length > 0 && (
-                                                    <span className="text-slate-500 light:text-slate-400">
+                                                    <span className="text-slate-500">
                                                         {' '}— {entry.supportTypes.join(', ')}
                                                     </span>
                                                 )}
@@ -541,12 +541,12 @@ export function GamePage() {
 
                             {game.website && (
                                 <div>
-                                    <p className="text-xs text-slate-500 light:text-slate-400 uppercase tracking-wider mb-1">Website</p>
+                                    <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Website</p>
                                     <a
                                         href={game.website}
                                         target="_blank"
                                         rel="noopener noreferrer"
-                                        className="inline-flex items-center gap-1 text-sm text-blue-400 light:text-blue-700 hover:text-blue-300 light:hover:text-blue-800 transition-colors break-all"
+                                        className="inline-flex items-center gap-1 text-sm text-blue-400 hover:text-blue-300 transition-colors break-all"
                                     >
                                         Official Site
                                         <svg className="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
@@ -558,12 +558,12 @@ export function GamePage() {
 
                             {game.trailerUrl && !youtubeEmbedId && (
                                 <div>
-                                    <p className="text-xs text-slate-500 light:text-slate-400 uppercase tracking-wider mb-1">Trailer</p>
+                                    <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Trailer</p>
                                     <a
                                         href={game.trailerUrl}
                                         target="_blank"
                                         rel="noopener noreferrer"
-                                        className="inline-flex items-center gap-1 text-sm text-blue-400 light:text-blue-700 hover:text-blue-300 light:hover:text-blue-800 transition-colors"
+                                        className="inline-flex items-center gap-1 text-sm text-blue-400 hover:text-blue-300 transition-colors"
                                     >
                                         Watch Trailer
                                         <svg className="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">

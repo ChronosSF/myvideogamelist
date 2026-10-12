@@ -55,10 +55,6 @@
     color: rgba(71, 85, 105, 0.9);
 }
 
-[data-theme='light'] .score-star-outline {
-    color: #cbd5e1;
-}
-
 /* Clipped to the filled fraction: 0%, 50% or 100% of one star. */
 .score-star-fill {
     position: absolute;
@@ -121,10 +117,6 @@
 .score-stars-md .score-stars-readout {
     min-width: 1.5rem;
     font-size: 1rem;
-}
-
-[data-theme='light'] .score-stars-readout {
-    color: #0f172a;
 }
 
 .score-stars.empty .score-stars-readout {

@@ -6,10 +6,6 @@
     padding-bottom: 0;
 }
 
-[data-theme='light'] .lists-tabs {
-    --tab-border: rgba(203, 213, 225, 0.7);
-}
-
 .lists-tab-btn {
     padding: 0.5rem 1.125rem;
     border-radius: 0.5rem 0.5rem 0 0;
@@ -25,28 +21,14 @@
     border-bottom: 2px solid transparent;
 }
 
-[data-theme='light'] .lists-tab-btn {
-    --tab-inactive: #64748b;
-}
-
 .lists-tab-btn:hover {
     color: #e2e8f0;
     background: rgba(255, 255, 255, 0.05);
 }
 
-[data-theme='light'] .lists-tab-btn:hover {
-    color: #0f172a;
-    background: rgba(0, 0, 0, 0.04);
-}
-
 .lists-tab-btn.active {
     color: #60a5fa;
     border-bottom-color: #3b82f6;
-}
-
-[data-theme='light'] .lists-tab-btn.active {
-    color: #2563eb;
-    border-bottom-color: #2563eb;
 }
 
 .lists-tab-count {
@@ -67,11 +49,6 @@
 .lists-tab-btn.active .lists-tab-count {
     background: rgba(59, 130, 246, 0.35);
     color: #93c5fd;
-}
-
-[data-theme='light'] .lists-tab-count {
-    background: rgba(37, 99, 235, 0.12);
-    color: #2563eb;
 }
 
 /* Five tabs do not fit a phone. Below sm the strip scrolls sideways rather than squeezing each

@@ -56,8 +56,6 @@ public record UserProfileDto(
         new(user.Id, user.Email!, user.UserName!, user.Theme, user.ProfileVisibility, isAdmin);
 }
 
-public record UpdateThemeDto(string Theme);
-
 /// <summary>A rename. The one field, validated the same way registration validates it.</summary>
 public record UpdateUserNameDto([Required][UserName] string UserName);
 

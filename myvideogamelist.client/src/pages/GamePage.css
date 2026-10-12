@@ -28,19 +28,6 @@
     );
 }
 
-[data-theme='light'] .game-page-hero-bg {
-    filter: blur(2px) brightness(0.55);
-}
-
-[data-theme='light'] .game-page-hero-gradient {
-    background: linear-gradient(
-        to bottom,
-        rgba(248, 250, 252, 0.1) 0%,
-        rgba(248, 250, 252, 0.55) 50%,
-        rgba(248, 250, 252, 0.97) 100%
-    );
-}
-
 .game-page-hero-content {
     position: relative;
     z-index: 1;
