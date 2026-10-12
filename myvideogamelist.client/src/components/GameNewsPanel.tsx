@@ -54,9 +54,9 @@ export function GameNewsPanel({ gameId }: GameNewsPanelProps) {
         <section className="mt-10" aria-labelledby="game-news-heading">
             <h2
                 id="game-news-heading"
-                className="text-lg font-semibold text-white light:text-slate-900 mb-4 flex items-center gap-2"
+                className="text-lg font-semibold text-white mb-4 flex items-center gap-2"
             >
-                <svg className="w-5 h-5 text-blue-400 light:text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <svg className="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m0 0h2a2 2 0 012 2v9a2 2 0 01-2 2h-2m0-13v13M9 8h4m-4 4h4m-4 4h2" />
                 </svg>
                 Latest news &amp; patch notes

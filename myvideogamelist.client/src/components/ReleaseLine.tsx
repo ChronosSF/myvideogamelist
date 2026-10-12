@@ -126,10 +126,10 @@ export function ReleaseLine({ userId }: { userId: string }) {
         <section aria-labelledby="release-line-heading">
             <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-1 mt-8 mb-4">
                 <div>
-                    <h2 id="release-line-heading" className="text-lg font-semibold text-white light:text-slate-900 mb-1">
+                    <h2 id="release-line-heading" className="text-lg font-semibold text-white mb-1">
                         Coming up
                     </h2>
-                    <p className="text-sm text-slate-400 light:text-slate-600">
+                    <p className="text-sm text-slate-400">
                         The next two weeks for your games, with the showcases and sales
                     </p>
                 </div>
@@ -138,7 +138,7 @@ export function ReleaseLine({ userId }: { userId: string }) {
                     two weeks are, and what is known only to its month or year. */}
                 <Link
                     to="/calendar"
-                    className="shrink-0 text-sm font-medium text-blue-400 light:text-blue-600 hover:text-blue-300 light:hover:text-blue-700 transition-colors"
+                    className="shrink-0 text-sm font-medium text-blue-400 hover:text-blue-300 transition-colors"
                 >
                     The whole calendar <span aria-hidden="true">→</span>
                 </Link>

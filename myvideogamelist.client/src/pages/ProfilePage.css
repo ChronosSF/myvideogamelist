@@ -43,18 +43,10 @@
     overflow-wrap: anywhere;
 }
 
-[data-theme='light'] .public-profile-name {
-    color: #0f172a;
-}
-
 .public-profile-since {
     margin-top: 0.25rem;
     font-size: 0.875rem;
     color: #94a3b8;
-}
-
-[data-theme='light'] .public-profile-since {
-    color: #475569;
 }
 
 .public-profile-footer {
@@ -69,10 +61,6 @@
 
 .public-profile-footer a:hover {
     text-decoration: underline;
-}
-
-[data-theme='light'] .public-profile-footer a {
-    color: #2563eb;
 }
 
 /* ── Reviews ─────────────────────────────────────────────────────────────── */
@@ -99,12 +87,4 @@
 
 .review-pages a:hover {
     text-decoration: underline;
-}
-
-[data-theme='light'] .review-pages {
-    color: #64748b;
-}
-
-[data-theme='light'] .review-pages a {
-    color: #2563eb;
 }

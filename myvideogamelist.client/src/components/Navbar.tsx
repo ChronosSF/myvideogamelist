@@ -36,14 +36,11 @@ export function Navbar() {
         setMainMenuOpen(false);
     }
 
-    // Both states need explicit light: variants. Without them light mode inherited the dark
-    // palette against a near-white bar: 2.45:1 inactive and 1.84:1 active, well under AA. The
-    // main menu is painted in the bar's own colours, so the same pairs hold there.
+    // The main menu is painted in the bar's own colours, so the same pairs hold there.
     const navLinkColours = (isActive: boolean) =>
         isActive
-            ? 'bg-blue-600/20 text-blue-400 light:bg-blue-100 light:text-blue-800'
-            : 'text-slate-400 hover:text-white hover:bg-slate-800 '
-              + 'light:text-slate-600 light:hover:text-slate-900 light:hover:bg-slate-200';
+            ? 'bg-blue-600/20 text-blue-400'
+            : 'text-slate-400 hover:text-white hover:bg-slate-800';
 
     const navLinkClass = ({ isActive }: { isActive: boolean }) =>
         `px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${navLinkColours(isActive)}`;
@@ -142,7 +139,7 @@ export function Navbar() {
                             </nav>
 
                             {/* Logo / Brand */}
-                            <Link to="/" className="shrink-0 flex items-center gap-2.5 text-slate-100 light:text-slate-900 font-bold text-lg hover:opacity-80 transition-opacity">
+                            <Link to="/" className="shrink-0 flex items-center gap-2.5 text-slate-100 font-bold text-lg hover:opacity-80 transition-opacity">
                                 <Logo className="w-7 h-7" />
                                 {/* Icon-only below sm, where the bar has no room for the name
                                     beside the menu button and the account controls. Visually
@@ -151,7 +148,7 @@ export function Navbar() {
                                     that says nothing at all. Not `sr-only sm:not-sr-only`:
                                     ListTable.css defines an unlayered .sr-only that would outrank
                                     the sm: utility once the lists page had loaded. */}
-                                <span className="max-sm:sr-only">MyVideoGame<span className="text-lime-400 light:text-lime-600">List</span></span>
+                                <span className="max-sm:sr-only">MyVideoGame<span className="text-lime-400">List</span></span>
                             </Link>
                         </div>
 
@@ -191,7 +188,7 @@ export function Navbar() {
                                         <span className="navbar-avatar" aria-hidden="true">
                                             {user.userName.charAt(0).toUpperCase()}
                                         </span>
-                                        <svg className="w-3.5 h-3.5 text-slate-400 light:text-slate-500 ml-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                                        <svg className="w-3.5 h-3.5 text-slate-400 ml-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                                         </svg>
                                     </button>

@@ -30,12 +30,12 @@ export function CalendarPage() {
 
     return (
         <div className="min-h-screen">
-            <div className="bg-gradient-to-b from-blue-950/60 to-slate-900 light:from-blue-50/80 light:to-slate-50 border-b border-slate-700/50 light:border-slate-200">
+            <div className="bg-gradient-to-b from-blue-950/60 to-slate-900 border-b border-slate-700/50">
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
-                    <h1 className="text-3xl sm:text-4xl font-bold text-white light:text-slate-900 mb-1">
+                    <h1 className="text-3xl sm:text-4xl font-bold text-white mb-1">
                         Release calendar
                     </h1>
-                    <p className="text-slate-400 light:text-slate-600 text-sm sm:text-base">
+                    <p className="text-slate-400 text-sm sm:text-base">
                         What is coming for your games over the next year, with the showcases and sales.
                     </p>
                 </div>
@@ -51,7 +51,7 @@ export function CalendarPage() {
                     </div>
                 )}
                 {!loading && user === null && (
-                    <p className="py-24 text-center text-slate-400 light:text-slate-600 font-medium">
+                    <p className="py-24 text-center text-slate-400 font-medium">
                         Sign in to see what is coming for your games.
                     </p>
                 )}

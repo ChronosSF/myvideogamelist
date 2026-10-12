@@ -39,10 +39,11 @@ interface ListsState {
      * The answer to that read was composed before it arrived. One that lands after a write of the
      * same fields is therefore older than what is on screen, and applying it puts the previous labels
      * or the previous view back until the next page load. The read is not rare: `AuthProvider` hands
-     * the provider a new user object for something as ordinary as a theme change, and the effect
-     * below depends on it. Kept per group of fields rather than as one flag, because the read is the
-     * only thing that brings the names at all — dropping the whole answer over a view toggle would
-     * mark the names `ready` at their defaults, which is what a rename form must never be handed.
+     * the provider a new user object for something as ordinary as making the profile public, and the
+     * effect below depends on it. Kept per group of fields rather than as one flag, because the read
+     * is the only thing that brings the names at all — dropping the whole answer over a view toggle
+     * would mark the names `ready` at their defaults, which is what a rename form must never be
+     * handed.
      */
     namesWrittenSinceRead: boolean;
     viewWrittenSinceRead: boolean;

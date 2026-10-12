@@ -72,7 +72,7 @@ export function ContinuePlayingRail() {
                             to={`/games/${game.id}`}
                             className="group block focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded-xl"
                         >
-                            <div className="relative aspect-[3/4] rounded-xl overflow-hidden bg-slate-800 light:bg-slate-100 border border-slate-700/50 light:border-slate-200 group-hover:border-blue-500/60 transition-all duration-300 shadow-lg">
+                            <div className="relative aspect-[3/4] rounded-xl overflow-hidden bg-slate-800 border border-slate-700/50 group-hover:border-blue-500/60 transition-all duration-300 shadow-lg">
                                 {game.coverImageUrl && (
                                     <img
                                         src={game.coverImageUrl}
@@ -83,7 +83,7 @@ export function ContinuePlayingRail() {
                                 )}
                             </div>
 
-                            <p className="mt-2 text-sm font-medium text-slate-200 light:text-slate-800 leading-snug line-clamp-2 group-hover:text-blue-400 light:group-hover:text-blue-600 transition-colors">
+                            <p className="mt-2 text-sm font-medium text-slate-200 leading-snug line-clamp-2 group-hover:text-blue-400 transition-colors">
                                 {game.title}
                             </p>
                         </Link>

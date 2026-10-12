@@ -11,7 +11,6 @@ export interface UserProfile {
     id: string;
     email: string;
     userName: string;
-    theme: 'dark' | 'light';
     /**
      * Carried on every page load so the navbar can tell whether there is a public profile to link
      * to, without a second request for a one-word answer.

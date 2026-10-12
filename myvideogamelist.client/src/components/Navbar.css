@@ -21,12 +21,6 @@
     pointer-events: none;
 }
 
-[data-theme='light'] .navbar-root {
-    --nav-bg: rgba(248, 250, 252, 0.95);
-    --nav-border: rgba(203, 213, 225, 0.6);
-    --nav-menu-bg: #f8fafc;
-}
-
 .navbar-btn-ghost {
     padding: 0.375rem 0.75rem;
     border-radius: 0.5rem;
@@ -42,15 +36,6 @@
 .navbar-btn-ghost:hover {
     color: var(--nbtn-ghost-hover, #f1f5f9);
     background: rgba(255, 255, 255, 0.08);
-}
-
-[data-theme='light'] .navbar-btn-ghost {
-    --nbtn-ghost: #475569;
-    --nbtn-ghost-hover: #0f172a;
-}
-
-[data-theme='light'] .navbar-btn-ghost:hover {
-    background: rgba(0, 0, 0, 0.06);
 }
 
 .navbar-btn-primary {
@@ -90,16 +75,6 @@
     background: rgba(255, 255, 255, 0.08);
 }
 
-[data-theme='light'] .navbar-menu-btn {
-    --nbtn-ghost: #475569;
-    --nbtn-ghost-hover: #0f172a;
-}
-
-[data-theme='light'] .navbar-menu-btn:hover,
-[data-theme='light'] .navbar-menu-btn[aria-expanded='true'] {
-    background: rgba(0, 0, 0, 0.06);
-}
-
 /* Hangs from the bar's bottom border, full width, positioned against .navbar-root, which is
    sticky. Opaque rather than the bar's translucent colour: the bar's backdrop blur stops at the
    bar's own edge, so a translucent panel would show the page through it unblurred. */
@@ -114,10 +89,6 @@
     animation: dd-in 0.12s ease;
 }
 
-[data-theme='light'] .navbar-main-menu {
-    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.15);
-}
-
 /* Dims the page under an open main menu, and a tap on it closes the menu. Rendered outside
    .navbar-root and below its z-index, unlike the user menu's overlay, so the bar stays usable: the
    button that opened this menu is also the one that closes it. */
@@ -127,10 +98,6 @@
     z-index: 40;
     background: rgba(2, 6, 23, 0.6);
     animation: navbar-fade-in 0.12s ease;
-}
-
-[data-theme='light'] .navbar-scrim {
-    background: rgba(15, 23, 42, 0.25);
 }
 
 @keyframes navbar-fade-in {
@@ -153,15 +120,6 @@
 
 .navbar-user-btn:hover {
     background: rgba(255, 255, 255, 0.1);
-}
-
-[data-theme='light'] .navbar-user-btn {
-    background: rgba(0, 0, 0, 0.04);
-    border-color: rgba(0, 0, 0, 0.1);
-}
-
-[data-theme='light'] .navbar-user-btn:hover {
-    background: rgba(0, 0, 0, 0.08);
 }
 
 .navbar-avatar {
@@ -209,12 +167,6 @@
     animation: dd-in 0.12s ease;
 }
 
-[data-theme='light'] .navbar-dropdown {
-    --dd-bg: #ffffff;
-    --dd-border: rgba(203, 213, 225, 0.9);
-    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.15);
-}
-
 @keyframes dd-in {
     from { opacity: 0; transform: translateY(-4px); }
     to   { opacity: 1; transform: translateY(0); }
@@ -228,11 +180,6 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-}
-
-[data-theme='light'] .navbar-dropdown-email {
-    --dd-email: #94a3b8;
-    --dd-sep: rgba(203, 213, 225, 0.8);
 }
 
 .navbar-dropdown-item {
@@ -250,18 +197,9 @@
     transition: background 0.12s, color 0.12s;
 }
 
-[data-theme='light'] .navbar-dropdown-item {
-    --dd-text: #334155;
-}
-
 .navbar-dropdown-item:hover {
     background: rgba(255, 255, 255, 0.07);
     color: #ffffff;
-}
-
-[data-theme='light'] .navbar-dropdown-item:hover {
-    background: rgba(0, 0, 0, 0.05);
-    color: #0f172a;
 }
 
 .navbar-dropdown-logout {
@@ -269,18 +207,9 @@
     border-top: 1px solid var(--dd-sep, rgba(51, 65, 85, 0.5));
 }
 
-[data-theme='light'] .navbar-dropdown-logout {
-    border-top-color: rgba(203, 213, 225, 0.8);
-    color: #ef4444;
-}
-
 .navbar-dropdown-logout:hover {
     background: rgba(239, 68, 68, 0.1) !important;
     color: #fca5a5 !important;
-}
-
-[data-theme='light'] .navbar-dropdown-logout:hover {
-    color: #ef4444 !important;
 }
 
 /* Below sm the links are in the main menu, so the bar holds the menu button, the logo and the

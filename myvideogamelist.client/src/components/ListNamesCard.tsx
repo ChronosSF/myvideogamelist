@@ -47,7 +47,8 @@ export function ListNamesCard() {
 
     // Follow the stored names when they change — arriving, or saved — compared by value rather than
     // by reference. The provider refetches its preferences whenever the account object changes, which
-    // toggling the theme on this very page does; a reference check would wipe a half-typed rename.
+    // making the profile public on this very page does; a reference check would wipe a half-typed
+    // rename.
     const [lastNames, setLastNames] = useState(names);
     if (!sameNames(lastNames, names)) {
         setLastNames(names);

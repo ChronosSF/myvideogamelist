@@ -34,10 +34,10 @@ export function meta() {
  */
 function PageHeader() {
     return (
-        <div className="bg-gradient-to-b from-blue-950/60 to-slate-900 light:from-blue-50/80 light:to-slate-50 border-b border-slate-700/50 light:border-slate-200">
+        <div className="bg-gradient-to-b from-blue-950/60 to-slate-900 border-b border-slate-700/50">
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
-                <h1 className="text-3xl sm:text-4xl font-bold text-white light:text-slate-900 mb-1">My Profile</h1>
-                <p className="text-slate-400 light:text-slate-600 text-sm sm:text-base">
+                <h1 className="text-3xl sm:text-4xl font-bold text-white mb-1">My Profile</h1>
+                <p className="text-slate-400 text-sm sm:text-base">
                     Your tracking, and the settings for your account.
                 </p>
             </div>
@@ -46,10 +46,8 @@ function PageHeader() {
 }
 
 export function UserPage() {
-    const { user, loading, logout, updateTheme, deleteAccount } = useAuth();
+    const { user, loading, logout, deleteAccount } = useAuth();
     const navigate = useNavigate();
-
-    const [themeError, setThemeError] = useState<string | null>(null);
 
     /**
      * Set before the deletion request rather than after it, and that ordering is the point. The
@@ -70,16 +68,16 @@ export function UserPage() {
                         {loading ? (
                             <div className="flex flex-col items-center gap-4" role="status">
                                 <div className="w-10 h-10 border-4 border-blue-500/30 border-t-blue-500 rounded-full animate-spin" aria-hidden="true" />
-                                <p className="text-slate-400 light:text-slate-600 text-sm">Loading your profile…</p>
+                                <p className="text-slate-400 text-sm">Loading your profile…</p>
                             </div>
                         ) : accountDeleted ? (
                             // A live region, so the outcome of a request made from a dialog that
                             // has just vanished is announced rather than left to be discovered.
                             <div className="text-center max-w-md" role="status">
-                                <p className="text-slate-200 light:text-slate-800 font-medium mb-2">
+                                <p className="text-slate-200 font-medium mb-2">
                                     Your account has been deleted.
                                 </p>
-                                <p className="text-slate-400 light:text-slate-600 text-sm mb-6">
+                                <p className="text-slate-400 text-sm mb-6">
                                     Everything you had recorded went with it.
                                 </p>
                                 <Link
@@ -91,10 +89,10 @@ export function UserPage() {
                             </div>
                         ) : (
                             <div className="text-center">
-                                <svg className="w-14 h-14 text-slate-700 light:text-slate-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                                <svg className="w-14 h-14 text-slate-700 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
                                 </svg>
-                                <p className="text-slate-400 light:text-slate-600 font-medium">
+                                <p className="text-slate-400 font-medium">
                                     Sign in to see your profile.
                                 </p>
                             </div>
@@ -104,15 +102,6 @@ export function UserPage() {
             </div>
         );
     }
-
-    const handleThemeChange = async (checked: boolean) => {
-        setThemeError(null);
-        try {
-            await updateTheme(checked ? 'light' : 'dark');
-        } catch {
-            setThemeError('Failed to save theme. Please try again.');
-        }
-    };
 
     const handleLogout = async () => {
         await logout();
@@ -130,8 +119,6 @@ export function UserPage() {
             throw err;
         }
     };
-
-    const isLight = user.theme === 'light';
 
     return (
         <div className="min-h-screen">
@@ -157,7 +144,7 @@ export function UserPage() {
                     </section>
 
                     {/* The main column, because what the user has done is the reason they came here
-                        and the theme toggle is not. The favourites open it, as they open the public
+                        and the preferences are not. The favourites open it, as they open the public
                         profile: a showcase is the part of a profile chosen to be looked at. */}
                     <div className="user-page-tracking">
                         <div className="user-card">
@@ -169,43 +156,8 @@ export function UserPage() {
                     </div>
 
                     <section className="user-page-prefs" aria-label="Preferences">
-                        <div className="user-card">
-                            <div className="user-card-label">Appearance</div>
-                            <div className="user-card-row">
-                                <div className="user-card-value">
-                                    {isLight ? 'Light mode' : 'Dark mode'}
-                                </div>
-
-                                <div className="theme-toggle-wrap">
-                                    <svg className="theme-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                                            d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z" />
-                                    </svg>
-                                    <label className="toggle">
-                                        {/* Named for the state rather than the action, so that
-                                            "checked" reads true: "switch to light mode, checked"
-                                            said nothing about which mode was on. */}
-                                        <input
-                                            type="checkbox"
-                                            checked={isLight}
-                                            onChange={e => handleThemeChange(e.target.checked)}
-                                            aria-label="Light mode"
-                                        />
-                                        <span className="toggle-track" />
-                                        <span className="toggle-thumb" />
-                                    </label>
-                                    <svg className="theme-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                                            d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364-6.364l-.707.707M6.343 17.657l-.707.707M17.657 17.657l-.707-.707M6.343 6.343l-.707-.707M12 8a4 4 0 100 8 4 4 0 000-8z" />
-                                    </svg>
-                                </div>
-                            </div>
-                            <p className="user-card-hint">Saved automatically</p>
-                            {themeError && <p className="user-pref-error" role="alert">{themeError}</p>}
-                        </div>
-
-                        {/* Beside the appearance, because both change how the site reads to this
-                            person and to nobody else. */}
+                        {/* First, because it changes how the site reads to this person and to
+                            nobody else. */}
                         <ListNamesCard />
 
                         {/* Here rather than beside the export in "Your data", which is the

@@ -16,11 +16,11 @@ interface GameBrowseFiltersProps {
 }
 
 const selectClass =
-    'w-full sm:w-auto px-3 py-2 bg-slate-800 light:bg-white border border-slate-600 light:border-slate-300 '
-    + 'rounded-lg text-white light:text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 '
+    'w-full sm:w-auto px-3 py-2 bg-slate-800 border border-slate-600 '
+    + 'rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 '
     + 'focus:border-transparent disabled:opacity-60';
 
-const labelClass = 'block text-xs font-semibold uppercase tracking-wide text-slate-400 light:text-slate-600 mb-1';
+const labelClass = 'block text-xs font-semibold uppercase tracking-wide text-slate-400 mb-1';
 
 /** An empty option value means "any", which is how a select says null. */
 function toNumber(value: string): number | null {
@@ -164,7 +164,7 @@ export function GameBrowseFilters({ browse, platforms, genres, years, onChange, 
                     <div className="col-span-2 sm:col-span-1">
                         <button
                             type="button"
-                            className="px-3 py-2 text-sm font-semibold text-blue-400 light:text-blue-700 hover:underline"
+                            className="px-3 py-2 text-sm font-semibold text-blue-400 hover:underline"
                             onClick={onClear}
                         >
                             Clear filters
@@ -173,7 +173,7 @@ export function GameBrowseFilters({ browse, platforms, genres, years, onChange, 
                 )}
             </div>
 
-            <p id={`${id}-hint`} className="mt-2 text-xs text-slate-400 light:text-slate-600">
+            <p id={`${id}-hint`} className="mt-2 text-xs text-slate-400">
                 {searching
                     ? 'Search results come in order of how well they match. The filters still apply.'
                     : sort.hint}
