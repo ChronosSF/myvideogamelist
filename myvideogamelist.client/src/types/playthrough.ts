@@ -135,7 +135,16 @@ export const PLAYTHROUGH_TIERS = [
     fill: string;
 }[];
 
-/** The label for one of our type keys, for a list of playthroughs rather than a tier row. */
-export function playthroughTypeLabel(type: PlaythroughTypeKey | null): string | null {
-    return PLAYTHROUGH_TIERS.find(tier => tier.key === type)?.label ?? null;
+/**
+ * What one playthrough is called among the others: its type, or — when it has none — whether it
+ * has ended.
+ *
+ * A missing type is not the same as a run still going. It is how a run looks while somebody is
+ * playing, but also how one looks when nobody said how thoroughly it was played: a run logged with
+ * the type left blank, or an imported one whose source recorded no completion level. Those usually
+ * have a finish date, and calling one "In progress" contradicts the date printed beneath it.
+ */
+export function playthroughLabel(playthrough: Pick<PlaythroughDto, 'type' | 'finishedOn'>): string {
+    return PLAYTHROUGH_TIERS.find(tier => tier.key === playthrough.type)?.label
+        ?? (playthrough.finishedOn === null ? 'In progress' : 'Finished');
 }

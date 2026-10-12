@@ -97,6 +97,7 @@ function Probe({ listId = 'playing' as ListId }: { listId?: ListId }) {
             <button onClick={() => void lists.deleteEntry(1).then(ok => setDeleted(String(ok)))}>delete entry</button>
             <button onClick={() => lists.setView('table')}>use table</button>
             <button onClick={() => lists.setSort(listId, { key: 'score', descending: true })}>sort by score</button>
+            <button onClick={() => lists.reload()}>reload</button>
         </div>
     );
 }
@@ -155,6 +156,22 @@ describe('loading', () => {
 
         expect(screen.getByTestId('list-playing')).toHaveTextContent('Celeste(7)');
         expect(screen.getByTestId('view')).toHaveTextContent('tiles');
+    });
+});
+
+describe('reloading', () => {
+    it('fetches the lists again for the same account', async () => {
+        // What an import needs. It writes the lists on the server, around this provider, which
+        // otherwise loads once per account and goes on showing what it had.
+        const routes: Routes = { lists: {} };
+        const calls = await renderProvider(routes);
+        expect(screen.getByTestId('list-playing')).toBeEmptyDOMElement();
+
+        routes.lists = { playing: [CELESTE] };
+        await userEvent.click(screen.getByRole('button', { name: 'reload' }));
+
+        await waitFor(() => expect(screen.getByTestId('list-playing')).toHaveTextContent('Celeste(7)'));
+        expect(calls.filter(c => c.method === 'GET' && c.url === '/api/lists')).toHaveLength(2);
     });
 });
 
@@ -416,6 +433,7 @@ describe('two mutations at once', () => {
                         <button onClick={() => void lists.deleteEntry(id)}>{`delete ${id}`}</button>
                     </span>
                 ))}
+                <button onClick={() => lists.reload()}>reload</button>
             </div>
         );
     }
@@ -437,6 +455,27 @@ describe('two mutations at once', () => {
      * coming back on its own. Each of these fails the removed game and checks that the game
      * nobody touched stays gone.
      */
+
+    it('keeps a move still on its way when a reload lands in the meantime', async () => {
+        // The reload's answer was composed before the move reached the server. Taken as it stands
+        // it puts Celeste back in Playing, and the move succeeding then changes nothing on screen.
+        const { calls, release } = await mountPair({
+            lists: { playing: [CELESTE, HADES] },
+            hold: ['PUT /api/lists/1'],
+        });
+
+        await press('move 1');
+        await press('reload');
+        await waitFor(() => expect(calls.filter(c => c.method === 'GET' && c.url === '/api/lists')).toHaveLength(2));
+        await waitFor(() => expect(screen.getByTestId('loading')).toHaveTextContent('false'));
+
+        expect(screen.getByTestId('list-finished')).toHaveTextContent('Celeste(7)');
+        expect(playing()).toHaveTextContent('Hades(-)');
+        expect(playing()).not.toHaveTextContent('Celeste');
+
+        await release('PUT /api/lists/1', 204);
+        expect(screen.getByTestId('list-finished')).toHaveTextContent('Celeste(7)');
+    });
 
     it('undoes only the game it was about when a removal fails', async () => {
         const { release } = await mountPair({
