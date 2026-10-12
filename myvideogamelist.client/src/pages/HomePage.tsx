@@ -98,14 +98,14 @@ function SectionHeading({ id, title, subtitle, action }: {
     return (
         <div className="flex items-end justify-between gap-4 mb-5">
             <div>
-                <h2 id={id} className="text-xl sm:text-2xl font-bold text-white">{title}</h2>
-                <p className="text-sm text-slate-400 mt-1">{subtitle}</p>
+                <h2 id={id} className="text-xl sm:text-2xl font-bold text-fg-strong">{title}</h2>
+                <p className="text-sm text-fg-muted mt-1">{subtitle}</p>
             </div>
 
             {action && (
                 <Link
                     to={action.to}
-                    className="shrink-0 text-sm font-medium text-blue-400 hover:text-blue-300 transition-colors"
+                    className="shrink-0 text-sm font-medium text-primary-400 hover:text-primary-300 transition-colors"
                 >
                     {action.label} <span aria-hidden="true">→</span>
                 </Link>
@@ -129,17 +129,17 @@ function SignedInHero({ user }: { user: UserProfile }) {
             <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8 sm:py-10">
                 <div className="flex flex-wrap items-end justify-between gap-4 mb-6">
                     <div>
-                        <h1 className="text-2xl sm:text-3xl font-bold text-white">
+                        <h1 className="text-2xl sm:text-3xl font-bold text-fg-strong">
                             Welcome back, {user.userName}
                         </h1>
-                        <p className="text-sm text-slate-400 mt-1">
+                        <p className="text-sm text-fg-muted mt-1">
                             Pick up where you left off.
                         </p>
                     </div>
 
                     <Link
                         to="/lists"
-                        className="shrink-0 text-sm font-medium text-blue-400 hover:text-blue-300 transition-colors"
+                        className="shrink-0 text-sm font-medium text-primary-400 hover:text-primary-300 transition-colors"
                     >
                         All your lists <span aria-hidden="true">→</span>
                     </Link>
@@ -147,14 +147,14 @@ function SignedInHero({ user }: { user: UserProfile }) {
 
                 <HomeStatsStrip userId={user.id} />
 
-                <h2 className="text-lg font-semibold text-white mt-8 mb-4">
+                <h2 className="text-lg font-semibold text-fg-strong mt-8 mb-4">
                     Continue playing
                 </h2>
                 <ContinuePlayingRail />
 
                 {/* After the rail rather than before it: what you are playing, then what to play
                     once that is done. Starting the pick moves it into the rail above. */}
-                <h2 className="text-lg font-semibold text-white mt-8 mb-4">
+                <h2 className="text-lg font-semibold text-fg-strong mt-8 mb-4">
                     Play next
                 </h2>
                 <PlayNextPicker />
@@ -176,7 +176,7 @@ function LandingHero({ spotlight }: { spotlight: HomeResponse['spotlight'] }) {
                 Compact by design. The old full-viewport hero pushed every piece of real
                 content below the fold; this keeps the pitch but lets the trending covers
                 start showing immediately. */}
-            <section className="relative overflow-hidden border-b border-slate-800">
+            <section className="relative overflow-hidden border-b border-line">
                 {spotlight?.backgroundImageUrl ? (
                     <>
                         <img
@@ -188,20 +188,20 @@ function LandingHero({ spotlight }: { spotlight: HomeResponse['spotlight'] }) {
                           * Two layers: a horizontal ramp keeps the left-hand text legible, and a
                           * vertical one lands the section on the page background instead of an edge.
                           */}
-                        <div className="absolute inset-0 bg-gradient-to-r from-slate-950 via-slate-950/90 to-slate-950/40" />
-                        <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-transparent to-transparent" />
+                        <div className="absolute inset-0 bg-gradient-to-r from-sunken via-sunken/90 to-sunken/40" />
+                        <div className="absolute inset-0 bg-gradient-to-t from-sunken via-transparent to-transparent" />
                     </>
                 ) : (
-                    <div className="absolute inset-0 bg-gradient-to-br from-blue-950 via-slate-900 to-slate-900" />
+                    <div className="absolute inset-0 bg-gradient-to-br from-primary-950 via-page to-page" />
                 )}
 
                 <div className="relative max-w-6xl mx-auto px-4 sm:px-6 py-14 sm:py-20">
                     <div className="max-w-2xl">
-                        <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-white mb-4 leading-tight">
+                        <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-fg-strong mb-4 leading-tight">
                             Every game you&apos;ve played,{' '}
-                            <span className="text-blue-400">in one list</span>
+                            <span className="text-primary-400">in one list</span>
                         </h1>
-                        <p className="text-slate-300 text-base sm:text-lg mb-8 leading-relaxed">
+                        <p className="text-fg-soft text-base sm:text-lg mb-8 leading-relaxed">
                             Track what you&apos;re playing, park what you&apos;ll get to eventually, and
                             never miss a release date again.
                         </p>
@@ -209,24 +209,24 @@ function LandingHero({ spotlight }: { spotlight: HomeResponse['spotlight'] }) {
                         <div className="flex flex-wrap items-center gap-3">
                             <Link
                                 to="/games"
-                                className="inline-flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-xl transition-colors shadow-lg shadow-blue-950/50"
+                                className="inline-flex items-center gap-2 px-5 py-2.5 bg-primary-600 hover:bg-primary-500 text-on-primary font-semibold rounded-xl transition-colors shadow-lg shadow-primary-950/50"
                             >
                                 Browse games
                             </Link>
                             <Link
                                 to="/lists"
-                                className="inline-flex items-center gap-2 px-5 py-2.5 bg-white/10 hover:bg-white/20 backdrop-blur-sm text-white font-semibold rounded-xl transition-colors border border-white/15"
+                                className="inline-flex items-center gap-2 px-5 py-2.5 bg-white/10 hover:bg-white/20 backdrop-blur-sm text-fg-strong font-semibold rounded-xl transition-colors border border-white/15"
                             >
                                 My lists
                             </Link>
                         </div>
 
                         {spotlight && (
-                            <p className="mt-8 text-xs text-slate-400">
+                            <p className="mt-8 text-xs text-fg-muted">
                                 Pictured:{' '}
                                 <Link
                                     to={`/games/${spotlight.id}`}
-                                    className="text-slate-300 hover:text-blue-400 underline underline-offset-2 transition-colors"
+                                    className="text-fg-soft hover:text-primary-400 underline underline-offset-2 transition-colors"
                                 >
                                     {spotlight.title}
                                 </Link>
@@ -269,7 +269,7 @@ export function HomePage({ loaderData }: Route.ComponentProps) {
                 )}
 
                 {news.length > 0 && (
-                    <section className="py-10 sm:py-12 border-t border-slate-800/60" aria-labelledby="news-heading">
+                    <section className="py-10 sm:py-12 border-t border-line" aria-labelledby="news-heading">
                         <SectionHeading
                             id="news-heading"
                             title="Latest news"

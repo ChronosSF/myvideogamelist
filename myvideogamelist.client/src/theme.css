@@ -63,6 +63,9 @@
     --color-danger-700: oklch(50.5% 0.213 27.518);
     --color-danger-900: oklch(39.6% 0.141 25.723);
 
+    --color-success-300: oklch(87.1% 0.15 154.449);  /* Something done, in words: a finish under the pointer */
+    --color-success-500: oklch(72.3% 0.219 149.579); /* The same as an edge, and the base of its tints */
+
     /* ── The brand: the logo's colours, the same in every palette ─────────── */
 
     --color-brand-navy: #182b4d;
