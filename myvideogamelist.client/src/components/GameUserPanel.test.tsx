@@ -24,6 +24,7 @@ function contextValue(overrides: Partial<ListsContextValue> = {}): ListsContextV
         loading: false,
         error: null,
         mutationError: null,
+        reload: vi.fn(),
         isPending: () => false,
         addToList: vi.fn(async () => {}),
         removeFromList: vi.fn(async () => {}),

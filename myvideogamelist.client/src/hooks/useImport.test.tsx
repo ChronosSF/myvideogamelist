@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { useState } from 'react';
 import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useImportReview } from '@/hooks/useImport';
@@ -335,8 +336,11 @@ describe('useImportReview, a change still on its way', () => {
         return { response, settle };
     }
 
-    /** Every review answers at once; each import's save answers only when its `held` is settled. */
-    function stub(saves: Record<string, ReturnType<typeof held>>) {
+    /**
+     * Every review answers at once; each import's save answers only when its `held` is settled. The
+     * commit succeeds unless given another status.
+     */
+    function stub(saves: Record<string, ReturnType<typeof held>>, commitStatus = 200) {
         const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
             const url = String(input);
             const job = /\/api\/import\/jobs\/([^/]+)/.exec(url)?.[1] ?? '';
@@ -346,6 +350,10 @@ describe('useImportReview, a change still on its way', () => {
             if (url.endsWith('/played-status') && init.method === 'PUT') return saves[job].response;
 
             if (url.endsWith('/commit') && init.method === 'POST') {
+                if (commitStatus !== 200) {
+                    return Promise.resolve(Response.json(
+                        { detail: 'The import could not be finished.' }, { status: commitStatus }));
+                }
                 return Promise.resolve(Response.json({
                     job: importJob({ state: 'done', importedCount: 2, skippedCount: 0 }),
                     skipped: [],
@@ -362,6 +370,7 @@ describe('useImportReview, a change still on its way', () => {
 
     function Probe({ jobId }: { jobId: string }) {
         const { review, saving, actionError, result, setPlayedStatus, commit } = useImportReview('user-1', jobId);
+        const [committed, setCommitted] = useState('-');
 
         return (
             <div>
@@ -370,8 +379,9 @@ describe('useImportReview, a change still on its way', () => {
                 <span data-testid="saving">{String(saving)}</span>
                 <span data-testid="action-error">{actionError ?? 'none'}</span>
                 <span data-testid="result">{result ? 'done' : 'none'}</span>
+                <span data-testid="committed">{committed}</span>
                 <button type="button" onClick={() => void setPlayedStatus('finished')}>Finished</button>
-                <button type="button" onClick={() => void commit()}>Import</button>
+                <button type="button" onClick={() => void commit().then(ok => setCommitted(String(ok)))}>Import</button>
             </div>
         );
     }
@@ -399,6 +409,8 @@ describe('useImportReview, a change still on its way', () => {
 
         await act(() => userEvent.click(screen.getByRole('button', { name: 'Import' })));
         expect(commits(fetchMock)).toBe(0);
+        // Nothing was written, so the page must not go and fetch the lists again.
+        expect(text('committed')).toHaveTextContent('false');
 
         await act(async () => save.settle(new Response(null, { status: 204 })));
         expect(text('saving')).toHaveTextContent('false');
@@ -406,6 +418,20 @@ describe('useImportReview, a change still on its way', () => {
         await act(() => userEvent.click(screen.getByRole('button', { name: 'Import' })));
         expect(commits(fetchMock)).toBe(1);
         expect(text('result')).toHaveTextContent('done');
+        expect(text('committed')).toHaveTextContent('true');
+    });
+
+    it('answers false when the import could not be written', async () => {
+        // The page fetches the lists again on true, so a refused commit must not claim a write.
+        stub({}, 500);
+
+        render(<Probe jobId="job-a" />);
+        await waitFor(() => expect(text('loaded')).toHaveTextContent('job-a'));
+        await act(() => userEvent.click(screen.getByRole('button', { name: 'Import' })));
+
+        await waitFor(() => expect(text('committed')).toHaveTextContent('false'));
+        expect(text('action-error')).toHaveTextContent('The import could not be finished.');
+        expect(text('result')).toHaveTextContent('none');
     });
 
     it('lands only on the import it was started for', async () => {

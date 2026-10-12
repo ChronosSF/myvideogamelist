@@ -126,7 +126,11 @@ export interface UseImportReviewResult {
     setPlayedStatus: (status: string | null) => Promise<void>;
     /** Looks up the rows whose file named no game, a batch at a time, until none is left. */
     match: () => Promise<void>;
-    commit: () => Promise<void>;
+    /**
+     * Writes the import. True once it is written, because everything that holds the lists, the
+     * wishlist or the favourites now holds them out of date and has to be told.
+     */
+    commit: () => Promise<boolean>;
     cancel: () => Promise<boolean>;
 }
 
@@ -282,19 +286,21 @@ export function useImportReview(accountId: string | null, jobId: string): UseImp
     const saving = actions.writes > 0;
 
     const commit = useCallback(async () => {
-        if (saving) return;
+        if (saving) return false;
 
         dispatch({ type: 'BUSY_START', identity });
         try {
             const response = await apiFetch(`/api/import/jobs/${jobId}/commit`, { method: 'POST' });
             const result = await readJson<ImportResult>(response, 'The import could not be finished.');
             dispatch({ type: 'BUSY_END', identity, error: null, result });
+            return true;
         } catch (err) {
             dispatch({
                 type: 'BUSY_END',
                 identity,
                 error: err instanceof Error ? err.message : 'The import could not be finished.',
             });
+            return false;
         }
     }, [identity, jobId, saving]);
 
