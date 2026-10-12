@@ -1,5 +1,6 @@
 import { Link } from 'react-router';
 import { NewsCard } from '@/components/NewsCard';
+import { PageHeader } from '@/components/PageHeader';
 import { useAuth } from '@/hooks/useAuth';
 import { useTrackedNews } from '@/hooks/useTrackedNews';
 import { PRIVATE_NO_STORE } from '@/lib/cache';
@@ -43,17 +44,10 @@ export function NewsPage() {
 
     return (
         <div className="min-h-screen">
-            <div className="bg-gradient-to-b from-blue-950/60 to-slate-900 border-b border-slate-700/50">
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
-                    <h1 className="text-3xl sm:text-4xl font-bold text-white mb-1">
-                        News for your games
-                    </h1>
-                    <p className="text-slate-400 text-sm sm:text-base">
-                        Patch notes and announcements from Steam for the games in your lists and on
-                        your wishlist.
-                    </p>
-                </div>
-            </div>
+            <PageHeader
+                title="News for your games"
+                description="Patch notes and announcements from Steam for the games in your lists and on your wishlist."
+            />
 
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
                 {signedOut && (

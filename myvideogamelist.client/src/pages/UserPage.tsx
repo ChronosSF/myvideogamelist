@@ -6,6 +6,7 @@ import { FavouritesShowcase } from '@/components/FavouritesShowcase';
 import { AccountIdentityCard } from '@/components/AccountIdentityCard';
 import { AccountDataCard } from '@/components/AccountDataCard';
 import { ListNamesCard } from '@/components/ListNamesCard';
+import { PageHeader } from '@/components/PageHeader';
 import { PRIVATE_NO_STORE } from '@/lib/cache';
 import { NOINDEX } from '@/lib/seo';
 import './UserPage.css';
@@ -28,21 +29,11 @@ export function meta() {
 }
 
 /**
- * The band Lists, Wishlist and Games open with, markup and all, so this page reads as part of the
- * same site rather than a settings dialog floating in it. Copied rather than restyled: a heading
- * that looks right only because it has its own classes is one that drifts from the others.
+ * The band the other pages open with, so this one reads as part of the same site rather than a
+ * settings dialog floating in it.
  */
-function PageHeader() {
-    return (
-        <div className="bg-gradient-to-b from-blue-950/60 to-slate-900 border-b border-slate-700/50">
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
-                <h1 className="text-3xl sm:text-4xl font-bold text-white mb-1">My Profile</h1>
-                <p className="text-slate-400 text-sm sm:text-base">
-                    Your tracking, and the settings for your account.
-                </p>
-            </div>
-        </div>
-    );
+function ProfileHeader() {
+    return <PageHeader title="My Profile" description="Your tracking, and the settings for your account." />;
 }
 
 export function UserPage() {
@@ -62,7 +53,7 @@ export function UserPage() {
     if (loading || !user) {
         return (
             <div className="min-h-screen">
-                <PageHeader />
+                <ProfileHeader />
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
                     <div className="flex items-center justify-center py-24">
                         {loading ? (
@@ -122,7 +113,7 @@ export function UserPage() {
 
     return (
         <div className="min-h-screen">
-            <PageHeader />
+            <ProfileHeader />
 
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
                 {/* Three areas rather than two columns: stacked, they read in source order — who

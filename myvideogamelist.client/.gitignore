@@ -29,3 +29,9 @@ obj\*/
 # React Router generated types
 .react-router/
 /build/
+
+# The visual comparison's output and its signed-in session (`npm run visual`)
+/visual/__screenshots__/
+/visual/report/
+/visual/test-results/
+/visual/.auth/

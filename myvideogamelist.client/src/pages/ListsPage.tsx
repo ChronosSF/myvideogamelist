@@ -3,6 +3,7 @@ import { Link } from 'react-router';
 import { GameCard } from '@/components/GameCard';
 import { ListTable } from '@/components/ListTable';
 import { ListToolbar } from '@/components/ListToolbar';
+import { PageHeader } from '@/components/PageHeader';
 import { useLists } from '@/hooks/useLists';
 import { useAuth } from '@/hooks/useAuth';
 import { type ListId, LIST_IDS } from '@/types/list';
@@ -81,33 +82,24 @@ export function ListsPage() {
 
     return (
         <div className="min-h-screen">
-            {/* Page header */}
-            <div className="bg-gradient-to-b from-blue-950/60 to-slate-900 border-b border-slate-700/50">
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
-                    <h1 className="text-3xl sm:text-4xl font-bold text-white mb-1">My Lists</h1>
-                    <p className="text-slate-400 text-sm sm:text-base">
-                        Track your games across different stages.
-                    </p>
-
-                    {/* Tabs */}
-                    <div className="lists-tabs" role="tablist" aria-label="Game lists">
-                        {LIST_IDS.map(id => (
-                            <button
-                                key={id}
-                                id={`lists-tab-${id}`}
-                                role="tab"
-                                aria-selected={activeTab === id}
-                                aria-controls="lists-tabpanel"
-                                className={`lists-tab-btn${activeTab === id ? ' active' : ''}`}
-                                onClick={() => setActiveTab(id)}
-                            >
-                                {nameFor(id)}
-                                <span className="lists-tab-count">{lists[id].length}</span>
-                            </button>
-                        ))}
-                    </div>
+            <PageHeader title="My Lists" description="Track your games across different stages.">
+                <div className="lists-tabs" role="tablist" aria-label="Game lists">
+                    {LIST_IDS.map(id => (
+                        <button
+                            key={id}
+                            id={`lists-tab-${id}`}
+                            role="tab"
+                            aria-selected={activeTab === id}
+                            aria-controls="lists-tabpanel"
+                            className={`lists-tab-btn${activeTab === id ? ' active' : ''}`}
+                            onClick={() => setActiveTab(id)}
+                        >
+                            {nameFor(id)}
+                            <span className="lists-tab-count">{lists[id].length}</span>
+                        </button>
+                    ))}
                 </div>
-            </div>
+            </PageHeader>
 
             {/* Mutation error banner — shown when a card-level add/remove fails */}
             {mutationError && (

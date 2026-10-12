@@ -1,6 +1,7 @@
 import { useAuth } from '@/hooks/useAuth';
 import { useCalendarAdmin } from '@/hooks/useCalendarAdmin';
 import { CuratedEventsCard } from '@/components/CuratedEventsCard';
+import { PageHeader } from '@/components/PageHeader';
 import { ShowcaseNamesCard } from '@/components/ShowcaseNamesCard';
 import { PRIVATE_NO_STORE } from '@/lib/cache';
 import { NOINDEX } from '@/lib/seo';
@@ -17,20 +18,6 @@ export function meta() {
         // A crawler is served the signed-out shell, which is a page about nothing.
         NOINDEX,
     ];
-}
-
-/** The band every other page opens with, so this one reads as part of the same site. */
-function PageHeader() {
-    return (
-        <div className="bg-gradient-to-b from-blue-950/60 to-slate-900 border-b border-slate-700/50">
-            <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
-                <h1 className="text-3xl sm:text-4xl font-bold text-white mb-1">Admin</h1>
-                <p className="text-slate-400 text-sm sm:text-base">
-                    The release calendar&apos;s hand-kept dates, and the showcases it shows from IGDB.
-                </p>
-            </div>
-        </div>
-    );
 }
 
 function Notice({ children, busy = false }: { children: React.ReactNode; busy?: boolean }) {
@@ -95,7 +82,12 @@ export function AdminPage() {
 
     return (
         <div className="min-h-screen">
-            <PageHeader />
+            {/* The band every other page opens with, so this one reads as part of the same site. */}
+            <PageHeader
+                title="Admin"
+                width="4xl"
+                description="The release calendar's hand-kept dates, and the showcases it shows from IGDB."
+            />
             <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">{body}</div>
         </div>
     );
