@@ -83,6 +83,20 @@ public class GrouveeImportSourceTests
     }
 
     [Fact]
+    public void Read_NullSecondsPlayed_IsNotADurationAndDoesNotFailTheFile()
+    {
+        // The row as a real export from 12 October 2026 carries it: a run started the day before,
+        // with null where every earlier export wrote 0. Read as a non-nullable number, that one row
+        // failed the whole upload as invalid JSON.
+        var row = Single(Game(
+            dates: """[{"date_started": "2026-10-11", "date_finished": "None", "seconds_played": null, "level_of_completion": null, "platform": ""}]"""));
+
+        var run = Assert.Single(row.Playthroughs);
+        Assert.Null(run.MinutesPlayed);
+        Assert.Equal(new DateOnly(2026, 10, 11), run.StartedOn);
+    }
+
+    [Fact]
     public void Read_SecondsPlayed_BecomeWholeMinutes()
     {
         var row = Single(Game(

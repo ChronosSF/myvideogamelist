@@ -24,7 +24,8 @@ namespace MyVideoGameList.Server.Services.Import;
 /// </item>
 /// <item>
 /// <c>seconds_played</c> is <b>0</b> rather than absent when unrecorded, which must not become a
-/// zero-minute run.
+/// zero-minute run — and on some runs it is <b>null</b>, meaning the same. That one is an error rather
+/// than a wrong answer if the field is not nullable: it fails the whole upload.
 /// </item>
 /// <item>
 /// <c>level_of_completion</c> reads <b>"Main Story"</b> on every row Grouvee creates when a game is
@@ -333,10 +334,10 @@ internal sealed class GrouveeImportSource : IImportSource
         var finished = DateOf(play.DateFinished);
         var platform = Clean(play.Platform) ?? fallbackPlatform;
 
-        // Zero is Grouvee's "not recorded", not a duration. Rounded up, so a run of under a minute
-        // is a minute rather than disappearing into the same null.
-        var minutes = play.SecondsPlayed > 0
-            ? (int?)Math.Max(1, (int)Math.Round(play.SecondsPlayed / 60d))
+        // Zero and null are both Grouvee's "not recorded", not a duration. Rounded up, so a run of
+        // under a minute is a minute rather than disappearing into the same null.
+        var minutes = play.SecondsPlayed is > 0 and var seconds
+            ? (int?)Math.Max(1, (int)Math.Round(seconds / 60d))
             : null;
 
         // The completion level is deliberately not part of this test. Every row Grouvee creates on

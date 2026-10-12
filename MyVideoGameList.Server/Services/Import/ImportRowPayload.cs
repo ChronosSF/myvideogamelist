@@ -99,9 +99,9 @@ internal sealed record ImportRowPayload(
 /// and a rating already are — ADR 0050, which amends ADR 0037 decision 4.
 /// </remarks>
 /// <param name="MinutesPlayed">
-/// Never zero. A source that writes 0 for "not recorded" — Grouvee's <c>seconds_played</c> does —
-/// must produce null here: the column's check constraint requires at least a minute, and a zero
-/// would be a claim nobody made.
+/// Never zero. A source that writes 0 for "not recorded" — Grouvee's <c>seconds_played</c> does, and
+/// sometimes null — must produce null here: the column's check constraint requires at least a minute,
+/// and a zero would be a claim nobody made.
 /// </param>
 /// <param name="PlatformName">
 /// Free text, resolved to an IGDB platform id at commit time if it resolves at all. A name we

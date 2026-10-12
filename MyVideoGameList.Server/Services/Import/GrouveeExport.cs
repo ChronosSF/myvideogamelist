@@ -95,8 +95,11 @@ internal sealed class GrouveePlay
     public string? DateStarted { get; set; }
     public string? DateFinished { get; set; }
 
-    /// <summary>Zero when unrecorded, which is not a duration.</summary>
-    public long SecondsPlayed { get; set; }
+    /// <summary>
+    /// Zero when unrecorded, and on some runs null instead — an export from 12 October 2026 carries
+    /// both. Neither is a duration. Nullable because a null in a <c>long</c> fails the whole upload.
+    /// </summary>
+    public long? SecondsPlayed { get; set; }
 
     /// <summary>
     /// <c>"Main Story"</c>, <c>"Main Story + Extras"</c>, <c>"100% Completion"</c> or null. Becomes
