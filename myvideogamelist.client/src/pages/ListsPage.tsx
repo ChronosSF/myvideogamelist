@@ -104,7 +104,7 @@ export function ListsPage() {
             {/* Mutation error banner — shown when a card-level add/remove fails */}
             {mutationError && (
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-4" role="alert">
-                    <div className="flex items-center gap-3 bg-red-900/20 border border-red-700/50 rounded-lg px-4 py-3 text-sm text-red-300">
+                    <div className="flex items-center gap-3 bg-danger-900/20 border border-danger-700/50 rounded-lg px-4 py-3 text-sm text-danger-300">
                         <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M12 4a8 8 0 100 16 8 8 0 000-16z" />
                         </svg>
@@ -123,10 +123,10 @@ export function ListsPage() {
                 {signedOut && (
                     <div className="flex items-center justify-center py-24">
                         <div className="text-center">
-                            <svg className="w-14 h-14 text-slate-700 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                            <svg className="w-14 h-14 text-fg-dim mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
                             </svg>
-                            <p className="text-slate-400 font-medium mb-3">
+                            <p className="text-fg-muted font-medium mb-3">
                                 Sign in to manage your game lists.
                             </p>
                         </div>
@@ -138,20 +138,20 @@ export function ListsPage() {
                 {(authLoading || (signedIn && loading)) && (
                     <div className="flex items-center justify-center py-24">
                         <div className="flex flex-col items-center gap-4" role="status">
-                            <div className="w-10 h-10 border-4 border-blue-500/30 border-t-blue-500 rounded-full animate-spin" aria-hidden="true" />
-                            <p className="text-slate-400 text-sm">Loading your lists…</p>
+                            <div className="w-10 h-10 border-4 border-primary-500/30 border-t-primary-500 rounded-full animate-spin" aria-hidden="true" />
+                            <p className="text-fg-muted text-sm">Loading your lists…</p>
                         </div>
                     </div>
                 )}
 
                 {signedIn && !loading && error && (
                     <div className="flex items-center justify-center py-24">
-                        <div className="bg-red-900/20 border border-red-700/50 rounded-xl p-8 max-w-md text-center">
-                            <svg className="w-10 h-10 text-red-400 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                        <div className="bg-danger-900/20 border border-danger-700/50 rounded-xl p-8 max-w-md text-center">
+                            <svg className="w-10 h-10 text-danger-400 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M12 4a8 8 0 100 16 8 8 0 000-16z" />
                             </svg>
-                            <p className="text-red-300 font-medium mb-1">Failed to load lists</p>
-                            <p className="text-red-400/70 text-sm">{error}</p>
+                            <p className="text-danger-300 font-medium mb-1">Failed to load lists</p>
+                            <p className="text-danger-400/70 text-sm">{error}</p>
                         </div>
                     </div>
                 )}
@@ -170,12 +170,12 @@ export function ListsPage() {
 
                 {signedIn && !loading && !error && entries.length > 0 && visible.length === 0 && (
                     <div className="text-center py-16">
-                        <p className="text-slate-400 text-sm mb-3">
+                        <p className="text-fg-muted text-sm mb-3">
                             No games in {nameFor(activeTab)} match the platform filter.
                         </p>
                         <button
                             type="button"
-                            className="text-blue-400 text-sm font-semibold hover:underline"
+                            className="text-primary-400 text-sm font-semibold hover:underline"
                             onClick={() => setPlatformIds([])}
                         >
                             Clear the filter
@@ -187,7 +187,7 @@ export function ListsPage() {
                     <div className="flex items-center justify-center py-24">
                         <div className="text-center">
                             <svg
-                                className="w-14 h-14 text-slate-700 mx-auto mb-4"
+                                className="w-14 h-14 text-fg-dim mx-auto mb-4"
                                 fill="none"
                                 stroke="currentColor"
                                 viewBox="0 0 24 24"
@@ -195,12 +195,12 @@ export function ListsPage() {
                             >
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
                             </svg>
-                            <p className="text-slate-400 font-medium mb-3">
+                            <p className="text-fg-muted font-medium mb-3">
                                 No games in {nameFor(activeTab)} yet.
                             </p>
                             <Link
                                 to="/games"
-                                className="inline-flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold rounded-lg transition-colors"
+                                className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary-600 hover:bg-primary-500 text-on-primary text-sm font-semibold rounded-lg transition-colors"
                             >
                                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -220,7 +220,7 @@ export function ListsPage() {
                             {libraryEmpty && (
                                 <Link
                                     to="/import"
-                                    className="block mt-4 text-blue-400 text-sm font-semibold hover:underline"
+                                    className="block mt-4 text-primary-400 text-sm font-semibold hover:underline"
                                 >
                                     Bring your games across from another tracker
                                 </Link>
