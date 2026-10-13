@@ -58,32 +58,32 @@ export function UserPage() {
                     <div className="flex items-center justify-center py-24">
                         {loading ? (
                             <div className="flex flex-col items-center gap-4" role="status">
-                                <div className="w-10 h-10 border-4 border-blue-500/30 border-t-blue-500 rounded-full animate-spin" aria-hidden="true" />
-                                <p className="text-slate-400 text-sm">Loading your profile…</p>
+                                <div className="w-10 h-10 border-4 border-primary-500/30 border-t-primary-500 rounded-full animate-spin" aria-hidden="true" />
+                                <p className="text-fg-muted text-sm">Loading your profile…</p>
                             </div>
                         ) : accountDeleted ? (
                             // A live region, so the outcome of a request made from a dialog that
                             // has just vanished is announced rather than left to be discovered.
                             <div className="text-center max-w-md" role="status">
-                                <p className="text-slate-200 font-medium mb-2">
+                                <p className="text-fg font-medium mb-2">
                                     Your account has been deleted.
                                 </p>
-                                <p className="text-slate-400 text-sm mb-6">
+                                <p className="text-fg-muted text-sm mb-6">
                                     Everything you had recorded went with it.
                                 </p>
                                 <Link
                                     to="/"
-                                    className="inline-flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold rounded-lg transition-colors"
+                                    className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary-600 hover:bg-primary-500 text-on-primary text-sm font-semibold rounded-lg transition-colors"
                                 >
                                     Back to the home page
                                 </Link>
                             </div>
                         ) : (
                             <div className="text-center">
-                                <svg className="w-14 h-14 text-slate-700 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                                <svg className="w-14 h-14 text-fg-dim mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
                                 </svg>
-                                <p className="text-slate-400 font-medium">
+                                <p className="text-fg-muted font-medium">
                                     Sign in to see your profile.
                                 </p>
                             </div>

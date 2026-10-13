@@ -81,6 +81,14 @@
 
     --color-star: oklch(85.2% 0.199 91.936);  /* The user's own score, and only that: the stars that are filled (ADR 0021) */
 
+    /* The five statuses, the lifecycle's own colours: a bar in the profile's breakdown, and the activity
+       chart's moves into Playing, Finished and Dropped */
+    --color-status-backlog: oklch(55.4% 0.046 257.417);
+    --color-status-playing: oklch(62.3% 0.214 259.815);
+    --color-status-on-hold: oklch(76.9% 0.188 70.08);
+    --color-status-finished: oklch(72.3% 0.219 149.579);
+    --color-status-dropped: oklch(63.7% 0.237 25.331);
+
     /* The three playthrough types, lightest the quickest: a bar of the completion times */
     --color-playthrough-rushed: oklch(70.7% 0.165 254.624);
     --color-playthrough-normally: oklch(62.3% 0.214 259.815);
