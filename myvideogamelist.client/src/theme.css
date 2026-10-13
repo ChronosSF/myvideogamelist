@@ -79,6 +79,13 @@
     --color-score-poor-400: oklch(70.4% 0.191 22.216);
     --color-score-poor-500: oklch(63.7% 0.237 25.331);
 
+    --color-star: oklch(85.2% 0.199 91.936);  /* The user's own score, and only that: the stars that are filled (ADR 0021) */
+
+    /* The three playthrough types, lightest the quickest: a bar of the completion times */
+    --color-playthrough-rushed: oklch(70.7% 0.165 254.624);
+    --color-playthrough-normally: oklch(62.3% 0.214 259.815);
+    --color-playthrough-completionist: oklch(54.6% 0.245 262.881);
+
     --color-favourite-300: oklch(81.1% 0.111 293.571); /* The favourite's violet: its words, and its mark on a dark ground */
     --color-favourite-400: oklch(70.2% 0.183 293.541); /* The edge of a favourite's mark once the game is one */
     --color-favourite-500: oklch(60.6% 0.25 292.717);  /* The edge of the control that makes a favourite, and the base of its tints */
@@ -87,6 +94,13 @@
 
     --color-wishlist-600: oklch(59.2% 0.249 0.584);  /* The wishlist's pink, set apart from the statuses' blue: its control under the pointer */
     --color-wishlist-700: oklch(52.5% 0.223 3.958);  /* That control once the game is on the wishlist */
+
+    --color-ownership-500: oklch(70.4% 0.14 182.503);  /* How the user has a game, in teal, set apart from the statuses: its control under the pointer */
+    --color-ownership-700: oklch(51.1% 0.096 186.391); /* That control once it is chosen */
+
+    --color-multiplayer-300: oklch(82.7% 0.119 306.383); /* How a game is played together, set apart from its genres: the words */
+    --color-multiplayer-800: oklch(43.8% 0.218 303.724); /* The edge */
+    --color-multiplayer-900: oklch(38.1% 0.176 304.987); /* The tint */
 
     --color-early-access-300: oklch(87.9% 0.169 91.605); /* Early access, a game playable before it is finished: its words */
     --color-early-access-500: oklch(76.9% 0.188 70.08);  /* Its edge */

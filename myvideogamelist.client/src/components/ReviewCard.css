@@ -14,9 +14,9 @@
 
 .review-card {
     padding: 1rem;
-    border: 1px solid rgba(51, 65, 85, 0.7);
+    border: 1px solid var(--color-line);
     border-radius: 0.75rem;
-    background: rgba(15, 23, 42, 0.5);
+    background: color-mix(in srgb, var(--color-page) 50%, transparent);
 }
 
 .review-card-head {
@@ -44,13 +44,13 @@
 /* The game's title on a profile, the author's name on a game page. */
 .review-card-title {
     font-weight: 600;
-    color: #f1f5f9;
+    color: var(--color-fg);
     /* An author's name is user input and may be twenty characters with no break opportunity. */
     overflow-wrap: anywhere;
 }
 
 .review-card-title:hover {
-    color: #60a5fa;
+    color: var(--color-primary-400);
 }
 
 .review-card-sub {
@@ -60,7 +60,7 @@
     gap: 0.5rem;
     margin-top: 0.25rem;
     font-size: 0.8125rem;
-    color: #94a3b8;
+    color: var(--color-fg-muted);
 }
 
 /*
@@ -69,13 +69,13 @@
  */
 .review-score {
     font-weight: 600;
-    color: #e2e8f0;
+    color: var(--color-fg);
 }
 
 .review-body {
     font-size: 0.9375rem;
     line-height: 1.6;
-    color: #cbd5e1;
+    color: var(--color-fg-soft);
     /* Reviews are typed into a textarea, so the line breaks their author put in are meaningful. */
     white-space: pre-wrap;
     overflow-wrap: anywhere;
@@ -88,16 +88,16 @@
 .review-spoiler-btn {
     width: 100%;
     padding: 0.75rem;
-    border: 1px dashed rgba(148, 163, 184, 0.5);
+    border: 1px dashed color-mix(in srgb, var(--color-fg-muted) 50%, transparent);
     border-radius: 0.5rem;
     background: transparent;
-    color: #94a3b8;
+    color: var(--color-fg-muted);
     font-size: 0.8125rem;
     text-align: left;
     cursor: pointer;
 }
 
 .review-spoiler-btn:hover {
-    border-color: #60a5fa;
-    color: #cbd5e1;
+    border-color: var(--color-primary-400);
+    color: var(--color-fg-soft);
 }

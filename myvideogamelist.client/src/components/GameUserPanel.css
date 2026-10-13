@@ -3,8 +3,8 @@
     flex-direction: column;
     gap: 1.15rem;
     padding: 1.25rem;
-    background: rgba(30, 41, 59, 0.6);
-    border: 1px solid rgba(51, 65, 85, 0.5);
+    background: color-mix(in srgb, var(--color-surface) 60%, transparent);
+    border: 1px solid var(--color-line);
     border-radius: 0.75rem;
 }
 
@@ -12,7 +12,7 @@
     margin: 0;
     font-size: 0.875rem;
     font-weight: 600;
-    color: #ffffff;
+    color: var(--color-fg-strong);
 }
 
 .game-user-panel-section {
@@ -27,14 +27,14 @@
     font-weight: 600;
     letter-spacing: 0.07em;
     text-transform: uppercase;
-    color: #64748b;
+    color: var(--color-fg-faint);
 }
 
 .game-user-panel-hint {
     margin: 0;
     font-size: 0.72rem;
     line-height: 1.45;
-    color: #64748b;
+    color: var(--color-fg-faint);
 }
 
 /* Five statuses wrap as chips rather than stacking as full-width rows — the sidebar is narrow
@@ -49,8 +49,8 @@
     padding: 0.3rem 0.6rem;
     font-size: 0.75rem;
     font-weight: 600;
-    color: #cbd5e1;
-    background: rgba(51, 65, 85, 0.7);
+    color: var(--color-fg-soft);
+    background: color-mix(in srgb, var(--color-raised) 70%, transparent);
     border: 1px solid transparent;
     border-radius: 0.4rem;
     cursor: pointer;
@@ -58,23 +58,23 @@
 }
 
 .game-user-panel-list-btn:hover:not(:disabled) {
-    color: #ffffff;
-    background: rgba(59, 130, 246, 0.8);
+    color: var(--color-on-primary);
+    background: color-mix(in srgb, var(--color-primary-500) 80%, transparent);
 }
 
 .game-user-panel-list-btn.active {
-    color: #ffffff;
-    background: rgba(37, 99, 235, 0.9);
+    color: var(--color-on-primary);
+    background: color-mix(in srgb, var(--color-primary-600) 90%, transparent);
 }
 
 .game-user-panel-list-btn.active:hover:not(:disabled) {
-    background: rgba(220, 38, 38, 0.8);
+    background: color-mix(in srgb, var(--color-danger-600) 80%, transparent);
 }
 
 .game-user-panel-list-btn:focus-visible,
 .game-user-panel-delete:focus-visible,
 .game-user-panel-confirm button:focus-visible {
-    outline: 2px solid #3b82f6;
+    outline: 2px solid var(--color-focus);
     outline-offset: 2px;
 }
 
@@ -88,15 +88,15 @@
  * the colour says this is about the copy rather than a sixth kind of list.
  */
 .game-user-panel-ownership-btn:hover:not(:disabled) {
-    background: rgba(20, 184, 166, 0.75);
+    background: color-mix(in srgb, var(--color-ownership-500) 75%, transparent);
 }
 
 .game-user-panel-ownership-btn.active {
-    background: rgba(15, 118, 110, 0.95);
+    background: color-mix(in srgb, var(--color-ownership-700) 95%, transparent);
 }
 
 .game-user-panel-ownership-btn.active:hover:not(:disabled) {
-    background: rgba(220, 38, 38, 0.8);
+    background: color-mix(in srgb, var(--color-danger-600) 80%, transparent);
 }
 
 .game-user-panel-score {
@@ -113,14 +113,14 @@
     flex-direction: column;
     gap: 0.6rem;
     padding-top: 0.9rem;
-    border-top: 1px solid rgba(51, 65, 85, 0.5);
+    border-top: 1px solid var(--color-line);
 }
 
 .game-user-panel-delete {
     align-self: flex-start;
     font-size: 0.72rem;
     font-weight: 600;
-    color: #94a3b8;
+    color: var(--color-fg-muted);
     background: none;
     border: none;
     padding: 0;
@@ -130,7 +130,7 @@
 }
 
 .game-user-panel-delete:hover:not(:disabled) {
-    color: #f87171;
+    color: var(--color-danger-400);
 }
 
 .game-user-panel-confirm {
@@ -142,20 +142,20 @@
     padding: 0.3rem 0.7rem;
     font-size: 0.75rem;
     font-weight: 600;
-    color: #cbd5e1;
-    background: rgba(51, 65, 85, 0.7);
+    color: var(--color-fg-soft);
+    background: color-mix(in srgb, var(--color-raised) 70%, transparent);
     border: none;
     border-radius: 0.4rem;
     cursor: pointer;
 }
 
 .game-user-panel-confirm button.danger {
-    color: #ffffff;
-    background: #dc2626;
+    color: var(--color-fg-strong);
+    background: var(--color-danger-600);
 }
 
 .game-user-panel-confirm button.danger:hover {
-    background: #b91c1c;
+    background: var(--color-danger-700);
 }
 
 /*
@@ -169,9 +169,9 @@
     padding: 0.35rem 0.7rem;
     font-size: 0.78rem;
     font-weight: 600;
-    color: #cbd5e1;
-    background: rgba(51, 65, 85, 0.6);
-    border: 1px solid rgba(71, 85, 105, 0.7);
+    color: var(--color-fg-soft);
+    background: color-mix(in srgb, var(--color-raised) 60%, transparent);
+    border: 1px solid var(--color-line-strong);
     border-radius: 0.45rem;
     cursor: pointer;
     transition: background 0.12s, color 0.12s, border-color 0.12s;
@@ -183,19 +183,19 @@
 }
 
 .game-user-panel-wishlist:hover:not(:disabled) {
-    color: #ffffff;
-    background: rgba(219, 39, 119, 0.75);
-    border-color: rgba(219, 39, 119, 0.9);
+    color: var(--color-fg-strong);
+    background: color-mix(in srgb, var(--color-wishlist-600) 75%, transparent);
+    border-color: color-mix(in srgb, var(--color-wishlist-600) 90%, transparent);
 }
 
 .game-user-panel-wishlist.active {
-    color: #ffffff;
-    background: rgba(190, 24, 93, 0.9);
-    border-color: rgba(190, 24, 93, 0.9);
+    color: var(--color-fg-strong);
+    background: color-mix(in srgb, var(--color-wishlist-700) 90%, transparent);
+    border-color: color-mix(in srgb, var(--color-wishlist-700) 90%, transparent);
 }
 
 .game-user-panel-wishlist:focus-visible {
-    outline: 2px solid #3b82f6;
+    outline: 2px solid var(--color-focus);
     outline-offset: 2px;
 }
 
@@ -215,9 +215,9 @@
     padding: 0.35rem 0.7rem;
     font-size: 0.78rem;
     font-weight: 600;
-    color: #cbd5e1;
-    background: rgba(51, 65, 85, 0.6);
-    border: 1px solid rgba(71, 85, 105, 0.7);
+    color: var(--color-fg-soft);
+    background: color-mix(in srgb, var(--color-raised) 60%, transparent);
+    border: 1px solid var(--color-line-strong);
     border-radius: 0.45rem;
     cursor: pointer;
     transition: background 0.12s, color 0.12s, border-color 0.12s;
@@ -229,20 +229,20 @@
 }
 
 .game-user-panel-favourite:hover:not(:disabled) {
-    color: #ffffff;
-    background: rgba(124, 58, 237, 0.75);
-    border-color: rgba(124, 58, 237, 0.9);
+    color: var(--color-fg-strong);
+    background: color-mix(in srgb, var(--color-favourite-600) 75%, transparent);
+    border-color: color-mix(in srgb, var(--color-favourite-600) 90%, transparent);
 }
 
 .game-user-panel-favourite.active {
-    color: #ffffff;
-    background: rgba(109, 40, 217, 0.9);
-    border-color: rgba(109, 40, 217, 0.9);
+    color: var(--color-fg-strong);
+    background: color-mix(in srgb, var(--color-favourite-700) 90%, transparent);
+    border-color: color-mix(in srgb, var(--color-favourite-700) 90%, transparent);
 }
 
 .game-user-panel-favourite:focus-visible,
 .game-user-panel-retry:focus-visible {
-    outline: 2px solid #3b82f6;
+    outline: 2px solid var(--color-focus);
     outline-offset: 2px;
 }
 
@@ -255,7 +255,7 @@
     padding: 0;
     font: inherit;
     font-weight: 600;
-    color: #60a5fa;
+    color: var(--color-primary-400);
     background: none;
     border: none;
     cursor: pointer;
@@ -279,8 +279,8 @@
     flex-direction: column;
     gap: 0.25rem;
     padding: 0.55rem 0.65rem;
-    background: rgba(51, 65, 85, 0.4);
-    border: 1px solid rgba(71, 85, 105, 0.5);
+    background: color-mix(in srgb, var(--color-raised) 40%, transparent);
+    border: 1px solid var(--color-line);
     border-radius: 0.45rem;
 }
 
@@ -295,12 +295,12 @@
 .game-user-panel-playthrough-type {
     font-size: 0.75rem;
     font-weight: 600;
-    color: #e2e8f0;
+    color: var(--color-fg);
 }
 
 .game-user-panel-playthrough-meta {
     font-size: 0.7rem;
-    color: #94a3b8;
+    color: var(--color-fg-muted);
 }
 
 .game-user-panel-playthrough-hours {
@@ -308,14 +308,14 @@
     font-size: 1.05rem;
     font-weight: 600;
     line-height: 1.1;
-    color: #ffffff;
+    color: var(--color-fg-strong);
 }
 
 .game-user-panel-playthrough-notes {
     margin: 0;
     font-size: 0.74rem;
     line-height: 1.45;
-    color: #cbd5e1;
+    color: var(--color-fg-soft);
     white-space: pre-line;
 }
 
@@ -329,7 +329,7 @@
     padding: 0;
     font-size: 0.7rem;
     font-weight: 600;
-    color: #94a3b8;
+    color: var(--color-fg-muted);
     background: none;
     border: none;
     cursor: pointer;
@@ -338,11 +338,11 @@
 }
 
 .game-user-panel-playthrough-actions button:hover:not(:disabled) {
-    color: #60a5fa;
+    color: var(--color-primary-400);
 }
 
 .game-user-panel-playthrough-actions button:last-child:hover:not(:disabled) {
-    color: #f87171;
+    color: var(--color-danger-400);
 }
 
 .game-user-panel-playthrough-actions button:disabled {
@@ -352,7 +352,7 @@
 
 .game-user-panel-playthrough-actions button:focus-visible,
 .game-user-panel-playthrough-form :focus-visible {
-    outline: 2px solid #3b82f6;
+    outline: 2px solid var(--color-focus);
     outline-offset: 2px;
 }
 
@@ -363,7 +363,7 @@
     flex-direction: column;
     gap: 0.6rem;
     padding-top: 0.65rem;
-    border-top: 1px dashed rgba(71, 85, 105, 0.5);
+    border-top: 1px dashed var(--color-line);
 }
 
 .game-user-panel-field {
@@ -378,7 +378,7 @@
     font-weight: 600;
     letter-spacing: 0.05em;
     text-transform: uppercase;
-    color: #64748b;
+    color: var(--color-fg-faint);
 }
 
 .game-user-panel-field select,
@@ -388,9 +388,9 @@
     padding: 0.3rem 0.45rem;
     font: inherit;
     font-size: 0.78rem;
-    color: #e2e8f0;
-    background: rgba(15, 23, 42, 0.6);
-    border: 1px solid rgba(71, 85, 105, 0.7);
+    color: var(--color-fg);
+    background: color-mix(in srgb, var(--color-page) 60%, transparent);
+    border: 1px solid var(--color-line-strong);
     border-radius: 0.35rem;
 }
 
@@ -425,11 +425,11 @@
 
 .game-user-panel-check label {
     font-size: 0.72rem;
-    color: #94a3b8;
+    color: var(--color-fg-muted);
 }
 
 .game-user-panel-check input:focus-visible,
 .game-user-panel-review-form :focus-visible {
-    outline: 2px solid #3b82f6;
+    outline: 2px solid var(--color-focus);
     outline-offset: 2px;
 }

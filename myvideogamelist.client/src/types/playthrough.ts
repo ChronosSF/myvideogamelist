@@ -111,21 +111,21 @@ export const PLAYTHROUGH_TIERS = [
         igdbKey: 'hastily',
         label: 'Rushed',
         hint: 'Straight through the main story',
-        fill: 'bg-blue-400',
+        fill: 'bg-playthrough-rushed',
     },
     {
         key: 'normally',
         igdbKey: 'normally',
         label: 'Normally',
         hint: 'Main story plus a helping of extras',
-        fill: 'bg-blue-500',
+        fill: 'bg-playthrough-normally',
     },
     {
         key: 'completionist',
         igdbKey: 'completely',
         label: 'Completionist',
         hint: 'Everything the game has to offer',
-        fill: 'bg-blue-600',
+        fill: 'bg-playthrough-completionist',
     },
 ] as const satisfies readonly {
     key: PlaythroughTypeKey;
