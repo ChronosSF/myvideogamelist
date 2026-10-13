@@ -1,6 +1,6 @@
 # 0049. Every colour is a token, named for its job, in one file
 
-**Status:** Implemented — the token layer and the shell; the rest of the client moves area by area under #209
+**Status:** Implemented — every area of the client is on the tokens (#209). With nothing left in the ratchet's baseline, the baseline is gone and the lint refuses any raw colour outright
 
 ## Context
 
