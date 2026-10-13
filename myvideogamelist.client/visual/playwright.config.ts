@@ -1,4 +1,5 @@
 import { defineConfig } from '@playwright/test';
+import { fileURLToPath } from 'node:url';
 
 /**
  * Before-and-after screenshots, for a change that should look the same or differ only where it says
@@ -11,10 +12,20 @@ import { defineConfig } from '@playwright/test';
  * 3. With `VISUAL_BASE_URL` at the branch: `npm run visual`. Every page that differs fails, and
  *    `npx playwright show-report visual/report` shows each difference beside the baseline.
  *
- * Signed in as `VISUAL_EMAIL` and `VISUAL_PASSWORD`, a seeded `@test.local` account
- * (`scripts/seed-demo-history.mjs`). Pinned to the version whose browsers are installed, since
- * `npx playwright install` is a download nothing else here needs.
+ * Signed in as `VISUAL_EMAIL` and `VISUAL_PASSWORD`, a local `@test.local` account with games in its
+ * lists, its wishlist and its reviews. Set them in the shell, or keep them in `visual/.env`, one
+ * `NAME=value` line each, which git ignores as it does every `.env`: then every run finds them and the
+ * password never passes through a command line. A variable set in the shell wins over the file's.
+ *
+ * Pinned to the version whose browsers are installed, since `npx playwright install` is a download
+ * nothing else here needs.
  */
+try {
+    process.loadEnvFile(fileURLToPath(new URL('./.env', import.meta.url)));
+} catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+}
+
 export default defineConfig({
     testDir: '.',
     testMatch: '*.visual.ts',
@@ -33,8 +44,15 @@ export default defineConfig({
         // No pixel may differ by more than about five levels of grey. Playwright's own default lets a
         // grey move by fifty before a pixel counts, which would wave through a text colour changed for a
         // near neighbour, exactly what this exists to catch; any lower and the rounding of a colour
-        // mixed one way rather than another shows up as noise.
-        toHaveScreenshot: { maxDiffPixels: 0, threshold: 0.02, animations: 'disabled', caret: 'hide' },
+        // mixed one way rather than another shows up as noise. `screenshot.css` leaves out the one thing
+        // that is drawn differently from one load to the next.
+        toHaveScreenshot: {
+            maxDiffPixels: 0,
+            threshold: 0.02,
+            animations: 'disabled',
+            caret: 'hide',
+            stylePath: fileURLToPath(new URL('./screenshot.css', import.meta.url)),
+        },
     },
     projects: [
         { name: 'desktop', use: { viewport: { width: 1280, height: 900 } } },
