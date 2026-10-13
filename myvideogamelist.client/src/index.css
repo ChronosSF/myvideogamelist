@@ -9,11 +9,13 @@
  *
  * No root font-size, deliberately: rem sizes then follow the reader's browser setting, and
  * Tailwind's scale means what its class names say. color-scheme keeps scrollbars and native
- * form controls dark too.
+ * form controls dark too, and accent-color gives a ticked box the primary rather than the
+ * browser's own blue: it is inherited, so every native control takes it, whatever the palette.
  */
 @layer base {
     :root {
         color-scheme: dark;
+        accent-color: var(--color-primary-600);
         background-color: var(--color-page);
         color: var(--color-fg);
         font-synthesis: none;
