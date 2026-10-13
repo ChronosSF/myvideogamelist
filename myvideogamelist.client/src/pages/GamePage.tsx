@@ -13,6 +13,7 @@ import { SectionHeading } from '@/components/SectionHeading';
 import { GameRefRail } from '@/components/GameRefRail';
 import { MultiplayerSummary } from '@/components/MultiplayerSummary';
 import { ScreenshotGallery } from '@/components/ScreenshotGallery';
+import { TrailerPlayer } from '@/components/TrailerPlayer';
 import { formatCount } from '@/lib/format';
 import { pageMeta, siteConfig } from '@/lib/seo';
 import { hasCriticScore, hasMemberScore, ratingPercent } from '@/lib/score';
@@ -350,14 +351,11 @@ export function GamePage() {
                         {youtubeEmbedId && (
                             <section>
                                 <SectionHeading>Trailer</SectionHeading>
-                                <div className="game-page-trailer-embed">
-                                    <iframe
-                                        src={`https://www.youtube-nocookie.com/embed/${youtubeEmbedId}`}
-                                        title={`${game.title} trailer`}
-                                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                                        allowFullScreen
-                                    />
-                                </div>
+                                <TrailerPlayer
+                                    videoId={youtubeEmbedId}
+                                    title={game.title}
+                                    poster={details?.screenshots[0] ?? game.backgroundImageUrl ?? null}
+                                />
                             </section>
                         )}
 
