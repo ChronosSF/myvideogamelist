@@ -301,7 +301,7 @@ export function ImportReviewPage() {
                                         selects it in one click (§M3). */}
                                     <input
                                         type="checkbox"
-                                        className="mt-1 size-4 shrink-0 accent-primary-500 disabled:opacity-40"
+                                        className="mt-1 size-4 shrink-0 disabled:opacity-40"
                                         checked={row.decision === IMPORT_DECISION.import}
                                         disabled={row.gameId === null}
                                         aria-label={`Import ${row.title}`}
