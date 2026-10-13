@@ -26,19 +26,19 @@
 .score-columns-bar {
     width: 100%;
     min-height: 0;
-    background: #3b82f6;
+    background: var(--color-primary-500);
     border-radius: 0.2rem 0.2rem 0 0;
 }
 
 /* An unused score keeps its column and its tick, so the gap in the distribution is visible. */
 .score-columns-bar.empty {
     height: 2px !important;
-    background: rgba(51, 65, 85, 0.8);
+    background: color-mix(in srgb, var(--color-raised) 80%, transparent);
 }
 
 .score-columns-tick {
     margin-top: 0.3rem;
     font-size: 0.6875rem;
-    color: #94a3b8;
+    color: var(--color-fg-muted);
     font-variant-numeric: tabular-nums;
 }

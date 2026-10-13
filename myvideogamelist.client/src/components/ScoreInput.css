@@ -52,7 +52,7 @@
     display: block;
     width: var(--star);
     height: var(--star);
-    color: rgba(71, 85, 105, 0.9);
+    color: color-mix(in srgb, var(--color-fg-dim) 90%, transparent);
 }
 
 /* Clipped to the filled fraction: 0%, 50% or 100% of one star. */
@@ -62,7 +62,7 @@
     bottom: 0;
     left: 0;
     overflow: hidden;
-    color: #facc15;
+    color: var(--color-star);
 }
 
 .score-star-solid {
@@ -99,7 +99,7 @@
 }
 
 .score-stars-zone:has(input:focus-visible) {
-    outline: 2px solid #3b82f6;
+    outline: 2px solid var(--color-focus);
     outline-offset: 0;
     border-radius: 2px;
 }
@@ -111,7 +111,7 @@
     font-weight: 600;
     font-variant-numeric: tabular-nums;
     text-align: right;
-    color: #e2e8f0;
+    color: var(--color-fg);
 }
 
 .score-stars-md .score-stars-readout {
@@ -121,14 +121,14 @@
 
 .score-stars.empty .score-stars-readout {
     font-weight: 400;
-    color: #64748b;
+    color: var(--color-fg-faint);
 }
 
 .score-stars-clear {
     display: inline-flex;
     flex: none;
     padding: 0.15rem;
-    color: #64748b;
+    color: var(--color-fg-faint);
     background: none;
     border: none;
     border-radius: 0.3rem;
@@ -147,12 +147,12 @@
 }
 
 .score-stars-clear:hover:not(:disabled) {
-    color: #ffffff;
-    background: rgba(100, 116, 139, 0.6);
+    color: var(--color-fg-strong);
+    background: color-mix(in srgb, var(--color-fg-faint) 60%, transparent);
 }
 
 .score-stars-clear:focus-visible {
-    outline: 2px solid #3b82f6;
+    outline: 2px solid var(--color-focus);
     outline-offset: 1px;
 }
 

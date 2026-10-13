@@ -1,21 +1,9 @@
 {
-    "src/components/CompletionTimes.tsx": 8,
-    "src/components/GameCommunity.tsx": 17,
-    "src/components/GameNewsPanel.tsx": 2,
-    "src/components/GameRefRail.tsx": 7,
-    "src/components/GameUserPanel.css": 62,
     "src/components/ListTable.css": 19,
     "src/components/ListToolbar.css": 19,
-    "src/components/MultiplayerSummary.tsx": 5,
     "src/components/ProfileStats.css": 29,
-    "src/components/ReviewCard.css": 11,
-    "src/components/ScoreColumns.css": 3,
-    "src/components/ScoreInput.css": 9,
-    "src/components/ScreenshotGallery.tsx": 3,
     "src/pages/AdminPage.css": 34,
     "src/pages/AdminPage.tsx": 3,
-    "src/pages/GamePage.css": 16,
-    "src/pages/GamePage.tsx": 51,
     "src/pages/ImportPage.tsx": 34,
     "src/pages/ImportReviewPage.tsx": 84,
     "src/pages/ListsPage.css": 9,
@@ -24,6 +12,5 @@
     "src/pages/ProfilePage.css": 8,
     "src/pages/UserPage.css": 42,
     "src/pages/UserPage.tsx": 10,
-    "src/pages/WishlistPage.tsx": 20,
-    "src/types/playthrough.ts": 3
+    "src/pages/WishlistPage.tsx": 20
 }
