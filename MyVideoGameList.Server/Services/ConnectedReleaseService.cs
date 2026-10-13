@@ -67,7 +67,7 @@ public class ConnectedReleaseService(
     /// under its strongest membership.
     /// </summary>
     /// <remarks>
-    /// Dropped is out by default, which is §9's first question. So is an entry that has left every list
+    /// Dropped is out, as §9's first question settled. So is an entry that has left every list
     /// (ADR 0019): it is kept for a score or a review, not out of interest in what comes next.
     /// </remarks>
     internal async Task<Dictionary<int, SetMember>> ReadSetAsync(string userId, CancellationToken cancellationToken)

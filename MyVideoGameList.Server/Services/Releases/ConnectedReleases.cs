@@ -16,7 +16,7 @@ internal static class ConnectedReleases
 {
     /// <summary>
     /// F1: what a player would call a release. The rest are F2's: a bundle, a mod, a fork, a pack and —
-    /// by default, §9's second question — an update.
+    /// until #239 brings them back, as §9's second question decided — an update.
     /// </summary>
     private static readonly HashSet<int> KeptTypes =
     [

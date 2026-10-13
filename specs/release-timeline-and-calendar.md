@@ -1,6 +1,6 @@
 # Spec — What is coming for your games: a two-week line and a release calendar
 
-Status: **accepted — built under #162: the admin page (#163), the connected releases (#164), the two-week line (#165) and the calendar (#166). §9's first, second, third and sixth questions are still open, and its fifth is #128**
+Status: **accepted — built under #162: the admin page (#163), the connected releases (#164), the two-week line (#165) and the calendar (#166). §9's questions are settled but two: its second, updates, is #239, and its fifth is #128**
 Relates to: #129 (the old month view, which this replaces), #128 (the showcases and sales for signed-out
 visitors — §9's fifth question), #122 (release notifications, which need the same "what is connected to
 my games" answer), ADR [0042](../docs/decisions/0042-admins-are-named-in-configuration.md) (the admin
@@ -74,7 +74,7 @@ The set everything is derived from is the union of:
 - the wishlist (`UserWishlistItems`);
 - the entries in Backlog, Playing, On Hold and Finished.
 
-Dropped is left out by default (§9). An entry that has left every list
+Dropped is left out (§9). An entry that has left every list
 ([0019](../docs/decisions/0019-entry-survives-leaving-every-list.md)) is not in the set: it keeps a
 score or a review, not an interest in what comes next.
 
@@ -115,7 +115,7 @@ packs and 17 bundles, so the rules will have more to do than one six-month windo
 | # | Rule | Why |
 |---|---|---|
 | F1 | Keep game types 0 Main Game, 1 DLC, 2 Expansion, 4 Standalone Expansion, 6 Episode, 7 Season, 8 Remake, 9 Remaster, 10 Expanded Game and 11 Port | What a player would call a release |
-| F2 | Drop 3 Bundle, 5 Mod, 12 Fork, 13 Pack / Addon and 14 Update | Mods alone were 117 of the demo library's 320 children. Update is a judgement call (§9): Silksong's "Sea of Sorrow" is one |
+| F2 | Drop 3 Bundle, 5 Mod, 12 Fork, 13 Pack / Addon and 14 Update | Mods alone were 117 of the demo library's 320 children. Update is to be kept for the games in the set (§9, #239): Silksong's "Sea of Sorrow" is one |
 | F3 | Fold an edition — a main game (type 0) with a `version_parent` — into the game it is an edition of, following a chain of editions to its end; the chain can pass through a bundle. A remaster, expanded game or port that carries a `version_parent` is not folded: it is a product of its own, and a child of that game (R2). It also ends a chain, so an edition of one is shown as it | "Grand Theft Auto VI: Ultimate Edition" is Grand Theft Auto VI, on the same day. Of 500 games carrying a `version_parent` on 2026-09-29, 426 were main games and 61 bundles (F2 drops those), and ten were remasters, expanded games and ports. The Witcher 3's "10th Anniversary Edition" is an edition of its "Complete Edition", a bundle, which is an edition of the game. "Rust: Console Edition - Ultimate" is an edition of Rust's console port, which carries a `version_parent` of its own, and is the port |
 | F4 | Keep release statuses 6 Full Release and 3 Early Access, and rows with no status. Drop 1 Alpha, 2 Beta, 4 Offline, 5 Cancelled, 34 Advanced Access, 35 Digital Compatibility Release and 36 Next-Gen Optimization Patch Release. Drop every row of a game IGDB marks cancelled or rumoured — `game_status` 6 or 7 — whatever its rows say | Offline is a shutdown date — Final Fantasy VII: Ever Crisis on 6 Oct — not a release. Advanced Access opens a game early to buyers of one edition, and would list the game twice. 35 and 36 are an old game sold unchanged on a newer console, or patched for one. A cancelled game's rows can outlive it: on 2026-10-08 "Metro Rivals: New York" was marked cancelled with three "2026" rows still marked Full Release, and Fallout Extreme was still "to be decided" on the Xbox and the PS2 |
 | F5 | One entry per game and period, its platforms merged. Where the same game on the same platform, in the same phase, is also known more precisely inside that period — a region's day beside another's month — only the precise one is kept. The phase is early access, or a full release with or without its status. The comparison takes in what is known outside the window too, where a band's period runs past it (§8.1) | As ADR 0004 already does, and so that "Oct 2026" does not sit beside "16 Oct 2026" as a second release. An early-access day and a full release known only to its year are two milestones, not one known twice: Starseeker: Astroneer Expeditions entered early access on 11 June 2026 with its full release "2026". And a band can be outlived just outside the window: Little Witch in the Woods was "2026" on Switch and came out on Switch on 16 September, so a calendar opening on 1 October would have shown it as due sometime in a year it was already out in |
@@ -322,22 +322,26 @@ should be one service that both call.
 | C4 | `/admin`, the curated events and the showcase names |
 | C5 | Both routes declare `private, no-store` through `headers` and `NOINDEX` in `meta` |
 
-## 9. Open questions
+## 9. Questions, and their answers
 
-1. **Dropped.** Out of the set by default (§3.1). Somebody who dropped a game might still want its
-   sequel.
-2. **Updates.** Type 14 is dropped by default (F2), which also drops the occasional real content
-   drop such as Silksong's "Sea of Sorrow".
-3. **Steam's themed fests.** Not entered by default (S2).
+1. **Dropped.** Settled on #162: out of the set (§3.1), though somebody who dropped a game might
+   still want its sequel.
+2. **Updates.** Type 14 is dropped (F2), which also drops the occasional real content drop such as
+   Silksong's "Sea of Sorrow". Decided on #162 that they are to be included; #239 does it, and settles
+   whether through a series as well as for a game's own updates. Measured on #168: two in six months
+   for a 600-game library, both real content drops.
+3. **Steam's themed fests.** Settled on #162: nothing to build. A fest is shown once it is entered on
+   the admin page (S2), and none is entered by default.
 4. **The calendar's horizon.** Settled on #166 at a year: the month the calendar opens on and the twelve
    after it (K1), which is also what one request may ask for. Six months held eighteen entries for the demo
    library, and beyond the first few months most of what there is is known only to its year (§10).
 5. **Signed-out visitors.** Nothing, or the showcases and sales on their own? #128 wanted showcases
    on the shared home page, and this spec puts them on the signed-in line.
-6. **Shutdowns.** A game the user tracks going offline is dropped with every other Offline row
-   (F4). It might be worth an entry of its own.
-7. **A game with a stream of DLC.** F6 groups DLC for one game on one day. A game with dozens of DLC
-   a year, spread over as many days, may still need a cap of its own.
+6. **Shutdowns.** Settled on #162: not shown. A game the user tracks going offline is dropped with
+   every other Offline row (F4).
+7. **A game with a stream of DLC.** Settled on #168: no cap. F6 groups DLC for one game on one day,
+   which took the worst six months measured, Street Fighter 6's eight DLC on five dates, to five
+   entries; and Sims-style packs are typed Pack / Addon, which F2 drops.
 
 ## 10. Evidence — taken on 2026-09-28
 
