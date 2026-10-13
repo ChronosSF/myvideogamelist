@@ -10,6 +10,7 @@ const SIGNED_OUT: [string, string][] = [
     // Baldur's Gate 3, for the multiplayer section God of War does not have.
     ['game-multiplayer', '/games/119171'],
     ['news', '/news'],
+    ['terms', '/terms'],
     ['not-found', '/no-such-page'],
 ];
 

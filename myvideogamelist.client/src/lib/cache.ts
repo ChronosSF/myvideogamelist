@@ -85,6 +85,12 @@ export const CACHE_GAMES_LIST = sharedCache(600, 3600);
 export const CACHE_PROFILE = sharedCache(300, 3600);
 
 /**
+ * Pages whose words change only with a deploy: the terms. A game page's window, since a changed page
+ * that takes an hour to be believed costs nobody anything.
+ */
+export const CACHE_STATIC_PAGE = sharedCache(3600, 86_400);
+
+/**
  * Not-found responses. Cached briefly so a crawler hammering dead URLs does not reach the
  * origin every time, but not so long that a newly valid URL stays 404 at the edge.
  */

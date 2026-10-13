@@ -13,6 +13,7 @@ import { ListsProvider } from '@/contexts/ListsProvider';
 import { WishlistProvider } from '@/contexts/WishlistProvider';
 import { FavouritesProvider } from '@/contexts/FavouritesProvider';
 import { Navbar } from '@/components/Navbar';
+import { SiteFooter } from '@/components/SiteFooter';
 import { PRIVATE_NO_STORE } from '@/lib/cache';
 import './index.css';
 import './App.css';
@@ -82,6 +83,7 @@ export default function Root() {
                             <main className="flex-1">
                                 <Outlet />
                             </main>
+                            <SiteFooter />
                         </div>
                     </FavouritesProvider>
                 </WishlistProvider>
@@ -108,7 +110,8 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
     }
 
     // Rendered outside AuthProvider/ListsProvider — the error may well have come from
-    // one of them — so this must not use Navbar or any context-dependent component.
+    // one of them — so this must not use Navbar or any context-dependent component. The footer
+    // uses none: only the router's links, and the router is what renders this.
     return (
         <div className="app-root">
             <main className="flex-1 flex items-center justify-center py-24 px-4">
@@ -123,6 +126,7 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
                     </a>
                 </div>
             </main>
+            <SiteFooter />
         </div>
     );
 }
