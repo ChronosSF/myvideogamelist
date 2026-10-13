@@ -308,7 +308,7 @@ export function GamesPage({ loaderData }: Route.ComponentProps) {
                 {/* Search */}
                 <div className="mt-5 relative max-w-sm">
                     <svg
-                        className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 pointer-events-none"
+                        className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-fg-faint pointer-events-none"
                         fill="none"
                         stroke="currentColor"
                         viewBox="0 0 24 24"
@@ -321,7 +321,7 @@ export function GamesPage({ loaderData }: Route.ComponentProps) {
                         placeholder="Search games…"
                         value={search}
                         onChange={e => setSearch(e.target.value)}
-                        className="w-full pl-9 pr-4 py-2 bg-slate-800 border border-slate-600 rounded-lg text-white placeholder-slate-500 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        className="w-full pl-9 pr-4 py-2 bg-surface border border-line-strong rounded-lg text-fg-strong placeholder-fg-faint text-sm focus:outline-none focus:ring-2 focus:ring-focus focus:border-transparent"
                         aria-label="Search games"
                     />
                 </div>
@@ -341,20 +341,20 @@ export function GamesPage({ loaderData }: Route.ComponentProps) {
                 {loading && (
                     <div className="flex items-center justify-center py-24">
                         <div className="flex flex-col items-center gap-4">
-                            <div className="w-10 h-10 border-4 border-blue-500/30 border-t-blue-500 rounded-full animate-spin" aria-label="Loading" />
-                            <p className="text-slate-400 text-sm">Loading games…</p>
+                            <div className="w-10 h-10 border-4 border-primary-500/30 border-t-primary-500 rounded-full animate-spin" aria-label="Loading" />
+                            <p className="text-fg-muted text-sm">Loading games…</p>
                         </div>
                     </div>
                 )}
 
                 {error && (
                     <div className="flex items-center justify-center py-24">
-                        <div className="bg-red-900/20 border border-red-700/50 rounded-xl p-8 max-w-md text-center">
-                            <svg className="w-10 h-10 text-red-400 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                        <div className="bg-danger-900/20 border border-danger-700/50 rounded-xl p-8 max-w-md text-center">
+                            <svg className="w-10 h-10 text-danger-400 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M12 4a8 8 0 100 16 8 8 0 000-16z" />
                             </svg>
-                            <p className="text-red-300 font-medium mb-1">Failed to load games</p>
-                            <p className="text-red-400/70 text-sm">{error}</p>
+                            <p className="text-danger-300 font-medium mb-1">Failed to load games</p>
+                            <p className="text-danger-400/70 text-sm">{error}</p>
                         </div>
                     </div>
                 )}
@@ -362,17 +362,17 @@ export function GamesPage({ loaderData }: Route.ComponentProps) {
                 {!loading && !error && games.length === 0 && (
                     <div className="flex items-center justify-center py-24">
                         <div className="text-center max-w-md">
-                            <svg className="w-14 h-14 text-slate-700 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                            <svg className="w-14 h-14 text-fg-dim mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
                             </svg>
-                            <p className="text-slate-400 font-medium">
+                            <p className="text-fg-muted font-medium">
                                 {activeSearch ? 'No games match your search.' : narrowed ? 'No games match these filters.' : 'No games found.'}
                             </p>
                             {/* The one empty page the reader cannot explain from what they chose: a
                                 year's games rarely have eight critic reviews until long after release,
                                 so Top rated for a recent year is empty by construction. */}
                             {!activeSearch && browse.sort === 'rating' && isFiltered(browse) && (
-                                <p className="text-slate-500 text-sm mt-2">
+                                <p className="text-fg-faint text-sm mt-2">
                                     Top rated only ranks games with at least eight critic reviews, which
                                     recent and niche games often do not have yet. Popular or Newest
                                     reach further.
@@ -381,7 +381,7 @@ export function GamesPage({ loaderData }: Route.ComponentProps) {
                             {isFiltered(browse) && (
                                 <button
                                     type="button"
-                                    className="mt-4 text-blue-400 text-sm font-semibold hover:underline"
+                                    className="mt-4 text-primary-400 text-sm font-semibold hover:underline"
                                     onClick={clearFilters}
                                 >
                                     Clear filters
@@ -402,8 +402,8 @@ export function GamesPage({ loaderData }: Route.ComponentProps) {
                 {/* Infinite-scroll sentinel / load-more indicator */}
                 <div ref={sentinelRef} className="mt-8 flex justify-center">
                     {loadingMore && (
-                        <div className="flex items-center gap-3 text-slate-400 text-sm">
-                            <div className="w-5 h-5 border-2 border-blue-500/30 border-t-blue-500 rounded-full animate-spin" aria-label="Loading more" />
+                        <div className="flex items-center gap-3 text-fg-muted text-sm">
+                            <div className="w-5 h-5 border-2 border-primary-500/30 border-t-primary-500 rounded-full animate-spin" aria-label="Loading more" />
                             Loading more games…
                         </div>
                     )}

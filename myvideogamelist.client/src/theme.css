@@ -66,11 +66,27 @@
     --color-success-300: oklch(87.1% 0.15 154.449);  /* Something done or already so, in words: a finish under the pointer, the list a game is in */
     --color-success-500: oklch(72.3% 0.219 149.579); /* The same as an edge, and the base of its tints */
 
+    /* The three bands an aggregate score is coloured by (`@/lib/score`): 500 fills a badge over a cover, 300 is
+       the words on its tint, 400 a figure in a table */
+    --color-score-good-300: oklch(87.1% 0.15 154.449);
+    --color-score-good-400: oklch(79.2% 0.209 151.711);
+    --color-score-good-500: oklch(72.3% 0.219 149.579);
+    --color-score-mixed-300: oklch(90.5% 0.182 98.111);
+    --color-score-mixed-400: oklch(85.2% 0.199 91.936);
+    --color-score-mixed-500: oklch(79.5% 0.184 86.047);
+    --color-on-score-mixed: oklch(20.8% 0.042 265.755); /* Text on the mixed band's yellow, the one light fill */
+    --color-score-poor-300: oklch(80.8% 0.114 19.571);
+    --color-score-poor-400: oklch(70.4% 0.191 22.216);
+    --color-score-poor-500: oklch(63.7% 0.237 25.331);
+
     --color-favourite-300: oklch(81.1% 0.111 293.571); /* The favourite's violet: its words, and its mark on a dark ground */
     --color-favourite-400: oklch(70.2% 0.183 293.541); /* The edge of a favourite's mark once the game is one */
     --color-favourite-500: oklch(60.6% 0.25 292.717);  /* The edge of the control that makes a favourite, and the base of its tints */
     --color-favourite-600: oklch(54.1% 0.281 293.009); /* That control under the pointer */
     --color-favourite-700: oklch(49.1% 0.27 292.581);  /* That control once the game is a favourite */
+
+    --color-wishlist-600: oklch(59.2% 0.249 0.584);  /* The wishlist's pink, set apart from the statuses' blue: its control under the pointer */
+    --color-wishlist-700: oklch(52.5% 0.223 3.958);  /* That control once the game is on the wishlist */
 
     --color-early-access-300: oklch(87.9% 0.169 91.605); /* Early access, a game playable before it is finished: its words */
     --color-early-access-500: oklch(76.9% 0.188 70.08);  /* Its edge */

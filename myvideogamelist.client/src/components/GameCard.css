@@ -45,26 +45,26 @@
     font-weight: 600;
     border: none;
     cursor: pointer;
-    background: rgba(30, 41, 59, 0.92);
-    color: #cbd5e1;
+    background: color-mix(in srgb, var(--color-surface) 92%, transparent);
+    color: var(--color-fg-soft);
     transition: background 0.12s, color 0.12s;
     backdrop-filter: blur(4px);
     -webkit-backdrop-filter: blur(4px);
 }
 
 .game-card-list-btn:hover {
-    background: rgba(59, 130, 246, 0.85);
-    color: #ffffff;
+    background: color-mix(in srgb, var(--color-primary-500) 85%, transparent);
+    color: var(--color-on-primary);
 }
 
 .game-card-list-btn.active {
-    background: rgba(37, 99, 235, 0.9);
-    color: #ffffff;
+    background: color-mix(in srgb, var(--color-primary-600) 90%, transparent);
+    color: var(--color-on-primary);
 }
 
 .game-card-list-btn.active:hover {
-    background: rgba(220, 38, 38, 0.8);
-    color: #ffffff;
+    background: color-mix(in srgb, var(--color-danger-600) 80%, transparent);
+    color: var(--color-fg-strong);
 }
 
 .game-card-list-check {
@@ -79,21 +79,23 @@
  */
 .game-card-wishlist-btn {
     margin-top: 0.3rem;
-    border-top: 1px solid rgba(148, 163, 184, 0.25);
+    /* A light rule rather than a line token: it is drawn over the button's own fill, dark or the
+       wishlist's pink, and has to lighten either. A line token darkens the pink. */
+    border-top: 1px solid color-mix(in srgb, var(--color-fg-muted) 25%, transparent);
     border-top-left-radius: 0;
     border-top-right-radius: 0;
 }
 
 .game-card-wishlist-btn:hover {
-    background: rgba(219, 39, 119, 0.85);
+    background: color-mix(in srgb, var(--color-wishlist-600) 85%, transparent);
 }
 
 .game-card-wishlist-btn.active {
-    background: rgba(190, 24, 93, 0.9);
+    background: color-mix(in srgb, var(--color-wishlist-700) 90%, transparent);
 }
 
 .game-card-wishlist-error {
     font-size: 0.7rem;
     font-weight: 600;
-    color: #fca5a5;
+    color: var(--color-danger-300);
 }
