@@ -66,6 +66,9 @@
     --color-success-300: oklch(87.1% 0.15 154.449);  /* Something done or already so, in words: a finish under the pointer, the list a game is in */
     --color-success-500: oklch(72.3% 0.219 149.579); /* The same as an edge, and the base of its tints */
 
+    --color-warning-300: oklch(87.9% 0.169 91.605);  /* Something to look at before going on, in words: a row an import is unsure of */
+    --color-warning-900: oklch(41.4% 0.112 45.904);  /* The tint behind those words */
+
     /* The three bands an aggregate score is coloured by (`@/lib/score`): 500 fills a badge over a cover, 300 is
        the words on its tint, 400 a figure in a table */
     --color-score-good-300: oklch(87.1% 0.15 154.449);
