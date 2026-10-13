@@ -442,10 +442,8 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   and not `var(--color-slate-400)` either. When no token fits, add one to `theme.css`, named for its
   job, not its look. The one exception is translucent black and white, for shadows and scrims.
 
-  There is one theme, dark, and no `light:` variant (ADR 0048). Until #209 is finished,
-  `scripts/colour-baseline.json` lists the files not yet moved, with how many raw colours each still
-  has. Fewer is welcome: record it with `node scripts/check-colours.mjs --update`. More is refused. A
-  change meant to look the same is checked with `npm run visual`. See `docs/decisions/0049-*`.
+  There is one theme, dark, and no `light:` variant (ADR 0048). A change meant to look the same is
+  checked with `npm run visual`. See `docs/decisions/0049-*`.
 
 - **Two game field lists, and putting a field in the wrong one fails quietly.**
   `GameListFieldList` feeds every query; `GameDetailFieldList` is concatenated onto it only by

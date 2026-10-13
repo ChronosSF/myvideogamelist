@@ -14,23 +14,15 @@
  *    colour, and the client writes none in an inline style or an SVG attribute except the logo's mask,
  *    whose white and black are not colours anybody sees.
  *
- * Rule 2 is a ratchet while #209 moves the client onto the tokens. `scripts/colour-baseline.json` says
- * how many raw colours each file not yet moved still has. A file must have exactly that many: more is
- * a colour written by hand, and fewer means the list is out of date. A file not in the list may have
- * none, which is every new file. `node scripts/check-colours.mjs --update` rewrites the list from what
- * is there, and refuses to raise a count or add a file.
- *
  * Prints `file:line: problem` for each, and exits non-zero if there is any.
  */
-import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import postcss from 'postcss';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const src = join(root, 'src');
-const baselineFile = join(root, 'scripts', 'colour-baseline.json');
-const update = process.argv.includes('--update');
 
 /** The one file where a colour may be written. */
 const PALETTE = 'src/theme.css';
@@ -113,8 +105,6 @@ function scriptColours(text) {
 // ── Checking ──────────────────────────────────────────────────────────────────
 
 const problems = [];
-const counts = {};
-const first = {};
 
 for (const file of walk(src)) {
     const isScript = /\.(ts|tsx)$/.test(file);
@@ -129,41 +119,9 @@ for (const file of walk(src)) {
 
     if (name(file) === PALETTE || /\.test\.tsx?$/.test(file)) continue;
     const colours = isScript ? scriptColours(text) : stylesheetColours(text);
-    if (colours.length > 0) {
-        counts[name(file)] = colours.length;
-        first[name(file)] = colours[0];
+    for (const { line, colour } of colours) {
+        problems.push(`${name(file)}:${line}: ${colour} is a raw colour. Use a token from ${PALETTE} (ADR 0049).`);
     }
-}
-
-const baseline = existsSync(baselineFile) ? JSON.parse(readFileSync(baselineFile, 'utf8')) : {};
-
-if (update) {
-    const raised = Object.entries(counts).filter(([file, n]) => n > (baseline[file] ?? 0));
-    if (existsSync(baselineFile) && raised.length > 0) {
-        for (const [file, n] of raised) {
-            console.error(`${file}: ${n} raw colours, more than the ${baseline[file] ?? 0} allowed. Use the tokens in ${PALETTE}.`);
-        }
-        process.exit(1);
-    }
-    const sorted = Object.fromEntries(Object.entries(counts).sort(([a], [b]) => a.localeCompare(b)));
-    writeFileSync(baselineFile, JSON.stringify(sorted, null, 4) + '\n');
-    console.log(`${baselineFile}: ${Object.keys(sorted).length} files, ${Object.values(sorted).reduce((t, n) => t + n, 0)} raw colours.`);
-    process.exit(0);
-}
-
-for (const [file, n] of Object.entries(counts)) {
-    const allowed = baseline[file] ?? 0;
-    const { line, colour } = first[file];
-    if (n > allowed) {
-        problems.push(allowed === 0
-            ? `${file}:${line}: ${colour} is a raw colour. Use a token from ${PALETTE} (ADR 0049).`
-            : `${file}: ${n} raw colours where ${allowed} are allowed. Use a token from ${PALETTE} (ADR 0049).`);
-    } else if (n < allowed) {
-        problems.push(`${file}: ${n} raw colours where the baseline says ${allowed}. Run \`node scripts/check-colours.mjs --update\`.`);
-    }
-}
-for (const file of Object.keys(baseline).filter(file => !(file in counts))) {
-    problems.push(`${file}: no raw colours left, but still in the baseline. Run \`node scripts/check-colours.mjs --update\`.`);
 }
 
 for (const problem of problems) console.error(problem);

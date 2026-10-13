@@ -24,9 +24,9 @@ function Notice({ children, busy = false }: { children: React.ReactNode; busy?: 
     return (
         <div className="flex flex-col items-center gap-4 py-24 text-center" role="status">
             {busy && (
-                <div className="w-10 h-10 border-4 border-blue-500/30 border-t-blue-500 rounded-full animate-spin" aria-hidden="true" />
+                <div className="w-10 h-10 border-4 border-primary-500/30 border-t-primary-500 rounded-full animate-spin" aria-hidden="true" />
             )}
-            <p className="text-slate-400 text-sm">{children}</p>
+            <p className="text-fg-muted text-sm">{children}</p>
         </div>
     );
 }
