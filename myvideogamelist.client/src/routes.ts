@@ -9,6 +9,9 @@ export default [
     route('news', 'pages/NewsPage.tsx'),
     route('user', 'pages/UserPage.tsx'),
 
+    // The rules for using the site, linked from the footer on every page (issue 141).
+    route('terms', 'pages/TermsPage.tsx'),
+
     // What is coming for the user's games, a month at a time. The month is a query parameter rather
     // than a path segment, so that `/calendar` is always the month it opens on.
     route('calendar', 'pages/CalendarPage.tsx'),
