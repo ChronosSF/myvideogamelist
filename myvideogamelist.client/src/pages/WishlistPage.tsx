@@ -47,7 +47,7 @@ export function WishlistPage() {
                 description="Games you want. Separate from your lists, so a game can sit here and in Backlog at the same time."
             >
                 {items.length > 0 && (
-                    <p className="text-slate-500 text-xs mt-3">
+                    <p className="text-fg-faint text-xs mt-3">
                         {items.length} {items.length === 1 ? 'game' : 'games'}, most recently
                         added first.
                     </p>
@@ -58,7 +58,7 @@ export function WishlistPage() {
                 already put the list back, so hiding it would discard something perfectly good. */}
             {mutationError && (
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-4" role="alert">
-                    <div className="flex items-center gap-3 bg-red-900/20 border border-red-700/50 rounded-lg px-4 py-3 text-sm text-red-300">
+                    <div className="flex items-center gap-3 bg-danger-900/20 border border-danger-700/50 rounded-lg px-4 py-3 text-sm text-danger-300">
                         <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M12 4a8 8 0 100 16 8 8 0 000-16z" />
                         </svg>
@@ -70,7 +70,7 @@ export function WishlistPage() {
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
                 {signedOut && (
                     <div className="flex items-center justify-center py-24">
-                        <p className="text-slate-400 font-medium">
+                        <p className="text-fg-muted font-medium">
                             Sign in to keep a wishlist.
                         </p>
                     </div>
@@ -81,23 +81,23 @@ export function WishlistPage() {
                 {(authLoading || (signedIn && loading)) && (
                     <div className="flex items-center justify-center py-24">
                         <div className="flex flex-col items-center gap-4" role="status">
-                            <div className="w-10 h-10 border-4 border-blue-500/30 border-t-blue-500 rounded-full animate-spin" aria-hidden="true" />
-                            <p className="text-slate-400 text-sm">Loading your wishlist…</p>
+                            <div className="w-10 h-10 border-4 border-primary-500/30 border-t-primary-500 rounded-full animate-spin" aria-hidden="true" />
+                            <p className="text-fg-muted text-sm">Loading your wishlist…</p>
                         </div>
                     </div>
                 )}
 
                 {signedIn && !loading && error && (
                     <div className="flex items-center justify-center py-24" role="alert">
-                        <div className="bg-red-900/20 border border-red-700/50 rounded-xl p-8 max-w-md text-center">
-                            <p className="text-red-300 font-medium mb-1">Failed to load wishlist</p>
-                            <p className="text-red-400/70 text-sm mb-4">{error}</p>
+                        <div className="bg-danger-900/20 border border-danger-700/50 rounded-xl p-8 max-w-md text-center">
+                            <p className="text-danger-300 font-medium mb-1">Failed to load wishlist</p>
+                            <p className="text-danger-400/70 text-sm mb-4">{error}</p>
                             {/* Not decoration. Every wishlist control stays disabled while the
                                 load is unresolved, because membership is unknown — so without a
                                 retry the only way back is reloading the page. */}
                             <button
                                 type="button"
-                                className="inline-flex items-center gap-1.5 px-4 py-2 bg-red-700 hover:bg-red-600 text-white text-sm font-semibold rounded-lg transition-colors"
+                                className="inline-flex items-center gap-1.5 px-4 py-2 bg-danger-700 hover:bg-danger-600 text-fg-strong text-sm font-semibold rounded-lg transition-colors"
                                 onClick={reload}
                             >
                                 Try again
@@ -109,15 +109,15 @@ export function WishlistPage() {
                 {signedIn && !loading && !error && items.length === 0 && (
                     <div className="flex items-center justify-center py-24">
                         <div className="text-center">
-                            <svg className="w-14 h-14 text-slate-700 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                            <svg className="w-14 h-14 text-fg-dim mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
                             </svg>
-                            <p className="text-slate-400 font-medium mb-3">
+                            <p className="text-fg-muted font-medium mb-3">
                                 Nothing on your wishlist yet.
                             </p>
                             <Link
                                 to="/games"
-                                className="inline-flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold rounded-lg transition-colors"
+                                className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary-600 hover:bg-primary-500 text-on-primary text-sm font-semibold rounded-lg transition-colors"
                             >
                                 Browse Games
                             </Link>

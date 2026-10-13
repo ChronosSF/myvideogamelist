@@ -6,9 +6,9 @@
 .list-table-scroll {
     position: relative;
     overflow-x: auto;
-    border: 1px solid rgba(51, 65, 85, 0.6);
+    border: 1px solid var(--color-line);
     border-radius: 0.75rem;
-    background: rgba(30, 41, 59, 0.4);
+    background: color-mix(in srgb, var(--color-surface) 40%, transparent);
 }
 
 .list-table {
@@ -29,10 +29,10 @@
     font-weight: 600;
     letter-spacing: 0.08em;
     text-transform: uppercase;
-    color: #64748b;
+    color: var(--color-fg-faint);
     white-space: nowrap;
-    border-bottom: 1px solid rgba(71, 85, 105, 0.7);
-    background: rgba(15, 23, 42, 0.5);
+    border-bottom: 1px solid var(--color-line-strong);
+    background: color-mix(in srgb, var(--color-page) 50%, transparent);
 }
 
 .list-table thead th button {
@@ -50,11 +50,11 @@
 }
 
 .list-table thead th button:hover {
-    color: #93c5fd;
+    color: var(--color-primary-300);
 }
 
 .list-table thead th button:focus-visible {
-    outline: 2px solid #3b82f6;
+    outline: 2px solid var(--color-focus);
     outline-offset: 3px;
     border-radius: 2px;
 }
@@ -67,13 +67,13 @@
 
 .list-table-caret.active {
     opacity: 1;
-    color: #60a5fa;
+    color: var(--color-primary-400);
 }
 
 .list-table tbody td {
     padding: 0.5rem 0.75rem;
-    border-bottom: 1px solid rgba(51, 65, 85, 0.4);
-    color: #cbd5e1;
+    border-bottom: 1px solid var(--color-line);
+    color: var(--color-fg-soft);
     vertical-align: middle;
 }
 
@@ -82,7 +82,7 @@
 }
 
 .list-table tbody tr:hover td {
-    background: rgba(51, 65, 85, 0.35);
+    background: color-mix(in srgb, var(--color-raised) 35%, transparent);
 }
 
 .list-table tbody tr.pending {
@@ -111,7 +111,7 @@
     height: 3rem;
     object-fit: cover;
     border-radius: 0.25rem;
-    background: rgba(15, 23, 42, 0.8);
+    background: color-mix(in srgb, var(--color-page) 80%, transparent);
 }
 
 .col-title {
@@ -120,12 +120,12 @@
 
 .col-title a {
     font-weight: 600;
-    color: #e2e8f0;
+    color: var(--color-fg);
     text-decoration: none;
 }
 
 .col-title a:hover {
-    color: #60a5fa;
+    color: var(--color-primary-400);
 }
 
 .col-score {
@@ -149,7 +149,7 @@
 .list-table-platforms {
     display: block;
     font-size: 0.75rem;
-    color: #64748b;
+    color: var(--color-fg-faint);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -163,7 +163,7 @@
 .list-table-remove {
     display: inline-flex;
     padding: 0.3rem;
-    color: #64748b;
+    color: var(--color-fg-faint);
     background: none;
     border: none;
     border-radius: 0.35rem;
@@ -172,12 +172,12 @@
 }
 
 .list-table-remove:hover:not(:disabled) {
-    color: #ffffff;
-    background: rgba(220, 38, 38, 0.75);
+    color: var(--color-fg-strong);
+    background: color-mix(in srgb, var(--color-danger-600) 75%, transparent);
 }
 
 .list-table-remove:focus-visible {
-    outline: 2px solid #3b82f6;
+    outline: 2px solid var(--color-focus);
     outline-offset: 2px;
 }
 

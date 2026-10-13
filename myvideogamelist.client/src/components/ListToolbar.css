@@ -22,7 +22,7 @@
     font-weight: 600;
     letter-spacing: 0.06em;
     text-transform: uppercase;
-    color: #64748b;
+    color: var(--color-fg-faint);
 }
 
 .list-toolbar-select,
@@ -35,9 +35,9 @@
     padding: 0.35rem 0.6rem;
     font-size: 0.8rem;
     font-weight: 500;
-    color: #cbd5e1;
-    background: rgba(30, 41, 59, 0.7);
-    border: 1px solid rgba(71, 85, 105, 0.6);
+    color: var(--color-fg-soft);
+    background: color-mix(in srgb, var(--color-surface) 70%, transparent);
+    border: 1px solid var(--color-line-strong);
     border-radius: 0.5rem;
     cursor: pointer;
     transition: background 0.12s, border-color 0.12s, color 0.12s;
@@ -47,8 +47,8 @@
 .list-toolbar-button:hover,
 .list-toolbar-direction:hover,
 .list-toolbar-view:hover {
-    color: #ffffff;
-    border-color: rgba(59, 130, 246, 0.6);
+    color: var(--color-fg-strong);
+    border-color: color-mix(in srgb, var(--color-primary-500) 60%, transparent);
 }
 
 .list-toolbar-select:focus-visible,
@@ -56,7 +56,7 @@
 .list-toolbar-direction:focus-visible,
 .list-toolbar-view:focus-visible,
 .list-toolbar-panel input:focus-visible {
-    outline: 2px solid #3b82f6;
+    outline: 2px solid var(--color-focus);
     outline-offset: 2px;
 }
 
@@ -67,9 +67,9 @@
 
 .list-toolbar-button.active,
 .list-toolbar-view.active {
-    color: #ffffff;
-    background: rgba(37, 99, 235, 0.85);
-    border-color: rgba(37, 99, 235, 0.9);
+    color: var(--color-on-primary);
+    background: color-mix(in srgb, var(--color-primary-600) 85%, transparent);
+    border-color: color-mix(in srgb, var(--color-primary-600) 90%, transparent);
 }
 
 /* ---- platform filter panel ---- */
@@ -97,8 +97,8 @@
     max-height: 22rem;
     overflow: hidden;
     padding: 0.6rem;
-    background: #0f172a;
-    border: 1px solid rgba(71, 85, 105, 0.8);
+    background: var(--color-page);
+    border: 1px solid var(--color-line-strong);
     border-radius: 0.6rem;
     box-shadow: 0 12px 30px rgba(0, 0, 0, 0.45);
 }
@@ -113,15 +113,15 @@
     font-weight: 600;
     letter-spacing: 0.07em;
     text-transform: uppercase;
-    color: #64748b;
-    border-bottom: 1px solid rgba(71, 85, 105, 0.4);
+    color: var(--color-fg-faint);
+    border-bottom: 1px solid var(--color-line);
 }
 
 .list-toolbar-panel-head button {
     font-size: 0.68rem;
     font-weight: 600;
     letter-spacing: 0.04em;
-    color: #60a5fa;
+    color: var(--color-primary-400);
     background: none;
     border: none;
     cursor: pointer;
@@ -146,19 +146,19 @@
     gap: 0.5rem;
     padding: 0.3rem 0.25rem;
     font-size: 0.82rem;
-    color: #cbd5e1;
+    color: var(--color-fg-soft);
     border-radius: 0.35rem;
     cursor: pointer;
 }
 
 .list-toolbar-panel label:hover {
-    background: rgba(51, 65, 85, 0.6);
+    background: color-mix(in srgb, var(--color-raised) 60%, transparent);
 }
 
 .list-toolbar-panel input {
     width: 0.95rem;
     height: 0.95rem;
-    accent-color: #2563eb;
+    accent-color: var(--color-primary-600);
     cursor: pointer;
 }
 
@@ -166,7 +166,7 @@
     margin: 0.5rem 0.25rem 0;
     font-size: 0.68rem;
     line-height: 1.4;
-    color: #64748b;
+    color: var(--color-fg-faint);
 }
 
 /* The layout buttons are icon-only until there is room for their labels. */
