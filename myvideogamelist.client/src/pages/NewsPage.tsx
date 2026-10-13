@@ -52,7 +52,7 @@ export function NewsPage() {
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
                 {signedOut && (
                     <div className="flex items-center justify-center py-24">
-                        <p className="text-slate-400 font-medium">
+                        <p className="text-fg-muted font-medium">
                             Sign in to see news for the games you track.
                         </p>
                     </div>
@@ -62,20 +62,20 @@ export function NewsPage() {
                 {(authLoading || (signedIn && loading)) && (
                     <div className="flex items-center justify-center py-24">
                         <div className="flex flex-col items-center gap-4" role="status">
-                            <div className="w-10 h-10 border-4 border-blue-500/30 border-t-blue-500 rounded-full animate-spin" aria-hidden="true" />
-                            <p className="text-slate-400 text-sm">Loading news for your games…</p>
+                            <div className="w-10 h-10 border-4 border-primary-500/30 border-t-primary-500 rounded-full animate-spin" aria-hidden="true" />
+                            <p className="text-fg-muted text-sm">Loading news for your games…</p>
                         </div>
                     </div>
                 )}
 
                 {signedIn && !loading && error !== null && (
                     <div className="flex items-center justify-center py-24" role="alert">
-                        <div className="bg-red-900/20 border border-red-700/50 rounded-xl p-8 max-w-md text-center">
-                            <p className="text-red-300 font-medium mb-1">Failed to load news</p>
-                            <p className="text-red-400/70 text-sm mb-4">{error}</p>
+                        <div className="bg-danger-900/20 border border-danger-700/50 rounded-xl p-8 max-w-md text-center">
+                            <p className="text-danger-300 font-medium mb-1">Failed to load news</p>
+                            <p className="text-danger-400/70 text-sm mb-4">{error}</p>
                             <button
                                 type="button"
-                                className="inline-flex items-center gap-1.5 px-4 py-2 bg-red-700 hover:bg-red-600 text-white text-sm font-semibold rounded-lg transition-colors"
+                                className="inline-flex items-center gap-1.5 px-4 py-2 bg-danger-700 hover:bg-danger-600 text-fg-strong text-sm font-semibold rounded-lg transition-colors"
                                 onClick={reload}
                             >
                                 Try again
@@ -90,17 +90,17 @@ export function NewsPage() {
                 {ready && news.length === 0 && (
                     <div className="flex items-center justify-center py-24">
                         <div className="text-center max-w-md">
-                            <p className="text-slate-300 font-medium mb-2">
+                            <p className="text-fg-soft font-medium mb-2">
                                 No news for your games right now.
                             </p>
-                            <p className="text-slate-400 text-sm mb-5">
+                            <p className="text-fg-muted text-sm mb-5">
                                 News comes from Steam, so a game with no Steam page never has any. Add
                                 what you are playing or waiting for, and its patch notes will turn up
                                 here.
                             </p>
                             <Link
                                 to="/games"
-                                className="inline-flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold rounded-lg transition-colors"
+                                className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary-600 hover:bg-primary-500 text-on-primary text-sm font-semibold rounded-lg transition-colors"
                             >
                                 Browse games
                             </Link>
@@ -120,7 +120,7 @@ export function NewsPage() {
                         </div>
 
                         {/* Says what the list is not, since it is not everything. */}
-                        <p className="mt-6 text-xs text-slate-500">
+                        <p className="mt-6 text-xs text-fg-faint">
                             What you are playing counts first, then your wishlist and backlog. When
                             there are more games than can be followed at once, finished and dropped
                             games are the ones left out.
