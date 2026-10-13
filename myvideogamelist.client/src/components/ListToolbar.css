@@ -158,7 +158,6 @@
 .list-toolbar-panel input {
     width: 0.95rem;
     height: 0.95rem;
-    accent-color: var(--color-primary-600);
     cursor: pointer;
 }
 
