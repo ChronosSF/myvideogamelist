@@ -9,9 +9,9 @@ interface AdminStatsCardProps {
     reload: () => void;
 }
 
-/** "27 Jul", in UTC, the same wherever it is read. */
+/** "Jul 27", in UTC, the same wherever it is read, and written as the calendar's cards below write a day. */
 function weekOf(week: AdminStatsWeek): string {
-    return new Date(`${week.starts}T00:00:00Z`).toLocaleDateString('en-GB', {
+    return new Date(`${week.starts}T00:00:00Z`).toLocaleDateString('en-US', {
         day: 'numeric',
         month: 'short',
         timeZone: 'UTC',
@@ -100,13 +100,13 @@ export function AdminStatsCard({ stats, error, reload }: AdminStatsCardProps) {
                     Imports are counted while the retention sweep holds them: a finished or cancelled one goes a
                     week after it closes, an unfinished one two weeks after its last decision. What every import
                     brought in stays counted as From imports.
-                    {accounts.undated > 0 && (
-                        <>
-                            {' '}{formatCount(accounts.undated)} {accounts.undated === 1 ? 'account is' : 'accounts are'} from
-                            before sign-up dates were recorded, so in no week&rsquo;s sign-ups.
-                        </>
-                    )}
                 </p>
+                {accounts.undated > 0 && (
+                    <p className="admin-hint">
+                        {formatCount(accounts.undated)} {accounts.undated === 1 ? 'account is' : 'accounts are'} from
+                        before sign-up dates were recorded, so in no week&rsquo;s sign-ups.
+                    </p>
+                )}
 
                 <div className="mt-6 overflow-x-auto">
                     <table className="w-full text-sm">

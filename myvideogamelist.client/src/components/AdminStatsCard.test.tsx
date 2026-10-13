@@ -28,9 +28,9 @@ describe('AdminStatsCard', () => {
 
         const rows = within(screen.getByRole('table')).getAllByRole('row').slice(1);
         expect(rows).toHaveLength(12);
-        expect(within(rows[0]).getByRole('rowheader')).toHaveTextContent('12 Oct');
+        expect(within(rows[0]).getByRole('rowheader')).toHaveTextContent('Oct 12');
         expect(within(rows[0]).getAllByRole('cell')[0]).toHaveTextContent('4');
-        expect(within(rows[11]).getByRole('rowheader')).toHaveTextContent('27 Jul');
+        expect(within(rows[11]).getByRole('rowheader')).toHaveTextContent('Jul 27');
     });
 
     it('says how many accounts are older than the sign-up dates, only when there are some', () => {
