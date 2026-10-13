@@ -38,7 +38,7 @@ Open `https://localhost:58546`.
 | `npm run lint` | ESLint, then `scripts/check-colours.mjs`: every colour is a token |
 | `npm run typecheck` | `react-router typegen && tsc -b` — use this, never bare `tsc` |
 | `npm run test` | Vitest, jsdom + Testing Library. `npm run test:watch` to iterate |
-| `npm run visual` | Before-and-after screenshots of the pages, compared pixel by pixel, for a change meant to look the same. Needs two dev servers and a seeded account; `visual/playwright.config.ts` says how. Not run by CI |
+| `npm run visual` | Before-and-after screenshots of the pages, compared pixel by pixel, for a change meant to look the same. Needs two dev servers and a local test account, whose email and password it reads from the shell or from `visual/.env` (ignored by git); `visual/playwright.config.ts` says how. Not run by CI |
 | `npm run build` | Production build |
 | `dotnet test MyVideoGameList.Server.Tests/MyVideoGameList.Server.Tests.csproj` | Server unit tests |
 | `dotnet ef migrations add <Name>` | From `MyVideoGameList.Server/` |
