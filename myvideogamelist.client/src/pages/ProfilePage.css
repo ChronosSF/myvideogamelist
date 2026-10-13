@@ -29,8 +29,8 @@
     width: 3.5rem;
     height: 3.5rem;
     border-radius: 9999px;
-    background: linear-gradient(135deg, #2563eb, #4f46e5);
-    color: #fff;
+    background: linear-gradient(135deg, var(--color-primary-600), var(--color-primary-700));
+    color: var(--color-on-primary);
     font-size: 1.5rem;
     font-weight: 700;
 }
@@ -38,7 +38,7 @@
 .public-profile-name {
     font-size: 1.75rem;
     font-weight: 700;
-    color: #f1f5f9;
+    color: var(--color-fg);
     /* The name is user input and may be twenty characters with no break opportunity in it. */
     overflow-wrap: anywhere;
 }
@@ -46,7 +46,7 @@
 .public-profile-since {
     margin-top: 0.25rem;
     font-size: 0.875rem;
-    color: #94a3b8;
+    color: var(--color-fg-muted);
 }
 
 .public-profile-footer {
@@ -56,7 +56,7 @@
 }
 
 .public-profile-footer a {
-    color: #60a5fa;
+    color: var(--color-primary-400);
 }
 
 .public-profile-footer a:hover {
@@ -78,11 +78,11 @@
     gap: 1rem;
     margin-top: 1rem;
     font-size: 0.875rem;
-    color: #94a3b8;
+    color: var(--color-fg-muted);
 }
 
 .review-pages a {
-    color: #60a5fa;
+    color: var(--color-primary-400);
 }
 
 .review-pages a:hover {
