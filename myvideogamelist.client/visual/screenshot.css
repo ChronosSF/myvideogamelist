@@ -1,10 +1,14 @@
 /*
  * Applied to every screenshot (playwright.config.ts), in both runs alike.
  *
- * The logo is hidden. Headless Chromium draws the edges of its masked SVG (Logo.tsx) a level or two
+ * The logo is left out. Headless Chromium draws the edges of its masked SVG (Logo.tsx) a level or two
  * differently from one load to the next, a few pixels at a time, so a page nothing touched could fail
  * on them. A change to the logo itself is seen by eye.
+ *
+ * Emptied rather than hidden: the box stays, so nothing moves, and nothing inside it is painted. With
+ * `visibility: hidden` on the footer's copy, Chromium drew every piece of text on the page in greyscale
+ * instead of with its usual coloured anti-aliasing, so every shot differed from one taken without it.
  */
-svg[viewBox='0 0 64 64'] {
-    visibility: hidden;
+svg[viewBox='0 0 64 64'] > * {
+    display: none;
 }
