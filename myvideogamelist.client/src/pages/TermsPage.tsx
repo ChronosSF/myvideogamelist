@@ -59,14 +59,14 @@ export default function TermsPage() {
 
                     <h2 className={H2}>Your account</h2>
                     <p className={P}>
-                        You sign in with an email address and a password. Keep the password to yourself: you are
-                        responsible for what is done with your account. You need to be at least 13 years old to have
-                        one, or older if the law where you live requires it.
+                        You sign in with your email address or your username, and a password. Keep the password to
+                        yourself: you are responsible for what is done with your account. You need to be at least 13
+                        years old to have one, or older if the law where you live requires it.
                     </p>
                     <p className={P}>
-                        Your username is public. It is how other people see you, and the address of your profile if
-                        you publish it. Don&rsquo;t choose one that pretends to be somebody else or that is
-                        offensive; we may suspend an account that does.
+                        Your username is how other people see you once you publish your profile, and the address of
+                        that profile. Until then the site shows it to nobody else. Don&rsquo;t choose one that
+                        pretends to be somebody else or that is offensive; we may suspend an account that does.
                     </p>
 
                     <h2 className={H2}>What you put on the site</h2>
