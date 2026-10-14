@@ -61,4 +61,27 @@ public class ApplicationUser : IdentityUser
     /// is what the cooldown in <c>UserController</c> is measured from.
     /// </remarks>
     public DateTimeOffset? UserNameChangedAt { get; set; }
+
+    /// <summary>
+    /// When the account was created, or null for one created before this was recorded.
+    /// </summary>
+    /// <remarks>
+    /// Stamped by <see cref="Services.UserNameClaimService"/>, which every new account goes through.
+    /// Counted for the admin statistics' sign-ups each week, and never shown one account at a time
+    /// (ADR 0051). In the account's data export with the rest of it.
+    /// </remarks>
+    public DateTimeOffset? CreatedAt { get; set; }
+
+    /// <summary>
+    /// The first moment the account's owner was seen signed in on the last day they were, or null
+    /// before that was recorded.
+    /// </summary>
+    /// <remarks>
+    /// Written at most once a UTC day, by <c>GET /api/auth/me</c>, which the client asks on every page
+    /// it loads (<see cref="Services.AccountActivity"/>). A day is all the admin statistics need —
+    /// seen today, in the last week, in the last month — and anything finer would be a record of
+    /// somebody's every visit that nothing reads. Counted, never shown one account at a time (ADR
+    /// 0051), and in the account's data export.
+    /// </remarks>
+    public DateTimeOffset? LastSeenAt { get; set; }
 }

@@ -78,13 +78,30 @@ public class AdminPolicyTests
         Assert.False(await Allows(Policy("alice"), SignedIn(OtherId, userName: "alice")));
     }
 
+    /// <summary>Every controller routed under <c>api/admin</c>, found rather than listed.</summary>
+    private static IEnumerable<Type> FoundAdminControllers() =>
+        typeof(CalendarAdminController).Assembly.GetTypes()
+            .Where(type => type.GetCustomAttribute<Microsoft.AspNetCore.Mvc.RouteAttribute>()?.Template
+                .StartsWith("api/admin", StringComparison.OrdinalIgnoreCase) == true);
+
+    public static TheoryData<Type> AdminControllers() => new(FoundAdminControllers());
+
     [Fact]
-    public void CalendarAdminController_EveryAction_IsBehindTheAdminPolicy()
+    public void AdminControllers_AreFoundByTheirRoute()
+    {
+        // The theory below is only as good as the search that feeds it: one that found nothing would
+        // pass with nothing checked.
+        Assert.Contains(typeof(CalendarAdminController), FoundAdminControllers());
+        Assert.Contains(typeof(AdminStatsController), FoundAdminControllers());
+    }
+
+    [Theory]
+    [MemberData(nameof(AdminControllers))]
+    public void AdminController_EveryAction_IsBehindTheAdminPolicy(Type controller)
     {
         // A2. The policy is on the class so that an action added later is guarded without anybody
-        // remembering to guard it; [AllowAnonymous] on any one of them would undo that silently.
-        var controller = typeof(CalendarAdminController);
-
+        // remembering to guard it; [AllowAnonymous] on any one of them would undo that silently. Found
+        // by route, so that a new admin controller is checked without anybody remembering to add it.
         Assert.Contains(
             controller.GetCustomAttributes<AuthorizeAttribute>(),
             attribute => attribute.Policy == AdminPolicy.Name);

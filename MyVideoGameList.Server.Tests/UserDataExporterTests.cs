@@ -54,7 +54,9 @@ public class UserDataExporterTests
         string theme = "dark",
         string listView = ListViewModes.Tiles,
         string userName = "someone",
-        string profileVisibility = ProfileVisibility.Private)
+        string profileVisibility = ProfileVisibility.Private,
+        DateTimeOffset? createdAt = null,
+        DateTimeOffset? lastSeenAt = null)
     {
         db.Users.Add(new ApplicationUser
         {
@@ -63,7 +65,9 @@ public class UserDataExporterTests
             Email = email,
             Theme = theme,
             ListView = listView,
-            ProfileVisibility = profileVisibility
+            ProfileVisibility = profileVisibility,
+            CreatedAt = createdAt,
+            LastSeenAt = lastSeenAt
         });
         db.SaveChanges();
     }
@@ -301,6 +305,26 @@ public class UserDataExporterTests
         Assert.Empty(export.Favourites);
         Assert.Empty(export.ListSortPreferences);
         Assert.Empty(export.ListNames);
+    }
+
+    [Fact]
+    public async Task ExportAsync_Account_CarriesWhenItWasCreatedAndLastSeen()
+    {
+        // Recorded about the user rather than entered by them, which is the stronger reason the export
+        // owes them (ADR 0051). An account from before they were recorded exports them as null.
+        using var db = NewDb();
+        var createdAt = new DateTimeOffset(2026, 3, 1, 9, 0, 0, TimeSpan.Zero);
+        var lastSeenAt = new DateTimeOffset(2026, 6, 14, 18, 30, 0, TimeSpan.Zero);
+        AddAccount(db, UserId, "mine@test.local", createdAt: createdAt, lastSeenAt: lastSeenAt);
+        AddAccount(db, OtherUserId, "older@test.local", userName: "older");
+
+        var export = await NewExporter(db).ExportAsync(UserId, default);
+        var older = await NewExporter(db).ExportAsync(OtherUserId, default);
+
+        Assert.Equal(createdAt, export.Account.CreatedAt);
+        Assert.Equal(lastSeenAt, export.Account.LastSeenAt);
+        Assert.Null(older.Account.CreatedAt);
+        Assert.Null(older.Account.LastSeenAt);
     }
 
     [Fact]

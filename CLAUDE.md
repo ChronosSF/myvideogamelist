@@ -124,6 +124,9 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   `dotnet user-secrets set "Admin:AccountIds:0" "<account id>"`. An id, never a username — a name
   can be given up and claimed by somebody else. A later admin page goes behind the same policy, on
   the controller's class, and edits reference data only, never a user's. See `docs/decisions/0042-*`.
+  Its statistics count and never list: totals across every account, nothing that selects one. The
+  `LastSeenAt` they read is written by `GET /api/auth/me`, once a UTC day, the one write behind a
+  `GET`, so keep that endpoint uncached. See `docs/decisions/0051-*`.
 
 - **IGDB is the source of truth for game data, but a library renders from `CachedGames`.** There
   are no local game/genre/platform tables; they were removed, and `UserGameEntry.GameId` holds an
