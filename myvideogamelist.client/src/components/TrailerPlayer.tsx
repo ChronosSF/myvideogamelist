@@ -17,6 +17,9 @@ interface TrailerPlayerProps {
  * art, which the page already loads from IGDB. YouTube does not say what even its privacy-enhanced
  * player keeps in the visitor's browser, and a player loaded only on request needs no consent banner
  * to ask first. The press starts it playing, so it is still one press to watch.
+ *
+ * A press is for one game's trailer, so a page that stays mounted while the game changes keys the
+ * player on the game, as the game page does.
  */
 export function TrailerPlayer({ videoId, title, poster }: TrailerPlayerProps) {
     const [playing, setPlaying] = useState(false);

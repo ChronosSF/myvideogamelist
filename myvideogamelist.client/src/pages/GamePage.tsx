@@ -347,11 +347,15 @@ export function GamePage() {
                             </section>
                         )}
 
-                        {/* Trailer */}
+                        {/* Trailer. Keyed on the game, as the sidebar's panel is: this page stays
+                            mounted from one game to the next, and a player still pressed for the
+                            last game would load this one's from YouTube, and start it playing,
+                            without anybody asking. */}
                         {youtubeEmbedId && (
                             <section>
                                 <SectionHeading>Trailer</SectionHeading>
                                 <TrailerPlayer
+                                    key={game.id}
                                     videoId={youtubeEmbedId}
                                     title={game.title}
                                     poster={details?.screenshots[0] ?? game.backgroundImageUrl ?? null}
