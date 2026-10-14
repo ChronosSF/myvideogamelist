@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
-import { createRoutesStub } from 'react-router';
+import userEvent from '@testing-library/user-event';
+import { createRoutesStub, Link, Outlet } from 'react-router';
 import { GamePage, meta } from '@/pages/GamePage';
 import type { AuthContextValue } from '@/contexts/AuthContext';
 import type { UseGameCommunityResult } from '@/hooks/useGameCommunity';
@@ -146,6 +147,29 @@ describe("GamePage hero's member score", () => {
         renderPage();
 
         expect(screen.queryByText(/^Member score:/)).not.toBeInTheDocument();
+    });
+});
+
+describe('GamePage trailer', () => {
+    it('waits for its own press on the next game, after the last one played', async () => {
+        const actor = userEvent.setup();
+        const celeste = game({ id: 1, title: 'Celeste', trailerUrl: 'https://www.youtube.com/watch?v=celeste' });
+        const hades = game({ id: 2, title: 'Hades', trailerUrl: 'https://www.youtube.com/watch?v=hades' });
+        // The link sits outside the page, which so stays mounted from one game to the next, as it
+        // does when a similar game is followed.
+        const Stub = createRoutesStub([{
+            Component: () => <><Link to="/games/2">Next game</Link><Outlet /></>,
+            children: [{ id: 'game', path: '/games/:id', Component: GamePage, loader: () => ({ game: hades }) }],
+        }]);
+        render(<Stub initialEntries={['/games/1']} hydrationData={{ loaderData: { game: { game: celeste } } }} />);
+
+        await actor.click(screen.getByRole('button', { name: /Play trailer/ }));
+        expect(screen.getByTitle('Celeste trailer')).toBeInTheDocument();
+
+        await actor.click(screen.getByRole('link', { name: 'Next game' }));
+        expect(await screen.findByRole('heading', { level: 1, name: 'Hades' })).toBeInTheDocument();
+        expect(screen.queryByTitle('Hades trailer')).not.toBeInTheDocument();
+        expect(screen.getByRole('button', { name: /Play trailer/ })).toBeInTheDocument();
     });
 });
 
