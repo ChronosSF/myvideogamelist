@@ -47,7 +47,8 @@ when an account was created, and when its owner was last around.
    methods that say so, because a `GET` can be forged from another site. `LastSeenAt` is the exception,
    deliberately: a forged `GET` records only that the browser it came from was signed in, which it was.
    It is best effort. A lost race with another write to the account comes back as a failed
-   `IdentityResult` and is left for the next page.
+   `IdentityResult` and is left for the next page. The endpoint says `no-store`, like every answer
+   about one person, so a visit always reaches the server rather than a cache answering for it.
 
 5. **Both dates are in the account's data export** ([0024](0024-the-ownership-contract.md)). They are recorded
    about the member rather than entered by them, which is the stronger reason the export owes them. The
