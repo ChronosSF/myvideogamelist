@@ -27,6 +27,7 @@ const CHILD_OF: Record<ReleaseKind, string> = {
     remaster: 'Remaster of',
     expanded_game: 'New edition of',
     port: 'Port of',
+    update: 'Update for',
 };
 
 /** The game's place in the set as a sentence about it: "you finished God of War". */

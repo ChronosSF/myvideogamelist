@@ -66,7 +66,7 @@ public record UndatedEntryDto(
 /// <param name="Kind">
 /// What the release is, from IGDB's game type: <c>game</c>, <c>dlc</c>, <c>expansion</c>,
 /// <c>standalone_expansion</c>, <c>episode</c>, <c>season</c>, <c>remake</c>, <c>remaster</c>,
-/// <c>expanded_game</c> or <c>port</c>.
+/// <c>expanded_game</c>, <c>port</c> or <c>update</c>.
 /// </param>
 /// <param name="Platforms">What it arrives on in this period. Empty when IGDB did not say.</param>
 public record ConnectedReleaseDto(

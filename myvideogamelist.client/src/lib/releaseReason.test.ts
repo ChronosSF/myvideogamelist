@@ -70,6 +70,7 @@ describe('releaseReason for a child of the game (R2)', () => {
         ['remaster', 'list', 'finished', 'Remaster of Street Fighter 6, which you finished'],
         ['remake', 'wishlist', null, 'Remake of Street Fighter 6, on your wishlist'],
         ['game', 'list', 'backlog', 'New edition of Street Fighter 6, which you plan to play'],
+        ['update', 'favourite', null, 'Update for Street Fighter 6, a favourite'],
     ] as const)('a %s for a game in the %s', (kind, membership, list, said) => {
         const release = connectedRelease({
             kind,

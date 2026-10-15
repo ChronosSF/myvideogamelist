@@ -308,6 +308,7 @@ public class ConnectedReleaseService(
         IgdbGameTypes.Remaster => "remaster",
         IgdbGameTypes.ExpandedGame => "expanded_game",
         IgdbGameTypes.Port => "port",
+        IgdbGameTypes.Update => "update",
         _ => "game",
     };
 }

@@ -15,8 +15,8 @@ namespace MyVideoGameList.Server.Services.Releases;
 internal static class ConnectedReleases
 {
     /// <summary>
-    /// F1: what a player would call a release. The rest are F2's: a bundle, a mod, a fork, a pack and —
-    /// until #239 brings them back, as §9's second question decided — an update.
+    /// F1: what a player would call a release. The rest are F2's: a bundle, a mod, a fork and a pack. An
+    /// update is kept on a condition of its own, which the relations decide (<see cref="SeriesCanBringIn"/>).
     /// </summary>
     private static readonly HashSet<int> KeptTypes =
     [
@@ -30,6 +30,7 @@ internal static class ConnectedReleases
         IgdbGameTypes.Remaster,
         IgdbGameTypes.ExpandedGame,
         IgdbGameTypes.Port,
+        IgdbGameTypes.Update,
     ];
 
     /// <summary>
@@ -288,15 +289,39 @@ internal static class ConnectedReleases
             Offer(ReleaseRelation.Child, parentId, null);
 
         // R3, through any series the release shares with a game in the set.
-        foreach (var series in shown.Series.Concat(released.Series).DistinctBy(s => s.Id))
+        if (SeriesCanBringIn(released, shown))
         {
-            if (!setSeries.TryGetValue(series.Id, out var members)) continue;
-            foreach (var member in members.Where(id => id != shown.Id && id != released.Id))
-                Offer(ReleaseRelation.Series, member, series);
+            foreach (var series in shown.Series.Concat(released.Series).DistinctBy(s => s.Id))
+            {
+                if (!setSeries.TryGetValue(series.Id, out var members)) continue;
+                foreach (var member in members.Where(id => id != shown.Id && id != released.Id))
+                    Offer(ReleaseRelation.Series, member, series);
+            }
         }
 
         return candidates.OrderBy(r => r, ReasonOrder).FirstOrDefault();
     }
+
+    /// <summary>
+    /// F1's condition on an update: it is shown for the game it updates (R2), or for itself (R1), and never
+    /// because a series is all that connects it to the set (R3).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Through a series, every update of every member of every series in the set would come in. On 2026-10-15
+    /// Minecraft: Wilderness Bound, an update to Minecraft: Java Edition, was in the Minecraft series with
+    /// Minecraft Dungeons, so it would have reached everybody who played Minecraft Dungeons.
+    /// </para>
+    /// <para>
+    /// Asked of what a row is shown as as well as of its own game: IGDB holds editions of updates — "Fallout 76:
+    /// The Pitt - Deluxe Edition" is a main game whose <c>version_parent</c> is the update "The Pitt" — and F3
+    /// shows such an edition as the update, which a series would otherwise bring in by the edition's row.
+    /// </para>
+    /// </remarks>
+    private static bool SeriesCanBringIn(CalendarGame released, CalendarGame shown) =>
+        !IsUpdate(released) && !IsUpdate(shown);
+
+    private static bool IsUpdate(CalendarGame game) => game.GameType == IgdbGameTypes.Update;
 
     /// <summary>
     /// Whether the same game on the same platform, in the same phase, has a row that says more inside this

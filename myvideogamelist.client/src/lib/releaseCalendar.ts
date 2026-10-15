@@ -272,8 +272,11 @@ const UNDATED_BANDS: readonly { kind: UndatedKind; label: string }[] = [
     { kind: 'series', label: 'From the same series' },
 ];
 
-/** What a child adds to its game, where the rest of a game's children make it again. */
-const ADD_ONS: ReadonlySet<ReleaseKind> = new Set<ReleaseKind>(['dlc', 'expansion', 'standalone_expansion', 'episode', 'season']);
+/**
+ * What a child adds to its game, where the rest of a game's children make it again. An update adds to the
+ * game it updates too, and some are as big as an expansion: Silksong's "Sea of Sorrow" is one.
+ */
+const ADD_ONS: ReadonlySet<ReleaseKind> = new Set<ReleaseKind>(['dlc', 'expansion', 'standalone_expansion', 'episode', 'season', 'update']);
 
 /**
  * The band an entry goes in, from its strongest release — the one whose reason a group is shown with, so

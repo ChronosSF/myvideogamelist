@@ -17,10 +17,10 @@ public enum ReleaseRelation
     /// <summary>R1: the game itself — a new platform, or an early-access game reaching its full release.</summary>
     Itself,
 
-    /// <summary>R2: a game whose <c>parent_game</c> is one of the set's — DLC, an expansion, a remaster.</summary>
+    /// <summary>R2: a game whose <c>parent_game</c> is one of the set's — DLC, an expansion, a remaster, an update.</summary>
     Child,
 
-    /// <summary>R3: another game in one of the set's series.</summary>
+    /// <summary>R3: another game in one of the set's series. Never an update, which only its own game brings in (F1).</summary>
     Series,
 }
 

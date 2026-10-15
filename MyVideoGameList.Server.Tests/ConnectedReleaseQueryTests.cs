@@ -97,6 +97,19 @@ public class ConnectedReleaseQueryTests
     }
 
     [Fact]
+    public void BuildConnectedReleasesQuery_AsksForEveryGameType_LeavingWhichToKeepToTheRules()
+    {
+        // Whether an update is kept depends on how the set connects to it (F1), which a row's game_type cannot
+        // say — and an edition F3 shows as an update carries a main game's type on its own row. A game_type
+        // filter added to these queries to save a page would drop updates, or let one in, with nothing logged.
+        var dated = IgdbService.BuildConnectedReleasesQuery("game = (1)", From, To, withPeriods: true, offset: 0);
+        var undated = IgdbService.BuildUndatedReleasesQuery("game = (1)", offset: 0);
+
+        Assert.DoesNotContain("game_type", dated);
+        Assert.DoesNotContain("game_type", undated);
+    }
+
+    [Fact]
     public void BuildReleaseRowsQuery_AsksForTheGamesAndTheirEditions_OverTheDays_WhateverThePrecision()
     {
         // F5 compares the game a row is shown as, so an edition's day counts; and a month, a quarter or a
@@ -124,7 +137,7 @@ public class ConnectedReleaseQueryTests
 
 /// <summary>
 /// The calendar's queries against IGDB's own JSON, recorded on 2026-09-29 and, for the games with no date
-/// and the cancelled one, on 2026-10-08 — the joint no test of the rules can reach. <c>parent_game</c> asked for bare arrives as a number where
+/// and the cancelled one, on 2026-10-08, and for the update on 2026-10-15 — the joint no test of the rules can reach. <c>parent_game</c> asked for bare arrives as a number where
 /// <c>IgdbGame</c> would read an object, and a misnamed <c>date_format</c> would read every row as
 /// known to the day, with nothing logged.
 /// </summary>
@@ -163,6 +176,11 @@ public class CalendarIgdbJsonTests
           {
             "id": 373617, "cover": { "id": 498680, "image_id": "coaos8" }, "first_release_date": 1798675200,
             "name": "Metro Rivals: New York", "game_status": 6, "game_type": 0
+          },
+          {
+            "id": 381684, "cover": { "id": 515356, "image_id": "cob1ng" }, "first_release_date": 1798675200,
+            "name": "Hollow Knight: Silksong - Sea of Sorrow", "parent_game": 115289,
+            "collections": [ { "id": 5702, "name": "Hollow Knight" } ], "game_type": 14
           }
         ]
         """;
@@ -252,6 +270,20 @@ public class CalendarIgdbJsonTests
         Assert.Equal(52189, ultimate.VersionParentId);
         Assert.Null(ultimate.ParentGameId);
         Assert.Empty(ultimate.Series);
+    }
+
+    [Fact]
+    public async Task GetCalendarGamesAsync_BindsAnUpdateAndTheGameItUpdates()
+    {
+        // Recorded on 2026-10-15: 14 is IGDB's Update, and parent_game is the game it updates — all F1 has to go
+        // on to keep Sea of Sorrow for somebody with Silksong and not for somebody with Hollow Knight.
+        var (service, _) = NewService();
+
+        var seaOfSorrow = (await service.GetCalendarGamesAsync([381684]))[381684];
+
+        Assert.Equal(IgdbGameTypes.Update, seaOfSorrow.GameType);
+        Assert.Equal(115289, seaOfSorrow.ParentGameId);
+        Assert.Equal([new SeriesRef(5702, "Hollow Knight")], seaOfSorrow.Series);
     }
 
     [Fact]
