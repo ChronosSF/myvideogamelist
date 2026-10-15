@@ -3,7 +3,9 @@
 **Status:** Implemented. Two statements below are corrected by
 [0044](0044-what-the-deployment-walkthrough-settled.md): behind a CDN `ForwardLimit` is not "2"
 but stays 1 with the balancer preserving the header, and `UseHttpsRedirection` cannot redirect
-in a container that exposes no HTTPS port — the hazard is configuring one.
+in a container that exposes no HTTPS port — the hazard is configuring one. §5's document policy,
+which left out `script-src`, is amended by
+[0053](0053-a-documents-scripts-carry-its-renders-nonce.md).
 
 ## Context
 
@@ -130,6 +132,8 @@ major.
 Router hydrates from an inline script, so restricting scripts means a per-request nonce handed to
 `<Scripts nonce>`, and a wrong nonce is a blank page rather than a warning. That is a change of its
 own, not a line in this one.
+
+> **Later note.** That change is [0053](0053-a-documents-scripts-carry-its-renders-nonce.md).
 
 HSTS ships alongside: a year, subdomains included, deployed only. Preload stays off — submission to
 the browsers' preload list is slow and awkward to undo, and belongs to whoever owns the domain

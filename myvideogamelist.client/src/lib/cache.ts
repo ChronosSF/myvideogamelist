@@ -24,6 +24,20 @@
 export const PRIVATE_NO_STORE = 'private, no-store';
 
 /**
+ * Whether a shared cache may store a response sent with this `Cache-Control`.
+ *
+ * True unless it says `private` or `no-store` in so many words, so that a missing header counts as
+ * shared: `entry.server.tsx` sends such a document whole rather than streaming it (ADR 0053), and
+ * the direction to be wrong in is the one that costs a slower first byte. `private="Set-Cookie"`
+ * names fields rather than the response, which stays storable, so it counts as shared too.
+ */
+export function mayBeShared(cacheControl: string | null): boolean {
+    return !(cacheControl ?? '')
+        .split(',')
+        .some((directive) => /^(?:private|no-store)$/i.test(directive.trim()));
+}
+
+/**
  * Cacheable by shared caches for `sMaxAge` seconds, then servable stale for `staleWhileRevalidate`
  * more while the CDN refreshes in the background.
  *

@@ -49,8 +49,12 @@ component plus optional `loader`, `meta`, `links`, `headers` and `ErrorBoundary`
   loader: `meta` also runs in the browser, where the environment does not exist. A per-user route
   adds `NOINDEX` instead, and a `noindex` page gets no canonical URL. See `docs/decisions/0036-*`.
 - A resource route (`src/resources/`) returns its own `Response` and never reaches
-  `entry.server.tsx`. Send it through `resourceResponse`, which adds what that file would have, and
-  state its `Cache-Control` like any other route.
+  `entry.server.tsx`. Send it through `resourceResponse`, which adds the headers that file would
+  have, with a content policy that loads nothing in place of a document's nonce, and state its
+  `Cache-Control` like any other route.
+- **Never render an inline `<script>` of our own without deciding how it is admitted.** A document's
+  `script-src` names only its render's nonce and `'self'` (`docs/decisions/0053-*`). A script whose
+  text never changes goes in by its hash in `documentPolicy`.
 - Route types come from `react-router typegen`; import them as `./+types/<RouteName>`.
 
 ## Talking to the API

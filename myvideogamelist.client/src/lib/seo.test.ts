@@ -7,6 +7,7 @@ import {
     robotsTxt,
     siteConfig,
 } from '@/lib/seo';
+import { RESOURCE_POLICY } from '@/lib/securityHeaders';
 
 const PRODUCTION: SiteConfig = { siteUrl: 'https://myvideogamelist.net', indexable: true };
 const STAGING: SiteConfig = { siteUrl: 'https://dev.myvideogamelist.net', indexable: false };
@@ -86,6 +87,8 @@ describe('resourceResponse', () => {
         const response = resourceResponse('body', 'text/plain; charset=utf-8', 'private, no-store');
 
         expect(response.headers.get('X-Content-Type-Options')).toBe('nosniff');
+        // Not a document's policy: that one names a nonce, and a resource has no scripts to carry it.
+        expect(response.headers.get('Content-Security-Policy')).toBe(RESOURCE_POLICY);
         expect(response.headers.get('Cache-Control')).toBe('private, no-store');
         expect(response.headers.get('Content-Type')).toBe('text/plain; charset=utf-8');
         // The test environment configures nothing, so this is a deployment not for indexing.
