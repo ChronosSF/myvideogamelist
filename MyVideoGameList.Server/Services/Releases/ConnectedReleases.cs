@@ -16,7 +16,8 @@ internal static class ConnectedReleases
 {
     /// <summary>
     /// F1: what a player would call a release. The rest are F2's: a bundle, a mod, a fork and a pack. An
-    /// update is kept on a condition of its own, which the relations decide (<see cref="SeriesCanBringIn"/>).
+    /// update is kept on two conditions of its own: no series alone brings one in
+    /// (<see cref="SeriesCanBringIn"/>), and none is announced without a date (<see cref="ComposeUndated"/>).
     /// </summary>
     private static readonly HashSet<int> KeptTypes =
     [
@@ -48,13 +49,13 @@ internal static class ConnectedReleases
     /// <summary>A known row inside the window, and why it is shown.</summary>
     private sealed record Kept(Known Known, ReleaseReason Reason);
 
-    /// <summary>What an F6 group is named after: a series, or the game a run of DLC belongs to.</summary>
+    /// <summary>What an F6 group is named after: a series, or the game its releases are children of.</summary>
     private sealed record GroupKey(string Id, string Name);
 
     /// <param name="set">The user's games, each under its strongest membership.</param>
     /// <param name="games">
     /// Every game IGDB described: the set's own, each row's, the editions' ancestors, and the games what is
-    /// shown is DLC for.
+    /// shown is a child of.
     /// </param>
     /// <param name="rows">
     /// The rows in the window, and any outside it that IGDB was asked for so that F5 can compare a band
@@ -131,6 +132,12 @@ internal static class ConnectedReleases
             if (!IsRelease(released, row.Status)) continue;
 
             var shown = Fold(released, games);
+
+            // F1: no update is announced without a date. IGDB keeps updates nobody came back to date — of the 22
+            // with no date anywhere on 2026-10-15, 19 had been there more than a year, Valheim's "The Bog Witch"
+            // since October 2024 — so for an update, no date anywhere is no sign of one still to come.
+            if (IsUpdate(shown)) continue;
+
             if (released.Dated || shown.Dated) continue;
             if (!IsAnnounced(released) || !IsAnnounced(shown)) continue;
             if (BestReason(released, shown, set, setSeries, games) is not { } reason) continue;
@@ -289,7 +296,7 @@ internal static class ConnectedReleases
             Offer(ReleaseRelation.Child, parentId, null);
 
         // R3, through any series the release shares with a game in the set.
-        if (SeriesCanBringIn(released, shown))
+        if (SeriesCanBringIn(shown))
         {
             foreach (var series in shown.Series.Concat(released.Series).DistinctBy(s => s.Id))
             {
@@ -313,13 +320,13 @@ internal static class ConnectedReleases
     /// Minecraft Dungeons, so it would have reached everybody who played Minecraft Dungeons.
     /// </para>
     /// <para>
-    /// Asked of what a row is shown as as well as of its own game: IGDB holds editions of updates — "Fallout 76:
-    /// The Pitt - Deluxe Edition" is a main game whose <c>version_parent</c> is the update "The Pitt" — and F3
-    /// shows such an edition as the update, which a series would otherwise bring in by the edition's row.
+    /// Asked of the game a row is shown as, whose series R3 reads, rather than of the row's own. A row of an
+    /// update is shown as the update, since F3 folds only a main game; but F3 shows an edition of an update as
+    /// the update. "Asphalt Legends Unite: Supercharged Edition" is a main game in no series, and is shown as the
+    /// update Asphalt Legends Unite, which is in the Asphalt series.
     /// </para>
     /// </remarks>
-    private static bool SeriesCanBringIn(CalendarGame released, CalendarGame shown) =>
-        !IsUpdate(released) && !IsUpdate(shown);
+    private static bool SeriesCanBringIn(CalendarGame shown) => !IsUpdate(shown);
 
     private static bool IsUpdate(CalendarGame game) => game.GameType == IgdbGameTypes.Update;
 
@@ -376,13 +383,16 @@ internal static class ConnectedReleases
             .ToList();
 
     /// <summary>
-    /// F6: releases in the same period that belong together become one entry — the same series, or,
-    /// with no series between them, the same game they are DLC for. A group of one is just a release.
+    /// F6: releases in the same period that belong together become one entry — the same series, or, with no
+    /// series between them, the same game: its children, and the game itself when it is out in that period too.
+    /// A group of one is just a release.
     /// </summary>
     /// <remarks>
-    /// The parent game is this service's extension of F6, for §9's seventh question: on 13 October 2026
-    /// Street Fighter 6 had two DLC rows for one character, "Year 4 - Arjun" and "Additional Character -
-    /// Arjun &amp; Outfit 2", and neither is in a series.
+    /// The game is this service's extension of F6, for §9's seventh question: on 13 October 2026 Street
+    /// Fighter 6 had two DLC rows for one character, "Year 4 - Arjun" and "Additional Character - Arjun &amp;
+    /// Outfit 2", and neither is in a series. The game itself is in the group because IGDB can hold one event
+    /// twice: on 9 September 2026 Valheim left early access on seven platforms, and "Valheim: 1.0", an update,
+    /// came out on the same seven that day.
     /// </remarks>
     private static List<ReleaseEntry> Group(
         List<ConnectedRelease> releases,
@@ -416,7 +426,7 @@ internal static class ConnectedReleases
 
     /// <summary>
     /// One period's releases — or the undated ones, which are one list — in the groups F6 makes of them: by
-    /// series, then by the game they are DLC for.
+    /// series, then by game.
     /// </summary>
     /// <remarks>
     /// A game can be in several of the set's series, so the series a release groups under is chosen across the
@@ -454,15 +464,22 @@ internal static class ConnectedReleases
             left.RemoveAll(l => l.Series.Any(s => s.Id == series.Id));
         }
 
-        // What no series gathered, by the game it is DLC for: F6's "with no series between them".
-        foreach (var byParent in left.GroupBy(l => l.Release.Game.ParentGameId is int parentId && games.TryGetValue(parentId, out var parent)
-                     ? new GroupKey($"game:{parentId}", parent.Name)
-                     : null))
-        {
-            groups.Add((byParent.Key, byParent.Select(l => l.Release).ToList()));
-        }
+        // What no series gathered, by its game: F6's "with no series between them".
+        foreach (var byGame in left.GroupBy(l => GameKey(l.Release.Game, games)))
+            groups.Add((byGame.Key, byGame.Select(l => l.Release).ToList()));
 
         return groups;
+    }
+
+    /// <summary>
+    /// The game a release groups under when no series gathers it: the game it is a child of, or a game itself,
+    /// so that a game and its children in one period are one entry. Null when IGDB did not describe that game,
+    /// since no group can be named after it.
+    /// </summary>
+    private static GroupKey? GameKey(CalendarGame game, IReadOnlyDictionary<int, CalendarGame> games)
+    {
+        var id = game.ParentGameId ?? game.Id;
+        return games.TryGetValue(id, out var named) ? new GroupKey($"game:{id}", named.Name) : null;
     }
 
     /// <summary>The series the set's games are in, and which of the set's games are in each.</summary>

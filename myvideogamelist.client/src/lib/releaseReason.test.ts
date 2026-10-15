@@ -141,6 +141,26 @@ describe('entryReason for a group (F6)', () => {
         expect(entryReason(arjun)).toBe("DLC for Street Fighter 6, which you're playing");
     });
 
+    it('calls a run of updates for one game what they are, in the plural', () => {
+        const fallout76 = { relation: 'child', gameId: 103020, title: 'Fallout 76', membership: 'list', list: 'playing' } as const;
+        const updates = releaseEntry('2026-09-15', [
+            connectedRelease({ gameId: 405074, kind: 'update', title: 'Fallout 76: Infestations', reason: fallout76 }),
+            connectedRelease({ gameId: 418501, kind: 'update', title: 'Fallout 76: The Slasher', reason: fallout76 }),
+        ], 'Fallout 76');
+
+        expect(entryReason(updates)).toBe("Updates for Fallout 76, which you're playing");
+    });
+
+    it('calls DLC and an update for one game by neither name', () => {
+        const zenless = { relation: 'child', gameId: 200551, title: 'Zenless Zone Zero', membership: 'list', list: 'playing' } as const;
+        const mixed = releaseEntry('2026-10-21', [
+            connectedRelease({ gameId: 1, kind: 'dlc', title: 'A DLC', reason: zenless }),
+            connectedRelease({ gameId: 422423, kind: 'update', title: 'Zenless Zone Zero: Update 3.3 - Journey to the Sky', reason: zenless }),
+        ], 'Zenless Zone Zero');
+
+        expect(entryReason(mixed)).toBe("Connected to Zenless Zone Zero, which you're playing");
+    });
+
     it('is the release reason itself for an entry of one', () => {
         const single = releaseEntry('2026-10-16', [connectedRelease({ platforms: [SWITCH_2] })]);
 

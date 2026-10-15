@@ -130,8 +130,8 @@ public class ConnectedReleasesTests
         Row(933516, GtaViUltimate, "2026-11-19", Ps5),
         Row(933517, GtaViUltimate, "2026-11-19", SeriesXs),
         Row(925689, XenobladeIiiSwitch2, "2026-12-03", Switch2),
-        // Sea of Sorrow's year-only row was recorded with these, and is with the tests of updates below: kept now
-        // (F1), a band for the whole of 2026 would be in every window these tests ask about.
+        // Sea of Sorrow's "2026" was recorded with these and is with the tests of updates below: F1 keeps it now,
+        // and its band for the whole of 2026 would be in every 2026 window these tests ask about.
         // Known only to the month: stored as its first day.
         Row(903415, Evercold, "2027-01-01", Ps5, dateFormat: 1),
         Row(903417, Evercold, "2027-01-01", Pc, dateFormat: 1),
@@ -139,6 +139,7 @@ public class ConnectedReleasesTests
         Row(923036, SfTifaPass, "2027-03-31", Switch2, dateFormat: 3),
         // Known only to the fourth quarter.
         Row(953866, KingdomHeartsIv, "2027-12-31", Switch2, dateFormat: 6),
+        // Known only to the year: stored as the year's last day (spec §4).
         Row(922726, ReVeronica, "2027-12-31", Switch2, dateFormat: 2),
     ];
 
@@ -330,6 +331,21 @@ public class ConnectedReleasesTests
         Assert.Equal("Xenoblade Chronicles 3: Nintendo Switch 2 Edition", release.Game.Name);
         Assert.Equal(ReleaseRelation.Child, release.Reason.Relation);
         Assert.Equal(SetMembership.Wishlist, release.Reason.Membership);
+    }
+
+    [Theory]
+    [InlineData(IgdbGameTypes.Bundle)]
+    [InlineData(IgdbGameTypes.Mod)]
+    [InlineData(IgdbGameTypes.Fork)]
+    [InlineData(IgdbGameTypes.Pack)]
+    public void Compose_AChildOfATypeF2Drops_IsNotARelease(int gameType)
+    {
+        // Made up: Street Fighter 6's Arjun pass under each type F2 drops, which is all the rule reads. As the DLC
+        // it is, it would be shown to somebody playing Street Fighter 6.
+        var retyped = new Dictionary<int, CalendarGame>(Games) { [SfArjunPass.Id] = SfArjunPass with { GameType = gameType } };
+        var set = Set((StreetFighter6, SetMembership.List, ListStatusKeys.Playing));
+
+        Assert.Empty(ConnectedReleases.Compose(set, retyped, [Row(962456, SfArjunPass, "2026-10-13", Switch2)], new DateOnly(2026, 10, 13), new DateOnly(2026, 10, 14)));
     }
 
     [Fact]
@@ -636,13 +652,14 @@ public class ConnectedReleasesTests
     }
 
     // Read on 2026-10-15, for updates (F1): one known to the day, one known only to its year, one a series reaches
-    // with nothing else connecting it, an edition of one, and one with no date at all. Sea of Sorrow is the game
-    // read on 2026-09-29, unchanged since.
+    // with nothing else connecting it, an edition of one, one out the day its game left early access, and one with
+    // no date at all. Sea of Sorrow is the game read on 2026-09-29, unchanged since.
     private static readonly PlatformDto Mac = new(14, "Mac", "Mac", null, null);
     private static readonly PlatformDto Linux = new(3, "Linux", "Linux", null, null);
 
     private static readonly SeriesRef Minecraft = new(1130, "Minecraft");
     private static readonly SeriesRef MinecraftDungeonsSeries = new(13877, "Minecraft Dungeons");
+    private static readonly SeriesRef Asphalt = new(891, "Asphalt");
 
     private static readonly CalendarGame ZenlessZoneZero = Game(200551, "Zenless Zone Zero", IgdbGameTypes.MainGame);
     private static readonly CalendarGame JourneyToTheSky = Game(422423, "Zenless Zone Zero: Update 3.3 - Journey to the Sky", IgdbGameTypes.Update, parent: 200551);
@@ -650,16 +667,18 @@ public class ConnectedReleasesTests
     private static readonly CalendarGame MinecraftJava = Game(121, "Minecraft: Java Edition", IgdbGameTypes.MainGame, series: Minecraft);
     private static readonly CalendarGame MinecraftDungeons = Game(110474, "Minecraft Dungeons", IgdbGameTypes.MainGame, series: [MinecraftDungeonsSeries, Minecraft]);
     private static readonly CalendarGame WildernessBound = Game(416571, "Minecraft: Wilderness Bound", IgdbGameTypes.Update, parent: 121, series: Minecraft);
-    private static readonly CalendarGame Fallout76 = Game(103020, "Fallout 76", IgdbGameTypes.MainGame, series: Fallout);
-    private static readonly CalendarGame ThePitt = Game(217785, "Fallout 76: The Pitt", IgdbGameTypes.Update, parent: 103020);
-    private static readonly CalendarGame ThePittDeluxe = Game(218503, "Fallout 76: The Pitt - Deluxe Edition", IgdbGameTypes.MainGame, versionParent: 217785);
+    private static readonly CalendarGame Asphalt8 = Game(23306, "Asphalt 8: Airborne", IgdbGameTypes.MainGame, series: Asphalt);
+    private static readonly CalendarGame AsphaltLegends = Game(23314, "Asphalt Legends", IgdbGameTypes.MainGame, series: Asphalt);
+    private static readonly CalendarGame AsphaltLegendsUnite = Game(293780, "Asphalt Legends Unite", IgdbGameTypes.Update, parent: 23314, series: Asphalt);
+    private static readonly CalendarGame UniteSupercharged = Game(363017, "Asphalt Legends Unite: Supercharged Edition", IgdbGameTypes.MainGame, versionParent: 293780);
     private static readonly CalendarGame Valheim = Game(104967, "Valheim", IgdbGameTypes.MainGame);
+    private static readonly CalendarGame Valheim10 = Game(417164, "Valheim: 1.0", IgdbGameTypes.Update, parent: 104967);
     private static readonly CalendarGame TheBogWitch = Game(319145, "Valheim: The Bog Witch", IgdbGameTypes.Update, parent: 104967) with { Dated = false };
 
     private static readonly Dictionary<int, CalendarGame> UpdateGames = new[]
     {
         Silksong, SeaOfSorrow, ZenlessZoneZero, JourneyToTheSky, HollowKnightGame, MinecraftJava, MinecraftDungeons,
-        WildernessBound, Fallout4, Fallout76, ThePitt, ThePittDeluxe, Valheim, TheBogWitch,
+        WildernessBound, Asphalt8, AsphaltLegends, AsphaltLegendsUnite, UniteSupercharged, Valheim, Valheim10, TheBogWitch,
     }.ToDictionary(g => g.Id);
 
     /// <summary>Sea of Sorrow, known only to be due in 2026 on every platform Silksong is on.</summary>
@@ -755,35 +774,62 @@ public class ConnectedReleasesTests
     }
 
     [Fact]
-    public void Compose_AnEditionOfAnUpdate_IsTheUpdate_WhichOnlyItsOwnGameBringsIn()
+    public void Compose_AnEditionOfAnUpdate_IsTheUpdate_WhichNoSeriesBringsIn()
     {
-        // F3 shows "Fallout 76: The Pitt - Deluxe Edition", a main game, as the update it is an edition of. The
-        // Deluxe Edition's Fallout series is made up: none of the five editions of updates IGDB held on
-        // 2026-10-15 was in a series, and a series is what would bring the update in by the edition's row.
-        var deluxeInTheSeries = new Dictionary<int, CalendarGame>(UpdateGames) { [ThePittDeluxe.Id] = ThePittDeluxe with { Series = [Fallout] } };
-        List<ReleaseRow> rows =
-        [
-            Row(391969, ThePittDeluxe, "2022-09-13", XboxOne, status: null),
-            Row(394971, ThePitt, "2022-09-13", Pc, status: null),
-            Row(394972, ThePitt, "2022-09-13", XboxOne, status: null),
-            Row(394973, ThePitt, "2022-09-13", SeriesXs, status: null),
-        ];
-        var day = (From: new DateOnly(2022, 9, 13), To: new DateOnly(2022, 9, 14));
+        // F3 shows "Asphalt Legends Unite: Supercharged Edition", a main game in no series, as the update it is an
+        // edition of, and R3 reads the series of what a row is shown as: Asphalt Legends Unite is in the Asphalt
+        // series. The edition's Switch row, 10 August 2024, for somebody who finished Asphalt 8: Airborne, which
+        // only that series connects it to — and for somebody playing Asphalt Legends, the game the update updates.
+        List<ReleaseRow> rows = [Row(791066, UniteSupercharged, "2024-08-10", Switch)];
+        var day = (From: new DateOnly(2024, 8, 10), To: new DateOnly(2024, 8, 11));
 
-        var fallout4 = Set((Fallout4, SetMembership.List, ListStatusKeys.Finished));
-        Assert.Empty(ConnectedReleases.Compose(fallout4, deluxeInTheSeries, rows, day.From, day.To));
+        var asphalt8 = Set((Asphalt8, SetMembership.List, ListStatusKeys.Finished));
+        Assert.Empty(ConnectedReleases.Compose(asphalt8, UpdateGames, rows, day.From, day.To));
 
-        var fallout76 = Set((Fallout76, SetMembership.List, ListStatusKeys.Playing));
-        var release = Assert.Single(Assert.Single(ConnectedReleases.Compose(fallout76, deluxeInTheSeries, rows, day.From, day.To)).Releases);
-        Assert.Equal(ThePitt, release.Game);
-        Assert.Equal([Pc, XboxOne, SeriesXs], release.Platforms);
-        Assert.Equal(ReleaseRelation.Child, release.Reason.Relation);
+        var legends = Set((AsphaltLegends, SetMembership.List, ListStatusKeys.Playing));
+        var release = Assert.Single(Assert.Single(ConnectedReleases.Compose(legends, UpdateGames, rows, day.From, day.To)).Releases);
+        Assert.Equal(AsphaltLegendsUnite, release.Game);
+        Assert.Equal([Switch], release.Platforms);
+        Assert.Equal(new ReleaseReason(ReleaseRelation.Child, AsphaltLegends.Id, "Asphalt Legends", SetMembership.List, ListStatusKeys.Playing, null), release.Reason);
     }
 
     [Fact]
-    public void ComposeUndated_AnUpdateOfAGameInTheSet_IsAnnouncedAsItsChild()
+    public void Compose_AGameAndItsUpdateOnOneDay_AreOneEntryNamedAfterTheGame()
     {
-        // K4 for an update: Valheim's "The Bog Witch" had no date anywhere on 2026-10-15.
+        // F6 with no series between them. On 9 September 2026 Valheim left early access on seven platforms, and
+        // IGDB holds the day as an update as well, "Valheim: 1.0", on the same seven: one event, one entry, led by
+        // the game itself.
+        var set = Set((Valheim, SetMembership.List, ListStatusKeys.Playing));
+        List<ReleaseRow> rows =
+        [
+            Row(924563, Valheim, "2026-09-09", Linux),
+            Row(924564, Valheim, "2026-09-09", Mac),
+            Row(924565, Valheim, "2026-09-09", Switch2),
+            Row(924566, Valheim, "2026-09-09", Pc),
+            Row(924567, Valheim, "2026-09-09", Ps5),
+            Row(924568, Valheim, "2026-09-09", XboxOne),
+            Row(924569, Valheim, "2026-09-09", SeriesXs),
+            Row(963122, Valheim10, "2026-09-09", Pc),
+            Row(963123, Valheim10, "2026-09-09", Mac),
+            Row(963124, Valheim10, "2026-09-09", Switch2),
+            Row(963125, Valheim10, "2026-09-09", Ps5),
+            Row(963126, Valheim10, "2026-09-09", XboxOne),
+            Row(963127, Valheim10, "2026-09-09", SeriesXs),
+            Row(963128, Valheim10, "2026-09-09", Linux),
+        ];
+
+        var entry = Assert.Single(ConnectedReleases.Compose(set, UpdateGames, rows, new DateOnly(2026, 9, 9), new DateOnly(2026, 9, 10)));
+
+        Assert.Equal("Valheim", entry.GroupName);
+        Assert.Equal([Valheim, Valheim10], entry.Releases.Select(r => r.Game));
+        Assert.Equal([ReleaseRelation.Itself, ReleaseRelation.Child], entry.Releases.Select(r => r.Reason.Relation));
+    }
+
+    [Fact]
+    public void ComposeUndated_AnUpdate_IsNeverAnnounced()
+    {
+        // F1: IGDB keeps updates nobody came back to date, so for an update no date anywhere is no sign of one still
+        // to come. Valheim's "The Bog Witch" had been there since October 2024, and had no date on 2026-10-15.
         var set = Set((Valheim, SetMembership.List, ListStatusKeys.Playing));
         List<UndatedRow> rows =
         [
@@ -794,10 +840,6 @@ public class ConnectedReleasesTests
             new(651632, TheBogWitch.Id, SeriesXs, null),
         ];
 
-        var release = Assert.Single(Assert.Single(ConnectedReleases.ComposeUndated(set, UpdateGames, rows)).Releases);
-
-        Assert.Equal(TheBogWitch, release.Game);
-        Assert.Equal([Linux, Mac, Pc, XboxOne, SeriesXs], release.Platforms);
-        Assert.Equal(new ReleaseReason(ReleaseRelation.Child, Valheim.Id, "Valheim", SetMembership.List, ListStatusKeys.Playing, null), release.Reason);
+        Assert.Empty(ConnectedReleases.ComposeUndated(set, UpdateGames, rows));
     }
 }

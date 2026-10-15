@@ -97,16 +97,16 @@ public class ConnectedReleaseQueryTests
     }
 
     [Fact]
-    public void BuildConnectedReleasesQuery_AsksForEveryGameType_LeavingWhichToKeepToTheRules()
+    public void BuildConnectedReleasesQuery_ForTheCalendar_FiltersOnTheRelationsAndTheWindowAlone()
     {
-        // Whether an update is kept depends on how the set connects to it (F1), which a row's game_type cannot
-        // say — and an edition F3 shows as an update carries a main game's type on its own row. A game_type
-        // filter added to these queries to save a page would drop updates, or let one in, with nothing logged.
-        var dated = IgdbService.BuildConnectedReleasesQuery("game = (1)", From, To, withPeriods: true, offset: 0);
-        var undated = IgdbService.BuildUndatedReleasesQuery("game = (1)", offset: 0);
+        // The types are F1's and F2's to keep or drop, in one place: a game_type filter here would be a second copy
+        // of them, free to drift from the first as F2's old blanket drop of updates would have — and how IGDB's
+        // inequality treats a game with no game_type has not been checked.
+        var query = IgdbService.BuildConnectedReleasesQuery("game = (1)", From, To, withPeriods: true, offset: 0);
 
-        Assert.DoesNotContain("game_type", dated);
-        Assert.DoesNotContain("game_type", undated);
+        Assert.Contains(
+            $"where (game = (1)) & (((date_format = 0 | date_format = null) & date >= {Unix(From)} & date < {Unix(To)}) | (date_format = (1,2,3,4,5,6) & date >= {Unix(From.AddDays(-31))} & date < {Unix(To.AddDays(366))}));",
+            query);
     }
 
     [Fact]
@@ -136,8 +136,8 @@ public class ConnectedReleaseQueryTests
 }
 
 /// <summary>
-/// The calendar's queries against IGDB's own JSON, recorded on 2026-09-29 and, for the games with no date
-/// and the cancelled one, on 2026-10-08, and for the update on 2026-10-15 — the joint no test of the rules can reach. <c>parent_game</c> asked for bare arrives as a number where
+/// The calendar's queries against IGDB's own JSON — recorded on 2026-09-29, the games with no date and the
+/// cancelled one on 2026-10-08, and the update on 2026-10-15 — the joint no test of the rules can reach. <c>parent_game</c> asked for bare arrives as a number where
 /// <c>IgdbGame</c> would read an object, and a misnamed <c>date_format</c> would read every row as
 /// known to the day, with nothing logged.
 /// </summary>
@@ -276,14 +276,19 @@ public class CalendarIgdbJsonTests
     public async Task GetCalendarGamesAsync_BindsAnUpdateAndTheGameItUpdates()
     {
         // Recorded on 2026-10-15: 14 is IGDB's Update, and parent_game is the game it updates — all F1 has to go
-        // on to keep Sea of Sorrow for somebody with Silksong and not for somebody with Hollow Knight.
-        var (service, _) = NewService();
+        // on to keep Sea of Sorrow for somebody with Silksong and not for somebody with Hollow Knight. A field left
+        // out of the request is left out of the answer without an error, and a game whose type arrives as null is
+        // a main game to every rule, which a series can bring in: so the request is held to asking for them.
+        var (service, igdb) = NewService();
 
         var seaOfSorrow = (await service.GetCalendarGamesAsync([381684]))[381684];
 
         Assert.Equal(IgdbGameTypes.Update, seaOfSorrow.GameType);
         Assert.Equal(115289, seaOfSorrow.ParentGameId);
         Assert.Equal([new SeriesRef(5702, "Hollow Knight")], seaOfSorrow.Series);
+
+        var fields = Assert.Single(igdb.Queries).Split('\n')[0].TrimEnd('\r', ';')["fields ".Length..].Split(',');
+        Assert.Superset(new HashSet<string> { "game_type", "parent_game", "version_parent", "collections.name" }, fields.ToHashSet());
     }
 
     [Fact]

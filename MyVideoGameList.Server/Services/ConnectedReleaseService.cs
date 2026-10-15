@@ -211,7 +211,7 @@ public class ConnectedReleaseService(
 
     /// <summary>
     /// Adds what the rules need to know about the games the rows name: the games themselves, the games
-    /// editions fold into (F3), and the games what is shown is DLC for (F6).
+    /// editions fold into (F3), and the games what is shown is a child of (F6).
     /// </summary>
     private async Task DescribeAsync(Dictionary<int, CalendarGame> games, IEnumerable<int> rowGameIds, CancellationToken cancellationToken)
     {
@@ -226,7 +226,7 @@ public class ConnectedReleaseService(
             await AddAsync(games, ancestors, cancellationToken);
         }
 
-        // The games what is shown is DLC for, which F6 names a group of them after. That game need not be in
+        // The games what is shown is a child of, which F6 names a group of them after. That game need not be in
         // the set — somebody can wishlist two Street Fighter 6 characters without Street Fighter 6 — and the
         // group cannot be named after a game nobody described. Asked after the editions, because what is
         // shown is what an edition folds into.

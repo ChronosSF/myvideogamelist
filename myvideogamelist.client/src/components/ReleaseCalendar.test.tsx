@@ -176,7 +176,7 @@ describe('ReleaseCalendar, a month', () => {
                 gameId: 381684,
                 title: 'Hollow Knight: Silksong - Sea of Sorrow',
                 kind: 'update',
-                platforms: [platform(6, 'PC (Microsoft Windows)', 'PC'), platform(508, 'Nintendo Switch 2', 'Switch 2'), PS5],
+                platforms: [platform(508, 'Nintendo Switch 2', 'Switch 2'), platform(6, 'PC (Microsoft Windows)', 'PC'), PS5],
                 reason: { relation: 'child', gameId: 115289, title: 'Hollow Knight: Silksong', membership: 'list', list: 'backlog' },
             })]),
             precision: 'year',
@@ -186,7 +186,7 @@ describe('ReleaseCalendar, a month', () => {
         const band = screen.getByRole('region', { name: 'Sometime in 2026' });
         expect(within(band).getByRole('link', { name: 'Hollow Knight: Silksong - Sea of Sorrow' })).toHaveAttribute('href', '/games/381684');
         expect(within(band).getByText('Update for Hollow Knight: Silksong, which you plan to play')).toBeInTheDocument();
-        expect(within(band).getByText('PC, Switch 2, PS5')).toBeInTheDocument();
+        expect(within(band).getByText('Switch 2, PC, PS5')).toBeInTheDocument();
         expect(within(screen.getByRole('list', { name: 'Days in October' })).queryByRole('link')).not.toBeInTheDocument();
     });
 
@@ -373,25 +373,6 @@ describe('ReleaseCalendar, announced with no date', () => {
         expect(versions.getByText('Port of Warframe, on your wishlist')).toBeInTheDocument();
         expect(within(screen.getByRole('region', { name: 'From the same series' })).getByRole('link', { name: 'Persona 6' }))
             .toBeInTheDocument();
-    });
-
-    it('lists an update announced with no date among the DLC and expansions', () => {
-        // Valheim's The Bog Witch, an update IGDB has no date for anywhere: added to the game, not the game made again.
-        calendar.undated.data = [{
-            groupName: null,
-            releases: [connectedRelease({
-                gameId: 319145,
-                title: 'Valheim: The Bog Witch',
-                kind: 'update',
-                platforms: [platform(6, 'PC (Microsoft Windows)', 'PC')],
-                reason: { relation: 'child', gameId: 104967, title: 'Valheim', membership: 'list', list: 'playing' },
-            })],
-        }];
-        renderCalendar();
-
-        const addOns = within(screen.getByRole('region', { name: 'DLC and expansions' }));
-        expect(addOns.getByRole('link', { name: 'Valheim: The Bog Witch' })).toHaveAttribute('href', '/games/319145');
-        expect(addOns.getByText("Update for Valheim, which you're playing")).toBeInTheDocument();
     });
 
     it('says when nothing is waiting on a date', () => {
