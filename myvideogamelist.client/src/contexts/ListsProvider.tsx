@@ -5,7 +5,7 @@ import {
     HAND_ORDERED_LISTS, LIST_IDS, LIST_NAMES, emptyLists,
 } from '@/types/list';
 import { type SortState, DEFAULT_SORT, MANUAL_SORT, sortEntries } from '@/lib/listSort';
-import { planMove } from '@/lib/handOrder';
+import { MAX_POSITION_WRITES, planMove } from '@/lib/handOrder';
 import { useAuth } from '@/hooks/useAuth';
 import { apiFetch } from '@/lib/api';
 import { ListsContext, type SaveListNamesResult } from './ListsContext';
@@ -96,18 +96,20 @@ type ListsAction =
     // write the previous account's names over the next one's.
     | { type: 'NAMES_SAVED'; session: string | null; names: ListNames }
     /*
-     * The three a mutation raises, and the reason they name one game rather than carrying a set of
-     * lists. Every one of them is computed inside the reducer from whatever state is current when
-     * it arrives, and touches only the game it names — so a mutation for another game completing
-     * in the meantime survives both the optimistic write and the rollback.
+     * Three of the four a mutation raises — `SET_POSITIONS` below is the fourth — and the reason they
+     * name one game rather than carrying a set of lists. Every one of them is computed inside the
+     * reducer from whatever state is current when it arrives, and touches only the game it names — so
+     * a mutation for another game completing in the meantime survives both the optimistic write and
+     * the rollback.
      *
-     * None of them carries a position, and that is deliberate: a list is never rendered in the
-     * order it is held in. `ListsPage` runs every list through `sortEntries`, which is a total
-     * order — title breaks the tie for every key, precisely so the result cannot depend on the
-     * order the API happened to return. An index captured before a request is also wrong by the
-     * time it is used, because another game may have left the list from in front of it. The
-     * wishlist is the opposite case and keeps its order from `addedAt`, a value rather than a
-     * position, because that page does render its array as it stands.
+     * None of them carries an index, and that is deliberate: a list is never rendered in the order it
+     * is held in. `ListsPage` runs every list through `sortEntries`, which is a total order — every key
+     * ends in a tie-break, precisely so the result cannot depend on the order the API happened to
+     * return. An index captured before a request is also wrong by the time it is used, because another
+     * game may have left the list from in front of it. The wishlist is the opposite case and keeps its
+     * order from `addedAt`, a value rather than an index, because that page does render its array as it
+     * stands; and so is a hand order, whose sparse `position` rides on the entry `PLACE_ENTRY` carries
+     * (`docs/decisions/0054-*`).
      */
     | { type: 'PLACE_ENTRY'; session: string | null; listId: ListId; entry: ListEntryDto }
     | { type: 'DROP_ENTRY'; session: string | null; gameId: number }
@@ -282,7 +284,7 @@ function without(
  *
  * A mutation captures this for the one game it is about, which is the whole of what it needs to
  * undo itself — and, unlike the set of lists it used to keep, it says nothing about any other
- * game, so a rollback built from it cannot disturb one. Deliberately not a position: see
+ * game, so a rollback built from it cannot disturb one. Deliberately not an index: see
  * `PLACE_ENTRY`.
  */
 interface EntryOrigin {
@@ -650,7 +652,25 @@ export function ListsProvider({ children }: { children: ReactNode }) {
 
         // Already where it was asked to go.
         if (writes.length === 0) return true;
-        if (writes.some(write => state.pending.has(write.id))) return false;
+
+        // Refused with a reason rather than in silence: the game snaps back where it was, and a
+        // sighted user hears nothing of what the hook announces.
+        if (writes.some(write => state.pending.has(write.id))) {
+            dispatch({
+                type: 'MUTATION_ERROR',
+                session,
+                error: 'Another change to one of these games is still saving. Try the move again in a moment.',
+            });
+            return false;
+        }
+        if (writes.length > MAX_POSITION_WRITES) {
+            dispatch({
+                type: 'MUTATION_ERROR',
+                session,
+                error: 'That move would place more games at once than can be saved. Place a few of them higher up first.',
+            });
+            return false;
+        }
 
         const before = new Map(ordered.map(item => [item.id, item.position]));
         const previous = writes.map(write => ({ gameId: write.id, position: before.get(write.id) ?? null }));

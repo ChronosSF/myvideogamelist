@@ -1505,6 +1505,7 @@ describe('the hand order', () => {
                 <button onClick={() => move(2, 3)}>hades after cuphead</button>
                 <button onClick={() => move(4, 2)}>outer wilds after hades</button>
                 <button onClick={() => move(1, 1)}>celeste after itself</button>
+                <button onClick={() => move(1, 10_002)}>celeste after the last</button>
                 <button onClick={() => void lists.setScore(2, 8)}>score hades</button>
                 <button onClick={() => void lists.setScore(4, 8)}>score outer wilds</button>
                 <button onClick={() => void lists.addToList('playing', game({ id: 1, title: 'Celeste' }))}>start celeste</button>
@@ -1560,7 +1561,7 @@ describe('the hand order', () => {
         expect(calls.some(call => call.method === 'PATCH')).toBe(false);
     });
 
-    it('puts back exactly the positions it wrote when the save is refused', async () => {
+    it('puts back exactly the positions it wrote when the save is refused, and lets the games go', async () => {
         await mountOrder({ failing: [POSITIONS] });
 
         await press('hades after cuphead');
@@ -1568,15 +1569,50 @@ describe('the hand order', () => {
         await waitFor(() => expect(order()).toHaveTextContent('Celeste@0,Hades@-,Cuphead@-,Outer Wilds@-'));
         expect(screen.getByTestId('error')).toHaveTextContent(/failed to save your order/i);
         expect(screen.getByTestId('result')).toHaveTextContent('false');
+        expect(screen.getByTestId('pending')).toBeEmptyDOMElement();
     });
 
-    it('puts them back when the request never arrives, too', async () => {
+    it('puts them back when the request never arrives, too, and lets the games go', async () => {
         await mountOrder({ reject: [POSITIONS] });
 
         await press('outer wilds first');
 
         await waitFor(() => expect(order()).toHaveTextContent('Celeste@0,Hades@-,Cuphead@-,Outer Wilds@-'));
         expect(screen.getByTestId('error')).toHaveTextContent(/failed to save your order/i);
+        expect(screen.getByTestId('pending')).toBeEmptyDOMElement();
+    });
+
+    it('takes the banner down once a move saves', async () => {
+        // Neither banner can be dismissed, so a failure's message would otherwise outlive it.
+        const { release } = await mountOrder({ hold: [POSITIONS] });
+
+        await press('outer wilds first');
+        await release(POSITIONS, 500);
+        expect(screen.getByTestId('error')).toHaveTextContent(/failed to save your order/i);
+
+        await press('hades after cuphead');
+        await release(POSITIONS, 204, 1);
+        expect(screen.getByTestId('error')).toBeEmptyDOMElement();
+    });
+
+    it('plans from the hand order, not from the order the lists arrived in', async () => {
+        // The API sends each list ordered by game id. A move planned over that array rather than the
+        // order on screen puts the game somewhere the user never pointed at.
+        const SCRAMBLED = [
+            entry({ game: { id: 1, title: 'Celeste' }, position: 2048 }),
+            entry({ game: { id: 2, title: 'Hades' }, position: 0 }),
+            entry({ game: { id: 3, title: 'Cuphead' }, position: 1024 }),
+            entry({ game: { id: 4, title: 'Outer Wilds' } }),
+        ];
+        const { calls } = await mountOrder({ loads: [{ backlog: SCRAMBLED }] });
+        expect(order()).toHaveTextContent('Hades@0,Cuphead@1024,Celeste@2048,Outer Wilds@-');
+
+        await press('hades after cuphead');
+
+        expect(order()).toHaveTextContent('Cuphead@1024,Hades@1536,Celeste@2048,Outer Wilds@-');
+        expect(calls.find(call => `${call.method} ${call.url}` === POSITIONS)!.body).toEqual({
+            positions: [{ gameId: 2, position: 1536 }],
+        });
     });
 
     it('holds the lock of every game it writes, and lets them go when it is done', async () => {
@@ -1589,8 +1625,9 @@ describe('the hand order', () => {
         expect(screen.getByTestId('pending')).toBeEmptyDOMElement();
     });
 
-    it('refuses a move that would write a game whose own save is still out', async () => {
-        // Hades' score is in flight, and the move passes Hades, so it would have to place it.
+    it('refuses a move that would write a game whose own save is still out, and says why', async () => {
+        // Hades' score is in flight, and the move passes Hades, so it would have to place it. The game
+        // snaps back where it was, and a sighted user is told why rather than left to guess.
         const { calls } = await mountOrder({ hold: ['PUT /api/entries/2/score'] });
 
         await press('score hades');
@@ -1599,6 +1636,21 @@ describe('the hand order', () => {
         await waitFor(() => expect(screen.getByTestId('result')).toHaveTextContent('false'));
         expect(order()).toHaveTextContent('Celeste@0,Hades@-,Cuphead@-,Outer Wilds@-');
         expect(calls.some(call => call.method === 'PATCH')).toBe(false);
+        expect(screen.getByTestId('error')).toHaveTextContent(/still saving/i);
+    });
+
+    it('refuses a move that would place more games than one write may carry', async () => {
+        // A first drop past more unplaced games than the server takes in one write: refused here, with
+        // a reason, rather than sent to be refused with a 400 after the list has already moved.
+        const MANY = Array.from({ length: 10_002 }, (_, index) =>
+            entry({ game: { id: index + 1, title: `Game ${index + 1}` }, statusChangedAt: '2026-01-01T00:00:00Z' }));
+        const { calls } = await mountOrder({ loads: [{ backlog: MANY }] });
+
+        await press('celeste after the last');
+
+        await waitFor(() => expect(screen.getByTestId('result')).toHaveTextContent('false'));
+        expect(calls.some(call => call.method === 'PATCH')).toBe(false);
+        expect(screen.getByTestId('error')).toHaveTextContent(/more games at once/i);
     });
 
     it('undoes only the positions it wrote, not those of a move that saved meanwhile', async () => {

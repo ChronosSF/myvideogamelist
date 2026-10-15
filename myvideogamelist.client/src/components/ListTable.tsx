@@ -74,8 +74,10 @@ export function ListTable({
                 <caption className="sr-only">{listName}</caption>
                 <thead>
                     <tr>
+                        {/* The table is in this column's order whenever it is drawn, so it says so as
+                            the other columns do when they are the sort. */}
                         {reorder && (
-                            <th scope="col" className="col-order">
+                            <th scope="col" className="col-order" aria-sort="ascending">
                                 <span aria-hidden="true">#</span>
                                 <span className="sr-only">Order</span>
                             </th>

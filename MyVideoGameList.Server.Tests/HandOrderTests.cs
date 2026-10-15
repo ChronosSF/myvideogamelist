@@ -2,6 +2,8 @@ using System.ComponentModel.DataAnnotations;
 using System.Reflection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Metadata;
 using MyVideoGameList.Server.Controllers;
 using MyVideoGameList.Server.Data;
 using MyVideoGameList.Server.DTOs;
@@ -12,8 +14,9 @@ using NSubstitute;
 namespace MyVideoGameList.Server.Tests;
 
 /// <summary>
-/// The write behind a hand-arranged order, and the bounds the API holds the client's numbers to.
-/// The list-level rules — scoped to the list, cleared by a move — are in <c>ListServiceTests</c>.
+/// The hand-arranged order on the server: the store's write, the list-level rules — scoped to the
+/// list, cleared by a change of list — and the bounds the API and the database hold the client's
+/// numbers to.
 /// </summary>
 public class HandOrderTests
 {
@@ -38,27 +41,44 @@ public class HandOrderTests
     }
 
     /// <summary>
-    /// Deletes one game's row through a second context the first time the context it is attached to
-    /// saves — which is the moment a request that read the row is about to write it.
+    /// Before each save of the context it is attached to, deletes the next of the given games' rows
+    /// through a second context — the moment a request that read the rows is about to write them —
+    /// and counts the saves it saw.
     /// </summary>
-    private sealed class DeleteBeforeFirstSave(string databaseName, int gameId) : SaveChangesInterceptor
+    private sealed class DeleteBeforeSaves(string databaseName, params int[] gameIds) : SaveChangesInterceptor
     {
-        private bool _fired;
+        public int Saves { get; private set; }
 
         public override async ValueTask<InterceptionResult<int>> SavingChangesAsync(
             DbContextEventData eventData,
             InterceptionResult<int> result,
             CancellationToken cancellationToken = default)
         {
-            if (!_fired)
+            if (Saves < gameIds.Length)
             {
-                _fired = true;
+                var gameId = gameIds[Saves];
                 await using var other = new ApplicationDbContext(Options(databaseName));
                 other.UserGameEntries.RemoveRange(other.UserGameEntries.Where(e => e.GameId == gameId));
                 await other.SaveChangesAsync(cancellationToken);
             }
 
+            Saves++;
             return result;
+        }
+    }
+
+    /// <summary>Fails every save with something that is not a row gone missing.</summary>
+    private sealed class FailEverySave : SaveChangesInterceptor
+    {
+        public int Saves { get; private set; }
+
+        public override ValueTask<InterceptionResult<int>> SavingChangesAsync(
+            DbContextEventData eventData,
+            InterceptionResult<int> result,
+            CancellationToken cancellationToken = default)
+        {
+            Saves++;
+            throw new DbUpdateException("The database refused the write.");
         }
     }
 
@@ -76,18 +96,61 @@ public class HandOrderTests
             await AddEntryAsync(setup, UserId, 20);
         }
 
-        await using var db = new ApplicationDbContext(Options(name, new DeleteBeforeFirstSave(name, 10)));
+        var deleting = new DeleteBeforeSaves(name, 10);
+        await using var db = new ApplicationDbContext(Options(name, deleting));
 
         var written = await HandOrderStore.WriteAsync(
             db, db.UserGameEntries, UserId, [new PositionDto(10, 1024), new PositionDto(20, 2048)],
             CancellationToken.None);
 
         Assert.Equal(1, written);
+        // The first save found the row gone, and the second saved the rest.
+        Assert.Equal(2, deleting.Saves);
 
         await using var check = new ApplicationDbContext(Options(name));
         var left = Assert.Single(await check.UserGameEntries.ToListAsync());
         Assert.Equal(20, left.GameId);
         Assert.Equal(2048, left.Position);
+    }
+
+    [Fact]
+    public async Task WriteAsync_RowsDeletedBeforeEveryAttempt_GivesUpAfterTheThird()
+    {
+        // The retry is bounded so that a run of deletions ends in an error rather than a loop.
+        var name = Guid.NewGuid().ToString();
+        await using (var setup = new ApplicationDbContext(Options(name)))
+        {
+            foreach (var gameId in new[] { 10, 20, 30, 40 }) await AddEntryAsync(setup, UserId, gameId);
+        }
+
+        var deleting = new DeleteBeforeSaves(name, 10, 20, 30);
+        await using var db = new ApplicationDbContext(Options(name, deleting));
+
+        await Assert.ThrowsAsync<DbUpdateConcurrencyException>(() => HandOrderStore.WriteAsync(
+            db, db.UserGameEntries, UserId,
+            [new PositionDto(10, 1), new PositionDto(20, 2), new PositionDto(30, 3), new PositionDto(40, 4)],
+            CancellationToken.None));
+        Assert.Equal(3, deleting.Saves);
+    }
+
+    [Fact]
+    public async Task WriteAsync_AFailureThatIsNotAMissingRow_IsNotSwallowed()
+    {
+        // Only a row deleted from under the write is passed over; anything else is a real failure.
+        var name = Guid.NewGuid().ToString();
+        await using (var setup = new ApplicationDbContext(Options(name)))
+        {
+            await AddEntryAsync(setup, UserId, 10);
+        }
+
+        var failing = new FailEverySave();
+        await using var db = new ApplicationDbContext(Options(name, failing));
+
+        await Assert.ThrowsAsync<DbUpdateException>(() => HandOrderStore.WriteAsync(
+            db, db.UserGameEntries, UserId, [new PositionDto(10, 1024)], CancellationToken.None));
+
+        // Rethrown at once, not retried as though a row had gone missing.
+        Assert.Equal(1, failing.Saves);
     }
 
     [Fact]
@@ -312,7 +375,7 @@ public class HandOrderTests
     }
 
     [Fact]
-    public async Task TheEntrysOwnFields_LeaveThePositionWhereItWas()
+    public async Task SetScoreOwnershipAndNotes_OnAPlacedGame_LeaveThePositionWhereItWas()
     {
         // A score, an ownership and a note write the same row as a position, and none of them is a
         // reason for the game to lose its place.
@@ -328,7 +391,7 @@ public class HandOrderTests
     }
 
     [Fact]
-    public async Task TheListPayload_CarriesThePositionAndNullForAGameNeverPlaced()
+    public async Task GetListsAsync_CarriesThePositionAndNullForAGameNeverPlaced()
     {
         using var db = NewDb();
         await InBacklogAsync(db, 10, position: 1024);
@@ -377,6 +440,36 @@ public class HandOrderTests
         Assert.False(Accepts<PositionDto>("GameId", gameId));
 
     [Fact]
+    public void SetPositionsDto_ANullAmongThePositions_IsRefused()
+    {
+        // Model validation passes over a null element without a word, so this is the 400 that stops
+        // `[null]` reaching the store as a 500.
+        var dto = new SetPositionsDto([new PositionDto(10, 0), null!]);
+
+        var errors = dto.Validate(new ValidationContext(dto)).ToList();
+
+        Assert.Contains(nameof(SetPositionsDto.Positions), Assert.Single(errors).MemberNames);
+        Assert.Empty(new SetPositionsDto([new PositionDto(10, 0)]).Validate(new ValidationContext(dto)));
+    }
+
+    [Fact]
+    public void TheCheckConstraint_HoldsPositionsToTheBoundsTheApiAccepts()
+    {
+        // The DTO's range and the column's constraint are one rule written twice; this fails if
+        // they drift. The design-time model, because check constraints are migration metadata.
+        using var db = new ApplicationDbContext(Options(Guid.NewGuid().ToString()));
+
+        var constraint = db.GetService<IDesignTimeModel>().Model
+            .FindEntityType(typeof(UserGameEntry))!
+            .GetCheckConstraints()
+            .Single(c => c.ModelName == "CK_UserGameEntries_Position_Range");
+
+        Assert.Contains($">= {HandOrder.MinPosition}", constraint.Sql);
+        Assert.Contains($"<= {HandOrder.MaxPosition}", constraint.Sql);
+        Assert.Contains("\"Position\" IS NULL", constraint.Sql);
+    }
+
+    [Fact]
     public void SetPositionsDto_RefusesAnEmptyWriteAndOneLongerThanTheBound()
     {
         Assert.False(Accepts<SetPositionsDto>("Positions", new List<PositionDto>()));
@@ -387,7 +480,7 @@ public class HandOrderTests
     }
 
     [Fact]
-    public void TheSortPreference_AcceptsEverySortKey()
+    public void ListSortPreferenceDto_AcceptsEverySortKey()
     {
         // The keys are written down twice, the constants and the DTO's attribute, and the manual
         // order was the first key added since: a constant the attribute does not list is a choice
@@ -403,7 +496,7 @@ public class HandOrderTests
     }
 
     [Fact]
-    public void ThePositionsRoute_AcceptsExactlyTheListsThatAreSeeded()
+    public void SetPositions_StatusRoute_AcceptsExactlyTheSeededLists()
     {
         // Against the seeded statuses rather than a second copy of the keys, so a list added to one
         // and not the other fails here instead of as a 400 nobody can explain.

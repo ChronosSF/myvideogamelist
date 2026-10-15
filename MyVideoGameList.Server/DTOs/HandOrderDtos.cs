@@ -18,12 +18,26 @@ public record PositionDto(
 /// position it had, which is what keeps a move to one row.
 /// </summary>
 /// <remarks>
+/// <para>
 /// A game named twice takes the last of its positions, as a list named twice in the sort preferences
 /// takes its last sort. A game that is not in the list — moved out of it from another tab since this
 /// one loaded — is passed over rather than refused: its place in the list went with it.
+/// </para>
+/// <para>
+/// A <c>null</c> among the positions is refused here, as a 400. Model validation passes over a null
+/// element of a collection without a word, so <c>[null]</c> would otherwise reach the store and fail
+/// there as a 500.
+/// </para>
 /// </remarks>
 public record SetPositionsDto(
     [Required]
     [MinLength(1)]
     [MaxLength(HandOrder.MaxWrites)]
-    List<PositionDto> Positions);
+    List<PositionDto> Positions) : IValidatableObject
+{
+    public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
+    {
+        if (Positions.Any(position => position is null))
+            yield return new ValidationResult("Every position must name a game.", [nameof(Positions)]);
+    }
+}

@@ -121,10 +121,19 @@ public class ListService(
     /// Places some of the games in one of the user's lists where they have arranged them by hand.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// Scoped to the list as well as to the user: a game that has left it since the client last
-    /// looked is passed over, so a stale tab cannot give a Playing game a place in the backlog's
+    /// looked is passed over, so a stale tab does not give a Playing game a place in the backlog's
     /// order. Records no event — an order is not a status transition — and creates no entry, since
     /// a game in a list already has one.
+    /// </para>
+    /// <para>
+    /// The scope is checked when the rows are read, not in the update, which goes by key. A move out
+    /// of the list landing in the moment between the two leaves the game a number in a list it has
+    /// left: nothing reads a position outside its own list, and the next change of list clears it.
+    /// Closing that would take an <c>UPDATE</c> with the status in its predicate, which the in-memory
+    /// provider the tests run on cannot execute — not worth it for a number nobody sees (ADR 0054).
+    /// </para>
     /// </remarks>
     public async Task SetPositionsAsync(
         string userId,

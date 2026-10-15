@@ -197,7 +197,7 @@ export function ListsPage() {
                 {signedIn && !loading && !error && entries.length > 0 && manual && (
                     <p className="lists-order-hint">
                         {arranging
-                            ? 'Drag a game by its handle to where you mean to play it, or focus the handle and press Space to move it with the arrow keys. Games you have not placed follow, in the order you added them.'
+                            ? 'Drag a game by its handle to where you mean to play it — or press a handle and then the handle of the game whose place it should take, or pick one up with Space and move it with the arrow keys. Games you have not placed follow, in the order they joined your backlog.'
                             : 'Clear the platform filter to rearrange your order.'}
                     </p>
                 )}
@@ -270,10 +270,16 @@ export function ListsPage() {
                 {signedIn && !loading && !error && visible.length > 0 && view === 'tiles' && (
                     <div
                         className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4"
-                        {...(arranging ? reorder.listProps() : {})}
+                        // A list while it is an order, so assistive technology hears each game's place.
+                        {...(arranging ? { ...reorder.listProps(), role: 'list' } : {})}
                     >
                         {shown.map((entry, index) => arranging ? (
-                            <div key={entry.game.id} className="reorder-tile" {...reorder.itemProps(entry.game.id)}>
+                            <div
+                                key={entry.game.id}
+                                className="reorder-tile"
+                                role="listitem"
+                                {...reorder.itemProps(entry.game.id)}
+                            >
                                 <ReorderHandle
                                     handle={reorder.handleProps(entry.game.id)}
                                     rank={index + 1}

@@ -13,7 +13,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace MyVideoGameList.Server.Data.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    [Migration("20261015055612_AddUserGameEntryPosition")]
+    [Migration("20261015070827_AddUserGameEntryPosition")]
     partial class AddUserGameEntryPosition
     {
         /// <inheritdoc />
@@ -730,6 +730,8 @@ namespace MyVideoGameList.Server.Data.Migrations
                     b.ToTable("UserGameEntries", t =>
                         {
                             t.HasCheckConstraint("CK_UserGameEntries_Ownership", "\"Ownership\" IS NULL OR \"Ownership\" IN ('owned', 'subscription', 'borrowed')");
+
+                            t.HasCheckConstraint("CK_UserGameEntries_Position_Range", "\"Position\" IS NULL OR (\"Position\" >= -1000000000 AND \"Position\" <= 1000000000)");
 
                             t.HasCheckConstraint("CK_UserGameEntries_Score_Range", "\"Score\" IS NULL OR (\"Score\" >= 1 AND \"Score\" <= 10)");
                         });

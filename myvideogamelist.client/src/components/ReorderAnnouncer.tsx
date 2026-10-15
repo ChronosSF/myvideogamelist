@@ -16,8 +16,9 @@ export function ReorderAnnouncer({ reorder }: ReorderAnnouncerProps) {
     return (
         <>
             <p id={reorder.instructionsId} hidden>
-                Press Space or Enter to pick it up, then the arrow keys to move it, and Space or Enter
-                again to put it down. Escape puts it back.
+                Press Space or Enter to pick it up, then the arrow keys to move it, Home or End to send it
+                to either end, and Space or Enter again to put it down. Escape puts it back. Or activate
+                it, then another game&apos;s handle, to put it in that game&apos;s place.
             </p>
             <div className="sr-only" aria-live="assertive" aria-atomic="true">
                 {reorder.announcement}

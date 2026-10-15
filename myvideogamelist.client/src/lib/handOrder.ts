@@ -23,6 +23,13 @@ export const MIN_POSITION = -1_000_000_000;
 export const MAX_POSITION = 1_000_000_000;
 
 /**
+ * The server's `HandOrder.MaxWrites`: the most positions one write may carry. Only a first drop deep
+ * into a list of more unplaced games than this could plan a longer one, and the caller refuses that
+ * move rather than send a write the server would refuse with a 400.
+ */
+export const MAX_POSITION_WRITES = 10_000;
+
+/**
  * The smallest gap a spread leaves between two games. Room for a few more halvings at the same spot
  * before the next spread, and small enough that a spread rarely has to reach far to find it.
  */

@@ -89,6 +89,13 @@
     opacity: 0.55;
 }
 
+/* The row being moved by hand (ADR 0054). It is the row under the pointer for the whole of a drag,
+   so this has to outrank the hover rule above rather than lose to it. */
+.list-table tbody tr[data-reorder-state='lifted'] > td,
+.list-table tbody tr[data-reorder-state='lifted']:hover > td {
+    background: color-mix(in srgb, var(--color-primary-500) 16%, transparent);
+}
+
 .list-table .num {
     font-variant-numeric: tabular-nums;
     white-space: nowrap;

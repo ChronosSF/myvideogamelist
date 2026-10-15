@@ -728,6 +728,8 @@ namespace MyVideoGameList.Server.Data.Migrations
                         {
                             t.HasCheckConstraint("CK_UserGameEntries_Ownership", "\"Ownership\" IS NULL OR \"Ownership\" IN ('owned', 'subscription', 'borrowed')");
 
+                            t.HasCheckConstraint("CK_UserGameEntries_Position_Range", "\"Position\" IS NULL OR (\"Position\" >= -1000000000 AND \"Position\" <= 1000000000)");
+
                             t.HasCheckConstraint("CK_UserGameEntries_Score_Range", "\"Score\" IS NULL OR (\"Score\" >= 1 AND \"Score\" <= 10)");
                         });
                 });
