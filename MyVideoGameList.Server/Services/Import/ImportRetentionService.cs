@@ -209,6 +209,11 @@ internal sealed class ImportRetentionService(
 
             // A short batch means the predicate has run out of rows.
             if (removed < BatchSize) break;
+
+            // Shutting down: stop between batches rather than leave the next one to throw, so the
+            // log below still counts what was deleted — including a batch whose commit finished
+            // after the signal, which the commit in DeleteBatchAsync deliberately lets it do.
+            if (cancellationToken.IsCancellationRequested) break;
         }
 
         if (!swept)
@@ -275,7 +280,12 @@ internal sealed class ImportRetentionService(
     /// How many jobs went, or <c>null</c> when another task holds the lock and this one should
     /// stop rather than spin.
     /// </returns>
-    private static async Task<int?> DeleteBatchAsync(
+    /// <remarks>
+    /// Internal rather than private so that <c>ImportRetentionTests</c> can run it against doubles
+    /// and hold its two tokens to the rule at the commit below. The lock and the delete themselves
+    /// still need PostgreSQL to test.
+    /// </remarks>
+    internal static async Task<int?> DeleteBatchAsync(
         ApplicationDbContext db, DateTimeOffset now, CancellationToken cancellationToken)
     {
         // Through the execution strategy rather than straight into BeginTransactionAsync. Today
@@ -316,13 +326,14 @@ internal sealed class ImportRetentionService(
                 .ExecuteDeleteAsync(token);
 
             // On CancellationToken.None rather than `token`, deliberately: the stopping token
-            // bounds the work, never the commit. A shutdown during the DELETE abandons the batch,
-            // and the rollback loses nothing that had finished. Once the DELETE has returned the
-            // batch is finished, and a stopping token cancelled by then would only throw it away —
-            // Npgsql checks the token before it sends COMMIT, so the transaction rolls back and the
-            // next sweep deletes the same jobs again (issue #96). Bounded all the same: by Npgsql's
-            // command timeout, and while the host stops, by the shutdown timeout it gives
-            // ExecuteAsync.
+            // bounds the work, never the write that keeps its result — and here that write is the
+            // commit. A shutdown that cancels the DELETE abandons the batch, and the rollback loses
+            // nothing that had finished. Once the DELETE has returned the batch is finished, and a
+            // token already cancelled when the commit starts would only throw it away: Npgsql
+            // checks it before sending COMMIT, so the transaction rolls back and the next sweep
+            // deletes the same jobs again. Npgsql's command timeout still bounds the commit, and a
+            // stopping host waits for it no longer than HostOptions.ShutdownTimeout; a COMMIT
+            // still in flight when the process exits is applied or discarded whole. ADR 0038 §4.
             await transaction.CommitAsync(CancellationToken.None);
             return deleted;
         }, cancellationToken);

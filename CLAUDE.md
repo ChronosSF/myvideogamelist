@@ -365,9 +365,9 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   it against the real container. It deletes **twenty-five jobs per statement and commits each
   batch**, because one unbounded `DELETE` over a backlog exceeds Npgsql's thirty-second default,
   rolls back, deletes nothing, and is retried identically every hour for ever. Each batch
-  **commits on `CancellationToken.None`**: the stopping token bounds the work, never the commit,
-  or a shutdown landing between a batch's `DELETE` and its commit would roll back a batch that was
-  already done, leaving the next sweep to repeat it (#96). And because it
+  **commits on `CancellationToken.None`**: the stopping token bounds the work, never the write
+  that keeps its result, or a shutdown landing between a batch's `DELETE` and its commit would
+  roll back a batch already done, leaving the next sweep to repeat it (ADR 0038 §4). And because it
   deletes rows no request asked it to, **every `ImportService` write stamps the job and treats an
   `UPDATE` that matches no row as "swept"** — the 404 each endpoint already had, rather than the 500
   an unclaimed `DbUpdateConcurrencyException` becomes. Anything else that deletes out from under a
