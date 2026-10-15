@@ -151,9 +151,10 @@ DOM left external:
 | `useReorder`, `ReorderHandle`, `ReorderAnnouncer` and `planMove`, at the time of measuring | 7.7 KB | 3.1 KB |
 
 The second row includes the position arithmetic, which dnd-kit would not have supplied. `@dnd-kit/core`'s
-last release is 6.3.1, published 2024-12-05. Its successor, `@dnd-kit/react`, is at 0.5.0. Its ids
-come from a module-level counter (`useUniqueId` in `@dnd-kit/utilities`). Unless `DndContext` is given an
-`id`, the `aria-describedby` on every draggable can differ between the server render and the client's.
+last release is 6.3.1, published 2024-12-05, and its successor, `@dnd-kit/react`, is at 0.5.0. In 6.3.1
+the ids come from a module-level counter (`useUniqueId` in `@dnd-kit/utilities` 3.2.2). Unless
+`DndContext` is given an `id`, the `aria-describedby` on every draggable can differ between the server
+render and the client's.
 
 What is needed here is narrow. It is one list of same-shaped items at a time, rows or a wrapped grid,
 and the client has no UI library at all. So `useReorder` is ours. Nothing in it touches `window` or
