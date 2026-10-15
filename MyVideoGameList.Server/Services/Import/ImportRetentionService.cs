@@ -71,7 +71,7 @@ internal sealed class ImportRetentionService(
     /// the statement times out, the transaction rolls back, <b>nothing</b> is deleted, and the next
     /// tick runs the identical statement against the identical backlog an hour later, for ever.
     /// </remarks>
-    private const int BatchSize = 25;
+    internal const int BatchSize = 25;
 
     /// <summary>
     /// How many batches one sweep runs before leaving the rest to the next one.
@@ -185,7 +185,7 @@ internal sealed class ImportRetentionService(
     /// kept small by this very sweep. Revisit if it ever appears in a slow query log.
     /// </para>
     /// </remarks>
-    private async Task SweepAsync(CancellationToken cancellationToken)
+    internal async Task SweepAsync(CancellationToken cancellationToken)
     {
         using var scope = scopeFactory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();

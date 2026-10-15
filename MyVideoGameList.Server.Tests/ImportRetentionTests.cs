@@ -8,6 +8,7 @@ using Microsoft.EntityFrameworkCore.Query;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using MyVideoGameList.Server.Data;
 using MyVideoGameList.Server.Models;
@@ -18,7 +19,7 @@ using NSubstitute;
 namespace MyVideoGameList.Server.Tests;
 
 /// <summary>
-/// Which jobs the retention sweep selects, and which token a batch gives its commit.
+/// Which jobs the retention sweep selects, and how far a shutdown reaches into a batch.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -34,11 +35,11 @@ namespace MyVideoGameList.Server.Tests;
 /// </para>
 /// <para>
 /// The batch around the deletion is covered only as far as doubles reach. <c>DeleteBatchAsync</c>
-/// runs here with its advisory lock and its <c>ExecuteDelete</c> answered by a scripted query
-/// provider and its transaction substituted, which is enough to hold its two tokens to ADR 0038 §4
-/// — the stopping token bounds the work and never the commit — and nothing more. Whether the lock
-/// excludes another task and what the <c>DELETE</c> removes were verified against a real PostgreSQL
-/// (§3 and §4).
+/// and <c>SweepAsync</c> run here with the advisory lock and the <c>ExecuteDelete</c> answered by a
+/// scripted query provider and the transaction substituted. That is enough to hold them to ADR 0038
+/// §4 — the stopping token bounds the work and never the commit, and a shutdown stops the loop
+/// between batches — and nothing more. Whether the lock excludes another task and what the
+/// <c>DELETE</c> removes were verified against a real PostgreSQL (§3 and §4).
 /// </para>
 /// </remarks>
 public class ImportRetentionTests
@@ -281,7 +282,8 @@ public class ImportRetentionTests
 
         var deleted = await ImportRetentionService.DeleteBatchAsync(db, Now, stopping.Token);
 
-        Assert.Equal(ScriptedQueries.Deleted, deleted);
+        Assert.True(stopping.IsCancellationRequested, "The shutdown never landed.");
+        Assert.Equal(queries.Deleted, deleted);
         await transaction.Received(1).CommitAsync(
             Arg.Is<CancellationToken>(token => !token.IsCancellationRequested));
     }
@@ -302,12 +304,36 @@ public class ImportRetentionTests
         await transaction.DidNotReceive().CommitAsync(Arg.Any<CancellationToken>());
     }
 
+    [Fact]
+    public async Task SweepAsync_WhenShutdownArrivesDuringAFullBatch_LogsItAndStartsNoOther()
+    {
+        // The batch that DeleteBatchAsync now keeps through a shutdown has to be counted. Left to
+        // the next batch, the cancelled token would throw and carry the sweep's log line away with
+        // it, so the loop stops between batches instead. Only a full batch would start another.
+        using var stopping = new CancellationTokenSource();
+        using var db = BatchDb(out var transaction, out var queries);
+        queries.Deleted = ImportRetentionService.BatchSize;
+        queries.OnDelete = stopping.Cancel;
+        var log = new Lines();
+        using var services = new ServiceCollection().AddScoped(_ => db).BuildServiceProvider();
+        var sweep = new ImportRetentionService(
+            services.GetRequiredService<IServiceScopeFactory>(), TimeProvider.System, log);
+
+        await sweep.SweepAsync(stopping.Token);
+
+        await transaction.Received(1).CommitAsync(Arg.Any<CancellationToken>());
+        Assert.Equal(
+            [$"Import retention deleted {ImportRetentionService.BatchSize} expired job(s)."],
+            log.Written);
+    }
+
     /// <summary>
     /// A context in which <see cref="ImportRetentionService.DeleteBatchAsync"/> runs to its commit
-    /// on InMemory, which by itself it cannot: <c>SqlQuery</c> refuses a provider that is not
-    /// relational, and InMemory cannot translate <c>ExecuteDelete</c>. Both are answered by
-    /// <see cref="ScriptedQueries"/>, and the transaction is a substitute that records the token
-    /// its commit is given.
+    /// on InMemory, which by itself it cannot: InMemory's transactions throw by default,
+    /// <c>SqlQuery</c> refuses a database facade that is not relational, and InMemory cannot
+    /// translate <c>ExecuteDelete</c>. <see cref="RelationalFacade"/> answers the first two — a
+    /// relational facade whose transaction is a substitute recording the token its commit is given
+    /// — and <see cref="ScriptedQueries"/> answers the queries themselves.
     /// </summary>
     /// <remarks>
     /// Everything replaced is public EF API, though the provider-facing kind. A release that adds a
@@ -338,7 +364,7 @@ public class ImportRetentionTests
     /// </summary>
     private sealed class ScriptedQueries : IAsyncQueryProvider
     {
-        public const int Deleted = 3;
+        public int Deleted { get; set; } = 3;
 
         public Action? OnLock { get; set; }
 
@@ -441,5 +467,20 @@ public class ImportRetentionTests
 
         IDiagnosticsLogger<DbLoggerCategory.Database.Command> IDatabaseFacadeDependencies.CommandLogger =>
             CommandLogger;
+    }
+
+    /// <summary>Every line the sweep logs, as it would read.</summary>
+    private sealed class Lines : ILogger<ImportRetentionService>
+    {
+        public List<string> Written { get; } = [];
+
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(
+            LogLevel logLevel, EventId eventId, TState state, Exception? exception,
+            Func<TState, Exception?, string> formatter) =>
+            Written.Add(formatter(state, exception));
     }
 }

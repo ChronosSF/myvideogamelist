@@ -194,10 +194,10 @@ removed three expired jobs. Committed on the stopping token, the commit threw
 through and none were. Cancelled just before the `DELETE` instead, the batch was abandoned and all
 three stayed, so the work is still bounded. And a whole tick over thirty expired jobs, cancelled the
 moment its first batch's `DELETE` returned, committed that batch of twenty-five, started no second
-one, and logged the twenty-five. `ImportRetentionTests` holds both tokens to the rule with doubles
+one, and logged the twenty-five. `ImportRetentionTests` holds the code to all of this with doubles
 standing in for the lock, the `DELETE` and the transaction, since InMemory runs neither of the first
-two: one test fails when the commit goes back on the stopping token, the other when the `DELETE`
-comes off it.
+two: one test fails when the commit goes back on the stopping token, another when the `DELETE` comes
+off it, and a third when the loop no longer stops between batches.
 
 ### 5. No index for the predicate
 
