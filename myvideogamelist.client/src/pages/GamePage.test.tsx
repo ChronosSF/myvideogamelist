@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { createRoutesStub, Link, Outlet } from 'react-router';
 import { GamePage, meta } from '@/pages/GamePage';
 import type { AuthContextValue } from '@/contexts/AuthContext';
+import type { FavouritesContextValue } from '@/contexts/FavouritesContext';
 import type { UseGameCommunityResult } from '@/hooks/useGameCommunity';
 import { MIN_MEMBER_SCORES } from '@/lib/score';
 import type { UserProfile } from '@/types/auth';
@@ -50,6 +51,14 @@ const community: UseGameCommunityResult = {
 
 vi.mock('@/hooks/useGameCommunity', () => ({ useGameCommunity: () => community }));
 
+/** The reader's favourites, as far as the rosette reads them. Hoisted and handed back whole, as above. */
+const favoured = new Set<number>();
+const favourites = {
+    isFavourite: (gameId: number) => favoured.has(gameId),
+} as unknown as FavouritesContextValue;
+
+vi.mock('@/hooks/useFavourites', () => ({ useFavourites: () => favourites }));
+
 // All four fetch for themselves after hydration. What this suite is about is which of three things
 // the sidebar shows and what the hero says, so the panel — which has a suite of its own — is
 // reduced to the heading a reader knows it by, and the sections that render nothing until their
@@ -83,6 +92,7 @@ beforeEach(() => {
     auth.loading = true;
     community.settled = false;
     community.scores = null;
+    favoured.clear();
 });
 
 describe('GamePage sidebar before auth has answered', () => {
@@ -170,6 +180,42 @@ describe('GamePage trailer', () => {
         expect(await screen.findByRole('heading', { level: 1, name: 'Hades' })).toBeInTheDocument();
         expect(screen.queryByTitle('Hades trailer')).not.toBeInTheDocument();
         expect(screen.getByRole('button', { name: /Play trailer/ })).toBeInTheDocument();
+    });
+});
+
+describe('GamePage related games', () => {
+    it("marks the reader's favourites among the similar games, in the names of their links", () => {
+        const tunic = { id: 2, name: 'Tunic', coverImageUrl: null };
+        const hades = { id: 3, name: 'Hades', coverImageUrl: null };
+        const celeste = game({
+            id: 1,
+            title: 'Celeste',
+            details: {
+                timeToBeat: null,
+                screenshots: [],
+                similarGames: [tunic, hades],
+                dlcs: [],
+                expansions: [],
+                parentGame: null,
+                gameModes: [],
+                multiplayerModes: null,
+                themes: [],
+                playerPerspectives: [],
+                gameEngines: [],
+                collections: [],
+                franchises: [],
+                languages: [],
+            },
+        });
+        favoured.add(tunic.id);
+        authAnswered(userProfile());
+
+        const Stub = createRoutesStub([{ id: 'game', path: '/games/:id', Component: GamePage }]);
+        render(<Stub initialEntries={['/games/1']} hydrationData={{ loaderData: { game: { game: celeste } } }} />);
+
+        const rail = screen.getByRole('list', { name: 'Games similar to Celeste' });
+        expect(within(rail).getAllByRole('link').map(link => link.textContent))
+            .toEqual(['Tunic, one of your favourites', 'Hades']);
     });
 });
 

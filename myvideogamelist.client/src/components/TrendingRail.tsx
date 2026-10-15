@@ -1,5 +1,8 @@
 import { Link } from 'react-router';
 import type { GameDto } from '@/types/game';
+import { useFavourites } from '@/hooks/useFavourites';
+import { FavouriteMark } from './FavouriteMark';
+import { FavouriteWords } from './FavouriteWords';
 
 interface TrendingRailProps {
     games: GameDto[];
@@ -12,6 +15,9 @@ interface TrendingRailProps {
  * because showing a live catalogue is more convincing than describing one (ROADMAP §3.2).
  */
 export function TrendingRail({ games }: TrendingRailProps) {
+    // The reader's own, marked after hydration on a rail that is the same for everybody (ADR 0064).
+    const { isFavourite } = useFavourites();
+
     if (games.length === 0) return null;
 
     return (
@@ -46,10 +52,13 @@ export function TrendingRail({ games }: TrendingRailProps) {
                             >
                                 {index + 1}
                             </span>
+
+                            {isFavourite(game.id) && <FavouriteMark variant="cover" />}
                         </div>
 
                         <p className="mt-2 text-sm font-medium text-fg leading-snug line-clamp-2 group-hover:text-primary-400 transition-colors">
                             {game.title}
+                            {isFavourite(game.id) && <FavouriteWords />}
                         </p>
                     </Link>
                 </li>

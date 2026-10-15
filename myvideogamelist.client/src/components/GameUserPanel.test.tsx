@@ -75,6 +75,7 @@ function favouritesValue(overrides: Partial<FavouritesContextValue> = {}): Favou
         isPending: () => false,
         add: vi.fn(async () => true),
         remove: vi.fn(async () => true),
+        moveInOrder: vi.fn(async () => true),
         reload: vi.fn(),
         ...overrides,
     };

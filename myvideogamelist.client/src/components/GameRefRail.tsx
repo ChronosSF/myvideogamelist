@@ -1,10 +1,16 @@
-import { Link } from 'react-router';
 import type { GameRefDto } from '@/types/game';
+import { GameRefTile } from './GameRefTile';
 
 interface GameRefRailProps {
     games: GameRefDto[];
     /** Names the scroll region for keyboard and screen-reader users. */
     label: string;
+    /**
+     * Which of the games are the reader's own favourites, to mark them (`docs/decisions/0064-*`). Left
+     * out on somebody else's profile: a rail of their favourites is theirs, and the reader's rosette on
+     * some of them would read as the owner's.
+     */
+    isFavourite?: (gameId: number) => boolean;
 }
 
 /**
@@ -13,7 +19,7 @@ interface GameRefRailProps {
  * Deliberately not `TrendingRail`: that one takes a full `GameDto` and stamps a popularity rank
  * on each cover, neither of which applies to a related-games list.
  */
-export function GameRefRail({ games, label }: GameRefRailProps) {
+export function GameRefRail({ games, label, isFavourite }: GameRefRailProps) {
     if (games.length === 0) return null;
 
     return (
@@ -25,32 +31,8 @@ export function GameRefRail({ games, label }: GameRefRailProps) {
             aria-label={label}
         >
             {games.map(game => (
-                <li key={game.id} className="shrink-0 snap-start">
-                    <Link
-                        to={`/games/${game.id}`}
-                        className="group block w-28 sm:w-32 focus:outline-none focus-visible:ring-2 focus-visible:ring-focus rounded-xl"
-                    >
-                        <div className="relative aspect-[3/4] rounded-xl overflow-hidden bg-surface border border-line group-hover:border-primary-500/60 transition-all duration-300 group-hover:-translate-y-1 shadow-lg">
-                            {game.coverImageUrl ? (
-                                <img
-                                    src={game.coverImageUrl}
-                                    alt=""
-                                    loading="lazy"
-                                    className="w-full h-full object-cover"
-                                />
-                            ) : (
-                                <div className="w-full h-full flex items-center justify-center text-fg-dim">
-                                    <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M15 10l4.553-2.069A1 1 0 0121 8.82v6.361a1 1 0 01-1.447.894L15 14M3 8a2 2 0 012-2h10a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8z" />
-                                    </svg>
-                                </div>
-                            )}
-                        </div>
-
-                        <p className="mt-2 text-xs sm:text-sm font-medium text-fg leading-snug line-clamp-2 group-hover:text-primary-400 transition-colors">
-                            {game.name}
-                        </p>
-                    </Link>
+                <li key={game.id} className="shrink-0 snap-start w-28 sm:w-32">
+                    <GameRefTile game={game} favourite={isFavourite?.(game.id) ?? false} />
                 </li>
             ))}
         </ul>

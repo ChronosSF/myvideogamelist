@@ -3,6 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { ContinuePlayingRail } from '@/components/ContinuePlayingRail';
+import type { FavouritesContextValue } from '@/contexts/FavouritesContext';
 import { DEFAULT_SORT } from '@/lib/listSort';
 import { emptyLists, LIST_NAMES, type ListEntryDto, type ListId } from '@/types/list';
 import { entry } from '@/test/factories';
@@ -42,6 +43,14 @@ const listsValue = {
 
 vi.mock('@/hooks/useLists', () => ({ useLists: () => listsValue }));
 
+/** The reader's favourites, as far as the rosette reads them. Hoisted and handed back whole, as above. */
+const favoured = new Set<number>();
+const favourites = {
+    isFavourite: (gameId: number) => favoured.has(gameId),
+} as unknown as FavouritesContextValue;
+
+vi.mock('@/hooks/useFavourites', () => ({ useFavourites: () => favourites }));
+
 function playing(entries: ListEntryDto[]) {
     listsValue.lists = { ...emptyLists(), playing: entries };
 }
@@ -57,6 +66,7 @@ beforeEach(() => {
     listsValue.pending = new Set();
     listsValue.addToList.mockReset();
     listsValue.addToList.mockResolvedValue(undefined);
+    favoured.clear();
 });
 
 describe('ContinuePlayingRail', () => {
@@ -146,5 +156,16 @@ describe('ContinuePlayingRail with nothing to continue', () => {
 
         expect(screen.getByText('Your lists could not be loaded just now.')).toBeInTheDocument();
         expect(screen.queryByText(/nothing in your playing list/i)).not.toBeInTheDocument();
+    });
+});
+
+describe('ContinuePlayingRail favourites', () => {
+    it("marks one of the reader's favourites, in the name of its link", () => {
+        playing([entry({ game: { id: 1, title: 'Hollow Knight' } }), entry({ game: { id: 2, title: 'Tunic' } })]);
+        favoured.add(2);
+        renderRail();
+
+        expect(screen.getByRole('link', { name: 'Tunic, one of your favourites' })).toBeInTheDocument();
+        expect(screen.getByRole('link', { name: 'Hollow Knight' })).toBeInTheDocument();
     });
 });

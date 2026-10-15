@@ -1,5 +1,8 @@
 import { Link } from 'react-router';
 import { useLists } from '@/hooks/useLists';
+import { useFavourites } from '@/hooks/useFavourites';
+import { FavouriteMark } from './FavouriteMark';
+import { FavouriteWords } from './FavouriteWords';
 import { sortEntries, type SortState } from '@/lib/listSort';
 
 /**
@@ -25,6 +28,7 @@ const RECENTLY_STARTED: SortState = { key: 'status_changed', descending: true };
  */
 export function ContinuePlayingRail() {
     const { lists, loading, error, isPending, addToList } = useLists();
+    const { isFavourite } = useFavourites();
 
     const playing = sortEntries(lists.playing, RECENTLY_STARTED);
 
@@ -65,6 +69,7 @@ export function ContinuePlayingRail() {
             {playing.map((entry, index) => {
                 const { game } = entry;
                 const pending = isPending(game.id);
+                const favourite = isFavourite(game.id);
 
                 return (
                     <li key={game.id} className="shrink-0 snap-start w-32 sm:w-36">
@@ -81,10 +86,12 @@ export function ContinuePlayingRail() {
                                         className="w-full h-full object-cover"
                                     />
                                 )}
+                                {favourite && <FavouriteMark variant="cover" />}
                             </div>
 
                             <p className="mt-2 text-sm font-medium text-fg leading-snug line-clamp-2 group-hover:text-primary-400 transition-colors">
                                 {game.title}
+                                {favourite && <FavouriteWords />}
                             </p>
                         </Link>
 

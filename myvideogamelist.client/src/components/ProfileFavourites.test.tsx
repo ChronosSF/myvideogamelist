@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
 import { ProfileFavourites } from '@/components/ProfileFavourites';
+import { FavouritesContext, type FavouritesContextValue } from '@/contexts/FavouritesContext';
 import type { PublicFavourites } from '@/types/profile';
 
 const FAVOURITES: PublicFavourites = {
@@ -51,5 +52,24 @@ describe('ProfileFavourites', () => {
 
         expect(screen.getByText('alex has 1 favourite, but it could not be loaded just now.'))
             .toBeInTheDocument();
+    });
+});
+
+describe('ProfileFavourites and the reader', () => {
+    it("never marks the reader's own favourites among somebody else's", () => {
+        // Every cover here is already one of alex's favourites, which the heading says. The reader's
+        // rosette on some of them would read as alex's mark, telling the reader something untrue
+        // about alex; and the page is the same for every reader (ADR 0064).
+        const reader = { isFavourite: () => true } as unknown as FavouritesContextValue;
+        render(
+            <MemoryRouter>
+                <FavouritesContext.Provider value={reader}>
+                    <ProfileFavourites userName="alex" count={2} favourites={FAVOURITES} />
+                </FavouritesContext.Provider>
+            </MemoryRouter>,
+        );
+
+        const rail = screen.getByRole('list', { name: "alex's favourite games" });
+        expect(Array.from(rail.querySelectorAll('a')).map(a => a.textContent)).toEqual(['Hades', 'Celeste']);
     });
 });

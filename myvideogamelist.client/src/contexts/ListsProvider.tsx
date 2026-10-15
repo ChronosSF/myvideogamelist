@@ -5,7 +5,7 @@ import {
     HAND_ORDERED_LISTS, LIST_IDS, LIST_NAMES, emptyLists,
 } from '@/types/list';
 import { type SortState, DEFAULT_SORT, MANUAL_SORT, sortEntries } from '@/lib/listSort';
-import { MAX_POSITION_WRITES, planMove } from '@/lib/handOrder';
+import { moveRefusal, planMove } from '@/lib/handOrder';
 import { useAuth } from '@/hooks/useAuth';
 import { apiFetch } from '@/lib/api';
 import { ListsContext, type SaveListNamesResult } from './ListsContext';
@@ -654,21 +654,10 @@ export function ListsProvider({ children }: { children: ReactNode }) {
         if (writes.length === 0) return true;
 
         // Refused with a reason rather than in silence: the game snaps back where it was, and a
-        // sighted user hears nothing of what the hook announces.
-        if (writes.some(write => state.pending.has(write.id))) {
-            dispatch({
-                type: 'MUTATION_ERROR',
-                session,
-                error: 'Another change to one of these games is still saving. Try the move again in a moment.',
-            });
-            return false;
-        }
-        if (writes.length > MAX_POSITION_WRITES) {
-            dispatch({
-                type: 'MUTATION_ERROR',
-                session,
-                error: 'That move would place more games at once than can be saved. Place a few of them higher up first.',
-            });
+        // sighted user hears nothing of what the hook announces. The favourites refuse the same two.
+        const refusal = moveRefusal(writes, id => state.pending.has(id));
+        if (refusal !== null) {
+            dispatch({ type: 'MUTATION_ERROR', session, error: refusal });
             return false;
         }
 

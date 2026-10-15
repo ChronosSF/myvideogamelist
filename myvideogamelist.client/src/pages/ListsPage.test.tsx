@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { ListsPage } from '@/pages/ListsPage';
 import type { AuthContextValue } from '@/contexts/AuthContext';
+import type { FavouritesContextValue } from '@/contexts/FavouritesContext';
 import type { ListsContextValue } from '@/contexts/ListsContext';
 import type { WishlistContextValue } from '@/contexts/WishlistContext';
 import { DEFAULT_SORT, MANUAL_SORT } from '@/lib/listSort';
@@ -74,6 +75,14 @@ vi.mock('@/hooks/useAuth', () => ({ useAuth: () => auth }));
 vi.mock('@/hooks/useLists', () => ({ useLists: () => lists }));
 vi.mock('@/hooks/useWishlist', () => ({ useWishlist: () => wishlist }));
 
+/** The reader's favourites, as far as the rosette reads them. Hoisted and handed back whole, as above. */
+const favoured = new Set<number>();
+const favourites = {
+    isFavourite: (gameId: number) => favoured.has(gameId),
+} as unknown as FavouritesContextValue;
+
+vi.mock('@/hooks/useFavourites', () => ({ useFavourites: () => favourites }));
+
 /** `/api/auth/me` has come back, with an account or with nobody. */
 function authAnswered(user: UserProfile | null) {
     auth.user = user;
@@ -93,6 +102,7 @@ beforeEach(() => {
     lists.loading = false;
     lists.error = null;
     lists.nameFor = (id: ListId) => LIST_NAMES[id];
+    favoured.clear();
 });
 
 describe('ListsPage before auth has answered', () => {
@@ -341,5 +351,34 @@ describe('ListsPage and the hand order', () => {
         expect(rows.map(row => within(row).getByRole('button', { name: /^Move / }).getAttribute('aria-label')))
             .toEqual(['Move Celeste', 'Move Hades', 'Move Cuphead']);
         expect(rows.map(row => row.querySelector('.col-order')?.textContent)).toEqual(['1', '2', '3']);
+    });
+});
+
+describe('ListsPage favourites', () => {
+    beforeEach(() => {
+        authAnswered(userProfile());
+        lists.lists = { ...emptyLists(), playing: [entry({ game: { id: 7, title: 'Tunic' } })] };
+    });
+
+    afterEach(() => {
+        lists.view = 'tiles';
+    });
+
+    it('marks a favourite on its card', async () => {
+        favoured.add(7);
+        renderPage();
+        await userEvent.click(screen.getByRole('tab', { name: /Playing/ }));
+
+        expect(screen.getByRole('heading', { name: 'Tunic, one of your favourites' })).toBeInTheDocument();
+    });
+
+    it('marks a favourite in the table as well', async () => {
+        lists.view = 'table';
+        favoured.add(7);
+        renderPage();
+        await userEvent.click(screen.getByRole('tab', { name: /Playing/ }));
+
+        const row = screen.getByRole('link', { name: 'Tunic' }).closest('tr')!;
+        expect(within(row).getByRole('img', { name: 'One of your favourites' })).toBeInTheDocument();
     });
 });

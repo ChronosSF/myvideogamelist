@@ -5,6 +5,7 @@ import { hasCriticScore, ratingPercent } from '@/lib/score';
 import { ScoreBadge } from '@/components/ScoreBadge';
 import { ScoreInput } from '@/components/ScoreInput';
 import { ReorderHandle } from '@/components/ReorderHandle';
+import { FavouriteMark } from '@/components/FavouriteMark';
 import type { Reorder } from '@/hooks/useReorder';
 import './ListTable.css';
 
@@ -15,6 +16,8 @@ interface ListTableProps {
     onScoreChange: (gameId: number, score: number | null) => void;
     onRemove: (gameId: number) => void;
     isPending: (gameId: number) => boolean;
+    /** Which games are the reader's favourites, marked after their titles (`docs/decisions/0064-*`). */
+    isFavourite: (gameId: number) => boolean;
     /** Names the table for screen readers — "Playing", "Backlog" and so on. */
     listName: string;
     /**
@@ -58,6 +61,7 @@ export function ListTable({
     onScoreChange,
     onRemove,
     isPending,
+    isFavourite,
     listName,
     reorder,
 }: ListTableProps) {
@@ -138,6 +142,9 @@ export function ListTable({
 
                                 <td className="col-title">
                                     <Link to={`/games/${game.id}`}>{game.title}</Link>
+                                    {/* After the title rather than on a thumbnail too small to carry it,
+                                        and named itself, since it is not inside the link. */}
+                                    {isFavourite(game.id) && <FavouriteMark variant="inline" />}
                                 </td>
 
                                 <td className="col-score">

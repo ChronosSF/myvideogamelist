@@ -3,7 +3,10 @@ import type { GameDto } from '@/types/game';
 import type { FavouriteDto } from '@/types/favourite';
 
 export interface FavouritesContextValue {
-    /** Most recent first, which is the order the server returns. */
+    /**
+     * In the showcase's order, which is the order the server returns: those the user placed by hand
+     * first, then the rest most recent first. See `docs/decisions/0064-*`.
+     */
     items: FavouriteDto[];
     loading: boolean;
     /**
@@ -12,7 +15,10 @@ export interface FavouritesContextValue {
      * loaded perfectly well.
      */
     error: string | null;
-    /** Set when an add or remove fails. Shown alongside the items, and cleared by the next success. */
+    /**
+     * Set when an add, a remove or a move fails, or a move is refused. Shown alongside the items, and
+     * cleared by the next success.
+     */
     mutationError: string | null;
 
     isFavourite: (gameId: number) => boolean;
@@ -32,6 +38,13 @@ export interface FavouritesContextValue {
     add: (game: GameDto) => Promise<boolean>;
     /** Stops the game being a favourite and touches nothing else. */
     remove: (gameId: number) => Promise<boolean>;
+    /**
+     * Moves a favourite in the showcase's hand order to sit right after `afterGameId`, or first when
+     * that is null — optimistically, under the per-game lock of every favourite it writes, and undone
+     * if the save fails. False when it failed, or was refused because a favourite it would write is
+     * still saving. The backlog's move, on this axis: see `moveInOrder` on the lists context.
+     */
+    moveInOrder: (gameId: number, afterGameId: number | null) => Promise<boolean>;
 
     /** Retries the fetch. The way out of a load failure without reloading the page. */
     reload: () => void;
