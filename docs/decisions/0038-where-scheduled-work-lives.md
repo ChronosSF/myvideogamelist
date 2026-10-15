@@ -169,6 +169,36 @@ their 165 `ImportRows` went with them through the cascade. All three that had to
 receipt from three days ago, a pending job created forty days ago whose owner saved a decision two
 days ago, and a real job from an earlier session.
 
+**The stopping token bounds the work, never the write that keeps its result.** Here that write is
+the commit alone, because the `DELETE` is itself the work: a shutdown that cancels it abandons the
+batch, and the rollback loses nothing that had finished. Once the `DELETE` has returned the batch is
+finished and only the commit keeps it, so the commit runs on `CancellationToken.None`. The first
+version committed on the stopping token, and Npgsql checks a token before it sends anything: a
+shutdown landing between the two refused the `COMMIT`, rolled the finished batch back, and left the
+next sweep to delete the same jobs again
+([#96](https://github.com/ChronosSF/myvideogamelist/issues/96)). That was wasted work and never lost
+data — the delete is idempotent, and the lock goes with the transaction either way — but this class
+is the one the next job copies, and its work may cost more to repeat. A job whose work is a request
+and whose write is a `SaveChanges` keeps the save off the token as well as the commit. Without the
+token the commit is still bounded by Npgsql's command timeout — the connection string's, thirty
+seconds while nothing sets one — and a stopping host waits for it no longer than
+`HostOptions.ShutdownTimeout`, one budget for every hosted service; a `COMMIT` still in flight when
+the process exits is applied or discarded whole, never in part. And the loop stops between batches
+once the token has fired, rather than leaving the next batch to throw: a batch whose commit finished
+after the signal is then counted in the sweep's log line with the rest, where the exception would
+have carried the count away.
+
+Verified against a real PostgreSQL by cancelling the stopping token the moment the `DELETE` had
+removed three expired jobs. Committed on the stopping token, the commit threw
+`OperationCanceledException` and all three jobs were still there; committed on `None`, it went
+through and none were. Cancelled just before the `DELETE` instead, the batch was abandoned and all
+three stayed, so the work is still bounded. And a whole tick over thirty expired jobs, cancelled the
+moment its first batch's `DELETE` returned, committed that batch of twenty-five, started no second
+one, and logged the twenty-five. `ImportRetentionTests` holds the code to all of this with doubles
+standing in for the lock, the `DELETE` and the transaction, since InMemory runs neither of the first
+two: one test fails when the commit goes back on the stopping token, another when the `DELETE` comes
+off it, and a third when the loop no longer stops between batches.
+
 ### 5. No index for the predicate
 
 It is an `OR` across two nullable columns, which needs two partial indexes to serve properly, and
@@ -233,5 +263,6 @@ That is the same call [0034](0034-failing-in-one-shape.md) makes when it keeps `
 through an IGDB outage. Stated here so the absence reads as a decision.
 
 **The next background job copies this.** Whatever it is — CloudFront invalidation (ROADMAP D14), a
-`CachedGames` refresh, scheduled exports — it inherits the scoping rule, the catch-per-tick rule and
-the question of what it owes a fleet running N copies of it.
+`CachedGames` refresh, scheduled exports — it inherits the scoping rule, the catch-per-tick rule, a
+stopping token that bounds the work and never the write that keeps its result, and the question of
+what it owes a fleet running N copies of it.
