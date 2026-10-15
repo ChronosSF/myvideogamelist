@@ -197,6 +197,9 @@ describe('PlayNextPicker favourites', () => {
 
         expect(screen.getByRole('img', { name: 'One of your favourites' })).toBeInTheDocument();
         expect(pickedTitle()).toBe('Hades');
+        // Read whole when it changes, so a reroll or the favourites arriving late is heard with the
+        // game it is about rather than as "One of your favourites" alone.
+        expect(screen.getByRole('link', { name: 'Hades' }).closest('[aria-live]')).toHaveAttribute('aria-atomic', 'true');
     });
 
     it('marks nothing on a game that is not one', () => {

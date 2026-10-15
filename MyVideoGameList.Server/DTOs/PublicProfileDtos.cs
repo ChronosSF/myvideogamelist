@@ -126,8 +126,8 @@ public record PublicReviewDto(
 /// <para>
 /// <see cref="GameRefDto"/> rather than <see cref="GameDto"/>: a showcase is a row of covers that
 /// link to their game pages, and the server-rendered profile has no use for every score and platform
-/// of each. It does not say when each became a favourite either: the order is the whole of what a
-/// reader needs from that, and the dates are the owner's data rather than part of the showcase.
+/// of each. It does not say when each became a favourite either: the dates are the owner's data rather
+/// than part of the showcase.
 /// </para>
 /// <para>
 /// The order is the one the owner arranged (ADR 0064), carried by the order of <c>Games</c> and by

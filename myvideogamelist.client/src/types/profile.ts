@@ -25,7 +25,10 @@ export interface PublicProfile {
     favourites: number;
 }
 
-/** Somebody's favourite games, mirroring `PublicFavouritesDto`. Most recent first. */
+/**
+ * Somebody's favourite games, mirroring `PublicFavouritesDto`, in the order their owner arranged: those
+ * placed by hand first, then the rest most recent first (`docs/decisions/0064-*`).
+ */
 export interface PublicFavourites {
     userName: string;
     games: GameRefDto[];

@@ -20,9 +20,10 @@ public class FavouriteService(
     TimeProvider timeProvider) : IFavouriteService
 {
     /// <summary>
-    /// The showcase's order, the one every read of the favourites uses — the owner's here and the
-    /// public profile's in <see cref="PublicProfileService"/>: the favourites placed by hand first, by
-    /// their positions, then the rest newest first, and the game id breaking whatever is left.
+    /// The showcase's order, which both reads of the showcase use — the owner's here and the public
+    /// profile's in <see cref="PublicProfileService"/>: the favourites placed by hand first, by their
+    /// positions, then the rest newest first, and the game id breaking whatever is left. The export
+    /// reads oldest first, as every section of it does, and the positions travel as they are.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -71,12 +72,25 @@ public class FavouriteService(
             .ToList();
     }
 
-    public Task<DateTimeOffset> AddAsync(
-        string userId, int gameId, CancellationToken cancellationToken = default) =>
-        GameAxisStore.AddAsync(
+    public async Task<FavouriteAddedDto> AddAsync(
+        string userId, int gameId, CancellationToken cancellationToken = default)
+    {
+        var addedAt = await GameAxisStore.AddAsync(
             db,
             new UserFavourite { UserId = userId, GameId = gameId, AddedAt = timeProvider.GetUtcNow() },
             cancellationToken);
+
+        // Read after the add rather than taken from it, because the store answers for every axis and
+        // only this one has a place: null for a favourite made now, and for one another tab made and
+        // placed first, that place — which the tab asking has no other way to learn.
+        var position = await db.UserFavourites
+            .AsNoTracking()
+            .Where(f => f.UserId == userId && f.GameId == gameId)
+            .Select(f => f.Position)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        return new FavouriteAddedDto(addedAt, position);
+    }
 
     public Task<bool> RemoveAsync(
         string userId, int gameId, CancellationToken cancellationToken = default) =>

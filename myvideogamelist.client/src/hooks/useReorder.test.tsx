@@ -358,6 +358,26 @@ describe('useReorder from the keyboard', () => {
         expect(onMove).not.toHaveBeenCalled();
     });
 
+    it('forgets a held game for good once the list stops taking moves, though it comes back unchanged', async () => {
+        // The favourites showcase takes its grid away while the favourites reload. A move the render
+        // called off must not read as live again when the list returns: the next Space on the same grip
+        // picks the game up, rather than putting it down where it was held before the reload.
+        const onMove = vi.fn();
+        const view = render(<Harness onMove={onMove} />);
+
+        handle('Hades').focus();
+        await userEvent.keyboard(' {ArrowDown}');
+        view.rerender(<Harness onMove={onMove} disabled />);
+        view.rerender(<Harness onMove={onMove} />);
+
+        handle('Hades').focus();
+        await userEvent.keyboard(' ');
+
+        expect(onMove).not.toHaveBeenCalled();
+        expect(handle('Hades')).toHaveAttribute('aria-pressed', 'true');
+        expect(announced()).toMatch(/^Picked up Hades, number 2 of 4\./);
+    });
+
     it('does nothing at all while the list cannot be rearranged', async () => {
         const onMove = vi.fn();
         render(<Harness disabled onMove={onMove} />);
@@ -479,6 +499,26 @@ describe('useReorder with a pointer', () => {
 
         fireEvent.pointerUp(handle('Celeste'), pointer(170));
         expect(onMove).toHaveBeenCalledExactlyOnceWith(1, 4);
+    });
+
+    it('does not resume a drag the list stopped taking when it comes back', () => {
+        // A drag under way when the list is taken away, and a mouse moved over the list once it is back.
+        // Its pointer id never changes, so only the forgotten press keeps that move from starting again.
+        rows();
+        const onMove = vi.fn();
+        const view = render(<Harness onMove={onMove} />);
+
+        fireEvent.pointerDown(handle('Celeste'), pointer(20));
+        fireEvent.pointerMove(handle('Celeste'), pointer(30));
+        fireEvent.pointerMove(handle('Celeste'), pointer(70));
+        view.rerender(<Harness onMove={onMove} disabled />);
+        view.rerender(<Harness onMove={onMove} />);
+
+        fireEvent.pointerMove(handle('Hades'), pointer(120));
+        fireEvent.pointerUp(handle('Hades'), pointer(120));
+
+        expect(shown()).toEqual(ORIGINAL);
+        expect(onMove).not.toHaveBeenCalled();
     });
 
     it('treats a press that does not travel as no drag at all', () => {

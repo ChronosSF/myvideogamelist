@@ -167,5 +167,10 @@ describe('ContinuePlayingRail favourites', () => {
 
         expect(screen.getByRole('link', { name: 'Tunic, one of your favourites' })).toBeInTheDocument();
         expect(screen.getByRole('link', { name: 'Hollow Knight' })).toBeInTheDocument();
+
+        // The rosette itself, by its class: it is deliberately outside the accessibility tree.
+        const marks = document.querySelectorAll('.favourite-mark-cover');
+        expect(marks).toHaveLength(1);
+        expect(screen.getByRole('link', { name: /Tunic/ })).toContainElement(marks[0] as HTMLElement);
     });
 });

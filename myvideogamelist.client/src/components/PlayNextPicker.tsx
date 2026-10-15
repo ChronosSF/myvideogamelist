@@ -89,7 +89,7 @@ export function PlayNextPicker() {
             <div className="play-next-body">
                 {/* A live region, so a reroll says what it landed on to somebody who cannot see
                     the cover change. */}
-                <p className="play-next-title" aria-live="polite">
+                <p className="play-next-title" aria-live="polite" aria-atomic="true">
                     <Link to={`/games/${game.id}`}>{game.title}</Link>
                     {/* After the title, on a cover too small for the round mark. In the live region,
                         so a reroll onto a favourite says so. */}

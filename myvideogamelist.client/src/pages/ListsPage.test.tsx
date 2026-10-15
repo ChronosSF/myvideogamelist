@@ -378,7 +378,7 @@ describe('ListsPage favourites', () => {
         renderPage();
         await userEvent.click(screen.getByRole('tab', { name: /Playing/ }));
 
-        const row = screen.getByRole('link', { name: 'Tunic' }).closest('tr')!;
+        const row = screen.getByRole('row', { name: /Tunic/ });
         expect(within(row).getByRole('img', { name: 'One of your favourites' })).toBeInTheDocument();
     });
 });

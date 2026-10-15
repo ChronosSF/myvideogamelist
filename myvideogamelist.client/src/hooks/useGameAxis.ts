@@ -2,7 +2,7 @@ import { useEffect, useReducer, useState } from 'react';
 import type { GameDto } from '@/types/game';
 import { useAuth } from '@/hooks/useAuth';
 import { apiFetch } from '@/lib/api';
-import { moveRefusal, planMove } from '@/lib/handOrder';
+import { moveInHandOrder } from '@/lib/handOrderMove';
 
 /**
  * One game on a per-user axis — the wishlist or the favourites — when it joined, and, on an axis its
@@ -33,8 +33,15 @@ export interface GameAxis {
     loading: boolean;
     /** Fetch failure only — there is nothing trustworthy to show. */
     error: string | null;
-    /** Add, remove or move failure — shown next to the items, not instead of them. */
+    /** Add or remove failure — shown next to the items, not instead of them. */
     mutationError: string | null;
+    /**
+     * A move refused or not saved, in a field of its own: it belongs to the view the move was made in.
+     * Shared with `mutationError`, a failed move on the showcase would be announced again under the
+     * favourite toggle of every game page opened after it, and a failed toggle would turn up the next
+     * time the showcase is arranged. Cleared by the next move that saves, and by a fresh load.
+     */
+    orderError: string | null;
     has: (gameId: number) => boolean;
     isPending: (gameId: number) => boolean;
     add: (game: GameDto) => Promise<boolean>;
@@ -54,7 +61,8 @@ export interface GameAxis {
 export interface GameAxisOptions {
     /**
      * The collection endpoint: `GET` it for the items, `PUT` and `DELETE` `{endpoint}/{gameId}`. The
-     * `PUT` answers with `{ addedAt }`, the time the server kept.
+     * `PUT` answers with `{ addedAt }`, the time the server kept — and on an axis with an order, with
+     * `position` as well, the place the game already had if it was there before.
      */
     endpoint: string;
     /** "Failed to load your wishlist (500)", for a response that was refused. */
@@ -75,6 +83,7 @@ interface GameAxisState {
     loading: boolean;
     error: string | null;
     mutationError: string | null;
+    orderError: string | null;
     /**
      * Whose items these are, as the user id, or null when nobody is signed in.
      *
@@ -109,7 +118,7 @@ type GameAxisAction =
     | { type: 'FETCH_SUCCESS'; session: string | null; items: GameAxisItem[] }
     | { type: 'FETCH_ERROR'; session: string | null; error: string }
     | { type: 'ADD_ITEM'; session: string | null; item: GameAxisItem }
-    | { type: 'CONFIRM_ITEM'; session: string | null; gameId: number; addedAt: string }
+    | { type: 'CONFIRM_ITEM'; session: string | null; gameId: number; addedAt: string; position?: number | null }
     | { type: 'RESTORE_ITEM'; session: string | null; item: GameAxisItem }
     | { type: 'DROP_ITEM'; session: string | null; gameId: number }
     /*
@@ -120,6 +129,8 @@ type GameAxisAction =
     | { type: 'SET_POSITIONS'; session: string | null; positions: { gameId: number; position: number | null }[] }
     | { type: 'MUTATION_ERROR'; session: string | null; error: string }
     | { type: 'CLEAR_MUTATION_ERROR'; session: string | null }
+    | { type: 'ORDER_ERROR'; session: string | null; error: string }
+    | { type: 'CLEAR_ORDER_ERROR'; session: string | null }
     // Session-stamped like everything else a mutation raises, so the release of a lock taken by
     // the previous account cannot reach a set that has since been cleared and refilled.
     | { type: 'START_PENDING'; session: string | null; gameId: number }
@@ -130,6 +141,7 @@ const initialState: GameAxisState = {
     loading: false,
     error: null,
     mutationError: null,
+    orderError: null,
     session: null,
     pending: new Set(),
 };
@@ -144,9 +156,10 @@ function positionOf(item: GameAxisItem): number | null {
 }
 
 /**
- * The order both endpoints return (`FavouriteService.InShowcaseOrder` on the server): every game
- * placed by hand first, by its position; then the rest newest first; then by game id when two rows
- * joined at the same moment. An axis nobody arranges — the wishlist always — is simply newest first.
+ * The order each endpoint returns: every game placed by hand first, by its position; then the rest
+ * newest first; then by game id when two rows joined at the same moment. That is the favourites'
+ * `FavouriteService.InShowcaseOrder`, and on an axis nobody arranges — the wishlist always — it is
+ * simply newest first, the wishlist's own order.
  *
  * The id matters because the timestamps are written by the server rather than by the row: a library
  * import writes a whole axis with one of them, and without it those games would sit in one order
@@ -193,18 +206,23 @@ function reconciled(loaded: GameAxisItem[], state: GameAxisState): GameAxisItem[
 
     // A game being removed is already out of `items`, so it is dropped from the answer as well. A game
     // being moved keeps the place this client gave it — the position is all a move writes, so the
-    // rest is the answer's — and the answer is sorted again around it.
+    // rest is the answer's — and the answer is sorted again around it. A game being added has no place
+    // of its own yet, so the answer's stands: another tab may have given it one.
     const asHeld = (item: GameAxisItem): GameAxisItem[] => {
         if (!inFlight(item)) return [item];
         const held = local.get(item.game.id);
         if (held === undefined) return [];
-        return held.position === item.position ? [item] : [{ ...item, position: held.position }];
+        const mine = positionOf(held);
+        return mine === null || mine === positionOf(item) ? [item] : [{ ...item, position: mine }];
     };
     const kept = loaded.flatMap(asHeld).sort(compareItems);
 
     // A game being added is not in the answer yet, and stays first among the unplaced, where the add
-    // put it, rather than being sorted on a time this client invented.
-    const adding = state.items.filter(item => inFlight(item) && !has(loaded, item.game.id));
+    // put it, rather than being sorted on a time this client invented. Only an unplaced one: a placed
+    // game is one being moved, and an answer without it says it was taken off somewhere else, which
+    // drops it here as a removal would.
+    const adding = state.items.filter(item =>
+        inFlight(item) && positionOf(item) === null && !has(loaded, item.game.id));
 
     return withArrivals(kept, adding);
 }
@@ -218,14 +236,21 @@ function reconciled(loaded: GameAxisItem[], state: GameAxisState): GameAxisItem[
 class AxisLoadError extends Error {}
 
 /**
- * The time a successful add says the game joined, or null when the answer carries none that parses —
- * the item then stays where the add put it, which is the next best place.
+ * What a successful add says about the game: when it joined, and on an axis with an order where it
+ * stands — or null when the answer carries no time that parses, and the item then stays where the add
+ * put it, which is the next best place. A position the answer does not carry, as the wishlist's never
+ * does, is left out rather than read as "never placed".
  */
-async function addedAtFrom(response: Response): Promise<string | null> {
+async function confirmationFrom(response: Response): Promise<{ addedAt: string; position?: number | null } | null> {
     try {
         const body: unknown = await response.json();
-        const addedAt = typeof body === 'object' && body !== null && 'addedAt' in body ? body.addedAt : null;
-        return typeof addedAt === 'string' && !Number.isNaN(Date.parse(addedAt)) ? addedAt : null;
+        if (typeof body !== 'object' || body === null) return null;
+
+        const addedAt = 'addedAt' in body ? body.addedAt : null;
+        if (typeof addedAt !== 'string' || Number.isNaN(Date.parse(addedAt))) return null;
+
+        const position = 'position' in body ? body.position : undefined;
+        return typeof position === 'number' || position === null ? { addedAt, position } : { addedAt };
     } catch {
         return null;
     }
@@ -263,6 +288,7 @@ function reducer(state: GameAxisState, action: GameAxisAction): GameAxisState {
                 loading: false,
                 error: null,
                 mutationError: null,
+                orderError: null,
             }));
         case 'FETCH_ERROR':
             return ifCurrent(state, action.session, () =>
@@ -281,16 +307,18 @@ function reducer(state: GameAxisState, action: GameAxisAction): GameAxisState {
 
         // That answer: the time the server kept for an item this client added. Nearly always a
         // moment after every other item's, so the item stays first among the unplaced — but a game
-        // another tab had already added keeps the time it really joined, and goes back to it. Only
-        // this item moves, placed among the others in the order the endpoint uses, so nothing else is
-        // reordered.
+        // another tab had already added keeps the time it really joined, and goes back to it, and
+        // the place in the order that tab gave it. Only this item moves, placed among the others in
+        // the order the endpoint uses, so nothing else is reordered.
         case 'CONFIRM_ITEM':
             return ifCurrent(state, action.session, () => {
                 const confirmed = state.items.find(item => item.game.id === action.gameId);
                 if (!confirmed) return state;
 
                 const others = state.items.filter(item => item.game.id !== action.gameId);
-                const placed = { ...confirmed, addedAt: action.addedAt };
+                const placed = action.position === undefined
+                    ? { ...confirmed, addedAt: action.addedAt }
+                    : { ...confirmed, addedAt: action.addedAt, position: action.position };
                 const at = others.findIndex(item => compareItems(placed, item) < 0);
 
                 return {
@@ -339,6 +367,10 @@ function reducer(state: GameAxisState, action: GameAxisAction): GameAxisState {
             return ifCurrent(state, action.session, () => ({ ...state, mutationError: action.error }));
         case 'CLEAR_MUTATION_ERROR':
             return ifCurrent(state, action.session, () => ({ ...state, mutationError: null }));
+        case 'ORDER_ERROR':
+            return ifCurrent(state, action.session, () => ({ ...state, orderError: action.error }));
+        case 'CLEAR_ORDER_ERROR':
+            return ifCurrent(state, action.session, () => ({ ...state, orderError: null }));
         case 'START_PENDING':
             return ifCurrent(state, action.session, () =>
                 ({ ...state, pending: new Set(state.pending).add(action.gameId) }));
@@ -455,8 +487,8 @@ export function useGameAxis({ endpoint, loadFailed, loadUnreachable, mutationFai
 
             if (res.ok) {
                 // Read while the game's lock is still held, so no removal of it can land in between.
-                const addedAt = await addedAtFrom(res);
-                if (addedAt !== null) dispatch({ type: 'CONFIRM_ITEM', session, gameId: game.id, addedAt });
+                const confirmed = await confirmationFrom(res);
+                if (confirmed !== null) dispatch({ type: 'CONFIRM_ITEM', session, gameId: game.id, ...confirmed });
                 dispatch({ type: 'CLEAR_MUTATION_ERROR', session });
                 return true;
             }
@@ -506,64 +538,31 @@ export function useGameAxis({ endpoint, loadFailed, loadUnreachable, mutationFai
 
     /**
      * Moves a game in the axis's hand order to sit right after another, or first when that is null —
-     * `ListsProvider.moveInOrder`'s shape, on the axis (ADR 0054 §5, ADR 0064).
+     * the backlog's move on the axis (ADR 0054 §5, ADR 0064 §4), through the one sequence both run:
+     * `moveInHandOrder` plans it, refuses a move that would overtake a game's own save, locks every game
+     * it writes, shows it at once and puts back what it changed if the save does not land.
      *
-     * `planMove` decides which positions to write: the moved game's, the unplaced games it passes when
-     * it lands among them, and only rarely a few neighbours'. Every game written takes its per-game
-     * lock, because a position is a column of the same row an add or a remove writes; a move that would
-     * need a game whose own write is still out is refused, with a reason, and changes nothing. The undo
-     * puts back the position each of those games had, which is exact because they were locked.
-     *
-     * Planned from `items` as they stand, which are always in the order shown: placed first, by
-     * position, then the rest — the one order `planMove` reads.
+     * What is the axis's own: its order, read from `items`, which are always in the order shown —
+     * placed first, by position, then the rest — and its own field for what went wrong, `orderError`.
+     * Refused, like the add and the remove, while the axis is unknown: during a load, and after one that
+     * failed.
      */
     const moveInOrder = async (gameId: number, afterGameId: number | null): Promise<boolean> => {
-        // No order to move in, or no list known to move it in — the add's and the remove's rule.
         if (!order || state.loading || state.error !== null) return false;
 
-        const ordered = state.items.map(item => ({ id: item.game.id, position: positionOf(item) }));
-        const writes = planMove(ordered, gameId, afterGameId);
-
-        // Already where it was asked to go.
-        if (writes.length === 0) return true;
-
-        const refusal = moveRefusal(writes, id => state.pending.has(id));
-        if (refusal !== null) {
-            dispatch({ type: 'MUTATION_ERROR', session, error: refusal });
-            return false;
-        }
-
-        const before = new Map(ordered.map(item => [item.id, item.position]));
-        const previous = writes.map(write => ({ gameId: write.id, position: before.get(write.id) ?? null }));
-        const next = writes.map(write => ({ gameId: write.id, position: write.position }));
-
-        for (const write of writes) startPending(write.id);
-        dispatch({ type: 'SET_POSITIONS', session, positions: next });
-
-        const undo = () => {
-            dispatch({ type: 'SET_POSITIONS', session, positions: previous });
-            dispatch({ type: 'MUTATION_ERROR', session, error: order.failed });
-        };
-
-        try {
-            const res = await apiFetch(order.endpoint, {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ positions: next }),
-            });
-
-            if (!res.ok) {
-                undo();
-                return false;
-            }
-            dispatch({ type: 'CLEAR_MUTATION_ERROR', session });
-            return true;
-        } catch {
-            undo();
-            return false;
-        } finally {
-            for (const write of writes) endPending(write.id);
-        }
+        return moveInHandOrder({
+            ordered: state.items.map(item => ({ id: item.game.id, position: positionOf(item) })),
+            gameId,
+            afterGameId,
+            endpoint: order.endpoint,
+            saving: id => state.pending.has(id),
+            lock: startPending,
+            unlock: endPending,
+            show: positions => dispatch({ type: 'SET_POSITIONS', session, positions }),
+            fail: error => dispatch({ type: 'ORDER_ERROR', session, error }),
+            saved: () => dispatch({ type: 'CLEAR_ORDER_ERROR', session }),
+            failed: order.failed,
+        });
     };
 
     return {
@@ -571,6 +570,7 @@ export function useGameAxis({ endpoint, loadFailed, loadUnreachable, mutationFai
         loading: state.loading,
         error: state.error,
         mutationError: state.mutationError,
+        orderError: state.orderError,
         has: gameId => has(state.items, gameId),
         isPending,
         add,

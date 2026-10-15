@@ -1,3 +1,4 @@
+using System.Globalization;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 using MyVideoGameList.Server.Models;
@@ -168,8 +169,9 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
         // The wishlist has one order that matters — most recently wanted first.
         modelBuilder.Entity<UserWishlistItem>().HasIndex(w => new { w.UserId, w.AddedAt });
 
-        // UserFavourite: the wishlist's shape exactly, for the same reasons — an axis of its own, so
-        // no foreign key to the entry, and a composite PK that makes favouriting idempotent.
+        // UserFavourite: the wishlist's shape, for the same reasons — an axis of its own, so no foreign
+        // key to the entry, and a composite PK that makes favouriting idempotent — and a hand-ordered
+        // position besides, checked below.
         modelBuilder.Entity<UserFavourite>().HasKey(f => new { f.UserId, f.GameId });
         modelBuilder.Entity<UserFavourite>()
             .HasOne(f => f.User)
@@ -193,8 +195,15 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
     /// One expression for every table that has a hand order, so the backlog's and the showcase's cannot
     /// drift apart. See <see cref="HandOrder"/>.
     /// </summary>
-    private static readonly string PositionInRange =
-        $"\"Position\" IS NULL OR (\"Position\" >= {HandOrder.MinPosition} AND \"Position\" <= {HandOrder.MaxPosition})";
+    /// <remarks>
+    /// Formatted in the invariant culture, because an interpolated number is not a constant: in a
+    /// culture whose minus sign is U+2212 the lower bound would read <c>−1000000000</c>, a model that no
+    /// longer matches the migrations, and the next migration would drop and re-add both checks with SQL
+    /// PostgreSQL refuses.
+    /// </remarks>
+    private static readonly string PositionInRange = string.Create(
+        CultureInfo.InvariantCulture,
+        $"\"Position\" IS NULL OR (\"Position\" >= {HandOrder.MinPosition} AND \"Position\" <= {HandOrder.MaxPosition})");
 
     /// <summary>
     /// The MVGL columns on Identity's user row.

@@ -15,11 +15,14 @@ export interface FavouritesContextValue {
      * loaded perfectly well.
      */
     error: string | null;
-    /**
-     * Set when an add, a remove or a move fails, or a move is refused. Shown alongside the items, and
-     * cleared by the next success.
-     */
+    /** Set when an add or remove fails. Shown alongside the items, and cleared by the next success. */
     mutationError: string | null;
+    /**
+     * Set when a move in the showcase's order is refused or not saved, and shown by the showcase alone:
+     * apart from `mutationError`, so that it does not follow the user onto every game page's favourite
+     * toggle. Cleared by the next move that saves, and by a fresh load.
+     */
+    orderError: string | null;
 
     isFavourite: (gameId: number) => boolean;
     /**
@@ -41,8 +44,11 @@ export interface FavouritesContextValue {
     /**
      * Moves a favourite in the showcase's hand order to sit right after `afterGameId`, or first when
      * that is null — optimistically, under the per-game lock of every favourite it writes, and undone
-     * if the save fails. False when it failed, or was refused because a favourite it would write is
-     * still saving. The backlog's move, on this axis: see `moveInOrder` on the lists context.
+     * if the save fails. The backlog's move, on this axis: see `moveInOrder` on the lists context.
+     *
+     * False when the move did not happen: the save failed; it was refused, because a favourite it would
+     * write is still saving or it would carry more positions than one write may; or the favourites are
+     * loading or failed to load, so there is no order known to move in.
      */
     moveInOrder: (gameId: number, afterGameId: number | null) => Promise<boolean>;
 

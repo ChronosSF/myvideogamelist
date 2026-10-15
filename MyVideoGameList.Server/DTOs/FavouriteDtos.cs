@@ -20,6 +20,11 @@ public record FavouriteDto(GameDto Game, DateTimeOffset AddedAt, int? Position);
 
 /// <summary>
 /// The answer to making a game a favourite: when it became one, which for a game that already was
-/// one is the original time rather than now.
+/// one is the original time rather than now, and where it stands in the showcase.
 /// </summary>
-public record FavouriteAddedDto(DateTimeOffset AddedAt);
+/// <param name="Position">
+/// Null for a favourite made now. For a game that already was one, the place it was given — by
+/// another tab, which the tab asking cannot know — so that it is filed where it really stands, as the
+/// timestamp is (ADR 0029 §1, ADR 0064).
+/// </param>
+public record FavouriteAddedDto(DateTimeOffset AddedAt, int? Position);

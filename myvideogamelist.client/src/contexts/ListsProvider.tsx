@@ -5,7 +5,7 @@ import {
     HAND_ORDERED_LISTS, LIST_IDS, LIST_NAMES, emptyLists,
 } from '@/types/list';
 import { type SortState, DEFAULT_SORT, MANUAL_SORT, sortEntries } from '@/lib/listSort';
-import { moveRefusal, planMove } from '@/lib/handOrder';
+import { moveInHandOrder } from '@/lib/handOrderMove';
 import { useAuth } from '@/hooks/useAuth';
 import { apiFetch } from '@/lib/api';
 import { ListsContext, type SaveListNamesResult } from './ListsContext';
@@ -644,52 +644,25 @@ export function ListsProvider({ children }: { children: ReactNode }) {
      *
      * The undo puts back the position each of those games had, which is exact for the reason the lock
      * gives: nothing else can have moved them while this request was out.
+     *
+     * The steps are `moveInHandOrder`'s, which the favourites' move runs too; what is this provider's is
+     * the list's hand order, its locks, and its actions — a refusal or a failure in the page's banner.
      */
-    const moveInOrder = async (listId: ListId, gameId: number, afterGameId: number | null): Promise<boolean> => {
-        const ordered = sortEntries(state.lists[listId], MANUAL_SORT)
-            .map(entry => ({ id: entry.game.id, position: entry.position }));
-        const writes = planMove(ordered, gameId, afterGameId);
-
-        // Already where it was asked to go.
-        if (writes.length === 0) return true;
-
-        // Refused with a reason rather than in silence: the game snaps back where it was, and a
-        // sighted user hears nothing of what the hook announces. The favourites refuse the same two.
-        const refusal = moveRefusal(writes, id => state.pending.has(id));
-        if (refusal !== null) {
-            dispatch({ type: 'MUTATION_ERROR', session, error: refusal });
-            return false;
-        }
-
-        const before = new Map(ordered.map(item => [item.id, item.position]));
-        const previous = writes.map(write => ({ gameId: write.id, position: before.get(write.id) ?? null }));
-        const next = writes.map(write => ({ gameId: write.id, position: write.position }));
-
-        for (const write of writes) startPending(write.id);
-        dispatch({ type: 'SET_POSITIONS', session, listId, positions: next });
-
-        const undo = () => dispatch({ type: 'SET_POSITIONS', session, listId, positions: previous });
-
-        try {
-            const res = await apiFetch(`/api/lists/${listId}/positions`, {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ positions: next }),
-            });
-
-            if (!res.ok) {
-                rollBack(undo, 'Failed to save your order. Please try again.');
-                return false;
-            }
-            dispatch({ type: 'CLEAR_MUTATION_ERROR', session });
-            return true;
-        } catch {
-            rollBack(undo, 'Failed to save your order. Please try again.');
-            return false;
-        } finally {
-            for (const write of writes) endPending(write.id);
-        }
-    };
+    const moveInOrder = (listId: ListId, gameId: number, afterGameId: number | null): Promise<boolean> =>
+        moveInHandOrder({
+            ordered: sortEntries(state.lists[listId], MANUAL_SORT)
+                .map(entry => ({ id: entry.game.id, position: entry.position })),
+            gameId,
+            afterGameId,
+            endpoint: `/api/lists/${listId}/positions`,
+            saving: id => state.pending.has(id),
+            lock: startPending,
+            unlock: endPending,
+            show: positions => dispatch({ type: 'SET_POSITIONS', session, listId, positions }),
+            fail: error => dispatch({ type: 'MUTATION_ERROR', session, error }),
+            saved: () => dispatch({ type: 'CLEAR_MUTATION_ERROR', session }),
+            failed: 'Failed to save your order. Please try again.',
+        });
 
     /**
      * Writes one of the entry's own fields — how the user has the game, or their notes on it.

@@ -46,7 +46,7 @@ function orderWords(items: FavouriteDto[]): string {
  * keyboard.
  */
 export function FavouritesShowcase({ profileVisibility }: FavouritesShowcaseProps) {
-    const { items, loading, error, mutationError, reload, isFavourite, isPending, moveInOrder } = useFavourites();
+    const { items, loading, error, orderError, reload, isFavourite, isPending, moveInOrder } = useFavourites();
     const [arranging, setArranging] = useState(false);
 
     // Something to arrange: two or more, and a list known to be right.
@@ -119,15 +119,19 @@ export function FavouritesShowcase({ profileVisibility }: FavouritesShowcaseProp
                     </p>
 
                     {/* Beside the covers, never instead of them: a failed move has already been put
-                        back. Only while arranging, where a move can have caused it. */}
-                    {mutationError !== null && (
-                        <p className="favourites-showcase-error" role="alert">{mutationError}</p>
+                        back. The order's own error, so a favourite toggle that failed on a game page
+                        does not turn up here. */}
+                    {orderError !== null && (
+                        <p className="favourites-showcase-error" role="alert">{orderError}</p>
                     )}
 
                     <ReorderAnnouncer reorder={reorder} />
 
                     <ul
                         className="favourites-showcase-grid"
+                        // Said outright: a list styled without its markers stops being one to WebKit's
+                        // screen reader, and then nobody hears a favourite's place in it.
+                        role="list"
                         aria-label="Your favourite games"
                         {...reorder.listProps()}
                     >
@@ -138,7 +142,15 @@ export function FavouritesShowcase({ profileVisibility }: FavouritesShowcaseProp
                                     rank={index + 1}
                                     variant="overlay"
                                 />
-                                <GameRefTile game={asRef(item)} favourite={isFavourite(item.game.id)} />
+                                {/* Not a link while it is arranged: a press that misses the grip would
+                                    leave the page, and the mode with it. Not said in words either: the
+                                    list is named as the reader's favourites. */}
+                                <GameRefTile
+                                    game={asRef(item)}
+                                    favourite={isFavourite(item.game.id)}
+                                    sayFavourite={false}
+                                    linked={false}
+                                />
                             </li>
                         ))}
                     </ul>
@@ -149,6 +161,7 @@ export function FavouritesShowcase({ profileVisibility }: FavouritesShowcaseProp
                         games={items.map(asRef)}
                         label="Your favourite games"
                         isFavourite={isFavourite}
+                        sayFavourites={false}
                     />
                     <p className="profile-caption">
                         {`${items.length} ${items.length === 1 ? 'game' : 'games'}, ${orderWords(items)}. `}

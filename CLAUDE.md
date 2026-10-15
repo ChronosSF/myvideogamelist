@@ -163,13 +163,16 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   add a foreign key to `UserGameEntries`, because a wishlisted game usually has no entry at all.
 
 - **Favourites are a second axis on the wishlist's code, so fix either one in the shared place.**
-  `UserFavourites` has the wishlist's shape, and both write through `GameAxisStore` on the server and
-  run on `useGameAxis` on the client — a race guard or a session stamp added to one provider by hand
-  is exactly the drift ADR 0022 records. Each provider keeps its own context and pending set. A
-  favourite is marked with a rosette, never a star, and is published on a public profile where the
-  wishlist shows only its size. The showcase's hand order is on that shared code too — `moveInOrder`
-  in `useGameAxis`, which the wishlist gives no `order` and so cannot use — and the public profile
-  shows the favourites in it: the order crosses, the positions never do. The reader's own rosette is
+  `UserFavourites` has the wishlist's shape plus a hand-ordered position, and both write through
+  `GameAxisStore` on the server and run on `useGameAxis` on the client — a race guard or a session
+  stamp added to one provider by hand is exactly the drift ADR 0022 records. Each provider keeps its
+  own context and pending set. A favourite is marked with a rosette, never a star, and is published on
+  a public profile where the wishlist shows only its size. The showcase's hand order is on that shared
+  code too — `moveInOrder` in `useGameAxis`, which the wishlist gives no `order` and so cannot use —
+  and its steps are `moveInHandOrder` (`@/lib/handOrderMove`), which the backlog's move runs as well,
+  so a step added there is added to both orders. A move's failure is `orderError`, never
+  `mutationError`, which every game page's favourite toggle shows. The public profile shows the
+  favourites in their order: the order crosses, the positions never do. The reader's own rosette is
   drawn on every card of their games and the site's, and on nothing of somebody else's profile,
   which is why `GameRefRail` takes `isFavourite` rather than reading the context. See
   `docs/decisions/0029-*` and `0064-*`.
@@ -262,7 +265,8 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   `useReorder`, which the favourites showcase reuses unchanged. `UserFavourites.Position` is the same
   number on the other axis, written through the same `HandOrderStore`; a favourite has no list to
   leave, so only its own removal loses its place. A new hand-ordered table needs its range check, and
-  `HandOrderTests` fails until it has one. See `docs/decisions/0054-*` and `0064-*`.
+  `HandOrderTests` fails until it has one and is named in that test's inventory; `ModelSnapshotTests`
+  fails until a migration carries it. See `docs/decisions/0054-*` and `0064-*`.
 
 - **A list's label reads `nameFor` from the lists context, never `LIST_NAMES`** — except on a public
   profile, which keeps the defaults because a rename is its owner's alone. `LIST_NAMES` is the

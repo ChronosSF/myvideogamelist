@@ -76,9 +76,9 @@ public class FavouriteRaceTests
             throw new DbUpdateException("duplicate key value violates unique constraint");
         }));
 
-        var addedAt = await NewService(db).AddAsync(UserId, 42);
+        var added = await NewService(db).AddAsync(UserId, 42);
 
-        Assert.Equal(winnersTime, addedAt);
+        Assert.Equal(winnersTime, added.AddedAt);
         Assert.Single(NewDb(store).UserFavourites.Where(f => f.GameId == 42));
     }
 

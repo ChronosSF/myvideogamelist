@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
 import { ProfileFavourites } from '@/components/ProfileFavourites';
 import { FavouritesContext, type FavouritesContextValue } from '@/contexts/FavouritesContext';
@@ -70,6 +70,8 @@ describe('ProfileFavourites and the reader', () => {
         );
 
         const rail = screen.getByRole('list', { name: "alex's favourite games" });
-        expect(Array.from(rail.querySelectorAll('a')).map(a => a.textContent)).toEqual(['Hades', 'Celeste']);
+        expect(within(rail).getAllByRole('link').map(link => link.textContent)).toEqual(['Hades', 'Celeste']);
+        // Nor the rosette, which is outside the accessibility tree and so found by its class.
+        expect(rail.querySelectorAll('.favourite-mark')).toHaveLength(0);
     });
 });

@@ -18,7 +18,8 @@ interface FavouriteMarkProps {
  *
  * The rosette, filled, as the release card draws it once a game is a favourite — never a star, which is
  * the user's own score and nothing else (ADR 0021). It marks and does nothing: a favourite is made or
- * unmade on the game's page, or on a release card, and nowhere else (ADR 0029 §4).
+ * unmade on the game's page (ADR 0029 §4) and on a release card, which has offered the same toggle since
+ * the release calendar's review asked for it, and nowhere else.
  */
 export function FavouriteMark({ variant }: FavouriteMarkProps) {
     if (variant === 'inline') {

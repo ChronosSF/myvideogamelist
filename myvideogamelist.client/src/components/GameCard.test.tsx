@@ -76,6 +76,7 @@ function favouritesValue(overrides: Partial<FavouritesContextValue> = {}): Favou
         loading: false,
         error: null,
         mutationError: null,
+        orderError: null,
         isFavourite: () => false,
         isPending: () => false,
         add: vi.fn(async () => true),
@@ -210,6 +211,12 @@ describe('GameCard wishlist failure', () => {
     });
 });
 
+/**
+ * The rosette drawn on a cover. By its class, the one exception to querying by role: the mark is
+ * deliberately outside the accessibility tree, and what it says is asserted through the words instead.
+ */
+const coverMarks = () => document.querySelectorAll('.favourite-mark-cover');
+
 describe('GameCard favourite mark', () => {
     it("marks one of the reader's favourites, and says so in its heading", () => {
         // The rosette on the cover is decoration: the cover is a button with a name of its own, so a
@@ -217,12 +224,14 @@ describe('GameCard favourite mark', () => {
         renderCard({}, {}, { isFavourite: id => id === CELESTE.id });
 
         expect(screen.getByRole('heading', { name: 'Celeste, one of your favourites' })).toBeInTheDocument();
+        expect(coverMarks()).toHaveLength(1);
     });
 
     it('marks nothing on a game that is not a favourite', () => {
         renderCard({}, {}, { isFavourite: () => false });
 
         expect(screen.getByRole('heading', { name: 'Celeste' })).toBeInTheDocument();
+        expect(coverMarks()).toHaveLength(0);
     });
 
     it('marks a favourite and offers no way to change it', () => {

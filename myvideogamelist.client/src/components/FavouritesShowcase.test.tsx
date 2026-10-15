@@ -14,6 +14,7 @@ function favouritesValue(overrides: Partial<FavouritesContextValue> = {}): Favou
         loading: false,
         error: null,
         mutationError: null,
+        orderError: null,
         isFavourite: () => false,
         isPending: () => false,
         add: vi.fn(async () => true),
@@ -121,13 +122,15 @@ describe('FavouritesShowcase order', () => {
         expect(screen.getByText(/your public profile shows them too, in the same order/i)).toBeInTheDocument();
     });
 
-    it("marks each of the row's covers as a favourite", () => {
+    it("marks each of the row's covers as a favourite, without saying so again for each", () => {
         // Every cover here is one — the same mark as on a card anywhere else, read from the same context.
+        // The list is named as the reader's favourites, so the words a mark carries elsewhere would only
+        // repeat it for every cover. The rosette is found by its class: it is outside the accessibility tree.
         renderShowcase({ items: [HADES, CELESTE], isFavourite: () => true });
 
         const rail = screen.getByRole('list', { name: 'Your favourite games' });
-        expect(within(rail).getAllByRole('link').map(link => link.textContent))
-            .toEqual(['Hades, one of your favourites', 'Celeste, one of your favourites']);
+        expect(within(rail).getAllByRole('link').map(link => link.textContent)).toEqual(['Hades', 'Celeste']);
+        expect(rail.querySelectorAll('.favourite-mark-cover')).toHaveLength(2);
     });
 });
 
@@ -219,13 +222,58 @@ describe('FavouritesShowcase arranging', () => {
     it('shows why a move did not happen beside the covers while they are arranged, and only then', async () => {
         // A refused or failed move has already been put back, so the covers stay; the reason is the
         // only thing a sighted user would otherwise not know.
-        renderShowcase({ items: ITEMS, mutationError: 'Failed to save the order of your favourites. Please try again.' });
+        renderShowcase({ items: ITEMS, orderError: 'Failed to save the order of your favourites. Please try again.' });
         expect(screen.queryByRole('alert')).not.toBeInTheDocument();
 
         await arrange();
 
         expect(screen.getByRole('alert')).toHaveTextContent('Failed to save the order of your favourites.');
         expect(grips()).toHaveLength(3);
+    });
+
+    it("does not show a favourite toggle's failure, which belongs to the game page it happened on", async () => {
+        renderShowcase({ items: ITEMS, mutationError: 'Failed to update your favourites. Please try again.' });
+
+        await arrange();
+
+        expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    });
+
+    it('moves a favourite into the place of the one whose grip is pressed after its own', async () => {
+        // The single-pointer way, which a screen reader's own activate takes too (ADR 0054 §7).
+        const value = renderShowcase({ items: ITEMS });
+        await arrange();
+
+        await userEvent.click(screen.getByRole('button', { name: 'Move Tunic' }));
+        await userEvent.click(screen.getByRole('button', { name: 'Move Hades' }));
+
+        expect(value.moveInOrder).toHaveBeenCalledExactlyOnceWith(3, null);
+    });
+
+    it('says each favourite\'s place beside its grip', async () => {
+        renderShowcase({ items: ITEMS });
+        await arrange();
+
+        const places = within(screen.getByRole('list', { name: 'Your favourite games' })).getAllByRole('listitem');
+        expect(places.map(place => within(place).getByText(/^\d+$/).textContent)).toEqual(['1', '2', '3']);
+    });
+
+    it('keeps the covers from leaving the page while they are arranged, and marks them all', async () => {
+        // A press that misses a grip on a phone would otherwise open the game's page and end the mode.
+        renderShowcase({ items: ITEMS, isFavourite: () => true });
+        await arrange();
+
+        const grid = screen.getByRole('list', { name: 'Your favourite games' });
+        expect(within(grid).queryAllByRole('link')).toHaveLength(0);
+        expect(grid.querySelectorAll('.favourite-mark-cover')).toHaveLength(3);
+    });
+
+    it('tells the owner of a public profile, while they arrange it, that it shows this order', async () => {
+        renderShowcase({ items: ITEMS }, 'public');
+        await arrange();
+
+        expect(screen.getByText(/drag a cover by its handle/i))
+            .toHaveTextContent(/your public profile shows them too, in the same order/i);
     });
 
     it('puts a held favourite back when the favourites reload under it', async () => {

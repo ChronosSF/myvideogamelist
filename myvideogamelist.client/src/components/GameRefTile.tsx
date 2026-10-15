@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { Link } from 'react-router';
 import type { GameRefDto } from '@/types/game';
 import { FavouriteMark } from './FavouriteMark';
@@ -7,18 +8,28 @@ interface GameRefTileProps {
     game: GameRefDto;
     /** One of the reader's own favourites, so marked with the rosette (`docs/decisions/0064-*`). */
     favourite?: boolean;
+    /**
+     * Whether the mark is said in words in the game's name too. Left out where whatever holds the tile
+     * says it of every game in it — the owner's showcase is a list named as their favourites — so that
+     * a screen reader does not hear it again for every cover.
+     */
+    sayFavourite?: boolean;
+    /**
+     * A link to the game's page, which a tile is everywhere but in a showcase being arranged: there a
+     * press that misses a grip would leave the page, and the mode with it.
+     */
+    linked?: boolean;
 }
+
+const FRAME = 'group block focus:outline-none focus-visible:ring-2 focus-visible:ring-focus rounded-xl';
 
 /**
  * One game as its cover and its name, linking to its page: an item of a `GameRefRail`, or of the
  * favourites showcase while it is being arranged. As wide as whatever holds it.
  */
-export function GameRefTile({ game, favourite = false }: GameRefTileProps) {
-    return (
-        <Link
-            to={`/games/${game.id}`}
-            className="group block focus:outline-none focus-visible:ring-2 focus-visible:ring-focus rounded-xl"
-        >
+export function GameRefTile({ game, favourite = false, sayFavourite = true, linked = true }: GameRefTileProps) {
+    const content: ReactNode = (
+        <>
             <div className="relative aspect-[3/4] rounded-xl overflow-hidden bg-surface border border-line group-hover:border-primary-500/60 transition-all duration-300 group-hover:-translate-y-1 shadow-lg">
                 {game.coverImageUrl ? (
                     <img
@@ -39,8 +50,12 @@ export function GameRefTile({ game, favourite = false }: GameRefTileProps) {
 
             <p className="mt-2 text-xs sm:text-sm font-medium text-fg leading-snug line-clamp-2 group-hover:text-primary-400 transition-colors">
                 {game.name}
-                {favourite && <FavouriteWords />}
+                {favourite && sayFavourite && <FavouriteWords />}
             </p>
-        </Link>
+        </>
     );
+
+    return linked
+        ? <Link to={`/games/${game.id}`} className={FRAME}>{content}</Link>
+        : <div className="block">{content}</div>;
 }

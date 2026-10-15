@@ -34,6 +34,7 @@ export function FavouritesProvider({ children }: { children: ReactNode }) {
             loading: axis.loading,
             error: axis.error,
             mutationError: axis.mutationError,
+            orderError: axis.orderError,
             isFavourite: axis.has,
             isPending: axis.isPending,
             add: axis.add,

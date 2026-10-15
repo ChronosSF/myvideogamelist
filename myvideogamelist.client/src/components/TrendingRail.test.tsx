@@ -32,5 +32,10 @@ describe('TrendingRail', () => {
 
         expect(screen.getByRole('link', { name: 'Tunic, one of your favourites' })).toHaveAttribute('href', '/games/2');
         expect(screen.getByRole('link', { name: 'Hades' })).toBeInTheDocument();
+
+        // The rosette itself, by its class: it is deliberately outside the accessibility tree.
+        const marks = document.querySelectorAll('.favourite-mark-cover');
+        expect(marks).toHaveLength(1);
+        expect(screen.getByRole('link', { name: /Tunic/ })).toContainElement(marks[0] as HTMLElement);
     });
 });
