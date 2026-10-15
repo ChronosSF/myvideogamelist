@@ -4,6 +4,8 @@ import { type SortKey, type SortState, SORT_OPTIONS, sortOption } from '@/lib/li
 import { hasCriticScore, ratingPercent } from '@/lib/score';
 import { ScoreBadge } from '@/components/ScoreBadge';
 import { ScoreInput } from '@/components/ScoreInput';
+import { ReorderHandle } from '@/components/ReorderHandle';
+import type { Reorder } from '@/hooks/useReorder';
 import './ListTable.css';
 
 interface ListTableProps {
@@ -15,6 +17,11 @@ interface ListTableProps {
     isPending: (gameId: number) => boolean;
     /** Names the table for screen readers — "Playing", "Backlog" and so on. */
     listName: string;
+    /**
+     * Given while the list is shown in its hand order and can be rearranged: each row gets a handle in
+     * a first column, and `entries` is already in the order to draw, a game being moved included.
+     */
+    reorder?: Reorder;
 }
 
 /** Columns that double as sort controls, in display order. */
@@ -52,6 +59,7 @@ export function ListTable({
     onRemove,
     isPending,
     listName,
+    reorder,
 }: ListTableProps) {
     const sortBy = (key: SortKey) => {
         // Clicking the active column flips direction; a new column starts in whichever direction
@@ -66,6 +74,12 @@ export function ListTable({
                 <caption className="sr-only">{listName}</caption>
                 <thead>
                     <tr>
+                        {reorder && (
+                            <th scope="col" className="col-order">
+                                <span aria-hidden="true">#</span>
+                                <span className="sr-only">Order</span>
+                            </th>
+                        )}
                         <th scope="col" className="col-cover"><span className="sr-only">Cover</span></th>
                         {SORTABLE.map(({ key, className }) => {
                             const active = sort.key === key;
@@ -89,13 +103,27 @@ export function ListTable({
                         <th scope="col" className="col-actions"><span className="sr-only">Actions</span></th>
                     </tr>
                 </thead>
-                <tbody>
-                    {entries.map(entry => {
+                <tbody {...reorder?.listProps()}>
+                    {entries.map((entry, index) => {
                         const { game } = entry;
                         const pending = isPending(game.id);
 
                         return (
-                            <tr key={game.id} className={pending ? 'pending' : undefined}>
+                            <tr
+                                key={game.id}
+                                className={pending ? 'pending' : undefined}
+                                {...reorder?.itemProps(game.id)}
+                            >
+                                {reorder && (
+                                    <td className="col-order">
+                                        <ReorderHandle
+                                            handle={reorder.handleProps(game.id)}
+                                            rank={index + 1}
+                                            variant="inline"
+                                        />
+                                    </td>
+                                )}
+
                                 <td className="col-cover">
                                     <Link to={`/games/${game.id}`} tabIndex={-1} aria-hidden="true">
                                         {game.coverImageUrl ? (

@@ -1,14 +1,15 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { ListsPage } from '@/pages/ListsPage';
 import type { AuthContextValue } from '@/contexts/AuthContext';
 import type { ListsContextValue } from '@/contexts/ListsContext';
 import type { WishlistContextValue } from '@/contexts/WishlistContext';
-import { DEFAULT_SORT } from '@/lib/listSort';
+import { DEFAULT_SORT, MANUAL_SORT } from '@/lib/listSort';
 import type { UserProfile } from '@/types/auth';
 import { emptyLists, LIST_NAMES, type ListId } from '@/types/list';
-import { entry, userProfile } from '@/test/factories';
+import { entry, platform, userProfile } from '@/test/factories';
 
 /**
  * Auth and the lists, mocked rather than provided: both real providers fetch, and the page only
@@ -43,6 +44,7 @@ const lists: ListsContextValue = {
     getListFor: () => null,
     scoreFor: () => null,
     setScore: vi.fn(async () => true),
+    moveInOrder: vi.fn(async () => true),
     setOwnership: vi.fn(async () => true),
     setNotes: vi.fn(async () => true),
     deleteEntry: vi.fn(async () => true),
@@ -177,5 +179,93 @@ describe('ListsPage and renamed lists', () => {
         expect(screen.getByRole('tab', { name: /Beaten/ })).toBeInTheDocument();
         expect(screen.queryByRole('tab', { name: /Finished/ })).not.toBeInTheDocument();
         expect(screen.getByRole('tab', { name: /Playing/ })).toBeInTheDocument();
+    });
+});
+
+describe('ListsPage and the hand order', () => {
+    // Three backlog games across two platforms, so the platform filter is offered: one placed, and two
+    // that follow it in the order they joined.
+    const SWITCH = platform(130, 'Switch');
+    const PC = platform(6, 'PC');
+    const BACKLOG = [
+        entry({ game: { id: 1, title: 'Celeste', platforms: [SWITCH] }, position: 0 }),
+        entry({ game: { id: 2, title: 'Hades', platforms: [PC] }, statusChangedAt: '2026-02-01T00:00:00Z' }),
+        entry({ game: { id: 3, title: 'Cuphead', platforms: [PC] }, statusChangedAt: '2026-03-01T00:00:00Z' }),
+    ];
+
+    beforeEach(() => {
+        authAnswered(userProfile());
+        lists.lists = { ...emptyLists(), backlog: BACKLOG, playing: [entry({ game: { id: 9, title: 'Tunic' } })] };
+        lists.sortFor = (id: ListId) => (id === 'backlog' ? MANUAL_SORT : DEFAULT_SORT);
+        lists.view = 'tiles';
+        lists.moveInOrder = vi.fn(async () => true);
+    });
+
+    afterEach(() => {
+        lists.sortFor = () => DEFAULT_SORT;
+    });
+
+    const openBacklog = () => userEvent.click(screen.getByRole('tab', { name: /Backlog/ }));
+
+    it('offers "My order" on the backlog and on no other list', async () => {
+        renderPage();
+        const options = () => [...(screen.getByLabelText('Sort') as HTMLSelectElement).options].map(o => o.textContent);
+
+        expect(options()).not.toContain('My order');
+
+        await openBacklog();
+        expect(options()).toContain('My order');
+    });
+
+    it('draws the backlog in its hand order with a handle on every game, and says how to use them', async () => {
+        renderPage();
+        await openBacklog();
+
+        expect(screen.getAllByRole('button', { name: /^Move / }).map(handle => handle.getAttribute('aria-label')))
+            .toEqual(['Move Celeste', 'Move Hades', 'Move Cuphead']);
+        expect(screen.getByText(/drag a game by its handle/i)).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Move Hades' })).toHaveAccessibleDescription(/press space or enter to pick it up/i);
+    });
+
+    it('moves a game from the keyboard through the provider, after the game it now follows', async () => {
+        renderPage();
+        await openBacklog();
+
+        screen.getByRole('button', { name: 'Move Cuphead' }).focus();
+        await userEvent.keyboard(' {ArrowLeft} ');
+
+        expect(lists.moveInOrder).toHaveBeenCalledExactlyOnceWith('backlog', 3, 1);
+    });
+
+    it('has no handles in any other order', async () => {
+        lists.sortFor = () => DEFAULT_SORT;
+        renderPage();
+        await openBacklog();
+
+        expect(screen.queryByRole('button', { name: /^Move / })).not.toBeInTheDocument();
+    });
+
+    it('shows the order but will not rearrange it while a filter hides part of the list', async () => {
+        // A game dropped between two that the filter left showing would land among games the user
+        // cannot see.
+        renderPage();
+        await openBacklog();
+
+        await userEvent.click(screen.getByRole('button', { name: /all platforms/i }));
+        await userEvent.click(screen.getByRole('checkbox', { name: 'Switch' }));
+
+        expect(screen.queryByRole('button', { name: /^Move / })).not.toBeInTheDocument();
+        expect(screen.getByText(/clear the platform filter to rearrange your order/i)).toBeInTheDocument();
+    });
+
+    it('puts the handles in a column of their own in the table', async () => {
+        lists.view = 'table';
+        renderPage();
+        await openBacklog();
+
+        expect(screen.getByRole('columnheader', { name: 'Order' })).toBeInTheDocument();
+        const rows = screen.getAllByRole('row').slice(1);
+        expect(rows.map(row => within(row).getByRole('button', { name: /^Move / }).getAttribute('aria-label')))
+            .toEqual(['Move Celeste', 'Move Hades', 'Move Cuphead']);
     });
 });

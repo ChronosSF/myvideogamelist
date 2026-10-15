@@ -11,7 +11,8 @@ export type SortKey =
     | 'release_date'
     | 'score'
     | 'rating'
-    | 'critic_score';
+    | 'critic_score'
+    | 'manual';
 
 export interface SortState {
     key: SortKey;
@@ -20,6 +21,13 @@ export interface SortState {
 
 /** Newest first: what someone wants to see when they open a list they have been adding to. */
 export const DEFAULT_SORT: SortState = { key: 'added', descending: true };
+
+/**
+ * The order the user arranged by hand. It has no direction — a hand order read backwards is not one
+ * anybody arranged — so `descending` is always false and is ignored. Offered only on the lists in
+ * `HAND_ORDERED_LISTS`; see `docs/decisions/0054-*`.
+ */
+export const MANUAL_SORT: SortState = { key: 'manual', descending: false };
 
 interface SortOption {
     key: SortKey;
@@ -40,7 +48,19 @@ export const SORT_OPTIONS: SortOption[] = [
     { key: 'critic_score', label: 'Critic score', defaultDescending: true, columnLabel: 'Critics' },
 ];
 
+/**
+ * The hand order, kept out of `SORT_OPTIONS` because it is not every list's: the toolbar appends it
+ * where the list offers it, and no table column sorts by it.
+ */
+export const MANUAL_OPTION: SortOption = {
+    key: 'manual',
+    label: 'My order',
+    defaultDescending: false,
+    columnLabel: 'Order',
+};
+
 export function sortOption(key: SortKey): SortOption {
+    if (key === MANUAL_OPTION.key) return MANUAL_OPTION;
     return SORT_OPTIONS.find(option => option.key === key) ?? SORT_OPTIONS[0];
 }
 
@@ -64,6 +84,8 @@ function sortValue(entry: ListEntryDto, key: SortKey): number | string | null {
             return entry.game.rating;
         case 'critic_score':
             return entry.game.criticScore;
+        case 'manual':
+            return entry.position;
     }
 }
 
@@ -80,6 +102,8 @@ function sortValue(entry: ListEntryDto, key: SortKey): number | string | null {
  */
 export function sortEntries(entries: ListEntryDto[], sort: SortState): ListEntryDto[] {
     const collator = new Intl.Collator(undefined, { sensitivity: 'base', numeric: true });
+
+    if (sort.key === 'manual') return [...entries].sort((left, right) => byHand(left, right, collator));
 
     return [...entries].sort((left, right) => {
         const a = sortValue(left, sort.key);
@@ -100,4 +124,34 @@ export function sortEntries(entries: ListEntryDto[], sort: SortState): ListEntry
 
 function byTitle(left: ListEntryDto, right: ListEntryDto, collator: Intl.Collator): number {
     return collator.compare(left.game.title, right.game.title);
+}
+
+/**
+ * The hand order: placed games by position, then every game never placed in the order it joined the
+ * list — oldest first, so a game added today queues at the end rather than taking a place nobody gave
+ * it. The two rules above still hold, reworded: "no position" is not a low position, and a tie is
+ * broken the same way every time.
+ *
+ * A game joins a list when its status changes, which `statusChangedAt` records; an import leaves that
+ * null (ADR 0026), and `addedAt` is then the best date there is. Title and then the game's id break
+ * what is left, which is two games placed at the same number by two tabs at once, or two that arrived
+ * in one import.
+ *
+ * `@/lib/handOrder`'s `planMove` reads this order and only this one, so the two must agree on what
+ * "after" means — which is why the unplaced have an order of their own rather than the title's.
+ */
+function byHand(left: ListEntryDto, right: ListEntryDto, collator: Intl.Collator): number {
+    if (left.position !== right.position) {
+        if (left.position === null) return 1;
+        if (right.position === null) return -1;
+        return left.position - right.position;
+    }
+
+    return arrival(left) - arrival(right)
+        || byTitle(left, right, collator)
+        || left.game.id - right.game.id;
+}
+
+function arrival(entry: ListEntryDto): number {
+    return Date.parse(entry.statusChangedAt ?? entry.addedAt);
 }

@@ -96,6 +96,13 @@
 
 /* ---- columns ---- */
 
+/* The handle a row is moved by, only while the list is in its hand order (ADR 0054). */
+.col-order {
+    width: 3.75rem;
+    padding-right: 0 !important;
+    white-space: nowrap;
+}
+
 .col-cover {
     width: 3rem;
     padding-right: 0 !important;

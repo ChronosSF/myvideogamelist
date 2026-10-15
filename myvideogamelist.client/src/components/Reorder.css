@@ -1,0 +1,109 @@
+/* The handle a game is moved by in a hand-arranged list (ADR 0054). */
+
+.reorder-handle {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.3rem 0.5rem;
+    font-size: 0.75rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+    color: var(--color-fg-soft);
+    border: 1px solid var(--color-line-strong);
+    border-radius: 0.45rem;
+    cursor: grab;
+    /* The handle's own drag is the gesture: without this a touch on it scrolls the page instead. */
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+    transition: background 0.12s, border-color 0.12s, color 0.12s;
+}
+
+.reorder-handle:hover {
+    color: var(--color-fg-strong);
+    border-color: color-mix(in srgb, var(--color-primary-500) 60%, transparent);
+}
+
+.reorder-handle:focus-visible {
+    outline: 2px solid var(--color-focus);
+    outline-offset: 2px;
+}
+
+/* Held from the keyboard: the same colour as a held drag, so the two read as one state. */
+.reorder-handle[aria-pressed='true'] {
+    color: var(--color-on-primary);
+    background: var(--color-primary-600);
+    border-color: var(--color-primary-500);
+}
+
+/* While the game's own write is out. Still focusable, which `disabled` would not be. */
+.reorder-handle[aria-disabled='true'] {
+    cursor: progress;
+    opacity: 0.55;
+}
+
+/* On a cover, over its top edge and between the ESRB badge and the critic score in its corners. */
+.reorder-handle-overlay {
+    position: absolute;
+    top: 0.5rem;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 2;
+    background: color-mix(in srgb, var(--color-sunken) 82%, transparent);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+}
+
+.reorder-handle-inline {
+    background: color-mix(in srgb, var(--color-surface) 70%, transparent);
+}
+
+.reorder-grip {
+    width: 0.5rem;
+    height: 0.8rem;
+    flex-shrink: 0;
+}
+
+.reorder-rank {
+    min-width: 1ch;
+}
+
+/* The tile a game is wrapped in when its list can be rearranged: what the handle is placed over. */
+.reorder-tile {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+}
+
+.reorder-tile > .game-card-root {
+    flex: 1;
+}
+
+/* The game being moved, drawn where it would land. */
+.reorder-tile[data-reorder-state='lifted'] {
+    z-index: 3;
+    border-radius: 0.75rem;
+    outline: 2px solid var(--color-primary-500);
+    outline-offset: 3px;
+    box-shadow: 0 18px 40px rgba(0, 0, 0, 0.5);
+}
+
+.reorder-tile[data-reorder-state='lifted'] .reorder-handle {
+    color: var(--color-on-primary);
+    background: var(--color-primary-600);
+    border-color: var(--color-primary-500);
+}
+
+/* A table row has no outline of its own that every browser draws, so its cells carry the state. */
+tr[data-reorder-state='lifted'] > td {
+    background: color-mix(in srgb, var(--color-primary-500) 16%, transparent);
+}
+
+/* Everywhere while a game is dragged, so the cursor does not flicker back over what it crosses. */
+html.reorder-dragging,
+html.reorder-dragging * {
+    cursor: grabbing !important;
+    user-select: none !important;
+    -webkit-user-select: none !important;
+}

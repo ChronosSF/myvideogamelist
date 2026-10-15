@@ -5,6 +5,7 @@ import userEvent from '@testing-library/user-event';
 import { ListsProvider } from '@/contexts/ListsProvider';
 import { useLists } from '@/hooks/useLists';
 import type { ListId, ListEntryDto } from '@/types/list';
+import { MANUAL_SORT, sortEntries } from '@/lib/listSort';
 import { entry, game } from '@/test/factories';
 
 const ALICE = { id: 'u1', email: 'alice@test.local' };
@@ -1411,5 +1412,277 @@ describe('list names', () => {
         await release(new Response(JSON.stringify({ names: { finished: 'Beaten' } }), { status: 200 }));
 
         expect(screen.getByTestId('finished-name')).toHaveTextContent('Finished');
+    });
+});
+
+describe('the hand order', () => {
+    const POSITIONS = 'PATCH /api/lists/backlog/positions';
+
+    // The backlog as it arrives: one game placed, three never placed, in the order they joined it.
+    const BACKLOG = [
+        entry({ game: { id: 1, title: 'Celeste' }, position: 0, statusChangedAt: '2026-01-01T00:00:00Z' }),
+        entry({ game: { id: 2, title: 'Hades' }, statusChangedAt: '2026-02-01T00:00:00Z' }),
+        entry({ game: { id: 3, title: 'Cuphead' }, statusChangedAt: '2026-03-01T00:00:00Z' }),
+        entry({ game: { id: 4, title: 'Outer Wilds' }, statusChangedAt: '2026-04-01T00:00:00Z' }),
+    ];
+
+    /**
+     * Holds, refuses or rejects chosen requests, as the other blocks' stubs do, and answers each
+     * load from a list of payloads so a second account can be handed different games.
+     */
+    function orderStub(options: {
+        loads?: ListsPayload[];
+        hold?: string[];
+        reject?: string[];
+        failing?: string[];
+        preferences?: { view: string; sorts: Record<string, { sortKey: string; descending: boolean }> };
+    } = {}) {
+        const calls: (Recorded & { headers: Headers })[] = [];
+        // A queue per request, since two moves are two requests to the same address.
+        const settlers = new Map<string, ((status: number) => void)[]>();
+        const loads = options.loads ?? [{ backlog: BACKLOG }];
+        let loaded = 0;
+
+        vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+            const url = String(input);
+            const method = init?.method ?? 'GET';
+            const key = `${method} ${url}`;
+            calls.push({
+                method,
+                url,
+                body: init?.body ? JSON.parse(String(init.body)) : undefined,
+                headers: new Headers(init?.headers),
+            });
+
+            if (key === 'GET /api/lists') {
+                const lists = loads[Math.min(loaded++, loads.length - 1)];
+                return Promise.resolve(new Response(JSON.stringify({ lists }), { status: 200 }));
+            }
+            if (key === 'GET /api/user/list-preferences') {
+                const preferences = options.preferences ?? { view: 'tiles', sorts: {} };
+                return Promise.resolve(new Response(JSON.stringify(preferences), { status: 200 }));
+            }
+            if (options.reject?.includes(key)) return Promise.reject(new TypeError('Failed to fetch'));
+            if (options.hold?.includes(key)) {
+                return new Promise<Response>(resolve => {
+                    const queue = settlers.get(key) ?? [];
+                    queue.push(status => resolve(new Response(status === 204 ? null : 'nope', { status })));
+                    settlers.set(key, queue);
+                });
+            }
+            if (options.failing?.includes(key)) return Promise.resolve(new Response('nope', { status: 500 }));
+            return Promise.resolve(new Response(null, { status: 204 }));
+        }));
+
+        return {
+            calls,
+            /** Settles the held request to `key` — the `nth` of them, counting from 0, when there are several. */
+            release: (key: string, status: number, nth = 0) => act(async () => {
+                settlers.get(key)![nth](status);
+                await Promise.resolve();
+            }),
+        };
+    }
+
+    /** The backlog in its hand order, each game with its position, and a button per move tried. */
+    function OrderProbe() {
+        const lists = useLists();
+        const [result, setResult] = useState('');
+        const backlog = sortEntries(lists.lists.backlog, MANUAL_SORT);
+        const move = (gameId: number, afterId: number | null) =>
+            void lists.moveInOrder('backlog', gameId, afterId).then(ok => setResult(String(ok)));
+
+        return (
+            <div>
+                <span data-testid="loading">{String(lists.loading)}</span>
+                <span data-testid="error">{lists.mutationError ?? ''}</span>
+                <span data-testid="result">{result}</span>
+                <span data-testid="order">{backlog.map(e => `${e.game.title}@${e.position ?? '-'}`).join(',')}</span>
+                <span data-testid="pending">{[1, 2, 3, 4].filter(id => lists.isPending(id)).join(',')}</span>
+                <span data-testid="sort-backlog">{lists.sortFor('backlog').key}</span>
+                <span data-testid="sort-finished">{lists.sortFor('finished').key}</span>
+                <button onClick={() => move(4, null)}>outer wilds first</button>
+                <button onClick={() => move(2, 3)}>hades after cuphead</button>
+                <button onClick={() => move(4, 2)}>outer wilds after hades</button>
+                <button onClick={() => move(1, 1)}>celeste after itself</button>
+                <button onClick={() => void lists.setScore(2, 8)}>score hades</button>
+                <button onClick={() => void lists.setScore(4, 8)}>score outer wilds</button>
+                <button onClick={() => void lists.addToList('playing', game({ id: 1, title: 'Celeste' }))}>start celeste</button>
+                <button onClick={() => void lists.addToList('backlog', game({ id: 1, title: 'Celeste' }))}>celeste back</button>
+                <button onClick={() => lists.reload()}>reload</button>
+            </div>
+        );
+    }
+
+    async function mountOrder(options: Parameters<typeof orderStub>[0] = {}) {
+        const stub = orderStub(options);
+        const view = render(<ListsProvider><OrderProbe /></ListsProvider>);
+        await waitFor(() => expect(screen.getByTestId('loading')).toHaveTextContent('false'));
+        return { ...stub, view };
+    }
+
+    const press = (name: string) => userEvent.click(screen.getByRole('button', { name }));
+    const order = () => screen.getByTestId('order');
+
+    it('places the moved game alone, through apiFetch, and the list reads in its new order', async () => {
+        const { calls } = await mountOrder();
+
+        await press('outer wilds first');
+
+        expect(order()).toHaveTextContent('Outer Wilds@-1024,Celeste@0,Hades@-,Cuphead@-');
+        const sent = calls.find(call => `${call.method} ${call.url}` === POSITIONS)!;
+        expect(sent.body).toEqual({ positions: [{ gameId: 4, position: -1024 }] });
+        // The write guard refuses a write without it, in development as well as deployed.
+        expect(sent.headers.get('X-MVGL-Request')).toBe('1');
+        await waitFor(() => expect(screen.getByTestId('result')).toHaveTextContent('true'));
+    });
+
+    it('places the unplaced games a move passes, and leaves the rest unplaced', async () => {
+        const { calls } = await mountOrder();
+
+        await press('hades after cuphead');
+
+        expect(order()).toHaveTextContent('Celeste@0,Cuphead@1024,Hades@2048,Outer Wilds@-');
+        expect(calls.find(call => `${call.method} ${call.url}` === POSITIONS)!.body).toEqual({
+            positions: [
+                { gameId: 3, position: 1024 },
+                { gameId: 2, position: 2048 },
+            ],
+        });
+    });
+
+    it('sends nothing for a move that changes nothing', async () => {
+        const { calls } = await mountOrder();
+
+        await press('celeste after itself');
+
+        await waitFor(() => expect(screen.getByTestId('result')).toHaveTextContent('true'));
+        expect(calls.some(call => call.method === 'PATCH')).toBe(false);
+    });
+
+    it('puts back exactly the positions it wrote when the save is refused', async () => {
+        await mountOrder({ failing: [POSITIONS] });
+
+        await press('hades after cuphead');
+
+        await waitFor(() => expect(order()).toHaveTextContent('Celeste@0,Hades@-,Cuphead@-,Outer Wilds@-'));
+        expect(screen.getByTestId('error')).toHaveTextContent(/failed to save your order/i);
+        expect(screen.getByTestId('result')).toHaveTextContent('false');
+    });
+
+    it('puts them back when the request never arrives, too', async () => {
+        await mountOrder({ reject: [POSITIONS] });
+
+        await press('outer wilds first');
+
+        await waitFor(() => expect(order()).toHaveTextContent('Celeste@0,Hades@-,Cuphead@-,Outer Wilds@-'));
+        expect(screen.getByTestId('error')).toHaveTextContent(/failed to save your order/i);
+    });
+
+    it('holds the lock of every game it writes, and lets them go when it is done', async () => {
+        const { release } = await mountOrder({ hold: [POSITIONS] });
+
+        await press('hades after cuphead');
+        expect(screen.getByTestId('pending')).toHaveTextContent('2,3');
+
+        await release(POSITIONS, 204);
+        expect(screen.getByTestId('pending')).toBeEmptyDOMElement();
+    });
+
+    it('refuses a move that would write a game whose own save is still out', async () => {
+        // Hades' score is in flight, and the move passes Hades, so it would have to place it.
+        const { calls } = await mountOrder({ hold: ['PUT /api/entries/2/score'] });
+
+        await press('score hades');
+        await press('outer wilds after hades');
+
+        await waitFor(() => expect(screen.getByTestId('result')).toHaveTextContent('false'));
+        expect(order()).toHaveTextContent('Celeste@0,Hades@-,Cuphead@-,Outer Wilds@-');
+        expect(calls.some(call => call.method === 'PATCH')).toBe(false);
+    });
+
+    it('undoes only the positions it wrote, not those of a move that saved meanwhile', async () => {
+        // Two moves of different games are out at once, by design: neither holds the other's lock.
+        // The first failing must not put the list back as it was before it, which would undo the
+        // second along with it.
+        const { release } = await mountOrder({ hold: [POSITIONS] });
+
+        await press('outer wilds first');
+        await press('hades after cuphead');
+        expect(order()).toHaveTextContent('Outer Wilds@-1024,Celeste@0,Cuphead@1024,Hades@2048');
+
+        await release(POSITIONS, 204, 1);
+        await release(POSITIONS, 500, 0);
+
+        expect(order()).toHaveTextContent('Celeste@0,Cuphead@1024,Hades@2048,Outer Wilds@-');
+    });
+
+    it('keeps a move still on its way when a reload lands in the meantime', async () => {
+        // The reload's answer was composed before the move reached the server; taken as it stands it
+        // would put the game back where it was until the next page load.
+        const { release } = await mountOrder({ hold: [POSITIONS] });
+
+        await press('outer wilds first');
+        await press('reload');
+        await waitFor(() => expect(screen.getByTestId('loading')).toHaveTextContent('false'));
+
+        expect(order()).toHaveTextContent('Outer Wilds@-1024,Celeste@0');
+        await release(POSITIONS, 204);
+        expect(order()).toHaveTextContent('Outer Wilds@-1024,Celeste@0');
+    });
+
+    it('takes a game out of the order when it leaves the list, as the server does', async () => {
+        await mountOrder();
+
+        await press('start celeste');
+        await press('celeste back');
+
+        // Back in the backlog with no place: at the end, as the newest arrival.
+        await waitFor(() => expect(order()).toHaveTextContent('Hades@-,Cuphead@-,Outer Wilds@-,Celeste@-'));
+    });
+
+    it('gives a game its place back when the move out of the list fails', async () => {
+        await mountOrder({ failing: ['PUT /api/lists/1'] });
+
+        await press('start celeste');
+
+        await waitFor(() => expect(order()).toHaveTextContent('Celeste@0,Hades@-'));
+    });
+
+    it('reads a hand order stored for a list that does not offer one as the default sort', async () => {
+        await mountOrder({
+            preferences: {
+                view: 'tiles',
+                sorts: {
+                    backlog: { sortKey: 'manual', descending: false },
+                    finished: { sortKey: 'manual', descending: false },
+                },
+            },
+        });
+
+        expect(screen.getByTestId('sort-backlog')).toHaveTextContent('manual');
+        expect(screen.getByTestId('sort-finished')).toHaveTextContent('added');
+    });
+
+    it('does not put a failed move back into the next account', async () => {
+        // Alice's undo names Outer Wilds by id, and Bob has Outer Wilds in his backlog too.
+        const BOBS = [entry({ game: { id: 4, title: 'Outer Wilds' }, position: 4096 })];
+        const { release, view } = await mountOrder({
+            loads: [{ backlog: BACKLOG }, { backlog: BOBS }],
+            hold: [POSITIONS],
+        });
+
+        await press('outer wilds first');
+
+        auth.user = BOB;
+        await act(async () => {
+            view.rerender(<ListsProvider><OrderProbe /></ListsProvider>);
+        });
+        await waitFor(() => expect(order()).toHaveTextContent('Outer Wilds@4096'));
+
+        await release(POSITIONS, 500);
+
+        expect(order()).toHaveTextContent('Outer Wilds@4096');
+        expect(screen.getByTestId('error')).toBeEmptyDOMElement();
     });
 });
