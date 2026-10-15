@@ -12,9 +12,9 @@ namespace MyVideoGameList.Server.Controllers;
 /// The signed-in user's favourite games. An axis of its own, so a controller of its own.
 /// </summary>
 /// <remarks>
-/// The same three endpoints as <see cref="WishlistController"/>, with the same contract. Somebody
-/// else's favourites are read through <see cref="UsersController"/>, by name, and only when their
-/// profile is public.
+/// The same three endpoints as <see cref="WishlistController"/>, with the same contract, and a fourth
+/// the wishlist has no use for: the showcase's hand order. Somebody else's favourites are read through
+/// <see cref="UsersController"/>, by name, and only when their profile is public.
 /// </remarks>
 [ApiController]
 [Route("api/[controller]")]
@@ -60,5 +60,26 @@ public class FavouritesController(
 
         var removed = await favouriteService.RemoveAsync(user.Id, gameId, cancellationToken);
         return removed ? NoContent() : NotFound();
+    }
+
+    /// <summary>
+    /// Puts some of the favourites where the user has arranged them in their showcase.
+    /// </summary>
+    /// <remarks>
+    /// The backlog's write, on the other axis that has an order (ADR 0054, ADR 0064): a <c>PATCH</c>
+    /// that writes the games it names and leaves every other favourite where it was, with the numbers
+    /// the client chose, checked for their range here and for being this user's favourites in the
+    /// service.
+    /// </remarks>
+    [HttpPatch("positions")]
+    public async Task<IActionResult> SetPositions(
+        [FromBody] SetPositionsDto dto,
+        CancellationToken cancellationToken)
+    {
+        var user = await userManager.GetUserAsync(User);
+        if (user is null) return Unauthorized();
+
+        await favouriteService.SetPositionsAsync(user.Id, dto.Positions, cancellationToken);
+        return NoContent();
     }
 }

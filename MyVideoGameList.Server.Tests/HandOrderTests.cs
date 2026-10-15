@@ -453,20 +453,34 @@ public class HandOrderTests
     }
 
     [Fact]
-    public void TheCheckConstraint_HoldsPositionsToTheBoundsTheApiAccepts()
+    public void EveryHandOrderedTable_HoldsPositionsToTheBoundsTheApiAccepts()
     {
-        // The DTO's range and the column's constraint are one rule written twice; this fails if
-        // they drift. The design-time model, because check constraints are migration metadata.
+        // The DTO's range and each column's constraint are one rule written twice; this fails if they
+        // drift, or if a table gains a hand order without the check. Every IHandOrdered entity in the
+        // model, rather than a list of them: the next one is covered without anybody remembering this
+        // test. The design-time model, because check constraints are migration metadata.
         using var db = new ApplicationDbContext(Options(Guid.NewGuid().ToString()));
 
-        var constraint = db.GetService<IDesignTimeModel>().Model
-            .FindEntityType(typeof(UserGameEntry))!
-            .GetCheckConstraints()
-            .Single(c => c.ModelName == "CK_UserGameEntries_Position_Range");
+        var handOrdered = db.GetService<IDesignTimeModel>().Model.GetEntityTypes()
+            .Where(type => typeof(IHandOrdered).IsAssignableFrom(type.ClrType))
+            .ToList();
 
-        Assert.Contains($">= {HandOrder.MinPosition}", constraint.Sql);
-        Assert.Contains($"<= {HandOrder.MaxPosition}", constraint.Sql);
-        Assert.Contains("\"Position\" IS NULL", constraint.Sql);
+        // A tripwire as well: these are the two, the backlog's and the showcase's.
+        Assert.Equal(
+            [nameof(UserFavourite), nameof(UserGameEntry)],
+            handOrdered.Select(type => type.ClrType.Name).Order());
+
+        foreach (var type in handOrdered)
+        {
+            // By its suffix: the table's name is the relational model's, which this provider lacks.
+            var constraint = Assert.Single(
+                type.GetCheckConstraints(),
+                c => c.ModelName.EndsWith("_Position_Range", StringComparison.Ordinal));
+
+            Assert.Contains($">= {HandOrder.MinPosition}", constraint.Sql);
+            Assert.Contains($"<= {HandOrder.MaxPosition}", constraint.Sql);
+            Assert.Contains("\"Position\" IS NULL", constraint.Sql);
+        }
     }
 
     [Fact]

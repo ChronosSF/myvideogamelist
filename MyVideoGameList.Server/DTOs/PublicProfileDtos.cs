@@ -129,5 +129,10 @@ public record PublicReviewDto(
 /// of each. It does not say when each became a favourite either: the order is the whole of what a
 /// reader needs from that, and the dates are the owner's data rather than part of the showcase.
 /// </para>
+/// <para>
+/// The order is the one the owner arranged (ADR 0064), carried by the order of <c>Games</c> and by
+/// nothing else: the positions behind it are numbers for the owner's client to plan moves with, as
+/// the dates are the owner's data, and a reader needs neither to see a row in its order.
+/// </para>
 /// </remarks>
 public record PublicFavouritesDto(string UserName, IReadOnlyList<GameRefDto> Games);

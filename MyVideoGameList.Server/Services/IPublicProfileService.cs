@@ -20,8 +20,9 @@ public interface IPublicProfileService
         string userName, int page, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Every game the user has made a favourite, most recent first. See
-    /// <c>docs/decisions/0029-favourites-are-an-axis-and-a-showcase.md</c>.
+    /// Every game the user has made a favourite, in the order they arranged their showcase in: those
+    /// placed by hand first, then the rest most recent first. See
+    /// <c>docs/decisions/0029-favourites-are-an-axis-and-a-showcase.md</c> and <c>0064-*</c>.
     /// </summary>
     Task<PublicFavouritesDto?> GetFavouritesAsync(
         string userName, CancellationToken cancellationToken = default);

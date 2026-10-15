@@ -106,9 +106,7 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
                 // The hand order's bounds, for the reason the score has its: `HandOrder` promises that
                 // any two stored positions can be added or subtracted without overflow, and only a
                 // constraint makes that true of every row rather than of the rows the API wrote.
-                t.HasCheckConstraint(
-                    "CK_UserGameEntries_Position_Range",
-                    $"\"Position\" IS NULL OR (\"Position\" >= {HandOrder.MinPosition} AND \"Position\" <= {HandOrder.MaxPosition})");
+                t.HasCheckConstraint("CK_UserGameEntries_Position_Range", PositionInRange);
             });
 
         // Sorting a list by "recently added" or "recently moved" is the default view, so both
@@ -179,9 +177,24 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
             .HasForeignKey(f => f.UserId)
             .OnDelete(DeleteBehavior.Cascade);
 
-        // Read in one order, newest first, by the owner and by their public profile alike.
+        // Read in one order, by the owner and by their public profile alike: the placed by position,
+        // then the rest newest first (`FavouriteService.InShowcaseOrder`). Every read is one user's
+        // whole set, which this index finds; a showcase is small enough to sort as it is read, so the
+        // position has no index of its own, as the entry's has none.
         modelBuilder.Entity<UserFavourite>().HasIndex(f => new { f.UserId, f.AddedAt });
+
+        // The showcase's hand order keeps to the bounds the backlog's does, for the same reason.
+        modelBuilder.Entity<UserFavourite>()
+            .ToTable(t => t.HasCheckConstraint("CK_UserFavourites_Position_Range", PositionInRange));
     }
+
+    /// <summary>
+    /// The check every hand-ordered position is held to: null, or within the bounds the API accepts.
+    /// One expression for every table that has a hand order, so the backlog's and the showcase's cannot
+    /// drift apart. See <see cref="HandOrder"/>.
+    /// </summary>
+    private static readonly string PositionInRange =
+        $"\"Position\" IS NULL OR (\"Position\" >= {HandOrder.MinPosition} AND \"Position\" <= {HandOrder.MaxPosition})";
 
     /// <summary>
     /// The MVGL columns on Identity's user row.

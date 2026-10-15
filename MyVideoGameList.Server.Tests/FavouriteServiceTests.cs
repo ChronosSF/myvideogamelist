@@ -225,4 +225,147 @@ public class FavouriteServiceTests
 
         Assert.Equal("Celeste", Assert.Single(favourites).Game.Title);
     }
+
+    // ── The showcase's hand order (ADR 0054, ADR 0064) ──────────────────────────────────
+
+    /// <summary>Four favourites, made a day apart: Celeste first and Inside last.</summary>
+    private static async Task<FavouriteService> FourFavouritesAsync(ApplicationDbContext db)
+    {
+        var clock = new FixedClock(Midday);
+        var service = NewService(
+            db,
+            IgdbReturning(Game(1, "Celeste"), Game(2, "Hades"), Game(3, "Tunic"), Game(4, "Inside")),
+            clock);
+
+        foreach (var gameId in new[] { 1, 2, 3, 4 })
+        {
+            await service.AddAsync(UserId, gameId);
+            clock.Advance(TimeSpan.FromDays(1));
+        }
+        return service;
+    }
+
+    private static int? PositionOf(ApplicationDbContext db, int gameId, string userId = UserId) =>
+        db.UserFavourites.AsNoTracking().Single(f => f.UserId == userId && f.GameId == gameId).Position;
+
+    [Fact]
+    public async Task GetFavouritesAsync_PlacedByHandFirst_ThenTheRestMostRecentFirst()
+    {
+        // The two the owner placed lead, in their order, whatever their dates; the two never placed
+        // follow as every favourite did before there was an order — newest first.
+        using var db = NewDb();
+        var service = await FourFavouritesAsync(db);
+        await service.SetPositionsAsync(UserId, [new PositionDto(1, 2048), new PositionDto(3, -1024)]);
+
+        var favourites = await service.GetFavouritesAsync(UserId);
+
+        Assert.Equal(["Tunic", "Celeste", "Inside", "Hades"], favourites.Select(f => f.Game.Title));
+        Assert.Equal([-1024, 2048, null, null], favourites.Select(f => f.Position));
+    }
+
+    [Fact]
+    public async Task GetFavouritesAsync_TwoAtOnePosition_AreOrderedTheSameWayEveryTime()
+    {
+        // Two tabs can give two favourites one number. The newer leads, as it does among the unplaced,
+        // so the order is the same on every read and the client plans its next move against the order
+        // it was shown.
+        using var db = NewDb();
+        var service = await FourFavouritesAsync(db);
+        await service.SetPositionsAsync(UserId, [new PositionDto(1, 0), new PositionDto(2, 0)]);
+
+        var favourites = await service.GetFavouritesAsync(UserId);
+
+        Assert.Equal(["Hades", "Celeste", "Inside", "Tunic"], favourites.Select(f => f.Game.Title));
+    }
+
+    [Fact]
+    public async Task SetPositionsAsync_PlacesTheFavouritesItNamesAndNoOthers()
+    {
+        using var db = NewDb();
+        var service = await FourFavouritesAsync(db);
+        await service.SetPositionsAsync(UserId, [new PositionDto(1, 1024), new PositionDto(2, 2048)]);
+
+        await service.SetPositionsAsync(UserId, [new PositionDto(2, 512)]);
+
+        Assert.Equal(1024, PositionOf(db, 1));
+        Assert.Equal(512, PositionOf(db, 2));
+        Assert.Null(PositionOf(db, 3));
+        Assert.Null(PositionOf(db, 4));
+    }
+
+    [Fact]
+    public async Task SetPositionsAsync_AGameThatIsNotAFavourite_IsPassedOverAndMakesNoRow()
+    {
+        // A tab that still shows a favourite another tab has taken off names it in a move. A place in
+        // the showcase is not a reason for the game to be back in it.
+        using var db = NewDb();
+        var service = await FourFavouritesAsync(db);
+        await service.RemoveAsync(UserId, 4);
+
+        await service.SetPositionsAsync(UserId, [new PositionDto(1, 1024), new PositionDto(4, 2048)]);
+
+        Assert.Equal(1024, PositionOf(db, 1));
+        Assert.Equal([1, 2, 3], db.UserFavourites.Select(f => f.GameId).Order());
+    }
+
+    [Fact]
+    public async Task SetPositionsAsync_NeverWritesAnotherUsersFavourite()
+    {
+        // The same game among somebody else's favourites. The user is in the store's predicate, not
+        // taken on trust from anything the request says.
+        using var db = NewDb();
+        var service = NewService(db);
+        await service.AddAsync(UserId, 42);
+        await service.AddAsync(OtherUserId, 42);
+        await service.SetPositionsAsync(OtherUserId, [new PositionDto(42, 4096)]);
+
+        await service.SetPositionsAsync(UserId, [new PositionDto(42, 1024)]);
+
+        Assert.Equal(1024, PositionOf(db, 42));
+        Assert.Equal(4096, PositionOf(db, 42, OtherUserId));
+    }
+
+    [Fact]
+    public async Task SetPositionsAsync_RecordsNoEventAndTouchesNoOtherAxis()
+    {
+        using var db = NewDb();
+        var service = await FourFavouritesAsync(db);
+
+        await service.SetPositionsAsync(UserId, [new PositionDto(1, 1024)]);
+
+        Assert.Empty(db.UserGameEvents);
+        Assert.Empty(db.UserGameEntries);
+        Assert.Empty(db.UserWishlistItems);
+    }
+
+    [Fact]
+    public async Task AddAsync_AlreadyAFavourite_KeepsItsPlace()
+    {
+        // The idempotent add is a no-op all the way down: a second click on the panel's rosette must
+        // not send a placed favourite back among the unplaced.
+        using var db = NewDb();
+        var service = NewService(db);
+        await service.AddAsync(UserId, 42);
+        await service.SetPositionsAsync(UserId, [new PositionDto(42, 1024)]);
+
+        await service.AddAsync(UserId, 42);
+
+        Assert.Equal(1024, PositionOf(db, 42));
+    }
+
+    [Fact]
+    public async Task AddAsync_AFavouriteMadeAgainAfterItWasTakenOff_ArrivesUnplaced()
+    {
+        // Taking a game off the favourites deletes its row, and its place goes with the row: made a
+        // favourite again, it arrives as any new favourite does.
+        using var db = NewDb();
+        var service = NewService(db);
+        await service.AddAsync(UserId, 42);
+        await service.SetPositionsAsync(UserId, [new PositionDto(42, 1024)]);
+
+        await service.RemoveAsync(UserId, 42);
+        await service.AddAsync(UserId, 42);
+
+        Assert.Null(PositionOf(db, 42));
+    }
 }

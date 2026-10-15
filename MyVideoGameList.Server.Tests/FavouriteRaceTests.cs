@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using MyVideoGameList.Server.Data;
+using MyVideoGameList.Server.DTOs;
 using MyVideoGameList.Server.Models;
 using MyVideoGameList.Server.Services;
 using NSubstitute;
@@ -8,12 +9,13 @@ using NSubstitute;
 namespace MyVideoGameList.Server.Tests;
 
 /// <summary>
-/// The wishlist's race tests, run against the favourites.
+/// The wishlist's race tests, and the backlog order's, run against the favourites.
 /// </summary>
 /// <remarks>
-/// Both axes write through <see cref="GameAxisStore"/>, so the guard itself is one piece of code.
-/// These exist so that a favourites service which stopped going through it — and so lost the
-/// guard — fails here rather than on a double-click. See <see cref="WishlistRaceTests"/> for why the
+/// Both axes write through <see cref="GameAxisStore"/>, and both hand orders through
+/// <see cref="HandOrderStore"/>, so each guard is one piece of code. These exist so that a favourites
+/// service which stopped going through them — and so lost a guard — fails here rather than on a
+/// double-click. See <see cref="WishlistRaceTests"/> for why the
 /// competing write has to land inside the save rather than before the call.
 /// </remarks>
 public class FavouriteRaceTests
@@ -115,5 +117,35 @@ public class FavouriteRaceTests
 
         Assert.False(removed);
         Assert.Empty(NewDb(store).UserFavourites);
+    }
+
+    [Fact]
+    public async Task SetPositionsAsync_AFavouriteTakenOffBeforeTheSave_IsPassedOverAndTheRestAreWritten()
+    {
+        // The hand order's race, run against the favourites for the reason the two above are: a
+        // favourites service that wrote positions itself, rather than through HandOrderStore, would
+        // turn a removal from another tab landing mid-move into a 500.
+        var store = Guid.NewGuid().ToString();
+        using (var seed = NewDb(store))
+        {
+            seed.UserFavourites.AddRange(Favourite(42), Favourite(43));
+            await seed.SaveChangesAsync();
+        }
+
+        using var otherRequest = NewDb(store);
+
+        using var db = NewDb(store, new CommitsCompetingWrite(async () =>
+        {
+            var doomed = await otherRequest.UserFavourites
+                .FirstAsync(f => f.UserId == UserId && f.GameId == 42);
+            otherRequest.UserFavourites.Remove(doomed);
+            await otherRequest.SaveChangesAsync();
+        }));
+
+        await NewService(db).SetPositionsAsync(UserId, [new PositionDto(42, 1024), new PositionDto(43, 2048)]);
+
+        var left = Assert.Single(NewDb(store).UserFavourites.AsNoTracking());
+        Assert.Equal(43, left.GameId);
+        Assert.Equal(2048, left.Position);
     }
 }

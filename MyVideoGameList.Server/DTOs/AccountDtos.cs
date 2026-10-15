@@ -173,7 +173,13 @@ public record WishlistExportDto(int GameId, DateTimeOffset AddedAt);
 /// One favourite game. Another axis like the wishlist, so <c>AddedAt</c> is its entire history too
 /// (ADR 0029).
 /// </summary>
-public record FavouriteExportDto(int GameId, DateTimeOffset AddedAt);
+/// <param name="Position">
+/// Where the user put the game in their showcase by hand, or null when they never placed it. A sparse
+/// number rather than a rank: the showcase reads in ascending order of it, with the unplaced favourites
+/// after, newest first (ADR 0064). Exported as stored, as the entry's is (ADR 0054 §9), because the
+/// number is the data and a rank would be one reading of it.
+/// </param>
+public record FavouriteExportDto(int GameId, DateTimeOffset AddedAt, int? Position);
 
 /// <summary>
 /// How the user has chosen to sort one status list. Only the lists they actually re-sorted have a
