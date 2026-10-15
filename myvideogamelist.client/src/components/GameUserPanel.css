@@ -153,7 +153,7 @@
 }
 
 /* The fills are set outright, so without this a disabled button in the row looks pressable: Save notes
-   at rest, and every button here while the entry loads or a write is out. */
+   at rest, and a form's buttons while the entry loads or the form saves. */
 .game-user-panel-confirm button:disabled {
     cursor: default;
     opacity: 0.5;
