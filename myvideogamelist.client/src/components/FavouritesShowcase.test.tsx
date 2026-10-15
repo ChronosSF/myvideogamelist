@@ -228,6 +228,34 @@ describe('FavouritesShowcase arranging', () => {
         expect(grips()).toHaveLength(3);
     });
 
+    it('puts a held favourite back when the favourites reload under it', async () => {
+        // A reload takes the grid away for a moment. The game in the air goes back where it was rather
+        // than staying held, unseen, for a press that would land it somewhere nobody chose.
+        const view = render(
+            <MemoryRouter>
+                <FavouritesContext.Provider value={favouritesValue({ items: ITEMS })}>
+                    <FavouritesShowcase profileVisibility="private" />
+                </FavouritesContext.Provider>
+            </MemoryRouter>,
+        );
+        const rerender = (overrides: Partial<FavouritesContextValue>) => view.rerender(
+            <MemoryRouter>
+                <FavouritesContext.Provider value={favouritesValue({ items: ITEMS, ...overrides })}>
+                    <FavouritesShowcase profileVisibility="private" />
+                </FavouritesContext.Provider>
+            </MemoryRouter>,
+        );
+        await arrange();
+        screen.getByRole('button', { name: 'Move Tunic' }).focus();
+        await userEvent.keyboard(' ');
+        expect(screen.getByRole('button', { name: 'Move Tunic' })).toHaveAttribute('aria-pressed', 'true');
+
+        rerender({ loading: true });
+        rerender({});
+
+        expect(screen.getByRole('button', { name: 'Move Tunic' })).not.toHaveAttribute('aria-pressed');
+    });
+
     it('stops arranging once there is only one favourite left, and does not start again by itself', async () => {
         const view = render(
             <MemoryRouter>

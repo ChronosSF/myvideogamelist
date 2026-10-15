@@ -374,4 +374,30 @@ describe('FavouritesProvider hand order', () => {
         expect(titles()).toBe('');
         expect(screen.getByTestId('mutation-error').textContent).toBe('');
     });
+
+    it("does not put Alice's undo onto the same game among Bob's favourites", async () => {
+        // Bob has Inside too, placed first. Alice's undo names Inside with the position she had —
+        // none — and applied to Bob's list it would send his Inside behind Hades.
+        const { release } = stubFetch({
+            loads: [UNARRANGED, [
+                favourite(4, 'Inside', '2026-01-01T00:00:00+00:00', -1024),
+                favourite(2, 'Hades', '2026-03-01T00:00:00+00:00', 0),
+            ]],
+            deferred: [POSITIONS],
+        });
+        const view = renderProvider();
+        await settled();
+
+        await click('move inside first');
+
+        auth.user = BOB;
+        view.rerender(<FavouritesProvider><Probe /></FavouritesProvider>);
+        await settled();
+        expect(titles()).toBe('Inside,Hades');
+
+        await release(POSITIONS, 500);
+
+        expect(titles()).toBe('Inside,Hades');
+        expect(screen.getByTestId('mutation-error').textContent).toBe('');
+    });
 });
