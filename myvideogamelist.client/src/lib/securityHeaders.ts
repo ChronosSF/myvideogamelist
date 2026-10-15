@@ -1,5 +1,7 @@
 /**
- * Headers every response from the front-end server carries, whatever it renders.
+ * Headers every server-rendered document carries, whatever it renders, and the resource routes and
+ * `.data` responses with them. The static files `react-router-serve` sends itself, and React
+ * Router's last-resort plain-text 500, carry none of them.
  *
  * The API states its own set (`MyVideoGameList.Server/Security/SecurityHeaders.cs`), and the two
  * are deliberately different: JSON may load nothing, whereas a page that loaded nothing would be
@@ -31,8 +33,9 @@ export const SECURITY_HEADERS: Readonly<Record<string, string>> = {
 /**
  * A fresh nonce for one render: 128 bits from the platform's cryptographic source, as CSP3 asks.
  *
- * The Web Crypto global rather than `node:crypto`, because this module reaches the browser bundle
- * through `@/lib/seo` and a Node built-in has no place there. It is only ever called on the server.
+ * The Web Crypto global rather than `node:crypto`, because this module is imported by `@/lib/seo`,
+ * which the browser loads too — in development whole, before the build shakes this part out — and a
+ * Node built-in has no place there. It is only ever called on the server.
  */
 export function createNonce(): string {
     const bytes = crypto.getRandomValues(new Uint8Array(16));
@@ -45,8 +48,10 @@ export function createNonce(): string {
  *
  * - **`script-src`** admits scripts from this origin and inline scripts carrying the nonce. Every
  *   inline script a document has is written by React Router or React — the hydration context, the
- *   route modules, the loader data, scroll restoration — and `entry.server.tsx` hands both of them
- *   this one value. Inline event handlers and `javascript:` URLs match neither, so they never run.
+ *   route modules, the loader data, scroll restoration, the reveal of a late boundary — and
+ *   `entry.server.tsx` hands both of them this one value. Inline event handlers and `javascript:`
+ *   URLs match neither, so they never run. Nothing else on this origin answers with script: the
+ *   `.data` responses, which React Router labels `text/x-script`, carry `nosniff`.
  *   A script whose text never changes, such as the palette script issue 208 plans, may be admitted
  *   by its hash instead: add a `'sha256-…'` source here, computed from the same constant the page
  *   renders.
@@ -58,9 +63,10 @@ export function createNonce(): string {
  * - **`frame-ancestors`**: nobody frames a page of ours.
  *
  * It holds for a page the CDN shares between readers as for a private one, because the header and
- * the body are stored and replayed together. Two things would split them, and neither may be
- * added: a CloudFront response headers policy that sets this header, and a validator (`ETag`,
- * `Last-Modified`) on a document, since a 304 replaces the stored headers and keeps the old body.
+ * the body are stored and replayed together. So nothing at the edge may set, rewrite or remove this
+ * header on a document, and no document may carry a validator (`ETag`, `Last-Modified`), since a
+ * 304 replaces the stored headers and keeps the old body. A HEAD carries none of it, and a document
+ * a shared cache may store is sent whole: `entry.server.tsx` says why.
  */
 export function documentPolicy(nonce: string): string {
     return [
@@ -72,18 +78,21 @@ export function documentPolicy(nonce: string): string {
 }
 
 /**
- * The content policy for a response that is not a document: robots.txt and the sitemaps. They
- * render nothing, so they may load nothing — the API's policy, for the API's reason.
+ * The content policy for a response that is not a document: robots.txt, the sitemaps and the
+ * `.data` responses. They render nothing, so they may load nothing — the API's policy, for the
+ * API's reason.
  */
 export const RESOURCE_POLICY = "default-src 'none'; frame-ancestors 'none'";
 
 /**
  * Applies the headers and the given content policy to a response's headers, in place.
  *
- * Called once for every document response, including the ones a thrown `Response` produces — which
- * is the reason this happens in `entry.server.tsx` rather than in each route's `headers` export.
- * A throw bypasses that export, so a per-route policy would leave every 404 uncovered. The policy
- * is a parameter, never a default, so that no caller can end up with a document's headers and no
+ * Called for every document response, including the ones a thrown `Response` produces — which is
+ * the reason this happens in `entry.server.tsx` rather than in each route's `headers` export. A
+ * throw bypasses that export, so a per-route policy would leave every 404 uncovered. A document
+ * whose shell failed is rendered twice over the same headers, which is why every header is `set`:
+ * the second render's policy replaces the first's rather than joining it. The policy is a
+ * parameter, never a default, so that no caller can end up with a document's headers and no
  * decision about its scripts.
  */
 export function applySecurityHeaders(headers: Headers, contentSecurityPolicy: string): Headers {

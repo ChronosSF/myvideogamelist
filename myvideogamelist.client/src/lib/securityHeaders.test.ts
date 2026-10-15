@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
     applySecurityHeaders,
     createNonce,
@@ -72,6 +72,15 @@ describe('documentPolicy', () => {
 });
 
 describe('createNonce', () => {
+    it('comes from the cryptographic source, not from Math.random', () => {
+        const getRandomValues = vi.spyOn(crypto, 'getRandomValues');
+
+        createNonce();
+
+        expect(getRandomValues).toHaveBeenCalledWith(expect.any(Uint8Array));
+        expect(getRandomValues.mock.calls[0][0]).toHaveLength(16);
+    });
+
     it('is 128 bits, written the way a nonce source is spelled', () => {
         const nonce = createNonce();
 
@@ -89,9 +98,7 @@ describe('createNonce', () => {
 
 describe('RESOURCE_POLICY', () => {
     it('lets a response that renders nothing load nothing, and not be framed', () => {
-        const policy = directives(RESOURCE_POLICY);
-
-        expect(policy.get('default-src')).toEqual(["'none'"]);
-        expect(policy.get('frame-ancestors')).toEqual(["'none'"]);
+        // The API's policy, for the API's reason, and exactly that.
+        expect(RESOURCE_POLICY).toBe("default-src 'none'; frame-ancestors 'none'");
     });
 });

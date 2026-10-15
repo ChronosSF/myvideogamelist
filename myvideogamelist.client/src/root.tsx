@@ -65,11 +65,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   An explicit empty nonce, so that the links render the same on both sides.
                   Left alone, <Links> takes the render's nonce from <ServerRouter> while the
                   hydrating client has none, and a browser blanks a nonce attribute once it has
-                  read it — so the server's nonce="…" arrives as nonce="", the client renders no
-                  attribute, and React reports a hydration mismatch on every page in development.
-                  A link needs no nonce under this policy: same-origin preloads are admitted by
-                  'self', and no style-src is set. A style-src naming the nonce would change that;
-                  see ADR 0053.
+                  read it. React compares a stylesheet link's attributes when it hydrates it, so the
+                  server's nonce="" against no attribute on the client is a hydration mismatch: in
+                  development, the critical-CSS link's, on every page. A link needs no nonce under
+                  this policy: same-origin preloads are admitted by 'self', and no style-src is
+                  set. A style-src naming the nonce would change that; see ADR 0053 §5.
                 */}
                 <Links nonce="" />
             </head>
