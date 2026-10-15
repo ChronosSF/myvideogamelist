@@ -68,8 +68,13 @@ change — so each can follow its own feature. The last column is the issue that
 
 | Table / change | Notes | Issue |
 |---|---|---|
-| `UserGameEntries` + a position | A manual backlog order. Sparse, per status, re-sequenced on the client; nothing statistical reads it, and sorting otherwise stays client-side ([0020](decisions/0020-list-view-preferences-in-the-database.md)) | #116 |
 | `Tags` + `UserGameEntryTags` | User-scoped tags, not a global vocabulary | #135 |
+| `UserFavourites` + a position | The favourites showcase in an order arranged by hand, on the backlog's pattern: `IHandOrdered` and `HandOrderStore` on the server, `planMove` and `useReorder` on the client ([0054](decisions/0054-a-hand-arranged-order-is-a-sparse-position.md)) | #117 |
+
+The backlog's own order shipped as `UserGameEntries.Position` with #116: nullable, sparse, a place in
+the list the entry is in now and cleared by any change of list, with the numbers computed on the client
+and stored as sent ([0054](decisions/0054-a-hand-arranged-order-is-a-sparse-position.md)). Nothing
+statistical or public reads it; the export carries it.
 
 ### Community
 
