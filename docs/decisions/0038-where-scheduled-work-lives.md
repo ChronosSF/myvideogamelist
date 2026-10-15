@@ -169,6 +169,25 @@ their 165 `ImportRows` went with them through the cascade. All three that had to
 receipt from three days ago, a pending job created forty days ago whose owner saved a decision two
 days ago, and a real job from an earlier session.
 
+**The stopping token bounds the work, not the commit.** A shutdown that arrives during a batch's
+`DELETE` abandons the batch, and the rollback loses nothing that had finished. Once the `DELETE` has
+returned the batch is finished and only the commit keeps it, so the commit runs on
+`CancellationToken.None`. The first version committed on the stopping token, and Npgsql checks a
+token before it sends anything: a shutdown landing between the two refused the `COMMIT`, rolled the
+finished batch back, and left the next sweep to delete the same jobs again
+([#96](https://github.com/ChronosSF/myvideogamelist/issues/96)). That was wasted work and never lost
+data — the delete is idempotent, and the lock goes with the transaction either way — but this class
+is the one the next job copies, and its work may cost more to repeat. Without the token the commit
+is still bounded: by Npgsql's command timeout, the same thirty seconds the `DELETE` has, and while
+the host stops, by `HostOptions.ShutdownTimeout`, which is as long as the host waits for
+`ExecuteAsync` to return.
+
+Verified against a real PostgreSQL by cancelling the stopping token the moment the `DELETE` had
+removed three expired jobs. Committed on the stopping token, the commit threw
+`OperationCanceledException` and all three jobs were still there; committed on `None`, it went
+through and none were. Cancelled just before the `DELETE` instead, the batch was abandoned and all
+three stayed, so the work is still bounded.
+
 ### 5. No index for the predicate
 
 It is an `OR` across two nullable columns, which needs two partial indexes to serve properly, and
@@ -233,5 +252,6 @@ That is the same call [0034](0034-failing-in-one-shape.md) makes when it keeps `
 through an IGDB outage. Stated here so the absence reads as a decision.
 
 **The next background job copies this.** Whatever it is — CloudFront invalidation (ROADMAP D14), a
-`CachedGames` refresh, scheduled exports — it inherits the scoping rule, the catch-per-tick rule and
-the question of what it owes a fleet running N copies of it.
+`CachedGames` refresh, scheduled exports — it inherits the scoping rule, the catch-per-tick rule, a
+stopping token that bounds the work and not the commit, and the question of what it owes a fleet
+running N copies of it.

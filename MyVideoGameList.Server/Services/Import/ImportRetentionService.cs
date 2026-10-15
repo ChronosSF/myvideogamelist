@@ -315,7 +315,15 @@ internal sealed class ImportRetentionService(
                 .Take(BatchSize)
                 .ExecuteDeleteAsync(token);
 
-            await transaction.CommitAsync(token);
+            // On CancellationToken.None rather than `token`, deliberately: the stopping token
+            // bounds the work, never the commit. A shutdown during the DELETE abandons the batch,
+            // and the rollback loses nothing that had finished. Once the DELETE has returned the
+            // batch is finished, and a stopping token cancelled by then would only throw it away —
+            // Npgsql checks the token before it sends COMMIT, so the transaction rolls back and the
+            // next sweep deletes the same jobs again (issue #96). Bounded all the same: by Npgsql's
+            // command timeout, and while the host stops, by the shutdown timeout it gives
+            // ExecuteAsync.
+            await transaction.CommitAsync(CancellationToken.None);
             return deleted;
         }, cancellationToken);
     }
