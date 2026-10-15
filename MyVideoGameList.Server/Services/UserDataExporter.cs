@@ -168,7 +168,11 @@ public class UserDataExporter(ApplicationDbContext db, TimeProvider clock) : IUs
             .Where(e => e.UserId == draft.UserId)
             .OrderBy(e => e.AddedAt)
             .ThenBy(e => e.GameId)
-            .Select(e => new { e.GameId, e.StatusId, e.Score, e.Ownership, e.Notes, e.Origin, e.AddedAt, e.StatusChangedAt })
+            .Select(e => new
+            {
+                e.GameId, e.StatusId, e.Score, e.Ownership, e.Notes, e.Origin, e.AddedAt, e.StatusChangedAt,
+                e.Position
+            })
             .ToListAsync(cancellationToken);
 
         // A hand-written projection, so a new column on the entry is exported only when it is added
@@ -176,7 +180,7 @@ public class UserDataExporter(ApplicationDbContext db, TimeProvider clock) : IUs
         draft.Entries = rows
             .Select(e => new EntryExportDto(
                 e.GameId, Key(draft, e.StatusId), e.Score, e.Ownership, e.Notes, e.Origin, e.AddedAt,
-                e.StatusChangedAt))
+                e.StatusChangedAt, e.Position))
             .ToList();
     }
 

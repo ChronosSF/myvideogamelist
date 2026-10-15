@@ -18,7 +18,7 @@ namespace MyVideoGameList.Server.Data.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "10.0.11")
+                .HasAnnotation("ProductVersion", "10.0.12")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
@@ -694,6 +694,9 @@ namespace MyVideoGameList.Server.Data.Migrations
                     b.Property<string>("Ownership")
                         .HasMaxLength(16)
                         .HasColumnType("character varying(16)");
+
+                    b.Property<int?>("Position")
+                        .HasColumnType("integer");
 
                     b.Property<short?>("Score")
                         .HasColumnType("smallint");
