@@ -270,6 +270,16 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   attach with `OnStarting` rather than on the way in, because `UseExceptionHandler` clears the
   response — headers included — before writing a 500 or a 502.
 
+- **A document runs only the scripts its own render wrote.** Its `script-src` names a nonce drawn
+  once per render in `entry.server.tsx` and handed to `<ServerRouter>` and to the stream; an inline
+  script without it never runs, and a page whose hydration scripts never run is dead. A new inline
+  script of ours, such as the palette script #208 plans, goes in by its hash in `documentPolicy`. A
+  shared cache does not break the nonce only because header and body are stored together, so
+  **never set `Content-Security-Policy` in a CloudFront response headers policy, and never put an
+  `ETag` or `Last-Modified` on a document**: a 304 keeps the old body under the new header. The root
+  renders `<Links nonce="">` on purpose — without it every page reports a hydration mismatch in
+  development. See `docs/decisions/0053-*`.
+
 - **A third party's failure is a 502, our own throttle is a 503, ours is a 500, and a reader who
   left is a 499.** IGDB calls go through a resilience pipeline — retry outermost, then the breaker,
   then the four-a-second limiter, then a per-attempt timeout, with a total timeout over all of it.

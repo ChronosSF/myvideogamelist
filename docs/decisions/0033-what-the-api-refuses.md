@@ -131,6 +131,8 @@ Router hydrates from an inline script, so restricting scripts means a per-reques
 `<Scripts nonce>`, and a wrong nonce is a blank page rather than a warning. That is a change of its
 own, not a line in this one.
 
+> **Later note.** That change is [0053](0053-a-documents-scripts-carry-its-renders-nonce.md).
+
 HSTS ships alongside: a year, subdomains included, deployed only. Preload stays off — submission to
 the browsers' preload list is slow and awkward to undo, and belongs to whoever owns the domain
 rather than to a default in a source file.

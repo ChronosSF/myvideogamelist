@@ -7,7 +7,7 @@ import { isbot } from 'isbot';
 import type { RenderToPipeableStreamOptions } from 'react-dom/server';
 import { renderToPipeableStream } from 'react-dom/server';
 
-import { applySecurityHeaders } from '@/lib/securityHeaders';
+import { applySecurityHeaders, createNonce, documentPolicy } from '@/lib/securityHeaders';
 import { applyIndexingHeaders } from '@/lib/seo';
 
 /**
@@ -15,9 +15,11 @@ import { applyIndexingHeaders } from '@/lib/seo';
  *
  * It is owned here for one reason: it is the only place every document response passes through.
  * A route's `headers` export is bypassed by a thrown `Response`, so the 404s and the 502s — the
- * responses most worth being careful with — would go out bare. Everything below except the two
- * `apply…Headers` calls is `react-router reveal`'s output verbatim, reformatted to this
- * codebase's style: re-run that command on a React Router major and diff it against this file.
+ * responses most worth being careful with — would go out bare. Everything below is
+ * `react-router reveal`'s output verbatim, reformatted to this codebase's style, except four
+ * things: the nonce, the two `apply…Headers` calls, and the two places the nonce is handed to the
+ * renderers (`<ServerRouter nonce>` and the stream's `nonce` option). Re-run that command on a
+ * React Router major and diff it against this file.
  */
 
 export const streamTimeout = 5_000;
@@ -31,9 +33,16 @@ export default function handleRequest(
     // person to need it should find it where React Router's own template has it.
     _loadContext: RouterContextProvider,
 ) {
+    // One nonce per render, and this call is a render: an error boundary that replaces a failed
+    // shell is a second call with the same `responseHeaders`, so it draws a fresh nonce and the
+    // `set` below replaces the first one's. The policy and every inline script must name the same
+    // value — a mismatch is a page that never hydrates — so it is drawn here and nowhere else.
+    // Why a nonce and not a hash, and why a shared cache does not break it: ADR 0053.
+    const nonce = createNonce();
+
     // Before either response is built below, so a HEAD, a streamed page and an error boundary
     // all carry them.
-    applySecurityHeaders(responseHeaders);
+    applySecurityHeaders(responseHeaders, documentPolicy(nonce));
 
     // `noindex` on everything, from any deployment that has not been told it is the one to index.
     // Here for the reason the security headers are: a staging site's 404s are as indexable as its
@@ -67,9 +76,14 @@ export default function handleRequest(
             streamTimeout + 1000,
         );
 
+        // The nonce goes to both renderers, because each writes inline scripts of its own.
+        // `<ServerRouter>` passes it through its context to `<Scripts>`, `<ScrollRestoration>`,
+        // `<Links>` and the loader data it streams after the shell; the stream's `nonce` option
+        // covers the scripts React itself writes to reveal a suspended boundary.
         const { pipe, abort } = renderToPipeableStream(
-            <ServerRouter context={routerContext} url={request.url} />,
+            <ServerRouter context={routerContext} url={request.url} nonce={nonce} />,
             {
+                nonce,
                 [readyOption]() {
                     shellRendered = true;
                     const body = new PassThrough({
