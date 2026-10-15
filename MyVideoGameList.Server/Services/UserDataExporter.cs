@@ -30,11 +30,19 @@ namespace MyVideoGameList.Server.Services;
 /// One snapshot, so the document cannot contradict itself. <see cref="ExportAsync"/> reads every
 /// section inside a single <c>REPEATABLE READ</c> transaction, which PostgreSQL answers from the
 /// snapshot taken at its first statement. Read as separate statements, each section saw the
-/// database as it stood when that section ran, so a delete landing between two of them was in one
-/// and missing from the other: the retention sweep deleting a pending import between
+/// database as it stood when that section ran, so a write committing between two of them showed in
+/// the later one and not the earlier: the retention sweep deleting a pending import between
 /// <c>importJobs</c> and <c>importRows</c> delivered a job claiming rows the document did not
-/// carry (#95). The sweep is only the deleter there is today, which is why the fix is here rather
-/// than in the import.
+/// carry (#95). The sweep is the case that was found, not the only one — the import's own commit
+/// in another tab deletes a job's rows too (ADR 0039), and logging a playthrough of an unlisted
+/// game writes its entry in the same save — which is why the fix is here rather than in the import.
+/// </para>
+/// <para>
+/// One gap is PostgreSQL's own and is accepted: <c>TRUNCATE</c> and the table-rewriting forms of
+/// <c>ALTER TABLE</c> are not MVCC-safe, so a table such a migration rewrites mid-export, before
+/// the export has reached it, reads as empty. Closing it would mean locking every table up front,
+/// a second list of them to keep in step with the manifest, against a window that needs a rewriting
+/// migration and an export in the same second.
 /// </para>
 /// <para>
 /// No IGDB call, and no game metadata. See <see cref="UserDataExportDto"/> for why, and
@@ -152,7 +160,7 @@ public class UserDataExporter(ApplicationDbContext db, TimeProvider clock) : IUs
         {
             // REPEATABLE READ because READ COMMITTED, the default, gives every statement a snapshot
             // of its own, which is the bug. Not SERIALIZABLE: one consistent snapshot is the whole
-            // requirement, and at this level a transaction that only reads never has a
+            // requirement, and at REPEATABLE READ a transaction that only reads never has a
             // serialization conflict to retry.
             await using var snapshot = await db.Database.BeginTransactionAsync(
                 IsolationLevel.RepeatableRead, token);
