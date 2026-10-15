@@ -167,7 +167,12 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   run on `useGameAxis` on the client — a race guard or a session stamp added to one provider by hand
   is exactly the drift ADR 0022 records. Each provider keeps its own context and pending set. A
   favourite is marked with a rosette, never a star, and is published on a public profile where the
-  wishlist shows only its size. See `docs/decisions/0029-*`.
+  wishlist shows only its size. The showcase's hand order is on that shared code too — `moveInOrder`
+  in `useGameAxis`, which the wishlist gives no `order` and so cannot use — and the public profile
+  shows the favourites in it: the order crosses, the positions never do. The reader's own rosette is
+  drawn on every card of their games and the site's, and on nothing of somebody else's profile,
+  which is why `GameRefRail` takes `isFavourite` rather than reading the context. See
+  `docs/decisions/0029-*` and `0064-*`.
 
 - **`UserName` is the public handle, not the email — and login had to be fixed for it.**
   `SignInManager.PasswordSignInAsync(string, …)` resolves its first argument as a *username*, which
@@ -254,7 +259,10 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   among the unplaced, who queue by when they joined the list. The numbers are computed on the client
   (`planMove` in `@/lib/handOrder`) and stored as sent, checked for range by the DTO and by
   `CK_UserGameEntries_Position_Range`, and for the list; the control — drag, tap, or keyboard — is
-  `useReorder`, written for the favourites showcase (#117) to reuse. See `docs/decisions/0054-*`.
+  `useReorder`, which the favourites showcase reuses unchanged. `UserFavourites.Position` is the same
+  number on the other axis, written through the same `HandOrderStore`; a favourite has no list to
+  leave, so only its own removal loses its place. A new hand-ordered table needs its range check, and
+  `HandOrderTests` fails until it has one. See `docs/decisions/0054-*` and `0064-*`.
 
 - **A list's label reads `nameFor` from the lists context, never `LIST_NAMES`** — except on a public
   profile, which keeps the defaults because a rename is its owner's alone. `LIST_NAMES` is the

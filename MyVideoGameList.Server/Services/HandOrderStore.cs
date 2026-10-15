@@ -6,13 +6,14 @@ using MyVideoGameList.Server.Models;
 namespace MyVideoGameList.Server.Services;
 
 /// <summary>
-/// The write behind every hand-arranged order: the backlog's now, and anything ordered the same way
-/// after it.
+/// The write behind every hand-arranged order: the backlog's, the favourites showcase's, and anything
+/// ordered the same way after them.
 /// </summary>
 /// <remarks>
 /// <para>
 /// Here rather than in <see cref="ListService"/> for the reason <see cref="GameAxisStore"/> is shared
-/// by two axes: the next list to be arranged by hand should call this, not copy it, and with it the
+/// by two axes: every list arranged by hand calls this rather than a copy of it — the backlog through
+/// <see cref="ListService"/>, the favourites through <see cref="FavouriteService"/> — and with it the
 /// two things below that are easy to leave out of a copy.
 /// </para>
 /// <para>

@@ -2,7 +2,7 @@ namespace MyVideoGameList.Server.Models;
 
 /// <summary>
 /// One game in a list its owner can put in an order by hand — the backlog's "what I will play
-/// next", and whatever is arranged the same way after it.
+/// next" and the favourites showcase (ADR 0064), and whatever is arranged the same way after them.
 /// </summary>
 /// <remarks>
 /// <para>
