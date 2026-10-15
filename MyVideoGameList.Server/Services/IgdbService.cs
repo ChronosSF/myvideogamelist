@@ -293,6 +293,15 @@ public class IgdbService(
         return result;
     }
 
+    public async Task<IReadOnlyList<GameDto>> GetGamesByIdsUncachedAsync(
+        IReadOnlyCollection<int> ids, CancellationToken cancellationToken = default)
+    {
+        var idList = ids.Distinct().ToList();
+        if (idList.Count == 0) return [];
+
+        return await FetchGamesByIdsAsync(idList, cancellationToken);
+    }
+
     /// <summary>
     /// Fetches full game details for the given IDs, chunked to IGDB's 500-row response cap.
     /// </summary>

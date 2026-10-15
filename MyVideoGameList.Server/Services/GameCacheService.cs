@@ -17,10 +17,17 @@ public class GameCacheService(
     /// How long a row is served without asking IGDB again.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// A day. What this cache holds barely changes — a title, a cover, a release date — and the one
     /// figure that moves, the player rating, moves slowly and is shown rounded on a card. Shorter
     /// would spend IGDB's four-a-second allowance re-reading games nobody's shelf has changed;
     /// much longer would leave a newly released game looking unrated for a week.
+    /// </para>
+    /// <para>
+    /// Since ADR 0052 this is the reader's fallback rather than the usual way a row is refreshed:
+    /// <see cref="GameCacheRefreshService"/> rewrites rows an hour before they reach it, so a reader
+    /// pays the round trip only for a game nobody has cached yet, or while the refresh is behind.
+    /// </para>
     /// </remarks>
     internal static readonly TimeSpan RefreshAfter = TimeSpan.FromHours(24);
 
@@ -180,19 +187,30 @@ public class GameCacheService(
                 db.CachedGames.Add(row);
             }
 
-            // Absent from the response means IGDB has no such game: the row is written anyway,
-            // without a payload, so the id is not asked about again on every page load.
-            var game = fetched.GetValueOrDefault(id);
-
-            row.Payload = game is null ? null : JsonSerializer.Serialize(game, PayloadFormat);
-            row.Title = game?.Title;
-            row.ReleaseDate = game?.ReleaseDate;
-            row.CoverImageUrl = game?.CoverImageUrl;
-            row.Rating = game?.Rating;
-            row.RefreshedAt = now;
+            Apply(row, fetched.GetValueOrDefault(id), now);
         }
 
         await db.SaveChangesAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Writes IGDB's answer for one id onto its row: the payload and the columns copied out of it,
+    /// or a tombstone when IGDB had nothing.
+    /// </summary>
+    /// <remarks>
+    /// The one place a row is written from an answer, shared with the background refresh (ADR 0052)
+    /// so that a row it rewrites and a row a reader rewrites cannot come to differ. Absent from the
+    /// response means IGDB has no such game: the row is written anyway, without a payload, so the id
+    /// is not asked about again on every page load.
+    /// </remarks>
+    internal static void Apply(CachedGame row, GameDto? game, DateTimeOffset now)
+    {
+        row.Payload = game is null ? null : JsonSerializer.Serialize(game, PayloadFormat);
+        row.Title = game?.Title;
+        row.ReleaseDate = game?.ReleaseDate;
+        row.CoverImageUrl = game?.CoverImageUrl;
+        row.Rating = game?.Rating;
+        row.RefreshedAt = now;
     }
 
     /// <summary>
