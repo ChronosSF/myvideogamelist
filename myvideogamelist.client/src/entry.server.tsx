@@ -15,7 +15,7 @@ import {
     RESOURCE_POLICY,
 } from '@/lib/securityHeaders';
 import { applyIndexingHeaders } from '@/lib/seo';
-import { traceOf } from '@/lib/trace.server';
+import { currentTrace } from '@/lib/trace.server';
 
 /**
  * The server entry, which React Router generates unless the app provides one.
@@ -169,9 +169,13 @@ export function handleDataRequest(response: Response): Response {
 
 /**
  * What React Router logs when a loader, an action or a render fails, which without this export is
- * the error alone. With the request's trace id beside it, the id a reader quotes from a failed page
- * finds the line here as well as the API's, and an id that finds nothing in the API's log says the
- * request never got there.
+ * the error alone, now with the request's trace id beside it.
+ *
+ * React Router passes this an error, never a `Response` a loader threw, so the 502 a page shows its
+ * reader a reference on is not logged here: the API logged the failure itself, under the same id,
+ * or `loaderFetch` logged the call that never reached it. What does come here is an exception, whose
+ * page shows no reference, because in production the page never sees which request it was; the id
+ * is still on the response's `X-Trace-Id`.
  *
  * As the default does, it says nothing about a request whose reader has gone, and logs the error
  * inside an error response rather than the response.
@@ -185,11 +189,13 @@ export const handleError: HandleErrorFunction = (error, { request, context }) =>
 };
 
 /**
- * One failure, with what it was serving and under which trace. The path is as the parsed URL spells
- * it, percent-encoded, so a crafted one cannot break the line; the query is left out, because what
- * somebody searched for is theirs.
+ * One failure, with what it was serving and under which trace: `none` for the few requests React
+ * Router answers before any middleware runs, which carry no `X-Trace-Id` for a line to match. The
+ * path is as the parsed URL spells it, percent-encoded, so a crafted one cannot break the line; the
+ * query is left out, because what somebody searched for is theirs.
  */
-function logFailure(request: Request, context: Readonly<RouterContextProvider>, error: unknown) {
+function logFailure(request: Request, context: Readonly<RouterContextProvider> | undefined, error: unknown) {
     const { pathname } = new URL(request.url);
-    console.error(`${request.method} ${pathname} failed, trace ${traceOf(context).traceId}:`, error);
+    const traceId = currentTrace(context)?.traceId ?? 'none';
+    console.error(`${request.method} ${pathname} failed, trace ${traceId}:`, error);
 }

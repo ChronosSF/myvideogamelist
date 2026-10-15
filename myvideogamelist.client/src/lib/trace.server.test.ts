@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { PRIVATE_NO_STORE } from '@/lib/cache';
 import { isUpstreamFailure } from '@/lib/trace';
 import {
+    currentTrace,
     loaderFetch,
     newTrace,
     TRACE_HEADER,
@@ -46,7 +47,22 @@ describe('a trace', () => {
         newTrace();
 
         expect(random).toHaveBeenCalledTimes(2);
-        random.mockRestore();
+    });
+
+    it('draws again rather than send an id of all zeros, which the recommendation forbids', () => {
+        const draw = crypto.getRandomValues.bind(crypto) as (array: Uint8Array) => Uint8Array;
+        let first = true;
+        // The first draw is left as the new array comes, which is all zeros.
+        vi.spyOn(crypto, 'getRandomValues').mockImplementation(((array: Uint8Array) => {
+            if (!first) return draw(array);
+            first = false;
+            return array;
+        }) as typeof crypto.getRandomValues);
+
+        const { traceId } = newTrace();
+
+        expect(traceId).toMatch(/^[0-9a-f]{32}$/);
+        expect(traceId).not.toBe('0'.repeat(32));
     });
 
     it('is sent as a sampled W3C traceparent naming both ids', () => {
@@ -65,7 +81,14 @@ describe('a trace', () => {
         const first = traceOf(context);
 
         expect(traceOf(context)).toBe(first);
+        expect(currentTrace(context)).toBe(first);
         expect(traceOf(other).traceId).not.toBe(first.traceId);
+    });
+
+    it('is not drawn just to be logged, for a request that never had one', () => {
+        // React Router answers a few requests before any middleware runs; those carry no X-Trace-Id.
+        expect(currentTrace(new RouterContextProvider())).toBeNull();
+        expect(currentTrace(undefined)).toBeNull();
     });
 });
 
@@ -120,10 +143,11 @@ describe('a call from a loader', () => {
     it('keeps what the loader asked for and adds no cookie', async () => {
         const fetchMock = vi.fn(async () => new Response('{}'));
         vi.stubGlobal('fetch', fetchMock);
+        const signal = AbortSignal.timeout(1_000);
 
         await loaderFetch(new RouterContextProvider(), '/api/home', {
             headers: { Accept: 'application/json' },
-            signal: AbortSignal.timeout(1_000),
+            signal,
         });
 
         const [[, init]] = fetchMock.mock.calls as unknown as [string, RequestInit][];
@@ -131,7 +155,35 @@ describe('a call from a loader', () => {
         expect(headers.get('Accept')).toBe('application/json');
         expect(headers.get('traceparent')).toMatch(TRACEPARENT);
         expect(headers.has('Cookie')).toBe(false);
-        expect(init.signal).toBeInstanceOf(AbortSignal);
+        expect(init.signal).toBe(signal);
+    });
+
+    it('logs a call that never reached the API, which nothing else would, and still fails it', async () => {
+        const unreachable = new TypeError('fetch failed');
+        vi.stubGlobal('fetch', vi.fn(async () => { throw unreachable; }));
+        const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+        const context = new RouterContextProvider();
+
+        await expect(loaderFetch(context, '/api/games?search=alice@example.com')).rejects.toBe(unreachable);
+
+        // The path without its query: a search can be an email address.
+        expect(logged).toHaveBeenCalledWith(
+            `GET /api/games did not reach the API, trace ${traceOf(context).traceId}:`,
+            unreachable,
+        );
+        expect(JSON.stringify(logged.mock.calls)).not.toContain('alice');
+    });
+
+    it('says nothing when the loader gave up on the call itself', async () => {
+        const controller = new AbortController();
+        controller.abort();
+        vi.stubGlobal('fetch', vi.fn(async () => { throw new DOMException('Aborted', 'AbortError'); }));
+        const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+        await expect(loaderFetch(new RouterContextProvider(), '/api/home', { signal: controller.signal }))
+            .rejects.toThrow('Aborted');
+
+        expect(logged).not.toHaveBeenCalled();
     });
 });
 

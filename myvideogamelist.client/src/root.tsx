@@ -147,8 +147,8 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
                     <h1 className="text-3xl font-bold text-fg-strong mb-3">{title}</h1>
                     <p className="text-fg-muted mb-8">{detail}</p>
                     {reference && (
-                        // What somebody reporting this can quote: the id every log line about the
-                        // failed request carries, on this server and on the API.
+                        // What somebody reporting this can quote: the id on the API's lines for the
+                        // failed call, or on this server's line when the call never reached it.
                         <p className="text-sm text-fg-faint -mt-4 mb-8">
                             If you report this, quote{' '}
                             <code className="font-mono text-fg-soft select-all break-all">{reference}</code>.

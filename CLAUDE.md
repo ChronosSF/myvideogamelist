@@ -68,7 +68,7 @@ myvideogamelist.client/
   src/entry.server.tsx          Owned, not generated. Where every document response gets its headers
   src/routes.ts                 Route table. `/u/:userName` is the one public per-person page
   src/pages/                    Route modules (default export + optional loader/meta)
-  src/resources/                Resource routes: robots.txt and the sitemaps. A loader, no component
+  src/resources/                Resource routes: robots.txt, the sitemaps and /version. A loader, no component
   src/lib/                      apiUrl(), useHydrated(), pageMeta(); loaderFetch() in trace.server.ts
 docs/decisions/                 Architecture decision records
 docs/data-model-plan.md         The tables not built yet, and the two constraints every table answers to
@@ -295,7 +295,7 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   three attempts would share one permit. Every error body is a `ProblemDetails` with a `traceId`,
   which means writing it through `IProblemDetailsService` and never by hand; the exception itself is
   included in Development only. That `traceId` is the request's W3C trace id, so it is the id the page
-  that made the call names (next bullet). `/readyz` still answers 200 while IGDB is down, deliberately. See
+  that made the call names (see "One id names a request" below). `/readyz` still answers 200 while IGDB is down, deliberately. See
   `docs/decisions/0034-*`.
 
 - **The rate limiter is narrow on purpose, and the lockout says nothing.** Ten attempts per address
@@ -515,12 +515,13 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   and sends the render's trace.
 
 - **One id names a request from the page to the API's log, and a log line never carries a query
-  string, a header or a form.** The root's middleware draws a W3C trace for every request the SSR
-  server handles and answers with it in `X-Trace-Id`; `loaderFetch` sends it as `traceparent`, and the
-  API continues it, so its log lines carry it as `TraceId` and its errors as `traceId`. A bare
-  `fetch(apiUrl(…))` is refused by the lint, because the API would log that call under a trace of its
-  own. A loader whose call failed throws `upstreamFailure(context, message)`, which is what puts the id
-  on the error page. Outside Development the API logs one JSON object per line, every scope included,
+  string, a header or a form.** The root's middleware draws a W3C trace for every request React Router
+  routes and answers with it in `X-Trace-Id`; `loaderFetch` sends it as `traceparent`, and the API
+  continues it, so its log lines carry it as `TraceId` and its `ProblemDetails` as `traceId`. The lint
+  refuses an import of `apiUrl` outside `@/lib/api` and `loaderFetch`, because the API would log a call
+  made any other way under a trace of its own. A loader whose call failed throws
+  `upstreamFailure(context, message)`, which is what puts the id on the error page, and a call that
+  never reached the API is logged by `loaderFetch`, the one failure the API has no line for. Outside Development the API logs one JSON object per line, every scope included,
   and one line per request with its status; never lower `Microsoft.AspNetCore` below `Warning`, whose
   own request lines print the query, and a search can be an email address. `TraceIds.UseW3COnly()` in
   `Program.cs` is what stops a later-version `traceparent` writing its own text into every line. See

@@ -57,7 +57,8 @@ jobs:
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
       # The tag, and what both images answer at /version and /api/version: the full commit and one
-      # build time for the release, so that the two processes' answers can be compared as they are.
+      # build time for the release. Compare the two answers by sha: a re-run that finishes a
+      # half-pushed release builds the second image later, with a time of its own.
       - name: Name the release
         id: release
         run: |

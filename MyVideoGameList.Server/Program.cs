@@ -225,8 +225,8 @@ if (app.Environment.IsDevelopment())
 app.UseProxyHeaders();
 
 // The line every request leaves, and the trace id on every answer. Above the exception handler on
-// purpose, the one thing that is: it has to see the status that handler ends a failed request with
-// and the time it took, and it can throw nothing of its own for the handler to catch.
+// purpose: it has to see the status that handler ends a failed request with and the time it took,
+// and it throws nothing of its own that the handler would have had to turn into a ProblemDetails.
 app.UseRequestLog();
 
 // Outside everything it is meant to catch, and outside the security headers below for a reason
@@ -286,9 +286,7 @@ app.MapHealthChecks("/readyz", new HealthCheckOptions
     }
 });
 
-// Which commit is running, and when its image was built. Uncached, and like /healthz it asks
-// nothing of anything else. Under /api/ so that the distribution reaches it; see
-// Observability/BuildVersion.cs.
-app.MapBuildVersion();
+// Which commit is running is GET /api/version, a controller like any other API call and for the
+// reason Controllers/VersionController.cs gives: the distribution reaches it there.
 
 app.Run();

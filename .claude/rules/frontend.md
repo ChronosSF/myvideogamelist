@@ -24,7 +24,7 @@ This is the category of bug that is easy to introduce and annoying to diagnose.
   first, and `getSnapshot` must return a stable reference or React loops.
 - Server-side loaders have no origin to resolve a relative URL against. A loader calls the API with
   `loaderFetch(context, path)` from `@/lib/trace.server`, which resolves the path as `apiUrl()` does
-  and sends the render's trace as `traceparent`. The lint refuses a bare `fetch(apiUrl(…))`.
+  and sends the render's trace as `traceparent`. The lint refuses an import of `apiUrl` anywhere else.
 - **Never format in the runtime's default locale during render.** A bare `toLocaleString()`, or an
   `Intl` formatter given no locale, formats in Node's locale on the server and the reader's in the
   browser. Where those disagree so does the text — `5487` against `5,487` — and hydration fails.

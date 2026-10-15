@@ -9,12 +9,14 @@ import {
     UNSAFE_withComponentProps,
     UNSAFE_withErrorBoundaryProps,
 } from 'react-router';
+import { Suspense, use } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as entry from '@/entry.server';
 import { CACHE_GAME, CACHE_NOT_FOUND } from '@/lib/cache';
 import { RESOURCE_POLICY } from '@/lib/securityHeaders';
 import { loaderFetch, TRACE_HEADER, upstreamFailure } from '@/lib/trace.server';
 import * as notFound from '@/pages/NotFoundPage';
+import * as version from '@/resources/version';
 import * as root from '@/root';
 
 /**
@@ -52,12 +54,24 @@ function gate() {
 
 let held = gate();
 
+/** A promise a stand-in page reads after its shell has gone, which a test can make fail. */
+function failingLater() {
+    let fail = (_reason: Error) => {};
+    const promise = new Promise<string>((_resolve, reject) => {
+        fail = reject;
+    });
+    return { promise, fail };
+}
+
+let later = failingLater();
+
 /** How many times React Router called the entry for the current test. */
 let entryCalls = 0;
 
 beforeEach(() => {
     held = gate();
     held.release();
+    later = failingLater();
     entryCalls = 0;
 });
 
@@ -69,9 +83,24 @@ function page() {
     return <p>A page</p>;
 }
 
-const later = () => ({ later: held.promise });
+const heldData = () => ({ later: held.promise });
 
-function leaf(id: string, path: string, module: NonNullable<ServerBuild['routes'][string]>['module']) {
+/** A part of the page that suspends until `later` settles, so its failure comes after the shell. */
+function LateSection() {
+    return <p>{use(later.promise)}</p>;
+}
+
+function pageThatFailsLate() {
+    return (
+        <Suspense fallback={<p>Loading the rest</p>}>
+            <LateSection />
+        </Suspense>
+    );
+}
+
+type RouteModule = NonNullable<ServerBuild['routes'][string]>['module'];
+
+function leaf(id: string, path: string, module: RouteModule) {
     return { id, path, parentId: 'root', module };
 }
 
@@ -111,11 +140,11 @@ const build: ServerBuild = {
     routes: {
         root: { id: 'root', path: '', module: rootModule },
         // No `headers` export, so the root's `private, no-store`: streamed.
-        private: leaf('private', 'private', { default: page, loader: later }),
+        private: leaf('private', 'private', { default: page, loader: heldData }),
         // A game page's policy: shared, so sent whole.
         shared: leaf('shared', 'shared', {
             default: page,
-            loader: later,
+            loader: heldData,
             headers: () => ({ 'Cache-Control': CACHE_GAME }),
         }),
         missing: leaf('missing', 'missing', {
@@ -149,6 +178,22 @@ const build: ServerBuild = {
                 throw upstreamFailure(context, 'Failed to load the probe.');
             },
         }),
+        // A page whose loader could not reach the API at all, as GamePage reports that.
+        unreachable: leaf('unreachable', 'unreachable', {
+            default: page,
+            loader: async ({ context }: LoaderFunctionArgs) => {
+                try {
+                    return { answer: await (await loaderFetch(context, '/api/probe?q=alice@example.com')).text() };
+                } catch {
+                    throw upstreamFailure(context, 'Failed to load the probe.');
+                }
+            },
+        }),
+        // Private, so streamed: part of it fails after the shell has gone.
+        'fails-late': leaf('fails-late', 'fails-late', { default: pageThatFailsLate }),
+        // A resource route: a loader and no component, which is what tells React Router not to render
+        // it, and which the module's type cannot say.
+        version: { id: 'version', path: 'version', parentId: 'root', module: version as unknown as RouteModule },
         crashing: leaf('crashing', 'crashing', {
             // Thrown while rendering, which on the server fails the shell rather than reaching a
             // boundary: React Router renders the error boundary in a second call to the entry.
@@ -169,6 +214,9 @@ const build: ServerBuild = {
             failing: asset('failing', 'failing', 'root', true),
             traced: asset('traced', 'traced', 'root', true),
             upstream: asset('upstream', 'upstream', 'root', true),
+            unreachable: asset('unreachable', 'unreachable', 'root', true),
+            'fails-late': asset('fails-late', 'fails-late', 'root', false),
+            version: asset('version', 'version', 'root', true),
             crashing: asset('crashing', 'crashing', 'root', false),
             'not-found': asset('not-found', '*', 'root', true),
         },
@@ -448,15 +496,90 @@ describe('a trace', () => {
         expectEveryScriptToCarryTheNonce(document);
     });
 
-    it('is logged beside a loader that failed, so the id a reader quotes finds the error', async () => {
+    it('is logged beside a loader that threw, with the path and not the query', async () => {
         const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
 
-        const document = await render('/failing');
+        const document = await render('/failing?q=alice@example.com');
 
         expect(logged).toHaveBeenCalledWith(
             `GET /failing failed, trace ${traceIdOf(document.response)}:`,
             expect.objectContaining({ message: 'The loader failed.' }),
         );
+        expect(JSON.stringify(logged.mock.calls)).not.toContain('alice');
+    });
+
+    it('is logged, and is the reference on the page, when a call never reached the API', async () => {
+        // The one failure the API has no line for, so the only place the reference can be found.
+        vi.stubGlobal('fetch', vi.fn(async () => { throw new TypeError('fetch failed'); }));
+        const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+        const document = await render('/unreachable');
+        const traceId = traceIdOf(document.response);
+
+        expect(document.response.status).toBe(502);
+        expect(document.body).toMatch(new RegExp(`<code[^>]*>${traceId}</code>`));
+        expect(logged).toHaveBeenCalledWith(
+            `GET /api/probe did not reach the API, trace ${traceId}:`,
+            expect.objectContaining({ message: 'fetch failed' }),
+        );
+        expect(JSON.stringify(logged.mock.calls)).not.toContain('alice');
+    });
+
+    it('is named in a .data failure by that request, not by the page it was loaded from', async () => {
+        // A client-side navigation lands on the error page with the error this carries, so the id in
+        // it has to be the navigation's own.
+        const response = await handle(request('/upstream.data'));
+        const body = await response.text();
+
+        expect(body).toContain(traceIdOf(response));
+    });
+
+    it('starts at this server, whatever trace the viewer sent', async () => {
+        const sent = stubApi();
+        const theirs = '0af7651916cd43dd8448eb211c80319c';
+
+        const document = await render('/traced', {
+            headers: { traceparent: `00-${theirs}-b7ad6b7169203331-01` },
+        });
+
+        expect(traceIdOf(document.response)).not.toBe(theirs);
+        expect(sent[0]).not.toContain(theirs);
+        expect(sent[0]).toContain(traceIdOf(document.response));
+    });
+
+    it('is logged beside a part of a streamed page that failed after the shell', async () => {
+        const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+        const response = await handle(request('/fails-late'));
+        later.fail(new Error('The late part failed.'));
+        await response.text();
+
+        expect(logged).toHaveBeenCalledWith(
+            `GET /fails-late failed, trace ${traceIdOf(response)}:`,
+            expect.objectContaining({ message: 'The late part failed.' }),
+        );
+    });
+
+    it('is none for what React Router refuses before any middleware runs, which names no trace', async () => {
+        const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+        const response = await handle(request('/private', { method: 'PROPFIND' }));
+        await response.text();
+
+        expect(response.status).toBe(405);
+        expect(response.headers.has(TRACE_HEADER)).toBe(false);
+        // The error React Router's own response stands for, as its default handler logs it.
+        expect(logged).toHaveBeenCalledWith(
+            'PROPFIND /private failed, trace none:',
+            expect.objectContaining({ message: 'Invalid request method "PROPFIND"' }),
+        );
+    });
+
+    it('is named on what /version answers, as on every resource route', async () => {
+        const response = await handle(request('/version'));
+
+        expect(traceIdOf(response)).toMatch(/^[0-9a-f]{32}$/);
+        expect(await response.json()).toEqual({ sha: 'unknown', builtAt: 'unknown' });
     });
 
     it('is logged beside a shell that failed to render', async () => {

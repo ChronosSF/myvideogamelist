@@ -7,11 +7,12 @@ const UNKNOWN = 'unknown';
 /**
  * `/version` — which commit this server was built from, and when its image was built.
  *
- * The same shape as the API's `/api/version`, so "which commit is live" is one request to each and
- * the two answers can be compared field by field. The values are the image's `BUILD_SHA` and
- * `BUILD_TIME`, which the client Dockerfile sets from its `GIT_SHA` and `BUILD_TIME` build
- * arguments and the deploy workflow fills from the commit it built. Nothing is asked of the API, so
- * this answers whenever the process does. See ADR 0059.
+ * The same shape as the API's `/api/version`, so "which commit is live" is one request to each.
+ * Compare the two by `sha`: `builtAt` is each image's own, and a re-run that finishes a half-pushed
+ * release builds the second image later. The values are the image's `BUILD_SHA` and `BUILD_TIME`,
+ * which the client Dockerfile sets from its `GIT_SHA` and `BUILD_TIME` build arguments and the
+ * deploy workflow fills from the commit it built. Nothing is asked of the API, so this answers
+ * whenever the process does. See ADR 0059.
  */
 export function loader() {
     const version = {

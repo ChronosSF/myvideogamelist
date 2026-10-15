@@ -1,3 +1,5 @@
+using System.Text.Encodings.Web;
+using System.Text.Json;
 using Microsoft.Extensions.Logging.Console;
 
 namespace MyVideoGameList.Server.Observability;
@@ -41,6 +43,17 @@ public static class ApiLogging
             options.IncludeScopes = true;
             options.UseUtcTimestamp = true;
             options.TimestampFormat = TimestampFormat;
+
+            // One line still, because quotes, backslashes and control characters are escaped all the
+            // same. What the relaxed encoder leaves alone is everything an HTML page would care about,
+            // which a log line read in CloudWatch is not: with the default one, every stack frame of
+            // an async method reads `<QueryAsync>d__12`, and every quoted identifier in a
+            // failed SQL command `"…"`, in the raw stream and in `aws logs tail`.
+            options.JsonWriterOptions = new JsonWriterOptions
+            {
+                Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+                Indented = false,
+            };
         });
     }
 }

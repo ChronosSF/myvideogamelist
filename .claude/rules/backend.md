@@ -53,10 +53,11 @@ paths:
 
 - Middleware lives in `Security/`, `Errors/` and `Observability/`, and the order in `Program.cs` is
   load-bearing: forwarded headers first, then the request log, then the exception handler, then
-  security headers, the write guard and the rate limiter. Anything added above the exception handler
-  will not be seen by a failed request; the request log is there because it has to see the status the
-  handler ends one with. Anything cheap that can refuse a request belongs above the limiter — a
-  request refused after taking a permit has spent somebody's budget to be told no.
+  security headers, the write guard and the rate limiter. An exception thrown above the exception
+  handler never becomes a `ProblemDetails`, so nothing that can throw goes there; the request log does
+  because it has to see the status the handler ends a failure with, and throws nothing itself. Anything
+  cheap that can refuse a request belongs above the limiter — a request refused after taking a permit
+  has spent somebody's budget to be told no.
 - **A log line carries no query string, no header and no form value**, because any of them can hold
   an email address, a cookie or a token. Log a request's method and path, through `LogText`, and let
   the scopes carry the trace id. A request's `ProblemDetails` carries that same id as `traceId`
