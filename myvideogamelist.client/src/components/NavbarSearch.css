@@ -51,14 +51,18 @@
     color: var(--color-fg-faint);
 }
 
+/* The ring is a shadow, which forced colours remove, so a transparent outline stands behind it: it
+   draws nothing until a high-contrast theme gives it the system's colour. */
 .navbar-search-input:focus {
-    outline: none;
+    outline: 2px solid transparent;
     border-color: transparent;
     box-shadow: 0 0 0 2px var(--color-focus);
 }
 
 /* The dropdown. Its frame is the floating card from lg; below lg the panel is the frame. Only the
-   list scrolls, on a screen too short for six games, so "See all results" stays in sight. */
+   list scrolls, on a screen too short for six games, so "See all results" stays below it. Not above
+   a phone's keyboard, which no viewport unit measures — but the panel stays open when the keyboard
+   is put away, and Enter does what that link does. */
 .navbar-search-popup [role='listbox'] {
     max-height: min(29rem, calc(100dvh - 12rem));
     overflow-y: auto;
@@ -87,11 +91,14 @@
     background: var(--color-raised);
 }
 
-/* The highlighted option, in the colours of the bar's current page, so the keyboard's place reads
-   as a choice rather than as a hover. */
+/* The highlighted option, on the tint the bar gives its current page, so the keyboard's place reads
+   as a choice rather than as a hover. The transparent outline is for forced colours, which remove
+   the tint and the shadow both: it is the only mark of the highlight a high-contrast theme keeps. */
 .navbar-search-option[aria-selected='true'] {
     background: color-mix(in srgb, var(--color-primary-600) 20%, transparent);
     box-shadow: inset 2px 0 0 var(--color-primary-400);
+    outline: 2px solid transparent;
+    outline-offset: -2px;
 }
 
 .navbar-search-cover {
@@ -111,17 +118,21 @@
     gap: 0.125rem;
 }
 
+/* A title that is one long word — a pasted id, a run of kana — breaks rather than being cut off. */
 .navbar-search-title {
     display: -webkit-box;
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 2;
     overflow: hidden;
+    overflow-wrap: anywhere;
     font-size: 0.875rem;
     font-weight: 500;
     line-height: 1.25;
     color: var(--color-fg-strong);
 }
 
+/* Lighter than the bar's current-page link, which is short and bold: a title is long and small,
+   and on the tint it needs the extra contrast. */
 .navbar-search-option[aria-selected='true'] .navbar-search-title {
     color: var(--color-primary-200);
 }
@@ -142,6 +153,13 @@
     color: var(--color-fg-faint);
 }
 
+/* The faint year and count fall under 3:1 on a hovered or highlighted row, and the year is what
+   tells a game from its own re-release. */
+.navbar-search-option:hover :is(.navbar-search-year, .navbar-search-unscored),
+.navbar-search-option[aria-selected='true'] :is(.navbar-search-year, .navbar-search-unscored) {
+    color: var(--color-fg-soft);
+}
+
 .navbar-search-dash {
     font-size: 0.875rem;
     font-weight: 700;
@@ -150,6 +168,7 @@
 
 .navbar-search-message {
     padding: 0.75rem;
+    overflow-wrap: anywhere;
     font-size: 0.875rem;
     color: var(--color-fg-muted);
 }

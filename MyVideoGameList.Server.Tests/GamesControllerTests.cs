@@ -1,3 +1,5 @@
+using System.ComponentModel.DataAnnotations;
+using System.Reflection;
 using Microsoft.AspNetCore.Mvc;
 using MyVideoGameList.Server.Controllers;
 using MyVideoGameList.Server.DTOs;
@@ -65,6 +67,18 @@ public class GamesControllerTests
     }
 
     [Fact]
+    public async Task GetGames_WithALimitEqualToWhatThePageHolds_KeepsThePagesOwnHasMore()
+    {
+        // Nothing was cut, so whether there is more is the page's to say, not the cut's.
+        var (controller, _) = ControllerAnswering(games: 6, hasMore: false);
+
+        var body = Body(await controller.GetGames(CancellationToken.None, search: "hades", limit: 6));
+
+        Assert.Equal(6, body.Items.Count());
+        Assert.False(body.HasMore);
+    }
+
+    [Fact]
     public async Task GetGames_WithNoLimit_ReturnsTheWholePage()
     {
         var (controller, _) = ControllerAnswering(games: PageSize, hasMore: true);
@@ -73,5 +87,18 @@ public class GamesControllerTests
 
         Assert.Equal(PageSize, body.Items.Count());
         Assert.True(body.HasMore);
+    }
+
+    [Fact]
+    public void GetGames_Limit_IsBoundedToOnePage()
+    {
+        // Model validation turns the range into a 400 before the action runs, so it is read off the
+        // parameter rather than exercised: a limit of nought or past a page is refused, not served.
+        var range = typeof(GamesController).GetMethod(nameof(GamesController.GetGames))!
+            .GetParameters().Single(p => p.Name == "limit")
+            .GetCustomAttribute<RangeAttribute>()!;
+
+        Assert.Equal(1, range.Minimum);
+        Assert.Equal(PageSize, range.Maximum);
     }
 }

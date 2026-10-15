@@ -1,8 +1,8 @@
-import { useEffect, useId, useRef, useState, type FocusEvent, type FormEvent, type KeyboardEvent } from 'react';
+import { useCallback, useEffect, useId, useRef, useState, type FocusEvent, type FormEvent, type KeyboardEvent } from 'react';
 import { flushSync } from 'react-dom';
 import { Link, useLocation, useNavigate } from 'react-router';
 import { ScoreBadge } from '@/components/ScoreBadge';
-import { type SearchAnswer, useGameSearch } from '@/hooks/useGameSearch';
+import { MAX_SEARCH_LENGTH, type SearchAnswer, useGameSearch } from '@/hooks/useGameSearch';
 import { formatCount } from '@/lib/format';
 import { searchPagePath } from '@/lib/gameBrowse';
 import { releaseYear } from '@/lib/releaseDate';
@@ -23,9 +23,11 @@ interface NavbarSearchProps {
 /** One array for "nothing listed", so a render that lists nothing does not look like a new list. */
 const NO_GAMES: GameDto[] = [];
 
+const MAGNIFIER = 'M21 21l-4.35-4.35M17 11A6 6 0 115 11a6 6 0 0112 0z';
+
 /**
- * IGDB's 90×128 cover rather than the 264×374 one the cards use: the thumbnail is drawn at 36×48,
- * and six of the larger size would be most of what the dropdown costs to show.
+ * IGDB's small cover, ninety pixels wide, rather than the card-sized one: the thumbnail is drawn at
+ * 36×48, and six of the larger size would be most of what the dropdown costs to show.
  */
 function thumbnail(url: string): string {
     return url.replace('/t_cover_big/', '/t_cover_small/');
@@ -33,6 +35,10 @@ function thumbnail(url: string): string {
 
 function reviewCount(count: number): string {
     return `${formatCount(count)} review${count === 1 ? '' : 's'}`;
+}
+
+function gameCount(count: number): string {
+    return `${count} ${count === 1 ? 'game' : 'games'}`;
 }
 
 /**
@@ -49,9 +55,10 @@ function optionName(game: GameDto): string {
 }
 
 /**
- * The critic score above `MIN_CRITIC_REVIEWS`, as everywhere else, or a dash with the count under
- * it. The count is the reason for the dash: a bare one reads as "no score", where the truth is "a
- * score from too few reviews to mean anything" (ADR 0016).
+ * The critic score once it rests on `MIN_CRITIC_REVIEWS` reviews, or a dash with the count when it
+ * rests on fewer. The cards leave a badge out under the floor; here the row has a column for it, and
+ * a bare dash would read as "no score" where the truth is "a score from too few reviews to mean
+ * anything" — so the count goes under it (ADR 0016).
  */
 function CriticScore({ game }: { game: GameDto }) {
     if (hasCriticScore(game)) {
@@ -70,10 +77,12 @@ function CriticScore({ game }: { game: GameDto }) {
 /**
  * The search box on every page, with a typeahead over `/api/games?search=`.
  *
- * Server-rendered as a plain GET form to `/games` — a working search before any script has loaded —
- * and turned into an ARIA combobox once hydrated, never before: a combobox that cannot open its list
- * would promise assistive technology something it cannot do. Enter on the box, or "See all results",
- * opens the browse page for the term; an option opens its game.
+ * Server-rendered as a plain GET form to `/games`, which searches before any script has loaded — in
+ * the bar from lg, and below it through a link to the browse page in place of the button, since the
+ * panel the button opens needs the script. It turns into an ARIA combobox once hydrated, never
+ * before: a combobox that cannot open its list would promise assistive technology something it
+ * cannot do. Enter on the box, or "See all results", opens the browse page for the term; an option
+ * opens its game.
  *
  * What it asks of the API, and how often, is `useGameSearch`'s business.
  */
@@ -132,8 +141,19 @@ export function NavbarSearch({ panelOpen, onPanelOpenChange }: NavbarSearchProps
     const listboxId = `${id}-listbox`;
     const optionId = (game: GameDto) => `${id}-game-${game.id}`;
 
-    const inputRef = useRef<HTMLInputElement>(null);
+    const inputRef = useRef<HTMLInputElement | null>(null);
     const toggleRef = useRef<HTMLButtonElement>(null);
+
+    // Whatever was typed into the server-rendered box before the script arrived. Hydration leaves it
+    // in the field but not in `query`, and the next commit — the one that makes the box a combobox —
+    // would write the empty `query` over it, mid-word. So it is taken into state as the field is
+    // attached, and a box already focused is open.
+    const attachInput = useCallback((node: HTMLInputElement | null) => {
+        inputRef.current = node;
+        if (node === null || node.value === '') return;
+        setQuery(node.value);
+        if (node === document.activeElement) setOpen(true);
+    }, []);
 
     const term = search.term;
     const popupShown = hydrated && open && search.status !== 'idle';
@@ -188,17 +208,19 @@ export function NavbarSearch({ panelOpen, onPanelOpenChange }: NavbarSearchProps
 
     /**
      * Escape takes off one layer at a time: the dropdown, then the panel it sits in, then the text.
-     * On the wrapper, so it works from the dropdown's own link and button as well as from the box.
-     * Handled even with nothing to close, because a search input's own Escape clears it.
+     * On the wrapper, so it works from the dropdown's own button as well as from the box. Every
+     * layer it takes off is prevented, or a search input's own Escape would empty the box as well.
      */
     const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
         if (event.key !== 'Escape' || event.nativeEvent.isComposing) return;
 
         if (popupShown) {
             event.preventDefault();
+            // Focus first: focusing the box opens it, so from the dropdown's button the close has to
+            // come after or the box's own focus handler undoes it.
+            inputRef.current?.focus();
             setOpen(false);
             setActive(-1);
-            inputRef.current?.focus();
         } else if (panelOpen) {
             event.preventDefault();
             onPanelOpenChange(false);
@@ -224,49 +246,62 @@ export function NavbarSearch({ panelOpen, onPanelOpenChange }: NavbarSearchProps
         if (panelOpen) onPanelOpenChange(false);
     };
 
+    // The dropdown shows at most six of a search's games, so a count is said as the first of more
+    // when there are more: "6 games found" would name the dropdown's size as the search's.
     const announcement = !popupShown ? ''
         : search.status === 'failed' ? search.message
         : search.status !== 'answered' ? ''
         : search.answer.games.length === 0 ? `No games found for ${term}.`
-        : `${search.answer.games.length} ${search.answer.games.length === 1 ? 'game' : 'games'} found for ${term}.`;
+        : search.answer.hasMore ? `First ${gameCount(search.answer.games.length)} for ${term}. Press Enter for all results.`
+        : `${gameCount(search.answer.games.length)} found for ${term}.`;
 
     return (
         <div className="navbar-search" data-open={panelOpen || undefined} onKeyDown={onKeyDown} onBlur={onBlur}>
-            <button
-                ref={toggleRef}
-                type="button"
-                className="navbar-search-toggle"
-                aria-label="Search"
-                aria-expanded={panelOpen}
-                aria-controls={formId}
-                onClick={() => {
-                    if (panelOpen) {
-                        onPanelOpenChange(false);
-                        return;
-                    }
-                    // Committed first, because the box is not displayed until it is, and focused
-                    // within the tap itself, which is the only way iOS raises the keyboard for it.
-                    flushSync(() => onPanelOpenChange(true));
-                    inputRef.current?.focus();
-                }}
-            >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                    <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d={panelOpen ? 'M6 18L18 6M6 6l12 12' : 'M21 21l-4.35-4.35M17 11A6 6 0 115 11a6 6 0 0112 0z'}
-                    />
-                </svg>
-            </button>
+            {hydrated ? (
+                <button
+                    ref={toggleRef}
+                    type="button"
+                    className="navbar-search-toggle"
+                    aria-label="Search"
+                    aria-expanded={panelOpen}
+                    aria-controls={formId}
+                    onClick={() => {
+                        if (panelOpen) {
+                            onPanelOpenChange(false);
+                            return;
+                        }
+                        // Committed first, because the box is not displayed until it is, and focused
+                        // within the tap itself, which is the only way iOS raises the keyboard for it.
+                        flushSync(() => onPanelOpenChange(true));
+                        inputRef.current?.focus();
+                    }}
+                >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                        <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d={panelOpen ? 'M6 18L18 6M6 6l12 12' : MAGNIFIER}
+                        />
+                    </svg>
+                </button>
+            ) : (
+                // Before the script: the browse page, whose own box searches. A plain anchor, the
+                // same markup on the server and in the hydrating render, swapped for the button after.
+                <a href="/games" className="navbar-search-toggle" aria-label="Search">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={MAGNIFIER} />
+                    </svg>
+                </a>
+            )}
 
             <form id={formId} role="search" action="/games" method="get" className="navbar-search-form" onSubmit={submit}>
                 <div className="navbar-search-field">
                     <svg className="navbar-search-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M17 11A6 6 0 115 11a6 6 0 0112 0z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={MAGNIFIER} />
                     </svg>
                     <input
-                        ref={inputRef}
+                        ref={attachInput}
                         type="search"
                         name="search"
                         value={query}
@@ -279,6 +314,7 @@ export function NavbarSearch({ panelOpen, onPanelOpenChange }: NavbarSearchProps
                         onKeyDown={onInputKeyDown}
                         placeholder="Search games…"
                         aria-label="Search games"
+                        maxLength={MAX_SEARCH_LENGTH}
                         autoComplete="off"
                         autoCorrect="off"
                         spellCheck={false}
@@ -350,9 +386,21 @@ export function NavbarSearch({ panelOpen, onPanelOpenChange }: NavbarSearchProps
                         {search.status === 'failed' && (
                             <div className="navbar-search-message navbar-search-failed">
                                 <p>{search.message}</p>
-                                <button type="button" className="navbar-search-retry" onClick={search.retry}>
-                                    Try again
-                                </button>
+                                {search.canRetry && (
+                                    <button
+                                        type="button"
+                                        className="navbar-search-retry"
+                                        onClick={() => {
+                                            // The box first: this button goes the moment the retry
+                                            // starts, and focus left on it would drop to the page,
+                                            // leaving the dropdown open with nothing to close it.
+                                            inputRef.current?.focus();
+                                            search.retry();
+                                        }}
+                                    >
+                                        Try again
+                                    </button>
+                                )}
                             </div>
                         )}
 

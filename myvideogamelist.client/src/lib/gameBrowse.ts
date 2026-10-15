@@ -108,8 +108,10 @@ export function gamesApiPath(offset: number, browse: GameBrowse): string {
 }
 
 /**
- * The browse page's address for a plain search: no filters and no order, as ADR 0032 has a search
- * carry neither. What the navbar's box submits to, so the full page lists what its dropdown did.
+ * The browse page's address for a plain search, which is what the navbar's box submits to. No order,
+ * which ADR 0032 has a search drop; and no filters, though they would apply to a search, because the
+ * box is on every page and offers none — and the dropdown has to list the first games of exactly the
+ * page Enter opens.
  */
 export function searchPagePath(search: string): string {
     const query = browseParams({ ...EMPTY_BROWSE, search: search.trim() }).toString();

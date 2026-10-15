@@ -333,6 +333,41 @@ describe('Navbar search', () => {
 
         expect(search).toHaveAttribute('aria-expanded', 'false');
     });
+
+    it('drops the panel when the window widens to where the box sits in the bar', async () => {
+        // The setup's stand-in never matches and never changes, so this one is a query that can be
+        // made to match, and that tells whoever listens when it does.
+        let wide = false;
+        const listeners = new Set<() => void>();
+        const standIn = window.matchMedia;
+        window.matchMedia = (query: string) => ({
+            get matches() { return query === '(width >= 64rem)' && wide; },
+            media: query,
+            onchange: null,
+            addEventListener: (_type: string, listener: () => void) => listeners.add(listener),
+            removeEventListener: (_type: string, listener: () => void) => listeners.delete(listener),
+            dispatchEvent: () => false,
+            addListener: () => {},
+            removeListener: () => {},
+        }) as unknown as MediaQueryList;
+
+        try {
+            authAnswered(null);
+            const actor = userEvent.setup();
+            renderNavbar();
+            const search = screen.getByRole('button', { name: 'Search' });
+            await actor.click(search);
+            expect(search).toHaveAttribute('aria-expanded', 'true');
+
+            wide = true;
+            act(() => listeners.forEach(listener => listener()));
+
+            expect(search).toHaveAttribute('aria-expanded', 'false');
+            expect(document.querySelector('.navbar-scrim')).not.toBeInTheDocument();
+        } finally {
+            window.matchMedia = standIn;
+        }
+    });
 });
 
 describe('Navbar user menu', () => {
