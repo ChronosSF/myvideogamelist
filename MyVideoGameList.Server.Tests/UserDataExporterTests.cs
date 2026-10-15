@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using MyVideoGameList.Server.Data;
 using MyVideoGameList.Server.Models;
 using MyVideoGameList.Server.Services;
@@ -31,11 +32,27 @@ public class UserDataExporterTests
     /// <c>HasData</c>, so these tests resolve the same five keys the migration seeds rather than a
     /// local copy that could drift from them.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The exporter reads inside a <c>REPEATABLE READ</c> transaction, and the in-memory provider
+    /// has no transactions: asked for one, it throws. Ignoring that warning, rather than opening
+    /// the transaction behind a seam these tests step around, keeps them on the exporter's real
+    /// path — the execution strategy, the transaction and the commit all run here, as no-ops — so
+    /// what they prove is that the document is what it was.
+    /// </para>
+    /// <para>
+    /// What they cannot prove is the snapshot itself, because the provider has no isolation to
+    /// prove it with: a test that deleted a job between two sections would tear the document here
+    /// with the fix in place. That proof needs PostgreSQL, so it belongs to the integration tests
+    /// (#104); until then it was shown by hand against the container (#95).
+    /// </para>
+    /// </remarks>
     private static ApplicationDbContext NewDb()
     {
         var db = new ApplicationDbContext(
             new DbContextOptionsBuilder<ApplicationDbContext>()
                 .UseInMemoryDatabase(Guid.NewGuid().ToString())
+                .ConfigureWarnings(warnings => warnings.Ignore(InMemoryEventId.TransactionIgnoredWarning))
                 .Options);
         db.Database.EnsureCreated();
         return db;
@@ -601,7 +618,13 @@ public class UserDataExporterTests
         // answer. Failing beats handing back a document about an account that does not exist.
         using var db = NewDb();
 
-        await Assert.ThrowsAsync<InvalidOperationException>(
+        var thrown = await Assert.ThrowsAsync<InvalidOperationException>(
             () => NewExporter(db).ExportAsync(UserId, default));
+
+        // The message as well as the type, because EF throws this type too: the in-memory provider
+        // when asked for a transaction, and a retrying strategy when one is begun outside it. With
+        // the transaction in place, either would satisfy a bare type check before the account was
+        // ever read — the first one did, until NewDb learned to ignore it.
+        Assert.StartsWith("No account row", thrown.Message);
     }
 }
