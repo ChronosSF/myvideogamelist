@@ -267,6 +267,74 @@ describe('Navbar main menu', () => {
     });
 });
 
+describe('Navbar search', () => {
+    it('is on the bar for a signed-out visitor too, as a form that searches the browse page', () => {
+        authAnswered(null);
+        renderNavbar();
+
+        const box = screen.getByRole('combobox', { name: 'Search games' });
+        expect(box.closest('form')).toHaveAttribute('action', '/games');
+        expect(screen.getByRole('search')).toContainElement(box);
+    });
+
+    it('never shares the screen with the main menu or the user menu', () => {
+        // fireEvent rather than userEvent, for the reason the user menu's test gives: Safari moves
+        // no focus on a click, so a focus-out close cannot be what closes the others.
+        authAnswered(ALEX);
+        renderNavbar();
+        const search = screen.getByRole('button', { name: 'Search' });
+        const { button: mainMenuButton } = mainMenu();
+        const userButton = screen.getByRole('button', { name: 'User menu' });
+
+        fireEvent.click(search);
+        expect(search).toHaveAttribute('aria-expanded', 'true');
+
+        fireEvent.click(mainMenuButton);
+        expect(search).toHaveAttribute('aria-expanded', 'false');
+        expect(mainMenuButton).toHaveAttribute('aria-expanded', 'true');
+
+        fireEvent.click(search);
+        expect(mainMenuButton).toHaveAttribute('aria-expanded', 'false');
+        expect(search).toHaveAttribute('aria-expanded', 'true');
+
+        fireEvent.click(userButton);
+        expect(search).toHaveAttribute('aria-expanded', 'false');
+        expect(userButton).toHaveAttribute('aria-expanded', 'true');
+
+        fireEvent.click(search);
+        expect(userButton).toHaveAttribute('aria-expanded', 'false');
+        expect(search).toHaveAttribute('aria-expanded', 'true');
+    });
+
+    it('closes when the scrim is tapped', async () => {
+        authAnswered(null);
+        const actor = userEvent.setup();
+        renderNavbar();
+        const search = screen.getByRole('button', { name: 'Search' });
+
+        await actor.click(search);
+        const scrim = document.querySelector<HTMLElement>('.navbar-scrim');
+        expect(scrim).toBeInTheDocument();
+
+        await actor.click(scrim!);
+
+        expect(search).toHaveAttribute('aria-expanded', 'false');
+        expect(document.querySelector('.navbar-scrim')).not.toBeInTheDocument();
+    });
+
+    it('closes when the page changes under it', async () => {
+        authAnswered(null);
+        const actor = userEvent.setup();
+        const router = renderNavbar();
+        const search = screen.getByRole('button', { name: 'Search' });
+
+        await actor.click(search);
+        await act(() => router.navigate('/games'));
+
+        expect(search).toHaveAttribute('aria-expanded', 'false');
+    });
+});
+
 describe('Navbar user menu', () => {
     it('is a popup button that reports whether it is open', async () => {
         authAnswered(ALEX);

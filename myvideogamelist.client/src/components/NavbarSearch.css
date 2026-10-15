@@ -1,0 +1,281 @@
+/* The navbar's search: a box in the bar from lg, and behind a button below it, where the bar has no
+   room for one. The button opens the same form as a panel hanging from the bar, the way the main
+   menu hangs. */
+
+.navbar-search-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.5rem;
+    height: 2.5rem;
+    border-radius: 0.5rem;
+    color: var(--color-fg-muted);
+    background: none;
+    border: none;
+    cursor: pointer;
+    transition: color 0.15s, background 0.15s;
+}
+
+.navbar-search-toggle:hover,
+.navbar-search-toggle[aria-expanded='true'] {
+    color: var(--color-fg);
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.navbar-search-field {
+    position: relative;
+}
+
+.navbar-search-icon {
+    position: absolute;
+    left: 0.75rem;
+    top: 50%;
+    width: 1rem;
+    height: 1rem;
+    transform: translateY(-50%);
+    color: var(--color-fg-faint);
+    pointer-events: none;
+}
+
+.navbar-search-input {
+    width: 100%;
+    padding: 0.4375rem 0.75rem 0.4375rem 2.25rem;
+    font-size: 0.875rem;
+    color: var(--color-fg-strong);
+    background: var(--color-surface);
+    border: 1px solid var(--color-line-strong);
+    border-radius: 0.5rem;
+}
+
+.navbar-search-input::placeholder {
+    color: var(--color-fg-faint);
+}
+
+.navbar-search-input:focus {
+    outline: none;
+    border-color: transparent;
+    box-shadow: 0 0 0 2px var(--color-focus);
+}
+
+/* The dropdown. Its frame is the floating card from lg; below lg the panel is the frame. Only the
+   list scrolls, on a screen too short for six games, so "See all results" stays in sight. */
+.navbar-search-popup [role='listbox'] {
+    max-height: min(29rem, calc(100dvh - 12rem));
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+
+/* The list dims while the next term is on its way, so the games on it read as the last answer
+   rather than this one. */
+.navbar-search-popup [role='listbox'][aria-busy='true'] {
+    opacity: 0.55;
+    transition: opacity 0.15s;
+}
+
+.navbar-search-option {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.5rem 0.75rem;
+    border-radius: 0.5rem;
+    color: var(--color-fg);
+    text-decoration: none;
+    cursor: pointer;
+}
+
+.navbar-search-option:hover {
+    background: var(--color-raised);
+}
+
+/* The highlighted option, in the colours of the bar's current page, so the keyboard's place reads
+   as a choice rather than as a hover. */
+.navbar-search-option[aria-selected='true'] {
+    background: color-mix(in srgb, var(--color-primary-600) 20%, transparent);
+    box-shadow: inset 2px 0 0 var(--color-primary-400);
+}
+
+.navbar-search-cover {
+    flex-shrink: 0;
+    width: 2.25rem;
+    height: 3rem;
+    border-radius: 0.25rem;
+    object-fit: cover;
+    background: var(--color-raised);
+}
+
+.navbar-search-text {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.125rem;
+}
+
+.navbar-search-title {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    overflow: hidden;
+    font-size: 0.875rem;
+    font-weight: 500;
+    line-height: 1.25;
+    color: var(--color-fg-strong);
+}
+
+.navbar-search-option[aria-selected='true'] .navbar-search-title {
+    color: var(--color-primary-200);
+}
+
+.navbar-search-year {
+    font-size: 0.75rem;
+    color: var(--color-fg-faint);
+}
+
+/* A critic score from too few reviews: a dash where the badge would be, with the count under it. */
+.navbar-search-unscored {
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    font-size: 0.6875rem;
+    line-height: 1.2;
+    color: var(--color-fg-faint);
+}
+
+.navbar-search-dash {
+    font-size: 0.875rem;
+    font-weight: 700;
+    color: var(--color-fg-muted);
+}
+
+.navbar-search-message {
+    padding: 0.75rem;
+    font-size: 0.875rem;
+    color: var(--color-fg-muted);
+}
+
+.navbar-search-failed {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+    color: var(--color-danger-300);
+}
+
+.navbar-search-retry {
+    padding: 0.25rem 0.625rem;
+    border-radius: 0.375rem;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--color-fg);
+    background: var(--color-raised);
+    border: 1px solid var(--color-line-strong);
+    cursor: pointer;
+}
+
+.navbar-search-retry:hover {
+    color: var(--color-fg-strong);
+}
+
+.navbar-search-all {
+    display: block;
+    margin-top: 0.25rem;
+    padding: 0.625rem 0.75rem;
+    border-top: 1px solid var(--color-line);
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--color-primary-400);
+    text-decoration: none;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.navbar-search-all:hover {
+    text-decoration: underline;
+}
+
+.navbar-search-retry:focus-visible,
+.navbar-search-all:focus-visible,
+.navbar-search-toggle:focus-visible {
+    outline: 2px solid var(--color-focus);
+    outline-offset: 2px;
+}
+
+@keyframes navbar-search-in {
+    from { opacity: 0; transform: translateY(-4px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Below lg: the panel. Positioned against .navbar-root, which is sticky, like the main menu, so
+   nothing between the two may be positioned at these widths. Opaque for the main menu's reason:
+   the bar's blur stops at the bar's own edge. */
+@media (width < 64rem) {
+    .navbar-search-form {
+        position: absolute;
+        top: calc(100% + 1px);
+        left: 0;
+        right: 0;
+        padding: 0.75rem 1rem;
+        background: var(--color-page);
+        border-bottom: 1px solid var(--color-line);
+        box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.4);
+        animation: navbar-search-in 0.12s ease;
+    }
+
+    .navbar-search:not([data-open]) .navbar-search-form {
+        display: none;
+    }
+
+    /* Sixteen pixels, because iOS zooms the page into any field set smaller when it takes focus. */
+    .navbar-search-input {
+        padding-block: 0.5rem;
+        font-size: 1rem;
+    }
+
+    .navbar-search-popup {
+        margin: 0.5rem -0.75rem 0;
+    }
+}
+
+@media (40rem <= width < 64rem) {
+    .navbar-search-form {
+        padding-inline: 1.5rem;
+    }
+}
+
+/* From lg: a box in the bar, with the dropdown as a card beneath it, wider than the box so a title
+   has room. */
+@media (width >= 64rem) {
+    .navbar-search-toggle {
+        display: none;
+    }
+
+    .navbar-search {
+        position: relative;
+    }
+
+    .navbar-search-form {
+        width: 13rem;
+    }
+
+    .navbar-search-popup {
+        position: absolute;
+        top: calc(100% + 0.5rem);
+        left: 0;
+        z-index: 50;
+        width: 26rem;
+        padding: 0.375rem;
+        background: var(--color-surface);
+        border: 1px solid var(--color-line-strong);
+        border-radius: 0.75rem;
+        box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.4);
+        animation: navbar-search-in 0.12s ease;
+    }
+}
+
+@media (width >= 80rem) {
+    .navbar-search-form {
+        width: 16rem;
+    }
+}

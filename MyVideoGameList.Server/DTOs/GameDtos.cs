@@ -103,4 +103,15 @@ public record MultiplayerModesDto(
 /// <summary>One language and the ways it is supported — audio, subtitles, interface.</summary>
 public record LanguageSupportDto(string Language, IEnumerable<string> SupportTypes);
 
-public record PagedGamesResponse(IEnumerable<GameDto> Items, bool HasMore);
+public record PagedGamesResponse(IEnumerable<GameDto> Items, bool HasMore)
+{
+    /// <summary>
+    /// The first <paramref name="count"/> games of this page, or the page itself when it holds no
+    /// more than that. A page cut short has more by definition: the games it left out.
+    /// </summary>
+    public PagedGamesResponse FirstOf(int count)
+    {
+        var items = Items.ToList();
+        return items.Count <= count ? this : new PagedGamesResponse(items.Take(count).ToList(), HasMore: true);
+    }
+}
