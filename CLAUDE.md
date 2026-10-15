@@ -215,7 +215,10 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   (`docs/decisions/0030-*`). Statuses export as their `Key`, never the seeded id. The export is free
   and stays free — portability is a right, and the paid "Export" in the monetisation table is a
   nicer *format* on top, so do not put an entitlement check on `/api/user/export`. It makes no IGDB
-  call, for the same reason the stats do not. See `docs/decisions/0024-*`.
+  call, for the same reason the stats do not. **It reads one snapshot**: every section runs in one
+  `REPEATABLE READ` transaction, so a new section must read through the context it is handed — a
+  service or scope with its own context reads outside the snapshot. InMemory has no isolation and
+  cannot see it, so verify a change to it against the container. See `docs/decisions/0024-*`.
 
 - **A child table of the entry carries its own `UserId`, because the ownership guard keys on it.**
   `UserOwnedDataTests` selects user-owned entities by the *presence of a `UserId` property* and then

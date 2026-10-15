@@ -1,3 +1,4 @@
+using System.Data;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using MyVideoGameList.Server.Data;
@@ -26,6 +27,24 @@ namespace MyVideoGameList.Server.Services;
 /// class of mistake the guard exists to remove.
 /// </para>
 /// <para>
+/// One snapshot, so the document cannot contradict itself. <see cref="ExportAsync"/> reads every
+/// section inside a single <c>REPEATABLE READ</c> transaction, which PostgreSQL answers from the
+/// snapshot taken at its first statement. Read as separate statements, each section saw the
+/// database as it stood when that section ran, so a write committing between two of them showed in
+/// the later one and not the earlier: the retention sweep deleting a pending import between
+/// <c>importJobs</c> and <c>importRows</c> delivered a job claiming rows the document did not
+/// carry (#95). The sweep is the case that was found, not the only one — the import's own commit
+/// in another tab deletes a job's rows too (ADR 0039), and logging a playthrough of an unlisted
+/// game writes its entry in the same save — which is why the fix is here rather than in the import.
+/// </para>
+/// <para>
+/// One gap is PostgreSQL's own and is accepted: <c>TRUNCATE</c> and the table-rewriting forms of
+/// <c>ALTER TABLE</c> are not MVCC-safe, so a table such a migration rewrites mid-export, before
+/// the export has reached it, reads as empty. Closing it would mean locking every table up front,
+/// a second list of them to keep in step with the manifest, against a window that needs a rewriting
+/// migration and an export in the same second.
+/// </para>
+/// <para>
 /// No IGDB call, and no game metadata. See <see cref="UserDataExportDto"/> for why, and
 /// <c>docs/decisions/0024-the-ownership-contract.md</c> for the rest of the reasoning.
 /// </para>
@@ -41,6 +60,12 @@ public class UserDataExporter(ApplicationDbContext db, TimeProvider clock) : IUs
     /// for diagnostics and so that a registration reads as a claim about the document rather than
     /// as an anonymous delegate.
     /// </param>
+    /// <remarks>
+    /// The read is handed the context the export's snapshot is open on, and has to read through
+    /// it. Anything that reached the database another way — a service with a context of its own, a
+    /// second scope — would read the database as it is rather than as it was, and reopen for its
+    /// section the window the snapshot closes.
+    /// </remarks>
     internal record ExportSection(
         string Section,
         Func<ApplicationDbContext, ExportDraft, CancellationToken, Task> ReadAsync);
@@ -123,6 +148,38 @@ public class UserDataExporter(ApplicationDbContext db, TimeProvider clock) : IUs
     }
 
     public async Task<UserDataExportDto> ExportAsync(string userId, CancellationToken cancellationToken)
+    {
+        // Through the execution strategy, for the reason ImportRetentionService gives (ADR 0038):
+        // with EnableRetryOnFailure on the UseNpgsql line, EF refuses a transaction begun outside
+        // one, and every export would fail. The whole read is the retried unit, so a retry begins a
+        // new transaction, takes a new snapshot and builds the document again from nothing rather
+        // than finishing one begun against the last.
+        var strategy = db.Database.CreateExecutionStrategy();
+
+        return await strategy.ExecuteAsync(async token =>
+        {
+            // REPEATABLE READ because READ COMMITTED, the default, gives every statement a snapshot
+            // of its own, which is the bug. Not SERIALIZABLE: one consistent snapshot is the whole
+            // requirement, and at REPEATABLE READ a transaction that only reads never has a
+            // serialization conflict to retry.
+            await using var snapshot = await db.Database.BeginTransactionAsync(
+                IsolationLevel.RepeatableRead, token);
+
+            var document = await ReadDocumentAsync(userId, token);
+
+            // Ended here, before the document goes back to be serialized, so neither the snapshot
+            // nor the connection under it is held while the response is written to a client that
+            // may be slow to take it. Nothing was written, so the commit only closes it.
+            await snapshot.CommitAsync(token);
+            return document;
+        }, cancellationToken);
+    }
+
+    /// <summary>
+    /// The document itself, read through this exporter's context inside whatever transaction that
+    /// context has open.
+    /// </summary>
+    private async Task<UserDataExportDto> ReadDocumentAsync(string userId, CancellationToken cancellationToken)
     {
         var account = await db.Users
             .AsNoTracking()
