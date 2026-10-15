@@ -246,6 +246,16 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   score or review changes, or the section beside it shows the write as though it had failed. See
   `docs/decisions/0028-*`.
 
+- **A change of list clears the entry's hand-arranged position, and every writer of a status owes
+  that.** `UserGameEntries.Position` is the backlog's "My order": a sparse number, null for a game never
+  placed, and a place in the list the game is in *now* — so `ListService`'s moves and removals and the
+  import's commit set it to null whenever `StatusId` changes, and the client's optimistic move does the
+  same. A new path that writes a status and forgets puts a returning game at a stale number rather than
+  among the unplaced, who queue by when they joined the list. The numbers are computed on the client
+  (`planMove` in `@/lib/handOrder`) and stored as sent, checked for range by the DTO and by
+  `CK_UserGameEntries_Position_Range`, and for the list; the control — drag, tap, or keyboard — is
+  `useReorder`, written for the favourites showcase (#117) to reuse. See `docs/decisions/0054-*`.
+
 - **A list's label reads `nameFor` from the lists context, never `LIST_NAMES`** — except on a public
   profile, which keeps the defaults because a rename is its owner's alone. `LIST_NAMES` is the
   defaults. A rename writes `UserListSettings` and nothing else, the five effective names must differ

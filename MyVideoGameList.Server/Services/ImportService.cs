@@ -611,6 +611,10 @@ public class ImportService(
 
             if (payload.Status is { } key && statuses.TryGetValue(key, out var statusId))
             {
+                // A game the import moves to another list leaves its place in the old one's hand
+                // order behind, as a move made by hand does; one it leaves where it was keeps it.
+                if (entry.StatusId != statusId) entry.Position = null;
+
                 entry.StatusId = statusId;
 
                 // Marks the entry as one whose status may have no event behind it. Set whether the

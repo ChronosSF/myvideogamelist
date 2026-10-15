@@ -102,6 +102,13 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
                 t.HasCheckConstraint(
                     "CK_UserGameEntries_Ownership",
                     "\"Ownership\" IS NULL OR \"Ownership\" IN ('owned', 'subscription', 'borrowed')");
+
+                // The hand order's bounds, for the reason the score has its: `HandOrder` promises that
+                // any two stored positions can be added or subtracted without overflow, and only a
+                // constraint makes that true of every row rather than of the rows the API wrote.
+                t.HasCheckConstraint(
+                    "CK_UserGameEntries_Position_Range",
+                    $"\"Position\" IS NULL OR (\"Position\" >= {HandOrder.MinPosition} AND \"Position\" <= {HandOrder.MaxPosition})");
             });
 
         // Sorting a list by "recently added" or "recently moved" is the default view, so both

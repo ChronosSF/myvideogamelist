@@ -959,6 +959,52 @@ public class ImportServiceTests
         Assert.Equal(0, result!.Unlisted);
     }
 
+    /// <summary>
+    /// A game already in the backlog at a hand-arranged position, opted into the import, so the commit
+    /// writes over it the way a user asked it to.
+    /// </summary>
+    private static async Task<ApplicationDbContext> PlacedInTheBacklogAndReimportedAsync(string shelves)
+    {
+        var db = NewDb();
+        db.UserGameEntries.Add(new UserGameEntry
+        {
+            UserId = UserId, GameId = 379, AddedAt = Midday, Position = 1024,
+            StatusId = db.ListStatuses.Single(s => s.Key == ListStatusKeys.Backlog).Id
+        });
+        await db.SaveChangesAsync();
+
+        var service = NewService(db, CacheReturning(Game(379)));
+        var jobId = await UploadAsync(service, Export(Entry(shelves: shelves)));
+        var row = Assert.Single((await service.GetReviewAsync(UserId, jobId))!.Rows);
+        await service.SetDecisionsAsync(UserId, jobId, new ImportDecisionsDto(
+            [new ImportRowDecisionDto(row.Id, ImportDecisions.Import, null, null)]));
+
+        await service.CommitAsync(UserId, jobId);
+        return db;
+    }
+
+    [Fact]
+    public async Task CommitAsync_MovingAPlacedGameToAnotherList_ClearsItsPosition()
+    {
+        // The import changes a status without an event, but it is still a move: a place chosen among
+        // the backlog's games is no place in Playing.
+        using var db = await PlacedInTheBacklogAndReimportedAsync(
+            """{"Playing": {"date_added": "2025-11-28T00:00:00Z"}}""");
+
+        var entry = Assert.Single(db.UserGameEntries);
+        Assert.Equal(db.ListStatuses.Single(s => s.Key == ListStatusKeys.Playing).Id, entry.StatusId);
+        Assert.Null(entry.Position);
+    }
+
+    [Fact]
+    public async Task CommitAsync_LeavingAPlacedGameInItsList_KeepsItsPosition()
+    {
+        using var db = await PlacedInTheBacklogAndReimportedAsync(
+            """{"Backlog": {"date_added": "2025-11-28T00:00:00Z"}}""");
+
+        Assert.Equal(1024, Assert.Single(db.UserGameEntries).Position);
+    }
+
     [Fact]
     public void ImportPlayedStatusDto_AcceptsExactlyTheListsAndNull()
     {

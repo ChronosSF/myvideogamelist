@@ -79,7 +79,7 @@ public static class EntryOrigins
 /// <see cref="UserGameEvent"/>, because these fields are overwritten in place.
 /// </para>
 /// </remarks>
-public class UserGameEntry
+public class UserGameEntry : IHandOrdered
 {
     /// <summary>
     /// Surrogate key. Uniqueness is still <c>(UserId, GameId)</c>, enforced by a unique index —
@@ -141,6 +141,25 @@ public class UserGameEntry
     /// </para>
     /// </remarks>
     public string Origin { get; set; } = EntryOrigins.Manual;
+
+    /// <summary>
+    /// Where the user has put this game in its list by hand — the backlog's "what I will play
+    /// next". Sparse and nullable; see <see cref="IHandOrdered"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A place in the list the game is in now, and in no other. <b>Every write that changes
+    /// <see cref="StatusId"/> clears it</b> — <c>ListService</c>'s moves and removals and the
+    /// import's commit — because a number chosen between two backlog neighbours means nothing in
+    /// Playing, and a game that comes back to the backlog arrives at the end of it like any other
+    /// arrival. A move to the status the game already holds changes nothing, so it keeps its place.
+    /// </para>
+    /// <para>
+    /// Nothing statistical reads it, and no public read carries it: an order is its owner's
+    /// (ADR 0031). It is exported with the entry.
+    /// </para>
+    /// </remarks>
+    public int? Position { get; set; }
 
     /// <summary>When the user first recorded anything about this game. Never updated afterwards.</summary>
     public DateTimeOffset AddedAt { get; set; }

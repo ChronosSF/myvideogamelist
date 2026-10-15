@@ -32,6 +32,7 @@ function contextValue(overrides: Partial<ListsContextValue> = {}): ListsContextV
         getListFor: () => null,
         scoreFor: () => null,
         setScore: vi.fn(async () => true),
+        moveInOrder: vi.fn(async () => true),
         setOwnership: vi.fn(async () => true),
         setNotes: vi.fn(async () => true),
         deleteEntry: vi.fn(async () => true),
