@@ -335,25 +335,36 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   somebody their part-finished review is safe for longer than it is. A job already gone answers
   404, which the review screen renders as the end of that import rather than as a retryable error.
 
-- **Scheduled work is a `BackgroundService`, and there is exactly one.** `ImportRetentionService`
-  sweeps expired import jobs hourly, and is the shape the next one copies (ADR 0038). Three things
-  about it are easy to get wrong: a hosted service is a **singleton**, so it takes
-  `IServiceScopeFactory` and makes a scope per tick rather than injecting the scoped `DbContext`;
-  an exception escaping `ExecuteAsync` **stops the whole host**, so the loop catches per tick —
-  `ScheduledWork.AddScheduledWork` registers every scheduled service and is the **only** place
-  allowed to configure `HostOptions`, which is what lets a test assert that behaviour out of the
-  application's own registration instead of out of a bare `new HostOptions()` that says nothing
-  about us; and it runs **once per ECS task**, so it serialises on
+- **Scheduled work is a `BackgroundService`, and there are three.** `ImportRetentionService`
+  sweeps expired import jobs hourly, and is the shape the others copy (ADR 0038);
+  `GameCacheRefreshService` rewrites `CachedGames` rows from IGDB an hour before a reader would find
+  them a day old, and `SteamNewsRefreshService` fetches the Steam feeds people are reading before
+  they expire (ADR 0052). Three things about them are easy to get wrong: a hosted service is a
+  **singleton**, so it takes `IServiceScopeFactory` and makes a scope per tick rather than injecting
+  the scoped `DbContext`; an exception escaping `ExecuteAsync` **stops the whole host**, so the loop
+  catches per tick — `ScheduledWork.AddScheduledWork` registers every scheduled service and is the
+  **only** place allowed to configure `HostOptions`, which is what lets a test assert that behaviour
+  out of the application's own registration instead of out of a bare `new HostOptions()` that says
+  nothing about us; and each runs **once per ECS task**, so the two on the database serialise on
   `pg_try_advisory_xact_lock` — the transaction-scoped variant, because a session lock survives on
   a pooled connection after it is returned. That transaction runs inside
-  `db.Database.CreateExecutionStrategy()`, which does nothing today and stops the sweep throwing
+  `db.Database.CreateExecutionStrategy()`, which does nothing today and stops either job throwing
   `InvalidOperationException` on the day somebody adds `EnableRetryOnFailure` to `UseNpgsql`:
-  **EF refuses a user-initiated transaction under a retrying strategy**, and the sweep would fail
-  into the log once an hour for ever without anything else breaking. A tick that cannot take the
+  **EF refuses a user-initiated transaction under a retrying strategy**, and the job would fail
+  into the log on every tick for ever without anything else breaking. A tick that cannot take the
   lock **counts what is waiting** rather than just returning: the try-lock is false when *any*
-  session holds the key, so work still expired after six skipped ticks running means the holder is
-  not a sweep, and that logs a warning. A stalled sweep is deliberately **not** a `/readyz`
-  failure — the instance still serves. Retention is two windows, not §S9's one, and **which one applies is decided by
+  session holds the key, so for the sweep, work still expired after six skipped ticks running means
+  the holder is not a sweep, and that logs a warning. The refresh cannot use that rule — rows fall
+  due all day, so work is nearly always waiting — and warns instead, hourly, while any row is
+  **twenty-five hours old**, which nothing reaches while anybody is refreshing. It holds its lock
+  **across the IGDB request**, so no two tasks pay for the same rows, and once IGDB has answered it
+  **saves and commits on `CancellationToken.None`**: the stopping token bounds the work, not the
+  write (#96). Its pace, one request of fifty ids a minute, is the `GameCacheRefresh` section,
+  checked at startup. **The Steam refresh takes no lock, deliberately**: what it warms is its own
+  process's memory, so a lock would leave every other task's feeds cold, and it refreshes only the
+  feeds read since they were fetched, so it adds no Steam request a reader would not have made. A
+  stalled sweep or refresh is deliberately **not** a `/readyz` failure — the instance still serves.
+  Retention is two windows, not §S9's one, and **which one applies is decided by
   `CompletedAt`, never by `State`** — `MaxPendingJobs` counts from the same column so the cap and
   the sweep mean the same jobs, and `CK_ImportJobs_Completion` keeps the two columns agreeing.
   Seven days from `CompletedAt` for a closed job, fourteen from `UpdatedAt` for an unfinished one, because a job
