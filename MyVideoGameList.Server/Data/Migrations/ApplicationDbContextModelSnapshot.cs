@@ -659,11 +659,17 @@ namespace MyVideoGameList.Server.Data.Migrations
                     b.Property<DateTimeOffset>("AddedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<int?>("Position")
+                        .HasColumnType("integer");
+
                     b.HasKey("UserId", "GameId");
 
                     b.HasIndex("UserId", "AddedAt");
 
-                    b.ToTable("UserFavourites");
+                    b.ToTable("UserFavourites", t =>
+                        {
+                            t.HasCheckConstraint("CK_UserFavourites_Position_Range", "\"Position\" IS NULL OR (\"Position\" >= -1000000000 AND \"Position\" <= 1000000000)");
+                        });
                 });
 
             modelBuilder.Entity("MyVideoGameList.Server.Models.UserGameEntry", b =>

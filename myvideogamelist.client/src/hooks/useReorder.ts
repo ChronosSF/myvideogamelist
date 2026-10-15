@@ -193,6 +193,21 @@ export function useReorder({ ids, nameOf, onMove, canMove, disabled = false }: R
     }
     if (disabled && announcement !== '') setAnnouncement('');
 
+    // A list that stops taking moves forgets the gesture under way, its refs as well as its state. The
+    // render above calls the move off, but the refs are written by the handlers alone, and while the
+    // list cannot be rearranged no handler runs to catch up with it — the favourites showcase takes its
+    // grid off the page while it reloads. Left as they were, the move would read as live again when the
+    // list came back unchanged: the next press on its grip would put the game down at the old target
+    // instead of picking it up, and a mouse passing over the list would resume a drag nobody is
+    // holding. An effect, because nothing else runs in that gap; it only ever clears, and no handler
+    // can start a gesture on a list that is disabled.
+    useEffect(() => {
+        if (!disabled) return;
+        movingRef.current = null;
+        press.current = null;
+        pointer.current = null;
+    }, [disabled]);
+
     /**
      * The move the handlers can act on: the ref's, unless the list has changed under it or stopped
      * taking moves. The render above has called it off then, and the ref — which a render cannot

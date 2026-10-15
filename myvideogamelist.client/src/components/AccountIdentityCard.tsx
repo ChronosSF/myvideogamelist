@@ -167,11 +167,13 @@ export function AccountIdentityCard({ user }: { user: UserProfile }) {
                 {isPublic
                     // Both halves of what "public" covers, because one of them is prose the user
                     // wrote and may not expect to be republished by a settings toggle.
-                    ? 'Your lists, scores and activity are visible at the address below, '
-                        + 'along with any review you marked public.'
-                    : 'Nobody else can see your lists, scores or reviews. Publishing shows '
-                        + 'your tracking and the reviews you marked public — never your '
-                        + 'email address or your private reviews.'}
+                    ? 'Your lists, scores, activity and favourites — in the order you arrange '
+                        + 'them — are visible at the address below, along with any review you '
+                        + 'marked public.'
+                    : 'Nobody else can see your lists, scores, favourites or reviews. Publishing '
+                        + 'shows your tracking, your favourites in the order you arrange them, and '
+                        + 'the reviews you marked public — never your email address or your '
+                        + 'private reviews.'}
             </p>
 
             {/*

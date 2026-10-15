@@ -48,7 +48,7 @@ grow a forward pointer when a later record or an issue closes something it left 
 | [0026](0026-a-library-import-records-ownership-not-history.md) | A library import records ownership, not history | Accepted; its framework shipped in 0037, the Steam source is an open issue; §3 amended by 0047 |
 | [0027](0027-usernames-and-public-profiles.md) | Usernames are a namespace, and a profile is published only when asked | Implemented; the sitemap is 0036, D14 is an open issue |
 | [0028](0028-a-games-community-view.md) | A game's community view: every score counts, only published reviews are listed, and neither is server-rendered | Implemented |
-| [0029](0029-favourites-are-an-axis-and-a-showcase.md) | Favourites are an axis like the wishlist, share its code, and are shown on the profile | Implemented |
+| [0029](0029-favourites-are-an-axis-and-a-showcase.md) | Favourites are an axis like the wishlist, share its code, and are shown on the profile | Implemented; §4's mark on cards and §6's order amended by 0064 |
 | [0030](0030-ownership-and-notes-belong-to-the-entry.md) | Ownership and notes belong to the entry, stay private, and are written under the game's lock | Implemented |
 | [0031](0031-a-list-rename-is-a-label-its-owner-sees.md) | A list rename is a label, checked as a set, and seen only by its owner | Implemented |
 | [0032](0032-each-browse-order-carries-its-own-floor.md) | Browse filters: every order is one IGDB query, and each carries its own floor | Implemented |
@@ -70,7 +70,8 @@ grow a forward pointer when a later record or an issue closes something it left 
 | [0048](0048-one-theme-dark.md) | One theme, dark, and palettes are variations of it | Implemented; the palettes are #208 |
 | [0049](0049-every-colour-is-a-token.md) | Every colour is a token, named for its job, in one file | Implemented |
 | [0050](0050-an-imported-run-takes-its-type-from-the-source.md) | An imported run takes its type from the source's completion level | Implemented |
-| [0054](0054-a-hand-arranged-order-is-a-sparse-position.md) | A hand-arranged order is a sparse position the client computes, and a change of list clears it | Implemented |
+| [0054](0054-a-hand-arranged-order-is-a-sparse-position.md) | A hand-arranged order is a sparse position the client computes, and a change of list clears it | Implemented; §9 answered for the favourites by 0064 |
+| [0064](0064-the-showcase-is-arranged-by-hand-and-shown-in-that-order.md) | The favourites showcase is arranged by hand and shown in that order, and a favourite is marked on every card its owner sees | Implemented |
 
 **Status** — *Accepted*: decided, not yet built. *Implemented*: decided and in the code.
 *Superseded*: replaced by a later record.

@@ -3,8 +3,10 @@ import {
     type Placed,
     type PositionWrite,
     MAX_POSITION,
+    MAX_POSITION_WRITES,
     MIN_POSITION,
     POSITION_STEP,
+    moveRefusal,
     planMove,
 } from '@/lib/handOrder';
 
@@ -189,5 +191,26 @@ describe('planMove', () => {
                 });
             }
         }
+    });
+});
+
+describe('moveRefusal', () => {
+    const nothingSaving = () => false;
+
+    it('lets a move through when nothing it writes is saving and it fits in one write', () => {
+        expect(moveRefusal([{ id: 1, position: 0 }, { id: 2, position: 1024 }], nothingSaving)).toBeNull();
+    });
+
+    it('refuses a move that would write a game whose own save is still out', () => {
+        // Two writes in flight for one row, and the first to fail rolls back over the second.
+        expect(moveRefusal([{ id: 1, position: 0 }, { id: 2, position: 1024 }], id => id === 2))
+            .toMatch(/still saving/i);
+    });
+
+    it('refuses a move that would carry more positions than one write may', () => {
+        const writes = Array.from({ length: MAX_POSITION_WRITES + 1 }, (_, index) => ({ id: index + 1, position: index }));
+
+        expect(moveRefusal(writes, nothingSaving)).toMatch(/more games at once/i);
+        expect(moveRefusal(writes.slice(1), nothingSaving)).toBeNull();
     });
 });

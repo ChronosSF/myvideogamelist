@@ -3,6 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { GameCard } from '@/components/GameCard';
+import { FavouritesContext, type FavouritesContextValue } from '@/contexts/FavouritesContext';
 import { ListsContext, type ListsContextValue } from '@/contexts/ListsContext';
 import { WishlistContext, type WishlistContextValue } from '@/contexts/WishlistContext';
 import { DEFAULT_SORT } from '@/lib/listSort';
@@ -69,16 +70,36 @@ function wishlistValue(overrides: Partial<WishlistContextValue> = {}): WishlistC
     };
 }
 
+function favouritesValue(overrides: Partial<FavouritesContextValue> = {}): FavouritesContextValue {
+    return {
+        items: [],
+        loading: false,
+        error: null,
+        mutationError: null,
+        orderError: null,
+        isFavourite: () => false,
+        isPending: () => false,
+        add: vi.fn(async () => true),
+        remove: vi.fn(async () => true),
+        moveInOrder: vi.fn(async () => true),
+        reload: vi.fn(),
+        ...overrides,
+    };
+}
+
 function renderCard(
     wishlistOverrides: Partial<WishlistContextValue> = {},
     listsOverrides: Partial<ListsContextValue> = {},
+    favouritesOverrides: Partial<FavouritesContextValue> = {},
 ) {
     const wishlist = wishlistValue(wishlistOverrides);
     render(
         <MemoryRouter>
             <ListsContext.Provider value={listsValue(listsOverrides)}>
                 <WishlistContext.Provider value={wishlist}>
-                    <GameCard game={CELESTE} />
+                    <FavouritesContext.Provider value={favouritesValue(favouritesOverrides)}>
+                        <GameCard game={CELESTE} />
+                    </FavouritesContext.Provider>
                 </WishlistContext.Provider>
             </ListsContext.Provider>
         </MemoryRouter>,
@@ -166,7 +187,9 @@ describe('GameCard wishlist failure', () => {
             <MemoryRouter>
                 <ListsContext.Provider value={listsValue()}>
                     <WishlistContext.Provider value={wishlistValue({ add: vi.fn(async () => false) })}>
-                        <GameCard game={CELESTE} />
+                        <FavouritesContext.Provider value={favouritesValue()}>
+                            <GameCard game={CELESTE} />
+                        </FavouritesContext.Provider>
                     </WishlistContext.Provider>
                 </ListsContext.Provider>
             </MemoryRouter>,
@@ -185,6 +208,38 @@ describe('GameCard wishlist failure', () => {
         // The shared error belongs to whichever card was clicked last, which is why the card
         // reads its own result instead.
         expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    });
+});
+
+/**
+ * The rosette drawn on a cover. By its class, the one exception to querying by role: the mark is
+ * deliberately outside the accessibility tree, and what it says is asserted through the words instead.
+ */
+const coverMarks = () => document.querySelectorAll('.favourite-mark-cover');
+
+describe('GameCard favourite mark', () => {
+    it("marks one of the reader's favourites, and says so in its heading", () => {
+        // The rosette on the cover is decoration: the cover is a button with a name of its own, so a
+        // screen reader would hear nothing inside it. The heading is where the words go (ADR 0064).
+        renderCard({}, {}, { isFavourite: id => id === CELESTE.id });
+
+        expect(screen.getByRole('heading', { name: 'Celeste, one of your favourites' })).toBeInTheDocument();
+        expect(coverMarks()).toHaveLength(1);
+    });
+
+    it('marks nothing on a game that is not a favourite', () => {
+        renderCard({}, {}, { isFavourite: () => false });
+
+        expect(screen.getByRole('heading', { name: 'Celeste' })).toBeInTheDocument();
+        expect(coverMarks()).toHaveLength(0);
+    });
+
+    it('marks a favourite and offers no way to change it', () => {
+        // A favourite is made or unmade on the game's page, and on a release card; a card in a grid
+        // carries the five statuses and the wishlist, and a mark (ADR 0029 §4).
+        renderCard({}, {}, { isFavourite: () => true });
+
+        expect(screen.queryByRole('button', { name: /favourite/i })).not.toBeInTheDocument();
     });
 });
 
