@@ -181,8 +181,9 @@ async function read(response: Response) {
         body,
         policy,
         nonce: /'nonce-([^']+)'/.exec(policy)?.[1],
-        scripts: [...body.matchAll(/<script\b[^>]*>/g)].map(([tag]) => tag).filter(isScript),
-        links: [...body.matchAll(/<link\b[^>]*>/g)].map(([tag]) => tag),
+        // Case-insensitive, as HTML is, although React writes every tag in lower case.
+        scripts: [...body.matchAll(/<script\b[^>]*>/gi)].map(([tag]) => tag).filter(isScript),
+        links: [...body.matchAll(/<link\b[^>]*>/gi)].map(([tag]) => tag),
         nonces: new Set([...body.matchAll(/\bnonce="([^"]*)"/g)].map(([, value]) => value)),
     };
 }
