@@ -17,8 +17,9 @@ namespace MyVideoGameList.Server.Services;
 /// every other task's to go cold. ADR 0012 deferred this job because a per-instance one "would
 /// duplicate the same work across every ECS task", and that is answered by what it refreshes
 /// rather than by a lock: only the feeds this task's own readers have read since they were last
-/// fetched, which this task would otherwise have fetched for its next reader anyway. See
-/// <c>docs/decisions/0052-*</c>.
+/// fetched — feeds this task fetches for its readers anyway. What it adds is at most one request per
+/// feed after its last read: the copy fetched ahead of an expiry that nobody then reads, which is let
+/// go when it next falls due. See <c>docs/decisions/0052-*</c>.
 /// </para>
 /// </remarks>
 internal sealed class SteamNewsRefreshService(

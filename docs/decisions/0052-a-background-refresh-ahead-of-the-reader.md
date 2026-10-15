@@ -27,16 +27,16 @@ job in that shape. It left one question open: how fast to spend IGDB's four requ
 ### 1. Two jobs, because the two caches are different kinds of thing
 
 `CachedGames` is one table every task shares, so one task should refresh a row and the others
-should not pay IGDB for it again. `GameCacheRefreshService` is 0038's shape exactly: a singleton
-with a scope per tick, a catch per tick, a batch in its own transaction inside
-`CreateExecutionStrategy()`, serialised on `pg_try_advisory_xact_lock`.
+should not pay IGDB for it again. `GameCacheRefreshService` is 0038's shape: a singleton with a
+scope per tick, a catch per tick, a batch in its own transaction inside `CreateExecutionStrategy()`,
+serialised on `pg_try_advisory_xact_lock`.
 
 The Steam feeds are each process's own `IMemoryCache`. A lock there would let one task warm its own
 copy and leave every other task's to go cold, so `SteamNewsRefreshService` takes no lock and runs in
 every task. That is also the answer to 0012's objection, and it does not need the lock: the job
 refreshes only the feeds *this task's* readers have read since they were fetched — feeds this task
-would otherwise have fetched for its next reader anyway. Per-instance caching already implies
-per-instance fetching; the job moves the fetch ahead of the reader, it does not add one.
+fetches for its readers anyway. Per-instance caching already implies per-instance fetching; the job
+moves the fetch ahead of the reader, and adds at most one per feed after its last read (§7).
 
 Both are registered by `ScheduledWork.AddScheduledWork`, still the only place that configures
 `HostOptions`.
@@ -48,7 +48,8 @@ trip. Those disagree by one interval: a day old is exactly when a reader's own r
 row, so a job that waited for it would leave every row to the next reader until its next tick. So
 the job's threshold is `RefreshAfter` less a lead of an hour — a row is due at twenty-three hours —
 and the request path keeps `RefreshAfter` unchanged, as the fallback for a game nobody has cached
-yet or for a job that is behind.
+yet or for a job that is behind. Both write a row through `GameCacheService.Apply`, so they cannot
+come to write one differently — the tombstone for an id IGDB leaves out included.
 
 An hour, because it has to cover a burst as well as an interval: rows written together fall due
 together — one cold shelf is one write — and at the default pace the job works through 3,000 rows
@@ -56,12 +57,15 @@ an hour, so a burst that size is still reached before any of it reaches a reader
 rewritten every twenty-three hours instead of twenty-four: about four percent more requests, against
 a budget the job uses under half of one percent of (§3).
 
-Oldest first, as the issue asks and as `IX_CachedGames_RefreshedAt` was added to serve, with ties
-broken on the id — every row one request wrote shares one `RefreshedAt`, and 610 of the local
-table's 682 rows were written in the same instant, so without it `Take` would pick from an order the
-database is free to change. **A tombstone is selected like any other row**: "IGDB had no such game"
-is as perishable as any answer, and a game restored to IGDB comes back only by being asked about
-again.
+Oldest first, as the issue asks and as `IX_CachedGames_RefreshedAt` was added to serve. **No
+tie-break**, though ties are the rule: every row one request wrote shares one `RefreshedAt`, and 610
+of the local table's 682 rows were written in the same instant. Which fifty of a tie a batch takes
+does not matter — whichever it takes move to the back of the queue when written, and the next batch
+takes fifty others — and the index cannot serve a second sort column. Measured with five thousand
+rows tied at the head of the queue: ordered by `RefreshedAt` and the id, PostgreSQL read all five
+thousand to return fifty; ordered by `RefreshedAt` alone, it read fifty. **A tombstone is selected
+like any other row**: "IGDB had no such game" is as perishable as any answer, and a game restored to
+IGDB comes back only by being asked about again.
 
 ### 3. The cadence: one request a minute, fifty ids
 
@@ -96,18 +100,24 @@ just after a tick could reach a reader before the next). A value outside either 
 startup, through `ValidateOnStart`, rather than surfacing as a table quietly going stale. The right
 numbers move with the size of the table, and the warning in §6 says when they have moved.
 
-**In a fleet the pace is per task.** Tasks started together stay in step, so one of them takes each
-minute's batch and the rest find the lock held: about one request a minute in all. Out of step, each
-task's tick can land after another's commit and find the next batch due, so the ceiling is one a
-minute each. Either way no two tasks pay for the same row, which is what the lock is for.
+**In a fleet the pace is per task.** Each task's timer runs from its own start, and the lock is
+held for about a second a tick, so two tasks only meet when their ticks land within that second.
+While rows are due, N tasks therefore send up to N requests a minute, one each, each batch the next
+fifty; when nothing is due they send none. Either way no two tasks pay for the same row, which is
+what the lock is for.
 
-### 4. The lock is held across the IGDB request
+### 4. The lock is held across the IGDB request, for at most fifteen seconds
 
 A batch takes the lock, selects its rows, asks IGDB, writes the answer and commits, all in one
 transaction. Releasing the lock before the request would let a second task select the same rows —
-still due, since nothing has been written — and pay IGDB for them again. Holding it costs one pooled
-connection idle in a transaction for as long as IGDB takes, which the resilience pipeline bounds at
-thirty seconds and which measured about one at fifty ids.
+still due, since nothing has been written — and pay IGDB for them again.
+
+What holding it costs is a pooled connection idle in a transaction, and a lock on `CachedGames`:
+the ordinary one any read takes, which nothing a request does conflicts with, but which a migration
+altering the table has to wait for — with every reader of the table queued behind the migration.
+The resilience pipeline bounds a call at thirty seconds, and a process's first batch makes two, the
+token and the query, so the job bounds its own wait at **fifteen seconds**, five times the slowest
+batch measured; past it the request is abandoned like any other failure to answer (§5).
 
 The lookup is `IIgdbService.GetGamesByIdsUncachedAsync`, new for this. `GetGamesByIdsAsync`
 remembers each set of ids for half an hour, which suits a page asking for the same shelf twice; the
@@ -116,22 +126,40 @@ refreshed would have stayed in memory for half an hour under a set of ids nobody
 — fifteen hundred at the defaults, and ninety thousand at the largest batch and shortest interval
 allowed, for as long as a backlog that size lasted.
 
-A row is written through `GameCacheService.Apply`, the same method a reader's refresh uses, so the
-two cannot come to write a row differently — including the tombstone for an id IGDB leaves out.
+**The wrapper is the sweep's; what a retry needs is not.** The sweep deletes with
+`ExecuteDeleteAsync` and carries nothing from one attempt to the next. This writes tracked rows, and
+`SaveChangesAsync` accepts what it wrote even when the commit after it fails — so under a retrying
+strategy the retried query would hand back the rows as they were saved, not as the rolled-back
+database holds them, `Apply` would change nothing but `RefreshedAt`, and the old payload would be
+stamped fresh for a day. Each attempt therefore clears the change tracker first. The strategy does
+not retry today; the clear is for the day it does, and a retried attempt asks IGDB again.
 
-### 5. The stopping token bounds the work, not the write
+### 5. What a batch does when IGDB fails it
 
-What issue #96 asks of the retention sweep, done here from the start. Everything up to IGDB's
-answer runs on the stopping token, so a shutdown abandons the request and the transaction rolls back
-with nothing written. Once IGDB has answered, the request has been paid for, and cancelling the
-write would throw the answer away to ask for it again on another task a minute later — so the save
-and the commit run on `CancellationToken.None`, bounded by the database's command timeout instead.
-Pinned by a test that cancels the stopping token in the same moment IGDB answers and finds the
-answer saved.
+**The stopping token bounds the work, not the write.** What issue #96 asks of the retention sweep,
+done here from the start. Everything up to IGDB's answer runs on the stopping token, so a shutdown
+abandons the request and the transaction rolls back with nothing written. Once IGDB has answered,
+the request has been paid for, and cancelling the write would throw the answer away to ask for it
+again on another task a minute later — so the save and the commit run on `CancellationToken.None`,
+bounded by the database's command timeout instead. The save is pinned by a test that cancels the
+stopping token in the same moment IGDB answers and finds the answer saved; the commit sits under the
+lock, which only a real database runs, and is held to the same rule by reading.
 
-An IGDB failure is caught inside the batch and logged as a warning; nothing is written, so the rows
-keep the answer they had, stay due, and are first in line on the next tick. Stamping them as
-refreshed with nothing would hide them from the job for a day.
+**IGDB not answering** — a host not reached, a broken circuit, a timeout, our own throttle, a body
+cut off, missing credentials; the list `UpstreamFailureHandler` and `UpstreamBusyHandler` already
+keep — writes nothing: the rows keep the answer they had, stay due, and are first in line on the
+next tick. Stamping them as refreshed with nothing would hide them from the job for a day. It is a
+warning the first time, Debug while it lasts, and one line when IGDB answers again: a warning a
+tick through an afternoon's outage, from every task, is noise, and a failure that lasts is said
+hourly by §6 anyway.
+
+**IGDB answering something this code cannot read** — a field in a shape the model does not expect,
+a mapping that meets a null — is different, because it may be one game's. Retried on the next tick it
+would be retried for ever: nothing is written, so the batch stays the oldest thing due, and one game
+would stop the refresh of the whole table. So that batch is **held back for an hour**, logged as an
+error naming its ids, and the queue moves on; its rows fall back to their readers, as before this job
+existed. Splitting the batch to find the one game would refresh the other forty-nine as well, at the
+cost of state the job does not otherwise need; not done.
 
 ### 6. Behind is a warning, hourly, and never a `/readyz` failure
 
@@ -143,11 +171,15 @@ hand stops every task at once, and only counting what is waiting tells that apar
 (0038).
 
 The retention sweep's own rule — six skipped ticks with work waiting — does not carry over. Here
-work is almost always waiting, because rows fall due a few at a time all day, and a fleet in step
-skips N−1 ticks in N while one task refreshes. What does not happen while anybody is refreshing is a
-row going two hours past due, so that is the signal, whatever the cause: the lock held by something
-that is not a refresh, IGDB failing for hours, or more rows falling due than the pace can take. The
-count is an index range over `RefreshedAt`, empty whenever the job keeps up.
+work is almost always waiting, because rows fall due a few at a time all day, and a task can skip a
+tick while another refreshes. What does not happen while the refresh keeps up is a row going two
+hours past due, so that is the signal, whatever the cause: the lock held by something that is not a
+refresh, IGDB failing for hours, a batch held back, or more rows falling due than the pace can take.
+The count is an index range over `RefreshedAt`, empty whenever the job keeps up.
+
+Not in a task's first two hours, though — the time between a row falling due and going overdue. A
+task started after a deploy, or after the environment was parked, inherits a backlog nothing was
+refreshing, and that is not the job falling behind; a backlog that outlasts those two hours is.
 
 Never a `/readyz` failure, for 0038's reason: the instance serves every request, with rows a little
 older, and taking it out of rotation would turn a stale cache into an outage.
@@ -159,16 +191,19 @@ cached feed carries when it was fetched and when it expires. Once a minute the r
 every feed within three minutes of expiring **that somebody has read since it was fetched**. A feed
 read only by the request that fetched it is left to expire and forgotten: kept warm for nobody,
 every game page a crawler visits once would cost a Steam request every half hour for ever. A feed
-read again is back on the next tick.
+read again is back on the next tick. What the job adds over its readers is the copy fetched ahead
+of an expiry that nobody then reads: at most one request per feed after its last read.
 
 At most twelve feeds a tick — one aggregate's fan-out, so the job never asks Steam for more at once
-than a cold home page already does — in parallel, each bounded by the Steam client's eight seconds.
-More than that falling due in one minute means the rest are taken on the next two ticks, and past
-that expire and are fetched by their readers, which is no worse than before. Three minutes of lead
-on a one-minute tick gives a failed fetch two more tries before the copy runs out, and **a failure
-keeps the copy it has**: a reader whose own fetch fails caches an empty feed so as not to ask a
-failing Steam on every render, and the refresh doing the same would blank a good feed to spare
-nobody anything.
+than a cold home page already does — in parallel, each bounded by the Steam client's eight seconds,
+soonest to expire first. More than that falling due in one minute are taken on the next two ticks,
+and past that expire and are fetched by their readers, which is no worse than before. Three minutes
+of lead on a one-minute tick gives a failed fetch two more tries before the copy runs out, and **a
+failure keeps the copy it has**: a reader whose own fetch fails caches an empty feed so as not to ask
+a failing Steam on every render, and the refresh doing the same would blank a good feed to spare
+nobody anything. **That stand-in itself is never refreshed**: it exists so that a failing Steam is
+not asked again for ten minutes, and refreshing it ahead of its expiry would ask three times in its
+last three, through an outage, for every feed anybody reads.
 
 ### 8. The aggregate asks each feed for what one game can contribute
 
@@ -189,26 +224,38 @@ one game's panel. Measured on the running API:
 
 - **A reader pays IGDB only for a game nobody has cached yet, or while the job is behind.** Verified
   against a copy of the local database. From a table whose 682 rows were all past due, the job caught
-  up in fourteen ticks and said so; afterwards bob2870's five lists, 31 games, rendered in 135ms and
-  his wishlist in 30ms with no IGDB request at all. With the lock held from `psql` it skipped, warned
-  naming the key, and refreshed on the first tick after the lock was released; with a wrong IGDB
-  secret it warned, wrote nothing — the table's checksum unchanged — and caught up on the next run.
-  On the Steam side, twenty-four feeds read since they were fetched were fetched again in two ticks,
-  twelve at a time, before they expired; read after the copies they replaced had expired, the three
-  pages made one Steam request between them, for the one feed nobody had read and the job had let
-  go.
+  up in fourteen ticks; afterwards bob2870's five lists, 31 games, rendered in 135ms and his wishlist
+  in 30ms with no IGDB request at all. With the lock held from `psql` it skipped, warned naming the
+  key, and refreshed on the first tick after the lock was released; with a wrong IGDB secret it
+  warned, wrote nothing — the table's checksum unchanged — and caught up on the next run. On the
+  Steam side, twenty-four feeds read since they were fetched were fetched again in two ticks, twelve
+  at a time, before they expired; read after the copies they replaced had expired, the three pages
+  made one Steam request between them, for the one feed nobody had read and the job had let go.
+  Those runs were of the first build. Review then added the two-hour grace of §6, the quieter
+  logging and the held-back batch of §5, the fifteen-second bound of §4, the change-tracker clear and
+  the stand-in rule of §7, all unit-tested; run again against the reviewed build, a wrong IGDB secret
+  gave one warning and then a Debug line a tick, a backlog of 120 rows went in three ticks with no
+  warning inside the grace, and the batch query as EF writes it, held-back exclusion and all, read
+  fifty-three rows of a hundred thousand to return fifty — the three it skipped being the held-back
+  ones.
 - **Every row costs a request slot every twenty-three hours, including rows nobody tracks any more**
   — a game taken off every list, or a candidate an import offered and nobody chose. The sitemap
   treats every row with a payload as a game somebody here tracks, so the job does too. At fifty to a
   request, ten thousand such rows are two hundred requests a day, 0.06% of the allowance; whether the
   table should keep them at all is its own question, not this job's, and is #253.
-- **A batch that fails is retried whole**, which is right for an outage and wrong for a game IGDB
-  answers in a shape the mapping cannot read: that would stop the job at the head of the queue, as it
-  already fails every shelf holding the game. §6's warning says so within two hours.
+- **A batch IGDB answers unreadably costs its own rows, not the table**, held back an hour at a time
+  until the code reading it is fixed, and named in an error each time.
+- **The distributed cache is no longer a pure swap for the Steam feeds.** 0012 says moving to
+  `IDistributedCache` changes nothing else. The record of which feeds were read is per process, and
+  the Steam job takes no lock because each process warms only its own copy; with the copy shared,
+  every task would refresh the same feeds, which is the duplication 0012 objected to. The record has
+  to move with the cache, and the job go under a lock. #101 owns that move.
 - **The home page's other memos still expire on a reader.** The Steam job keeps the feeds warm, but
   the composed payload (fifteen minutes), the trending list (hourly) and the games behind the news
   (half an hour) are still fetched by whoever recomposes the page after they lapse — and the last of
   those by `/news` and a game's panel too. Not in #102; it is #252.
-- **Not verified: two tasks contending for the lock** (one instance here, as with 0038), and the
-  strategy wrapper under `EnableRetryOnFailure`, which 0038 verified for the sweep and which this
-  copies line for line.
+- **Not verified:** two tasks contending for the lock (one instance here, as with 0038); the
+  strategy wrapper and the change-tracker clear under `EnableRetryOnFailure`, which nothing here
+  turns on; the fifteen-second bound against an IGDB slow enough to reach it; and the held-back
+  batch against a real answer that cannot be read, since none is known — it is unit-tested with one
+  that throws.

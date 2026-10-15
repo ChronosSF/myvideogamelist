@@ -2,6 +2,9 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using MyVideoGameList.Server.Data;
 using MyVideoGameList.Server.DTOs;
+using Polly.CircuitBreaker;
+using Polly.RateLimiting;
+using Polly.Timeout;
 
 namespace MyVideoGameList.Server.Services;
 
@@ -27,10 +30,10 @@ namespace MyVideoGameList.Server.Services;
 /// </para>
 /// <para>
 /// What differs is what the lock buys. A sweep that loses the race has nothing left to do, because
-/// the winner deleted the same rows. Here the winner refreshes one batch and releases the lock, and
-/// a task arriving after it finds the next batch — so the lock is what stops two tasks paying IGDB
-/// for the same games, and the pace is bounded per task: a fleet started together stays in step and
-/// sends about one request an interval between them, and never more than one each.
+/// the winner deleted the same rows. Here the winner refreshes one batch and releases the lock, and a
+/// task whose tick comes later finds the next batch due — so the lock is what stops two tasks paying
+/// IGDB for the same games, and the pace is per task: while rows are due, N tasks send up to N
+/// requests an interval, one each.
 /// </para>
 /// </remarks>
 internal sealed class GameCacheRefreshService(
@@ -57,10 +60,59 @@ internal sealed class GameCacheRefreshService(
     private static readonly TimeSpan BehindWarningEvery = TimeSpan.FromHours(1);
 
     /// <summary>
-    /// When this task last warned that the refresh was behind, or <c>null</c> when it is not.
-    /// Touched only from <see cref="ExecuteAsync"/>'s single loop, so it needs no synchronisation.
+    /// The longest a batch waits for IGDB, the token included.
     /// </summary>
+    /// <remarks>
+    /// The batch waits holding its lock and a transaction, and the transaction holds a lock on
+    /// <c>CachedGames</c> as well: the ordinary one any read takes, which nothing a request does
+    /// conflicts with, but which a migration altering the table has to wait for — with every reader
+    /// of the table queued behind the migration. The resilience pipeline bounds a call at thirty
+    /// seconds, and a process's first batch makes two, the token and the query, so a slow IGDB could
+    /// otherwise hold that lock for a minute. Fifteen seconds is five times the slowest batch
+    /// measured (five hundred ids, 2.9 seconds) and leaves room for one retry.
+    /// </remarks>
+    private static readonly TimeSpan IgdbWaitLimit = TimeSpan.FromSeconds(15);
+
+    /// <summary>
+    /// How long a batch IGDB answered in a shape this code cannot read is kept out of the queue.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Retrying it on the next tick would retry it for ever: nothing is written, so it stays the
+    /// oldest thing due and comes first every time, and one game the mapping cannot read would stop
+    /// the refresh of the whole table. Held back, it costs only its own rows, which fall back to
+    /// their readers — refreshed at a day, as before this job existed — while the queue moves on.
+    /// </para>
+    /// <para>
+    /// An hour, so the error that names the rows repeats on the warning's rhythm, and so they are
+    /// tried again in case the fault was IGDB's and has passed. Splitting the batch to find the one
+    /// game would refresh the other forty-nine as well, at the cost of state this job does not
+    /// otherwise need; ADR 0052 leaves it out.
+    /// </para>
+    /// </remarks>
+    private static readonly TimeSpan HoldBackFor = TimeSpan.FromHours(1);
+
+    /// <summary>
+    /// When this task started, so that a backlog it inherited — rows that went overdue while
+    /// nothing was refreshing, before a deploy or through a park — is not reported as the job
+    /// falling behind.
+    /// </summary>
+    private readonly DateTimeOffset startedAt = clock.GetUtcNow();
+
+    /// <summary>
+    /// When this task last warned that the refresh was behind, or <c>null</c> when it is not.
+    /// </summary>
+    /// <remarks>
+    /// This and the two fields below are touched only from <see cref="ExecuteAsync"/>'s single loop,
+    /// so they need no synchronisation.
+    /// </remarks>
     private DateTimeOffset? warnedBehindAt;
+
+    /// <summary>When IGDB first failed to answer, while it still has not; <c>null</c> otherwise.</summary>
+    private DateTimeOffset? failingSince;
+
+    /// <summary>Ids kept out of the queue after an answer that could not be read, and until when.</summary>
+    private readonly Dictionary<int, DateTimeOffset> heldBack = [];
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -141,7 +193,7 @@ internal sealed class GameCacheRefreshService(
 
     /// <summary>What one batch did, for the log.</summary>
     /// <param name="Asked">How many rows were due and sent to IGDB; zero when none were due.</param>
-    /// <param name="Answered">Whether IGDB answered, so that the rows were rewritten.</param>
+    /// <param name="Answered">Whether IGDB answered readably, so that the rows were rewritten.</param>
     /// <param name="Took">How long IGDB took to answer, or to fail.</param>
     internal readonly record struct Batch(
         int Asked, bool Answered, int Tombstones, TimeSpan Took, DateTimeOffset? Oldest);
@@ -159,12 +211,22 @@ internal sealed class GameCacheRefreshService(
     /// retried attempt takes the transaction-scoped lock again rather than proceeding without it.
     /// </para>
     /// <para>
+    /// <b>The retry is not the sweep's, though the wrapper is.</b> The sweep deletes with
+    /// <c>ExecuteDeleteAsync</c> and carries nothing from one attempt to the next; this writes
+    /// tracked rows. <c>SaveChangesAsync</c> accepts what it wrote even when the commit after it then
+    /// fails, so a retried attempt's query would hand back those rows as they were saved rather than
+    /// as the rolled-back database holds them, <see cref="GameCacheService.Apply"/> would change
+    /// nothing but <c>RefreshedAt</c>, and the old payload would be stamped fresh for a day. So each
+    /// attempt clears the change tracker first and starts from the database. A retry also asks IGDB
+    /// again; it is a batch's worth of one request.
+    /// </para>
+    /// <para>
     /// <b>The IGDB request is made inside the transaction, holding the lock</b>, and that is the
     /// point of the lock rather than a lapse. Released before the request, it would let a second
     /// task select the same rows — still due, because nothing has been written — and pay IGDB for
-    /// them again. Held, it costs one pooled connection idle in a transaction for as long as IGDB
-    /// takes, which the resilience pipeline bounds at thirty seconds and which is usually well under
-    /// one.
+    /// them again. Held, it costs one pooled connection idle in a transaction, and the table lock
+    /// <see cref="IgdbWaitLimit"/> describes, for as long as IGDB takes: about a second at fifty
+    /// ids, and never more than that limit.
     /// </para>
     /// </remarks>
     private async Task<Batch?> RefreshBatchAsync(
@@ -174,6 +236,10 @@ internal sealed class GameCacheRefreshService(
 
         return await strategy.ExecuteAsync<Batch?>(async token =>
         {
+            // See the remarks: an attempt starts from the database, never from what an earlier
+            // attempt saved. On the first attempt there is nothing to clear.
+            db.ChangeTracker.Clear();
+
             await using var transaction = await db.Database.BeginTransactionAsync(token);
 
             // Aliased `Value`, because SqlQuery<T> wraps this as a subquery and projects `s.Value`
@@ -186,8 +252,8 @@ internal sealed class GameCacheRefreshService(
 
             var batch = await RefreshDueAsync(db, now, token);
 
-            // Nothing due, or IGDB did not answer: the transaction ends unwritten when it is
-            // disposed, which releases the lock with it.
+            // Nothing due, or IGDB did not answer readably: the transaction ends unwritten when it
+            // is disposed, which releases the lock with it.
             if (batch.Asked == 0 || !batch.Answered) return batch;
 
             // On CancellationToken.None for the reason RefreshDueAsync saves on it.
@@ -204,7 +270,8 @@ internal sealed class GameCacheRefreshService(
     /// <para>
     /// Everything a batch does but take the lock and commit, apart from them so that the in-memory
     /// provider can run it: which rows, one request for all of them, a tombstone for an id IGDB
-    /// no longer has, and nothing written when IGDB does not answer.
+    /// no longer has, nothing written when IGDB does not answer, and a batch held back when it
+    /// answers something this code cannot read.
     /// </para>
     /// <para>
     /// <b>The stopping token bounds the work and not the write</b> — what issue #96 asks of the
@@ -219,34 +286,59 @@ internal sealed class GameCacheRefreshService(
     internal async Task<Batch> RefreshDueAsync(
         ApplicationDbContext db, DateTimeOffset now, CancellationToken cancellationToken)
     {
+        foreach (var released in heldBack.Where(held => held.Value <= now).Select(held => held.Key).ToList())
+            heldBack.Remove(released);
+
         // Tracked, because these are the rows the answer is written onto.
         var rows = await GameCacheRefresh
-            .NextBatch(db.CachedGames, now, options.Value.BatchSize)
+            .NextBatch(db.CachedGames, now, options.Value.BatchSize, heldBack.Keys.ToList())
             .ToListAsync(cancellationToken);
 
         if (rows.Count == 0) return new Batch(0, Answered: true, 0, TimeSpan.Zero, null);
 
+        var ids = rows.Select(row => row.GameId).ToList();
         var oldest = rows[0].RefreshedAt;
         var asked = clock.GetTimestamp();
         IReadOnlyList<GameDto> games;
 
         try
         {
-            games = await igdb.GetGamesByIdsUncachedAsync(
-                rows.Select(row => row.GameId).ToList(), cancellationToken);
+            // Bounded on its own as well as by the stopping token: see IgdbWaitLimit.
+            using var limit = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            limit.CancelAfter(IgdbWaitLimit);
+
+            games = await igdb.GetGamesByIdsUncachedAsync(ids, limit.Token);
+        }
+        catch (Exception ex) when (!cancellationToken.IsCancellationRequested && IsUnanswered(ex))
+        {
+            // Nothing is written, so the rows keep the answer they had, stay due, and are first in
+            // line on the next tick — which is right, because whatever this is fails every batch
+            // alike.
+            NoteUnanswered(ex, rows.Count, now);
+            return new Batch(rows.Count, Answered: false, 0, clock.GetElapsedTime(asked), oldest);
         }
         catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
         {
-            // IGDB down, slow, refusing us, or our own breaker open. Nothing is written, so the rows
-            // keep the answer they had, stay due, and are first in line on the next tick. A warning
-            // rather than an error, because nothing here is ours to fix — and it is exactly what a
-            // reader's request would have run into, had it been the one to ask.
-            logger.LogWarning(
+            // IGDB answered, and the answer could not be read: a field in a shape the model does not
+            // expect, or a mapping that met a null. That may be one game's, and retrying it would
+            // stop the whole queue behind it, so these rows wait an hour instead. An error, unlike
+            // IGDB failing to answer, because the fix is ours.
+            foreach (var id in ids) heldBack[id] = now + HoldBackFor;
+
+            logger.LogError(
                 ex,
-                "IGDB did not answer for {Count} cached game(s); the next tick will ask again.",
-                rows.Count);
+                "IGDB answered {Count} cached game(s) in a shape this code cannot read. They are held "
+                + "back from the refresh until {Until} and left to their readers meanwhile: {Ids}.",
+                ids.Count, now + HoldBackFor, string.Join(',', ids));
 
             return new Batch(rows.Count, Answered: false, 0, clock.GetElapsedTime(asked), oldest);
+        }
+
+        if (failingSince is { } since)
+        {
+            logger.LogInformation(
+                "IGDB is answering the game cache refresh again, after failing since {Since}.", since);
+            failingSince = null;
         }
 
         var took = clock.GetElapsedTime(asked);
@@ -263,6 +355,54 @@ internal sealed class GameCacheRefreshService(
     }
 
     /// <summary>
+    /// Whether a failure means IGDB could not be asked or did not answer, rather than that it
+    /// answered something this code could not read.
+    /// </summary>
+    /// <remarks>
+    /// What <c>UpstreamFailureHandler</c> and <c>UpstreamBusyHandler</c> already count as IGDB not
+    /// answering — a host not reached, a broken circuit, a timeout, our own throttle — plus a body cut
+    /// off mid-read, a cancellation that is not the host stopping (the client's own timeout, or
+    /// <see cref="IgdbWaitLimit"/>), and <see cref="InvalidOperationException"/>, which is how
+    /// <c>IgdbService</c> says its credentials are missing or its token unreadable. All of those fail
+    /// every batch alike. Anything else was thrown reading an answer, and may be one game's.
+    /// </remarks>
+    internal static bool IsUnanswered(Exception exception) => exception
+        is HttpRequestException
+        or IOException
+        or BrokenCircuitException
+        or TimeoutRejectedException
+        or RateLimiterRejectedException
+        or OperationCanceledException
+        or InvalidOperationException;
+
+    /// <summary>
+    /// Says that IGDB did not answer: a warning the first time, Debug for as long as it goes on,
+    /// and one line when it answers again.
+    /// </summary>
+    /// <remarks>
+    /// A warning a tick through an afternoon's outage — sixty an hour from every task, each with a
+    /// stack trace — is the noise <see cref="BehindWarningEvery"/> exists to avoid. A failure that
+    /// lasts is not lost: the rows go overdue, and <see cref="NoteLagAsync"/> says so hourly.
+    /// </remarks>
+    private void NoteUnanswered(Exception exception, int count, DateTimeOffset now)
+    {
+        if (failingSince is { } since)
+        {
+            logger.LogDebug(
+                exception,
+                "IGDB still did not answer for {Count} cached game(s), as since {Since}.", count, since);
+            return;
+        }
+
+        failingSince = now;
+        logger.LogWarning(
+            exception,
+            "IGDB did not answer for {Count} cached game(s); the next tick will ask again, and later "
+            + "failures are logged at Debug until it answers.",
+            count);
+    }
+
+    /// <summary>
     /// Counts the rows that say the refresh is behind, and warns while there are any.
     /// </summary>
     /// <remarks>
@@ -276,12 +416,16 @@ internal sealed class GameCacheRefreshService(
     /// <para>
     /// The retention sweep's own rule — warn after six skipped ticks with work waiting — does not
     /// carry over, because here work is almost always waiting: rows fall due a few at a time all
-    /// day, and a fleet in step skips N−1 ticks in N while one task refreshes. What does not happen
-    /// while anybody is refreshing is a row going <see cref="GameCacheRefresh.OverdueAfter"/>
-    /// without being reached, so that is the signal, whatever the cause: the lock held by something
-    /// that is not a refresh, IGDB failing for hours, or more rows falling due than the configured
-    /// pace can take. The count is an index range over <c>RefreshedAt</c>, empty whenever the job is
-    /// keeping up, so it costs next to nothing to ask each minute.
+    /// day, and a task can skip a tick while another refreshes. What does not happen while the
+    /// refresh keeps up is a row going <see cref="GameCacheRefresh.OverdueAfter"/> without being
+    /// reached, so that is the signal, whatever the cause: the lock held by something that is not a
+    /// refresh, IGDB failing for hours, a batch held back, or more rows falling due than the
+    /// configured pace can take. The count is an index range over <c>RefreshedAt</c>, empty
+    /// whenever the job is keeping up, so it costs next to nothing to ask each minute.
+    /// </para>
+    /// <para>
+    /// Not in a task's first two hours — the time between a row falling due and going overdue — so
+    /// a backlog the task inherited is not blamed on it; one that outlasts them is.
     /// </para>
     /// <para>
     /// A refresh that is behind is a warning and <b>never a <c>/readyz</c> failure</b>, as ADR 0038
@@ -307,6 +451,15 @@ internal sealed class GameCacheRefreshService(
             return;
         }
 
+        if (now - startedAt < GameCacheRefresh.OverdueAfter - GameCacheRefresh.DueAfter)
+        {
+            logger.LogDebug(
+                "Game cache refresh started at {StartedAt} and is working through {Count} cached "
+                + "game(s) {OverdueHours} hours old.",
+                startedAt, overdue, GameCacheRefresh.OverdueAfter.TotalHours);
+            return;
+        }
+
         if (warnedBehindAt is { } warned && now - warned < BehindWarningEvery)
         {
             logger.LogDebug(
@@ -315,7 +468,6 @@ internal sealed class GameCacheRefreshService(
             return;
         }
 
-        warnedBehindAt = now;
         var oldest = await db.CachedGames.MinAsync(game => game.RefreshedAt, cancellationToken);
 
         if (lockedOut)
@@ -331,11 +483,15 @@ internal sealed class GameCacheRefreshService(
         {
             logger.LogWarning(
                 "Game cache refresh is behind: {Count} cached game(s) were last refreshed more than "
-                + "{OverdueHours} hours ago, the oldest at {Oldest}. Either IGDB has not been answering "
-                + "or more rows fall due than a batch of {BatchSize} every {Interval} can take; see "
-                + "ADR 0052.",
+                + "{OverdueHours} hours ago, the oldest at {Oldest}. IGDB may not have been answering, "
+                + "or more rows fall due than a batch of {BatchSize} every {Interval} can take; "
+                + "{HeldBack} cached game(s) are held back after an answer this code could not read. "
+                + "See ADR 0052.",
                 overdue, GameCacheRefresh.OverdueAfter.TotalHours, oldest,
-                options.Value.BatchSize, options.Value.Interval);
+                options.Value.BatchSize, options.Value.Interval, heldBack.Count);
         }
+
+        // Only once the warning is written, so a failure to write it does not silence it for an hour.
+        warnedBehindAt = now;
     }
 }

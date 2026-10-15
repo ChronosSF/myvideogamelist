@@ -21,13 +21,13 @@ namespace MyVideoGameList.Server.Services;
 /// </para>
 /// <para>
 /// When the distributed cache in ROADMAP §5 lands, the swap is <see cref="IMemoryCache"/> for
-/// <c>IDistributedCache</c> behind this same interface.
-/// </para>
-/// <para>
-/// A feed somebody is reading is fetched again shortly before its entry expires, by
+/// <c>IDistributedCache</c> behind this same interface — and one more thing, since ADR 0052. A feed
+/// somebody is reading is fetched again shortly before its entry expires, by
 /// <see cref="RefreshFeedsAsync"/> on <c>SteamNewsRefreshService</c>'s timer, so the reader who
-/// arrives after the expiry finds it warm rather than paying Steam's round trip (ADR 0052). Which
-/// feeds those are is kept beside the cache, in memory, and nowhere else.
+/// arrives after the expiry finds it warm rather than paying Steam's round trip. Which feeds those
+/// are is kept beside the cache, in this process's memory, and the refresh takes no lock because
+/// each process warms only its own copy. Once the copy is shared, every task would refresh the same
+/// feeds: the record of what was read has to move with the cache, and the refresh go under a lock.
 /// </para>
 /// </remarks>
 public partial class SteamNewsService(
@@ -77,8 +77,9 @@ public partial class SteamNewsService(
 
     /// <summary>
     /// The most feeds one refresh asks Steam for: one aggregate's fan-out, so the background never
-    /// asks for more at once than a cold home page already does. More than that falling due in one
-    /// minute means the rest expire and are fetched by their readers, as before.
+    /// asks for more at once than a cold home page already does. The rest stay due and are taken on
+    /// the next tick, soonest to expire first; only what is still waiting when its copy runs out is
+    /// left to its readers, as before.
     /// </summary>
     internal const int MaxFeedsPerRefresh = MaxGamesPerAggregate;
 
@@ -89,6 +90,9 @@ public partial class SteamNewsService(
     /// </summary>
     private readonly ConcurrentDictionary<Feed, DateTimeOffset> readAt = new();
 
+    /// <summary>How many feeds the refresh is watching, so a test can see one let go.</summary>
+    internal int WatchedFeeds => readAt.Count;
+
     /// <summary>One feed as it is fetched and cached: an AppID and how many items to ask for.</summary>
     private readonly record struct Feed(int AppId, int Count)
     {
@@ -96,11 +100,12 @@ public partial class SteamNewsService(
     }
 
     /// <summary>
-    /// What the cache holds for a feed: the items, and when they were fetched and will expire,
-    /// which <see cref="RefreshFeedsAsync"/> reads and <see cref="IMemoryCache"/> cannot be asked.
+    /// What the cache holds for a feed: the items, when they were fetched and will expire, which
+    /// <see cref="RefreshFeedsAsync"/> reads and <see cref="IMemoryCache"/> cannot be asked, and
+    /// whether the copy is only the empty stand-in for a fetch that failed.
     /// </summary>
     private sealed record CachedFeed(
-        IReadOnlyList<SteamNewsItem> Items, DateTimeOffset FetchedAt, DateTimeOffset ExpiresAt);
+        IReadOnlyList<SteamNewsItem> Items, DateTimeOffset FetchedAt, DateTimeOffset ExpiresAt, bool Failed);
 
     public async Task<IReadOnlyList<NewsItemDto>> GetNewsForGameAsync(
         int igdbGameId, int count = 5, CancellationToken cancellationToken = default)
@@ -227,7 +232,12 @@ public partial class SteamNewsService(
             // Nobody has asked for this copy since it was fetched, so it is left to expire. A feed
             // kept warm for nobody would turn every game page a crawler visits once into a Steam
             // request every half hour for ever; a feed somebody reads again is back on the next tick.
-            if (read <= copy.FetchedAt)
+            //
+            // Nor is a stand-in for a fetch that failed, read or not. It is cached precisely so that
+            // a failing Steam is not asked again for ten minutes, and refreshing it ahead of its
+            // expiry would ask three times in its last three — through an outage, for every feed
+            // anybody is reading. Its next reader asks, as one would have before this.
+            if (read <= copy.FetchedAt || copy.Failed)
             {
                 if (readAt.TryRemove(unchanged)) dropped++;
                 continue;
@@ -258,7 +268,7 @@ public partial class SteamNewsService(
             // Steam did not answer, so the copy already there is kept until it expires. A reader
             // whose own fetch fails caches an empty feed, so as not to ask a failing Steam on every
             // render; doing the same here would blank a good feed to save nobody anything.
-            if (fetched[i] is { } items) Store(refresh[i], items);
+            if (fetched[i] is { } items) Store(refresh[i], items, failed: false);
             else failed++;
         }
 
@@ -284,10 +294,10 @@ public partial class SteamNewsService(
 
         // A failure is cached as an empty feed, briefly, so a failing Steam is not asked again on
         // every render of the page that wanted it.
-        var items = await RequestFeedAsync(feed, cancellationToken) ?? [];
+        var items = await RequestFeedAsync(feed, cancellationToken);
 
-        Store(feed, items);
-        return items;
+        Store(feed, items ?? [], failed: items is null);
+        return items ?? [];
     }
 
     /// <summary>
@@ -331,12 +341,12 @@ public partial class SteamNewsService(
         }
     }
 
-    private void Store(Feed feed, IReadOnlyList<SteamNewsItem> items)
+    private void Store(Feed feed, IReadOnlyList<SteamNewsItem> items, bool failed)
     {
         var now = clock.GetUtcNow();
         var lifetime = items.Count > 0 ? FeedCacheLifetime : EmptyFeedCacheLifetime;
 
-        cache.Set(feed.CacheKey, new CachedFeed(items, now, now + lifetime), lifetime);
+        cache.Set(feed.CacheKey, new CachedFeed(items, now, now + lifetime, failed), lifetime);
     }
 
     /// <summary>

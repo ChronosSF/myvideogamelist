@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -10,6 +11,9 @@ using MyVideoGameList.Server.Models;
 using MyVideoGameList.Server.Services;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
+using Polly.CircuitBreaker;
+using Polly.RateLimiting;
+using Polly.Timeout;
 
 namespace MyVideoGameList.Server.Tests;
 
@@ -24,36 +28,42 @@ namespace MyVideoGameList.Server.Tests;
 /// as <c>ImportRetentionTests</c> explains for the sweep's.
 /// </para>
 /// <para>
-/// What is deliberately <em>not</em> covered is the advisory lock and the commit around a batch:
-/// <c>SqlQuery</c> and a real transaction need a relational provider, and these tests run on EF
-/// InMemory. Everything inside them is <see cref="GameCacheRefreshService.RefreshDueAsync"/>, which
-/// is covered; the lock was verified by hand against PostgreSQL, as the retention sweep's was
-/// (ADR 0052).
+/// What is deliberately <em>not</em> covered is what happens around a batch inside its transaction:
+/// the advisory lock, the commit, and the change tracker cleared for a retried attempt. <c>SqlQuery</c>
+/// and a real transaction need a relational provider, and these tests run on EF InMemory. The batch
+/// itself is <see cref="GameCacheRefreshService.RefreshDueAsync"/>, which is covered; the lock was
+/// verified by hand against PostgreSQL, as the retention sweep's was (ADR 0052).
 /// </para>
 /// </remarks>
 public class GameCacheRefreshTests
 {
     private static readonly DateTimeOffset Now = new(2026, 10, 15, 12, 0, 0, TimeSpan.Zero);
 
+    private static readonly TimeSpan Minute = TimeSpan.FromMinutes(1);
+
     private sealed class FixedClock(DateTimeOffset now) : TimeProvider
     {
-        private DateTimeOffset _now = now;
-        public override DateTimeOffset GetUtcNow() => _now;
-        public void Advance(TimeSpan by) => _now = _now.Add(by);
+        public override DateTimeOffset GetUtcNow() => now;
     }
+
+    /// <summary>A service that started long enough ago for a backlog to count against it.</summary>
+    private static FixedClock StartedLongAgo() => new(Now - TimeSpan.FromHours(3));
 
     /// <summary>Every line the service logs, so a test can say what it said.</summary>
     private sealed class ListLogger : ILogger<GameCacheRefreshService>
     {
         private readonly List<(LogLevel Level, string Message)> _entries = [];
+        private readonly TaskCompletionSource _firstError =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        public IReadOnlyList<(LogLevel Level, string Message)> Entries
+        /// <summary>Completes when the first error is logged.</summary>
+        public Task FirstError => _firstError.Task;
+
+        public IReadOnlyList<string> At(LogLevel level)
         {
-            get { lock (_entries) return _entries.ToList(); }
+            lock (_entries)
+                return _entries.Where(entry => entry.Level == level).Select(entry => entry.Message).ToList();
         }
-
-        public IReadOnlyList<string> At(LogLevel level) =>
-            Entries.Where(entry => entry.Level == level).Select(entry => entry.Message).ToList();
 
         public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
         public bool IsEnabled(LogLevel logLevel) => true;
@@ -63,6 +73,7 @@ public class GameCacheRefreshTests
             Func<TState, Exception?, string> formatter)
         {
             lock (_entries) _entries.Add((logLevel, formatter(state, exception)));
+            if (logLevel == LogLevel.Error) _firstError.TrySetResult();
         }
     }
 
@@ -116,6 +127,15 @@ public class GameCacheRefreshTests
         return igdb;
     }
 
+    /// <summary>An IGDB whose every answer fails the way <paramref name="failure"/> says.</summary>
+    private static IIgdbService IgdbFailing(Exception failure)
+    {
+        var igdb = Substitute.For<IIgdbService>();
+        igdb.GetGamesByIdsUncachedAsync(Arg.Any<IReadOnlyCollection<int>>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(failure);
+        return igdb;
+    }
+
     private static GameCacheRefreshService NewService(
         IIgdbService? igdb = null,
         int batchSize = 50,
@@ -137,10 +157,10 @@ public class GameCacheRefreshTests
             .OrderBy(id => id)
             .ToList();
 
-    private static List<int> NextBatch(ApplicationDbContext db, int batchSize) =>
-        GameCacheRefresh.NextBatch(db.CachedGames, Now, batchSize).Select(game => game.GameId).ToList();
-
-    private static readonly TimeSpan Minute = TimeSpan.FromMinutes(1);
+    private static List<int> NextBatch(ApplicationDbContext db, int batchSize, params int[] heldBack) =>
+        GameCacheRefresh.NextBatch(db.CachedGames, Now, batchSize, heldBack)
+            .Select(game => game.GameId)
+            .ToList();
 
     // ── Which rows ────────────────────────────────────────────────────────────────────
 
@@ -221,16 +241,24 @@ public class GameCacheRefreshTests
     }
 
     [Fact]
-    public void NextBatch_BreaksTiesOnTheId()
+    public void NextBatch_WorksThroughATieABatchAtATime()
     {
-        // Every row one request wrote shares one RefreshedAt, so without a tie-break Take would be
-        // taking from an order the database is free to choose differently each time.
+        // Every row one request wrote shares one RefreshedAt, and there is no tie-break: which of a
+        // tie a batch takes does not matter, because the ones it takes move to the back of the
+        // queue when they are written. What does matter is that the next batch takes the others.
         using var db = WithRows(
             Row(9, TimeSpan.FromDays(2)),
             Row(3, TimeSpan.FromDays(2)),
             Row(6, TimeSpan.FromDays(2)));
 
-        Assert.Equal([3, 6], NextBatch(db, 2));
+        var first = NextBatch(db, 2);
+        Assert.Equal(2, first.Count);
+
+        foreach (var row in db.CachedGames.Where(game => first.Contains(game.GameId)))
+            row.RefreshedAt = Now;
+        db.SaveChanges();
+
+        Assert.Equal([3, 6, 9], first.Concat(NextBatch(db, 2)).Order());
     }
 
     [Fact]
@@ -241,7 +269,17 @@ public class GameCacheRefreshTests
             Row(2, TimeSpan.FromHours(1)),
             Row(3, GameCacheRefresh.DueAfter));
 
-        Assert.Equal([1, 3], NextBatch(db, 50));
+        Assert.Equal([1, 3], NextBatch(db, 50).Order());
+    }
+
+    [Fact]
+    public void NextBatch_LeavesOutWhatIsHeldBack()
+    {
+        using var db = WithRows(
+            Row(1, TimeSpan.FromDays(3)),
+            Row(2, TimeSpan.FromDays(2)));
+
+        Assert.Equal([2], NextBatch(db, 50, 1));
     }
 
     // ── What a batch writes ───────────────────────────────────────────────────────────
@@ -298,18 +336,19 @@ public class GameCacheRefreshTests
     }
 
     [Fact]
-    public async Task RefreshDueAsync_AsksIgdbOnceForTheOldestBatch()
+    public async Task RefreshDueAsync_AsksIgdbOnceForTheConfiguredBatchOfTheOldest()
     {
-        // The batch is the pace: one request carrying at most the batch size, whatever is waiting.
+        // The batch is the pace: one request carrying the configured number of ids, whatever is
+        // waiting. A size other than the default, so a job that stopped reading the option fails.
         using var db = WithRows(
             Enumerable.Range(1, 60).Select(id => Row(id, TimeSpan.FromHours(24 + id))).ToArray());
         var igdb = IgdbKnowing();
 
-        await NewService(igdb, batchSize: 50).RefreshDueAsync(db, Now, CancellationToken.None);
+        await NewService(igdb, batchSize: 20).RefreshDueAsync(db, Now, CancellationToken.None);
 
-        var oldest = Enumerable.Range(11, 50).ToHashSet();
+        await igdb.ReceivedWithAnyArgs(1).GetGamesByIdsUncachedAsync(default!, default);
         await igdb.Received(1).GetGamesByIdsUncachedAsync(
-            Arg.Is<IReadOnlyCollection<int>>(ids => ids.Count == 50 && ids.ToHashSet().SetEquals(oldest)),
+            Arg.Is<IReadOnlyCollection<int>>(ids => ids.ToHashSet().SetEquals(Enumerable.Range(41, 20))),
             Arg.Any<CancellationToken>());
     }
 
@@ -325,18 +364,18 @@ public class GameCacheRefreshTests
         await igdb.DidNotReceiveWithAnyArgs().GetGamesByIdsUncachedAsync(default!, default);
     }
 
+    // ── When IGDB fails it ────────────────────────────────────────────────────────────
+
     [Fact]
-    public async Task RefreshDueAsync_WhenIgdbFails_WritesNothing()
+    public async Task RefreshDueAsync_WhenIgdbDoesNotAnswer_WritesNothing()
     {
         // The rows keep the answer they had and stay first in line, rather than being stamped as
         // refreshed with nothing — which would hide them from the next tick for a day.
         using var db = WithRows(Row(1, TimeSpan.FromDays(2), "Hades"));
-        var igdb = Substitute.For<IIgdbService>();
-        igdb.GetGamesByIdsUncachedAsync(Arg.Any<IReadOnlyCollection<int>>(), Arg.Any<CancellationToken>())
-            .ThrowsAsync(new HttpRequestException("IGDB is down."));
         var logger = new ListLogger();
 
-        var batch = await NewService(igdb, logger: logger).RefreshDueAsync(db, Now, CancellationToken.None);
+        var batch = await NewService(IgdbFailing(new HttpRequestException("IGDB is down.")), logger: logger)
+            .RefreshDueAsync(db, Now, CancellationToken.None);
 
         var row = await db.CachedGames.AsNoTracking().SingleAsync();
         Assert.Equal("Hades", row.Title);
@@ -346,15 +385,125 @@ public class GameCacheRefreshTests
     }
 
     [Fact]
+    public async Task RefreshDueAsync_WhenIgdbDoesNotAnswer_TriesTheSameRowsNextTick()
+    {
+        // Not answering fails every batch alike, so nothing is held back for it.
+        using var db = WithRows(Row(1, TimeSpan.FromDays(3)), Row(2, TimeSpan.FromDays(2)));
+        var igdb = IgdbFailing(new HttpRequestException("IGDB is down."));
+        var service = NewService(igdb, batchSize: 1);
+
+        await service.RefreshDueAsync(db, Now, CancellationToken.None);
+        await service.RefreshDueAsync(db, Now + Minute, CancellationToken.None);
+
+        await igdb.Received(2).GetGamesByIdsUncachedAsync(
+            Arg.Is<IReadOnlyCollection<int>>(ids => ids.SequenceEqual(new[] { 1 })),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task RefreshDueAsync_WhileIgdbKeepsFailing_WarnsOnceAndSaysWhenItIsBack()
+    {
+        // A warning a tick through an afternoon's outage, from every task, is noise; the first
+        // failure and the recovery are what anybody reading the log needs.
+        using var db = WithRows(Row(1, TimeSpan.FromDays(2)));
+        var down = true;
+        var igdb = Substitute.For<IIgdbService>();
+        igdb.GetGamesByIdsUncachedAsync(Arg.Any<IReadOnlyCollection<int>>(), Arg.Any<CancellationToken>())
+            .Returns(_ => down
+                ? Task.FromException<IReadOnlyList<GameDto>>(new HttpRequestException("IGDB is down."))
+                : Task.FromResult<IReadOnlyList<GameDto>>([Game(1, "Hades")]));
+        var logger = new ListLogger();
+        var service = NewService(igdb, logger: logger);
+
+        await service.RefreshDueAsync(db, Now, CancellationToken.None);
+        await service.RefreshDueAsync(db, Now + Minute, CancellationToken.None);
+        await service.RefreshDueAsync(db, Now + 2 * Minute, CancellationToken.None);
+        down = false;
+        await service.RefreshDueAsync(db, Now + 3 * Minute, CancellationToken.None);
+
+        Assert.Single(logger.At(LogLevel.Warning));
+        Assert.Single(logger.At(LogLevel.Information), message => message.Contains("answering"));
+    }
+
+    [Fact]
+    public async Task RefreshDueAsync_AnAnswerThatCannotBeRead_HoldsTheBatchBackAndMovesOn()
+    {
+        // One game IGDB answers in a shape the mapping cannot read would otherwise stop the whole
+        // queue: nothing is written, so its batch stays the oldest thing due and comes first every
+        // tick. Held back, it costs only its own rows.
+        using var db = WithRows(
+            Row(1, TimeSpan.FromDays(3), "Unreadable"),
+            Row(2, TimeSpan.FromDays(2), "Hades"));
+        var igdb = Substitute.For<IIgdbService>();
+        igdb.GetGamesByIdsUncachedAsync(Arg.Any<IReadOnlyCollection<int>>(), Arg.Any<CancellationToken>())
+            .Returns(call => call.Arg<IReadOnlyCollection<int>>().Contains(1)
+                ? Task.FromException<IReadOnlyList<GameDto>>(new JsonException("Unexpected token."))
+                : Task.FromResult<IReadOnlyList<GameDto>>([Game(2, "Hades II")]));
+        var logger = new ListLogger();
+        var service = NewService(igdb, batchSize: 1, logger: logger);
+
+        var held = await service.RefreshDueAsync(db, Now, CancellationToken.None);
+        var next = await service.RefreshDueAsync(db, Now + Minute, CancellationToken.None);
+
+        Assert.False(held.Answered);
+        Assert.True(next.Answered);
+
+        var rows = await db.CachedGames.AsNoTracking().OrderBy(g => g.GameId).ToListAsync();
+        Assert.Equal("Unreadable", rows[0].Title);
+        Assert.Equal(Now - TimeSpan.FromDays(3), rows[0].RefreshedAt);
+        Assert.Equal("Hades II", rows[1].Title);
+
+        // An error, because the fix is ours, and one that names what it held back.
+        Assert.Contains(": 1.", Assert.Single(logger.At(LogLevel.Error)));
+    }
+
+    [Fact]
+    public async Task RefreshDueAsync_AHeldBackBatch_IsTriedAgainAfterAnHour()
+    {
+        using var db = WithRows(Row(1, TimeSpan.FromDays(3)));
+        var igdb = IgdbFailing(new NullReferenceException());
+        var service = NewService(igdb);
+
+        await service.RefreshDueAsync(db, Now, CancellationToken.None);
+        await service.RefreshDueAsync(db, Now + TimeSpan.FromMinutes(59), CancellationToken.None);
+        await igdb.ReceivedWithAnyArgs(1).GetGamesByIdsUncachedAsync(default!, default);
+
+        await service.RefreshDueAsync(db, Now + TimeSpan.FromHours(1), CancellationToken.None);
+        await igdb.ReceivedWithAnyArgs(2).GetGamesByIdsUncachedAsync(default!, default);
+    }
+
+    public static TheoryData<Exception, bool> Failures => new()
+    {
+        // What UpstreamFailureHandler and UpstreamBusyHandler call IGDB not answering...
+        { new HttpRequestException("Unreachable."), true },
+        { new BrokenCircuitException(), true },
+        { new TimeoutRejectedException(), true },
+        { new RateLimiterRejectedException(), true },
+        { new TaskCanceledException("The client's own timeout."), true },
+        // ...a body cut off mid-read, and IgdbService saying its credentials are missing...
+        { new IOException("The response ended prematurely."), true },
+        { new InvalidOperationException("IGDB ClientId is not configured."), true },
+        // ...and what is thrown reading an answer, which may be one game's.
+        { new JsonException("Unexpected token."), false },
+        { new NullReferenceException(), false },
+        { new ArgumentOutOfRangeException("seconds"), false },
+    };
+
+    [Theory]
+    [MemberData(nameof(Failures))]
+    public void IsUnanswered_SortsAFailureByWhetherIgdbAnswered(Exception failure, bool unanswered)
+    {
+        Assert.Equal(unanswered, GameCacheRefreshService.IsUnanswered(failure));
+    }
+
+    [Fact]
     public async Task RefreshDueAsync_WhenIgdbTimesOutWithoutAShutdown_TreatsItAsIgdbFailing()
     {
         // An HttpClient timeout is a TaskCanceledException too. Filtering on the type would let a
         // slow IGDB out of the batch as though the host were stopping; filtering on the token keeps
         // it what it is — IGDB not answering.
         using var db = WithRows(Row(1, TimeSpan.FromDays(2)));
-        var igdb = Substitute.For<IIgdbService>();
-        igdb.GetGamesByIdsUncachedAsync(Arg.Any<IReadOnlyCollection<int>>(), Arg.Any<CancellationToken>())
-            .ThrowsAsync(new TaskCanceledException("The request was canceled due to the configured timeout."));
+        var igdb = IgdbFailing(new TaskCanceledException("The request was canceled due to the configured timeout."));
 
         var batch = await NewService(igdb).RefreshDueAsync(db, Now, CancellationToken.None);
 
@@ -416,7 +565,8 @@ public class GameCacheRefreshTests
         using var db = WithRows(Row(1, GameCacheService.RefreshAfter));
         var logger = new ListLogger();
 
-        await NewService(logger: logger).NoteLagAsync(db, Now, lockedOut: false, CancellationToken.None);
+        await NewService(clock: StartedLongAgo(), logger: logger)
+            .NoteLagAsync(db, Now, lockedOut: false, CancellationToken.None);
 
         Assert.Empty(logger.At(LogLevel.Warning));
     }
@@ -430,7 +580,8 @@ public class GameCacheRefreshTests
             Row(3, TimeSpan.FromHours(1)));
         var logger = new ListLogger();
 
-        await NewService(logger: logger).NoteLagAsync(db, Now, lockedOut: false, CancellationToken.None);
+        await NewService(clock: StartedLongAgo(), logger: logger)
+            .NoteLagAsync(db, Now, lockedOut: false, CancellationToken.None);
 
         var warning = Assert.Single(logger.At(LogLevel.Warning));
         Assert.Contains("2 cached game(s)", warning);
@@ -444,9 +595,27 @@ public class GameCacheRefreshTests
         using var db = WithRows(Row(1, GameCacheRefresh.OverdueAfter + Minute));
         var logger = new ListLogger();
 
-        await NewService(logger: logger).NoteLagAsync(db, Now, lockedOut: true, CancellationToken.None);
+        await NewService(clock: StartedLongAgo(), logger: logger)
+            .NoteLagAsync(db, Now, lockedOut: true, CancellationToken.None);
 
         Assert.Contains("advisory lock", Assert.Single(logger.At(LogLevel.Warning)));
+    }
+
+    [Fact]
+    public async Task NoteLagAsync_InATasksFirstTwoHours_DoesNotBlameItForWhatItInherited()
+    {
+        // A task started after a deploy or a park inherits a backlog nothing was refreshing. It has
+        // the same two hours to reach those rows that a row has between falling due and going
+        // overdue, and only a backlog that outlasts them is the job falling behind.
+        using var db = WithRows(Row(1, TimeSpan.FromDays(3)));
+        var logger = new ListLogger();
+        var service = NewService(clock: new FixedClock(Now), logger: logger);
+
+        await service.NoteLagAsync(db, Now + TimeSpan.FromMinutes(119), lockedOut: false, CancellationToken.None);
+        Assert.Empty(logger.At(LogLevel.Warning));
+
+        await service.NoteLagAsync(db, Now + TimeSpan.FromHours(2), lockedOut: false, CancellationToken.None);
+        Assert.Single(logger.At(LogLevel.Warning));
     }
 
     [Fact]
@@ -456,7 +625,7 @@ public class GameCacheRefreshTests
         // to stop reading the log.
         using var db = WithRows(Row(1, TimeSpan.FromDays(3)));
         var logger = new ListLogger();
-        var service = NewService(logger: logger);
+        var service = NewService(clock: StartedLongAgo(), logger: logger);
 
         await service.NoteLagAsync(db, Now, lockedOut: false, CancellationToken.None);
         await service.NoteLagAsync(db, Now + TimeSpan.FromMinutes(59), lockedOut: false, CancellationToken.None);
@@ -471,7 +640,7 @@ public class GameCacheRefreshTests
     {
         using var db = WithRows(Row(1, TimeSpan.FromDays(3)));
         var logger = new ListLogger();
-        var service = NewService(logger: logger);
+        var service = NewService(clock: StartedLongAgo(), logger: logger);
         await service.NoteLagAsync(db, Now, lockedOut: false, CancellationToken.None);
 
         var row = await db.CachedGames.SingleAsync();
@@ -544,12 +713,8 @@ public class GameCacheRefreshTests
             scopes: FailingScopes(new InvalidOperationException("The database is gone.")));
 
         await service.StartAsync(CancellationToken.None);
+        await logger.FirstError.WaitAsync(TimeSpan.FromSeconds(30));
 
-        var deadline = DateTime.UtcNow.AddSeconds(10);
-        while (logger.At(LogLevel.Error).Count == 0 && DateTime.UtcNow < deadline)
-            await Task.Delay(10);
-
-        Assert.Single(logger.At(LogLevel.Error));
         Assert.False(service.ExecuteTask!.IsCompleted);
 
         await service.StopAsync(CancellationToken.None);
@@ -608,7 +773,7 @@ public class GameCacheRefreshTests
     [Theory]
     [InlineData("BatchSize", "0")]
     [InlineData("BatchSize", "501")] // more than IGDB answers in one request
-    [InlineData("Interval", "00:00:05")] // a schedule rather than a pace
+    [InlineData("Interval", "00:00:05")] // faster than the pace ADR 0052 provides for
     [InlineData("Interval", "01:00:01")] // longer than the lead, so rows reach readers between ticks
     public void AddScheduledWork_WithAPaceTheJobCannotHonour_RefusesIt(string key, string value)
     {

@@ -81,7 +81,8 @@ internal static class GameCacheRefresh
     }
 
     /// <summary>
-    /// The next batch: at most <paramref name="batchSize"/> due rows, the longest-waiting first.
+    /// The next batch: at most <paramref name="batchSize"/> due rows, the longest-waiting first,
+    /// leaving out <paramref name="heldBack"/>.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -90,17 +91,23 @@ internal static class GameCacheRefresh
     /// reader who meets one of those pays exactly what they paid before it existed.
     /// </para>
     /// <para>
-    /// Ties broken on the id, which matters more than it looks: every row written by one request
-    /// shares one <see cref="CachedGame.RefreshedAt"/>, so without it a five-hundred-row shelf would
-    /// come back in whatever order the database liked, and <c>Take</c> over an undefined order can
-    /// return a different fifty from the same table.
+    /// <b>No tie-break, deliberately.</b> Every row one request wrote shares one
+    /// <see cref="CachedGame.RefreshedAt"/> — 610 of the 682 rows in the local table did — and
+    /// which fifty of a tie a batch takes does not matter: whichever it takes move to the back of
+    /// the queue when they are written, and the next batch takes fifty others. Ordering on the id as
+    /// well would make the choice stable for nothing, and the index cannot serve that order: with
+    /// five thousand rows tied at the head of the queue PostgreSQL read all five thousand to return
+    /// fifty, where ordering on the indexed column alone reads fifty. Measured, ADR 0052.
     /// </para>
     /// </remarks>
     public static IQueryable<CachedGame> NextBatch(
-        IQueryable<CachedGame> games, DateTimeOffset now, int batchSize) =>
+        IQueryable<CachedGame> games,
+        DateTimeOffset now,
+        int batchSize,
+        IReadOnlyCollection<int> heldBack) =>
         games
             .Where(DueAt(now))
+            .Where(game => !heldBack.Contains(game.GameId))
             .OrderBy(game => game.RefreshedAt)
-            .ThenBy(game => game.GameId)
             .Take(batchSize);
 }

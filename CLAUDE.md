@@ -128,7 +128,9 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
 - **IGDB is the source of truth for game data, but a library renders from `CachedGames`.** There
   are no local game/genre/platform tables; they were removed, and `UserGameEntry.GameId` holds an
   IGDB id with no foreign key. What exists instead is one `jsonb` row per IGDB id holding the mapped
-  `GameDto`, refreshed on read after a day. **Anything rendering games somebody already tracks —
+  `GameDto`, rewritten in the background an hour before it is a day old (ADR 0052), and on read once
+  it is, as the fallback; both go through `GameCacheService.Apply`, and both thresholds derive from
+  `RefreshAfter`. **Anything rendering games somebody already tracks —
   lists, wishlist, favourites, public profiles — goes through `IGameCacheService`, never
   `IIgdbService`**, because that is what makes those pages survive an IGDB outage; browse, search
   and the game page's detail query stay live, since no local copy can answer a query over the whole
@@ -356,14 +358,18 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   session holds the key, so for the sweep, work still expired after six skipped ticks running means
   the holder is not a sweep, and that logs a warning. The refresh cannot use that rule — rows fall
   due all day, so work is nearly always waiting — and warns instead, hourly, while any row is
-  **twenty-five hours old**, which nothing reaches while anybody is refreshing. It holds its lock
-  **across the IGDB request**, so no two tasks pay for the same rows, and once IGDB has answered it
+  **twenty-five hours old**, which no row reaches while the refresh keeps up. It holds its lock
+  **across the IGDB request**, so no two tasks pay for the same rows, bounded at fifteen seconds
+  because the transaction also holds back any migration of the table; once IGDB has answered it
   **saves and commits on `CancellationToken.None`**: the stopping token bounds the work, not the
-  write (#96). Its pace, one request of fifty ids a minute, is the `GameCacheRefresh` section,
-  checked at startup. **The Steam refresh takes no lock, deliberately**: what it warms is its own
-  process's memory, so a lock would leave every other task's feeds cold, and it refreshes only the
-  feeds read since they were fetched, so it adds no Steam request a reader would not have made. A
-  stalled sweep or refresh is deliberately **not** a `/readyz` failure — the instance still serves.
+  write (#96). Unlike the sweep it writes tracked rows, so **each attempt clears the change
+  tracker** — under a retrying strategy a commit that failed after its save would otherwise leave
+  the retry rows already marked saved, and stamp the stale payload fresh. Its pace, one request of
+  fifty ids a minute, is the `GameCacheRefresh` section, checked at startup. **The Steam refresh
+  takes no lock, deliberately**: what it warms is its own process's memory, so a lock would leave
+  every other task's feeds cold, and it refreshes only the feeds read since they were fetched, so
+  what it adds is at most one request per feed after its last read. A stalled sweep or refresh is
+  deliberately **not** a `/readyz` failure — the instance still serves.
   Retention is two windows, not §S9's one, and **which one applies is decided by
   `CompletedAt`, never by `State`** — `MaxPendingJobs` counts from the same column so the cap and
   the sweep mean the same jobs, and `CK_ImportJobs_Completion` keeps the two columns agreeing.
