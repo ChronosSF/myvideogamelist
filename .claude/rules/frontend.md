@@ -22,8 +22,9 @@ This is the category of bug that is easy to introduce and annoying to diagnose.
 - For browser-only state, use `useSyncExternalStore` with a fixed server snapshot, as
   `@/lib/useHydrated` does. Reading in an effect also works but commits a throwaway render
   first, and `getSnapshot` must return a stable reference or React loops.
-- Server-side loaders have no origin to resolve a relative URL against. Use `apiUrl()` from
-  `@/lib/api` for any fetch that can run during SSR.
+- Server-side loaders have no origin to resolve a relative URL against. A loader calls the API with
+  `loaderFetch(context, path)` from `@/lib/trace.server`, which resolves the path as `apiUrl()` does
+  and sends the render's trace as `traceparent`. The lint refuses a bare `fetch(apiUrl(…))`.
 - **Never format in the runtime's default locale during render.** A bare `toLocaleString()`, or an
   `Intl` formatter given no locale, formats in Node's locale on the server and the reader's in the
   browser. Where those disagree so does the text — `5487` against `5,487` — and hydration fails.
@@ -41,7 +42,9 @@ component plus optional `loader`, `meta`, `links`, `headers` and `ErrorBoundary`
   or indexed. Authenticated, user-specific views can stay client-side.
 - Throw a `Response` from a loader for not-found and upstream failures. The root
   `ErrorBoundary` renders it and the correct HTTP status reaches crawlers — a soft 404 that
-  returns 200 is worse than useless for SEO.
+  returns 200 is worse than useless for SEO. An upstream failure is `upstreamFailure(context,
+  message)`, which carries the trace id the error page asks a reader to quote
+  (`docs/decisions/0059-*`).
 - Give every indexable route a `meta` export that returns `pageMeta(...)` from `@/lib/seo` — it is
   the whole set (title, description, canonical URL, Open Graph, the card), and a leaf's `meta`
   replaces the root's rather than merging with it, so a hand-written list states half of them. Build

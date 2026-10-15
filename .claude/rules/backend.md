@@ -51,11 +51,16 @@ paths:
 
 ## The pipeline and its failures
 
-- Middleware lives in `Security/` and `Errors/`, and the order in `Program.cs` is load-bearing:
-  forwarded headers first, then the exception handler, then security headers, the write guard and
-  the rate limiter. Anything added above the exception handler will not be seen by a failed request,
-  and anything cheap that can refuse a request belongs above the limiter — a request refused after
-  taking a permit has spent somebody's budget to be told no.
+- Middleware lives in `Security/`, `Errors/` and `Observability/`, and the order in `Program.cs` is
+  load-bearing: forwarded headers first, then the request log, then the exception handler, then
+  security headers, the write guard and the rate limiter. Anything added above the exception handler
+  will not be seen by a failed request; the request log is there because it has to see the status the
+  handler ends one with. Anything cheap that can refuse a request belongs above the limiter — a
+  request refused after taking a permit has spent somebody's budget to be told no.
+- **A log line carries no query string, no header and no form value**, because any of them can hold
+  an email address, a cookie or a token. Log a request's method and path, through `LogText`, and let
+  the scopes carry the trace id. A request's `ProblemDetails` carries that same id as `traceId`
+  (`docs/decisions/0059-*`).
 - **Do not catch a third party's failure to return a 500.** `HttpRequestException`, a broken circuit
   and a timeout are turned into a 502 centrally by `UpstreamFailureHandler`; a service that swallows
   one is deciding on the caller's behalf that a degraded page is better than an honest error. The

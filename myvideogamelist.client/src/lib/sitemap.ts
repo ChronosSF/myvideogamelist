@@ -1,6 +1,7 @@
-import { apiUrl } from '@/lib/api';
+import type { RouterContextProvider } from 'react-router';
 import { CACHE_NOT_FOUND, PRIVATE_NO_STORE } from '@/lib/cache';
 import { resourceResponse, siteConfig } from '@/lib/seo';
+import { loaderFetch } from '@/lib/trace.server';
 
 /**
  * The two XML documents of the sitemap protocol (https://www.sitemaps.org/protocol.html).
@@ -88,9 +89,9 @@ export function sitemapOrigin(request: Request): string {
 }
 
 /** One of the API's sitemap feeds, or null when it could not be read. */
-export async function sitemapFeed<T>(path: string): Promise<T | null> {
+export async function sitemapFeed<T>(context: Readonly<RouterContextProvider>, path: string): Promise<T | null> {
     try {
-        const response = await fetch(apiUrl(path));
+        const response = await loaderFetch(context, path);
         return response.ok ? await response.json() as T : null;
     } catch {
         // fetch rejects rather than returning !ok when the API is unreachable.

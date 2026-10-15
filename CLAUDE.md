@@ -51,7 +51,8 @@ Open `https://localhost:58546`.
 
 Health endpoints: `/healthz` (liveness, no dependency checks) and `/readyz` (database and
 IGDB reachability). A degraded IGDB returns 200, not 503 — browsing breaks but stored lists
-still work, so the instance should stay in rotation.
+still work, so the instance should stay in rotation. Which commit is running: `/api/version` on the
+API and `/version` on the SSR server, each `{ sha, builtAt }`, `unknown` locally (ADR 0059).
 
 ## Layout
 
@@ -60,6 +61,7 @@ MyVideoGameList.Server/         ASP.NET Core 10 API
   Controllers/  Services/  Models/  DTOs/  Data/  HealthChecks/
   Security/                     Rate limits, forwarded headers, security headers, the write guard, the admin policy
   Errors/                       What each kind of failure leaves as
+  Observability/                The trace id, the request log, the JSON console, /api/version
 MyVideoGameList.Server.Tests/   xUnit tests
 myvideogamelist.client/
   src/root.tsx                  HTML document, providers, global ErrorBoundary
@@ -67,7 +69,7 @@ myvideogamelist.client/
   src/routes.ts                 Route table. `/u/:userName` is the one public per-person page
   src/pages/                    Route modules (default export + optional loader/meta)
   src/resources/                Resource routes: robots.txt and the sitemaps. A loader, no component
-  src/lib/                      apiUrl(), useHydrated(), pageMeta()
+  src/lib/                      apiUrl(), useHydrated(), pageMeta(); loaderFetch() in trace.server.ts
 docs/decisions/                 Architecture decision records
 docs/data-model-plan.md         The tables not built yet, and the two constraints every table answers to
 scripts/                        Dev-only tools. The seeding tools print SQL to stdout and never open
@@ -292,7 +294,8 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   That order is load-bearing: with the limiter outside the retry it would pace *operations*, and
   three attempts would share one permit. Every error body is a `ProblemDetails` with a `traceId`,
   which means writing it through `IProblemDetailsService` and never by hand; the exception itself is
-  included in Development only. `/readyz` still answers 200 while IGDB is down, deliberately. See
+  included in Development only. That `traceId` is the request's W3C trace id, so it is the id the page
+  that made the call names (next bullet). `/readyz` still answers 200 while IGDB is down, deliberately. See
   `docs/decisions/0034-*`.
 
 - **The rate limiter is narrow on purpose, and the lockout says nothing.** Ten attempts per address
@@ -507,8 +510,21 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   the commit. Passing a constant, a boolean, or dropping the parameter puts one account's data under
   another's name. Apply the same shape to any new account-scoped hook.
 
-- **Loaders run on the server**, where a relative URL has no origin. Use `apiUrl()` from
-  `@/lib/api` for any fetch that may run during SSR.
+- **Loaders run on the server**, where a relative URL has no origin. A loader calls the API with
+  `loaderFetch(context, path)` from `@/lib/trace.server`, which resolves the path as `apiUrl()` does
+  and sends the render's trace.
+
+- **One id names a request from the page to the API's log, and a log line never carries a query
+  string, a header or a form.** The root's middleware draws a W3C trace for every request the SSR
+  server handles and answers with it in `X-Trace-Id`; `loaderFetch` sends it as `traceparent`, and the
+  API continues it, so its log lines carry it as `TraceId` and its errors as `traceId`. A bare
+  `fetch(apiUrl(…))` is refused by the lint, because the API would log that call under a trace of its
+  own. A loader whose call failed throws `upstreamFailure(context, message)`, which is what puts the id
+  on the error page. Outside Development the API logs one JSON object per line, every scope included,
+  and one line per request with its status; never lower `Microsoft.AspNetCore` below `Warning`, whose
+  own request lines print the query, and a search can be an email address. `TraceIds.UseW3COnly()` in
+  `Program.cs` is what stops a later-version `traceparent` writing its own text into every line. See
+  `docs/decisions/0059-*`.
 
 - **Never touch `window`, `document` or `localStorage` during render or in a `useState`
   initializer** — it breaks SSR. Read browser-only state through `useSyncExternalStore` with a

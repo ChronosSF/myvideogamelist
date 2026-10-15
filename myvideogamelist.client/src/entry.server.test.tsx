@@ -4,14 +4,16 @@
 
 import {
     createRequestHandler,
+    type LoaderFunctionArgs,
     type ServerBuild,
     UNSAFE_withComponentProps,
     UNSAFE_withErrorBoundaryProps,
 } from 'react-router';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as entry from '@/entry.server';
 import { CACHE_GAME, CACHE_NOT_FOUND } from '@/lib/cache';
 import { RESOURCE_POLICY } from '@/lib/securityHeaders';
+import { loaderFetch, TRACE_HEADER, upstreamFailure } from '@/lib/trace.server';
 import * as notFound from '@/pages/NotFoundPage';
 import * as root from '@/root';
 
@@ -21,7 +23,8 @@ import * as root from '@/root';
  * test is the one rule the content policy depends on: the nonce in the header is the nonce on every
  * inline script in the body, on a page and on every kind of error document, because a script whose
  * nonce the header does not name never runs and a page whose hydration scripts never run is dead.
- * And, for a page a shared cache may store, that the header waits until the body is final.
+ * And, for a page a shared cache may store, that the header waits until the body is final. And the
+ * trace: that the id a response names is the one every call its loaders made to the API carried.
  */
 
 /**
@@ -56,6 +59,10 @@ beforeEach(() => {
     held = gate();
     held.release();
     entryCalls = 0;
+});
+
+afterEach(() => {
+    vi.unstubAllGlobals();
 });
 
 function page() {
@@ -129,6 +136,19 @@ const build: ServerBuild = {
                 throw new Error('The loader failed.');
             },
         }),
+        // A page whose loader asks the API for something, as every real one does.
+        traced: leaf('traced', 'traced', {
+            default: page,
+            loader: async ({ context }: LoaderFunctionArgs) =>
+                ({ answer: await (await loaderFetch(context, '/api/probe')).text() }),
+        }),
+        // A page whose loader the API failed, as GamePage reports it.
+        upstream: leaf('upstream', 'upstream', {
+            default: page,
+            loader: ({ context }: LoaderFunctionArgs) => {
+                throw upstreamFailure(context, 'Failed to load the probe.');
+            },
+        }),
         crashing: leaf('crashing', 'crashing', {
             // Thrown while rendering, which on the server fails the shell rather than reaching a
             // boundary: React Router renders the error boundary in a second call to the entry.
@@ -147,6 +167,8 @@ const build: ServerBuild = {
             missing: asset('missing', 'missing', 'root', true),
             unavailable: asset('unavailable', 'unavailable', 'root', true),
             failing: asset('failing', 'failing', 'root', true),
+            traced: asset('traced', 'traced', 'root', true),
+            upstream: asset('upstream', 'upstream', 'root', true),
             crashing: asset('crashing', 'crashing', 'root', false),
             'not-found': asset('not-found', '*', 'root', true),
         },
@@ -366,5 +388,85 @@ describe('an error document', () => {
         expect(document.body).toContain('Something went wrong');
         expect(document.policy.match(/script-src/g)).toHaveLength(1);
         expectEveryScriptToCarryTheNonce(document);
+    });
+});
+
+describe('a trace', () => {
+    /** Stands in for the API, recording the traceparent of each call it is sent. */
+    function stubApi() {
+        const sent: (string | null)[] = [];
+        vi.stubGlobal('fetch', vi.fn(async (_url: string, init: RequestInit = {}) => {
+            sent.push(new Headers(init.headers).get('traceparent'));
+            return new Response('from the API');
+        }));
+        return sent;
+    }
+
+    const traceIdOf = (response: Response) => response.headers.get(TRACE_HEADER) ?? '';
+
+    it('is named on the document, and carried by every call its loaders made to the API', async () => {
+        const sent = stubApi();
+
+        const document = await render('/traced');
+        const traceId = traceIdOf(document.response);
+
+        expect(document.body).toContain('from the API');
+        expect(traceId).toMatch(/^[0-9a-f]{32}$/);
+        expect(sent).toHaveLength(1);
+        expect(sent[0]).toMatch(new RegExp(`^00-${traceId}-[0-9a-f]{16}-01$`));
+    });
+
+    it('is drawn afresh for each request, and a .data navigation is one', async () => {
+        const sent = stubApi();
+
+        const first = await handle(request('/traced'));
+        const second = await handle(request('/traced.data'));
+        await Promise.all([first.text(), second.text()]);
+
+        expect(traceIdOf(first)).not.toBe(traceIdOf(second));
+        expect(sent.map((header) => header?.split('-')[1])).toEqual([traceIdOf(first), traceIdOf(second)]);
+    });
+
+    it('is named on a HEAD and on the shared 404, which make no call', async () => {
+        const head = await handle(request('/shared', { method: 'HEAD' }));
+        const notFound = await handle(request('/no/such/page'));
+        await notFound.text();
+
+        expect(traceIdOf(head)).toMatch(/^[0-9a-f]{32}$/);
+        expect(traceIdOf(notFound)).toMatch(/^[0-9a-f]{32}$/);
+    });
+
+    it('is the reference the error page shows when the API failed a loader', async () => {
+        const document = await render('/upstream');
+        const traceId = traceIdOf(document.response);
+
+        expect(document.response.status).toBe(502);
+        expect(document.body).toContain('Failed to load the probe.');
+        expect(document.body).toMatch(new RegExp(`<code[^>]*>${traceId}</code>`));
+        // And in the data the browser hydrates from, so that its render shows the same id.
+        expect(document.body.split(traceId).length - 1).toBeGreaterThan(1);
+        expectEveryScriptToCarryTheNonce(document);
+    });
+
+    it('is logged beside a loader that failed, so the id a reader quotes finds the error', async () => {
+        const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+        const document = await render('/failing');
+
+        expect(logged).toHaveBeenCalledWith(
+            `GET /failing failed, trace ${traceIdOf(document.response)}:`,
+            expect.objectContaining({ message: 'The loader failed.' }),
+        );
+    });
+
+    it('is logged beside a shell that failed to render', async () => {
+        const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+        const document = await render('/crashing');
+
+        expect(logged).toHaveBeenCalledWith(
+            `GET /crashing failed, trace ${traceIdOf(document.response)}:`,
+            expect.objectContaining({ message: 'The page failed to render.' }),
+        );
     });
 });

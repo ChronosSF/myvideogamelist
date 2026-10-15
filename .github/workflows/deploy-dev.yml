@@ -56,9 +56,14 @@ jobs:
           # The commit CI tested, not whatever master is by the time this runs.
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
+      # The tag, and what both images answer at /version and /api/version: the full commit and one
+      # build time for the release, so that the two processes' answers can be compared as they are.
       - name: Name the release
         id: release
-        run: echo "tag=$(git rev-parse --short=12 HEAD)" >> "$GITHUB_OUTPUT"
+        run: |
+          echo "tag=$(git rev-parse --short=12 HEAD)" >> "$GITHUB_OUTPUT"
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "built=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
 
       - uses: aws-actions/configure-aws-credentials@v6
         with:
@@ -105,6 +110,9 @@ jobs:
           platforms: linux/amd64
           push: true
           provenance: false
+          build-args: |
+            GIT_SHA=${{ steps.release.outputs.sha }}
+            BUILD_TIME=${{ steps.release.outputs.built }}
           tags: ${{ env.REGISTRY }}/mvgl/api:${{ steps.release.outputs.tag }}
           cache-from: type=gha,scope=api
           cache-to: type=gha,scope=api,mode=max
@@ -117,6 +125,9 @@ jobs:
           platforms: linux/amd64
           push: true
           provenance: false
+          build-args: |
+            GIT_SHA=${{ steps.release.outputs.sha }}
+            BUILD_TIME=${{ steps.release.outputs.built }}
           tags: ${{ env.REGISTRY }}/mvgl/ssr:${{ steps.release.outputs.tag }}
           cache-from: type=gha,scope=ssr
           cache-to: type=gha,scope=ssr,mode=max
