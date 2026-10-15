@@ -6,9 +6,9 @@ import { PlayNextPicker } from '@/components/PlayNextPicker';
 import { ReleaseLine } from '@/components/ReleaseLine';
 import { TrendingRail } from '@/components/TrendingRail';
 import { NewsCard } from '@/components/NewsCard';
-import { apiUrl } from '@/lib/api';
 import { CACHE_HOME, PRIVATE_NO_STORE } from '@/lib/cache';
 import { type SiteConfig, pageMeta, siteConfig } from '@/lib/seo';
+import { loaderFetch } from '@/lib/trace.server';
 import type { UserProfile } from '@/types/auth';
 import type { HomeResponse } from '@/types/news';
 import type { Route } from './+types/HomePage';
@@ -48,7 +48,7 @@ type HomeData = HomeResponse & { site: SiteConfig };
  * That is the opposite of the game route, where an upstream failure genuinely means there is no
  * page.
  */
-export async function loader() {
+export async function loader({ context }: Route.LoaderArgs) {
     const site = siteConfig();
 
     // A degraded render must not be cached, and a 200 from the API does not mean the render is
@@ -79,7 +79,7 @@ export async function loader() {
     const nothing = () => respond({ spotlight: null, popular: [], news: [], degraded: true });
 
     try {
-        const response = await fetch(apiUrl('/api/home'));
+        const response = await loaderFetch(context, '/api/home');
         if (!response.ok) return nothing();
 
         return respond(await response.json() as HomeResponse);

@@ -53,7 +53,7 @@ grow a forward pointer when a later record or an issue closes something it left 
 | [0031](0031-a-list-rename-is-a-label-its-owner-sees.md) | A list rename is a label, checked as a set, and seen only by its owner | Implemented |
 | [0032](0032-each-browse-order-carries-its-own-floor.md) | Browse filters: every order is one IGDB query, and each carries its own floor | Implemented |
 | [0033](0033-what-the-api-refuses.md) | What the API refuses: guessing, volume, forged writes, and unattributed addresses | Implemented; §5's `script-src` is 0053 |
-| [0034](0034-failing-in-one-shape.md) | Failing in one shape: IGDB is retried and broken, and every error says so the same way | Implemented |
+| [0034](0034-failing-in-one-shape.md) | Failing in one shape: IGDB is retried and broken, and every error says so the same way | Implemented; its `traceId` is the request's trace since 0059 |
 | [0035](0035-a-local-copy-of-what-igdb-said.md) | A local copy of what IGDB said, so a library renders without them | Implemented |
 | [0036](0036-what-a-crawler-is-told.md) | What a crawler is told: `noindex` rather than `Disallow`, a sitemap from our own tables, and canonical URLs built from data | Implemented |
 | [0037](0037-a-tracker-import-carries-history.md) | A tracker import carries the history a platform import cannot | Implemented; decision 3 amended by 0045, decision 4 by 0050 |
@@ -71,6 +71,7 @@ grow a forward pointer when a later record or an issue closes something it left 
 | [0049](0049-every-colour-is-a-token.md) | Every colour is a token, named for its job, in one file | Implemented |
 | [0050](0050-an-imported-run-takes-its-type-from-the-source.md) | An imported run takes its type from the source's completion level | Implemented |
 | [0053](0053-a-documents-scripts-carry-its-renders-nonce.md) | A document's scripts carry its render's nonce, and a shared cache keeps the pair whole | Implemented |
+| [0059](0059-a-request-is-known-by-its-trace-and-a-build-by-its-commit.md) | A request is known by its trace from the page to the API's log, and a build by its commit | Implemented; OpenTelemetry and the alarms are #103 |
 
 **Status** — *Accepted*: decided, not yet built. *Implemented*: decided and in the code.
 *Superseded*: replaced by a later record.
