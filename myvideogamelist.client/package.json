@@ -23,7 +23,7 @@
     "@tailwindcss/vite": "^4.2.2",
     "isbot": "^5.2.2",
     "react": "^19.2.8",
-    "react-dom": "^19.2.8",
+    "react-dom": "^19.3.0",
     "react-router": "^8.3.0",
     "tailwindcss": "^4.2.1"
   },
@@ -35,7 +35,7 @@
     "@testing-library/user-event": "^14.6.6",
     "@types/node": "^25.5.0",
     "@types/react": "^19.2.14",
-    "@types/react-dom": "^19.2.3",
+    "@types/react-dom": "^19.3.0",
     "@typescript-eslint/eslint-plugin": "^8.57.1",
     "@typescript-eslint/parser": "^8.57.1",
     "@vitejs/plugin-react": "^6.1.2",
