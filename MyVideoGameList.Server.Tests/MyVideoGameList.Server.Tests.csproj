@@ -15,7 +15,7 @@
     <!-- Pins past the 10.0.7 that Amazon.AspNetCore.DataProtection.SSM pulls in transitively,
          which NuGet audit flags (NU1903). The server project gets the patched copy from the
          shared framework; this test project is not a web project and resolves it as a package. -->
-    <PackageReference Include="System.Security.Cryptography.Xml" Version="10.0.12" />
+    <PackageReference Include="System.Security.Cryptography.Xml" Version="10.0.13" />
     <PackageReference Include="xunit" Version="2.9.3" />
     <PackageReference Include="xunit.runner.visualstudio" Version="4.0.1" />
   </ItemGroup>
