@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MAX_BULK_GAMES, bulkDone, bulkFailure, bulkMissing, bulkRefusal, gameCount } from '@/lib/listBulk';
+import { MAX_BULK_GAMES, bulkDone, bulkFailure, bulkMissing, bulkRefusal, gameCount, missingFrom } from '@/lib/listBulk';
 
 describe('gameCount', () => {
     it('counts in the singular for one and groups thousands the same on either side', () => {
@@ -62,5 +62,27 @@ describe('bulkRefusal', () => {
         // `ListBatch.MaxGames` on the server; a change to one without the other is a 400 on a big list
         // or a refusal the server would have taken.
         expect(MAX_BULK_GAMES).toBe(10_000);
+    });
+});
+
+describe('missingFrom', () => {
+    it('reads the games answered missing, and only those', () => {
+        expect([...missingFrom({
+            results: [
+                { gameId: 1, outcome: 'moved' },
+                { gameId: 2, outcome: 'missing' },
+                { gameId: 3, outcome: 'unchanged' },
+                { gameId: 4, outcome: 'missing' },
+            ],
+        })]).toEqual([2, 4]);
+    });
+
+    it.each([
+        ['nothing', null],
+        ['a list', [{ gameId: 2, outcome: 'missing' }]],
+        ['results that are not a list', { results: { gameId: 2, outcome: 'missing' } }],
+        ['results that are not results', { results: [null, 5, 'missing', { gameId: '2', outcome: 'missing' }, { outcome: 'missing' }] }],
+    ])('says nothing is missing when the answer is %s, so a saved batch is not undone', (_, answer) => {
+        expect(missingFrom(answer).size).toBe(0);
     });
 });

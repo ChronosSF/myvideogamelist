@@ -174,6 +174,23 @@ public record ListEntryDto(
     int? Position);
 
 /// <summary>
+/// What a move left a game's entry holding: a <see cref="ListEntryDto"/>'s own fields, without the game,
+/// which the client already has.
+/// </summary>
+/// <remarks>
+/// What <c>PUT /api/lists/{gameId}</c> answers with. A game coming back from no list has a row the client
+/// dropped when it left, and the client cannot know its score, its ownership or when it was first added —
+/// the entry kept all three (ADR 0019). Without this the row came back unscored and with no ownership,
+/// which the lists page's ownership filter then acted on until the next load (ADR 0055).
+/// </remarks>
+public record EntryStateDto(
+    short? Score,
+    string? Ownership,
+    DateTimeOffset AddedAt,
+    DateTimeOffset? StatusChangedAt,
+    int? Position);
+
+/// <summary>
 /// One entry read on its own: its list-shaped fields, and the notes a list row leaves out.
 /// </summary>
 /// <remarks>

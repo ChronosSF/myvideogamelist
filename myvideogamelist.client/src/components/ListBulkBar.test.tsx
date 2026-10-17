@@ -11,7 +11,7 @@ const TARGETS: { id: ListId; name: string }[] = [
     { id: 'dropped', name: 'Dropped' },
 ];
 
-function renderBar(props: { count?: number; working?: string | null } = {}) {
+function renderBar(props: { count?: number; working?: string | null; problem?: string | null } = {}) {
     const handlers = { onMove: vi.fn(), onRemove: vi.fn(), onClear: vi.fn() };
     const view = render(
         <ListBulkBar
@@ -19,6 +19,7 @@ function renderBar(props: { count?: number; working?: string | null } = {}) {
             listName="Playing"
             targets={TARGETS}
             working={props.working ?? null}
+            problem={props.problem ?? null}
             {...handlers}
         />,
     );
@@ -33,14 +34,16 @@ describe('ListBulkBar', () => {
         renderBar({ count: 3 });
 
         expect(bar()).toHaveTextContent('3 games selected');
+        // Each says where it moves to in its own name, the visible words being the list's alone.
         expect(within(moves()).getAllByRole('button').map(button => button.textContent))
-            .toEqual(['Backlog', 'On Hold', 'Beaten', 'Dropped']);
+            .toEqual(['Move to Backlog', 'Move to On Hold', 'Move to Beaten', 'Move to Dropped']);
+        expect(within(moves()).getByRole('button', { name: 'Move to Beaten' })).toBeInTheDocument();
     });
 
     it('moves the selection to the list pressed', async () => {
         const { onMove } = renderBar();
 
-        await userEvent.click(within(moves()).getByRole('button', { name: 'Beaten' }));
+        await userEvent.click(within(moves()).getByRole('button', { name: 'Move to Beaten' }));
 
         expect(onMove).toHaveBeenCalledExactlyOnceWith('finished');
     });
@@ -54,11 +57,15 @@ describe('ListBulkBar', () => {
 
     it('stays on the page with nothing selected, so the first tick does not push the rows down', () => {
         const { view } = renderBar({ count: 0 });
+        const before = bar();
 
         view.rerender(
             <ListBulkBar count={1} listName="Playing" targets={TARGETS} working={null} onMove={vi.fn()} onRemove={vi.fn()} onClear={vi.fn()} />,
         );
 
+        // The same element, its content changed: jsdom lays nothing out, so the steady height is the
+        // stylesheet's to keep and was measured in a browser.
+        expect(bar()).toBe(before);
         expect(bar()).toHaveTextContent('1 game selected');
     });
 
@@ -116,7 +123,7 @@ describe('ListBulkBar', () => {
         renderBar();
 
         await userEvent.tab();
-        expect(within(moves()).getByRole('button', { name: 'Backlog' })).toHaveFocus();
+        expect(within(moves()).getByRole('button', { name: 'Move to Backlog' })).toHaveFocus();
         await userEvent.tab();
         await userEvent.tab();
         await userEvent.tab();
@@ -124,6 +131,21 @@ describe('ListBulkBar', () => {
         expect(screen.getByRole('button', { name: 'Remove from list' })).toHaveFocus();
         await userEvent.tab();
         expect(screen.getByRole('button', { name: 'Clear selection' })).toHaveFocus();
+    });
+
+    it('says why the last action did not do all it was asked, in place of the count, and keeps its controls', () => {
+        renderBar({ count: 2, problem: 'Failed to move 2 games to Beaten. Please try again.' });
+
+        expect(bar()).toHaveTextContent('Failed to move 2 games to Beaten. Please try again.');
+        expect(bar()).not.toHaveTextContent('2 games selected');
+        expect(within(moves()).getByRole('button', { name: 'Move to Beaten' })).toBeInTheDocument();
+    });
+
+    it('says it in place of the hint once nothing is left selected', () => {
+        renderBar({ count: 0, problem: 'None of the 2 games were moved: they are no longer in your lists.' });
+
+        expect(bar()).toHaveTextContent('None of the 2 games were moved');
+        expect(bar()).not.toHaveTextContent(/tick games/i);
     });
 
     it('says what it is doing in place of its controls while an action is out', () => {

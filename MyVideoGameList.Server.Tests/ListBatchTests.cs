@@ -148,14 +148,50 @@ public class ListBatchTests
         public override IReadOnlyList<EntityEntry> Entries => entries;
     }
 
-    /// <summary>Fails every save with something that is not a row gone missing.</summary>
-    private sealed class FailEverySave : SaveChangesInterceptor
+    /// <summary>
+    /// Fails the first save with a concurrency failure that names one of the events to be inserted —
+    /// which PostgreSQL cannot produce today, and which the retry must not mistake for a row gone missing.
+    /// </summary>
+    private sealed class ConflictNamingAnEvent : SaveChangesInterceptor
     {
         public override ValueTask<InterceptionResult<int>> SavingChangesAsync(
             DbContextEventData eventData,
             InterceptionResult<int> result,
-            CancellationToken cancellationToken = default) =>
+            CancellationToken cancellationToken = default)
+        {
+            var anEvent = eventData.Context!.ChangeTracker.Entries<UserGameEvent>().Cast<EntityEntry>().Take(1).ToList();
+            return anEvent.Count == 0 ? ValueTask.FromResult(result) : throw new RowGone(anEvent);
+        }
+    }
+
+    /// <summary>Fails every save with something that is not a row gone missing, and counts the saves.</summary>
+    private sealed class FailEverySave : SaveChangesInterceptor
+    {
+        public int Saves { get; private set; }
+
+        public override ValueTask<InterceptionResult<int>> SavingChangesAsync(
+            DbContextEventData eventData,
+            InterceptionResult<int> result,
+            CancellationToken cancellationToken = default)
+        {
+            Saves++;
             throw new DbUpdateException("The database refused the write.");
+        }
+    }
+
+    /// <summary>Counts the saves of the context it is attached to, and lets each through.</summary>
+    private sealed class CountSaves : SaveChangesInterceptor
+    {
+        public int Saves { get; private set; }
+
+        public override ValueTask<InterceptionResult<int>> SavingChangesAsync(
+            DbContextEventData eventData,
+            InterceptionResult<int> result,
+            CancellationToken cancellationToken = default)
+        {
+            Saves++;
+            return ValueTask.FromResult(result);
+        }
     }
 
     // ---------------------------------------------------------------- a move of several games
@@ -317,7 +353,7 @@ public class ListBatchTests
     }
 
     [Fact]
-    public async Task SetStatusesAsync_StampsOneMomentOnEveryChangeAndEveryEvent()
+    public async Task SetStatusesAsync_SeveralChanges_ShareOneMomentWithTheirEvents()
     {
         // One action, one moment: the games a batch brings into a list arrive together and are told
         // apart by title on the server, as the client's optimistic copy tells them apart.
@@ -346,7 +382,7 @@ public class ListBatchTests
     }
 
     [Fact]
-    public async Task SetStatusesAsync_AnswersEveryGameInTheOrderItWasFirstNamed()
+    public async Task SetStatusesAsync_MixedOutcomes_AreAnsweredInTheOrderFirstNamed()
     {
         using var db = NewDb();
         await AddEntryAsync(db, UserId, 10, ListStatusKeys.Finished);
@@ -361,6 +397,22 @@ public class ListBatchTests
                 new StatusChangeDto(10, StatusChangeOutcomes.Unchanged),
             ],
             results);
+    }
+
+    [Fact]
+    public async Task SetStatusesAsync_SeveralGames_AreSavedInOneSaveChanges()
+    {
+        // One transaction: every change and every event in one save, so a failure leaves nothing half
+        // done. A save per game would pass every other test here.
+        var counting = new CountSaves();
+        using var db = NewDb(interceptors: counting);
+        foreach (var gameId in new[] { 10, 20, 30 }) await AddEntryAsync(db, UserId, gameId, ListStatusKeys.Backlog);
+        var before = counting.Saves;
+
+        await NewService(db).SetStatusesAsync(UserId, [10, 20, 30], ListStatusKeys.Playing);
+
+        Assert.Equal(1, counting.Saves - before);
+        Assert.Equal(3, await db.UserGameEvents.CountAsync());
     }
 
     [Theory]
@@ -467,10 +519,14 @@ public class ListBatchTests
             await AddEntryAsync(setup, UserId, 20, ListStatusKeys.Playing);
         }
 
-        await using var db = NewDb(name, new FailEverySave());
+        var failing = new FailEverySave();
+        await using var db = NewDb(name, failing);
 
         await Assert.ThrowsAsync<DbUpdateException>(
             () => NewService(db).SetStatusesAsync(UserId, [10, 20], ListStatusKeys.Finished));
+
+        // Rethrown at once, not retried as though a row had gone missing.
+        Assert.Equal(1, failing.Saves);
 
         await using var check = NewDb(name);
         Assert.Equal(StatusId(check, ListStatusKeys.Backlog), (await check.UserGameEntries.SingleAsync(e => e.GameId == 10)).StatusId);
@@ -478,24 +534,75 @@ public class ListBatchTests
         Assert.Empty(await check.UserGameEvents.ToListAsync());
     }
 
+    [Fact]
+    public async Task SetStatusesAsync_AConflictNamingAnEvent_IsNotSwallowed_AndSavesNothing()
+    {
+        // Detaching an event and saving its entry's change would be a status change with no event
+        // (ADR 0018); only a conflict made of entries is a row gone missing.
+        var name = Guid.NewGuid().ToString();
+        await using (var setup = NewDb(name))
+        {
+            await AddEntryAsync(setup, UserId, 10, ListStatusKeys.Backlog);
+        }
+
+        await using var db = NewDb(name, new ConflictNamingAnEvent());
+
+        await Assert.ThrowsAnyAsync<DbUpdateConcurrencyException>(
+            () => NewService(db).SetStatusesAsync(UserId, [10], ListStatusKeys.Playing));
+
+        await using var check = NewDb(name);
+        Assert.Equal(StatusId(check, ListStatusKeys.Backlog), (await check.UserGameEntries.SingleAsync()).StatusId);
+        Assert.Empty(await check.UserGameEvents.ToListAsync());
+    }
+
     // ---------------------------------------------------------------- the single paths share the rule
 
     [Fact]
-    public async Task SetListEntryAsync_AndRemoveListEntryAsync_StampTheEventAndTheChangeWithOneMoment()
+    public async Task SetListEntryAsync_ATickingClock_StampsTheEventAndTheChangeAlike()
     {
-        // The single move and removal now go through the batch's rule, Transition; with a clock that
-        // ticks on every read, two reads would put the event a second away from the change it records.
+        // The single move goes through the batch's rule, Transition; with a clock that ticks on every
+        // read, two reads would put the event a second away from the change it records.
         using var db = NewDb();
-        var service = NewService(db, new TickingClock(Midday));
 
-        await service.SetListEntryAsync(UserId, 10, ListStatusKeys.Playing);
-        var entry = await db.UserGameEntries.SingleAsync();
-        var arrival = await db.UserGameEvents.SingleAsync();
-        Assert.Equal(entry.StatusChangedAt, arrival.OccurredAt);
+        await NewService(db, new TickingClock(Midday)).SetListEntryAsync(UserId, 10, ListStatusKeys.Playing);
 
-        await service.RemoveListEntryAsync(UserId, 10);
-        var departure = await db.UserGameEvents.SingleAsync(e => e.ToStatusId == null);
-        Assert.Equal((await db.UserGameEntries.SingleAsync()).StatusChangedAt, departure.OccurredAt);
+        Assert.Equal((await db.UserGameEntries.SingleAsync()).StatusChangedAt, (await db.UserGameEvents.SingleAsync()).OccurredAt);
+    }
+
+    [Fact]
+    public async Task RemoveListEntryAsync_ATickingClock_StampsTheEventAndTheChangeAlike()
+    {
+        using var db = NewDb();
+        await AddEntryAsync(db, UserId, 10, ListStatusKeys.Playing);
+
+        await NewService(db, new TickingClock(Midday)).RemoveListEntryAsync(UserId, 10);
+
+        Assert.Equal((await db.UserGameEntries.SingleAsync()).StatusChangedAt, (await db.UserGameEvents.SingleAsync()).OccurredAt);
+    }
+
+    [Fact]
+    public async Task SetListEntryAsync_IntoAListFromNone_AnswersWithWhatTheEntryKept()
+    {
+        // The client dropped the row when the game left every list; the entry kept its score, its
+        // ownership and when it was first added, and the move says so (ADR 0055).
+        using var db = NewDb();
+        await AddEntryAsync(db, UserId, 10, status: null, score: 8, ownership: OwnershipKinds.Owned);
+
+        var state = await NewService(db).SetListEntryAsync(UserId, 10, ListStatusKeys.Backlog);
+
+        Assert.Equal(new EntryStateDto(8, OwnershipKinds.Owned, LastMonth, Midday, null), state);
+    }
+
+    [Fact]
+    public async Task SetListEntryAsync_ToTheListItIsIn_AnswersWithTheEntryUnchanged()
+    {
+        using var db = NewDb();
+        await AddEntryAsync(db, UserId, 10, ListStatusKeys.Backlog, position: 2048, ownership: OwnershipKinds.Borrowed);
+
+        var state = await NewService(db).SetListEntryAsync(UserId, 10, ListStatusKeys.Backlog);
+
+        Assert.Equal(new EntryStateDto(null, OwnershipKinds.Borrowed, LastMonth, LastMonth, 2048), state);
+        Assert.Empty(await db.UserGameEvents.ToListAsync());
     }
 
     // ---------------------------------------------------------------- what the API accepts
@@ -571,7 +678,46 @@ public class ListBatchTests
     }
 
     [Fact]
-    public void SetStatuses_HoldsTheBodyToItsLimitBeforeReadingIt()
+    public void SetStatusesResultDto_InJson_NamesEveryFieldAndOutcomeAsTheClientReadsThem()
+    {
+        // The client branches on these strings (`StatusChangeOutcome` in @/lib/listBulk) and reads these
+        // names; a rename on this side alone would leave every missing game in the list it was sent to.
+        var json = JsonSerializer.Serialize(
+            new SetStatusesResultDto(
+            [
+                new StatusChangeDto(1, StatusChangeOutcomes.Moved),
+                new StatusChangeDto(2, StatusChangeOutcomes.Unchanged),
+                new StatusChangeDto(3, StatusChangeOutcomes.Missing),
+            ]),
+            Web);
+
+        Assert.Equal(
+            """{"results":[{"gameId":1,"outcome":"moved"},{"gameId":2,"outcome":"unchanged"},{"gameId":3,"outcome":"missing"}]}""",
+            json);
+    }
+
+    [Fact]
+    public void EntryStateDto_InJson_NamesEveryFieldAsTheClientReadsThem()
+    {
+        // A list row's own fields, which `addToList` merges into the row it built: the same names as
+        // ListEntryDto's, nulls included.
+        var json = JsonSerializer.Serialize(new EntryStateDto(8, OwnershipKinds.Owned, LastMonth, null, null), Web);
+
+        Assert.Equal(
+            """{"score":8,"ownership":"owned","addedAt":"2026-02-12T12:00:00+00:00","statusChangedAt":null,"position":null}""",
+            json);
+    }
+
+    [Fact]
+    public void ListBatch_MaxGames_IsTheBoundTheClientRestates()
+    {
+        // `MAX_BULK_GAMES` in @/lib/listBulk refuses past this before anything moves; the two have to move
+        // together, and the client's test pins its side.
+        Assert.Equal(10_000, ListBatch.MaxGames);
+    }
+
+    [Fact]
+    public void SetStatuses_ABodyOverTheLimit_IsRefusedBeforeItIsRead()
     {
         var limit = typeof(ListsController).GetMethod(nameof(ListsController.SetStatuses))!
             .GetCustomAttribute<RequestSizeLimitAttribute>();

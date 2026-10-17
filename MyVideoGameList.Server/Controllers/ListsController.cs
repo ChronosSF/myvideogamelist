@@ -25,8 +25,15 @@ public class ListsController(
         return Ok(lists);
     }
 
+    /// <summary>
+    /// Moves one game to a list, and answers with what its entry holds afterwards.
+    /// </summary>
+    /// <remarks>
+    /// A 200 with the entry's own fields rather than a 204: a game coming back from no list kept its
+    /// score, its ownership and when it was first added, none of which the client still has (ADR 0055).
+    /// </remarks>
     [HttpPut("{gameId:int}")]
-    public async Task<IActionResult> SetListEntry(
+    public async Task<ActionResult<EntryStateDto>> SetListEntry(
         [Range(1, int.MaxValue)] int gameId,
         [FromBody] SetListEntryDto dto,
         CancellationToken cancellationToken)
@@ -36,8 +43,7 @@ public class ListsController(
         var user = await userManager.GetUserAsync(User);
         if (user is null) return Unauthorized();
 
-        await listService.SetListEntryAsync(user.Id, gameId, dto.Status, cancellationToken);
-        return NoContent();
+        return Ok(await listService.SetListEntryAsync(user.Id, gameId, dto.Status, cancellationToken));
     }
 
     /// <summary>

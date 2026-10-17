@@ -64,17 +64,18 @@ public class ListService(
         return game is null ? null : new EntryDto(ToDto(entry, game), entry.Notes);
     }
 
-    public async Task SetListEntryAsync(
+    public async Task<EntryStateDto> SetListEntryAsync(
         string userId, int gameId, string status, CancellationToken cancellationToken = default)
     {
         var target = await StatusIdAsync(status, cancellationToken);
         var entry = await FindOrCreateAsync(userId, gameId, cancellationToken);
 
-        if (Transition(entry, target, timeProvider.GetUtcNow()) is null) return;
-
         // One SaveChanges, so the event and the state change land in the same transaction or
         // neither does. A recorded transition that did not happen is as bad as a missing one.
-        await db.SaveChangesAsync(cancellationToken);
+        if (Transition(entry, target, timeProvider.GetUtcNow()) is not null)
+            await db.SaveChangesAsync(cancellationToken);
+
+        return new EntryStateDto(entry.Score, entry.Ownership, entry.AddedAt, entry.StatusChangedAt, entry.Position);
     }
 
     /// <summary>
@@ -178,20 +179,21 @@ public class ListService(
                 await db.SaveChangesAsync(cancellationToken);
                 break;
             }
-            catch (DbUpdateConcurrencyException conflict) when (attempt < MaxBatchAttempts)
+            // Only a conflict made of entries is a row gone missing. Anything else — an event named, which
+            // PostgreSQL cannot produce today — is rethrown rather than detached, since dropping an event
+            // while saving its entry's change is the status change without an event 0018 forbids.
+            catch (DbUpdateConcurrencyException conflict)
+                when (attempt < MaxBatchAttempts && conflict.Entries.All(gone => gone.Entity is UserGameEntry))
             {
                 // Only the rows the database could not find, and the events that would have recorded
                 // their moves. The save that found them was rolled back whole; the rest are still
                 // marked, and go again.
                 foreach (var gone in conflict.Entries)
                 {
-                    if (gone.Entity is UserGameEntry entry)
-                    {
-                        if (events.Remove(entry.GameId, out var orphan))
-                            db.Entry(orphan).State = EntityState.Detached;
-                        outcomes[entry.GameId] = absent;
-                    }
-
+                    var entry = (UserGameEntry)gone.Entity;
+                    if (events.Remove(entry.GameId, out var orphan))
+                        db.Entry(orphan).State = EntityState.Detached;
+                    outcomes[entry.GameId] = absent;
                     gone.State = EntityState.Detached;
                 }
             }

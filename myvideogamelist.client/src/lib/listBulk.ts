@@ -26,16 +26,35 @@ export interface StatusChange {
 /**
  * How a bulk action ended, for the page to keep, announce and clear its selection by.
  *
- * - `refused`: nothing was sent and nothing changed, and the banner says why.
+ * - `refused`: nothing was sent and nothing changed; `message` is why, which the banner says too.
  * - `failed`: sent and not saved, refused or never arrived; every game is back where it was.
  * - `saved`: the server answered. `gameIds` are the games the action was about, all of them out of
  *   the list they were in: `moved` are where they were asked to be, and `missing` — the account has no
  *   entry for them any more — are in no list, as the server has them.
  */
 export type BulkResult =
-    | { outcome: 'refused' }
-    | { outcome: 'failed'; gameIds: number[] }
+    | { outcome: 'refused'; message: string }
+    | { outcome: 'failed'; gameIds: number[]; message: string }
     | { outcome: 'saved'; gameIds: number[]; moved: number[]; missing: number[] };
+
+/**
+ * The games a batch's answer says the account has no entry for. Anything that is not the answer's shape,
+ * as a whole or in a result, says nothing: the request saved, which is what its status said, so a body
+ * that cannot be trusted leaves every game where it was sent rather than putting back what the server
+ * kept, or throwing a saved batch into the failure path.
+ */
+export function missingFrom(answer: unknown): Set<number> {
+    const results = typeof answer === 'object' && answer !== null ? (answer as { results?: unknown }).results : null;
+    if (!Array.isArray(results)) return new Set();
+
+    const missing = new Set<number>();
+    for (const result of results as unknown[]) {
+        if (typeof result !== 'object' || result === null) continue;
+        const { gameId, outcome } = result as { gameId?: unknown; outcome?: unknown };
+        if (outcome === 'missing' && typeof gameId === 'number') missing.add(gameId);
+    }
+    return missing;
+}
 
 /** "1 game", "3 games", "1,204 games". */
 export function gameCount(count: number): string {

@@ -1080,7 +1080,7 @@ describe("the entry's own fields", () => {
      * shown in the game's list row too, at once, and put back if the save fails — the lists page has a
      * column and a filter for it (`docs/decisions/0055-*`); the notes show in no list.
      */
-    function fieldsStub(options: { hold?: string[]; failing?: string[]; reject?: string[] } = {}) {
+    function fieldsStub(options: { hold?: string[]; failing?: string[]; reject?: string[]; celeste?: ListEntryDto } = {}) {
         const calls: Recorded[] = [];
         const settlers = new Map<string, (status: number) => void>();
 
@@ -1091,7 +1091,7 @@ describe("the entry's own fields", () => {
             calls.push({ method, url, body: init?.body ? JSON.parse(String(init.body)) : undefined });
 
             if (key === 'GET /api/lists') {
-                return Promise.resolve(new Response(JSON.stringify({ lists: { playing: [CELESTE] } }), { status: 200 }));
+                return Promise.resolve(new Response(JSON.stringify({ lists: { playing: [options.celeste ?? CELESTE] } }), { status: 200 }));
             }
             if (key === 'GET /api/user/list-preferences') {
                 return Promise.resolve(new Response(JSON.stringify({ view: 'tiles', sorts: {} }), { status: 200 }));
@@ -1161,13 +1161,17 @@ describe("the entry's own fields", () => {
         expect(calls.some(c => c.url === '/api/lists/1')).toBe(false);
     });
 
-    it("puts the row's ownership back when the save is refused", async () => {
-        await mountFields({ failing: ['PUT /api/entries/1/ownership'] });
+    it("puts the row's ownership back when the save is refused, as it was rather than as nothing", async () => {
+        // Borrowed to begin with, so an undo that put back nothing would be caught.
+        await mountFields({
+            failing: ['PUT /api/entries/1/ownership'],
+            celeste: entry({ game: { id: 1, title: 'Celeste' }, score: 7, ownership: 'borrowed' }),
+        });
 
         await press('own it');
 
         await waitFor(() => expect(result()).toHaveTextContent('false'));
-        expect(screen.getByTestId('list-playing')).toHaveTextContent('Celeste(7)[-]');
+        expect(screen.getByTestId('list-playing')).toHaveTextContent('Celeste(7)[borrowed]');
     });
 
     it('puts it back when the request never arrives, too', async () => {
@@ -1241,6 +1245,8 @@ describe("the entry's own fields", () => {
 
         await waitFor(() => expect(result()).toHaveTextContent('false'));
         expect(calls.some(c => c.url === '/api/entries/1/ownership')).toBe(false);
+        // Refused before anything changed: the row shows no ownership it was never given.
+        expect(screen.getByTestId('list-playing')).toHaveTextContent('Celeste(9)[-]');
     });
 });
 
@@ -1801,7 +1807,7 @@ describe('several games at once', () => {
     ];
     const BACKLOG = [entry({ game: { id: 3, title: 'Cuphead' }, position: 1024 })];
 
-    type Answer = { gameId: number; outcome: 'moved' | 'unchanged' | 'missing' }[] | 'unreadable';
+    type Answer = { gameId: number; outcome: string }[] | 'unreadable' | { raw: string };
 
     /**
      * Holds, refuses or rejects chosen requests, as the other blocks' stubs do; answers the batch as the
@@ -1822,6 +1828,7 @@ describe('several games at once', () => {
 
         const answer = (body: unknown): Response => {
             if (options.answer === 'unreadable') return new Response('{"results": [', { status: 200 });
+            if (options.answer && 'raw' in options.answer) return new Response(options.answer.raw, { status: 200 });
             const named = (body as { gameIds: number[] }).gameIds;
             const results = options.answer ?? named.map(gameId => ({ gameId, outcome: 'moved' }));
             return new Response(JSON.stringify({ results }), { status: 200 });
@@ -1942,16 +1949,59 @@ describe('several games at once', () => {
 
     it('stamps one moment on every game it moves, and clears a hand-order place it takes out of its list', async () => {
         // One moment, as the server stamps one for the batch: the games arrive together, and the order
-        // they arrive in is the title's on both sides.
+        // they arrive in is the title's on both sides. A clock that moves on every reading, so a stamp
+        // read once per game would show.
         await mountBulk();
+        let readings = 0;
+        const clock = vi.spyOn(Date.prototype, 'toISOString')
+            .mockImplementation(() => `2026-10-17T10:00:${String(readings++).padStart(2, '0')}.000Z`);
 
-        await press('finish celeste and cuphead');
+        try {
+            await press('finish celeste and cuphead');
+            await waitFor(() => expect(screen.getByTestId('result')).toHaveTextContent('saved'));
+        } finally {
+            clock.mockRestore();
+        }
 
-        await waitFor(() => expect(screen.getByTestId('result')).toHaveTextContent('saved'));
         expect(list('finished')).toHaveTextContent('Celeste(7)[borrowed]@-,Cuphead(-)[-]@-');
-        const stamps = screen.getByTestId('moved-at').textContent!.split(',');
-        expect(stamps).toHaveLength(2);
-        expect(new Set(stamps).size).toBe(1);
+        expect(screen.getByTestId('moved-at').textContent!.split(','))
+            .toEqual(['2026-10-17T10:00:00.000Z', '2026-10-17T10:00:00.000Z']);
+    });
+
+    it('keeps a game the server answers unchanged where it was sent, with no banner', async () => {
+        // Another tab had already moved Hades to Finished: unchanged is where it was asked to be.
+        await mountBulk({ answer: [{ gameId: 1, outcome: 'moved' }, { gameId: 2, outcome: 'unchanged' }] });
+
+        await press('finish both');
+
+        await waitFor(() => expect(screen.getByTestId('result')).toHaveTextContent('saved:1+2:moved=1+2:missing='));
+        expect(list('finished')).toHaveTextContent('Celeste(7)[borrowed]@-,Hades(-)[-]@-');
+        expect(screen.getByTestId('error')).toBeEmptyDOMElement();
+    });
+
+    it('keeps a game the answer leaves out, or answers with an outcome it does not know, where it was sent', async () => {
+        // The request saved, which is what the status says; only `missing` takes a game out of the lists.
+        await mountBulk({ answer: [{ gameId: 1, outcome: 'teleported' }] });
+
+        await press('finish both');
+
+        await waitFor(() => expect(screen.getByTestId('result')).toHaveTextContent('saved:1+2:moved=1+2:missing='));
+        expect(list('finished')).toHaveTextContent('Celeste(7)[borrowed]@-,Hades(-)[-]@-');
+        expect(screen.getByTestId('error')).toBeEmptyDOMElement();
+    });
+
+    it.each([
+        ['results that are not a list', '{"results": {}}'],
+        ['an answer that is a list', '[null]'],
+        ['results that are not results', '{"results": [null, 5, {"gameId": "2", "outcome": "missing"}]}'],
+    ])('keeps every game where it was sent when the answer has %s, rather than undoing a saved batch', async (_, raw) => {
+        await mountBulk({ answer: { raw } });
+
+        await press('finish both');
+
+        await waitFor(() => expect(screen.getByTestId('result')).toHaveTextContent('saved:1+2:moved=1+2:missing='));
+        expect(list('finished')).toHaveTextContent('Celeste(7)[borrowed]@-,Hades(-)[-]@-');
+        expect(screen.getByTestId('pending')).toBeEmptyDOMElement();
     });
 
     it('sends each game once, and nothing for a game already where it is sent', async () => {
@@ -2096,10 +2146,11 @@ describe('several games at once', () => {
     it('keeps a batch still on its way when a reload lands in the meantime', async () => {
         // The reload's answer was composed before the batch reached the server; taken as it stands it
         // would put the games back in Playing, and the batch saving would then change nothing on screen.
-        const { release } = await mountBulk({ hold: [BULK] });
+        const { calls, release } = await mountBulk({ hold: [BULK] });
 
         await press('finish both');
         await press('reload');
+        await waitFor(() => expect(calls.filter(call => `${call.method} ${call.url}` === 'GET /api/lists')).toHaveLength(2));
         await waitFor(() => expect(screen.getByTestId('loading')).toHaveTextContent('false'));
 
         expect(list('finished')).toHaveTextContent('Celeste(7)[borrowed]@-,Hades(-)[-]@-');
@@ -2120,12 +2171,13 @@ describe('several games at once', () => {
         expect(screen.getByTestId('error')).toBeEmptyDOMElement();
     });
 
-    it('does not put a failed batch back into the next account, nor show it the banner', async () => {
-        // Alice's undo names Celeste and Hades by id, and Bob has Hades on his own backlog.
+    it('does not put a failed batch back into the next account, nor show it the banner, nor free its lock', async () => {
+        // Alice's undo names Celeste and Hades by id, and Bob has Hades on his own backlog — with a score
+        // of his still saving when Alice's request settles, whose lock her release must not take with it.
         const BOBS = [entry({ game: { id: 2, title: 'Hades' }, position: 2048 })];
         const { release, view } = await mountBulk({
             loads: [{ playing: PLAYING, backlog: BACKLOG }, { backlog: BOBS }],
-            hold: [BULK],
+            hold: [BULK, 'PUT /api/entries/2/score'],
         });
 
         await press('finish both');
@@ -2135,12 +2187,55 @@ describe('several games at once', () => {
             view.rerender(<ListsProvider><BulkProbe /></ListsProvider>);
         });
         await waitFor(() => expect(list('backlog')).toHaveTextContent('Hades(-)[-]@2048'));
+        await press('score hades');
+        expect(screen.getByTestId('pending')).toHaveTextContent(/^2$/);
 
         await release(BULK, 500);
 
-        expect(list('backlog')).toHaveTextContent('Hades(-)[-]@2048');
+        expect(list('backlog')).toHaveTextContent('Hades(8)[-]@2048');
         expect(list('playing')).toBeEmptyDOMElement();
         expect(screen.getByTestId('error')).toBeEmptyDOMElement();
-        expect(screen.getByTestId('pending')).toBeEmptyDOMElement();
+        expect(screen.getByTestId('pending')).toHaveTextContent(/^2$/);
+    });
+
+    it('gives a game coming back from no list what its entry kept, from the move\'s answer', async () => {
+        // Taken out of every list earlier, so the client has no row for it; the entry kept its score, its
+        // ownership and when it was first added, and the move answers with them.
+        const calls: Recorded[] = [];
+        vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+            const url = String(input);
+            const method = init?.method ?? 'GET';
+            calls.push({ method, url, body: init?.body ? JSON.parse(String(init.body)) : undefined });
+            if (url === '/api/lists') return new Response(JSON.stringify({ lists: {} }), { status: 200 });
+            if (url === '/api/user/list-preferences') return new Response(JSON.stringify({ view: 'table', sorts: {} }), { status: 200 });
+            if (method === 'PUT' && url === '/api/lists/1') {
+                return new Response(JSON.stringify({
+                    score: 9, ownership: 'owned', addedAt: '2025-05-05T00:00:00+00:00',
+                    statusChangedAt: '2026-10-17T10:00:00+00:00', position: null,
+                }), { status: 200 });
+            }
+            return new Response(null, { status: 204 });
+        }));
+
+        function ComebackProbe() {
+            const lists = useLists();
+            return (
+                <div>
+                    <span data-testid="loading">{String(lists.loading)}</span>
+                    <span data-testid="backlog">
+                        {lists.lists.backlog.map(e => `${e.game.title}(${e.score ?? '-'})[${e.ownership ?? '-'}]${e.addedAt}`).join(',')}
+                    </span>
+                    <button onClick={() => void lists.addToList('backlog', game({ id: 1, title: 'Celeste' }))}>celeste back</button>
+                </div>
+            );
+        }
+
+        render(<ListsProvider><ComebackProbe /></ListsProvider>);
+        await waitFor(() => expect(screen.getByTestId('loading')).toHaveTextContent('false'));
+
+        await press('celeste back');
+
+        await waitFor(() => expect(screen.getByTestId('backlog')).toHaveTextContent('Celeste(9)[owned]2025-05-05T00:00:00+00:00'));
+        expect(calls.find(call => call.method === 'PUT')?.body).toEqual({ status: 'backlog' });
     });
 });

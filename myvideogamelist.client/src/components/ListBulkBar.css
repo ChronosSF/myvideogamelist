@@ -1,15 +1,19 @@
 /* The table's bulk actions (ADR 0055). Sticky just under the navbar — 3.5rem and its 1px rule — so it
-   stays in reach down a long list, and opaque, because rows scroll beneath it. Its height is kept
-   steady between its states, so ticking a first box never pushes the rows down under the pointer. */
+   stays in reach down a long list, and opaque, because rows scroll beneath it.
+
+   One height in every state, at every width: one row, its actions scrolling sideways when they do not
+   fit rather than wrapping, so ticking a first box never pushes the rows down under the pointer, and the
+   rows' scroll-margin in ListTable.css can count on how much of the screen it covers. Only the removal
+   question and the sentence saying why an action fell short may wrap, while somebody is reading them. */
 .list-bulk-bar {
     position: sticky;
     top: calc(3.5rem + 1px);
     z-index: 10;
     display: flex;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     align-items: center;
     gap: 0.5rem 0.75rem;
-    min-height: 3.25rem;
+    min-height: 3.5rem;
     margin-bottom: 0.75rem;
     padding: 0.5rem 0.75rem;
     background: var(--color-surface);
@@ -18,14 +22,23 @@
     box-shadow: 0 8px 20px rgba(0, 0, 0, 0.25);
 }
 
-/* Focused only by the page, when the button that had focus has gone with the games it acted on. */
+/* Focused only by the page, when the button that had focus has gone with the games it acted on. Inset,
+   so the navbar the bar is stuck under does not hide the ring's top edge. */
 .list-bulk-bar:focus {
     outline: none;
 }
 
 .list-bulk-bar:focus-visible {
     outline: 2px solid var(--color-focus);
-    outline-offset: 2px;
+    outline-offset: -2px;
+}
+
+/* A drag in the hand order scrolls the window from near its top, where the stuck bar would otherwise sit
+   over the rows the game is being dragged past. Relative takes the same room in the page as sticky, so
+   the slots the drag measured stay where they were. */
+html.reorder-dragging .list-bulk-bar {
+    position: relative;
+    top: 0;
 }
 
 .list-bulk-text {
@@ -35,37 +48,69 @@
 }
 
 .list-bulk-count {
+    flex-shrink: 0;
+    white-space: nowrap;
     font-weight: 600;
     color: var(--color-fg-strong);
     font-variant-numeric: tabular-nums;
 }
 
+/* Muted rather than faint: on the bar's surface the faint text is about 3:1, under the 4.5:1 text needs. */
 .list-bulk-hint {
-    color: var(--color-fg-faint);
+    color: var(--color-fg-muted);
+}
+
+.list-bulk-problem {
+    flex-shrink: 0;
+    max-width: 24rem;
+    color: var(--color-danger-300);
 }
 
 .list-bulk-actions,
 .list-bulk-moves,
 .list-bulk-confirm {
     display: flex;
-    flex-wrap: wrap;
     align-items: center;
     gap: 0.4rem;
 }
 
+/* The row that scrolls sideways when the actions do not fit, with a thin scrollbar left showing, so a
+   mouse at a high zoom can reach the end of it too. Padded inside, so the scroller's edge does not cut off
+   a focus ring. Clear is last in it, pushed to the far end while there is room. */
 .list-bulk-actions {
+    flex: 1;
+    min-width: 0;
+    flex-wrap: nowrap;
     gap: 0.5rem 0.75rem;
+    overflow-x: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-line-strong) transparent;
+    margin: -4px;
+    padding: 4px;
+}
+
+/* Its whole width, always: shrunk by the row around it, its last buttons would spill over Remove. */
+.list-bulk-moves {
+    flex-shrink: 0;
+    flex-wrap: nowrap;
+}
+
+.list-bulk-confirm {
+    flex-wrap: wrap;
 }
 
 .list-bulk-label {
+    flex-shrink: 0;
     font-size: 0.72rem;
     font-weight: 600;
     letter-spacing: 0.06em;
     text-transform: uppercase;
-    color: var(--color-fg-faint);
+    color: var(--color-fg-muted);
 }
 
 .list-bulk-button {
+    flex-shrink: 0;
+    white-space: nowrap;
     padding: 0.3rem 0.65rem;
     font-size: 0.78rem;
     font-weight: 600;
@@ -106,37 +151,20 @@
     border-color: transparent;
 }
 
-/* A phone: the count and Clear on the first row, and every action on a second that scrolls sideways
-   rather than wrapping, so the bar is two rows whatever the lists are called and never pushes the table
-   down as a first box is ticked — the hint is given the same height. The tabs scroll the same way. */
+/* A phone: the count on the first row and every action on a second, so the bar is two rows whatever the
+   lists are called — the hint is given the same height. The tabs scroll sideways the same way. */
 @media (width < 40rem) {
     .list-bulk-bar {
-        min-height: 5.75rem;
+        flex-wrap: wrap;
+        min-height: 6rem;
         align-content: center;
     }
 
     .list-bulk-actions {
-        order: 3;
         flex-basis: 100%;
-        flex-wrap: nowrap;
-        overflow-x: auto;
-        scrollbar-width: none;
-        /* Room inside the scroller for a focus ring, which its edge would otherwise cut off. */
-        margin: -4px;
-        padding: 4px;
     }
 
-    .list-bulk-actions::-webkit-scrollbar {
-        display: none;
-    }
-
-    .list-bulk-moves {
-        flex-wrap: nowrap;
-    }
-
-    .list-bulk-button,
-    .list-bulk-label {
-        flex-shrink: 0;
-        white-space: nowrap;
+    .list-bulk-problem {
+        max-width: none;
     }
 }

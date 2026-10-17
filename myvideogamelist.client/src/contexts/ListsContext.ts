@@ -30,9 +30,10 @@ export interface ListsContextValue {
     /** Takes the game out of every list. The score and everything else on the entry survive. */
     removeFromList: (listId: ListId, gameId: number) => Promise<void>;
     /**
-     * Moves several games to one list in one request — optimistically, under every game's lock, and
-     * undone game by game for whatever did not save. Games already in that list, or in none, are left
-     * out. Refused, changing nothing, while any of them has a write out. See `docs/decisions/0055-*`.
+     * Moves several games to one list in one request — optimistically, under every game's lock. A request
+     * that fails puts every game back where it was; a game the server no longer has an entry for is left
+     * in no list, as the server has it. Games already in that list, or in none, are left out. Refused,
+     * changing nothing, while any of them has a write out. See `docs/decisions/0055-*`.
      */
     moveGames: (gameIds: readonly number[], listId: ListId) => Promise<BulkResult>;
     /** Takes several games out of every list in one request, as `moveGames` moves them. */

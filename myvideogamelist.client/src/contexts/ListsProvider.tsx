@@ -6,7 +6,7 @@ import {
 } from '@/types/list';
 import { type SortState, DEFAULT_SORT, MANUAL_SORT, sortEntries } from '@/lib/listSort';
 import { moveInHandOrder } from '@/lib/handOrderMove';
-import { type BulkResult, type StatusChange, bulkFailure, bulkMissing, bulkRefusal } from '@/lib/listBulk';
+import { type BulkResult, bulkFailure, bulkMissing, bulkRefusal, missingFrom } from '@/lib/listBulk';
 import { useAuth } from '@/hooks/useAuth';
 import { apiFetch } from '@/lib/api';
 import { ListsContext, type SaveListNamesResult } from './ListsContext';
@@ -237,19 +237,10 @@ function reducer(state: ListsState, action: ListsAction): ListsState {
             return ifCurrent(state, action.session, () =>
                 ({ ...state, lists: without(state.lists, action.gameId) }));
         case 'MOVE_ENTRIES':
-            return ifCurrent(state, action.session, () => {
-                const named = new Set(action.moves.map(move => move.gameId));
-                const lists = { ...state.lists };
-                for (const id of LIST_IDS) {
-                    if (lists[id].some(entry => named.has(entry.game.id))) {
-                        lists[id] = lists[id].filter(entry => !named.has(entry.game.id));
-                    }
-                }
-                for (const { to } of action.moves) {
-                    if (to) lists[to.listId] = [...lists[to.listId], to.entry];
-                }
-                return { ...state, lists };
-            });
+            return ifCurrent(state, action.session, () => ({
+                ...state,
+                lists: moved(state.lists, new Set(action.moves.map(move => move.gameId)), action.moves.flatMap(move => move.to ?? [])),
+            }));
         case 'SET_ENTRY_SCORE':
             return ifCurrent(state, action.session, () => ({
                 ...state,
@@ -311,6 +302,33 @@ function withEntry(
     return next;
 }
 
+/**
+ * Every list with the named games taken out of whichever held them and the arrivals appended, in one pass
+ * over each list: a bulk action and its undo, and a reload landing while games are held, over selections
+ * that can be a whole list. Nothing else changes.
+ */
+function moved(
+    lists: Record<ListId, ListEntryDto[]>,
+    leaving: ReadonlySet<number>,
+    arriving: readonly EntryOrigin[],
+): Record<ListId, ListEntryDto[]> {
+    const into = new Map<ListId, ListEntryDto[]>();
+    for (const { listId, entry } of arriving) {
+        const list = into.get(listId);
+        if (list) list.push(entry);
+        else into.set(listId, [entry]);
+    }
+
+    const next = { ...lists };
+    for (const id of LIST_IDS) {
+        const touched = next[id].some(entry => leaving.has(entry.game.id));
+        const added = into.get(id);
+        if (!touched && !added) continue;
+        next[id] = [...(touched ? next[id].filter(entry => !leaving.has(entry.game.id)) : next[id]), ...(added ?? [])];
+    }
+    return next;
+}
+
 /** Every list with one game taken out of whichever one held it, and nothing else changed. */
 function without(
     lists: Record<ListId, ListEntryDto[]>,
@@ -346,6 +364,34 @@ function locate(lists: Record<ListId, ListEntryDto[]>, gameId: number): EntryOri
     return null;
 }
 
+/** `locate` for every game at once, in one pass, for a mutation or a reconcile about many games. */
+function locateAll(lists: Record<ListId, ListEntryDto[]>): Map<number, EntryOrigin> {
+    const found = new Map<number, EntryOrigin>();
+    for (const listId of LIST_IDS) {
+        for (const entry of lists[listId]) {
+            if (!found.has(entry.game.id)) found.set(entry.game.id, { listId, entry });
+        }
+    }
+    return found;
+}
+
+/**
+ * The entry's own fields from a move's answer (`EntryStateDto`), or null for anything else, such as no
+ * body at all.
+ */
+function entryState(answer: unknown): Omit<ListEntryDto, 'game'> | null {
+    if (typeof answer !== 'object' || answer === null) return null;
+    const { score, ownership, addedAt, statusChangedAt, position } = answer as Record<string, unknown>;
+    if (typeof addedAt !== 'string') return null;
+    return {
+        score: typeof score === 'number' ? score : null,
+        ownership: ownership === 'owned' || ownership === 'subscription' || ownership === 'borrowed' ? ownership : null,
+        addedAt,
+        statusChangedAt: typeof statusChangedAt === 'string' ? statusChangedAt : null,
+        position: typeof position === 'number' ? position : null,
+    };
+}
+
 /**
  * The lists the server sent, with every game that has a write in flight left as this client has it.
  *
@@ -360,13 +406,10 @@ function reconciled(
     loaded: Record<ListId, ListEntryDto[]>,
     state: ListsState,
 ): Record<ListId, ListEntryDto[]> {
-    let lists = loaded;
-    for (const gameId of state.pending) {
-        const held = locate(state.lists, gameId);
-        lists = without(lists, gameId);
-        if (held) lists[held.listId] = [...lists[held.listId], held.entry];
-    }
-    return lists;
+    if (state.pending.size === 0) return loaded;
+
+    const held = locateAll(state.lists);
+    return moved(loaded, state.pending, [...state.pending].flatMap(gameId => held.get(gameId) ?? []));
 }
 
 export function ListsProvider({ children }: { children: ReactNode }) {
@@ -610,8 +653,18 @@ export function ListsProvider({ children }: { children: ReactNode }) {
                 body: JSON.stringify({ status: listId }),
             });
 
-            if (res.ok) dispatch({ type: 'CLEAR_MUTATION_ERROR', session });
-            else rollBack(undo, 'Failed to update list. Please try again.');
+            if (!res.ok) {
+                rollBack(undo, 'Failed to update list. Please try again.');
+                return;
+            }
+
+            // What the entry holds now. A game coming back from no list kept its score, its ownership
+            // and when it was first added, which the row above could only guess at: the client dropped
+            // them when the game left (`docs/decisions/0055-*`). Still under the game's lock, so nothing
+            // else can have moved it; an answer that cannot be read leaves the guess.
+            const kept = entryState(await res.json().catch(() => null));
+            if (kept) dispatch({ type: 'PLACE_ENTRY', session, listId, entry: { ...moved, ...kept } });
+            dispatch({ type: 'CLEAR_MUTATION_ERROR', session });
         } catch {
             rollBack(undo, 'Failed to update list. Please try again.');
         } finally {
@@ -644,8 +697,9 @@ export function ListsProvider({ children }: { children: ReactNode }) {
     };
 
     /**
-     * Moves several games to one list, or out of every list for null, in one request, shown at once
-     * and undone game by game for whatever did not save (`docs/decisions/0055-*`).
+     * Moves several games to one list, or out of every list for null, in one request, shown at once.
+     * A request that fails puts every game back; a game the server no longer has an entry for is left
+     * in no list (`docs/decisions/0055-*`).
      *
      * The single move's rules, for many games at a time:
      *
@@ -666,9 +720,10 @@ export function ListsProvider({ children }: { children: ReactNode }) {
      * somewhere other than the target are sent, each once.
      */
     const changeStatuses = async (gameIds: readonly number[], target: ListId | null): Promise<BulkResult> => {
+        const everywhere = locateAll(state.lists);
         const origins = new Map<number, EntryOrigin>();
         for (const gameId of gameIds) {
-            const origin = locate(state.lists, gameId);
+            const origin = everywhere.get(gameId);
             if (origin && origin.listId !== target) origins.set(gameId, origin);
         }
 
@@ -678,7 +733,7 @@ export function ListsProvider({ children }: { children: ReactNode }) {
         const refusal = bulkRefusal(ids, gameId => state.pending.has(gameId));
         if (refusal !== null) {
             dispatch({ type: 'MUTATION_ERROR', session, error: refusal });
-            return { outcome: 'refused' };
+            return { outcome: 'refused', message: refusal };
         }
 
         dispatch({ type: 'START_PENDING', session, gameIds: ids });
@@ -711,15 +766,13 @@ export function ListsProvider({ children }: { children: ReactNode }) {
 
             if (!res.ok) {
                 rollBack(putBack(ids), failure);
-                return { outcome: 'failed', gameIds: ids };
+                return { outcome: 'failed', gameIds: ids, message: failure };
             }
 
-            // The batch is saved, which is what the status says. An answer that cannot be read leaves
-            // every game where it was sent: that is the likeliest truth, and the next load has the rest.
-            const answer = await res.json().catch(() => null) as { results?: StatusChange[] } | null;
-            const missingIds = new Set((answer?.results ?? [])
-                .filter(result => result.outcome === 'missing')
-                .map(result => result.gameId));
+            // The batch is saved, which is what the status says. An answer that cannot be read, or is not
+            // the shape it should be, leaves every game where it was sent: that is the likeliest truth,
+            // and the next load has the rest.
+            const missingIds = missingFrom(await res.json().catch(() => null));
             const missing = ids.filter(gameId => missingIds.has(gameId));
 
             if (missing.length > 0) {
@@ -732,7 +785,7 @@ export function ListsProvider({ children }: { children: ReactNode }) {
             return { outcome: 'saved', gameIds: ids, moved: ids.filter(gameId => !missingIds.has(gameId)), missing };
         } catch {
             rollBack(putBack(ids), failure);
-            return { outcome: 'failed', gameIds: ids };
+            return { outcome: 'failed', gameIds: ids, message: failure };
         } finally {
             dispatch({ type: 'END_PENDING', session, gameIds: ids });
         }

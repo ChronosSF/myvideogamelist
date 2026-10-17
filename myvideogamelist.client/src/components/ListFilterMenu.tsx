@@ -1,5 +1,5 @@
-import { useId, useState } from 'react';
-import './ListToolbar.css';
+import { useId, useRef, useState } from 'react';
+import './ListFilterMenu.css';
 
 interface ListFilterMenuProps<T extends string | number> {
     /** What the button says while nothing is filtered out — "All platforms". */
@@ -20,7 +20,8 @@ interface ListFilterMenuProps<T extends string | number> {
  * with. The platform filter's, given a second use by the ownership filter (`docs/decisions/0055-*`).
  *
  * Transient and local to this view, and it says so in words: a filter silently still applied on the
- * next visit is how people conclude their games have vanished (ADR 0020).
+ * next visit is how people conclude their games have vanished (ADR 0020). The checkboxes are a group
+ * named by the panel's heading, and Escape closes the panel with focus back on its button.
  */
 export function ListFilterMenu<T extends string | number>({
     allLabel,
@@ -32,6 +33,13 @@ export function ListFilterMenu<T extends string | number>({
 }: ListFilterMenuProps<T>) {
     const [open, setOpen] = useState(false);
     const panelId = useId();
+    const headingId = useId();
+    const button = useRef<HTMLButtonElement>(null);
+
+    const close = () => {
+        setOpen(false);
+        button.current?.focus();
+    };
 
     const allSelected = selected.length === 0;
 
@@ -47,9 +55,15 @@ export function ListFilterMenu<T extends string | number>({
     };
 
     return (
-        <div className="list-toolbar-group list-toolbar-filter">
+        <div
+            className="list-toolbar-group list-filter"
+            onKeyDown={event => {
+                if (open && event.key === 'Escape') close();
+            }}
+        >
             <button
                 type="button"
+                ref={button}
                 className={`list-toolbar-button${allSelected ? '' : ' active'}`}
                 onClick={() => setOpen(current => !current)}
                 aria-expanded={open}
@@ -64,10 +78,10 @@ export function ListFilterMenu<T extends string | number>({
             {open && (
                 <>
                     {/* Click-away, kept as a sibling so it cannot swallow the panel's own clicks. */}
-                    <div className="list-toolbar-backdrop" onClick={() => setOpen(false)} role="presentation" />
-                    <div className="list-toolbar-panel" id={panelId}>
-                        <div className="list-toolbar-panel-head">
-                            <span>{heading}</span>
+                    <div className="list-filter-backdrop" onClick={() => setOpen(false)} role="presentation" />
+                    <div className="list-filter-panel" id={panelId} role="group" aria-labelledby={headingId}>
+                        <div className="list-filter-head">
+                            <span id={headingId}>{heading}</span>
                             {!allSelected && (
                                 <button type="button" onClick={() => onChange([])}>Reset</button>
                             )}
@@ -86,7 +100,7 @@ export function ListFilterMenu<T extends string | number>({
                                 </li>
                             ))}
                         </ul>
-                        <p className="list-toolbar-panel-note">
+                        <p className="list-filter-note">
                             Applies to this view only, and is not saved.
                         </p>
                     </div>

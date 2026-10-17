@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ListToolbar } from '@/components/ListToolbar';
 import { DEFAULT_SORT, type SortState } from '@/lib/listSort';
@@ -204,7 +204,7 @@ describe('ListToolbar platform filter', () => {
         await userEvent.click(trigger);
         expect(trigger).toHaveAttribute('aria-expanded', 'true');
 
-        await userEvent.click(document.querySelector('.list-toolbar-backdrop')!);
+        await userEvent.click(document.querySelector('.list-filter-backdrop')!);
         expect(trigger).toHaveAttribute('aria-expanded', 'false');
     });
 });
@@ -254,5 +254,28 @@ describe('ListToolbar ownership filter', () => {
         await userEvent.click(screen.getByRole('button', { name: 'All platforms' }));
         expect(screen.getByText('Filter by platform')).toBeInTheDocument();
         expect(screen.queryByText('Filter by ownership')).not.toBeInTheDocument();
+    });
+});
+
+describe('ListToolbar filter menus, from the keyboard', () => {
+    it('closes a menu with Escape and puts focus back on its button', async () => {
+        renderToolbar();
+
+        await userEvent.click(screen.getByRole('button', { name: 'All platforms' }));
+        await userEvent.click(screen.getByRole('checkbox', { name: 'PC' }));
+        await userEvent.keyboard('{Escape}');
+
+        expect(screen.queryByText('Filter by platform')).not.toBeInTheDocument();
+        expect(screen.getByRole('button', { name: /platform/ })).toHaveFocus();
+    });
+
+    it('groups the checkboxes under the menu\'s heading', async () => {
+        renderToolbar({ ownerships: ['owned', 'unrecorded'] });
+
+        await userEvent.click(screen.getByRole('button', { name: 'Any ownership' }));
+
+        const group = screen.getByRole('group', { name: 'Filter by ownership' });
+        expect(within(group).getAllByRole('checkbox').map(box => box.closest('label')?.textContent))
+            .toEqual(['Owned', 'Not recorded']);
     });
 });

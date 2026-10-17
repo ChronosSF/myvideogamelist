@@ -417,8 +417,9 @@ describe('ListsPage bulk actions', () => {
     const tick = (title: string) => userEvent.click(screen.getByRole('checkbox', { name: `Select ${title}` }));
     const everyRow = () => screen.getByRole('checkbox', { name: 'Select every game shown' });
     const bar = () => screen.getByRole('region', { name: 'Selected games' });
+    // Each move button carries "Move to" in its own name, for a screen reader that does not speak the group's.
     const moveTo = (name: string) => userEvent.click(
-        within(screen.getByRole('group', { name: 'Move the selected games to' })).getByRole('button', { name }));
+        within(screen.getByRole('group', { name: 'Move the selected games to' })).getByRole('button', { name: `Move to ${name}` }));
     const announced = (text: string) => {
         const said = screen.getByText(text);
         expect(said.closest('[aria-live]')).toHaveAttribute('aria-live', 'polite');
@@ -467,7 +468,7 @@ describe('ListsPage bulk actions', () => {
         await tick('Celeste');
         // Every list but the one they are in.
         expect(within(screen.getByRole('group', { name: 'Move the selected games to' })).getAllByRole('button')
-            .map(button => button.textContent)).toEqual(['Backlog', 'On Hold', 'Finished', 'Dropped']);
+            .map(button => button.textContent)).toEqual(['Move to Backlog', 'Move to On Hold', 'Move to Finished', 'Move to Dropped']);
 
         await moveTo('On Hold');
 
@@ -511,21 +512,30 @@ describe('ListsPage bulk actions', () => {
         expect(screen.getByRole('checkbox', { name: 'Select Celeste' })).toBeChecked();
     });
 
-    it('keeps games a failure put back selected, so trying again is one press, and leaves the banner to speak', async () => {
-        lists.moveGames = vi.fn(async (gameIds: readonly number[]) => ({ outcome: 'failed' as const, gameIds: [...gameIds] }));
+    it('keeps games a failure put back selected, so trying again is one press, and says why in the bar', async () => {
+        // The page's banner is at the top, out of sight deep in a long list; the bar is in reach.
+        const message = 'Failed to move 2 games to Finished. Please try again.';
+        lists.moveGames = vi.fn(async (gameIds: readonly number[]) => ({ outcome: 'failed' as const, gameIds: [...gameIds], message }));
         renderPage();
 
         await tick('Hades');
         await tick('Celeste');
         await moveTo('Finished');
 
-        expect(bar()).toHaveTextContent('2 games selected');
+        expect(bar()).toHaveTextContent(message);
         expect(screen.getByRole('checkbox', { name: 'Select Hades' })).toBeChecked();
+        expect(screen.getByRole('checkbox', { name: 'Select Celeste' })).toBeChecked();
         expect(screen.queryByText(/^Moved/)).not.toBeInTheDocument();
+
+        // The next change of selection is a new start, and the bar counts again.
+        await tick('Cuphead');
+        expect(bar()).toHaveTextContent('3 games selected');
+        expect(bar()).not.toHaveTextContent(message);
     });
 
-    it('keeps the selection after a refusal too, which changed nothing', async () => {
-        lists.removeGames = vi.fn(async () => ({ outcome: 'refused' as const }));
+    it('keeps the selection after a refusal too, which changed nothing, and says why', async () => {
+        const message = 'Another change to one of these games is still saving. Try again in a moment.';
+        lists.removeGames = vi.fn(async () => ({ outcome: 'refused' as const, message }));
         renderPage();
 
         await tick('Cuphead');
@@ -533,6 +543,19 @@ describe('ListsPage bulk actions', () => {
         await userEvent.click(screen.getByRole('button', { name: 'Remove 1 game' }));
 
         expect(screen.getByRole('checkbox', { name: 'Select Cuphead' })).toBeChecked();
+        expect(bar()).toHaveTextContent(message);
+    });
+
+    it('says in the bar which games were not moved when the server had no entry for them', async () => {
+        lists.moveGames = vi.fn(async () => ({ outcome: 'saved' as const, gameIds: [1, 3], moved: [1], missing: [3] }));
+        renderPage();
+
+        await tick('Hades');
+        await tick('Celeste');
+        await moveTo('Finished');
+
+        expect(bar()).toHaveTextContent('1 of the 2 games was not moved: it is no longer in your lists.');
+        announced('Moved 1 of the 2 games to Finished.');
     });
 
     it('says what it is doing while the request is out, and moves focus to the bar before the pressed button goes', async () => {
@@ -564,6 +587,146 @@ describe('ListsPage bulk actions', () => {
 
         await waitFor(() => expect(screen.getByRole('tab', { name: /Playing/ })).toHaveFocus());
         expect(screen.queryByRole('region', { name: 'Selected games' })).not.toBeInTheDocument();
+    });
+
+    it('moves focus to the list\'s tab at once when the action takes every row shown', async () => {
+        // The table and the bar go with the rows, so the tab is where focus goes before the request, not
+        // after it, where a second move could cut off what is announced.
+        let finish!: (result: BulkResult) => void;
+        lists.moveGames = vi.fn(() => new Promise<BulkResult>(resolve => { finish = resolve; }));
+        renderPage();
+
+        await userEvent.click(everyRow());
+        await moveTo('Finished');
+
+        expect(screen.getByRole('tab', { name: /Playing/ })).toHaveFocus();
+        await act(async () => finish(saved([1, 2, 3])));
+        expect(screen.getByRole('tab', { name: /Playing/ })).toHaveFocus();
+    });
+
+    it('keeps games a failed whole-list action brought back selected, with focus left where it went', async () => {
+        // The provider shows the move at once, emptying the list, and puts the games back when it fails.
+        let finish!: (result: BulkResult) => void;
+        lists.moveGames = vi.fn((gameIds: readonly number[]) => {
+            lists.lists = { ...lists.lists, playing: [] };
+            return new Promise<BulkResult>(resolve => {
+                finish = result => {
+                    lists.lists = { ...lists.lists, playing: PLAYING };
+                    resolve(result);
+                };
+                void gameIds;
+            });
+        });
+        renderPage();
+
+        await userEvent.click(everyRow());
+        await moveTo('Finished');
+        expect(screen.queryByRole('region', { name: 'Selected games' })).not.toBeInTheDocument();
+
+        await act(async () => finish({ outcome: 'failed', gameIds: [1, 2, 3], message: 'Failed to move 3 games to Finished. Please try again.' }));
+
+        expect(screen.getByRole('tab', { name: /Playing/ })).toHaveFocus();
+        expect(screen.getAllByRole('checkbox', { name: /^Select (?!every)/ }).every(box => (box as HTMLInputElement).checked)).toBe(true);
+        expect(bar()).toHaveTextContent('Failed to move 3 games to Finished');
+    });
+
+    it('keeps a game whose move is still out selected through a change of filter, for a failure to bring back', async () => {
+        // Celeste's move has taken her off the list for the moment. A filter change lets go of what it
+        // hides, and Celeste is hidden by nothing: she is merely out. Tunic keeps Switch on offer.
+        lists.lists = { ...lists.lists, backlog: [entry({ game: { id: 9, title: 'Tunic', platforms: [SWITCH] } })] };
+        let finish!: (result: BulkResult) => void;
+        lists.moveGames = vi.fn(() => {
+            lists.lists = { ...lists.lists, playing: PLAYING.filter(e => e.game.id !== 1) };
+            return new Promise<BulkResult>(resolve => {
+                finish = result => {
+                    lists.lists = { ...lists.lists, playing: PLAYING };
+                    resolve(result);
+                };
+            });
+        });
+        renderPage();
+
+        await tick('Celeste');
+        await moveTo('Finished');
+        await userEvent.click(screen.getByRole('button', { name: /all platforms/i }));
+        await userEvent.click(screen.getByRole('checkbox', { name: 'Switch' }));
+        await userEvent.click(screen.getByRole('button', { name: 'Reset' }));
+
+        await act(async () => finish({ outcome: 'failed', gameIds: [1], message: 'Failed to move 1 game to Finished. Please try again.' }));
+
+        expect(screen.getByRole('checkbox', { name: 'Select Celeste' })).toBeChecked();
+    });
+
+    it('puts focus on the bar when Clear takes the selection\'s controls away', async () => {
+        renderPage();
+
+        await tick('Hades');
+        await userEvent.click(screen.getByRole('button', { name: 'Clear selection' }));
+
+        expect(bar()).toHaveFocus();
+        expect(bar()).toHaveTextContent(/tick games/i);
+        announced('No games selected.');
+    });
+
+    it('selects only the rows a filter leaves showing, and the header\'s second press clears them', async () => {
+        renderPage();
+
+        await userEvent.click(screen.getByRole('button', { name: /all platforms/i }));
+        await userEvent.click(screen.getByRole('checkbox', { name: 'Switch' }));
+        await userEvent.click(everyRow());
+        await userEvent.click(screen.getByRole('button', { name: 'Reset' }));
+
+        // Celeste was hidden when the header was pressed, and is not ticked now she is back.
+        expect(screen.getByRole('checkbox', { name: 'Select Celeste' })).not.toBeChecked();
+        expect(screen.getByRole('checkbox', { name: 'Select Hades' })).toBeChecked();
+        expect(screen.getByRole('checkbox', { name: 'Select Cuphead' })).toBeChecked();
+
+        await userEvent.click(everyRow());
+        await userEvent.click(everyRow());
+        expect(screen.getAllByRole('checkbox', { name: /^Select (?!every)/ }).some(box => (box as HTMLInputElement).checked)).toBe(false);
+    });
+
+    it('lets go of what a new ownership choice stops drawing, as a platform choice does', async () => {
+        renderPage();
+
+        await tick('Hades');
+        await tick('Celeste');
+        await userEvent.click(screen.getByRole('button', { name: 'Any ownership' }));
+        await userEvent.click(screen.getByRole('checkbox', { name: 'Owned' }));
+        await userEvent.click(screen.getByRole('button', { name: 'Reset' }));
+
+        expect(screen.getByRole('checkbox', { name: 'Select Celeste' })).not.toBeChecked();
+        expect(screen.getByRole('checkbox', { name: 'Select Hades' })).toBeChecked();
+    });
+
+    it('says nothing of the last list once another is opened, so the next count is heard even if the same', async () => {
+        renderPage();
+
+        await tick('Hades');
+        announced('1 game selected.');
+        await userEvent.click(screen.getByRole('tab', { name: /Backlog/ }));
+
+        expect(screen.queryByText('1 game selected.')).not.toBeInTheDocument();
+    });
+
+    it('shows the next account neither what a previous account\'s action is doing nor what it did', async () => {
+        let finish!: (result: BulkResult) => void;
+        lists.moveGames = vi.fn(() => new Promise<BulkResult>(resolve => { finish = resolve; }));
+        lists.nameFor = (id: ListId) => (id === 'finished' ? 'Beaten' : LIST_NAMES[id]);
+        const view = renderPage();
+
+        await tick('Hades');
+        await moveTo('Beaten');
+        expect(bar()).toHaveTextContent('Moving 1 game to Beaten…');
+
+        authAnswered(userProfile({ id: 'u2' }));
+        lists.nameFor = (id: ListId) => LIST_NAMES[id];
+        view.rerender(<MemoryRouter><ListsPage /></MemoryRouter>);
+        expect(bar()).toHaveTextContent(/tick games/i);
+
+        await act(async () => finish(saved([3])));
+        expect(screen.queryByText(/Beaten/)).not.toBeInTheDocument();
+        expect(screen.queryByText(/^Moved/)).not.toBeInTheDocument();
     });
 
     it('lets the selection go with a change of tab, and does not bring it back', async () => {
@@ -628,6 +791,38 @@ describe('ListsPage bulk actions', () => {
         const titles = screen.getAllByRole('row').slice(1).map(row => within(row).getByRole('link', { name: /.+/ }).textContent);
         expect(titles).toEqual(['Celeste']);
         expect(screen.getByRole('button', { name: 'Owned' })).toBeInTheDocument();
+    });
+
+    it('stops filtering by a kind once its last game has left every list', async () => {
+        // Hades was the only game on a subscription. Taken out of every list while the filter showed only
+        // that kind, the choice would otherwise go on hiding every game behind a menu that no longer has it.
+        const view = renderPage();
+        await userEvent.click(screen.getByRole('button', { name: 'Any ownership' }));
+        await userEvent.click(screen.getByRole('checkbox', { name: 'Owned' }));
+        await userEvent.click(screen.getByRole('checkbox', { name: 'Not recorded' }));
+        expect(screen.getAllByRole('row').slice(1).map(row => within(row).getByRole('link', { name: /.+/ }).textContent))
+            .toEqual(['Hades']);
+
+        lists.lists = { ...lists.lists, playing: PLAYING.filter(e => e.game.id !== 3) };
+        view.rerender(<MemoryRouter><ListsPage /></MemoryRouter>);
+
+        expect(screen.getAllByRole('row').slice(1).map(row => within(row).getByRole('link', { name: /.+/ }).textContent))
+            .toEqual(['Celeste', 'Cuphead']);
+        expect(screen.getByRole('button', { name: 'Any ownership' })).toBeInTheDocument();
+    });
+
+    it('filters by nothing it no longer offers, when fewer than two kinds are left', async () => {
+        const view = renderPage();
+        await userEvent.click(screen.getByRole('button', { name: 'Any ownership' }));
+        await userEvent.click(screen.getByRole('checkbox', { name: 'Not recorded' }));
+
+        // Only games nobody has said anything about are left, so the filter is not drawn — and must not
+        // go on hiding them with a choice of Owned and Subscription nobody can see.
+        lists.lists = { ...emptyLists(), playing: [entry({ game: { id: 2, title: 'Cuphead' } })] };
+        view.rerender(<MemoryRouter><ListsPage /></MemoryRouter>);
+
+        expect(screen.queryByRole('button', { name: /ownership|owned|subscription/i })).not.toBeInTheDocument();
+        expect(screen.getByRole('link', { name: 'Cuphead' })).toBeInTheDocument();
     });
 
     it('offers no ownership filter while every game is the same', () => {

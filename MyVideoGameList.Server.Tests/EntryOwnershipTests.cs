@@ -1,8 +1,12 @@
 using System.ComponentModel.DataAnnotations;
 using System.Reflection;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.Routing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using MyVideoGameList.Server.Controllers;
 using MyVideoGameList.Server.Data;
 using MyVideoGameList.Server.DTOs;
 using MyVideoGameList.Server.Models;
@@ -81,5 +85,81 @@ public class EntryOwnershipTests
         Assert.True(Accepts<SetNotesDto>("Notes", new string('a', 2000)));
         Assert.False(Accepts<SetNotesDto>("Notes", new string('a', 2001)));
         Assert.True(Accepts<SetNotesDto>("Notes", null));
+    }
+
+    // ---------------------------------------------------------------- what stays private
+
+    private static readonly Assembly Server = typeof(ListEntryDto).Assembly;
+
+    /// <summary>The actions somebody who is not signed in can reach: there is no fallback policy.</summary>
+    private static IEnumerable<MethodInfo> AnonymousActions() =>
+        Server.GetTypes()
+            .Where(type => typeof(ControllerBase).IsAssignableFrom(type) && !type.IsAbstract)
+            .SelectMany(controller => controller
+                .GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
+                .Where(action => action.IsDefined(typeof(HttpMethodAttribute), inherit: true))
+                .Where(action =>
+                    controller.IsDefined(typeof(AllowAnonymousAttribute), inherit: true)
+                    || action.IsDefined(typeof(AllowAnonymousAttribute), inherit: true)
+                    || (!controller.IsDefined(typeof(AuthorizeAttribute), inherit: true)
+                        && !action.IsDefined(typeof(AuthorizeAttribute), inherit: true))));
+
+    /// <summary>
+    /// Every type of ours an action's answer can contain, through its properties, the collections they
+    /// hold and the task and action result around them.
+    /// </summary>
+    private static HashSet<Type> ReachableFrom(IEnumerable<Type> roots)
+    {
+        var seen = new HashSet<Type>();
+        var queue = new Queue<Type>(roots);
+
+        while (queue.TryDequeue(out var type))
+        {
+            if (type.IsArray)
+            {
+                queue.Enqueue(type.GetElementType()!);
+                continue;
+            }
+            if (type.IsGenericType)
+            {
+                foreach (var argument in type.GetGenericArguments()) queue.Enqueue(argument);
+            }
+            if (type.Assembly != Server || !seen.Add(type)) continue;
+
+            foreach (var property in type.GetProperties()) queue.Enqueue(property.PropertyType);
+        }
+
+        return seen;
+    }
+
+    [Fact]
+    public void AnonymousActions_EveryTypeTheyAnswerWith_CarriesNoOwnershipNotesOrListRow()
+    {
+        // Ownership is on the list row since ADR 0055, which makes "only the owner's own reads carry a
+        // ListEntryDto" the thing keeping it private (ADR 0030 §3). A public read that reused the row, or
+        // grew a field of the same name, would publish it without a word; this fails first.
+        var reachable = ReachableFrom(AnonymousActions().Select(action => action.ReturnType));
+
+        // Not vacuous: the public profile and a game's member reviews are among them.
+        Assert.Contains(typeof(PublicProfileDto), reachable);
+        Assert.Contains(typeof(GameReviewsDto), reachable);
+
+        Assert.DoesNotContain(typeof(ListEntryDto), reachable);
+        Assert.DoesNotContain(typeof(EntryDetailDto), reachable);
+        Assert.Empty(reachable.SelectMany(type => type.GetProperties())
+            .Where(property => property.Name is nameof(ListEntryDto.Ownership) or nameof(EntryDetailDto.Notes))
+            .Select(property => $"{property.DeclaringType!.Name}.{property.Name}"));
+    }
+
+    [Fact]
+    public void AnonymousActions_LeaveOutTheListsAndTheEntry_WhichDoCarryOwnership()
+    {
+        // The walk above would see the row if it were exposed: the signed-in reads reach it.
+        var anonymous = AnonymousActions().Select(action => action.Name).ToHashSet();
+
+        Assert.DoesNotContain(nameof(ListsController.GetLists), anonymous);
+        Assert.DoesNotContain(nameof(EntriesController.GetEntry), anonymous);
+        Assert.Contains(typeof(ListEntryDto), ReachableFrom([typeof(ListsController)
+            .GetMethod(nameof(ListsController.GetLists))!.ReturnType]));
     }
 }

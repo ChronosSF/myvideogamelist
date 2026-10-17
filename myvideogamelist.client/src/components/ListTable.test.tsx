@@ -237,12 +237,17 @@ describe('ListTable ownership', () => {
             entries: [
                 entry({ game: { id: 1, title: 'Celeste' }, ownership: 'subscription' }),
                 entry({ game: { id: 2, title: 'Hades' }, ownership: 'borrowed' }),
+                entry({ game: { id: 3, title: 'Cuphead' } }),
             ],
         });
 
         expect(screen.getByRole('columnheader', { name: 'Ownership' })).toBeInTheDocument();
         expect(within(row('Celeste')).getByRole('cell', { name: 'Subscription' })).toBeInTheDocument();
         expect(within(row('Hades')).getByRole('cell', { name: 'Borrowed' })).toBeInTheDocument();
+        // The ownership cell is the one after the date added.
+        const cells = within(row('Cuphead')).getAllByRole('cell');
+        const added = cells.findIndex(cell => cell.classList.contains('col-added'));
+        expect(cells[added + 1]).toHaveTextContent('—');
     });
 
     it('is not a sort, since the sort keys are what the server stores', () => {
@@ -287,6 +292,35 @@ describe('ListTable selection', () => {
 
         expect(everyRow()).toBeChecked();
         expect(everyRow()).not.toBePartiallyChecked();
+    });
+
+    it('keeps the header in step as the selection changes, half-ticked, ticked and half-ticked again', () => {
+        // Set on every commit, not only on the first: the property has no attribute to follow it.
+        const draw = (selectedIds: number[]) => (
+            <MemoryRouter>
+                <ListTable
+                    entries={THREE}
+                    sort={DEFAULT_SORT}
+                    listName="Playing"
+                    isPending={() => false}
+                    isFavourite={() => false}
+                    onSortChange={vi.fn()}
+                    onScoreChange={vi.fn()}
+                    onRemove={vi.fn()}
+                    selection={{ selected: new Set(selectedIds), onToggle: vi.fn(), onToggleAll: vi.fn() }}
+                />
+            </MemoryRouter>
+        );
+        const view = render(draw([1]));
+        expect(everyRow()).toBePartiallyChecked();
+
+        view.rerender(draw([1, 2, 3]));
+        expect(everyRow()).toBeChecked();
+        expect(everyRow()).not.toBePartiallyChecked();
+
+        view.rerender(draw([2]));
+        expect(everyRow()).toBePartiallyChecked();
+        expect(everyRow()).not.toBeChecked();
     });
 
     it('leaves the header clear when nothing drawn is selected', () => {

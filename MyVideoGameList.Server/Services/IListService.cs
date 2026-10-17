@@ -17,10 +17,11 @@ public interface IListService
     /// <summary>
     /// Moves a game to one of the predefined statuses, appending a <c>UserGameEvent</c> for the
     /// transition. A move to the status the game already holds is a no-op and records nothing.
-    /// Creates the entry if this is the first thing recorded about the game.
+    /// Creates the entry if this is the first thing recorded about the game. Answers with what the
+    /// entry holds afterwards, which a game coming back from no list has kept (ADR 0055).
     /// </summary>
     /// <exception cref="ArgumentException">The status key is not one of the seeded statuses.</exception>
-    Task SetListEntryAsync(
+    Task<EntryStateDto> SetListEntryAsync(
         string userId, int gameId, string status, CancellationToken cancellationToken = default);
 
     /// <summary>

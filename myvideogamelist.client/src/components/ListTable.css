@@ -95,11 +95,12 @@
     background: color-mix(in srgb, var(--color-primary-500) 9%, transparent);
 }
 
-/* A row or a control in one scrolled into view by the keyboard — Tab, or a held game's step, which
-   scrolls its row — has to clear the sticky navbar and, below it, the sticky bar of bulk actions,
-   rather than stop beneath them. Outranks the hand order's own margin, which clears the navbar alone. */
+/* A row or a control scrolled into view by the keyboard — Tab, or a held game's step, which scrolls its
+   row — has to clear the sticky navbar and, below it, the sticky bar of bulk actions, rather than stop
+   beneath them. The header's controls too: they sit just under the bar's place in the page, and are the
+   first stop after it. Outranks the hand order's own margin, which clears the navbar alone. */
 .list-table tbody tr,
-.list-table tbody :is(a, button, input) {
+.list-table :is(thead, tbody) :is(a, button, input) {
     scroll-margin-top: 8rem;
     scroll-margin-bottom: 1rem;
 }
@@ -107,7 +108,7 @@
 /* The bar is two rows on a phone (ListBulkBar.css). */
 @media (width < 40rem) {
     .list-table tbody tr,
-    .list-table tbody :is(a, button, input) {
+    .list-table :is(thead, tbody) :is(a, button, input) {
         scroll-margin-top: 10.5rem;
     }
 }
