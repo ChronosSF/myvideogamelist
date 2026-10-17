@@ -28,6 +28,8 @@ function contextValue(overrides: Partial<ListsContextValue> = {}): ListsContextV
         isPending: () => false,
         addToList: vi.fn(async () => {}),
         removeFromList: vi.fn(async () => {}),
+        moveGames: vi.fn(async () => ({ outcome: 'saved' as const, gameIds: [], moved: [], missing: [] })),
+        removeGames: vi.fn(async () => ({ outcome: 'saved' as const, gameIds: [], moved: [], missing: [] })),
         isInList: () => false,
         getListFor: () => null,
         scoreFor: () => null,
@@ -1252,8 +1254,7 @@ describe('GameUserPanel ownership and notes', () => {
     function stubDetail(detail: { ownership?: 'owned' | 'subscription' | 'borrowed' | null; notes?: string | null } = {}) {
         const fetchMock = vi.fn(async () => new Response(
             JSON.stringify(entryDetail({
-                entry: { game: { id: 1, title: 'Celeste' } },
-                ownership: detail.ownership ?? null,
+                entry: { game: { id: 1, title: 'Celeste' }, ownership: detail.ownership ?? null },
                 notes: detail.notes ?? null,
             })),
             { status: 200 },

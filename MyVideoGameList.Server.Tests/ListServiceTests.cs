@@ -539,8 +539,25 @@ public class ScoreAndEntryTests
         var entry = await service.GetEntryAsync(UserId, 10);
 
         Assert.NotNull(entry);
-        Assert.Equal(OwnershipKinds.Borrowed, entry.Ownership);
+        Assert.Equal(OwnershipKinds.Borrowed, entry.Entry.Ownership);
         Assert.Equal("Give it back to Sam.", entry.Notes);
+    }
+
+    [Fact]
+    public async Task GetListsAsync_CarriesTheOwnershipOnEveryRow_AndNullWhereNoneWasSaid()
+    {
+        // The lists page's column and filter read it from the row (ADR 0055); the notes stay off it.
+        using var db = NewDb();
+        var service = NewService(db, IgdbReturning(Game(10), Game(20)));
+
+        await service.SetListEntryAsync(UserId, 10, ListStatusKeys.Backlog);
+        await service.SetListEntryAsync(UserId, 20, ListStatusKeys.Backlog);
+        await service.SetOwnershipAsync(UserId, 10, OwnershipKinds.Subscription);
+
+        var backlog = (await service.GetListsAsync(UserId)).Lists[ListStatusKeys.Backlog];
+
+        Assert.Equal(OwnershipKinds.Subscription, backlog.Single(e => e.Game.Id == 10).Ownership);
+        Assert.Null(backlog.Single(e => e.Game.Id == 20).Ownership);
     }
 
     [Fact]

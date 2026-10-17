@@ -1,5 +1,5 @@
 import { Link } from 'react-router';
-import type { ListEntryDto } from '@/types/list';
+import { type ListEntryDto, OWNERSHIP_NAMES } from '@/types/list';
 import { type SortKey, type SortState, SORT_OPTIONS, sortOption } from '@/lib/listSort';
 import { hasCriticScore, ratingPercent } from '@/lib/score';
 import { ScoreBadge } from '@/components/ScoreBadge';
@@ -25,6 +25,19 @@ interface ListTableProps {
      * a first column, and `entries` is already in the order to draw, a game being moved included.
      */
     reorder?: Reorder;
+    /**
+     * Given where several games can be acted on at once: a checkbox first in every row, and one in the
+     * header that selects every row drawn — every game the filters leave showing, and no other. The
+     * page holds the selection (`docs/decisions/0055-*`).
+     */
+    selection?: TableSelection;
+}
+
+export interface TableSelection {
+    selected: ReadonlySet<number>;
+    onToggle: (gameId: number) => void;
+    /** Selects every row drawn, or clears them all when every one already is. */
+    onToggleAll: () => void;
 }
 
 /** Columns that double as sort controls, in display order. */
@@ -64,6 +77,7 @@ export function ListTable({
     isFavourite,
     listName,
     reorder,
+    selection,
 }: ListTableProps) {
     const sortBy = (key: SortKey) => {
         // Clicking the active column flips direction; a new column starts in whichever direction
@@ -72,12 +86,30 @@ export function ListTable({
         else onSortChange({ key, descending: sortOption(key).defaultDescending });
     };
 
+    const selectedCount = selection ? entries.filter(entry => selection.selected.has(entry.game.id)).length : 0;
+    const allSelected = entries.length > 0 && selectedCount === entries.length;
+
     return (
         <div className="list-table-scroll">
             <table className="list-table">
                 <caption className="sr-only">{listName}</caption>
                 <thead>
                     <tr>
+                        {selection && (
+                            <th scope="col" className="col-select">
+                                <input
+                                    type="checkbox"
+                                    aria-label="Select every game shown"
+                                    checked={allSelected}
+                                    // Some but not all: neither ticked nor clear, which the property alone
+                                    // can say. Set on every commit, so it never lags the count.
+                                    ref={box => {
+                                        if (box) box.indeterminate = selectedCount > 0 && !allSelected;
+                                    }}
+                                    onChange={selection.onToggleAll}
+                                />
+                            </th>
+                        )}
                         {/* The table is in this column's order whenever it is drawn, so it says so as
                             the other columns do when they are the sort. */}
                         {reorder && (
@@ -105,6 +137,9 @@ export function ListTable({
                                 </th>
                             );
                         })}
+                        {/* Not a sort: ADR 0020's keys are API contract, and the filter beside the
+                            platforms is how a list is narrowed to what somebody has. */}
+                        <th scope="col" className="col-ownership">Ownership</th>
                         <th scope="col" className="col-platforms">Platforms</th>
                         <th scope="col" className="col-actions"><span className="sr-only">Actions</span></th>
                     </tr>
@@ -113,13 +148,25 @@ export function ListTable({
                     {entries.map((entry, index) => {
                         const { game } = entry;
                         const pending = isPending(game.id);
+                        const selected = selection?.selected.has(game.id) ?? false;
 
                         return (
                             <tr
                                 key={game.id}
-                                className={pending ? 'pending' : undefined}
+                                className={[pending && 'pending', selected && 'selected'].filter(Boolean).join(' ') || undefined}
                                 {...reorder?.itemProps(game.id)}
                             >
+                                {selection && (
+                                    <td className="col-select">
+                                        <input
+                                            type="checkbox"
+                                            aria-label={`Select ${game.title}`}
+                                            checked={selected}
+                                            onChange={() => selection.onToggle(game.id)}
+                                        />
+                                    </td>
+                                )}
+
                                 {reorder && (
                                     <td className="col-order">
                                         <ReorderHandle
@@ -182,6 +229,10 @@ export function ListTable({
                                 <td className="col-released num">{year(game.releaseDate)}</td>
 
                                 <td className="col-added num">{shortDate(entry.addedAt)}</td>
+
+                                <td className="col-ownership">
+                                    {entry.ownership === null ? '—' : OWNERSHIP_NAMES[entry.ownership]}
+                                </td>
 
                                 <td className="col-platforms">
                                     <span className="list-table-platforms">

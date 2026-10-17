@@ -1,6 +1,6 @@
 # 0054. A hand-arranged order is a sparse position the client computes, and a change of list clears it
 
-**Status:** Implemented; §9 answered for the favourites by [0064](0064-the-showcase-is-arranged-by-hand-and-shown-in-that-order.md)
+**Status:** Implemented; §9 answered for the favourites by [0064](0064-the-showcase-is-arranged-by-hand-and-shown-in-that-order.md); §8 extended to every filter by [0055](0055-several-games-move-in-one-request-and-ownership-is-on-the-list-row.md)
 **Amends:** [0020](0020-list-view-preferences-in-the-database.md), the tie-break rule, for the hand order
 
 ## Context

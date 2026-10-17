@@ -1,6 +1,7 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router';
 import { GameCard } from '@/components/GameCard';
+import { ListBulkBar } from '@/components/ListBulkBar';
 import { ListTable } from '@/components/ListTable';
 import { ListToolbar } from '@/components/ListToolbar';
 import { PageHeader } from '@/components/PageHeader';
@@ -10,12 +11,45 @@ import { useLists } from '@/hooks/useLists';
 import { useAuth } from '@/hooks/useAuth';
 import { useFavourites } from '@/hooks/useFavourites';
 import { useReorder } from '@/hooks/useReorder';
-import { type ListEntryDto, type ListId, HAND_ORDERED_LISTS, LIST_IDS } from '@/types/list';
+import {
+    type ListEntryDto, type ListId, type OwnershipChoice, type ViewMode,
+    HAND_ORDERED_LISTS, LIST_IDS, OWNERSHIP_CHOICES, ownershipChoice,
+} from '@/types/list';
 import type { PlatformDto } from '@/types/game';
 import { MANUAL_SORT, sortEntries } from '@/lib/listSort';
+import { bulkDone, bulkMissing, gameCount } from '@/lib/listBulk';
 import './ListsPage.css';
 import { PRIVATE_NO_STORE } from '@/lib/cache';
 import { NOINDEX } from '@/lib/seo';
+
+/**
+ * The games a list shows under its filters. An empty choice of platforms or of ownership means every
+ * one, so each filter starts inert. One function for the rows drawn and for what a change of filter
+ * leaves selected, so the two cannot disagree.
+ */
+function underFilters(
+    entries: ListEntryDto[],
+    platformIds: readonly number[],
+    ownerships: readonly OwnershipChoice[],
+): ListEntryDto[] {
+    return entries.filter(entry =>
+        (platformIds.length === 0 || entry.game.platforms.some(p => platformIds.includes(p.id)))
+        && (ownerships.length === 0 || ownerships.includes(ownershipChoice(entry))));
+}
+
+/**
+ * The games ticked for a bulk action, and whose and in which list they were ticked: a selection is one
+ * account's, in one list. Read through that stamp rather than cleared from an effect, so that the frame
+ * after a sign-in, or after a change of tab, never acts on games somebody else ticked — the account
+ * scope the providers keep (`docs/decisions/0022-*`), on page state.
+ */
+interface Selection {
+    session: string | null;
+    listId: ListId;
+    ids: ReadonlySet<number>;
+}
+
+const NOTHING_SELECTED: ReadonlySet<number> = new Set();
 
 /**
  * This route's whole content is the signed-in user's lists. Stated explicitly rather than left to inherit the root default, so that changing the
@@ -41,7 +75,7 @@ export function ListsPage() {
     const { user, loading: authLoading } = useAuth();
     const {
         lists, loading, error, mutationError, isPending,
-        view, setView, sortFor, setSort, setScore, removeFromList, moveInOrder, nameFor,
+        view, setView, sortFor, setSort, setScore, removeFromList, moveGames, removeGames, moveInOrder, nameFor,
     } = useLists();
     const { isFavourite } = useFavourites();
 
@@ -50,12 +84,29 @@ export function ListsPage() {
     // sign in before showing them their lists.
     const signedIn = !authLoading && user !== null;
     const signedOut = !authLoading && user === null;
+    const session = user?.id ?? null;
 
     const [activeTab, setActiveTab] = useState<ListId>('playing');
 
     // Transient and deliberately not persisted, unlike the sort and the layout. An empty
-    // selection means "everything", so the filter starts inert.
+    // selection means "everything", so each filter starts inert.
     const [platformIds, setPlatformIds] = useState<number[]>([]);
+    const [ownerships, setOwnerships] = useState<OwnershipChoice[]>([]);
+
+    const [selection, setSelection] = useState<Selection>({ session: null, listId: activeTab, ids: NOTHING_SELECTED });
+    // What a screen reader is told about the selection and about what a bulk action did, and what a bulk
+    // action out is doing in the list it is doing it to. Both stamped with the account, as the selection
+    // is: a request still out when one account signs out and another in must not tell the next account
+    // what it did, nor hide the next account's bar behind it — in words that name the first account's
+    // lists by its own names for them (ADR 0031).
+    const [announcement, setAnnouncement] = useState<{ session: string | null; text: string }>({ session: null, text: '' });
+    const [working, setWorking] = useState<{ session: string | null; listId: ListId; text: string } | null>(null);
+    // Why the last action did not do all it was asked, for the bar to say beside the selection: the page's
+    // banner is at the top, out of sight deep in a list. Stamped as the rest are.
+    const [problem, setProblem] = useState<{ session: string | null; listId: ListId; text: string } | null>(null);
+    const bulkBar = useRef<HTMLDivElement>(null);
+    // Set when a bulk action ends, for the commit that follows it — see the effect below.
+    const settleFocus = useRef(false);
 
     const entries = lists[activeTab];
     const sort = sortFor(activeTab);
@@ -78,19 +129,187 @@ export function ListsPage() {
         return [...seen.values()].sort((a, b) => a.name.localeCompare(b.name));
     }, [lists]);
 
-    const visible = useMemo(() => {
-        const filtered = platformIds.length === 0
-            ? entries
-            : entries.filter(entry => entry.game.platforms.some(p => platformIds.includes(p.id)));
-        return sortEntries(filtered, sort);
-    }, [entries, platformIds, sort]);
+    // The same for ownership, "not recorded" included, in the order the filter offers them.
+    const ownershipChoices = useMemo<OwnershipChoice[]>(() => {
+        const present = new Set<OwnershipChoice>();
+        for (const id of LIST_IDS) {
+            for (const entry of lists[id]) present.add(ownershipChoice(entry));
+        }
+        return OWNERSHIP_CHOICES.filter(choice => present.has(choice));
+    }, [lists]);
+
+    // The ownership filter narrows by the choices still offered, and by nothing while it is not offered.
+    // The last game of a kind can leave every list under it — taken out by a bulk removal, say — and a
+    // choice left behind would go on hiding every game, behind a menu that no longer lists it or is not
+    // drawn at all.
+    const appliedOwnerships = useMemo(() => {
+        const offered = ownershipChoices.length > 1
+            ? ownerships.filter(choice => ownershipChoices.includes(choice))
+            : [];
+        return offered.length === ownershipChoices.length ? [] : offered;
+    }, [ownerships, ownershipChoices]);
+
+    const visible = useMemo(
+        () => sortEntries(underFilters(entries, platformIds, appliedOwnerships), sort),
+        [entries, platformIds, appliedOwnerships, sort],
+    );
+    const filtering = platformIds.length > 0 || appliedOwnerships.length > 0;
 
     // The hand order, where this list offers one. It can be rearranged only when every game in it is
     // on screen: a game dropped between two that a filter has left showing would land among games
     // the user cannot see, in an order they never chose.
     const offerManual = HAND_ORDERED_LISTS.includes(activeTab);
     const manual = sort.key === MANUAL_SORT.key;
-    const arranging = manual && platformIds.length === 0;
+    const arranging = manual && !filtering;
+
+    // A selection made by another account, or in another list, is nobody's here. What a bulk action acts
+    // on is what is both ticked and drawn: a game a filter hides is never moved unseen.
+    const selected = selection.session === session && selection.listId === activeTab
+        ? selection.ids
+        : NOTHING_SELECTED;
+    const selectedShown = visible.filter(entry => selected.has(entry.game.id));
+
+    const announce = (text: string) => setAnnouncement({ session, text });
+
+    const select = (ids: ReadonlySet<number>) => {
+        setSelection({ session, listId: activeTab, ids });
+        setProblem(null);
+        const count = visible.filter(entry => ids.has(entry.game.id)).length;
+        announce(count === 0 ? 'No games selected.' : `${gameCount(count)} selected.`);
+    };
+
+    const toggleSelected = (gameId: number) => {
+        const ids = new Set(selected);
+        if (ids.has(gameId)) ids.delete(gameId);
+        else ids.add(gameId);
+        select(ids);
+    };
+
+    // Every row drawn, or none of them once every one already is. Only the rows it heads: a game whose
+    // move is still out has left the list for the moment, and stays ticked for a failure to bring back.
+    const toggleAllSelected = () => {
+        const ids = new Set(selected);
+        const allDrawn = selectedShown.length === visible.length;
+        for (const entry of visible) {
+            if (allDrawn) ids.delete(entry.game.id);
+            else ids.add(entry.game.id);
+        }
+        select(ids);
+    };
+
+    /**
+     * Lets go of whatever a new choice of filters stops drawing, so a hidden game is never acted on. Only a
+     * game still in the list and now hidden: one whose move is out has left the list for the moment, and a
+     * failure brings it back still ticked.
+     */
+    const keepSelectedAmong = (rows: ListEntryDto[]) => {
+        const drawn = new Set(rows.map(entry => entry.game.id));
+        const inList = new Set(entries.map(entry => entry.game.id));
+        const kept = [...selected].filter(id => drawn.has(id) || !inList.has(id));
+        if (kept.length === selected.size) return;
+        setSelection({ session, listId: activeTab, ids: new Set(kept) });
+    };
+
+    const changePlatforms = (next: number[]) => {
+        setPlatformIds(next);
+        keepSelectedAmong(underFilters(entries, next, appliedOwnerships));
+    };
+
+    const changeOwnerships = (next: OwnershipChoice[]) => {
+        setOwnerships(next);
+        keepSelectedAmong(underFilters(entries, platformIds, next));
+    };
+
+    const clearFilters = () => {
+        setPlatformIds([]);
+        setOwnerships([]);
+    };
+
+    // A new list starts with nothing selected and nothing said, so the next announcement is heard even when
+    // its words are the same as the last.
+    const changeTab = (id: ListId) => {
+        setActiveTab(id);
+        setSelection({ session, listId: id, ids: NOTHING_SELECTED });
+        setProblem(null);
+        announce('');
+    };
+
+    // The selection lives in the table; leaving it for the tiles lets it go.
+    const changeView = (next: ViewMode) => {
+        setView(next);
+        if (next === 'table') return;
+        setSelection({ session, listId: activeTab, ids: NOTHING_SELECTED });
+        setProblem(null);
+        announce('');
+    };
+
+    // Clearing takes the selection's controls away with the focus on one of them, so focus goes to the bar.
+    const clearSelected = () => {
+        bulkBar.current?.focus();
+        select(NOTHING_SELECTED);
+    };
+
+    /**
+     * Moves every selected game shown to another list, or takes them all out, in one request through the
+     * provider, which shows it at once and undoes what does not save (`docs/decisions/0055-*`).
+     *
+     * The button pressed goes with the games, so focus goes first to the bar, which stays — or to the list's
+     * tab when the action takes every row shown, since the table and the bar then go too, and focus moving
+     * a second time, after the announcement, can cut it off. A game that saved has left this list and is let
+     * go from the selection; one put back after a failure is still selected, so trying again is one press.
+     */
+    const actOnSelected = async (target: ListId | null) => {
+        const listId = activeTab;
+        const gameIds = selectedShown.map(entry => entry.game.id);
+        if (gameIds.length === 0) return;
+
+        const from = nameFor(listId);
+        const to = target === null ? null : nameFor(target);
+        const count = gameCount(gameIds.length);
+        const job = { session, listId, text: to === null ? `Taking ${count} out of ${from}…` : `Moving ${count} to ${to}…` };
+
+        const everyRowShown = gameIds.length === visible.length;
+        (everyRowShown ? document.getElementById(`lists-tab-${listId}`) : bulkBar.current)?.focus();
+        setWorking(job);
+        setProblem(null);
+
+        const result = target === null ? await removeGames(gameIds) : await moveGames(gameIds, target);
+
+        setWorking(current => (current === job ? null : current));
+        settleFocus.current = true;
+
+        if (result.outcome !== 'saved') {
+            // Every game is still where it was, and still selected. The banner says what went wrong, and
+            // the bar says it again, in reach.
+            setProblem({ session, listId, text: result.message });
+            announce('');
+            return;
+        }
+
+        if (result.missing.length > 0) {
+            setProblem({ session, listId, text: bulkMissing(result.missing.length, result.gameIds.length) });
+        }
+
+        const gone = new Set(result.gameIds);
+        setSelection(current => (current.session === session && current.listId === listId
+            ? { ...current, ids: new Set([...current.ids].filter(id => !gone.has(id))) }
+            : current));
+        announce(bulkDone(result, to, from));
+    };
+
+    // When a bulk action empties the list, the bar goes with the table while the request is out, and
+    // focus goes with the bar. After the commit that follows the action, focus that has fallen to the
+    // page goes back to the bar if a failure has brought the games back, or else to the list's tab,
+    // which is always there and says what is left in it. Every other commit leaves focus alone.
+    useEffect(() => {
+        if (!settleFocus.current) return;
+        settleFocus.current = false;
+
+        const focused = document.activeElement;
+        if (focused === null || focused === document.body) {
+            (bulkBar.current ?? document.getElementById(`lists-tab-${activeTab}`))?.focus();
+        }
+    });
 
     const byId = useMemo(() => new Map(visible.map(entry => [entry.game.id, entry])), [visible]);
     const reorder = useReorder({
@@ -119,7 +338,7 @@ export function ListsPage() {
                             aria-selected={activeTab === id}
                             aria-controls="lists-tabpanel"
                             className={`lists-tab-btn${activeTab === id ? ' active' : ''}`}
-                            onClick={() => setActiveTab(id)}
+                            onClick={() => changeTab(id)}
                         >
                             {nameFor(id)}
                             <span className="lists-tab-count">{lists[id].length}</span>
@@ -186,13 +405,16 @@ export function ListsPage() {
                 {signedIn && !loading && !error && entries.length > 0 && (
                     <ListToolbar
                         view={view}
-                        onViewChange={setView}
+                        onViewChange={changeView}
                         sort={sort}
                         onSortChange={next => setSort(activeTab, next)}
                         offerManual={offerManual}
                         platforms={platforms}
                         selectedPlatformIds={platformIds}
-                        onPlatformsChange={setPlatformIds}
+                        onPlatformsChange={changePlatforms}
+                        ownerships={ownershipChoices}
+                        selectedOwnerships={appliedOwnerships}
+                        onOwnershipsChange={changeOwnerships}
                     />
                 )}
 
@@ -200,8 +422,28 @@ export function ListsPage() {
                     <p className="lists-order-hint">
                         {arranging
                             ? 'Drag a game by its handle to where you mean to play it — or press a handle and then the handle of the game whose place it should take, or pick one up with Space and move it with the arrow keys. Games you have not placed follow, in the order they joined your backlog.'
-                            : 'Clear the platform filter to rearrange your order.'}
+                            : 'Clear the filters to rearrange your order.'}
                     </p>
+                )}
+
+                {/* Outside every condition, so the region is on the page before anything is said in it:
+                    one added with its words already inside is not announced. */}
+                <div className="sr-only" aria-live="polite" aria-atomic="true">
+                    {announcement.session === session ? announcement.text : ''}
+                </div>
+
+                {signedIn && !loading && !error && visible.length > 0 && view === 'table' && (
+                    <ListBulkBar
+                        ref={bulkBar}
+                        count={selectedShown.length}
+                        listName={nameFor(activeTab)}
+                        targets={LIST_IDS.filter(id => id !== activeTab).map(id => ({ id, name: nameFor(id) }))}
+                        working={working?.session === session && working.listId === activeTab ? working.text : null}
+                        problem={problem?.session === session && problem.listId === activeTab ? problem.text : null}
+                        onMove={listId => void actOnSelected(listId)}
+                        onRemove={() => void actOnSelected(null)}
+                        onClear={clearSelected}
+                    />
                 )}
 
                 {signedIn && !loading && !error && arranging && visible.length > 0 && (
@@ -211,14 +453,16 @@ export function ListsPage() {
                 {signedIn && !loading && !error && entries.length > 0 && visible.length === 0 && (
                     <div className="text-center py-16">
                         <p className="text-fg-muted text-sm mb-3">
-                            No games in {nameFor(activeTab)} match the platform filter.
+                            No games in {nameFor(activeTab)} match the {platformIds.length > 0 && appliedOwnerships.length > 0
+                                ? 'filters'
+                                : appliedOwnerships.length > 0 ? 'ownership filter' : 'platform filter'}.
                         </p>
                         <button
                             type="button"
                             className="text-primary-400 text-sm font-semibold hover:underline"
-                            onClick={() => setPlatformIds([])}
+                            onClick={clearFilters}
                         >
-                            Clear the filter
+                            {platformIds.length > 0 && appliedOwnerships.length > 0 ? 'Clear the filters' : 'Clear the filter'}
                         </button>
                     </div>
                 )}
@@ -306,6 +550,7 @@ export function ListsPage() {
                         onScoreChange={(gameId, score) => void setScore(gameId, score)}
                         onRemove={gameId => void removeFromList(activeTab, gameId)}
                         reorder={arranging ? reorder : undefined}
+                        selection={{ selected, onToggle: toggleSelected, onToggleAll: toggleAllSelected }}
                     />
                 )}
             </div>

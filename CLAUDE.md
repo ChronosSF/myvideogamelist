@@ -314,10 +314,13 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   it. See `docs/decisions/0044-*`.
 
 - **Never change a game's status without recording an event.** `UserGameEvents` is append-only
-  and is the only record that a transition happened — `UserGameLists` holds current state and is
+  and is the only record that a transition happened — `UserGameEntries` holds current state and is
   overwritten on every move. A direct `UPDATE` to `StatusId` leaves a permanent hole in a history
   no migration can reconstruct. Go through `ListService`, and note that a move to the status a
-  game already holds must record nothing. See `docs/decisions/0018-*`.
+  game already holds must record nothing. Several games at once go through `SetStatusesAsync`: one
+  transaction, every game through `Transition`, the rule the single move and removal use too, so a
+  new way of changing statuses calls that rule rather than restating it. See `docs/decisions/0018-*`
+  and `0055-*`.
 
 - **The import is the one exemption from that rule, and `Origin` is what makes it checkable.**
   `ImportService` writes statuses without events, because a tracker export records a shelf rather

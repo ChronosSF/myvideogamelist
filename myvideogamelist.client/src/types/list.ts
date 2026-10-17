@@ -19,6 +19,12 @@ export type ListId = 'backlog' | 'playing' | 'on_hold' | 'finished' | 'dropped';
 export interface ListEntryDto {
     game: GameDto;
     score: number | null;
+    /**
+     * How the user has the game, or null when they have not said. On the row for the lists page's
+     * column and filter, so the provider keeps it true through every optimistic change, as it keeps
+     * the score — see `docs/decisions/0055-*`.
+     */
+    ownership: Ownership | null;
     addedAt: string;
     statusChangedAt: string | null;
     /**
@@ -51,6 +57,24 @@ export const OWNERSHIP_NAMES: Record<Ownership, string> = {
     subscription: 'Subscription',
     borrowed: 'Borrowed',
 };
+
+/**
+ * What the lists page's ownership filter offers: each kind, and `unrecorded` for a game whose owner has
+ * not said, as the game page's panel words it. A choice in a filter, never sent anywhere.
+ */
+export type OwnershipChoice = Ownership | 'unrecorded';
+
+export const OWNERSHIP_CHOICES: OwnershipChoice[] = [...OWNERSHIPS, 'unrecorded'];
+
+export const OWNERSHIP_CHOICE_NAMES: Record<OwnershipChoice, string> = {
+    ...OWNERSHIP_NAMES,
+    unrecorded: 'Not recorded',
+};
+
+/** Which of the filter's choices a row answers to. */
+export function ownershipChoice(entry: ListEntryDto): OwnershipChoice {
+    return entry.ownership ?? 'unrecorded';
+}
 
 /** Layout of the list views. Global, unlike the sort order which is per status list. */
 export type ViewMode = 'tiles' | 'table';

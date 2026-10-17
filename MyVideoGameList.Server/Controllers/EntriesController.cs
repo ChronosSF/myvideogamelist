@@ -28,7 +28,7 @@ public class EntriesController(
     UserManager<ApplicationUser> userManager) : ControllerBase
 {
     /// <summary>
-    /// Everything the user has recorded about one game — the entry with its ownership and notes,
+    /// Everything the user has recorded about one game — the entry with its ownership, its notes,
     /// its playthroughs and their review — in one round trip, because the panel that shows them
     /// shows them together.
     /// </summary>
@@ -46,7 +46,7 @@ public class EntriesController(
         var playthroughs = await playthroughService.GetForGameAsync(user.Id, gameId, cancellationToken);
         var review = await reviewService.GetAsync(user.Id, gameId, cancellationToken);
 
-        return Ok(new EntryDetailDto(entry.Entry, entry.Ownership, entry.Notes, playthroughs, review));
+        return Ok(new EntryDetailDto(entry.Entry, entry.Notes, playthroughs, review));
     }
 
     [HttpPut("{gameId:int}/score")]

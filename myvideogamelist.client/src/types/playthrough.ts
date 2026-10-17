@@ -1,4 +1,4 @@
-import type { ListEntryDto, Ownership } from '@/types/list';
+import type { ListEntryDto } from '@/types/list';
 
 /**
  * The three playthrough types, mirroring the server's `PlaythroughType` rows.
@@ -72,12 +72,11 @@ export interface ReviewInputDto {
 /**
  * Everything the user has recorded about one game, from `GET /api/entries/{gameId}`. The list
  * views still read bare `ListEntryDto` rows — fifty of them at once have no use for anybody's
- * notes, which is why `ownership` and `notes` are here and not on the entry.
+ * notes, which is why `notes` is here and not on the entry. How the user has the game is on the
+ * entry itself, `entry.ownership`, since the lists page filters by it (`docs/decisions/0055-*`).
  */
 export interface EntryDetailDto {
     entry: ListEntryDto;
-    /** Null when the user has not said. */
-    ownership: Ownership | null;
     /** Private to the user. Null when there are none. */
     notes: string | null;
     playthroughs: PlaythroughDto[];

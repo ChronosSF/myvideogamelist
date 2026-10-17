@@ -4,7 +4,8 @@ import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ListsProvider } from '@/contexts/ListsProvider';
 import { useLists } from '@/hooks/useLists';
-import type { ListId, ListEntryDto } from '@/types/list';
+import { type ListId, type ListEntryDto, LIST_IDS } from '@/types/list';
+import { type BulkResult, MAX_BULK_GAMES } from '@/lib/listBulk';
 import { MANUAL_SORT, sortEntries } from '@/lib/listSort';
 import { entry, game } from '@/test/factories';
 
@@ -85,6 +86,7 @@ function Probe({ listId = 'playing' as ListId }: { listId?: ListId }) {
             <span data-testid="found-in">{String(lists.getListFor(1))}</span>
             <span data-testid="pending">{String(lists.isPending(1))}</span>
             <span data-testid="deleted">{deleted}</span>
+            <span data-testid="ownership">{String(lists.lists.playing.find(e => e.game.id === 1)?.ownership ?? null)}</span>
             {(['backlog', 'playing', 'on_hold', 'finished', 'dropped'] as ListId[]).map(id => (
                 <span key={id} data-testid={`list-${id}`}>
                     {lists.lists[id].map(e => `${e.game.title}(${e.score ?? '-'})`).join(',')}
@@ -96,6 +98,7 @@ function Probe({ listId = 'playing' as ListId }: { listId?: ListId }) {
             <button onClick={() => void lists.removeFromList('playing', 1)}>remove</button>
             <button onClick={() => void lists.setScore(1, 9)}>score 9</button>
             <button onClick={() => void lists.deleteEntry(1).then(ok => setDeleted(String(ok)))}>delete entry</button>
+            <button onClick={() => void lists.setOwnership(1, 'owned')}>own it</button>
             <button onClick={() => lists.setView('table')}>use table</button>
             <button onClick={() => lists.setSort(listId, { key: 'score', descending: true })}>sort by score</button>
             <button onClick={() => lists.reload()}>reload</button>
@@ -868,6 +871,29 @@ describe('across a session change', () => {
         expect(playing()).not.toHaveTextContent('Celeste');
     });
 
+    it('does not put a failed ownership back into the next account', async () => {
+        // Bob has Celeste too, kept on a subscription; Alice's undo names the game by id, and would
+        // put back the nothing she had recorded over what Bob has.
+        const BOBS_CELESTE = entry({ game: { id: 1, title: 'Celeste' }, ownership: 'subscription' });
+        const { release } = sessionStub({
+            loads: [{ playing: [CELESTE] }, { playing: [BOBS_CELESTE] }],
+            deferred: 'PUT /api/entries/1/ownership',
+        });
+        const view = mount();
+        await waitFor(() => expect(playing()).toHaveTextContent('Celeste(7)'));
+
+        await userEvent.click(screen.getByRole('button', { name: 'own it' }));
+        expect(screen.getByTestId('ownership')).toHaveTextContent('owned');
+
+        await signIn(BOB, view);
+        await waitFor(() => expect(screen.getByTestId('ownership')).toHaveTextContent('subscription'));
+
+        await release(500);
+
+        expect(screen.getByTestId('ownership')).toHaveTextContent('subscription');
+        expect(screen.getByTestId('error')).toHaveTextContent('');
+    });
+
     it('does not show the next account the failure banner either', async () => {
         // The rollback and the banner are dispatched together, so the guard has to cover both.
         // An error about a game the new user never touched is its own small confusion.
@@ -1050,10 +1076,11 @@ describe('across a session change', () => {
 
 describe("the entry's own fields", () => {
     /**
-     * Ownership and notes are written under the same per-game lock as a move or a score, and show
-     * in no list, so what these assert is the request, the lock and the result — not the lists.
+     * Ownership and notes are written under the same per-game lock as a move or a score. Ownership is
+     * shown in the game's list row too, at once, and put back if the save fails — the lists page has a
+     * column and a filter for it (`docs/decisions/0055-*`); the notes show in no list.
      */
-    function fieldsStub(options: { hold?: string[]; failing?: string[]; reject?: string[] } = {}) {
+    function fieldsStub(options: { hold?: string[]; failing?: string[]; reject?: string[]; celeste?: ListEntryDto } = {}) {
         const calls: Recorded[] = [];
         const settlers = new Map<string, (status: number) => void>();
 
@@ -1064,7 +1091,7 @@ describe("the entry's own fields", () => {
             calls.push({ method, url, body: init?.body ? JSON.parse(String(init.body)) : undefined });
 
             if (key === 'GET /api/lists') {
-                return Promise.resolve(new Response(JSON.stringify({ lists: { playing: [CELESTE] } }), { status: 200 }));
+                return Promise.resolve(new Response(JSON.stringify({ lists: { playing: [options.celeste ?? CELESTE] } }), { status: 200 }));
             }
             if (key === 'GET /api/user/list-preferences') {
                 return Promise.resolve(new Response(JSON.stringify({ view: 'tiles', sorts: {} }), { status: 200 }));
@@ -1098,7 +1125,7 @@ describe("the entry's own fields", () => {
                 <span data-testid="error">{lists.mutationError ?? ''}</span>
                 <span data-testid="pending">{String(lists.isPending(1))}</span>
                 <span data-testid="result">{result}</span>
-                <span data-testid="list-playing">{lists.lists.playing.map(e => `${e.game.title}(${e.score ?? '-'})`).join(',')}</span>
+                <span data-testid="list-playing">{lists.lists.playing.map(e => `${e.game.title}(${e.score ?? '-'})[${e.ownership ?? '-'}]`).join(',')}</span>
                 <button onClick={() => void lists.setOwnership(1, 'owned').then(ok => setResult(String(ok)))}>own it</button>
                 <button onClick={() => void lists.setOwnership(1, null).then(ok => setResult(String(ok)))}>clear ownership</button>
                 <button onClick={() => void lists.setNotes(1, 'Save is on the laptop.').then(ok => setResult(String(ok)))}>write notes</button>
@@ -1117,17 +1144,44 @@ describe("the entry's own fields", () => {
     const press = (name: string) => userEvent.click(screen.getByRole('button', { name }));
     const result = () => screen.getByTestId('result');
 
-    it('says how the user has the game through the entry endpoint, touching no list', async () => {
-        const { calls } = await mountFields();
+    it('says how the user has the game through the entry endpoint, and shows it in the row at once', async () => {
+        const { calls, release } = await mountFields({ hold: ['PUT /api/entries/1/ownership'] });
 
         await press('own it');
 
-        await waitFor(() => expect(result()).toHaveTextContent('true'));
+        // In the row before the save has landed, as a score is.
+        expect(screen.getByTestId('list-playing')).toHaveTextContent('Celeste(7)[owned]');
+        await release('PUT /api/entries/1/ownership', 204);
+
+        expect(result()).toHaveTextContent('true');
+        expect(screen.getByTestId('list-playing')).toHaveTextContent('Celeste(7)[owned]');
         const put = calls.find(c => c.url === '/api/entries/1/ownership');
         expect(put?.method).toBe('PUT');
         expect(put?.body).toEqual({ ownership: 'owned' });
-        expect(screen.getByTestId('list-playing')).toHaveTextContent('Celeste(7)');
         expect(calls.some(c => c.url === '/api/lists/1')).toBe(false);
+    });
+
+    it("puts the row's ownership back when the save is refused, as it was rather than as nothing", async () => {
+        // Borrowed to begin with, so an undo that put back nothing would be caught.
+        await mountFields({
+            failing: ['PUT /api/entries/1/ownership'],
+            celeste: entry({ game: { id: 1, title: 'Celeste' }, score: 7, ownership: 'borrowed' }),
+        });
+
+        await press('own it');
+
+        await waitFor(() => expect(result()).toHaveTextContent('false'));
+        expect(screen.getByTestId('list-playing')).toHaveTextContent('Celeste(7)[borrowed]');
+    });
+
+    it('puts it back when the request never arrives, too', async () => {
+        await mountFields({ reject: ['PUT /api/entries/1/ownership'] });
+
+        await press('own it');
+
+        await waitFor(() => expect(result()).toHaveTextContent('false'));
+        expect(screen.getByTestId('list-playing')).toHaveTextContent('Celeste(7)[-]');
+        expect(screen.getByTestId('error')).toHaveTextContent('Failed to save how you have this game');
     });
 
     it('sends a clear as a null rather than leaving the field out', async () => {
@@ -1147,6 +1201,8 @@ describe("the entry's own fields", () => {
         await waitFor(() => expect(result()).toHaveTextContent('true'));
         expect(calls.find(c => c.url === '/api/entries/1/notes')?.body)
             .toEqual({ notes: 'Save is on the laptop.' });
+        // No list shows the notes, so no row changes.
+        expect(screen.getByTestId('list-playing')).toHaveTextContent('Celeste(7)[-]');
     });
 
     it('reports a refused save as false, with a message of its own', async () => {
@@ -1189,6 +1245,8 @@ describe("the entry's own fields", () => {
 
         await waitFor(() => expect(result()).toHaveTextContent('false'));
         expect(calls.some(c => c.url === '/api/entries/1/ownership')).toBe(false);
+        // Refused before anything changed: the row shows no ownership it was never given.
+        expect(screen.getByTestId('list-playing')).toHaveTextContent('Celeste(9)[-]');
     });
 });
 
@@ -1736,5 +1794,448 @@ describe('the hand order', () => {
 
         expect(order()).toHaveTextContent('Outer Wilds@4096');
         expect(screen.getByTestId('error')).toBeEmptyDOMElement();
+    });
+});
+
+describe('several games at once', () => {
+    const BULK = 'PATCH /api/lists';
+
+    // Two games playing — one scored and borrowed — and one placed in the backlog's hand order.
+    const PLAYING = [
+        entry({ game: { id: 1, title: 'Celeste' }, score: 7, ownership: 'borrowed', statusChangedAt: '2026-01-01T00:00:00Z' }),
+        entry({ game: { id: 2, title: 'Hades' }, statusChangedAt: '2026-02-01T00:00:00Z' }),
+    ];
+    const BACKLOG = [entry({ game: { id: 3, title: 'Cuphead' }, position: 1024 })];
+
+    type Answer = { gameId: number; outcome: string }[] | 'unreadable' | { raw: string };
+
+    /**
+     * Holds, refuses or rejects chosen requests, as the other blocks' stubs do; answers the batch as the
+     * server does, or with the outcomes a test gives it; and answers each load from a list of payloads,
+     * so a reload or a second account can be handed different games.
+     */
+    function bulkStub(options: {
+        loads?: ListsPayload[];
+        hold?: string[];
+        reject?: string[];
+        failing?: string[];
+        answer?: Answer;
+    } = {}) {
+        const calls: (Recorded & { headers: Headers })[] = [];
+        const settlers = new Map<string, ((status: number) => void)[]>();
+        const loads = options.loads ?? [{ playing: PLAYING, backlog: BACKLOG }];
+        let loaded = 0;
+
+        const answer = (body: unknown): Response => {
+            if (options.answer === 'unreadable') return new Response('{"results": [', { status: 200 });
+            if (options.answer && 'raw' in options.answer) return new Response(options.answer.raw, { status: 200 });
+            const named = (body as { gameIds: number[] }).gameIds;
+            const results = options.answer ?? named.map(gameId => ({ gameId, outcome: 'moved' }));
+            return new Response(JSON.stringify({ results }), { status: 200 });
+        };
+
+        vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+            const url = String(input);
+            const method = init?.method ?? 'GET';
+            const key = `${method} ${url}`;
+            const body: unknown = init?.body ? JSON.parse(String(init.body)) : undefined;
+            calls.push({ method, url, body, headers: new Headers(init?.headers) });
+
+            if (key === 'GET /api/lists') {
+                const lists = loads[Math.min(loaded++, loads.length - 1)];
+                return Promise.resolve(new Response(JSON.stringify({ lists }), { status: 200 }));
+            }
+            if (key === 'GET /api/user/list-preferences') {
+                return Promise.resolve(new Response(JSON.stringify({ view: 'table', sorts: {} }), { status: 200 }));
+            }
+            if (options.reject?.includes(key)) return Promise.reject(new TypeError('Failed to fetch'));
+            if (options.hold?.includes(key)) {
+                return new Promise<Response>(resolve => {
+                    const queue = settlers.get(key) ?? [];
+                    queue.push(status => resolve(status === 200 && key === BULK
+                        ? answer(body)
+                        : new Response(status === 204 ? null : 'nope', { status })));
+                    settlers.set(key, queue);
+                });
+            }
+            if (options.failing?.includes(key)) return Promise.resolve(new Response('nope', { status: 500 }));
+            if (key === BULK) return Promise.resolve(answer(body));
+            return Promise.resolve(new Response(null, { status: 204 }));
+        }));
+
+        return {
+            calls,
+            /** Settles the held request to `key` — the `nth` of them, counting from 0, when there are several. */
+            release: (key: string, status: number, nth = 0) => act(async () => {
+                settlers.get(key)![nth](status);
+                await Promise.resolve();
+            }),
+        };
+    }
+
+    /** Every list as `title(score)[ownership]@position`, the locks, the banner, and a button per action tried. */
+    function BulkProbe() {
+        const lists = useLists();
+        const [result, setResult] = useState('');
+        const show = (id: ListId) => sortEntries(lists.lists[id], { key: 'title', descending: false })
+            .map(e => `${e.game.title}(${e.score ?? '-'})[${e.ownership ?? '-'}]@${e.position ?? '-'}`)
+            .join(',');
+        const report = (done: Promise<BulkResult>) => void done.then(r => setResult(r.outcome === 'saved'
+            ? `saved:${r.gameIds.join('+')}:moved=${r.moved.join('+')}:missing=${r.missing.join('+')}`
+            : r.outcome));
+
+        return (
+            <div>
+                <span data-testid="loading">{String(lists.loading)}</span>
+                <span data-testid="error">{lists.mutationError ?? ''}</span>
+                <span data-testid="result">{result}</span>
+                <span data-testid="pending">{[1, 2, 3].filter(id => lists.isPending(id)).join(',')}</span>
+                {LIST_IDS.map(id => <span key={id} data-testid={`list-${id}`}>{show(id)}</span>)}
+                <span data-testid="moved-at">{lists.lists.finished.map(e => e.statusChangedAt).join(',')}</span>
+                <button onClick={() => report(lists.moveGames([1, 2], 'finished'))}>finish both</button>
+                <button onClick={() => report(lists.moveGames([1, 3], 'finished'))}>finish celeste and cuphead</button>
+                <button onClick={() => report(lists.moveGames([2, 1, 2], 'dropped'))}>drop both, hades twice</button>
+                <button onClick={() => report(lists.moveGames([1], 'playing'))}>celeste to playing</button>
+                <button onClick={() => report(lists.removeGames([1, 2]))}>remove both</button>
+                <button onClick={() => void lists.removeFromList('backlog', 3)}>remove cuphead</button>
+                <button onClick={() => void lists.setScore(2, 8)}>score hades</button>
+                <button onClick={() => lists.reload()}>reload</button>
+            </div>
+        );
+    }
+
+    async function mountBulk(options: Parameters<typeof bulkStub>[0] = {}) {
+        const stub = bulkStub(options);
+        const view = render(<ListsProvider><BulkProbe /></ListsProvider>);
+        await waitFor(() => expect(screen.getByTestId('loading')).toHaveTextContent('false'));
+        return { ...stub, view };
+    }
+
+    const press = (name: string) => userEvent.click(screen.getByRole('button', { name }));
+    const list = (id: ListId) => screen.getByTestId(`list-${id}`);
+    const sent = <T extends Recorded>(calls: T[]) => calls.filter(call => `${call.method} ${call.url}` === BULK);
+
+    it('moves every game named in one request through apiFetch, and shows them there at once', async () => {
+        const { calls, release } = await mountBulk({ hold: [BULK] });
+
+        await press('finish both');
+
+        // Before the answer: the change is the user's to see now, as a single move's is.
+        expect(list('finished')).toHaveTextContent('Celeste(7)[borrowed]@-,Hades(-)[-]@-');
+        expect(list('playing')).toBeEmptyDOMElement();
+
+        const [request] = sent(calls);
+        expect(request.body).toEqual({ gameIds: [1, 2], status: 'finished' });
+        // The write guard refuses a write without it, in development as well as deployed.
+        expect(request.headers.get('X-MVGL-Request')).toBe('1');
+
+        await release(BULK, 200);
+
+        expect(list('finished')).toHaveTextContent('Celeste(7)[borrowed]@-,Hades(-)[-]@-');
+        expect(screen.getByTestId('result')).toHaveTextContent('saved:1+2:moved=1+2:missing=');
+        expect(screen.getByTestId('error')).toBeEmptyDOMElement();
+    });
+
+    it('takes every game named out of every list with a null status', async () => {
+        const { calls } = await mountBulk();
+
+        await press('remove both');
+
+        await waitFor(() => expect(screen.getByTestId('result')).toHaveTextContent('saved:1+2'));
+        expect(sent(calls)[0].body).toEqual({ gameIds: [1, 2], status: null });
+        expect(list('playing')).toBeEmptyDOMElement();
+        expect(LIST_IDS.every(id => !list(id).textContent?.includes('Celeste'))).toBe(true);
+    });
+
+    it('stamps one moment on every game it moves, and clears a hand-order place it takes out of its list', async () => {
+        // One moment, as the server stamps one for the batch: the games arrive together, and the order
+        // they arrive in is the title's on both sides. A clock that moves on every reading, so a stamp
+        // read once per game would show.
+        await mountBulk();
+        let readings = 0;
+        const clock = vi.spyOn(Date.prototype, 'toISOString')
+            .mockImplementation(() => `2026-10-17T10:00:${String(readings++).padStart(2, '0')}.000Z`);
+
+        try {
+            await press('finish celeste and cuphead');
+            await waitFor(() => expect(screen.getByTestId('result')).toHaveTextContent('saved'));
+        } finally {
+            clock.mockRestore();
+        }
+
+        expect(list('finished')).toHaveTextContent('Celeste(7)[borrowed]@-,Cuphead(-)[-]@-');
+        expect(screen.getByTestId('moved-at').textContent!.split(','))
+            .toEqual(['2026-10-17T10:00:00.000Z', '2026-10-17T10:00:00.000Z']);
+    });
+
+    it('keeps a game the server answers unchanged where it was sent, with no banner', async () => {
+        // Another tab had already moved Hades to Finished: unchanged is where it was asked to be.
+        await mountBulk({ answer: [{ gameId: 1, outcome: 'moved' }, { gameId: 2, outcome: 'unchanged' }] });
+
+        await press('finish both');
+
+        await waitFor(() => expect(screen.getByTestId('result')).toHaveTextContent('saved:1+2:moved=1+2:missing='));
+        expect(list('finished')).toHaveTextContent('Celeste(7)[borrowed]@-,Hades(-)[-]@-');
+        expect(screen.getByTestId('error')).toBeEmptyDOMElement();
+    });
+
+    it('keeps a game the answer leaves out, or answers with an outcome it does not know, where it was sent', async () => {
+        // The request saved, which is what the status says; only `missing` takes a game out of the lists.
+        await mountBulk({ answer: [{ gameId: 1, outcome: 'teleported' }] });
+
+        await press('finish both');
+
+        await waitFor(() => expect(screen.getByTestId('result')).toHaveTextContent('saved:1+2:moved=1+2:missing='));
+        expect(list('finished')).toHaveTextContent('Celeste(7)[borrowed]@-,Hades(-)[-]@-');
+        expect(screen.getByTestId('error')).toBeEmptyDOMElement();
+    });
+
+    it.each([
+        ['results that are not a list', '{"results": {}}'],
+        ['an answer that is a list', '[null]'],
+        ['results that are not results', '{"results": [null, 5, {"gameId": "2", "outcome": "missing"}]}'],
+    ])('keeps every game where it was sent when the answer has %s, rather than undoing a saved batch', async (_, raw) => {
+        await mountBulk({ answer: { raw } });
+
+        await press('finish both');
+
+        await waitFor(() => expect(screen.getByTestId('result')).toHaveTextContent('saved:1+2:moved=1+2:missing='));
+        expect(list('finished')).toHaveTextContent('Celeste(7)[borrowed]@-,Hades(-)[-]@-');
+        expect(screen.getByTestId('pending')).toBeEmptyDOMElement();
+    });
+
+    it('sends each game once, and nothing for a game already where it is sent', async () => {
+        const { calls } = await mountBulk();
+
+        await press('drop both, hades twice');
+        await waitFor(() => expect(screen.getByTestId('result')).toHaveTextContent('saved'));
+        expect(sent(calls)[0].body).toEqual({ gameIds: [2, 1], status: 'dropped' });
+
+        // Celeste is dropped now, so this is a real move; pressed again, it is already there.
+        await press('celeste to playing');
+        await waitFor(() => expect(list('playing')).toHaveTextContent('Celeste'));
+        await press('celeste to playing');
+        await waitFor(() => expect(screen.getByTestId('result')).toHaveTextContent('saved::moved=:missing='));
+        expect(sent(calls)).toHaveLength(2);
+    });
+
+    it('puts every game back in the list it came from, with its row, when the request is refused', async () => {
+        // From two lists at once, so each has to go back to its own — Cuphead to the backlog, in its place.
+        await mountBulk({ failing: [BULK] });
+
+        await press('finish celeste and cuphead');
+
+        await waitFor(() => expect(screen.getByTestId('result')).toHaveTextContent('failed'));
+        expect(list('playing')).toHaveTextContent('Celeste(7)[borrowed]@-,Hades(-)[-]@-');
+        expect(list('backlog')).toHaveTextContent('Cuphead(-)[-]@1024');
+        expect(list('finished')).toBeEmptyDOMElement();
+        expect(screen.getByTestId('error')).toHaveTextContent('Failed to move 2 games to Finished');
+        expect(screen.getByTestId('pending')).toBeEmptyDOMElement();
+    });
+
+    it('puts them back when the request never arrives, too', async () => {
+        await mountBulk({ reject: [BULK] });
+
+        await press('remove both');
+
+        await waitFor(() => expect(screen.getByTestId('result')).toHaveTextContent('failed'));
+        expect(list('playing')).toHaveTextContent('Celeste(7)[borrowed]@-,Hades(-)[-]@-');
+        expect(screen.getByTestId('error')).toHaveTextContent('Failed to take 2 games out of your lists');
+        expect(screen.getByTestId('pending')).toBeEmptyDOMElement();
+    });
+
+    it('leaves a game the server has no entry for in no list, keeps the rest where they went, and says so', async () => {
+        // Hades was deleted from another tab since this one loaded. Put back in Playing it would be a
+        // game the server does not have; it is shown where the server has it, which is nowhere.
+        await mountBulk({ answer: [{ gameId: 1, outcome: 'moved' }, { gameId: 2, outcome: 'missing' }] });
+
+        await press('finish both');
+
+        await waitFor(() => expect(screen.getByTestId('result')).toHaveTextContent('saved:1+2:moved=1:missing=2'));
+        expect(list('finished')).toHaveTextContent('Celeste(7)[borrowed]@-');
+        expect(LIST_IDS.every(id => !list(id).textContent?.includes('Hades'))).toBe(true);
+        expect(screen.getByTestId('error')).toHaveTextContent('1 of the 2 games was not moved: it is no longer in your lists.');
+    });
+
+    it('leaves every game where it was sent when the answer cannot be read, since the status says it saved', async () => {
+        await mountBulk({ answer: 'unreadable' });
+
+        await press('finish both');
+
+        await waitFor(() => expect(screen.getByTestId('result')).toHaveTextContent('saved:1+2:moved=1+2'));
+        expect(list('finished')).toHaveTextContent('Celeste(7)[borrowed]@-,Hades(-)[-]@-');
+        expect(screen.getByTestId('error')).toBeEmptyDOMElement();
+    });
+
+    it('holds every game it moves under its lock while the request is out, and lets them all go', async () => {
+        const { release } = await mountBulk({ hold: [BULK] });
+
+        await press('finish both');
+        expect(screen.getByTestId('pending')).toHaveTextContent('1,2');
+
+        await release(BULK, 200);
+        expect(screen.getByTestId('pending')).toBeEmptyDOMElement();
+    });
+
+    it('refuses while a game it would move has a write of its own out, and changes nothing', async () => {
+        // Hades' score is still saving; a batch that overtook it could be rolled back over it.
+        const { calls } = await mountBulk({ hold: ['PUT /api/entries/2/score'] });
+
+        await press('score hades');
+        await press('finish both');
+
+        await waitFor(() => expect(screen.getByTestId('result')).toHaveTextContent('refused'));
+        expect(sent(calls)).toHaveLength(0);
+        expect(list('playing')).toHaveTextContent('Celeste(7)[borrowed]@-,Hades(8)[-]@-');
+        expect(screen.getByTestId('error')).toHaveTextContent(/still saving/i);
+        // The refusal took no locks: Hades is held by its own score, Celeste by nothing.
+        expect(screen.getByTestId('pending')).toHaveTextContent(/^2$/);
+    });
+
+    it('refuses more games than one request may carry, before anything moves', async () => {
+        const MANY = Array.from({ length: MAX_BULK_GAMES + 1 }, (_, index) =>
+            entry({ game: { id: index + 1, title: `Game ${index + 1}` } }));
+        vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+            const url = String(input);
+            if (url === '/api/lists') return new Response(JSON.stringify({ lists: { playing: MANY } }), { status: 200 });
+            if (url === '/api/user/list-preferences') return new Response(JSON.stringify({ view: 'table', sorts: {} }), { status: 200 });
+            return new Response(null, { status: 204 });
+        }));
+
+        function ManyProbe() {
+            const lists = useLists();
+            const [result, setResult] = useState('');
+            return (
+                <div>
+                    <span data-testid="loading">{String(lists.loading)}</span>
+                    <span data-testid="error">{lists.mutationError ?? ''}</span>
+                    <span data-testid="result">{result}</span>
+                    <span data-testid="count">{lists.lists.playing.length}</span>
+                    <button onClick={() => void lists.removeGames(MANY.map(e => e.game.id)).then(r => setResult(r.outcome))}>
+                        remove all
+                    </button>
+                </div>
+            );
+        }
+
+        render(<ListsProvider><ManyProbe /></ListsProvider>);
+        await waitFor(() => expect(screen.getByTestId('loading')).toHaveTextContent('false'));
+
+        await press('remove all');
+
+        await waitFor(() => expect(screen.getByTestId('result')).toHaveTextContent('refused'));
+        expect(screen.getByTestId('count')).toHaveTextContent(String(MAX_BULK_GAMES + 1));
+        expect(screen.getByTestId('error')).toHaveTextContent(/select fewer/i);
+    });
+
+    it('undoes only its own games, not a change to another game that saved meanwhile', async () => {
+        // Cuphead is taken out of the backlog on its own while the batch is out. The batch failing must
+        // not put the lists back as they were before it, which would bring Cuphead back.
+        const { release } = await mountBulk({ hold: [BULK] });
+
+        await press('finish both');
+        await press('remove cuphead');
+        await waitFor(() => expect(list('backlog')).toBeEmptyDOMElement());
+
+        await release(BULK, 500);
+
+        expect(list('playing')).toHaveTextContent('Celeste(7)[borrowed]@-,Hades(-)[-]@-');
+        expect(list('backlog')).toBeEmptyDOMElement();
+    });
+
+    it('keeps a batch still on its way when a reload lands in the meantime', async () => {
+        // The reload's answer was composed before the batch reached the server; taken as it stands it
+        // would put the games back in Playing, and the batch saving would then change nothing on screen.
+        const { calls, release } = await mountBulk({ hold: [BULK] });
+
+        await press('finish both');
+        await press('reload');
+        await waitFor(() => expect(calls.filter(call => `${call.method} ${call.url}` === 'GET /api/lists')).toHaveLength(2));
+        await waitFor(() => expect(screen.getByTestId('loading')).toHaveTextContent('false'));
+
+        expect(list('finished')).toHaveTextContent('Celeste(7)[borrowed]@-,Hades(-)[-]@-');
+        await release(BULK, 200);
+        expect(list('finished')).toHaveTextContent('Celeste(7)[borrowed]@-,Hades(-)[-]@-');
+        expect(list('playing')).toBeEmptyDOMElement();
+    });
+
+    it('takes the banner down once a batch saves', async () => {
+        const { release } = await mountBulk({ hold: [BULK] });
+
+        await press('finish both');
+        await release(BULK, 500);
+        expect(screen.getByTestId('error')).toHaveTextContent(/failed to move/i);
+
+        await press('remove both');
+        await release(BULK, 200, 1);
+        expect(screen.getByTestId('error')).toBeEmptyDOMElement();
+    });
+
+    it('does not put a failed batch back into the next account, nor show it the banner, nor free its lock', async () => {
+        // Alice's undo names Celeste and Hades by id, and Bob has Hades on his own backlog — with a score
+        // of his still saving when Alice's request settles, whose lock her release must not take with it.
+        const BOBS = [entry({ game: { id: 2, title: 'Hades' }, position: 2048 })];
+        const { release, view } = await mountBulk({
+            loads: [{ playing: PLAYING, backlog: BACKLOG }, { backlog: BOBS }],
+            hold: [BULK, 'PUT /api/entries/2/score'],
+        });
+
+        await press('finish both');
+
+        auth.user = BOB;
+        await act(async () => {
+            view.rerender(<ListsProvider><BulkProbe /></ListsProvider>);
+        });
+        await waitFor(() => expect(list('backlog')).toHaveTextContent('Hades(-)[-]@2048'));
+        await press('score hades');
+        expect(screen.getByTestId('pending')).toHaveTextContent(/^2$/);
+
+        await release(BULK, 500);
+
+        expect(list('backlog')).toHaveTextContent('Hades(8)[-]@2048');
+        expect(list('playing')).toBeEmptyDOMElement();
+        expect(screen.getByTestId('error')).toBeEmptyDOMElement();
+        expect(screen.getByTestId('pending')).toHaveTextContent(/^2$/);
+    });
+
+    it('gives a game coming back from no list what its entry kept, from the move\'s answer', async () => {
+        // Taken out of every list earlier, so the client has no row for it; the entry kept its score, its
+        // ownership and when it was first added, and the move answers with them.
+        const calls: Recorded[] = [];
+        vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+            const url = String(input);
+            const method = init?.method ?? 'GET';
+            calls.push({ method, url, body: init?.body ? JSON.parse(String(init.body)) : undefined });
+            if (url === '/api/lists') return new Response(JSON.stringify({ lists: {} }), { status: 200 });
+            if (url === '/api/user/list-preferences') return new Response(JSON.stringify({ view: 'table', sorts: {} }), { status: 200 });
+            if (method === 'PUT' && url === '/api/lists/1') {
+                return new Response(JSON.stringify({
+                    score: 9, ownership: 'owned', addedAt: '2025-05-05T00:00:00+00:00',
+                    statusChangedAt: '2026-10-17T10:00:00+00:00', position: null,
+                }), { status: 200 });
+            }
+            return new Response(null, { status: 204 });
+        }));
+
+        function ComebackProbe() {
+            const lists = useLists();
+            return (
+                <div>
+                    <span data-testid="loading">{String(lists.loading)}</span>
+                    <span data-testid="backlog">
+                        {lists.lists.backlog.map(e => `${e.game.title}(${e.score ?? '-'})[${e.ownership ?? '-'}]${e.addedAt}`).join(',')}
+                    </span>
+                    <button onClick={() => void lists.addToList('backlog', game({ id: 1, title: 'Celeste' }))}>celeste back</button>
+                </div>
+            );
+        }
+
+        render(<ListsProvider><ComebackProbe /></ListsProvider>);
+        await waitFor(() => expect(screen.getByTestId('loading')).toHaveTextContent('false'));
+
+        await press('celeste back');
+
+        await waitFor(() => expect(screen.getByTestId('backlog')).toHaveTextContent('Celeste(9)[owned]2025-05-05T00:00:00+00:00'));
+        expect(calls.find(call => call.method === 'PUT')?.body).toEqual({ status: 'backlog' });
     });
 });

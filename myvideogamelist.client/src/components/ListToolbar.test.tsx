@@ -1,9 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ListToolbar } from '@/components/ListToolbar';
 import { DEFAULT_SORT, type SortState } from '@/lib/listSort';
 import { platform } from '@/test/factories';
+import type { OwnershipChoice } from '@/types/list';
 
 const PLATFORMS = [platform(6, 'PC', 'PC'), platform(48, 'PlayStation 4', 'PS4'), platform(130, 'Switch')];
 
@@ -13,11 +14,14 @@ function renderToolbar(overrides: {
     platforms?: typeof PLATFORMS;
     view?: 'tiles' | 'table';
     offerManual?: boolean;
+    ownerships?: OwnershipChoice[];
+    selectedOwnerships?: OwnershipChoice[];
 } = {}) {
     const handlers = {
         onViewChange: vi.fn(),
         onSortChange: vi.fn(),
         onPlatformsChange: vi.fn(),
+        onOwnershipsChange: vi.fn(),
     };
 
     render(
@@ -27,6 +31,8 @@ function renderToolbar(overrides: {
             platforms={overrides.platforms ?? PLATFORMS}
             selectedPlatformIds={overrides.selectedPlatformIds ?? []}
             offerManual={overrides.offerManual}
+            ownerships={overrides.ownerships}
+            selectedOwnerships={overrides.selectedOwnerships}
             {...handlers}
         />,
     );
@@ -198,7 +204,78 @@ describe('ListToolbar platform filter', () => {
         await userEvent.click(trigger);
         expect(trigger).toHaveAttribute('aria-expanded', 'true');
 
-        await userEvent.click(document.querySelector('.list-toolbar-backdrop')!);
+        await userEvent.click(document.querySelector('.list-filter-backdrop')!);
         expect(trigger).toHaveAttribute('aria-expanded', 'false');
+    });
+});
+
+describe('ListToolbar ownership filter', () => {
+    const CHOICES: OwnershipChoice[] = ['owned', 'subscription', 'unrecorded'];
+
+    it('offers every choice the lists hold, "not recorded" among them, all ticked while it is inert', async () => {
+        renderToolbar({ ownerships: CHOICES });
+
+        await userEvent.click(screen.getByRole('button', { name: 'Any ownership' }));
+
+        expect(screen.getByText('Filter by ownership')).toBeInTheDocument();
+        for (const name of ['Owned', 'Subscription', 'Not recorded']) {
+            expect(screen.getByRole('checkbox', { name })).toBeChecked();
+        }
+        expect(screen.getByText(/applies to this view only, and is not saved/i)).toBeInTheDocument();
+    });
+
+    it('seeds the choice with every other kind on the first untick', async () => {
+        const { onOwnershipsChange } = renderToolbar({ ownerships: CHOICES });
+
+        await userEvent.click(screen.getByRole('button', { name: 'Any ownership' }));
+        await userEvent.click(screen.getByRole('checkbox', { name: 'Not recorded' }));
+
+        expect(onOwnershipsChange).toHaveBeenCalledExactlyOnceWith(['owned', 'subscription']);
+    });
+
+    it('names the one kind left', () => {
+        renderToolbar({ ownerships: CHOICES, selectedOwnerships: ['subscription'] });
+        expect(screen.getByRole('button', { name: 'Subscription' })).toHaveAttribute('aria-expanded', 'false');
+    });
+
+    it('counts the kinds once more than one is left', () => {
+        renderToolbar({ ownerships: CHOICES, selectedOwnerships: ['owned', 'unrecorded'] });
+        expect(screen.getByRole('button', { name: '2 kinds of ownership' })).toBeInTheDocument();
+    });
+
+    it('hides itself while the lists hold one kind, or have said nothing at all', () => {
+        renderToolbar({ ownerships: ['unrecorded'] });
+        expect(screen.queryByRole('button', { name: 'Any ownership' })).not.toBeInTheDocument();
+    });
+
+    it('stands beside the platform filter, each with a panel of its own', async () => {
+        renderToolbar({ ownerships: CHOICES });
+
+        await userEvent.click(screen.getByRole('button', { name: 'All platforms' }));
+        expect(screen.getByText('Filter by platform')).toBeInTheDocument();
+        expect(screen.queryByText('Filter by ownership')).not.toBeInTheDocument();
+    });
+});
+
+describe('ListToolbar filter menus, from the keyboard', () => {
+    it('closes a menu with Escape and puts focus back on its button', async () => {
+        renderToolbar();
+
+        await userEvent.click(screen.getByRole('button', { name: 'All platforms' }));
+        await userEvent.click(screen.getByRole('checkbox', { name: 'PC' }));
+        await userEvent.keyboard('{Escape}');
+
+        expect(screen.queryByText('Filter by platform')).not.toBeInTheDocument();
+        expect(screen.getByRole('button', { name: /platform/ })).toHaveFocus();
+    });
+
+    it('groups the checkboxes under the menu\'s heading', async () => {
+        renderToolbar({ ownerships: ['owned', 'unrecorded'] });
+
+        await userEvent.click(screen.getByRole('button', { name: 'Any ownership' }));
+
+        const group = screen.getByRole('group', { name: 'Filter by ownership' });
+        expect(within(group).getAllByRole('checkbox').map(box => box.closest('label')?.textContent))
+            .toEqual(['Owned', 'Not recorded']);
     });
 });

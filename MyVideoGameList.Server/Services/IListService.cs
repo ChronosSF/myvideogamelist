@@ -8,8 +8,8 @@ public interface IListService
 
     /// <summary>
     /// What the user has recorded about one game, whether or not it is in any list — including the
-    /// ownership and notes a list row leaves out. Null when they have recorded nothing, or when
-    /// IGDB cannot resolve the game.
+    /// notes a list row leaves out. Null when they have recorded nothing, or when IGDB cannot resolve
+    /// the game.
     /// </summary>
     Task<EntryDto?> GetEntryAsync(
         string userId, int gameId, CancellationToken cancellationToken = default);
@@ -17,10 +17,11 @@ public interface IListService
     /// <summary>
     /// Moves a game to one of the predefined statuses, appending a <c>UserGameEvent</c> for the
     /// transition. A move to the status the game already holds is a no-op and records nothing.
-    /// Creates the entry if this is the first thing recorded about the game.
+    /// Creates the entry if this is the first thing recorded about the game. Answers with what the
+    /// entry holds afterwards, which a game coming back from no list has kept (ADR 0055).
     /// </summary>
     /// <exception cref="ArgumentException">The status key is not one of the seeded statuses.</exception>
-    Task SetListEntryAsync(
+    Task<EntryStateDto> SetListEntryAsync(
         string userId, int gameId, string status, CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -29,6 +30,20 @@ public interface IListService
     /// </summary>
     Task<bool> RemoveListEntryAsync(
         string userId, int gameId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Moves several of the user's games to one status, or out of every list when
+    /// <paramref name="status"/> is null, in one transaction with a <c>UserGameEvent</c> for each
+    /// game whose status changed. A game already where it was asked to be records nothing. Creates
+    /// no entry: a game the user has none for is answered <c>missing</c> for a move. Answers every
+    /// game named, once each, in the order first named. See ADR 0055.
+    /// </summary>
+    /// <exception cref="ArgumentException">The status key is not one of the seeded statuses.</exception>
+    Task<IReadOnlyList<StatusChangeDto>> SetStatusesAsync(
+        string userId,
+        IReadOnlyCollection<int> gameIds,
+        string? status,
+        CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Puts some of the games in one of the user's lists where the user has arranged them by hand.
