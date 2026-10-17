@@ -36,6 +36,14 @@ private bucket through a distribution, and sends `www` to the apex (ADR 0066).
 cdk deploy Mvgl-prod-Holding --profile mvgl-prod -c env=prod
 ```
 
+- **The account needs a CDK bootstrap in `us-east-1` first, once.** Run it from the repository root,
+  not from here: the CLI builds the app wherever it finds a `cdk.json`, and the app refuses to build
+  without an `env`.
+
+  ```bash
+  cdk bootstrap "aws://$(aws sts get-caller-identity --profile mvgl-prod --query Account --output text)/us-east-1" --profile mvgl-prod
+  ```
+
 - **It looks the domain's zone up, and never creates one.** The zone was made by hand in that
   account and holds the mail records and dev's delegation. The first synthesis with the profile
   signed in writes the answer into `cdk.context.json`; commit it, as dev's lookups are.
@@ -45,7 +53,7 @@ cdk deploy Mvgl-prod-Holding --profile mvgl-prod -c env=prod
   when production takes the domain, and the record has to outlive it.
 - **Production's App stack cannot deploy with the domain while this stack holds it.** CloudFront
   gives an alternate domain name to one distribution at a time, and the records would collide too:
-  destroy this stack first.
+  destroy this stack first. The destroy empties the bucket itself.
 
 ## The pipeline
 

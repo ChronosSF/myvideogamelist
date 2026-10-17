@@ -33,9 +33,9 @@ public sealed class HoldingStack : Stack
     private const string FileCacheControl = "public, max-age=300, s-maxage=86400";
 
     /// <summary>
-    /// The app's document policy is <c>frame-ancestors 'none'</c> alone, because React Router hydrates
-    /// from an inline script (ADR 0033 §5). This page has no script, so it can have the rest: nothing
-    /// loads but its own stylesheet and favicon, scripts least of all, and no form goes anywhere.
+    /// Stricter than any of the app's documents can be, since they run React Router's scripts and
+    /// this page runs none: nothing loads but its own stylesheet and favicon, and no form goes
+    /// anywhere.
     /// </summary>
     private const string ContentSecurityPolicy =
         "default-src 'none'; img-src 'self'; style-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
@@ -58,15 +58,20 @@ public sealed class HoldingStack : Stack
 
         // Private, and readable by this distribution alone: origin access control signs CloudFront's
         // requests, and the bucket policy CDK writes admits the CloudFront service only for this
-        // distribution's ARN. Read, not list - see the error responses below. Destroyed with the
-        // stack, since everything in it is in holding/site in the repository; the deployment below
-        // empties it first, so the deletion does not stop at a bucket with files in it.
+        // distribution's ARN. Read, not list - see the error responses below.
+        //
+        // Destroyed with the stack, since everything in it is in holding/site in the repository,
+        // and emptied first by CDK's own hook, because CloudFormation will not delete a bucket with
+        // files in it. The deployment's RetainOnDelete cannot do that job: the deployment tags the
+        // bucket as its own, and its delete handler leaves a bucket so tagged as it is - so a destroy
+        // stopped at the bucket. CDK's README says the same for a bucket nothing else writes to.
         var bucket = new Bucket(this, "Bucket", new BucketProps
         {
             BlockPublicAccess = BlockPublicAccess.BLOCK_ALL,
             Encryption = BucketEncryption.S3_MANAGED,
             EnforceSSL = true,
             RemovalPolicy = RemovalPolicy.DESTROY,
+            AutoDeleteObjects = true,
         });
 
         var request = new Function(this, "Request", new FunctionProps
@@ -80,8 +85,10 @@ public sealed class HoldingStack : Stack
         // The headers the app's documents carry (entry.server.tsx, ADR 0033 §5), with the content
         // policy this page can afford, and HSTS as 0033 states it: a year, subdomains included,
         // preload off - that list is slow to leave, and is the domain owner's call, not a default's.
-        // The app's documents do not send HSTS yet (#109); this is the first response at the apex
-        // that does, and every subdomain has to answer over HTTPS from then on.
+        // The app's documents do not send HSTS yet (#109), so this is the first response at the
+        // apex that does. From a browser's first visit, every name under the domain, at any depth,
+        // has to answer over HTTPS with a valid certificate, or not at all; each response restarts
+        // the year, so destroying this stack does not withdraw it (ADR 0066 §6).
         var headers = new ResponseHeadersPolicy(this, "Headers", new ResponseHeadersPolicyProps
         {
             ResponseHeadersPolicyName = $"{site.Prefix}-holding-headers",
@@ -123,8 +130,11 @@ public sealed class HoldingStack : Stack
                 Origin = S3BucketOrigin.WithOriginAccessControl(bucket),
                 ViewerProtocolPolicy = ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
                 AllowedMethods = AllowedMethods.ALLOW_GET_HEAD,
-                // The files say how long they keep; this policy honours that, and keeps no query
-                // string, header or cookie in the key, since nothing here reads one.
+                // The files say how long they keep; this policy honours that, keeps no header or
+                // cookie in the key, and forwards no query string - which matters more than it looks.
+                // Origin access control signs every request to the bucket, and on a signed request
+                // S3 obeys response-content-type and its kin, so a forwarded query string would let
+                // anybody have share.png served as HTML. No origin request policy, for that reason.
                 CachePolicy = CachePolicy.CACHING_OPTIMIZED,
                 ResponseHeadersPolicy = headers,
                 FunctionAssociations =
@@ -168,8 +178,6 @@ public sealed class HoldingStack : Stack
             CacheControl = [Amazon.CDK.AWS.S3.Deployment.CacheControl.FromString(FileCacheControl)],
             Distribution = distribution,
             DistributionPaths = ["/*"],
-            // Deletes the files when the stack is deleted, so that the bucket can go with it.
-            RetainOnDelete = false,
             LogGroup = new LogGroup(this, "PageLogs", new LogGroupProps
             {
                 Retention = RetentionDays.TWO_WEEKS,

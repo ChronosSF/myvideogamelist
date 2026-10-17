@@ -18,11 +18,18 @@ function handler(event) {
     const host = request.headers.host ? request.headers.host.value : '';
 
     if (host !== CANONICAL_HOST) {
+        // The path and the query exactly as they were sent: rawQueryString() is runtime 2.0's
+        // unparsed query, without its '?', and undefined when there was none. A path that does not
+        // start with a slash cannot happen in HTTP, and would otherwise make the address after the
+        // host a user name - https://myvideogamelist.net@elsewhere/ - so it becomes the root.
+        const path = request.uri.charAt(0) === '/' ? request.uri : '/';
+        const query = request.rawQueryString();
+
         return {
             statusCode: 301,
             statusDescription: 'Moved Permanently',
             headers: {
-                location: { value: 'https://' + CANONICAL_HOST + request.uri + queryString(request.querystring) },
+                location: { value: 'https://' + CANONICAL_HOST + path + (query ? '?' + query : '') },
             },
         };
     }
@@ -32,19 +39,4 @@ function handler(event) {
     }
 
     return request;
-}
-
-// The query string as it arrived, one pair per value - the way AWS's own example rebuilds it
-// (https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/example-function-normalize-query-string.html),
-// which passes each value on unchanged rather than encoding it a second time.
-function queryString(querystring) {
-    const pairs = [];
-    for (const name in querystring) {
-        const parameter = querystring[name];
-        const values = parameter.multiValue ? parameter.multiValue : [parameter];
-        for (let i = 0; i < values.length; i++) {
-            pairs.push(name + '=' + values[i].value);
-        }
-    }
-    return pairs.length > 0 ? '?' + pairs.join('&') : '';
 }
