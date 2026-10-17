@@ -1,6 +1,6 @@
 # 0040. Matching a title to a game, when we would rather not answer
 
-**Status:** Implemented
+**Status:** Implemented — §M4's inline search, which its consequences leave unbuilt, is #158
 
 Builds on [0037](0037-a-tracker-import-carries-history.md), whose decision 2 deferred this
 deliberately, and revises `specs/csv-list-import.md` §4 — written in August 2026 without either a

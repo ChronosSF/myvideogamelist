@@ -1,11 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { ImportReviewPage } from '@/pages/ImportReviewPage';
 import type { AuthContextValue } from '@/contexts/AuthContext';
 import type { UseImportReviewResult } from '@/hooks/useImport';
+import { SEARCH_DEBOUNCE_MS } from '@/hooks/useImportSearch';
 import { game, importResult, importReview, importRow, userProfile } from '@/test/factories';
+import type { GameDto } from '@/types/game';
 
 /**
  * Auth, the lists, wishlist and favourites contexts and the review hook, all mocked: each of the
@@ -62,17 +64,54 @@ vi.mock('@/hooks/useImport', () => ({ useImportReview: () => review }));
 const row = importRow;
 const loaded = importReview;
 
-function renderPage() {
-    return render(
+function page() {
+    return (
         <MemoryRouter initialEntries={['/import/job-1']}>
             <Routes>
                 <Route path="/import/:jobId" element={<ImportReviewPage />} />
             </Routes>
-        </MemoryRouter>,
+        </MemoryRouter>
     );
 }
 
-afterEach(() => vi.useRealTimers());
+/**
+ * The page, plus a way to render it again once `review.review` has been changed — standing in for
+ * the hook's optimistic update, which the mock does not make.
+ */
+function renderPage() {
+    const rendered = render(page());
+    return { ...rendered, rerenderPage: () => rendered.rerender(page()) };
+}
+
+/**
+ * A row's search, opened and answered. The API is stubbed to answer every search with `games` at
+ * once, and the clock is faked so the debounce can be run out rather than waited for.
+ */
+async function searchRow(title: string, games: GameDto[]) {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+    // Testing Library waits out a zero-length timeout after every userEvent call, and only moves a
+    // faked clock past it when it finds Jest's timers. This is the one method it reaches for.
+    vi.stubGlobal('jest', { advanceTimersByTime: (ms: number) => vi.advanceTimersByTime(ms) });
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+        ok: true,
+        status: 200,
+        headers: new Headers(),
+        json: async () => ({ items: games, hasMore: false }),
+    }) as unknown as Response));
+
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    await user.click(screen.getByRole('button', { name: `Search IGDB for ${title}` }));
+    await act(async () => {
+        vi.advanceTimersByTime(SEARCH_DEBOUNCE_MS);
+        await new Promise(resolve => setImmediate(resolve));
+    });
+    return user;
+}
+
+afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+});
 
 beforeEach(() => {
     auth.user = userProfile();
@@ -170,8 +209,8 @@ describe('ImportReviewPage', () => {
 
     it('will not let an unmatched row be ticked', async () => {
         // A tickable unmatched row would count in "will import" and then be skipped at commit — a
-        // promise the screen cannot keep. An ambiguous row is ticked by choosing a candidate; this
-        // one has none to choose from, and §M4's free-text search is not built.
+        // promise the screen cannot keep. An ambiguous row is ticked by choosing a candidate, and
+        // this one by choosing a game its own search found (§M4).
         review.review = loaded([row({ gameId: null, matchKind: 'unmatched', decision: 'skip' })]);
         renderPage();
 
@@ -498,6 +537,122 @@ describe('ImportReviewPage', () => {
         renderPage();
 
         expect(screen.getByRole('checkbox', { name: 'Import Hollow Knight' })).toBeDisabled();
+    });
+
+    const AMBIGUOUS = row({
+        id: 1, title: 'Resident Evil 2', releaseYear: null,
+        gameId: null, matchKind: 'ambiguous', decision: 'skip',
+        candidates: [
+            game({ id: 19686, title: 'Resident Evil 2', releaseDate: '2019-01-25' }),
+            game({ id: 880, title: 'Resident Evil 2', releaseDate: '1998-01-21' }),
+        ],
+    });
+    const UNMATCHED = row({ id: 2, title: 'Resedent Evil', gameId: null, matchKind: 'unmatched', decision: 'skip' });
+
+    /** A row as the decision leaves it: its game chosen and selected, its alternatives gone. */
+    const resolved = (r: ReturnType<typeof row>, gameId: number) =>
+        ({ ...r, gameId, matchKind: 'matched', candidates: [], decision: 'import' });
+
+    it('offers a search on a row nothing was found for, and on one whose candidates are all wrong', () => {
+        // §M4. The two rows a matcher leaves for a person; the ambiguous one keeps its candidates and
+        // offers the search after them.
+        review.review = loaded([AMBIGUOUS, UNMATCHED]);
+        renderPage();
+
+        expect(screen.getByRole('button', { name: 'Search IGDB for Resedent Evil' })).toBeInTheDocument();
+
+        const ambiguous = screen.getByRole('button', { name: 'Search IGDB for Resident Evil 2' });
+        expect(ambiguous.closest('p')).toHaveTextContent('None of these? Search IGDB');
+        expect(screen.getByRole('button', { name: 'Use Resident Evil 2 (1998)' })).toBeInTheDocument();
+    });
+
+    it('offers no search on a row that has its game, or that nobody has looked up yet', async () => {
+        // An unlooked row is "Find these games"' to place, and usually is without anybody typing.
+        review.review = loaded([
+            row({ id: 1, title: 'Matched Game' }),
+            row({ id: 2, title: 'No Id Here', gameId: null, matchKind: 'unlooked', decision: 'skip' }),
+        ]);
+        renderPage();
+
+        await userEvent.click(screen.getByRole('button', { name: /^All / }));
+
+        expect(screen.getByText('Matched Game')).toBeInTheDocument();
+        expect(screen.getByText('No Id Here')).toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: /^Search IGDB/ })).not.toBeInTheDocument();
+    });
+
+    it('writes a searched game through the same decision an offered candidate takes', async () => {
+        // ADR 0040: chosen the same way, and so written the same way — the row's game, selected.
+        review.review = loaded([UNMATCHED]);
+        renderPage();
+
+        const user = await searchRow('Resedent Evil', [game({ id: 424, title: 'Resident Evil', releaseDate: '1996-03-22' })]);
+        await user.click(screen.getByRole('button', { name: 'Use Resident Evil (1996)' }));
+
+        expect(review.setDecisions).toHaveBeenCalledExactlyOnceWith([
+            { rowId: 2, decision: 'import', gameId: 424 },
+        ]);
+        // The search goes with the question it answered.
+        expect(screen.queryByRole('searchbox')).not.toBeInTheDocument();
+        expect(screen.getByText('Resident Evil (1996) chosen for “Resedent Evil”.')).toBeInTheDocument();
+    });
+
+    it('keeps one search open at a time', async () => {
+        // Each open search asks IGDB for its own term, and a screen of open panels is no longer a
+        // list anybody can work down.
+        review.review = loaded([AMBIGUOUS, UNMATCHED]);
+        renderPage();
+
+        const user = await searchRow('Resedent Evil', []);
+        await user.click(screen.getByRole('button', { name: 'Search IGDB for Resident Evil 2' }));
+
+        expect(screen.getAllByRole('searchbox')).toHaveLength(1);
+        expect(screen.getByRole('searchbox')).toHaveValue('Resident Evil 2');
+        expect(screen.getByRole('button', { name: 'Search IGDB for Resedent Evil' }))
+            .toHaveAttribute('aria-expanded', 'false');
+    });
+
+    it('moves focus to the next row once a game is chosen, and says what was chosen', async () => {
+        // Under "Needs you" the row leaves the moment its game is chosen, taking the pressed button
+        // with it. Left alone, focus would fall to the page and the next Tab start from the top.
+        review.review = loaded([AMBIGUOUS, UNMATCHED]);
+        const { rerenderPage } = renderPage();
+
+        await userEvent.click(screen.getByRole('button', { name: 'Use Resident Evil 2 (1998)' }));
+        expect(review.setDecisions).toHaveBeenCalledWith([{ rowId: 1, decision: 'import', gameId: 880 }]);
+
+        review.review = loaded([resolved(AMBIGUOUS, 880), UNMATCHED]);
+        rerenderPage();
+
+        expect(screen.queryByText('Resident Evil 2')).not.toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Search IGDB for Resedent Evil' })).toHaveFocus();
+        expect(screen.getByText('Resident Evil 2 (1998) chosen for “Resident Evil 2”.')).toBeInTheDocument();
+    });
+
+    it("leaves focus on the row's own checkbox when the row stays listed", async () => {
+        // Under "All" the row stays, and its checkbox says the game is now going in.
+        review.review = loaded([AMBIGUOUS, UNMATCHED]);
+        const { rerenderPage } = renderPage();
+
+        await userEvent.click(screen.getByRole('button', { name: /^All / }));
+        await userEvent.click(screen.getByRole('button', { name: 'Use Resident Evil 2 (1998)' }));
+
+        review.review = loaded([resolved(AMBIGUOUS, 880), UNMATCHED]);
+        rerenderPage();
+
+        expect(screen.getByRole('checkbox', { name: 'Import Resident Evil 2' })).toHaveFocus();
+    });
+
+    it('leaves focus on the line saying nothing is left, when that was the last row needing a decision', async () => {
+        review.review = loaded([AMBIGUOUS]);
+        const { rerenderPage } = renderPage();
+
+        await userEvent.click(screen.getByRole('button', { name: 'Use Resident Evil 2 (2019)' }));
+
+        review.review = loaded([resolved(AMBIGUOUS, 19686)]);
+        rerenderPage();
+
+        expect(screen.getByText(/Nothing needs a decision/)).toHaveFocus();
     });
 
     it('says when an unfinished import will be deleted, and what keeps it alive', () => {
