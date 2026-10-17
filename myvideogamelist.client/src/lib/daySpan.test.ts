@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { addDays, dayLabel, daysBetween, formatDaySpan, localToday } from '@/lib/daySpan';
+import { addDays, dayLabel, daysBetween, formatDaySpan, localToday, utcDay } from '@/lib/daySpan';
 
 describe('formatDaySpan', () => {
     it('says a single day once', () => {
@@ -23,6 +23,15 @@ describe('localToday', () => {
     it('is the reader’s own calendar day, padded to compare as a string', () => {
         // Local components, not UTC: late evening in the Americas is already tomorrow in UTC.
         expect(localToday(new Date(2026, 0, 5, 23, 30))).toBe('2026-01-05');
+    });
+});
+
+describe('utcDay', () => {
+    it('is the day in UTC, whatever the reader’s timezone, padded to compare as a string', () => {
+        // An instant written with its offset, so the test means the same thing wherever it runs: 01:30
+        // in Sofia on 6 January is 23:30 on the 5th in UTC.
+        expect(utcDay(new Date('2026-01-06T01:30:00+02:00'))).toBe('2026-01-05');
+        expect(utcDay(new Date('2026-01-05T00:00:00Z'))).toBe('2026-01-05');
     });
 });
 
