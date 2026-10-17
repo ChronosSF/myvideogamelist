@@ -106,6 +106,35 @@ public class UserGameEntry
     public short? Score { get; set; }
 
     /// <summary>
+    /// When the user gave the game the <see cref="Score"/> it holds now. Null when it holds none,
+    /// and when nobody knows: a score given before this column existed, or one an import brought in.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// What puts a score in the history (ADR 0062). A score change appends no event (ADR 0019), so
+    /// without this a score is a value with no moment attached, and the history could show it only
+    /// at a time it would have to make up.
+    /// </para>
+    /// <para>
+    /// Written by <c>ListService.SetScoreAsync</c> and by nothing else: stamped when the score
+    /// changes, left alone by a write of the score the game already holds, and cleared with the
+    /// score, so a date always belongs to the score beside it — the database holds the two to that
+    /// with a check constraint. <b>Never backfilled</b>, because no row recorded when an existing
+    /// score was given, and a migration stamping one would be inventing that moment for every score
+    /// at once. <b>Never set by an import</b> either, for the reason
+    /// <see cref="StatusChangedAt"/> is left null there (ADR 0026 §5): the source says what somebody
+    /// thought of a game, not when they decided it, and the import's own clock would put the whole
+    /// library at the top of the history as though it had all been scored in one afternoon.
+    /// </para>
+    /// <para>
+    /// Current state, like the score: changing a score moves this, and the earlier score and its
+    /// moment are gone. A history of scores would be a table of its own, which ADR 0019 left as a
+    /// separate decision.
+    /// </para>
+    /// </remarks>
+    public DateTimeOffset? ScoredAt { get; set; }
+
+    /// <summary>
     /// One of <see cref="OwnershipKinds"/>, or null when the user has not said. Current state, like
     /// the status: a game bought after a subscription lapsed is overwritten, not appended.
     /// </summary>

@@ -1,4 +1,6 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Metadata;
 using MyVideoGameList.Server.Data;
 using MyVideoGameList.Server.DTOs;
 using MyVideoGameList.Server.Models;
@@ -490,6 +492,98 @@ public class ScoreAndEntryTests
 
         await Assert.ThrowsAsync<ArgumentOutOfRangeException>(
             () => service.SetScoreAsync(UserId, 10, score));
+    }
+
+    // ------------------------------------------------ when the score was given (ADR 0062)
+
+    [Fact]
+    public async Task SetScoreAsync_NewScore_RecordsWhenItWasGiven()
+    {
+        using var db = NewDb();
+        var service = NewService(db);
+
+        await service.SetScoreAsync(UserId, 10, 8);
+
+        Assert.Equal(Midday, Assert.Single(await db.UserGameEntries.ToListAsync()).ScoredAt);
+    }
+
+    [Fact]
+    public async Task SetScoreAsync_ChangedScore_MovesTheMomentToTheChange()
+    {
+        // Current state, as the score is: the history shows the score held now, from when it was
+        // given, and the earlier one is gone with its moment.
+        using var db = NewDb();
+        var clock = new FixedClock(Midday);
+        var service = NewService(db, clock: clock);
+
+        await service.SetScoreAsync(UserId, 10, 8);
+        clock.Advance(TimeSpan.FromDays(3));
+        await service.SetScoreAsync(UserId, 10, 6);
+
+        var entry = Assert.Single(await db.UserGameEntries.ToListAsync());
+        Assert.Equal((short)6, entry.Score);
+        Assert.Equal(Midday.AddDays(3), entry.ScoredAt);
+    }
+
+    [Fact]
+    public async Task SetScoreAsync_SameScoreAgain_KeepsTheMomentItWasGiven()
+    {
+        // Not a new judgement, as a move to the status a game already holds is not a new event —
+        // stamped, a repeated save would carry an old score to the top of the history.
+        using var db = NewDb();
+        var clock = new FixedClock(Midday);
+        var service = NewService(db, clock: clock);
+
+        await service.SetScoreAsync(UserId, 10, 8);
+        clock.Advance(TimeSpan.FromDays(3));
+        await service.SetScoreAsync(UserId, 10, 8);
+
+        Assert.Equal(Midday, Assert.Single(await db.UserGameEntries.ToListAsync()).ScoredAt);
+    }
+
+    [Fact]
+    public async Task SetScoreAsync_SameScoreAsOneWithNoMoment_LeavesItWithout()
+    {
+        // A score given before the column existed. Saving it again unchanged says nothing about when
+        // it was given, so it does not acquire today's date.
+        using var db = NewDb();
+        db.UserGameEntries.Add(new UserGameEntry { UserId = UserId, GameId = 10, Score = 8, AddedAt = Midday.AddYears(-1) });
+        db.SaveChanges();
+
+        await NewService(db).SetScoreAsync(UserId, 10, 8);
+
+        Assert.Null(Assert.Single(await db.UserGameEntries.ToListAsync()).ScoredAt);
+    }
+
+    [Fact]
+    public async Task SetScoreAsync_Clear_ClearsTheMomentWithTheScore()
+    {
+        // So no moment outlives its score, which is what the check constraint holds the database to:
+        // a date left behind would be shown against whatever filled the score next.
+        using var db = NewDb();
+        var service = NewService(db);
+
+        await service.SetScoreAsync(UserId, 10, 7);
+        await service.SetScoreAsync(UserId, 10, null);
+
+        var entry = Assert.Single(await db.UserGameEntries.ToListAsync());
+        Assert.Null(entry.Score);
+        Assert.Null(entry.ScoredAt);
+    }
+
+    [Fact]
+    public void TheScoredAtCheckConstraint_RefusesAMomentWithoutAScore()
+    {
+        // The design-time model: check constraints are migration metadata, which the read-optimised
+        // runtime model does not keep.
+        using var db = NewDb();
+
+        var constraint = db.GetService<IDesignTimeModel>().Model
+            .FindEntityType(typeof(UserGameEntry))!
+            .GetCheckConstraints()
+            .Single(c => c.ModelName == "CK_UserGameEntries_ScoredAt_HasScore");
+
+        Assert.Equal("\"ScoredAt\" IS NULL OR \"Score\" IS NOT NULL", constraint.Sql);
     }
 
     // ------------------------------------------------ statusless entries are in no list

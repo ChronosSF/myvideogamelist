@@ -119,6 +119,15 @@ public class ListService(
 
         var entry = await FindOrCreateAsync(userId, gameId, cancellationToken);
 
+        // When the score was given, which is what puts it in the history (ADR 0062). Only a change
+        // moves it: a write of the score the game already holds is not a new judgement, as a move
+        // to the status a game already holds is not a new event, and stamping it would carry an
+        // old score to the top of the history on a repeated click. Cleared with the score, so a
+        // moment never outlives the score it belongs to — the database refuses that as well.
+        entry.ScoredAt = score is null ? null
+            : score == entry.Score ? entry.ScoredAt
+            : timeProvider.GetUtcNow();
+
         // Scoring a game the user has never listed is legitimate, and creates the entry with no
         // status — the score stands on its own.
         entry.Score = score;

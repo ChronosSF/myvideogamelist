@@ -18,8 +18,8 @@ namespace MyVideoGameList.Server.Tests;
 /// The assertions that matter most here are the ones about what the import does <em>not</em> write.
 /// An import creating a status without an event is the exemption ADR 0026 grants and ADR 0037
 /// extends, and the event log is the one table in this schema no migration can reconstruct — so a
-/// change that starts writing events, or that stamps <c>StatusChangedAt</c>, or that gives an
-/// imported run a type, has to fail a test rather than be noticed in review.
+/// change that starts writing events, or that stamps <c>StatusChangedAt</c> or <c>ScoredAt</c>, or
+/// that gives an imported run a type, has to fail a test rather than be noticed in review.
 /// </remarks>
 public class ImportServiceTests
 {
@@ -501,6 +501,23 @@ public class ImportServiceTests
         await service.CommitAsync(UserId, jobId);
 
         Assert.Equal((short)8, Assert.Single(db.UserGameEntries).Score);
+    }
+
+    [Fact]
+    public async Task CommitAsync_TheScoreFromTheSource_HasNoMomentForTheHistory()
+    {
+        // The source says what the score is, not when it was given. Stamped with the import's own
+        // clock, a whole library would sit at the top of the history as though scored in one
+        // afternoon — fabricated history, for the reason StatusChangedAt stays null (ADR 0062).
+        using var db = NewDb();
+        var service = NewService(db, CacheReturning(Game(379)));
+
+        var jobId = await UploadAsync(service, Export(Entry(rating: "4")));
+        await service.CommitAsync(UserId, jobId);
+
+        var entry = Assert.Single(db.UserGameEntries);
+        Assert.Equal((short)8, entry.Score);
+        Assert.Null(entry.ScoredAt);
     }
 
     [Fact]

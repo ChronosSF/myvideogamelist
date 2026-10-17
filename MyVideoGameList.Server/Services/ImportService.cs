@@ -620,7 +620,10 @@ public class ImportService(
             }
 
             // Only fills what is empty. An import is new information about a game, not a correction
-            // of what its owner already recorded by hand.
+            // of what its owner already recorded by hand. `ScoredAt` is left null, as
+            // `StatusChangedAt` is: the source says what the score is and not when it was given, so
+            // an imported score has no place in the history (ADR 0062). An empty score has no
+            // moment to overwrite — the check constraint keeps the two together.
             entry.Score ??= payload.Score;
 
             // Truncated to the column's length rather than left to fail. A Grouvee review can run
