@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Routing;
@@ -22,7 +23,7 @@ namespace MyVideoGameList.Server.Tests;
 /// it nor its controller says <c>[Authorize]</c>, or either says <c>[AllowAnonymous]</c>.
 /// </para>
 /// </remarks>
-public class TagPrivacyTests
+public partial class TagPrivacyTests
 {
     private static readonly Assembly Server = typeof(ListEntryDto).Assembly;
 
@@ -87,10 +88,40 @@ public class TagPrivacyTests
         Assert.DoesNotContain(typeof(TagExportDto), reachable);
         Assert.DoesNotContain(typeof(EntryTagExportDto), reachable);
 
+        // And no field that would carry tags by another name: a list of ids or names reused from the row.
+        // By the shape of the name rather than any mention of "tag", so a game's "tagline" one day is not
+        // taken for one.
         Assert.Empty(reachable
             .SelectMany(type => type.GetProperties())
-            .Where(property => property.Name.Contains("Tag", StringComparison.Ordinal))
+            .Where(property => TagShaped().IsMatch(property.Name))
             .Select(property => $"{property.DeclaringType!.Name}.{property.Name}"));
+    }
+
+    /// <summary>A name ending in Tag, Tags, TagId, TagIds, TagName or TagNames.</summary>
+    [GeneratedRegex("Tag(s|Id|Ids|Name|Names)?$")]
+    private static partial Regex TagShaped();
+
+    [Fact]
+    public void AnonymousActions_AllDeclareWhatTheyAnswerWith()
+    {
+        // The walk above sees declared types only. An anonymous action declared as IActionResult, ActionResult
+        // or object could answer Ok(anything) — a list row among it — and the walk would pass without seeing
+        // it. None is today; the next one has to declare ActionResult<T>, or be looked at here first.
+        var untyped = Actions()
+            .Where(pair => IsAnonymous(pair.Controller, pair.Action))
+            .Where(pair => !DeclaresItsAnswer(pair.Action.ReturnType))
+            .Select(pair => $"{pair.Controller.Name}.{pair.Action.Name}")
+            .ToList();
+
+        Assert.Empty(untyped);
+    }
+
+    private static bool DeclaresItsAnswer(Type type)
+    {
+        if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(Task<>))
+            type = type.GetGenericArguments()[0];
+
+        return type.IsGenericType && type.GetGenericTypeDefinition() == typeof(ActionResult<>);
     }
 
     [Fact]

@@ -193,16 +193,28 @@ describe('TagsProvider writing', () => {
         expect(shown()).toBeEmptyDOMElement();
     });
 
-    it('renames in place and keeps the name order', async () => {
+    it('renames in place and moves the tag to where its new name sorts', async () => {
+        // The server answers with the name it stored, which here sorts before the others.
         const { calls } = await mount({
             tags: { u1: [COOP, SHORT] },
-            writes: { 'PUT /api/tags/2': () => json(tag({ id: 2, name: 'Shorter', count: 3 })) },
+            writes: { 'PUT /api/tags/2': () => json(tag({ id: 2, name: 'Arcade', count: 3 })) },
         });
 
         await press('rename');
 
-        await waitFor(() => expect(shown()).toHaveTextContent('Co-op(1),Shorter(3)'));
+        await waitFor(() => expect(shown()).toHaveTextContent('Arcade(3),Co-op(1)'));
         expect(calls.find(c => c.method === 'PUT')?.body).toEqual({ name: 'Shorter' });
+    });
+
+    it('hands back the problem detail when the refusal names no field', async () => {
+        await mount({
+            tags: { u1: [COOP, SHORT] },
+            writes: { 'PUT /api/tags/2': () => json({ title: 'Conflict', detail: 'Somebody else got there first.' }, 409) },
+        });
+
+        await press('rename');
+
+        await waitFor(() => expect(result()).toHaveTextContent('Somebody else got there first.'));
     });
 
     it('drops a tag a rename finds gone, and says so', async () => {
@@ -240,6 +252,15 @@ describe('TagsProvider writing', () => {
         expect(shown()).toHaveTextContent(/^Co-op\(1\)$/);
     });
 
+    it('keeps the tag when a delete never arrives', async () => {
+        await mount({ tags: { u1: [COOP, SHORT] }, writes: { 'DELETE /api/tags/2': () => 'reject' } });
+
+        await press('delete');
+
+        await waitFor(() => expect(result()).toHaveTextContent('false'));
+        expect(shown()).toHaveTextContent('Co-op(1),short(3)');
+    });
+
     it('keeps the tag when a delete fails', async () => {
         await mount({ tags: { u1: [COOP, SHORT] }, writes: { 'DELETE /api/tags/2': () => new Response('nope', { status: 500 }) } });
 
@@ -255,6 +276,49 @@ describe('TagsProvider writing', () => {
         await press('move a game from 1 to 2');
 
         expect(shown()).toHaveTextContent('Co-op(0),short(4)');
+    });
+
+    it('never counts below none', async () => {
+        // A count that was already out of date — another tab's change — must not go negative.
+        await mount({ tags: { u1: [tag({ id: 1, name: 'Co-op', count: 0 }), SHORT] } });
+
+        await press('move a game from 1 to 2');
+
+        expect(shown()).toHaveTextContent('Co-op(0),short(4)');
+    });
+
+    it('asks again when a write landed while a read was out, rather than losing the write', async () => {
+        // The read's answer was composed before the tag was made, and replaces what is held: without
+        // another read the new tag would vanish until the next page load.
+        const held: { release?: () => void } = {};
+        let tagsOnServer: TagDto[] = [SHORT];
+        const calls: string[] = [];
+        vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+            const url = String(input);
+            const method = init?.method ?? 'GET';
+            calls.push(`${method} ${url}`);
+            if (method === 'GET') {
+                const answer = new Response(JSON.stringify(tagsOnServer), { status: 200 });
+                // The second read is held: the stale answer from before the create.
+                if (calls.filter(c => c === 'GET /api/tags').length === 2) {
+                    return new Promise<Response>(resolve => { held.release = () => resolve(answer); });
+                }
+                return Promise.resolve(answer);
+            }
+            tagsOnServer = [tag({ id: 7, name: 'Couch co-op' }), SHORT];
+            return Promise.resolve(json(tag({ id: 7, name: 'Couch co-op' }), 201));
+        }));
+        render(<TagsProvider><Probe /></TagsProvider>);
+        await waitFor(() => expect(shown()).toHaveTextContent('short(3)'));
+
+        await press('reload');
+        await press('create');
+        await waitFor(() => expect(shown()).toHaveTextContent('Couch co-op(0),short(3)'));
+
+        await act(async () => { held.release?.(); });
+
+        await waitFor(() => expect(calls.filter(c => c === 'GET /api/tags')).toHaveLength(3));
+        await waitFor(() => expect(shown()).toHaveTextContent('Couch co-op(0),short(3)'));
     });
 });
 

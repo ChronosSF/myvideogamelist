@@ -1481,9 +1481,9 @@ describe("an entry's tags", () => {
                 <span data-testid="result">{result}</span>
                 <span data-testid="celeste-tags">{row(1)?.tagIds.join(',') ?? 'gone'}</span>
                 <span data-testid="hades-tags">{row(2)?.tagIds.join(',') ?? 'gone'}</span>
-                <button onClick={() => void lists.setTags(1, [2, 3]).then(ok => setResult(String(ok)))}>tag celeste</button>
-                <button onClick={() => void lists.setTags(1, []).then(ok => setResult(String(ok)))}>untag celeste</button>
-                <button onClick={() => void lists.setTags(99, [2]).then(ok => setResult(String(ok)))}>tag an unlisted game</button>
+                <button onClick={() => void lists.setTags(1, [2, 3]).then(r => setResult(r.ok ? 'true' : `false: ${r.error}`))}>tag celeste</button>
+                <button onClick={() => void lists.setTags(1, []).then(r => setResult(r.ok ? 'true' : `false: ${r.error}`))}>untag celeste</button>
+                <button onClick={() => void lists.setTags(99, [2]).then(r => setResult(r.ok ? 'true' : `false: ${r.error}`))}>tag an unlisted game</button>
                 <button onClick={() => void lists.setScore(1, 9)}>score celeste</button>
                 <button onClick={() => void lists.removeFromList('playing', 2)}>remove hades</button>
                 <button onClick={() => lists.reload()}>reload</button>
@@ -1538,6 +1538,22 @@ describe("an entry's tags", () => {
         await waitFor(() => expect(result()).toHaveTextContent('false'));
         expect(celeste()).toHaveTextContent(/^1$/);
         expect(screen.getByTestId('error')).toHaveTextContent('Failed to save your tags');
+    });
+
+    it('hands back the server’s own sentence when it refuses the set, and shows it in the banner', async () => {
+        // A tag deleted in another tab: the server says what to do about it, and that is what is shown.
+        const sentence = 'One of those tags is not one of yours, or has been deleted. Reload the page and try again.';
+        await mountTags();
+        vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) =>
+            init?.method === 'PUT' && String(input) === '/api/entries/1/tags'
+                ? new Response(JSON.stringify({ title: 'One or more validation errors occurred.', errors: { TagIds: [sentence] } }), { status: 400 })
+                : new Response(null, { status: 204 })));
+
+        await press('tag celeste');
+
+        await waitFor(() => expect(result()).toHaveTextContent(`false: ${sentence}`));
+        expect(screen.getByTestId('error')).toHaveTextContent(sentence);
+        expect(celeste()).toHaveTextContent(/^1$/);
     });
 
     it('puts the row back when the request never arrives', async () => {

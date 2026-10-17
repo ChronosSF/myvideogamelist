@@ -1,4 +1,4 @@
-import { useId, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import {
     type TagDto, MAX_TAGS_PER_GAME, TAG_NAME_MAX, compareTags, gamesCarrying, normaliseTagName, sameTagName,
 } from '@/types/tag';
@@ -11,8 +11,11 @@ interface EntryTagEditorProps {
     vocabulary: TagDto[];
     /** Puts one of the account's tags on the game. */
     onAdd: (tag: TagDto) => void;
-    /** Makes a tag of this name — normalised, and new to the account — and puts it on the game. */
-    onCreate: (name: string) => void;
+    /**
+     * Makes a tag of this name — normalised, and new to this tab's list of the account's tags — and puts
+     * it on the game. Answers whether both landed, so the box is cleared only for a name that did.
+     */
+    onCreate: (name: string) => Promise<boolean>;
     onRemove: (tag: TagDto) => void;
     /**
      * A write to this game is out. Nothing is committed while it is, but nothing is disabled either:
@@ -27,8 +30,11 @@ interface EntryTagEditorProps {
 
 type Option = { kind: 'tag'; tag: TagDto } | { kind: 'create'; name: string };
 
-/** As many suggestions as fit under the input without scrolling the panel away. */
-const MAX_SUGGESTIONS = 8;
+/**
+ * As many suggestions as fit in the list's 16rem with "Create …" under them, so nothing is cut off at the
+ * foot of it.
+ */
+const MAX_SUGGESTIONS = 7;
 
 /**
  * The account's tags worth offering for what has been typed: those the game does not carry yet, the
@@ -94,6 +100,12 @@ export function EntryTagEditor({
 
     const expanded = open && !disabled && !full && options.length > 0;
     const activeOption = expanded && active >= 0 && active < options.length ? options[active] : null;
+    const activeId = activeOption === null ? undefined : `${listboxId}-${active}`;
+
+    // The highlighted suggestion is kept in sight when the arrows reach past the list's foot.
+    useEffect(() => {
+        if (activeId !== undefined) document.getElementById(activeId)?.scrollIntoView({ block: 'nearest' });
+    }, [activeId]);
 
     const close = () => {
         setOpen(false);
@@ -113,13 +125,29 @@ export function EntryTagEditor({
     const commit = (option: Option) => {
         if (!canCommit()) return;
 
-        if (option.kind === 'tag') {
-            onAdd(option.tag);
-            setAnnouncement(`Added ${option.tag.name}.`);
-        } else {
-            onCreate(option.name);
-            setAnnouncement(`Added ${option.name}, a new tag.`);
+        // Text typed while the twentieth tag was saving is still in the box once it has landed, and Enter
+        // would otherwise make a tag the game cannot carry and send a set the server refuses.
+        if (full) {
+            setAnnouncement(`A game can carry at most ${MAX_TAGS_PER_GAME} tags. Remove one to add another.`);
+            return;
         }
+
+        if (option.kind === 'create') {
+            // Not cleared or announced until it has landed. A refused name — the account is full — stays
+            // in the box to correct, and an "added" read out first would be contradicted by the alert.
+            // What was typed since is left alone.
+            close();
+            void onCreate(option.name).then(added => {
+                if (!added) return;
+                setQuery(current => (normaliseTagName(current) === option.name ? '' : current));
+                setAnnouncement(`Added ${option.name}.`);
+            });
+            return;
+        }
+
+        // Shown at once, as the panel shows the chip; a save that fails says so in its alert.
+        onAdd(option.tag);
+        setAnnouncement(`Added ${option.tag.name}.`);
         setQuery('');
         close();
     };
@@ -147,6 +175,10 @@ export function EntryTagEditor({
     };
 
     const handleKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+        // Mid-composition the keys belong to the input method: Enter there confirms a candidate in
+        // Chinese, Japanese or Korean, and must not make a tag of half a word.
+        if (event.nativeEvent.isComposing || event.keyCode === 229) return;
+
         switch (event.key) {
             case 'ArrowDown': {
                 event.preventDefault();
@@ -230,7 +262,7 @@ export function EntryTagEditor({
                     aria-autocomplete="list"
                     aria-expanded={expanded}
                     aria-controls={listboxId}
-                    aria-activedescendant={activeOption === null ? undefined : `${listboxId}-${active}`}
+                    aria-activedescendant={activeId}
                     aria-describedby={hintId}
                     autoComplete="off"
                     spellCheck={false}
@@ -256,6 +288,9 @@ export function EntryTagEditor({
                     aria-label="Your tags"
                     className="entry-tags-options"
                     hidden={!expanded}
+                    // Keeps the focus in the input, which a press anywhere on the list would otherwise
+                    // take — and with it the list, on the input's blur, before the click lands.
+                    onMouseDown={event => event.preventDefault()}
                 >
                     {expanded && options.map((option, index) => (
                         <li
@@ -270,10 +305,9 @@ export function EntryTagEditor({
                                 ? `${option.tag.name}, ${gamesCarrying(option.tag.count)}`
                                 : undefined}
                             className={`entry-tags-option${index === active ? ' active' : ''}`}
-                            // Keeps the focus in the input, which a press on the list would otherwise
-                            // take — and with it the list, on the input's blur, before the click lands.
-                            onMouseDown={event => event.preventDefault()}
-                            onMouseEnter={() => setActive(index)}
+                            // On a move of the pointer, never on its merely being there: a list that
+                            // redraws under a resting pointer must not highlight what Enter then commits.
+                            onMouseMove={() => { if (index !== active) setActive(index); }}
                             onClick={() => commit(option)}
                         >
                             {option.kind === 'tag' ? (

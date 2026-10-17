@@ -661,6 +661,44 @@ public class UserDataExporterTests
     }
 
     [Fact]
+    public async Task ExportAsync_Tags_AreOrderedByWhenTheyWereMade()
+    {
+        // Seeded newest first: the in-memory provider answers in the order rows went in, so only the
+        // reader's own ordering can put them right.
+        using var db = NewDb();
+        AddAccount(db, UserId, "mine@test.local");
+        AddTag(db, "newest", createdAt: Now.AddDays(-1));
+        AddTag(db, "oldest", createdAt: Now.AddDays(-30));
+        AddTag(db, "middle", createdAt: Now.AddDays(-10));
+
+        var export = await NewExporter(db).ExportAsync(UserId, default);
+
+        Assert.Equal(["oldest", "middle", "newest"], export.Tags.Select(t => t.Name));
+    }
+
+    [Fact]
+    public async Task ExportAsync_EntryTags_AreOrderedByTimeThenGameThenTagName()
+    {
+        // At one moment and on one game, only the tag's name can order two links — "short" was put on
+        // before "Co-op" here, and comes after it.
+        using var db = NewDb();
+        AddAccount(db, UserId, "mine@test.local");
+        var coop = AddTag(db, "Co-op");
+        var brief = AddTag(db, "short");
+
+        TagGame(db, gameId: 12, brief, at: Now.AddDays(-1));
+        TagGame(db, gameId: 11, brief, at: Now.AddDays(-2));
+        TagGame(db, gameId: 11, coop, at: Now.AddDays(-2));
+        TagGame(db, gameId: 10, coop, at: Now.AddDays(-1));
+
+        var export = await NewExporter(db).ExportAsync(UserId, default);
+
+        Assert.Equal(
+            [(11, "Co-op"), (11, "short"), (10, "Co-op"), (12, "short")],
+            export.EntryTags.Select(l => (l.GameId, l.Tag)));
+    }
+
+    [Fact]
     public async Task ExportAsync_AnotherUsersTags_AreNeverIncluded()
     {
         using var db = NewDb();

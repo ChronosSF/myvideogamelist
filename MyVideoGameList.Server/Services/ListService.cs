@@ -42,7 +42,7 @@ public class ListService(
             .ToDictionary(g => g.Id);
 
         // The ids alone; the names are the client's one read of /api/tags (ADR 0065).
-        var tags = await EntryTagReader.ByEntryAsync(db, userId, cancellationToken);
+        var tags = await EntryTagReader.ForListsAsync(db, userId, cancellationToken);
 
         IReadOnlyList<ListEntryDto> EntriesForStatus(short statusId) =>
             entries

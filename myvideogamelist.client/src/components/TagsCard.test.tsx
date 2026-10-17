@@ -41,6 +41,8 @@ function renderCard(options: Options = {}) {
             renameTag: async (id, name) => {
                 const result = await renameTag(id, name);
                 if (result.ok) setTags(current => sortTags([...current.filter(t => t.id !== id), result.tag]));
+                // A tag found gone is dropped by the real provider, so its row goes with it.
+                else if (result.gone) setTags(current => current.filter(t => t.id !== id));
                 return result;
             },
             deleteTag: async id => {
@@ -145,6 +147,32 @@ describe('TagsCard renaming', () => {
         expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
     });
 
+    it('keeps the focus in the box when the rename is refused, so the name can be fixed there', async () => {
+        renderCard({ rename: () => ({ ok: false, error: 'You already have a tag called "someday".' }) });
+        await press('Rename Co-op');
+
+        const box = screen.getByRole('textbox', { name: 'New name for Co-op' });
+        await userEvent.clear(box);
+        await userEvent.type(box, 'someday{Enter}');
+
+        await screen.findByRole('alert');
+        expect(box).toHaveFocus();
+    });
+
+    it('says above the list that a tag was deleted elsewhere, and moves the focus to the heading', async () => {
+        // Its row, and the box the focus was in, are gone with it.
+        renderCard({ rename: () => ({ ok: false, error: 'That tag no longer exists.', gone: true }) });
+        await press('Rename Co-op');
+
+        const box = screen.getByRole('textbox', { name: 'New name for Co-op' });
+        await userEvent.clear(box);
+        await userEvent.type(box, 'Coop{Enter}');
+
+        expect(await screen.findByRole('alert')).toHaveTextContent('Co-op was deleted somewhere else');
+        expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
+        expect(screen.getByRole('heading', { name: 'Your tags' })).toHaveFocus();
+    });
+
     it('backs out on Escape, with the focus back on the button that opened it', async () => {
         const { renameTag } = renderCard();
         await press('Rename Co-op');
@@ -165,7 +193,10 @@ describe('TagsCard deleting', () => {
 
         const confirm = screen.getByRole('group', { name: 'Delete Co-op?' });
         expect(confirm).toHaveTextContent('It comes off 3 games; the games stay as they are.');
-        expect(within(confirm).getByRole('button', { name: 'Cancel' })).toHaveFocus();
+        const cancel = within(confirm).getByRole('button', { name: 'Cancel' });
+        expect(cancel).toHaveFocus();
+        // So the focus landing there reads the number of games, not only the name.
+        expect(cancel).toHaveAccessibleDescription(/It comes off 3 games/);
     });
 
     it('backs out on Escape, with the focus back on the button that asked', async () => {
@@ -188,7 +219,7 @@ describe('TagsCard deleting', () => {
 
         expect(deleteTag).toHaveBeenCalledWith(2);
         await waitFor(() => expect(screen.queryByText('someday')).not.toBeInTheDocument());
-        expect(screen.getByText('Your tags', { selector: '.user-card-label' })).toHaveFocus();
+        expect(screen.getByRole('heading', { name: 'Your tags' })).toHaveFocus();
         expect(screen.getByRole('status')).toHaveTextContent('Deleted someday.');
     });
 
@@ -200,6 +231,8 @@ describe('TagsCard deleting', () => {
             .getByRole('button', { name: 'Delete' }));
 
         expect(await screen.findByRole('alert')).toHaveTextContent('Could not delete that tag.');
-        expect(screen.getByRole('group', { name: 'Delete Co-op?' })).toBeInTheDocument();
+        const confirm = screen.getByRole('group', { name: 'Delete Co-op?' });
+        // Still on the button that was pressed, which was held rather than disabled while it was out.
+        expect(within(confirm).getByRole('button', { name: 'Delete' })).toHaveFocus();
     });
 });

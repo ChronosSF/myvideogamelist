@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { EntryTagEditor } from '@/components/EntryTagEditor';
 import { MAX_TAGS_PER_GAME, type TagDto } from '@/types/tag';
@@ -11,7 +11,7 @@ const SHORT = tag({ id: 3, name: 'short', count: 9 });
 const VOCABULARY = [COOP, COUCH, SHORT];
 
 function renderEditor(overrides: Partial<Parameters<typeof EntryTagEditor>[0]> = {}) {
-    const handlers = { onAdd: vi.fn(), onCreate: vi.fn(), onRemove: vi.fn() };
+    const handlers = { onAdd: vi.fn(), onCreate: vi.fn(async (_name: string) => true), onRemove: vi.fn() };
     const view = render(
         <EntryTagEditor
             tags={[]}
@@ -147,7 +147,57 @@ describe('EntryTagEditor committing', () => {
 
         expect(onCreate).toHaveBeenCalledWith('co');
         expect(onAdd).not.toHaveBeenCalled();
-        expect(status()).toHaveTextContent('Added co, a new tag.');
+        await waitFor(() => expect(status()).toHaveTextContent('Added co.'));
+        expect(box()).toHaveValue('');
+    });
+
+    it('keeps a name it could not make in the box to correct, and announces no "added"', async () => {
+        // The account is full, say: the panel shows why in its alert, and the name is still there.
+        const onCreate = vi.fn(async (_name: string) => false);
+        renderEditor({ onCreate });
+
+        await userEvent.type(box(), 'replay{Enter}');
+
+        expect(onCreate).toHaveBeenCalledWith('replay');
+        await waitFor(() => expect(box()).toHaveValue('replay'));
+        expect(status()).not.toHaveTextContent('Added');
+    });
+
+    it('leaves alone what was typed while a new tag was being made', async () => {
+        let finish!: (added: boolean) => void;
+        const onCreate = vi.fn((_name: string) => new Promise<boolean>(resolve => { finish = resolve; }));
+        renderEditor({ onCreate });
+
+        await userEvent.type(box(), 'replay{Enter}');
+        await userEvent.clear(box());
+        await userEvent.type(box(), 'short');
+        finish(true);
+
+        await waitFor(() => expect(status()).toHaveTextContent('Added replay.'));
+        expect(box()).toHaveValue('short');
+    });
+
+    it('does not commit on Enter while an input method is composing', () => {
+        // Enter there confirms a candidate in Chinese, Japanese or Korean, mid-word.
+        const { onAdd, onCreate } = renderEditor();
+        fireEvent.change(box(), { target: { value: 'co' } });
+
+        fireEvent.keyDown(box(), { key: 'Enter', isComposing: true });
+        fireEvent.keyDown(box(), { key: 'Enter', keyCode: 229 });
+
+        expect(onAdd).not.toHaveBeenCalled();
+        expect(onCreate).not.toHaveBeenCalled();
+        expect(box()).toHaveValue('co');
+    });
+
+    it('keeps the highlighted suggestion in sight', async () => {
+        const scrolled = vi.spyOn(HTMLElement.prototype, 'scrollIntoView');
+        renderEditor();
+
+        await userEvent.type(box(), 'co');
+        await userEvent.keyboard('{ArrowDown}');
+
+        expect(scrolled).toHaveBeenCalledWith({ block: 'nearest' });
     });
 
     it('adds the highlighted suggestion on Enter', async () => {
@@ -231,7 +281,7 @@ describe('EntryTagEditor with nothing to edit against', () => {
 describe('EntryTagEditor at the cap', () => {
     it('takes no more, and says how to make room', async () => {
         const full: TagDto[] = Array.from({ length: MAX_TAGS_PER_GAME }, (_, i) => tag({ id: 100 + i, name: `tag ${i}` }));
-        const { onAdd, onCreate } = renderEditor({ tags: full });
+        renderEditor({ tags: full });
 
         expect(box()).toHaveAttribute('readonly');
         expect(screen.getByText(/at most 20 tags\. Remove one to add another\./i)).toBeInTheDocument();
@@ -240,8 +290,33 @@ describe('EntryTagEditor at the cap', () => {
         await userEvent.keyboard('{ArrowDown}');
 
         expect(box()).toHaveAttribute('aria-expanded', 'false');
+    });
+
+    it('refuses Enter once the game is full, even with text left in the box', async () => {
+        // Typed while the twentieth tag was saving, and still there when it landed.
+        const nineteen: TagDto[] = Array.from({ length: MAX_TAGS_PER_GAME - 1 }, (_, i) => tag({ id: 100 + i, name: `tag ${i}` }));
+        const { onAdd, onCreate, view } = renderEditor({ tags: nineteen });
+        await userEvent.type(box(), 'Co-op');
+
+        const twenty = [...nineteen, tag({ id: 99, name: 'twentieth' })];
+        view.rerender(
+            <EntryTagEditor
+                tags={twenty}
+                vocabulary={VOCABULARY}
+                busy={false}
+                disabled={false}
+                error={null}
+                gameTitle="Celeste"
+                onAdd={onAdd}
+                onCreate={onCreate}
+                onRemove={vi.fn()}
+            />,
+        );
+        fireEvent.keyDown(box(), { key: 'Enter' });
+
         expect(onAdd).not.toHaveBeenCalled();
         expect(onCreate).not.toHaveBeenCalled();
+        expect(status()).toHaveTextContent('A game can carry at most 20 tags.');
     });
 });
 

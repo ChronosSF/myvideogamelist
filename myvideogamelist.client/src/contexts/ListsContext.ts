@@ -11,6 +11,9 @@ export type SaveListNamesResult =
     | { ok: true }
     | { ok: false; fieldErrors: Partial<Record<ListId, string>>; error: string | null };
 
+/** How a write ended: saved, or not, with the sentence to show — the server's own where it gave one. */
+export type SaveResult = { ok: true } | { ok: false; error: string };
+
 export interface ListsContextValue {
     /** Every status list, keyed by status. Entries with no status appear in none of them. */
     lists: Record<ListId, ListEntryDto[]>;
@@ -46,10 +49,11 @@ export interface ListsContextValue {
     /**
      * Makes this exactly the set of the user's tags the game carries — the whole set, in one request.
      * Under the per-game lock, and shown at once on the game's row wherever it sits, put back if the
-     * save fails; false then, and while another write to the game is out, so a caller holding its own
-     * copy reverts. See `docs/decisions/0065-*`.
+     * save fails — and refused, changing nothing, while another write to the game is out. Not saved
+     * comes back with the sentence to show, so a caller holding its own copy reverts and says why. See
+     * `docs/decisions/0065-*`.
      */
-    setTags: (gameId: number, tagIds: number[]) => Promise<boolean>;
+    setTags: (gameId: number, tagIds: number[]) => Promise<SaveResult>;
     /**
      * Deletes everything recorded about a game. The only call that discards a score. False when
      * nothing was deleted — the request failed, or another write to the game was still out — so a

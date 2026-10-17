@@ -94,6 +94,37 @@ describe('ListTagFilter', () => {
         expect(button()).toHaveFocus();
     });
 
+    it('opens from the button’s right edge when its left edge is too near the right of a narrow screen', async () => {
+        // jsdom lays nothing out, so the button is given the place it has on a 375px phone with the
+        // toolbar wrapped: a panel opened from its left edge would run off the screen.
+        renderFilter();
+        const original = window.innerWidth;
+        Object.defineProperty(window, 'innerWidth', { configurable: true, value: 375 });
+        vi.spyOn(button(), 'getBoundingClientRect').mockReturnValue(
+            { left: 240, right: 359, top: 0, bottom: 32, width: 119, height: 32, x: 240, y: 0, toJSON: () => ({}) } as DOMRect);
+
+        try {
+            await userEvent.click(button());
+
+            // A layout class, which is the whole of the behaviour: there is no role or name to ask for.
+            expect(screen.getByRole('group', { name: 'Filter by tag' }).closest('.list-tag-filter-panel'))
+                .toHaveClass('align-end');
+        } finally {
+            Object.defineProperty(window, 'innerWidth', { configurable: true, value: original });
+        }
+    });
+
+    it('opens from the button’s left edge when there is room', async () => {
+        renderFilter();
+        vi.spyOn(button(), 'getBoundingClientRect').mockReturnValue(
+            { left: 16, right: 135, top: 0, bottom: 32, width: 119, height: 32, x: 16, y: 0, toJSON: () => ({}) } as DOMRect);
+
+        await userEvent.click(button());
+
+        expect(screen.getByRole('group', { name: 'Filter by tag' }).closest('.list-tag-filter-panel'))
+            .not.toHaveClass('align-end');
+    });
+
     it('says how many games are left while a tag is ticked, and nothing while none is', () => {
         const { unmount } = render(
             <ListTagFilter tags={[COOP, SHORT]} selected={[1]} onChange={vi.fn()} countFor={() => 1} shown={3} total={1200} />,
@@ -103,5 +134,29 @@ describe('ListTagFilter', () => {
 
         renderFilter();
         expect(screen.getByRole('status')).toBeEmptyDOMElement();
+    });
+
+    it('says every game is shown again once the last tick is taken off', async () => {
+        // A status that only went quiet would announce nothing at all.
+        const onChange = vi.fn();
+        const { rerender } = render(
+            <ListTagFilter tags={[COOP, SHORT]} selected={[1]} onChange={onChange} countFor={() => 1} shown={3} total={12} />,
+        );
+        await userEvent.click(screen.getByRole('button', { name: 'Tag: Co-op' }));
+        await userEvent.click(screen.getByRole('checkbox', { name: /^Co-op/ }));
+        expect(onChange).toHaveBeenLastCalledWith([]);
+
+        rerender(<ListTagFilter tags={[COOP, SHORT]} selected={[]} onChange={onChange} countFor={() => 1} shown={12} total={12} />);
+
+        expect(screen.getByRole('status')).toHaveTextContent('All 12 games shown.');
+    });
+
+    it('keeps its checkboxes in a list, inside a group named by its heading', async () => {
+        // The group on the panel rather than on the list, so the list keeps its own role.
+        renderFilter();
+        await userEvent.click(button());
+
+        const group = screen.getByRole('group', { name: 'Filter by tag' });
+        expect(within(within(group).getByRole('list')).getAllByRole('listitem')).toHaveLength(2);
     });
 });

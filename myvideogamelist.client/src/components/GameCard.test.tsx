@@ -40,7 +40,7 @@ function listsValue(overrides: Partial<ListsContextValue> = {}): ListsContextVal
         setScore: vi.fn(async () => true),
         setOwnership: vi.fn(async () => true),
         setNotes: vi.fn(async () => true),
-        setTags: vi.fn(async () => true),
+        setTags: vi.fn(async () => ({ ok: true as const })),
         deleteEntry: vi.fn(async () => true),
         view: 'tiles',
         setView: vi.fn(),

@@ -26,9 +26,11 @@ export function TagsCard() {
     const [confirming, setConfirming] = useState<number | null>(null);
     const [busy, setBusy] = useState<number | null>(null);
     const [problem, setProblem] = useState<{ id: number; message: string } | null>(null);
+    /** A failure about no one row — a tag gone since this card was drawn has no row left to show it by. */
+    const [notice, setNotice] = useState<string | null>(null);
     const [announcement, setAnnouncement] = useState('');
 
-    const headingRef = useRef<HTMLDivElement>(null);
+    const headingRef = useRef<HTMLHeadingElement>(null);
     const buttons = useRef(new Map<string, HTMLButtonElement>());
 
     // The element to focus does not exist until the row is redrawn, so the intent is kept until the next
@@ -52,6 +54,7 @@ export function TagsCard() {
         setRenaming({ id: tag.id, draft: tag.name });
         setConfirming(null);
         setProblem(null);
+        setNotice(null);
     };
 
     const stopRename = (id: number) => {
@@ -62,7 +65,9 @@ export function TagsCard() {
 
     const handleRename = async (event: React.FormEvent, tag: TagDto) => {
         event.preventDefault();
-        if (renaming === null) return;
+        // While the save is out nothing else is sent — and nothing is disabled, which would drop the focus
+        // from the box or the button somebody is on, and leave it on the page when the answer is a refusal.
+        if (renaming === null || busy !== null) return;
 
         const name = normaliseTagName(renaming.draft);
         if (name === '') {
@@ -83,6 +88,12 @@ export function TagsCard() {
         if (result.ok) {
             setAnnouncement(`Renamed ${tag.name} to ${result.tag.name}.`);
             stopRename(tag.id);
+        } else if (result.gone) {
+            // Deleted somewhere else, and already off the list: its row, and the box the focus was in, are
+            // gone with it. Said above the list instead, with the focus on the heading.
+            setRenaming(null);
+            setNotice(`${tag.name} was deleted somewhere else, so it could not be renamed.`);
+            focusNext.current = 'heading';
         } else {
             setProblem({ id: tag.id, message: result.error });
         }
@@ -92,6 +103,7 @@ export function TagsCard() {
         setConfirming(tag.id);
         setRenaming(null);
         setProblem(null);
+        setNotice(null);
     };
 
     const stopDelete = (id: number) => {
@@ -101,6 +113,7 @@ export function TagsCard() {
     };
 
     const handleDelete = async (tag: TagDto) => {
+        if (busy !== null) return;
         setBusy(tag.id);
         setProblem(null);
         const deleted = await deleteTag(tag.id);
@@ -117,7 +130,7 @@ export function TagsCard() {
 
     return (
         <div className="user-card">
-            <div className="user-card-label" ref={headingRef} tabIndex={-1}>Your tags</div>
+            <h2 className="user-card-label" ref={headingRef} tabIndex={-1}>Your tags</h2>
             <p className="user-card-hint">
                 Tags are yours alone: nobody else sees them, and your public profile never shows them. Add
                 them to a game from its page; renaming one changes it on every game that has it.
@@ -132,6 +145,10 @@ export function TagsCard() {
                     Your tags could not be loaded, so they cannot be changed just now.{' '}
                     <button type="button" className="tags-card-retry" onClick={reload}>Try again</button>
                 </p>
+            )}
+
+            {notice !== null && (
+                <p className="user-pref-error" role="alert">{notice}</p>
             )}
 
             {status === 'ready' && tags.length === 0 && (
@@ -157,6 +174,7 @@ export function TagsCard() {
                                                 stopRename(tag.id);
                                             }
                                         }}
+                                        aria-busy={saving || undefined}
                                         noValidate
                                     >
                                         <label className="sr-only" htmlFor={`tags-card-name-${tag.id}`}>
@@ -169,21 +187,21 @@ export function TagsCard() {
                                             value={renaming.draft}
                                             maxLength={TAG_NAME_MAX}
                                             onChange={event => setRenaming({ id: tag.id, draft: event.target.value })}
-                                            disabled={saving}
+                                            readOnly={saving}
                                             aria-invalid={rowProblem !== null}
                                             aria-describedby={rowProblem !== null ? errorId : undefined}
                                             autoComplete="off"
                                             autoFocus
                                         />
                                         <div className="tags-card-actions">
-                                            <button type="submit" className="user-btn" disabled={saving}>
+                                            <button type="submit" className="user-btn" aria-disabled={saving || undefined}>
                                                 {saving ? 'Saving…' : 'Save'}
                                             </button>
                                             <button
                                                 type="button"
                                                 className="tags-card-cancel"
-                                                disabled={saving}
-                                                onClick={() => stopRename(tag.id)}
+                                                aria-disabled={saving || undefined}
+                                                onClick={() => { if (!saving) stopRename(tag.id); }}
                                             >
                                                 Cancel
                                             </button>
@@ -201,16 +219,19 @@ export function TagsCard() {
                                             }
                                         }}
                                     >
-                                        <p className="user-card-hint">
+                                        <p className="user-card-hint" id={`tags-card-question-${tag.id}`}>
                                             {tag.count === 0
                                                 ? `Delete the tag “${tag.name}”? No game carries it.`
                                                 : `Delete the tag “${tag.name}”? It comes off ${gamesCarrying(tag.count)}; the games stay as they are.`}
                                         </p>
                                         <div className="tags-card-actions">
+                                            {/* Each says what the question is, so the focus landing on
+                                                Cancel reads the number of games, not only the name. */}
                                             <button
                                                 type="button"
                                                 className="user-btn user-btn-danger"
-                                                disabled={saving}
+                                                aria-disabled={saving || undefined}
+                                                aria-describedby={`tags-card-question-${tag.id}`}
                                                 onClick={() => void handleDelete(tag)}
                                             >
                                                 {saving ? 'Deleting…' : 'Delete'}
@@ -218,8 +239,9 @@ export function TagsCard() {
                                             <button
                                                 type="button"
                                                 className="tags-card-cancel"
-                                                disabled={saving}
-                                                onClick={() => stopDelete(tag.id)}
+                                                aria-disabled={saving || undefined}
+                                                aria-describedby={`tags-card-question-${tag.id}`}
+                                                onClick={() => { if (!saving) stopDelete(tag.id); }}
                                                 autoFocus
                                             >
                                                 Cancel

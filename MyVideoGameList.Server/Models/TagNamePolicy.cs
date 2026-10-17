@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
 
@@ -15,9 +16,10 @@ namespace MyVideoGameList.Server.Models;
 /// apart — no two the same when compared without case.
 /// </para>
 /// <para>
-/// The caps bound what one account can make, not a fact the data depends on. Two creates at the limit
-/// in the same instant can both land, as two uploads can on the import's pending cap; that costs one tag
-/// over and nothing else, and a lock to prevent it is not worth what it would cost every create.
+/// The caps bound what one account can make, not a fact the data depends on. Creates that are in flight
+/// together at the limit can each land, as uploads can on the import's pending cap: the overshoot is as
+/// many as one account has in flight at once, nothing reads the count, and a lock to prevent it is not
+/// worth what it would cost every create.
 /// </para>
 /// </remarks>
 public static partial class TagNamePolicy
@@ -80,8 +82,28 @@ public static partial class TagNamePolicy
         if (normalised.Any(char.IsControl) || !IsWellFormed(normalised))
             return "A tag cannot contain control characters.";
 
+        // An invisible formatting character — a zero-width space, a byte-order mark, a direction override —
+        // would make a second "co-op" that looks exactly like the first, a chip with nothing on it, or the
+        // text after it read backwards. The joiners stay, because emoji are built with them, and so do the
+        // tag characters a subdivision's flag is spelt with.
+        if (normalised.EnumerateRunes().Any(rune =>
+                Rune.GetUnicodeCategory(rune) == UnicodeCategory.Format && !IsAllowedFormat(rune.Value)))
+            return "A tag cannot contain invisible formatting characters.";
+
+        // Joiners and spaces alone are still nothing to see.
+        if (!normalised.EnumerateRunes().Any(rune =>
+                !Rune.IsWhiteSpace(rune) && Rune.GetUnicodeCategory(rune) != UnicodeCategory.Format))
+            return "A tag needs a name.";
+
         return null;
     }
+
+    /// <summary>
+    /// The formatting characters a name may carry: the zero-width non-joiner and joiner, which emoji
+    /// sequences and some scripts need, and the tag characters that spell a flag such as England's.
+    /// </summary>
+    private static bool IsAllowedFormat(int codePoint) =>
+        codePoint is 0x200C or 0x200D or (>= 0xE0020 and <= 0xE007F);
 
     /// <summary>
     /// The comparison key: the normalised name in upper case, as <see cref="ShowcaseName.Normalise"/> and

@@ -5,8 +5,8 @@ import { tag } from '@/test/factories';
 describe('normaliseTagName', () => {
     it('tidies a name the way the server stores it', () => {
         expect(normaliseTagName('  couch \t  co-op  ')).toBe('couch co-op');
-        // Composed, so the two spellings of "café" are one name, as they are on the server.
-        expect(normaliseTagName('café')).toBe('café');
+        // Composed, so an accent typed as its own mark and the accented letter are one name, as on the server.
+        expect(normaliseTagName('cafe\u0301')).toBe('caf\u00e9');
     });
 });
 

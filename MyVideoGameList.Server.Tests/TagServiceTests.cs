@@ -205,8 +205,8 @@ public class TagServiceTests
         using var db = store.Open();
         var service = NewService(db);
 
-        var composed = await service.CreateAsync(UserId, "café");
-        var decomposed = await service.CreateAsync(UserId, "café");
+        var composed = await service.CreateAsync(UserId, "caf\u00e9");
+        var decomposed = await service.CreateAsync(UserId, "cafe\u0301");
 
         Assert.Equal(composed.Tag!.Id, decomposed.Tag!.Id);
         Assert.False(decomposed.Created);
@@ -648,8 +648,12 @@ public class TagServiceTests
 
         using var db = store.Open();
         await NewService(db).SetEntryTagsAsync(UserId, 10, [mine]);
+        Assert.Equal([mine], TagsOn(store, 10));
+
         await NewService(db).SetEntryTagsAsync(UserId, 10, []);
 
+        // The clear took the caller's own tag off the caller's own entry, and nothing of theirs.
+        Assert.Empty(TagsOn(store, 10));
         Assert.Equal([theirTag], TagsOn(store, 10, userId: OtherUserId));
 
         using var read = store.Open();
@@ -727,6 +731,40 @@ public class TagServiceTests
 
         Assert.Equal([a, b], playing.Single(e => e.Game.Id == 10).TagIds);
         Assert.Empty(playing.Single(e => e.Game.Id == 11).TagIds);
+    }
+
+    [Fact]
+    public async Task GetListsAsync_ReadsTheLinksByTheirOwnAccountColumn()
+    {
+        // A link carrying another account in its own UserId but pointing at this account's entry cannot
+        // exist in PostgreSQL — the composite foreign key refuses it — and here it is how the read's own
+        // predicate is pinned: the scoping is the authorization boundary, and belongs in the query.
+        var store = new Store();
+        var mine = AddTag(store, "mine");
+        var hades = AddEntry(store, 10, ListStatusKeys.Playing);
+        Link(store, hades, mine);
+        Link(store, hades, AddTag(store, "theirs", userId: OtherUserId), userId: OtherUserId);
+
+        using var db = store.Open();
+        var playing = (await NewListService(db, 10).GetListsAsync(UserId)).Lists[ListStatusKeys.Playing];
+
+        Assert.Equal([mine], Assert.Single(playing).TagIds);
+    }
+
+    [Fact]
+    public async Task GetListsAsync_ReadsNoLinksOfGamesInNoList()
+    {
+        // They are in none of its rows, and an account can hold any number of them: a tag write makes an
+        // entry for any game id. Pinned on the reader, since the rows alone would look the same either way.
+        var store = new Store();
+        var tag = AddTag(store, "someday");
+        Link(store, AddEntry(store, 10, ListStatusKeys.Playing), tag);
+        Link(store, AddEntry(store, 11, status: null), tag);
+
+        using var db = store.Open();
+        var byEntry = await EntryTagReader.ForListsAsync(db, UserId, default);
+
+        Assert.Single(byEntry);
     }
 
     [Fact]

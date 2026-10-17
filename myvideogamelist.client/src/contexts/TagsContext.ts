@@ -8,8 +8,11 @@ import type { TagDto } from '@/types/tag';
  */
 export type TagsStatus = 'idle' | 'loading' | 'ready' | 'failed';
 
-/** How a write to one tag ended: the tag as it now stands, or the sentence to show beside the name. */
-export type TagWriteResult = { ok: true; tag: TagDto } | { ok: false; error: string };
+/**
+ * How a write to one tag ended: the tag as it now stands, or the sentence to show beside the name — with
+ * `gone` when the tag was deleted somewhere else, so there is no longer a row to show it beside.
+ */
+export type TagWriteResult = { ok: true; tag: TagDto } | { ok: false; error: string; gone?: boolean };
 
 export interface TagsContextValue {
     /** The account's tags, in name order. Empty until they arrive, and for nobody signed in. */

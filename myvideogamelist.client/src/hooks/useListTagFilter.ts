@@ -8,6 +8,11 @@ export interface ListTagFilter {
     offered: TagDto[];
     /** The ticked tags still offered. A game is shown when it carries every one of them. */
     selected: number[];
+    /**
+     * Whether the tag filter narrows anything — what a page asks when it needs to know if any filter is on,
+     * as a hand-arranged order does before letting games be moved among ones it hides.
+     */
+    active: boolean;
     setSelected: (ids: number[]) => void;
     /** Whether a row passes the tag filter. Every row does while nothing is ticked. */
     matches: (entry: ListEntryDto) => boolean;
@@ -74,6 +79,7 @@ export function useListTagFilter(
     return {
         offered,
         selected,
+        active: selected.length > 0,
         setSelected: ids => setTicks({ account: accountId, ids }),
         matches,
         tagsOf,

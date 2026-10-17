@@ -125,3 +125,10 @@
 .tags-card-confirm .user-card-hint {
     margin: 0;
 }
+
+/* A control held while its row's write is out: still focusable, so a refusal finds the focus where it
+   was, and drawn as the settings page draws a disabled button. */
+.tags-card-row [aria-disabled='true'] {
+    cursor: default;
+    opacity: 0.6;
+}

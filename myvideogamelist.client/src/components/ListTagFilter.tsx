@@ -26,6 +26,10 @@ interface ListTagFilterProps {
  */
 export function ListTagFilter({ tags, selected, onChange, countFor, shown, total }: ListTagFilterProps) {
     const [open, setOpen] = useState(false);
+    // Whether the panel opens from the button's right edge rather than its left — see `toggleOpen`.
+    const [alignEnd, setAlignEnd] = useState(false);
+    // Whether a tick has changed here, so that clearing the last one is said — and nothing is said before.
+    const [touched, setTouched] = useState(false);
     const panelId = useId();
     const headingId = useId();
     const buttonRef = useRef<HTMLButtonElement>(null);
@@ -37,8 +41,31 @@ export function ListTagFilter({ tags, selected, onChange, countFor, shown, total
         buttonRef.current?.focus();
     };
 
+    /**
+     * Opens or closes the panel. It opens from the button's left edge and can be up to 20rem wide, which
+     * on a phone, with the button on the right of a wrapped toolbar, runs off the screen and scrolls the
+     * whole page sideways — so when it would, and there is more room to the button's left, it opens from
+     * the button's right edge instead. Measured at the press, in the browser, where the button has a place.
+     */
+    const toggleOpen = () => {
+        if (!open && buttonRef.current !== null) {
+            const rect = buttonRef.current.getBoundingClientRect();
+            const rem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+            const width = Math.min(20 * rem, window.innerWidth - 2 * rem);
+            const roomRight = window.innerWidth - rem - rect.left;
+            const roomLeft = rect.right - rem;
+            setAlignEnd(width > roomRight && roomLeft > roomRight);
+        }
+        setOpen(current => !current);
+    };
+
+    const change = (ids: number[]) => {
+        setTouched(true);
+        onChange(ids);
+    };
+
     const toggle = (id: number) =>
-        onChange(selected.includes(id) ? selected.filter(existing => existing !== id) : [...selected, id]);
+        change(selected.includes(id) ? selected.filter(existing => existing !== id) : [...selected, id]);
 
     // The button's whole name, as the platform filter's is: what is ticked, in words.
     const label = selected.length === 0
@@ -61,7 +88,7 @@ export function ListTagFilter({ tags, selected, onChange, countFor, shown, total
                 ref={buttonRef}
                 type="button"
                 className={`list-tag-filter-button${selected.length === 0 ? '' : ' active'}`}
-                onClick={() => setOpen(current => !current)}
+                onClick={toggleOpen}
                 aria-expanded={open}
                 aria-controls={panelId}
             >
@@ -75,14 +102,19 @@ export function ListTagFilter({ tags, selected, onChange, countFor, shown, total
                 <>
                     {/* Click-away, kept as a sibling so it cannot swallow the panel's own clicks. */}
                     <div className="list-tag-filter-backdrop" onClick={() => setOpen(false)} role="presentation" />
-                    <div className="list-tag-filter-panel" id={panelId}>
+                    <div
+                        className={`list-tag-filter-panel${alignEnd ? ' align-end' : ''}`}
+                        id={panelId}
+                        role="group"
+                        aria-labelledby={headingId}
+                    >
                         <div className="list-tag-filter-head">
                             <span id={headingId}>Filter by tag</span>
                             {selected.length > 0 && (
-                                <button type="button" onClick={() => onChange([])}>Reset</button>
+                                <button type="button" onClick={() => change([])}>Reset</button>
                             )}
                         </div>
-                        <ul role="group" aria-labelledby={headingId}>
+                        <ul>
                             {tags.map(tag => (
                                 <li key={tag.id}>
                                     <label>
@@ -109,7 +141,9 @@ export function ListTagFilter({ tags, selected, onChange, countFor, shown, total
             )}
 
             <p className="sr-only" role="status" aria-live="polite">
-                {selected.length === 0 ? '' : `${formatCount(shown)} of ${formatCount(total)} games shown.`}
+                {selected.length > 0
+                    ? `${formatCount(shown)} of ${formatCount(total)} games shown.`
+                    : touched ? `All ${formatCount(total)} games shown.` : ''}
             </p>
         </div>
     );

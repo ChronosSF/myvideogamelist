@@ -31,7 +31,7 @@ public class TagService(ApplicationDbContext db, TimeProvider clock) : ITagServi
     /// How many times a write starts again from its read after a row it depended on moved underneath
     /// it — a tag deleted, a link added by another tab. Each attempt reads what is there now, so one
     /// retry is nearly always enough; the bound is there so a pathological run ends in an error rather
-    /// than a loop, as <c>HandOrderStore</c>'s does.
+    /// than a loop.
     /// </summary>
     private const int MaxAttempts = 3;
 

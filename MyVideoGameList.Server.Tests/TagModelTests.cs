@@ -119,8 +119,8 @@ public class TagModelTests
     [InlineData("couch   co-op", "couch co-op")]
     [InlineData("couch\tco-op", "couch co-op")]
     [InlineData("couch\nco-op", "couch co-op")]
-    [InlineData("couch co-op", "couch co-op")]
-    [InlineData("café", "café")]
+    [InlineData("couch\u00a0co-op", "couch co-op")]
+    [InlineData("cafe\u0301", "caf\u00e9")]
     public void Normalise_TidiesWhatSomebodyTyped(string typed, string stored) =>
         Assert.Equal(stored, TagNamePolicy.Normalise(typed));
 
@@ -161,6 +161,29 @@ public class TagModelTests
     [Fact]
     public void Problem_RefusesAControlCharacter() =>
         Assert.NotNull(TagNamePolicy.Problem("bell\u0007"));
+
+    [Theory]
+    [InlineData("co-op\u200b")]   // a zero-width space: a second "co-op" that looks like the first
+    [InlineData("\ufeffco-op")]    // a byte-order mark
+    [InlineData("co\u2060op")]     // a word joiner
+    [InlineData("\u202ego-oc")]    // a right-to-left override, which turns what follows it around
+    [InlineData("co-op\u2066")]    // an isolate left open
+    [InlineData("co\u00adop")]     // a soft hyphen
+    public void Problem_RefusesAnInvisibleFormattingCharacter(string name) =>
+        Assert.Equal("A tag cannot contain invisible formatting characters.", TagNamePolicy.Problem(name));
+
+    [Theory]
+    [InlineData("\ud83d\udc68\u200d\ud83d\udc69\u200d\ud83d\udc67")]                 // a family, joined by U+200D
+    [InlineData("\ud83c\udff4\udb40\udc67\udb40\udc62\udb40\udc65\udb40\udc6e\udb40\udc67\udb40\udc7f")] // England's flag, spelt in tag characters
+    [InlineData("\u0645\u06cc\u200c\u062e\u0648\u0627\u0645")]                          // Persian with a zero-width non-joiner
+    public void Problem_AllowsTheJoinersEmojiAndScriptsNeed(string name) =>
+        Assert.Null(TagNamePolicy.Problem(name));
+
+    [Theory]
+    [InlineData("\u200d")]
+    [InlineData("\u200c \u200d")]
+    public void Problem_JoinersAloneAreNoName(string name) =>
+        Assert.Equal("A tag needs a name.", TagNamePolicy.Problem(name));
 
     [Fact]
     public void Key_FoldsLetterCase() =>

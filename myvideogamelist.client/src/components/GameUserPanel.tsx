@@ -214,11 +214,12 @@ export function GameUserPanel({ game, profileVisibility, onCommunityChange }: Ga
         setLocalTagIds(next);
         setTagsError(null);
 
-        if (!await setTags(game.id, next)) {
+        const saved = await setTags(game.id, next);
+        if (!saved.ok) {
+            // The server's own sentence where it gave one — a tag deleted in another tab says to reload —
+            // and the provider's otherwise.
             setLocalTagIds(previous);
-            // Most often the network, which another try mends; otherwise a tag changed in another tab,
-            // which only a fresh read of this game does.
-            setTagsError('Could not save your tags. Please try again, or reload the page if you changed them elsewhere.');
+            setTagsError(saved.error);
             return false;
         }
 
@@ -234,25 +235,29 @@ export function GameUserPanel({ game, profileVisibility, onCommunityChange }: Ga
         void saveTags(tagIds.filter(id => id !== tag.id));
     };
 
-    /** Not optimistic for the tag itself, which has no id until the server gives it one. */
-    const handleCreateTag = async (name: string) => {
+    /**
+     * Not optimistic for the tag itself, which has no id until the server gives it one. Answers whether
+     * the game now carries it, so the editor clears its box only for a name that landed.
+     */
+    const handleCreateTag = async (name: string): Promise<boolean> => {
         setCreatingTag(true);
         setTagsError(null);
 
         const created = await tags.createTag(name);
-        if (!mounted.current) return;
+        if (!mounted.current) return false;
 
         if (!created.ok) {
             setCreatingTag(false);
             setTagsError(created.error);
-            return;
+            return false;
         }
 
         // Released in the same update that takes the provider's lock below, so no render falls between
         // the two with this game unlocked. A name the game already carries — this tab's list was out of
         // date — is nothing to write.
         setCreatingTag(false);
-        if (!tagIds.includes(created.tag.id)) await saveTags([...tagIds, created.tag.id]);
+        if (tagIds.includes(created.tag.id)) return true;
+        return saveTags([...tagIds, created.tag.id]);
     };
 
     /** Not optimistic: the box keeps what was typed until the server has it, as the review does. */
@@ -268,6 +273,10 @@ export function GameUserPanel({ game, profileVisibility, onCommunityChange }: Ga
     };
 
     const handleDelete = async () => {
+        // Another write to this entry is out — or a tag is being made, which the provider's own lock does
+        // not see. A delete now could land before that write, which would then bring the entry back.
+        if (pending) return;
+
         setConfirmingDelete(false);
         setDeleteError(null);
 
@@ -609,7 +618,7 @@ export function GameUserPanel({ game, profileVisibility, onCommunityChange }: Ga
                     tags={tagsFor(tagIds, tags.byId)}
                     vocabulary={tags.tags}
                     onAdd={handleAddTag}
-                    onCreate={name => void handleCreateTag(name)}
+                    onCreate={handleCreateTag}
                     onRemove={handleRemoveTag}
                     busy={pending}
                     disabled={!ready || tags.status !== 'ready'}
@@ -678,7 +687,12 @@ export function GameUserPanel({ game, profileVisibility, onCommunityChange }: Ga
                                 between lists is kept, and so are the tags themselves.
                             </p>
                             <div className="game-user-panel-confirm">
-                                <button type="button" className="danger" onClick={() => void handleDelete()}>
+                                <button
+                                    type="button"
+                                    className="danger"
+                                    onClick={() => void handleDelete()}
+                                    disabled={pending}
+                                >
                                     Delete
                                 </button>
                                 <button type="button" onClick={() => setConfirmingDelete(false)}>

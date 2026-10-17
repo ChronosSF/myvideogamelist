@@ -19,13 +19,17 @@ namespace MyVideoGameList.Server.Services;
 /// </remarks>
 internal static class EntryTagReader
 {
-    /// <summary>Every entry of the account that carries a tag, to its tag ids in id order.</summary>
-    public static async Task<IReadOnlyDictionary<int, IReadOnlyList<int>>> ByEntryAsync(
+    /// <summary>
+    /// Every entry of the account that is in a list and carries a tag, to its tag ids in id order — what
+    /// the lists read needs, and no more: a game in no list is in none of its rows, and an account can hold
+    /// any number of those.
+    /// </summary>
+    public static async Task<IReadOnlyDictionary<int, IReadOnlyList<int>>> ForListsAsync(
         ApplicationDbContext db, string userId, CancellationToken cancellationToken)
     {
         var links = await db.UserGameEntryTags
             .AsNoTracking()
-            .Where(l => l.UserId == userId)
+            .Where(l => l.UserId == userId && l.Entry.StatusId != null)
             .Select(l => new { l.UserGameEntryId, l.TagId })
             .ToListAsync(cancellationToken);
 

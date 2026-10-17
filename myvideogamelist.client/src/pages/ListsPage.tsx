@@ -192,16 +192,16 @@ export function ListsPage() {
                 {signedIn && !loading && !error && entries.length > 0 && visible.length === 0 && (
                     <div className="text-center py-16">
                         <p className="text-fg-muted text-sm mb-3">
-                            {tagFilter.selected.length === 0
-                                ? `No games in ${nameFor(activeTab)} match the platform filter.`
-                                : `No games in ${nameFor(activeTab)} match the filters.`}
+                            {tagFilter.active
+                                ? `No games in ${nameFor(activeTab)} match the filters.`
+                                : `No games in ${nameFor(activeTab)} match the platform filter.`}
                         </p>
                         <button
                             type="button"
                             className="text-primary-400 text-sm font-semibold hover:underline"
                             onClick={clearFilters}
                         >
-                            {tagFilter.selected.length === 0 ? 'Clear the filter' : 'Clear the filters'}
+                            {tagFilter.active ? 'Clear the filters' : 'Clear the filter'}
                         </button>
                     </div>
                 )}

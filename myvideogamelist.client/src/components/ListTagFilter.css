@@ -72,6 +72,12 @@
     box-shadow: 0 12px 30px rgba(0, 0, 0, 0.45);
 }
 
+/* Opened from the button's right edge, when its left edge is too near the right of a narrow screen. */
+.list-tag-filter-panel.align-end {
+    right: 0;
+    left: auto;
+}
+
 .list-tag-filter-head {
     display: flex;
     align-items: baseline;

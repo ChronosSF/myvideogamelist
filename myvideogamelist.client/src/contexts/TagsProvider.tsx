@@ -1,4 +1,4 @@
-import { useMemo, type ReactNode } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { useAccountResource } from '@/hooks/useAccountResource';
 import { apiFetch } from '@/lib/api';
@@ -52,7 +52,29 @@ function upsert(tags: TagDto[], tag: TagDto): TagDto[] {
 export function TagsProvider({ children }: { children: ReactNode }) {
     const { user } = useAuth();
     const accountId = user?.id ?? null;
-    const { data, error, reload, patch } = useAccountResource<TagDto[]>(accountId, 'tags', loadTags);
+    const resource = useAccountResource<TagDto[]>(accountId, 'tags', loadTags);
+    const { data, error, loading, reload } = resource;
+
+    /*
+     * A read that was already out when a write landed answers with what it found before the write, and
+     * replaces what is held — so the tag just made, renamed or counted would vanish until the next page
+     * load. The writes are counted, the count is noted when a read begins, and a read that ends with the
+     * count moved is followed by another. Applied during render, React's pattern for adjusting state to
+     * what changed, rather than from an effect a frame later.
+     */
+    const [writes, setWrites] = useState(0);
+    const [writesAtRead, setWritesAtRead] = useState<number | null>(null);
+    if (loading && writesAtRead === null) setWritesAtRead(writes);
+    if (!loading && writesAtRead !== null) {
+        setWritesAtRead(null);
+        if (writes !== writesAtRead) reload();
+    }
+
+    /** Applies a write's answer to what is held — dropped if the account has changed — and counts it. */
+    const landed = (apply: (current: TagDto[]) => TagDto[]) => {
+        resource.patch(apply);
+        setWrites(count => count + 1);
+    };
 
     const tags = data ?? NONE;
     const status: TagsStatus = accountId === null
@@ -73,7 +95,7 @@ export function TagsProvider({ children }: { children: ReactNode }) {
 
             // 201 for a new tag, 200 for one the account already had under that name: both are the tag.
             const tag = (await res.json()) as TagDto;
-            patch(current => upsert(current, tag));
+            landed(current => upsert(current, tag));
             return { ok: true, tag };
         } catch {
             // Unreachable, or a body that was not the JSON it claimed to be.
@@ -92,13 +114,13 @@ export function TagsProvider({ children }: { children: ReactNode }) {
 
             if (res.status === 404) {
                 // Deleted somewhere else since this list was read. It is not coming back, so it goes.
-                patch(current => current.filter(t => t.id !== id));
-                return { ok: false, error: 'That tag no longer exists.' };
+                landed(current => current.filter(t => t.id !== id));
+                return { ok: false, error: 'That tag no longer exists.', gone: true };
             }
             if (!res.ok) return { ok: false, error: await refusal(res, failed) };
 
             const tag = (await res.json()) as TagDto;
-            patch(current => upsert(current, tag));
+            landed(current => upsert(current, tag));
             return { ok: true, tag };
         } catch {
             return { ok: false, error: failed };
@@ -112,7 +134,7 @@ export function TagsProvider({ children }: { children: ReactNode }) {
             // A 404 is a tag that was already gone, which is what the caller wanted.
             if (!res.ok && res.status !== 404) return false;
 
-            patch(current => current.filter(t => t.id !== id));
+            landed(current => current.filter(t => t.id !== id));
             return true;
         } catch {
             return false;
@@ -124,7 +146,7 @@ export function TagsProvider({ children }: { children: ReactNode }) {
         const lost = new Set(before.filter(id => !after.includes(id)));
         if (gained.size === 0 && lost.size === 0) return;
 
-        patch(current => current.map(tag => {
+        landed(current => current.map(tag => {
             if (gained.has(tag.id)) return { ...tag, count: tag.count + 1 };
             if (lost.has(tag.id)) return { ...tag, count: Math.max(0, tag.count - 1) };
             return tag;

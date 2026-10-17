@@ -10,7 +10,7 @@ import type { WishlistContextValue } from '@/contexts/WishlistContext';
 import { DEFAULT_SORT } from '@/lib/listSort';
 import type { UserProfile } from '@/types/auth';
 import { emptyLists, LIST_NAMES, type ListId } from '@/types/list';
-import { entry, tag, userProfile } from '@/test/factories';
+import { entry, platform, tag, userProfile } from '@/test/factories';
 
 /**
  * Auth and the lists, mocked rather than provided: both real providers fetch, and the page only
@@ -47,7 +47,7 @@ const lists: ListsContextValue = {
     setScore: vi.fn(async () => true),
     setOwnership: vi.fn(async () => true),
     setNotes: vi.fn(async () => true),
-    setTags: vi.fn(async () => true),
+    setTags: vi.fn(async () => ({ ok: true as const })),
     deleteEntry: vi.fn(async () => true),
     view: 'tiles',
     setView: vi.fn(),
@@ -205,10 +205,13 @@ describe('ListsPage and tags', () => {
     const SHORT = tag({ id: 2, name: 'short', count: 2 });
     const UNUSED = tag({ id: 3, name: 'someday', count: 0 });
 
-    const HADES = entry({ game: { id: 7, title: 'Hades' }, tagIds: [1, 2] });
-    const CELESTE = entry({ game: { id: 8, title: 'Celeste' }, tagIds: [2] });
-    const INSIDE = entry({ game: { id: 9, title: 'Inside' } });
-    const PORTAL = entry({ game: { id: 10, title: 'Portal 2' }, tagIds: [1] });
+    const PC = platform(6, 'PC');
+    const SWITCH = platform(130, 'Switch');
+
+    const HADES = entry({ game: { id: 7, title: 'Hades', platforms: [SWITCH] }, tagIds: [1, 2] });
+    const CELESTE = entry({ game: { id: 8, title: 'Celeste', platforms: [SWITCH] }, tagIds: [2] });
+    const INSIDE = entry({ game: { id: 9, title: 'Inside', platforms: [SWITCH] } });
+    const PORTAL = entry({ game: { id: 10, title: 'Portal 2', platforms: [PC] }, tagIds: [1] });
 
     function withTags(list: TagsContextValue['tags']) {
         tags.tags = list;
@@ -256,19 +259,36 @@ describe('ListsPage and tags', () => {
     });
 
     it('says the filters left nothing in this list, and clears both at once', async () => {
+        // Portal 2 carries the tag ticked, so it is the platform filter alone that hides it — and the
+        // one press has to take off both, or it would stay hidden behind the one not cleared.
         renderPage();
+        await userEvent.click(screen.getByRole('tab', { name: /Finished/ }));
+
         await userEvent.click(screen.getByRole('button', { name: 'Filter by tag' }));
         await userEvent.click(screen.getByRole('checkbox', { name: /^Co-op/ }));
-        await userEvent.click(screen.getByRole('checkbox', { name: /^short/ }));
         await userEvent.keyboard('{Escape}');
+        expect(titles()).toEqual(['Portal 2']);
 
-        await userEvent.click(screen.getByRole('tab', { name: /Finished/ }));
+        await userEvent.click(screen.getByRole('button', { name: 'All platforms' }));
+        await userEvent.click(screen.getByRole('checkbox', { name: 'PC' }));
 
         expect(screen.getByText('No games in Finished match the filters.')).toBeInTheDocument();
         await userEvent.click(screen.getByRole('button', { name: 'Clear the filters' }));
 
         expect(titles()).toEqual(['Portal 2']);
         expect(screen.getByRole('button', { name: 'Filter by tag' })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'All platforms' })).toBeInTheDocument();
+    });
+
+    it('still says "the platform filter" when no tag is ticked', async () => {
+        renderPage();
+        await userEvent.click(screen.getByRole('tab', { name: /Finished/ }));
+
+        await userEvent.click(screen.getByRole('button', { name: 'All platforms' }));
+        await userEvent.click(screen.getByRole('checkbox', { name: 'PC' }));
+
+        expect(screen.getByText('No games in Finished match the platform filter.')).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Clear the filter' })).toBeInTheDocument();
     });
 
     it('offers no tag filter when no game carries a tag', () => {

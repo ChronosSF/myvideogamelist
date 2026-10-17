@@ -16,11 +16,13 @@ namespace MyVideoGameList.Server.Controllers;
 /// Separate from <see cref="ListsController"/> because none of this is list-shaped. A score is a
 /// judgement about a game and survives the game leaving every list, so routing "clear my score"
 /// through a controller called <c>lists</c> would misdescribe what is happening. The lists
-/// endpoint is a view over these same entries.
+/// endpoint is a view over these same entries. <c>no-store</c> on everything, like every answer about
+/// one person: the entry carries notes and tags that are its owner's alone (ADR 0030, ADR 0065).
 /// </remarks>
 [ApiController]
 [Route("api/[controller]")]
 [Authorize]
+[ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
 public class EntriesController(
     IListService listService,
     IPlaythroughService playthroughService,
