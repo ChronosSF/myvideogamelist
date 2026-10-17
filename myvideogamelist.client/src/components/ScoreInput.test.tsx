@@ -60,6 +60,17 @@ describe('ScoreInput', () => {
         expect(onChange).toHaveBeenCalledWith(9);
     });
 
+    it('reports each of its ten steps as the whole number the API stores for it', async () => {
+        // Half-star steps over five stars are the API's 1 to 10, one to one, and never a fraction of
+        // a star (ADR 0021).
+        const actor = userEvent.setup({ delay: null });
+        const { onChange } = renderInput(null);
+
+        for (let step = 1; step <= 10; step++) await actor.click(star(step));
+
+        expect(onChange.mock.calls.map(([score]) => score)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+    });
+
     it('reports null when cleared, rather than an empty string or zero', async () => {
         const { onChange } = renderInput(6);
 
