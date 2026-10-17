@@ -188,7 +188,7 @@ public class BuildQueryTests
     }
 
     [Theory]
-    // The ids live IGDB's age_rating_categories listed under organization 1 on 17 October 2026.
+    // The ids that live IGDB's age_rating_categories listed under organization 1 on 17 October 2026.
     [InlineData(EsrbRatingKeys.EC, 2)]
     [InlineData(EsrbRatingKeys.E, 3)]
     [InlineData(EsrbRatingKeys.E10, 4)]
@@ -217,8 +217,9 @@ public class BuildQueryTests
     [InlineData("")]
     public void Esrb_AnythingButAKey_IsRefusedRatherThanReadAsNoFilter(string esrb)
     {
-        // The controller answers these with a 400. One that got past it must not become the whole
-        // unfiltered catalogue under a page that says it is filtered.
+        // The controller answers the first three with a 400 and binds an empty value as no filter at
+        // all. One that reached the builder some other way must not become the whole unfiltered
+        // catalogue under a page that says it is filtered.
         Assert.Throws<ArgumentOutOfRangeException>(() => Browse(new GameBrowseQuery(Esrb: esrb)));
     }
 }
@@ -333,12 +334,13 @@ public class EsrbFilterKeysTests
     public void TheApi_RefusesAnythingElse(string esrb) => Assert.False(AllowedByTheApi().IsValid(esrb));
 
     [Fact]
-    public void EveryKey_StandsForOneRating()
+    public void EveryKey_StandsForItsOwnRating()
     {
-        var keys = IgdbService.EsrbRatings.Select(r => r.Key).OfType<string>().ToList();
-
-        Assert.Equal(keys.Count, keys.Distinct().Count());
-        Assert.All(keys, key => Assert.Equal(key, IgdbService.EsrbFilter(key).Key));
+        // Two rows sharing a key would both filter as the first of them.
+        foreach (var rating in IgdbService.EsrbRatings)
+        {
+            if (rating.Key is { } key) Assert.Same(rating, IgdbService.EsrbFilter(key));
+        }
     }
 }
 
@@ -372,42 +374,48 @@ public class GetGamesAsyncTests
         ]
         """;
 
-    /// <summary>
-    /// Two games holding an E10+ row, with their age ratings as live IGDB returned them: Celeste, whose
-    /// only ESRB rating it is, and Monster Train 2, which also holds a T.
-    /// </summary>
-    private const string TwoE10GamesPayload = """
-        [
-          {
-            "id": 332273,
-            "name": "Monster Train 2",
-            "age_ratings": [
-              { "id": 203752, "organization": 2, "rating_category": 9 },
-              { "id": 203751, "organization": 1, "rating_category": 4 },
-              { "id": 245363, "organization": 1, "rating_category": 5 }
-            ]
-          },
-          {
-            "id": 26226,
-            "name": "Celeste",
-            "age_ratings": [
-              { "id": 34568, "organization": 2, "rating_category": 9 },
-              { "id": 129309, "organization": 5, "rating_category": 25 },
-              { "id": 96521, "organization": 6, "rating_category": 28 },
-              { "id": 68800, "organization": 3, "rating_category": 13 },
-              { "id": 110564, "organization": 7, "rating_category": 35 },
-              { "id": 189813, "organization": 1, "rating_category": 4 },
-              { "id": 177613, "organization": 4, "rating_category": 20 }
-            ]
-          }
-        ]
+    /// <summary>Monster Train 2's age ratings as live IGDB returned them: a PEGI row, then E10+ and T.</summary>
+    private const string MonsterTrain2 = """
+        {
+          "id": 332273,
+          "name": "Monster Train 2",
+          "age_ratings": [
+            { "id": 203752, "organization": 2, "rating_category": 9 },
+            { "id": 203751, "organization": 1, "rating_category": 4 },
+            { "id": 245363, "organization": 1, "rating_category": 5 }
+          ]
+        }
         """;
+
+    /// <summary>Celeste's age ratings as live IGDB returned them, its one ESRB row an E10+.</summary>
+    private const string Celeste = """
+        {
+          "id": 26226,
+          "name": "Celeste",
+          "age_ratings": [
+            { "id": 34568, "organization": 2, "rating_category": 9 },
+            { "id": 129309, "organization": 5, "rating_category": 25 },
+            { "id": 96521, "organization": 6, "rating_category": 28 },
+            { "id": 68800, "organization": 3, "rating_category": 13 },
+            { "id": 110564, "organization": 7, "rating_category": 35 },
+            { "id": 189813, "organization": 1, "rating_category": 4 },
+            { "id": 177613, "organization": 4, "rating_category": 20 }
+          ]
+        }
+        """;
+
+    /// <summary>
+    /// What live IGDB answers over those two games: both hold an E10+ row, so a query for E10+ — or for
+    /// no rating at all — gets both, and only Monster Train 2 holds a T.
+    /// </summary>
+    private static string TwoE10Games(string query) =>
+        query.Contains("age_ratings.rating_category = (5)") ? $"[{MonsterTrain2}]" : $"[{MonsterTrain2},{Celeste}]";
 
     private const string TokenPayload =
         """{ "access_token": "token", "expires_in": 3600, "token_type": "bearer" }""";
 
-    /// <summary>Answers the token request, then every query with the payload it was given.</summary>
-    private sealed class StubHandler(string payload) : HttpMessageHandler
+    /// <summary>Answers the token request, then each query with what <c>answer</c> makes of it.</summary>
+    private sealed class StubHandler(Func<string, string> answer) : HttpMessageHandler
     {
         /// <summary>The last Apicalypse query the service sent.</summary>
         public string? Query { get; private set; }
@@ -422,16 +430,18 @@ public class GetGamesAsyncTests
 
             Query = await request.Content!.ReadAsStringAsync(cancellationToken);
             Queries++;
-            return Json(payload);
+            return Json(answer(Query));
         }
 
         private static HttpResponseMessage Json(string body) =>
             new(HttpStatusCode.OK) { Content = new StringContent(body, Encoding.UTF8, "application/json") };
     }
 
-    private static (IgdbService Service, StubHandler Igdb) NewService(string payload = GamesPayload)
+    private static (IgdbService Service, StubHandler Igdb) NewService() => NewService(_ => GamesPayload);
+
+    private static (IgdbService Service, StubHandler Igdb) NewService(Func<string, string> answer)
     {
-        var handler = new StubHandler(payload);
+        var handler = new StubHandler(answer);
 
         var factory = Substitute.For<IHttpClientFactory>();
         factory.CreateClient("Igdb").Returns(_ => new HttpClient(handler));
@@ -478,7 +488,7 @@ public class GetGamesAsyncTests
     {
         // IGDB answers "an E10+ row" with both games, and Monster Train 2's badge says T — the
         // stricter of its two. A page filtered to E10+ does not carry it.
-        var (service, igdb) = NewService(TwoE10GamesPayload);
+        var (service, igdb) = NewService(TwoE10Games);
 
         var games = await service.GetGamesAsync(browse: E10);
 
@@ -491,7 +501,7 @@ public class GetGamesAsyncTests
     [Fact]
     public async Task WithAnEsrbFilter_ListsAGameUnderItsBadgesRating()
     {
-        var (service, _) = NewService(TwoE10GamesPayload);
+        var (service, _) = NewService(TwoE10Games);
 
         var games = await service.GetGamesAsync(browse: new GameBrowseQuery(Esrb: EsrbRatingKeys.T));
 
@@ -500,22 +510,26 @@ public class GetGamesAsyncTests
         Assert.Equal("T", monsterTrain.EsrbRating);
     }
 
-    [Fact]
-    public async Task WithAnEsrbFilter_ReadsWhetherThereIsMoreFromIgdbsPageNotFromWhatIsLeft()
+    [Theory]
+    // IGDB returns both games: a full page of two, or a short page of three.
+    [InlineData(2, true)]
+    [InlineData(3, false)]
+    public async Task WithAnEsrbFilter_ReadsWhetherThereIsMoreFromIgdbsPageNotFromWhatIsLeft(int limit, bool hasMore)
     {
-        // A full page with one game dropped is still a full page: the next one may hold more.
-        var (service, _) = NewService(TwoE10GamesPayload);
+        // A full page with a game dropped is still a full page, and the next one may hold more; a short
+        // one is the last whatever was dropped from it.
+        var (service, _) = NewService(TwoE10Games);
 
-        var games = await service.GetGamesAsync(offset: 0, limit: 2, browse: E10);
+        var games = await service.GetGamesAsync(offset: 0, limit: limit, browse: E10);
 
         Assert.Single(games.Items);
-        Assert.True(games.HasMore);
+        Assert.Equal(hasMore, games.HasMore);
     }
 
     [Fact]
     public async Task WithoutAnEsrbFilter_ListsEveryGameIgdbReturned()
     {
-        var (service, _) = NewService(TwoE10GamesPayload);
+        var (service, _) = NewService(TwoE10Games);
 
         var games = await service.GetGamesAsync();
 
@@ -526,14 +540,15 @@ public class GetGamesAsyncTests
     public async Task TheCacheKey_TellsTheEsrbFiltersApart()
     {
         // Left out of the key, the first listing to be cached would be served for every rating.
-        var (service, igdb) = NewService(TwoE10GamesPayload);
+        var (service, igdb) = NewService(TwoE10Games);
 
         await service.GetGamesAsync();
         await service.GetGamesAsync(browse: E10);
         await service.GetGamesAsync(browse: new GameBrowseQuery(Esrb: EsrbRatingKeys.T));
-        await service.GetGamesAsync(browse: E10);
+        var again = await service.GetGamesAsync(browse: E10);
 
         Assert.Equal(3, igdb.Queries);
+        Assert.Equal("Celeste", Assert.Single(again.Items).Title);
     }
 }
 

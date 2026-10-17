@@ -179,7 +179,7 @@ export function GameBrowseFilters({ browse, platforms, genres, years, onChange, 
                         onChange={event => onChange({
                             esrb: event.target.value === '' ? null : event.target.value as EsrbRating,
                         })}
-                        aria-describedby={browse.esrb === null ? undefined : `${id}-esrb-hint`}
+                        aria-describedby={`${id}-esrb-hint`}
                     >
                         <option value="">Any rating</option>
                         {ESRB_RATINGS.map(rating => (
@@ -206,12 +206,12 @@ export function GameBrowseFilters({ browse, platforms, genres, years, onChange, 
                     ? 'Search results come in order of how well they match. The filters still apply.'
                     : sort.hint}
             </p>
-            {/* Only while a rating is chosen, which is when a game can be missing for having none. */}
-            {browse.esrb !== null && (
-                <p id={`${id}-esrb-hint`} className="mt-1 text-xs text-fg-muted">
-                    Games IGDB holds no ESRB rating for are left out.
-                </p>
-            )}
+            {/* Always there, as the order's is, so that it is read before a rating is chosen: a
+                description that appears with the choice is announced to nobody, since a screen
+                reader reads it when the select takes focus. */}
+            <p id={`${id}-esrb-hint`} className="mt-1 text-xs text-fg-muted">
+                Choosing an ESRB rating leaves out the games IGDB holds no ESRB rating for.
+            </p>
         </div>
     );
 }

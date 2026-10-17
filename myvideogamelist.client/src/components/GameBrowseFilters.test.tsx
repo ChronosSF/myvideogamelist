@@ -43,7 +43,7 @@ describe('GameBrowseFilters', () => {
         expect(screen.getByLabelText('ESRB rating')).toHaveValue('m');
     });
 
-    it('offers every rating the ESRB gives, youngest audience first, by its name', () => {
+    it('offers every ESRB rating but Rating Pending, youngest audience first, by its ESRB name', () => {
         renderFilters();
 
         const ratings = within(screen.getByLabelText('ESRB rating')).getAllByRole('option').map(o => o.textContent);
@@ -63,17 +63,13 @@ describe('GameBrowseFilters', () => {
         expect(onChange).toHaveBeenCalledWith({ esrb: null });
     });
 
-    it('says that games without an ESRB rating are left out, once a rating is chosen', () => {
-        renderFilters({ esrb: 'e10' });
+    // Read when the select takes focus, which is before the choice it is about: a description that
+    // only appeared with the choice would be announced to nobody.
+    it.each([null, 'e10'] as const)('says that a rating leaves out the games without one, with %s chosen', esrb => {
+        renderFilters({ esrb });
 
-        expect(screen.getByLabelText('ESRB rating')).toHaveAccessibleDescription(/no ESRB rating .* left out/i);
-    });
-
-    it('says nothing about ESRB ratings while none is chosen, when nothing is left out for it', () => {
-        renderFilters();
-
-        expect(screen.getByLabelText('ESRB rating')).not.toHaveAccessibleDescription();
-        expect(screen.queryByText(/no ESRB rating/i)).not.toBeInTheDocument();
+        expect(screen.getByLabelText('ESRB rating'))
+            .toHaveAccessibleDescription(/choosing an ESRB rating leaves out the games IGDB holds no ESRB rating for/i);
     });
 
     it('keeps the rating with the other filters while searching', () => {

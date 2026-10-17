@@ -30,9 +30,9 @@ export const MIN_SCORES = [90, 80, 70, 60] as const;
 export type EsrbRating = 'ec' | 'e' | 'e10' | 't' | 'm' | 'ao';
 
 /**
- * The ESRB ratings the filter offers, youngest audience first, by the names the ESRB gives them.
- * Every rating it gives, and not Rating Pending, which says that a game has none yet. The server
- * refuses any other key, so this list and `EsrbRatingKeys` change together.
+ * The ESRB ratings the filter offers, youngest audience first, by the names the ESRB gives them:
+ * every one IGDB lists under the ESRB but Rating Pending, which says that a game has none yet. The
+ * server refuses any other key, so this list and `EsrbRatingKeys` change together.
  */
 export const ESRB_RATINGS: { key: EsrbRating; label: string }[] = [
     { key: 'ec', label: 'Early Childhood' },

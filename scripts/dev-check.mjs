@@ -152,6 +152,16 @@ async function cacheBehaviour() {
         `${xcache(first)}, then ${xcache(second)}`);
     report(xcache(other) === 'Miss', 'a different ?search= is a different entry', xcache(other));
 
+    // A parameter missing from the policy's allowlist is not merely shared between values: it never
+    // reaches the origin, so the page renders as though nothing had been chosen. A fresh term under one
+    // rating renders with that rating selected, and the same term under another is its own entry
+    // (0099's `esrb`, the newest name on the list).
+    const rated = stamp();
+    const mature = await get(`/games?search=${rated}&esrb=m`, { auth: true });
+    const teen = await get(`/games?search=${rated}&esrb=t`, { auth: true });
+    report(/<option value="m" selected=""/.test(mature.body) && xcache(teen) === 'Miss',
+        '?esrb= reaches the origin and is in the cache key', `${xcache(mature)}, then ${xcache(teen)} under another rating`);
+
     const page = await get(`/games/${GAME}`, { auth: true });
     const again = await get(`/games/${GAME}`, { auth: true });
     report(/^(Hit|RefreshHit)$/.test(xcache(again)), `/games/${GAME} is served from the edge on the second request`, `${xcache(page)}, then ${xcache(again)}`);

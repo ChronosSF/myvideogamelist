@@ -25,13 +25,13 @@ public static class GameSortKeys
 
 /// <summary>
 /// The ESRB ratings the browse listing can be narrowed to, named as IGDB names them. Keys rather than
-/// IGDB's ids, because they are in URLs people share and IGDB has renumbered its age ratings once
-/// already; <c>IgdbService.EsrbRatings</c> holds the id each one stands for.
+/// IGDB's ids, because they are in URLs people share, and IGDB has already replaced the fields its age
+/// ratings are read from once; <c>IgdbService.EsrbRatings</c> holds the id each one stands for.
 /// </summary>
 /// <remarks>
-/// Every rating the ESRB gives, youngest audience first. Not Rating Pending, which IGDB lists among
-/// the ESRB's categories but which says that there is no rating yet: under the browse floors it holds
-/// a handful of released games whose row was never updated.
+/// Every rating IGDB lists under the ESRB, youngest audience first, but Rating Pending, which says
+/// that there is no rating yet: under the browse floors it holds a handful of released games whose row
+/// was never updated. See <c>docs/decisions/0099-*</c>.
 /// </remarks>
 public static class EsrbRatingKeys
 {

@@ -17,12 +17,16 @@ describe('browseFrom', () => {
             .toEqual({ search: 'zelda', sort: 'newest', platform: 130, genre: 12, year: 2024, minScore: 80, esrb: 'm' });
     });
 
-    it('reads every ESRB rating the filter offers', () => {
+    it('offers exactly the ESRB keys the API accepts', () => {
+        // The server's EsrbRatingKeys, spelled out: a key offered here that the API refuses turns the
+        // whole page into a 502, and one it accepts that is missing here cannot be chosen.
+        expect(ESRB_RATINGS.map(rating => rating.key)).toEqual(['ec', 'e', 'e10', 't', 'm', 'ao']);
         for (const { key } of ESRB_RATINGS) expect(browseFrom(params(`esrb=${key}`)).esrb).toBe(key);
     });
 
-    it('drops an ESRB rating the API would refuse', () => {
-        // Rating Pending is not offered, the badge's own codes are not keys, and nor is IGDB's id.
+    it('reads anything but a key as no ESRB rating', () => {
+        // Rating Pending is not offered, the badge's own codes are not keys, and nor is IGDB's id: the
+        // API answers each with a 400. An empty value it reads as no rating, as this does.
         for (const esrb of ['rp', 'M', 'E10%2B', '6', 'bogus', '']) {
             expect(browseFrom(params(`esrb=${esrb}`)).esrb).toBeNull();
         }
@@ -84,6 +88,9 @@ describe('isFiltered', () => {
     it('does not count the order or a search as a filter', () => {
         expect(isFiltered({ ...EMPTY_BROWSE, sort: 'newest', search: 'x' })).toBe(false);
         expect(isFiltered({ ...EMPTY_BROWSE, year: 2001 })).toBe(true);
+    });
+
+    it('counts an ESRB rating as a filter', () => {
         expect(isFiltered({ ...EMPTY_BROWSE, esrb: 'ao' })).toBe(true);
     });
 });
