@@ -150,6 +150,38 @@ public class UserController(
     }
 
     /// <summary>
+    /// Replaces the display name, the avatar and the bio, all three at once.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Each was judged by its attribute before this runs, as it will be stored; what is written is
+    /// that stored form, so the response hands back exactly what the public profile will show. A
+    /// blank clears its field. Saving them on a private profile publishes nothing: they reach
+    /// <c>/u/{userName}</c> only while the profile is public, with everything else on it.
+    /// </para>
+    /// <para>
+    /// The avatar's address is stored and never requested from here (ADR 0056). No cancellation
+    /// token, for <see cref="DeleteAccount"/>'s reason: <see cref="UserManager{TUser}"/> takes none.
+    /// </para>
+    /// </remarks>
+    [HttpPut("profile")]
+    public async Task<ActionResult<UserProfileDto>> UpdateProfileDetails(
+        [FromBody] UpdateProfileDetailsDto dto)
+    {
+        var user = await userManager.GetUserAsync(User);
+        if (user is null) return Unauthorized();
+
+        user.DisplayName = DisplayNamePolicy.Normalise(dto.DisplayName);
+        user.AvatarUrl = AvatarUrlPolicy.Normalise(dto.AvatarUrl);
+        user.Bio = BioPolicy.Normalise(dto.Bio);
+
+        var saved = await userManager.UpdateAsync(user);
+        if (!saved.Succeeded) return NotSaved(saved);
+
+        return Ok(Profile(user));
+    }
+
+    /// <summary>
     /// The list-view preferences, fetched by the lists page alongside the lists themselves.
     /// Deliberately not folded into the profile endpoint, which is called on every page load and
     /// has no use for them.

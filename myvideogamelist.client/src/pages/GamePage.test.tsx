@@ -26,6 +26,7 @@ const auth: AuthContextValue = {
     logout: vi.fn(async () => {}),
     updateUserName: vi.fn(async () => {}),
     updateProfileVisibility: vi.fn(async () => {}),
+    updateProfileDetails: vi.fn(async () => {}),
     deleteAccount: vi.fn(async () => {}),
 };
 

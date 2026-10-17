@@ -13,9 +13,16 @@ const SITE = { siteUrl: 'https://myvideogamelist.net', indexable: true };
  * The tags for a profile, given only the figures `meta` reads. The rest of the document is the
  * component's business and is left out, which is what the cast is for.
  */
-function tagsFor({ userName = 'AliceInChains', page = 1, recorded = 12, favourites = 0 } = {}): Tag[] {
+function tagsFor({
+    userName = 'AliceInChains',
+    displayName = null as string | null,
+    page = 1,
+    recorded = 12,
+    favourites = 0,
+} = {}): Tag[] {
     const profile = {
         userName,
+        displayName,
         favourites,
         library: { tracked: recorded, recorded, byStatus: { finished: 3 } },
     };
@@ -24,6 +31,7 @@ function tagsFor({ userName = 'AliceInChains', page = 1, recorded = 12, favourit
 }
 
 const canonical = (tags: Tag[]) => tags.find(tag => tag.rel === 'canonical')?.href;
+const title = (tags: Tag[]) => tags.find(tag => tag.title !== undefined)?.title;
 const noindex = (tags: Tag[]) => tags.some(tag => tag.name === 'robots' && tag.content?.includes('noindex'));
 
 describe('ProfilePage meta', () => {
@@ -58,6 +66,27 @@ describe('ProfilePage meta', () => {
         // A favourite needs no entry (ADR 0029), so nothing recorded is not the same as nothing here.
         expect(noindex(tagsFor({ recorded: 0, favourites: 4 }))).toBe(false);
     });
+
+    it('is titled by the handle when there is no display name', () => {
+        expect(title(tagsFor())).toBe('AliceInChains - MyVideoGameList');
+    });
+
+    it('leads its title with the display name, and keeps the handle beside it', () => {
+        // A search result is somewhere the handle identifies the account, so it is never dropped.
+        const tags = tagsFor({ displayName: 'Alice Cooper' });
+
+        expect(title(tags)).toBe('Alice Cooper (@AliceInChains) - MyVideoGameList');
+        expect(title(tagsFor({ displayName: 'Alice Cooper', page: 2 })))
+            .toBe('Alice Cooper (@AliceInChains), reviews page 2 - MyVideoGameList');
+    });
+
+    it('keeps the handle as its address and its username, whatever the display name', () => {
+        // The display name is in no URL and belongs to nobody exclusively (ADR 0027).
+        const tags = tagsFor({ displayName: 'Alice Cooper' });
+
+        expect(canonical(tags)).toBe('https://myvideogamelist.net/u/AliceInChains');
+        expect(tags).toContainEqual({ property: 'profile:username', content: 'AliceInChains' });
+    });
 });
 
 /**
@@ -68,6 +97,9 @@ describe('ProfilePage meta', () => {
 function importedProfile(activity: Partial<PublicActivity> = {}, recorded = 606): PublicProfile {
     return {
         userName: 'ChronosSF',
+        displayName: null,
+        avatarUrl: null,
+        bio: null,
         activity: {
             trackingSince: null,
             months: [{ month: '2026-09', started: 2, finished: 2, dropped: 0 }],
@@ -122,5 +154,61 @@ describe('ProfilePage header', () => {
 
         expect(screen.getByText('Has not tracked anything here yet.')).toBeInTheDocument();
         expect(screen.getByText('No status changes or playthrough dates recorded yet.')).toBeInTheDocument();
+    });
+});
+
+/** The imported profile again, with what its owner wrote about themselves. */
+function describedProfile(details: Partial<Pick<PublicProfile, 'displayName' | 'avatarUrl' | 'bio'>>) {
+    return { ...importedProfile(), ...details };
+}
+
+describe('ProfilePage, what the owner wrote about themselves', () => {
+    it('is headed by the handle alone when there is no display name', () => {
+        renderProfile(importedProfile());
+
+        expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(/^ChronosSF$/);
+    });
+
+    it('puts the display name beside the handle, never in place of it', () => {
+        renderProfile(describedProfile({ displayName: 'Stamen' }));
+
+        const heading = screen.getByRole('heading', { level: 1 });
+        expect(heading).toHaveTextContent('Stamen @ChronosSF');
+    });
+
+    it('shows the bio as plain text, its line breaks and markup-looking text as written', () => {
+        const bio = 'Mostly RPGs.\n\n  <b>Slowly</b>, and **never** in a hurry.';
+        renderProfile(describedProfile({ bio }));
+
+        const paragraph = screen.getByText(/Mostly RPGs\./);
+        // One text node holding exactly what was written: nothing parsed, nothing collapsed.
+        expect(paragraph.textContent).toBe(bio);
+        expect(paragraph.querySelector('b')).toBeNull();
+    });
+
+    it('has no bio paragraph when there is no bio', () => {
+        const { container } = renderProfile(importedProfile());
+
+        expect(container.querySelector('.public-profile-bio')).toBeNull();
+    });
+
+    it('loads the avatar without a referrer, lazily, and as decoration', () => {
+        const { container } = renderProfile(
+            describedProfile({ avatarUrl: 'https://avatars.githubusercontent.com/u/9919?v=4' }),
+        );
+
+        const image = container.querySelector('img');
+        expect(image).not.toBeNull();
+        expect(image).toHaveAttribute('src', 'https://avatars.githubusercontent.com/u/9919?v=4');
+        expect(image).toHaveAttribute('referrerpolicy', 'no-referrer');
+        expect(image).toHaveAttribute('loading', 'lazy');
+        expect(image).toHaveAttribute('alt', '');
+    });
+
+    it('shows the handle\'s initial when there is no avatar', () => {
+        const { container } = renderProfile(importedProfile());
+
+        expect(container.querySelector('img')).toBeNull();
+        expect(container.querySelector('.public-profile-avatar')).toHaveTextContent('C');
     });
 });

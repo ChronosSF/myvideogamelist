@@ -14,25 +14,30 @@
     margin: 0 auto;
 }
 
+/* Who this is, and then what they wrote about themselves when they have. */
 .public-profile-header {
     display: flex;
-    align-items: center;
+    flex-direction: column;
     gap: 1rem;
     margin-bottom: 2rem;
 }
 
-.public-profile-avatar {
+.public-profile-heading {
     display: flex;
     align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
+    gap: 1rem;
+}
+
+/* The size. The circle and the initial's colours are the Avatar component's. */
+.public-profile-avatar {
     width: 3.5rem;
     height: 3.5rem;
-    border-radius: 9999px;
-    background: linear-gradient(135deg, var(--color-primary-600), var(--color-primary-700));
-    color: var(--color-on-primary);
     font-size: 1.5rem;
-    font-weight: 700;
+}
+
+/* Lets a long name wrap rather than push the header past the page. */
+.public-profile-identity {
+    min-width: 0;
 }
 
 .public-profile-name {
@@ -40,6 +45,27 @@
     font-weight: 700;
     color: var(--color-fg);
     /* The name is user input and may be twenty characters with no break opportunity in it. */
+    overflow-wrap: anywhere;
+}
+
+/* The handle beside a display name: still in the heading, a step back from the name. */
+.public-profile-handle {
+    font-size: 1.125rem;
+    font-weight: 500;
+    color: var(--color-fg-muted);
+}
+
+/*
+ * What the owner wrote about themselves. Plain text with its whitespace kept as written — line
+ * breaks, runs of spaces and all — and wrapped, so a long word or a pasted address cannot widen the
+ * page.
+ */
+.public-profile-bio {
+    max-width: 40rem;
+    font-size: 0.9375rem;
+    line-height: 1.6;
+    color: var(--color-fg-soft);
+    white-space: pre-wrap;
     overflow-wrap: anywhere;
 }
 

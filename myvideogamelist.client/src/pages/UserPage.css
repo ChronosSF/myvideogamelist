@@ -366,3 +366,94 @@ a.user-btn {
 .username-link a:hover {
     text-decoration: underline;
 }
+
+/* ── Profile details ─────────────────────────────────────────────────────── */
+
+/* What the public profile shows at its top, as stored: the picture, the display name, the handle. */
+.profile-details-preview {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-top: 0.5rem;
+}
+
+/* The size; the circle and the initial's colours are the Avatar component's. */
+.profile-details-avatar {
+    width: 3rem;
+    height: 3rem;
+    font-size: 1.25rem;
+}
+
+.profile-details-names {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.profile-details-display-name {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--color-fg);
+    overflow-wrap: anywhere;
+}
+
+.profile-details-handle {
+    font-size: 0.875rem;
+    color: var(--color-fg-muted);
+    overflow-wrap: anywhere;
+}
+
+.profile-details-form {
+    display: flex;
+    flex-direction: column;
+    gap: 0.875rem;
+    margin-top: 1rem;
+}
+
+.profile-details-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+/* The list names' labels and boxes, so the settings page has one look for a field. */
+.profile-details-field label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--color-fg-muted);
+}
+
+.profile-details-field input,
+.profile-details-field textarea {
+    width: 100%;
+    padding: 0.4375rem 0.75rem;
+    background: var(--color-page);
+    border: 1px solid var(--color-line-strong);
+    border-radius: 0.5rem;
+    color: var(--color-fg);
+    font-size: 0.9375rem;
+    outline: none;
+}
+
+/* Grows downwards only, so a long bio can be written without the card changing width. */
+.profile-details-field textarea {
+    min-height: 6rem;
+    resize: vertical;
+    line-height: 1.5;
+}
+
+.profile-details-field input:focus,
+.profile-details-field textarea:focus {
+    border-color: var(--color-focus);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-focus) 20%, transparent);
+}
+
+.profile-details-field input[aria-invalid='true'],
+.profile-details-field textarea[aria-invalid='true'] {
+    border-color: var(--color-danger-400);
+}
+
+.profile-details-field .user-card-hint,
+.profile-details-field .user-pref-error {
+    margin: 0;
+}

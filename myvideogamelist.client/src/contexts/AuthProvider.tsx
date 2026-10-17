@@ -1,10 +1,27 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import type { ProfileVisibility, UserProfile } from '@/types/auth';
+import {
+    ProfileDetailsError,
+    type ProfileDetails,
+    type ProfileVisibility,
+    type UserProfile,
+} from '@/types/auth';
 import { apiFetch } from '@/lib/api';
 import { AuthContext } from './AuthContext';
 
 /**
- * The message a failed write should show the user.
+ * A failed response's body, or null when it is not JSON at all — a proxy error page, or an empty
+ * 500. Read once, because a body can only be read once.
+ */
+async function bodyOf(response: Response): Promise<unknown> {
+    try {
+        return await response.json();
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * The message a failed write should show the user, from the body it answered with.
  *
  * ASP.NET returns three shapes and they are not interchangeable. `ValidationProblemDetails` puts
  * the useful sentence inside `errors`, keyed by field — that is what the username endpoint returns
@@ -14,39 +31,67 @@ import { AuthContext } from './AuthContext';
  * `title` alone is a plain `ProblemDetails` — a rate-limited login, or anything the framework
  * answers before a controller runs.
  */
-async function problem(response: Response, fallback: string): Promise<string> {
-    try {
-        const body: unknown = await response.json();
-        if (typeof body !== 'object' || body === null) return fallback;
+function messageIn(body: unknown, fallback: string): string {
+    if (typeof body !== 'object' || body === null) return fallback;
 
-        const { errors, message, detail, title } = body as {
-            errors?: unknown;
-            message?: unknown;
-            detail?: unknown;
-            title?: unknown;
-        };
+    const { errors, message, detail, title } = body as {
+        errors?: unknown;
+        message?: unknown;
+        detail?: unknown;
+        title?: unknown;
+    };
 
-        if (Array.isArray(errors)) return errors.join(' ') || fallback;
+    if (Array.isArray(errors)) return errors.join(' ') || fallback;
 
-        if (typeof errors === 'object' && errors !== null) {
-            const first = Object.values(errors as Record<string, unknown>)
-                .flatMap(value => (Array.isArray(value) ? (value as string[]) : []))
-                .find(text => typeof text === 'string' && text.length > 0);
-            if (first) return first;
-        }
-
-        // `message` is what this API's own auth failures carry. `detail` and `title` are
-        // ProblemDetails, which is what the framework produces - a rate-limited login being the
-        // one where the fallback ("Login failed") would be actively misleading.
-        for (const candidate of [message, detail, title]) {
-            if (typeof candidate === 'string' && candidate.length > 0) return candidate;
-        }
-
-        return fallback;
-    } catch {
-        // A body that is not JSON at all — a proxy error page, or an empty 500.
-        return fallback;
+    if (typeof errors === 'object' && errors !== null) {
+        const first = Object.values(errors as Record<string, unknown>)
+            .flatMap(value => (Array.isArray(value) ? (value as string[]) : []))
+            .find(text => typeof text === 'string' && text.length > 0);
+        if (first) return first;
     }
+
+    // `message` is what this API's own auth failures carry. `detail` and `title` are
+    // ProblemDetails, which is what the framework produces - a rate-limited login being the
+    // one where the fallback ("Login failed") would be actively misleading.
+    for (const candidate of [message, detail, title]) {
+        if (typeof candidate === 'string' && candidate.length > 0) return candidate;
+    }
+
+    return fallback;
+}
+
+async function problem(response: Response, fallback: string): Promise<string> {
+    return messageIn(await bodyOf(response), fallback);
+}
+
+const DETAIL_FIELDS = ['displayName', 'avatarUrl', 'bio'] as const;
+
+/**
+ * A refused save of the profile details, with the server's reason for each field it refused keyed
+ * by that field. ASP.NET keys them by the C# name — `DisplayName` — so they are matched without case.
+ */
+async function detailsProblem(response: Response): Promise<ProfileDetailsError> {
+    const body = await bodyOf(response);
+    const fieldErrors: Partial<Record<keyof ProfileDetails, string>> = {};
+
+    const errors = typeof body === 'object' && body !== null
+        ? (body as { errors?: unknown }).errors
+        : undefined;
+
+    if (typeof errors === 'object' && errors !== null && !Array.isArray(errors)) {
+        for (const [key, messages] of Object.entries(errors as Record<string, unknown>)) {
+            const field = DETAIL_FIELDS.find(name => name.toLowerCase() === key.toLowerCase());
+            const first = Array.isArray(messages)
+                ? messages.find((text): text is string => typeof text === 'string' && text.length > 0)
+                : undefined;
+            if (field !== undefined && first !== undefined) fieldErrors[field] = first;
+        }
+    }
+
+    return new ProfileDetailsError(
+        messageIn(body, 'Failed to save your profile details.'),
+        fieldErrors,
+    );
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -115,6 +160,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
 
     /**
+     * Sends exactly the three fields, whatever else the object handed in carries, and takes the
+     * profile back as stored — trimmed, its line endings folded — so the form shows what the public
+     * page will.
+     */
+    const updateProfileDetails = async ({ displayName, avatarUrl, bio }: ProfileDetails) => {
+        const res = await apiFetch('/api/user/profile', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ displayName, avatarUrl, bio }),
+        });
+        if (!res.ok) throw await detailsProblem(res);
+
+        setUser(await res.json() as UserProfile);
+    };
+
+    /**
      * Signed out by the server as part of the same request, so the only thing left to do here is
      * forget the user — calling `logout` as well would spend a request on a guaranteed 401. Clearing
      * `user` is also what empties the list and wishlist providers, which reset on the transition.
@@ -140,6 +201,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 logout,
                 updateUserName,
                 updateProfileVisibility,
+                updateProfileDetails,
                 deleteAccount,
             }}
         >

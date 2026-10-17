@@ -51,6 +51,33 @@ public class ApplicationUser : IdentityUser
     public string ProfileVisibility { get; set; } = Models.ProfileVisibility.Private;
 
     /// <summary>
+    /// The name the account is shown by on its public profile, or null for none. See
+    /// <see cref="DisplayNamePolicy"/>.
+    /// </summary>
+    /// <remarks>
+    /// <b>Not a second namespace</b> (ADR 0027): never unique, never looked up, never in a URL. The
+    /// handle in <see cref="IdentityUser.UserName"/> is what identifies the account, so it is shown
+    /// beside this and never replaced by it.
+    /// </remarks>
+    public string? DisplayName { get; set; }
+
+    /// <summary>
+    /// The address of the account's picture, or null for the handle's initial. See
+    /// <see cref="AvatarUrlPolicy"/>.
+    /// </summary>
+    /// <remarks>
+    /// Stored as given and never fetched by this server: each reader's browser loads it from its
+    /// host, which is why it may only name one of a short list of hosts (ADR 0056).
+    /// </remarks>
+    public string? AvatarUrl { get; set; }
+
+    /// <summary>
+    /// A few lines the account's owner wrote about themselves, as plain text, or null for none. See
+    /// <see cref="BioPolicy"/>.
+    /// </summary>
+    public string? Bio { get; set; }
+
+    /// <summary>
     /// When <see cref="IdentityUser.UserName"/> was last changed, or null if it never has been.
     /// </summary>
     /// <remarks>

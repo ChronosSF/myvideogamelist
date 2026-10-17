@@ -18,6 +18,7 @@ const authValue = {
     logout: vi.fn(async () => {}),
     updateUserName: vi.fn(async () => {}),
     updateProfileVisibility: vi.fn(async () => {}),
+    updateProfileDetails: vi.fn(async () => {}),
 };
 
 vi.mock('@/hooks/useAuth', () => ({ useAuth: () => authValue }));
@@ -27,6 +28,9 @@ function user(overrides: Partial<UserProfile> = {}): UserProfile {
         id: 'user-1',
         email: 'alex@test.local',
         userName: 'alex',
+        displayName: null,
+        avatarUrl: null,
+        bio: null,
         profileVisibility: 'private',
         isAdmin: false,
         ...overrides,
