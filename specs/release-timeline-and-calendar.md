@@ -1,9 +1,9 @@
 # Spec — What is coming for your games: a two-week line and a release calendar
 
-Status: **accepted — built under #162: the admin page (#163), the connected releases (#164), the two-week line (#165) and the calendar (#166). §9's questions are settled but two: its second, updates, is #239, and its fifth is #128**
-Relates to: #129 (the old month view, which this replaces), #128 (the showcases and sales for signed-out
-visitors — §9's fifth question), #122 (release notifications, which need the same "what is connected to
-my games" answer), ADR [0042](../docs/decisions/0042-admins-are-named-in-configuration.md) (the admin
+Status: **accepted — built under #162: the admin page (#163), the connected releases (#164), the two-week line (#165) and the calendar (#166); and, outside it, the showcases and sales for whoever has no line (#128). §9's questions are settled but one: its second, updates, is #239**
+Relates to: #129 (the old month view, which this replaces), #128 (the showcases and sales for whoever
+has no line, §2.3, which settled §9's fifth question), #122 (release notifications, which need the same "what is
+connected to my games" answer), ADR [0042](../docs/decisions/0042-admins-are-named-in-configuration.md) (the admin
 model §7 specifies), ADR
 [0004](../docs/decisions/0004-release-dates-for-calendar.md) (releases come from `release_dates`), ADR
 [0012](../docs/decisions/0012-steam-news-without-a-database.md) (derived data lives in memory, not in
@@ -51,7 +51,7 @@ whole view.
 | L4 | Every entry says why it is there (§3.4) |
 | L5 | Entries grouped by §3.3's F6 appear as one ("Kingdom Hearts — 8 releases") |
 | L6 | A link to the calendar, always shown |
-| L7 | Signed-in users only, and rendered even when empty, with a line saying nothing is due in the next two weeks — a section that comes and goes is one nobody learns to look for |
+| L7 | Signed-in users only, and rendered even when empty, with a line saying nothing is due in the next two weeks — a section that comes and goes is one nobody learns to look for. Whoever has no line has its showcases and sales in §2.3's panel |
 
 ### 2.2 The calendar — `/calendar`
 
@@ -63,6 +63,21 @@ whole view.
 | K4 | An "Announced, no date" list of connected games IGDB has no date for at all, below the grid and the same in every month: games with no `first_release_date`, folded first (F3) and left out when what they fold into has one, and none IGDB marks cancelled or rumoured (F4). A game of the user's own is "announced for" its platforms rather than "out on" them. With no dates to order it by, the list is in bands, as the month's periods are, for what each game is to the user's: their own games (R1); DLC and expansions — a child that is DLC, an expansion, a standalone expansion, an episode or a season; remakes, remasters and ports — every other child, the game made again; and the rest of the series (R3). A group (F6) is in its strongest release's band, whose reason it shows |
 | K5 | Every entry says why it is there (§3.4), as on the line |
 | K6 | Signed-in only; `NOINDEX` and `private, no-store`, like every other per-user page |
+
+### 2.3 The showcases and sales for everybody
+
+The line's events are the same for everybody, so somebody who has not signed in gets them too, on their
+own: "Summer Game Fest starts in 2 days". Settled on #128; the reasoning is
+[0063](../docs/decisions/0063-the-showcases-and-sales-for-everybody.md).
+
+| # | Requirement |
+|---|---|
+| V1 | A panel of the showcases and sales on in today and the next thirteen days — the line's days (L1) and its events (§5, §6) — on the shared home page, directly above Trending: where the line is for somebody signed in |
+| V2 | Every visitor without a line sees it — signed out, and anybody until the page has learned who they are — server-rendered from `/api/home` (B8) rather than fetched by the page. It gives way to the line: while a signed-in reader's line is on the page, the panel is not. The line shows the same events on the same days, beside the reader's own releases, and the two together would show every sale twice, one under the other |
+| V3 | Each event says what it is — sale, fest or showcase — the store where it has one, and its name, linked to where it was announced or where it streams; and when, counted from the reader's own day: "Starts in 2 days", "Starts tomorrow", "Today", "Starts today", "On now" with the day it ends, "Ends tomorrow", "Ends today". Beside the count, its days, or a showcase's day and its start on the reader's clock (E4). What is already on comes first, then each by the day it starts |
+| V4 | Not rendered when nothing is on in the two weeks. Unlike the line (L7) it is not a section anybody has learned to look for, and an empty one would only say that nothing had been entered |
+| V5 | When IGDB fails the panel shows the sales it has, and says nothing of the showcases, as the page shows its covers without a word for the missing news; when the events cannot be read at all it is not rendered. Either way the page is marked degraded, so that nothing in front of the API keeps it (ADR [0013](../docs/decisions/0013-http-caching-policy.md)) |
+| V6 | Until the page hydrates, its days are UTC's — the day the loader ran on — and a showcase gives no time: one server render serves every reader. Once hydrated, the days and the clock are the reader's own. Where the two differ, which is for hours of every day somewhere, an event at either edge of the two weeks appears or goes as the page hydrates, and the panel with it when it is the only one |
 
 ## 3. Which games, and what "connected" means
 
@@ -184,7 +199,7 @@ shown.
 | E1 | An IGDB event is shown when its name starts with one of a list of showcase names kept on the admin page (§7), ignoring case: "Nintendo Direct", "State of Play", "Summer Game Fest", "The Game Awards", "Xbox Games Showcase", "Gamescom Opening Night Live" and so on. A prefix, not a substring: "Day of the Devs: Summer Game Fest Digital Showcase" is a satellite show, and does not start with "Summer Game Fest". The list starts empty and is filled on the page — no migration seeds it, so that it is kept in one place |
 | E2 | A showcase IGDB does not have yet can be added by hand on the admin page, as a curated event (§6) |
 | E3 | "Features a game you track" is left for later. An event's `games` appear to be filled in around the broadcast — the one future event had none — so it could only be said of a show that has already aired |
-| E4 | An IGDB event is an instant, not a day, and is drawn on the reader's own day at its start time. A show at three in the afternoon in Los Angeles airs after midnight in Sofia, and only the reader's clock can say which. So the server asks IGDB for a day either side of the window, in UTC, and the browser keeps what falls on the reader's days. `time_zone` is not read: it is an abbreviation, and on 2026-10-06 the June 2026 shows were "PST" while Los Angeles was on daylight time |
+| E4 | An IGDB event is an instant, not a day, and is drawn on the reader's own day at its start time. A show at three in the afternoon in Los Angeles airs after midnight in Sofia, and only the reader's clock can say which. So the server asks IGDB for a day either side of the window, in UTC, and the browser keeps what falls on the reader's days. `time_zone` is not read: it is an abbreviation, and on 2026-10-06 the June 2026 shows were "PST" while Los Angeles was on daylight time. The home page's panel is server-rendered, so until it hydrates it draws a showcase on UTC's day instead (V6) |
 
 ## 6. Store sales, entered by hand
 
@@ -311,6 +326,7 @@ should be one service that both call.
 | B5 | Tests for §3.3's rules against recorded IGDB rows, and for the policy refusing a non-admin |
 | B6 | Once the line ships, retire `/api/games/upcoming` and `GetUpcomingReleasesAsync`. 0004's reasoning — `release_dates`, not `first_release_date` — carries over to B1 |
 | B7 | `GET /api/user/releases/undated` — the connected games IGDB has no date for at all (K4), grouped by F6 and each with its reason, the most connected first: the game itself before its children before its series. `no-store`, and no window, since there are no dates to put one around |
+| B8 | `GET /api/home` carries B2's answer for §2.3's panel, asked about the UTC days from yesterday to the fourteenth after today, inclusive — every reader's two weeks at once, since at any instant the readers' todays span three UTC days — and the page keeps its reader's own. It is kept with the rest of the composite, fifteen minutes or a minute when degraded, so an admin's edit reaches the home page as the composite and the edge renew it — fifteen minutes in memory, then five fresh at the edge and ten more served stale (ADR 0013), about half an hour — where B2 has it at once. IGDB's events are kept an hour for both, so a showcase IGDB adds late takes up to an hour and a half to reach the panel. Showcases missing, or the events failing to be read, mark the composite degraded; nothing on is an answer, and does not |
 
 ### 8.3 Client
 
@@ -321,6 +337,7 @@ should be one service that both call.
 | C3 | `/calendar`, the month grid of §2.2 |
 | C4 | `/admin`, the curated events and the showcase names |
 | C5 | Both routes declare `private, no-store` through `headers` and `NOINDEX` in `meta` |
+| C6 | `ShowcasesAndSales` on the home page (§2.3), from the loader's answer, above Trending, and not rendered while the line is |
 
 ## 9. Questions, and their answers
 
@@ -335,8 +352,9 @@ should be one service that both call.
 4. **The calendar's horizon.** Settled on #166 at a year: the month the calendar opens on and the twelve
    after it (K1), which is also what one request may ask for. Six months held eighteen entries for the demo
    library, and beyond the first few months most of what there is is known only to its year (§10).
-5. **Signed-out visitors.** Nothing, or the showcases and sales on their own? #128 wanted showcases
-   on the shared home page, and this spec puts them on the signed-in line.
+5. **Signed-out visitors.** Settled on #128: the showcases and sales on their own, for every visitor who has
+   no line, in a panel on the shared home page that gives way to the line for somebody signed in (§2.3,
+   [0063](../docs/decisions/0063-the-showcases-and-sales-for-everybody.md)).
 6. **Shutdowns.** Settled on #162: not shown. A game the user tracks going offline is dropped with
    every other Offline row (F4).
 7. **A game with a stream of DLC.** Settled on #168: no cap. F6 groups DLC for one game on one day,
@@ -397,7 +415,7 @@ made of IGDB's most-rated main games.
 
 ## 11. What is left, and in what order
 
-Each step is a sub-issue of #162.
+Steps 1 to 5 are sub-issues of #162; the sixth is #128.
 
 1. The admin page, its two tables and A1's policy (§7) — small, and it unblocks the sales and the
    showcases. #163, done.
@@ -405,3 +423,4 @@ Each step is a sub-issue of #162.
 3. B2, and the two-week line in place of the Releasing soon rail. #165, done.
 4. The calendar, and the line's link to it (L6). #166, done.
 5. Retiring `/api/games/upcoming` (B6), with the line. #165, done.
+6. The showcases and sales for whoever has no line (§2.3, B8, C6). #128, done.

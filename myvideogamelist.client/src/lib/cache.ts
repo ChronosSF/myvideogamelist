@@ -38,9 +38,10 @@ export function sharedCache(sMaxAge: number, staleWhileRevalidate: number): stri
 /**
  * The home page. Short, because the news and trending rails are the reason to visit.
  *
- * Total staleness is this plus the server's own 15-minute `/api/home` cache, so roughly 20
- * minutes worst case. Shortening this alone would not make the page fresher — the API cache is
- * the binding constraint and would have to come down with it.
+ * Total staleness is this plus the server's own 15-minute `/api/home` cache: fifteen minutes in
+ * the API, five fresh at the edge and up to ten more served stale while the edge revalidates, so
+ * roughly half an hour worst case. Shortening this alone would not make the page fresher — the API
+ * cache is the binding constraint and would have to come down with it.
  */
 export const CACHE_HOME = sharedCache(300, 600);
 
