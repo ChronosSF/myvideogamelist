@@ -36,8 +36,10 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
     public DbSet<PlaythroughType> PlaythroughTypes { get; set; }
     public DbSet<Review> Reviews { get; set; }
     public DbSet<ShowcaseName> ShowcaseNames { get; set; }
+    public DbSet<Tag> Tags { get; set; }
     public DbSet<UserFavourite> UserFavourites { get; set; }
     public DbSet<UserGameEntry> UserGameEntries { get; set; }
+    public DbSet<UserGameEntryTag> UserGameEntryTags { get; set; }
     public DbSet<UserGameEvent> UserGameEvents { get; set; }
     public DbSet<UserGamePlaythrough> UserGamePlaythroughs { get; set; }
     public DbSet<UserListSetting> UserListSettings { get; set; }
@@ -55,7 +57,7 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
         ConfigureReleaseCalendar(modelBuilder);
 
         // UserGameEntry: surrogate PK, with (UserId, GameId) kept unique by index rather than by
-        // being the key. Children — playthroughs, reviews, tags — hang off the single column;
+        // being the key. Children — playthroughs, reviews, tag links — hang off the single column;
         // cascade delete when the user is deleted.
         modelBuilder.Entity<UserGameEntry>().HasKey(e => e.Id);
 
@@ -120,6 +122,7 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
         ConfigureUserGamePlaythroughs(modelBuilder);
         ConfigureReviews(modelBuilder);
         ConfigureImports(modelBuilder);
+        ConfigureTags(modelBuilder);
 
         // UserListSortPreference: one row per (user, status); no row means the default sort
         modelBuilder.Entity<UserListSortPreference>().HasKey(p => new { p.UserId, p.StatusId });
@@ -528,6 +531,75 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
         // alone: the composite foreign key above already gets one that serves as its prefix, which
         // is the same reason the playthroughs declare none.
         rows.HasIndex(r => new { r.ImportJobId, r.Title });
+    }
+
+    /// <summary>
+    /// A user's tags and the games they are on: the entry-and-child shape again, with the link a child of
+    /// two parents at once.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Both tables are user-owned, cascade from the account through their own <c>UserId</c>, and are in
+    /// the export manifest (ADR 0024). The link reaches the entry by <c>(UserGameEntryId, UserId)</c> and
+    /// the tag by <c>(TagId, UserId)</c>, so one account's game can only ever carry that account's tags —
+    /// a database constraint rather than a promise, as for a playthrough (ADR 0025). Deleting the game's
+    /// entry or the tag takes the link with it; PostgreSQL has no objection to the three cascade paths
+    /// that meet here. See ADR 0065.
+    /// </para>
+    /// <para>
+    /// No check constraint on a tag's name. Its rules — the length after normalising, no control
+    /// characters — are enforced by <see cref="TagNamePolicy"/> on the way in, and the column's own
+    /// length is the bound the database holds; a constraint restating NFC or whitespace folding in SQL
+    /// would be a second copy of the policy to drift from the first.
+    /// </para>
+    /// </remarks>
+    private static void ConfigureTags(ModelBuilder modelBuilder)
+    {
+        var tags = modelBuilder.Entity<Tag>();
+
+        tags.HasKey(t => t.Id);
+        tags.Property(t => t.Name).HasMaxLength(TagNamePolicy.MaxLength);
+        tags.Property(t => t.NormalizedName).HasMaxLength(TagNamePolicy.MaxLength);
+
+        // One tag of each name per account, whatever its letter case — and the index every lookup by
+        // name goes through.
+        tags.HasIndex(t => new { t.UserId, t.NormalizedName }).IsUnique();
+
+        // The alternate key a link's composite foreign key points at. Uniqueness is already guaranteed by
+        // Id alone; this exists only to be referenced, as the entry's does.
+        tags.HasAlternateKey(t => new { t.Id, t.UserId });
+
+        tags.HasOne(t => t.User)
+            .WithMany()
+            .HasForeignKey(t => t.UserId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        var links = modelBuilder.Entity<UserGameEntryTag>();
+
+        // A tag is on a game once or not at all, so the pair is the key and a second insert of it is
+        // refused rather than counted twice.
+        links.HasKey(l => new { l.UserGameEntryId, l.TagId });
+
+        links.HasOne(l => l.User)
+            .WithMany()
+            .HasForeignKey(l => l.UserId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        links.HasOne(l => l.Entry)
+            .WithMany()
+            .HasForeignKey(l => new { l.UserGameEntryId, l.UserId })
+            .HasPrincipalKey(e => new { e.Id, e.UserId })
+            .OnDelete(DeleteBehavior.Cascade);
+
+        links.HasOne(l => l.Tag)
+            .WithMany()
+            .HasForeignKey(l => new { l.TagId, l.UserId })
+            .HasPrincipalKey(t => new { t.Id, t.UserId })
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // The reads are "every link of this account" (the lists, the counts, the export) and "this tag's
+        // links" (a delete). The foreign keys already index (TagId, UserId) and (UserGameEntryId, UserId),
+        // and the account's own foreign key indexes UserId, so nothing more is declared.
     }
 
     private static void ConfigureUserGameEvents(ModelBuilder modelBuilder)

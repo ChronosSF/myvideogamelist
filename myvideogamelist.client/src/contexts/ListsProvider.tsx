@@ -7,7 +7,7 @@ import {
 import { type SortState, DEFAULT_SORT } from '@/lib/listSort';
 import { useAuth } from '@/hooks/useAuth';
 import { apiFetch } from '@/lib/api';
-import { ListsContext, type SaveListNamesResult } from './ListsContext';
+import { ListsContext, type SaveListNamesResult, type SaveResult } from './ListsContext';
 
 interface ApiListsResponse {
     lists: Record<ListId, ListEntryDto[]>;
@@ -84,6 +84,14 @@ interface ListsState {
     pending: ReadonlySet<number>;
 }
 
+/**
+ * The fields of a game's row that a write to its entry changes in place, wherever the game sits — its
+ * score and its tags. One action carries any of them, so the next such field joins this type rather than
+ * adding a third copy of the same loop (ADR 0022's lesson: a guard added to one copy is missed on the
+ * others).
+ */
+type RowFields = Partial<Pick<ListEntryDto, 'score' | 'tagIds'>>;
+
 type ListsAction =
     | { type: 'RESET' }
     | { type: 'FETCH_START'; session: string | null }
@@ -110,7 +118,7 @@ type ListsAction =
      */
     | { type: 'PLACE_ENTRY'; session: string | null; listId: ListId; entry: ListEntryDto }
     | { type: 'DROP_ENTRY'; session: string | null; gameId: number }
-    | { type: 'SET_ENTRY_SCORE'; session: string | null; gameId: number; score: number | null }
+    | { type: 'SET_ENTRY_FIELDS'; session: string | null; gameId: number; fields: RowFields }
     | { type: 'SET_VIEW'; view: ViewMode }
     | { type: 'SET_SORT'; listId: ListId; sort: SortState }
     | { type: 'MUTATION_ERROR'; session: string | null; error: string }
@@ -209,13 +217,14 @@ function reducer(state: ListsState, action: ListsAction): ListsState {
         case 'DROP_ENTRY':
             return ifCurrent(state, action.session, () =>
                 ({ ...state, lists: without(state.lists, action.gameId) }));
-        case 'SET_ENTRY_SCORE':
+        // One game's own fields, wherever it sits, and nothing else touched.
+        case 'SET_ENTRY_FIELDS':
             return ifCurrent(state, action.session, () => {
                 const lists = { ...state.lists };
                 for (const id of LIST_IDS) {
                     if (!lists[id].some(e => e.game.id === action.gameId)) continue;
                     lists[id] = lists[id].map(e =>
-                        e.game.id === action.gameId ? { ...e, score: action.score } : e);
+                        e.game.id === action.gameId ? { ...e, ...action.fields } : e);
                 }
                 return { ...state, lists };
             });
@@ -242,6 +251,20 @@ function reducer(state: ListsState, action: ListsAction): ListsState {
             });
         default:
             return state;
+    }
+}
+
+/**
+ * The sentence the server gave for refusing a write — the first message in a `ValidationProblemDetails`'
+ * `errors` — or the fallback for a body that says nothing useful, which is what a 500 or a proxy's error
+ * page looks like.
+ */
+async function refusal(res: Response, fallback: string): Promise<string> {
+    try {
+        const problem = (await res.json()) as { errors?: Record<string, string[]> };
+        return Object.values(problem.errors ?? {}).flat()[0] ?? fallback;
+    } catch {
+        return fallback;
     }
 }
 
@@ -521,7 +544,7 @@ export function ListsProvider({ children }: { children: ReactNode }) {
         // A move carries the existing entry across so the score does not blink out and back.
         const moved: ListEntryDto = origin
             ? { ...origin.entry, statusChangedAt: new Date().toISOString() }
-            : { game, score: null, addedAt: new Date().toISOString(), statusChangedAt: new Date().toISOString() };
+            : { game, score: null, addedAt: new Date().toISOString(), statusChangedAt: new Date().toISOString(), tagIds: [] };
 
         // Appended rather than placed: a game just moved to a list is the most recent thing in it.
         dispatch({ type: 'PLACE_ENTRY', session, listId, entry: moved });
@@ -568,39 +591,74 @@ export function ListsProvider({ children }: { children: ReactNode }) {
         }
     };
 
-    const setScore = async (gameId: number, score: number | null): Promise<boolean> => {
-        // Scoring takes the same per-game lock as a status change, because it writes the same
-        // entry row. Without it two scores set in quick succession could both be in flight, and
-        // the first one failing would roll the second one back to a value neither had asked for.
-        if (state.pending.has(gameId)) return false;
+    /**
+     * Writes fields of a game's row through its entry — its score, its tags — shown at once wherever the
+     * game sits and put back if the save fails.
+     *
+     * Under the per-game lock, because the row is the one a move writes: two scores set in quick
+     * succession could otherwise both be in flight, and the first one failing would roll the second back
+     * to a value neither had asked for; and a move of the same game rolling back would put its row back as
+     * it was captured, fields and all, over a save that had succeeded. The undo puts back these fields of
+     * this game and nothing else, from the values captured under that lock.
+     *
+     * The entry may be in no list at all, in which case there is nothing on screen to update and the
+     * request is the whole of it — a caller holding its own copy reverts it on a failure.
+     *
+     * A refusal is answered with the server's own sentence where it gave one (`errors` in its
+     * `ValidationProblemDetails`), which is the one worth showing; otherwise with `failure`.
+     */
+    const writeRowFields = async (
+        gameId: number,
+        fields: RowFields,
+        send: () => Promise<Response>,
+        failure: string,
+    ): Promise<SaveResult> => {
+        if (state.pending.has(gameId)) {
+            return { ok: false, error: 'Another change to this game is still saving. Please try again.' };
+        }
         startPending(gameId);
 
-        // The entry may be in no list at all, in which case there is nothing on screen to update
-        // optimistically and the server call is the whole operation.
-        const previous = locate(state.lists, gameId)?.entry.score ?? null;
-        dispatch({ type: 'SET_ENTRY_SCORE', session, gameId, score });
+        const row = locate(state.lists, gameId)?.entry;
+        const previous: RowFields | null = row === undefined
+            ? null
+            : Object.fromEntries(Object.keys(fields).map(key => [key, row[key as keyof RowFields]]));
+        dispatch({ type: 'SET_ENTRY_FIELDS', session, gameId, fields });
 
-        const undo = () => dispatch({ type: 'SET_ENTRY_SCORE', session, gameId, score: previous });
+        const undo = () => {
+            if (previous !== null) dispatch({ type: 'SET_ENTRY_FIELDS', session, gameId, fields: previous });
+        };
 
         try {
-            const res = await apiFetch(`/api/entries/${gameId}/score`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ score }),
-            });
+            const res = await send();
 
             if (!res.ok) {
-                rollBack(undo, 'Failed to save your score. Please try again.');
-                return false;
+                const error = await refusal(res, failure);
+                rollBack(undo, error);
+                return { ok: false, error };
             }
             dispatch({ type: 'CLEAR_MUTATION_ERROR', session });
-            return true;
+            return { ok: true };
         } catch {
-            rollBack(undo, 'Failed to save your score. Please try again.');
-            return false;
+            // A rejection is the unreachable-API case, which `!res.ok` never sees.
+            rollBack(undo, failure);
+            return { ok: false, error: failure };
         } finally {
             endPending(gameId);
         }
+    };
+
+    const setScore = async (gameId: number, score: number | null): Promise<boolean> => {
+        const result = await writeRowFields(
+            gameId,
+            { score },
+            () => apiFetch(`/api/entries/${gameId}/score`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ score }),
+            }),
+            'Failed to save your score. Please try again.',
+        );
+        return result.ok;
     };
 
     /**
@@ -647,6 +705,19 @@ export function ListsProvider({ children }: { children: ReactNode }) {
 
     const setNotes = (gameId: number, notes: string | null): Promise<boolean> =>
         writeEntryField(gameId, 'notes', { notes }, 'Failed to save your notes. Please try again.');
+
+    /** Replaces the game's tags with this set — the whole set, in one request (ADR 0065). */
+    const setTags = (gameId: number, tagIds: number[]): Promise<SaveResult> =>
+        writeRowFields(
+            gameId,
+            { tagIds },
+            () => apiFetch(`/api/entries/${gameId}/tags`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ tagIds }),
+            }),
+            'Failed to save your tags. Please try again.',
+        );
 
     const deleteEntry = async (gameId: number): Promise<boolean> => {
         if (state.pending.has(gameId)) return false;
@@ -704,6 +775,7 @@ export function ListsProvider({ children }: { children: ReactNode }) {
             setScore,
             setOwnership,
             setNotes,
+            setTags,
             deleteEntry,
             view: state.view,
             setView,

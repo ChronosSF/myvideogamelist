@@ -1413,3 +1413,227 @@ describe('list names', () => {
         expect(screen.getByTestId('finished-name')).toHaveTextContent('Finished');
     });
 });
+
+describe("an entry's tags", () => {
+    const TAGGED = entry({ game: { id: 1, title: 'Celeste' }, score: 7, tagIds: [1] });
+    const HADES = entry({ game: { id: 2, title: 'Hades' }, tagIds: [5] });
+
+    /**
+     * The tags are on the row, so unlike the ownership and the notes they change the lists — at once,
+     * and back again on a failure. Held, refused and unreachable requests by method and URL, as the
+     * other stubs here do; the lists can be swapped between loads for the reload and session tests.
+     */
+    function tagsStub(options: {
+        loads?: ListsPayload[];
+        hold?: string[];
+        failing?: string[];
+        reject?: string[];
+    } = {}) {
+        const calls: Recorded[] = [];
+        const settlers = new Map<string, (status: number) => void>();
+        const loads = options.loads ?? [{ playing: [TAGGED, HADES] }];
+        let loadIndex = 0;
+
+        vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+            const url = String(input);
+            const method = init?.method ?? 'GET';
+            const key = `${method} ${url}`;
+            calls.push({ method, url, body: init?.body ? JSON.parse(String(init.body)) : undefined });
+
+            if (key === 'GET /api/lists') {
+                const lists = loads[Math.min(loadIndex++, loads.length - 1)];
+                return Promise.resolve(new Response(JSON.stringify({ lists }), { status: 200 }));
+            }
+            if (key === 'GET /api/user/list-preferences') {
+                return Promise.resolve(new Response(JSON.stringify({ view: 'tiles', sorts: {} }), { status: 200 }));
+            }
+            if (options.reject?.includes(key)) return Promise.reject(new TypeError('Failed to fetch'));
+            if (options.hold?.includes(key)) {
+                return new Promise<Response>(resolve => {
+                    settlers.set(key, status => resolve(new Response(status === 204 ? null : 'nope', { status })));
+                });
+            }
+            if (options.failing?.includes(key)) return Promise.resolve(new Response('nope', { status: 500 }));
+            return Promise.resolve(new Response(null, { status: 204 }));
+        }));
+
+        return {
+            calls,
+            release: (key: string, status: number) => act(async () => {
+                const settle = settlers.get(key);
+                if (!settle) throw new Error(`${key} was never held`);
+                settle(status);
+                await Promise.resolve();
+            }),
+        };
+    }
+
+    function TagsProbe() {
+        const lists = useLists();
+        const [result, setResult] = useState('');
+        const row = (gameId: number) => lists.lists.playing.find(e => e.game.id === gameId);
+
+        return (
+            <div>
+                <span data-testid="loading">{String(lists.loading)}</span>
+                <span data-testid="error">{lists.mutationError ?? ''}</span>
+                <span data-testid="pending">{String(lists.isPending(1))}</span>
+                <span data-testid="result">{result}</span>
+                <span data-testid="celeste-tags">{row(1)?.tagIds.join(',') ?? 'gone'}</span>
+                <span data-testid="hades-tags">{row(2)?.tagIds.join(',') ?? 'gone'}</span>
+                <button onClick={() => void lists.setTags(1, [2, 3]).then(r => setResult(r.ok ? 'true' : `false: ${r.error}`))}>tag celeste</button>
+                <button onClick={() => void lists.setTags(1, []).then(r => setResult(r.ok ? 'true' : `false: ${r.error}`))}>untag celeste</button>
+                <button onClick={() => void lists.setTags(99, [2]).then(r => setResult(r.ok ? 'true' : `false: ${r.error}`))}>tag an unlisted game</button>
+                <button onClick={() => void lists.setScore(1, 9)}>score celeste</button>
+                <button onClick={() => void lists.removeFromList('playing', 2)}>remove hades</button>
+                <button onClick={() => lists.reload()}>reload</button>
+            </div>
+        );
+    }
+
+    async function mountTags(options: Parameters<typeof tagsStub>[0] = {}) {
+        const stub = tagsStub(options);
+        const view = render(<ListsProvider><TagsProbe /></ListsProvider>);
+        await waitFor(() => expect(screen.getByTestId('loading')).toHaveTextContent('false'));
+        return { ...stub, view };
+    }
+
+    const press = (name: string) => userEvent.click(screen.getByRole('button', { name }));
+    const celeste = () => screen.getByTestId('celeste-tags');
+    const result = () => screen.getByTestId('result');
+
+    it('shows the new set on the row at once, sends the whole set, and holds the lock until it lands', async () => {
+        const { calls, release } = await mountTags({ hold: ['PUT /api/entries/1/tags'] });
+
+        await press('tag celeste');
+
+        expect(celeste()).toHaveTextContent('2,3');
+        expect(screen.getByTestId('pending')).toHaveTextContent('true');
+        const put = calls.find(c => c.url === '/api/entries/1/tags');
+        expect(put?.method).toBe('PUT');
+        expect(put?.body).toEqual({ tagIds: [2, 3] });
+
+        await release('PUT /api/entries/1/tags', 204);
+
+        expect(result()).toHaveTextContent('true');
+        expect(screen.getByTestId('pending')).toHaveTextContent('false');
+        expect(celeste()).toHaveTextContent('2,3');
+    });
+
+    it('sends an empty set to take every tag off', async () => {
+        const { calls } = await mountTags();
+
+        await press('untag celeste');
+
+        await waitFor(() => expect(result()).toHaveTextContent('true'));
+        expect(calls.find(c => c.url === '/api/entries/1/tags')?.body).toEqual({ tagIds: [] });
+        expect(celeste()).toBeEmptyDOMElement();
+    });
+
+    it('puts the row back and says so when the save is refused', async () => {
+        await mountTags({ failing: ['PUT /api/entries/1/tags'] });
+
+        await press('tag celeste');
+
+        await waitFor(() => expect(result()).toHaveTextContent('false'));
+        expect(celeste()).toHaveTextContent(/^1$/);
+        expect(screen.getByTestId('error')).toHaveTextContent('Failed to save your tags');
+    });
+
+    it('hands back the server’s own sentence when it refuses the set, and shows it in the banner', async () => {
+        // A tag deleted in another tab: the server says what to do about it, and that is what is shown.
+        const sentence = 'One of those tags is not one of yours, or has been deleted. Reload the page and try again.';
+        await mountTags();
+        vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) =>
+            init?.method === 'PUT' && String(input) === '/api/entries/1/tags'
+                ? new Response(JSON.stringify({ title: 'One or more validation errors occurred.', errors: { TagIds: [sentence] } }), { status: 400 })
+                : new Response(null, { status: 204 })));
+
+        await press('tag celeste');
+
+        await waitFor(() => expect(result()).toHaveTextContent(`false: ${sentence}`));
+        expect(screen.getByTestId('error')).toHaveTextContent(sentence);
+        expect(celeste()).toHaveTextContent(/^1$/);
+    });
+
+    it('puts the row back when the request never arrives', async () => {
+        await mountTags({ reject: ['PUT /api/entries/1/tags'] });
+
+        await press('tag celeste');
+
+        await waitFor(() => expect(result()).toHaveTextContent('false'));
+        expect(celeste()).toHaveTextContent(/^1$/);
+    });
+
+    it('refuses while another write to the same entry is out, sending nothing', async () => {
+        const { calls } = await mountTags({ hold: ['PUT /api/entries/1/score'] });
+
+        await press('score celeste');
+        await press('tag celeste');
+
+        await waitFor(() => expect(result()).toHaveTextContent('false'));
+        expect(calls.some(c => c.url === '/api/entries/1/tags')).toBe(false);
+        expect(celeste()).toHaveTextContent(/^1$/);
+    });
+
+    it('undoes only its own game when it fails, leaving a removal that succeeded meanwhile', async () => {
+        const { release } = await mountTags({ hold: ['PUT /api/entries/1/tags'] });
+
+        await press('tag celeste');
+        await press('remove hades');
+        await waitFor(() => expect(screen.getByTestId('hades-tags')).toHaveTextContent('gone'));
+
+        await release('PUT /api/entries/1/tags', 500);
+
+        expect(celeste()).toHaveTextContent(/^1$/);
+        expect(screen.getByTestId('hades-tags')).toHaveTextContent('gone');
+    });
+
+    it('keeps the new set through a reload that lands while the write is out', async () => {
+        // The reload's answer was composed before the write reached the server.
+        const { release } = await mountTags({
+            loads: [{ playing: [TAGGED, HADES] }, { playing: [TAGGED, HADES] }],
+            hold: ['PUT /api/entries/1/tags'],
+        });
+
+        await press('tag celeste');
+        await press('reload');
+        await waitFor(() => expect(screen.getByTestId('loading')).toHaveTextContent('false'));
+
+        expect(celeste()).toHaveTextContent('2,3');
+
+        await release('PUT /api/entries/1/tags', 204);
+        expect(celeste()).toHaveTextContent('2,3');
+    });
+
+    it('writes the tags of a game in no list, where the request is the whole of it', async () => {
+        const { calls } = await mountTags();
+
+        await press('tag an unlisted game');
+
+        await waitFor(() => expect(result()).toHaveTextContent('true'));
+        expect(calls.find(c => c.url === '/api/entries/99/tags')?.body).toEqual({ tagIds: [2] });
+    });
+
+    it('does not put a failed write back into the next account', async () => {
+        // The previous account's Celeste carried tag 1. The next one has its own Celeste, with its own
+        // tag; the rollback, captured from the first, must not land on it.
+        const { release, view } = await mountTags({
+            loads: [{ playing: [TAGGED] }, { playing: [entry({ game: { id: 1, title: 'Celeste' }, tagIds: [9] })] }],
+            hold: ['PUT /api/entries/1/tags'],
+        });
+
+        await press('tag celeste');
+
+        auth.user = BOB;
+        await act(async () => {
+            view.rerender(<ListsProvider><TagsProbe /></ListsProvider>);
+        });
+        await waitFor(() => expect(celeste()).toHaveTextContent(/^9$/));
+
+        await release('PUT /api/entries/1/tags', 500);
+
+        expect(celeste()).toHaveTextContent(/^9$/);
+        expect(screen.getByTestId('error')).toBeEmptyDOMElement();
+    });
+});

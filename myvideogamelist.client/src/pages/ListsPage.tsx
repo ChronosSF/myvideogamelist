@@ -3,6 +3,9 @@ import { Link } from 'react-router';
 import { GameCard } from '@/components/GameCard';
 import { ListTable } from '@/components/ListTable';
 import { ListToolbar } from '@/components/ListToolbar';
+import { ListTagFilter } from '@/components/ListTagFilter';
+import { TagChips } from '@/components/TagChips';
+import { useListTagFilter } from '@/hooks/useListTagFilter';
 import { PageHeader } from '@/components/PageHeader';
 import { useLists } from '@/hooks/useLists';
 import { useAuth } from '@/hooks/useAuth';
@@ -52,6 +55,9 @@ export function ListsPage() {
     // selection means "everything", so the filter starts inert.
     const [platformIds, setPlatformIds] = useState<number[]>([]);
 
+    // By tag as well, ticks and all in a hook of its own (ADR 0065).
+    const tagFilter = useListTagFilter(lists, user?.id ?? null);
+
     const entries = lists[activeTab];
     const sort = sortFor(activeTab);
 
@@ -73,12 +79,18 @@ export function ListsPage() {
         return [...seen.values()].sort((a, b) => a.name.localeCompare(b.name));
     }, [lists]);
 
+    const { matches: matchesTags } = tagFilter;
     const visible = useMemo(() => {
         const filtered = platformIds.length === 0
             ? entries
             : entries.filter(entry => entry.game.platforms.some(p => platformIds.includes(p.id)));
-        return sortEntries(filtered, sort);
-    }, [entries, platformIds, sort]);
+        return sortEntries(filtered.filter(matchesTags), sort);
+    }, [entries, platformIds, sort, matchesTags]);
+
+    const clearFilters = () => {
+        setPlatformIds([]);
+        tagFilter.setSelected([]);
+    };
 
     return (
         <div className="min-h-screen">
@@ -165,20 +177,31 @@ export function ListsPage() {
                         platforms={platforms}
                         selectedPlatformIds={platformIds}
                         onPlatformsChange={setPlatformIds}
-                    />
+                    >
+                        <ListTagFilter
+                            tags={tagFilter.offered}
+                            selected={tagFilter.selected}
+                            onChange={tagFilter.setSelected}
+                            countFor={tagId => tagFilter.countIn(entries, tagId)}
+                            shown={visible.length}
+                            total={entries.length}
+                        />
+                    </ListToolbar>
                 )}
 
                 {signedIn && !loading && !error && entries.length > 0 && visible.length === 0 && (
                     <div className="text-center py-16">
                         <p className="text-fg-muted text-sm mb-3">
-                            No games in {nameFor(activeTab)} match the platform filter.
+                            {tagFilter.active
+                                ? `No games in ${nameFor(activeTab)} match the filters.`
+                                : `No games in ${nameFor(activeTab)} match the platform filter.`}
                         </p>
                         <button
                             type="button"
                             className="text-primary-400 text-sm font-semibold hover:underline"
-                            onClick={() => setPlatformIds([])}
+                            onClick={clearFilters}
                         >
-                            Clear the filter
+                            {tagFilter.active ? 'Clear the filters' : 'Clear the filter'}
                         </button>
                     </div>
                 )}
@@ -232,7 +255,9 @@ export function ListsPage() {
                 {signedIn && !loading && !error && visible.length > 0 && view === 'tiles' && (
                     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
                         {visible.map(entry => (
-                            <GameCard key={entry.game.id} game={entry.game} />
+                            <GameCard key={entry.game.id} game={entry.game}>
+                                <TagChips tags={tagFilter.tagsOf(entry)} max={3} />
+                            </GameCard>
                         ))}
                     </div>
                 )}
@@ -246,6 +271,7 @@ export function ListsPage() {
                         onSortChange={next => setSort(activeTab, next)}
                         onScoreChange={(gameId, score) => void setScore(gameId, score)}
                         onRemove={gameId => void removeFromList(activeTab, gameId)}
+                        tagsFor={tagFilter.tagsOf}
                     />
                 )}
             </div>

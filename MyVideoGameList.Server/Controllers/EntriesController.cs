@@ -9,28 +9,31 @@ using MyVideoGameList.Server.Services;
 namespace MyVideoGameList.Server.Controllers;
 
 /// <summary>
-/// What a user has recorded about a single game: their score today, and their playthroughs, notes
-/// and review in time.
+/// What a user has recorded about a single game: their score today, their ownership, notes and tags,
+/// and their playthroughs and review in time.
 /// </summary>
 /// <remarks>
 /// Separate from <see cref="ListsController"/> because none of this is list-shaped. A score is a
 /// judgement about a game and survives the game leaving every list, so routing "clear my score"
 /// through a controller called <c>lists</c> would misdescribe what is happening. The lists
-/// endpoint is a view over these same entries.
+/// endpoint is a view over these same entries. <c>no-store</c> on everything, like every answer about
+/// one person: the entry carries notes and tags that are its owner's alone (ADR 0030, ADR 0065).
 /// </remarks>
 [ApiController]
 [Route("api/[controller]")]
 [Authorize]
+[ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
 public class EntriesController(
     IListService listService,
     IPlaythroughService playthroughService,
     IReviewService reviewService,
+    ITagService tagService,
     UserManager<ApplicationUser> userManager) : ControllerBase
 {
     /// <summary>
-    /// Everything the user has recorded about one game — the entry with its ownership and notes,
-    /// its playthroughs and their review — in one round trip, because the panel that shows them
-    /// shows them together.
+    /// Everything the user has recorded about one game — the entry with its tags, ownership and
+    /// notes, its playthroughs and their review — in one round trip, because the panel that shows
+    /// them shows them together.
     /// </summary>
     [HttpGet("{gameId:int}")]
     public async Task<ActionResult<EntryDetailDto>> GetEntry(
@@ -94,6 +97,41 @@ public class EntriesController(
         if (user is null) return Unauthorized();
 
         await listService.SetNotesAsync(user.Id, gameId, dto.Notes, cancellationToken);
+        return NoContent();
+    }
+
+    /// <summary>
+    /// Makes this exactly the set of the user's tags the game carries; an empty list takes them all off.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The whole set rather than an add and a remove, so that one change on the panel is one request and
+    /// undoing it is the set as it was. A <c>PUT</c> of the entry's field, like the ownership and the
+    /// notes beside it, and like them it creates the entry to hold a value and creates nothing to hold
+    /// none. It records no event: a tag is not a status (ADR 0018, ADR 0065).
+    /// </para>
+    /// <para>
+    /// The size of the set is refused by attribute. What an attribute cannot know is whether each id is
+    /// one of this user's tags, which the service checks; an id that is not — somebody else's, or one
+    /// deleted in another tab — is a 400 beside the field, and nothing is written.
+    /// </para>
+    /// </remarks>
+    [HttpPut("{gameId:int}/tags")]
+    public async Task<IActionResult> SetTags(
+        [Range(1, int.MaxValue)] int gameId,
+        [FromBody] SetEntryTagsDto dto,
+        CancellationToken cancellationToken)
+    {
+        var user = await userManager.GetUserAsync(User);
+        if (user is null) return Unauthorized();
+
+        var result = await tagService.SetEntryTagsAsync(user.Id, gameId, dto.TagIds, cancellationToken);
+        if (result.Problem is { } problem)
+        {
+            ModelState.AddModelError(nameof(SetEntryTagsDto.TagIds), problem);
+            return ValidationProblem(ModelState);
+        }
+
         return NoContent();
     }
 

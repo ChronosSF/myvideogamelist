@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Link } from 'react-router';
 import type { GameDto } from '@/types/game';
 import { hasCriticScore, ratingPercent } from '@/lib/score';
@@ -11,9 +11,11 @@ import './GameCard.css';
 
 interface GameCardProps {
     game: GameDto;
+    /** Drawn under the title. The lists page puts the game's tags here; nothing else does. */
+    children?: ReactNode;
 }
 
-export function GameCard({ game }: GameCardProps) {
+export function GameCard({ game, children }: GameCardProps) {
     const releaseYear = game.releaseDate ? new Date(game.releaseDate).getFullYear() : null;
     const { user } = useAuth();
     const { addToList, removeFromList, isInList, isPending, nameFor } = useLists();
@@ -197,6 +199,8 @@ export function GameCard({ game }: GameCardProps) {
                         <span className="text-fg-faint text-xs shrink-0 mt-0.5">{releaseYear}</span>
                     )}
                 </div>
+
+                {children}
 
                 {/* The player rating, out of 100 like the critic score above it. Stars on a card
                     would be a score nobody on this page gave — see ADR 0021. */}

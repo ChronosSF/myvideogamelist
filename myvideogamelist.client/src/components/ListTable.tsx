@@ -1,9 +1,11 @@
 import { Link } from 'react-router';
 import type { ListEntryDto } from '@/types/list';
+import type { TagDto } from '@/types/tag';
 import { type SortKey, type SortState, SORT_OPTIONS, sortOption } from '@/lib/listSort';
 import { hasCriticScore, ratingPercent } from '@/lib/score';
 import { ScoreBadge } from '@/components/ScoreBadge';
 import { ScoreInput } from '@/components/ScoreInput';
+import { TagChips } from '@/components/TagChips';
 import './ListTable.css';
 
 interface ListTableProps {
@@ -15,6 +17,8 @@ interface ListTableProps {
     isPending: (gameId: number) => boolean;
     /** Names the table for screen readers — "Playing", "Backlog" and so on. */
     listName: string;
+    /** A row's tags, resolved and in name order, drawn under its title. */
+    tagsFor?: (entry: ListEntryDto) => TagDto[];
 }
 
 /** Columns that double as sort controls, in display order. */
@@ -52,6 +56,7 @@ export function ListTable({
     onRemove,
     isPending,
     listName,
+    tagsFor,
 }: ListTableProps) {
     const sortBy = (key: SortKey) => {
         // Clicking the active column flips direction; a new column starts in whichever direction
@@ -108,6 +113,11 @@ export function ListTable({
 
                                 <td className="col-title">
                                     <Link to={`/games/${game.id}`}>{game.title}</Link>
+                                    {tagsFor && (
+                                        <div className="list-table-tags">
+                                            <TagChips tags={tagsFor(entry)} max={4} />
+                                        </div>
+                                    )}
                                 </td>
 
                                 <td className="col-score">

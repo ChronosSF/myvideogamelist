@@ -69,7 +69,13 @@ change — so each can follow its own feature. The last column is the issue that
 | Table / change | Notes | Issue |
 |---|---|---|
 | `UserGameEntries` + a position | A manual backlog order. Sparse, per status, re-sequenced on the client; nothing statistical reads it, and sorting otherwise stays client-side ([0020](decisions/0020-list-view-preferences-in-the-database.md)) | #116 |
-| `Tags` + `UserGameEntryTags` | User-scoped tags, not a global vocabulary | #135 |
+
+`Tags` and `UserGameEntryTags` were on this list and shipped with #135
+([0065](decisions/0065-tags-are-the-owners-own-words.md)). A tag is its owner's — a name unique per
+account without regard to case, never a global vocabulary — and the link carries its own `UserId` and
+reaches both the entry and the tag through composite keys, so one account's game can only ever carry that
+account's tags. Both cascade from the account, both are in the export, by the tag's name rather than its
+id, and nothing public reads either. A tag change writes no event: the link's `AddedAt` is its history.
 
 ### Community
 

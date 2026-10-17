@@ -9,6 +9,7 @@ import {
     type ImportReviewRow,
 } from '@/types/import';
 import type { ListEntryDto } from '@/types/list';
+import type { TagDto } from '@/types/tag';
 import type { EntryDetailDto, PlaythroughDto, ReviewDto } from '@/types/playthrough';
 import type { CalendarEvents, ConnectedRelease, ReleaseEntry, ReleaseReason } from '@/types/releases';
 
@@ -61,8 +62,14 @@ export function entry(
         score: null,
         addedAt: '2026-01-01T00:00:00+00:00',
         statusChangedAt: null,
+        tagIds: [],
         ...rest,
     };
+}
+
+/** One of the account's tags, carried by no game unless a test says otherwise. */
+export function tag(overrides: Partial<TagDto> = {}): TagDto {
+    return { id: 1, name: 'co-op', count: 0, ...overrides };
 }
 
 /** One logged playthrough, with everything the panel does not assert on left blank. */

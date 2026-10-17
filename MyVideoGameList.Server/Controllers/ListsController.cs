@@ -8,9 +8,14 @@ using MyVideoGameList.Server.Services;
 
 namespace MyVideoGameList.Server.Controllers;
 
+/// <remarks>
+/// <c>no-store</c>, like every answer about one person: the rows carry the owner's scores and tag ids,
+/// and nothing between here and the browser should keep them for the next person at it (ADR 0065).
+/// </remarks>
 [ApiController]
 [Route("api/[controller]")]
 [Authorize]
+[ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
 public class ListsController(
     IListService listService,
     UserManager<ApplicationUser> userManager) : ControllerBase

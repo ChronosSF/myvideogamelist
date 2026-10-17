@@ -45,6 +45,10 @@ vi.mock('@/components/ListNamesCard', () => ({
     ListNamesCard: () => <div>list names</div>,
 }));
 
+vi.mock('@/components/TagsCard', () => ({
+    TagsCard: () => <div>tags</div>,
+}));
+
 /**
  * Answers nothing, because the page makes no request of its own — everything it shows either comes
  * from auth or belongs to a child mocked above — so a stray fetch fails loudly.
