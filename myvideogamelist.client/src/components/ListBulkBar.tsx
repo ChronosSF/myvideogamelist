@@ -42,7 +42,9 @@ export function ListBulkBar({ count, listName, targets, working, onMove, onRemov
     const removeButton = useRef<HTMLButtonElement>(null);
     const cancelButton = useRef<HTMLButtonElement>(null);
 
-    // A question about games nobody has selected any more is not a question.
+    // A question about games nobody has selected any more is not a question, and it must not come back
+    // on its own the next time somebody ticks one. Let go during render, as a prop change is answered.
+    if (confirming && (count === 0 || working !== null)) setConfirming(false);
     const asking = confirming && count > 0 && working === null;
 
     // Committed at once, so the element focus goes to is there to take it.

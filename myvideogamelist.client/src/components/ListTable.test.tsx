@@ -12,12 +12,17 @@ function renderTable(overrides: {
     sort?: SortState;
     pendingIds?: number[];
     favouriteIds?: number[];
+    /** The games ticked, which also gives the table its checkboxes; leave out for none. */
+    selectedIds?: number[];
 } = {}) {
     const handlers = {
         onSortChange: vi.fn(),
         onScoreChange: vi.fn(),
         onRemove: vi.fn(),
+        onToggle: vi.fn(),
+        onToggleAll: vi.fn(),
     };
+    const { onToggle, onToggleAll, ...rowHandlers } = handlers;
     const pending = overrides.pendingIds ?? [];
     const favourites = overrides.favouriteIds ?? [];
 
@@ -29,7 +34,10 @@ function renderTable(overrides: {
                 listName="Playing"
                 isPending={id => pending.includes(id)}
                 isFavourite={id => favourites.includes(id)}
-                {...handlers}
+                selection={overrides.selectedIds
+                    ? { selected: new Set(overrides.selectedIds), onToggle, onToggleAll }
+                    : undefined}
+                {...rowHandlers}
             />
         </MemoryRouter>,
     );
@@ -220,5 +228,92 @@ describe('ListTable favourites', () => {
 
         expect(within(row('Hades')).getByRole('img', { name: 'One of your favourites' })).toBeInTheDocument();
         expect(within(row('Celeste')).queryByRole('img', { name: 'One of your favourites' })).not.toBeInTheDocument();
+    });
+});
+
+describe('ListTable ownership', () => {
+    it('shows how the user has each game, and a dash where they have not said', () => {
+        renderTable({
+            entries: [
+                entry({ game: { id: 1, title: 'Celeste' }, ownership: 'subscription' }),
+                entry({ game: { id: 2, title: 'Hades' }, ownership: 'borrowed' }),
+            ],
+        });
+
+        expect(screen.getByRole('columnheader', { name: 'Ownership' })).toBeInTheDocument();
+        expect(within(row('Celeste')).getByRole('cell', { name: 'Subscription' })).toBeInTheDocument();
+        expect(within(row('Hades')).getByRole('cell', { name: 'Borrowed' })).toBeInTheDocument();
+    });
+
+    it('is not a sort, since the sort keys are what the server stores', () => {
+        renderTable();
+
+        expect(screen.queryByRole('button', { name: /^Ownership/ })).not.toBeInTheDocument();
+    });
+});
+
+describe('ListTable selection', () => {
+    const THREE = [
+        entry({ game: { id: 1, title: 'Celeste' } }),
+        entry({ game: { id: 2, title: 'Hades' } }),
+        entry({ game: { id: 3, title: 'Cuphead' } }),
+    ];
+    const everyRow = () => screen.getByRole('checkbox', { name: 'Select every game shown' });
+
+    it('gives every row a checkbox named for its game, ticked when it is selected', () => {
+        renderTable({ entries: THREE, selectedIds: [2] });
+
+        expect(within(row('Celeste')).getByRole('checkbox', { name: 'Select Celeste' })).not.toBeChecked();
+        expect(within(row('Hades')).getByRole('checkbox', { name: 'Select Hades' })).toBeChecked();
+    });
+
+    it('reports a tick with the game it belongs to', async () => {
+        const { onToggle } = renderTable({ entries: THREE, selectedIds: [] });
+
+        await userEvent.click(screen.getByRole('checkbox', { name: 'Select Cuphead' }));
+
+        expect(onToggle).toHaveBeenCalledExactlyOnceWith(3);
+    });
+
+    it('half-ticks the header while only some rows are selected', () => {
+        renderTable({ entries: THREE, selectedIds: [1, 3] });
+        expect(everyRow()).toBePartiallyChecked();
+        expect(everyRow()).not.toBeChecked();
+    });
+
+    it('ticks the header once every row drawn is selected, whatever else is', () => {
+        // A game the filters hide may still be in the set; the header speaks for the rows it heads.
+        renderTable({ entries: THREE, selectedIds: [1, 2, 3, 99] });
+
+        expect(everyRow()).toBeChecked();
+        expect(everyRow()).not.toBePartiallyChecked();
+    });
+
+    it('leaves the header clear when nothing drawn is selected', () => {
+        renderTable({ entries: THREE, selectedIds: [99] });
+
+        expect(everyRow()).not.toBeChecked();
+        expect(everyRow()).not.toBePartiallyChecked();
+    });
+
+    it('reports the header as one action over every row', async () => {
+        const { onToggleAll, onToggle } = renderTable({ entries: THREE, selectedIds: [] });
+
+        await userEvent.click(everyRow());
+
+        expect(onToggleAll).toHaveBeenCalledOnce();
+        expect(onToggle).not.toHaveBeenCalled();
+    });
+
+    it('leaves a pending row selectable, since ticking it writes nothing', () => {
+        renderTable({ entries: THREE, selectedIds: [], pendingIds: [2] });
+
+        expect(screen.getByRole('checkbox', { name: 'Select Hades' })).toBeEnabled();
+    });
+
+    it('draws no checkboxes where nothing can be selected', () => {
+        renderTable({ entries: THREE });
+
+        expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
     });
 });

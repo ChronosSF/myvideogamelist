@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { ListsPage } from '@/pages/ListsPage';
@@ -8,6 +8,7 @@ import type { FavouritesContextValue } from '@/contexts/FavouritesContext';
 import type { ListsContextValue } from '@/contexts/ListsContext';
 import type { WishlistContextValue } from '@/contexts/WishlistContext';
 import { DEFAULT_SORT, MANUAL_SORT } from '@/lib/listSort';
+import type { BulkResult } from '@/lib/listBulk';
 import type { UserProfile } from '@/types/auth';
 import { emptyLists, LIST_NAMES, type ListId } from '@/types/list';
 import { entry, platform, userProfile } from '@/test/factories';
@@ -382,5 +383,320 @@ describe('ListsPage favourites', () => {
 
         const row = screen.getByRole('row', { name: /Tunic/ });
         expect(within(row).getByRole('img', { name: 'One of your favourites' })).toBeInTheDocument();
+    });
+});
+
+describe('ListsPage bulk actions', () => {
+    // Three playing games on two platforms, two of them with an ownership recorded, so both filters are
+    // offered; held out of title order, so only the page's sort puts them in it.
+    const SWITCH = platform(130, 'Switch');
+    const PC = platform(6, 'PC');
+    const PLAYING = [
+        entry({ game: { id: 3, title: 'Hades', platforms: [PC] }, ownership: 'subscription', addedAt: '2026-03-01T00:00:00Z' }),
+        entry({ game: { id: 1, title: 'Celeste', platforms: [SWITCH] }, ownership: 'owned', addedAt: '2026-01-01T00:00:00Z' }),
+        entry({ game: { id: 2, title: 'Cuphead', platforms: [PC] }, addedAt: '2026-02-01T00:00:00Z' }),
+    ];
+    const saved = (gameIds: number[]): BulkResult => ({ outcome: 'saved', gameIds, moved: gameIds, missing: [] });
+
+    beforeEach(() => {
+        authAnswered(userProfile({ id: 'u1' }));
+        lists.lists = { ...emptyLists(), playing: PLAYING, backlog: [entry({ game: { id: 9, title: 'Tunic' } })] };
+        lists.view = 'table';
+        lists.sortFor = () => ({ key: 'title', descending: false });
+        lists.moveGames = vi.fn(async (gameIds: readonly number[]) => saved([...gameIds]));
+        lists.removeGames = vi.fn(async (gameIds: readonly number[]) => saved([...gameIds]));
+    });
+
+    afterEach(() => {
+        lists.view = 'tiles';
+        lists.sortFor = () => DEFAULT_SORT;
+        lists.isPending = () => false;
+        vi.restoreAllMocks();
+    });
+
+    const tick = (title: string) => userEvent.click(screen.getByRole('checkbox', { name: `Select ${title}` }));
+    const everyRow = () => screen.getByRole('checkbox', { name: 'Select every game shown' });
+    const bar = () => screen.getByRole('region', { name: 'Selected games' });
+    const moveTo = (name: string) => userEvent.click(
+        within(screen.getByRole('group', { name: 'Move the selected games to' })).getByRole('button', { name }));
+    const announced = (text: string) => {
+        const said = screen.getByText(text);
+        expect(said.closest('[aria-live]')).toHaveAttribute('aria-live', 'polite');
+    };
+
+    it('selects in the table, and draws neither the checkboxes nor the bar over the tiles', () => {
+        lists.view = 'tiles';
+        renderPage();
+
+        expect(screen.queryByRole('checkbox', { name: /^Select / })).not.toBeInTheDocument();
+        expect(screen.queryByRole('region', { name: 'Selected games' })).not.toBeInTheDocument();
+    });
+
+    it('names how many are selected as they are ticked, and says so to a screen reader', async () => {
+        renderPage();
+
+        await tick('Celeste');
+        await tick('Hades');
+
+        expect(bar()).toHaveTextContent('2 games selected');
+        announced('2 games selected.');
+    });
+
+    it('comes before the table, so the keyboard reaches it before any row', () => {
+        renderPage();
+
+        const firstRowBox = screen.getByRole('checkbox', { name: 'Select Celeste' });
+        expect(bar().compareDocumentPosition(firstRowBox) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    });
+
+    it('selects every game a filter leaves showing, and no other', async () => {
+        renderPage();
+
+        await userEvent.click(screen.getByRole('button', { name: /all platforms/i }));
+        await userEvent.click(screen.getByRole('checkbox', { name: 'Switch' }));
+        await userEvent.click(everyRow());
+        await moveTo('Finished');
+
+        expect(lists.moveGames).toHaveBeenCalledExactlyOnceWith([2, 3], 'finished');
+    });
+
+    it('moves the selected games through the provider, in the order they are drawn, to the list pressed', async () => {
+        renderPage();
+
+        await tick('Hades');
+        await tick('Celeste');
+        // Every list but the one they are in.
+        expect(within(screen.getByRole('group', { name: 'Move the selected games to' })).getAllByRole('button')
+            .map(button => button.textContent)).toEqual(['Backlog', 'On Hold', 'Finished', 'Dropped']);
+
+        await moveTo('On Hold');
+
+        expect(lists.moveGames).toHaveBeenCalledExactlyOnceWith([1, 3], 'on_hold');
+    });
+
+    it('offers the lists by the names their owner gave them', async () => {
+        lists.nameFor = (id: ListId) => (id === 'finished' ? 'Beaten' : LIST_NAMES[id]);
+        renderPage();
+
+        await tick('Hades');
+        await moveTo('Beaten');
+
+        expect(lists.moveGames).toHaveBeenCalledExactlyOnceWith([3], 'finished');
+        announced('Moved 1 game to Beaten.');
+    });
+
+    it('asks before taking games out, and takes them out through the provider once answered', async () => {
+        renderPage();
+
+        await tick('Cuphead');
+        await userEvent.click(screen.getByRole('button', { name: 'Remove from list' }));
+        expect(lists.removeGames).not.toHaveBeenCalled();
+
+        await userEvent.click(screen.getByRole('button', { name: 'Remove 1 game' }));
+
+        expect(lists.removeGames).toHaveBeenCalledExactlyOnceWith([2]);
+        announced('Took 1 game out of Playing.');
+    });
+
+    it('lets go of exactly the games the provider says it acted on', async () => {
+        // The provider left Celeste out — already where it was sent, say — so she stays selected.
+        lists.moveGames = vi.fn(async () => saved([3]));
+        renderPage();
+
+        await tick('Hades');
+        await tick('Celeste');
+        await moveTo('Finished');
+
+        expect(screen.getByRole('checkbox', { name: 'Select Hades' })).not.toBeChecked();
+        expect(screen.getByRole('checkbox', { name: 'Select Celeste' })).toBeChecked();
+    });
+
+    it('keeps games a failure put back selected, so trying again is one press, and leaves the banner to speak', async () => {
+        lists.moveGames = vi.fn(async (gameIds: readonly number[]) => ({ outcome: 'failed' as const, gameIds: [...gameIds] }));
+        renderPage();
+
+        await tick('Hades');
+        await tick('Celeste');
+        await moveTo('Finished');
+
+        expect(bar()).toHaveTextContent('2 games selected');
+        expect(screen.getByRole('checkbox', { name: 'Select Hades' })).toBeChecked();
+        expect(screen.queryByText(/^Moved/)).not.toBeInTheDocument();
+    });
+
+    it('keeps the selection after a refusal too, which changed nothing', async () => {
+        lists.removeGames = vi.fn(async () => ({ outcome: 'refused' as const }));
+        renderPage();
+
+        await tick('Cuphead');
+        await userEvent.click(screen.getByRole('button', { name: 'Remove from list' }));
+        await userEvent.click(screen.getByRole('button', { name: 'Remove 1 game' }));
+
+        expect(screen.getByRole('checkbox', { name: 'Select Cuphead' })).toBeChecked();
+    });
+
+    it('says what it is doing while the request is out, and moves focus to the bar before the pressed button goes', async () => {
+        let finish!: (result: BulkResult) => void;
+        lists.moveGames = vi.fn(() => new Promise<BulkResult>(resolve => { finish = resolve; }));
+        renderPage();
+
+        await tick('Hades');
+        await moveTo('Dropped');
+
+        expect(bar()).toHaveTextContent('Moving 1 game to Dropped…');
+        expect(bar()).toHaveFocus();
+
+        await act(async () => finish(saved([3])));
+        expect(bar()).toHaveFocus();
+        announced('Moved 1 game to Dropped.');
+    });
+
+    it('sends focus to the list\'s tab when an action empties the list, taking the bar with it', async () => {
+        // The provider has moved them all by the time it answers, so the table and its bar are gone.
+        lists.moveGames = vi.fn(async (gameIds: readonly number[]) => {
+            lists.lists = { ...lists.lists, playing: [] };
+            return saved([...gameIds]);
+        });
+        renderPage();
+
+        await userEvent.click(everyRow());
+        await moveTo('Finished');
+
+        await waitFor(() => expect(screen.getByRole('tab', { name: /Playing/ })).toHaveFocus());
+        expect(screen.queryByRole('region', { name: 'Selected games' })).not.toBeInTheDocument();
+    });
+
+    it('lets the selection go with a change of tab, and does not bring it back', async () => {
+        renderPage();
+
+        await tick('Hades');
+        await userEvent.click(screen.getByRole('tab', { name: /Backlog/ }));
+        expect(bar()).toHaveTextContent(/tick games/i);
+
+        await userEvent.click(screen.getByRole('tab', { name: /Playing/ }));
+        expect(screen.getByRole('checkbox', { name: 'Select Hades' })).not.toBeChecked();
+    });
+
+    it('lets go of what a new filter stops drawing, so a hidden game is never acted on', async () => {
+        renderPage();
+
+        await tick('Hades');
+        await tick('Celeste');
+        await userEvent.click(screen.getByRole('button', { name: /all platforms/i }));
+        await userEvent.click(screen.getByRole('checkbox', { name: 'Switch' }));
+        await userEvent.click(screen.getByRole('button', { name: 'Reset' }));
+
+        // Celeste was hidden by the filter, and is not selected when the filter is reset.
+        expect(screen.getByRole('checkbox', { name: 'Select Celeste' })).not.toBeChecked();
+        expect(screen.getByRole('checkbox', { name: 'Select Hades' })).toBeChecked();
+    });
+
+    it('lets the selection go when the layout goes back to tiles', async () => {
+        renderPage();
+
+        await tick('Hades');
+        await userEvent.click(screen.getByRole('button', { name: 'Tiles' }));
+        expect(lists.setView).toHaveBeenCalledWith('tiles');
+
+        // The provider is mocked and keeps the table on screen, which shows the selection gone with it.
+        expect(screen.getByRole('checkbox', { name: 'Select Hades' })).not.toBeChecked();
+    });
+
+    it('does not carry a selection over to the next account, even for a game they share', async () => {
+        const view = renderPage();
+
+        await tick('Hades');
+        authAnswered(userProfile({ id: 'u2' }));
+        view.rerender(<MemoryRouter><ListsPage /></MemoryRouter>);
+
+        expect(screen.getByRole('checkbox', { name: 'Select Hades' })).not.toBeChecked();
+        expect(bar()).toHaveTextContent(/tick games/i);
+    });
+
+    it('filters by ownership, offered once the lists hold two kinds, "not recorded" included', async () => {
+        renderPage();
+
+        await userEvent.click(screen.getByRole('button', { name: 'Any ownership' }));
+        for (const choice of ['Owned', 'Subscription', 'Not recorded']) {
+            expect(screen.getByRole('checkbox', { name: choice })).toBeChecked();
+        }
+        expect(screen.queryByRole('checkbox', { name: 'Borrowed' })).not.toBeInTheDocument();
+
+        await userEvent.click(screen.getByRole('checkbox', { name: 'Not recorded' }));
+        await userEvent.click(screen.getByRole('checkbox', { name: 'Subscription' }));
+
+        const titles = screen.getAllByRole('row').slice(1).map(row => within(row).getByRole('link', { name: /.+/ }).textContent);
+        expect(titles).toEqual(['Celeste']);
+        expect(screen.getByRole('button', { name: 'Owned' })).toBeInTheDocument();
+    });
+
+    it('offers no ownership filter while every game is the same', () => {
+        lists.lists = { ...emptyLists(), playing: [entry({ game: { id: 1, title: 'Celeste' } })] };
+        renderPage();
+
+        expect(screen.queryByRole('button', { name: 'Any ownership' })).not.toBeInTheDocument();
+    });
+
+    it('says which filter matched nothing, and clears it', async () => {
+        // Borrowed is offered because the backlog holds a borrowed game, and matches nothing playing.
+        lists.lists = {
+            ...emptyLists(),
+            playing: PLAYING.slice(0, 2),
+            backlog: [entry({ game: { id: 9, title: 'Tunic' }, ownership: 'borrowed' })],
+        };
+        renderPage();
+
+        await userEvent.click(screen.getByRole('button', { name: 'Any ownership' }));
+        await userEvent.click(screen.getByRole('checkbox', { name: 'Owned' }));
+        await userEvent.click(screen.getByRole('checkbox', { name: 'Subscription' }));
+
+        expect(screen.getByText(/no games in playing match the ownership filter/i)).toBeInTheDocument();
+        await userEvent.click(screen.getByRole('button', { name: 'Clear the filter' }));
+        expect(screen.getAllByRole('row')).toHaveLength(3);
+    });
+});
+
+describe('ListsPage, the ownership filter and the hand order', () => {
+    beforeEach(() => {
+        authAnswered(userProfile());
+        lists.lists = {
+            ...emptyLists(),
+            backlog: [
+                entry({ game: { id: 1, title: 'Celeste' }, ownership: 'owned', position: 0 }),
+                entry({ game: { id: 2, title: 'Hades' } }),
+            ],
+        };
+        lists.sortFor = (id: ListId) => (id === 'backlog' ? MANUAL_SORT : DEFAULT_SORT);
+        lists.view = 'table';
+    });
+
+    afterEach(() => {
+        lists.sortFor = () => DEFAULT_SORT;
+        lists.view = 'tiles';
+    });
+
+    it('shows the order but will not rearrange it while an ownership filter hides part of the list', async () => {
+        // ADR 0054 §8, for either filter: a game dropped between two the filter left showing would land
+        // among games the user cannot see.
+        renderPage();
+        await userEvent.click(screen.getByRole('tab', { name: /Backlog/ }));
+        expect(screen.getAllByRole('button', { name: /^Move / })).toHaveLength(2);
+
+        await userEvent.click(screen.getByRole('button', { name: 'Any ownership' }));
+        await userEvent.click(screen.getByRole('checkbox', { name: 'Not recorded' }));
+
+        expect(screen.queryByRole('button', { name: /^Move / })).not.toBeInTheDocument();
+        expect(screen.getByText(/clear the filters to rearrange your order/i)).toBeInTheDocument();
+    });
+
+    it('offers selection beside the hand order\'s handles', async () => {
+        renderPage();
+        await userEvent.click(screen.getByRole('tab', { name: /Backlog/ }));
+
+        const rows = screen.getAllByRole('row').slice(1);
+        expect(rows.map(row => [
+            within(row).getByRole('checkbox').getAttribute('aria-label'),
+            within(row).getByRole('button', { name: /^Move / }).getAttribute('aria-label'),
+        ])).toEqual([['Select Celeste', 'Move Celeste'], ['Select Hades', 'Move Hades']]);
     });
 });
