@@ -18,7 +18,7 @@ namespace MyVideoGameList.Server.Data.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "10.0.11")
+                .HasAnnotation("ProductVersion", "10.0.12")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
@@ -698,6 +698,9 @@ namespace MyVideoGameList.Server.Data.Migrations
                     b.Property<short?>("Score")
                         .HasColumnType("smallint");
 
+                    b.Property<DateTimeOffset?>("ScoredAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<DateTimeOffset?>("StatusChangedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -726,6 +729,8 @@ namespace MyVideoGameList.Server.Data.Migrations
                             t.HasCheckConstraint("CK_UserGameEntries_Ownership", "\"Ownership\" IS NULL OR \"Ownership\" IN ('owned', 'subscription', 'borrowed')");
 
                             t.HasCheckConstraint("CK_UserGameEntries_Score_Range", "\"Score\" IS NULL OR (\"Score\" >= 1 AND \"Score\" <= 10)");
+
+                            t.HasCheckConstraint("CK_UserGameEntries_ScoredAt_HasScore", "\"ScoredAt\" IS NULL OR \"Score\" IS NOT NULL");
                         });
                 });
 

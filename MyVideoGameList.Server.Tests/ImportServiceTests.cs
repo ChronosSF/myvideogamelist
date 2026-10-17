@@ -18,8 +18,8 @@ namespace MyVideoGameList.Server.Tests;
 /// The assertions that matter most here are the ones about what the import does <em>not</em> write.
 /// An import creating a status without an event is the exemption ADR 0026 grants and ADR 0037
 /// extends, and the event log is the one table in this schema no migration can reconstruct — so a
-/// change that starts writing events, or that stamps <c>StatusChangedAt</c>, or that gives an
-/// imported run a type, has to fail a test rather than be noticed in review.
+/// change that starts writing events, or that stamps <c>StatusChangedAt</c> or <c>ScoredAt</c>, or
+/// that gives an imported run a type, has to fail a test rather than be noticed in review.
 /// </remarks>
 public class ImportServiceTests
 {
@@ -504,13 +504,31 @@ public class ImportServiceTests
     }
 
     [Fact]
+    public async Task CommitAsync_TheScoreFromTheSource_HasNoMomentForTheHistory()
+    {
+        // The source says what the score is, not when it was given. Stamped with the import's own
+        // clock, a whole library would sit at the top of the history as though scored in one
+        // afternoon — fabricated history, for the reason StatusChangedAt stays null (ADR 0062).
+        using var db = NewDb();
+        var service = NewService(db, CacheReturning(Game(379)));
+
+        var jobId = await UploadAsync(service, Export(Entry(rating: "4")));
+        await service.CommitAsync(UserId, jobId);
+
+        var entry = Assert.Single(db.UserGameEntries);
+        Assert.Equal((short)8, entry.Score);
+        Assert.Null(entry.ScoredAt);
+    }
+
+    [Fact]
     public async Task CommitAsync_DoesNotOverwriteAScoreTheUserAlreadySet()
     {
-        // An import is new information about a game, not a correction of what its owner recorded.
+        // An import is new information about a game, not a correction of what its owner recorded —
+        // and the moment the owner gave that score stays theirs too (ADR 0062).
         using var db = NewDb();
         db.UserGameEntries.Add(new UserGameEntry
         {
-            UserId = UserId, GameId = 379, Score = 3, Notes = "Mine.", AddedAt = Midday
+            UserId = UserId, GameId = 379, Score = 3, ScoredAt = Midday.AddDays(-2), Notes = "Mine.", AddedAt = Midday
         });
         await db.SaveChangesAsync();
 
@@ -526,6 +544,7 @@ public class ImportServiceTests
 
         var entry = Assert.Single(db.UserGameEntries);
         Assert.Equal((short)3, entry.Score);
+        Assert.Equal(Midday.AddDays(-2), entry.ScoredAt);
         Assert.Equal("Mine.", entry.Notes);
     }
 

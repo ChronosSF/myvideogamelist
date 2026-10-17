@@ -302,8 +302,8 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   than a transition and an event would carry the import's own timestamp as permanent fabricated
   history. So `UserGameEntry.Origin` names the source — `manual` means every status that entry has
   held has an event behind it, anything else means it may not — and it is set whenever the import
-  writes a status, over an existing entry as well as a new one. `StatusChangedAt` stays null for
-  the same reason. **An imported playthrough's type is the source's completion level, translated
+  writes a status, over an existing entry as well as a new one. The import never stamps
+  `StatusChangedAt` or `ScoredAt`, for the same reason. **An imported playthrough's type is the source's completion level, translated
   by the source**: Grouvee's "Main Story" and "Main Story + Extras" are `normally`, "100% Completion"
   is `completionist`, and nothing imported is `rushed`. A typed run with a duration feeds the
   community medians, so only strings seen in a real export are mapped and anything else stays
@@ -319,6 +319,21 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   sets it only where it writes a status. Drops, the median time to finish and the transition count
   stay events-only, `LogStartedAt` stays the first status change, and no event is ever synthesised
   to make an import count. See `docs/decisions/0026-*`, `0037-*` and `0047-*`.
+
+- **The owner's history is a union of rows, and a score's moment is `ScoredAt`.**
+  `/api/user/history` is one `UNION ALL` of the events, the entries' `ScoredAt`, and the
+  playthroughs' start and finish dates, paged by an encrypted cursor over (moment, kind, id) and
+  never by offset. It adds no event type and writes nothing of the user's. **Only `SetScoreAsync`
+  stamps `ScoredAt`**: when the user's score changes, never on a same-score write, cleared with the
+  score, never backfilled, never by an import. **Any other path that changes a score must clear
+  it**, or the history dates a score at a time nobody gave it — the check constraint refuses only a
+  moment with no score — and every write that changes a score goes through
+  `EntryStore.WriteScoredAtWithScore`, because EF updates only the columns it saw change and a tab
+  that scored the game meanwhile would keep its moment. A playthrough's day sorts at noon UTC and
+  goes out as the day; an imported status and an undated score have no item, and the page is told
+  how many of each from `Origin` and the null `ScoredAt`s. It lists a run's finish beside a move to
+  Finished, where the chart counts one (ADR 0047's precedence is a counting rule), and it is not on
+  the public profile. See `docs/decisions/0062-*`.
 
 - **A closed import has no rows, and a review is only ever of a pending job.** A commit or a cancel
   deletes the job's `ImportRow`s in the same `SaveChangesAsync` that closes it (ADR 0037, ADR 0039),
