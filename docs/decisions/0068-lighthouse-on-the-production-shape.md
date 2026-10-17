@@ -197,6 +197,25 @@ directory, and GitHub lists its alerts as development dependencies of that file.
 Overrides that bump the fixable ones were not added: two of them have no fixed version at all, and
 replacing a tool's dependencies under it is how the tool breaks between one update and the next.
 
+### 10. axe in full, beside it
+
+Lighthouse's accessibility score runs a subset of axe-core's rules and folds them into one weighted
+number. A rule outside the subset cannot move it, and the number does not say which rule did.
+`lighthouse/axe.lh.ts` runs axe-core itself, through `@axe-core/playwright`, with every rule it enables by
+default — WCAG 2.0 to 2.2 at A and AA, and its best practices — on the same five pages and the same
+account, at a desktop's width, once each page's network has gone quiet. It found one rule Lighthouse does
+not run, `nested-interactive`, on the lists page.
+
+Its gate is the baseline again, by rule: `KNOWN_VIOLATIONS` in `lighthouse/budgets.ts` lists the rules
+each page broke when it was taken, which are reported and do not fail, and any other rule a page breaks
+fails the job. By rule rather than by element, because the count of elements breaking a rule moves with
+the data, a list's length or a page of covers, and the rule does not. Its table goes to the job summary
+under Lighthouse's, and every element with axe's reason to the artifact, as `axe/violations.json`.
+
+It is `@axe-core/playwright` 4.13.0, pinned exactly, with axe-core 4.13.0 under it; Lighthouse's own is
+axe-core 4.14.0. 4.14.0 of the Playwright package was two days old when this was written, and a package
+that new is the one to wait for.
+
 ## Consequences
 
 - **The job takes about eight minutes on every pull request and every push to master**, which makes it
@@ -243,6 +262,7 @@ database. Scores are out of 100, as Lighthouse shows them; the thresholds derive
 The first four columns are the same on a phone and a desktop, and were the same on every run anywhere.
 On a developer's machine in Europe, performance on a phone was 70 to 71 for browse and the lists, and on
 a desktop between 71 and 97, the image host's distance again. With #315 fixed, the three pages it holds
-back measured, on that machine, 62, 67 and 74 on a phone.
+back measured, on that machine, 62, 67 and 74 on a phone. axe-core found, besides contrast on all five
+pages, the rules listed against each in `KNOWN_VIOLATIONS`; #329 has them.
 
 [0053]: https://github.com/ChronosSF/myvideogamelist/pull/254

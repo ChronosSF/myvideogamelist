@@ -167,9 +167,10 @@ jobs:
   # each, judged on the median. Accessibility, best practices, SEO and layout shift fail the job when
   # they drop below the baseline; performance warns, and fails only under a floor, because a lab score
   # on a shared runner moves with the runner. The IGDB stand-in answers with real games, so the covers
-  # come from IGDB's image host, the one site the job reaches outside itself. The reports are an
-  # artifact and the scores a table in the job summary; nothing goes to public storage. Deploy dev
-  # waits on this as on every job. See ADR 0068.
+  # come from IGDB's image host, the one site the job reaches outside itself. Then axe-core in full on
+  # the same pages, which fails on any rule a page did not already break. The reports are an artifact
+  # and the scores a table in the job summary; nothing goes to public storage. Deploy dev waits on this
+  # as on every job. See ADR 0068.
   lighthouse:
     name: Lighthouse
     runs-on: ubuntu-latest
@@ -224,8 +225,8 @@ jobs:
       - name: Build the API
         run: dotnet build ../MyVideoGameList.Server/MyVideoGameList.Server.csproj
 
-      # Builds the front end, starts both servers and the two stand-ins, seeds an account, and runs
-      # Lighthouse CI on mobile and then on desktop. The table goes to the job summary.
+      # Builds the front end, starts both servers and the two stand-ins, seeds an account, runs
+      # Lighthouse CI on mobile and then on desktop, and then axe. Both tables go to the job summary.
       - name: Audit
         run: npm run lighthouse
 

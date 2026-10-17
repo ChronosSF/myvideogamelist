@@ -82,6 +82,19 @@ const PERFORMANCE_NOISE = 0.1;
  */
 const PERFORMANCE_FLOOR: Record<FormFactor, number> = { mobile: 0.4, desktop: 0.6 };
 
+/**
+ * The axe rules each page broke when the baseline was taken (`axe.lh.ts`), which are reported and do not
+ * fail: contrast (#234, #246, #329) and the rest of #329. A rule leaves its page's list in the pull request
+ * that fixes it, and nothing joins one.
+ */
+export const KNOWN_VIOLATIONS: Record<PageKey, readonly string[]> = {
+    home: ['color-contrast'],
+    games: ['color-contrast', 'heading-order'],
+    game: ['color-contrast', 'definition-list'],
+    profile: ['color-contrast', 'heading-order'],
+    lists: ['color-contrast', 'heading-order', 'nested-interactive'],
+};
+
 /** The URL each page is audited at, for this run's account. */
 export function urlsFor(account: Account): Map<PageKey, string> {
     return new Map(PAGES.map(page => [page.key, new URL(page.path(account), SITE).href]));
