@@ -1,11 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { data, useNavigation, useSearchParams } from 'react-router';
 import { GameCard } from '@/components/GameCard';
+import { GameCardSkeleton } from '@/components/GameCardSkeleton';
+import { GameGridSkeleton } from '@/components/GameGridSkeleton';
 import { GameBrowseFilters } from '@/components/GameBrowseFilters';
+import { LoadingState } from '@/components/LoadingState';
 import { PageHeader } from '@/components/PageHeader';
 import type { GameDto, GenreDto, PagedGamesResponse, PlatformDto } from '@/types/game';
 import { apiUrl } from '@/lib/api';
 import { CACHE_GAMES_LIST, PRIVATE_NO_STORE } from '@/lib/cache';
+import { GAME_GRID, GAME_GRID_FIRST_ROW } from '@/lib/gameGrid';
 import { pageMeta, siteConfig } from '@/lib/seo';
 import {
     type GameBrowse,
@@ -99,8 +103,14 @@ export async function loader({ request }: Route.LoaderArgs) {
     );
 }
 
+/**
+ * Whatever the loader decided, which states a policy on every answer, and a thrown 502 carries its own.
+ * The fallback is reached only by a loader that threw something else — a body that did not parse, say —
+ * and it fails closed: a client-side navigation's `.data` request reaches this function for this
+ * route's own failure, and `CACHE_GAMES_LIST` there kept the error at the edge for ten minutes.
+ */
 export function headers({ loaderHeaders }: Route.HeadersArgs) {
-    return { 'Cache-Control': loaderHeaders.get('Cache-Control') ?? CACHE_GAMES_LIST };
+    return { 'Cache-Control': loaderHeaders.get('Cache-Control') ?? PRIVATE_NO_STORE };
 }
 
 export function meta({ loaderData, location }: Route.MetaArgs) {
@@ -338,13 +348,11 @@ export function GamesPage({ loaderData }: Route.ComponentProps) {
 
             {/* Content */}
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+                {/* A page of results' worth, which is what the loader is fetching. */}
                 {loading && (
-                    <div className="flex items-center justify-center py-24">
-                        <div className="flex flex-col items-center gap-4">
-                            <div className="w-10 h-10 border-4 border-primary-500/30 border-t-primary-500 rounded-full animate-spin" aria-label="Loading" />
-                            <p className="text-fg-muted text-sm">Loading games…</p>
-                        </div>
-                    </div>
+                    <LoadingState label="Loading games…">
+                        <GameGridSkeleton count={PAGE_SIZE} />
+                    </LoadingState>
                 )}
 
                 {error && (
@@ -391,22 +399,26 @@ export function GamesPage({ loaderData }: Route.ComponentProps) {
                     </div>
                 )}
 
+                {/* The first row is server-rendered and is this page's largest first paint, so its
+                    covers load with the page; the rest wait until they are scrolled near. While the
+                    next page is on its way, its shapes continue the grid, so the cards that arrive
+                    take their places rather than pushing in under a spinner. */}
                 {!loading && !error && games.length > 0 && (
-                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
-                        {games.map(game => (
-                            <GameCard key={game.id} game={game} />
+                    <div className={GAME_GRID} aria-busy={loadingMore || undefined}>
+                        {games.map((game, index) => (
+                            <GameCard key={game.id} game={game} eager={index < GAME_GRID_FIRST_ROW} />
+                        ))}
+                        {loadingMore && Array.from({ length: GAME_GRID_FIRST_ROW }, (_, index) => (
+                            <GameCardSkeleton key={`next-${index}`} />
                         ))}
                     </div>
                 )}
 
-                {/* Infinite-scroll sentinel / load-more indicator */}
+                {/* Infinite-scroll sentinel, and the words for what the shapes above are. The status is
+                    always there and only its words come and go, because a live region is announced
+                    when what is in it changes, not when it is added already full. */}
                 <div ref={sentinelRef} className="mt-8 flex justify-center">
-                    {loadingMore && (
-                        <div className="flex items-center gap-3 text-fg-muted text-sm">
-                            <div className="w-5 h-5 border-2 border-primary-500/30 border-t-primary-500 rounded-full animate-spin" aria-label="Loading more" />
-                            Loading more games…
-                        </div>
-                    )}
+                    <p role="status" className="sr-only">{loadingMore ? 'Loading more games…' : ''}</p>
                 </div>
             </div>
         </div>

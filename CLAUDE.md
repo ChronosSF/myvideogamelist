@@ -265,10 +265,10 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   `entry.server.tsx`.** The API's policy is `default-src 'none'` because JSON loads nothing; a page
   under that policy would be blank, so the document set is separate and is applied in
   `entry.server.tsx` — the only place every document response passes through, since a thrown
-  `Response` bypasses a route's `headers` export. That file is otherwise `react-router reveal`'s
-  output and must be re-diffed against it on a React Router major. On the API side the headers
-  attach with `OnStarting` rather than on the way in, because `UseExceptionHandler` clears the
-  response — headers included — before writing a 500 or a 502.
+  `Response` bypasses a route's `headers` export unless that route is its own boundary. That file is
+  otherwise `react-router reveal`'s output and must be re-diffed against it on a React Router major.
+  On the API side the headers attach with `OnStarting` rather than on the way in, because
+  `UseExceptionHandler` clears the response — headers included — before writing a 500 or a 502.
 
 - **A third party's failure is a 502, our own throttle is a 503, ours is a 500, and a reader who
   left is a 499.** IGDB calls go through a resilience pipeline — retry outermost, then the breaker,
@@ -477,6 +477,12 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   `no-store` itself via `data()`; and an *API* that degrades to a 200 has to say so in its payload,
   because neither the loader nor a CDN can tell that 200 from a healthy one. `/api/home` does, with
   `degraded`, and the loader reads it failing closed — only an explicit `false` is shared-cached.
+  **A route with its own `ErrorBoundary` is its own boundary**, as the game and profile pages are, so
+  its `headers` must hand on the thrown `Response`'s policy and fall back to `no-store`, with the
+  success policy stated by the loader through `data()`. A client-side navigation's `.data` request
+  reaches the throwing route's `headers` whether or not it has a boundary, so a route that answers
+  one policy unconditionally, or falls back to a shared one, caches its failures there. A page that
+  throws while rendering is not covered by any of this yet (#337). See `docs/decisions/0099-*`.
 
 - **`fetch` rejects when the API is unreachable** — it does not return `!response.ok`. A loader
   that only checks `response.ok` turns a dead upstream into an unhandled 500. Wrap it and throw

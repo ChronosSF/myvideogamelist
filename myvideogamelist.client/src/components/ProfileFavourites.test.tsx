@@ -29,6 +29,21 @@ describe('ProfileFavourites', () => {
             .toEqual(['/games/2', '/games/1']);
     });
 
+    it('loads the covers in view with the page, since they are the first thing on it', () => {
+        const covered: PublicFavourites = {
+            userName: 'alex',
+            games: Array.from({ length: 8 }, (_, index) => ({
+                id: index + 1,
+                name: `Game ${index + 1}`,
+                coverImageUrl: `https://images.igdb.com/igdb/image/upload/t_cover_big/co${index + 1}.jpg`,
+            })),
+        };
+        const { container } = renderSection(8, covered);
+
+        expect([...container.querySelectorAll('img')].map(cover => cover.getAttribute('loading')))
+            .toEqual([...Array<string>(6).fill('eager'), 'lazy', 'lazy']);
+    });
+
     it('shows nothing at all for somebody with no favourites', () => {
         const { container } = renderSection(0, { userName: 'alex', games: [] });
 

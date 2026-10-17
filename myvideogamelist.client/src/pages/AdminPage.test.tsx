@@ -140,6 +140,28 @@ describe('AdminPage for anybody who is not an admin', () => {
     });
 });
 
+describe('AdminPage while it loads', () => {
+    it('draws its two cards as shapes, and says in words what it is waiting for', () => {
+        auth.loading = true;
+        renderPage();
+
+        expect(screen.getByRole('status')).toHaveTextContent('Loading the admin page…');
+        expect(document.querySelectorAll('.admin-card.skeleton-sheen')).toHaveLength(2);
+        expect(document.querySelector('.animate-spin')).toBeNull();
+    });
+
+    it("keeps them until the calendar's data answers, then puts the cards in their place", async () => {
+        fakeApi({ events: [event()] });
+        renderPage();
+
+        expect(screen.getByRole('status')).toHaveTextContent("Loading the calendar's data…");
+
+        expect(await screen.findByRole('list', { name: 'Current and upcoming' })).toBeInTheDocument();
+        expect(screen.queryByText("Loading the calendar's data…")).not.toBeInTheDocument();
+        expect(document.querySelectorAll('.skeleton-sheen')).toHaveLength(0);
+    });
+});
+
 describe('AdminPage for an admin', () => {
     it('lists what is current or coming first, and folds away what is over', async () => {
         fakeApi({

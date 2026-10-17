@@ -14,10 +14,11 @@ import { applyIndexingHeaders } from '@/lib/seo';
  * The server entry, which React Router generates unless the app provides one.
  *
  * It is owned here for one reason: it is the only place every document response passes through.
- * A route's `headers` export is bypassed by a thrown `Response`, so the 404s and the 502s — the
- * responses most worth being careful with — would go out bare. Everything below except the two
- * `apply…Headers` calls is `react-router reveal`'s output verbatim, reformatted to this
- * codebase's style: re-run that command on a React Router major and diff it against this file.
+ * A route's `headers` export is bypassed by a `Response` it throws unless that route is its own error
+ * boundary, so headers set there would leave the 404s and the 502s — the responses most worth being
+ * careful with — going out bare. Everything below except the two `apply…Headers` calls is
+ * `react-router reveal`'s output verbatim, reformatted to this codebase's style: re-run that command
+ * on a React Router major and diff it against this file.
  */
 
 export const streamTimeout = 5_000;

@@ -1,9 +1,13 @@
 import { Link } from 'react-router';
 import { GameCard } from '@/components/GameCard';
+import { GameGridSkeleton } from '@/components/GameGridSkeleton';
+import { LoadingState } from '@/components/LoadingState';
 import { PageHeader } from '@/components/PageHeader';
+import { SkeletonLine } from '@/components/SkeletonLine';
 import { useWishlist } from '@/hooks/useWishlist';
 import { useAuth } from '@/hooks/useAuth';
 import { PRIVATE_NO_STORE } from '@/lib/cache';
+import { GAME_GRID, GAME_GRID_FIRST_ROW } from '@/lib/gameGrid';
 import { NOINDEX } from '@/lib/seo';
 
 /**
@@ -39,6 +43,7 @@ export function WishlistPage() {
     // sign in before showing them their wishlist.
     const signedIn = !authLoading && user !== null;
     const signedOut = !authLoading && user === null;
+    const waiting = authLoading || (signedIn && loading);
 
     return (
         <div className="min-h-screen">
@@ -46,10 +51,17 @@ export function WishlistPage() {
                 title="My Wishlist"
                 description="Games you want. Separate from your lists, so a game can sit here and in Backlog at the same time."
             >
-                {items.length > 0 && (
+                {items.length > 0 ? (
                     <p className="text-fg-faint text-xs mt-3">
                         {items.length} {items.length === 1 ? 'game' : 'games'}, most recently
                         added first.
+                    </p>
+                ) : waiting && (
+                    // The count's line, held while the wishlist loads: it appears above the grid
+                    // when the games do, and would push the grid down by its height if it came
+                    // with them.
+                    <p className="text-xs mt-3" aria-hidden="true">
+                        <SkeletonLine width="w-56" />
                     </p>
                 )}
             </PageHeader>
@@ -78,13 +90,10 @@ export function WishlistPage() {
 
                 {/* Auth's wait as well as the fetch's. The wishlist is asked for the moment auth
                     answers, so the two read as one loading state rather than two in a row. */}
-                {(authLoading || (signedIn && loading)) && (
-                    <div className="flex items-center justify-center py-24">
-                        <div className="flex flex-col items-center gap-4" role="status">
-                            <div className="w-10 h-10 border-4 border-primary-500/30 border-t-primary-500 rounded-full animate-spin" aria-hidden="true" />
-                            <p className="text-fg-muted text-sm">Loading your wishlist…</p>
-                        </div>
-                    </div>
+                {waiting && (
+                    <LoadingState label="Loading your wishlist…">
+                        <GameGridSkeleton count={GAME_GRID_FIRST_ROW * 2} />
+                    </LoadingState>
                 )}
 
                 {signedIn && !loading && error && (
@@ -119,16 +128,16 @@ export function WishlistPage() {
                                 to="/games"
                                 className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary-600 hover:bg-primary-500 text-on-primary text-sm font-semibold rounded-lg transition-colors"
                             >
-                                Browse Games
+                                Browse games
                             </Link>
                         </div>
                     </div>
                 )}
 
                 {signedIn && !loading && !error && items.length > 0 && (
-                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
-                        {items.map(item => (
-                            <GameCard key={item.game.id} game={item.game} />
+                    <div className={GAME_GRID}>
+                        {items.map((item, index) => (
+                            <GameCard key={item.game.id} game={item.game} eager={index < GAME_GRID_FIRST_ROW} />
                         ))}
                     </div>
                 )}
