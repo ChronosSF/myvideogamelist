@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { data, useNavigation, useSearchParams } from 'react-router';
 import { GameCard } from '@/components/GameCard';
 import { GameBrowseFilters } from '@/components/GameBrowseFilters';
@@ -234,8 +234,10 @@ export function GamesPage({ loaderData }: Route.ComponentProps) {
     const clearFilters = () => changeBrowse({ platform: null, genre: null, year: null, minScore: null });
 
     // Abandon an in-flight "load more" when the result set changes underneath it, so a late
-    // page of the previous browse cannot append itself to the new one.
-    useEffect(() => () => {
+    // page of the previous browse cannot append itself to the new one. A layout effect, so the
+    // abort lands in the commit that puts the new browse on screen: a passive effect runs after
+    // that commit, and a page that answered in between was appended to the new listing.
+    useLayoutEffect(() => () => {
         isLoadingMoreRef.current = false;
         loadMoreControllerRef.current?.abort();
     }, [activeKey]);
