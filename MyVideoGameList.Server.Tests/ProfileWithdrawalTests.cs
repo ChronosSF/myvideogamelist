@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using MyVideoGameList.Server.Controllers;
@@ -20,8 +21,8 @@ using NSubstitute;
 namespace MyVideoGameList.Server.Tests;
 
 /// <summary>
-/// Which writes take a profile off the edge, with exactly which paths, and that a failing edge never
-/// fails the write.
+/// Which writes take a profile off the edge, with exactly which paths, only once the write is
+/// stored, and never at the cost of the write.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -29,7 +30,11 @@ namespace MyVideoGameList.Server.Tests;
 /// delete or rewrite a review — rather than through <see cref="ProfileWithdrawals"/> alone, because
 /// the decision that matters is made at the call site: whether the profile was public before the
 /// write, whether the review was. A withdrawals class that names the right paths is no use to a
-/// controller that never calls it.
+/// controller that never calls it, or calls it before it saves.
+/// </para>
+/// <para>
+/// What a write stored is read back through a scope of its own, not the one the write ran in: the
+/// change tracker of the write's own context hands back the object it changed, saved or not.
 /// </para>
 /// <para>
 /// The edge is a fake that records what it was handed. The CloudFront implementation behind the
@@ -42,6 +47,7 @@ public class ProfileWithdrawalTests
     // Identity's default rules, which AddIdentityCore applies here and Program.cs relaxes.
     private const string Password = "Password1!";
     private const int GameId = 42;
+    private const int OtherGameId = 43;
     private static readonly DateTimeOffset Midday = new(2026, 3, 14, 12, 0, 0, TimeSpan.Zero);
 
     private const string Sitemaps = "/sitemaps/profiles-*";
@@ -88,6 +94,21 @@ public class ProfileWithdrawalTests
         public T Get<T>() where T : notnull => scope.ServiceProvider.GetRequiredService<T>();
 
         public UserManager<ApplicationUser> Users => Get<UserManager<ApplicationUser>>();
+
+        /// <summary>The account as it is stored, read through a context of its own.</summary>
+        public ApplicationUser? StoredUser(string id) => Stored(db => db.Users.SingleOrDefault(u => u.Id == id));
+
+        public Review? StoredReview() => Stored(db => db.Reviews.SingleOrDefault());
+
+        public int StoredEntries() => Stored(db => db.UserGameEntries.Count());
+
+        private TResult Stored<TResult>(Func<ApplicationDbContext, TResult> read)
+        {
+            using var fresh = root.CreateScope();
+            var db = fresh.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            db.ChangeTracker.QueryTrackingBehavior = QueryTrackingBehavior.NoTracking;
+            return read(db);
+        }
 
         public async Task<ApplicationUser> AccountAsync(string userName, string visibility)
         {
@@ -148,8 +169,8 @@ public class ProfileWithdrawalTests
         }
     }
 
-    private static ReviewInputDto Review(string visibility, string body = "Worth every hour.") =>
-        new(body, HasSpoilers: false, visibility, PlaythroughId: null);
+    private static ReviewInputDto Review(string visibility, string body = "Worth every hour.", bool hasSpoilers = false) =>
+        new(body, hasSpoilers, visibility, PlaythroughId: null);
 
     private static void AssertSent(RecordingEdgeInvalidator edge, string reason, params string[] paths)
     {
@@ -176,6 +197,22 @@ public class ProfileWithdrawalTests
         AssertSent(edge, "profile made private", "/u/alice*", Sitemaps);
     }
 
+    [Fact]
+    public async Task UpdatePrivacy_PublicToPrivate_InvalidatesOnlyOnceTheChangeIsStored()
+    {
+        // Sent before the save, the invalidation could be answered by a render of the page as it
+        // still was, which the edge would then keep for the whole window it was meant to close.
+        var edge = new RecordingEdgeInvalidator();
+        using var site = new Site(edge);
+        var alice = await site.AccountAsync("alice", ProfileVisibility.Public);
+        string? storedWhenSent = null;
+        edge.OnInvalidate = _ => storedWhenSent = site.StoredUser(alice.Id)?.ProfileVisibility;
+
+        await site.Controller(alice).UpdatePrivacy(new UpdateProfileVisibilityDto(ProfileVisibility.Private));
+
+        Assert.Equal(ProfileVisibility.Private, storedWhenSent);
+    }
+
     [Theory]
     [InlineData(ProfileVisibility.Private, ProfileVisibility.Private)]
     [InlineData(ProfileVisibility.Private, ProfileVisibility.Public)]
@@ -198,11 +235,14 @@ public class ProfileWithdrawalTests
         var edge = new RecordingEdgeInvalidator();
         using var site = new Site(edge);
         var alice = await site.AccountAsync("alice", ProfileVisibility.Public);
+        string? storedWhenSent = null;
+        edge.OnInvalidate = _ => storedWhenSent = site.StoredUser(alice.Id)?.UserName;
 
         var result = await site.Controller(alice).UpdateUserName(new UpdateUserNameDto("alicia"));
 
         Assert.IsType<OkObjectResult>(result.Result);
         AssertSent(edge, "profile renamed", "/u/alice*", "/u/alicia*", Sitemaps);
+        Assert.Equal("alicia", storedWhenSent);
     }
 
     [Fact]
@@ -215,22 +255,37 @@ public class ProfileWithdrawalTests
 
         await site.Controller(alice).UpdateUserName(new UpdateUserNameDto("alicia"));
 
-        Assert.Equal("alicia", (await site.Users.FindByIdAsync(alice.Id))!.UserName);
+        Assert.Equal("alicia", site.StoredUser(alice.Id)?.UserName);
         Assert.Empty(edge.Sent);
     }
 
     [Fact]
-    public async Task UpdateUserName_ChangeOfCaseOnly_InvalidatesNothing()
+    public async Task UpdateUserName_ChangeOfCaseOnPublicProfile_InvalidatesBothSpellingsAndTheSitemaps()
     {
-        // `/u/alice` and `/u/Alice` were one page before and are one page after: nothing released,
-        // nothing withdrawn.
+        // Paths are case-sensitive and every later withdrawal names the new spelling, so the copies
+        // under the old one — the spelling the site linked to until now — must go with this change.
         var edge = new RecordingEdgeInvalidator();
         using var site = new Site(edge);
         var alice = await site.AccountAsync("alice", ProfileVisibility.Public);
+        string? storedWhenSent = null;
+        edge.OnInvalidate = _ => storedWhenSent = site.StoredUser(alice.Id)?.UserName;
 
         await site.Controller(alice).UpdateUserName(new UpdateUserNameDto("Alice"));
 
-        Assert.Equal("Alice", (await site.Users.FindByIdAsync(alice.Id))!.UserName);
+        AssertSent(edge, "profile renamed", "/u/alice*", "/u/Alice*", Sitemaps);
+        Assert.Equal("Alice", storedWhenSent);
+    }
+
+    [Fact]
+    public async Task UpdateUserName_ChangeOfCaseOnPrivateProfile_InvalidatesNothing()
+    {
+        var edge = new RecordingEdgeInvalidator();
+        using var site = new Site(edge);
+        var alice = await site.AccountAsync("alice", ProfileVisibility.Private);
+
+        await site.Controller(alice).UpdateUserName(new UpdateUserNameDto("Alice"));
+
+        Assert.Equal("Alice", site.StoredUser(alice.Id)?.UserName);
         Assert.Empty(edge.Sent);
     }
 
@@ -249,16 +304,19 @@ public class ProfileWithdrawalTests
     }
 
     [Fact]
-    public async Task DeleteAccount_PublicProfile_InvalidatesTheProfileAndTheSitemaps()
+    public async Task DeleteAccount_PublicProfile_InvalidatesTheProfileAndTheSitemapsOnceItIsGone()
     {
         var edge = new RecordingEdgeInvalidator();
         using var site = new Site(edge);
         var alice = await site.AccountAsync("alice", ProfileVisibility.Public);
+        var goneWhenSent = false;
+        edge.OnInvalidate = _ => goneWhenSent = site.StoredUser(alice.Id) is null;
 
         var result = await site.Controller(alice).DeleteAccount(new DeleteAccountDto(Password));
 
         Assert.IsType<NoContentResult>(result);
         AssertSent(edge, "account deleted", "/u/alice*", Sitemaps);
+        Assert.True(goneWhenSent);
     }
 
     [Fact]
@@ -270,7 +328,7 @@ public class ProfileWithdrawalTests
 
         await site.Controller(alice).DeleteAccount(new DeleteAccountDto(Password));
 
-        Assert.Null(await site.Users.FindByIdAsync(alice.Id));
+        Assert.Null(site.StoredUser(alice.Id));
         Assert.Empty(edge.Sent);
     }
 
@@ -293,32 +351,69 @@ public class ProfileWithdrawalTests
     // ---------------------------------------------------------------------------------------
 
     [Fact]
-    public async Task UpsertAsync_PublicReviewMadePrivate_InvalidatesTheProfileOnly()
+    public async Task UpsertAsync_PublicReviewMadePrivate_InvalidatesTheProfileOnlyOnceStored()
     {
         var edge = new RecordingEdgeInvalidator();
         using var site = new Site(edge);
         var alice = await site.AccountAsync("alice", ProfileVisibility.Public);
         var reviews = site.Get<ReviewService>();
         await reviews.UpsertAsync(alice.Id, GameId, Review(ReviewVisibility.Public));
+        string? storedWhenSent = null;
+        edge.OnInvalidate = _ => storedWhenSent = site.StoredReview()?.Visibility;
 
         await reviews.UpsertAsync(alice.Id, GameId, Review(ReviewVisibility.Private));
 
         // No sitemap: a review changes nobody's place in it.
         AssertSent(edge, "review made private", "/u/alice*");
+        Assert.Equal(ReviewVisibility.Private, storedWhenSent);
     }
 
     [Fact]
-    public async Task UpsertAsync_PublicReviewEdited_InvalidatesTheProfileOnly()
+    public async Task UpsertAsync_PublicReviewEdited_InvalidatesTheProfileOnlyOnceStored()
     {
         var edge = new RecordingEdgeInvalidator();
         using var site = new Site(edge);
         var alice = await site.AccountAsync("alice", ProfileVisibility.Public);
         var reviews = site.Get<ReviewService>();
         await reviews.UpsertAsync(alice.Id, GameId, Review(ReviewVisibility.Public, "First thoughts."));
+        string? storedWhenSent = null;
+        edge.OnInvalidate = _ => storedWhenSent = site.StoredReview()?.Body;
 
         await reviews.UpsertAsync(alice.Id, GameId, Review(ReviewVisibility.Public, "Second thoughts."));
 
         AssertSent(edge, "review edited", "/u/alice*");
+        Assert.Equal("Second thoughts.", storedWhenSent);
+    }
+
+    [Fact]
+    public async Task UpsertAsync_SpoilerWarningAddedToAPublicReview_InvalidatesTheProfile()
+    {
+        // The edge still shows the words openly that their author now wants behind the warning.
+        var edge = new RecordingEdgeInvalidator();
+        using var site = new Site(edge);
+        var alice = await site.AccountAsync("alice", ProfileVisibility.Public);
+        var reviews = site.Get<ReviewService>();
+        await reviews.UpsertAsync(alice.Id, GameId, Review(ReviewVisibility.Public));
+
+        await reviews.UpsertAsync(alice.Id, GameId, Review(ReviewVisibility.Public, hasSpoilers: true));
+
+        AssertSent(edge, "review edited", "/u/alice*");
+    }
+
+    [Fact]
+    public async Task UpsertAsync_PublicReviewSavedAgainUnchanged_InvalidatesNothing()
+    {
+        // Nothing taken back. Its move to the top of the list is content, and a save button pressed
+        // in a loop must not be a way to spend money.
+        var edge = new RecordingEdgeInvalidator();
+        using var site = new Site(edge);
+        var alice = await site.AccountAsync("alice", ProfileVisibility.Public);
+        var reviews = site.Get<ReviewService>();
+        await reviews.UpsertAsync(alice.Id, GameId, Review(ReviewVisibility.Public));
+
+        await reviews.UpsertAsync(alice.Id, GameId, Review(ReviewVisibility.Public));
+
+        Assert.Empty(edge.Sent);
     }
 
     [Fact]
@@ -367,15 +462,36 @@ public class ProfileWithdrawalTests
     }
 
     [Fact]
-    public async Task DeleteAsync_PublicReview_InvalidatesTheProfileOnly()
+    public async Task DeleteAsync_PublicReview_InvalidatesTheProfileOnlyOnceItIsGone()
     {
         var edge = new RecordingEdgeInvalidator();
         using var site = new Site(edge);
         var alice = await site.AccountAsync("alice", ProfileVisibility.Public);
         var reviews = site.Get<ReviewService>();
         await reviews.UpsertAsync(alice.Id, GameId, Review(ReviewVisibility.Public));
+        var goneWhenSent = false;
+        edge.OnInvalidate = _ => goneWhenSent = site.StoredReview() is null;
 
         Assert.True(await reviews.DeleteAsync(alice.Id, GameId));
+
+        AssertSent(edge, "review deleted", "/u/alice*");
+        Assert.True(goneWhenSent);
+    }
+
+    [Fact]
+    public async Task DeleteAsync_RequestCancelledAfterTheCommit_StillInvalidates()
+    {
+        // The reader closing the tab once the delete is stored must not cancel the invalidation of
+        // what the database has already withdrawn: the lookup after the commit takes no token.
+        var edge = new RecordingEdgeInvalidator();
+        using var site = new Site(edge);
+        var alice = await site.AccountAsync("alice", ProfileVisibility.Public);
+        var reviews = site.Get<ReviewService>();
+        await reviews.UpsertAsync(alice.Id, GameId, Review(ReviewVisibility.Public));
+        using var request = new CancellationTokenSource();
+        site.Get<ApplicationDbContext>().SavedChanges += (_, _) => request.Cancel();
+
+        Assert.True(await reviews.DeleteAsync(alice.Id, GameId, request.Token));
 
         AssertSent(edge, "review deleted", "/u/alice*");
     }
@@ -395,7 +511,7 @@ public class ProfileWithdrawalTests
     }
 
     [Fact]
-    public async Task DeleteEntryAsync_TakingAPublicReviewWithIt_InvalidatesTheProfileOnly()
+    public async Task DeleteEntryAsync_TakingAPublicReviewWithIt_InvalidatesTheProfileOnlyOnceItIsGone()
     {
         // Deleting everything recorded about a game deletes its review through the cascade, which
         // is the same withdrawal as deleting the review by itself.
@@ -403,10 +519,13 @@ public class ProfileWithdrawalTests
         using var site = new Site(edge);
         var alice = await site.AccountAsync("alice", ProfileVisibility.Public);
         await site.Get<ReviewService>().UpsertAsync(alice.Id, GameId, Review(ReviewVisibility.Public));
+        var goneWhenSent = false;
+        edge.OnInvalidate = _ => goneWhenSent = site.StoredEntries() == 0;
 
         Assert.True(await site.Get<ListService>().DeleteEntryAsync(alice.Id, GameId));
 
         AssertSent(edge, "review deleted", "/u/alice*");
+        Assert.True(goneWhenSent);
     }
 
     [Fact]
@@ -423,9 +542,24 @@ public class ProfileWithdrawalTests
     }
 
     [Fact]
+    public async Task DeleteEntryAsync_PublicReviewOnAnotherGame_InvalidatesNothing()
+    {
+        // The question asked before the delete is about the entry being deleted, not the account.
+        var edge = new RecordingEdgeInvalidator();
+        using var site = new Site(edge);
+        var alice = await site.AccountAsync("alice", ProfileVisibility.Public);
+        await site.Get<ReviewService>().UpsertAsync(alice.Id, OtherGameId, Review(ReviewVisibility.Public));
+        await site.Get<ListService>().SetScoreAsync(alice.Id, GameId, 8);
+
+        await site.Get<ListService>().DeleteEntryAsync(alice.Id, GameId);
+
+        Assert.Empty(edge.Sent);
+    }
+
+    [Fact]
     public async Task DeleteEntryAsync_AnotherAccountsPublicReview_InvalidatesNothing()
     {
-        // The question asked before the delete is scoped to the account deleting, like the delete.
+        // And scoped to the account deleting, like the delete itself.
         var edge = new RecordingEdgeInvalidator();
         using var site = new Site(edge);
         var alice = await site.AccountAsync("alice", ProfileVisibility.Public);
@@ -454,7 +588,7 @@ public class ProfileWithdrawalTests
 
         Assert.Equal(1, edge.Calls);
         Assert.IsType<OkObjectResult>(result.Result);
-        Assert.Equal(ProfileVisibility.Private, (await site.Users.FindByIdAsync(alice.Id))!.ProfileVisibility);
+        Assert.Equal(ProfileVisibility.Private, site.StoredUser(alice.Id)?.ProfileVisibility);
     }
 
     [Fact]
@@ -468,7 +602,7 @@ public class ProfileWithdrawalTests
 
         Assert.Equal(1, edge.Calls);
         Assert.IsType<OkObjectResult>(result.Result);
-        Assert.Equal("alicia", (await site.Users.FindByIdAsync(alice.Id))!.UserName);
+        Assert.Equal("alicia", site.StoredUser(alice.Id)?.UserName);
     }
 
     [Fact]
@@ -482,7 +616,7 @@ public class ProfileWithdrawalTests
 
         Assert.Equal(1, edge.Calls);
         Assert.IsType<NoContentResult>(result);
-        Assert.Null(await site.Users.FindByIdAsync(alice.Id));
+        Assert.Null(site.StoredUser(alice.Id));
     }
 
     [Theory]
@@ -501,8 +635,8 @@ public class ProfileWithdrawalTests
 
         Assert.Equal(1, edge.Calls);
         Assert.Equal("Second thoughts.", saved.Body);
-        var stored = await site.Get<ApplicationDbContext>().Reviews.AsNoTracking().SingleAsync();
-        Assert.Equal(("Second thoughts.", rewrittenAs), (stored.Body, stored.Visibility));
+        var stored = site.StoredReview();
+        Assert.Equal(("Second thoughts.", rewrittenAs), (stored?.Body, stored?.Visibility));
     }
 
     [Fact]
@@ -517,7 +651,7 @@ public class ProfileWithdrawalTests
         Assert.True(await reviews.DeleteAsync(alice.Id, GameId));
 
         Assert.Equal(1, edge.Calls);
-        Assert.Empty(site.Get<ApplicationDbContext>().Reviews);
+        Assert.Null(site.StoredReview());
     }
 
     [Fact]
@@ -531,7 +665,39 @@ public class ProfileWithdrawalTests
         Assert.True(await site.Get<ListService>().DeleteEntryAsync(alice.Id, GameId));
 
         Assert.Equal(1, edge.Calls);
-        Assert.Empty(site.Get<ApplicationDbContext>().UserGameEntries);
+        Assert.Equal(0, site.StoredEntries());
+    }
+
+    [Fact]
+    public void ProfileMadePrivate_EdgeThrows_LogsThePathsAsAnError()
+    {
+        // The paths are in the log for whoever has to send them by hand.
+        var logger = new ListLogger<ProfileWithdrawals>();
+        using var db = new ApplicationDbContext(
+            new DbContextOptionsBuilder<ApplicationDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
+        var withdrawals = new ProfileWithdrawals(db, new ThrowingEdgeInvalidator(), logger);
+
+        withdrawals.ProfileMadePrivate("alice");
+
+        var error = Assert.Single(logger.At(LogLevel.Error));
+        Assert.Contains("/u/alice*, /sitemaps/profiles-*", error.Message);
+    }
+
+    [Fact]
+    public async Task ReviewWithdrawnAsync_LookupThrows_DoesNotThrow()
+    {
+        // After the commit, even the database failing must not reach the write's answer.
+        var logger = new ListLogger<ProfileWithdrawals>();
+        var edge = new RecordingEdgeInvalidator();
+        var db = new ApplicationDbContext(
+            new DbContextOptionsBuilder<ApplicationDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
+        await db.DisposeAsync();
+        var withdrawals = new ProfileWithdrawals(db, edge, logger);
+
+        await withdrawals.ReviewWithdrawnAsync("user-1", ReviewWithdrawal.Deleted);
+
+        Assert.Empty(edge.Sent);
+        Assert.Single(logger.At(LogLevel.Error));
     }
 
     // ---------------------------------------------------------------------------------------
@@ -539,7 +705,7 @@ public class ProfileWithdrawalTests
     // ---------------------------------------------------------------------------------------
 
     [Fact]
-    public void Profile_CoversTheDataUrlAndEveryQueryStringWithOneTrailingWildcard()
+    public void Profile_AnyName_EndsInOneWildcardCoveringItsDataUrlAndQueryStrings()
     {
         // React Router 8 asks for /u/alice.data, and the cache key holds ?page= and ?_routes=;
         // CloudFront reads a `*` as a wildcard only when it is the last character.
@@ -547,7 +713,7 @@ public class ProfileWithdrawalTests
     }
 
     [Fact]
-    public void ProfileSitemaps_EndsInTheWildcard()
+    public void ProfileSitemaps_EveryFile_IsOnePathEndingInTheWildcard()
     {
         // `/sitemaps/profiles-*.xml` would be matched literally, asterisk and all, and invalidate
         // nothing.

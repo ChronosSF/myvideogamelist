@@ -84,8 +84,13 @@ export const CACHE_GAMES_LIST = sharedCache(600, 3600);
  * `CloudFrontEdgeInvalidator.Horizon` on the server too**, or a long CloudFront outage gives up while
  * a withdrawn page is still being served. Shortening it would narrow the window without closing
  * it — see ADR 0027.
+ *
+ * **`stale-if-error=0` is what makes it a window.** Without it, CloudFront answers a 5xx from the
+ * origin by serving the expired copy it still holds, for as long as the cache policy's maximum TTL
+ * allows — a year here — so a page whose invalidation failed could come back during any later
+ * outage, long after its owner withdrew it. With it, an outage shows the error instead.
  */
-export const CACHE_PROFILE = sharedCache(300, 3600);
+export const CACHE_PROFILE = `${sharedCache(300, 3600)}, stale-if-error=0`;
 
 /**
  * Pages whose words change only with a deploy: the terms. A game page's window, since a changed page

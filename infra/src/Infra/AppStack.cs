@@ -113,7 +113,12 @@ public sealed class AppStack : Stack
         // the balancer, and neither of those refers back to a task or a service, so there is no
         // cycle. It does mean a resume starts the API only once the distribution exists.
         apiContainer.AddEnvironment("CloudFront__DistributionId", edge.Distribution.DistributionId);
-        edge.Distribution.GrantCreateInvalidation(apiTask.TaskRole);
+        apiTask.TaskRole.AddToPrincipalPolicy(new PolicyStatement(new PolicyStatementProps
+        {
+            Sid = "InvalidateWithdrawnProfiles",
+            Actions = ["cloudfront:CreateInvalidation"],
+            Resources = [edge.Distribution.DistributionArn],
+        }));
 
         // The hostname is the zone's own name, so the alias sits at the zone apex, and it names the
         // distribution: the balancer is in no DNS record. A and AAAA both, since CloudFront is

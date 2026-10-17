@@ -72,13 +72,20 @@ public class UserController(
         {
             // A change of letter case is a change worth allowing — it is how somebody fixes a name
             // they capitalised wrongly — and it cannot collide with anybody, so it skips the
-            // cooldown as well. Nor does it invalidate anything: every URL it touches still names
-            // the same public page, so what the edge holds is stale only as content is (ADR 0058).
+            // cooldown as well.
             if (user.UserName != dto.UserName)
             {
+                var previousCase = user.UserName;
                 user.UserName = dto.UserName;
                 var saved = await userManager.UpdateAsync(user);
                 if (!saved.Succeeded) return NotSaved(saved);
+
+                // It still invalidates, both spellings, though it releases no name. Invalidation
+                // paths are case-sensitive and every later withdrawal names the new spelling, so the
+                // copies the edge holds under the old one — the spelling the site itself linked to
+                // and the sitemap listed until now — would be out of reach of all of them (ADR 0058).
+                if (user.ProfileVisibility == ProfileVisibility.Public && previousCase is not null)
+                    withdrawals.ProfileRenamed(previousCase, dto.UserName);
             }
 
             return Ok(Profile(user));

@@ -4,11 +4,14 @@ using Amazon.CloudFront;
 namespace MyVideoGameList.Server.Services.Edge;
 
 /// <summary>
-/// Which CDN, if any, is in front of this deployment.
+/// Which CDN, if any, is in front of this deployment, and how much it may be asked to forget.
 /// </summary>
 public sealed class EdgeInvalidationOptions
 {
     public const string SectionName = "CloudFront";
+
+    /// <summary>The ceiling when configuration names none.</summary>
+    public const int DefaultDailyPathLimit = 500;
 
     /// <summary>
     /// The CloudFront distribution in front of the site, by id. Empty means there is none, which is
@@ -20,6 +23,13 @@ public sealed class EdgeInvalidationOptions
     /// is. It passes it to the API task as <c>CloudFront__DistributionId</c>.
     /// </remarks>
     public string DistributionId { get; set; } = "";
+
+    /// <summary>
+    /// The most invalidation paths one task sends in a UTC day; past it, a withdrawal keeps the TTL
+    /// window. Each path past the account's free thousand a month costs half a cent, and any
+    /// signed-in account can withdraw in a loop, so this is the one hard bound on the bill.
+    /// </summary>
+    public int DailyPathLimit { get; set; } = DefaultDailyPathLimit;
 }
 
 public static class EdgeInvalidationRegistration
@@ -45,17 +55,21 @@ public static class EdgeInvalidationRegistration
     {
         services.AddScoped<ProfileWithdrawals>();
 
-        // Read as a plain value rather than bound: a key present with a null value binds a null into
+        // Read as plain values rather than bound: a key present with a null value binds a null into
         // a property declared never to hold one.
-        var distributionId = configuration
-            .GetSection(EdgeInvalidationOptions.SectionName)[nameof(EdgeInvalidationOptions.DistributionId)]
-            ?.Trim();
+        var section = configuration.GetSection(EdgeInvalidationOptions.SectionName);
+        var distributionId = section[nameof(EdgeInvalidationOptions.DistributionId)]?.Trim();
 
         if (string.IsNullOrEmpty(distributionId))
         {
             services.AddSingleton<IEdgeInvalidator, LoggingEdgeInvalidator>();
             return services;
         }
+
+        var dailyPathLimit = int.TryParse(section[nameof(EdgeInvalidationOptions.DailyPathLimit)], out var limit)
+            && limit >= 0
+                ? limit
+                : EdgeInvalidationOptions.DefaultDailyPathLimit;
 
         // Credentials from the task role, as the key ring's Systems Manager client takes them. The
         // Region is named rather than read from the task's own: CloudFront's API is global, and the
@@ -73,6 +87,7 @@ public static class EdgeInvalidationRegistration
         services.AddSingleton(provider => new CloudFrontEdgeInvalidator(
             provider.GetRequiredService<IAmazonCloudFront>(),
             distributionId,
+            dailyPathLimit,
             provider.GetRequiredService<TimeProvider>(),
             provider.GetRequiredService<ILogger<CloudFrontEdgeInvalidator>>()));
         services.AddSingleton<IEdgeInvalidator>(provider => provider.GetRequiredService<CloudFrontEdgeInvalidator>());

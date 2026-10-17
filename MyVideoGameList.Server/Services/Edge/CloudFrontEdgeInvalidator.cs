@@ -1,6 +1,9 @@
+using System.Diagnostics.CodeAnalysis;
+using System.Globalization;
 using System.Threading.Channels;
 using Amazon.CloudFront;
 using Amazon.CloudFront.Model;
+using Amazon.Runtime;
 
 namespace MyVideoGameList.Server.Services.Edge;
 
@@ -28,25 +31,33 @@ namespace MyVideoGameList.Server.Services.Edge;
 /// tasks ever hold the same work.
 /// </para>
 /// <para>
-/// <b>One request per withdrawal, sent one at a time, at most one a second.</b> CloudFront's quota is
-/// one wildcard invalidation a second, and every withdrawal carries a wildcard path, so a burst
-/// drains at the quota rather than throttling itself. Each request carries a caller reference fixed
-/// when it is queued, and CloudFront answers a repeated reference with the same paths by returning
-/// the invalidation it already made — so a retry after a response lost on the way back cannot
-/// create, or pay for, a second one.
+/// <b>One request per withdrawal, sent one at a time, at most one a second.</b> CloudFront's quotas
+/// page gives one wildcard invalidation a second, and every withdrawal carries a wildcard path, so a
+/// burst drains at the quota rather than throttling itself. The pacing is per task. Each request
+/// carries a caller reference fixed when it is queued, and CloudFront answers a repeated reference
+/// with the same paths by returning the invalidation it already made — so a retry after a response
+/// lost on the way back cannot create a second one. A withdrawal whose paths are already waiting is
+/// not queued again: the one waiting goes out after both writes, so it covers both, and one account
+/// saving in a loop holds one place in the queue rather than all of them.
 /// </para>
 /// <para>
 /// <b>Retried until <see cref="Horizon"/>, and never past it.</b> Any failure is retried, a
 /// misconfiguration as much as a brownout: one cannot always be told from the other from here, and
-/// a refusal that will never succeed fails loudly anyway — a warning per attempt and an error when
-/// the window closes. Past the horizon every copy an edge fetched before the withdrawal has expired
-/// on its own, so the invalidation would remove nothing; giving up then costs exactly the window
-/// the site had before this existed.
+/// a refusal that will never succeed fails loudly anyway — an error once the retries reach their
+/// ceiling, with how much is waiting behind it, and another when the window closes. Past the horizon
+/// every copy an edge fetched before the withdrawal has expired and may not be served stale, so the
+/// invalidation would remove nothing; giving up then costs exactly the window the site had before
+/// this existed.
 /// </para>
 /// <para>
-/// What a stopping task still holds is lost with it, and is logged with its paths. A deploy is the
-/// usual reason a task stops, and the deploy pipeline invalidates <c>/*</c> once the new task is
-/// serving (ADR 0046), which covers it.
+/// <b>At most a day's ceiling of paths</b>, because every path past the month's free thousand is
+/// paid for and nothing else bounds what a signed-in account can make this send. Past it, a
+/// withdrawal keeps the TTL window, and the first one refused each day is an error in the log.
+/// </para>
+/// <para>
+/// A stopping task spends a few seconds sending what it holds, and logs what it could not. A deploy
+/// is the usual reason a task stops, and the deploy pipeline invalidates <c>/*</c> once the new task
+/// is serving (ADR 0046), which covers the rest.
 /// </para>
 /// </remarks>
 internal sealed class CloudFrontEdgeInvalidator : BackgroundService, IEdgeInvalidator
@@ -54,7 +65,8 @@ internal sealed class CloudFrontEdgeInvalidator : BackgroundService, IEdgeInvali
     /// <summary>
     /// The longest an edge can go on serving a copy it fetched before a withdrawal:
     /// <c>CACHE_PROFILE</c>'s five minutes fresh plus its hour of stale-while-revalidate, which the
-    /// profile sitemap files share.
+    /// profile sitemap files share. Its <c>stale-if-error=0</c> is what stops an expired copy being
+    /// served again during an outage of the origin, which would make this no bound at all.
     /// </summary>
     /// <remarks>
     /// Restated from <c>@/lib/cache</c> rather than shared, because the policy is the client's to
@@ -67,9 +79,11 @@ internal sealed class CloudFrontEdgeInvalidator : BackgroundService, IEdgeInvali
     /// How many withdrawals may wait to be sent.
     /// </summary>
     /// <remarks>
-    /// Far more than this site withdraws in the hour a failing CloudFront could keep them waiting.
-    /// What it bounds is memory, at a few hundred bytes each, if something goes wrong upstream. One
-    /// that does not fit is logged with its paths and dropped; the write it follows is unaffected.
+    /// Far more than this site withdraws in the hour a failing CloudFront could keep them waiting,
+    /// and a loop of saves holds only one place, because a withdrawal already waiting is not queued
+    /// twice. What it bounds is memory, at a few hundred bytes each, if something goes wrong
+    /// upstream. One that does not fit is logged with its paths and dropped; the write it follows is
+    /// unaffected.
     /// </remarks>
     internal const int DefaultCapacity = 1_000;
 
@@ -80,44 +94,63 @@ internal sealed class CloudFrontEdgeInvalidator : BackgroundService, IEdgeInvali
     /// The least time between two requests: CloudFront's quota of one wildcard invalidation a second.
     /// </param>
     /// <param name="AttemptTimeout">One attempt's ceiling, the SDK's own retries inside it included.</param>
+    /// <param name="ShutdownDrain">
+    /// How long a stopping task goes on sending what it holds. Well inside the thirty seconds both ECS
+    /// and the host give a stop.
+    /// </param>
     internal sealed record Pacing(
-        TimeSpan FirstRetry, TimeSpan LongestRetry, TimeSpan Spacing, TimeSpan AttemptTimeout)
+        TimeSpan FirstRetry, TimeSpan LongestRetry, TimeSpan Spacing, TimeSpan AttemptTimeout,
+        TimeSpan ShutdownDrain)
     {
         public static readonly Pacing Default = new(
             FirstRetry: TimeSpan.FromSeconds(2),
             LongestRetry: TimeSpan.FromMinutes(5),
             Spacing: TimeSpan.FromSeconds(1),
-            AttemptTimeout: TimeSpan.FromSeconds(30));
+            AttemptTimeout: TimeSpan.FromSeconds(30),
+            ShutdownDrain: TimeSpan.FromSeconds(5));
     }
 
     /// <summary>A withdrawal waiting to be sent, with the reference every attempt at it shares.</summary>
-    internal sealed record Queued(EdgeInvalidation Invalidation, string CallerReference, DateTimeOffset QueuedAt);
+    /// <param name="Key">Its paths as one string, which is what a second withdrawal is compared on.</param>
+    internal sealed record Queued(
+        EdgeInvalidation Invalidation, string CallerReference, DateTimeOffset QueuedAt, string Key);
 
     private readonly IAmazonCloudFront cloudFront;
     private readonly string distributionId;
+    private readonly int dailyPathLimit;
     private readonly TimeProvider clock;
     private readonly ILogger<CloudFrontEdgeInvalidator> logger;
     private readonly Pacing pacing;
     private readonly Channel<Queued> queue;
 
     /// <summary>
-    /// When the last request went out. Touched only from the one loop that sends, so it needs no
-    /// synchronisation.
+    /// The keys of everything queued and not yet taken off the queue to be sent, under
+    /// <see cref="gate"/>.
     /// </summary>
+    private readonly HashSet<string> waiting = new(StringComparer.Ordinal);
+    private readonly Lock gate = new();
+    private volatile bool stopping;
+
+    // Touched only from the one loop that sends, so they need no synchronisation.
     private DateTimeOffset lastSent = DateTimeOffset.MinValue;
+    private DateOnly ceilingDay;
+    private int pathsToday;
+    private int refusedToday;
 
     public CloudFrontEdgeInvalidator(
         IAmazonCloudFront cloudFront,
         string distributionId,
+        int dailyPathLimit,
         TimeProvider clock,
         ILogger<CloudFrontEdgeInvalidator> logger)
-        : this(cloudFront, distributionId, clock, logger, Pacing.Default, DefaultCapacity)
+        : this(cloudFront, distributionId, dailyPathLimit, clock, logger, Pacing.Default, DefaultCapacity)
     {
     }
 
     internal CloudFrontEdgeInvalidator(
         IAmazonCloudFront cloudFront,
         string distributionId,
+        int dailyPathLimit,
         TimeProvider clock,
         ILogger<CloudFrontEdgeInvalidator> logger,
         Pacing pacing,
@@ -125,6 +158,7 @@ internal sealed class CloudFrontEdgeInvalidator : BackgroundService, IEdgeInvali
     {
         this.cloudFront = cloudFront;
         this.distributionId = distributionId;
+        this.dailyPathLimit = dailyPathLimit;
         this.clock = clock;
         this.logger = logger;
         this.pacing = pacing;
@@ -141,38 +175,118 @@ internal sealed class CloudFrontEdgeInvalidator : BackgroundService, IEdgeInvali
 
     public void Invalidate(EdgeInvalidation invalidation)
     {
-        var queued = new Queued(invalidation, Guid.NewGuid().ToString("N"), clock.GetUtcNow());
-        if (queue.Writer.TryWrite(queued)) return;
+        var key = string.Join('\n', invalidation.Paths);
+        Queued? queued = null;
+        var alreadyWaiting = false;
 
-        logger.LogError(
-            "Could not queue {Paths} ({Reason}): the invalidation queue is full or has stopped. "
-            + "They stay at the edge until their TTL runs out.",
-            invalidation.Paths, invalidation.Reason);
+        lock (gate)
+        {
+            // Waiting and not yet sent: it goes out after this write committed, so it covers this
+            // withdrawal as well, and sending both would pay twice for one effect.
+            if (!stopping && waiting.Contains(key))
+            {
+                alreadyWaiting = true;
+            }
+            else
+            {
+                var candidate = new Queued(invalidation, Guid.NewGuid().ToString("N"), clock.GetUtcNow(), key);
+                if (queue.Writer.TryWrite(candidate))
+                {
+                    waiting.Add(key);
+                    queued = candidate;
+                }
+            }
+        }
+
+        if (alreadyWaiting)
+        {
+            logger.LogDebug(
+                "{Paths} ({Reason}) is already waiting to be invalidated; not queued again.",
+                invalidation.Paths, invalidation.Reason);
+            return;
+        }
+
+        if (queued is null)
+        {
+            logger.LogError(
+                "Could not queue {Paths} ({Reason}): the invalidation queue {State}. "
+                + "They stay at the edge until their TTL runs out.",
+                invalidation.Paths, invalidation.Reason, stopping ? "has stopped" : "is full");
+            return;
+        }
+
+        logger.LogInformation(
+            "Queued {Paths} ({Reason}) to be invalidated as {CallerReference}.",
+            invalidation.Paths, invalidation.Reason, queued.CallerReference);
     }
 
-    /// <summary>Takes the next waiting withdrawal off the queue, for the tests that inspect it.</summary>
-    internal bool TryTakeQueued(out Queued? queued) => queue.Reader.TryRead(out queued);
+    /// <summary>
+    /// Takes the next waiting withdrawal off the queue as the loop does, for the tests that inspect
+    /// it.
+    /// </summary>
+    internal bool TryTakeQueued([NotNullWhen(true)] out Queued? queued)
+    {
+        if (!queue.Reader.TryRead(out queued)) return false;
+        lock (gate) waiting.Remove(queued.Key);
+        return true;
+    }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        logger.LogInformation(
+            "Invalidating withdrawn profiles on CloudFront distribution {DistributionId}, at most {DailyPathLimit} paths a day.",
+            distributionId, dailyPathLimit);
+
         try
         {
             await foreach (var queued in queue.Reader.ReadAllAsync(stoppingToken))
             {
-                await SendAsync(queued, stoppingToken);
+                // Off the waiting list before the request goes out: a withdrawal arriving from here
+                // on may have committed after this request reached CloudFront, so it is queued anew.
+                lock (gate) waiting.Remove(queued.Key);
+
+                try
+                {
+                    await SendAsync(queued, stoppingToken);
+                }
+                catch (Exception e) when (e is not OperationCanceledException || !stoppingToken.IsCancellationRequested)
+                {
+                    // Per item, as the sweep catches per tick (ADR 0038). Nothing in SendAsync is
+                    // meant to throw, and if something does it costs this withdrawal, not the host.
+                    logger.LogError(e,
+                        "Could not send {Paths} ({Reason}); they stay at the edge until their TTL runs out ({CallerReference}).",
+                        queued.Invalidation.Paths, queued.Invalidation.Reason, queued.CallerReference);
+                }
             }
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
         {
-            // Shutting down, which is not a failure. What was still waiting is reported below.
+            // Shutting down, which is not a failure. StopAsync reports what was still waiting.
         }
-        finally
-        {
-            // Anything a request withdraws from here on is refused by Invalidate, which logs it,
-            // rather than queued for a sender that will never read it.
-            queue.Writer.TryComplete();
-            while (queue.Reader.TryRead(out var unsent)) LogUnsent(unsent);
-        }
+    }
+
+    /// <summary>
+    /// Stops taking withdrawals, spends <see cref="Pacing.ShutdownDrain"/> sending what is queued,
+    /// then stops the loop and logs, with its paths, whatever is left.
+    /// </summary>
+    /// <remarks>
+    /// Here rather than in a <c>finally</c> in <see cref="ExecuteAsync"/>, because on .NET 10 a stop
+    /// that arrives straight after the start can cancel the loop before it has run at all — seen in
+    /// the review of this class, on 10.0.11 — and a <c>finally</c> that never runs leaves the queue
+    /// open to writes nobody will read.
+    /// </remarks>
+    public override async Task StopAsync(CancellationToken cancellationToken)
+    {
+        stopping = true;
+        queue.Writer.TryComplete();
+
+        // With the writer complete, the loop ends by itself once the queue is empty.
+        if (ExecuteTask is { } loop)
+            await Task.WhenAny(loop, Task.Delay(pacing.ShutdownDrain, clock, cancellationToken));
+
+        await base.StopAsync(cancellationToken);
+
+        while (queue.Reader.TryRead(out var unsent)) LogUnsent(unsent);
     }
 
     /// <summary>
@@ -182,6 +296,7 @@ internal sealed class CloudFrontEdgeInvalidator : BackgroundService, IEdgeInvali
     internal async Task SendAsync(Queued queued, CancellationToken stoppingToken)
     {
         var giveUpAt = queued.QueuedAt + Horizon;
+        if (!WithinDailyLimit(queued)) return;
 
         for (var attempt = 1; ; attempt++)
         {
@@ -201,11 +316,12 @@ internal sealed class CloudFrontEdgeInvalidator : BackgroundService, IEdgeInvali
                 attemptTimeout.CancelAfter(pacing.AttemptTimeout);
 
                 var response = await cloudFront.CreateInvalidationAsync(Request(queued), attemptTimeout.Token);
+                pathsToday += queued.Invalidation.Paths.Count;
 
                 logger.LogInformation(
-                    "Invalidated {Paths} ({Reason}) as {InvalidationId}, {Delay} after the write, on attempt {Attempt}.",
+                    "Invalidated {Paths} ({Reason}) as {InvalidationId}, {Delay} after the write, on attempt {Attempt} ({CallerReference}).",
                     queued.Invalidation.Paths, queued.Invalidation.Reason,
-                    response.Invalidation?.Id, clock.GetUtcNow() - queued.QueuedAt, attempt);
+                    response.Invalidation?.Id, clock.GetUtcNow() - queued.QueuedAt, attempt, queued.CallerReference);
                 return;
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
@@ -220,16 +336,13 @@ internal sealed class CloudFrontEdgeInvalidator : BackgroundService, IEdgeInvali
                 failure = e;
             }
 
-            var retryIn = Backoff(attempt);
-            if (clock.GetUtcNow() + retryIn >= giveUpAt)
+            if (RetryDelay(attempt, giveUpAt - clock.GetUtcNow(), pacing) is not { } retryIn)
             {
                 LogGaveUp(queued, attempt, failure);
                 return;
             }
 
-            logger.LogWarning(failure,
-                "Invalidating {Paths} ({Reason}) failed on attempt {Attempt}; retrying in {RetryIn}.",
-                queued.Invalidation.Paths, queued.Invalidation.Reason, attempt, retryIn);
+            LogFailedAttempt(queued, attempt, failure, retryIn, giveUpAt);
 
             try
             {
@@ -241,6 +354,34 @@ internal sealed class CloudFrontEdgeInvalidator : BackgroundService, IEdgeInvali
                 throw;
             }
         }
+    }
+
+    /// <summary>
+    /// The wait after the given failed attempt: two seconds, doubling, to a ceiling of five minutes,
+    /// which comes to about twenty attempts in a window.
+    /// </summary>
+    internal static TimeSpan Backoff(int attempt, Pacing pacing)
+    {
+        var doubled = pacing.FirstRetry.Ticks * Math.Pow(2, Math.Min(attempt - 1, 30));
+        return TimeSpan.FromTicks((long)Math.Min(doubled, pacing.LongestRetry.Ticks));
+    }
+
+    /// <summary>
+    /// How long to wait before the next attempt, given how much of the window is left, or null to
+    /// give up.
+    /// </summary>
+    /// <remarks>
+    /// A backoff that would land past the window is cut short to one last attempt just inside it
+    /// rather than none at all: without that, the five-minute ceiling would end the retries up to
+    /// five minutes early.
+    /// </remarks>
+    internal static TimeSpan? RetryDelay(int attempt, TimeSpan remaining, Pacing pacing)
+    {
+        var retryIn = Backoff(attempt, pacing);
+        if (retryIn < remaining) return retryIn;
+
+        var last = remaining - pacing.Spacing;
+        return last > TimeSpan.Zero ? last : null;
     }
 
     private CreateInvalidationRequest Request(Queued queued) => new()
@@ -261,27 +402,88 @@ internal sealed class CloudFrontEdgeInvalidator : BackgroundService, IEdgeInvali
 
     private async Task PaceAsync(CancellationToken stoppingToken)
     {
+        // Never longer than the spacing itself, so a clock stepped backwards cannot stall the queue.
         var wait = lastSent + pacing.Spacing - clock.GetUtcNow();
+        if (wait > pacing.Spacing) wait = pacing.Spacing;
         if (wait > TimeSpan.Zero) await Task.Delay(wait, clock, stoppingToken);
         lastSent = clock.GetUtcNow();
     }
 
-    /// <summary>Two seconds, doubling, to a ceiling of five minutes: about twenty attempts in a window.</summary>
-    private TimeSpan Backoff(int attempt)
+    private bool WithinDailyLimit(Queued queued)
     {
-        var doubled = pacing.FirstRetry.Ticks * Math.Pow(2, Math.Min(attempt - 1, 30));
-        return TimeSpan.FromTicks((long)Math.Min(doubled, pacing.LongestRetry.Ticks));
+        var today = DateOnly.FromDateTime(clock.GetUtcNow().UtcDateTime);
+        if (today != ceilingDay)
+        {
+            ceilingDay = today;
+            pathsToday = 0;
+            refusedToday = 0;
+        }
+
+        if (pathsToday + queued.Invalidation.Paths.Count <= dailyPathLimit) return true;
+
+        // An error once a day, when the ceiling is first met, and quiet after that: what matters is
+        // that it was met, and a loop that met it would otherwise fill the log as fast as it saves.
+        if (++refusedToday == 1)
+        {
+            logger.LogError(
+                "Reached the ceiling of {DailyPathLimit} invalidation paths for {Day} (UTC), so {Paths} ({Reason}) "
+                + "and every withdrawal after it today keep the TTL window instead. Something is saving in a loop, "
+                + "or the ceiling (CloudFront:DailyPathLimit) is too low for the site.",
+                dailyPathLimit, today.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+                queued.Invalidation.Paths, queued.Invalidation.Reason);
+        }
+        else
+        {
+            logger.LogDebug(
+                "Over today's invalidation ceiling; {Paths} ({Reason}) not sent ({Refused} refused today).",
+                queued.Invalidation.Paths, queued.Invalidation.Reason, refusedToday);
+        }
+
+        return false;
     }
+
+    private void LogFailedAttempt(Queued queued, int attempt, Exception failure, TimeSpan retryIn, DateTimeOffset giveUpAt)
+    {
+        var behind = queue.Reader.Count;
+
+        // The exception's stack once, on the first failure; after that its gist, or a CloudWatch
+        // stream fills with copies of one stack trace for an hour.
+        if (attempt == 1)
+        {
+            logger.LogWarning(failure,
+                "Invalidating {Paths} ({Reason}) failed on attempt 1; retrying in {RetryIn}, {Waiting} more waiting ({CallerReference}).",
+                queued.Invalidation.Paths, queued.Invalidation.Reason, retryIn, behind, queued.CallerReference);
+            return;
+        }
+
+        // Retrying at the longest wait for the first time means minutes of failure already: worth an
+        // error while sending it by hand would still help, rather than only when the window closes.
+        var level = retryIn >= pacing.LongestRetry && Backoff(attempt - 1, pacing) < pacing.LongestRetry
+            ? LogLevel.Error
+            : LogLevel.Warning;
+
+        logger.Log(level,
+            "Invalidating {Paths} ({Reason}) failed on attempt {Attempt} with {Failure}; retrying in {RetryIn}, "
+            + "{Waiting} more waiting. It stops mattering at {GiveUpAt} ({CallerReference}).",
+            queued.Invalidation.Paths, queued.Invalidation.Reason, attempt, Gist(failure), retryIn, behind,
+            giveUpAt, queued.CallerReference);
+    }
+
+    /// <summary>What failed, in one line: CloudFront's own code and status where it gave one.</summary>
+    private static string Gist(Exception failure) => failure is AmazonServiceException service
+        ? $"{service.GetType().Name} ({(int)service.StatusCode} {service.ErrorCode}): {service.Message}"
+        : $"{failure.GetType().Name}: {failure.Message}";
 
     private void LogGaveUp(Queued queued, int attempts, Exception? failure) =>
         logger.LogError(failure,
             "Gave up invalidating {Paths} ({Reason}) after {Attempts} attempt(s): by now every copy the "
             + "edge held before the write has expired by itself, so the withdrawal took as long to "
-            + "reach the edge as it would have with no invalidation at all.",
-            queued.Invalidation.Paths, queued.Invalidation.Reason, attempts);
+            + "reach the edge as it would have with no invalidation at all ({CallerReference}).",
+            queued.Invalidation.Paths, queued.Invalidation.Reason, attempts, queued.CallerReference);
 
     private void LogUnsent(Queued queued) =>
-        logger.LogWarning(
-            "Stopping with {Paths} ({Reason}) not invalidated; they stay at the edge until their TTL runs out.",
-            queued.Invalidation.Paths, queued.Invalidation.Reason);
+        logger.LogError(
+            "Stopping with {Paths} ({Reason}) not invalidated; they stay at the edge until their TTL runs out "
+            + "({CallerReference}).",
+            queued.Invalidation.Paths, queued.Invalidation.Reason, queued.CallerReference);
 }

@@ -10,7 +10,10 @@ public enum ReviewWithdrawal
     /// <summary>Rewritten and set to private in the same save.</summary>
     MadePrivate,
 
-    /// <summary>Rewritten and still public: the edge holds words its author has taken back.</summary>
+    /// <summary>
+    /// Still public, with different words or a spoiler warning added or taken off: the edge holds
+    /// what its author has taken back.
+    /// </summary>
     Edited,
 
     /// <summary>Deleted, on its own or with everything else recorded about the game.</summary>
@@ -42,6 +45,11 @@ public enum ReviewWithdrawal
 /// Each event is one <see cref="EdgeInvalidation"/>, and so one CloudFront request: the page, its
 /// <c>.data</c> URL and, for the three events that change who is listed, the profile sitemap files.
 /// See <c>docs/decisions/0058-a-withdrawal-leaves-the-edge-when-it-is-made.md</c>.
+/// </para>
+/// <para>
+/// <b>A class rather than an interface, on purpose.</b> This is where the guarantee that a
+/// withdrawal never fails its write lives, so it is not something to swap out; the seam for a test,
+/// and for the choice between CloudFront and a log, is <see cref="IEdgeInvalidator"/> underneath it.
 /// </para>
 /// </remarks>
 public sealed class ProfileWithdrawals(
@@ -80,8 +88,9 @@ public sealed class ProfileWithdrawals(
     /// than counting pages to name each one, and a path is a path on the bill whatever it matches.
     /// What it does not cover is the same name in other letter case: the lookup ignores case, so
     /// <c>/u/ALICE</c> renders this profile, but an invalidation path is case-sensitive. The site
-    /// links only to the name as its owner wrote it, so that copy exists only if somebody typed it,
-    /// and it keeps the old window. ADR 0058 records the trade.
+    /// links only to the name as its owner wrote it, and a change of case invalidates both
+    /// spellings, so such a copy comes from a link somebody typed or kept from before a change of
+    /// case, and it keeps the old window. ADR 0058 records the trade.
     /// </para>
     /// <para>
     /// Escaped although no name needs it — the alphabet is letters, digits and the underscore — so
@@ -96,7 +105,9 @@ public sealed class ProfileWithdrawals(
 
     /// <summary>
     /// A public profile moved to a different name: the old one, which is released for somebody else
-    /// to claim, and the new one, whose edge may hold a 404 from before it was taken.
+    /// to claim, and the new one, whose edge may hold a 404 from before it was taken. Also a change
+    /// of letter case only, which releases nothing but leaves the old spelling's copies where no
+    /// later withdrawal, naming the new one, would reach them.
     /// </summary>
     public void ProfileRenamed(string from, string to) =>
         Send("profile renamed", Profile(from), Profile(to), ProfileSitemaps);
@@ -106,7 +117,7 @@ public sealed class ProfileWithdrawals(
         Send("account deleted", Profile(userName), ProfileSitemaps);
 
     /// <summary>
-    /// A review that was public has been rewritten, made private or deleted. Invalidates the
+    /// A review that was public has been changed, made private or deleted. Invalidates the
     /// author's profile if that profile is public now; a private one serves nothing to withdraw.
     /// </summary>
     /// <remarks>

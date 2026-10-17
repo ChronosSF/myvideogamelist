@@ -27,8 +27,9 @@ public sealed record EdgeInvalidation(string Reason, IReadOnlyList<string> Paths
 /// guarantee belongs to the write and not to whichever class happens to be registered.
 /// </para>
 /// <para>
-/// One call is one invalidation request: the paths of one event travel together and are never
-/// split, and two events are never merged. See
+/// One call is at most one invalidation request: the paths of one event travel together and are
+/// never split, and an event whose paths are already waiting to be sent is covered by that request
+/// rather than given another. See
 /// <c>docs/decisions/0058-a-withdrawal-leaves-the-edge-when-it-is-made.md</c>.
 /// </para>
 /// </remarks>

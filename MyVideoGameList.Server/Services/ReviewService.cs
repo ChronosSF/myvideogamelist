@@ -22,10 +22,10 @@ namespace MyVideoGameList.Server.Services;
 /// here avoids one.
 /// </para>
 /// <para>
-/// <b>A rewrite or deletion of a public review is a withdrawal</b>, because the author's public
+/// <b>Changing or deleting a public review is a withdrawal</b>, because the author's public
 /// profile renders the text and the edge keeps a copy of that page. Each one tells
-/// <see cref="ProfileWithdrawals"/> after it commits; a review written for the first time, or
-/// one that was private until now, publishes rather than withdraws and tells it nothing
+/// <see cref="ProfileWithdrawals"/> after it commits. A review written for the first time, one that
+/// was private until now, and one saved again unchanged withdraw nothing and tell it nothing
 /// (ADR 0058).
 /// </para>
 /// </remarks>
@@ -65,7 +65,9 @@ public class ReviewService(
         if (existing is not null)
         {
             // Read before the fields change: what the edge can hold is what was public until now.
-            var wasPublic = existing.Visibility == ReviewVisibility.Public;
+            var published = existing.Visibility == ReviewVisibility.Public
+                ? (existing.Body, existing.HasSpoilers)
+                : ((string, bool)?)null;
 
             existing.Body = input.Body.Trim();
             existing.HasSpoilers = input.HasSpoilers;
@@ -75,14 +77,16 @@ public class ReviewService(
 
             await db.SaveChangesAsync(cancellationToken);
 
-            // Any rewrite of a public review, not only one whose words changed: it also moves to the
-            // top of the profile's newest-first list, so every page of it has changed.
-            if (wasPublic)
+            // Withdrawn when it was public and now says something else or nothing: different words,
+            // a spoiler warning added or taken off, or no longer public. Saved again unchanged it
+            // withdraws nothing — its move up the newest-first list is content, like a new score —
+            // and sends nothing, which also keeps a save button pressed in a loop off the bill.
+            if (published is { } before)
             {
-                await withdrawals.ReviewWithdrawnAsync(userId,
-                    existing.Visibility == ReviewVisibility.Public
-                        ? ReviewWithdrawal.Edited
-                        : ReviewWithdrawal.MadePrivate);
+                if (existing.Visibility != ReviewVisibility.Public)
+                    await withdrawals.ReviewWithdrawnAsync(userId, ReviewWithdrawal.MadePrivate);
+                else if (before != (existing.Body, existing.HasSpoilers))
+                    await withdrawals.ReviewWithdrawnAsync(userId, ReviewWithdrawal.Edited);
             }
 
             return ToDto(existing);

@@ -97,9 +97,16 @@ CloudFront section, and `Edge.cs` says it again beside each one. Three things ar
   renamed or deleted, or a review on it made private, edited or deleted. `App` passes it the
   distribution's id as `CloudFront__DistributionId` and lets the API task role create
   invalidations on that distribution and do nothing else to it. Because the task definition refers
-  to the distribution, a resume creates the API service only once the distribution exists. A
-  withdrawal that cannot be invalidated logs its paths, so a stuck one can be sent by hand with
-  `aws cloudfront create-invalidation --paths "<path>"`.
+  to the distribution, a resume creates the API service only once the distribution exists, and a
+  park deletes the API service before the distribution. At most `CloudFront__DistributionId`'s
+  sibling `CloudFront__DailyPathLimit` paths a day are sent (500 unless set), because every path
+  past the account's free thousand a month is paid for. A withdrawal that cannot be invalidated
+  logs its paths, so a stuck one can be sent by hand, each path quoted so the shell leaves its `*`
+  alone:
+
+  ```bash
+  aws cloudfront create-invalidation --profile mvgl-dev --distribution-id <DistributionId output> --paths "/u/<name>*" "/sitemaps/profiles-*"
+  ```
 
 ## Parking and resuming
 
