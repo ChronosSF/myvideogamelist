@@ -171,6 +171,16 @@ describe('GamePage trailer', () => {
         expect(screen.queryByTitle('Hades trailer')).not.toBeInTheDocument();
         expect(screen.getByRole('button', { name: /Play trailer/ })).toBeInTheDocument();
     });
+
+    it('says that the trailer and the official site open in a new tab', () => {
+        // A trailer YouTube cannot embed is a link out, as the official site is.
+        const celeste = game({ id: 1, title: 'Celeste', trailerUrl: 'https://vimeo.com/celeste', website: 'https://www.celestegame.com' });
+        const Stub = createRoutesStub([{ id: 'game', path: '/games/:id', Component: GamePage }]);
+        render(<Stub initialEntries={['/games/1']} hydrationData={{ loaderData: { game: { game: celeste } } }} />);
+
+        expect(screen.getByRole('link', { name: 'Watch Trailer (opens in a new tab)' })).toHaveAttribute('target', '_blank');
+        expect(screen.getByRole('link', { name: 'Official Site (opens in a new tab)' })).toHaveAttribute('target', '_blank');
+    });
 });
 
 describe('GamePage meta', () => {

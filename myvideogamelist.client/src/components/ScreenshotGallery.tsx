@@ -38,7 +38,8 @@ export function ScreenshotGallery({ screenshots, gameTitle }: ScreenshotGalleryP
                             alt={`${gameTitle} screenshot ${index + 1} of ${screenshots.length}`}
                             loading="lazy"
                             className="w-full aspect-video object-cover group-hover:scale-[1.03] transition-transform duration-300"
-                        />
+                        />{' '}
+                        <span className="sr-only">(opens in a new tab)</span>
                     </a>
                 </li>
             ))}

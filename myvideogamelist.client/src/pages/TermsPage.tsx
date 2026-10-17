@@ -158,6 +158,9 @@ export default function TermsPage() {
                         Ask us on{' '}
                         <a href={DISCORD_INVITE_URL} target="_blank" rel="noopener noreferrer" className={LINK}>
                             our Discord server
+                            {/* The space inside the hidden text: before it, it would be an
+                                underlined gap ahead of the full stop. */}
+                            <span className="sr-only"> (opens in a new tab)</span>
                         </a>.
                     </p>
                 </div>
