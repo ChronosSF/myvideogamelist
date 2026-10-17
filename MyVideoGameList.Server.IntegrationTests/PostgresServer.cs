@@ -24,7 +24,8 @@ internal static class PostgresServer
 {
     /// <summary>
     /// The image <c>compose.yaml</c> runs, so the tests see the engine a developer's
-    /// <c>dotnet run</c> does. Change the two together.
+    /// <c>dotnet run</c> does. The browser smoke test's service container in <c>ci.yml</c> runs it
+    /// too, so change the three together.
     /// </summary>
     private const string Image = "postgres:18-alpine";
 

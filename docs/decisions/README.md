@@ -22,7 +22,7 @@ grow a forward pointer when a later record or an issue closes something it left 
 |---|---|---|
 | [0001](0001-igdb-as-source-of-truth.md) | IGDB is the source of truth for game data | Implemented; the cache it called for is 0035 |
 | [0002](0002-server-side-rendering.md) | Server-side rendering via React Router framework mode | Implemented |
-| [0003](0003-two-process-deployment.md) | Two processes; the SSR server does not proxy `/api` | Implemented |
+| [0003](0003-two-process-deployment.md) | Two processes; the SSR server does not proxy `/api` | Implemented; the built app is run end to end, behind a stand-in for what routes between the two, by the browser smoke test, 0060 |
 | [0004](0004-release-dates-for-calendar.md) | Upcoming releases are built on `release_dates` | Implemented; its endpoint retired by #165, its reasoning carried by `/api/user/releases` |
 | [0005](0005-secrets-handling.md) | Secrets come from user secrets and environment variables | Implemented |
 | [0006](0006-codeql-buildless.md) | CodeQL runs buildless (`build-mode: none`) | Implemented |
@@ -70,7 +70,8 @@ grow a forward pointer when a later record or an issue closes something it left 
 | [0048](0048-one-theme-dark.md) | One theme, dark, and palettes are variations of it | Implemented; the palettes are #208 |
 | [0049](0049-every-colour-is-a-token.md) | Every colour is a token, named for its job, in one file | Implemented |
 | [0050](0050-an-imported-run-takes-its-type-from-the-source.md) | An imported run takes its type from the source's completion level | Implemented |
-| [0057](0057-the-api-is-tested-over-a-real-postgresql.md) | The API is tested over a real PostgreSQL: one container a run, a database a class, and IGDB out of reach | Implemented; the export-snapshot test went in skipped, waiting for #263 |
+| [0057](0057-the-api-is-tested-over-a-real-postgresql.md) | The API is tested over a real PostgreSQL: one container a run, a database a class, and IGDB out of reach | Implemented; the export-snapshot test went in skipped, waiting for #263; the front end it left to #105 is 0060 |
+| [0060](0060-one-browser-test-over-the-production-shape.md) | One browser test over the production shape: two processes, a stand-in for what routes between them, and IGDB answered over HTTP | Implemented |
 
 **Status** — *Accepted*: decided, not yet built. *Implemented*: decided and in the code.
 *Superseded*: replaced by a later record.

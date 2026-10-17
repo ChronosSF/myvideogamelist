@@ -17,5 +17,5 @@
     "noUncheckedSideEffectImports": true,
     "types": ["node"]
   },
-  "include": ["vite.config.ts", "visual"]
+  "include": ["vite.config.ts", "visual", "e2e"]
 }
