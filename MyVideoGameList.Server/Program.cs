@@ -74,6 +74,7 @@ builder.Services.AddScoped<IFavouriteService, FavouriteService>();
 builder.Services.AddScoped<IListNameService, ListNameService>();
 builder.Services.AddScoped<IPlaythroughService, PlaythroughService>();
 builder.Services.AddScoped<IReviewService, ReviewService>();
+builder.Services.AddScoped<ITagService, TagService>();
 builder.Services.AddScoped<IStatsService, StatsService>();
 builder.Services.AddScoped<IPublicProfileService, PublicProfileService>();
 builder.Services.AddScoped<IGameCommunityService, GameCommunityService>();

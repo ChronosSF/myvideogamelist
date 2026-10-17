@@ -59,6 +59,44 @@ Content-Type: application/json
 # Leaves the entry, the score and the playthroughs alone.
 DELETE {{MyVideoGameList.Server_HostAddress}}/api/entries/1942/review
 
+### The signed-in user's tags, with how many games carry each
+# Needs the Identity cookie. Tags are the owner's alone: nothing public reads them (ADR 0065).
+GET {{MyVideoGameList.Server_HostAddress}}/api/tags
+Accept: application/json
+
+### Make a tag
+# 201 with a new tag, or 200 with the one you already have under that name in any letter case.
+POST {{MyVideoGameList.Server_HostAddress}}/api/tags
+Content-Type: application/json
+X-MVGL-Request: 1
+
+{
+  "name": "Couch co-op"
+}
+
+### Put exactly these tags on a game
+# The whole set: an empty list takes every tag off. Ids that are not your tags are a 400.
+PUT {{MyVideoGameList.Server_HostAddress}}/api/entries/1942/tags
+Content-Type: application/json
+X-MVGL-Request: 1
+
+{
+  "tagIds": [1]
+}
+
+### Rename a tag — every game keeps it
+PUT {{MyVideoGameList.Server_HostAddress}}/api/tags/1
+Content-Type: application/json
+X-MVGL-Request: 1
+
+{
+  "name": "Co-op"
+}
+
+### Delete a tag, taking it off every game
+DELETE {{MyVideoGameList.Server_HostAddress}}/api/tags/1
+X-MVGL-Request: 1
+
 ### How long MVGL members say a game takes
 # Public: an aggregate over everybody that names nobody. Always 200 and always three tiers,
 # each with the number of playthroughs behind it (ADR 0016).

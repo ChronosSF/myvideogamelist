@@ -594,6 +594,100 @@ public class UserDataExporterTests
         Assert.Equal(["First", "Second", "Third"], export.Reviews.Select(r => r.Body));
     }
 
+    // ---------------------------------------------------------------- tags (ADR 0065)
+
+    private static int AddTag(
+        ApplicationDbContext db, string name, DateTimeOffset? createdAt = null, string userId = UserId)
+    {
+        var tag = new Tag
+        {
+            UserId = userId,
+            Name = name,
+            NormalizedName = TagNamePolicy.Key(name),
+            CreatedAt = createdAt ?? Now
+        };
+        db.Tags.Add(tag);
+        db.SaveChanges();
+        return tag.Id;
+    }
+
+    /// <summary>One tag on the user's entry for a game, creating that entry if it is not there.</summary>
+    private static void TagGame(
+        ApplicationDbContext db, int gameId, int tagId, DateTimeOffset? at = null, string userId = UserId)
+    {
+        var entry = db.UserGameEntries.FirstOrDefault(e => e.UserId == userId && e.GameId == gameId);
+        if (entry is null)
+        {
+            AddEntry(db, gameId, status: null, userId: userId);
+            entry = db.UserGameEntries.Single(e => e.UserId == userId && e.GameId == gameId);
+        }
+
+        db.UserGameEntryTags.Add(new UserGameEntryTag
+        {
+            UserId = userId,
+            Entry = entry,
+            TagId = tagId,
+            AddedAt = at ?? Now
+        });
+        db.SaveChanges();
+    }
+
+    [Fact]
+    public async Task ExportAsync_Tags_NameTheirGamesByNameRatherThanById()
+    {
+        // The tag's id is a surrogate of this database, as the entry's is; the name is unique per account,
+        // so it is the key anything reading the document can join on (ADR 0024 §4).
+        using var db = NewDb();
+        AddAccount(db, UserId, "mine@test.local");
+        var coop = AddTag(db, "Co-op", createdAt: Now.AddDays(-20));
+        var brief = AddTag(db, "short", createdAt: Now.AddDays(-10));
+        AddTag(db, "someday", createdAt: Now.AddDays(-5));
+
+        TagGame(db, gameId: 11, coop, at: Now.AddDays(-2));
+        TagGame(db, gameId: 11, brief, at: Now.AddDays(-2));
+        TagGame(db, gameId: 12, coop, at: Now.AddDays(-1));
+
+        var export = await NewExporter(db).ExportAsync(UserId, default);
+
+        // Every tag, including one no game carries: it is still theirs. Oldest first.
+        Assert.Equal(
+            [("Co-op", Now.AddDays(-20)), ("short", Now.AddDays(-10)), ("someday", Now.AddDays(-5))],
+            export.Tags.Select(t => (t.Name, t.CreatedAt)));
+
+        // Oldest first, then by game, then by the tag's name, so the order is total.
+        Assert.Equal(
+            [(11, "Co-op", Now.AddDays(-2)), (11, "short", Now.AddDays(-2)), (12, "Co-op", Now.AddDays(-1))],
+            export.EntryTags.Select(l => (l.GameId, l.Tag, l.AddedAt)));
+    }
+
+    [Fact]
+    public async Task ExportAsync_AnotherUsersTags_AreNeverIncluded()
+    {
+        using var db = NewDb();
+        AddAccount(db, UserId, "mine@test.local", userName: "mine");
+        AddAccount(db, OtherUserId, "theirs@test.local", userName: "theirs");
+
+        TagGame(db, gameId: 11, AddTag(db, "mine"));
+        TagGame(db, gameId: 11, AddTag(db, "theirs", userId: OtherUserId), userId: OtherUserId);
+
+        var export = await NewExporter(db).ExportAsync(UserId, default);
+
+        Assert.Equal(["mine"], export.Tags.Select(t => t.Name));
+        Assert.Equal(["mine"], export.EntryTags.Select(l => l.Tag));
+    }
+
+    [Fact]
+    public async Task ExportAsync_UserWithNoTags_ExportsBothSectionsEmpty()
+    {
+        using var db = NewDb();
+        AddAccount(db, UserId, "new@test.local");
+
+        var export = await NewExporter(db).ExportAsync(UserId, default);
+
+        Assert.Empty(export.Tags);
+        Assert.Empty(export.EntryTags);
+    }
+
     [Fact]
     public async Task ExportAsync_NoAccountRow_Throws()
     {

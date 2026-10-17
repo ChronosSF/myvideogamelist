@@ -44,6 +44,13 @@ export interface ListsContextValue {
     /** Replaces the user's private notes on the game. The same lock and the same contract. */
     setNotes: (gameId: number, notes: string | null) => Promise<boolean>;
     /**
+     * Makes this exactly the set of the user's tags the game carries — the whole set, in one request.
+     * Under the per-game lock, and shown at once on the game's row wherever it sits, put back if the
+     * save fails; false then, and while another write to the game is out, so a caller holding its own
+     * copy reverts. See `docs/decisions/0065-*`.
+     */
+    setTags: (gameId: number, tagIds: number[]) => Promise<boolean>;
+    /**
      * Deletes everything recorded about a game. The only call that discards a score. False when
      * nothing was deleted — the request failed, or another write to the game was still out — so a
      * caller showing its own copy of the entry knows to keep showing it.

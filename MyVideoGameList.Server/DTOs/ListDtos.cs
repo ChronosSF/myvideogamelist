@@ -57,11 +57,18 @@ public record SetNotesDto([MaxLength(2000)] string? Notes);
 /// carry. <see cref="StatusChangedAt"/> is null for an entry that has never been in a list, and
 /// <see cref="Score"/> is independent of list membership entirely.
 /// </remarks>
+/// <param name="TagIds">
+/// The owner's tags on the game, by id, in id order; empty when it carries none. Ids rather than names
+/// so that a rename changes one row of <c>/api/tags</c> and no row here — the client resolves them
+/// through that read (ADR 0065). Private like the rest of the row: only the owner's own reads carry a
+/// <see cref="ListEntryDto"/>, and <c>TagPrivacyTests</c> fails if a public one ever does.
+/// </param>
 public record ListEntryDto(
     GameDto Game,
     short? Score,
     DateTimeOffset AddedAt,
-    DateTimeOffset? StatusChangedAt);
+    DateTimeOffset? StatusChangedAt,
+    IReadOnlyList<int> TagIds);
 
 /// <summary>
 /// One entry read on its own: its list-shaped fields, and the two a list row leaves out.
@@ -73,8 +80,8 @@ public record ListEntryDto(
 public record EntryDto(ListEntryDto Entry, string? Ownership, string? Notes);
 
 /// <summary>
-/// Everything one user has recorded about one game: the entry itself, how they have it, their
-/// notes, every playthrough of it, and their review.
+/// Everything one user has recorded about one game: the entry itself — its tags among its fields —
+/// how they have it, their notes, every playthrough of it, and their review.
 /// </summary>
 /// <remarks>
 /// <para>

@@ -1,14 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { ListsPage } from '@/pages/ListsPage';
 import type { AuthContextValue } from '@/contexts/AuthContext';
 import type { ListsContextValue } from '@/contexts/ListsContext';
+import type { TagsContextValue } from '@/contexts/TagsContext';
 import type { WishlistContextValue } from '@/contexts/WishlistContext';
 import { DEFAULT_SORT } from '@/lib/listSort';
 import type { UserProfile } from '@/types/auth';
 import { emptyLists, LIST_NAMES, type ListId } from '@/types/list';
-import { entry, userProfile } from '@/test/factories';
+import { entry, tag, userProfile } from '@/test/factories';
 
 /**
  * Auth and the lists, mocked rather than provided: both real providers fetch, and the page only
@@ -45,6 +47,7 @@ const lists: ListsContextValue = {
     setScore: vi.fn(async () => true),
     setOwnership: vi.fn(async () => true),
     setNotes: vi.fn(async () => true),
+    setTags: vi.fn(async () => true),
     deleteEntry: vi.fn(async () => true),
     view: 'tiles',
     setView: vi.fn(),
@@ -68,9 +71,23 @@ const wishlist: WishlistContextValue = {
     reload: vi.fn(),
 };
 
+/** The account's tags, which the chips and the tag filter resolve a row's ids through. */
+const tags: TagsContextValue = {
+    tags: [],
+    status: 'ready',
+    reload: vi.fn(),
+    tagFor: () => undefined,
+    byId: new Map(),
+    createTag: vi.fn(async () => ({ ok: false as const, error: 'unused' })),
+    renameTag: vi.fn(async () => ({ ok: false as const, error: 'unused' })),
+    deleteTag: vi.fn(async () => true),
+    adjustCounts: vi.fn(),
+};
+
 vi.mock('@/hooks/useAuth', () => ({ useAuth: () => auth }));
 vi.mock('@/hooks/useLists', () => ({ useLists: () => lists }));
 vi.mock('@/hooks/useWishlist', () => ({ useWishlist: () => wishlist }));
+vi.mock('@/hooks/useTags', () => ({ useTags: () => tags }));
 
 /** `/api/auth/me` has come back, with an account or with nobody. */
 function authAnswered(user: UserProfile | null) {
@@ -90,7 +107,10 @@ beforeEach(() => {
     lists.lists = emptyLists();
     lists.loading = false;
     lists.error = null;
+    lists.view = 'tiles';
     lists.nameFor = (id: ListId) => LIST_NAMES[id];
+    tags.tags = [];
+    tags.byId = new Map();
 });
 
 describe('ListsPage before auth has answered', () => {
@@ -177,5 +197,84 @@ describe('ListsPage and renamed lists', () => {
         expect(screen.getByRole('tab', { name: /Beaten/ })).toBeInTheDocument();
         expect(screen.queryByRole('tab', { name: /Finished/ })).not.toBeInTheDocument();
         expect(screen.getByRole('tab', { name: /Playing/ })).toBeInTheDocument();
+    });
+});
+
+describe('ListsPage and tags', () => {
+    const COOP = tag({ id: 1, name: 'Co-op', count: 2 });
+    const SHORT = tag({ id: 2, name: 'short', count: 2 });
+    const UNUSED = tag({ id: 3, name: 'someday', count: 0 });
+
+    const HADES = entry({ game: { id: 7, title: 'Hades' }, tagIds: [1, 2] });
+    const CELESTE = entry({ game: { id: 8, title: 'Celeste' }, tagIds: [2] });
+    const INSIDE = entry({ game: { id: 9, title: 'Inside' } });
+    const PORTAL = entry({ game: { id: 10, title: 'Portal 2' }, tagIds: [1] });
+
+    function withTags(list: TagsContextValue['tags']) {
+        tags.tags = list;
+        tags.byId = new Map(list.map(t => [t.id, t]));
+    }
+
+    beforeEach(() => {
+        authAnswered(userProfile());
+        withTags([COOP, SHORT, UNUSED]);
+        lists.view = 'tiles';
+        lists.lists = { ...emptyLists(), playing: [HADES, CELESTE, INSIDE], finished: [PORTAL] };
+    });
+
+    const titles = () => screen.getAllByRole('heading', { level: 3 }).map(h => h.textContent);
+
+    it('draws each game’s tags on its tile, in name order', () => {
+        renderPage();
+
+        const hades = screen.getByRole('heading', { name: 'Hades' }).closest('article')!;
+        const list = within(hades).getByRole('list', { name: 'Your tags' });
+        expect(within(list).getAllByRole('listitem').map(item => item.textContent)).toEqual(['Co-op', 'short']);
+    });
+
+    it('draws them under the title in the table', () => {
+        lists.view = 'table';
+        renderPage();
+
+        const row = screen.getByRole('link', { name: 'Hades' }).closest('tr')!;
+        expect(within(row).getByRole('list', { name: 'Your tags' })).toHaveTextContent('Co-opshort');
+    });
+
+    it('offers the tags some game in the lists carries, and narrows to the games carrying every one ticked', async () => {
+        renderPage();
+
+        await userEvent.click(screen.getByRole('button', { name: 'Filter by tag' }));
+        const group = screen.getByRole('group', { name: 'Filter by tag' });
+        expect(within(group).getAllByRole('checkbox').map(box => box.getAttribute('aria-label')))
+            .toEqual(['Co-op, 1 game in this list', 'short, 2 games in this list']);
+
+        await userEvent.click(within(group).getByRole('checkbox', { name: /^short/ }));
+        expect(titles()).toEqual(['Celeste', 'Hades']);
+
+        await userEvent.click(within(group).getByRole('checkbox', { name: /^Co-op/ }));
+        expect(titles()).toEqual(['Hades']);
+    });
+
+    it('says the filters left nothing in this list, and clears both at once', async () => {
+        renderPage();
+        await userEvent.click(screen.getByRole('button', { name: 'Filter by tag' }));
+        await userEvent.click(screen.getByRole('checkbox', { name: /^Co-op/ }));
+        await userEvent.click(screen.getByRole('checkbox', { name: /^short/ }));
+        await userEvent.keyboard('{Escape}');
+
+        await userEvent.click(screen.getByRole('tab', { name: /Finished/ }));
+
+        expect(screen.getByText('No games in Finished match the filters.')).toBeInTheDocument();
+        await userEvent.click(screen.getByRole('button', { name: 'Clear the filters' }));
+
+        expect(titles()).toEqual(['Portal 2']);
+        expect(screen.getByRole('button', { name: 'Filter by tag' })).toBeInTheDocument();
+    });
+
+    it('offers no tag filter when no game carries a tag', () => {
+        lists.lists = { ...emptyLists(), playing: [INSIDE] };
+        renderPage();
+
+        expect(screen.queryByRole('button', { name: 'Filter by tag' })).not.toBeInTheDocument();
     });
 });

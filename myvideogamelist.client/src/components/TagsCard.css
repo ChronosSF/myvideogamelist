@@ -1,0 +1,127 @@
+/* The card itself is the settings page's `.user-card`; these are its rows. */
+
+.tags-card-list {
+    display: flex;
+    flex-direction: column;
+    margin: 0.875rem 0 0;
+    padding: 0;
+    list-style: none;
+    /* A long vocabulary scrolls inside the card rather than pushing the rest of the sidebar away. */
+    max-height: 24rem;
+    overflow-y: auto;
+}
+
+.tags-card-row {
+    padding: 0.5rem 0;
+    border-top: 1px solid var(--color-line);
+}
+
+.tags-card-row:first-child {
+    border-top: 0;
+}
+
+.tags-card-line {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-width: 0;
+}
+
+.tags-card-name {
+    min-width: 0;
+    overflow: hidden;
+    padding: 0.05rem 0.5rem;
+    font-size: 0.8125rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--color-tag-300);
+    background: color-mix(in srgb, var(--color-tag-900) 45%, transparent);
+    border: 1px solid color-mix(in srgb, var(--color-tag-800) 70%, transparent);
+    border-radius: 9999px;
+}
+
+.tags-card-count {
+    flex-shrink: 0;
+    margin-right: auto;
+    font-size: 0.75rem;
+    color: var(--color-fg-muted);
+}
+
+.tags-card-action,
+.tags-card-cancel,
+.tags-card-retry {
+    flex-shrink: 0;
+    padding: 0.125rem 0.25rem;
+    font: inherit;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--color-primary-400);
+    background: none;
+    border: 0;
+    border-radius: 0.25rem;
+    cursor: pointer;
+}
+
+.tags-card-cancel {
+    font-weight: 500;
+    color: var(--color-fg-muted);
+}
+
+.tags-card-action:hover,
+.tags-card-retry:hover {
+    text-decoration: underline;
+    text-underline-offset: 3px;
+}
+
+.tags-card-cancel:hover:not(:disabled) {
+    color: var(--color-fg);
+}
+
+.tags-card-action-danger {
+    color: var(--color-danger-300);
+}
+
+.tags-card-action:focus-visible,
+.tags-card-cancel:focus-visible,
+.tags-card-retry:focus-visible,
+.user-card-label[tabindex='-1']:focus-visible {
+    outline: 2px solid var(--color-focus);
+    outline-offset: 2px;
+}
+
+.tags-card-form,
+.tags-card-confirm {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.tags-card-input {
+    width: 100%;
+    padding: 0.375rem 0.625rem;
+    font-size: 0.875rem;
+    color: var(--color-fg);
+    background: var(--color-page);
+    border: 1px solid var(--color-line-strong);
+    border-radius: 0.5rem;
+    outline: none;
+}
+
+.tags-card-input:focus {
+    border-color: var(--color-focus);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-focus) 20%, transparent);
+}
+
+.tags-card-input[aria-invalid='true'] {
+    border-color: var(--color-danger-400);
+}
+
+.tags-card-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.tags-card-confirm .user-card-hint {
+    margin: 0;
+}

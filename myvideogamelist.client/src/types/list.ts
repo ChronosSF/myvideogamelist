@@ -21,6 +21,11 @@ export interface ListEntryDto {
     score: number | null;
     addedAt: string;
     statusChangedAt: string | null;
+    /**
+     * The user's tags on the game, by id; empty when it carries none. The names come from the
+     * account's tags (`useTags`), so a rename changes nothing here — see `docs/decisions/0065-*`.
+     */
+    tagIds: number[];
 }
 
 /**

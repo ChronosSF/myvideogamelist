@@ -111,6 +111,7 @@ type ListsAction =
     | { type: 'PLACE_ENTRY'; session: string | null; listId: ListId; entry: ListEntryDto }
     | { type: 'DROP_ENTRY'; session: string | null; gameId: number }
     | { type: 'SET_ENTRY_SCORE'; session: string | null; gameId: number; score: number | null }
+    | { type: 'SET_ENTRY_TAGS'; session: string | null; gameId: number; tagIds: number[] }
     | { type: 'SET_VIEW'; view: ViewMode }
     | { type: 'SET_SORT'; listId: ListId; sort: SortState }
     | { type: 'MUTATION_ERROR'; session: string | null; error: string }
@@ -216,6 +217,17 @@ function reducer(state: ListsState, action: ListsAction): ListsState {
                     if (!lists[id].some(e => e.game.id === action.gameId)) continue;
                     lists[id] = lists[id].map(e =>
                         e.game.id === action.gameId ? { ...e, score: action.score } : e);
+                }
+                return { ...state, lists };
+            });
+        // The score's shape exactly: one game's field, wherever it sits, and nothing else touched.
+        case 'SET_ENTRY_TAGS':
+            return ifCurrent(state, action.session, () => {
+                const lists = { ...state.lists };
+                for (const id of LIST_IDS) {
+                    if (!lists[id].some(e => e.game.id === action.gameId)) continue;
+                    lists[id] = lists[id].map(e =>
+                        e.game.id === action.gameId ? { ...e, tagIds: action.tagIds } : e);
                 }
                 return { ...state, lists };
             });
@@ -521,7 +533,7 @@ export function ListsProvider({ children }: { children: ReactNode }) {
         // A move carries the existing entry across so the score does not blink out and back.
         const moved: ListEntryDto = origin
             ? { ...origin.entry, statusChangedAt: new Date().toISOString() }
-            : { game, score: null, addedAt: new Date().toISOString(), statusChangedAt: new Date().toISOString() };
+            : { game, score: null, addedAt: new Date().toISOString(), statusChangedAt: new Date().toISOString(), tagIds: [] };
 
         // Appended rather than placed: a game just moved to a list is the most recent thing in it.
         dispatch({ type: 'PLACE_ENTRY', session, listId, entry: moved });
@@ -648,6 +660,48 @@ export function ListsProvider({ children }: { children: ReactNode }) {
     const setNotes = (gameId: number, notes: string | null): Promise<boolean> =>
         writeEntryField(gameId, 'notes', { notes }, 'Failed to save your notes. Please try again.');
 
+    /**
+     * Replaces the game's tags, shown at once on its row and put back if the save fails.
+     *
+     * Under the per-game lock like every write to the entry. It matters more here than for a field no
+     * list shows: the tags are on the row, so a move of the same game rolling back would put its row
+     * back as it was captured — with the tags it had before this write — over a save that succeeded.
+     * The undo touches this game's tags and nothing else, from the value captured under that lock.
+     */
+    const setTags = async (gameId: number, tagIds: number[]): Promise<boolean> => {
+        if (state.pending.has(gameId)) return false;
+        startPending(gameId);
+
+        // The game may be in no list, in which case there is no row to update and the request is the
+        // whole of it — the caller holds its own copy.
+        const previous = locate(state.lists, gameId)?.entry.tagIds ?? null;
+        dispatch({ type: 'SET_ENTRY_TAGS', session, gameId, tagIds });
+
+        const undo = () => {
+            if (previous !== null) dispatch({ type: 'SET_ENTRY_TAGS', session, gameId, tagIds: previous });
+        };
+
+        try {
+            const res = await apiFetch(`/api/entries/${gameId}/tags`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ tagIds }),
+            });
+
+            if (!res.ok) {
+                rollBack(undo, 'Failed to save your tags. Please try again.');
+                return false;
+            }
+            dispatch({ type: 'CLEAR_MUTATION_ERROR', session });
+            return true;
+        } catch {
+            rollBack(undo, 'Failed to save your tags. Please try again.');
+            return false;
+        } finally {
+            endPending(gameId);
+        }
+    };
+
     const deleteEntry = async (gameId: number): Promise<boolean> => {
         if (state.pending.has(gameId)) return false;
         startPending(gameId);
@@ -704,6 +758,7 @@ export function ListsProvider({ children }: { children: ReactNode }) {
             setScore,
             setOwnership,
             setNotes,
+            setTags,
             deleteEntry,
             view: state.view,
             setView,
