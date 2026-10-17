@@ -33,13 +33,55 @@ function renderFilters(
 
 describe('GameBrowseFilters', () => {
     it('shows what the URL chose', () => {
-        renderFilters({ sort: 'popular', platform: 130, genre: 12, year: 2025, minScore: 80 });
+        renderFilters({ sort: 'popular', platform: 130, genre: 12, year: 2025, minScore: 80, esrb: 'm' });
 
         expect(screen.getByLabelText('Order')).toHaveValue('popular');
         expect(screen.getByLabelText('Platform')).toHaveValue('130');
         expect(screen.getByLabelText('Genre')).toHaveValue('12');
         expect(screen.getByLabelText('Released')).toHaveValue('2025');
         expect(screen.getByLabelText('Critic score')).toHaveValue('80');
+        expect(screen.getByLabelText('ESRB rating')).toHaveValue('m');
+    });
+
+    it('offers every rating the ESRB gives, youngest audience first, by its name', () => {
+        renderFilters();
+
+        const ratings = within(screen.getByLabelText('ESRB rating')).getAllByRole('option').map(o => o.textContent);
+        expect(ratings).toEqual([
+            'Any rating', 'Early Childhood', 'Everyone', 'Everyone 10+', 'Teen', 'Mature 17+', 'Adults Only 18+',
+        ]);
+    });
+
+    it('reports a rating as its key, and "any" as null', async () => {
+        const actor = userEvent.setup();
+        const { onChange } = renderFilters({ esrb: 't' });
+
+        await actor.selectOptions(screen.getByLabelText('ESRB rating'), 'Mature 17+');
+        await actor.selectOptions(screen.getByLabelText('ESRB rating'), 'Any rating');
+
+        expect(onChange).toHaveBeenCalledWith({ esrb: 'm' });
+        expect(onChange).toHaveBeenCalledWith({ esrb: null });
+    });
+
+    it('says that games without an ESRB rating are left out, once a rating is chosen', () => {
+        renderFilters({ esrb: 'e10' });
+
+        expect(screen.getByLabelText('ESRB rating')).toHaveAccessibleDescription(/no ESRB rating .* left out/i);
+    });
+
+    it('says nothing about ESRB ratings while none is chosen, when nothing is left out for it', () => {
+        renderFilters();
+
+        expect(screen.getByLabelText('ESRB rating')).not.toHaveAccessibleDescription();
+        expect(screen.queryByText(/no ESRB rating/i)).not.toBeInTheDocument();
+    });
+
+    it('keeps the rating with the other filters while searching', () => {
+        // The filters apply to a search; only the order does not.
+        renderFilters({ search: 'zelda', esrb: 'm' });
+
+        expect(screen.getByLabelText('ESRB rating')).toBeEnabled();
+        expect(screen.getByLabelText('ESRB rating')).toHaveValue('m');
     });
 
     it('reports a change of order', async () => {
@@ -136,6 +178,12 @@ describe('GameBrowseFilters', () => {
         const { onClear } = renderFilters({ year: 2024 });
         await actor.click(screen.getByRole('button', { name: 'Clear filters' }));
         expect(onClear).toHaveBeenCalled();
+    });
+
+    it('counts an ESRB rating as a filter to clear', () => {
+        renderFilters({ esrb: 'ao' });
+
+        expect(screen.getByRole('button', { name: 'Clear filters' })).toBeInTheDocument();
     });
 
     it('does not offer to clear an order, which is not a filter', () => {

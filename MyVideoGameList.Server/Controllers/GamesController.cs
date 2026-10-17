@@ -47,12 +47,23 @@ public class GamesController(
             GameSortKeys.Name)] string? sort = null,
         [FromQuery][Range(1, int.MaxValue)] int? platform = null,
         [FromQuery][Range(1, int.MaxValue)] int? genre = null,
+        // The one filter that is not an integer: a key, as the order is, since it is in URLs people
+        // share and IGDB has renumbered its age ratings once already. The query builder interpolates
+        // the IGDB id it holds for the key, never the key itself.
+        [FromQuery][AllowedValues(
+            null,
+            EsrbRatingKeys.EC,
+            EsrbRatingKeys.E,
+            EsrbRatingKeys.E10,
+            EsrbRatingKeys.T,
+            EsrbRatingKeys.M,
+            EsrbRatingKeys.AO)] string? esrb = null,
         // First releases before 1950 are not what anybody browses by year for, and the range keeps
         // the year arithmetic in the query builder well inside DateTimeOffset.
         [FromQuery][Range(1950, 2100)] int? year = null,
         [FromQuery][Range(1, 100)] int? minScore = null)
     {
-        var browse = new GameBrowseQuery(sort ?? GameSortKeys.Rating, platform, genre, year, minScore);
+        var browse = new GameBrowseQuery(sort ?? GameSortKeys.Rating, platform, genre, year, minScore, esrb);
         var result = await igdbService.GetGamesAsync(offset, PageSize, search, browse, cancellationToken);
         return Ok(result);
     }

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
     EMPTY_BROWSE,
+    ESRB_RATINGS,
     browseFrom,
     browseParams,
     gamesApiPath,
@@ -12,8 +13,19 @@ const params = (query: string) => new URLSearchParams(query);
 
 describe('browseFrom', () => {
     it('reads every part of a browse from the query string', () => {
-        expect(browseFrom(params('search=%20zelda%20&sort=newest&platform=130&genre=12&year=2024&minScore=80')))
-            .toEqual({ search: 'zelda', sort: 'newest', platform: 130, genre: 12, year: 2024, minScore: 80 });
+        expect(browseFrom(params('search=%20zelda%20&sort=newest&platform=130&genre=12&year=2024&minScore=80&esrb=m')))
+            .toEqual({ search: 'zelda', sort: 'newest', platform: 130, genre: 12, year: 2024, minScore: 80, esrb: 'm' });
+    });
+
+    it('reads every ESRB rating the filter offers', () => {
+        for (const { key } of ESRB_RATINGS) expect(browseFrom(params(`esrb=${key}`)).esrb).toBe(key);
+    });
+
+    it('drops an ESRB rating the API would refuse', () => {
+        // Rating Pending is not offered, the badge's own codes are not keys, and nor is IGDB's id.
+        for (const esrb of ['rp', 'M', 'E10%2B', '6', 'bogus', '']) {
+            expect(browseFrom(params(`esrb=${esrb}`)).esrb).toBeNull();
+        }
     });
 
     it('is the plain catalogue for an empty query', () => {
@@ -48,9 +60,16 @@ describe('browseParams', () => {
     });
 
     it('round-trips through browseFrom', () => {
-        const browse = { search: 'hades', sort: 'popular' as const, platform: 6, genre: null, year: 2020, minScore: 90 };
+        const browse = {
+            search: 'hades', sort: 'popular' as const, platform: 6, genre: null, year: 2020, minScore: 90, esrb: 't' as const,
+        };
 
         expect(browseFrom(browseParams(browse))).toEqual(browse);
+    });
+
+    it('puts the ESRB rating in the URL as its key, after the other filters', () => {
+        expect(browseParams({ ...EMPTY_BROWSE, platform: 130, esrb: 'e10' }).toString()).toBe('platform=130&esrb=e10');
+        expect(browseParams({ ...EMPTY_BROWSE, esrb: null }).toString()).toBe('');
     });
 });
 
@@ -65,6 +84,7 @@ describe('isFiltered', () => {
     it('does not count the order or a search as a filter', () => {
         expect(isFiltered({ ...EMPTY_BROWSE, sort: 'newest', search: 'x' })).toBe(false);
         expect(isFiltered({ ...EMPTY_BROWSE, year: 2001 })).toBe(true);
+        expect(isFiltered({ ...EMPTY_BROWSE, esrb: 'ao' })).toBe(true);
     });
 });
 
