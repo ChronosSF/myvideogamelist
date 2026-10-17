@@ -2,6 +2,7 @@ import { Link } from 'react-router';
 import type { ListEntryDto } from '@/types/list';
 import { type SortKey, type SortState, SORT_OPTIONS, sortOption } from '@/lib/listSort';
 import { hasCriticScore, ratingPercent } from '@/lib/score';
+import { CoverImage } from '@/components/CoverImage';
 import { ScoreBadge } from '@/components/ScoreBadge';
 import { ScoreInput } from '@/components/ScoreInput';
 import './ListTable.css';
@@ -98,8 +99,9 @@ export function ListTable({
                             <tr key={game.id} className={pending ? 'pending' : undefined}>
                                 <td className="col-cover">
                                     <Link to={`/games/${game.id}`} tabIndex={-1} aria-hidden="true">
+                                        {/* `.col-cover img` draws it 2.25rem wide. */}
                                         {game.coverImageUrl ? (
-                                            <img src={game.coverImageUrl} alt="" loading="lazy" />
+                                            <CoverImage url={game.coverImageUrl} alt="" sizes="2.25rem" />
                                         ) : (
                                             <span className="list-table-nocover" />
                                         )}

@@ -5,6 +5,7 @@ import { MemoryRouter } from 'react-router';
 import { GameCard } from '@/components/GameCard';
 import { ListsContext, type ListsContextValue } from '@/contexts/ListsContext';
 import { WishlistContext, type WishlistContextValue } from '@/contexts/WishlistContext';
+import { GAME_GRID_COVER_SIZES } from '@/lib/gameGrid';
 import { DEFAULT_SORT } from '@/lib/listSort';
 import { game } from '@/test/factories';
 import { LIST_NAMES, type ListId } from '@/types/list';
@@ -184,6 +185,50 @@ describe('GameCard wishlist failure', () => {
         // The shared error belongs to whichever card was clicked last, which is why the card
         // reads its own result instead.
         expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    });
+});
+
+describe('GameCard cover', () => {
+    const COVERED = game({
+        id: 2,
+        title: 'Hades',
+        coverImageUrl: 'https://images.igdb.com/igdb/image/upload/t_cover_big/co39vc.jpg',
+    });
+
+    function renderCovered(eager?: boolean) {
+        render(
+            <MemoryRouter>
+                <ListsContext.Provider value={listsValue()}>
+                    <WishlistContext.Provider value={wishlistValue()}>
+                        <GameCard game={COVERED} eager={eager} />
+                    </WishlistContext.Provider>
+                </ListsContext.Provider>
+            </MemoryRouter>,
+        );
+        return screen.getByRole('img', { name: 'Hades cover' });
+    }
+
+    it("offers the smaller sizes, chosen by the width the grid's columns draw it at", () => {
+        const img = renderCovered();
+
+        expect(img.getAttribute('srcset')).toContain('/t_cover_small_2x/co39vc.jpg 180w');
+        expect(img).toHaveAttribute('sizes', `auto, ${GAME_GRID_COVER_SIZES}`);
+    });
+
+    it('waits until it is scrolled near, below the first row', () => {
+        const img = renderCovered();
+
+        expect(img).toHaveAttribute('loading', 'lazy');
+        expect(img).toHaveAttribute('decoding', 'async');
+    });
+
+    it('loads with the page in the first row, where it may be the largest first paint', () => {
+        const img = renderCovered(true);
+
+        expect(img).not.toHaveAttribute('loading', 'lazy');
+        expect(img).not.toHaveAttribute('decoding', 'async');
+        // Chosen before layout, so by the grid's own arithmetic alone.
+        expect(img).toHaveAttribute('sizes', GAME_GRID_COVER_SIZES);
     });
 });
 

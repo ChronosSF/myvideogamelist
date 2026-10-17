@@ -1,11 +1,20 @@
 import { Link } from 'react-router';
+import { CoverImage } from '@/components/CoverImage';
 import type { GameRefDto } from '@/types/game';
 
 interface GameRefRailProps {
     games: GameRefDto[];
     /** Names the scroll region for keyboard and screen-reader users. */
     label: string;
+    /**
+     * How many covers load with the page, for a rail at the top of one, as a profile's favourites are.
+     * None by default: on a game page the rails sit far below the fold.
+     */
+    eager?: number;
 }
+
+/** Each cover is drawn across its card, `w-28 sm:w-32`, less the one-pixel border on either side. */
+const COVER_SIZES = '(min-width: 40rem) calc(8rem - 2px), calc(7rem - 2px)';
 
 /**
  * A horizontally scrolling strip of related games — similar titles, DLC, expansions.
@@ -13,7 +22,7 @@ interface GameRefRailProps {
  * Deliberately not `TrendingRail`: that one takes a full `GameDto` and stamps a popularity rank
  * on each cover, neither of which applies to a related-games list.
  */
-export function GameRefRail({ games, label }: GameRefRailProps) {
+export function GameRefRail({ games, label, eager = 0 }: GameRefRailProps) {
     if (games.length === 0) return null;
 
     return (
@@ -24,7 +33,7 @@ export function GameRefRail({ games, label }: GameRefRailProps) {
             tabIndex={0}
             aria-label={label}
         >
-            {games.map(game => (
+            {games.map((game, index) => (
                 <li key={game.id} className="shrink-0 snap-start">
                     <Link
                         to={`/games/${game.id}`}
@@ -32,10 +41,11 @@ export function GameRefRail({ games, label }: GameRefRailProps) {
                     >
                         <div className="relative aspect-[3/4] rounded-xl overflow-hidden bg-surface border border-line group-hover:border-primary-500/60 transition-all duration-300 group-hover:-translate-y-1 shadow-lg">
                             {game.coverImageUrl ? (
-                                <img
-                                    src={game.coverImageUrl}
+                                <CoverImage
+                                    url={game.coverImageUrl}
                                     alt=""
-                                    loading="lazy"
+                                    sizes={COVER_SIZES}
+                                    eager={index < eager}
                                     className="w-full h-full object-cover"
                                 />
                             ) : (

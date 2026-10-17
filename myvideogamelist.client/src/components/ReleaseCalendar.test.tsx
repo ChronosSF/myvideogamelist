@@ -169,6 +169,26 @@ describe('ReleaseCalendar, a month', () => {
         expect(within(screen.getByRole('list', { name: 'Days in October' })).queryByRole('link')).not.toBeInTheDocument();
     });
 
+    it("fetches a day's cover for a seventh of the grid, and a band's for its column", () => {
+        // The two are drawn at different widths, so one `sizes` for both fetches one of them wrong.
+        const covered = (entry: ReleaseEntry): ReleaseEntry => ({
+            ...entry,
+            releases: entry.releases.map(release => ({
+                ...release,
+                coverImageUrl: `https://images.igdb.com/igdb/image/upload/t_cover_big/co${release.gameId}.jpg`,
+            })),
+        });
+        calendar.releases.data = [covered(LAUFEY), covered(SONGS_OF_THE_PAST)];
+        renderCalendar();
+
+        const dayCover = screen.getByRole('list', { name: 'Due on Friday, October 16' }).querySelector('img');
+        const bandCover = screen.getByRole('region', { name: 'Sometime in Q4 2026 · October to December' }).querySelector('img');
+        expect(dayCover?.getAttribute('sizes')).toContain('/ 7');
+        expect(bandCover?.getAttribute('sizes')).not.toContain('/ 7');
+        expect(dayCover).toHaveAttribute('srcset');
+        expect(bandCover).toHaveAttribute('srcset');
+    });
+
     it('reads out a sale once, with its dates, however many weeks it crosses', () => {
         calendar.events.data = AUTUMN_SALE;
         renderCalendar();

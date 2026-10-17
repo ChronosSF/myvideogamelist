@@ -118,6 +118,23 @@ that are easy to get wrong and were got wrong once (`docs/decisions/0022-*`):
 - Always handle loading and error states explicitly. Never leave a silent broken UI.
 - One component per file; filename matches the export.
 
+## Empty, failed and loading states, and covers
+
+Nothing new shows as a blank or a bare spinner (`docs/decisions/0070-*`):
+
+- **Something empty is an `EmptyState`** saying what is missing and what would put something there. On
+  a page other people read, such as a public profile, it says what will fill it and never asks the
+  reader to do anything.
+- **A failure is an `ErrorState`** with "Try again" wherever retrying could help. A retry that removes
+  the button moves focus somewhere that stays, as the member section moves it to its heading.
+- **Something loading is a `LoadingState` around a skeleton** drawn in the content's own boxes: the
+  card's classes from `@/lib/gameGrid`, text lines as `SkeletonLine`, which is one line of the type
+  around it. It is not `aria-busy`, which belongs on a container updated in place.
+- **A cover is a `CoverImage`** with the `sizes` its box is drawn at, worked out from that component's
+  CSS. It is lazy unless it is in the first screen, and never lazy as a page's largest first paint.
+
+The wishlist and news pages' empty and failed states predate these and keep their own markup.
+
 ## Showing a score
 
 One control, one display, and they mean different things (`docs/decisions/0021-*`):

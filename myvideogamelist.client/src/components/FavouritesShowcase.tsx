@@ -50,6 +50,8 @@ export function FavouritesShowcase({ profileVisibility }: FavouritesShowcaseProp
                             coverImageUrl: item.game.coverImageUrl,
                         }))}
                         label="Your favourite games"
+                        // At the top of the account page's main column, in view as it opens.
+                        eager={6}
                     />
                     <p className="profile-caption">
                         {`${items.length} ${items.length === 1 ? 'game' : 'games'}, most recent first. `}

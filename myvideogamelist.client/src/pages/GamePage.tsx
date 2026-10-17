@@ -1,10 +1,13 @@
-import { Link, useLoaderData } from 'react-router';
+import { Link, data, isRouteErrorResponse, useLoaderData, useRevalidator } from 'react-router';
 import type { Route } from './+types/GamePage';
 import { apiUrl } from '@/lib/api';
 import { CACHE_GAME, CACHE_NOT_FOUND, PRIVATE_NO_STORE } from '@/lib/cache';
 import type { GameDto } from '@/types/game';
 import { useAuth } from '@/hooks/useAuth';
 import { useGameCommunity } from '@/hooks/useGameCommunity';
+import { CoverImage } from '@/components/CoverImage';
+import { EmptyState } from '@/components/EmptyState';
+import { ErrorState } from '@/components/ErrorState';
 import { GameNewsPanel } from '@/components/GameNewsPanel';
 import { GameUserPanel } from '@/components/GameUserPanel';
 import { GameCommunity } from '@/components/GameCommunity';
@@ -20,6 +23,17 @@ import { hasCriticScore, hasMemberScore, ratingPercent } from '@/lib/score';
 import { ScoreBadge } from '@/components/ScoreBadge';
 import './GamePage.css';
 
+/**
+ * The body of the 502 thrown when the API answered 502 itself, which for this endpoint means IGDB
+ * failed: the API turns a third party's failure into a 502 and nothing else into one (ADR 0034), and
+ * the detail query is the one live IGDB call on this page (ADR 0017). The boundary reads it to say
+ * whose failure it was, which decides what it can promise still works.
+ */
+const IGDB_UNAVAILABLE = 'IGDB did not answer.';
+
+/** The hero's cover is 140px wide, 180px from 640px up, inside a two-pixel border. */
+const HERO_COVER_SIZES = '(min-width: 640px) 176px, 136px';
+
 function InfoChip({ label }: { label: string }) {
     return (
         <span className="px-2.5 py-1 bg-raised/60 text-fg-soft text-xs font-medium rounded-lg border border-line">
@@ -29,16 +43,16 @@ function InfoChip({ label }: { label: string }) {
 }
 
 /**
- * Fetched on the server so crawlers and social unfurlers see the real game, not an
- * empty shell. A missing or malformed id throws a 404 Response, which the root
- * ErrorBoundary renders and which returns a genuine 404 status.
+ * Fetched on the server so crawlers and social unfurlers see the real game, not an empty shell. A
+ * missing or malformed id throws a 404 Response and a failure a 502, which this route's own
+ * ErrorBoundary renders inside the site's frame and which reach the client as genuine statuses.
  */
 export async function loader({ params }: Route.LoaderArgs) {
     const id = Number(params.id);
 
-    // A thrown Response carries its own headers and bypasses the `headers` export below, so the
-    // error paths state their own caching. A 404 gets a short shared TTL; the 502 gets none,
-    // because caching an upstream failure at the edge outlives the failure itself.
+    // A thrown Response carries its own headers, and `headers` below hands them on. A 404 gets a
+    // short shared TTL; a 502 gets none, because caching an upstream failure at the edge outlives
+    // the failure itself.
     const notFound = () => new Response('Not Found', {
         status: 404,
         statusText: 'Not Found',
@@ -47,7 +61,7 @@ export async function loader({ params }: Route.LoaderArgs) {
 
     if (!Number.isInteger(id) || id <= 0) throw notFound();
 
-    const badGateway = () => new Response('Failed to load game.', {
+    const badGateway = (body = 'Failed to load game.') => new Response(body, {
         status: 502,
         statusText: 'Bad Gateway',
         headers: { 'Cache-Control': PRIVATE_NO_STORE },
@@ -62,23 +76,56 @@ export async function loader({ params }: Route.LoaderArgs) {
     }
 
     if (response.status === 404) throw notFound();
+    if (response.status === 502) throw badGateway(IGDB_UNAVAILABLE);
+
+    // Our own throttle on IGDB refusing: the API's queue of calls to it was full (ADR 0034). Passed on
+    // as itself, "busy, try shortly", which is what a 503 tells a crawler too, and never stored.
+    if (response.status === 503) {
+        throw new Response('Busy fetching game data.', {
+            status: 503,
+            statusText: 'Service Unavailable',
+            headers: { 'Cache-Control': PRIVATE_NO_STORE },
+        });
+    }
+
     if (!response.ok) throw badGateway();
 
     // `site` rides along because `meta` runs in the browser too, where the environment it is read
-    // from does not exist.
-    return { game: await response.json() as GameDto, site: siteConfig() };
+    // from does not exist. The policy rides along so that `headers` has one to hand on only when the
+    // loader answered.
+    return data(
+        { game: await response.json() as GameDto, site: siteConfig() },
+        { headers: { 'Cache-Control': CACHE_GAME } },
+    );
 }
 
 /**
- * Only applies to the 200 path. A thrown Response carries its own headers, so a 404 for an
- * unknown id is not cached for an hour under this policy.
+ * Whatever the loader decided: the game's policy for a page it answered, the thrown Response's own for
+ * a 404, a 502 or a 503, and nothing shared for anything else the loader throws.
+ *
+ * This route has an ErrorBoundary, so it is the boundary for its own failures and these are the
+ * headers they go out with. Answering `CACHE_GAME` here unconditionally, as this used to, cached a
+ * 502 for an hour at the edge — and already did for the `.data` request a client-side navigation
+ * makes, which reaches this function whichever route renders the error. A loader that threw something
+ * other than a Response leaves neither, and that fails closed, as the root's default does.
+ *
+ * Not covered here: a page that throws while rendering, after its loader answered, goes out with the
+ * headers worked out before the render, which is React Router's doing and every route's (issue 337).
  */
-export function headers() {
-    return { 'Cache-Control': CACHE_GAME };
+export function headers({ errorHeaders, loaderHeaders }: Route.HeadersArgs) {
+    return {
+        'Cache-Control': errorHeaders?.get('Cache-Control')
+            ?? loaderHeaders.get('Cache-Control')
+            ?? PRIVATE_NO_STORE,
+    };
 }
 
-export function meta({ loaderData }: Route.MetaArgs) {
-    if (!loaderData?.game) return [{ title: 'Game not found - MyVideoGameList' }];
+export function meta({ loaderData, error }: Route.MetaArgs) {
+    // Undefined when the loader threw, and the ErrorBoundary below supplies the page.
+    if (!loaderData?.game) {
+        const missing = isRouteErrorResponse(error) && error.status === 404;
+        return [{ title: missing ? 'Game not found - MyVideoGameList' : 'Game unavailable - MyVideoGameList' }];
+    }
 
     const { game, site } = loaderData;
     const year = game.releaseDate ? ` (${new Date(game.releaseDate).getFullYear()})` : '';
@@ -144,10 +191,16 @@ export function GamePage() {
                 <div className="game-page-hero-gradient" aria-hidden="true" />
 
                 <div className="game-page-hero-content">
-                    {/* Cover */}
+                    {/* Cover. Loaded with the page, never lazily: it and the key art behind it are
+                        this page's first screen, and one of the two is its largest first paint. */}
                     <div className="game-page-cover">
                         {game.coverImageUrl ? (
-                            <img src={game.coverImageUrl} alt={`${game.title} cover`} />
+                            <CoverImage
+                                url={game.coverImageUrl}
+                                alt={`${game.title} cover`}
+                                sizes={HERO_COVER_SIZES}
+                                eager
+                            />
                         ) : (
                             <div className="game-page-cover-placeholder">
                                 <svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
@@ -580,6 +633,68 @@ export function GamePage() {
             </div>
         </div>
     );
+}
+
+/** A heroicon's path: a magnifying glass, for a game that is not where the link said. */
+const SEARCH_ICON = 'M21 21l-4.35-4.35M17 11A6 6 0 115 11a6 6 0 0112 0z';
+
+/**
+ * What this page says when there is no game to show, inside the site's frame rather than in place of it,
+ * so the navbar is still there to go somewhere that works.
+ *
+ * A failure is said as the lists page says one, with the retry the pattern gives: the loader is asked
+ * again, and the game replaces this the moment it answers. Never a spinner or a blank — a reader cannot
+ * tell either from a page that is still coming. What the failure says depends on whose it was: IGDB
+ * being down costs every game page and nothing kept here, and saying so tells the reader where to go
+ * meanwhile. A 404 offers no retry, because asking again will not make the game exist.
+ */
+export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
+    const revalidator = useRevalidator();
+
+    if (isRouteErrorResponse(error) && error.status === 404) {
+        return (
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <EmptyState
+                    icon={SEARCH_ICON}
+                    message="There is no game at this address"
+                    titleAs="h1"
+                    detail="The link may be mistyped, or IGDB, where every game here comes from, may have removed the game."
+                >
+                    <Link
+                        to="/games"
+                        className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary-600 hover:bg-primary-500 text-on-primary text-sm font-semibold rounded-lg transition-colors"
+                    >
+                        Browse games
+                    </Link>
+                </EmptyState>
+            </div>
+        );
+    }
+
+    return (
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <ErrorState
+                title="Failed to load this game"
+                titleAs="h1"
+                onRetry={() => void revalidator.revalidate()}
+                retrying={revalidator.state === 'loading'}
+            >
+                {whoseFailure(error)}
+            </ErrorState>
+        </div>
+    );
+}
+
+/** What a failure to load the game was, as far as its status says, and so what still works. */
+function whoseFailure(error: unknown): string {
+    if (isRouteErrorResponse(error) && error.data === IGDB_UNAVAILABLE) {
+        return 'Game details come from IGDB, which is not answering just now. Lists and profiles keep working without it.';
+    }
+    // The API's own words for its throttle, with what is unaffected put as this page puts it.
+    if (isRouteErrorResponse(error) && error.status === 503) {
+        return 'Too many people are browsing games at once. Try again in a moment; lists and profiles are unaffected.';
+    }
+    return 'Something went wrong on our side, so this game could not be loaded just now.';
 }
 
 export default GamePage;

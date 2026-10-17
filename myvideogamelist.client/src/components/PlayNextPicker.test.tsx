@@ -78,6 +78,15 @@ describe('PlayNextPicker', () => {
         expect(screen.getByText('Picked from the 2 games in your backlog.')).toBeInTheDocument();
     });
 
+    it('loads its cover with the page, since it is in the first screen', () => {
+        backlog([entry({
+            game: { id: 1, title: 'Hades', coverImageUrl: 'https://images.igdb.com/igdb/image/upload/t_cover_big/co1.jpg' },
+        })]);
+        const { container } = render(picker());
+
+        expect(container.querySelector('img')).toHaveAttribute('loading', 'eager');
+    });
+
     it('lands wherever the draw says', () => {
         // Random per visit, not the first game every time.
         vi.spyOn(Math, 'random').mockReturnValue(0.99);

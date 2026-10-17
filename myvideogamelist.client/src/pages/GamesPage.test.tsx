@@ -1,14 +1,39 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { RouterProvider, createMemoryRouter } from 'react-router';
 import { GamesPage, meta } from '@/pages/GamesPage';
 import { EMPTY_BROWSE, type GameBrowse } from '@/lib/gameBrowse';
-import type { GenreDto, PlatformDto } from '@/types/game';
-import { platform } from '@/test/factories';
+import type { GameDto, GenreDto, PlatformDto } from '@/types/game';
+import { LIST_NAMES, type ListId } from '@/types/list';
+import { game, platform } from '@/test/factories';
 import type { Route } from './+types/GamesPage';
 
 type Tag = Partial<Record<'title' | 'name' | 'content' | 'rel' | 'href', string>>;
+
+/**
+ * A signed-out reader, for the cards a result set renders: each reads auth, the lists and the
+ * wishlist, whose real providers would fetch. One object each, handed back on every call, because a
+ * fresh literal per render re-runs every effect that depends on it.
+ */
+const signedOut = { user: null, loading: false };
+const noLists = {
+    addToList: vi.fn(async () => {}),
+    removeFromList: vi.fn(async () => {}),
+    isInList: () => false,
+    isPending: () => false,
+    nameFor: (id: ListId) => LIST_NAMES[id],
+};
+const noWishlist = {
+    isWishlisted: () => false,
+    isPending: () => false,
+    add: vi.fn(async () => true),
+    remove: vi.fn(async () => true),
+};
+
+vi.mock('@/hooks/useAuth', () => ({ useAuth: () => signedOut }));
+vi.mock('@/hooks/useLists', () => ({ useLists: () => noLists }));
+vi.mock('@/hooks/useWishlist', () => ({ useWishlist: () => noWishlist }));
 
 const SITE = { siteUrl: 'https://myvideogamelist.net', indexable: true };
 
@@ -121,5 +146,100 @@ describe('GamesPage filters', () => {
         await actor.selectOptions(screen.getByLabelText('Genre'), 'Role-playing (RPG)');
 
         expect(requested).toEqual(['', '?platform=6', '?platform=6&genre=12']);
+    });
+
+    it('draws a page of card shapes, and says so in words, while another result set loads', async () => {
+        const actor = userEvent.setup();
+        renderBrowsePage();
+
+        await actor.selectOptions(await screen.findByLabelText('Platform'), 'PC (Windows)');
+
+        const loading = screen.getByText('Loading games…').parentElement;
+        expect(loading?.querySelectorAll('.grid > .skeleton-sheen')).toHaveLength(20);
+    });
+});
+
+/** `count` games with covers, numbered from `from`. */
+const covered = (count: number, from = 1) => Array.from({ length: count }, (_, index) => game({
+    id: from + index,
+    title: `Game ${from + index}`,
+    coverImageUrl: `https://images.igdb.com/igdb/image/upload/t_cover_big/co${from + index}.jpg`,
+}));
+
+describe('GamesPage results', () => {
+    /** The observer's latest callback, so a test can bring the sentinel into view. */
+    let intersect: IntersectionObserverCallback = () => {};
+
+    beforeEach(() => {
+        vi.stubGlobal('IntersectionObserver', class {
+            constructor(callback: IntersectionObserverCallback) { intersect = callback; }
+            observe() {}
+            unobserve() {}
+            disconnect() {}
+            takeRecords() { return []; }
+        });
+    });
+
+    afterEach(() => vi.unstubAllGlobals());
+
+    function renderResults(items: GameDto[], hasMore: boolean) {
+        const router = createMemoryRouter(
+            [{
+                path: '/games',
+                loader: () => null,
+                Component: () => (
+                    <GamesPage
+                        {...({
+                            loaderData: {
+                                page: { items, hasMore },
+                                browse: EMPTY_BROWSE,
+                                genres: GENRES,
+                                platforms: PLATFORMS,
+                                currentYear: 2026,
+                            },
+                        } as unknown as Route.ComponentProps)}
+                    />
+                ),
+            }],
+            { initialEntries: ['/games'] },
+        );
+        render(<RouterProvider router={router} />);
+    }
+
+    it('loads the first row of covers with the page, and the rest as they are scrolled near', async () => {
+        // The first row is the largest first paint, and is in the server-rendered HTML.
+        renderResults(covered(8), false);
+
+        const covers = await screen.findAllByRole('img');
+        expect(covers.map(cover => cover.getAttribute('loading')))
+            .toEqual([...Array<string>(6).fill('eager'), 'lazy', 'lazy']);
+    });
+
+    it("continues the grid with the next page's shapes while it loads, and says so in words", async () => {
+        let answer: (response: Response) => void = () => {};
+        vi.stubGlobal('fetch', vi.fn(() => new Promise<Response>(resolve => { answer = resolve; })));
+        renderResults(covered(20), true);
+
+        // Present and empty from the start: a live region is announced when its words change.
+        const status = await screen.findByRole('status');
+        expect(status).toBeEmptyDOMElement();
+
+        const sentinel = status.parentElement;
+        act(() => intersect(
+            [{ target: sentinel, isIntersecting: true } as unknown as IntersectionObserverEntry],
+            {} as IntersectionObserver,
+        ));
+
+        const grid = screen.getAllByRole('img')[0].closest('[aria-busy]');
+        expect(grid).toHaveAttribute('aria-busy', 'true');
+        expect(grid?.querySelectorAll('.skeleton-sheen')).toHaveLength(6);
+        expect(status).toHaveTextContent('Loading more games…');
+
+        await act(async () => answer(new Response(JSON.stringify({ items: covered(20, 21), hasMore: false }))));
+
+        expect(screen.getAllByRole('img')).toHaveLength(40);
+        expect(grid).not.toHaveAttribute('aria-busy');
+        expect(grid?.querySelectorAll('.skeleton-sheen')).toHaveLength(0);
+        expect(status).toBeEmptyDOMElement();
     });
 });

@@ -1,6 +1,6 @@
 # 0028. A game's community view: every score counts, only published reviews are listed, and neither is server-rendered
 
-**Status:** Implemented
+**Status:** Implemented; amended by [0070](0070-nothing-shows-as-a-blank.md), which keeps the section on the page when there is nothing to show (§3) and shows its skeleton again for a retry after both halves failed (§6)
 
 ## Context
 
