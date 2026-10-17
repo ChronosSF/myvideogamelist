@@ -116,15 +116,22 @@ public class UserGameEntry
     /// at a time it would have to make up.
     /// </para>
     /// <para>
-    /// Written by <c>ListService.SetScoreAsync</c> and by nothing else: stamped when the score
+    /// Stamped by <c>ListService.SetScoreAsync</c> and by nothing else: set when the user's score
     /// changes, left alone by a write of the score the game already holds, and cleared with the
-    /// score, so a date always belongs to the score beside it — the database holds the two to that
-    /// with a check constraint. <b>Never backfilled</b>, because no row recorded when an existing
-    /// score was given, and a migration stamping one would be inventing that moment for every score
-    /// at once. <b>Never set by an import</b> either, for the reason
-    /// <see cref="StatusChangedAt"/> is left null there (ADR 0026 §5): the source says what somebody
-    /// thought of a game, not when they decided it, and the import's own clock would put the whole
-    /// library at the top of the history as though it had all been scored in one afternoon.
+    /// score. <b>Any other write that changes a score must clear it</b>, because the moment would
+    /// otherwise describe a score nobody gave then; only a write into an empty score, which has no
+    /// moment to clear, can leave it null by doing nothing. Every write that changes a score writes
+    /// the two together, through <c>EntryStore.WriteScoredAtWithScore</c>, so a write racing another
+    /// in a second tab cannot keep the other's moment. The database refuses a moment with no score,
+    /// and no more than that: pairing it with the right score is the writers' job.
+    /// </para>
+    /// <para>
+    /// <b>Never backfilled</b>, because no row recorded when an existing score was given, and a
+    /// migration stamping one would be inventing that moment for every score at once. <b>Never set
+    /// by an import</b> either, for the reason <see cref="StatusChangedAt"/> is never stamped there
+    /// (ADR 0026 §5): the source says what somebody thought of a game, not when they decided it, and
+    /// the import's own clock would put the whole library at the top of the history as though it had
+    /// all been scored in one afternoon.
     /// </para>
     /// <para>
     /// Current state, like the score: changing a score moves this, and the earlier score and its

@@ -572,6 +572,42 @@ public class ScoreAndEntryTests
     }
 
     [Fact]
+    public async Task SetScoreAsync_ClearRacingAScoreFromAnotherTab_ClearsTheMomentItNeverRead()
+    {
+        // Tab A has read an undated 8; tab B then scores the game 9 and saves. A's clear changes the
+        // score and not the moment, which was null and is still null in A's copy — so unless A's
+        // save writes the moment with the score, B's moment stays behind beside no score. On
+        // PostgreSQL that is the check constraint's 500; here it would be a moment with no score.
+        var name = Guid.NewGuid().ToString();
+        ApplicationDbContext Open()
+        {
+            var db = new ApplicationDbContext(
+                new DbContextOptionsBuilder<ApplicationDbContext>().UseInMemoryDatabase(name).Options);
+            db.Database.EnsureCreated();
+            return db;
+        }
+
+        using (var seed = Open())
+        {
+            seed.UserGameEntries.Add(new UserGameEntry { UserId = UserId, GameId = 10, Score = 8, AddedAt = Midday.AddYears(-1) });
+            seed.SaveChanges();
+        }
+
+        using var tabA = Open();
+        Assert.Null(tabA.UserGameEntries.Single().ScoredAt);
+
+        using (var tabB = Open())
+            await NewService(tabB).SetScoreAsync(UserId, 10, 9);
+
+        await NewService(tabA).SetScoreAsync(UserId, 10, null);
+
+        using var after = Open();
+        var entry = after.UserGameEntries.Single();
+        Assert.Null(entry.Score);
+        Assert.Null(entry.ScoredAt);
+    }
+
+    [Fact]
     public void TheScoredAtCheckConstraint_RefusesAMomentWithoutAScore()
     {
         // The design-time model: check constraints are migration metadata, which the read-optimised

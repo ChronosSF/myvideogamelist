@@ -523,11 +523,12 @@ public class ImportServiceTests
     [Fact]
     public async Task CommitAsync_DoesNotOverwriteAScoreTheUserAlreadySet()
     {
-        // An import is new information about a game, not a correction of what its owner recorded.
+        // An import is new information about a game, not a correction of what its owner recorded —
+        // and the moment the owner gave that score stays theirs too (ADR 0062).
         using var db = NewDb();
         db.UserGameEntries.Add(new UserGameEntry
         {
-            UserId = UserId, GameId = 379, Score = 3, Notes = "Mine.", AddedAt = Midday
+            UserId = UserId, GameId = 379, Score = 3, ScoredAt = Midday.AddDays(-2), Notes = "Mine.", AddedAt = Midday
         });
         await db.SaveChangesAsync();
 
@@ -543,6 +544,7 @@ public class ImportServiceTests
 
         var entry = Assert.Single(db.UserGameEntries);
         Assert.Equal((short)3, entry.Score);
+        Assert.Equal(Midday.AddDays(-2), entry.ScoredAt);
         Assert.Equal("Mine.", entry.Notes);
     }
 
