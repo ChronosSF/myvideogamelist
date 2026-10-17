@@ -1,6 +1,6 @@
 # 0030. Ownership and notes belong to the entry, stay private, and are written under the game's lock
 
-**Status:** Implemented
+**Status:** Implemented; §4 and §6 amended for ownership by [0055](0055-several-games-move-in-one-request-and-ownership-is-on-the-list-row.md)
 
 ## Context
 
@@ -57,6 +57,11 @@ already a key.
 
 ### 4. On the single-entry read, not on the list row
 
+> **Amended by [0055](0055-several-games-move-in-one-request-and-ownership-is-on-the-list-row.md).** The lists
+> page gained an ownership column and filter, so `ListEntryDto` carries ownership and the provider keeps it
+> true; the single-entry read takes it from the entry rather than carrying a second copy. The notes stay off
+> the row, for the reason below.
+
 `EntryDetailDto` carries both; `ListEntryDto` carries neither. Fifty rows of notes are payload nobody on
 the lists page reads, which is the argument that record already made. Ownership is small, but nothing on
 a list view reads it yet either, and a field on the row is a field the list's optimistic state has to
@@ -75,6 +80,10 @@ said nothing about. The score keeps its older behaviour and creates the row eith
 Neither writes an event. Neither is a status transition.
 
 ### 6. Written under the game's lock, and shown by the panel
+
+> **Amended by [0055](0055-several-games-move-in-one-request-and-ownership-is-on-the-list-row.md).** Now that
+> a list row shows ownership, `setOwnership` changes that row at once and puts it back if the save fails, as a
+> score does. `setNotes` is unchanged.
 
 `ListsProvider` gained `setOwnership` and `setNotes`. They take the per-game lock like a move or a
 score, because they write the same row — a delete racing a notes save could otherwise have the save
