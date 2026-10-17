@@ -1,11 +1,15 @@
-import { useId, useMemo, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
+import { GameCover } from '@/components/GameCover';
+import { ImportCandidateButton } from '@/components/ImportCandidateButton';
+import { ImportRowSearch } from '@/components/ImportRowSearch';
 import { PageHeader } from '@/components/PageHeader';
 import { useAuth } from '@/hooks/useAuth';
 import { useLists } from '@/hooks/useLists';
 import { useWishlist } from '@/hooks/useWishlist';
 import { useFavourites } from '@/hooks/useFavourites';
 import { useImportReview } from '@/hooks/useImport';
+import { createSearchPacer } from '@/hooks/useImportSearch';
 import { downloadSkippedRows } from '@/lib/importReport';
 import { expiresInWords } from '@/lib/importExpiry';
 import { releaseYear } from '@/lib/releaseDate';
@@ -52,7 +56,7 @@ export function ImportReviewPage() {
     const { jobId = '' } = useParams();
     const { user, loading: authLoading } = useAuth();
     const navigate = useNavigate();
-    const { nameFor, namesStatus, reload: reloadLists } = useLists();
+    const { nameFor, namesStatus, getListFor, reload: reloadLists } = useLists();
     const { reload: reloadWishlist } = useWishlist();
     const { reload: reloadFavourites } = useFavourites();
 
@@ -85,6 +89,28 @@ export function ImportReviewPage() {
 
     const [filter, setFilter] = useState<Filter>('attention');
     const [shown, setShown] = useState(PAGE);
+
+    // The row whose search is open, if any. One at a time: each open search asks IGDB for its own
+    // term, and a screen of open panels is no longer a list somebody can work down.
+    const [searchingRow, setSearchingRow] = useState<number | null>(null);
+
+    // One budget for every row's search: the spacing between requests, and a 503's wait, are the
+    // person's rather than each field's. See `SearchPacer`.
+    const [searchPacer] = useState(createSearchPacer);
+
+    // What the last choice of a game did, read out politely. The row it was made on changes under
+    // the press — the candidates go with the question, the search closes — and under "Needs you"
+    // the row itself leaves, so without this nothing says that the press did anything.
+    const [chosen, setChosen] = useState('');
+
+    const listRef = useRef<HTMLUListElement>(null);
+    const nothingLeftRef = useRef<HTMLParagraphElement>(null);
+
+    // Where focus goes after a choice, consumed once the rows have re-rendered. A ref, because it is
+    // a request to the DOM about the next commit rather than something to render; the tick beside it
+    // makes a commit happen after a failed save, whose rollback may already have rendered.
+    const refocus = useRef<{ rowId: number; index: number } | null>(null);
+    const [refocusTick, setRefocusTick] = useState(0);
 
     const signedOut = !authLoading && user === null;
 
@@ -123,6 +149,75 @@ export function ImportReviewPage() {
     const bulk = (wanted: ImportReviewRow[], decision: typeof IMPORT_DECISION[keyof typeof IMPORT_DECISION]) =>
         void setDecisions(
             wanted.filter(r => r.decision !== decision).map(r => ({ rowId: r.id, decision })));
+
+    /**
+     * A game chosen for a row, whether the matcher offered it (§M3) or the row's own search found it
+     * (§M4): one write, the decision endpoint's, and one way of choosing (issue 158). Choosing also
+     * selects the row — somebody who has just said "that one" has said they want it — unless the
+     * game is already in one of their lists. Importing it would write the file's status over theirs,
+     * and §S8 has an existing entry overwritten only when somebody ticks it, as the matcher's own
+     * rows for such a game start unticked. A game they hold in no list has no status to lose, which
+     * is why the lists are enough to ask.
+     */
+    const choose = (row: ImportReviewRow, game: GameDto, index: number) => {
+        const year = game.releaseDate === null ? '' : ` (${releaseYear(game.releaseDate)})`;
+        const tracked = getListFor(game.id) !== null;
+
+        // Consumed by the render the decision's own update makes, which is the one that has moved
+        // the row: `setDecisions` applies it before its first await.
+        refocus.current = { rowId: row.id, index };
+        setSearchingRow(null);
+        setChosen(tracked
+            ? `${game.title}${year} chosen for “${row.title}”. It is already in your lists, so it is left unticked.`
+            : `${game.title}${year} chosen for “${row.title}”.`);
+
+        void setDecisions([{
+            rowId: row.id,
+            decision: tracked ? IMPORT_DECISION.skip : IMPORT_DECISION.import,
+            gameId: game.id,
+            game,
+            alreadyTracked: tracked,
+        }]).then(saved => {
+            if (saved) return;
+            // The row is back as it was, beside the error. Focus goes back to it, and the sentence
+            // that said it was chosen goes, so a second try says it again rather than nothing.
+            refocus.current = { rowId: row.id, index };
+            setRefocusTick(tick => tick + 1);
+            setChosen('');
+        });
+    };
+
+    /**
+     * Focus, after a choice, goes where the person would go next. The control they pressed is gone
+     * by now, and left alone focus falls to the document, so the next Tab starts again from the top
+     * of a page that can hold hundreds of rows. Their own row when it is still listed; under "Needs
+     * you" it is not, and the next row is the one in its place, or the one before when it was the
+     * last. When none is left, the line saying so.
+     *
+     * A row's title rather than any control in it: the next row's first control is often one of its
+     * candidates, and a second press of Enter, or one held down, would choose a game for a row the
+     * person has not looked at. From the title the next Tab reaches the row's controls.
+     */
+    useEffect(() => {
+        const request = refocus.current;
+        if (request === null) return;
+        refocus.current = null;
+
+        const items = Array.from(listRef.current?.children ?? []).filter(
+            (item): item is HTMLElement => item instanceof HTMLElement);
+        const item = items.find(element => element.dataset.rowId === String(request.rowId))
+            ?? items[request.index]
+            ?? items[request.index - 1];
+
+        (item?.querySelector<HTMLElement>('[data-row-title]') ?? nothingLeftRef.current)?.focus();
+    }, [visible, refocusTick]);
+
+    const showFilter = (next: Filter) => {
+        setFilter(next);
+        // A row hidden by the filter takes its search with it, and should not open again by itself
+        // — asking IGDB once more — when the filter brings it back.
+        setSearchingRow(null);
+    };
 
     if (signedOut) {
         return (
@@ -253,13 +348,13 @@ export function ImportReviewPage() {
                         )}
 
                         <div className="flex flex-wrap items-center gap-2">
-                            <FilterButton active={filter === 'attention'} onClick={() => setFilter('attention')}>
+                            <FilterButton active={filter === 'attention'} onClick={() => showFilter('attention')}>
                                 Needs you ({formatCount(attention.length)})
                             </FilterButton>
-                            <FilterButton active={filter === 'importing'} onClick={() => setFilter('importing')}>
+                            <FilterButton active={filter === 'importing'} onClick={() => showFilter('importing')}>
                                 Importing ({formatCount(review.summary.selected)})
                             </FilterButton>
-                            <FilterButton active={filter === 'all'} onClick={() => setFilter('all')}>
+                            <FilterButton active={filter === 'all'} onClick={() => showFilter('all')}>
                                 All ({formatCount(review.summary.total)})
                             </FilterButton>
 
@@ -282,24 +377,30 @@ export function ImportReviewPage() {
                         </div>
 
                         {visible.length === 0 && (
-                            <p className="text-fg-muted text-sm py-12 text-center">
+                            // Focusable from script only, as where a choice leaves focus once it
+                            // was the last row needing one.
+                            <p ref={nothingLeftRef} tabIndex={-1} className="text-fg-muted text-sm py-12 text-center rounded-lg focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus">
                                 {filter === 'attention'
                                     ? 'Nothing needs a decision — every game was matched and understood.'
                                     : 'No games here.'}
                             </p>
                         )}
 
-                        <ul className="space-y-2">
-                            {visible.slice(0, shown).map(row => (
+                        <p role="status" className="sr-only">{chosen}</p>
+
+                        <ul ref={listRef} className="space-y-2">
+                            {visible.slice(0, shown).map((row, index) => (
                                 <li
                                     key={row.id}
+                                    data-row-id={row.id}
                                     className="flex items-start gap-3 px-3 py-3 bg-surface/50 border border-line rounded-lg"
                                 >
                                     {/* Disabled while no game is matched — ticking such a row would
                                         count it in "will import" and then have the commit skip it,
                                         a promise the screen cannot keep. An ambiguous row is ticked
-                                        by choosing one of its candidates below, which resolves and
-                                        selects it in one click (§M3). */}
+                                        by choosing one of its candidates below, and either kind by
+                                        choosing a game its search found, which resolves and selects
+                                        it in one click (§M3, §M4). */}
                                     <input
                                         type="checkbox"
                                         className="mt-1 size-4 shrink-0 disabled:opacity-40"
@@ -313,10 +414,17 @@ export function ImportReviewPage() {
                                             decide(row, event.target.checked ? IMPORT_DECISION.import : IMPORT_DECISION.skip)}
                                     />
 
-                                    <Cover url={row.game?.coverImageUrl} className="w-9 h-12" />
+                                    <GameCover url={row.game?.coverImageUrl} className="w-9 h-12" />
 
                                     <div className="min-w-0 grow">
-                                        <p className="text-fg text-sm font-medium truncate">
+                                        {/* Focusable from script only: where focus goes after a game
+                                            is chosen here or in the row before, since it commits
+                                            nothing when pressed. */}
+                                        <p
+                                            data-row-title
+                                            tabIndex={-1}
+                                            className="text-fg text-sm font-medium truncate rounded-sm focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus"
+                                        >
                                             {row.title}
                                             {row.releaseYear !== null && (
                                                 <span className="text-fg-faint font-normal"> ({row.releaseYear})</span>
@@ -357,18 +465,30 @@ export function ImportReviewPage() {
                                                 <ul className="flex flex-wrap gap-2">
                                                     {row.candidates.map(candidate => (
                                                         <li key={candidate.id}>
-                                                            <CandidateButton
-                                                                candidate={candidate}
-                                                                onChoose={() => void setDecisions([{
-                                                                    rowId: row.id,
-                                                                    decision: IMPORT_DECISION.import,
-                                                                    gameId: candidate.id,
-                                                                }])}
+                                                            <ImportCandidateButton
+                                                                game={candidate}
+                                                                onChoose={() => choose(row, candidate, index)}
                                                             />
                                                         </li>
                                                     ))}
                                                 </ul>
                                             </div>
+                                        )}
+
+                                        {/* §M4: a row nothing was found for, or whose candidates are
+                                            all wrong, searched for from the row itself rather than by
+                                            leaving the page to find an id. Not on an unlooked row,
+                                            which the matcher has not been over yet and usually
+                                            places on its own. */}
+                                        {searchable(row) && (
+                                            <ImportRowSearch
+                                                title={row.title}
+                                                prompt={row.candidates.length > 0 ? 'None of these?' : undefined}
+                                                open={searchingRow === row.id}
+                                                onOpenChange={open => setSearchingRow(open ? row.id : null)}
+                                                onChoose={game => choose(row, game, index)}
+                                                pacer={searchPacer}
+                                            />
                                         )}
 
                                         {/* An unrecognised shelf is asked about rather than
@@ -452,6 +572,16 @@ function needsAttention(row: ImportReviewRow): boolean {
 }
 
 /**
+ * A row its owner can search IGDB from: one the matcher has been over and could not place, because
+ * it found nothing (`unmatched`) or would not choose (`ambiguous`). An `unlooked` row is left to
+ * "Find these games", which places most of them without anybody typing, and a `matched` one has its
+ * game.
+ */
+function searchable(row: ImportReviewRow): boolean {
+    return row.matchKind === IMPORT_MATCH.unmatched || row.matchKind === IMPORT_MATCH.ambiguous;
+}
+
+/**
  * The one question about the games the file says were played and not how that ended: which list
  * they all go into, if any.
  *
@@ -504,41 +634,6 @@ function PlayedChoice({ id, count, status, disabled, label, onChoose }: {
                 </select>
             </div>
         </div>
-    );
-}
-
-/** A game's cover, or the space one would take. */
-function Cover({ url, className }: { url?: string | null; className: string }) {
-    return url
-        ? <img src={url} alt="" className={`${className} object-cover rounded shrink-0`} loading="lazy" />
-        : <div className={`${className} rounded bg-raised/60 shrink-0`} aria-hidden="true" />;
-}
-
-/**
- * One game the matcher offered, as something to recognise and press.
- *
- * Named rather than left to its own text: a row of buttons each reading "Resident Evil 2 (1998)"
- * says what they are and not what pressing one does. The visible text is inside the label, so
- * "click Resident Evil 2" still works by voice.
- */
-function CandidateButton({ candidate, onChoose }: { candidate: GameDto; onChoose: () => void }) {
-    const year = candidate.releaseDate === null ? null : releaseYear(candidate.releaseDate);
-
-    return (
-        <button
-            type="button"
-            aria-label={`Use ${candidate.title}${year === null ? '' : ` (${year})`}`}
-            onClick={onChoose}
-            className="flex items-center gap-2 pl-1 pr-2.5 py-1 bg-page/60 border border-line-strong hover:border-primary-500 rounded-lg text-left transition-colors"
-        >
-            <Cover url={candidate.coverImageUrl} className="w-6 h-8" />
-            <span className="text-xs text-fg font-medium">
-                {candidate.title}
-                {year !== null && (
-                    <span className="text-fg-faint font-normal">{' '}({year})</span>
-                )}
-            </span>
-        </button>
     );
 }
 

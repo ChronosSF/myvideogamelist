@@ -137,6 +137,18 @@ export interface ImportRowDecision {
     status?: string | null;
 }
 
+/**
+ * A decision as the review screen makes it: what is sent, plus what the screen already knows about
+ * the game a choice names, so the row reads right before the review is next read. The extra fields
+ * are never sent — the server works both out for itself.
+ */
+export interface ImportRowChoice extends ImportRowDecision {
+    /** The game chosen, so the row shows its cover. */
+    game?: GameDto;
+    /** The user already has the chosen game in one of their lists. */
+    alreadyTracked?: boolean;
+}
+
 export interface ImportSkippedRow {
     title: string;
     sourceStatus: string | null;
