@@ -12,8 +12,11 @@ import {
     scoreBandSolid,
     scoreBandSubtle,
     scoreBandTint,
+    scoresWithinFloor,
     starFill,
+    timesWithinFloor,
 } from '@/lib/score';
+import { communityScores, communityTimes } from '@/test/factories';
 
 describe('the score scale', () => {
     it('is ten values over five stars, so half stars land on whole numbers', () => {
@@ -172,5 +175,34 @@ describe('aggregateTitle', () => {
 
     it('says nothing about the sample when there is no count, rather than implying zero', () => {
         expect(aggregateTitle('players', 61, null)).toBe('Player rating: 61 out of 100');
+    });
+});
+
+describe('scoresWithinFloor', () => {
+    it('keeps only the counts under the floor, so a copy stored beside the page publishes no score', () => {
+        // One member's 9, which the page never shows and the shared HTML must not carry either.
+        const one = communityScores({ scored: 1, mean: 9, distribution: [0, 0, 0, 0, 0, 0, 0, 0, 1, 0], tracked: 4 });
+
+        expect(scoresWithinFloor(one)).toEqual(communityScores({ scored: 1, mean: null, tracked: 4 }));
+    });
+
+    it('leaves scores that clear the floor as they are', () => {
+        const enough = communityScores({ scored: MIN_MEMBER_SCORES, mean: 8, distribution: [0, 0, 0, 0, 0, 0, 0, 5, 0, 0], tracked: 9 });
+
+        expect(scoresWithinFloor(enough)).toEqual(enough);
+    });
+});
+
+describe('timesWithinFloor', () => {
+    it('takes out each median under the floor and keeps its count', () => {
+        const times = communityTimes({
+            rushed: { samples: MIN_PLAYTHROUGH_SAMPLES - 1, medianMinutes: 300 },
+            normally: { samples: MIN_PLAYTHROUGH_SAMPLES, medianMinutes: 600 },
+        });
+
+        expect(timesWithinFloor(times)).toEqual(communityTimes({
+            rushed: { samples: MIN_PLAYTHROUGH_SAMPLES - 1, medianMinutes: null },
+            normally: { samples: MIN_PLAYTHROUGH_SAMPLES, medianMinutes: 600 },
+        }));
     });
 });

@@ -41,7 +41,7 @@ interface Cell {
  * number, and never shows one.
  *
  * The community figures are fetched on the client, after hydration — see `useCommunityTimes` for
- * why they must not go in the route loader.
+ * why this row does not come from the route loader's copy.
  */
 export function CompletionTimes({ timeToBeat, gameId }: CompletionTimesProps) {
     const community = useCommunityTimes(gameId);

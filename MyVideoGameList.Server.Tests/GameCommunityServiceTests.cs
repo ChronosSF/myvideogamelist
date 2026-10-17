@@ -245,7 +245,7 @@ public class GameCommunityServiceTests
     // ── How many track it ─────────────────────────────────────────────────────────────
 
     [Fact]
-    public async Task GetScoresAsync_Tracked_CountsTheMembersWithTheGameInAList()
+    public async Task GetScoresAsync_MembersWithTheGameInAList_AreCountedAsTracking()
     {
         using var db = NewDb();
         AddEntry(db, AddAccount(db, "alex"), status: ListStatusKeys.Playing);
@@ -260,7 +260,7 @@ public class GameCommunityServiceTests
     }
 
     [Fact]
-    public async Task GetScoresAsync_Tracked_LeavesOutAnEntryInNoList()
+    public async Task GetScoresAsync_EntryInNoList_IsNotCountedAsTracking()
     {
         // The entry outlives leaving every list, and keeps its score (ADR 0019). Its score still
         // counts; the game is no longer tracked, which is what a profile's statistics say too.
@@ -275,7 +275,7 @@ public class GameCommunityServiceTests
     }
 
     [Fact]
-    public async Task GetScoresAsync_Tracked_CountsAPrivateProfileAndNoOtherGame()
+    public async Task GetScoresAsync_TrackingFromAPrivateProfile_CountsForThisGameAlone()
     {
         // A count names nobody, so a private profile's library counts as its scores do. Another
         // game's entry is somebody else's figure.
@@ -290,7 +290,7 @@ public class GameCommunityServiceTests
     }
 
     [Fact]
-    public async Task GetScoresAsync_NobodyTracksIt_IsZero()
+    public async Task GetScoresAsync_NobodyTracksIt_TrackedIsZero()
     {
         using var db = NewDb();
 

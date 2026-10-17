@@ -27,10 +27,17 @@ import { hasMemberScore, MIN_PLAYTHROUGH_SAMPLES, ratingPercent } from '@/lib/sc
 export const DESCRIPTION_LENGTH = 160;
 
 /**
- * The least of the summary's sentence worth keeping after our figures. Below it the fragment says
- * nothing, and the description is better ending on our own last figure.
+ * The least room worth leaving the summary after our figures. Below it the fragment says nothing,
+ * and the description is better ending on our own last figure.
  */
-const MIN_SENTENCE_LENGTH = 20;
+const MIN_ROOM_FOR_SUMMARY = 20;
+
+/**
+ * How far into a summary a sentence has to run before an ending is taken for the first sentence's.
+ * Shorter, a stop is far likelier to belong to a name or an abbreviation nobody listed than to a
+ * sentence: "Yu-Gi-Oh!", "Tetris Ver. 2".
+ */
+const SHORTEST_SENTENCE = 20;
 
 /**
  * The tier whose median the description quotes: the middle one, where most logged runs land — the
@@ -41,12 +48,14 @@ const QUOTED_TIER = 'normally';
 
 /**
  * Words written with a full stop that does not end a sentence, in lower case. Only the ones that can
- * stand before a capital or a number need listing — "Dr. Mario", "Vol. 2" — since a stop followed by
- * a lower-case word is never taken for an ending anyway.
+ * stand before a capital or a number need listing — "Dr. Mario", "Vol. 2", "Oct. 25" — since a stop
+ * followed by a lower-case word is never taken for an ending anyway.
  */
 const ABBREVIATIONS = new Set([
-    'bros', 'capt', 'co', 'col', 'corp', 'dr', 'ep', 'feat', 'ft', 'gen', 'inc', 'jr', 'lt', 'ltd',
-    'mr', 'mrs', 'ms', 'mt', 'no', 'prof', 'pt', 'sgt', 'sr', 'st', 'vol', 'vs',
+    'approx', 'bros', 'capt', 'ch', 'co', 'col', 'corp', 'dr', 'ed', 'ep', 'est', 'feat', 'fig', 'ft',
+    'gen', 'inc', 'jr', 'lt', 'ltd', 'mr', 'mrs', 'ms', 'mt', 'no', 'nos', 'prof', 'pt', 'sgt', 'sr',
+    'st', 'ver', 'vol', 'vols', 'vs',
+    'jan', 'feb', 'mar', 'apr', 'jun', 'jul', 'aug', 'sep', 'sept', 'oct', 'nov', 'dec',
 ]);
 
 /**
@@ -64,14 +73,16 @@ export function gameDescription(
     scores: CommunityScores | null,
     times: CommunityTimes | null,
 ): string {
-    const ours = ourFigures(scores, times);
-    const sentence = firstSentence(game.description ?? '');
+    // Cut like everything else, though no real set of figures comes near the limit: the longest
+    // counts anybody could reach leave room to spare, and every branch then keeps the same promise.
+    const ours = cutAtWord(ourFigures(scores, times), DESCRIPTION_LENGTH);
+    const sentence = firstSentence(game.description ?? '', game.title);
 
-    if (sentence === '') return ours || `Track ${game.title} on MyVideoGameList.`;
+    if (sentence === '') return ours || cutAtWord(`Track ${game.title} on MyVideoGameList.`, DESCRIPTION_LENGTH);
     if (ours === '') return cutAtWord(sentence, DESCRIPTION_LENGTH);
 
     const room = DESCRIPTION_LENGTH - ours.length - 1;
-    return room < MIN_SENTENCE_LENGTH ? ours : `${ours} ${cutAtWord(sentence, room)}`;
+    return room < MIN_ROOM_FOR_SUMMARY ? ours : `${ours} ${cutAtWord(sentence, room)}`;
 }
 
 /**
@@ -96,13 +107,14 @@ function ourFigures(scores: CommunityScores | null, times: CommunityTimes | null
     }
 
     // A median, never a mean, with the number of runs behind it, exactly as the completion times
-    // print it — and only once that number clears the same floor.
+    // print it — and only once that number clears the same floor. Said to be the members', because
+    // "normally" is IGDB's name for a tier too, and the two sources are never blended (ADR 0025).
     const tier = times?.buckets.find(bucket => bucket.type === QUOTED_TIER);
     const median = tier !== undefined && tier.samples >= MIN_PLAYTHROUGH_SAMPLES
         ? formatMinutesPlayed(tier.medianMinutes)
         : null;
     if (tier !== undefined && median !== null) {
-        figures.push(`Normally beaten in ${median} (median of ${formatCount(tier.samples)} playthroughs).`);
+        figures.push(`Members normally beat it in ${median} (median of ${formatCount(tier.samples)} playthroughs).`);
     }
 
     return figures.join(' ');
@@ -113,20 +125,36 @@ function ourFigures(scores: CommunityScores | null, times: CommunityTimes | null
  * no sentence ends inside it.
  *
  * A heuristic, since nothing short of a language model knows where an English sentence ends. A stop
- * ends one only before a capital or a number, and not after an abbreviation from the list, a lone
- * initial — the J. and R. of "J. R. R. Tolkien" — or letters written with stops, like "U.S." The
- * mistake it can still make is ending a sentence early, which costs the rest of that sentence; the
- * cut below would have cost most of it anyway.
+ * ends one only before a capital or a number, and not:
+ *
+ * - after a word the game's own title ends the same way. Titles are full of them — "Yu-Gi-Oh! Master
+ *   Duel", "Go! Go! Nippon! 2016" — and a summary names its game, often more than once;
+ * - after an abbreviation from the list, a lone initial — the J. and R. of "J. R. R. Tolkien" — or
+ *   letters written with stops, like "U.S.";
+ * - fewer than {@link SHORTEST_SENTENCE} characters in.
+ *
+ * The mistake it can still make is ending a sentence early, which costs the rest of that sentence;
+ * the cut would have cost most of it anyway.
  */
-export function firstSentence(text: string): string {
+export function firstSentence(text: string, title = ''): string {
     const prose = text.replace(/\s+/g, ' ').trim();
+    const namesEndingInAStop = new Set(
+        title.split(/\s+/).filter(word => /[.!?…]$/u.test(word)).map(word => word.toLowerCase()),
+    );
 
     for (const match of prose.matchAll(SENTENCE_END)) {
+        const end = match.index + match[1].length + match[2].length;
+        if (end < SHORTEST_SENTENCE) continue;
+        if (namesEndingInAStop.has(lastWord(prose.slice(0, match.index + match[1].length)))) continue;
         if (match[1] === '.' && endsInAbbreviation(prose.slice(0, match.index))) continue;
-        return prose.slice(0, match.index + match[1].length + match[2].length);
+        return prose.slice(0, end);
     }
 
     return prose;
+}
+
+function lastWord(text: string): string {
+    return (/\S+$/u.exec(text)?.[0] ?? '').toLowerCase();
 }
 
 function endsInAbbreviation(before: string): boolean {
@@ -140,14 +168,16 @@ function endsInAbbreviation(before: string): boolean {
 /**
  * Text no longer than `max`, cut after a whole word and ended with an ellipsis when it had to be cut.
  * One character of `max` is the ellipsis. A first word longer than the room is cut where the room ends,
- * since there is no earlier word to stop after.
+ * since there is no earlier word to stop after — but never between the two halves of a character
+ * JavaScript stores as a pair, such as an emoji, which would leave half of one in the page.
  */
 export function cutAtWord(text: string, max: number): string {
     if (text.length <= max) return text;
 
     const room = max - 1;
     const space = text.lastIndexOf(' ', room);
-    const kept = (space > 0 ? text.slice(0, space) : text.slice(0, room)).replace(TRAILING_SEPARATORS, '');
+    const splitsAPair = text.charCodeAt(room - 1) >= 0xd800 && text.charCodeAt(room - 1) <= 0xdbff;
+    const cut = space > 0 ? space : splitsAPair ? room - 1 : room;
 
-    return `${kept}…`;
+    return `${text.slice(0, cut).replace(TRAILING_SEPARATORS, '')}…`;
 }

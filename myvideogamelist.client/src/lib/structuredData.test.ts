@@ -3,7 +3,7 @@ import type { MetaDescriptor } from 'react-router';
 import { browseFrom } from '@/lib/gameBrowse';
 import { MIN_MEMBER_SCORES } from '@/lib/score';
 import { gameStructuredData, searchPathTemplate, siteStructuredData } from '@/lib/structuredData';
-import { game, platform } from '@/test/factories';
+import { communityScores, game, platform } from '@/test/factories';
 import type { CommunityScores } from '@/types/community';
 import type { GameDto } from '@/types/game';
 
@@ -25,9 +25,8 @@ function block(tags: MetaDescriptor[], type: string): Block | undefined {
     return blocksIn(tags).find(found => found['@type'] === type);
 }
 
-function scores(scored: number, mean: number | null = 8.44): CommunityScores {
-    return { scored, mean, distribution: Array<number>(10).fill(0), tracked: scored };
-}
+/** Members' scores: how many scored the game, averaging `mean` on the 1–10 scale. */
+const scores = (scored: number, mean: number | null = 8.44) => communityScores({ scored, mean, tracked: scored });
 
 function company(id: number, name: string) {
     return { id, name, country: null, foundedYear: null, website: null, logoUrl: null, description: null };
@@ -117,6 +116,20 @@ describe('gameStructuredData', () => {
 
         expect(block(forGame(rated), 'VideoGame')).not.toHaveProperty('aggregateRating');
         expect(block(forGame(rated, scores(0, null)), 'VideoGame')).not.toHaveProperty('aggregateRating');
+    });
+
+    it("rates the game by its members' score alone when IGDB's are there too", () => {
+        // The case the two above leave open: nothing of IGDB's leaks into the value or the count, nor
+        // is anything blended, when both are on the page.
+        const rated = { ...HOLLOW_KNIGHT, criticScore: 87, criticScoreCount: 40, rating: 9.1, ratingCount: 2500 };
+
+        expect(block(forGame(rated, scores(MIN_MEMBER_SCORES)), 'VideoGame')?.aggregateRating).toEqual({
+            '@type': 'AggregateRating',
+            ratingValue: 84,
+            ratingCount: MIN_MEMBER_SCORES,
+            bestRating: 100,
+            worstRating: 10,
+        });
     });
 
     it('places the game under the catalogue under the home page', () => {

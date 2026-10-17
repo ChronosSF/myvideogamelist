@@ -246,8 +246,10 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   score or review changes, or the section beside it shows the write as though it had failed. See
   `docs/decisions/0028-*`. **The scores are the exception, because they name nobody**: the loader
   reads `/community-scores` and `/community-times` beside the game, so the member score is in the
-  HTML a crawler indexes, the hook's answer replaces the loader's figure after hydration, and a
-  render missing either read is `no-store`. Review text never enters the loader (ADR 0069).
+  HTML a crawler indexes, and the hook's answer replaces the loader's figure after hydration. Each
+  read has a one-second deadline, a render missing either is `no-store`, and under the floors the
+  loader keeps only the counts, since its copy sits in the shared HTML for up to a day. Review text
+  never enters the loader (ADR 0069).
 
 - **A list's label reads `nameFor` from the lists context, never `LIST_NAMES`** — except on a public
   profile, which keeps the defaults because a rename is its owner's alone. `LIST_NAMES` is the

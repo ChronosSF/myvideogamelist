@@ -19,7 +19,7 @@ import { TrailerPlayer } from '@/components/TrailerPlayer';
 import { formatCount } from '@/lib/format';
 import { gameDescription } from '@/lib/gameDescription';
 import { pageMeta, siteConfig } from '@/lib/seo';
-import { hasCriticScore, hasMemberScore, ratingPercent } from '@/lib/score';
+import { hasCriticScore, hasMemberScore, ratingPercent, scoresWithinFloor, timesWithinFloor } from '@/lib/score';
 import { gameStructuredData } from '@/lib/structuredData';
 import { ScoreBadge } from '@/components/ScoreBadge';
 import './GamePage.css';
@@ -33,18 +33,51 @@ function InfoChip({ label }: { label: string }) {
 }
 
 /**
- * A JSON body from the API, or null for a bad status and an unreachable API alike: for the reads a
- * game page can stand without.
+ * How long the loader waits for each of the members' figures before rendering without them.
+ *
+ * They are reads of our own tables that answer in milliseconds, and before them the game page did not
+ * wait on the database at all. Without a deadline a slow database — a failover, a lock held by a
+ * migration — would hold every game page for as long as Npgsql waits, and every one of those renders
+ * is `no-store`, so the edge would absorb none of them. With one, a slow read is one more degraded
+ * render, and the abort cancels the query behind it.
  */
-async function readOptional<T>(path: string): Promise<T | null> {
+const FIGURES_DEADLINE_MS = 1_000;
+
+/**
+ * A JSON body from the API as `accept` reads it, or null for a bad status, a body `accept` refuses,
+ * a deadline passed and an unreachable API alike: for the reads a game page can stand without.
+ */
+async function readOptional<T>(path: string, accept: (body: unknown) => T | null): Promise<T | null> {
     try {
-        const response = await fetch(apiUrl(path));
-        return response.ok ? (await response.json()) as T : null;
+        const response = await fetch(apiUrl(path), { signal: AbortSignal.timeout(FIGURES_DEADLINE_MS) });
+        return response.ok ? accept(await response.json()) : null;
     } catch {
         // `catch` as well as `ok`, because an unreachable API makes `fetch` reject rather than
-        // return a bad response — and a body that is not JSON makes `json()` reject.
+        // return a bad response — and so do a deadline passed and a body that is not JSON.
         return null;
     }
+}
+
+/**
+ * The members' scores, when the body has their shape, with what the floor keeps off the page taken
+ * out: this copy is stored in the shared HTML and its data, so a lone member's score must not ride
+ * along unseen (`scoresWithinFloor`). A body without `tracked` is kept — it is from an API older than
+ * this build, and its badge is still right — and the loader treats it as incomplete.
+ */
+function scoresFrom(body: unknown): CommunityScores | null {
+    const scores = body as Partial<CommunityScores> | null;
+    if (typeof scores?.scored !== 'number' || !Array.isArray(scores.distribution)) return null;
+    if (scores.mean !== null && typeof scores.mean !== 'number') return null;
+    return scoresWithinFloor(scores as CommunityScores);
+}
+
+/** The members' completion times, when the body has their shape, each median behind its floor. */
+function timesFrom(body: unknown): CommunityTimes | null {
+    const times = body as Partial<CommunityTimes> | null;
+    const buckets: unknown = times?.buckets;
+    if (!Array.isArray(buckets)) return null;
+    if (!buckets.every(bucket => typeof bucket?.type === 'string' && typeof bucket.samples === 'number')) return null;
+    return timesWithinFloor(times as CommunityTimes);
 }
 
 /**
@@ -81,12 +114,12 @@ export async function loader({ params }: Route.LoaderArgs) {
     });
 
     // All three at once: the members' figures do not wait on the game, and the game does not wait
-    // on them. Neither of those two can fail the page.
+    // on them. Neither of those two can fail the page, or hold it past their deadline.
     const [response, scores, times] = await Promise.all([
         // fetch rejects rather than returning !ok when the API is unreachable.
         fetch(apiUrl(`/api/games/${id}`)).catch(() => null),
-        readOptional<CommunityScores>(`/api/games/${id}/community-scores`),
-        readOptional<CommunityTimes>(`/api/games/${id}/community-times`),
+        readOptional(`/api/games/${id}/community-scores`, scoresFrom),
+        readOptional(`/api/games/${id}/community-times`, timesFrom),
     ]);
 
     if (response === null) throw badGateway();
@@ -164,10 +197,11 @@ export function GamePage() {
 
     const { user, loading: authLoading } = useAuth();
 
-    // Fetched after hydration and never in the loader — the page is edge-cached for up to a day, and
-    // a review its author withdraws must not outlive the withdrawal there (ADR 0028). Called here
-    // rather than in the section so the hero's badge and the section share one pair of requests,
-    // and so the reader's own panel can ask for them again after it writes.
+    // The reviews are fetched here, after hydration, and never in the loader — the page is
+    // edge-cached for up to a day, and a review its author withdraws must not outlive the withdrawal
+    // there (ADR 0028). The scores come with them, live, over the loader's copy. Called here rather
+    // than in the section so the hero's badge and the section share one pair of requests, and so the
+    // reader's own panel can ask for them again after it writes.
     const community = useGameCommunity(game.id);
 
     // The members' score as the loader read it, which is what the server rendered, until the
@@ -529,7 +563,7 @@ export function GamePage() {
                                         percent={game.criticScore!}
                                         count={game.criticScoreCount}
                                     />
-                                    <span className="ml-2 text-xs text-fg-faint">
+                                    <span className="ml-2 text-xs text-fg-faint" aria-hidden="true">
                                         from {formatCount(game.criticScoreCount!)} reviews
                                     </span>
                                 </div>
@@ -544,7 +578,7 @@ export function GamePage() {
                                         count={game.ratingCount}
                                     />
                                     {game.ratingCount !== null && (
-                                        <span className="ml-2 text-xs text-fg-faint">
+                                        <span className="ml-2 text-xs text-fg-faint" aria-hidden="true">
                                             from {formatCount(game.ratingCount)} ratings
                                         </span>
                                     )}
@@ -553,7 +587,7 @@ export function GamePage() {
 
                             {/* Ours, with its count in words beside it like the two above, and in the
                                 server render like them. Google shows a rating from structured data
-                                only when a reader can see it on the page (ADR 0069). The count is for
+                                only when a reader can see it on the page (ADR 0069). Each count is for
                                 the eye only: the badge's accessible name already ends with it. */}
                             {hasMemberScore(memberScores) && (
                                 <div>
