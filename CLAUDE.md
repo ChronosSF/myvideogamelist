@@ -68,6 +68,8 @@ myvideogamelist.client/
   src/pages/                    Route modules (default export + optional loader/meta)
   src/resources/                Resource routes: robots.txt and the sitemaps. A loader, no component
   src/lib/                      apiUrl(), useHydrated(), pageMeta()
+holding/                        The static page at myvideogamelist.net until production takes the domain:
+                                site/ is what is served, share/ draws its share image (ADR 0066)
 docs/decisions/                 Architecture decision records
 docs/data-model-plan.md         The tables not built yet, and the two constraints every table answers to
 scripts/                        Dev-only tools. The seeding tools print SQL to stdout and never open
