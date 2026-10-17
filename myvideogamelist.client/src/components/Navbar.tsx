@@ -66,9 +66,34 @@ export function Navbar() {
             : []),
     ];
 
+    // Why the last sign-out did not happen, shown in the menu it was pressed in. Cleared whenever the
+    // menu closes, so it never greets the next opening; adjusted during render, as the main menu is.
+    const [logoutError, setLogoutError] = useState<string | null>(null);
+    if (!menuOpen && logoutError !== null) {
+        setLogoutError(null);
+    }
+
+    // While the sign-out is out, which behind the edge can be a long while when it is failing.
+    const [signingOut, setSigningOut] = useState(false);
+
     const handleLogout = async () => {
+        if (signingOut) return;
+        // Cleared first, so that a second refusal is a new alert, and is announced again.
+        setLogoutError(null);
+        setSigningOut(true);
+        try {
+            await logout();
+        } catch (error) {
+            // Still signed in: the cookie outlived the request. The menu stays open on the reason, or
+            // opens again on it if it was closed meanwhile, rather than leaving nothing on screen to
+            // say the sign-out did not happen.
+            setMenuOpen(true);
+            setLogoutError(error instanceof Error ? error.message : 'Could not sign you out. Please try again.');
+            return;
+        } finally {
+            setSigningOut(false);
+        }
         setMenuOpen(false);
-        await logout();
         navigate('/');
     };
 
@@ -196,63 +221,77 @@ export function Navbar() {
                                     {menuOpen && (
                                         <>
                                             <div className="navbar-dropdown-overlay" onClick={() => setMenuOpen(false)} />
-                                            <div className="navbar-dropdown" role="menu">
-                                                <div className="navbar-dropdown-email">@{user.userName}</div>
-                                                <Link
-                                                    to="/user"
-                                                    className="navbar-dropdown-item"
-                                                    role="menuitem"
-                                                    onClick={() => setMenuOpen(false)}
-                                                >
-                                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                                                    </svg>
-                                                    My Profile
-                                                </Link>
-                                                {/* Only when there is one. A link to a page that
-                                                    404s for everybody including its owner would be
-                                                    a worse explanation of the privacy setting than
-                                                    its absence is. */}
-                                                {user.profileVisibility === 'public' && (
+                                            <div className="navbar-dropdown">
+                                                {/* The menu is the items alone, so that the reason a
+                                                    sign-out failed, below, is not a child a menu may
+                                                    not hold. */}
+                                                <div role="menu">
+                                                    <div className="navbar-dropdown-email">@{user.userName}</div>
                                                     <Link
-                                                        to={`/u/${user.userName}`}
+                                                        to="/user"
                                                         className="navbar-dropdown-item"
                                                         role="menuitem"
                                                         onClick={() => setMenuOpen(false)}
                                                     >
                                                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0zM3.6 9h16.8M3.6 15h16.8M12 3a15 15 0 010 18a15 15 0 010-18z" />
+                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                                                         </svg>
-                                                        My public page
+                                                        My Profile
                                                     </Link>
-                                                )}
-                                                {/* A convenience for the one person it is shown
-                                                    to, and not the guard: every admin request is
-                                                    refused by the server unless the account is an
-                                                    admin, whoever finds the page. */}
-                                                {user.isAdmin && (
-                                                    <Link
-                                                        to="/admin"
-                                                        className="navbar-dropdown-item"
+                                                    {/* Only when there is one. A link to a page that
+                                                        404s for everybody including its owner would be
+                                                        a worse explanation of the privacy setting than
+                                                        its absence is. */}
+                                                    {user.profileVisibility === 'public' && (
+                                                        <Link
+                                                            to={`/u/${user.userName}`}
+                                                            className="navbar-dropdown-item"
+                                                            role="menuitem"
+                                                            onClick={() => setMenuOpen(false)}
+                                                        >
+                                                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0zM3.6 9h16.8M3.6 15h16.8M12 3a15 15 0 010 18a15 15 0 010-18z" />
+                                                            </svg>
+                                                            My public page
+                                                        </Link>
+                                                    )}
+                                                    {/* A convenience for the one person it is shown
+                                                        to, and not the guard: every admin request is
+                                                        refused by the server unless the account is an
+                                                        admin, whoever finds the page. */}
+                                                    {user.isAdmin && (
+                                                        <Link
+                                                            to="/admin"
+                                                            className="navbar-dropdown-item"
+                                                            role="menuitem"
+                                                            onClick={() => setMenuOpen(false)}
+                                                        >
+                                                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                                            </svg>
+                                                            Admin
+                                                        </Link>
+                                                    )}
+                                                    {/* aria-disabled rather than disabled while the
+                                                        request is out, so the item keeps the focus a
+                                                        keyboard gave it; the press guards itself. */}
+                                                    <button
+                                                        className="navbar-dropdown-item navbar-dropdown-logout"
                                                         role="menuitem"
-                                                        onClick={() => setMenuOpen(false)}
+                                                        onClick={handleLogout}
+                                                        aria-disabled={signingOut}
                                                     >
                                                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
                                                         </svg>
-                                                        Admin
-                                                    </Link>
+                                                        {signingOut ? 'Signing out…' : 'Sign Out'}
+                                                    </button>
+                                                </div>
+                                                {logoutError !== null && (
+                                                    <p className="px-4 pb-3 text-sm text-danger-300" role="alert">
+                                                        {logoutError}
+                                                    </p>
                                                 )}
-                                                <button
-                                                    className="navbar-dropdown-item navbar-dropdown-logout"
-                                                    role="menuitem"
-                                                    onClick={handleLogout}
-                                                >
-                                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-                                                    </svg>
-                                                    Sign Out
-                                                </button>
                                             </div>
                                         </>
                                     )}
