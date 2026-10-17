@@ -43,7 +43,9 @@ Both deploys are `--exclusively`, and the `App` deploy only ever *updates* the s
 read once, when the job starts, so a park that began mid-run would otherwise be undone by a job
 that recreates the stack over a stopped database. Creating `App` is `resume`'s job alone. A
 re-run for a commit whose images are already in ECR skips the build; the repositories are
-immutable, so it could not push them again anyway.
+immutable, so it could not push them again anyway. CI's Images job builds the same two images on
+every pull request and pushes neither, reading the layer cache this workflow writes, so the two
+cache scopes, `api` and `ssr`, change together (ADR 0061).
 
 The `dev` environment holds four variables, none secret: `AWS_ROLE_ARN`, `AWS_REGION`,
 `AWS_ACCOUNT_ID` and `DEV_DEPLOY_ENABLED`, and one secret, `DEV_BASIC_AUTH`, the basic-auth pair
