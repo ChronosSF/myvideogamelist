@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging.Abstractions;
 using MyVideoGameList.Server.DTOs;
+using MyVideoGameList.Server.Models;
 using MyVideoGameList.Server.Services;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
@@ -17,6 +18,14 @@ public class HomeServiceTests
 {
     private static readonly DateTimeOffset Published = new(2026, 9, 1, 12, 0, 0, TimeSpan.Zero);
 
+    /// <summary>When the tests compose the page: mid-morning in UTC on 17 October 2026.</summary>
+    private static readonly DateTimeOffset Now = new(2026, 10, 17, 10, 0, 0, TimeSpan.Zero);
+
+    private sealed class FixedClock(DateTimeOffset now) : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => now;
+    }
+
     /// <summary>A game with a cover, and with the wide artwork the hero needs only when asked for.</summary>
     private static GameDto Game(int id, string? artwork = null) =>
         new(id, $"Game {id}", null, null, $"https://images.example/cover-{id}.jpg", artwork,
@@ -26,6 +35,18 @@ public class HomeServiceTests
     private static NewsItemDto NewsFor(int gameId) =>
         new($"gid-{gameId}", gameId, $"Game {gameId}", null, "Patch notes", $"https://example.test/{gameId}",
             "Steam", null, Published);
+
+    private static readonly CalendarCuratedEventDto NextFest =
+        new(2, CuratedEventKinds.Fest, CuratedEventStores.Steam, "Steam Next Fest",
+            new DateOnly(2026, 10, 19), new DateOnly(2026, 10, 26),
+            "https://partner.steamgames.com/doc/marketing/upcoming_events");
+
+    private static readonly CalendarShowcaseDto IdAtXbox =
+        new(1197, "ID@Xbox October 2026 Showcase", new DateTimeOffset(2026, 10, 20, 17, 0, 0, TimeSpan.Zero),
+            new DateTimeOffset(2026, 10, 20, 18, 0, 0, TimeSpan.Zero), null);
+
+    /// <summary>What the calendar answers when nothing is on: an ordinary answer, not a failure.</summary>
+    private static readonly CalendarEventsDto NothingOn = new([], [], Degraded: false);
 
     private static IIgdbService IgdbTrending(params GameDto[] games)
     {
@@ -43,20 +64,34 @@ public class HomeServiceTests
         return steam;
     }
 
-    private static HomeService NewService(IIgdbService igdb, ISteamNewsService steam, IMemoryCache? cache = null) =>
-        new(igdb, steam, cache ?? new MemoryCache(new MemoryCacheOptions()), NullLogger<HomeService>.Instance);
+    private static ICalendarEventService CalendarReturning(CalendarEventsDto events)
+    {
+        var calendar = Substitute.For<ICalendarEventService>();
+        calendar.GetAsync(Arg.Any<DateOnly>(), Arg.Any<DateOnly>(), Arg.Any<CancellationToken>()).Returns(events);
+        return calendar;
+    }
+
+    private static HomeService NewService(
+        IIgdbService igdb,
+        ISteamNewsService steam,
+        IMemoryCache? cache = null,
+        ICalendarEventService? calendar = null,
+        DateTimeOffset? now = null) =>
+        new(igdb, steam, calendar ?? CalendarReturning(NothingOn), cache ?? new MemoryCache(new MemoryCacheOptions()),
+            new FixedClock(now ?? Now), NullLogger<HomeService>.Instance);
 
     /// <summary>
     /// How long the service asked for its answer to be kept. A substitute rather than a clock,
     /// because what is asserted is the lifetime asked for, not the cache's own timekeeping.
     /// </summary>
-    private static async Task<TimeSpan?> LifetimeOfAsync(IIgdbService igdb, ISteamNewsService steam)
+    private static async Task<TimeSpan?> LifetimeOfAsync(
+        IIgdbService igdb, ISteamNewsService steam, ICalendarEventService? calendar = null)
     {
         var entry = Substitute.For<ICacheEntry>();
         var cache = Substitute.For<IMemoryCache>();
         cache.CreateEntry(Arg.Any<object>()).Returns(entry);
 
-        await NewService(igdb, steam, cache).GetHomeAsync();
+        await NewService(igdb, steam, cache, calendar).GetHomeAsync();
 
         return entry.AbsoluteExpirationRelativeToNow;
     }
@@ -133,6 +168,124 @@ public class HomeServiceTests
     }
 
     [Fact]
+    public async Task GetHomeAsync_ShowcasesAndSalesAnswered_CarriesThemAndIsNotDegraded()
+    {
+        var events = new CalendarEventsDto([NextFest], [IdAtXbox], Degraded: false);
+        var service = NewService(
+            IgdbTrending(Game(1)), SteamReturning(NewsFor(1)), calendar: CalendarReturning(events));
+
+        var home = await service.GetHomeAsync();
+
+        Assert.Same(events, home.Events);
+        Assert.False(home.Degraded);
+    }
+
+    [Fact]
+    public async Task GetHomeAsync_NothingOnInTheTwoWeeks_IsNotDegraded()
+    {
+        // Unlike the rails, the panel is empty for a true reason most of the year — no sale entered, no
+        // showcase named — and an empty panel is not drawn rather than drawn as a failure. Read as degraded,
+        // every quiet fortnight would take the whole front page off the edge.
+        var service = NewService(IgdbTrending(Game(1)), SteamReturning(NewsFor(1)), calendar: CalendarReturning(NothingOn));
+
+        var home = await service.GetHomeAsync();
+
+        Assert.Empty(home.Events.Curated);
+        Assert.Empty(home.Events.Showcases);
+        Assert.False(home.Degraded);
+    }
+
+    [Fact]
+    public async Task GetHomeAsync_ShowcasesMissing_IsDegradedAndKeepsTheSalesAndTheRails()
+    {
+        // IGDB could not be asked for the showcases. The calendar's service still answers, with the sales,
+        // which are ours, and says what is missing; the page shows what it has and is not kept.
+        var events = new CalendarEventsDto([NextFest], [], Degraded: true);
+        var service = NewService(
+            IgdbTrending(Game(1)), SteamReturning(NewsFor(1)), calendar: CalendarReturning(events));
+
+        var home = await service.GetHomeAsync();
+
+        Assert.Equal("Steam Next Fest", Assert.Single(home.Events.Curated).Name);
+        Assert.True(home.Events.Degraded);
+        Assert.Equal([1], home.Popular.Select(g => g.Id));
+        Assert.Equal([NewsFor(1)], home.News);
+        Assert.True(home.Degraded);
+    }
+
+    [Fact]
+    public async Task GetHomeAsync_EventsCannotBeRead_CostsThePanelAndNothingElse()
+    {
+        // Our own tables failing to answer. Uncaught, it would have taken down a page that read no table
+        // of ours until this panel; caught, the panel is missing and says so, and the rails are whole.
+        var calendar = Substitute.For<ICalendarEventService>();
+        calendar.GetAsync(Arg.Any<DateOnly>(), Arg.Any<DateOnly>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new InvalidOperationException("The database is unreachable."));
+        var service = NewService(
+            IgdbTrending(Game(1, "https://images.example/art-1.jpg")), SteamReturning(NewsFor(1)), calendar: calendar);
+
+        var home = await service.GetHomeAsync();
+
+        Assert.Empty(home.Events.Curated);
+        Assert.Empty(home.Events.Showcases);
+        Assert.True(home.Events.Degraded);
+        Assert.Equal(1, home.Spotlight?.Id);
+        Assert.Equal([NewsFor(1)], home.News);
+        Assert.True(home.Degraded);
+    }
+
+    [Theory]
+    // Mid-morning: the readers' days run from the 16th, west of Greenwich, to the 18th, far east of it.
+    [InlineData("2026-10-17T10:00:00Z", "2026-10-16", "2026-11-01")]
+    // A second either side of UTC midnight is a day either side, whatever the server's own timezone is.
+    [InlineData("2026-10-17T23:59:59Z", "2026-10-16", "2026-11-01")]
+    [InlineData("2026-10-18T00:00:00Z", "2026-10-17", "2026-11-02")]
+    // An instant given in another offset is still read in UTC: 01:00 in Sofia is 22:00 the day before.
+    [InlineData("2026-10-18T01:00:00+03:00", "2026-10-16", "2026-11-01")]
+    public void EventsWindow_IsTheTwoWeeksWidenedByADayAtEachEnd_InUtc(string now, string from, string to)
+    {
+        var window = HomeService.EventsWindow(DateTimeOffset.Parse(now));
+
+        Assert.Equal((DateOnly.Parse(from), DateOnly.Parse(to)), window);
+    }
+
+    [Theory]
+    // Composed as a UTC day begins, and a second before it ends.
+    [InlineData("2026-10-17T00:00:00Z")]
+    [InlineData("2026-10-17T23:59:59Z")]
+    public void EventsWindow_CoversEveryReadersTwoWeeks_ForAsLongAsTheAnswerCanBeServed(string composedAt)
+    {
+        // Served at once, and half an hour later: its fifteen minutes in this process, then fifteen more at
+        // the edge (ADR 0013). The readers' days at any instant run from twelve hours behind UTC to
+        // fourteen ahead of it, and each reader keeps today and the thirteen after it.
+        var composed = DateTimeOffset.Parse(composedAt);
+        var (from, to) = HomeService.EventsWindow(composed);
+
+        foreach (var servedAt in new[] { composed, composed.AddMinutes(30) })
+        {
+            foreach (var offset in new[] { TimeSpan.FromHours(-12), TimeSpan.Zero, TimeSpan.FromHours(14) })
+            {
+                var readersToday = DateOnly.FromDateTime(servedAt.ToOffset(offset).DateTime);
+                var readersLastDay = readersToday.AddDays(HomeService.EventDays - 1);
+
+                Assert.True(readersToday >= from, $"A reader at {offset} on {readersToday} starts before {from}.");
+                Assert.True(readersLastDay < to, $"A reader at {offset} on {readersToday} ends after {to}.");
+            }
+        }
+    }
+
+    [Fact]
+    public async Task GetHomeAsync_AsksTheCalendarAboutTheWidenedWindow()
+    {
+        var calendar = CalendarReturning(NothingOn);
+        var service = NewService(IgdbTrending(Game(1)), SteamReturning(NewsFor(1)), calendar: calendar);
+
+        await service.GetHomeAsync();
+
+        await calendar.Received(1).GetAsync(new DateOnly(2026, 10, 16), new DateOnly(2026, 11, 1), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public async Task GetHomeAsync_DegradedAnswer_IsKeptForLessTimeThanAHealthyOne()
     {
         // The same judgement picks both, so a failure the flag owns up to is never the one this
@@ -140,14 +293,20 @@ public class HomeServiceTests
         var igdbDown = Substitute.For<IIgdbService>();
         igdbDown.GetTrendingAsync(Arg.Any<int>(), Arg.Any<CancellationToken>())
             .ThrowsAsync(new HttpRequestException("IGDB is down"));
+        var tablesDown = Substitute.For<ICalendarEventService>();
+        tablesDown.GetAsync(Arg.Any<DateOnly>(), Arg.Any<DateOnly>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new InvalidOperationException("The database is unreachable."));
 
         var healthy = await LifetimeOfAsync(IgdbTrending(Game(1)), SteamReturning(NewsFor(1)));
         var outage = await LifetimeOfAsync(igdbDown, SteamReturning());
         var noTrending = await LifetimeOfAsync(IgdbTrending(), SteamReturning());
         var noNews = await LifetimeOfAsync(IgdbTrending(Game(1)), SteamReturning());
+        var noShowcases = await LifetimeOfAsync(
+            IgdbTrending(Game(1)), SteamReturning(NewsFor(1)), CalendarReturning(new CalendarEventsDto([NextFest], [], Degraded: true)));
+        var noEvents = await LifetimeOfAsync(IgdbTrending(Game(1)), SteamReturning(NewsFor(1)), tablesDown);
 
         Assert.NotNull(healthy);
-        Assert.All([outage, noTrending, noNews], degraded =>
+        Assert.All([outage, noTrending, noNews, noShowcases, noEvents], degraded =>
         {
             Assert.NotNull(degraded);
             Assert.True(degraded < healthy, $"A degraded answer was kept for {degraded}, a healthy one for {healthy}.");
@@ -172,6 +331,21 @@ public class HomeServiceTests
     }
 
     [Fact]
+    public async Task GetHomeAsync_ServedFromCache_DoesNotReadTheEventsAgain()
+    {
+        // The showcases and sales are kept with the rest of the composite, so the admin page's tables are
+        // read once per composition rather than once per visitor.
+        var calendar = CalendarReturning(new CalendarEventsDto([NextFest], [], Degraded: false));
+        var service = NewService(IgdbTrending(Game(1)), SteamReturning(NewsFor(1)), calendar: calendar);
+
+        var first = await service.GetHomeAsync();
+        var second = await service.GetHomeAsync();
+
+        Assert.Same(first, second);
+        await calendar.Received(1).GetAsync(Arg.Any<DateOnly>(), Arg.Any<DateOnly>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public async Task GetHomeAsync_CallerCancels_ThrowsAndKeepsNothing()
     {
         // A reader who left is not an upstream failure. Swallowed as one, a single abandoned request
@@ -183,6 +357,22 @@ public class HomeServiceTests
         var service = NewService(igdb, SteamReturning(), cache);
 
         await Assert.ThrowsAsync<OperationCanceledException>(() => service.GetHomeAsync());
+
+        cache.DidNotReceiveWithAnyArgs().CreateEntry(default!);
+    }
+
+    [Fact]
+    public async Task GetHomeAsync_CallerCancelsWhileTheEventsAreRead_ThrowsAndKeepsNothing()
+    {
+        // The same for the last part to be composed: the panel's catch is for our tables failing, not for
+        // a reader leaving, and taking one for the other would cache a page with no panel for a minute.
+        var calendar = Substitute.For<ICalendarEventService>();
+        calendar.GetAsync(Arg.Any<DateOnly>(), Arg.Any<DateOnly>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new TaskCanceledException());
+        var cache = Substitute.For<IMemoryCache>();
+        var service = NewService(IgdbTrending(Game(1)), SteamReturning(NewsFor(1)), cache, calendar);
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => service.GetHomeAsync());
 
         cache.DidNotReceiveWithAnyArgs().CreateEntry(default!);
     }
