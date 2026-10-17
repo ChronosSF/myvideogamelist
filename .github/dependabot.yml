@@ -7,6 +7,7 @@ updates:
     directories:
       - /MyVideoGameList.Server
       - /MyVideoGameList.Server.Tests
+      - /MyVideoGameList.Server.IntegrationTests
       - /infra/src/Infra
     schedule:
       interval: weekly

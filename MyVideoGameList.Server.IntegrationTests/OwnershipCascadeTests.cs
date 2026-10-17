@@ -36,7 +36,7 @@ public class OwnershipCascadeTests(ApiFactory api) : IClassFixture<ApiFactory>
     private const int Wanted = 1021;
 
     [Fact]
-    public async Task DeleteAccount_TakesTheAccountsRowsFromEveryTable_AndNobodyElses()
+    public async Task DeleteAccount_WithARowInEveryTable_TakesTheAccountsRowsAndNobodyElses()
     {
         using var leaving = api.CreateBrowser();
         using var staying = api.CreateBrowser();
@@ -69,7 +69,7 @@ public class OwnershipCascadeTests(ApiFactory api) : IClassFixture<ApiFactory>
     }
 
     [Fact]
-    public async Task DeletingAParentRow_TakesEveryRowThatCannotExistWithoutIt()
+    public async Task ExecuteDelete_OnAParentRow_TakesEveryRowThatCannotExistWithoutIt()
     {
         // The other edge, which UserOwnedDataTests asserts of the model and this asserts of the
         // database: a playthrough or a review without its entry, an import row without its job. Each
@@ -113,7 +113,7 @@ public class OwnershipCascadeTests(ApiFactory api) : IClassFixture<ApiFactory>
     }
 
     [Fact]
-    public async Task DeleteEntry_TakesItsPlaythroughsAndReview_AndKeepsTheLogWithTheDeparture()
+    public async Task DeleteEntry_WithAPlaythroughAndAReview_TakesBothAndKeepsTheLog()
     {
         using var browser = api.CreateBrowser();
         await RecordEverythingAsync(browser, "forgetter");

@@ -61,6 +61,35 @@ jobs:
       - name: Test
         run: dotnet test MyVideoGameList.Server.Tests/MyVideoGameList.Server.Tests.csproj --no-build --verbosity normal
 
+  # The API booted over a real PostgreSQL, for what EF InMemory cannot do: the cascades, the
+  # retention sweep's ExecuteDeleteAsync, the export's snapshot, and auth and the lists end to end.
+  # Its own job, so the unit tests above stay as quick and as Docker-free as they were. The runner
+  # has Docker; Testcontainers starts the container and its reaper, which is left on, removes it
+  # however the run ends. Nothing reaches IGDB, which has no credentials here. See ADR 0057.
+  integration:
+    name: Server integration
+    runs-on: ubuntu-latest
+    # A container that never became ready would otherwise hold the runner for the six-hour default.
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore
+        run: dotnet restore MyVideoGameList.Server.IntegrationTests/MyVideoGameList.Server.IntegrationTests.csproj
+
+      - name: Build
+        run: dotnet build MyVideoGameList.Server.IntegrationTests/MyVideoGameList.Server.IntegrationTests.csproj --no-restore
+
+      - name: Test
+        run: dotnet test MyVideoGameList.Server.IntegrationTests/MyVideoGameList.Server.IntegrationTests.csproj --no-build --verbosity normal
+
+  # #105's Playwright smoke test and #106's format check, audits and secret scanning go here, each a
+  # job block of its own like the one above, rather than steps added to it.
+
   # The CDK app compiles, so a construct renamed by a library bump or a stack edited without
   # building is caught here rather than on the next deploy. Synthesis is not run: it needs
   # credentials for the context lookups, and the long-lived stacks are deployed from a developer

@@ -12,7 +12,7 @@ namespace MyVideoGameList.Server.IntegrationTests;
 public class AuthFlowTests(ApiFactory api) : IClassFixture<ApiFactory>
 {
     [Fact]
-    public async Task Register_SignsTheBrowserIn_AndMeAnswersWithThePrivateNewAccount()
+    public async Task Register_ANewAccount_IsSignedInPrivateAndNotAnAdmin()
     {
         using var browser = api.CreateBrowser();
         var userName = Browsers.NewUserName("newcomer");
@@ -31,7 +31,7 @@ public class AuthFlowTests(ApiFactory api) : IClassFixture<ApiFactory>
     }
 
     [Fact]
-    public async Task Logout_EndsTheSession()
+    public async Task Logout_ASignedInBrowser_EndsTheSession()
     {
         using var browser = api.CreateBrowser();
         await browser.RegisterAsync(Browsers.NewUserName("leaver"));

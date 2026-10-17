@@ -27,7 +27,7 @@ namespace MyVideoGameList.Server.IntegrationTests;
 public class ImportRetentionSweepTests(ApiFactory api) : IClassFixture<ApiFactory>
 {
     [Fact]
-    public async Task Sweep_DeletesExpiredJobsWithTheirRows_AndKeepsEveryJobStillInsideItsWindow()
+    public async Task Sweep_JobsEitherSideOfTheirWindows_DeletesTheExpiredWithTheirRowsAndKeepsTheRest()
     {
         var now = DateTimeOffset.UtcNow;
         var userId = await RegisterAsync("sweeper");

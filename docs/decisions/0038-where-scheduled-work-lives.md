@@ -1,6 +1,7 @@
 # 0038. Where scheduled work lives, and what a sweep owes a fleet
 
-**Status:** Implemented
+**Status:** Implemented. The deletion the first consequence leaves untested runs against PostgreSQL
+since [0057](0057-the-api-is-tested-over-a-real-postgresql.md).
 
 Completes `specs/csv-list-import.md` §S9, which [0037](0037-a-tracker-import-carries-history.md)
 shipped without. Extends [0012](0012-steam-news-without-a-database.md), which is the other record

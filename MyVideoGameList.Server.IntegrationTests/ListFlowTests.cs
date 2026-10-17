@@ -12,7 +12,7 @@ namespace MyVideoGameList.Server.IntegrationTests;
 public class ListFlowTests(ApiFactory api) : IClassFixture<ApiFactory>
 {
     [Fact]
-    public async Task AGameAddedAndMoved_IsListedWhereItEnded_AndTheLogHoldsEveryMoveInOrder()
+    public async Task SetListEntry_AddedThenMoved_ListsTheGameWhereItEndedAndLogsEveryMoveInOrder()
     {
         const int gameId = 1942;
         await api.CacheGamesAsync(gameId);
@@ -55,7 +55,7 @@ public class ListFlowTests(ApiFactory api) : IClassFixture<ApiFactory>
     }
 
     [Fact]
-    public async Task AGameTakenOutOfEveryList_LeavesItsDepartureInTheLog_AndItsEntryKeepsTheScore()
+    public async Task RemoveListEntry_FromAScoredEntry_LogsTheDepartureAndKeepsTheScore()
     {
         const int gameId = 7346;
         await api.CacheGamesAsync(gameId);
@@ -86,7 +86,7 @@ public class ListFlowTests(ApiFactory api) : IClassFixture<ApiFactory>
     }
 
     [Fact]
-    public async Task Lists_WhileIgdbIsDown_RenderTheCachedCopyHoweverOld()
+    public async Task GetLists_WhileIgdbIsDown_RendersTheCachedCopyHoweverOld()
     {
         // The promise ADR 0035 exists for: a row past its refresh interval is asked about again,
         // IGDB does not answer, and the shelf is served from what was stored rather than failing.
