@@ -711,6 +711,25 @@ public class ImportServiceTests
     }
 
     [Fact]
+    public async Task SetDecisionsAsync_ARowNamedTwice_TakesTheLastDecision()
+    {
+        // Rather than failing on the duplicate key as a 500.
+        using var db = NewDb();
+        var service = NewService(db, CacheReturning(Game(379)));
+
+        var jobId = await UploadAsync(service, Export(Entry()));
+        var row = Assert.Single((await service.GetReviewAsync(UserId, jobId))!.Rows);
+
+        Assert.True(await service.SetDecisionsAsync(UserId, jobId, new ImportDecisionsDto(
+        [
+            new ImportRowDecisionDto(row.Id, ImportDecisions.Import, null, null),
+            new ImportRowDecisionDto(row.Id, ImportDecisions.Skip, null, null),
+        ])));
+
+        Assert.Equal(ImportDecisions.Skip, Assert.Single((await service.GetReviewAsync(UserId, jobId))!.Rows).Decision);
+    }
+
+    [Fact]
     public async Task SetDecisionsAsync_PickingAGameForAnUnmatchedRow_MakesItImportable()
     {
         using var db = NewDb();
