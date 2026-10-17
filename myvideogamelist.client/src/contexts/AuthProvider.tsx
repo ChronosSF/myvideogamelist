@@ -88,10 +88,13 @@ async function detailsProblem(response: Response): Promise<ProfileDetailsError> 
         }
     }
 
-    return new ProfileDetailsError(
-        messageIn(body, 'Failed to save your profile details.'),
-        fieldErrors,
-    );
+    // A 409 is a lost race with another change to the account — the privacy switch flipped during
+    // the save, or a second tab — and its detail is Identity's own wording, written for a log.
+    const message = response.status === 409
+        ? 'Your account was changed somewhere else at the same moment. Please save again.'
+        : messageIn(body, 'Failed to save your profile details.');
+
+    return new ProfileDetailsError(message, fieldErrors);
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -133,9 +136,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
 
     /**
-     * Both of these take the whole profile back from the server rather than patching the field
-     * they sent. A rename can be normalised on the way through — and a settings page that showed
-     * what was typed rather than what was stored would disagree with the URL it just built.
+     * Takes the account a profile change answered with, but only while it is still the account on
+     * screen. A change can be in flight when its owner signs out, or out and back in as somebody
+     * else, and its answer landing then would put the first account back on screen with no cookie
+     * behind it, or over the second's — whose lists would then load under the first one's name.
+     * Compared inside the updater, against state, never against a ref (ADR 0022).
+     */
+    const acceptProfile = (next: UserProfile) =>
+        setUser(current => (current !== null && current.id === next.id ? next : current));
+
+    /**
+     * Each of these takes the whole profile back from the server rather than patching the field it
+     * sent. A rename can be normalised on the way through — and a settings page that showed what was
+     * typed rather than what was stored would disagree with the URL it just built.
      */
     const updateUserName = async (userName: string) => {
         const res = await apiFetch('/api/user/username', {
@@ -145,7 +158,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         });
         if (!res.ok) throw new Error(await problem(res, 'Failed to change your username'));
 
-        setUser(await res.json() as UserProfile);
+        acceptProfile(await res.json() as UserProfile);
     };
 
     const updateProfileVisibility = async (profileVisibility: ProfileVisibility) => {
@@ -156,7 +169,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         });
         if (!res.ok) throw new Error(await problem(res, 'Failed to change your profile visibility'));
 
-        setUser(await res.json() as UserProfile);
+        acceptProfile(await res.json() as UserProfile);
     };
 
     /**
@@ -172,7 +185,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         });
         if (!res.ok) throw await detailsProblem(res);
 
-        setUser(await res.json() as UserProfile);
+        acceptProfile(await res.json() as UserProfile);
     };
 
     /**

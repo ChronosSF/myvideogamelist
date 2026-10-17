@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { AVATAR_HOSTS } from '@/lib/avatar';
-import { applySecurityHeaders, IMAGE_SOURCES, SECURITY_HEADERS } from '@/lib/securityHeaders';
+import { applySecurityHeaders, SECURITY_HEADERS } from '@/lib/securityHeaders';
 
 /** One directive of the document policy, as its list of sources. */
 function directive(name: string): string[] | undefined {
@@ -18,8 +18,13 @@ describe('applySecurityHeaders', () => {
         expect(headers.get('X-Content-Type-Options')).toBe('nosniff');
         expect(headers.get('X-Frame-Options')).toBe('DENY');
         expect(headers.get('Referrer-Policy')).toBe('strict-origin-when-cross-origin');
+        // Written out whole, so a host added or lost anywhere in the chain that builds it shows here.
         expect(headers.get('Content-Security-Policy')).toBe(
-            `frame-ancestors 'none'; img-src ${IMAGE_SOURCES.join(' ')}`,
+            "frame-ancestors 'none'; img-src 'self' https://images.igdb.com https://gravatar.com "
+            + 'https://www.gravatar.com https://secure.gravatar.com https://0.gravatar.com '
+            + 'https://1.gravatar.com https://2.gravatar.com https://avatars.githubusercontent.com '
+            + 'https://avatars.steamstatic.com https://avatars.akamai.steamstatic.com '
+            + 'https://avatars.fastly.steamstatic.com https://i.imgur.com',
         );
     });
 
@@ -50,7 +55,8 @@ describe('the images a page may load', () => {
 
     it('name hosts, never a scheme or a wildcard that would admit any of them', () => {
         // `https:` would send every reader's browser wherever a profile's owner pointed their avatar,
-        // which is the whole of what ADR 0056 decided against.
+        // which is the whole of what ADR 0056 decided against. A third party that publishes its
+        // hosts only as wildcards (#242, #143) is a decision to take in that record, not here.
         for (const source of directive('img-src') ?? []) {
             expect(source).not.toMatch(/^(https?|data|blob):$/);
             expect(source).not.toContain('*');

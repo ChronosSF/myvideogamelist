@@ -54,11 +54,14 @@ export function meta({ loaderData }: Route.MetaArgs) {
     if (!loaderData?.profile) return [{ title: 'Profile not found - MyVideoGameList' }];
 
     const { profile, page, site } = loaderData;
-    // The display name leads the title when there is one, with the handle beside it: a result in a
-    // search engine is somewhere the handle identifies the account, so it is never left out.
-    const name = profile.displayName === null
-        ? profile.userName
-        : `${profile.displayName} (@${profile.userName})`;
+    // The handle leads the title and the display name follows it: a search result or a tab is
+    // somewhere the handle identifies the account, and a title cut short must not cut the handle off
+    // in favour of a name anybody may choose. Tested for presence rather than against null, as below,
+    // so an API a release behind during a rolling deploy — no field at all — renders the page as it
+    // was rather than "undefined" into a page the edge then keeps for an hour.
+    const name = profile.displayName
+        ? `${profile.userName} (${profile.displayName})`
+        : profile.userName;
     // Each page of reviews is its own URL, so each gets its own title: two pages indexed under one
     // title read as duplicates of each other.
     const title = page > 1
@@ -194,12 +197,12 @@ export function ProfilePage({ loaderData }: Route.ComponentProps) {
                                 choose (ADR 0027). `bdi`, so a name written right to left cannot
                                 reorder the handle beside it. */}
                             <h1 className="public-profile-name">
-                                {profile.displayName === null ? profile.userName : (
+                                {profile.displayName ? (
                                     <>
                                         <bdi>{profile.displayName}</bdi>{' '}
                                         <span className="public-profile-handle">@{profile.userName}</span>
                                     </>
-                                )}
+                                ) : profile.userName}
                             </h1>
                             {/* Not a join date — there is no such column, and inventing one for
                                 accounts that predate it would be inventing a fact. It is the first
@@ -220,9 +223,9 @@ export function ProfilePage({ loaderData }: Route.ComponentProps) {
                     {/* A text node, so it is plain text whatever it contains: nothing in it is
                         markup, a link or a format. Its line breaks are its owner's, and `dir="auto"`
                         sets it right to left when that is how it was written. */}
-                    {profile.bio !== null && (
+                    {profile.bio ? (
                         <p className="public-profile-bio" dir="auto">{profile.bio}</p>
-                    )}
+                    ) : null}
                 </header>
 
                 <section className="profile-stats">

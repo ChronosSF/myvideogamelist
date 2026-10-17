@@ -129,12 +129,15 @@
     transition: background 0.15s, border-color 0.15s;
 }
 
-.user-btn:hover:not(:disabled) {
+.user-btn:hover:not(:disabled):not([aria-disabled='true']) {
     background: color-mix(in srgb, var(--color-primary-500) 25%, transparent);
     border-color: color-mix(in srgb, var(--color-primary-500) 55%, transparent);
 }
 
-.user-btn:disabled {
+/* `aria-disabled` looks the same as `disabled`. It is for a button that has to keep the keyboard's
+   focus while it cannot be pressed, which a disabled one drops. */
+.user-btn:disabled,
+.user-btn[aria-disabled='true'] {
     opacity: 0.6;
     cursor: not-allowed;
 }
@@ -247,7 +250,9 @@ a.user-btn {
     margin-top: 1rem;
 }
 
-.list-names-field {
+/* A labelled field in a settings form: the list names', and the profile details' below. */
+.list-names-field,
+.profile-details-field {
     display: flex;
     flex-direction: column;
     gap: 0.25rem;
@@ -255,14 +260,17 @@ a.user-btn {
 
 /* The default name labels its box, in the card label's colours, so a renamed list still says which
    list it is. */
-.list-names-field label {
+.list-names-field label,
+.profile-details-field label {
     font-size: 0.75rem;
     font-weight: 600;
     color: var(--color-fg-muted);
 }
 
 /* The username box's look, without its flex growth: these stack rather than share a row. */
-.list-names-field input {
+.list-names-field input,
+.profile-details-field input,
+.profile-details-field textarea {
     width: 100%;
     padding: 0.4375rem 0.75rem;
     background: var(--color-page);
@@ -273,16 +281,22 @@ a.user-btn {
     outline: none;
 }
 
-.list-names-field input:focus {
+.list-names-field input:focus,
+.profile-details-field input:focus,
+.profile-details-field textarea:focus {
     border-color: var(--color-focus);
     box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-focus) 20%, transparent);
 }
 
-.list-names-field input[aria-invalid='true'] {
+.list-names-field input[aria-invalid='true'],
+.profile-details-field input[aria-invalid='true'],
+.profile-details-field textarea[aria-invalid='true'] {
     border-color: var(--color-danger-400);
 }
 
-.list-names-field .user-pref-error {
+.list-names-field .user-pref-error,
+.profile-details-field .user-pref-error,
+.profile-details-field .user-card-hint {
     margin: 0;
 }
 
@@ -403,6 +417,7 @@ a.user-btn {
     overflow-wrap: anywhere;
 }
 
+/* The fields themselves share the list names' rules, above. */
 .profile-details-form {
     display: flex;
     flex-direction: column;
@@ -410,50 +425,9 @@ a.user-btn {
     margin-top: 1rem;
 }
 
-.profile-details-field {
-    display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
-}
-
-/* The list names' labels and boxes, so the settings page has one look for a field. */
-.profile-details-field label {
-    font-size: 0.75rem;
-    font-weight: 600;
-    color: var(--color-fg-muted);
-}
-
-.profile-details-field input,
-.profile-details-field textarea {
-    width: 100%;
-    padding: 0.4375rem 0.75rem;
-    background: var(--color-page);
-    border: 1px solid var(--color-line-strong);
-    border-radius: 0.5rem;
-    color: var(--color-fg);
-    font-size: 0.9375rem;
-    outline: none;
-}
-
 /* Grows downwards only, so a long bio can be written without the card changing width. */
 .profile-details-field textarea {
     min-height: 6rem;
     resize: vertical;
     line-height: 1.5;
-}
-
-.profile-details-field input:focus,
-.profile-details-field textarea:focus {
-    border-color: var(--color-focus);
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-focus) 20%, transparent);
-}
-
-.profile-details-field input[aria-invalid='true'],
-.profile-details-field textarea[aria-invalid='true'] {
-    border-color: var(--color-danger-400);
-}
-
-.profile-details-field .user-card-hint,
-.profile-details-field .user-pref-error {
-    margin: 0;
 }

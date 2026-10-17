@@ -11,8 +11,9 @@
  * The hosts an avatar may be loaded from, mirroring `AvatarUrlPolicy.Hosts` on the server, which is
  * the authority on what may be saved.
  *
- * This copy is the authority on what a page may load: the document policy's `img-src` is built from
- * it (`@/lib/securityHeaders`), so a host here is a host every reader's browser may be sent to.
+ * This copy is what lets a page load them: the document policy's `img-src` adds these to its own
+ * sources (`IMAGE_SOURCES` in `@/lib/securityHeaders`), so a host here is a host every reader's
+ * browser may be sent to. An image host that is not an avatar host belongs there, not here.
  * `avatar.test.ts` reads the server's list and fails when the two differ — a host on the server's
  * list and not on this one would be saved and then refused by every browser.
  */
@@ -28,11 +29,10 @@ export const AVATAR_HOSTS: readonly string[] = [
     'avatars.akamai.steamstatic.com',
     'avatars.fastly.steamstatic.com',
     'i.imgur.com',
-    'static-cdn.jtvnw.net',
 ];
 
-/** The services behind `AVATAR_HOSTS`, as the settings page names them. */
-export const AVATAR_SERVICES = 'Gravatar, GitHub, Steam, Imgur or Twitch';
+/** The services behind `AVATAR_HOSTS`, as the settings page names them: `AvatarUrlPolicy.Services`. */
+export const AVATAR_SERVICES = 'Gravatar, GitHub, Steam or Imgur';
 
 /**
  * The address to load, or null to show the initial instead.

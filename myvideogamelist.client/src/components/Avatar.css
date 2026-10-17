@@ -1,7 +1,7 @@
 /*
  * An account's picture, or its handle's initial. The caller sets the size and the type through its
  * own class; the circle, the fallback's colours and the way a picture fills it are here, so every
- * avatar on the site is one look.
+ * avatar this component draws is one look. The navbar still draws its own initial.
  */
 
 .avatar {

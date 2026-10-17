@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { AccountIdentityCard } from '@/components/AccountIdentityCard';
 import type { UserProfile } from '@/types/auth';
+import { userProfile } from '@/test/factories';
 
 /**
  * One module-level object handed back on every call, never a fresh literal — a new object per
@@ -23,24 +24,10 @@ const authValue = {
 
 vi.mock('@/hooks/useAuth', () => ({ useAuth: () => authValue }));
 
-function user(overrides: Partial<UserProfile> = {}): UserProfile {
-    return {
-        id: 'user-1',
-        email: 'alex@test.local',
-        userName: 'alex',
-        displayName: null,
-        avatarUrl: null,
-        bio: null,
-        profileVisibility: 'private',
-        isAdmin: false,
-        ...overrides,
-    };
-}
-
 function renderCard(overrides: Partial<UserProfile> = {}) {
     return render(
         <MemoryRouter>
-            <AccountIdentityCard user={user(overrides)} />
+            <AccountIdentityCard user={userProfile(overrides)} />
         </MemoryRouter>,
     );
 }

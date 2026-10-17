@@ -71,13 +71,23 @@ describe('ProfilePage meta', () => {
         expect(title(tagsFor())).toBe('AliceInChains - MyVideoGameList');
     });
 
-    it('leads its title with the display name, and keeps the handle beside it', () => {
-        // A search result is somewhere the handle identifies the account, so it is never dropped.
+    it('leads its title with the handle, and puts the display name after it', () => {
+        // A search result or a tab is somewhere the handle identifies the account, and a title cut
+        // short must not cut the handle off in favour of a name anybody may choose.
         const tags = tagsFor({ displayName: 'Alice Cooper' });
 
-        expect(title(tags)).toBe('Alice Cooper (@AliceInChains) - MyVideoGameList');
+        expect(title(tags)).toBe('AliceInChains (Alice Cooper) - MyVideoGameList');
         expect(title(tagsFor({ displayName: 'Alice Cooper', page: 2 })))
-            .toBe('Alice Cooper (@AliceInChains), reviews page 2 - MyVideoGameList');
+            .toBe('AliceInChains (Alice Cooper), reviews page 2 - MyVideoGameList');
+    });
+
+    it('is titled by the handle when the API is a release behind and sends no display name', () => {
+        // A rolling deploy pairs a new front end with an old API for a few minutes, and what is drawn
+        // then is shared at the edge for an hour: "undefined (@…)" must not be what is kept.
+        const profile = { userName: 'AliceInChains', favourites: 0, library: { tracked: 12, recorded: 12, byStatus: { finished: 3 } } };
+        const tags = meta({ loaderData: { profile, page: 1, site: SITE } } as unknown as Route.MetaArgs) as Tag[];
+
+        expect(title(tags)).toBe('AliceInChains - MyVideoGameList');
     });
 
     it('keeps the handle as its address and its username, whatever the display name', () => {
@@ -174,6 +184,8 @@ describe('ProfilePage, what the owner wrote about themselves', () => {
 
         const heading = screen.getByRole('heading', { level: 1 });
         expect(heading).toHaveTextContent('Stamen @ChronosSF');
+        // Isolated, so a name written right to left cannot reorder the handle after it.
+        expect(heading.querySelector('bdi')).toHaveTextContent(/^Stamen$/);
     });
 
     it('shows the bio as plain text, its line breaks and markup-looking text as written', () => {
@@ -184,6 +196,9 @@ describe('ProfilePage, what the owner wrote about themselves', () => {
         // One text node holding exactly what was written: nothing parsed, nothing collapsed.
         expect(paragraph.textContent).toBe(bio);
         expect(paragraph.querySelector('b')).toBeNull();
+        // Laid out in whichever direction it was written, and the element the next test looks for.
+        expect(paragraph).toHaveAttribute('dir', 'auto');
+        expect(paragraph).toHaveClass('public-profile-bio');
     });
 
     it('has no bio paragraph when there is no bio', () => {
@@ -192,7 +207,17 @@ describe('ProfilePage, what the owner wrote about themselves', () => {
         expect(container.querySelector('.public-profile-bio')).toBeNull();
     });
 
-    it('loads the avatar without a referrer, lazily, and as decoration', () => {
+    it('renders as it did before the three fields when the API does not send them', () => {
+        // An API a release behind, mid-deploy: the fields are absent rather than null.
+        const { displayName: _name, avatarUrl: _avatar, bio: _bio, ...older } = importedProfile();
+        const { container } = renderProfile(older as PublicProfile);
+
+        expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(/^ChronosSF$/);
+        expect(container.querySelector('.public-profile-bio')).toBeNull();
+        expect(container.querySelector('img')).toBeNull();
+    });
+
+    it('loads the avatar without a referrer or a cookie, lazily, and as decoration', () => {
         const { container } = renderProfile(
             describedProfile({ avatarUrl: 'https://avatars.githubusercontent.com/u/9919?v=4' }),
         );
@@ -201,6 +226,7 @@ describe('ProfilePage, what the owner wrote about themselves', () => {
         expect(image).not.toBeNull();
         expect(image).toHaveAttribute('src', 'https://avatars.githubusercontent.com/u/9919?v=4');
         expect(image).toHaveAttribute('referrerpolicy', 'no-referrer');
+        expect(image).toHaveAttribute('crossorigin', 'anonymous');
         expect(image).toHaveAttribute('loading', 'lazy');
         expect(image).toHaveAttribute('alt', '');
     });

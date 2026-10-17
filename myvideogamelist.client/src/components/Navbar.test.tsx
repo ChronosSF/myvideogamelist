@@ -5,6 +5,7 @@ import { createMemoryRouter, RouterProvider } from 'react-router';
 import { Navbar } from '@/components/Navbar';
 import type { AuthContextValue } from '@/contexts/AuthContext';
 import type { UserProfile } from '@/types/auth';
+import { userProfile } from '@/test/factories';
 
 /**
  * Auth, mocked rather than provided: the real provider fetches, and the navbar only reads what it
@@ -28,16 +29,7 @@ const auth: AuthContextValue = {
 
 vi.mock('@/hooks/useAuth', () => ({ useAuth: () => auth }));
 
-const ALEX: UserProfile = {
-    id: 'user-1',
-    email: 'alex@test.local',
-    userName: 'alex',
-    displayName: null,
-    avatarUrl: null,
-    bio: null,
-    profileVisibility: 'private',
-    isAdmin: false,
-};
+const ALEX: UserProfile = userProfile();
 
 /** `/api/auth/me` has come back, with an account or with nobody. */
 function authAnswered(user: UserProfile | null) {

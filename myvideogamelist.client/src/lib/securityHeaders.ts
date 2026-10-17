@@ -11,8 +11,9 @@ export const IGDB_IMAGE_HOST = 'images.igdb.com';
  * their address, made before they have chosen anything. With this, the hosts a page can send a reader
  * to are ones the site has named; a profile's owner cannot add their own server to them by pasting
  * its address, and an avatar host that redirects elsewhere — Gravatar does, for an address with no
- * picture behind it — is refused at the redirect rather than followed. **An image from a host not
- * named here does not load**, in development as deployed: a new one is added here on purpose.
+ * picture behind it and a URL for its default — is refused at the redirect rather than followed.
+ * **An image from a host not named here does not load**, in development as deployed: a new one is
+ * added here on purpose, and an avatar host in `AVATAR_HOSTS` and on the server's list instead.
  */
 export const IMAGE_SOURCES: readonly string[] = [
     "'self'",
