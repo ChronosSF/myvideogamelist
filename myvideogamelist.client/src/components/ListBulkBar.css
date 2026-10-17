@@ -44,12 +44,17 @@
     color: var(--color-fg-faint);
 }
 
+.list-bulk-actions,
 .list-bulk-moves,
 .list-bulk-confirm {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
     gap: 0.4rem;
+}
+
+.list-bulk-actions {
+    gap: 0.5rem 0.75rem;
 }
 
 .list-bulk-label {
@@ -99,4 +104,39 @@
     color: var(--color-fg-muted);
     background: none;
     border-color: transparent;
+}
+
+/* A phone: the count and Clear on the first row, and every action on a second that scrolls sideways
+   rather than wrapping, so the bar is two rows whatever the lists are called and never pushes the table
+   down as a first box is ticked — the hint is given the same height. The tabs scroll the same way. */
+@media (width < 40rem) {
+    .list-bulk-bar {
+        min-height: 5.75rem;
+        align-content: center;
+    }
+
+    .list-bulk-actions {
+        order: 3;
+        flex-basis: 100%;
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        scrollbar-width: none;
+        /* Room inside the scroller for a focus ring, which its edge would otherwise cut off. */
+        margin: -4px;
+        padding: 4px;
+    }
+
+    .list-bulk-actions::-webkit-scrollbar {
+        display: none;
+    }
+
+    .list-bulk-moves {
+        flex-wrap: nowrap;
+    }
+
+    .list-bulk-button,
+    .list-bulk-label {
+        flex-shrink: 0;
+        white-space: nowrap;
+    }
 }

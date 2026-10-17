@@ -91,22 +91,25 @@ export function ListBulkBar({ count, listName, targets, working, onMove, onRemov
             ) : count > 0 ? (
                 <>
                     <p className="list-bulk-text list-bulk-count">{gameCount(count)} selected</p>
-                    <div className="list-bulk-moves" role="group" aria-label="Move the selected games to">
-                        <span className="list-bulk-label" aria-hidden="true">Move to</span>
-                        {targets.map(target => (
-                            <button
-                                key={target.id}
-                                type="button"
-                                className="list-bulk-button"
-                                onClick={() => onMove(target.id)}
-                            >
-                                {target.name}
-                            </button>
-                        ))}
+                    {/* One row of its own on a phone, scrolled sideways, so the bar keeps one height. */}
+                    <div className="list-bulk-actions">
+                        <div className="list-bulk-moves" role="group" aria-label="Move the selected games to">
+                            <span className="list-bulk-label" aria-hidden="true">Move to</span>
+                            {targets.map(target => (
+                                <button
+                                    key={target.id}
+                                    type="button"
+                                    className="list-bulk-button"
+                                    onClick={() => onMove(target.id)}
+                                >
+                                    {target.name}
+                                </button>
+                            ))}
+                        </div>
+                        <button type="button" className="list-bulk-button" ref={removeButton} onClick={ask}>
+                            Remove from list
+                        </button>
                     </div>
-                    <button type="button" className="list-bulk-button" ref={removeButton} onClick={ask}>
-                        Remove from list
-                    </button>
                     <button type="button" className="list-bulk-button list-bulk-clear" onClick={onClear}>
                         Clear selection
                     </button>

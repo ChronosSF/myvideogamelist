@@ -104,6 +104,14 @@
     scroll-margin-bottom: 1rem;
 }
 
+/* The bar is two rows on a phone (ListBulkBar.css). */
+@media (width < 40rem) {
+    .list-table tbody tr,
+    .list-table tbody :is(a, button, input) {
+        scroll-margin-top: 10.5rem;
+    }
+}
+
 /* The row being moved by hand (ADR 0054). It is the row under the pointer for the whole of a drag,
    so this has to outrank the hover rule above rather than lose to it. */
 .list-table tbody tr[data-reorder-state='lifted'] > td,
