@@ -130,7 +130,7 @@ public class IgdbService(
     /// has 49 from Amazon alone — which a page of twenty games would multiply for nothing.
     /// </remarks>
     private const string GameDetailFieldList =
-        "external_games.uid,external_games.url,external_games.external_game_source," +
+        "external_games.url,external_games.external_game_source," +
         "screenshots.image_id," +
         "themes.name,player_perspectives.name,game_modes.name,game_engines.name," +
         "collections.name,franchises.name," +
@@ -1029,8 +1029,13 @@ public class IgdbService(
 
         // The official site or nothing. It used to fall back to the first link of any kind, which was
         // every game's answer once IGDB stopped returning `category`: The Witcher 3's "Official Site"
-        // was its Facebook page. The stores have a row of their own on the game page now.
-        var website = WebAddress(g.Websites?.FirstOrDefault(w => w.Type == OfficialWebsiteType)?.Url);
+        // was its Facebook page. The stores have a row of their own on the game page now. In id order,
+        // as the store links are, so that a game with two gives the same answer on every read.
+        var website = g.Websites?
+            .Where(w => w.Type == OfficialWebsiteType)
+            .OrderBy(w => w.Id)
+            .Select(w => WebAddress(w.Url))
+            .FirstOrDefault(address => address is not null);
 
         // The headline score is total_rating - IGDB's blend of critic and user scores - because it
         // is backed by orders of magnitude more opinions than aggregated_rating alone. Falls back

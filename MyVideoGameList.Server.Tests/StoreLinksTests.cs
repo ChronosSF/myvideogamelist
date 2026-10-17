@@ -79,6 +79,41 @@ public class StoreLinksTests
     }
 
     [Fact]
+    public void Map_SeveralWebsiteRowsForOneStore_TakesTheOldestWhateverOrderTheyArriveIn()
+    {
+        var result = Map(
+        [
+            Website(2067884, 17, "https://www.gog.com/en/game/the_witcher_3_wild_hunt_game_of_the_year_edition"),
+            Website(119948, 17, "https://www.gog.com/game/the_witcher_3_wild_hunt"),
+        ]);
+
+        Assert.Equal("https://www.gog.com/game/the_witcher_3_wild_hunt", Assert.Single(result).Url);
+    }
+
+    [Fact]
+    public void Map_AnUnusableRow_FallsThroughToTheNextOfTheSameSource()
+    {
+        // IGDB holds Steam website rows that are workshop items on steamcommunity.com.
+        var result = Map(
+        [
+            Website(1, 13, "https://steamcommunity.com/sharedfiles/filedetails/?id=92990904"),
+            Website(2, 13, "https://store.steampowered.com/app/504230"),
+        ]);
+
+        Assert.Equal("https://store.steampowered.com/app/504230", Assert.Single(result).Url);
+    }
+
+    [Fact]
+    public void Map_AnUnusableWebsiteRow_FallsThroughToTheSyncedRow()
+    {
+        var result = Map(
+            [Website(1, 16, "https://www.xbox.com/en-us/games/store/celeste/BWMQL2RPWBHB")],
+            [Synced(2, 26, "https://store.epicgames.com/en-US/p/celeste")]);
+
+        Assert.Equal([new StoreLinkDto("Epic Games Store", "https://store.epicgames.com/en-US/p/celeste")], result);
+    }
+
+    [Fact]
     public void Map_MicrosoftsTwoHosts_AreOneStore()
     {
         // IGDB's "Microsoft" rows use www.microsoft.com and www.xbox.com alike, and the first redirects
@@ -92,47 +127,49 @@ public class StoreLinksTests
             result);
     }
 
-    [Fact]
-    public void Map_MicrosoftsOtherHost_IsAcceptedOnItsOwn()
+    [Theory]
+    [InlineData(13, "https://store.steampowered.com/app/504230", "Steam")]
+    [InlineData(17, "https://www.gog.com/en/game/celeste", "GOG")]
+    [InlineData(17, "https://gog.com/game/celeste", "GOG")]
+    [InlineData(16, "https://store.epicgames.com/p/celeste", "Epic Games Store")]
+    [InlineData(16, "https://www.epicgames.com/store/product/celeste", "Epic Games Store")]
+    [InlineData(16, "https://epicgames.com/store/en-US/p/celeste", "Epic Games Store")]
+    [InlineData(23, "https://store.playstation.com/en-us/concept/231477", "PlayStation Store")]
+    [InlineData(22, "https://www.xbox.com/en-us/games/store/celeste/BWMQL2RPWBHB", "Microsoft Store")]
+    [InlineData(22, "https://www.microsoft.com/en-us/p/-1-/BWMQL2RPWBHB", "Microsoft Store")]
+    [InlineData(24, "https://www.nintendo.com/us/store/products/celeste-switch/", "Nintendo eShop")]
+    [InlineData(15, "https://maddymakesgamesinc.itch.io/celeste", "itch.io")]
+    [InlineData(15, "https://itch.io/jam/celeste-classic", "itch.io")]
+    [InlineData(15, "https://Hempuli.Itch.IO/baba", "itch.io")]
+    public void Map_APageOnEveryHostAStoreServes_IsKept(int type, string url, string store)
     {
-        var result = Map(synced: [Synced(3002462, 11, "https://www.microsoft.com/en-us/p/-1-/C3FMRHHXDTFK")]);
+        // Every host in the table, each seen in IGDB's rows for its store.
+        var link = Assert.Single(Map([Website(1, type, url)]));
 
-        Assert.Equal("https://www.microsoft.com/en-us/p/-1-/C3FMRHHXDTFK", Assert.Single(result).Url);
-    }
-
-    [Fact]
-    public void Map_ASteamRowWithoutAnAddress_BuildsTheStorePageFromTheAppId()
-    {
-        // Steam is the one source that leaves the address out, and the one whose pattern was confirmed:
-        // 1338610 opens "Guardian Chronicle on Steam".
-        var result = Map(synced: [Synced(2000608, 1, null, uid: "1338610")]);
-
-        Assert.Equal([new StoreLinkDto("Steam", "https://store.steampowered.com/app/1338610")], result);
+        Assert.Equal(store, link.Store);
+        Assert.Equal(url, link.Url, ignoreCase: true);
     }
 
     [Theory]
-    [InlineData(null)]
-    [InlineData("")]
-    [InlineData("0")]
-    [InlineData("-5")]
-    [InlineData(" 1338610")]
-    [InlineData("1338610abc")]
-    [InlineData("99999999999")]
-    public void Map_ASteamRowWithoutAnAddressOrAUsableAppId_IsSkipped(string? uid)
+    [InlineData("https://store.steampowered.com/bundle/63198/Cairn_Deluxe_Edition/")]
+    [InlineData("https://store.steampowered.com/sub/47880/")]
+    [InlineData("https://store.steampowered.com//app/4887970/")]
+    public void Map_SteamsOtherProductPages_AreKept(string url)
     {
-        Assert.Empty(Map(synced: [Synced(1, 1, null, uid)]));
+        // A bundle is the page for Cairn's deluxe edition, and Steam serves the doubled slash IGDB holds.
+        Assert.Equal(url, Assert.Single(Map([Website(1, 13, url)])).Url);
     }
 
-    [Fact]
-    public void Map_AnotherStoresRowWithoutAnAddress_IsSkippedRatherThanGuessed()
+    [Theory]
+    [InlineData("https://store.steampowered.com/http://steamcommunity.com/sharedfiles/filedetails/?id=883541917")]
+    [InlineData("https://store.steampowered.com/about/")]
+    [InlineData("https://store.steampowered.com/app/")]
+    public void Map_ASteamPathThatIsNoProduct_FallsThroughToTheSyncedRow(string url)
     {
-        // No pattern but Steam's was confirmed by opening one, so no other address is built.
-        Assert.Empty(Map(synced:
-        [
-            Synced(1, 5, null, uid: "1207664663"),
-            Synced(2, 36, null, uid: "204794"),
-            Synced(3, 26, null, uid: "544c18ccadf8466691d8f2a335721b14"),
-        ]));
+        // The first is a row IGDB holds: a workshop item pasted after the host.
+        var result = Map([Website(1, 13, url)], [Synced(2, 1, "https://store.steampowered.com/app/504230")]);
+
+        Assert.Equal("https://store.steampowered.com/app/504230", Assert.Single(result).Url);
     }
 
     [Theory]
@@ -149,17 +186,21 @@ public class StoreLinksTests
         "https://www.nintendo.com/us/store/products/deltarune-switch/?srsltid=AfmBOopaZ6FUP4FgMXYdlf0Y4f8C",
         "https://www.nintendo.com/us/store/products/deltarune-switch/")]
     [InlineData(
+        "https://stairfallinstitute.itch.io/the-heat-of-battle?ac=jXdAbFQF",
+        "https://stairfallinstitute.itch.io/the-heat-of-battle")]
+    [InlineData(
         "https://store.epicgames.com/p/marvel-rivals-182004?lang=en-US#about",
         "https://store.epicgames.com/p/marvel-rivals-182004")]
     public void Map_AnAddressWithAQueryOrAFragment_IsCutAtItsPath(string url, string expected)
     {
-        // These are IGDB's own rows. GOG's carries its affiliate network's tracking; no page here
-        // needs a query, and nobody is paid for a click from this page.
+        // IGDB's own rows. GOG's carries its affiliate network's tracking and itch.io's `ac` is an affiliate
+        // code; no store's game page needs a query, and the row pays nobody for a click.
         var type = new Uri(url).Host switch
         {
             "www.gog.com" => 17,
             "store.steampowered.com" => 13,
             "www.nintendo.com" => 24,
+            "stairfallinstitute.itch.io" => 15,
             _ => 16,
         };
 
@@ -167,19 +208,34 @@ public class StoreLinksTests
     }
 
     [Theory]
+    [InlineData("https://fleamm.itch.io/lost-in-time-playtest?secret=TRIX3AO2dkZuRl7jtCfA29NMKYQ")]
+    [InlineData("https://spotlightor.itch.io/yet-another-exhausting-day?password=spotlightor")]
+    [InlineData("https://fleamm.itch.io/lost-in-time-playtest?utm_source=igdb&Secret=abc")]
+    public void Map_APageThatOpensOnlyWithAKey_IsPassedOverRatherThanCut(string url)
+    {
+        // The first two are rows IGDB holds. Cut, the address leads to a page that will not open; whole,
+        // it hands the key to everybody. Another row for the store can still answer.
+        Assert.Empty(Map([Website(1, 15, url)]));
+        Assert.Equal(
+            "https://maddymakesgamesinc.itch.io/celeste",
+            Assert.Single(Map([Website(1, 15, url)], [Synced(2, 30, "https://maddymakesgamesinc.itch.io/celeste")])).Url);
+    }
+
+    [Theory]
+    // Kinds of row IGDB holds: a misfiled kind, a workshop item, a typo, another misfiled kind.
     [InlineData(16, "https://www.xbox.com/en-us/games/store/celeste/BWMQL2RPWBHB")]
     [InlineData(13, "https://steamcommunity.com/sharedfiles/filedetails/?id=3636926391")]
     [InlineData(16, "https://store.epicgames.coms/p/celeste")]
+    [InlineData(23, "https://www.xbox.com/en-us/games/store/celeste/BWMQL2RPWBHB")]
+    // Made up, to probe the host check: look-alikes, a host inside the path, user info, a neighbour.
     [InlineData(13, "https://store.steampowered.com.example.net/app/504230")]
     [InlineData(13, "https://example.net/store.steampowered.com/app/504230")]
     [InlineData(13, "https://store.steampowered.com@example.net/app/504230")]
     [InlineData(15, "https://example.net/itch.io/celeste")]
     [InlineData(15, "https://notitch.io/celeste")]
-    [InlineData(23, "https://www.xbox.com/en-us/games/store/celeste/BWMQL2RPWBHB")]
     public void Map_AnAddressOnAHostThatIsNotTheStores_IsSkipped(int type, string url)
     {
-        // All but the last four are rows IGDB holds: a misfiled kind, a workshop item, a typo. Under a
-        // store's name, the link has to lead to that store.
+        // Under a store's name, the link has to lead to that store.
         Assert.Empty(Map([Website(1, type, url)]));
     }
 
@@ -209,22 +265,17 @@ public class StoreLinksTests
     }
 
     [Fact]
-    public void Map_AnUnusableWebsiteRow_FallsThroughToTheSyncedRow()
+    public void Map_ASyncedRowWithoutAnAddress_IsPassedOverRatherThanGivenOneBuiltFromItsId()
     {
-        var result = Map(
-            [Website(1, 16, "https://www.xbox.com/en-us/games/store/celeste/BWMQL2RPWBHB")],
-            [Synced(2, 26, "https://store.epicgames.com/en-US/p/celeste")]);
-
-        Assert.Equal([new StoreLinkDto("Epic Games Store", "https://store.epicgames.com/en-US/p/celeste")], result);
-    }
-
-    [Theory]
-    [InlineData("https://maddymakesgamesinc.itch.io/celeste")]
-    [InlineData("https://itch.io/jam/celeste-classic")]
-    [InlineData("https://Hempuli.Itch.IO/baba")]
-    public void Map_ItchIo_TakesTheSiteAndEveryCreatorsSubdomain(string url)
-    {
-        Assert.Equal("itch.io", Assert.Single(Map([Website(1, 15, url)])).Store);
+        // Only Steam's synced rows ever lack an address, and for every game whose only Steam link was one
+        // — Lumines (app 11900) and realMyst (63600) among 45 opened — Steam no longer sells it: the page
+        // built from the id redirects to Steam's front page.
+        Assert.Empty(Map(synced:
+        [
+            Synced(1, 1, null, uid: "11900"),
+            Synced(2, 5, null, uid: "1207664663"),
+            Synced(3, 36, null, uid: "204794"),
+        ]));
     }
 
     [Fact]
@@ -248,6 +299,16 @@ public class StoreLinksTests
         ]);
 
         Assert.Empty(result);
+    }
+
+    [Theory]
+    [InlineData("http://marketplace.xbox.com/en-US/Product/ArcaniA/66acd000-77fe-1000-9115-d8024a5707d2")]
+    [InlineData("https://marketplace.xbox.com/en-US/Product/ArcaniA/66acd000-77fe-1000-9115-d8024a5707d2")]
+    public void Map_TheClosedMarketplaceFiledUnderMicrosoft_IsIgnored(string url)
+    {
+        // IGDB files 1,132 of the Xbox 360 store's addresses under "Microsoft" (11). Neither the scheme nor
+        // the host is one the Microsoft Store row takes.
+        Assert.Empty(Map(synced: [Synced(1, 11, url)]));
     }
 
     [Fact]

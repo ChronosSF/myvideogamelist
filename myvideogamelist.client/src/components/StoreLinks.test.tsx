@@ -29,13 +29,19 @@ describe('StoreLinks', () => {
             .toHaveAttribute('href', 'https://www.nintendo.com/games/detail/celeste-switch/');
     });
 
-    it('opens each store in a new tab that cannot reach back, is sent no referrer and is not vouched for', () => {
+    it('opens each store in a new tab that cannot reach back and is sent no referrer, as every link out does', () => {
         render(<StoreLinks stores={CELESTE_STORES} />);
 
         for (const link of screen.getAllByRole('link')) {
             expect(link).toHaveAttribute('target', '_blank');
-            expect(link.getAttribute('rel')?.split(' ').sort()).toEqual(['nofollow', 'noopener', 'noreferrer']);
+            expect(link).toHaveAttribute('rel', 'noopener noreferrer');
         }
+    });
+
+    it('never marks a store link nofollow, because Steam forbids it on a page showing its news', () => {
+        render(<StoreLinks stores={CELESTE_STORES} />);
+
+        for (const link of screen.getAllByRole('link')) expect(link.getAttribute('rel')).not.toMatch(/nofollow/);
     });
 
     it('renders nothing when IGDB names no store, rather than a heading over an empty row', () => {

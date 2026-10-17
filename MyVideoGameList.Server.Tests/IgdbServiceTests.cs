@@ -365,6 +365,8 @@ public class GetGamesAsyncTests
 
         await igdb.NewService().GetGamesAsync();
 
+        // DoesNotContain passes on a null, which a listing that stopped asking the games endpoint would be.
+        Assert.NotNull(igdb.Query);
         Assert.DoesNotContain("external_games", igdb.Query);
     }
 
@@ -387,6 +389,30 @@ public class GetGamesAsyncTests
     }
 
     [Fact]
+    public async Task WithSeveralOfficialWebsites_TakesTheOldestThatIsAWebAddress()
+    {
+        // Made up: IGDB's rows carry one official site each for the games looked at. In id order, so the
+        // answer does not follow IGDB's listing order, and past one that is no address at all.
+        const string payload = """
+            [
+              {
+                "id": 1942,
+                "name": "The Witcher 3: Wild Hunt",
+                "websites": [
+                  { "id": 3, "url": "https://www.thewitcher.com/en/witcher3", "type": 1 },
+                  { "id": 2, "url": "https://thewitcher.com", "type": 1 },
+                  { "id": 1, "url": "www.thewitcher.com", "type": 1 }
+                ]
+              }
+            ]
+            """;
+
+        var games = await new StubIgdb(payload).NewService().GetGamesAsync();
+
+        Assert.Equal("https://thewitcher.com/", Assert.Single(games.Items).Website);
+    }
+
+    [Fact]
     public async Task WithIgdbsOwnJson_CarriesNoDetails()
     {
         var games = await new StubIgdb(GamesPayload).NewService().GetGamesAsync();
@@ -403,8 +429,9 @@ public class GetGameByIdAsyncTests
 {
     /// <summary>
     /// The Witcher 3's websites and external games as live IGDB returned them on 2026-10-17, under the
-    /// fields the detail query asks for. Steam and GOG are in both sources; the Epic Games Store and the
-    /// Nintendo eShop only among the websites. Source 20 is Amazon, 14 Twitch, 3 GiantBomb, 10 YouTube.
+    /// fields the detail query asks for. Every store it is sold on has a website row, which wins, so this
+    /// binds the websites; <see cref="MonumentValleyPayload"/> binds the synced rows. Source 20 is Amazon,
+    /// 14 Twitch, 3 GiantBomb, 10 YouTube.
     /// </summary>
     private const string WitcherPayload = """
         [
@@ -430,17 +457,56 @@ public class GetGameByIdAsyncTests
               { "id": 670803, "url": "https://discord.gg/thewitcher", "type": 18 }
             ],
             "external_games": [
-              { "id": 2176359, "uid": "204794", "url": "https://store.playstation.com/en-us/concept/204794", "external_game_source": 36 },
-              { "id": 211029, "uid": "BR765873CQJD", "url": "https://www.xbox.com/en-us/games/store/the-witcher-3-wild-hunt/BR765873CQJD", "external_game_source": 11 },
-              { "id": 246257, "uid": "115977", "url": "https://www.twitch.tv/directory/game/The Witcher 3: Wild Hunt", "external_game_source": 14 },
-              { "id": 1937739, "uid": "B00KNZNVLM", "external_game_source": 20 },
-              { "id": 1931970, "uid": "B00WTI3SGO", "external_game_source": 20 },
-              { "id": 11306, "uid": "292030", "url": "https://store.steampowered.com/app/292030", "external_game_source": 1 },
-              { "id": 78478, "uid": "1207664663", "url": "https://www.gog.com/en/game/the_witcher_3_wild_hunt", "external_game_source": 5 },
-              { "id": 2067884, "uid": "1207664643", "url": "https://www.gog.com/en/game/the_witcher_3_wild_hunt", "external_game_source": 5 },
-              { "id": 119254, "uid": "41484", "url": "https://www.giantbomb.com/games/3030-41484/", "external_game_source": 3 },
-              { "id": 189745, "uid": "UCprFOIVpCqQLUMsWBNwt0PQ", "url": "https://gaming.youtube.com/game/UCprFOIVpCqQLUMsWBNwt0PQ", "external_game_source": 10 },
-              { "id": 1928370, "uid": "B07SH3D6HT", "url": "https://amazon.com/dp/B07SH3D6HT", "external_game_source": 20 }
+              { "id": 2176359, "url": "https://store.playstation.com/en-us/concept/204794", "external_game_source": 36 },
+              { "id": 211029, "url": "https://www.xbox.com/en-us/games/store/the-witcher-3-wild-hunt/BR765873CQJD", "external_game_source": 11 },
+              { "id": 246257, "url": "https://www.twitch.tv/directory/game/The Witcher 3: Wild Hunt", "external_game_source": 14 },
+              { "id": 1937739, "external_game_source": 20 },
+              { "id": 1931970, "external_game_source": 20 },
+              { "id": 11306, "url": "https://store.steampowered.com/app/292030", "external_game_source": 1 },
+              { "id": 78478, "url": "https://www.gog.com/en/game/the_witcher_3_wild_hunt", "external_game_source": 5 },
+              { "id": 2067884, "url": "https://www.gog.com/en/game/the_witcher_3_wild_hunt", "external_game_source": 5 },
+              { "id": 119254, "url": "https://www.giantbomb.com/games/3030-41484/", "external_game_source": 3 },
+              { "id": 189745, "url": "https://gaming.youtube.com/game/UCprFOIVpCqQLUMsWBNwt0PQ", "external_game_source": 10 },
+              { "id": 1928370, "url": "https://amazon.com/dp/B07SH3D6HT", "external_game_source": 20 }
+            ]
+          }
+        ]
+        """;
+
+    /// <summary>
+    /// Monument Valley's websites and external games as live IGDB returned them on 2026-10-17, under the
+    /// fields the detail query asks for. Its Steam page is a website row, but the PlayStation Store and
+    /// the Microsoft Store are only in its synced rows. Source 15 is Android and 13 Apple.
+    /// </summary>
+    private const string MonumentValleyPayload = """
+        [
+          {
+            "id": 8900,
+            "name": "Monument Valley",
+            "websites": [
+              { "id": 868148, "url": "https://monumentvalley.fandom.com/wiki/Monument_Valley_Wiki", "type": 2 },
+              { "id": 868149, "url": "https://x.com/ustwogames", "type": 5 },
+              { "id": 868150, "url": "https://www.youtube.com/@ustwogames", "type": 9 },
+              { "id": 868151, "url": "https://en.wikipedia.org/wiki/Monument_Valley_(video_game)", "type": 3 },
+              { "id": 868152, "url": "https://www.reddit.com/r/MonumentValley", "type": 14 },
+              { "id": 868153, "url": "https://bsky.app/profile/ustwogames.co.uk", "type": 19 },
+              { "id": 336403, "url": "https://www.twitch.tv/directory/game/Monument%20Valley", "type": 6 },
+              { "id": 1120066, "url": "https://play.google.com/store/apps/details?id=com.ustwo.monumentvalley", "type": 12 },
+              { "id": 1120067, "url": "https://apps.apple.com/us/app/monument-valley/id728293409", "type": 10 },
+              { "id": 1120068, "url": "https://www.facebook.com/monumentvalleygame", "type": 4 },
+              { "id": 1120065, "url": "https://store.steampowered.com/app/1927720", "type": 13 },
+              { "id": 1120069, "url": "https://www.instagram.com/ustwogames", "type": 8 },
+              { "id": 1120070, "url": "https://discord.gg/p6jM2AHahc", "type": 18 },
+              { "id": 1063380, "url": "https://www.monumentvalleygame.com/mv1", "type": 1 }
+            ],
+            "external_games": [
+              { "id": 352303, "url": "https://play.google.com/store/apps/details?id=com.ustwo.monumentvalley", "external_game_source": 15 },
+              { "id": 188977, "url": "https://gaming.youtube.com/game/UC8rvuMtGNc9e9gqTzSihE5w", "external_game_source": 10 },
+              { "id": 115158, "url": "https://www.giantbomb.com/games/3030-45914/", "external_game_source": 3 },
+              { "id": 249262, "url": "https://www.twitch.tv/directory/game/Monument Valley", "external_game_source": 14 },
+              { "id": 224878, "url": "https://itunes.apple.com/us/app/monument-valley/id728293409?mt=8&uo=4", "external_game_source": 13 },
+              { "id": 3001204, "url": "https://www.xbox.com/en-us/games/store/monument-valley/9NT17X2MR55H", "external_game_source": 11 },
+              { "id": 2995315, "url": "https://store.playstation.com/en-us/concept/10013172", "external_game_source": 36 }
             ]
           }
         ]
@@ -454,14 +520,14 @@ public class GetGameByIdAsyncTests
         await igdb.NewService().GetGameByIdAsync(1942);
 
         Assert.Contains("websites.url,websites.type", igdb.Query);
-        Assert.Contains("external_games.uid,external_games.url,external_games.external_game_source", igdb.Query);
+        Assert.Contains("external_games.url,external_games.external_game_source", igdb.Query);
     }
 
     [Fact]
-    public async Task WithIgdbsOwnJson_BindsBothSourcesThroughToOneLinkPerStore()
+    public async Task WithIgdbsOwnJson_BindsTheWebsitesThroughToOneLinkPerStore()
     {
-        // The half no mapping test reaches: `type` and `external_game_source` onto the model. Misname
-        // either and the row is empty on every game page while every StoreLinks test still passes.
+        // The half no mapping test reaches: `type` onto the model. Misname it and the row is empty on
+        // every game page while every StoreLinks test still passes.
         var game = await new StubIgdb(WitcherPayload).NewService().GetGameByIdAsync(1942);
 
         Assert.NotNull(game);
@@ -474,6 +540,25 @@ public class GetGameByIdAsyncTests
                 new StoreLinkDto("PlayStation Store", "https://store.playstation.com/en-us/concept/204794"),
                 new StoreLinkDto("Microsoft Store", "https://www.xbox.com/en-us/games/store/the-witcher-3-wild-hunt/BR765873CQJD"),
                 new StoreLinkDto("Nintendo eShop", "https://www.nintendo.com/games/detail/the-witcher-3-wild-hunt-switch/"),
+            ],
+            game.Details.Stores);
+    }
+
+    [Fact]
+    public async Task WithIgdbsOwnJson_BindsTheSyncedRowsThroughToTheStoresOnlyTheyName()
+    {
+        // The other half: `external_games`, its `url` and its `external_game_source` onto the model.
+        // Misname any of them and these two stores vanish from every page that has no website row for
+        // them, while every StoreLinks test still passes.
+        var game = await new StubIgdb(MonumentValleyPayload).NewService().GetGameByIdAsync(8900);
+
+        Assert.NotNull(game);
+        Assert.NotNull(game.Details);
+        Assert.Equal(
+            [
+                new StoreLinkDto("Steam", "https://store.steampowered.com/app/1927720"),
+                new StoreLinkDto("PlayStation Store", "https://store.playstation.com/en-us/concept/10013172"),
+                new StoreLinkDto("Microsoft Store", "https://www.xbox.com/en-us/games/store/monument-valley/9NT17X2MR55H"),
             ],
             game.Details.Stores);
     }

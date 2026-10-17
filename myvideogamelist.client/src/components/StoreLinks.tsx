@@ -12,8 +12,10 @@ interface StoreLinksProps {
  *
  * Links and nothing more. No price, because prices are IsThereAnyDeal's to give (ADR 0009), and no
  * parameter in the address that would pay anybody for the click — the API cuts each one at its path and
- * keeps it only on that store's own host. `nofollow` because the page vouches for none of the stores.
- * Renders nothing at all when IGDB names none, rather than a heading over an empty row.
+ * keeps it only on that store's own host. They open as every link out of the site does, and never with
+ * `nofollow`: this page shows Steam's news, and Steam's terms forbid it on a link to Steam from a page
+ * that does (see `SiteFooter`). Renders nothing at all when IGDB names no store, rather than a heading
+ * over an empty row.
  */
 export function StoreLinks({ stores }: StoreLinksProps) {
     // Stable between the server render and hydration, which a counter or a random id would not be.
@@ -30,8 +32,10 @@ export function StoreLinks({ stores }: StoreLinksProps) {
                         <a
                             href={link.url}
                             target="_blank"
-                            rel="noopener noreferrer nofollow"
-                            className="inline-flex items-center gap-1 px-2.5 py-1 bg-raised/60 text-primary-400 hover:text-primary-300 text-xs font-medium rounded-lg border border-line hover:border-line-strong transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-focus"
+                            rel="noopener noreferrer"
+                            // `outline-hidden`, not `outline-none`: in forced colours the ring is dropped
+                            // with every other shadow, and only this keeps an outline there to show focus.
+                            className="inline-flex items-center gap-1 px-2.5 py-1 bg-raised/60 text-primary-400 hover:text-primary-300 text-xs font-medium rounded-lg border border-line hover:border-line-strong transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus"
                         >
                             {link.store} <span className="sr-only">(opens in a new tab)</span>
                             <svg className="w-3 h-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">

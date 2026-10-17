@@ -238,8 +238,10 @@ public record IgdbCalendarGame(
 /// </para>
 /// <para>
 /// <see cref="Url"/> is the game's page on that store. Of the store sources the game page links to,
-/// only Steam ever leaves it out — 1,509 of its 178,646 rows on 2026-10-17 — which is why only a
-/// Steam address is ever built from <see cref="Uid"/>.
+/// only Steam ever leaves it out — 1,509 of its 178,646 rows on 2026-10-17 — and it marks a game
+/// Steam has stopped selling: for 45 games whose only Steam link was such a row, Lumines and realMyst
+/// among them, the page built from the AppID redirected to Steam's front page. So the store links pass
+/// over a row without one rather than build it from <see cref="Uid"/>.
 /// </para>
 /// </remarks>
 public record IgdbExternalGame(
