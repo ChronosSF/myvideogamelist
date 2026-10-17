@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="dark">
+    <!--
+        The holding page for https://myvideogamelist.net until production takes the domain (ADR 0066).
+        Static on purpose: no script, no cookie, no analytics, and nothing from another origin.
+
+        The head carries the set pageMeta in myvideogamelist.client/src/lib/seo.ts gives every
+        indexable page of the app (ADR 0036): title, description, canonical, og:site_name, og:type,
+        og:title, og:description, og:url, the image and its alt, and the card - the large one, because
+        the image is wide. Added to it: the image's size, which a page with one fixed image can state,
+        so that an unfurler can lay the image out before it has fetched it.
+    -->
+    <title>MyVideoGameList - A video game tracker, coming soon</title>
+    <meta name="description" content="A video game tracker: lists by status, a backlog, a wishlist, scores, reviews, playthroughs with hours and a release calendar for your games. Coming soon.">
+    <link rel="canonical" href="https://myvideogamelist.net/">
+    <meta property="og:site_name" content="MyVideoGameList">
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="MyVideoGameList - A video game tracker, coming soon">
+    <meta property="og:description" content="A video game tracker: lists by status, a backlog, a wishlist, scores, reviews, playthroughs with hours and a release calendar for your games. Coming soon.">
+    <meta property="og:url" content="https://myvideogamelist.net/">
+    <meta property="og:image" content="https://myvideogamelist.net/share.png">
+    <meta property="og:image:alt" content="MyVideoGameList: every game you've played, in one list. Coming soon.">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta name="twitter:card" content="summary_large_image">
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+    <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+    <header class="site-header">
+        <div class="wrap">
+            <span class="brand">
+                <svg class="brand-mark" viewBox="0 0 64 64" aria-hidden="true" focusable="false">
+                    <mask id="logo-gap">
+                        <rect width="64" height="64" fill="white"/>
+                        <rect x="37" y="-3" width="30" height="30" rx="11" fill="black"/>
+                    </mask>
+                    <g mask="url(#logo-gap)">
+                        <rect class="logo-tile" y="8" width="56" height="56" rx="15"/>
+                        <path class="logo-play" d="M21 26 40 36 21 46Z" stroke-width="6" stroke-linejoin="round"/>
+                    </g>
+                    <rect class="logo-badge" x="40" width="24" height="24" rx="8"/>
+                    <path class="logo-check" d="M45.5 12 49.5 16 58 7" fill="none" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                <span>MyVideoGame<span class="brand-accent">List</span></span>
+            </span>
+        </div>
+    </header>
+
+    <main>
+        <section class="hero" aria-labelledby="pitch">
+            <div class="wrap">
+                <p class="badge">Coming soon</p>
+                <h1 id="pitch">Every game you&rsquo;ve played, <span class="accent">in one list</span></h1>
+                <p class="lead">
+                    MyVideoGameList is a video game tracker. It is not open yet: it is being built in
+                    the open, and the Discord server is where you will hear when it is.
+                </p>
+                <!-- The invite is DISCORD_INVITE_URL in myvideogamelist.client/src/lib/links.ts, which
+                     is its source of truth: a static page cannot import it, so a new invite goes there
+                     and here. -->
+                <p class="actions">
+                    <a class="button" href="https://discord.gg/pPnapgG3WU">Join the Discord</a>
+                </p>
+            </div>
+        </section>
+
+        <section class="section" aria-labelledby="what-it-does">
+            <div class="wrap">
+                <h2 id="what-it-does">What it does</h2>
+                <ul class="features">
+                    <li class="feature">
+                        <svg class="feature-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+                            <path d="M9 7h11M9 12h11M9 17h11"/>
+                            <circle cx="4.75" cy="7" r="1"/>
+                            <circle cx="4.75" cy="12" r="1"/>
+                            <circle cx="4.75" cy="17" r="1"/>
+                        </svg>
+                        <h3>Lists by status</h3>
+                        <ul class="statuses">
+                            <li class="status status-backlog">Backlog</li>
+                            <li class="status status-playing">Playing</li>
+                            <li class="status status-on-hold">On Hold</li>
+                            <li class="status status-finished">Finished</li>
+                            <li class="status status-dropped">Dropped</li>
+                        </ul>
+                        <p>A game sits in one of the five at a time, and moves as you play it.</p>
+                    </li>
+                    <li class="feature">
+                        <svg class="feature-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+                            <path d="M7 3.75h10a1 1 0 0 1 1 1V20.25l-6-4-6 4V4.75a1 1 0 0 1 1-1Z"/>
+                        </svg>
+                        <h3>A backlog and a wishlist</h3>
+                        <p>
+                            The backlog holds what you mean to play; the wishlist, what you want. A game
+                            can be on the wishlist and in a list at once.
+                        </p>
+                    </li>
+                    <li class="feature">
+                        <svg class="feature-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+                            <path d="m12 3.5 2.6 5.3 5.9.85-4.25 4.15 1 5.85L12 16.9l-5.25 2.75 1-5.85L3.5 9.65l5.9-.85Z"/>
+                        </svg>
+                        <h3>Scores and reviews</h3>
+                        <p>
+                            Your own score, in half stars, and a review you keep to yourself or publish
+                            on your profile and the game&rsquo;s page.
+                        </p>
+                    </li>
+                    <li class="feature">
+                        <svg class="feature-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+                            <circle cx="12" cy="12" r="8.5"/>
+                            <path d="M12 7.5V12l3 2"/>
+                        </svg>
+                        <h3>Playthroughs, with hours</h3>
+                        <p>
+                            Each run with its dates and hours, played rushed, normally or as a
+                            completionist. Members&rsquo; runs give each game its typical time to finish.
+                        </p>
+                    </li>
+                    <li class="feature">
+                        <svg class="feature-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+                            <rect x="3.5" y="5" width="17" height="15" rx="2"/>
+                            <path d="M3.5 9.5h17M8 3v4M16 3v4"/>
+                        </svg>
+                        <h3>A release calendar for your games</h3>
+                        <p>
+                            A year ahead for the games you track: what comes out on which day, and what
+                            is known only to its month, quarter or year.
+                        </p>
+                    </li>
+                    <li class="feature">
+                        <svg class="feature-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+                            <path d="M12 4v10.5m0 0-4-4m4 4 4-4M4.5 15.5V18a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-2.5"/>
+                        </svg>
+                        <h3>Import from other trackers</h3>
+                        <p>
+                            Bring a library over with its shelves, dates and playthroughs: Grouvee first,
+                            and more trackers to come.
+                        </p>
+                    </li>
+                </ul>
+            </div>
+        </section>
+
+        <section class="section" aria-labelledby="coming">
+            <div class="wrap">
+                <h2 id="coming">What is coming</h2>
+                <ul class="next">
+                    <li>Email confirmation and password resets, and signing in with Google or Facebook.</li>
+                    <li>A search box on every page, suggesting games as you type.</li>
+                    <li>A backlog in the order you choose, favourites shown in yours, and changes to many games at once.</li>
+                    <li>Profiles with a display name, an avatar and a bio.</li>
+                    <li>Later: where to buy a game and for how much, your Steam library, and following other players.</li>
+                </ul>
+                <p class="after-list">
+                    The plan is public: it is the issues of the
+                    <a href="https://github.com/ChronosSF/myvideogamelist">repository on GitHub</a>,
+                    where the code is too.
+                </p>
+            </div>
+        </section>
+    </main>
+
+    <footer class="site-footer">
+        <div class="wrap">
+            <p>&copy; 2026 MyVideoGameList</p>
+            <p><a href="https://github.com/ChronosSF/myvideogamelist">Code on GitHub</a></p>
+        </div>
+    </footer>
+</body>
+</html>

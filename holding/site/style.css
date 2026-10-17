@@ -1,0 +1,454 @@
+/*
+ * The holding page's stylesheet, shared by the page and its 404 (ADR 0066).
+ *
+ * The colours are the app's tokens, copied by value from myvideogamelist.client/src/theme.css,
+ * because a static file cannot import that one. The names are the app's too, so the two can be
+ * compared line by line; a value changed there is worth changing here. Only the tokens this page
+ * uses are copied, and nothing below writes a colour any other way.
+ *
+ * No web font, no script and nothing from another origin: the content policy the distribution sends
+ * allows this stylesheet and the favicon, and nothing else.
+ */
+
+:root {
+    /* Surfaces, deepest first */
+    --color-sunken: oklch(12.9% 0.042 264.695);
+    --color-page: oklch(20.8% 0.042 265.755);
+    --color-surface: oklch(27.9% 0.041 260.031);
+
+    /* Lines */
+    --color-line: oklch(37.2% 0.044 257.287 / 0.6);
+    --color-line-strong: oklch(44.6% 0.043 257.281 / 0.7);
+
+    /* Text, strongest first */
+    --color-fg-strong: #fff;
+    --color-fg: oklch(96.8% 0.007 247.896);
+    --color-fg-soft: oklch(86.9% 0.022 252.894);
+    --color-fg-muted: oklch(70.4% 0.04 256.788);
+
+    /* The primary */
+    --color-primary-300: oklch(80.9% 0.105 251.813);
+    --color-primary-400: oklch(70.7% 0.165 254.624);
+    --color-primary-500: oklch(62.3% 0.214 259.815);
+    --color-primary-600: oklch(54.6% 0.245 262.881);
+    --color-primary-700: oklch(48.8% 0.243 264.376);
+    --color-primary-900: oklch(37.9% 0.146 265.522);
+    --color-primary-950: oklch(28.2% 0.091 267.935);
+    --color-on-primary: #fff;
+    --color-focus: var(--color-primary-500);
+
+    /* The five statuses, in the lifecycle's own colours */
+    --color-status-backlog: oklch(55.4% 0.046 257.417);
+    --color-status-playing: oklch(62.3% 0.214 259.815);
+    --color-status-on-hold: oklch(76.9% 0.188 70.08);
+    --color-status-finished: oklch(72.3% 0.219 149.579);
+    --color-status-dropped: oklch(63.7% 0.237 25.331);
+
+    /* The brand: the logo's colours */
+    --color-brand-navy: #182b4d;
+    --color-brand-lime: #a3e635;
+    --color-brand-light: #f8fafc;
+
+    color-scheme: dark;
+    background-color: var(--color-page);
+    color: var(--color-fg);
+    /* Tailwind's sans stack, which is what the app sets its text in. */
+    font-family: ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+    line-height: 1.5;
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+    font-synthesis: none;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+main {
+    flex: 1;
+}
+
+h1,
+h2,
+h3,
+p,
+ul {
+    margin: 0;
+}
+
+ul {
+    padding: 0;
+    list-style: none;
+}
+
+svg {
+    display: block;
+    flex-shrink: 0;
+}
+
+a {
+    color: var(--color-primary-400);
+    text-underline-offset: 2px;
+}
+
+a:hover {
+    color: var(--color-primary-300);
+}
+
+a:focus-visible {
+    outline: 2px solid var(--color-focus);
+    outline-offset: 2px;
+    border-radius: 2px;
+}
+
+/* -- Frame ---------------------------------------------------------------- */
+
+.wrap {
+    width: 100%;
+    max-width: 64rem;
+    margin-inline: auto;
+    padding-inline: 1rem;
+}
+
+@media (min-width: 40rem) {
+    .wrap {
+        padding-inline: 1.5rem;
+    }
+}
+
+.site-header {
+    border-bottom: 1px solid var(--color-line);
+    background: color-mix(in srgb, var(--color-page) 95%, transparent);
+}
+
+.site-header .wrap {
+    display: flex;
+    align-items: center;
+    min-height: 4rem;
+}
+
+.brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.625rem;
+    color: var(--color-fg);
+    font-size: 1.125rem;
+    font-weight: 700;
+    text-decoration: none;
+}
+
+a.brand:hover {
+    color: var(--color-fg-strong);
+}
+
+.brand-mark {
+    width: 1.75rem;
+    height: 1.75rem;
+}
+
+.brand-accent {
+    color: var(--color-brand-lime);
+}
+
+/* The logo's own colours, as the app draws it. The mask's white and black are not colours anybody
+   sees: white keeps what is under it, black cuts the badge's gap out of the tile. */
+.logo-tile {
+    fill: var(--color-brand-navy);
+}
+
+.logo-play {
+    fill: var(--color-brand-light);
+    stroke: var(--color-brand-light);
+}
+
+.logo-badge {
+    fill: var(--color-brand-lime);
+}
+
+.logo-check {
+    stroke: var(--color-brand-navy);
+}
+
+/* -- The pitch ------------------------------------------------------------ */
+
+.hero {
+    border-bottom: 1px solid var(--color-line);
+    /* The app's landing hero without a game's art behind it: the primary's deep tint, fading into
+       the page. */
+    background: linear-gradient(to bottom right, var(--color-primary-950), var(--color-page) 55%);
+    background-clip: padding-box;
+}
+
+.hero .wrap {
+    padding-block: 3.5rem;
+}
+
+@media (min-width: 40rem) {
+    .hero .wrap {
+        padding-block: 5rem;
+    }
+}
+
+.badge {
+    display: inline-block;
+    margin-bottom: 1.25rem;
+    padding: 0.25rem 0.75rem;
+    border: 1px solid color-mix(in srgb, var(--color-primary-500) 45%, transparent);
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--color-primary-900) 45%, transparent);
+    color: var(--color-primary-300);
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+}
+
+h1 {
+    max-width: 42rem;
+    color: var(--color-fg-strong);
+    font-size: 1.875rem;
+    font-weight: 700;
+    line-height: 1.2;
+    letter-spacing: -0.01em;
+}
+
+@media (min-width: 40rem) {
+    h1 {
+        font-size: 2.25rem;
+    }
+}
+
+@media (min-width: 64rem) {
+    h1 {
+        font-size: 3rem;
+    }
+}
+
+.accent {
+    color: var(--color-primary-400);
+    /* "in one list" is one phrase, and short enough to fit a phone on one line. */
+    white-space: nowrap;
+}
+
+.lead {
+    max-width: 40rem;
+    margin-top: 1rem;
+    color: var(--color-fg-soft);
+    font-size: 1rem;
+    line-height: 1.625;
+}
+
+@media (min-width: 40rem) {
+    .lead {
+        font-size: 1.125rem;
+    }
+}
+
+.actions {
+    margin-top: 2rem;
+}
+
+/* The one filled button. White on the primary's 600 is 5.3 to 1, and on 500 only 3.8 (#246), so the
+   pointer darkens it to 700, at 6.8, rather than lightening it the way the app's buttons still do. */
+.button {
+    display: inline-flex;
+    align-items: center;
+    min-height: 2.75rem;
+    padding: 0.625rem 1.25rem;
+    border-radius: 0.75rem;
+    background: var(--color-primary-600);
+    color: var(--color-on-primary);
+    font-weight: 600;
+    text-decoration: none;
+    box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.3);
+}
+
+.button:hover {
+    background: var(--color-primary-700);
+    color: var(--color-on-primary);
+}
+
+.button:focus-visible {
+    outline: 2px solid var(--color-fg-strong);
+    outline-offset: 3px;
+    border-radius: 0.75rem;
+}
+
+/* -- Sections ------------------------------------------------------------- */
+
+.section .wrap {
+    padding-block: 3rem;
+}
+
+.section + .section .wrap {
+    padding-top: 0;
+}
+
+h2 {
+    margin-bottom: 1.25rem;
+    color: var(--color-fg-strong);
+    font-size: 1.25rem;
+    font-weight: 700;
+}
+
+.features {
+    display: grid;
+    gap: 1rem;
+}
+
+@media (min-width: 40rem) {
+    .features {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (min-width: 64rem) {
+    .features {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+}
+
+.feature {
+    padding: 1.25rem;
+    border: 1px solid var(--color-line);
+    border-radius: 1rem;
+    background: color-mix(in srgb, var(--color-surface) 60%, transparent);
+}
+
+.feature-icon {
+    width: 1.5rem;
+    height: 1.5rem;
+    margin-bottom: 0.75rem;
+    color: var(--color-primary-400);
+}
+
+h3 {
+    color: var(--color-fg-strong);
+    font-size: 1rem;
+    font-weight: 600;
+}
+
+.feature p {
+    margin-top: 0.375rem;
+    color: var(--color-fg-muted);
+    font-size: 0.9375rem;
+}
+
+/* The five lists, each with its status's colour, as the profile's breakdown draws them. */
+.statuses {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.375rem;
+    margin-top: 0.75rem;
+}
+
+.status {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.125rem 0.5rem;
+    border: 1px solid var(--color-line-strong);
+    border-radius: 999px;
+    color: var(--color-fg-soft);
+    font-size: 0.8125rem;
+}
+
+.status::before {
+    content: "";
+    width: 0.5rem;
+    height: 0.5rem;
+    border-radius: 50%;
+    background: var(--dot);
+}
+
+.status-backlog { --dot: var(--color-status-backlog); }
+.status-playing { --dot: var(--color-status-playing); }
+.status-on-hold { --dot: var(--color-status-on-hold); }
+.status-finished { --dot: var(--color-status-finished); }
+.status-dropped { --dot: var(--color-status-dropped); }
+
+.next {
+    display: grid;
+    gap: 0.75rem;
+    max-width: 44rem;
+}
+
+.next li {
+    position: relative;
+    padding-left: 1.5rem;
+    color: var(--color-fg-soft);
+}
+
+.next li::before {
+    content: "";
+    position: absolute;
+    left: 0.25rem;
+    top: 0.6em;
+    width: 0.5rem;
+    height: 0.5rem;
+    border-radius: 2px;
+    background: var(--color-primary-500);
+}
+
+.after-list {
+    max-width: 44rem;
+    margin-top: 1.5rem;
+    color: var(--color-fg-muted);
+}
+
+/* -- Not found ------------------------------------------------------------ */
+
+.not-found .wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding-block: 6rem;
+    text-align: center;
+}
+
+.not-found h1 {
+    font-size: 1.875rem;
+}
+
+.not-found .lead {
+    margin-inline: auto;
+    color: var(--color-fg-muted);
+    font-size: 1rem;
+}
+
+/* -- Foot ----------------------------------------------------------------- */
+
+.site-footer {
+    border-top: 1px solid var(--color-line);
+    background: color-mix(in srgb, var(--color-sunken) 40%, transparent);
+    color: var(--color-fg-muted);
+    font-size: 0.875rem;
+}
+
+.site-footer .wrap {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 0.5rem 1.5rem;
+    padding-block: 1.5rem;
+}
+
+.site-footer a {
+    color: var(--color-fg-soft);
+}
+
+.site-footer a:hover {
+    color: var(--color-fg-strong);
+}
