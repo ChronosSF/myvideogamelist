@@ -148,9 +148,10 @@ export interface ImportResult {
     /** Every row that did not import, with the reason. What the failure report is built from. */
     skipped: ImportSkippedRow[];
     /**
-     * How many games the imported rows wrote: fewer than `job.importedCount` whenever two of those
-     * rows named one game, as a source listing a game once per platform does. Nothing stores it —
-     * the job's counts stay rows, so imported and skipped still add up to every row in the file.
+     * How many games the imported rows went into, an entry the user already had included: fewer
+     * than `job.importedCount` whenever two of those rows named one game, as a source listing a game
+     * once per platform does. Nothing stores it — the job's counts stay rows, so imported and
+     * skipped still add up to every row in the file.
      */
     games: number;
     /**

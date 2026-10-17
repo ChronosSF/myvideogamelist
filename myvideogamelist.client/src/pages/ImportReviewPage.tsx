@@ -590,14 +590,14 @@ function Badge({ children, tone = 'neutral' }: { children: React.ReactNode; tone
  * it was false of three-quarters of a real library.
  *
  * What it counts is games, because games are what is now in somebody's library. The rows they came
- * from are a different number only when the file named one game in several rows — as a source that
- * lists a game once per platform does — and only then does the panel speak of rows. Then it has to:
- * after a review that said it would import 14, a bare "11 games" reads as three lost.
+ * from are a different number only when two of the rows it imported named one game — as a source
+ * that lists a game once per platform does — and only then does the panel speak of rows. Then it
+ * has to: after a review that said it would import 14, a bare "11 games" reads as three lost.
  */
 function ResultPanel({ rows, games, unlisted, skipped, fileName }: {
     /** The rows imported — the job's `importedCount`, which with the skipped ones is every row. */
     rows: number;
-    /** The games those rows wrote: fewer than `rows` when two of them named one game. */
+    /** The games those rows went into: fewer than `rows` when two of them named one game. */
     games: number;
     /** How many of those games are in no list. */
     unlisted: number;

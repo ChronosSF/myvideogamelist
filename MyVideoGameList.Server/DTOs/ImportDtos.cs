@@ -198,11 +198,12 @@ public record ImportPlayedStatusDto(
 /// keep it.
 /// </param>
 /// <param name="Games">
-/// How many games the imported rows wrote, which is fewer than the job's <c>ImportedCount</c>
-/// whenever two of those rows name one game — as a source listing a game once per platform does.
-/// Answered here and stored nowhere, because the result screen is the one place that says how many
-/// games went in. <c>ImportedCount</c> stays a count of rows, so that it and <c>SkippedCount</c>
-/// still account for every row in the file (§C5).
+/// How many games the imported rows went into, counting an entry the user already had as well as
+/// one the commit created. Fewer than the job's <c>ImportedCount</c> whenever two of those rows name
+/// one game, as a source listing a game once per platform does. Answered here and stored nowhere:
+/// <c>ImportedCount</c> stays a count of rows, so that it and <c>SkippedCount</c> still account for
+/// every row in the file (§C5), and those two counts are the whole of the receipt <c>/import</c>
+/// keeps.
 /// </param>
 /// <param name="Unlisted">
 /// How many of those <paramref name="Games"/> are in no list afterwards. The result screen says so,

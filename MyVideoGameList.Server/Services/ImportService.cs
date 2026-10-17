@@ -438,7 +438,7 @@ public class ImportService(
 
         // Both are counts of rows, so that together they account for every row in the file — what
         // §C5's failure report is reconciled against. Two rows can name one game, so the games
-        // those rows wrote are a different number, answered in the result and stored nowhere.
+        // those rows went into are a different number, answered in the result and stored nowhere.
         job.ImportedCount = imported;
         job.SkippedCount = skipped.Count;
         job.CompletedAt = now;
@@ -571,8 +571,8 @@ public class ImportService(
     /// actually touched at the top of "recently moved".
     /// </remarks>
     /// <returns>
-    /// How many rows were written, how many games those rows wrote — fewer whenever two of them
-    /// name one game — and how many of those games are in no list afterwards.
+    /// How many rows were written, how many games those rows went into — fewer whenever two of
+    /// them name one game — and how many of those games are in no list afterwards.
     /// </returns>
     private async Task<(int Imported, int Games, int Unlisted)> WriteAsync(
         string userId,

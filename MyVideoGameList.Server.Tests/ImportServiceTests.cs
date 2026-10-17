@@ -982,6 +982,11 @@ public class ImportServiceTests
         var result = await service.CommitAsync(UserId, jobId);
 
         Assert.Equal(0, result!.Unlisted);
+
+        // Counted over the entries the rows went into, not the ones this commit created. Otherwise a
+        // game imported over the user's own entry goes uncounted, and the result screen reports
+        // rows merging that never did.
+        Assert.Equal(1, result.Games);
     }
 
     [Fact]

@@ -235,7 +235,7 @@ describe('ImportReviewPage', () => {
         renderPage();
 
         expect(screen.getByRole('heading', { name: 'Import finished' })).toBeInTheDocument();
-        expect(screen.getByText(/600 games are now in your lists/)).toBeInTheDocument();
+        expect(screen.getByText('600 games are now in your lists. 2 were skipped.')).toBeInTheDocument();
         expect(screen.getByRole('button', { name: 'Download what was skipped' })).toBeInTheDocument();
     });
 
@@ -283,7 +283,7 @@ describe('ImportReviewPage', () => {
             says: '1 game was imported. It is in no list, so it is on its own game page rather than in your lists.',
         },
         {
-            what: 'one game from two rows, and one row skipped',
+            what: 'one game from two rows, one skipped',
             result: importResult({ imported: 2, games: 1, skipped: [skippedRow('One')] }),
             says: '1 game is now in your lists, from 2 rows of your file. 1 row was skipped.',
         },
@@ -294,14 +294,14 @@ describe('ImportReviewPage', () => {
         },
         {
             // "Of the games" rather than "of them", which straight after the rows could be the rows.
-            what: 'games from more rows, one of them in no list',
+            what: 'games from more rows, one in no list',
             result: importResult({ imported: 14, games: 11, unlisted: 1 }),
             says: '11 games were imported, from 14 rows of your file. 1 of the games is in no list, so it is on its own game page rather than in your lists.',
         },
         {
             // Once rows have been named, a skipped one is called a row: it can be one whose game
             // another row imported, so "3 were skipped" would read as three games missing.
-            what: 'games from more rows, several in no list and several rows skipped',
+            what: 'games from more rows, all counts plural',
             result: importResult({
                 imported: 14, games: 11, unlisted: 2,
                 skipped: [skippedRow('One'), skippedRow('Two'), skippedRow('Three')],
