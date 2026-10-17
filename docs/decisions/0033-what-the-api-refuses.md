@@ -3,7 +3,8 @@
 **Status:** Implemented. Two statements below are corrected by
 [0044](0044-what-the-deployment-walkthrough-settled.md): behind a CDN `ForwardLimit` is not "2"
 but stays 1 with the balancer preserving the header, and `UseHttpsRedirection` cannot redirect
-in a container that exposes no HTTPS port — the hazard is configuring one.
+in a container that exposes no HTTPS port — the hazard is configuring one. §5's document policy
+gains an `img-src` in [0056](0056-an-avatar-is-an-address-on-a-short-list-of-hosts.md).
 
 ## Context
 

@@ -24,20 +24,27 @@ site might have needed consent for". After that change, a game page reached only
 for an image URL and asks for the same answer as this one.
 
 Neither content policy says anything about images. Master's is `frame-ancestors 'none'`.
-[0053](0053-a-documents-scripts-carry-its-renders-nonce.md), open as #254, adds `script-src`,
+[0053](https://github.com/ChronosSF/myvideogamelist/pull/254), open as #254, adds `script-src`,
 `object-src` and `base-uri`. Neither names `img-src` or `default-src`, so no image is blocked today.
 The question was therefore what `img-src` says once it is written, and this change writes it.
 
-What was checked, on 17 October 2026, before any host went into code:
+What was checked, on 17 October 2026, before any host went into code. Each host was asked for a real
+or a default avatar, once, from a script and then from a browser:
 
-- **Every listed host serves an avatar over HTTPS and set no cookie on the image response.** Each
-  was asked once, for a real or default avatar.
-- **Discord's CDN sets three cookies on an image**: `__dcfduid`, `__sdcfduid` and `__cf_bm`. The
-  first two identify the device. `github.com/{user}.png` sets `_gh_sess`, `_octo` and `logged_in`
-  before redirecting to GitHub's avatar host.
-- **A listed host can redirect elsewhere.** Gravatar answers an address with a `d=` default by
-  redirecting to `i1.wp.com`, Automattic's image proxy, when there is no picture behind it. Steam's
-  `avatars.cloudflare.steamstatic.com` redirects to `avatars.steamstatic.com`.
+- **Every listed host serves an avatar over HTTPS with `Access-Control-Allow-Origin: *`**, sets no
+  cookie on the response, and sends no reporting headers. A browser loaded each anonymously from a
+  page under the policy below.
+- **Twitch's image CDN asks the browser to report on it.** `static-cdn.jtvnw.net` answers with `NEL`
+  and `Report-To` headers that tell the browser to report every failed load, for a day, to
+  `nel.twitch.tv`.
+- **Discord's CDN set three cookies on an image response**: `__dcfduid`, `__sdcfduid` and
+  `__cf_bm`. `github.com/{user}.png` set `_gh_sess`, `_octo` and `logged_in` before redirecting to
+  GitHub's avatar host.
+- **A listed host can redirect elsewhere.** Gravatar answers an address whose `d=` default is a URL
+  by redirecting to `i1.wp.com`, Automattic's image proxy, when there is no picture behind it; its
+  named defaults, such as `d=identicon`, it serves itself. Steam's
+  `avatars.cloudflare.steamstatic.com` redirects to `avatars.steamstatic.com`, and its redirect
+  carries no `Access-Control-Allow-Origin`.
 
 ## Decision
 
@@ -56,7 +63,6 @@ and nothing it caches or serves on anybody's behalf.
 | GitHub | `avatars.githubusercontent.com` |
 | Steam | `avatars.steamstatic.com`, `avatars.akamai.steamstatic.com`, `avatars.fastly.steamstatic.com` |
 | Imgur | `i.imgur.com` |
-| Twitch | `static-cdn.jtvnw.net` |
 
 These are services people already keep an avatar on, plus Imgur for a picture that lives nowhere
 else. A list rather than any HTTPS host, for three reasons:
@@ -67,11 +73,19 @@ else. A list rather than any HTTPS host, for three reasons:
   could not name even one.
 - **The document policy can name exactly these.** That is what holds when a listed host redirects:
   the browser checks each hop against `img-src`, refuses Gravatar's `i1.wp.com`, and the initial
-  shows instead. The server's check alone could not see a redirect.
+  shows instead. The server's check alone could not see a redirect. Checked in a browser.
 
-A host is added only after it has been seen to serve an avatar over HTTPS without setting a cookie.
-That rule is what keeps Discord's CDN off the list, and `github.com` with it, since the redirect is
-only reached through those cookies.
+**A host joins only after it has been seen to serve an avatar over HTTPS** with
+`Access-Control-Allow-Origin`, which an anonymous load needs (§4), without setting a cookie, and
+without asking the browser to report to it. That rule keeps four off:
+
+- **Twitch**, whose reporting headers would make readers' browsers report to `nel.twitch.tv`, a host
+  nobody listed.
+- **Discord's CDN**, for its cookies. Loading anonymously would discard them, but a host that tries
+  to identify the device on an image is not one to send readers to.
+- **`github.com/{user}.png`**, for its cookies. The address it redirects to is listed.
+- **Steam's Cloudflare host**, because an anonymous load cannot follow a redirect that carries no
+  `Access-Control-Allow-Origin`. Its picture is on the listed Steam hosts.
 
 The policy becomes:
 
@@ -79,25 +93,28 @@ The policy becomes:
 frame-ancestors 'none'; img-src 'self' https://images.igdb.com https://gravatar.com …
 ```
 
-`'self'` is the favicon, and IGDB's CDN serves every cover, screenshot and piece of key art. **An
-image from a host not named there does not load**, in development as deployed, so a feature that
-shows one adds the host on purpose.
+`'self'` is the favicon, and IGDB's CDN serves every cover, screenshot and piece of key art.
+**An image from a host not named there does not load**, in development as deployed. A new image host
+goes into `IMAGE_SOURCES` in `@/lib/securityHeaders` on purpose, and an avatar host into both lists
+below.
 
-The list exists twice, in two languages, and that is the price of the browser enforcing it.
+The avatar hosts exist twice, in two languages, and that is the price of the browser enforcing them.
 `AvatarUrlPolicy.Hosts` on the server says what may be saved. `AVATAR_HOSTS` in `@/lib/avatar` says
-what a page may load, and `img-src` is built from it. `avatar.test.ts` reads the server's file and
-fails when the two differ. A host on the server's list and not the client's is saved and then refused
-by every browser. The reverse is a host readers can be sent to that nobody can save, which is
-harmless but still a drift.
+what a page may load, and `img-src` is built from it. `serverMirrors.test.ts` reads the server's
+file and fails when the two differ, as it does for the field limits and for IGDB's image host. A
+host on the server's list and not the client's is saved and then refused by every browser. The
+reverse is a host readers can be sent to that nobody can save, which is harmless but still a drift.
 
 ### 3. Checked as a string first, and as a `Uri` second
 
 A reader's browser fetches whatever its own URL parser makes of the stored text, and parsers disagree
-about odd input: a backslash, a space, an `@` in the authority. So the address may use only the
-characters RFC 3986 allows, which a browser's "copy image address" already produces. It must start
-`https://`, and the text from there to the first `/`, `?` or `#` must be a listed host exactly. That
-leaves no credentials, no port and no trailing dot, so the two parsers have nothing to read two ways.
-The `Uri` parse must then agree on the host.
+about odd input: a backslash, a space, an `@` in the authority. So the address may hold only letters,
+digits and `-._~:/?#@&=+%`. That is what the listed hosts' own addresses use, and a browser's "copy
+image address" percent-encodes anything else. It leaves out every quote, bracket, parenthesis,
+semicolon and space, so the address could not break out of an attribute or a CSS `url()` if it were
+ever written into one. It must start `https://`, and the text from there to the first `/`, `?` or
+`#` must be a listed host exactly. That leaves no credentials, no port and no trailing dot, so the
+two parsers have nothing to read two ways. The `Uri` parse must then agree on the host.
 
 The cap is 512 characters, the calendar's curated links' length, and several times the longest
 address any listed host hands out. The database holds the one rule that never changes: a check
@@ -107,15 +124,24 @@ stored as given. The host list stays in code, where adding a host is not a migra
 ### 4. A picture is asked for as little as a picture can be
 
 The image is decoration, since the name is always beside it. It has an empty `alt` inside an
-`aria-hidden` circle, and it loads with `referrerpolicy="no-referrer"` and `loading="lazy"`. It is
-never trusted to arrive. A 404, a refused redirect or a deleted picture brings back the generated
-avatar: the handle's initial on the primary's gradient. The handle and not the display name, because
-every account has one. The server renders the `<img>` and the browser starts it before hydration, so
-an image that fails fast fires its error before React listens. The component therefore asks the image
-whether it has already failed once React has it.
+`aria-hidden` circle, and it loads:
+
+- **with `referrerpolicy="no-referrer"`**, so the host learns nothing of which page it is on;
+- **with `crossorigin="anonymous"`**, so no cookie goes to the host and none it sends back is kept,
+  whatever the host starts doing later. The no-cookie rule in §2 is then the browser's to keep, not
+  only an observation. The cost is an `Origin` header naming this site, never the page;
+- **with `loading="lazy"`**, so a reader who never reaches it never sends the request.
+
+It is never trusted to arrive. A 404, a refused redirect, a host that stops answering an anonymous
+load, or a deleted picture brings back the generated avatar: the handle's initial on the primary's
+gradient. The handle and not the display name, because every account has one. The server renders
+the `<img>` and the browser starts it before hydration, so an image that fails fast fires its error
+before React listens. The component therefore asks the image whether it has already failed once
+React has it.
 
 The settings page previews what is stored, not what is typed. A preview that followed the input
 would send a request to somebody's server for every half-typed address on the way to the real one.
+When the stored picture does not load, the page says so beside the address, where it can be fixed.
 
 ### 5. A display name stands beside the handle
 
@@ -125,20 +151,33 @@ and never in a URL. So spaces, punctuation, accents and emoji are allowed, and s
 0027's reserved list refuses. "Support" beside `@carol` says who is speaking, and a word list over
 free text would not stop "S u p p o r t" anyway.
 
+Two things are refused, because they would let the name pass for a handle or rearrange the one
+beside it:
+
+- **An `@`.** A handle is written `@carol` everywhere the site shows one, so a name holding
+  `@ChronosSF` would read as somebody else's handle beside the real one.
+- **The explicit directional embeddings, overrides and isolates**, U+202A to U+202E and U+2066 to
+  U+2069. The name is set into text beside the handle where nothing isolates it, such as the page's
+  title, and an unclosed right-to-left override there reverses everything after it. Text in any
+  script lays itself out without them, and the implicit marks stay allowed.
+
 Wherever the handle identifies the account, the display name sits beside it and never replaces it:
 
 - **The profile's heading** reads `Stamen @ChronosSF`, with the name in a `bdi` so right-to-left
   text cannot reorder the handle beside it.
-- **The title** reads `Stamen (@ChronosSF) - MyVideoGameList`.
+- **The title** reads `ChronosSF (Stamen) - MyVideoGameList`. The handle leads, so a title cut short
+  in a tab or a search result loses the name anybody may choose rather than the handle.
 - **The canonical path and `profile:username`** stay the handle.
 
-With no display name, the page is exactly what it was.
+With no display name, avatar or bio the header is what it was. That was checked by reading the
+styles, and was not run through the visual suite.
 
 ### 6. A bio is plain text, and that is a property of how it is rendered
 
 A bio is up to 500 characters. Its line endings are stored as `\n` whichever a browser sent, so a
-line break counts once. Its ends are trimmed, and everything between them is kept as written. Control
-characters other than a line break and a tab are refused.
+line break counts once. A run of blank lines is stored as one, so five hundred line breaks cannot
+push the figures a screen-height down. Its ends are trimmed, and everything else is kept as written.
+Control characters other than a line break and a tab are refused.
 
 Nothing that looks like markup is refused. The bio is written into the page as a text node, so `<b>`
 shows as three characters, and refusing angle brackets would refuse "I <3 RPGs" to prevent a
@@ -165,23 +204,27 @@ in it is linked.
   owner's own server above all.
 - **A server-side image proxy**, GitHub's camo. It hides every reader's address, but the server then
   fetches, caches and serves other people's images: an upload's costs without the upload.
-- **Discord**, for its cookies, and `github.com/{user}.png`, for its own.
+- **The display name first in the title**, as the heading has it. A title is cut short where a
+  heading is not.
 
 ## Consequences
 
-- **A new image host needs an `img-src` entry**, and an avatar host the server's list as well. A
-  third party's tag or ads (#242, #143) need their hosts named when they arrive, alongside 0053's
-  `script-src` decision.
-- **0053's `documentPolicy` and this record touch the same header.** Whichever lands second carries
-  `img-src ${IMAGE_SOURCES}` into the other's shape.
+- **A new image host needs an `img-src` entry**, and an avatar host the server's list as well.
+  `securityHeaders.test.ts` refuses a wildcard in `img-src`. Google's tag and ad services (#242,
+  #143) may publish their image hosts only as wildcards, and if they do, adding them reopens this
+  record rather than adding a line.
+- **0053 and this record write the same header.** Whichever lands second moves
+  `img-src ${IMAGE_SOURCES}` into 0053's `documentPolicy`, carries this record's tests of it across,
+  and points 0053's §3 here.
 - **A Gravatar address carries a hash of an email address**, which anybody who can guess the address
-  can confirm. Pasting one is its owner's choice, and the form does not warn.
+  can confirm. The form says so beside the field.
 - **An avatar can change after it is set**, since the picture is the host's. A profile's display
   name, avatar and bio can be anything their owner writes, as a public review already can. Nothing
   reports one and no admin tool clears one: [0042](0042-admins-are-named-in-configuration.md) keeps
-  the admin page to reference data. Moderating what members publish is an open question.
+  the admin page to reference data. Moderating what members publish is #307.
 - **A change to the three outlives itself at the edge**, like any change to a public profile: five
-  minutes, and up to an hour stale (0027 §10). Clearing a bio is a withdrawal in all but name, and
-  belongs with the events #99 invalidates.
-- **The display name appears on the profile and nowhere else yet.** The navbar still shows the
-  handle's initial, and the game page's member reviews still name the handle alone.
+  minutes, and up to an hour stale (0027 §10). The form says so. Clearing a bio is a withdrawal in
+  all but name, and is a line on #99.
+- **The display name appears on the profile and nowhere else yet.** The navbar still draws the
+  handle's initial in its own circle, and the game page's member reviews name the handle alone:
+  #308.
