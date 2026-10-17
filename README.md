@@ -94,6 +94,7 @@ npm run typecheck    # generate route types, then tsc
 npm run build        # production build
 npm run e2e          # the browser smoke test: needs `docker compose up -d --wait`, and once,
                      # `npx playwright install chromium`
+npm run lighthouse   # Lighthouse on five pages of the same build, phone and desktop; needs the same
 
 cd ..
 dotnet test MyVideoGameList.Server.Tests/MyVideoGameList.Server.Tests.csproj                     # server unit tests
@@ -135,6 +136,6 @@ Health endpoints: `/healthz` (liveness) and `/readyz` (database + IGDB reachabil
 Pull requests and pushes to `master` are validated by GitHub Actions: the client is linted,
 type-checked and built; the server is built and unit-tested, and its integration suite runs against
 PostgreSQL in a container; a browser smoke test runs the production build and the API behind a
-stand-in for what routes between them; CodeQL analyses both languages.
+stand-in for what routes between them, and Lighthouse audits five of its pages; CodeQL analyses both languages.
 
 [![CI](../../actions/workflows/ci.yml/badge.svg)](../../actions/workflows/ci.yml)
