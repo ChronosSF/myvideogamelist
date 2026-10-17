@@ -109,7 +109,7 @@ is in the history (`git log -p -- ROADMAP.md`).
 | §5 Data & state | PostgreSQL, migrations, keys, cache | PostgreSQL and the migration gate are done — [0008](docs/decisions/0008-postgresql-over-sqlite.md), `CLAUDE.md`; the keys and the migration step are #97; #101; #102 |
 | §5 Resilience | Retry, breaker, limits, lockout, CSRF, headers, errors | Done — [0033](docs/decisions/0033-what-the-api-refuses.md), [0034](docs/decisions/0034-failing-in-one-shape.md); `script-src` is #108; edge rate limiting is #109 |
 | §5 Observability | Health, logs, traces, alarms, `/version` | Health endpoints done; the rest is #103 |
-| §5 Quality gates | Tests, CI, scanning, branch protection | Unit tests, CI on every pull request, the browser smoke test ([0060](docs/decisions/0060-one-browser-test-over-the-production-shape.md)), and the format check, dependency audits, secret scan and image builds ([0061](docs/decisions/0061-ci-gates-every-pull-request.md)) are done; branch protection is a setting the owner turns on; #104, #107 |
+| §5 Quality gates | Tests, CI, scanning, branch protection | Unit tests, CI on every pull request, the browser smoke test ([0060](docs/decisions/0060-one-browser-test-over-the-production-shape.md)), and the format check, dependency audits, secret scan and image builds ([0061](docs/decisions/0061-ci-gates-every-pull-request.md)) are done; branch protection and GitHub's secret scanning, settings only the owner can turn on, are what is left of #106; #104, #107 |
 | §6 | AWS deployment | 0007, 0014, 0015 and the guide; #97, #98, #109 |
 | §7 | Sequencing | The pinned issue #147 |
 | Phase 0 | Clean the foundation | Done |

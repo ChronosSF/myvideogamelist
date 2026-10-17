@@ -48,7 +48,7 @@ build behind a stand-in that does route `/api` (ADR 0060).
 | `dotnet test MyVideoGameList.Server.IntegrationTests/MyVideoGameList.Server.IntegrationTests.csproj` | The API over a real PostgreSQL, for what InMemory cannot do: auth and the lists end to end, the cascades, the retention sweep, and the export's snapshot once #263 is merged. Needs Docker running; starts and removes a container of its own, never `mvgl-postgres`. About fifteen seconds once built. See ADR 0057 |
 | `dotnet format MyVideoGameList.slnx` | Formats the C# as `.editorconfig` says. With `--verify-no-changes` it is CI's check, in the Server job; `dotnet format infra/src/Infra/Infra.csproj` is the CDK app's |
 | `dotnet restore MyVideoGameList.slnx -warnaserror:NU1900,NU1901,NU1902,NU1903,NU1904` | CI's NuGet audit: a known vulnerability in any package, transitive ones included, fails it, where any build only warns. The same for `infra/src/Infra/Infra.csproj`. A suppression, for an advisory nothing fixes, goes in `Directory.Build.props`. See ADR 0061 |
-| `docker run --rm -v "$PWD:/repo:ro" ghcr.io/gitleaks/gitleaks:v8.30.1 git /repo --config /repo/.gitleaks.toml --log-opts=HEAD --redact --verbose` | CI's secret scan, over every commit `HEAD` reaches. From a clone rather than a worktree, whose `.git` points outside the mount; in Git Bash, put `MSYS_NO_PATHCONV=1` in front. `.gitleaks.toml` says what it allows, and why |
+| `docker run --rm --network none -v "${PWD}:/repo:ro" ghcr.io/gitleaks/gitleaks:v8.30.1 git /repo --config /repo/.gitleaks.toml --log-opts="HEAD --diff-merges=first-parent" --ignore-gitleaks-allow --redact --verbose` | CI's secret scan, over every commit `HEAD` reaches, from the root of a clone, in bash or PowerShell; in Git Bash put `MSYS_NO_PATHCONV=1` in front. Not from a worktree, whose `.git` points outside the mount: there it says "0 commits scanned", which is a scan that read nothing. `.gitleaks.toml` says what it allows, and why |
 | `dotnet ef migrations add <Name>` | From `MyVideoGameList.Server/` |
 | `dotnet ef database update` | Applies migrations by hand; only needed outside Development |
 | `docker compose up -d --wait` | Local PostgreSQL. `--wait` blocks until it accepts connections |
@@ -113,9 +113,12 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   overnight.** Beside the builds and tests it checks the formatting, audits every package (NuGet's at
   every severity, npm's at high and critical), scans every commit for secrets, and builds both images,
   starting the SSR one. A finding with a fixed version is fixed; one with none is suppressed by its
-  advisory, in `Directory.Build.props` or `scripts/audit.mjs`, never by lowering the level. A
-  credential committed on purpose is allowed by its value and its file in `.gitleaks.toml`. The job
-  names are the required checks, so renaming one renames a check. See `docs/decisions/0061-*`.
+  advisory, in `Directory.Build.props` or `myvideogamelist.client/scripts/audit.mjs`, never by
+  lowering the level. A credential committed on purpose is allowed by its value and its file in
+  `.gitleaks.toml`. Once the owner's ruleset is on, the job names are its required checks: a job it
+  does not name gates nothing, and a name it requires that no job reports any more holds every pull
+  request, the renaming one included, so change the ruleset just before merging a rename. See
+  `docs/decisions/0061-*`.
 
 - **The PostgreSQL container volume mounts at `/var/lib/postgresql`, not `.../data`.**
   PostgreSQL 18 images changed this and refuse to start if they find data at the old path. The

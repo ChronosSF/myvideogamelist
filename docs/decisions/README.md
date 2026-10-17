@@ -72,7 +72,7 @@ grow a forward pointer when a later record or an issue closes something it left 
 | [0050](0050-an-imported-run-takes-its-type-from-the-source.md) | An imported run takes its type from the source's completion level | Implemented |
 | [0057](0057-the-api-is-tested-over-a-real-postgresql.md) | The API is tested over a real PostgreSQL: one container a run, a database a class, and IGDB out of reach | Implemented; the export-snapshot test went in skipped, waiting for #263; the front end it left to #105 is 0060 |
 | [0060](0060-one-browser-test-over-the-production-shape.md) | One browser test over the production shape: two processes, a stand-in for what routes between them, and IGDB answered over HTTP | Implemented; the images it leaves out are 0061 |
-| [0061](0061-ci-gates-every-pull-request.md) | CI gates every pull request: the house style, known vulnerabilities, secrets in the history, and the images | Implemented; branch protection and GitHub's own secret scanning are settings the owner turns on |
+| [0061](0061-ci-gates-every-pull-request.md) | CI gates every pull request: the house style, known vulnerabilities, secrets in the history, and the images | Implemented; branch protection and GitHub's own secret scanning are settings the owner turns on, and what is left of #106 |
 
 **Status** — *Accepted*: decided, not yet built. *Implemented*: decided and in the code.
 *Superseded*: replaced by a later record.

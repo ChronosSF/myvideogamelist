@@ -140,6 +140,6 @@ against the house style in `.editorconfig`, and its integration suite runs again
 container; a browser smoke test runs the production build and the API behind a stand-in for what
 routes between them; every package on both sides is audited for known vulnerabilities; every commit
 is scanned for secrets; both images are built, and the SSR one started; and CodeQL analyses both
-languages. See [ADR 0061](docs/decisions/0061-ci-gates-every-pull-request.md).
+languages and the workflows. See [ADR 0061](docs/decisions/0061-ci-gates-every-pull-request.md).
 
 [![CI](../../actions/workflows/ci.yml/badge.svg)](../../actions/workflows/ci.yml)

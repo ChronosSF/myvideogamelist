@@ -1,24 +1,37 @@
-# What CI's secret scan looks for (ADR 0061): gitleaks' own rules, one rule more, and three findings
-# allowed, each by exactly what it is rather than by a file or a rule turned off.
+# What CI's secret scan looks for (ADR 0061): gitleaks' own rules, four rules more for the shapes this
+# repository's secrets take and the default rules miss, and three findings allowed, each by exactly
+# what it is rather than by a file or a rule turned off. This file is the one place a finding is
+# allowed: CI's scan ignores gitleaks:allow comments and refuses a .gitleaksignore.
 title = "MyVideoGameList"
 
 [extend]
 useDefault = true
 
-# The default generic rule wants a value of ten characters or more that looks random, so a real
-# connection string with a short or guessable password passes it. This catches the password in any
-# connection string or database container's environment, whatever it looks like.
+# A password in a connection string or a database container's environment, whatever it looks like:
+# the default generic rule wants ten characters or more that look random, so a real connection string
+# with a short or guessable password passes it. Npgsql's Password=, quoted or not; an upper-case
+# *_PASSWORD setting such as POSTGRES_PASSWORD, by = or by a YAML colon; and PGPASSWORD. Not
+# "Password = value" with spaces, which is how C# assigns a property, nor a lower-case _password: that
+# is a TypeScript parameter.
 [[rules]]
 id = "connection-password"
 description = "A password in a connection string or a database container's environment"
-regex = '''(?i)(?:\b(?:password|pwd)=|\b(?:postgres_password|pgpassword)\s*[:=]\s*['"]?)([^\s;'"`]+)'''
+regex = '''(?i)(?:(?:\b|_)(?:password|pwd)=['"]?|(?-i:\b[A-Z][A-Z0-9_]*_PASSWORD)\s*[:=]\s*['"]?|\bpgpassword\s*[:=]\s*['"]?)([^\s;'"`]+)'''
 secretGroup = 1
-keywords = ["password=", "pwd=", "postgres_password", "pgpassword"]
+keywords = ["password", "pwd="]
+
+    # A reference to a password is not one: $(command), ${VARIABLE}, ${{ secrets.X }}, $VARIABLE, and
+    # an interpolated {password}.
+    [[rules.allowlists]]
+    description = "A variable, an expression or an interpolation standing for the password"
+    regexTarget = "secret"
+    regexes = ['''^\$[({]''', '''^\$\w+$''', '''^\{\w+\}$''']
 
     # The local container's credentials, mvgl/localdev, committed on purpose so that a fresh checkout
-    # runs with no setup (ADR 0005, 0060). They reach nothing beyond a developer's machine or a runner.
-    # Allowed as that value in the four files that hold it, and nowhere else: the same password in a
-    # fifth file, or another password in one of these, still fails.
+    # runs with no setup (CLAUDE.md's "Running locally"; ADR 0060 names the four files). They reach
+    # nothing beyond a developer's machine or a runner. Allowed as that value in the four files that
+    # hold it, and nowhere else: the same password in a fifth file, or another password in one of
+    # these, still fails.
     [[rules.allowlists]]
     description = "The compose container's committed local credentials"
     condition = "AND"
@@ -31,16 +44,43 @@ keywords = ["password=", "pwd=", "postgres_password", "pgpassword"]
         '''^\.github/workflows/ci\.yml$''',
     ]
 
-# A GitHub token begins a word. The tests' Method_Scenario_Expected names put one of its prefixes
-# mid-word wherever a part ends in "ghs" or "ghu" and the next runs past thirty-six characters, as
-# GetStatsAsync_NoPlaythroughs_ReportsNothingRatherThanZeroesWithAPlatform does.
+# A password in a URL's user information, as a database URL carries it. The default rules have none.
+# A <placeholder> is not a password; gitleaks' own allowlist already passes ${VARIABLE} and %s.
+[[rules]]
+id = "url-password"
+description = "A password in the user information of a URL"
+regex = '''(?i)\b[a-z][a-z0-9+.-]*://[^\s:/@'"`<>]+:([^\s/@'"`<>]+)@[^\s/@'"`<>]+'''
+secretGroup = 1
+keywords = ["://"]
+
+# The dev site's basic-auth pair, user:password, given to a setting with "basic auth" in its name, as
+# MVGL_DEV_BASIC_AUTH, the DEV_BASIC_AUTH secret and the basic-auth key are: by assignment, or as the
+# value of gh secret set's --body. The generic rule stops at the colon.
+[[rules]]
+id = "basic-auth-pair"
+description = "A user:password pair given to a basic-auth setting"
+regex = '''(?i)\b\w*basic[_-]?auth\w*(?:\s*[:=]\s*|\s+--body[ =])['"]?([^\s'"`:$<>]+:[^\s'"`<>]+)'''
+secretGroup = 1
+keywords = ["basic_auth", "basic-auth", "basicauth"]
+
+# The same pair as a header: Authorization: Basic and its base64.
+[[rules]]
+id = "basic-auth-header"
+description = "An Authorization header carrying basic credentials"
+regex = '''(?i)\bauthorization\b['"]?\s*[:=]\s*['"]?basic\s+([a-z0-9+/]{8,}={0,2})'''
+secretGroup = 1
+keywords = ["basic"]
+
+# A GitHub token begins a word. A test's Method_Scenario_Expected name can put one of its prefixes
+# mid-word, and GetStatsAsync_NoPlaythroughs_ReportsNothingRatherThanZeroesWithAPlatform does, so
+# exactly that match is allowed and nothing else the rule finds.
 [[rules]]
 id = "github-app-token"
 
     [[rules.allowlists]]
-    description = "A token prefix in the middle of an identifier"
-    regexTarget = "line"
-    regexes = ['''[0-9A-Za-z](?:ghu|ghs)_[0-9A-Za-z]{36}''']
+    description = "A token prefix in the middle of one test's name"
+    regexTarget = "secret"
+    regexes = ['''^ghs_ReportsNothingRatherThanZeroesWithAP$''']
 
 # Visual Studio's IIS Express configuration, committed with the rest of .vs/ by baf18587 in March 2026
 # and deleted by f339fb45 in August; .vs/ has been ignored since. Its sessionKey attributes are that

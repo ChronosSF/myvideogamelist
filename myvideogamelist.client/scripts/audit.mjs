@@ -68,7 +68,13 @@ for (const advisory of found.values()) {
 }
 
 for (const entry of ACCEPTED) {
-    if (!found.has(entry.advisory)) {
+    // Days are compared as text, which is right only for a day written in full: '2026-9-30' would sort
+    // after today and a missing day would never expire, so either is refused.
+    const day = typeof entry.until === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(entry.until)
+        && !Number.isNaN(Date.parse(entry.until));
+    if (!day || typeof entry.reason !== 'string' || entry.reason.trim() === '') {
+        problems.push(`${entry.advisory} is accepted without a reason and a day written YYYY-MM-DD.`);
+    } else if (!found.has(entry.advisory)) {
         problems.push(`${entry.advisory} is accepted but the audit no longer finds it; remove the entry.`);
     } else if (entry.until < today) {
         problems.push(`${entry.advisory} was accepted until ${entry.until}; look at it again.`);
