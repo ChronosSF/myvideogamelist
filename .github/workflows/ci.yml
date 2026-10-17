@@ -1,13 +1,22 @@
 name: CI
 
+# Every pull request, whatever branch it targets, so that one stacked on another's branch is checked
+# like any other; and every push to master, which is what Deploy dev waits on. The job names are the
+# required checks of master's branch protection, so renaming one means changing that too. ADR 0061.
 on:
   pull_request:
-    branches: [master, develop]
   push:
-    branches: [master, develop]
+    branches: [master]
 
 permissions:
   contents: read
+
+# A newer push to a pull request cancels the run it supersedes. A push to master is never grouped with
+# another: GitHub cancels a run waiting in a group whenever a newer one joins it, and a master commit
+# whose run never finishes gets no images and no deploy.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   client:
@@ -60,6 +69,12 @@ jobs:
 
       - name: Test
         run: dotnet test MyVideoGameList.Server.Tests/MyVideoGameList.Server.Tests.csproj --no-build --verbosity normal
+
+      # The house style that .editorconfig states, over every project in the solution, after the tests
+      # so that a formatting slip never hides a failing test. `dotnet format MyVideoGameList.slnx` makes
+      # the changes this asks for. ADR 0061.
+      - name: Format
+        run: dotnet format MyVideoGameList.slnx --verify-no-changes
 
   # The API booted over a real PostgreSQL, for what EF InMemory cannot do: cascades, set-based
   # deletes, isolation, and the request pipeline end to end. Its own job, so the unit tests above
@@ -163,7 +178,120 @@ jobs:
           retention-days: 14
           if-no-files-found: ignore
 
-  # #106's format check, audits and secret scanning: jobs of their own. Its PR replaces this line.
+  # Known vulnerabilities in every package either side resolves, direct or transitive, as NuGet's and
+  # npm's advisory data describe them on the day of the run. A job of its own, so that an advisory
+  # published overnight turns this check red and leaves the build and test jobs saying what they say.
+  # Each later step runs even when an earlier one fails, so one run reports every finding. A finding
+  # with no fixed version has a way through on each side, which ADR 0061 describes.
+  audit:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24.x'
+
+      # NuGet's own audit, at restore, of every package at every severity (Directory.Build.props). The
+      # codes made errors are its findings, NU1901 to NU1904 from low to critical, and NU1900, an audit
+      # that could not read the advisory data and would otherwise pass as clean. `dotnet list package
+      # --vulnerable` is not used: it exits 0 whatever it finds.
+      - name: NuGet, the application
+        run: dotnet restore MyVideoGameList.slnx -warnaserror:NU1900,NU1901,NU1902,NU1903,NU1904
+
+      - name: NuGet, the CDK app
+        if: ${{ !cancelled() }}
+        run: dotnet restore infra/src/Infra/Infra.csproj -warnaserror:NU1900,NU1901,NU1902,NU1903,NU1904
+
+      # npm audit, devDependencies included, failing at high and critical. It reads package-lock.json
+      # alone, so nothing is installed.
+      - name: npm
+        if: ${{ !cancelled() }}
+        working-directory: myvideogamelist.client
+        run: npm run audit
+
+  # Every commit reachable from what is being tested, searched for secrets by gitleaks with
+  # .gitleaks.toml. For a pull request that is the history of its merge with the base: the commits it
+  # adds, and every one before them. The scanner is gitleaks' own release image, pinned by digest, run
+  # with no network and the checkout mounted read-only, and the checkout keeps no token for it to find.
+  # What it finds is redacted from the log, which anyone can read. ADR 0061.
+  secrets:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Scan every commit
+        run: >-
+          docker run --rm --network none --volume "$PWD:/repo:ro"
+          ghcr.io/gitleaks/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f
+          git /repo --config /repo/.gitleaks.toml --log-opts=HEAD --redact --verbose --no-banner
+
+  # Both images, built as Deploy dev builds them and pushed nowhere, so that what breaks only an image
+  # fails before a merge rather than at the next deploy. vite.config.ts once needed the .NET SDK to
+  # build, which GitHub's runners have and node:24 does not (ADR 0044). And the SSR image installs its
+  # production dependencies alone, so a server that imports a devDependency builds and then fails to
+  # start (ADR 0060): which is why that image is then started and asked for /robots.txt, the path the
+  # balancer's health check asks for. Layers come from the Actions cache that Deploy dev writes on
+  # master. CI only reads it, so a pull request adds nothing to the cache. ADR 0061.
+  images:
+    name: Images
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: docker/setup-buildx-action@v4
+
+      - name: Build the API image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: MyVideoGameList.Server/Dockerfile
+          platforms: linux/amd64
+          push: false
+          provenance: false
+          cache-from: type=gha,scope=api
+
+      - name: Build the SSR image
+        uses: docker/build-push-action@v7
+        with:
+          context: myvideogamelist.client
+          platforms: linux/amd64
+          push: false
+          load: true
+          provenance: false
+          tags: mvgl-ssr:ci
+          cache-from: type=gha,scope=ssr
+
+      # With the image's own command and user, and none of the configuration a task definition adds:
+      # a robots.txt asks nothing of the API.
+      - name: Start the SSR image
+        run: |
+          docker run --detach --name ssr --publish 127.0.0.1:3000:3000 mvgl-ssr:ci
+          for attempt in $(seq 1 30); do
+            if curl --silent --fail --output /dev/null http://127.0.0.1:3000/robots.txt; then
+              echo "The SSR server answered /robots.txt within ${attempt} s."
+              exit 0
+            fi
+            if [ "$(docker inspect --format '{{.State.Running}}' ssr)" != "true" ]; then
+              echo "::error::The SSR server stopped before it answered."
+              break
+            fi
+            sleep 1
+          done
+          docker logs ssr
+          exit 1
 
   # The CDK app compiles, so a construct renamed by a library bump or a stack edited without
   # building is caught here rather than on the next deploy. Synthesis is not run: it needs
@@ -181,6 +309,10 @@ jobs:
 
       - name: Build
         run: dotnet build infra/src/Infra/Infra.csproj
+
+      # The house style the Server job checks, over the CDK app, which is not in the solution.
+      - name: Format
+        run: dotnet format infra/src/Infra/Infra.csproj --verify-no-changes --no-restore
 
   codeql:
     name: CodeQL (${{ matrix.language }})

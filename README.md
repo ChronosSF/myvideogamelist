@@ -94,10 +94,12 @@ npm run typecheck    # generate route types, then tsc
 npm run build        # production build
 npm run e2e          # the browser smoke test: needs `docker compose up -d --wait`, and once,
                      # `npx playwright install chromium`
+npm run audit        # npm audit, failing at high and critical
 
 cd ..
 dotnet test MyVideoGameList.Server.Tests/MyVideoGameList.Server.Tests.csproj                     # server unit tests
 dotnet test MyVideoGameList.Server.IntegrationTests/MyVideoGameList.Server.IntegrationTests.csproj   # the API over PostgreSQL; needs Docker
+dotnet format MyVideoGameList.slnx                                                               # the house style, as .editorconfig says
 ```
 
 ### Serving the production build
@@ -132,9 +134,12 @@ Health endpoints: `/healthz` (liveness) and `/readyz` (database + IGDB reachabil
 
 ## CI
 
-Pull requests and pushes to `master` are validated by GitHub Actions: the client is linted,
-type-checked and built; the server is built and unit-tested, and its integration suite runs against
-PostgreSQL in a container; a browser smoke test runs the production build and the API behind a
-stand-in for what routes between them; CodeQL analyses both languages.
+Every pull request, whatever branch it targets, and every push to `master` are validated by GitHub
+Actions: the client is linted, type-checked and built; the server is built, unit-tested and checked
+against the house style in `.editorconfig`, and its integration suite runs against PostgreSQL in a
+container; a browser smoke test runs the production build and the API behind a stand-in for what
+routes between them; every package on both sides is audited for known vulnerabilities; every commit
+is scanned for secrets; both images are built, and the SSR one started; and CodeQL analyses both
+languages. See [ADR 0061](docs/decisions/0061-ci-gates-every-pull-request.md).
 
 [![CI](../../actions/workflows/ci.yml/badge.svg)](../../actions/workflows/ci.yml)

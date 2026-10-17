@@ -43,8 +43,12 @@ build behind a stand-in that does route `/api` (ADR 0060).
 | `npm run visual` | Before-and-after screenshots of the pages, compared pixel by pixel, for a change meant to look the same. Needs two dev servers and a local test account, whose email and password it reads from the shell or from `visual/.env` (ignored by git); `visual/playwright.config.ts` says how. Not run by CI |
 | `npm run e2e` | The browser smoke test, over the production shape: sign up, add a game to a list, reload, it is still there. Builds the front end and serves it with `react-router-serve` beside the API under `dotnet run`, with a stand-in in front that routes `/api/*` to the API as the balancer does, and one for IGDB behind, so it needs no IGDB credentials. Needs PostgreSQL up, ports 5180–5183 free, and once, `npx playwright install chromium`. Keeps a database of its own on the compose server, `mvgl_e2e`, never `myvideogamelist`, created on the first run; `E2E_CONNECTION_STRING` points it elsewhere. Run by CI. See ADR 0060 |
 | `npm run build` | Production build |
+| `npm run audit` | `npm audit` over the lock file, devDependencies included, with no install: high and critical fail, lower ones are printed. CI's Dependency audit job runs it. `scripts/audit.mjs` holds the advisories accepted for want of any fix, each with its reason and a date. See ADR 0061 |
 | `dotnet test MyVideoGameList.Server.Tests/MyVideoGameList.Server.Tests.csproj` | Server unit tests |
 | `dotnet test MyVideoGameList.Server.IntegrationTests/MyVideoGameList.Server.IntegrationTests.csproj` | The API over a real PostgreSQL, for what InMemory cannot do: auth and the lists end to end, the cascades, the retention sweep, and the export's snapshot once #263 is merged. Needs Docker running; starts and removes a container of its own, never `mvgl-postgres`. About fifteen seconds once built. See ADR 0057 |
+| `dotnet format MyVideoGameList.slnx` | Formats the C# as `.editorconfig` says. With `--verify-no-changes` it is CI's check, in the Server job; `dotnet format infra/src/Infra/Infra.csproj` is the CDK app's |
+| `dotnet restore MyVideoGameList.slnx -warnaserror:NU1900,NU1901,NU1902,NU1903,NU1904` | CI's NuGet audit: a known vulnerability in any package, transitive ones included, fails it, where any build only warns. The same for `infra/src/Infra/Infra.csproj`. A suppression, for an advisory nothing fixes, goes in `Directory.Build.props`. See ADR 0061 |
+| `docker run --rm -v "$PWD:/repo:ro" ghcr.io/gitleaks/gitleaks:v8.30.1 git /repo --config /repo/.gitleaks.toml --log-opts=HEAD --redact --verbose` | CI's secret scan, over every commit `HEAD` reaches. From a clone rather than a worktree, whose `.git` points outside the mount; in Git Bash, put `MSYS_NO_PATHCONV=1` in front. `.gitleaks.toml` says what it allows, and why |
 | `dotnet ef migrations add <Name>` | From `MyVideoGameList.Server/` |
 | `dotnet ef database update` | Applies migrations by hand; only needed outside Development |
 | `docker compose up -d --wait` | Local PostgreSQL. `--wait` blocks until it accepts connections |
@@ -81,6 +85,8 @@ scripts/                        Dev-only tools. The seeding tools print SQL to s
                                 dev-env.mjs is the exception: it acts on AWS, through a signed-in
                                 CLI profile, and prints every command before running it
 ROADMAP.md                      Not the plan any more: where it lives (GitHub issues), and the old IDs' map
+.editorconfig  Directory.Build.props  .gitleaks.toml
+                                The house style, NuGet's audit, and what the secret scan allows (ADR 0061)
 ```
 
 ## Things that will bite you
@@ -102,6 +108,14 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   CloudFront's prefix list and nothing else, and its listener answers only the distribution that
   sends the origin-verify header; the site is behind basic auth at the edge, with three public
   aggregate endpoints exempt. See `docs/decisions/0044-*`, `0046-*` and `infra/README.md`.
+
+- **CI gates every pull request, whatever branch it targets, and an advisory can turn it red
+  overnight.** Beside the builds and tests it checks the formatting, audits every package (NuGet's at
+  every severity, npm's at high and critical), scans every commit for secrets, and builds both images,
+  starting the SSR one. A finding with a fixed version is fixed; one with none is suppressed by its
+  advisory, in `Directory.Build.props` or `scripts/audit.mjs`, never by lowering the level. A
+  credential committed on purpose is allowed by its value and its file in `.gitleaks.toml`. The job
+  names are the required checks, so renaming one renames a check. See `docs/decisions/0061-*`.
 
 - **The PostgreSQL container volume mounts at `/var/lib/postgresql`, not `.../data`.**
   PostgreSQL 18 images changed this and refuse to start if they find data at the old path. The
