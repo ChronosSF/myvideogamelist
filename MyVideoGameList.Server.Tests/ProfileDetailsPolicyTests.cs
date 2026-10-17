@@ -1,8 +1,15 @@
 using System.ComponentModel.DataAnnotations;
 using System.Reflection;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.Abstractions;
+using Microsoft.AspNetCore.Mvc.ModelBinding;
+using Microsoft.AspNetCore.Mvc.ModelBinding.Validation;
+using Microsoft.AspNetCore.Routing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.Extensions.DependencyInjection;
 using MyVideoGameList.Server.Data;
 using MyVideoGameList.Server.DTOs;
 using MyVideoGameList.Server.Models;
@@ -17,10 +24,17 @@ namespace MyVideoGameList.Server.Tests;
 /// The avatar's cases are the ones that matter most, because its address is fetched by every
 /// reader's browser from whatever host it names. Each refusal below is an address that would send
 /// readers somewhere the host list does not name, or that two URL parsers could read two ways. See
-/// <c>docs/decisions/0056-*</c>.
+/// <c>docs/decisions/0056-*</c>. Characters nobody can see are written as code points, never typed
+/// into the source.
 /// </remarks>
 public class ProfileDetailsPolicyTests
 {
+    private const string NotAnAddress = "An avatar has to be the address of a picture, starting https://.";
+
+    private static readonly string NotAListedHost =
+        $"An avatar has to be a picture's own address on {AvatarUrlPolicy.Services}: right-click the "
+        + "picture there and copy the image address.";
+
     // ── Display name ──────────────────────────────────────────────────────────────────
 
     [Theory]
@@ -48,22 +62,60 @@ public class ProfileDetailsPolicyTests
 
     [Fact]
     public void DisplayNameProblem_OverTheLimit_IsRefused() =>
-        Assert.NotNull(DisplayNamePolicy.Problem(new string('a', DisplayNamePolicy.MaxLength + 1)));
+        Assert.Equal(
+            "A display name can be at most 50 characters.",
+            DisplayNamePolicy.Problem(new string('a', DisplayNamePolicy.MaxLength + 1)));
 
     [Theory]
-    [InlineData("Alex\0")]
-    [InlineData("Alex\u0007Smith")]
-    [InlineData("\u001bAlex")]
-    public void DisplayNameProblem_ControlCharacter_IsRefused(string typed) =>
-        Assert.NotNull(DisplayNamePolicy.Problem(DisplayNamePolicy.Normalise(typed)!));
+    [InlineData(0x00)] // NUL
+    [InlineData(0x07)] // bell
+    [InlineData(0x1B)] // escape
+    [InlineData(0x7F)] // delete
+    public void DisplayNameProblem_ControlCharacter_IsRefused(int codePoint) =>
+        Assert.Equal(
+            "A display name cannot contain control characters.",
+            DisplayNamePolicy.Problem(DisplayNamePolicy.Normalise("Alex" + (char)codePoint + "Smith")!));
 
     [Theory]
-    // Not a namespace, so nothing a username refuses is refused here — the handle beside it is what
+    [InlineData("Alex @ChronosSF")]
+    [InlineData("Stamen (@ChronosSF)")]
+    [InlineData("alex@example.com")]
+    public void DisplayNameProblem_AnAtSign_IsRefused(string typed) =>
+        // A handle is written "@carol" everywhere, so a name holding one could pass for somebody
+        // else's beside the real one.
+        Assert.Equal(
+            "A display name cannot contain @, which is how a username is written here.",
+            DisplayNamePolicy.Problem(DisplayNamePolicy.Normalise(typed)!));
+
+    [Theory]
+    [InlineData(0x202A)] // left-to-right embedding, the range's first
+    [InlineData(0x202D)] // left-to-right override
+    [InlineData(0x202E)] // right-to-left override, the range's last
+    [InlineData(0x2066)] // left-to-right isolate, the second range's first
+    [InlineData(0x2067)] // right-to-left isolate
+    [InlineData(0x2069)] // the isolate closer, the second range's last
+    public void DisplayNameProblem_DirectionalFormatting_IsRefused(int codePoint) =>
+        // An unclosed override in "carol (Name)" reverses whatever follows it in a title.
+        Assert.Equal(
+            "A display name cannot contain characters that change the direction of the text around it.",
+            DisplayNamePolicy.Problem("Alex" + (char)codePoint));
+
+    [Theory]
+    [InlineData(0x2029)] // just below the second range
+    [InlineData(0x206A)] // just above it
+    [InlineData(0x200F)] // the right-to-left mark, which only nudges its neighbours
+    [InlineData(0x200D)] // the zero-width joiner, which is how emoji compose
+    public void DisplayNameProblem_FormattingThatReordersNothing_IsAccepted(int codePoint) =>
+        Assert.Null(DisplayNamePolicy.Problem("Alex" + (char)codePoint));
+
+    [Theory]
+    [InlineData("دانيال")] // a right-to-left script needs no override to lay itself out
+    [InlineData("Ana-María O'Neil")]
+    [InlineData("The Witcher's #1 fan")]
+    // Not a namespace, so the words a username's reserved list refuses are fine: the handle beside it
     // says whose account this is (ADR 0027).
     [InlineData("admin")]
-    [InlineData("alex@example.com")]
-    [InlineData("The Witcher's #1 fan")]
-    public void DisplayNameProblem_WhatAUsernameRefuses_IsAccepted(string typed) =>
+    public void DisplayNameProblem_OrdinaryNames_AreAccepted(string typed) =>
         Assert.Null(DisplayNamePolicy.Problem(DisplayNamePolicy.Normalise(typed)!));
 
     // ── Bio ───────────────────────────────────────────────────────────────────────────
@@ -85,6 +137,18 @@ public class ProfileDetailsPolicyTests
         Assert.Equal("Hello.", BioPolicy.Normalise("\n\n  Hello.  \r\n\r\n"));
 
     [Theory]
+    [InlineData("One\n\n\nTwo", "One\n\nTwo")]
+    [InlineData("One\n \n\t\n  \nTwo", "One\n\nTwo")]
+    [InlineData("One\r\n\r\n\r\n\r\nTwo", "One\n\nTwo")]
+    public void BioNormalise_ARunOfBlankLines_IsOneBlankLine(string typed, string stored) =>
+        // Five hundred line breaks would otherwise push the figures a screen-height down.
+        Assert.Equal(stored, BioPolicy.Normalise(typed));
+
+    [Fact]
+    public void BioNormalise_AnIndentAfterABlankLine_IsKept() =>
+        Assert.Equal("One\n\n    Two", BioPolicy.Normalise("One\n\n\n\n    Two"));
+
+    [Theory]
     [InlineData(null)]
     [InlineData("")]
     [InlineData(" \r\n\t ")]
@@ -97,7 +161,9 @@ public class ProfileDetailsPolicyTests
 
     [Fact]
     public void BioProblem_OverTheLimit_IsRefused() =>
-        Assert.NotNull(BioPolicy.Problem(new string('a', BioPolicy.MaxLength + 1)));
+        Assert.Equal(
+            "A bio can be at most 500 characters.",
+            BioPolicy.Problem(new string('a', BioPolicy.MaxLength + 1)));
 
     [Fact]
     public void BioProblem_LineBreaksSentAsCrLf_CountOnce()
@@ -109,19 +175,26 @@ public class ProfileDetailsPolicyTests
         Assert.Null(BioPolicy.Problem(BioPolicy.Normalise(typed)!));
     }
 
+    [Fact]
+    public void BioProblem_ATabAndALineBreak_AreText() =>
+        Assert.Null(BioPolicy.Problem("Name:\tAlex\nPlays:\tRPGs"));
+
     [Theory]
-    [InlineData("Hello\0")]
-    [InlineData("Bell \u0007")]
-    [InlineData("Escape \u001b[31m red")]
-    [InlineData("Form\ffeed")]
-    public void BioProblem_ControlCharacterOtherThanALineBreakOrTab_IsRefused(string typed) =>
-        Assert.NotNull(BioPolicy.Problem(BioPolicy.Normalise(typed)!));
+    [InlineData(0x00)] // NUL
+    [InlineData(0x07)] // bell
+    [InlineData(0x1B)] // escape, as an ANSI colour code starts
+    [InlineData(0x0C)] // form feed
+    public void BioProblem_ControlCharacterOtherThanALineBreakOrTab_IsRefused(int codePoint) =>
+        Assert.Equal(
+            "A bio can contain line breaks and tabs, but no other control characters.",
+            BioPolicy.Problem(BioPolicy.Normalise("Hello " + (char)codePoint + " there")!));
 
     [Theory]
     // Plain text is how it is rendered, not what is refused: none of these is markup on the page.
     [InlineData("<b>bold</b> and <script>alert(1)</script>")]
     [InlineData("I <3 RPGs, and 2 < 3")]
     [InlineData("**not bold** [not a link](https://example.com)")]
+    [InlineData("Find me @ChronosSF")]
     public void BioProblem_TextThatLooksLikeMarkup_IsAccepted(string typed) =>
         Assert.Null(BioPolicy.Problem(BioPolicy.Normalise(typed)!));
 
@@ -129,20 +202,21 @@ public class ProfileDetailsPolicyTests
 
     [Theory]
     [InlineData("https://gravatar.com/avatar/205e460b479e2e5b48aec07710c08d50?s=200")]
-    [InlineData("https://www.gravatar.com/avatar/205e460b479e2e5b48aec07710c08d50")]
-    [InlineData("https://secure.gravatar.com/avatar/205e460b479e2e5b48aec07710c08d50?d=identicon")]
+    [InlineData("https://www.gravatar.com/avatar/205e460b479e2e5b48aec07710c08d50?s=200&d=identicon")]
+    [InlineData("https://secure.gravatar.com/avatar/205e460b479e2e5b48aec07710c08d50?d=mp")]
     [InlineData("https://0.gravatar.com/avatar/205e460b479e2e5b48aec07710c08d50")]
     [InlineData("https://avatars.githubusercontent.com/u/9919?v=4")]
     [InlineData("https://avatars.steamstatic.com/fef49e7fa7e1997310d705b2a6158ff8dc1cdfeb_full.jpg")]
     [InlineData("https://avatars.akamai.steamstatic.com/fef49e7fa7e1997310d705b2a6158ff8dc1cdfeb_full.jpg")]
     [InlineData("https://avatars.fastly.steamstatic.com/fef49e7fa7e1997310d705b2a6158ff8dc1cdfeb_full.jpg")]
     [InlineData("https://i.imgur.com/removed.png")]
-    [InlineData("https://static-cdn.jtvnw.net/jtv_user_pictures/x-profile_image-300x300.png")]
+    // A percent-encoded character and a fragment are ordinary parts of an address.
+    [InlineData("https://i.imgur.com/Ab%20C.png#top")]
     // Case is not part of a scheme or a host, so neither is held to it.
     [InlineData("HTTPS://I.IMGUR.COM/removed.png")]
     // After the host, an @ is only a character in the path.
     [InlineData("https://i.imgur.com/@someone.png")]
-    public void AvatarUrlProblem_AnImageOnAListedHost_IsAccepted(string url) =>
+    public void AvatarUrlProblem_APictureOnAListedHost_IsAccepted(string url) =>
         Assert.Null(AvatarUrlPolicy.Problem(url));
 
     [Theory]
@@ -153,30 +227,40 @@ public class ProfileDetailsPolicyTests
     [InlineData("data:image/png;base64,iVBORw0KGgo=")]
     [InlineData("ftp://i.imgur.com/removed.png")]
     [InlineData("https://")]
-    // Characters a URL does not carry unencoded — where two parsers stop agreeing.
+    // Characters an address from these hosts never needs — where two parsers stop agreeing, or where
+    // the address could break out of an attribute or a CSS url() if it were ever written into one.
     [InlineData("https://i.imgur.com/my avatar.png")]
     [InlineData("https://i.imgur.com\\@evil.example/x.png")]
     [InlineData("https://evil.example\\@i.imgur.com/x.png")]
     [InlineData("https://i.imgur.com/\"onerror=\"x.png")]
     [InlineData("https://i.imgur.com/<x>.png")]
+    [InlineData("https://i.imgur.com/x.png);position:fixed;inset:0")]
+    [InlineData("https://i.imgur.com/it's.png")]
+    [InlineData("https://[::1]/avatar.png")]
     [InlineData("https://i.imgur.com/avätar.png")]
+    // An internationalised host: the ASCII rule refuses it before any parser can disagree about it.
+    [InlineData("https://i.ımgur.com/removed.png")]
     [InlineData("https://i.imgur.com/x.png\t")]
     public void AvatarUrlProblem_NotAnHttpsAddress_IsRefusedAsSuch(string url) =>
-        Assert.Equal(
-            "An avatar has to be the address of an image, starting https://.",
-            AvatarUrlPolicy.Problem(url));
+        Assert.Equal(NotAnAddress, AvatarUrlPolicy.Problem(url));
 
     [Theory]
     [InlineData("https://example.com/me.png")]
     [InlineData("https://my-own-server.example/pixel.png")]
     [InlineData("https://cdn.discordapp.com/embed/avatars/0.png")]
+    [InlineData("https://static-cdn.jtvnw.net/jtv_user_pictures/x-profile_image-300x300.png")]
+    [InlineData("https://github.com/ChronosSF.png")]
+    [InlineData("https://avatars.cloudflare.steamstatic.com/fef49e7fa7e1997310d705b2a6158ff8dc1cdfeb_full.jpg")]
     [InlineData("https://imgur.com/removed.png")]
+    // Matched exactly, never by what a host ends or begins with.
+    [InlineData("https://notgravatar.com/avatar/x")]
+    [InlineData("https://3.gravatar.com/avatar/x")]
+    [InlineData("https://evil.i.imgur.com/x.png")]
     [InlineData("https://gravatar.com.evil.example/avatar/x")]
     [InlineData("https://evil.example/i.imgur.com/x.png")]
     [InlineData("https://i.imgur.com.evil.example/x.png")]
     [InlineData("https://i.imgur.com./removed.png")]
     [InlineData("https://127.0.0.1/avatar.png")]
-    [InlineData("https://[::1]/avatar.png")]
     [InlineData("https://localhost/avatar.png")]
     // Credentials and ports in the authority match no host, whatever they wrap.
     [InlineData("https://i.imgur.com@evil.example/x.png")]
@@ -184,9 +268,7 @@ public class ProfileDetailsPolicyTests
     [InlineData("https://i.imgur.com:443/removed.png")]
     [InlineData("https://i.imgur.com:8443/removed.png")]
     public void AvatarUrlProblem_AHostNotOnTheList_IsRefusedNamingTheServices(string url) =>
-        Assert.Equal(
-            $"An avatar can come from {AvatarUrlPolicy.Services}.",
-            AvatarUrlPolicy.Problem(url));
+        Assert.Equal(NotAListedHost, AvatarUrlPolicy.Problem(url));
 
     [Fact]
     public void AvatarUrlProblem_UpToTheLimit_IsAccepted()
@@ -203,7 +285,7 @@ public class ProfileDetailsPolicyTests
         const string prefix = "https://i.imgur.com/";
         var url = prefix + new string('a', AvatarUrlPolicy.MaxLength - prefix.Length + 1);
 
-        Assert.NotNull(AvatarUrlPolicy.Problem(url));
+        Assert.Equal("An avatar's address can be at most 512 characters.", AvatarUrlPolicy.Problem(url));
     }
 
     [Fact]
@@ -234,13 +316,13 @@ public class ProfileDetailsPolicyTests
         Assert.Equal(AvatarUrlPolicy.Hosts.Count, AvatarUrlPolicy.Hosts.Distinct().Count());
     }
 
-    // ── The request DTO ───────────────────────────────────────────────────────────────
+    // ── The request DTO, one attribute at a time ──────────────────────────────────────
 
     /// <summary>
-    /// The validation attributes on the DTO's constructor parameter, which is where MVC reads them —
+    /// The validation attribute on the DTO's constructor parameter, which is where MVC reads it —
     /// and where <c>Validator.TryValidateObject</c>, which reads properties, would not look.
     /// </summary>
-    private static ValidationResult? Validate(string parameter, string? value)
+    private static ValidationResult? ValidateParameter(string parameter, string? value)
     {
         var attribute = typeof(UpdateProfileDetailsDto).GetConstructors().Single().GetParameters()
             .Single(p => p.Name == parameter)
@@ -255,27 +337,45 @@ public class ProfileDetailsPolicyTests
         return attribute.GetValidationResult(value, context);
     }
 
+    public static TheoryData<string, string> WhatEachFieldAccepts() => new()
+    {
+        // The name is one the avatar's policy refuses, and the bio one both the others refuse. With
+        // the refusals below, an attribute on the wrong parameter fails one test or the other.
+        { nameof(UpdateProfileDetailsDto.DisplayName), "Alex Smith" },
+        { nameof(UpdateProfileDetailsDto.AvatarUrl), "https://i.imgur.com/removed.png" },
+        { nameof(UpdateProfileDetailsDto.Bio), "Mostly RPGs, slowly, and never on a weekday.\n\n@ me." },
+    };
+
+    [Theory]
+    [MemberData(nameof(WhatEachFieldAccepts))]
+    public void UpdateProfileDetailsDto_WhatItsOwnPolicyAccepts_IsAccepted(string parameter, string value) =>
+        Assert.Equal(ValidationResult.Success, ValidateParameter(parameter, value));
+
     [Theory]
     [InlineData(nameof(UpdateProfileDetailsDto.DisplayName))]
     [InlineData(nameof(UpdateProfileDetailsDto.AvatarUrl))]
     [InlineData(nameof(UpdateProfileDetailsDto.Bio))]
     public void UpdateProfileDetailsDto_NullOrBlank_IsAClearAndAccepted(string parameter)
     {
-        Assert.Equal(ValidationResult.Success, Validate(parameter, null));
-        Assert.Equal(ValidationResult.Success, Validate(parameter, "   "));
+        Assert.Equal(ValidationResult.Success, ValidateParameter(parameter, null));
+        Assert.Equal(ValidationResult.Success, ValidateParameter(parameter, "   "));
     }
 
-    [Theory]
-    [InlineData(nameof(UpdateProfileDetailsDto.DisplayName), "Alex\0")]
-    [InlineData(nameof(UpdateProfileDetailsDto.AvatarUrl), "https://example.com/me.png")]
-    [InlineData(nameof(UpdateProfileDetailsDto.Bio), "Bell \u0007")]
-    public void UpdateProfileDetailsDto_ARefusal_IsKeyedByItsField(string parameter, string value)
+    [Fact]
+    public void UpdateProfileDetailsDto_ARefusal_SaysWhatItsPolicySays()
     {
-        var result = Validate(parameter, value);
-
-        Assert.NotNull(result);
-        // Keyed by the field, which is what puts the message beside its input on the form.
-        Assert.Equal([parameter], result.MemberNames);
+        // Each value is refused by its own policy alone, and the sentence is the policy's own: a
+        // validator on the wrong parameter, or one answering the framework's "The field is invalid",
+        // fails here.
+        Assert.Equal(
+            DisplayNamePolicy.Problem(new string('a', 51)),
+            ValidateParameter(nameof(UpdateProfileDetailsDto.DisplayName), new string('a', 51))?.ErrorMessage);
+        Assert.Equal(
+            AvatarUrlPolicy.Problem("https://example.com/me.png"),
+            ValidateParameter(nameof(UpdateProfileDetailsDto.AvatarUrl), "https://example.com/me.png")?.ErrorMessage);
+        Assert.Equal(
+            BioPolicy.Problem(new string('a', 501)),
+            ValidateParameter(nameof(UpdateProfileDetailsDto.Bio), new string('a', 501))?.ErrorMessage);
     }
 
     [Fact]
@@ -285,13 +385,61 @@ public class ProfileDetailsPolicyTests
         // what is refused is what would actually be too long.
         var padded = "  " + new string('a', DisplayNamePolicy.MaxLength) + "  ";
 
-        Assert.Equal(ValidationResult.Success, Validate(nameof(UpdateProfileDetailsDto.DisplayName), padded));
+        Assert.Equal(ValidationResult.Success, ValidateParameter(nameof(UpdateProfileDetailsDto.DisplayName), padded));
+    }
+
+    // ── The request DTO, as MVC validates it ──────────────────────────────────────────
+
+    /// <summary>
+    /// The model state MVC's own validator leaves for a body, which is what <c>[ApiController]</c>
+    /// turns into the 400's <c>errors</c>. Under the empty prefix a <c>[FromBody]</c> parameter binds
+    /// with, so the keys are the ones a client receives.
+    /// </summary>
+    private static ModelStateDictionary ValidateAsMvcDoes(UpdateProfileDetailsDto dto)
+    {
+        using var services = new ServiceCollection().AddLogging().AddControllers().Services.BuildServiceProvider();
+        var validator = services.GetRequiredService<IObjectModelValidator>();
+        var actionContext = new ActionContext(
+            new DefaultHttpContext { RequestServices = services },
+            new RouteData(),
+            new ActionDescriptor());
+
+        validator.Validate(actionContext, validationState: null, prefix: string.Empty, model: dto);
+        return actionContext.ModelState;
+    }
+
+    [Fact]
+    public void UpdateProfileDetailsDto_AsMvcValidatesIt_KeysEachRefusalByItsField()
+    {
+        var state = ValidateAsMvcDoes(new UpdateProfileDetailsDto(
+            new string('a', 51), "https://example.com/me.png", "Bell " + (char)7));
+
+        var errors = new ValidationProblemDetails(state).Errors;
+
+        Assert.Equal(
+            ["AvatarUrl", "Bio", "DisplayName"],
+            errors.Keys.Order(StringComparer.Ordinal));
+        Assert.Equal(DisplayNamePolicy.Problem(new string('a', 51)), Assert.Single(errors["DisplayName"]));
+        Assert.Equal(AvatarUrlPolicy.Problem("https://example.com/me.png"), Assert.Single(errors["AvatarUrl"]));
+        Assert.Equal(BioPolicy.Problem("Bell " + (char)7), Assert.Single(errors["Bio"]));
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("  ")]
+    public void UpdateProfileDetailsDto_AsMvcValidatesIt_AcceptsEveryFieldCleared(string? blank)
+    {
+        // Each parameter is nullable, so MVC adds no implicit [Required]: drop a `?` and clearing a
+        // field becomes "The field is required", which this would catch and the attribute tests
+        // above would not.
+        Assert.True(ValidateAsMvcDoes(new UpdateProfileDetailsDto(blank, blank, blank)).IsValid);
     }
 
     // ── The columns ───────────────────────────────────────────────────────────────────
 
     [Fact]
-    public void TheColumnsHoldWhatThePoliciesAllow()
+    public void ApplicationUserModel_ProfileDetailColumns_HoldWhatThePoliciesAllow()
     {
         using var db = new ApplicationDbContext(
             new DbContextOptionsBuilder<ApplicationDbContext>()
@@ -306,8 +454,9 @@ public class ProfileDetailsPolicyTests
         Assert.Equal(AvatarUrlPolicy.MaxLength, users.FindProperty(nameof(ApplicationUser.AvatarUrl))!.GetMaxLength());
         Assert.Equal(BioPolicy.MaxLength, users.FindProperty(nameof(ApplicationUser.Bio))!.GetMaxLength());
 
+        // ILIKE, not LIKE: the address is stored as given, so "HTTPS://" has to satisfy it too.
         var https = users.GetCheckConstraints().Single(c => c.ModelName == "CK_AspNetUsers_AvatarUrl_Https");
-        Assert.Contains("'https://%'", https.Sql);
+        Assert.Equal("\"AvatarUrl\" IS NULL OR \"AvatarUrl\" ILIKE 'https://%'", https.Sql);
     }
 
     // ── The signed-in user's own profile ──────────────────────────────────────────────

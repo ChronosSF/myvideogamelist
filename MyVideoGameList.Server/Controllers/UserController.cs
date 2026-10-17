@@ -161,7 +161,8 @@ public class UserController(
     /// </para>
     /// <para>
     /// The avatar's address is stored and never requested from here (ADR 0056). No cancellation
-    /// token, for <see cref="DeleteAccount"/>'s reason: <see cref="UserManager{TUser}"/> takes none.
+    /// token, as for the rename and the privacy switch: neither <see cref="UserManager{TUser}"/>
+    /// call here takes one.
     /// </para>
     /// </remarks>
     [HttpPut("profile")]
@@ -390,7 +391,8 @@ public class UserController(
     /// hand back the in-memory object as though it had been written. For the privacy switch that
     /// would tell somebody a consent change had taken effect while the database still says
     /// otherwise. A 409, because the row was changed by another request between this one's read
-    /// and its write; the client shows its own generic failure and the user tries again.
+    /// and its write, and the user tries again. Its detail is Identity's wording, written for a log:
+    /// the profile details form says it in words of its own.
     /// </remarks>
     private ObjectResult NotSaved(IdentityResult result) =>
         Problem(
