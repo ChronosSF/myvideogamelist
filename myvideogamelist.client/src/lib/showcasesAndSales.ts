@@ -24,6 +24,11 @@ function startInstant(event: DayEvent): number {
  * Everything on in the two weeks from `today`, earliest first: what is already on, then by the day each
  * starts, a whole day's event before a show at a time of that day, and by name among the rest.
  *
+ * The names are compared in English, not in the runtime's own locale: this runs in the server render
+ * and in the render hydrating it, and the two runtimes' locales need not agree. Czech puts "Ch" after
+ * "H", Danish puts "Aa" last, and an order that differs between them is a page that will not hydrate.
+ * The key settles two events of the same name, so the order is total.
+ *
  * @param zone Whose calendar a showcase's instants are read on — see `DayZone`.
  */
 export function panelEvents(today: string, events: CalendarEvents, zone: DayZone): DayEvent[] {
@@ -34,7 +39,8 @@ export function panelEvents(today: string, events: CalendarEvents, zone: DayZone
         .sort((a, b) =>
             daysBetween(b.startsOn, a.startsOn)
             || startInstant(a) - startInstant(b)
-            || a.name.localeCompare(b.name));
+            || a.name.localeCompare(b.name, 'en')
+            || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
 }
 
 /** "Oct 19", from the string alone. */

@@ -68,7 +68,8 @@ const NO_EVENTS: CalendarEvents = { curated: [], showcases: [], degraded: true }
 /**
  * One request for the whole shared page (ROADMAP §3.5).
  *
- * A failure here degrades rather than throws: a dead IGDB should cost the rails and nothing more.
+ * A failure here degrades rather than throws: a dead IGDB should cost the rails and the showcases,
+ * and nothing more.
  * That is the opposite of the game route, where an upstream failure genuinely means there is no
  * page.
  */
@@ -246,7 +247,11 @@ function LandingHero({ spotlight }: { spotlight: HomeResponse['spotlight'] }) {
 }
 
 export function HomePage({ loaderData }: Route.ComponentProps) {
-    const { spotlight, popular, news, events, today } = loaderData;
+    // `events` has a default although the loader always sets it: a navigation inside the app fetches
+    // the loader's data on its own, and in a deploy's first minutes the edge can still hold one written
+    // by the build before this one, which has no showcases and sales at all. Without the default that
+    // payload would be a TypeError, and the page its error boundary.
+    const { spotlight, popular, news, events = NO_EVENTS, today } = loaderData;
     const { user, loading } = useAuth();
     const signedIn = user !== null && !loading;
 

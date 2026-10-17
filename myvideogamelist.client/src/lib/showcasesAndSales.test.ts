@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { DayEvent } from '@/lib/calendarEvents';
 import { PANEL_DAYS, eventWhen, panelEvents } from '@/lib/showcasesAndSales';
 import { LINE_DAYS } from '@/lib/releaseLine';
@@ -64,6 +64,37 @@ describe('panelEvents', () => {
         expect(panelEvents(TODAY, events, 'local').map(e => e.key)).toEqual([
             'curated-2', 'igdb-13', 'curated-1', 'igdb-12', 'igdb-11',
         ]);
+    });
+
+    it('orders two names in English whatever the runtime’s own locale, so the server and the browser agree', () => {
+        // A runtime whose default is Czech, where "Ch" is a letter of its own after "H". The server render
+        // and the render hydrating it can run in different locales; ordered in each one's own, the list
+        // would come out differently on each and the page would not hydrate.
+        const compare = String.prototype.localeCompare;
+        vi.spyOn(String.prototype, 'localeCompare').mockImplementation(function (
+            this: string, that: string, locales?: Intl.LocalesArgument, options?: Intl.CollatorOptions,
+        ) {
+            return compare.call(this, that, locales ?? 'cs', options);
+        });
+        const events = calendarEvents({
+            curated: [
+                curated(1, '2026-10-19', '2026-10-26', { name: 'Halo Fest' }),
+                curated(2, '2026-10-19', '2026-10-26', { name: 'Chess Sale' }),
+            ],
+        });
+
+        expect(panelEvents(TODAY, events, 'local').map(e => e.name)).toEqual(['Chess Sale', 'Halo Fest']);
+    });
+
+    it('settles two events of the same name on the same day by their keys', () => {
+        const events = calendarEvents({
+            curated: [
+                curated(7, '2026-10-19', '2026-10-26', { name: 'Steam Next Fest' }),
+                curated(3, '2026-10-19', '2026-10-26', { name: 'Steam Next Fest' }),
+            ],
+        });
+
+        expect(panelEvents(TODAY, events, 'local').map(e => e.key)).toEqual(['curated-3', 'curated-7']);
     });
 
     it('carries the store a curated event names, and none for a showcase', () => {

@@ -119,7 +119,24 @@ describe('ShowcasesAndSales', () => {
         expect(screen.queryByText(/could not be loaded/)).toBeNull();
     });
 
-    it('renders on the server from UTC’s day, with no time, and hydrates without a mismatch', async () => {
+    it('says when something already on stops, and gives no start time for a show already running', () => {
+        // A sale on its last day, and a show that began yesterday evening and runs into tomorrow's: where
+        // either started is history, and a start time beside "Ends tomorrow" would read as its end.
+        const lastDay: CalendarCuratedEvent = { ...AUTUMN_SALE, startsOn: '2026-10-10', endsOn: '2026-10-17' };
+        const running: CalendarShowcase = {
+            ...ID_AT_XBOX,
+            startsAt: new Date(2026, 9, 16, 20).toISOString(),
+            endsAt: new Date(2026, 9, 18, 20).toISOString(),
+        };
+
+        render(<ShowcasesAndSales events={calendarEvents({ curated: [lastDay], showcases: [running] })} today={TODAY} />);
+
+        const [sale, show] = screen.getAllByRole('listitem');
+        expect(seen(sale)).toEqual(['Sale · Steam', 'Steam Autumn Sale', 'Ends today']);
+        expect(seen(show)).toEqual(['Showcase', 'ID@Xbox October 2026 Showcase', 'Ends tomorrow']);
+    });
+
+    it('renders on the server from the loader’s day, with no time, hydrates without a mismatch, then counts from the reader’s', async () => {
         // A show at 20:30 UTC on the 20th: the server cannot know whose evening that is, so it says the
         // 20th to everybody and leaves the time to the browser.
         const show: CalendarShowcase = {
@@ -130,9 +147,14 @@ describe('ShowcasesAndSales', () => {
         const element = <ShowcasesAndSales events={calendarEvents({ curated: [NEXT_FEST], showcases: [show] })} today={TODAY} />;
 
         const html = renderToString(element);
+        expect(html).toContain('Starts in 2 days');
         expect(html).toContain('Starts in 3 days');
         expect(html).toContain('Tue, Oct 20');
         expect(html).not.toContain(startTime(show.startsAt));
+
+        // The page reaches a reader whose clock is already on the next day: the render hydrating it must
+        // still count from the loader's day, as the server did, and only the render after it from theirs.
+        vi.setSystemTime(new Date(2026, 9, 18, 9));
 
         const container = document.createElement('div');
         container.innerHTML = html;
@@ -142,9 +164,11 @@ describe('ShowcasesAndSales', () => {
         const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
         const root = await act(async () => hydrateRoot(container, element, { onRecoverableError: recoverable }));
 
-        // Hydrated with nothing to mend, and then given the reader's own clock.
+        // Hydrated with nothing to mend, and then given the reader's own day and clock.
         expect(recoverable).not.toHaveBeenCalled();
         expect(consoleError).not.toHaveBeenCalled();
+        const [fest] = within(container).getAllByRole('listitem');
+        expect(seen(fest)).toEqual(['Fest · Steam', 'Steam Next Fest', 'Starts tomorrow · Oct 19 – 26']);
         expect(container).toHaveTextContent(startTime(show.startsAt));
 
         act(() => root.unmount());

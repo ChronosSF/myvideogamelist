@@ -242,7 +242,7 @@ public class HomeServiceTests
     [InlineData("2026-10-18T00:00:00Z", "2026-10-17", "2026-11-02")]
     // An instant given in another offset is still read in UTC: 01:00 in Sofia is 22:00 the day before.
     [InlineData("2026-10-18T01:00:00+03:00", "2026-10-16", "2026-11-01")]
-    public void EventsWindow_IsTheTwoWeeksWidenedByADayAtEachEnd_InUtc(string now, string from, string to)
+    public void EventsWindow_AnyInstant_SpansUtcYesterdayToTheFourteenthAfterToday(string now, string from, string to)
     {
         var window = HomeService.EventsWindow(DateTimeOffset.Parse(now));
 
@@ -253,11 +253,11 @@ public class HomeServiceTests
     // Composed as a UTC day begins, and a second before it ends.
     [InlineData("2026-10-17T00:00:00Z")]
     [InlineData("2026-10-17T23:59:59Z")]
-    public void EventsWindow_CoversEveryReadersTwoWeeks_ForAsLongAsTheAnswerCanBeServed(string composedAt)
+    public void EventsWindow_ServedHalfAnHourAfterComposing_StillCoversEveryReader(string composedAt)
     {
-        // Served at once, and half an hour later: its fifteen minutes in this process, then fifteen more at
-        // the edge (ADR 0013). The readers' days at any instant run from twelve hours behind UTC to
-        // fourteen ahead of it, and each reader keeps today and the thirteen after it.
+        // Served at once, and half an hour later: its fifteen minutes in this process, then five fresh at the
+        // edge and ten more served stale (ADR 0013's later note). The readers' days at any instant run from
+        // twelve hours behind UTC to fourteen ahead of it, and each reader keeps today and the thirteen after.
         var composed = DateTimeOffset.Parse(composedAt);
         var (from, to) = HomeService.EventsWindow(composed);
 
@@ -275,7 +275,7 @@ public class HomeServiceTests
     }
 
     [Fact]
-    public async Task GetHomeAsync_AsksTheCalendarAboutTheWidenedWindow()
+    public async Task GetHomeAsync_ComposedMidMorning_AsksTheCalendarAboutTheWidenedWindow()
     {
         var calendar = CalendarReturning(NothingOn);
         var service = NewService(IgdbTrending(Game(1)), SteamReturning(NewsFor(1)), calendar: calendar);
@@ -346,17 +346,74 @@ public class HomeServiceTests
     }
 
     [Fact]
+    public async Task GetHomeAsync_TrendingStillOut_AsksForTheEventsAlready()
+    {
+        // Side by side, not one after the other: when IGDB accepts a connection and never answers, each
+        // waits out its thirty-second ceiling, and in series the two would reach the edge's minute.
+        var trending = new TaskCompletionSource<IEnumerable<GameDto>>();
+        var igdb = Substitute.For<IIgdbService>();
+        igdb.GetTrendingAsync(Arg.Any<int>(), Arg.Any<CancellationToken>()).Returns(trending.Task);
+        var calendar = CalendarReturning(NothingOn);
+        var service = NewService(igdb, SteamReturning(NewsFor(1)), calendar: calendar);
+
+        var composing = service.GetHomeAsync();
+
+        await calendar.Received(1).GetAsync(Arg.Any<DateOnly>(), Arg.Any<DateOnly>(), Arg.Any<CancellationToken>());
+        Assert.False(composing.IsCompleted);
+
+        trending.SetResult([Game(1)]);
+        var home = await composing;
+
+        Assert.Equal([1], home.Popular.Select(g => g.Id));
+        Assert.False(home.Degraded);
+    }
+
+    [Fact]
+    public async Task GetHomeAsync_TrendingTimesOut_IsDegradedRatherThanThrown()
+    {
+        // A timeout of somebody else's throws an OperationCanceledException too. Nobody cancelled this
+        // request, so it is IGDB failing, and costs the rails rather than the page.
+        var igdb = Substitute.For<IIgdbService>();
+        igdb.GetTrendingAsync(Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new TaskCanceledException("The request was canceled due to the configured timeout."));
+        var service = NewService(igdb, SteamReturning());
+
+        var home = await service.GetHomeAsync();
+
+        Assert.Empty(home.Popular);
+        Assert.True(home.Degraded);
+    }
+
+    [Fact]
+    public async Task GetHomeAsync_EventsReadTimesOut_IsDegradedRatherThanThrown()
+    {
+        // The same for the panel: a read of ours that times out costs the panel, not the page.
+        var calendar = Substitute.For<ICalendarEventService>();
+        calendar.GetAsync(Arg.Any<DateOnly>(), Arg.Any<DateOnly>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new TaskCanceledException("A timeout of the database's own."));
+        var service = NewService(IgdbTrending(Game(1)), SteamReturning(NewsFor(1)), calendar: calendar);
+
+        var home = await service.GetHomeAsync();
+
+        Assert.True(home.Events.Degraded);
+        Assert.Equal([1], home.Popular.Select(g => g.Id));
+        Assert.True(home.Degraded);
+    }
+
+    [Fact]
     public async Task GetHomeAsync_CallerCancels_ThrowsAndKeepsNothing()
     {
         // A reader who left is not an upstream failure. Swallowed as one, a single abandoned request
         // would leave an empty front page in the cache for everybody who came after it.
+        using var left = new CancellationTokenSource();
+        await left.CancelAsync();
         var igdb = Substitute.For<IIgdbService>();
         igdb.GetTrendingAsync(Arg.Any<int>(), Arg.Any<CancellationToken>())
-            .ThrowsAsync(new OperationCanceledException());
+            .ThrowsAsync(new OperationCanceledException(left.Token));
         var cache = Substitute.For<IMemoryCache>();
         var service = NewService(igdb, SteamReturning(), cache);
 
-        await Assert.ThrowsAsync<OperationCanceledException>(() => service.GetHomeAsync());
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => service.GetHomeAsync(left.Token));
 
         cache.DidNotReceiveWithAnyArgs().CreateEntry(default!);
     }
@@ -364,15 +421,21 @@ public class HomeServiceTests
     [Fact]
     public async Task GetHomeAsync_CallerCancelsWhileTheEventsAreRead_ThrowsAndKeepsNothing()
     {
-        // The same for the last part to be composed: the panel's catch is for our tables failing, not for
-        // a reader leaving, and taking one for the other would cache a page with no panel for a minute.
+        // The same for the panel: its catch is for our tables failing, not for a reader leaving, and taking
+        // one for the other would cache a page with no panel for a minute.
+        using var left = new CancellationTokenSource();
         var calendar = Substitute.For<ICalendarEventService>();
         calendar.GetAsync(Arg.Any<DateOnly>(), Arg.Any<DateOnly>(), Arg.Any<CancellationToken>())
-            .ThrowsAsync(new TaskCanceledException());
+            .Returns(async call =>
+            {
+                await left.CancelAsync();
+                call.Arg<CancellationToken>().ThrowIfCancellationRequested();
+                return NothingOn;
+            });
         var cache = Substitute.For<IMemoryCache>();
         var service = NewService(IgdbTrending(Game(1)), SteamReturning(NewsFor(1)), cache, calendar);
 
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => service.GetHomeAsync());
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => service.GetHomeAsync(left.Token));
 
         cache.DidNotReceiveWithAnyArgs().CreateEntry(default!);
     }

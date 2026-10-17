@@ -256,6 +256,20 @@ describe('HomePage for a signed-out visitor', () => {
         expect(screen.getByRole('heading', { name: 'Trending right now' })).toBeInTheDocument();
     });
 
+    it('renders data from the build before this one, which has no showcases and sales, without them', () => {
+        // A navigation inside the app in a deploy's first minutes, answered from the edge with a payload
+        // the previous build wrote. It has no `events`, and must cost the panel rather than the page.
+        const { events: _missing, ...older } = {
+            spotlight: null, popular: [game()], news: [NEWS], events: calendarEvents(), degraded: false,
+        } satisfies HomeResponse;
+        const props = { loaderData: { ...older, site: SITE } } as unknown as Route.ComponentProps;
+
+        render(<MemoryRouter><HomePage {...props} /></MemoryRouter>);
+
+        expect(screen.getByRole('heading', { name: 'Trending right now' })).toBeInTheDocument();
+        expect(screen.queryByRole('heading', { name: 'Showcases and sales' })).toBeNull();
+    });
+
     it('shows the panel while nobody knows yet who is reading, as the server render does', () => {
         auth.current = UNKNOWN;
 

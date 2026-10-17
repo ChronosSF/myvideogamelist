@@ -63,8 +63,10 @@ function EventCard({ event, today, hydrated }: { event: DayEvent; today: string;
  * Server-rendered from the shared `/api/home`, so it has to be one render for every reader until the
  * page hydrates. Until then its days are UTC's, the day the loader ran on, and a showcase gives no
  * time; once hydrated they are the reader's own, and so is the clock a showcase's start is read on.
- * Where the two disagree — a reader far from Greenwich, near midnight — the words change and little
- * else does.
+ * The two differ for hours of every day somewhere — an evening in the Americas, a morning in Asia — and
+ * then the countdowns change as the page hydrates, and an event at either edge of the two weeks comes
+ * or goes: the reader's fortnight starts a day before or after UTC's. Nothing the server renders can
+ * know which, and drawing the panel only in the browser would move the page for every reader instead.
  *
  * Not drawn when nothing is on, like the rails below it, and silent about what failed: when IGDB could
  * not be asked it shows the sales it has, as the page shows the covers it has without the news.

@@ -52,28 +52,17 @@ public class HomeService(
         if (cache.TryGetValue(CacheKey, out HomeResponse? cached) && cached is not null)
             return cached;
 
-        List<GameDto> popular;
-        try
-        {
-            popular = (await igdbService.GetTrendingAsync(PopularCount, cancellationToken)).ToList();
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            // The home page still renders, and the hero keeps its gradient.
-            logger.LogWarning(ex, "IGDB unavailable while composing the home page.");
-            popular = [];
-        }
+        // The showcases and sales beside the rails rather than after them. Each can wait out IGDB's
+        // thirty-second ceiling when IGDB accepts a connection and never answers, and one after the
+        // other they would take a minute — as long as the edge waits for a page, which was sized for
+        // one such wait. Awaited together, so that whichever fails first, the other is still observed.
+        // Only the events touch the scoped DbContext, so the two never share it.
+        var railsTask = GetRailsAsync(cancellationToken);
+        var eventsTask = GetEventsAsync(cancellationToken);
+        await Task.WhenAll(railsTask, eventsTask);
 
-        // The hero needs a wide artwork, not a cover. Plenty of IGDB entries have no artwork at
-        // all, so pick the first that does rather than assuming the top-rated game has one.
-        var spotlight = popular.FirstOrDefault(g => !string.IsNullOrWhiteSpace(g.BackgroundImageUrl));
-
-        // Already non-throwing by contract, so no try/catch here: a Steam outage costs the rail
-        // and nothing else. Given no games to ask about, it answers empty without a request.
-        var news = await steamNewsService.GetLatestNewsAsync(
-            popular.Select(g => g.Id), NewsCount, MaxNewsPerGame, cancellationToken);
-
-        var events = await GetEventsAsync(cancellationToken);
+        var (spotlight, popular, news) = await railsTask;
+        var events = await eventsTask;
 
         // One judgement, for both caches: it picks how long this process keeps the answer, and it
         // travels in the answer so that nobody keeps the page built from it (ADR 0013). It is
@@ -92,8 +81,8 @@ public class HomeService(
         //
         // The showcases and sales are the other way about: nothing on in the next two weeks is an
         // ordinary answer, and their panel is simply not drawn, so they say for themselves when
-        // something is missing — the calendar's service when IGDB could not be asked, and the
-        // catch below when our own tables could not be read.
+        // something is missing — the calendar's service when IGDB could not be asked, and
+        // GetEventsAsync's catch when our own tables could not be read.
         //
         // A rail that is only thinner than it should be, because some feeds failed and others did
         // not, cannot be seen from here.
@@ -117,14 +106,51 @@ public class HomeService(
     }
 
     /// <summary>
+    /// The trending rail, the spotlight picked from it, and the Steam news about its games.
+    /// </summary>
+    /// <remarks>
+    /// Degrades rather than fails, deliberately: a dead IGDB costs the rails, not the page. What counts
+    /// as the caller leaving is the caller's token, as in <see cref="SteamNewsService"/>, and not the
+    /// exception's type: a timeout of somebody else's throws an <see cref="OperationCanceledException"/>
+    /// too, and is a failure to degrade from rather than a request nobody is waiting for.
+    /// </remarks>
+    private async Task<(GameDto? Spotlight, List<GameDto> Popular, IReadOnlyList<NewsItemDto> News)> GetRailsAsync(
+        CancellationToken cancellationToken)
+    {
+        List<GameDto> popular;
+        try
+        {
+            popular = (await igdbService.GetTrendingAsync(PopularCount, cancellationToken)).ToList();
+        }
+        catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
+        {
+            // The home page still renders, and the hero keeps its gradient.
+            logger.LogWarning(ex, "IGDB unavailable while composing the home page.");
+            popular = [];
+        }
+
+        // The hero needs a wide artwork, not a cover. Plenty of IGDB entries have no artwork at
+        // all, so pick the first that does rather than assuming the top-rated game has one.
+        var spotlight = popular.FirstOrDefault(g => !string.IsNullOrWhiteSpace(g.BackgroundImageUrl));
+
+        // Already non-throwing by contract, so no try/catch here: a Steam outage costs the rail
+        // and nothing else. Given no games to ask about, it answers empty without a request.
+        var news = await steamNewsService.GetLatestNewsAsync(
+            popular.Select(g => g.Id), NewsCount, MaxNewsPerGame, cancellationToken);
+
+        return (spotlight, popular, news);
+    }
+
+    /// <summary>
     /// The showcases and sales for every reader's next two weeks: the calendar's own answer, asked about
     /// <see cref="EventsWindow"/>.
     /// </summary>
     /// <remarks>
-    /// Degrades rather than fails, deliberately, like the rails above: what our tables hold is worth a
-    /// panel, not the page. The calendar's service already degrades on its own when IGDB fails; what is
-    /// left to catch here is the read of our tables failing, which would otherwise take the whole home
-    /// page down with it — a page that read no table of ours until this panel.
+    /// Degrades rather than fails, deliberately, like the rails: what our tables hold is worth a panel,
+    /// not the page. The calendar's service already degrades on its own when IGDB fails; what is left to
+    /// catch here is the read of our tables failing, which would otherwise take the whole home page down
+    /// with it — a page that read no table of ours until this panel. The caller leaving is judged by
+    /// the token, as the rails' is.
     /// </remarks>
     private async Task<CalendarEventsDto> GetEventsAsync(CancellationToken cancellationToken)
     {
@@ -134,7 +160,7 @@ public class HomeService(
         {
             return await calendarEvents.GetAsync(from, to, cancellationToken);
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
         {
             logger.LogWarning(ex, "The showcases and sales could not be read while composing the home page.");
             return new CalendarEventsDto([], [], Degraded: true);

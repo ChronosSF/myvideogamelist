@@ -77,7 +77,7 @@ own: "Summer Game Fest starts in 2 days". Settled on #128; the reasoning is
 | V3 | Each event says what it is — sale, fest or showcase — the store where it has one, and its name, linked to where it was announced or where it streams; and when, counted from the reader's own day: "Starts in 2 days", "Starts tomorrow", "Today", "Starts today", "On now" with the day it ends, "Ends tomorrow", "Ends today". Beside the count, its days, or a showcase's day and its start on the reader's clock (E4). What is already on comes first, then each by the day it starts |
 | V4 | Not rendered when nothing is on in the two weeks. Unlike the line (L7) it is not a section anybody has learned to look for, and an empty one would only say that nothing had been entered |
 | V5 | When IGDB fails the panel shows the sales it has, and says nothing of the showcases, as the page shows its covers without a word for the missing news; when the events cannot be read at all it is not rendered. Either way the page is marked degraded, so that nothing in front of the API keeps it (ADR [0013](../docs/decisions/0013-http-caching-policy.md)) |
-| V6 | Until the page hydrates, its days are UTC's — the day the loader ran on — and a showcase gives no time: one server render serves every reader. Once hydrated, the days and the clock are the reader's own |
+| V6 | Until the page hydrates, its days are UTC's — the day the loader ran on — and a showcase gives no time: one server render serves every reader. Once hydrated, the days and the clock are the reader's own. Where the two differ, which is for hours of every day somewhere, an event at either edge of the two weeks appears or goes as the page hydrates, and the panel with it when it is the only one |
 
 ## 3. Which games, and what "connected" means
 
@@ -199,7 +199,7 @@ shown.
 | E1 | An IGDB event is shown when its name starts with one of a list of showcase names kept on the admin page (§7), ignoring case: "Nintendo Direct", "State of Play", "Summer Game Fest", "The Game Awards", "Xbox Games Showcase", "Gamescom Opening Night Live" and so on. A prefix, not a substring: "Day of the Devs: Summer Game Fest Digital Showcase" is a satellite show, and does not start with "Summer Game Fest". The list starts empty and is filled on the page — no migration seeds it, so that it is kept in one place |
 | E2 | A showcase IGDB does not have yet can be added by hand on the admin page, as a curated event (§6) |
 | E3 | "Features a game you track" is left for later. An event's `games` appear to be filled in around the broadcast — the one future event had none — so it could only be said of a show that has already aired |
-| E4 | An IGDB event is an instant, not a day, and is drawn on the reader's own day at its start time. A show at three in the afternoon in Los Angeles airs after midnight in Sofia, and only the reader's clock can say which. So the server asks IGDB for a day either side of the window, in UTC, and the browser keeps what falls on the reader's days. `time_zone` is not read: it is an abbreviation, and on 2026-10-06 the June 2026 shows were "PST" while Los Angeles was on daylight time |
+| E4 | An IGDB event is an instant, not a day, and is drawn on the reader's own day at its start time. A show at three in the afternoon in Los Angeles airs after midnight in Sofia, and only the reader's clock can say which. So the server asks IGDB for a day either side of the window, in UTC, and the browser keeps what falls on the reader's days. `time_zone` is not read: it is an abbreviation, and on 2026-10-06 the June 2026 shows were "PST" while Los Angeles was on daylight time. The home page's panel is server-rendered, so until it hydrates it draws a showcase on UTC's day instead (V6) |
 
 ## 6. Store sales, entered by hand
 
@@ -326,7 +326,7 @@ should be one service that both call.
 | B5 | Tests for §3.3's rules against recorded IGDB rows, and for the policy refusing a non-admin |
 | B6 | Once the line ships, retire `/api/games/upcoming` and `GetUpcomingReleasesAsync`. 0004's reasoning — `release_dates`, not `first_release_date` — carries over to B1 |
 | B7 | `GET /api/user/releases/undated` — the connected games IGDB has no date for at all (K4), grouped by F6 and each with its reason, the most connected first: the game itself before its children before its series. `no-store`, and no window, since there are no dates to put one around |
-| B8 | `GET /api/home` carries B2's answer for §2.3's panel, asked about the UTC days from yesterday to the fourteenth after today, inclusive — every reader's two weeks at once, since at any instant the readers' todays span three UTC days — and the page keeps its reader's own. It is kept with the rest of the composite, fifteen minutes or a minute when degraded, so an admin's edit reaches the home page as the composite and the edge renew it, within about half an hour (ADR 0013), where B2 has it at once. Showcases missing, or the events failing to be read, mark the composite degraded; nothing on is an answer, and does not |
+| B8 | `GET /api/home` carries B2's answer for §2.3's panel, asked about the UTC days from yesterday to the fourteenth after today, inclusive — every reader's two weeks at once, since at any instant the readers' todays span three UTC days — and the page keeps its reader's own. It is kept with the rest of the composite, fifteen minutes or a minute when degraded, so an admin's edit reaches the home page as the composite and the edge renew it — fifteen minutes in memory, then five fresh at the edge and ten more served stale (ADR 0013), about half an hour — where B2 has it at once. IGDB's events are kept an hour for both, so a showcase IGDB adds late takes up to an hour and a half to reach the panel. Showcases missing, or the events failing to be read, mark the composite degraded; nothing on is an answer, and does not |
 
 ### 8.3 Client
 
@@ -415,7 +415,7 @@ made of IGDB's most-rated main games.
 
 ## 11. What is left, and in what order
 
-Each step is a sub-issue of #162.
+Steps 1 to 5 are sub-issues of #162; the sixth is #128.
 
 1. The admin page, its two tables and A1's policy (§7) — small, and it unblocks the sales and the
    showcases. #163, done.
@@ -423,4 +423,4 @@ Each step is a sub-issue of #162.
 3. B2, and the two-week line in place of the Releasing soon rail. #165, done.
 4. The calendar, and the line's link to it (L6). #166, done.
 5. Retiring `/api/games/upcoming` (B6), with the line. #165, done.
-6. Outside #162, the showcases and sales for whoever has no line (§2.3, B8, C6). #128, done.
+6. The showcases and sales for whoever has no line (§2.3, B8, C6). #128, done.
