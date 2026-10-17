@@ -252,7 +252,7 @@ public class IgdbService(
         // badge says T. Under E10+ that would be a page filtered to one rating with a badge for another,
         // so a game is listed under the rating its badge shows and no other. That is about one game in
         // a thousand, so a page is now and then a game short; whether there is more is still read from
-        // the page IGDB returned. See docs/decisions/0099-*.
+        // the page IGDB returned. See docs/decisions/0067-*.
         var esrb = browse.Esrb is { } esrbKey ? EsrbFilter(esrbKey) : null;
 
         var games = igdbGames

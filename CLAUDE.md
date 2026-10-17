@@ -146,7 +146,7 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   matched against **one row**: `organization = 2 & rating_category = (4)` finds nothing for a game
   whose PEGI row and E10+ row are two rows, and `!=` means "some row differs", so no clause can ask
   for a row to be absent. That is why the ESRB filter drops games in `GetGamesAsync`; see
-  `docs/decisions/0099-*`.
+  `docs/decisions/0067-*`.
 
 - **An IGDB release date is not always a day.** `release_dates.date_format` says how much of it is
   known — 0 the day, 1 the month, 2 the year, 3 to 6 a quarter, 7 nothing — and for anything but a

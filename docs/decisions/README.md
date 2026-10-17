@@ -51,7 +51,7 @@ grow a forward pointer when a later record or an issue closes something it left 
 | [0029](0029-favourites-are-an-axis-and-a-showcase.md) | Favourites are an axis like the wishlist, share its code, and are shown on the profile | Implemented |
 | [0030](0030-ownership-and-notes-belong-to-the-entry.md) | Ownership and notes belong to the entry, stay private, and are written under the game's lock | Implemented |
 | [0031](0031-a-list-rename-is-a-label-its-owner-sees.md) | A list rename is a label, checked as a set, and seen only by its owner | Implemented |
-| [0032](0032-each-browse-order-carries-its-own-floor.md) | Browse filters: every order is one IGDB query, and each carries its own floor | Implemented; decision 2 amended by 0099 |
+| [0032](0032-each-browse-order-carries-its-own-floor.md) | Browse filters: every order is one IGDB query, and each carries its own floor | Implemented; decision 2 amended by 0067 |
 | [0033](0033-what-the-api-refuses.md) | What the API refuses: guessing, volume, forged writes, and unattributed addresses | Implemented |
 | [0034](0034-failing-in-one-shape.md) | Failing in one shape: IGDB is retried and broken, and every error says so the same way | Implemented |
 | [0035](0035-a-local-copy-of-what-igdb-said.md) | A local copy of what IGDB said, so a library renders without them | Implemented |
@@ -70,7 +70,7 @@ grow a forward pointer when a later record or an issue closes something it left 
 | [0048](0048-one-theme-dark.md) | One theme, dark, and palettes are variations of it | Implemented; the palettes are #208 |
 | [0049](0049-every-colour-is-a-token.md) | Every colour is a token, named for its job, in one file | Implemented |
 | [0050](0050-an-imported-run-takes-its-type-from-the-source.md) | An imported run takes its type from the source's completion level | Implemented |
-| [0099](0099-the-esrb-filter-lists-a-game-under-its-badge.md) | The ESRB filter lists a game under the rating its badge shows | Implemented |
+| [0067](0067-the-esrb-filter-lists-a-game-under-its-badge.md) | The ESRB filter lists a game under the rating its badge shows | Implemented |
 
 **Status** — *Accepted*: decided, not yet built. *Implemented*: decided and in the code.
 *Superseded*: replaced by a later record.

@@ -1,4 +1,4 @@
-# 0099. The ESRB filter lists a game under the rating its badge shows
+# 0067. The ESRB filter lists a game under the rating its badge shows
 
 **Status:** Implemented
 **Amends:** [0032](0032-each-browse-order-carries-its-own-floor.md), decision 2

@@ -155,7 +155,7 @@ async function cacheBehaviour() {
     // A parameter missing from the policy's allowlist is not merely shared between values: it never
     // reaches the origin, so the page renders as though nothing had been chosen. A fresh term under one
     // rating renders with that rating selected, and the same term under another is its own entry
-    // (0099's `esrb`, the newest name on the list).
+    // (0067's `esrb`, the newest name on the list).
     const rated = stamp();
     const mature = await get(`/games?search=${rated}&esrb=m`, { auth: true });
     const teen = await get(`/games?search=${rated}&esrb=t`, { auth: true });

@@ -31,7 +31,7 @@ public static class GameSortKeys
 /// <remarks>
 /// Every rating IGDB lists under the ESRB, youngest audience first, but Rating Pending, which says
 /// that there is no rating yet: under the browse floors it holds a handful of released games whose row
-/// was never updated. See <c>docs/decisions/0099-*</c>.
+/// was never updated. See <c>docs/decisions/0067-*</c>.
 /// </remarks>
 public static class EsrbRatingKeys
 {
