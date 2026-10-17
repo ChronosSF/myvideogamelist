@@ -28,7 +28,8 @@ Open `https://localhost:58546`.
 
 **Never use `npm start` for local work.** It serves the production build, which has no
 `/api` proxy: pages render, but every client-side request 404s. See
-`docs/decisions/0003-two-process-deployment.md`.
+`docs/decisions/0003-two-process-deployment.md`. The smoke test, `npm run e2e`, serves that build
+behind a stand-in that does route `/api`, and fails if it stops doing so (ADR 0060).
 
 ## Commands
 
@@ -39,6 +40,7 @@ Open `https://localhost:58546`.
 | `npm run typecheck` | `react-router typegen && tsc -b` — use this, never bare `tsc` |
 | `npm run test` | Vitest, jsdom + Testing Library. `npm run test:watch` to iterate |
 | `npm run visual` | Before-and-after screenshots of the pages, compared pixel by pixel, for a change meant to look the same. Needs two dev servers and a local test account, whose email and password it reads from the shell or from `visual/.env` (ignored by git); `visual/playwright.config.ts` says how. Not run by CI |
+| `npm run e2e` | One browser test over the production shape: sign up, add a game to a list, reload, it is still there. Builds the front end and serves it with `react-router-serve` beside the API under `dotnet run`, with a stand-in for the distribution in front and one for IGDB behind, so it needs no IGDB credentials. Needs PostgreSQL up and ports 5120 and 58620–58622 free. Uses a database of its own, `mvgl_e2e`, created on the first run; `E2E_CONNECTION_STRING` points it elsewhere. Run by CI. See ADR 0060 |
 | `npm run build` | Production build |
 | `dotnet test MyVideoGameList.Server.Tests/MyVideoGameList.Server.Tests.csproj` | Server unit tests |
 | `dotnet test MyVideoGameList.Server.IntegrationTests/MyVideoGameList.Server.IntegrationTests.csproj` | The API over a real PostgreSQL, for what InMemory cannot do: auth and the lists end to end, the cascades, the retention sweep, and the export's snapshot once #263 is merged. Needs Docker running; starts and removes a container of its own, never `mvgl-postgres`. About fifteen seconds once built. See ADR 0057 |
@@ -70,6 +72,7 @@ myvideogamelist.client/
   src/pages/                    Route modules (default export + optional loader/meta)
   src/resources/                Resource routes: robots.txt and the sitemaps. A loader, no component
   src/lib/                      apiUrl(), useHydrated(), pageMeta()
+  e2e/                          The browser smoke test, and its stand-ins for the distribution and IGDB
 docs/decisions/                 Architecture decision records
 docs/data-model-plan.md         The tables not built yet, and the two constraints every table answers to
 scripts/                        Dev-only tools. The seeding tools print SQL to stdout and never open

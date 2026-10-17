@@ -1,6 +1,8 @@
 # 0003. Two processes; the SSR server does not proxy `/api`
 
-**Status:** Implemented
+**Status:** Implemented. The built app is now run end to end, behind a stand-in for the
+distribution, by the browser smoke test ([0060](0060-one-browser-test-over-the-production-shape.md));
+`npm start` still has no proxy.
 
 ## Context
 

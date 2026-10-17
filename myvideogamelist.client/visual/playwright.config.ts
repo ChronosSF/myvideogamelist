@@ -18,7 +18,8 @@ import { fileURLToPath } from 'node:url';
  * password never passes through a command line. A variable set in the shell wins over the file's.
  *
  * Pinned to the version whose browsers are installed, since `npx playwright install` is a download
- * nothing else here needs.
+ * to take on purpose. The smoke test in `e2e/` runs on the same version, and CI installs its browser
+ * itself.
  */
 try {
     process.loadEnvFile(fileURLToPath(new URL('./.env', import.meta.url)));

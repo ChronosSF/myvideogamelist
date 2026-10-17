@@ -13,7 +13,8 @@
 services:
     db:
         # The integration tests run this image too (PostgresServer.Image in
-        # MyVideoGameList.Server.IntegrationTests), so change the two together.
+        # MyVideoGameList.Server.IntegrationTests), and so does the smoke test's service container
+        # in .github/workflows/ci.yml, so change the three together.
         image: postgres:18-alpine
         container_name: mvgl-postgres
         restart: unless-stopped
