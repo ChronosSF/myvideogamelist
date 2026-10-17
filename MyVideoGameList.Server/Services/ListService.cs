@@ -61,31 +61,16 @@ public class ListService(
         if (entry is null) return null;
 
         var game = (await gameCache.GetGamesAsync([gameId], cancellationToken)).FirstOrDefault();
-        return game is null ? null : new EntryDto(ToDto(entry, game), entry.Ownership, entry.Notes);
+        return game is null ? null : new EntryDto(ToDto(entry, game), entry.Notes);
     }
 
     public async Task SetListEntryAsync(
         string userId, int gameId, string status, CancellationToken cancellationToken = default)
     {
-        var target = await db.ListStatuses
-            .AsNoTracking()
-            .FirstOrDefaultAsync(s => s.Key == status, cancellationToken)
-            ?? throw new ArgumentException($"Unknown status: {status}", nameof(status));
-
+        var target = await StatusIdAsync(status, cancellationToken);
         var entry = await FindOrCreateAsync(userId, gameId, cancellationToken);
 
-        // A move to the status the game already holds is not an event. The optimistic-update UI
-        // and ordinary double-clicks both send these, and recording them would inflate every
-        // count later derived from the log.
-        if (entry.StatusId == target.Id) return;
-
-        AppendEvent(userId, gameId, from: entry.StatusId, to: target.Id);
-        entry.StatusId = target.Id;
-        entry.StatusChangedAt = timeProvider.GetUtcNow();
-
-        // A place in the old list's hand order is no place in the new one, so the game arrives
-        // unplaced — at the end of the list it joins, like any other arrival. See IHandOrdered.
-        entry.Position = null;
+        if (Transition(entry, target, timeProvider.GetUtcNow()) is null) return;
 
         // One SaveChanges, so the event and the state change land in the same transaction or
         // neither does. A recorded transition that did not happen is as bad as a missing one.
@@ -106,15 +91,113 @@ public class ListService(
         if (entry?.StatusId is null) return false;
 
         // Leaving every list is a transition too, recorded with no destination.
-        AppendEvent(userId, gameId, from: entry.StatusId, to: null);
-        entry.StatusId = null;
-        entry.StatusChangedAt = timeProvider.GetUtcNow();
-
-        // Its place in the list it left goes with it, as on any other move.
-        entry.Position = null;
+        Transition(entry, to: null, timeProvider.GetUtcNow());
 
         await db.SaveChangesAsync(cancellationToken);
         return true;
+    }
+
+    /// <summary>
+    /// How many times a change of status to several games is saved again after a row it was about
+    /// to write was deleted underneath it — <see cref="HandOrderStore"/>'s bound, for its reason: one
+    /// retry nearly always has the row out of the way, and a pathological run of deletions should end
+    /// in an error rather than a loop.
+    /// </summary>
+    private const int MaxBatchAttempts = 3;
+
+    /// <summary>
+    /// Moves several of the user's games to one list, or out of every list, as one transaction with
+    /// an event for each game whose status changed (ADR 0055).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Every game goes through <see cref="Transition"/>, the rule each single move and removal goes
+    /// through too, so a batch is the moves it names and nothing else: an event per change, none for a
+    /// game already where it was asked to be, a hand-order place cleared by a change of list. Every
+    /// change shares one moment, so the games a batch brings into a list arrive together and are told
+    /// apart by title, on the server as on the client.
+    /// </para>
+    /// <para>
+    /// It acts on the user's own entries and creates none — the selection it serves is made of games in
+    /// the user's lists, and a single move's find-or-create is not a path to thousands of new rows. A
+    /// game with no entry is answered <see cref="StatusChangeOutcomes.Missing"/> for a move and
+    /// <see cref="StatusChangeOutcomes.Unchanged"/> for a removal, which it has already had. Scoped to
+    /// the user in the read's own predicate, so an id that is somebody else's game is the same answer.
+    /// </para>
+    /// <para>
+    /// One <c>SaveChanges</c>: every change and every event land together or none does. A row deleted
+    /// between the read and the save — "delete my data" from another tab — is passed over and answered
+    /// as if it had been missing all along, its event dropped with it, and the rest are saved again, as
+    /// <see cref="HandOrderStore"/> does rather than a 500.
+    /// </para>
+    /// </remarks>
+    public async Task<IReadOnlyList<StatusChangeDto>> SetStatusesAsync(
+        string userId,
+        IReadOnlyCollection<int> gameIds,
+        string? status,
+        CancellationToken cancellationToken = default)
+    {
+        short? target = status is null ? null : await StatusIdAsync(status, cancellationToken);
+
+        var wanted = gameIds.Distinct().ToList();
+        var entries = await db.UserGameEntries
+            .Where(e => e.UserId == userId && wanted.Contains(e.GameId))
+            .ToDictionaryAsync(e => e.GameId, cancellationToken);
+
+        // What a game with no entry has had done to it: a removal it was never in a list for, and a
+        // move that did not happen.
+        var absent = target is null ? StatusChangeOutcomes.Unchanged : StatusChangeOutcomes.Missing;
+
+        var now = timeProvider.GetUtcNow();
+        var outcomes = new Dictionary<int, string>();
+        var events = new Dictionary<int, UserGameEvent>();
+
+        foreach (var gameId in wanted)
+        {
+            if (!entries.TryGetValue(gameId, out var entry))
+            {
+                outcomes[gameId] = absent;
+                continue;
+            }
+
+            var recorded = Transition(entry, target, now);
+            if (recorded is null)
+            {
+                outcomes[gameId] = StatusChangeOutcomes.Unchanged;
+                continue;
+            }
+
+            events[gameId] = recorded;
+            outcomes[gameId] = StatusChangeOutcomes.Moved;
+        }
+
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                await db.SaveChangesAsync(cancellationToken);
+                break;
+            }
+            catch (DbUpdateConcurrencyException conflict) when (attempt < MaxBatchAttempts)
+            {
+                // Only the rows the database could not find, and the events that would have recorded
+                // their moves. The save that found them was rolled back whole; the rest are still
+                // marked, and go again.
+                foreach (var gone in conflict.Entries)
+                {
+                    if (gone.Entity is UserGameEntry entry)
+                    {
+                        if (events.Remove(entry.GameId, out var orphan))
+                            db.Entry(orphan).State = EntityState.Detached;
+                        outcomes[entry.GameId] = absent;
+                    }
+
+                    gone.State = EntityState.Detached;
+                }
+            }
+        }
+
+        return wanted.Select(gameId => new StatusChangeDto(gameId, outcomes[gameId])).ToList();
     }
 
     /// <summary>
@@ -141,12 +224,7 @@ public class ListService(
         IReadOnlyCollection<PositionDto> positions,
         CancellationToken cancellationToken = default)
     {
-        var statusId = await db.ListStatuses
-            .AsNoTracking()
-            .Where(s => s.Key == status)
-            .Select(s => (short?)s.Id)
-            .FirstOrDefaultAsync(cancellationToken)
-            ?? throw new ArgumentException($"Unknown status: {status}", nameof(status));
+        var statusId = await StatusIdAsync(status, cancellationToken);
 
         await HandOrderStore.WriteAsync(
             db,
@@ -242,7 +320,7 @@ public class ListService(
         // Record the departure before the row goes, or the log loses the fact that the game ever
         // left a list. The events themselves survive: they hold no key to this row.
         if (entry.StatusId is not null)
-            AppendEvent(userId, gameId, from: entry.StatusId, to: null);
+            AppendEvent(userId, gameId, from: entry.StatusId, to: null, timeProvider.GetUtcNow());
 
         db.UserGameEntries.Remove(entry);
         await db.SaveChangesAsync(cancellationToken);
@@ -261,16 +339,53 @@ public class ListService(
         string userId, int gameId, CancellationToken cancellationToken) =>
         EntryStore.FindOrCreateAsync(db, timeProvider, userId, gameId, cancellationToken);
 
-    private static ListEntryDto ToDto(UserGameEntry entry, GameDto game) =>
-        new(game, entry.Score, entry.AddedAt, entry.StatusChangedAt, entry.Position);
+    /// <summary>The seeded id of a status key.</summary>
+    /// <exception cref="ArgumentException">The key is not one of the seeded statuses.</exception>
+    private async Task<short> StatusIdAsync(string status, CancellationToken cancellationToken) =>
+        await db.ListStatuses
+            .AsNoTracking()
+            .Where(s => s.Key == status)
+            .Select(s => (short?)s.Id)
+            .FirstOrDefaultAsync(cancellationToken)
+        ?? throw new ArgumentException($"Unknown status: {status}", nameof(status));
 
-    private void AppendEvent(string userId, int gameId, short? from, short? to) =>
+    /// <summary>
+    /// Moves one entry to a status, or out of every list for null, and records that it did: the one
+    /// rule a single move, a single removal and a batch all go through, so none of them can drift
+    /// from the others (ADR 0018, ADR 0055).
+    /// </summary>
+    /// <returns>The event recorded, or null when the entry already held that status.</returns>
+    /// <remarks>
+    /// A move to the status the game already holds is not an event. The optimistic-update UI and
+    /// ordinary double-clicks both send these, and recording them would inflate every count later
+    /// derived from the log. Adds to the context without saving: the caller saves the event with the
+    /// change it records, in one transaction.
+    /// </remarks>
+    private UserGameEvent? Transition(UserGameEntry entry, short? to, DateTimeOffset now)
+    {
+        if (entry.StatusId == to) return null;
+
+        var recorded = AppendEvent(entry.UserId, entry.GameId, from: entry.StatusId, to: to, now);
+        entry.StatusId = to;
+        entry.StatusChangedAt = now;
+
+        // A place in the old list's hand order is no place in the new one, so the game arrives
+        // unplaced — at the end of the list it joins, like any other arrival. See IHandOrdered.
+        entry.Position = null;
+
+        return recorded;
+    }
+
+    private static ListEntryDto ToDto(UserGameEntry entry, GameDto game) =>
+        new(game, entry.Score, entry.Ownership, entry.AddedAt, entry.StatusChangedAt, entry.Position);
+
+    private UserGameEvent AppendEvent(string userId, int gameId, short? from, short? to, DateTimeOffset occurredAt) =>
         db.UserGameEvents.Add(new UserGameEvent
         {
             UserId = userId,
             GameId = gameId,
             FromStatusId = from,
             ToStatusId = to,
-            OccurredAt = timeProvider.GetUtcNow()
-        });
+            OccurredAt = occurredAt
+        }).Entity;
 }

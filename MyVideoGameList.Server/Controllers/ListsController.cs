@@ -41,6 +41,35 @@ public class ListsController(
     }
 
     /// <summary>
+    /// Moves several games to one list, or takes them out of every list, and says what happened to
+    /// each — the lists page's bulk actions.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A <c>PATCH</c> of the collection the <c>GET</c> above reads: it changes the status of the games
+    /// it names and leaves every other game alone. One transaction and an event per change, through
+    /// the same rule as a single move (ADR 0018, ADR 0055), so a failure leaves nothing half done.
+    /// </para>
+    /// <para>
+    /// Answers 200 with an outcome per game rather than 204, because one transaction can still leave a
+    /// game where it was: one the user has no entry for — deleted from another tab — is not created by
+    /// a move, and the client has to be told which, to show it where it actually is.
+    /// </para>
+    /// </remarks>
+    [HttpPatch]
+    [RequestSizeLimit(ListBatch.MaxRequestBytes)]
+    public async Task<ActionResult<SetStatusesResultDto>> SetStatuses(
+        [FromBody] SetStatusesDto dto,
+        CancellationToken cancellationToken)
+    {
+        var user = await userManager.GetUserAsync(User);
+        if (user is null) return Unauthorized();
+
+        var results = await listService.SetStatusesAsync(user.Id, dto.GameIds, dto.Status, cancellationToken);
+        return Ok(new SetStatusesResultDto(results));
+    }
+
+    /// <summary>
     /// Puts some of a list's games where the user has arranged them by hand — the backlog's "what I
     /// will play next".
     /// </summary>
