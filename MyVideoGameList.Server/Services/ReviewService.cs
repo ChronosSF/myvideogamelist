@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using MyVideoGameList.Server.Data;
 using MyVideoGameList.Server.DTOs;
 using MyVideoGameList.Server.Models;
+using MyVideoGameList.Server.Services.Edge;
 
 namespace MyVideoGameList.Server.Services;
 
@@ -20,8 +21,18 @@ namespace MyVideoGameList.Server.Services;
 /// the log stays typed and narrow (ADR 0018). No IGDB call either, for the reason every write path
 /// here avoids one.
 /// </para>
+/// <para>
+/// <b>Changing or deleting a public review is a withdrawal</b>, because the author's public
+/// profile renders the text and the edge keeps a copy of that page. Each one tells
+/// <see cref="ProfileWithdrawals"/> after it commits. A review written for the first time, one that
+/// was private until now, and one saved again unchanged withdraw nothing and tell it nothing
+/// (ADR 0058).
+/// </para>
 /// </remarks>
-public class ReviewService(ApplicationDbContext db, TimeProvider clock) : IReviewService
+public class ReviewService(
+    ApplicationDbContext db,
+    TimeProvider clock,
+    ProfileWithdrawals withdrawals) : IReviewService
 {
     public async Task<ReviewDto?> GetAsync(
         string userId, int gameId, CancellationToken cancellationToken = default)
@@ -53,6 +64,11 @@ public class ReviewService(ApplicationDbContext db, TimeProvider clock) : IRevie
 
         if (existing is not null)
         {
+            // Read before the fields change: what the edge can hold is what was public until now.
+            var published = existing.Visibility == ReviewVisibility.Public
+                ? (existing.Body, existing.HasSpoilers)
+                : ((string, bool)?)null;
+
             existing.Body = input.Body.Trim();
             existing.HasSpoilers = input.HasSpoilers;
             existing.Visibility = input.Visibility;
@@ -60,6 +76,19 @@ public class ReviewService(ApplicationDbContext db, TimeProvider clock) : IRevie
             existing.UpdatedAt = now;
 
             await db.SaveChangesAsync(cancellationToken);
+
+            // Withdrawn when it was public and now says something else or nothing: different words,
+            // a spoiler warning added or taken off, or no longer public. Saved again unchanged it
+            // withdraws nothing — its move up the newest-first list is content, like a new score —
+            // and sends nothing, which also keeps a save button pressed in a loop off the bill.
+            if (published is { } before)
+            {
+                if (existing.Visibility != ReviewVisibility.Public)
+                    await withdrawals.ReviewWithdrawnAsync(userId, ReviewWithdrawal.MadePrivate);
+                else if (before != (existing.Body, existing.HasSpoilers))
+                    await withdrawals.ReviewWithdrawnAsync(userId, ReviewWithdrawal.Edited);
+            }
+
             return ToDto(existing);
         }
 
@@ -90,10 +119,14 @@ public class ReviewService(ApplicationDbContext db, TimeProvider clock) : IRevie
 
         if (review is null) return false;
 
+        var wasPublic = review.Visibility == ReviewVisibility.Public;
+
         // The entry, the score and the playthroughs stay: deleting what you wrote about a game is
         // not deleting your record of it.
         db.Reviews.Remove(review);
         await db.SaveChangesAsync(cancellationToken);
+
+        if (wasPublic) await withdrawals.ReviewWithdrawnAsync(userId, ReviewWithdrawal.Deleted);
         return true;
     }
 

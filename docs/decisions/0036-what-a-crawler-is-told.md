@@ -3,7 +3,9 @@
 **Status:** Implemented. The basic auth that keeps dev private is a CloudFront Function on every
 behaviour, with the three public community endpoints exempt because the browser withholds
 `Authorization` from a `credentials: 'omit'` request —
-[0044](0044-what-the-deployment-walkthrough-settled.md).
+[0044](0044-what-the-deployment-walkthrough-settled.md). The invalidation the consequences below
+anticipate (D14) is [0058](0058-a-withdrawal-leaves-the-edge-when-it-is-made.md), which corrects
+the sitemap path named there: CloudFront reads a `*` that is not the last character literally.
 
 ## Context
 
