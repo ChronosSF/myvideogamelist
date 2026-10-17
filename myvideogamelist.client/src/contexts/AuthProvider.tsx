@@ -57,6 +57,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         fetch('/api/auth/me', { credentials: 'include' })
             .then(res => (res.ok ? res.json() : null))
             .then((data: UserProfile | null) => setUser(data))
+            // An API that cannot be reached rejects rather than answering, and means nobody signed
+            // in just as a refusal does. Without this the screen still came out right, and the
+            // rejection escaped unhandled on every page load while the API was down.
+            .catch(() => setUser(null))
             .finally(() => setLoading(false));
     }, []);
 
