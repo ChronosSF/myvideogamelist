@@ -32,7 +32,7 @@ grow a forward pointer when a later record or an issue closes something it left 
 | [0010](0010-monetization-model.md) | Ad-supported free tier plus a paid subscription | Accepted; the free/paid line is drawn in it, the statistics tiers in `specs/profile-statistics-tiers.md` |
 | [0011](0011-react-router-8-upgrade.md) | Upgrade to React Router 8 | Implemented |
 | [0012](0012-steam-news-without-a-database.md) | Steam news is cached in memory, not stored in the database | Implemented; N3 and the AppID question are open issues |
-| [0013](0013-http-caching-policy.md) | Every route declares its own `Cache-Control` | Implemented; a `.data` gap closed by 0099 |
+| [0013](0013-http-caching-policy.md) | Every route declares its own `Cache-Control` | Implemented; a `.data` gap closed by 0070 |
 | [0014](0014-rds-postgresql-over-aurora.md) | Managed PostgreSQL on RDS, not Aurora Serverless v2 | Accepted |
 | [0015](0015-fargate-confirmed-and-nat-less-networking.md) | ECS Fargate confirmed, with NAT-less networking | Accepted |
 | [0016](0016-scores-carry-their-sample-size.md) | A score is never shown without its sample size | Implemented |
@@ -47,7 +47,7 @@ grow a forward pointer when a later record or an issue closes something it left 
 | [0025](0025-playthroughs-and-reviews.md) | Playthroughs and reviews: what a user records about actually playing a game | Implemented |
 | [0026](0026-a-library-import-records-ownership-not-history.md) | A library import records ownership, not history | Accepted; its framework shipped in 0037, the Steam source is an open issue; §3 amended by 0047 |
 | [0027](0027-usernames-and-public-profiles.md) | Usernames are a namespace, and a profile is published only when asked | Implemented; the sitemap is 0036, D14 is an open issue |
-| [0028](0028-a-games-community-view.md) | A game's community view: every score counts, only published reviews are listed, and neither is server-rendered | Implemented; §3 and §6 amended by 0099 |
+| [0028](0028-a-games-community-view.md) | A game's community view: every score counts, only published reviews are listed, and neither is server-rendered | Implemented; §3 and §6 amended by 0070 |
 | [0029](0029-favourites-are-an-axis-and-a-showcase.md) | Favourites are an axis like the wishlist, share its code, and are shown on the profile | Implemented |
 | [0030](0030-ownership-and-notes-belong-to-the-entry.md) | Ownership and notes belong to the entry, stay private, and are written under the game's lock | Implemented |
 | [0031](0031-a-list-rename-is-a-label-its-owner-sees.md) | A list rename is a label, checked as a set, and seen only by its owner | Implemented |
@@ -70,7 +70,7 @@ grow a forward pointer when a later record or an issue closes something it left 
 | [0048](0048-one-theme-dark.md) | One theme, dark, and palettes are variations of it | Implemented; the palettes are #208 |
 | [0049](0049-every-colour-is-a-token.md) | Every colour is a token, named for its job, in one file | Implemented |
 | [0050](0050-an-imported-run-takes-its-type-from-the-source.md) | An imported run takes its type from the source's completion level | Implemented |
-| [0099](0099-nothing-shows-as-a-blank.md) | Nothing shows as a blank: empty and error states that teach, skeletons, and covers at their size | Implemented; a placeholder number, renumbered on merge |
+| [0070](0070-nothing-shows-as-a-blank.md) | Nothing shows as a blank: empty and error states that teach, skeletons, and covers at their size | Implemented |
 
 **Status** — *Accepted*: decided, not yet built. *Implemented*: decided and in the code.
 *Superseded*: replaced by a later record.

@@ -1,7 +1,6 @@
-# 0099. Nothing shows as a blank: empty and error states that teach, skeletons, and covers at their size
+# 0070. Nothing shows as a blank: empty and error states that teach, skeletons, and covers at their size
 
-**Status:** Implemented — #127, its first and third points. The number is a placeholder, to be given
-the next free one when this merges.
+**Status:** Implemented — #127, its first and third points.
 **Amends:** [0028](0028-a-games-community-view.md) §3, its sentence that a game with scores under the
 floor and no reviews shows no section at all; and §6, that a reload keeps what is on screen
 

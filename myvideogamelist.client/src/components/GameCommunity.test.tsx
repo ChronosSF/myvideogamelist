@@ -99,7 +99,7 @@ describe('GameCommunity before it has answered', () => {
 
 /*
  * These replaced tests that pinned "renders nothing" for the cases below, which ADR 0028 §3 chose as
- * the quieter answer. ADR 0099 amends it: once the section holds its place with a skeleton, nothing
+ * the quieter answer. ADR 0070 amends it: once the section holds its place with a skeleton, nothing
  * after it would be a blank where the skeleton was, which a reader cannot tell from a failure.
  */
 describe('GameCommunity when there is nothing to show yet', () => {

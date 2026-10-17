@@ -50,7 +50,7 @@ const BODY_HEIGHT = 'min-h-[13rem]';
  * answered, so the section appears once rather than growing twice; then what members have said, or
  * what would put something here when nobody has said anything yet, or what failed with a way to ask
  * again. It used to render nothing in those last cases, which a reader cannot tell from a section
- * that never loaded. See `docs/decisions/0099-*`, which amends ADR 0028 §3 to say so.
+ * that never loaded. See `docs/decisions/0070-*`, which amends ADR 0028 §3 to say so.
  */
 export function GameCommunity({ community, viewer }: GameCommunityProps) {
     return (

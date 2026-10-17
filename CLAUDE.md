@@ -482,7 +482,7 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   success policy stated by the loader through `data()`. A client-side navigation's `.data` request
   reaches the throwing route's `headers` whether or not it has a boundary, so a route that answers
   one policy unconditionally, or falls back to a shared one, caches its failures there. A page that
-  throws while rendering is not covered by any of this yet (#337). See `docs/decisions/0099-*`.
+  throws while rendering is not covered by any of this yet (#337). See `docs/decisions/0070-*`.
 
 - **`fetch` rejects when the API is unreachable** — it does not return `!response.ok`. A loader
   that only checks `response.ok` turns a dead upstream into an unhandled 500. Wrap it and throw

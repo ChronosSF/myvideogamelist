@@ -120,7 +120,7 @@ that are easy to get wrong and were got wrong once (`docs/decisions/0022-*`):
 
 ## Empty, failed and loading states, and covers
 
-Nothing new shows as a blank or a bare spinner (`docs/decisions/0099-*`):
+Nothing new shows as a blank or a bare spinner (`docs/decisions/0070-*`):
 
 - **Something empty is an `EmptyState`** saying what is missing and what would put something there. On
   a page other people read, such as a public profile, it says what will fill it and never asks the
