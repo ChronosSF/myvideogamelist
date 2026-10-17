@@ -79,7 +79,7 @@ paths:
 - What InMemory cannot show — a cascade, a set-based delete, an isolation level, a constraint —
   belongs in `MyVideoGameList.Server.IntegrationTests/`, which boots `Program.cs` through
   `ApiFactory` over PostgreSQL in a container. IGDB is unreachable there: seed `CachedGames`
-  instead. See `docs/decisions/0057-*`.
+  through `ApiFactory.CacheGamesAsync` instead. See `docs/decisions/0057-*`.
 - Pure functions worth testing directly are `internal` and exposed via `InternalsVisibleTo`
   rather than made public.
 - Name tests `Method_Scenario_ExpectedResult`.

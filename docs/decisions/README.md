@@ -27,7 +27,7 @@ grow a forward pointer when a later record or an issue closes something it left 
 | [0005](0005-secrets-handling.md) | Secrets come from user secrets and environment variables | Implemented |
 | [0006](0006-codeql-buildless.md) | CodeQL runs buildless (`build-mode: none`) | Implemented |
 | [0007](0007-aws-target-architecture.md) | ECS Fargate, Aurora Serverless v2, CloudFront | Partly superseded by 0014, 0015 |
-| [0008](0008-postgresql-over-sqlite.md) | PostgreSQL replaces SQLite before deployment | Implemented locally; hosting pending |
+| [0008](0008-postgresql-over-sqlite.md) | PostgreSQL replaces SQLite before deployment | Implemented locally; hosting pending; its integration tests are 0057 |
 | [0009](0009-itad-without-affiliate-revenue.md) | Integrate IsThereAnyDeal and forgo the affiliate revenue | Accepted |
 | [0010](0010-monetization-model.md) | Ad-supported free tier plus a paid subscription | Accepted; the free/paid line is drawn in it, the statistics tiers in `specs/profile-statistics-tiers.md` |
 | [0011](0011-react-router-8-upgrade.md) | Upgrade to React Router 8 | Implemented |
@@ -62,7 +62,7 @@ grow a forward pointer when a later record or an issue closes something it left 
 | [0040](0040-matching-a-title-to-a-game.md) | Matching a title to a game, when we would rather not answer | Implemented |
 | [0041](0041-what-the-roadmap-decided-on-its-own.md) | The plan moves to GitHub issues, and what the roadmap decided on its own | Implemented |
 | [0042](0042-admins-are-named-in-configuration.md) | Admins are account ids in configuration, behind one server-side policy | Implemented |
-| [0043](0043-where-the-key-ring-lives.md) | The key ring lives in Parameter Store, under a name that does not move, and never nowhere by accident | Implemented; proved only by a deploy |
+| [0043](0043-where-the-key-ring-lives.md) | The key ring lives in Parameter Store, under a name that does not move, and never nowhere by accident | Implemented; proved only by a deploy; `AllowEphemeralKeys` also set by the integration suite, 0057 |
 | [0044](0044-what-the-deployment-walkthrough-settled.md) | What the deployment walkthrough settled, and where it found the records wrong | Accepted; built by #97 |
 | [0045](0045-an-import-asks-once-about-what-it-will-not-guess.md) | An import asks once about what it will not guess: one list for every game played without an outcome | Implemented |
 | [0046](0046-the-balancer-answers-its-own-distribution.md) | The balancer answers its own distribution, and what else the CloudFront phase settled | Implemented |
@@ -70,7 +70,7 @@ grow a forward pointer when a later record or an issue closes something it left 
 | [0048](0048-one-theme-dark.md) | One theme, dark, and palettes are variations of it | Implemented; the palettes are #208 |
 | [0049](0049-every-colour-is-a-token.md) | Every colour is a token, named for its job, in one file | Implemented |
 | [0050](0050-an-imported-run-takes-its-type-from-the-source.md) | An imported run takes its type from the source's completion level | Implemented |
-| [0057](0057-the-api-is-tested-over-a-real-postgresql.md) | The API is tested over a real PostgreSQL: one container a run, a database a class, and IGDB out of reach | Implemented; the export-snapshot test waits for #263 |
+| [0057](0057-the-api-is-tested-over-a-real-postgresql.md) | The API is tested over a real PostgreSQL: one container a run, a database a class, and IGDB out of reach | Implemented; the export-snapshot test went in skipped, waiting for #263 |
 
 **Status** — *Accepted*: decided, not yet built. *Implemented*: decided and in the code.
 *Superseded*: replaced by a later record.

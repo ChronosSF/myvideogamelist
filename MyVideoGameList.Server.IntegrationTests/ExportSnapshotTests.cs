@@ -26,13 +26,17 @@ namespace MyVideoGameList.Server.IntegrationTests;
 /// seen holding.
 /// </para>
 /// </remarks>
-public class ExportSnapshotTests(ApiFactory api) : IClassFixture<ApiFactory>
+public class ExportSnapshotTests
 {
-    [Fact(Skip = "Fails until #263 (the fix for #95) is merged: the export reads each section at its own "
-        + "moment on master, which is the bug this pins. Delete this Skip in whichever of #263 and the "
-        + "pull request adding this test is merged second.")]
+    [Fact(Skip = "Waits for #263, the fix for #95: on master the export reads each section at its own "
+        + "moment, which is the bug this pins.")]
     public async Task ExportAsync_AJobDeletedAfterItIsReadButBeforeItsRows_ArrivesWithEveryRowItCounts()
     {
+        // A host of its own rather than the class fixture the others take, so that while this is
+        // skipped the run spends nothing on a database and a host that no test uses.
+        await using var api = new ApiFactory();
+        await api.InitializeAsync();
+
         using var browser = api.CreateBrowser();
         var user = await browser.RegisterAsync(Browsers.NewUserName("exporter"));
         var job = await browser.UploadGrouveeAsync(1020, 1021, 1022);

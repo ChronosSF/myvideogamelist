@@ -1,6 +1,10 @@
+using System.Collections.Concurrent;
 using System.Net;
+using System.Xml.Linq;
 using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.DataProtection.KeyManagement;
+using Microsoft.AspNetCore.DataProtection.Repositories;
+using Microsoft.AspNetCore.DataProtection.XmlEncryption;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -31,10 +35,12 @@ namespace MyVideoGameList.Server.IntegrationTests;
 /// (<c>CLAUDE.md</c>, "Migrations auto-apply in Development only").
 /// </para>
 /// <para>
-/// What is replaced, and nothing else: IGDB, by <see cref="UnreachableIgdb"/>; the key ring, by one
-/// held in memory; our own scheduled work, which a test runs by hand when it wants it, so that no
-/// sweep deletes rows from under a test that did not ask for one. Every middleware, every service
-/// and every policy is the application's own. See <c>docs/decisions/0057-*</c>.
+/// What is replaced, and nothing else: IGDB, by <see cref="UnreachableIgdb"/>; where the key ring
+/// is kept, in memory; our own scheduled work, which a test runs by hand when it wants it, so that
+/// no sweep deletes rows from under a test that did not ask for one. And one thing is added ahead of
+/// the pipeline: <see cref="ClientAddress"/>, which gives each test browser the address a
+/// connection would have given it. Every other middleware, every service and every policy is the
+/// application's own. See <c>docs/decisions/0057-*</c>.
 /// </para>
 /// </remarks>
 public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
@@ -61,10 +67,28 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
             $"test_{Interlocked.Increment(ref databases)}_{Guid.NewGuid():N}");
 
         // The deployment's migration step, which outside Development runs before the application
-        // takes a request. Through the application's own context, so the model and the options are
-        // the ones every request gets.
-        await using var scope = Services.CreateAsyncScope();
-        await scope.ServiceProvider.GetRequiredService<ApplicationDbContext>().Database.MigrateAsync();
+        // starts, as a step of its own. From the application's own migrations, through a context
+        // that is not the host's: the host is not started yet, and the one error EF logs while
+        // finding a new database has no history table is then not in the log of a run that passed.
+        await using (var db = Database())
+        {
+            await db.Database.MigrateAsync();
+        }
+
+        // Starting the host, which is what reading Services does the first time. Nothing it starts
+        // reads a table: our own scheduled work is removed below, and this says so rather than
+        // trusting the filter that removes it to have kept up with how services get registered.
+        var running = Services.GetServices<IHostedService>()
+            .Where(service => service.GetType().Assembly == typeof(Program).Assembly)
+            .Select(service => service.GetType().Name)
+            .ToList();
+
+        if (running.Count > 0)
+        {
+            throw new InvalidOperationException(
+                $"Our own hosted services are running in the test host: {string.Join(", ", running)}. "
+                + "Remove them in ConfigureWebHost, as the retention sweep is.");
+        }
     }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
@@ -76,8 +100,9 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
         builder.UseSetting("ConnectionStrings:DefaultConnection", ConnectionString);
 
         // Outside Development a key ring persisted nowhere stops the application at startup unless
-        // configuration says the loss is meant (ADR 0043). It is meant here, and the ring is made
-        // literally ephemeral below, so no test writes into the developer's own ring.
+        // configuration says the loss is meant (ADR 0043). It is meant here: the setting alone would
+        // leave the ring where the default puts it, which on a developer machine is their own
+        // profile, so where the keys are kept is replaced below.
         builder.UseSetting("DataProtection:AllowEphemeralKeys", "true");
 
         builder.ConfigureTestServices(services =>
@@ -85,12 +110,26 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
             services.RemoveAll<IIgdbService>();
             services.AddSingleton(Igdb.Service);
 
-            services.AddDataProtection().UseEphemeralDataProtectionProvider();
+            // Where the keys are kept, which is all that changes: the provider, the application name
+            // and the key manager stay the application's own. Data Protection falls back to the
+            // profile only when no repository is set, and its hosted service loads the ring as the
+            // host starts, so without this the first key of every run would be written there. Kept
+            // unencrypted, as anything in this process's memory is, and said so to Data Protection.
+            services.Configure<KeyManagementOptions>(options =>
+            {
+                options.XmlRepository = new KeysInMemory();
+                options.XmlEncryptor = new NullXmlEncryptor();
+            });
 
             // Ours only: the framework's own hosted services include the one that starts the server.
+            // Registered by type, by instance or by a factory written in our assembly; InitializeAsync
+            // checks that none was missed.
             var scheduled = services
-                .Where(service => service.ServiceType == typeof(IHostedService)
-                    && service.ImplementationType?.Assembly == typeof(Program).Assembly)
+                .Where(service => service.ServiceType == typeof(IHostedService) && !service.IsKeyedService)
+                .Where(service => (service.ImplementationType
+                        ?? service.ImplementationInstance?.GetType()
+                        ?? service.ImplementationFactory?.Method.DeclaringType)?.Assembly
+                    == typeof(Program).Assembly)
                 .ToList();
 
             foreach (var service in scheduled) services.Remove(service);
@@ -161,6 +200,20 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
 
             return base.SendAsync(request, cancellationToken);
         }
+    }
+
+    /// <summary>
+    /// The key ring's storage: this process's memory, and nowhere a developer keeps their own.
+    /// </summary>
+    private sealed class KeysInMemory : IXmlRepository
+    {
+        private readonly ConcurrentQueue<XElement> keys = new();
+
+        public IReadOnlyCollection<XElement> GetAllElements() =>
+            keys.Select(key => new XElement(key)).ToList();
+
+        public void StoreElement(XElement element, string friendlyName) =>
+            keys.Enqueue(new XElement(element));
     }
 
     /// <summary>

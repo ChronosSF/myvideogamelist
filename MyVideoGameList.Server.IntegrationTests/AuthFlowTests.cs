@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using Microsoft.EntityFrameworkCore;
 using MyVideoGameList.Server.DTOs;
 using MyVideoGameList.Server.Models;
 
@@ -85,13 +86,13 @@ public class AuthFlowTests(ApiFactory api) : IClassFixture<ApiFactory>
     }
 
     [Fact]
-    public async Task Write_WithoutTheRequestHeader_IsRefusedAndChangesNothing()
+    public async Task SetListEntry_WithoutTheRequestHeader_IsRefusedAndChangesNothing()
     {
         // The test browser adds X-MVGL-Request to every write, as apiFetch does. This is the one
         // request that does not, so the rest of the suite cannot be passing because the guard is
         // off (ADR 0033).
         using var browser = api.CreateBrowser();
-        await browser.RegisterAsync(Browsers.NewUserName("forged"));
+        var user = await browser.RegisterAsync(Browsers.NewUserName("forged"));
 
         var forged = new HttpRequestMessage(HttpMethod.Put, "/api/lists/1942")
         {
@@ -103,6 +104,6 @@ public class AuthFlowTests(ApiFactory api) : IClassFixture<ApiFactory>
 
         await response.ExpectAsync(HttpStatusCode.Forbidden);
         await using var db = api.Database();
-        Assert.False(db.UserGameEntries.Any(entry => entry.GameId == 1942));
+        Assert.False(await db.UserGameEntries.AnyAsync(entry => entry.UserId == user.Id));
     }
 }

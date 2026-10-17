@@ -64,8 +64,9 @@ public class OwnershipCascadeTests(ApiFactory api) : IClassFixture<ApiFactory>
         // Not somebody's data, so not deleted with anybody: the games stay cached for everyone else.
         Assert.Equal(2, await db.CachedGames.CountAsync(game => game.GameId == Played || game.GameId == Wanted));
 
-        // And the cookie the deletion was made with authenticates nothing now.
-        await (await leaving.GetAsync("/api/auth/me")).ExpectAsync(HttpStatusCode.Unauthorized);
+        // And the browser is signed out. Asked of an endpoint that reads only the cookie's claim:
+        // /me would answer 401 for an account that has gone whether or not the cookie had.
+        await (await leaving.GetAsync("/api/user/stats")).ExpectAsync(HttpStatusCode.Unauthorized);
     }
 
     [Fact]
@@ -88,7 +89,17 @@ public class OwnershipCascadeTests(ApiFactory api) : IClassFixture<ApiFactory>
             .GroupBy(fk => fk.PrincipalEntityType, fk => fk.DeclaringEntityType)
             .ToList();
 
-        Assert.NotEmpty(dependents);
+        // A tripwire, as UserOwnedDataTests keeps one for the tables: an edge added or taken away
+        // fails here first, so the walk below cannot quietly shrink to nothing and pass.
+        Assert.Equal(
+            [
+                (nameof(ImportJob), nameof(ImportRow)),
+                (nameof(UserGameEntry), nameof(Review)),
+                (nameof(UserGameEntry), nameof(UserGamePlaythrough)),
+            ],
+            dependents
+                .SelectMany(family => family.Distinct().Select(child => (family.Key.ClrType.Name, child.ClrType.Name)))
+                .Order());
 
         foreach (var family in dependents)
         {
@@ -143,6 +154,10 @@ public class OwnershipCascadeTests(ApiFactory api) : IClassFixture<ApiFactory>
         // nothing in the context to do it instead.
         using var browser = api.CreateBrowser();
         var recorded = await RecordEverythingAsync(browser, "rewriter");
+
+        // The pointer is there to begin with, or deleting the run would prove nothing about it.
+        var linked = await browser.GetJsonAsync<EntryDetailDto>($"/api/entries/{Played}");
+        Assert.Equal(recorded.PlaythroughId, linked.Review?.PlaythroughId);
 
         var delete = await browser.SendAsync(
             HttpMethod.Delete, $"/api/entries/{Played}/playthroughs/{recorded.PlaythroughId}");

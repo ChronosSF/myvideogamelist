@@ -41,7 +41,7 @@ Open `https://localhost:58546`.
 | `npm run visual` | Before-and-after screenshots of the pages, compared pixel by pixel, for a change meant to look the same. Needs two dev servers and a local test account, whose email and password it reads from the shell or from `visual/.env` (ignored by git); `visual/playwright.config.ts` says how. Not run by CI |
 | `npm run build` | Production build |
 | `dotnet test MyVideoGameList.Server.Tests/MyVideoGameList.Server.Tests.csproj` | Server unit tests |
-| `dotnet test MyVideoGameList.Server.IntegrationTests/MyVideoGameList.Server.IntegrationTests.csproj` | The API over a real PostgreSQL: auth, the lists, the cascades, the retention sweep, the export's snapshot. Needs Docker running; starts and removes a container of its own and never touches `mvgl-postgres`. About fifteen seconds. See ADR 0057 |
+| `dotnet test MyVideoGameList.Server.IntegrationTests/MyVideoGameList.Server.IntegrationTests.csproj` | The API over a real PostgreSQL, for what InMemory cannot do: auth and the lists end to end, the cascades, the retention sweep, and the export's snapshot once #263 is merged. Needs Docker running; starts and removes a container of its own, never `mvgl-postgres`. About fifteen seconds once built. See ADR 0057 |
 | `dotnet ef migrations add <Name>` | From `MyVideoGameList.Server/` |
 | `dotnet ef database update` | Applies migrations by hand; only needed outside Development |
 | `docker compose up -d --wait` | Local PostgreSQL. `--wait` blocks until it accepts connections |
@@ -113,7 +113,7 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   `AddDataProtectionKeys` therefore persists to the path in `DataProtection:ParameterPath`, falls
   back to the user-profile ring in Development only, and otherwise **fails at startup** unless
   `DataProtection:AllowEphemeralKeys` says the loss is meant, which it is only for running the
-  production image on a developer machine. Two things the code cannot check: the task role needs
+  production image on a developer machine or the integration suite's test host (ADR 0057). Two things the code cannot check: the task role needs
   `ssm:GetParametersByPath` and `ssm:PutParameter` on that path — not `ssm:DeleteParameter`,
   because nothing deletes keys — and the repository is built on the first protect rather than at
   boot, so a wrong policy fails the first sign-in. Keep `SetApplicationName("MyVideoGameList")` — the default discriminator is the content
@@ -210,9 +210,10 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   that cannot exist without its parent must not be left orphaned or block the parent's deletion.
   That is what makes the import sweep's bare `DELETE FROM "ImportJobs"` safe. An optional pointer
   between siblings is outside the rule — a review's link to the playthrough it describes is
-  `SetNull`, so deleting one run does not take the prose with it. All three are also run against
-  PostgreSQL by the integration suite's `OwnershipCascadeTests`, which fails until its
-  `RecordEverythingAsync` gives an account a row in the new table (`docs/decisions/0057-*`). The manifest is
+  `SetNull`, so deleting one run does not take the prose with it. The three deletion rules — with
+  the account, with a parent, and the review's unlink — are also run against PostgreSQL by the
+  integration suite's `OwnershipCascadeTests`, which fails until its `RecordEverythingAsync` gives
+  an account a row in the new table (`docs/decisions/0057-*`). The manifest is
   `UserDataExporter.Manifest`, keyed by entity `Type`, and it is the *only* place to register:
   `ExportAsync` walks it. A new *column* on a registered table trips nothing, because each section is
   a hand-written projection — add it to that reader too, as `Ownership` and `Notes` were
@@ -366,7 +367,8 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   it, so the pending window is silence rather than a deadline, and a review worked through over
   several weekends is not deleted underneath its owner. **`ExecuteDeleteAsync` needs a relational provider**, so the predicate is an `Expression`
   the tests run against InMemory and the deletion itself is not unit-tested — the integration
-  suite's `ImportRetentionSweepTests` runs it against PostgreSQL (`docs/decisions/0057-*`). It deletes **twenty-five jobs per statement and commits each
+  suite's `ImportRetentionSweepTests` runs it, batches and lock included, against PostgreSQL
+  (`docs/decisions/0057-*`). It deletes **twenty-five jobs per statement and commits each
   batch**, because one unbounded `DELETE` over a backlog exceeds Npgsql's thirty-second default,
   rolls back, deletes nothing, and is retried identically every hour for ever. And because it
   deletes rows no request asked it to, **every `ImportService` write stamps the job and treats an

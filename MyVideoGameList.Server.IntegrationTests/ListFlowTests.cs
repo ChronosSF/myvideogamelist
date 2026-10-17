@@ -21,8 +21,8 @@ public class ListFlowTests(ApiFactory api) : IClassFixture<ApiFactory>
         using var browser = api.CreateBrowser();
         await browser.RegisterAsync(Browsers.NewUserName("player"));
 
-        // Playing twice: a move to the status a game already holds is not a transition, and the
-        // client sends exactly that on a double click.
+        // Playing twice: a move to the status a game already holds is not a transition and must
+        // record nothing (ADR 0018), however it arrives — a second tab, a retried request.
         foreach (var status in new[]
                  { ListStatusKeys.Backlog, ListStatusKeys.Playing, ListStatusKeys.Playing, ListStatusKeys.Finished })
         {
@@ -90,6 +90,7 @@ public class ListFlowTests(ApiFactory api) : IClassFixture<ApiFactory>
     {
         // The promise ADR 0035 exists for: a row past its refresh interval is asked about again,
         // IGDB does not answer, and the shelf is served from what was stored rather than failing.
+        // Over a year old, so a cap on how stale a row may be served would fail this too.
         const int gameId = 26226;
         await api.CacheGamesAsync(gameId);
 
@@ -98,7 +99,7 @@ public class ListFlowTests(ApiFactory api) : IClassFixture<ApiFactory>
             await db.CachedGames
                 .Where(game => game.GameId == gameId)
                 .ExecuteUpdateAsync(set => set.SetProperty(
-                    game => game.RefreshedAt, DateTimeOffset.UtcNow.AddDays(-3)));
+                    game => game.RefreshedAt, DateTimeOffset.UtcNow.AddDays(-400)));
         }
 
         using var browser = api.CreateBrowser();

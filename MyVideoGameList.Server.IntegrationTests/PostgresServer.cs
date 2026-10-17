@@ -15,8 +15,9 @@ namespace MyVideoGameList.Server.IntegrationTests;
 /// </para>
 /// <para>
 /// Testcontainers' reaper removes the container when the test process goes away, however it goes;
-/// disposing it at exit as well is only tidier. Nothing here touches the <c>mvgl-postgres</c>
-/// container <c>compose.yaml</c> runs, which a developer's own data lives in.
+/// disposing it at exit as well keeps a machine tidy where the reaper is switched off. Nothing here
+/// touches the <c>mvgl-postgres</c> container <c>compose.yaml</c> runs, which a developer's own data
+/// lives in.
 /// </para>
 /// </remarks>
 internal static class PostgresServer
@@ -27,16 +28,48 @@ internal static class PostgresServer
     /// </summary>
     private const string Image = "postgres:18-alpine";
 
+    /// <summary>
+    /// Long enough to pull the image on a slow connection the first time; short enough that a
+    /// container which will never be ready fails the run with a reason, rather than waiting out
+    /// Testcontainers' own hour.
+    /// </summary>
+    private static readonly TimeSpan StartLimit = TimeSpan.FromMinutes(5);
+
     private static readonly Lazy<Task<PostgreSqlContainer>> Container = new(StartAsync);
 
     private static async Task<PostgreSqlContainer> StartAsync()
     {
         var container = new PostgreSqlBuilder(Image).Build();
 
-        await container.StartAsync();
+        using (var limit = new CancellationTokenSource(StartLimit))
+        {
+            try
+            {
+                await container.StartAsync(limit.Token);
+            }
+            // Testcontainers reports the token firing as a TimeoutException of its own, measured,
+            // or as a cancellation, depending on where it was waiting.
+            catch (Exception e) when (limit.IsCancellationRequested && e is TimeoutException or OperationCanceledException)
+            {
+                throw new TimeoutException(
+                    $"PostgreSQL ({Image}) was not ready within {StartLimit.TotalMinutes} minutes. Is Docker running?", e);
+            }
+        }
 
         AppDomain.CurrentDomain.ProcessExit += (_, _) =>
-            container.DisposeAsync().AsTask().GetAwaiter().GetResult();
+        {
+            // ProcessExit is synchronous, so this is the one place a wait is unavoidable. Bounded,
+            // and quiet when it fails: the reaper removes the container anyway, and a run that has
+            // already reported its results must not end as a crashed test host.
+            try
+            {
+                container.DisposeAsync().AsTask().Wait(TimeSpan.FromSeconds(10));
+            }
+            catch (Exception)
+            {
+                // Left to the reaper.
+            }
+        };
 
         return container;
     }

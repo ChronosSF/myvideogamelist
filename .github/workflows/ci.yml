@@ -61,15 +61,16 @@ jobs:
       - name: Test
         run: dotnet test MyVideoGameList.Server.Tests/MyVideoGameList.Server.Tests.csproj --no-build --verbosity normal
 
-  # The API booted over a real PostgreSQL, for what EF InMemory cannot do: the cascades, the
-  # retention sweep's ExecuteDeleteAsync, the export's snapshot, and auth and the lists end to end.
-  # Its own job, so the unit tests above stay as quick and as Docker-free as they were. The runner
-  # has Docker; Testcontainers starts the container and its reaper, which is left on, removes it
-  # however the run ends. Nothing reaches IGDB, which has no credentials here. See ADR 0057.
+  # The API booted over a real PostgreSQL, for what EF InMemory cannot do: cascades, set-based
+  # deletes, isolation, and the request pipeline end to end. Its own job, so the unit tests above
+  # stay as quick and as Docker-free as they were. The runner has Docker; Testcontainers starts the
+  # container and its reaper, which is left on, removes it however the run ends. Nothing reaches
+  # IGDB, which has no credentials here. Deploy dev waits on this as on every job. See ADR 0057.
   integration:
     name: Server integration
     runs-on: ubuntu-latest
-    # A container that never became ready would otherwise hold the runner for the six-hour default.
+    # A hang, such as a pull that stalls or a test that deadlocks, ends the job here rather than at
+    # a far longer default. A container that never becomes ready fails sooner, in the suite itself.
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
@@ -84,11 +85,13 @@ jobs:
       - name: Build
         run: dotnet build MyVideoGameList.Server.IntegrationTests/MyVideoGameList.Server.IntegrationTests.csproj --no-restore
 
+      # A test still running after five minutes is a hang: the run stops and names it.
       - name: Test
-        run: dotnet test MyVideoGameList.Server.IntegrationTests/MyVideoGameList.Server.IntegrationTests.csproj --no-build --verbosity normal
+        run: dotnet test MyVideoGameList.Server.IntegrationTests/MyVideoGameList.Server.IntegrationTests.csproj --no-build --verbosity normal --blame-hang-timeout 5m --blame-hang-dump-type none
 
-  # #105's Playwright smoke test and #106's format check, audits and secret scanning go here, each a
-  # job block of its own like the one above, rather than steps added to it.
+  # #105's Playwright smoke test: a job block of its own here. Its pull request replaces this line.
+
+  # #106's format check, audits and secret scanning: jobs of their own. Its PR replaces this line.
 
   # The CDK app compiles, so a construct renamed by a library bump or a stack edited without
   # building is caught here rather than on the next deploy. Synthesis is not run: it needs
