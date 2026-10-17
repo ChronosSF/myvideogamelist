@@ -48,6 +48,32 @@ public class IgdbService(
     private const int EsrbOrganization = 1;
 
     /// <summary>
+    /// One of the ESRB's ratings: its <c>age_rating_categories</c> id, the code its badge shows, and
+    /// the <see cref="EsrbRatingKeys"/> key the browse filter names it by, if it offers it.
+    /// </summary>
+    internal sealed record EsrbRating(int Category, string Code, string? Key);
+
+    /// <summary>
+    /// The categories IGDB lists under the ESRB, as its <c>age_rating_categories</c> endpoint returned
+    /// them on 17 October 2026, in the order a game's rating is chosen by: Rating Pending first, since
+    /// any rating outranks a pending one, then from the youngest audience to the oldest.
+    /// </summary>
+    /// <remarks>
+    /// The ids are the ESRB's alone — the other six boards' categories run from 8 to 40 — so a
+    /// category names its board as well as its rating.
+    /// </remarks>
+    internal static readonly IReadOnlyList<EsrbRating> EsrbRatings =
+    [
+        new(1, "RP", Key: null),
+        new(2, "EC", EsrbRatingKeys.EC),
+        new(3, "E", EsrbRatingKeys.E),
+        new(4, "E10+", EsrbRatingKeys.E10),
+        new(5, "T", EsrbRatingKeys.T),
+        new(6, "M", EsrbRatingKeys.M),
+        new(7, "AO", EsrbRatingKeys.AO),
+    ];
+
+    /// <summary>
     /// IGDB <c>popularity_type</c> 5, "24hr Peak Players", sourced from Steam.
     /// </summary>
     /// <remarks>
@@ -214,14 +240,25 @@ public class IgdbService(
         // a page cached for half an hour can miss a game released in that half hour, which is the
         // same staleness every other page here has.
         var cacheKey = $"igdb_games|{limit}|{offset}|{search ?? string.Empty}|{browse.Sort}|"
-            + $"{browse.PlatformId}|{browse.GenreId}|{browse.Year}|{browse.MinScore}";
+            + $"{browse.PlatformId}|{browse.GenreId}|{browse.Year}|{browse.MinScore}|{browse.Esrb}";
         if (cache.TryGetValue(cacheKey, out PagedGamesResponse? cached) && cached is not null)
             return cached;
 
         var igdbGames = await QueryAsync<IgdbGame>(
             GamesEndpoint, BuildQuery(offset, limit, search, browse, DateTimeOffset.UtcNow), cancellationToken);
 
-        var games = igdbGames.Select(MapToGameDto).ToList();
+        // The query can only ask for the games holding a row of the chosen rating, and a game IGDB
+        // holds two ESRB ratings for is shown with the stricter: Monster Train 2 is E10+ and T, and its
+        // badge says T. Under E10+ that would be a page filtered to one rating with a badge for another,
+        // so a game is listed under the rating its badge shows and no other. That is about one game in
+        // a thousand, so a page is now and then a game short; whether there is more is still read from
+        // the page IGDB returned. See docs/decisions/0067-*.
+        var esrb = browse.Esrb is { } esrbKey ? EsrbFilter(esrbKey) : null;
+
+        var games = igdbGames
+            .Where(g => esrb is null || EsrbRatingOf(g.AgeRatings) == esrb)
+            .Select(MapToGameDto)
+            .ToList();
         var result = new PagedGamesResponse(games, igdbGames.Count == limit);
 
         cache.Set(cacheKey, result, TimeSpan.FromMinutes(30));
@@ -876,8 +913,9 @@ public class IgdbService(
     /// </summary>
     /// <remarks>
     /// <para>
-    /// The filters apply to both, and every value in them is an integer the controller has already
-    /// range-checked, so only the search needs escaping.
+    /// The filters apply to both, and every value in them is an integer — one the controller has
+    /// already range-checked, or the IGDB id this class holds for an ESRB key — so only the search
+    /// needs escaping.
     /// </para>
     /// <para>
     /// The order and its floor apply only when nobody is searching. A search must reach every game,
@@ -916,6 +954,16 @@ public class IgdbService(
             // A score floor needs a critic floor, or "80 and above" is every game one critic loved.
             where.Add($"aggregated_rating >= {minScore}");
             where.Add($"aggregated_rating_count >= {MinAggregatedRatingCount}");
+        }
+
+        if (browse.Esrb is { } esrbKey)
+        {
+            // IGDB matches every condition on age_ratings against one row, so these two ask for an
+            // ESRB row of this rating; the category alone would do, since it names the board too.
+            // A game with no ESRB row is not matched at all. The one-row rule is also why nothing
+            // here can say "and no stricter rating": GetGamesAsync drops the games that hold one.
+            where.Add($"age_ratings.organization = {EsrbOrganization}");
+            where.Add($"age_ratings.rating_category = ({EsrbFilter(esrbKey).Category})");
         }
 
         string? sort = null;
@@ -1186,23 +1234,38 @@ public class IgdbService(
     }
 
     /// <summary>
-    /// The game's ESRB rating as the short code the client shows, or null when the ESRB has not
-    /// rated it. The cases are the <c>age_rating_categories</c> ids IGDB lists under the ESRB.
+    /// The game's ESRB rating as the short code the client shows, or null when IGDB holds none.
     /// </summary>
-    internal static string? MapEsrbRating(List<IgdbAgeRating>? ageRatings)
-    {
-        var esrb = ageRatings?.FirstOrDefault(r => r.Organization == EsrbOrganization);
+    internal static string? MapEsrbRating(List<IgdbAgeRating>? ageRatings) => EsrbRatingOf(ageRatings)?.Code;
 
-        return esrb?.RatingCategory switch
-        {
-            1 => "RP",
-            2 => "EC",
-            3 => "E",
-            4 => "E10+",
-            5 => "T",
-            6 => "M",
-            7 => "AO",
-            _ => null
-        };
+    /// <summary>
+    /// The game's ESRB rating, or null when IGDB holds none: no ESRB row, or none of a category in
+    /// <see cref="EsrbRatings"/>.
+    /// </summary>
+    /// <remarks>
+    /// IGDB can hold more than one ESRB row for a game — Monster Train 2 has E10+ and T — and the
+    /// strictest is the one that counts, being the one somebody choosing by age needs to know. A
+    /// pending rating counts only when there is no other. The browse filter lists a game under this
+    /// rating and no other, so a filtered page never carries a badge for a different one.
+    /// </remarks>
+    internal static EsrbRating? EsrbRatingOf(List<IgdbAgeRating>? ageRatings)
+    {
+        if (ageRatings is null) return null;
+
+        var categories = ageRatings
+            .Where(r => r.Organization == EsrbOrganization)
+            .Select(r => r.RatingCategory)
+            .ToHashSet();
+
+        return EsrbRatings.LastOrDefault(rating => categories.Contains(rating.Category));
     }
+
+    /// <summary>The ESRB rating a browse filter's key stands for.</summary>
+    /// <exception cref="ArgumentOutOfRangeException">
+    /// For anything that is not an <see cref="EsrbRatingKeys"/> key. The controller refuses those with a
+    /// 400, so one here is a caller that skipped the check, and it is not quietly read as no filter.
+    /// </exception>
+    internal static EsrbRating EsrbFilter(string key) =>
+        EsrbRatings.FirstOrDefault(rating => rating.Key == key)
+        ?? throw new ArgumentOutOfRangeException(nameof(key), key, "Not an ESRB rating the browse listing is filtered by.");
 }

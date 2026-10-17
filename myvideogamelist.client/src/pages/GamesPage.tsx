@@ -231,7 +231,7 @@ export function GamesPage({ loaderData }: Route.ComponentProps) {
         );
     };
 
-    const clearFilters = () => changeBrowse({ platform: null, genre: null, year: null, minScore: null });
+    const clearFilters = () => changeBrowse({ platform: null, genre: null, year: null, minScore: null, esrb: null });
 
     // Abandon an in-flight "load more" when the result set changes underneath it, so a late
     // page of the previous browse cannot append itself to the new one.
