@@ -91,6 +91,8 @@ public class GamesController(
     /// <para>
     /// <c>no-store</c>, so that nothing between here and the browser serves somebody an old figure
     /// after they have just scored the game — the reason the service keeps no cache of it either.
+    /// The game page's loader reads it as well, and that copy is as old as the shared page it is
+    /// in; the browser's own request, here, is what replaces it after hydration (ADR 0069).
     /// </para>
     /// </remarks>
     [HttpGet("{id:int}/community-scores")]

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
-import { HomePage, headers, loader } from '@/pages/HomePage';
+import { HomePage, headers, loader, meta } from '@/pages/HomePage';
 import type { AuthContextValue } from '@/contexts/AuthContext';
 import { CACHE_HOME, PRIVATE_NO_STORE } from '@/lib/cache';
 import { game } from '@/test/factories';
@@ -164,5 +164,30 @@ describe('HomePage headers', () => {
     it('fails closed when the loader stated none', () => {
         // The shared policy is for an answer somebody judged to be whole, and nobody has here.
         expect(policyFor(new Headers())).toBe(PRIVATE_NO_STORE);
+    });
+});
+
+describe('HomePage meta', () => {
+    /** The page's JSON-LD blocks, as `<Meta>` would write them, through JSON. */
+    const blocksFor = (site: typeof SITE | { siteUrl: null; indexable: false }) =>
+        (meta({ loaderData: { ...NOTHING, site } } as unknown as Route.MetaArgs) as Record<string, unknown>[])
+            .filter(tag => 'script:ld+json' in tag)
+            .map(tag => JSON.parse(JSON.stringify(tag['script:ld+json'])) as Record<string, unknown>);
+
+    it('names the site, and where a search for a game goes, in structured data', () => {
+        // Google reads the name it shows over a result from the home page, and from nowhere else.
+        expect(blocksFor(SITE)).toEqual([expect.objectContaining({
+            '@type': 'WebSite',
+            name: 'MyVideoGameList',
+            url: 'https://myvideogamelist.net/',
+            potentialAction: expect.objectContaining({
+                '@type': 'SearchAction',
+                target: expect.objectContaining({ urlTemplate: 'https://myvideogamelist.net/games?search={search_term_string}' }),
+            }),
+        })]);
+    });
+
+    it('says nothing of the kind from a deployment with no public address', () => {
+        expect(blocksFor({ siteUrl: null, indexable: false })).toEqual([]);
     });
 });

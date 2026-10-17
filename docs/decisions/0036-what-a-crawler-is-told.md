@@ -148,5 +148,6 @@ does not.
   `Disallow`, each breaks the other's reasoning.
 - **Not done:** a default share image, so the home page, the catalogue and profiles unfurl without
   one — it needs a designed raster image the repository does not have. Structured data is not part
-  of this. Neither is registering the site with a search console, which is a DNS record and belongs
-  with the infrastructure.
+  of this; it is [0069](0069-a-crawler-is-told-what-is-ours.md), which also found that §4's rejected
+  top-up has nothing to draw on in `CachedGames`. Neither is registering the site with a search
+  console, which is a DNS record and belongs with the infrastructure.

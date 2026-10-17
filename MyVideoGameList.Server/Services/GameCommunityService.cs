@@ -7,8 +7,8 @@ using MyVideoGameList.Server.Models;
 namespace MyVideoGameList.Server.Services;
 
 /// <summary>
-/// The community's reading of one game: every member's score, and the reviews members have
-/// published.
+/// The community's reading of one game: every member's score, how many members track it, and the
+/// reviews members have published.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -65,8 +65,15 @@ public class GameCommunityService(
             .Select(e => e.Score)
             .ToListAsync(cancellationToken);
 
+        // A second read rather than the status folded into the first, which would cost that one its
+        // index-only scan: the status is not in the index, so this one visits the game's rows. It
+        // selects them through the same index, which bounds it the way ADR 0028 bounds the first.
+        var tracked = await db.UserGameEntries
+            .AsNoTracking()
+            .CountAsync(e => e.GameId == gameId && e.StatusId != null, cancellationToken);
+
         var (scored, mean, distribution) = ScoreSummary.Of(scores);
-        return new CommunityScoresDto(scored, mean, distribution);
+        return new CommunityScoresDto(scored, mean, distribution, tracked);
     }
 
     public async Task<GameReviewsDto> GetReviewsAsync(

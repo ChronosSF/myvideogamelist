@@ -46,12 +46,12 @@ export function communityTimesReducer(
 /**
  * How long MVGL members report a game taking, fetched on the client after hydration.
  *
- * Deliberately not in the route loader. The game page is edge-cached for an hour
- * (`docs/decisions/0013-*`), and the person most likely to look at this row is the one who has
- * just logged a playthrough of their own — serving them an hour-old figure of their own data
- * would read as the write having failed. Fetching it here also keeps a public page's
- * time-to-first-byte off a query that crawlers do not need, exactly as `GameNewsPanel` does for
- * Steam.
+ * The row is rendered from this and never from the route loader. The game page is edge-cached for
+ * an hour (`docs/decisions/0013-*`), and the person most likely to look at this row is the one who
+ * has just logged a playthrough of their own — serving them an hour-old figure of their own data
+ * would read as the write having failed. The loader does read these figures, but only for the
+ * page's description, where a median as old as the page is what a search result can carry
+ * (`docs/decisions/0069-*`).
  *
  * Returns null on failure and says nothing about it. A community row that did not load is not
  * worth an error banner on a page that rendered perfectly well; the row simply is not there.
