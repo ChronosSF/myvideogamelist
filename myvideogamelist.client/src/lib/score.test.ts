@@ -84,7 +84,7 @@ describe('ratingPercent', () => {
 
 describe('hasMemberScore', () => {
     const scores = (scored: number, mean: number | null = 8) =>
-        ({ scored, mean, distribution: Array<number>(10).fill(0) });
+        ({ scored, mean, distribution: Array<number>(10).fill(0), tracked: scored });
 
     it('accepts a mean backed by the member floor', () => {
         expect(hasMemberScore(scores(MIN_MEMBER_SCORES))).toBe(true);

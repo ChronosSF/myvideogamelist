@@ -1,8 +1,10 @@
-import { Link, useLoaderData } from 'react-router';
+import { Link, data, useLoaderData } from 'react-router';
 import type { Route } from './+types/GamePage';
 import { apiUrl } from '@/lib/api';
 import { CACHE_GAME, CACHE_NOT_FOUND, PRIVATE_NO_STORE } from '@/lib/cache';
+import type { CommunityScores } from '@/types/community';
 import type { GameDto } from '@/types/game';
+import type { CommunityTimes } from '@/types/playthrough';
 import { useAuth } from '@/hooks/useAuth';
 import { useGameCommunity } from '@/hooks/useGameCommunity';
 import { GameNewsPanel } from '@/components/GameNewsPanel';
@@ -15,8 +17,10 @@ import { MultiplayerSummary } from '@/components/MultiplayerSummary';
 import { ScreenshotGallery } from '@/components/ScreenshotGallery';
 import { TrailerPlayer } from '@/components/TrailerPlayer';
 import { formatCount } from '@/lib/format';
+import { gameDescription } from '@/lib/gameDescription';
 import { pageMeta, siteConfig } from '@/lib/seo';
 import { hasCriticScore, hasMemberScore, ratingPercent } from '@/lib/score';
+import { gameStructuredData } from '@/lib/structuredData';
 import { ScoreBadge } from '@/components/ScoreBadge';
 import './GamePage.css';
 
@@ -29,9 +33,32 @@ function InfoChip({ label }: { label: string }) {
 }
 
 /**
+ * A JSON body from the API, or null for a bad status and an unreachable API alike: for the reads a
+ * game page can stand without.
+ */
+async function readOptional<T>(path: string): Promise<T | null> {
+    try {
+        const response = await fetch(apiUrl(path));
+        return response.ok ? (await response.json()) as T : null;
+    } catch {
+        // `catch` as well as `ok`, because an unreachable API makes `fetch` reject rather than
+        // return a bad response — and a body that is not JSON makes `json()` reject.
+        return null;
+    }
+}
+
+/**
  * Fetched on the server so crawlers and social unfurlers see the real game, not an
  * empty shell. A missing or malformed id throws a 404 Response, which the root
  * ErrorBoundary renders and which returns a genuine 404 status.
+ *
+ * Beside the game, what members have made of it: their score and how many of them track it, and how
+ * long they take to beat it. Those are the part of the page that is ours, so they are read here, where
+ * the server render — the HTML a crawler indexes — can carry them, in the hero, the description and
+ * the structured data (ADR 0069). Their reviews are not: review text is fetched after hydration, as
+ * ADR 0028 decided, because an author's withdrawal must not wait out the page's hour at the edge. An
+ * aggregate names nobody, so the same hour costs a reader no more than a figure up to an hour old,
+ * which the browser's own request replaces once the page has hydrated.
  */
 export async function loader({ params }: Route.LoaderArgs) {
     const id = Number(params.id);
@@ -53,38 +80,64 @@ export async function loader({ params }: Route.LoaderArgs) {
         headers: { 'Cache-Control': PRIVATE_NO_STORE },
     });
 
-    let response: Response;
-    try {
-        response = await fetch(apiUrl(`/api/games/${id}`));
-    } catch {
+    // All three at once: the members' figures do not wait on the game, and the game does not wait
+    // on them. Neither of those two can fail the page.
+    const [response, scores, times] = await Promise.all([
         // fetch rejects rather than returning !ok when the API is unreachable.
-        throw badGateway();
-    }
+        fetch(apiUrl(`/api/games/${id}`)).catch(() => null),
+        readOptional<CommunityScores>(`/api/games/${id}/community-scores`),
+        readOptional<CommunityTimes>(`/api/games/${id}/community-times`),
+    ]);
 
+    if (response === null) throw badGateway();
     if (response.status === 404) throw notFound();
     if (!response.ok) throw badGateway();
 
+    // Only a whole render is shared. Without the members' figures the page still stands — the game is
+    // what it is about, and it came — but kept at the edge it would go on leaving out our score, the
+    // description's lead and the structured data's rating for an hour after the API recovered, and a
+    // day stale after that: caching a failure outlives the failure (ADR 0013). An answer with no
+    // tracked count is from an API older than this build, in the middle of a deploy, and is missing a
+    // part all the same.
+    const whole = scores !== null && typeof scores.tracked === 'number' && times !== null;
+
     // `site` rides along because `meta` runs in the browser too, where the environment it is read
-    // from does not exist.
-    return { game: await response.json() as GameDto, site: siteConfig() };
+    // from does not exist; `today` because a day read in `meta` could differ between the render and
+    // the hydration. UTC, which is the calendar the API's release dates are written in.
+    return data(
+        {
+            game: await response.json() as GameDto,
+            site: siteConfig(),
+            scores,
+            times,
+            today: new Date().toISOString().slice(0, 10),
+        },
+        { headers: { 'Cache-Control': whole ? CACHE_GAME : PRIVATE_NO_STORE } },
+    );
 }
 
 /**
- * Only applies to the 200 path. A thrown Response carries its own headers, so a 404 for an
- * unknown id is not cached for an hour under this policy.
+ * The loader's policy: the game's hour when the render is whole, none when the members' figures did
+ * not arrive. A thrown Response carries its own headers, so a 404 for an unknown id is not cached
+ * for an hour under this one.
+ *
+ * The loader states a policy on every return, so the fallback is for a loader that has stopped doing
+ * so, and it fails closed as the root does.
  */
-export function headers() {
-    return { 'Cache-Control': CACHE_GAME };
+export function headers({ loaderHeaders }: Route.HeadersArgs) {
+    return { 'Cache-Control': loaderHeaders.get('Cache-Control') ?? PRIVATE_NO_STORE };
 }
 
 export function meta({ loaderData }: Route.MetaArgs) {
     if (!loaderData?.game) return [{ title: 'Game not found - MyVideoGameList' }];
 
-    const { game, site } = loaderData;
+    // The defaults are for data written by the build before this one, which had none of the three:
+    // a game page's data is shared-cached, so in a deploy's first minutes such a copy can reach this
+    // code. Each one missing leaves out what it would have added, and nothing fails.
+    const { game, site, scores = null, times = null, today = '' } = loaderData;
     const year = game.releaseDate ? ` (${new Date(game.releaseDate).getFullYear()})` : '';
     const title = `${game.title}${year} - MyVideoGameList`;
-    const description = game.description?.slice(0, 200)
-        ?? `Track ${game.title} on MyVideoGameList.`;
+    const description = gameDescription(game, scores, times);
 
     // Key art where IGDB has any, because a large card is cropped to a wide rectangle and a
     // portrait cover comes out of that as a strip across its middle. The cover still beats
@@ -97,11 +150,17 @@ export function meta({ loaderData }: Route.MetaArgs) {
 
     // The path is built from the id the API answered with, not from the URL: `/games/0012` and
     // `/games/12?ref=x` both render this page, and both should say they are `/games/12`.
-    return pageMeta({ site, title, description, path: `/games/${game.id}`, image });
+    const path = `/games/${game.id}`;
+
+    return [
+        ...pageMeta({ site, title, description, path, image }),
+        ...gameStructuredData({ site, path, game, scores, today }),
+    ];
 }
 
 export function GamePage() {
-    const { game } = useLoaderData<typeof loader>();
+    // The default is `meta`'s: data from the build before this one has no scores in it.
+    const { game, scores: renderedScores = null } = useLoaderData<typeof loader>();
 
     const { user, loading: authLoading } = useAuth();
 
@@ -110,6 +169,13 @@ export function GamePage() {
     // rather than in the section so the hero's badge and the section share one pair of requests,
     // and so the reader's own panel can ask for them again after it writes.
     const community = useGameCommunity(game.id);
+
+    // The members' score as the loader read it, which is what the server rendered, until the
+    // browser's own request answers — then that one, which is fresher, and which the reader's own
+    // writes ask for again. A request that fails leaves the loader's in place rather than taking the
+    // badge away. Both belong to the game on screen: the loader's data and the hook change together
+    // when a link goes from one game to another.
+    const memberScores = community.scores ?? renderedScores;
 
     // Null on the listing endpoints by design; this page is the one that asks IGDB for it.
     const details = game.details;
@@ -215,14 +281,16 @@ export function GamePage() {
                                     count={game.ratingCount}
                                 />
                             )}
-                            {/* Ours, once enough members have scored the game. Arrives after
-                                hydration, so it goes after the two server-rendered badges rather
-                                than moving them; only the date beside it shifts along. */}
-                            {hasMemberScore(community.scores) && (
+                            {/* Ours, once enough members have scored the game, and in the server
+                                render: it is the one score on the page this site produced, so it is
+                                in the HTML a crawler reads (ADR 0069). Last of the three, so that
+                                the browser's fresher figure replacing the loader's after hydration
+                                moves nothing but the date beside it. */}
+                            {hasMemberScore(memberScores) && (
                                 <ScoreBadge
                                     kind="members"
-                                    percent={ratingPercent(community.scores.mean)}
-                                    count={community.scores.scored}
+                                    percent={ratingPercent(memberScores.mean)}
+                                    count={memberScores.scored}
                                 />
                             )}
                             {releaseDate && (
@@ -386,8 +454,12 @@ export function GamePage() {
                         {/* Low in the column on purpose: it arrives after hydration, and all it can
                             push down when it does is the news and the similar games. Renders nothing
                             until both of its requests have answered, and nothing at all when there
-                            is nothing to read. */}
-                        <GameCommunity community={community} viewer={user?.userName ?? null} />
+                            is nothing to read. Handed the scores the hero shows, so that a request
+                            that failed leaves the two agreeing on the loader's figure. */}
+                        <GameCommunity
+                            community={{ ...community, scores: memberScores }}
+                            viewer={user?.userName ?? null}
+                        />
 
                         {/* Hides itself when the game has no Steam presence (ROADMAP N7). */}
                         <GameNewsPanel gameId={game.id} />
@@ -476,6 +548,24 @@ export function GamePage() {
                                             from {formatCount(game.ratingCount)} ratings
                                         </span>
                                     )}
+                                </div>
+                            )}
+
+                            {/* Ours, with its count in words beside it like the two above, and in the
+                                server render like them. Google shows a rating from structured data
+                                only when a reader can see it on the page (ADR 0069). The count is for
+                                the eye only: the badge's accessible name already ends with it. */}
+                            {hasMemberScore(memberScores) && (
+                                <div>
+                                    <p className="text-xs text-fg-faint uppercase tracking-wider mb-1">Member Score</p>
+                                    <ScoreBadge
+                                        kind="members"
+                                        percent={ratingPercent(memberScores.mean)}
+                                        count={memberScores.scored}
+                                    />
+                                    <span className="ml-2 text-xs text-fg-faint" aria-hidden="true">
+                                        from {formatCount(memberScores.scored)} scores
+                                    </span>
                                 </div>
                             )}
 

@@ -14,7 +14,8 @@ namespace MyVideoGameList.Server.Services;
 public interface IGameCommunityService
 {
     /// <summary>
-    /// Every member's score for the game, whatever their profile visibility: it names nobody.
+    /// Every member's score for the game, and how many members have it in a list, whatever their
+    /// profile visibility: neither names anybody.
     /// </summary>
     Task<CommunityScoresDto> GetScoresAsync(int gameId, CancellationToken cancellationToken = default);
 
