@@ -2,9 +2,12 @@
  * Draws share.html, beside this file, into ../site/share.png: the holding page's share image, at the
  * 1200 by 630 Open Graph and the large card are drawn at (ADR 0066).
  *
- * Playwright is the client's dev dependency, so install the client first and run this from anywhere:
+ * Playwright is the client's dev dependency, so install the client first - and Chromium, on a machine
+ * that has never run Playwright, since installing the package downloads no browser - then run this
+ * from anywhere:
  *
  *     npm ci --prefix myvideogamelist.client
+ *     npx --prefix myvideogamelist.client playwright install chromium
  *     node holding/share/render.mjs
  *
  * The text is set in the machine's own interface font, as the page's is, so a render on another

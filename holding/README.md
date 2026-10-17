@@ -8,8 +8,9 @@ what it tells a crawler and when it goes are ADR 0066; the stack that serves it 
   the share image, `robots.txt` and `sitemap.xml`. Every link in it starts from the root, because the
   404 is served at whatever address was asked for.
 - **`share/`** is the share image's source: `share.html`, drawn at 1200 by 630 into
-  `site/share.png` by `node holding/share/render.mjs`, after `npm ci --prefix myvideogamelist.client`
-  for Playwright.
+  `site/share.png` by `node holding/share/render.mjs`. It needs the client's Playwright and a
+  Chromium for it: `npm ci` in `myvideogamelist.client`, then, on a machine that has never run
+  Playwright, `npx playwright install chromium` there too.
 
 Three things are copies, because a static file cannot import anything:
 
