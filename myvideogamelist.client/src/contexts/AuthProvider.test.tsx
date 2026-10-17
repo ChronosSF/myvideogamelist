@@ -24,8 +24,8 @@ import {
  * The sign-in and sign-up dialogs over the real `AuthProvider`, with only the network played by the
  * test. The dialogs' own suites mock `useAuth`, which leaves out everything between a click and the
  * API: the request each write sends, the header the API's write guard requires (ADR 0033), and how
- * each shape of refusal the API answers becomes the sentence somebody reads. The refusals here are
- * the API's own, word for word.
+ * each shape of refusal the API answers becomes the sentence somebody reads. The refusals here carry
+ * the API's own sentences, and Identity's, word for word.
  */
 
 const ALEX = userProfile({ id: 'user-1', email: 'alex@test.local', userName: 'alex' });
@@ -391,19 +391,20 @@ describe('AuthProvider registering', () => {
 
     it('shows every reason Identity gives, not only the first', async () => {
         // The form sets `noValidate`, so a weak password reaches Identity, which can refuse it on
-        // several counts at once.
+        // several counts at once: in Identity's own words, for the length and the digit this API
+        // requires.
         const actor = quickActor();
         await openSignUp({
             'POST /api/auth/register': () => json({
-                errors: ['Passwords must have at least one digit.', 'Passwords must have at least one uppercase letter.'],
+                errors: ['Passwords must be at least 8 characters.', "Passwords must have at least one digit ('0'-'9')."],
             }, 400),
         });
 
         await signUp(actor, 'alex');
 
         const alert = await screen.findByRole('alert');
-        expect(alert).toHaveTextContent('Passwords must have at least one digit.');
-        expect(alert).toHaveTextContent('Passwords must have at least one uppercase letter.');
+        expect(alert).toHaveTextContent('Passwords must be at least 8 characters.');
+        expect(alert).toHaveTextContent("Passwords must have at least one digit ('0'-'9').");
     });
 
     it('stays open, signed out and saying so, when the API cannot be reached', async () => {
