@@ -175,6 +175,11 @@ left on. The unit job is untouched, so a failure here is never mistaken for one 
 fifteen-minute timeout and `--blame-hang-timeout` at five bound a hang the start limit does not cover:
 a pull that stalls, a test that deadlocks.
 
+What it costs, measured on its first run (#297): 54 s of runner time — 10 s setting up .NET, 4 s
+restoring, 10 s building, and 25 s testing, of which about 15 s was pulling the two images, which a
+fresh runner never has. Standard runners cost nothing on a public repository, and the C# CodeQL job
+took 2:51 on the same run, so CI as a whole takes no longer than it did.
+
 Deploy dev runs only when a CI run succeeds, so this job is now part of that gate: a red run here holds
 back that commit's dev images until it is re-run. Each run pulls `postgres:18-alpine` and the reaper's
 image from Docker Hub without signing in, and Docker Hub limits anonymous pulls. If those pulls are
