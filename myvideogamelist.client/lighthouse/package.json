@@ -1,0 +1,11 @@
+{
+  "name": "myvideogamelist-lighthouse",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "devDependencies": {
+    "@lhci/cli": "0.15.1"
+  }
+}
