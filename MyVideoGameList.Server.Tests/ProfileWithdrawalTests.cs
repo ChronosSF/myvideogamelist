@@ -713,6 +713,16 @@ public class ProfileWithdrawalTests
     }
 
     [Fact]
+    public void PathsForLog_PathWithALineBreak_IsOneLine()
+    {
+        // A path carries a username from a request; whatever the alphabet allows today, the log
+        // does not take its word for it.
+        var invalidation = new EdgeInvalidation("profile renamed", ["/u/alice\r\nINFO: all clear*", "/sitemaps/profiles-*"]);
+
+        Assert.Equal("/u/aliceINFO: all clear*, /sitemaps/profiles-*", invalidation.PathsForLog);
+    }
+
+    [Fact]
     public void ProfileSitemaps_EveryFile_IsOnePathEndingInTheWildcard()
     {
         // `/sitemaps/profiles-*.xml` would be matched literally, asterisk and all, and invalidate

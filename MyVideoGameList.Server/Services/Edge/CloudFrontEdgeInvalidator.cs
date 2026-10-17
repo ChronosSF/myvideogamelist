@@ -202,7 +202,7 @@ internal sealed class CloudFrontEdgeInvalidator : BackgroundService, IEdgeInvali
         {
             logger.LogDebug(
                 "{Paths} ({Reason}) is already waiting to be invalidated; not queued again.",
-                invalidation.Paths, invalidation.Reason);
+                invalidation.PathsForLog, invalidation.Reason);
             return;
         }
 
@@ -211,13 +211,13 @@ internal sealed class CloudFrontEdgeInvalidator : BackgroundService, IEdgeInvali
             logger.LogError(
                 "Could not queue {Paths} ({Reason}): the invalidation queue {State}. "
                 + "They stay at the edge until their TTL runs out.",
-                invalidation.Paths, invalidation.Reason, stopping ? "has stopped" : "is full");
+                invalidation.PathsForLog, invalidation.Reason, stopping ? "has stopped" : "is full");
             return;
         }
 
         logger.LogInformation(
             "Queued {Paths} ({Reason}) to be invalidated as {CallerReference}.",
-            invalidation.Paths, invalidation.Reason, queued.CallerReference);
+            invalidation.PathsForLog, invalidation.Reason, queued.CallerReference);
     }
 
     /// <summary>
@@ -255,7 +255,7 @@ internal sealed class CloudFrontEdgeInvalidator : BackgroundService, IEdgeInvali
                     // meant to throw, and if something does it costs this withdrawal, not the host.
                     logger.LogError(e,
                         "Could not send {Paths} ({Reason}); they stay at the edge until their TTL runs out ({CallerReference}).",
-                        queued.Invalidation.Paths, queued.Invalidation.Reason, queued.CallerReference);
+                        queued.Invalidation.PathsForLog, queued.Invalidation.Reason, queued.CallerReference);
                 }
             }
         }
@@ -320,7 +320,7 @@ internal sealed class CloudFrontEdgeInvalidator : BackgroundService, IEdgeInvali
 
                 logger.LogInformation(
                     "Invalidated {Paths} ({Reason}) as {InvalidationId}, {Delay} after the write, on attempt {Attempt} ({CallerReference}).",
-                    queued.Invalidation.Paths, queued.Invalidation.Reason,
+                    queued.Invalidation.PathsForLog, queued.Invalidation.Reason,
                     response.Invalidation?.Id, clock.GetUtcNow() - queued.QueuedAt, attempt, queued.CallerReference);
                 return;
             }
@@ -430,13 +430,13 @@ internal sealed class CloudFrontEdgeInvalidator : BackgroundService, IEdgeInvali
                 + "and every withdrawal after it today keep the TTL window instead. Something is saving in a loop, "
                 + "or the ceiling (CloudFront:DailyPathLimit) is too low for the site.",
                 dailyPathLimit, today.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
-                queued.Invalidation.Paths, queued.Invalidation.Reason);
+                queued.Invalidation.PathsForLog, queued.Invalidation.Reason);
         }
         else
         {
             logger.LogDebug(
                 "Over today's invalidation ceiling; {Paths} ({Reason}) not sent ({Refused} refused today).",
-                queued.Invalidation.Paths, queued.Invalidation.Reason, refusedToday);
+                queued.Invalidation.PathsForLog, queued.Invalidation.Reason, refusedToday);
         }
 
         return false;
@@ -452,7 +452,7 @@ internal sealed class CloudFrontEdgeInvalidator : BackgroundService, IEdgeInvali
         {
             logger.LogWarning(failure,
                 "Invalidating {Paths} ({Reason}) failed on attempt 1; retrying in {RetryIn}, {Waiting} more waiting ({CallerReference}).",
-                queued.Invalidation.Paths, queued.Invalidation.Reason, retryIn, behind, queued.CallerReference);
+                queued.Invalidation.PathsForLog, queued.Invalidation.Reason, retryIn, behind, queued.CallerReference);
             return;
         }
 
@@ -465,7 +465,7 @@ internal sealed class CloudFrontEdgeInvalidator : BackgroundService, IEdgeInvali
         logger.Log(level,
             "Invalidating {Paths} ({Reason}) failed on attempt {Attempt} with {Failure}; retrying in {RetryIn}, "
             + "{Waiting} more waiting. It stops mattering at {GiveUpAt} ({CallerReference}).",
-            queued.Invalidation.Paths, queued.Invalidation.Reason, attempt, Gist(failure), retryIn, behind,
+            queued.Invalidation.PathsForLog, queued.Invalidation.Reason, attempt, Gist(failure), retryIn, behind,
             giveUpAt, queued.CallerReference);
     }
 
@@ -479,11 +479,11 @@ internal sealed class CloudFrontEdgeInvalidator : BackgroundService, IEdgeInvali
             "Gave up invalidating {Paths} ({Reason}) after {Attempts} attempt(s): by now every copy the "
             + "edge held before the write has expired by itself, so the withdrawal took as long to "
             + "reach the edge as it would have with no invalidation at all ({CallerReference}).",
-            queued.Invalidation.Paths, queued.Invalidation.Reason, attempts, queued.CallerReference);
+            queued.Invalidation.PathsForLog, queued.Invalidation.Reason, attempts, queued.CallerReference);
 
     private void LogUnsent(Queued queued) =>
         logger.LogError(
             "Stopping with {Paths} ({Reason}) not invalidated; they stay at the edge until their TTL runs out "
             + "({CallerReference}).",
-            queued.Invalidation.Paths, queued.Invalidation.Reason, queued.CallerReference);
+            queued.Invalidation.PathsForLog, queued.Invalidation.Reason, queued.CallerReference);
 }

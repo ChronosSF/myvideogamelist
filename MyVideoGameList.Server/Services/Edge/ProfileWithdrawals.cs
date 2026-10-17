@@ -170,9 +170,10 @@ public sealed class ProfileWithdrawals(
 
     private void Send(string reason, params string[] paths)
     {
+        var invalidation = new EdgeInvalidation(reason, paths);
         try
         {
-            edge.Invalidate(new EdgeInvalidation(reason, paths));
+            edge.Invalidate(invalidation);
         }
         catch (Exception e)
         {
@@ -180,7 +181,7 @@ public sealed class ProfileWithdrawals(
             // here would report a consent change that did take effect as one that failed.
             logger.LogError(e,
                 "Could not hand {Paths} to the edge invalidator ({Reason}); they stay at the edge until their TTL runs out.",
-                paths, reason);
+                invalidation.PathsForLog, reason);
         }
     }
 }

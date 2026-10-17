@@ -1,3 +1,5 @@
+using MyVideoGameList.Server.Errors;
+
 namespace MyVideoGameList.Server.Services.Edge;
 
 /// <summary>
@@ -11,7 +13,19 @@ namespace MyVideoGameList.Server.Services.Edge;
 /// As CloudFront takes them: from the site's root, with a <c>*</c> only as the last character,
 /// because anywhere else CloudFront matches it as a literal asterisk and invalidates nothing.
 /// </param>
-public sealed record EdgeInvalidation(string Reason, IReadOnlyList<string> Paths);
+public sealed record EdgeInvalidation(string Reason, IReadOnlyList<string> Paths)
+{
+    /// <summary>
+    /// The paths as one line of a log, which is the only form any log line here gives them.
+    /// </summary>
+    /// <remarks>
+    /// A path carries a username, which arrived in a request. The name's alphabet has no line
+    /// break in it and <see cref="Uri.EscapeDataString"/> would encode one, but neither is a reason
+    /// for the log to trust it: <see cref="LogText"/> is what keeps a value from writing a line of
+    /// its own, here as in the error handlers (CodeQL's log-forging rule caught the first draft).
+    /// </remarks>
+    internal string PathsForLog => LogText.OneLine(string.Join(", ", Paths));
+}
 
 /// <summary>
 /// Asks the CDN in front of the site to drop what it has cached under some paths.

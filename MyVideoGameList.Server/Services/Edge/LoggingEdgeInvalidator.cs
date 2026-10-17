@@ -19,5 +19,5 @@ internal sealed class LoggingEdgeInvalidator(
         logger.Log(
             environment.IsDevelopment() ? LogLevel.Debug : LogLevel.Warning,
             "No CloudFront distribution is configured; would have invalidated {Paths} ({Reason}).",
-            invalidation.Paths, invalidation.Reason);
+            invalidation.PathsForLog, invalidation.Reason);
 }
