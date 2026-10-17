@@ -1,7 +1,8 @@
-import { useId, useState } from 'react';
+import { useId } from 'react';
 import type { PlatformDto } from '@/types/game';
-import type { ViewMode } from '@/types/list';
+import { type OwnershipChoice, type ViewMode, OWNERSHIP_CHOICE_NAMES } from '@/types/list';
 import { type SortState, MANUAL_OPTION, SORT_OPTIONS, sortOption } from '@/lib/listSort';
+import { ListFilterMenu } from '@/components/ListFilterMenu';
 import './ListToolbar.css';
 
 interface ListToolbarProps {
@@ -15,13 +16,20 @@ interface ListToolbarProps {
     platforms: PlatformDto[];
     selectedPlatformIds: number[];
     onPlatformsChange: (ids: number[]) => void;
+    /**
+     * Every ownership choice present in the user's lists, "not recorded" included, in the order
+     * `OWNERSHIP_CHOICES` gives them. Offered once there are two to choose between.
+     */
+    ownerships?: OwnershipChoice[];
+    selectedOwnerships?: OwnershipChoice[];
+    onOwnershipsChange?: (choices: OwnershipChoice[]) => void;
 }
 
 /**
- * The controls above a list: layout, sort order, and a platform filter.
+ * The controls above a list: layout, sort order, and filters by platform and by ownership.
  *
- * The platform filter here is **transient and local to this view**, and says so in words: a filter
- * silently still applied on the next visit is how people conclude their games have vanished.
+ * The filters here are **transient and local to this view**, and say so in words: a filter silently
+ * still applied on the next visit is how people conclude their games have vanished.
  */
 export function ListToolbar({
     view,
@@ -32,24 +40,13 @@ export function ListToolbar({
     platforms,
     selectedPlatformIds,
     onPlatformsChange,
+    ownerships = [],
+    selectedOwnerships = [],
+    onOwnershipsChange = () => {},
 }: ListToolbarProps) {
-    const [filterOpen, setFilterOpen] = useState(false);
     const sortId = useId();
-    const filterId = useId();
 
-    const allSelected = selectedPlatformIds.length === 0;
     const sorts = offerManual ? [...SORT_OPTIONS, MANUAL_OPTION] : SORT_OPTIONS;
-
-    const toggle = (id: number) => {
-        // An empty selection means "everything", so the first click has to seed the set with all
-        // platforms minus the one being unchecked.
-        const current = allSelected ? platforms.map(p => p.id) : selectedPlatformIds;
-        const next = current.includes(id)
-            ? current.filter(existing => existing !== id)
-            : [...current, id];
-
-        onPlatformsChange(next.length === platforms.length ? [] : next);
-    };
 
     return (
         <div className="list-toolbar">
@@ -91,52 +88,27 @@ export function ListToolbar({
             </div>
 
             {platforms.length > 1 && (
-                <div className="list-toolbar-group list-toolbar-filter">
-                    <button
-                        type="button"
-                        className={`list-toolbar-button${allSelected ? '' : ' active'}`}
-                        onClick={() => setFilterOpen(open => !open)}
-                        aria-expanded={filterOpen}
-                        aria-controls={filterId}
-                    >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
-                        </svg>
-                        {allSelected ? 'All platforms' : `${selectedPlatformIds.length} platform${selectedPlatformIds.length === 1 ? '' : 's'}`}
-                    </button>
+                <ListFilterMenu
+                    allLabel="All platforms"
+                    someLabel={count => `${count} platform${count === 1 ? '' : 's'}`}
+                    heading="Filter by platform"
+                    options={platforms.map(platform => ({ id: platform.id, name: platform.name }))}
+                    selected={selectedPlatformIds}
+                    onChange={onPlatformsChange}
+                />
+            )}
 
-                    {filterOpen && (
-                        <>
-                            {/* Click-away, kept as a sibling so it cannot swallow the panel's own clicks. */}
-                            <div className="list-toolbar-backdrop" onClick={() => setFilterOpen(false)} role="presentation" />
-                            <div className="list-toolbar-panel" id={filterId}>
-                                <div className="list-toolbar-panel-head">
-                                    <span>Filter by platform</span>
-                                    {!allSelected && (
-                                        <button type="button" onClick={() => onPlatformsChange([])}>Reset</button>
-                                    )}
-                                </div>
-                                <ul>
-                                    {platforms.map(platform => (
-                                        <li key={platform.id}>
-                                            <label>
-                                                <input
-                                                    type="checkbox"
-                                                    checked={allSelected || selectedPlatformIds.includes(platform.id)}
-                                                    onChange={() => toggle(platform.id)}
-                                                />
-                                                <span>{platform.name}</span>
-                                            </label>
-                                        </li>
-                                    ))}
-                                </ul>
-                                <p className="list-toolbar-panel-note">
-                                    Applies to this view only, and is not saved.
-                                </p>
-                            </div>
-                        </>
-                    )}
-                </div>
+            {ownerships.length > 1 && (
+                <ListFilterMenu
+                    allLabel="Any ownership"
+                    someLabel={count => (count === 1
+                        ? OWNERSHIP_CHOICE_NAMES[selectedOwnerships[0]]
+                        : `${count} kinds of ownership`)}
+                    heading="Filter by ownership"
+                    options={ownerships.map(choice => ({ id: choice, name: OWNERSHIP_CHOICE_NAMES[choice] }))}
+                    selected={selectedOwnerships}
+                    onChange={onOwnershipsChange}
+                />
             )}
 
             <div className="list-toolbar-group list-toolbar-views" role="group" aria-label="List layout">

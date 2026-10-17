@@ -1,6 +1,7 @@
 import { createContext } from 'react';
 import type { ListId, ListEntryDto, ListNames, Ownership, ViewMode } from '@/types/list';
 import type { SortState } from '@/lib/listSort';
+import type { BulkResult } from '@/lib/listBulk';
 import type { GameDto } from '@/types/game';
 
 /**
@@ -28,6 +29,14 @@ export interface ListsContextValue {
     addToList: (listId: ListId, game: GameDto) => Promise<void>;
     /** Takes the game out of every list. The score and everything else on the entry survive. */
     removeFromList: (listId: ListId, gameId: number) => Promise<void>;
+    /**
+     * Moves several games to one list in one request — optimistically, under every game's lock, and
+     * undone game by game for whatever did not save. Games already in that list, or in none, are left
+     * out. Refused, changing nothing, while any of them has a write out. See `docs/decisions/0055-*`.
+     */
+    moveGames: (gameIds: readonly number[], listId: ListId) => Promise<BulkResult>;
+    /** Takes several games out of every list in one request, as `moveGames` moves them. */
+    removeGames: (gameIds: readonly number[]) => Promise<BulkResult>;
     isInList: (listId: ListId, gameId: number) => boolean;
     getListFor: (gameId: number) => ListId | null;
 
@@ -44,8 +53,9 @@ export interface ListsContextValue {
     moveInOrder: (listId: ListId, gameId: number, afterGameId: number | null) => Promise<boolean>;
     /**
      * Says how the user has the game, or clears it with null. Takes the per-game lock, because it
-     * writes the same entry row as a score or a move; nothing in the lists shows it, so the caller
-     * holds the value and reverts on false.
+     * writes the same entry row as a score or a move. Shown in the game's list row at once and put
+     * back if the save fails; the caller holds its own copy too, for a game in no list, and reverts it
+     * on false.
      */
     setOwnership: (gameId: number, ownership: Ownership | null) => Promise<boolean>;
     /** Replaces the user's private notes on the game. The same lock and the same contract. */

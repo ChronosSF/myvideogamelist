@@ -41,6 +41,8 @@ const lists: ListsContextValue = {
     isPending: () => false,
     addToList: vi.fn(async () => {}),
     removeFromList: vi.fn(async () => {}),
+    moveGames: vi.fn(async () => ({ outcome: 'saved' as const, gameIds: [], moved: [], missing: [] })),
+    removeGames: vi.fn(async () => ({ outcome: 'saved' as const, gameIds: [], moved: [], missing: [] })),
     isInList: () => false,
     getListFor: () => null,
     scoreFor: () => null,
@@ -337,7 +339,7 @@ describe('ListsPage and the hand order', () => {
         await userEvent.click(screen.getByRole('checkbox', { name: 'Switch' }));
 
         expect(screen.queryByRole('button', { name: /^Move / })).not.toBeInTheDocument();
-        expect(screen.getByText(/clear the platform filter to rearrange your order/i)).toBeInTheDocument();
+        expect(screen.getByText(/clear the filters to rearrange your order/i)).toBeInTheDocument();
     });
 
     it('puts the handles in a column of their own in the table', async () => {

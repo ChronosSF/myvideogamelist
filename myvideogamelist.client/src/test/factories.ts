@@ -80,6 +80,7 @@ export function entry(
     return {
         game: game(gameOverrides),
         score: null,
+        ownership: null,
         addedAt: '2026-01-01T00:00:00+00:00',
         statusChangedAt: null,
         position: null,
@@ -104,7 +105,7 @@ export function playthrough(overrides: Partial<PlaythroughDto> = {}): Playthroug
 }
 
 /**
- * What `GET /api/entries/{gameId}` returns: the entry, how the user has it, their notes, its
+ * What `GET /api/entries/{gameId}` returns: the entry with how the user has it, their notes, its
  * playthroughs and their review — everything but the entry blank unless a test says otherwise.
  */
 export function entryDetail(
@@ -113,7 +114,6 @@ export function entryDetail(
     const { entry: entryOverrides, ...rest } = overrides;
     return {
         entry: entry(entryOverrides),
-        ownership: null,
         notes: null,
         playthroughs: [],
         review: null,

@@ -79,8 +79,8 @@ describe('ListTable contents', () => {
     it('leaves an em dash where a game has no data', () => {
         renderTable({ entries: [entry({ game: { title: 'Mystery' } })] });
 
-        // Release year, rating, critic score and platforms are all absent on this fixture.
-        expect(within(row('Mystery')).getAllByText('—')).toHaveLength(4);
+        // Release year, rating, critic score, ownership and platforms are all absent on this fixture.
+        expect(within(row('Mystery')).getAllByText('—')).toHaveLength(5);
     });
 
     it('renders one row per entry', () => {

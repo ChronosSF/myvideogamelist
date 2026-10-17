@@ -120,7 +120,7 @@ export function GameUserPanel({ game, profileVisibility, onCommunityChange }: Ga
             .then(detail => {
                 if (controller.signal.aborted) return;
                 setLocalScore(detail?.entry.score ?? null);
-                setLocalOwnership(detail?.ownership ?? null);
+                setLocalOwnership(detail?.entry.ownership ?? null);
                 setLocalNotes(detail?.notes ?? null);
                 setPlaythroughs(detail?.playthroughs ?? []);
                 setReview(detail?.review ?? null);

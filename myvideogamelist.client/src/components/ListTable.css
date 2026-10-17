@@ -13,7 +13,7 @@
 
 .list-table {
     width: 100%;
-    min-width: 48rem;
+    min-width: 54rem;
     border-collapse: collapse;
     font-size: 0.85rem;
 }
@@ -89,6 +89,21 @@
     opacity: 0.55;
 }
 
+/* A row picked for a bulk action (ADR 0055). Tinted rather than outlined, so a run of them reads as
+   one block; the hand order's lifted row below is stronger and wins. */
+.list-table tbody tr.selected > td {
+    background: color-mix(in srgb, var(--color-primary-500) 9%, transparent);
+}
+
+/* A row or a control in one scrolled into view by the keyboard — Tab, or a held game's step, which
+   scrolls its row — has to clear the sticky navbar and, below it, the sticky bar of bulk actions,
+   rather than stop beneath them. Outranks the hand order's own margin, which clears the navbar alone. */
+.list-table tbody tr,
+.list-table tbody :is(a, button, input) {
+    scroll-margin-top: 8rem;
+    scroll-margin-bottom: 1rem;
+}
+
 /* The row being moved by hand (ADR 0054). It is the row under the pointer for the whole of a drag,
    so this has to outrank the hover rule above rather than lose to it. */
 .list-table tbody tr[data-reorder-state='lifted'] > td,
@@ -102,6 +117,33 @@
 }
 
 /* ---- columns ---- */
+
+/* The checkbox a row is picked by for a bulk action (ADR 0055). */
+.col-select {
+    width: 2.5rem;
+    padding-right: 0 !important;
+}
+
+.col-select input {
+    display: block;
+    width: 1rem;
+    height: 1rem;
+    margin: 0;
+    accent-color: var(--color-primary-500);
+    cursor: pointer;
+}
+
+.col-select input:focus-visible {
+    outline: 2px solid var(--color-focus);
+    outline-offset: 2px;
+}
+
+.col-ownership {
+    width: 7rem;
+    font-size: 0.78rem;
+    color: var(--color-fg-muted);
+    white-space: nowrap;
+}
 
 /* The handle a row is moved by, only while the list is in its hand order (ADR 0054). */
 .col-order {
