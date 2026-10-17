@@ -1,5 +1,6 @@
 import { defineConfig, devices } from '@playwright/test';
-import { API, IGDB, IGDB_CLIENT, PORTS, SITE, SSR } from './stand-ins';
+import { serversUnderTest } from './servers';
+import { PORTS, SITE } from './stand-ins';
 
 /**
  * The browser smoke test (#105, ADR 0060): sign up, add a game to a list, reload, and it is still
@@ -16,15 +17,6 @@ import { API, IGDB, IGDB_CLIENT, PORTS, SITE, SSR } from './stand-ins';
  */
 const DATABASE = process.env.E2E_CONNECTION_STRING
     ?? 'Host=localhost;Port=5432;Database=mvgl_e2e;Username=mvgl;Password=localdev';
-
-/**
- * What Development would log at Information and a failed run's log is better without: every SQL
- * statement, and each IGDB call five times over. Arguments rather than environment variables, because a
- * name with dots in it does not survive the shell the API is started through on Linux.
- */
-const QUIETER = ['Microsoft.EntityFrameworkCore.Database.Command', 'System.Net.Http.HttpClient', 'Polly']
-    .map(category => `--Logging:LogLevel:${category}=Warning`)
-    .join(' ');
 
 export default defineConfig({
     testDir: '.',
@@ -49,51 +41,5 @@ export default defineConfig({
         screenshot: 'only-on-failure',
     },
     projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
-    webServer: [
-        {
-            name: 'API',
-            // In CI the job has built the API in the step before. Anywhere else this builds it first, so
-            // a run never tests an API older than its sources.
-            command: `dotnet run --no-launch-profile${process.env.CI ? ' --no-build' : ''} -- ${QUIETER}`,
-            cwd: '../../MyVideoGameList.Server',
-            // Liveness, which asks nothing of IGDB. It answers once the migrations have run.
-            url: `${API}/healthz`,
-            // A build, when the API's sources have changed since the last one, and the migrations.
-            timeout: 180_000,
-            reuseExistingServer: false,
-            stdout: 'pipe',
-            env: {
-                // Development, unlike anything deployed (ADR 0044), for the one thing it does that a
-                // deployment's migration task does instead: the API migrates its own database as it
-                // starts. ADR 0060 says what else Development changes, and why it is still this.
-                ASPNETCORE_ENVIRONMENT: 'Development',
-                ASPNETCORE_URLS: API,
-                ConnectionStrings__DefaultConnection: DATABASE,
-                // The stand-in, and credentials only it accepts. Development loads a developer's user
-                // secrets, IGDB's real credentials among them, and these take precedence over them, so
-                // those are never used and never sent anywhere.
-                Igdb__BaseUrl: `${IGDB}/v4`,
-                Igdb__TokenUrl: `${IGDB}/oauth2/token`,
-                Igdb__ClientId: IGDB_CLIENT.id,
-                Igdb__ClientSecret: IGDB_CLIENT.secret,
-            },
-        },
-        {
-            name: 'SSR',
-            command: 'npx react-router-serve ./build/server/index.js',
-            cwd: '..',
-            // A static file, so that being ready asks nothing of the API.
-            url: `${SSR}/favicon.svg`,
-            reuseExistingServer: false,
-            stdout: 'pipe',
-            env: {
-                NODE_ENV: 'production',
-                HOST: '127.0.0.1',
-                PORT: String(PORTS.ssr),
-                // Where the loaders reach the API: directly, as they do deployed, not through the
-                // stand-in in front.
-                API_BASE_URL: API,
-            },
-        },
-    ],
+    webServer: serversUnderTest(PORTS, { database: DATABASE }),
 });

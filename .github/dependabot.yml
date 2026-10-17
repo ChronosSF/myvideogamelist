@@ -40,6 +40,12 @@ updates:
         patterns:
           - "react-router"
           - "@react-router/*"
+  # Lighthouse CI, which keeps a lockfile of its own so that its dependencies stay out of the
+  # client's (ADR 0068).
+  - package-ecosystem: npm
+    directory: /myvideogamelist.client/lighthouse
+    schedule:
+      interval: weekly
   - package-ecosystem: github-actions
     directory: /
     schedule:
