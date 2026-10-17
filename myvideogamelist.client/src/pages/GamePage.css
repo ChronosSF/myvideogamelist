@@ -97,3 +97,12 @@
     height: 100%;
     border: none;
 }
+
+/* The play button fills the frame and its poster covers it, while the frame clips whatever crosses
+   its edge, so neither a ring inside the button nor an outline around it would show. The frame draws
+   the button's focus instead, just outside its own edge, and in forced colours the system draws it in
+   its own colour. */
+.game-page-trailer-embed:has(> button:focus-visible) {
+    outline: 2px solid var(--color-focus);
+    outline-offset: 2px;
+}

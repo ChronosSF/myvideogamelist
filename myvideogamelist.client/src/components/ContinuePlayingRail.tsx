@@ -70,7 +70,7 @@ export function ContinuePlayingRail() {
                     <li key={game.id} className="shrink-0 snap-start w-32 sm:w-36">
                         <Link
                             to={`/games/${game.id}`}
-                            className="group block focus:outline-none focus-visible:ring-2 focus-visible:ring-focus rounded-xl"
+                            className="group block focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus rounded-xl"
                         >
                             <div className="relative aspect-[3/4] rounded-xl overflow-hidden bg-surface border border-line group-hover:border-primary-500/60 transition-all duration-300 shadow-lg">
                                 {game.coverImageUrl && (

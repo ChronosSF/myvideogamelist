@@ -321,7 +321,7 @@ export function GamesPage({ loaderData }: Route.ComponentProps) {
                         placeholder="Search games…"
                         value={search}
                         onChange={e => setSearch(e.target.value)}
-                        className="w-full pl-9 pr-4 py-2 bg-surface border border-line-strong rounded-lg text-fg-strong placeholder-fg-faint text-sm focus:outline-none focus:ring-2 focus:ring-focus focus:border-transparent"
+                        className="w-full pl-9 pr-4 py-2 bg-surface border border-line-strong rounded-lg text-fg-strong placeholder-fg-faint text-sm focus:outline-hidden focus:ring-2 focus:ring-focus focus:border-transparent"
                         aria-label="Search games"
                     />
                 </div>
