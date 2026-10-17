@@ -4,9 +4,10 @@ import { PORTS, SITE } from './harness';
 
 /**
  * The Lighthouse audit (ADR 0068): the production build and the API, run as they are deployed behind a
- * stand-in for the distribution (ADR 0060), audited by Lighthouse CI page by page on a phone and on a
- * desktop. Playwright runs it because Playwright already runs this harness: it starts both servers, the
- * global setup starts the stand-ins, and the one test seeds an account and drives `lhci`.
+ * stand-in for the edge (ADR 0060), audited by Lighthouse CI page by page on a phone and on a desktop, and
+ * then by axe-core. Playwright runs it because Playwright already runs this harness: it starts both
+ * servers, the global setup starts the stand-ins and seeds an account, and two tests audit it, one
+ * driving `lhci` and one running axe.
  *
  * `npm run lighthouse` builds the front end and runs this. PostgreSQL has to be up already, as for the
  * smoke test. The API migrates `mvgl_lighthouse`, creating it on the first run; set
@@ -27,7 +28,12 @@ export default defineConfig({
     retries: 0,
     workers: 1,
     reporter: process.env.CI ? [['list'], ['github']] : 'list',
-    use: { baseURL: SITE },
+    // The audit is slow by nature; a warning saying so on every run would teach nobody anything, and
+    // warnings are how performance speaks here.
+    reportSlowTests: null,
+    // The axe test's browser: Chromium itself, the build Lighthouse runs in, rather than the headless
+    // shell Playwright uses otherwise, which the job does not install.
+    use: { baseURL: SITE, channel: 'chromium' },
     // The front end is told the browser's origin is the public one, as production is, so that it does
     // not say noindex on every page and a canonical URL names the page it is on (ADR 0036).
     webServer: serversUnderTest(PORTS, { database: DATABASE, site: SITE }),

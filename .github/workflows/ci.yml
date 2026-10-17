@@ -104,8 +104,8 @@ jobs:
     timeout-minutes: 15
     services:
       # compose.yaml's image and credentials, so the test's default connection string is the same here
-      # as on a developer's machine; the image is in PostgresServer.cs and the Lighthouse job too, so
-      # change the four together. The database exists from the start, and the API only migrates it. Checked over TCP,
+      # as on a developer's machine; the image is in PostgresServer.cs and the Lighthouse job too,
+      # so change the four together. The database exists from the start, and the API only migrates it. Checked over TCP,
       # because the image's first-run setup answers on its socket before the real server listens; and
       # pulled before any step runs, so a Docker Hub login would need `credentials:` here.
       postgres:
@@ -164,21 +164,25 @@ jobs:
           if-no-files-found: ignore
 
   # Lighthouse on the same production shape, page by page, on a phone and on a desktop: three runs
-  # each, judged on the median. Accessibility, best practices, SEO and layout shift fail the job when
-  # they drop below the baseline; performance warns, and fails only under a floor, because a lab score
-  # on a shared runner moves with the runner. The IGDB stand-in answers with real games, so the covers
-  # come from IGDB's image host, the one site the job reaches outside itself. Then axe-core in full on
-  # the same pages, which fails on any rule a page did not already break. The reports are an artifact
-  # and the scores a table in the job summary; nothing goes to public storage. Deploy dev waits on this
-  # as on every job. See ADR 0068.
+  # each, judged on the median. What moves only when a page does fails the job when it moves:
+  # accessibility, best practices, SEO and the console's errors against the baseline, layout shift and
+  # the weight of script and of everything against a limit. Performance warns, and fails only under a
+  # floor, because a lab score on a shared runner moves with the runner. Then axe-core in full on the
+  # same pages, which fails on a rule or a contrast pair a page did not already break. The IGDB
+  # stand-in answers with real games, so the covers come from IGDB's image host, the one site the
+  # audit's browser reaches outside the runner; an outage there fails the job, so re-run it once the
+  # host is back. The reports are an artifact and the figures a table in the job summary; nothing goes
+  # to LHCI's public storage. Deploy dev waits on this as on every job. See ADR 0068.
   lighthouse:
     name: Lighthouse
-    runs-on: ubuntu-latest
+    # Pinned, unlike the other jobs: the baseline was measured on this image, and a new one brings new
+    # fonts and libraries under the browser. Moving it is a pull request that re-takes the baseline.
+    runs-on: ubuntu-24.04
     # A hang ends here rather than at a far longer default. Thirty audits take most of a run.
     timeout-minutes: 30
     services:
       # As the smoke test's, with a database of the audit's own name, and checked over TCP for the same
-      # reason.
+      # reason. The image is in three other places, so change the four together.
       postgres:
         image: postgres:18-alpine
         env:
@@ -216,7 +220,8 @@ jobs:
       - run: npm ci --prefix lighthouse
 
       # Chromium itself rather than the headless shell the smoke test uses: Lighthouse audits in the
-      # browser's own headless mode. Pinned with Playwright, so a score moves only when it is bumped.
+      # browser's own headless mode, and the axe test asks for it by channel. Pinned with Playwright, so a
+      # score moves only when Playwright is bumped.
       - name: Install the browser
         run: npx playwright install --with-deps --no-shell chromium
 
@@ -240,6 +245,20 @@ jobs:
           path: myvideogamelist.client/lighthouse/reports/
           retention-days: 14
           if-no-files-found: ignore
+
+      # Every run of a failed audit, which never reached the reports when Lighthouse CI stopped early: some
+      # forty megabytes, so only then. The browser's profiles stay behind.
+      - name: Upload every run
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: lighthouse-runs-${{ github.run_attempt }}
+          path: |
+            myvideogamelist.client/lighthouse/.lighthouseci/
+            !myvideogamelist.client/lighthouse/.lighthouseci/chrome-profile-*/
+          retention-days: 14
+          if-no-files-found: ignore
+          include-hidden-files: true
 
   # #106's format check, audits and secret scanning: jobs of their own. Its PR replaces this line.
 

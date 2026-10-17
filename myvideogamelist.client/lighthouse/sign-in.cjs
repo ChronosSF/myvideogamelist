@@ -33,6 +33,8 @@ module.exports = async function signIn(browser, { url }) {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'X-MVGL-Request': '1' },
                 body: JSON.stringify(credentials),
+                // A sign-in that hangs fails here, rather than as a job out of time.
+                signal: AbortSignal.timeout(30_000),
             });
             return response.status;
         }, { email: process.env.LIGHTHOUSE_EMAIL, password: process.env.LIGHTHOUSE_PASSWORD });

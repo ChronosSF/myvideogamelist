@@ -13,9 +13,10 @@ import { deleteAccount, seedAccount, shareAccount } from './seed';
  */
 
 /**
- * Beside the smoke test's 5180–5183, so that the two can run at once, and chosen as it chose those: clear
- * of `dotnet run`, `npm run dev` and a worktree's preview, and below the range Windows reserves for
- * Hyper-V (`e2e/stand-ins.ts`).
+ * Beside the smoke test's 5180–5183, and chosen as it chose those: clear of `dotnet run`, `npm run dev`
+ * and a worktree's preview, and below the range Windows reserves for Hyper-V (`e2e/stand-ins.ts`). The
+ * two still run one after the other, since each builds the front end into the same `build/` folder that
+ * the other's server is serving.
  */
 export const PORTS = { api: 5190, igdb: 5191, ssr: 5192, distribution: 5193 } as const satisfies HarnessPorts;
 
@@ -24,6 +25,9 @@ export const SITE = `http://localhost:${PORTS.distribution}`;
 
 /** Where a run leaves its reports and its summary, emptied as it starts. CI uploads it as an artifact. */
 export const REPORTS = fileURLToPath(new URL('./reports/', import.meta.url));
+
+/** Where the browser Lighthouse CI launches keeps its profile, one per form factor, emptied as a run starts. */
+export const CHROME_PROFILE = fileURLToPath(new URL('./.lighthouseci/chrome-profile-', import.meta.url));
 
 interface IgdbRow {
     id: number;
@@ -100,6 +104,9 @@ const answer: IgdbAnswer = (endpoint, query) => {
 export default async function setUp(): Promise<() => Promise<void>> {
     // Retried, because Windows refuses to delete a folder for a moment while something reads it.
     rmSync(REPORTS, { recursive: true, force: true, maxRetries: 5 });
+    for (const formFactor of ['mobile', 'desktop']) {
+        rmSync(`${CHROME_PROFILE}${formFactor}`, { recursive: true, force: true, maxRetries: 5 });
+    }
     const stop = await startStandIns(PORTS, answer);
     try {
         const account = await seedAccount(SITE);
@@ -107,6 +114,10 @@ export default async function setUp(): Promise<() => Promise<void>> {
         return async () => {
             try {
                 await deleteAccount(SITE, account);
+            } catch (error) {
+                // Not a failure of the audit, which is over by now. Left behind, the account is on the
+                // next run's game page as a second member; in CI the database goes with the runner.
+                console.warn(`The run's account was not deleted: ${error instanceof Error ? error.message : error}`);
             } finally {
                 await stop();
             }
