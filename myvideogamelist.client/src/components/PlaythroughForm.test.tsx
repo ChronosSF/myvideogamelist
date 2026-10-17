@@ -1,14 +1,15 @@
 import { describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 import { PlaythroughForm } from '@/components/PlaythroughForm';
 import type { PlaythroughDto } from '@/types/playthrough';
+import { quickActor } from '@/test/actor';
 import { platform, playthrough } from '@/test/factories';
 
 /**
  * The form on its own: what each field becomes in the request. The panel's suite logs, edits and
  * deletes runs through it; this is about the conversions between the boxes a person fills in and
- * the shape the API takes, where a blank must be a null and never a zero (ADR 0021, ADR 0025).
+ * the shape the API takes, where a blank must be a null and never a zero: the API takes a run's
+ * minutes from one up (ADR 0025 §5).
  */
 
 const PLATFORMS = [platform(6, 'PC (Microsoft Windows)'), platform(48, 'PlayStation 4')];
@@ -29,14 +30,11 @@ function renderForm(state: { pending?: boolean; error?: string | null } = {}) {
     };
 }
 
-/** Skips user-event's pause between keystrokes, which costs a timer per character. */
-const setupActor = () => userEvent.setup({ delay: null });
-
 const field = (label: string) => screen.getByLabelText(label);
 
 describe('PlaythroughForm', () => {
     it('sends every field the API takes, the time as one number of minutes and the notes trimmed', async () => {
-        const actor = setupActor();
+        const actor = quickActor();
         const { onSubmit } = renderForm();
 
         await actor.selectOptions(field('Platform'), 'PlayStation 4');
@@ -58,21 +56,30 @@ describe('PlaythroughForm', () => {
         });
     });
 
-    it('sends no time at all, rather than zero minutes, when neither box says how long', async () => {
+    it('sends no time at all, rather than zero minutes, when both boxes say nought', async () => {
         // The API's range starts at one minute: a zero is a valid-looking value it refuses.
-        const actor = setupActor();
+        const actor = quickActor();
         const { onSubmit } = renderForm();
 
         await actor.type(field('Hours'), '0');
         await actor.type(field('Minutes'), '0');
+        await actor.click(screen.getByRole('button', { name: 'Log playthrough' }));
+
+        expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ minutesPlayed: null }));
+    });
+
+    it('sends notes of nothing but spaces as no notes', async () => {
+        const actor = quickActor();
+        const { onSubmit } = renderForm();
+
         await actor.type(field('Notes'), '   ');
         await actor.click(screen.getByRole('button', { name: 'Log playthrough' }));
 
-        expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ minutesPlayed: null, notes: null }));
+        expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ notes: null }));
     });
 
     it('counts hours alone, and minutes alone', async () => {
-        const actor = setupActor();
+        const actor = quickActor();
         const { onSubmit } = renderForm();
 
         await actor.type(field('Hours'), '3');
@@ -110,7 +117,7 @@ describe('PlaythroughForm', () => {
     it('leaves blank what the run being edited never had, and sends it back as nothing', async () => {
         // A run still in progress has no type, no time and no finish. Shown as "0", a blank would be
         // saved back as a value nobody gave it.
-        const actor = setupActor();
+        const actor = quickActor();
         const { onSubmit, edit } = renderForm();
 
         edit(playthrough({ id: 5, type: null, platformId: null, minutesPlayed: null, startedOn: '2026-03-01' }));
@@ -144,7 +151,7 @@ describe('PlaythroughForm', () => {
     });
 
     it('offers to back out of an edit, and only of an edit', async () => {
-        const actor = setupActor();
+        const actor = quickActor();
         const { onCancelEdit, edit } = renderForm();
         expect(screen.queryByRole('button', { name: 'Cancel' })).not.toBeInTheDocument();
 
@@ -154,7 +161,7 @@ describe('PlaythroughForm', () => {
         expect(onCancelEdit).toHaveBeenCalledTimes(1);
     });
 
-    it('holds every field while it saves, and says beside itself what the API refused', () => {
+    it('holds every field while it saves, and shows next to them what the API refused', () => {
         renderForm({ pending: true, error: 'The finish date cannot be before the start date.' });
 
         for (const label of ['Platform', 'How you played it', 'Hours', 'Minutes', 'Started', 'Finished', 'Notes']) {

@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 import { ReviewForm } from '@/components/ReviewForm';
 import type { ReviewDto } from '@/types/playthrough';
+import { quickActor } from '@/test/actor';
 import { playthrough, review } from '@/test/factories';
 
 /**
@@ -33,14 +33,11 @@ function renderForm(written: ReviewDto | null = null, state: { pending?: boolean
     };
 }
 
-/** Skips user-event's pause between keystrokes, which costs a timer per character. */
-const setupActor = () => userEvent.setup({ delay: null });
-
 const field = (label: string | RegExp) => screen.getByLabelText(label);
 
 describe('ReviewForm', () => {
     it('sends the review trimmed, with its spoiler flag and who can see it', async () => {
-        const actor = setupActor();
+        const actor = quickActor();
         const { onSave } = renderForm();
 
         await actor.type(field('What you thought'), '  Superb, start to finish.  ');
@@ -57,7 +54,7 @@ describe('ReviewForm', () => {
     });
 
     it('names the playthrough it is about by its id, and the game in general as none', async () => {
-        const actor = setupActor();
+        const actor = quickActor();
         const { onSave } = renderForm();
 
         await actor.type(field('What you thought'), 'The completionist run was the one.');
@@ -79,11 +76,16 @@ describe('ReviewForm', () => {
         expect(screen.getByRole('button', { name: 'Update review' })).toBeInTheDocument();
     });
 
-    it('reads a visibility it does not know as private, the safer of the two', () => {
-        // The column could carry a third value one day; it must not read as published.
-        renderForm(review({ visibility: 'friends' as ReviewDto['visibility'] }));
+    it('reads a visibility it does not know as private, the safer of the two, and saves it so', async () => {
+        // The column could carry a third value one day; it must not read as published. Asked of what
+        // is sent, because a select whose value matches no option shows its first one anyway.
+        const actor = quickActor();
+        const { onSave } = renderForm(review({ visibility: 'friends' as ReviewDto['visibility'] }));
 
         expect(field('Who can see it')).toHaveValue('private');
+        await actor.click(screen.getByRole('button', { name: 'Update review' }));
+
+        expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ visibility: 'private' }));
     });
 
     it('fills in a review that arrives after it, and empties once that review is gone', () => {
@@ -108,7 +110,7 @@ describe('ReviewForm', () => {
         expect(screen.getByRole('button', { name: 'Delete review' })).toBeInTheDocument();
     });
 
-    it('holds every field while it saves, and says beside itself what the API refused', () => {
+    it('holds every field while it saves, and shows next to them what the API refused', () => {
         renderForm(review({ id: 3 }), { pending: true, error: 'That playthrough is not one of yours for this game.' });
 
         for (const label of ['What you thought', 'Who can see it', 'About which playthrough']) {

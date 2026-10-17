@@ -1,44 +1,33 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
-import { RouterContextProvider } from 'react-router';
+import { afterEach, describe, expect, it } from 'vitest';
 import { headers, loader } from '@/pages/GamePage';
 import { CACHE_GAME, CACHE_NOT_FOUND, PRIVATE_NO_STORE } from '@/lib/cache';
 import { game } from '@/test/factories';
-import { empty, json, stubApi, unreachable } from '@/test/api';
+import { loaderArgs, onTheServer, thrownBy } from '@/test/loader';
+import { empty, json, stubApi, tearDownApi, unreachable } from '@/test/api';
 import type { Route } from './+types/GamePage';
 
 /**
- * The game page's loader, as the server runs it for a document request.
- *
- * #274 sends its request through a traced fetch and changes what a failure's body carries, and its
- * own suite covers that much. These hold what survives it: which ids reach the API at all, and how
- * long each answer may be kept — a failure never, a missing game briefly, and the page itself at the
- * edge (ADR 0013).
+ * The game page's loader, as the server runs it for a document request: which ids reach the API at
+ * all, what it asks the API for, and how long each answer may be kept — a failure never, a missing
+ * game briefly, and the page itself at the edge (ADR 0013). What a failure's body says is left out,
+ * because the page promises its status and its caching and not its wording, which #274 changes.
  */
 
-function load(id: string) {
-    // A context, because the server hands every loader one and #274 reads the request's trace from it.
-    const args = { request: new Request(`http://localhost/games/${id}`), params: { id }, context: new RouterContextProvider() };
-    return loader(args as unknown as Route.LoaderArgs);
-}
+/** The loader for `/games/{id}`, run as the server runs it. */
+const load = (id: string) => onTheServer(() => loader(loaderArgs(`/games/${id}`, { id }) as unknown as Route.LoaderArgs));
 
-/** What the loader threw, which has to be a Response for the error boundary to render its status. */
-async function thrownBy(promise: Promise<unknown>): Promise<Response> {
-    const thrown = await promise.then(() => null, (error: unknown) => error);
-    expect(thrown).toBeInstanceOf(Response);
-    return thrown as Response;
-}
-
-afterEach(() => {
-    vi.unstubAllGlobals();
-});
+afterEach(tearDownApi);
 
 describe('GamePage loader', () => {
-    it('hands the page the game the API answered with', async () => {
-        stubApi({ 'GET /api/games/26226': () => json(game({ id: 26226, title: 'Celeste' })) });
+    it('asks the API for the game and nothing else, and hands the page its answer', async () => {
+        // The members' scores and reviews are fetched after hydration, never here: the page is
+        // edge-cached for a day, and a withdrawn review must not outlive its withdrawal there (ADR 0028).
+        const api = stubApi({ 'GET /api/games/26226': () => json(game({ id: 26226, title: 'Celeste' })) });
 
         const result = await load('26226');
 
         expect(result.game).toMatchObject({ id: 26226, title: 'Celeste' });
+        expect(api.calls.map(call => `${call.method} ${call.path}`)).toEqual(['GET /api/games/26226']);
     });
 
     it('answers an address that cannot name a game with a 404, without asking the API', async () => {
@@ -61,13 +50,15 @@ describe('GamePage loader', () => {
 
     it('fails with a 502 nothing may keep when the API fails or cannot be reached', async () => {
         // Cached at the edge, a failure would outlive whatever caused it.
-        for (const answer of [() => empty(500), unreachable]) {
+        const failures: [string, () => Response | Promise<Response>][] = [['refused', () => empty(500)], ['unreachable', unreachable]];
+
+        for (const [failure, answer] of failures) {
             stubApi({ 'GET /api/games/9': answer });
 
             const response = await thrownBy(load('9'));
 
-            expect(response.status).toBe(502);
-            expect(response.headers.get('Cache-Control')).toBe(PRIVATE_NO_STORE);
+            expect(response.status, failure).toBe(502);
+            expect(response.headers.get('Cache-Control'), failure).toBe(PRIVATE_NO_STORE);
         }
     });
 

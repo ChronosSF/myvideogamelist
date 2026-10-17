@@ -5,9 +5,13 @@ import { WishlistProvider } from '@/contexts/WishlistProvider';
 import { FavouritesProvider } from '@/contexts/FavouritesProvider';
 
 /**
- * The providers `root.tsx` puts around every page, in the same order, and nothing mocked: the
- * account comes from `/api/auth/me`, and the lists, the wishlist and the favourites from their own
- * endpoints, all answered by `stubApi`.
+ * The providers `root.tsx` puts around every page, in the same order, and nothing mocked.
+ *
+ * They read the API for themselves, through whatever `stubApi` answers: `/api/auth/me` always, and
+ * once it names an account `/api/lists`, `/api/user/list-preferences`, `/api/wishlist` and
+ * `/api/favourites` as well — `signedInRoutes` in `@/test/api` answers all five. A route left out
+ * is a 404, which a provider takes for a failed load, so it shows up far from its cause: as a
+ * control that never enables.
  *
  * For a test about what a page does with the app's own state — an optimistic move and its rollback,
  * the request a click sends — where a hand-built context would assert against a provider nobody

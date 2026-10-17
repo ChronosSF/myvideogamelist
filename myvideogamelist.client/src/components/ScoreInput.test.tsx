@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ScoreInput } from '@/components/ScoreInput';
+import { MAX_SCORE } from '@/lib/score';
 
 /** Every value is a radio, so this is how a test names the one it means. */
 function star(score: number): HTMLInputElement {
@@ -61,14 +62,15 @@ describe('ScoreInput', () => {
     });
 
     it('reports each of its ten steps as the whole number the API stores for it', async () => {
-        // Half-star steps over five stars are the API's 1 to 10, one to one, and never a fraction of
-        // a star (ADR 0021).
-        const actor = userEvent.setup({ delay: null });
+        // Half-star steps over five stars are the API's 1 to 10, one to one: the value is always a
+        // whole number (ADR 0021). Pressed without the pointer passing over each star first, since
+        // the hover preview is the one test above's business and costs a render a star.
+        const actor = userEvent.setup({ delay: null, skipHover: true });
         const { onChange } = renderInput(null);
 
-        for (let step = 1; step <= 10; step++) await actor.click(star(step));
+        for (let step = 1; step <= MAX_SCORE; step++) await actor.click(star(step));
 
-        expect(onChange.mock.calls.map(([score]) => score)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+        expect(onChange.mock.calls.map(([score]) => score)).toEqual(Array.from({ length: MAX_SCORE }, (_, i) => i + 1));
     });
 
     it('reports null when cleared, rather than an empty string or zero', async () => {

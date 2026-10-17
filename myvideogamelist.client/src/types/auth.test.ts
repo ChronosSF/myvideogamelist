@@ -7,11 +7,11 @@ import { USERNAME_MAX_LENGTH, USERNAME_MIN_LENGTH, userNameProblem } from '@/typ
 /**
  * The server's `UserNamePolicy`, read from its source.
  *
- * The sign-up dialog and the account page check a name before a round trip with a copy of the
- * policy's shape rules, and a copy is a second statement of the alphabet — the thing CLAUDE.md says
- * never to write twice. Where it cannot be avoided, it can at least be held to the first: a copy that
- * drifts refuses on this side names the API would take, which nobody can get past, or lets through
- * names the API refuses, which costs a round trip and says the form was wrong.
+ * The sign-up dialog and the account page check a name before a round trip, with a copy of the
+ * policy's shape rules — a second statement of the lengths and the alphabet, which ADR 0027 §2 keeps
+ * to one class on the server. The copy cannot be avoided, but it can be held to the original. Drift
+ * one way, and the form refuses a name the API would take, which nobody can get past; drift the
+ * other, and it sends one the API refuses, which costs a round trip and says the form was wrong.
  *
  * The path is resolved from this file's own, as a string: jsdom replaces the global `URL`, and Node's
  * `fileURLToPath` refuses one of jsdom's.
@@ -44,12 +44,19 @@ describe('userNameProblem, against the server\'s UserNamePolicy', () => {
     });
 
     it('allows exactly the characters the policy allows', () => {
-        // Every printable ASCII character, and some from beyond it that pass for one: a Cyrillic "а",
-        // a fullwidth "Ａ" and "＿", an Arabic-Indic three and a no-break space — any of which would
-        // let one name read as another.
+        // Every printable ASCII character; two letters from beyond it; and five characters that pass
+        // for ASCII ones, any of which would let one name read as another.
         const allowed = declared('AllowedCharacters');
         const printable = Array.from({ length: 95 }, (_, i) => String.fromCharCode(32 + i));
-        const beyond = ['é', 'ß', 'а', 'Ａ', '＿', '٣', ' '];
+        const beyond = [
+            0x00e9, // é
+            0x00df, // ß
+            0x0430, // Cyrillic а, which reads as a Latin a
+            0xff21, // fullwidth Ａ
+            0xff3f, // fullwidth ＿
+            0x0663, // Arabic-Indic three
+            0x00a0, // no-break space
+        ].map(code => String.fromCharCode(code));
 
         for (const character of [...printable, ...beyond]) {
             const verdict = userNameProblem(nameWith(character)) === null ? 'allowed' : 'refused';
@@ -58,7 +65,8 @@ describe('userNameProblem, against the server\'s UserNamePolicy', () => {
     });
 
     it('says which rule a name broke, length first', () => {
-        // Too short and badly formed at once: the length is the sentence, as it is on the server.
+        // Too short and badly formed at once: the length is the sentence. The server's one sentence
+        // names both rules, so it has no order to agree with.
         expect(userNameProblem('a-')).toBe(`A username is ${USERNAME_MIN_LENGTH} to ${USERNAME_MAX_LENGTH} characters long.`);
         expect(userNameProblem('al-ex')).toBe('A username can use letters, numbers and underscores only.');
     });

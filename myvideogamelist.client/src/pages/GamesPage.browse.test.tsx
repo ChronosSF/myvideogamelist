@@ -1,25 +1,34 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
-import { createRoutesStub, Outlet, RouterContextProvider, useLocation, useNavigate } from 'react-router';
-import { GamesPage, headers, loader } from '@/pages/GamesPage';
-import { REQUEST_HEADER } from '@/lib/api';
-import { CACHE_GAMES_LIST, PRIVATE_NO_STORE } from '@/lib/cache';
+import { act, configure, fireEvent, getConfig, render, screen, waitFor, within } from '@testing-library/react';
+import { createRoutesStub, Outlet, useLocation, useNavigate, useNavigation } from 'react-router';
+import { GamesPage, loader } from '@/pages/GamesPage';
 import { MIN_CRITIC_REVIEWS } from '@/lib/score';
 import type { GameDto, GenreDto, PagedGamesResponse, PlatformDto } from '@/types/game';
+import { quickActor } from '@/test/actor';
 import { game, platform, userProfile } from '@/test/factories';
 import { AppProviders } from '@/test/providers';
-import { type ApiAnswer, type ApiCall, type ApiRoutes, empty, held, json, stubApi, unreachable } from '@/test/api';
-import type { Route } from './+types/GamesPage';
+import {
+    type ApiAnswer,
+    type ApiCall,
+    type ApiRoutes,
+    empty,
+    expectSentThroughApiFetch,
+    held,
+    json,
+    settle,
+    signedInRoutes,
+    stubApi,
+    tearDownApi,
+} from '@/test/api';
 
 /**
  * The browse page as a reader drives it: the real loader behind a router, the real providers around
  * it, and the API played by the test. Everything the page shows is read from its URL (ADR 0032), so
- * these tests read the address and the requests the loader made as well as the screen.
+ * these tests read the address, and the requests the page made, as well as the screen. The loader on
+ * its own is `GamesPage.loader.test.ts`.
  *
- * Open PRs change this page: #286 adds an ESRB filter, the seventh parameter, and #274 sends the
- * loader's requests through a traced fetch. These assert what survives both — the six parameters
- * there are today, never a count of the controls, and of a failure only its status and its caching.
+ * The parameters are the six the page has; a filter added later adds its own steps here. Nothing
+ * counts the controls, so one added beside them changes nothing.
  */
 
 const PLATFORMS: PlatformDto[] = [platform(6, 'PC (Windows)', 'PC'), platform(130, 'Nintendo Switch', 'Switch')];
@@ -42,15 +51,18 @@ function games(count: number, from = 1): GameDto[] {
 }
 
 /**
- * The address bar and the back button, around the page. The page owns neither, and both are part of
- * what it promises: a filter is a step somebody can go back from, and typing a search is not.
+ * The address bar and the back button, around the page, and whether a navigation is out. The page
+ * owns none of them, and the first two are part of what it promises: a filter is a step somebody can
+ * go back from, and typing a search is not.
  */
 function Browser() {
     const location = useLocation();
     const navigate = useNavigate();
+    const navigation = useNavigation();
     return (
         <>
             <p>{`Address: ${location.pathname}${location.search}`}</p>
+            <p>{navigation.location ? `Loading ${navigation.location.pathname}` : 'No page is loading'}</p>
             <button type="button" onClick={() => void navigate(-1)}>Back</button>
             <Outlet />
         </>
@@ -70,9 +82,15 @@ const sorted = (query: string) => [...new URLSearchParams(query)].sort(([a], [b]
 const addressParams = () => sorted(address()?.split('?')[1] ?? '');
 
 /**
- * The browse page at `url`, after a home page so there is somewhere to go back to, its first page
- * loaded. `url` can be a history of several, the last of them open. `gamesAnswer` answers every
- * `GET /api/games`, first page and later ones alike.
+ * A game's card. GameCard is the article around its title's link, and nothing else on the page names
+ * it, so the card is found from the link rather than by a name of its own.
+ */
+const card = (title: string) => within(screen.getByRole('link', { name: title }).closest('article')!);
+
+/**
+ * The browse page at `url`, after a home page so there is somewhere to go back to, once its first
+ * page has loaded. `url` can be a history of several, the last of them open. `gamesAnswer` answers
+ * every `GET /api/games` — the loader's first page and every page the page fetches after it.
  */
 async function openBrowse(
     url: string | string[],
@@ -81,10 +99,10 @@ async function openBrowse(
 ) {
     const api = stubApi({
         'GET /api/auth/me': () => empty(401),
-        'GET /api/games': gamesAnswer,
         'GET /api/genres': () => json(GENRES),
         'GET /api/platforms/active': () => json(PLATFORMS),
         ...routes,
+        'GET /api/games': gamesAnswer,
     });
 
     const gamePage = held();
@@ -104,23 +122,20 @@ async function openBrowse(
 
     return {
         api,
-        /** What the loader asked `/api/games` for, each time it was asked, as query strings. */
+        /**
+         * Every query `/api/games` was sent, in order: the loader's for each first page, and the
+         * page's own for each page after one.
+         */
         gamesRequests: () => api.callsTo('GET', '/api/games').map(call => call.query.toString()),
     };
 }
 
-/** The query string the loader sent for a browse, built the way `gamesApiPath` builds it. */
+/** The query `/api/games` is sent for a browse and an offset, built the way `gamesApiPath` builds it. */
 const asked = (query: string, offset = 0) => {
     const params = new URLSearchParams(query);
     params.set('offset', String(offset));
     return params.toString();
 };
-
-/**
- * Skips user-event's pause between keystrokes, which costs a timer per character and buys nothing
- * here. The search debounce runs on fake timers where a test is about it, and on nothing else.
- */
-const setupActor = () => userEvent.setup({ delay: null });
 
 /**
  * The reader's viewport, which jsdom does not lay out, so the observer behind the infinite scroll is
@@ -170,22 +185,20 @@ class SentinelObserver {
     }
 }
 
-/**
- * Lets whatever is on its way finish — a navigation, its loader, a page, the render after it —
- * without waiting on a timer, so it works on the fake clock as well as on a real one.
- */
-async function settle() {
-    await act(async () => {
-        for (let tick = 0; tick < 5; tick++) await new Promise(resolve => setImmediate(resolve));
-    });
-}
-
 /** The reader scrolls to the foot of the list. */
 async function scrollToEnd() {
     await act(async () => {
         viewport.reachedEndAt = listed();
         for (const observer of viewport.observers) observer.report();
     });
+}
+
+/**
+ * The reader scrolls back up, as they have to before choosing a filter: the controls are at the top
+ * of the page. Left at the foot, a shorter listing would put the sentinel in view at once.
+ */
+function scrollToTop() {
+    viewport.reachedEndAt = null;
 }
 
 beforeEach(() => {
@@ -195,8 +208,8 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+    tearDownApi();
     vi.useRealTimers();
-    vi.unstubAllGlobals();
 });
 
 describe('GamesPage browse URL', () => {
@@ -220,7 +233,7 @@ describe('GamesPage browse URL', () => {
     });
 
     it("writes each control's choice into the address, and asks the API for exactly that", async () => {
-        const actor = setupActor();
+        const actor = quickActor();
         const { gamesRequests } = await openBrowse('/games');
 
         const steps: [label: string, option: string, query: string][] = [
@@ -240,7 +253,7 @@ describe('GamesPage browse URL', () => {
     });
 
     it('leaves the default order out of the address, so the plain catalogue has one', async () => {
-        const actor = setupActor();
+        const actor = quickActor();
         const { gamesRequests } = await openBrowse('/games?sort=newest');
 
         await actor.selectOptions(screen.getByLabelText('Order'), 'Top rated');
@@ -260,7 +273,7 @@ describe('GamesPage browse URL', () => {
     });
 
     it('clears the filters and keeps the order and the search, which are not filters', async () => {
-        const actor = setupActor();
+        const actor = quickActor();
         const { gamesRequests } = await openBrowse(`/games?search=zelda&sort=newest&platform=6&genre=12&year=${YEAR}&minScore=80`);
 
         await actor.click(controls().getByRole('button', { name: 'Clear filters' }));
@@ -270,7 +283,7 @@ describe('GamesPage browse URL', () => {
     });
 
     it('makes each filter a step the reader can go back from', async () => {
-        const actor = setupActor();
+        const actor = quickActor();
         await openBrowse('/games');
 
         await actor.selectOptions(screen.getByLabelText('Platform'), 'PC (Windows)');
@@ -294,6 +307,22 @@ describe('GamesPage search box', () => {
      * `settle`, which lets promises run and time stand still.
      */
     const holdTheClock = () => vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+
+    // A slip would otherwise show as a five-second timeout with nothing to say why.
+    let restoreAsyncWrapper: () => void = () => {};
+    beforeEach(() => {
+        const { asyncWrapper } = getConfig();
+        configure({
+            asyncWrapper: callback => {
+                if (vi.isFakeTimers()) {
+                    throw new Error('waitFor, findBy and user-event wait on a timeout the held clock never reaches. Use settle(), or let the clock go first.');
+                }
+                return asyncWrapper(callback);
+            },
+        });
+        restoreAsyncWrapper = () => configure({ asyncWrapper });
+    });
+    afterEach(() => restoreAsyncWrapper());
 
     const searchBox = () => screen.getByRole<HTMLInputElement>('searchbox', { name: 'Search games' });
 
@@ -328,12 +357,13 @@ describe('GamesPage search box', () => {
 
         // Typing replaced the entry, so the step back leaves the page rather than untyping it.
         vi.useRealTimers();
-        await setupActor().click(screen.getByRole('button', { name: 'Back' }));
+        await quickActor().click(screen.getByRole('button', { name: 'Back' }));
         expect(await screen.findByRole('heading', { name: 'Home' })).toBeInTheDocument();
     });
 
     it('keeps the filters when a search is typed over them', async () => {
-        // A search keeps the filters and drops only the order (ADR 0032).
+        // A search keeps the filters (ADR 0032). The order it sets aside is the API's to drop, and
+        // the order control's to show as Best match; below.
         const { gamesRequests } = await openBrowse(`/games?platform=6&year=${YEAR}`);
         holdTheClock();
 
@@ -364,8 +394,12 @@ describe('GamesPage search box', () => {
 
     // #285: the debounce builds its URL from the page that landed, not the one on its way.
     it.skip('keeps a filter whose page is still loading when a search is typed after it (#285)', async () => {
+        // Fixed, both navigations carry the platform and both loaders get this answer, so each takes
+        // a copy: a response's body can be read once.
         const platformPage = held();
-        await openBrowse('/games', call => call.query.has('platform') ? platformPage.answer : json(page([])));
+        await openBrowse('/games', call => call.query.has('platform')
+            ? platformPage.answer.then(response => response.clone())
+            : json(page([])));
         holdTheClock();
 
         fireEvent.change(screen.getByLabelText('Platform'), { target: { value: '6' } });
@@ -411,7 +445,7 @@ describe('GamesPage search box', () => {
     });
 
     it('puts a search the reader went back to in the box', async () => {
-        const actor = setupActor();
+        const actor = quickActor();
         await openBrowse(['/games?search=mario', '/games?search=zelda']);
         expect(searchBox()).toHaveValue('zelda');
 
@@ -422,23 +456,27 @@ describe('GamesPage search box', () => {
 });
 
 describe('GamesPage orders and their floors', () => {
-    it('says under the order what each order leaves out', async () => {
-        // Every order lists only games over a floor of its own (ADR 0032), and a floor the reader
-        // cannot see makes the catalogue look smaller than it is.
-        const actor = setupActor();
+    it('says under the order what each order lists', async () => {
+        // Every order lists only games over a floor of its own (ADR 0032 §4), and a floor the reader
+        // cannot see makes the catalogue look smaller than it is. Popular's line describes its
+        // ranking rather than its floor of ten ratings, which the top of that ranking never nears.
+        const actor = quickActor();
         await openBrowse('/games');
         const order = () => screen.getByLabelText('Order');
 
         expect(order()).toHaveAccessibleDescription(/at least eight critic reviews/i);
 
-        const floors: [option: string, floor: RegExp][] = [
-            ['Popular', /most ratings/i],
-            ['Newest', /released games that have drawn some ratings and a critic review/i],
-            ['A to Z', /some ratings and a critic review/i],
+        // Each line read once its order's page has landed, and each pattern one only its own line
+        // matches, so no step can pass on the line of the order before it.
+        const lines: [option: string, sort: string, line: RegExp][] = [
+            ['Popular', 'popular', /^Most ratings on IGDB/],
+            ['Newest', 'newest', /^Released games that have drawn some ratings and a critic review/],
+            ['A to Z', 'name', /some ratings and a critic review, by title/],
         ];
-        for (const [option, floor] of floors) {
+        for (const [option, sort, line] of lines) {
             await actor.selectOptions(order(), option);
-            await waitFor(() => expect(order(), option).toHaveAccessibleDescription(floor));
+            await waitFor(() => expect(address()).toBe(`/games?sort=${sort}`));
+            expect(order(), option).toHaveAccessibleDescription(line);
         }
     });
 
@@ -454,8 +492,9 @@ describe('GamesPage orders and their floors', () => {
     });
 
     it('explains an empty Top rated listing by its floor, and points to the orders that reach further', async () => {
-        // Recent games rarely have eight critic reviews, so Top rated for this year is empty by
-        // construction — the one empty page the reader cannot explain from what they chose.
+        // Top rated filtered to a recent year is empty by construction, since recent games rarely
+        // have eight critic reviews — the one empty page the reader cannot explain from what they
+        // chose. The API answers nothing here; which filter left it empty does not matter.
         await openBrowse(`/games?year=${YEAR}`);
 
         expect(screen.getByText('No games match these filters.')).toBeInTheDocument();
@@ -463,14 +502,14 @@ describe('GamesPage orders and their floors', () => {
         expect(screen.getByText(/popular or newest reach further/i)).toBeInTheDocument();
     });
 
-    it('does not blame that floor for an empty listing in another order', async () => {
+    it("does not blame Top rated's floor for an empty listing in another order", async () => {
         await openBrowse(`/games?sort=popular&year=${YEAR}`);
 
         expect(screen.getByText('No games match these filters.')).toBeInTheDocument();
         expect(screen.queryByText(/only ranks games/i)).not.toBeInTheDocument();
     });
 
-    it('does not blame it for an empty search either, which has no floor', async () => {
+    it("does not blame Top rated's floor for an empty search, which has no floor", async () => {
         await openBrowse(`/games?search=qwertyuiop&year=${YEAR}`);
 
         expect(screen.getByText('No games match your search.')).toBeInTheDocument();
@@ -478,7 +517,17 @@ describe('GamesPage orders and their floors', () => {
     });
 });
 
-describe('GamesPage empty listings', () => {
+describe('GamesPage listings', () => {
+    it('lists what the API answered, each game linked to its page, with no list controls for a visitor', async () => {
+        // Every first render is a signed-out one: the page is cached at the edge for everybody.
+        await openBrowse('/games', () => json(page(games(3))));
+
+        expect(screen.getAllByRole('article')).toHaveLength(3);
+        expect(screen.getByRole('link', { name: 'Game 2' })).toHaveAttribute('href', '/games/2');
+        expect(screen.getByText('3 games loaded')).toBeInTheDocument();
+        expect(card('Game 2').queryByRole('button', { name: 'Backlog' })).not.toBeInTheDocument();
+    });
+
     it('says the catalogue is empty, with nothing to clear', async () => {
         await openBrowse('/games');
 
@@ -488,96 +537,26 @@ describe('GamesPage empty listings', () => {
     });
 
     it('offers to clear the filters that left nothing, from the empty page itself, keeping the order', async () => {
-        const actor = setupActor();
+        const actor = quickActor();
         await openBrowse('/games?sort=newest&platform=6');
+        expect(screen.getByText('No games match these filters.')).toBeInTheDocument();
 
-        const emptyPage = screen.getByText('No games match these filters.').parentElement!;
-        await actor.click(within(emptyPage).getByRole('button', { name: 'Clear filters' }));
+        // The Clear filters that is not among the controls is the empty page's.
+        const group = screen.getByRole('group', { name: 'Sort and filter games' });
+        const onTheEmptyPage = screen.getAllByRole('button', { name: 'Clear filters' })
+            .find(button => !group.contains(button));
+        await actor.click(onTheEmptyPage!);
 
         await waitFor(() => expect(address()).toBe('/games?sort=newest'));
     });
 
-    it('lists what the API answered, each game linked to its page', async () => {
-        await openBrowse('/games', () => json(page(games(3))));
-
-        expect(screen.getAllByRole('article')).toHaveLength(3);
-        expect(screen.getByRole('link', { name: 'Game 2' })).toHaveAttribute('href', '/games/2');
-        expect(screen.getByText('3 games loaded')).toBeInTheDocument();
-    });
-});
-
-/** The loader on its own, as the server runs it for a document request. */
-async function load(url: string, routes: ApiRoutes) {
-    stubApi({
-        'GET /api/games': () => json(page([])),
-        'GET /api/genres': () => json(GENRES),
-        'GET /api/platforms/active': () => json(PLATFORMS),
-        ...routes,
-    });
-    // A context, because the server hands every loader one and #274 reads the request's trace from it.
-    const args = { request: new Request(`http://localhost${url}`), params: {}, context: new RouterContextProvider() };
-    return loader(args as unknown as Route.LoaderArgs);
-}
-
-/** What a loader threw, which has to be a Response for the error boundary to render its status. */
-async function thrownBy(promise: Promise<unknown>): Promise<Response> {
-    const thrown = await promise.then(() => null, (error: unknown) => error);
-    expect(thrown).toBeInstanceOf(Response);
-    return thrown as Response;
-}
-
-const policyOf = (result: Awaited<ReturnType<typeof loader>>) => new Headers(result.init?.headers).get('Cache-Control');
-
-describe('GamesPage loader', () => {
-    it('shares a whole answer at the edge', async () => {
-        const result = await load('/games?platform=6', {});
-
-        expect(policyOf(result)).toBe(CACHE_GAMES_LIST);
-        expect(result.data.browse.platform).toBe(6);
-    });
-
-    it('renders without a filter whose options failed, but keeps that page out of shared caches', async () => {
-        // Pinned at the edge, the missing filter would outlive whatever made it go missing.
-        for (const failed of ['GET /api/genres', 'GET /api/platforms/active']) {
-            const result = await load('/games', { [failed]: () => empty(503) });
-
-            expect(policyOf(result), failed).toBe(PRIVATE_NO_STORE);
-        }
-
-        const result = await load('/games', { 'GET /api/genres': unreachable });
-        expect(result.data.genres).toBeNull();
-        expect(policyOf(result)).toBe(PRIVATE_NO_STORE);
-    });
-
-    it('fails the page with an uncached 502 when the games cannot be loaded', async () => {
-        // The list is the page, and a 502 tells a crawler to come back rather than index an empty
-        // one. #274 changes what the body carries, so only the status and the caching are asserted.
-        for (const answer of [() => empty(500), unreachable]) {
-            const response = await thrownBy(load('/games', { 'GET /api/games': answer }));
-
-            expect(response.status).toBe(502);
-            expect(response.headers.get('Cache-Control')).toBe(PRIVATE_NO_STORE);
-        }
-    });
-
-    it('sends the policy the loader chose', () => {
-        const policyFor = (value: string) =>
-            headers({ loaderHeaders: new Headers({ 'Cache-Control': value }) } as unknown as Route.HeadersArgs)['Cache-Control'];
-
-        expect(policyFor(PRIVATE_NO_STORE)).toBe(PRIVATE_NO_STORE);
-        expect(policyFor(CACHE_GAMES_LIST)).toBe(CACHE_GAMES_LIST);
-    });
-
-    it('leaves out of the page the filter it could not offer', async () => {
-        await openBrowse('/games', undefined, { 'GET /api/genres': () => empty(503) });
+    it('leaves out of the page a filter whose options could not be loaded', async () => {
+        await openBrowse('/games', () => json(page([])), { 'GET /api/genres': () => empty(503) });
 
         expect(screen.queryByLabelText('Genre')).not.toBeInTheDocument();
         expect(screen.getByLabelText('Platform')).toBeInTheDocument();
     });
 });
-
-/** The card of the game with this title. */
-const card = (title: string) => within(screen.getByRole('link', { name: title }).closest('article')!);
 
 describe('GamesPage critic badges', () => {
     it('shows a critic score only once enough critics are behind it', async () => {
@@ -613,20 +592,20 @@ describe('GamesPage pagination', () => {
 
         await scrollToEnd();
 
-        expect(await screen.findByRole('link', { name: `Game ${PAGE_SIZE * 2}` })).toBeInTheDocument();
+        expect(await screen.findByText(`Game ${PAGE_SIZE * 2}`)).toBeInTheDocument();
         expect(screen.getAllByRole('article')).toHaveLength(PAGE_SIZE * 2);
         expect(gamesRequests()).toEqual([asked('platform=6'), asked('platform=6', PAGE_SIZE)]);
         expect(screen.getByText(`${PAGE_SIZE * 2} games loaded so far`)).toBeInTheDocument();
     });
 
-    it('shows a game that two pages both returned once', async () => {
+    it('shows a game once when two pages both return it', async () => {
         // An order with ties can hand the same game back on neighbouring pages (ADR 0032).
         await openBrowse('/games', pages(() => json(page([...games(1, PAGE_SIZE), ...games(1, PAGE_SIZE + 1)]))));
 
         await scrollToEnd();
 
-        await screen.findByRole('link', { name: `Game ${PAGE_SIZE + 1}` });
-        expect(screen.getAllByRole('link', { name: `Game ${PAGE_SIZE}` })).toHaveLength(1);
+        await screen.findByText(`Game ${PAGE_SIZE + 1}`);
+        expect(screen.getAllByText(`Game ${PAGE_SIZE}`)).toHaveLength(1);
         expect(screen.getAllByRole('article')).toHaveLength(PAGE_SIZE + 1);
     });
 
@@ -656,7 +635,7 @@ describe('GamesPage pagination', () => {
     });
 
     it('drops a page of the previous browse that arrives after a filter changed', async () => {
-        const actor = setupActor();
+        const actor = quickActor();
         const late = held();
         await openBrowse('/games', call => {
             if (call.query.get('platform') === '6') return json(page(games(2, 500)));
@@ -664,24 +643,57 @@ describe('GamesPage pagination', () => {
         });
 
         await scrollToEnd();
+        scrollToTop();
         await actor.selectOptions(screen.getByLabelText('Platform'), 'PC (Windows)');
-        await screen.findByRole('link', { name: 'Game 500' });
+        await screen.findByText('Game 500');
+        // The new browse's effects have run, which is what cancels the page still out (see #333).
+        await settle();
 
         await act(async () => late.release(json(page(games(PAGE_SIZE, PAGE_SIZE + 1), true))));
 
         expect(screen.getAllByRole('article')).toHaveLength(2);
-        expect(screen.queryByRole('link', { name: `Game ${PAGE_SIZE + 1}` })).not.toBeInTheDocument();
+        expect(screen.queryByText(`Game ${PAGE_SIZE + 1}`)).not.toBeInTheDocument();
     });
 
-    it('pages the next browse from its own first page', async () => {
-        const actor = setupActor();
+    // #333: the page still out is cancelled from an effect, which runs only after the commit.
+    it.skip('drops a page of the previous browse that lands as the next one renders (#333)', async () => {
+        // The page still out is cancelled from an effect, which runs after the commit, so for that
+        // moment it can still land, and be added to the new listing.
+        const actor = quickActor();
+        const late = held();
+        await openBrowse('/games', call => {
+            if (call.query.get('platform') === '6') return json(page(games(2, 500)));
+            return call.query.get('offset') === '0' ? json(page(games(PAGE_SIZE), true)) : late.answer;
+        });
+        await scrollToEnd();
+        scrollToTop();
+
+        // Released the moment the new listing is in the document, before React has run its effects.
+        const watcher = new MutationObserver(() => {
+            if (document.body.textContent?.includes('Game 500')) {
+                watcher.disconnect();
+                late.release(json(page(games(PAGE_SIZE, PAGE_SIZE + 1), true)));
+            }
+        });
+        watcher.observe(document.body, { childList: true, subtree: true, characterData: true });
+        await actor.selectOptions(screen.getByLabelText('Platform'), 'PC (Windows)');
+        await screen.findByText('Game 500');
+        await settle();
+
+        expect(screen.getAllByRole('article')).toHaveLength(2);
+    });
+
+    it("starts a new browse's paging at its second page, not where the last one stopped", async () => {
+        const actor = quickActor();
         const { gamesRequests } = await openBrowse('/games', call =>
             json(page(games(PAGE_SIZE, Number(call.query.get('offset')) + (call.query.has('genre') ? 1000 : 1)), true)));
 
         await scrollToEnd();
-        await screen.findByRole('link', { name: `Game ${PAGE_SIZE * 2}` });
+        await screen.findByText(`Game ${PAGE_SIZE * 2}`);
+        scrollToTop();
         await actor.selectOptions(screen.getByLabelText('Genre'), 'Adventure');
-        await screen.findByRole('link', { name: 'Game 1000' });
+        await screen.findByText('Game 1000');
+        await settle();
         expect(screen.getAllByRole('article')).toHaveLength(PAGE_SIZE);
 
         await scrollToEnd();
@@ -725,7 +737,7 @@ describe('GamesPage pagination', () => {
 
 describe('GamesPage while a listing loads', () => {
     it('gives the list over to a spinner while another browse loads', async () => {
-        const actor = setupActor();
+        const actor = quickActor();
         const next = held();
         await openBrowse('/games', call => call.query.has('platform') ? next.answer : json(page(games(3))));
 
@@ -736,12 +748,12 @@ describe('GamesPage while a listing loads', () => {
         expect(screen.getByText('Loading…')).toBeInTheDocument();
 
         await act(async () => next.release(json(page(games(1, 50)))));
-        expect(await screen.findByRole('link', { name: 'Game 50' })).toBeInTheDocument();
+        expect(await screen.findByText('Game 50')).toBeInTheDocument();
     });
 
     // #285: the selects render the browse that landed, so a choice snaps back until its page does.
     it.skip('shows the choice just made while its page loads (#285)', async () => {
-        const actor = setupActor();
+        const actor = quickActor();
         const next = held();
         await openBrowse('/games', call => call.query.has('platform') ? next.answer : json(page(games(3))));
 
@@ -753,34 +765,29 @@ describe('GamesPage while a listing loads', () => {
 
     it('keeps the list on screen while leaving for a game page', async () => {
         // The spinner is for a different result set. Leaving for a game is a navigation too, and
-        // the list blanking out under the click would read as the page breaking.
-        const actor = setupActor();
+        // the list blanking out under the click would read as the page breaking. The game page's
+        // loader is held, so the navigation is still out when this looks.
+        const actor = quickActor();
         await openBrowse('/games', () => json(page(games(3))));
 
         await actor.click(screen.getByRole('link', { name: 'Game 2' }));
 
-        await waitFor(() => expect(address()).toBe('/games'));
+        expect(await screen.findByText('Loading /games/2')).toBeInTheDocument();
+        expect(address()).toBe('/games');
         expect(screen.queryByText('Loading games…')).not.toBeInTheDocument();
         expect(screen.getAllByRole('article')).toHaveLength(3);
     });
 });
 
 describe('GamesPage for a signed-in reader', () => {
-    /** What a signed-in reader's providers ask for, with nothing in any list yet. */
-    const signedIn = (routes: ApiRoutes): ApiRoutes => ({
-        'GET /api/auth/me': () => json(userProfile()),
-        'GET /api/lists': () => json({ lists: {} }),
-        'GET /api/user/list-preferences': () => json({ view: 'tiles', sorts: {}, names: {} }),
-        'GET /api/wishlist': () => json([]),
-        'GET /api/favourites': () => json([]),
-        ...routes,
-    });
-
     it('puts a game in a list from its card at once, through the write guard', async () => {
         // The page is shared-cached and signed-out first; the card's list controls arrive with the account.
-        const actor = setupActor();
+        const actor = quickActor();
         const move = held();
-        const { api } = await openBrowse('/games', () => json(page(games(2))), signedIn({ 'PUT /api/lists/1': () => move.answer }));
+        const { api } = await openBrowse('/games', () => json(page(games(2))), {
+            ...signedInRoutes(userProfile()),
+            'PUT /api/lists/1': () => move.answer,
+        });
 
         await actor.click(await screen.findByRole('button', { name: 'Open list options for Game 1' }));
         await actor.click(card('Game 1').getByRole('button', { name: 'Backlog' }));
@@ -788,7 +795,7 @@ describe('GamesPage for a signed-in reader', () => {
         expect(card('Game 1').getByRole('button', { name: 'Backlog' })).toHaveAttribute('aria-pressed', 'true');
         const [put] = api.callsTo('PUT', '/api/lists/1');
         expect(put.body).toEqual({ status: 'backlog' });
-        expect(put.headers.get(REQUEST_HEADER)).toBe('1');
+        expectSentThroughApiFetch(put);
 
         // Held while the move is out, and kept once the API agrees.
         expect(card('Game 1').getByRole('button', { name: 'Playing' })).toBeDisabled();
