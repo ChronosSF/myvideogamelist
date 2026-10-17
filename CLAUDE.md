@@ -193,6 +193,19 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   decision. A private profile and an unclaimed name are the same 404, so the endpoint cannot be used
   to ask whether a name has an account.
 
+- **A page loads images only from the hosts its policy names, and an avatar's host is in two
+  lists.** The document policy's `img-src` is `IMAGE_SOURCES` in `@/lib/securityHeaders`: this
+  origin, IGDB's CDN and the avatar hosts. **An image from any other host does not load**, in
+  development too, so a feature that shows one from somewhere new adds the host there on purpose.
+  An avatar host goes in both `AvatarUrlPolicy.Hosts`, which says what may be saved, and
+  `AVATAR_HOSTS` in `@/lib/avatar`, which `IMAGE_SOURCES` is built from; `serverMirrors.test.ts`
+  reads the server's file and fails when they differ. A host joins only once seen to serve an avatar
+  over HTTPS with `Access-Control-Allow-Origin`, no cookie and no reporting headers — Discord's CDN
+  and Twitch's are off for those — because the picture is loaded anonymously, with no referrer, by
+  every reader's browser. The address is stored as given and never fetched by the server. A display
+  name sits beside the handle and never replaces it, and a bio is plain text because it is rendered
+  as a text node. See `docs/decisions/0056-*`.
+
 - **A statistic about the user must not depend on IGDB being up.** `/api/user/stats` reads only
   our own tables, derives everything at read time, and is deliberately uncached — every figure
   changes the moment a game moves. The platform and genre breakdowns are the one part that needs

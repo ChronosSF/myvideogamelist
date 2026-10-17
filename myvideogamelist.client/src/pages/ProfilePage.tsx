@@ -7,6 +7,7 @@ import { formatDate, formatHours, formatRate } from '@/lib/stats';
 import { MAX_SCORE } from '@/lib/score';
 import type { PublicFavourites, PublicProfile, PublicReviews } from '@/types/profile';
 import { ActivityChart } from '@/components/ActivityChart';
+import { Avatar } from '@/components/Avatar';
 import { ProfileFavourites } from '@/components/ProfileFavourites';
 import { ScoreHistogram } from '@/components/ScoreHistogram';
 import { StatTile } from '@/components/StatTile';
@@ -53,11 +54,19 @@ export function meta({ loaderData }: Route.MetaArgs) {
     if (!loaderData?.profile) return [{ title: 'Profile not found - MyVideoGameList' }];
 
     const { profile, page, site } = loaderData;
+    // The handle leads the title and the display name follows it: a search result or a tab is
+    // somewhere the handle identifies the account, and a title cut short must not cut the handle off
+    // in favour of a name anybody may choose. Tested for presence rather than against null, as below,
+    // so an API a release behind during a rolling deploy — no field at all — renders the page as it
+    // was rather than "undefined" into a page the edge then keeps for an hour.
+    const name = profile.displayName
+        ? `${profile.userName} (${profile.displayName})`
+        : profile.userName;
     // Each page of reviews is its own URL, so each gets its own title: two pages indexed under one
     // title read as duplicates of each other.
     const title = page > 1
-        ? `${profile.userName}, reviews page ${page} - MyVideoGameList`
-        : `${profile.userName} - MyVideoGameList`;
+        ? `${name}, reviews page ${page} - MyVideoGameList`
+        : `${name} - MyVideoGameList`;
     const finished = profile.library.byStatus.finished;
     const description = `${profile.userName} has finished ${finished} `
         + `${finished === 1 ? 'game' : 'games'} and is tracking ${profile.library.tracked} `
@@ -78,7 +87,8 @@ export function meta({ loaderData }: Route.MetaArgs) {
             description,
             // The name as its owner capitalised it, which is what the API answers with whatever the
             // URL said: the lookup ignores case, so `/u/ALICE` renders too, and this is what says
-            // the two are one page. Each page of reviews is a document of its own and says so.
+            // the two are one page. Each page of reviews is a document of its own and says so. The
+            // handle, never the display name, which is in no URL and belongs to nobody exclusively.
             path: `/u/${encodeURIComponent(profile.userName)}${pageSearch(page)}`,
             type: 'profile',
         }),
@@ -175,25 +185,47 @@ export function ProfilePage({ loaderData }: Route.ComponentProps) {
         <div className="public-profile">
             <div className="public-profile-inner">
                 <header className="public-profile-header">
-                    <span className="public-profile-avatar" aria-hidden="true">
-                        {profile.userName.charAt(0).toUpperCase()}
-                    </span>
-                    <div>
-                        <h1 className="public-profile-name">{profile.userName}</h1>
-                        {/* Not a join date — there is no such column, and inventing one for
-                            accounts that predate it would be inventing a fact. It is the first
-                            status change, never an imported date (ADR 0047), so a library that was
-                            imported and never moved has none — and is not "nothing tracked" either,
-                            with its games on the page below. That case says nothing rather than
-                            something untrue. */}
-                        {activity.trackingSince !== null ? (
-                            <p className="public-profile-since">
-                                {`Tracking games here since ${formatDate(activity.trackingSince)}.`}
-                            </p>
-                        ) : library.recorded === 0 ? (
-                            <p className="public-profile-since">Has not tracked anything here yet.</p>
-                        ) : null}
+                    <div className="public-profile-heading">
+                        <Avatar
+                            userName={profile.userName}
+                            avatarUrl={profile.avatarUrl}
+                            className="public-profile-avatar"
+                        />
+                        <div className="public-profile-identity">
+                            {/* The handle stays in the heading when there is a display name: it is
+                                what says whose page this is, and the display name is anybody's to
+                                choose (ADR 0027). `bdi`, so a name written right to left cannot
+                                reorder the handle beside it. */}
+                            <h1 className="public-profile-name">
+                                {profile.displayName ? (
+                                    <>
+                                        <bdi>{profile.displayName}</bdi>{' '}
+                                        <span className="public-profile-handle">@{profile.userName}</span>
+                                    </>
+                                ) : profile.userName}
+                            </h1>
+                            {/* Not a join date — there is no such column, and inventing one for
+                                accounts that predate it would be inventing a fact. It is the first
+                                status change, never an imported date (ADR 0047), so a library that
+                                was imported and never moved has none — and is not "nothing tracked"
+                                either, with its games on the page below. That case says nothing
+                                rather than something untrue. */}
+                            {activity.trackingSince !== null ? (
+                                <p className="public-profile-since">
+                                    {`Tracking games here since ${formatDate(activity.trackingSince)}.`}
+                                </p>
+                            ) : library.recorded === 0 ? (
+                                <p className="public-profile-since">Has not tracked anything here yet.</p>
+                            ) : null}
+                        </div>
                     </div>
+
+                    {/* A text node, so it is plain text whatever it contains: nothing in it is
+                        markup, a link or a format. Its line breaks are its owner's, and `dir="auto"`
+                        sets it right to left when that is how it was written. */}
+                    {profile.bio ? (
+                        <p className="public-profile-bio" dir="auto">{profile.bio}</p>
+                    ) : null}
                 </header>
 
                 <section className="profile-stats">

@@ -162,6 +162,15 @@ Translucent black and white, for shadows and scrims, are the one exception.
 
 There is one theme, dark: no `light:` variant and no `[data-theme='light']` rules (ADR 0048).
 
+## Images
+
+- **An image loads only from a host the document policy names**: `IMAGE_SOURCES` in
+  `@/lib/securityHeaders`, which is this origin, IGDB's CDN and the avatar hosts. Showing one from
+  anywhere else means adding its host there, on purpose; it fails in development exactly as deployed.
+- **A member's picture goes through `Avatar`**, never a bare `<img>`. It loads anonymously and with
+  no referrer, and falls back to the handle's initial on any failure, one before hydration included
+  (`docs/decisions/0056-*`).
+
 ## Tests
 
 Vitest with jsdom and Testing Library, in `*.test.ts(x)` files beside the code they cover.
