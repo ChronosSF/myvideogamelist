@@ -62,6 +62,13 @@ Nothing here is a new figure and nothing is computed differently. The tier decid
 *copied out* of the documents 0023 already derives, in the same place 0027 §8 already decides
 what is copied out for a visitor.
 
+**The owner's history is not on this line.** `/api/user/history` (ADR
+[0062](../docs/decisions/0062-the-history-is-three-rows-unioned-and-what-has-no-moment-has-no-item.md))
+lists the owner's own records back to them — a move, a score, a run's start or finish, each with its
+date — and derives nothing from them, so it is neither a count nor a figure beyond one. It is the
+same records the export already gives away free (0024), and 0010 sells depth, not access, so it is
+free, on the owner's page only, whatever the tier.
+
 ## 3. Where each tier shows
 
 ### 3.1 The owner's own page — `/user`
