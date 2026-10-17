@@ -89,21 +89,25 @@ jobs:
       - name: Test
         run: dotnet test MyVideoGameList.Server.IntegrationTests/MyVideoGameList.Server.IntegrationTests.csproj --no-build --verbosity normal --blame-hang-timeout 5m --blame-hang-dump-type none
 
-  # One browser test over the shape that is deployed: sign up, add a game to a list, reload, and it is
-  # still there. The front end's production build and the API run as two processes behind a stand-in
-  # for the distribution, which sends /api/* to one and everything else to the other. So the failure
-  # ADR 0003 describes, pages that render while every request the browser makes 404s, fails here and
-  # nowhere else. IGDB is a stand-in too, and no credential is needed. Deploy dev waits on this as on
-  # every job. See ADR 0060.
+  # One browser test over the two-process shape that is deployed: sign up, add a game to a list,
+  # reload, and it is still there. The front end's production build and the API run as two processes
+  # behind a stand-in for what routes between them deployed, which sends /api/* to one and everything
+  # else to the other, as the balancer does. So the application's half of the failure ADR 0003
+  # describes - pages that render while every request the browser makes to the API fails - fails here,
+  # before a merge. Whether the deployed edge itself routes is scripts/dev-check.mjs's to check. IGDB
+  # is a stand-in too, and no credential is needed. Deploy dev waits on this as on every job. See
+  # ADR 0060.
   e2e:
-    name: End-to-end smoke test
+    name: Browser smoke test
     runs-on: ubuntu-latest
-    # A hang ends here rather than at a far longer default. A healthy run takes about three minutes,
-    # most of them installing and building.
+    # A hang ends here rather than at a far longer default.
     timeout-minutes: 15
     services:
       # compose.yaml's image and credentials, so the test's default connection string is the same here
-      # as on a developer's machine. The database exists from the start, and the API only migrates it.
+      # as on a developer's machine; the image is in PostgresServer.cs too, so change the three
+      # together. The database exists from the start, and the API only migrates it. Checked over TCP,
+      # because the image's first-run setup answers on its socket before the real server listens; and
+      # pulled before any step runs, so a Docker Hub login would need `credentials:` here.
       postgres:
         image: postgres:18-alpine
         env:
@@ -113,7 +117,7 @@ jobs:
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U mvgl -d mvgl_e2e"
+          --health-cmd "pg_isready -h 127.0.0.1 -U mvgl -d mvgl_e2e"
           --health-interval 2s
           --health-timeout 5s
           --health-retries 30
@@ -139,20 +143,22 @@ jobs:
       - name: Install the browser
         run: npx playwright install --with-deps --only-shell chromium
 
-      # Its own step, so a compile error fails here rather than as an API that never started.
+      # Its own step, so a compile error fails here rather than as an API that never started. Under CI
+      # the test runs this build as it is, without building again.
       - name: Build the API
         run: dotnet build ../MyVideoGameList.Server/MyVideoGameList.Server.csproj
 
       # Builds the front end, starts both servers and the two stand-ins, and runs the test.
-      - name: Smoke test
+      - name: Run the test
         run: npm run e2e
 
       # Every request, response and DOM snapshot of a failed run: `npx playwright show-trace` on the zip.
+      # Named for the attempt, so a re-run of a failure uploads a trace of its own.
       - name: Upload the trace
         if: failure()
         uses: actions/upload-artifact@v7
         with:
-          name: e2e-trace
+          name: e2e-trace-${{ github.run_attempt }}
           path: myvideogamelist.client/e2e/test-results/
           retention-days: 14
           if-no-files-found: ignore

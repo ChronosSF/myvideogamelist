@@ -384,10 +384,10 @@ public class IgdbAddressTests
     public async Task GetGameByIdAsync_WithAddressesConfigured_AsksThoseInstead()
     {
         // A trailing slash on the base is the natural way to write one, and must not double up.
-        var asked = await AskForAGameAsync("http://127.0.0.1:58622/v4/", "http://127.0.0.1:58622/oauth2/token");
+        var asked = await AskForAGameAsync("http://127.0.0.1:8080/v4/", "http://127.0.0.1:8080/oauth2/token");
 
         Assert.Equal(
-            [new Uri("http://127.0.0.1:58622/oauth2/token"), new Uri("http://127.0.0.1:58622/v4/games")],
+            [new Uri("http://127.0.0.1:8080/oauth2/token"), new Uri("http://127.0.0.1:8080/v4/games")],
             asked);
     }
 }

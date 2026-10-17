@@ -80,9 +80,10 @@ backend's URL. The dev server renders pages and forwards `/api/*` to ASP.NET on
 
 > **Use `npm run dev`, not `npm start`.**
 > `npm start` serves the production build, which has no `/api` proxy — pages render but
-> every client-side request 404s. In a real deployment a reverse proxy (CloudFront, nginx)
-> routes `/api/*` to the API and everything else to the SSR server; `npm run dev` stands in
-> for that locally. See [Serving the production build](#serving-the-production-build).
+> every client-side request 404s. In a real deployment something in front of both routes `/api/*`
+> to the API and everything else to the SSR server (here the load balancer behind CloudFront;
+> nginx would do elsewhere); `npm run dev` stands in for that locally. See
+> [Serving the production build](#serving-the-production-build).
 
 ### Other commands
 
@@ -91,7 +92,8 @@ cd myvideogamelist.client
 npm run lint         # ESLint
 npm run typecheck    # generate route types, then tsc
 npm run build        # production build
-npm run e2e          # one browser test over the production build and the API; needs PostgreSQL up
+npm run e2e          # the browser smoke test: needs `docker compose up -d --wait`, and once,
+                     # `npx playwright install chromium`
 
 cd ..
 dotnet test MyVideoGameList.Server.Tests/MyVideoGameList.Server.Tests.csproj                     # server unit tests
@@ -108,9 +110,10 @@ That is the correct production shape: the SSR server is not meant to be the API 
 exercise the built app end to end locally you need something in front of both, for example
 nginx routing `/api/*` to `http://localhost:5039` and `/*` to `http://localhost:3000`.
 
-The smoke test, `npm run e2e`, does exactly that for one browser test: it serves the build and the
-API side by side, with a stand-in for the distribution in front of both and one for IGDB behind the
-API. See [ADR 0060](docs/decisions/0060-one-browser-test-over-the-production-shape.md).
+The browser smoke test, `npm run e2e`, does exactly that for one test: it serves the build and the
+API side by side, with a stand-in in front of both that routes as the deployed load balancer does,
+and one for IGDB behind the API. See
+[ADR 0060](docs/decisions/0060-one-browser-test-over-the-production-shape.md).
 
 Health endpoints: `/healthz` (liveness) and `/readyz` (database + IGDB reachability).
 
@@ -132,6 +135,6 @@ Health endpoints: `/healthz` (liveness) and `/readyz` (database + IGDB reachabil
 Pull requests and pushes to `master` are validated by GitHub Actions: the client is linted,
 type-checked and built; the server is built and unit-tested, and its integration suite runs against
 PostgreSQL in a container; a browser smoke test runs the production build and the API behind a
-stand-in for the distribution; CodeQL analyses both languages.
+stand-in for what routes between them; CodeQL analyses both languages.
 
 [![CI](../../actions/workflows/ci.yml/badge.svg)](../../actions/workflows/ci.yml)

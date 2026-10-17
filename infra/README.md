@@ -47,7 +47,7 @@ immutable, so it could not push them again anyway.
 
 The `dev` environment holds four variables, none secret: `AWS_ROLE_ARN`, `AWS_REGION`,
 `AWS_ACCOUNT_ID` and `DEV_DEPLOY_ENABLED`, and one secret, `DEV_BASIC_AUTH`, the basic-auth pair
-as `user:password`, which only the smoke test reads; until it is set the authenticated checks are
+as `user:password`, which only Deploy dev's smoke test reads; until it is set the authenticated checks are
 skipped with a warning. The environment admits deployments from `master` only.
 `scripts/dev-env.mjs park` and `resume` set the gate; nothing else should.
 
@@ -69,7 +69,7 @@ CloudFront section, and `Edge.cs` says it again beside each one. Three things ar
   function compares the whole header byte for byte - but what a shell stores and what a browser
   sends for punctuation or accented letters are two encodings that have to agree, and the first
   pair set here did not pass the browser's prompt until it was simplified. Change the pair with
-  the same command, then update the GitHub secret, or the smoke test fails with a 401.
+  the same command, then update the GitHub secret, or Deploy dev's smoke test fails with a 401.
 
   Three paths are exempt, because the client fetches them with `credentials: 'omit'` and the
   browser then withholds the `Authorization` header too: a game's reviews, community scores and

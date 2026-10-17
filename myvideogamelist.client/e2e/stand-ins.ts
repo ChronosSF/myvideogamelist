@@ -10,18 +10,23 @@ import {
 
 /**
  * What surrounds the stack under test: the two things a runner cannot have, stood in for. In front of
- * the two processes, the distribution that routes between them; behind the API, IGDB. Both run in the
- * test runner's own process, started before the test and stopped after it — the run's global setup —
- * while the API and the SSR server run as the processes they are when deployed (ADR 0060).
+ * the two processes, what routes between them when deployed, the distribution and the balancer behind
+ * it; behind the API, IGDB. Both run in the test runner's own process as its global setup, which
+ * Playwright starts once the two servers are answering and stops before it stops them. The API and the
+ * SSR server are processes of their own, as they are deployed (ADR 0060).
  */
 
 /**
  * Fixed rather than picked by the system, because the API is told where IGDB is as it starts, before
- * these stand-ins exist. Each is checked to be free before anything starts — nothing already running
- * is reused, so a port somebody else holds fails the run rather than putting their server under test.
- * Clear of the 5039 and 58546 that `dotnet run` and `npm run dev` take.
+ * these stand-ins exist. Nothing already running is reused: Playwright refuses to start the run when
+ * something answers on the API's or the SSR server's port, and the stand-ins' ports are taken by
+ * listening on them, so one already in use fails the run when it reaches the global setup.
+ *
+ * Clear of `dotnet run` and `npm run dev` (5039, 58546) and of the ports a worktree previews on (5139,
+ * 58646). And below 32768, out of the range Windows and Linux hand out for outgoing connections, where
+ * Windows also reserves blocks of ports at boot for Hyper-V.
  */
-export const PORTS = { api: 5120, distribution: 58620, ssr: 58621, igdb: 58622 } as const;
+export const PORTS = { api: 5180, igdb: 5181, ssr: 5182, distribution: 5183 } as const;
 
 /**
  * Loopback by address rather than by name, so that nothing depends on which of IPv4 and IPv6 a name
@@ -40,25 +45,27 @@ export const IGDB_CLIENT = { id: 'smoke-test', secret: 'smoke-test-secret' } as 
 const TOKEN = 'smoke-test-token';
 
 /**
- * The one game this IGDB knows. Its id is far past any real one, so it can never be mistaken for a
- * real game in a database a real IGDB has also written to.
+ * The games this IGDB knows: every id from two billion up, each with the same title. That is far past
+ * any real IGDB id, and still an `int` to the API. A run asks for an id no earlier run has, so the
+ * API's own copy of a game an earlier run looked at (ADR 0035) can never answer for this one.
  */
-export const GAME = { id: 2_000_000_105, title: 'Smoke Test Quest' } as const;
+export const GAMES = { firstId: 2_000_000_000, title: 'Smoke Test Quest' } as const;
 
 /**
- * The game as IGDB sends one: snake_case, with only the fields this test reads. No cover, artwork or
- * video, so the browser is never sent to IGDB's image host or to YouTube.
+ * A game as IGDB sends one: snake_case, with only the fields this test reads, whatever fields a query
+ * asks for. No cover, artwork or video, so the browser is never sent to IGDB's image host or to
+ * YouTube.
  */
-const GAME_ROW = {
-    id: GAME.id,
-    name: GAME.title,
-    summary: 'A game that exists only in the smoke test, answered by its stand-in for IGDB.',
-};
+const gameRow = (id: number) => ({
+    id,
+    name: GAMES.title,
+    summary: 'A game that exists only in the browser smoke test, answered by its stand-in for IGDB.',
+});
 
 /**
  * Hop-by-hop headers, which describe one connection rather than the request, so a proxy does not pass
  * them on. Everything else is passed on, `Host` and cookies included, as the distribution forwards
- * every viewer header to the API.
+ * every viewer header on its way to the API.
  */
 const HOP_BY_HOP = new Set(['connection', 'keep-alive', 'proxy-connection', 'te', 'trailer', 'transfer-encoding', 'upgrade']);
 
@@ -76,28 +83,43 @@ function endToEndRaw(raw: string[]): string[] {
 }
 
 /**
- * The distribution's two behaviours (`infra/src/Infra/Edge.cs`, and the balancer's rules in
- * `AppStack.cs`): `/api/*` to the API, everything else to the SSR server. Nothing else of it — no
- * cache, no basic auth, no TLS — because the first behaviour is what ADR 0003's failure is about.
- * Without it the pages still render, since their loaders reach the API directly, and every request
- * the browser makes to the API 404s.
+ * Where a request goes when deployed. The balancer routes (`infra/src/Infra/AppStack.cs`): `/api/*` to
+ * the API and everything else to the SSR server, as its first and last rules do. The rule between them,
+ * `/healthz` and `/readyz` to the API, is left out, since no page asks for either. In front of it the
+ * distribution (`Edge.cs`) has one origin and decides what is cached and forwarded, and outside `/api/*`
+ * it allows only GET and HEAD, so anything else there is refused here too. Nothing else of the two —
+ * no cache, no basic auth, no TLS. The routing is what ADR 0003's failure is about: without it the pages
+ * still render, since their loaders reach the API directly, and every request the browser makes to the
+ * API fails on the SSR server, a read with a 404 and a write with a 405.
  */
-function forwardAsTheDistribution(viewer: IncomingMessage, reply: ServerResponse) {
+function forwardAsTheEdge(viewer: IncomingMessage, reply: ServerResponse) {
     const path = viewer.url ?? '/';
-    const origin = new URL(path.startsWith('/api/') ? API : SSR);
+    const toApi = path.startsWith('/api/');
 
+    if (!toApi && viewer.method !== 'GET' && viewer.method !== 'HEAD') {
+        reply.writeHead(403).end();
+        return;
+    }
+
+    const origin = new URL(toApi ? API : SSR);
     const forwarded = request(
         { host: origin.hostname, port: origin.port, method: viewer.method, path, headers: endToEnd(viewer.headers) },
         answer => {
             reply.writeHead(answer.statusCode ?? 502, answer.statusMessage, endToEndRaw(answer.rawHeaders));
+            // Either side going away mid-answer ends the other. The browser drops a page's requests
+            // when it reloads, and the servers are stopped at the end of a run; unhandled, the error
+            // an interrupted answer raises would fail a run whose test had passed.
+            answer.on('error', () => reply.destroy());
+            reply.on('close', () => answer.destroy());
             answer.pipe(reply);
         },
     );
 
-    // An origin that cannot be reached is a 502, as CloudFront answers it.
     forwarded.on('error', () => {
-        if (!reply.headersSent) reply.writeHead(502);
-        reply.end();
+        // Cut off mid-answer: destroyed rather than ended, so the browser cannot take half a body
+        // for all of it. Not reached at all: a 502, as CloudFront answers an origin it cannot reach.
+        if (reply.headersSent) reply.destroy();
+        else reply.writeHead(502).end();
     });
     viewer.on('error', () => forwarded.destroy());
     viewer.pipe(forwarded);
@@ -113,16 +135,19 @@ function json(reply: ServerResponse, status: number, body: unknown) {
     reply.writeHead(status, { 'Content-Type': 'application/json' }).end(JSON.stringify(body));
 }
 
-/** Whether a query looks the game up by id: the game page's, and the game cache's for the lists. */
-function namesTheGame(query: string): boolean {
-    const ids = /where id = \(?([\d,]+)\)?;/.exec(query)?.[1];
-    return ids !== undefined && ids.split(',').map(Number).includes(GAME.id);
+/**
+ * The games a query looks up by id, among the ones this IGDB knows: the game page's lookup and the game
+ * cache's, `where id = 2000000123;` and `where id = (2000000123,…);`.
+ */
+function gamesLookedUp(query: string): object[] {
+    const ids = /where id = \(?([\d,]+)\)?;/.exec(query)?.[1].split(',').map(Number) ?? [];
+    return ids.filter(id => id >= GAMES.firstId).map(gameRow);
 }
 
 /**
  * IGDB, as far as this test reaches it, at the two addresses the API is configured with: Twitch's
  * token endpoint, and the query endpoints under `/v4`. A query needs the token the stand-in issued.
- * It answers a lookup of its one game with that game, and everything else — a Steam id, completion
+ * It answers a lookup of its games with those games, and everything else — a Steam id, completion
  * times, a release date — with nothing, which is what IGDB says of a game it knows little about. So
  * no Steam id is found, and the API never asks Steam for news.
  */
@@ -152,7 +177,7 @@ async function answerAsIgdb(asked: IncomingMessage, reply: ServerResponse) {
         return refuse(401, 'not the token this stand-in issued');
     }
 
-    json(reply, 200, endpoint === 'games' && namesTheGame(body) ? [GAME_ROW] : []);
+    json(reply, 200, endpoint === 'games' ? gamesLookedUp(body) : []);
 }
 
 function listen(server: Server, port: number): Promise<Server> {
@@ -178,9 +203,9 @@ export default async function startStandIns(): Promise<() => Promise<void>> {
     );
 
     try {
-        const distribution = await listen(createServer(forwardAsTheDistribution), PORTS.distribution);
+        const edge = await listen(createServer(forwardAsTheEdge), PORTS.distribution);
         return async () => {
-            await Promise.all([close(distribution), close(igdb)]);
+            await Promise.all([close(edge), close(igdb)]);
         };
     } catch (error) {
         await close(igdb);

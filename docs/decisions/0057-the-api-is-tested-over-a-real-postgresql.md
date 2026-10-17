@@ -1,6 +1,9 @@
 # 0057. The API is tested over a real PostgreSQL: one container a run, a database a class, and IGDB out of reach
 
-**Status:** Implemented. The export-snapshot test went in skipped, waiting for #263.
+**Status:** Implemented. The export-snapshot test went in skipped, waiting for #263. The
+server-rendered front end it left to #105 is tested in a browser by
+[0060](0060-one-browser-test-over-the-production-shape.md), which, unlike this suite, keeps a database
+of its own on `mvgl-postgres` when run locally.
 **Amends:** [0043](0043-where-the-key-ring-lives.md), which gave `AllowEphemeralKeys` one purpose;
 the integration suite's test host is a second.
 

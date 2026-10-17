@@ -180,7 +180,7 @@ public class IgdbService(
     /// <summary>A configured address without its trailing slash, or null when none is set.</summary>
     private string? Configured(string key) =>
         configuration[key] is { } address && !string.IsNullOrWhiteSpace(address)
-            ? address.TrimEnd('/')
+            ? address.Trim().TrimEnd('/')
             : null;
 
     private async Task<string> GetAccessTokenAsync(CancellationToken cancellationToken)

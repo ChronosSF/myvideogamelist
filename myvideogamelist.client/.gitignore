@@ -36,5 +36,5 @@ obj\*/
 /visual/test-results/
 /visual/.auth/
 
-# The smoke test's traces and screenshots, kept only when it fails (`npm run e2e`)
+# The browser smoke test's traces and screenshots, kept only when it fails (`npm run e2e`)
 /e2e/test-results/
