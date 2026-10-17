@@ -36,6 +36,11 @@ vi.mock('@/components/ProfileStats', () => ({
     ProfileStats: ({ userId }: { userId: string }) => <div>tracking for {userId}</div>,
 }));
 
+/** And the history, which pages through its own endpoint and is tested beside itself. */
+vi.mock('@/components/ProfileHistory', () => ({
+    ProfileHistory: ({ userId }: { userId: string }) => <div>history for {userId}</div>,
+}));
+
 /** Likewise the favourites and the list names, which read providers this page does not mount. */
 vi.mock('@/components/FavouritesShowcase', () => ({
     FavouritesShowcase: () => <div>favourites</div>,
@@ -101,6 +106,19 @@ describe('UserPage before the account is known', () => {
         renderPage();
 
         expect(fetchMock).not.toHaveBeenCalled();
+    });
+});
+
+describe('UserPage once the account is known', () => {
+    it('shows the history under the figures, for the signed-in account', () => {
+        const user = userProfile();
+        authAnswered(user);
+        stubFetch();
+        renderPage();
+
+        const tracking = screen.getByText(`tracking for ${user.id}`);
+        const history = screen.getByText(`history for ${user.id}`);
+        expect(tracking.compareDocumentPosition(history) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     });
 });
 

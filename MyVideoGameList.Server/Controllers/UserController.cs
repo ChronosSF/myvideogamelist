@@ -286,8 +286,10 @@ public class UserController(
     [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
     public async Task<ActionResult<HistoryPageDto>> GetHistory(
         CancellationToken cancellationToken,
-        // Absent for the first page; otherwise the `next` the previous page returned.
-        [FromQuery][RegularExpression(HistoryCursor.Pattern)] string? after = null)
+        // Absent for the first page; otherwise the `next` the previous page returned. The page shows
+        // a refusal's sentence, so the shape check says the same as the key ring's below rather than
+        // reciting the pattern.
+        [FromQuery][RegularExpression(HistoryCursor.Pattern, ErrorMessage = NotAPage)] string? after = null)
     {
         var userId = userManager.GetUserId(User);
         if (userId is null) return Unauthorized();
@@ -300,10 +302,13 @@ public class UserController(
         {
             // The one rule an attribute cannot express, since it takes the key ring to check. Beside
             // the parameter, in the shape every other 400 has.
-            ModelState.AddModelError(nameof(after), "That is not a page of this history. Start again from the first.");
+            ModelState.AddModelError(nameof(after), NotAPage);
             return ValidationProblem(ModelState);
         }
     }
+
+    /// <summary>What a refused history cursor tells the reader, whichever check refused it.</summary>
+    private const string NotAPage = "That is not a page of this history. Start again from the first.";
 
     /// <summary>
     /// Steam news for the games the signed-in user tracks, newest first — the <c>/news</c> page.

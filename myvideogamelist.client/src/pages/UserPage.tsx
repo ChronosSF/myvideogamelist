@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { useAuth } from '@/hooks/useAuth';
 import { ProfileStats } from '@/components/ProfileStats';
+import { ProfileHistory } from '@/components/ProfileHistory';
 import { FavouritesShowcase } from '@/components/FavouritesShowcase';
 import { AccountIdentityCard } from '@/components/AccountIdentityCard';
 import { AccountDataCard } from '@/components/AccountDataCard';
@@ -143,6 +144,12 @@ export function UserPage() {
                         </div>
                         <div className="user-card">
                             <ProfileStats userId={user.id} />
+                        </div>
+                        {/* Under the figures it is the itemised version of: the same moves and
+                            dates, one at a time. Here only — the public profile publishes counts,
+                            never a dated record of what somebody did with which game. */}
+                        <div className="user-card">
+                            <ProfileHistory userId={user.id} />
                         </div>
                     </div>
 
