@@ -142,7 +142,9 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   nothing — check the field still exists before debugging your own code.
   `age_ratings.category` and `age_ratings.rating` went the same way — use `organization` (ESRB is
   `1`) and `rating_category`. *Requesting* a removed field is just as quiet: it is left out of the
-  response, which hid every ESRB badge.
+  response, which hid every ESRB badge. So did `websites.category`, whose absence made every
+  game's "Official Site" whichever link IGDB listed first — use `type`, a `website_types` id
+  (official is `1`).
 
 - **An IGDB release date is not always a day.** `release_dates.date_format` says how much of it is
   known — 0 the day, 1 the month, 2 the year, 3 to 6 a quarter, 7 nothing — and for anything but a
