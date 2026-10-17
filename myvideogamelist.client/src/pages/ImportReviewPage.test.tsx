@@ -5,7 +5,7 @@ import { MemoryRouter, Route, Routes } from 'react-router';
 import { ImportReviewPage } from '@/pages/ImportReviewPage';
 import type { AuthContextValue } from '@/contexts/AuthContext';
 import type { UseImportReviewResult } from '@/hooks/useImport';
-import { game, importReview, importRow, userProfile } from '@/test/factories';
+import { game, importResult, importReview, importRow, userProfile } from '@/test/factories';
 
 /**
  * Auth, the lists, wishlist and favourites contexts and the review hook, all mocked: each of the
@@ -225,14 +225,13 @@ describe('ImportReviewPage', () => {
 
     it('offers the skipped rows as a file once the import is done', () => {
         // §C5: nothing is silently lost, and a count does not say which games to add by hand.
-        review.result = {
-            job: { ...loaded([]).job, state: 'done', importedCount: 600, skippedCount: 2 },
+        review.result = importResult({
+            imported: 600,
             skipped: [
                 { title: 'One', sourceStatus: null, reason: 'No game was matched to it.' },
                 { title: 'Two', sourceStatus: 'Played', reason: 'You chose not to import it.' },
             ],
-            unlisted: 0,
-        };
+        });
         renderPage();
 
         expect(screen.getByRole('heading', { name: 'Import finished' })).toBeInTheDocument();
@@ -241,11 +240,7 @@ describe('ImportReviewPage', () => {
     });
 
     it('offers no download when every row imported', () => {
-        review.result = {
-            job: { ...loaded([]).job, state: 'done', importedCount: 3, skippedCount: 0 },
-            skipped: [],
-            unlisted: 0,
-        };
+        review.result = importResult({ imported: 3 });
         renderPage();
 
         expect(screen.queryByRole('button', { name: 'Download what was skipped' })).not.toBeInTheDocument();
@@ -254,15 +249,70 @@ describe('ImportReviewPage', () => {
     it('says how many imported games are in no list, rather than that all are in your lists', () => {
         // The sentence this replaces was false of 457 games in the export that found it: a game
         // with no status shows in no list (ADR 0019), only on its own page.
-        review.result = {
-            job: { ...loaded([]).job, state: 'done', importedCount: 617, skippedCount: 0 },
-            skipped: [],
-            unlisted: 9,
-        };
+        review.result = importResult({ imported: 617, unlisted: 9 });
         renderPage();
 
         expect(screen.getByText(/617 games were imported\. 9 of them are in no list/)).toBeInTheDocument();
         expect(screen.queryByText(/now in your lists/)).not.toBeInTheDocument();
+    });
+
+    it('counts the games, and says how many rows they came from, when rows named one game', () => {
+        // #152. A source that lists a game once per platform gives it a row per platform, and those
+        // rows land on one entry — so the 14 the review said it would import are 11 games. "14 games
+        // are now in your lists" is three more than went in, and a bare "11" reads as three lost.
+        review.result = importResult({ imported: 14, games: 11 });
+        renderPage();
+
+        expect(screen.getByText('11 games are now in your lists, from 14 rows of your file.')).toBeInTheDocument();
+        expect(screen.queryByText(/14 games/)).not.toBeInTheDocument();
+    });
+
+    const skippedRow = (title: string) => ({ title, sourceStatus: null, reason: 'You chose not to import it.' });
+
+    it.each([
+        {
+            // Every Grouvee export: a game a row, so "rows" would be a word for nothing.
+            what: 'a game a row, and one skipped',
+            result: importResult({ imported: 600, skipped: [skippedRow('One')] }),
+            says: '600 games are now in your lists. 1 was skipped.',
+        },
+        {
+            // "It" rather than "1 of them": with one game imported there is no "them".
+            what: 'one game, in no list',
+            result: importResult({ imported: 1, unlisted: 1 }),
+            says: '1 game was imported. It is in no list, so it is on its own game page rather than in your lists.',
+        },
+        {
+            what: 'one game from two rows, and one row skipped',
+            result: importResult({ imported: 2, games: 1, skipped: [skippedRow('One')] }),
+            says: '1 game is now in your lists, from 2 rows of your file. 1 row was skipped.',
+        },
+        {
+            what: 'one game from two rows, in no list',
+            result: importResult({ imported: 2, games: 1, unlisted: 1 }),
+            says: '1 game was imported, from 2 rows of your file. It is in no list, so it is on its own game page rather than in your lists.',
+        },
+        {
+            // "Of the games" rather than "of them", which straight after the rows could be the rows.
+            what: 'games from more rows, one of them in no list',
+            result: importResult({ imported: 14, games: 11, unlisted: 1 }),
+            says: '11 games were imported, from 14 rows of your file. 1 of the games is in no list, so it is on its own game page rather than in your lists.',
+        },
+        {
+            // Once rows have been named, a skipped one is called a row: it can be one whose game
+            // another row imported, so "3 were skipped" would read as three games missing.
+            what: 'games from more rows, several in no list and several rows skipped',
+            result: importResult({
+                imported: 14, games: 11, unlisted: 2,
+                skipped: [skippedRow('One'), skippedRow('Two'), skippedRow('Three')],
+            }),
+            says: '11 games were imported, from 14 rows of your file. 2 of the games are in no list, so they are on their own game pages rather than in your lists. 3 rows were skipped.',
+        },
+    ])('says it in the right number: $what', ({ result, says }) => {
+        review.result = result;
+        renderPage();
+
+        expect(screen.getByText(says)).toBeInTheDocument();
     });
 
     it('asks once which list the games played with no word on how they ended go into', async () => {

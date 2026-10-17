@@ -591,6 +591,30 @@ public class ImportServiceTests
     }
 
     [Fact]
+    public async Task CommitAsync_TwoRowsNamingOneGame_CountAsTwoRowsButOneGame()
+    {
+        // A source that lists a game once per platform names it in a row per platform, and every
+        // one of those rows lands on the one entry. The result screen says how many games are now
+        // in the library, so it reads Games; ImportedCount stays a count of rows, because with
+        // SkippedCount it has to account for every row in the file (§C5).
+        using var db = NewDb();
+        var service = NewService(db, CacheReturning(Game(379)));
+        var jobId = await UploadAsync(service, Export(
+            Entry(name: "Metal Gear Solid 3"),
+            Entry(name: "Metal Gear Solid 3: Snake Eater"),
+            Entry(igdbId: "null", name: "Nobody Has Heard Of This")));
+
+        var result = await service.CommitAsync(UserId, jobId);
+
+        Assert.Equal(2, result!.Job.ImportedCount);
+        Assert.Equal(1, result.Games);
+        Assert.Single(db.UserGameEntries);
+
+        Assert.Equal(1, result.Job.SkippedCount);
+        Assert.Equal(result.Job.RowCount, result.Job.ImportedCount + result.Job.SkippedCount);
+    }
+
+    [Fact]
     public async Task CommitAsync_ANoteLongerThanTheColumn_IsCutRatherThanFailingTheWholeImport()
     {
         // A Grouvee review can run past 2,000 characters. Left alone it would abort the final save
@@ -932,6 +956,7 @@ public class ImportServiceTests
         var result = await service.CommitAsync(UserId, jobId);
 
         Assert.Equal(4, result!.Job.ImportedCount);
+        Assert.Equal(3, result.Games);
         Assert.Equal(2, result.Unlisted);
     }
 

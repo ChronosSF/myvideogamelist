@@ -430,11 +430,15 @@ public class ImportService(
             wanted.Add((row, payload));
         }
 
-        var (imported, unlisted) = await WriteAsync(userId, job.Source, wanted, cancellationToken);
+        var (imported, games, unlisted) = await WriteAsync(userId, job.Source, wanted, cancellationToken);
 
         var now = clock.GetUtcNow();
 
         job.State = ImportJobStates.Done;
+
+        // Both are counts of rows, so that together they account for every row in the file — what
+        // §C5's failure report is reconciled against. Two rows can name one game, so the games
+        // those rows wrote are a different number, answered in the result and stored nowhere.
         job.ImportedCount = imported;
         job.SkippedCount = skipped.Count;
         job.CompletedAt = now;
@@ -457,7 +461,7 @@ public class ImportService(
         // its window — which is the race SaveTouchingAsync turns into this method's own 404.
         if (!await SaveTouchingAsync(job, now, cancellationToken)) return null;
 
-        return new ImportResultDto(ToDto(job), skipped, unlisted);
+        return new ImportResultDto(ToDto(job), skipped, games, unlisted);
     }
 
     public async Task<bool> CancelAsync(
@@ -567,15 +571,16 @@ public class ImportService(
     /// actually touched at the top of "recently moved".
     /// </remarks>
     /// <returns>
-    /// How many rows were written, and how many of the games written are in no list afterwards.
+    /// How many rows were written, how many games those rows wrote — fewer whenever two of them
+    /// name one game — and how many of those games are in no list afterwards.
     /// </returns>
-    private async Task<(int Imported, int Unlisted)> WriteAsync(
+    private async Task<(int Imported, int Games, int Unlisted)> WriteAsync(
         string userId,
         string source,
         IReadOnlyList<(ImportRow Row, ImportRowPayload Payload)> wanted,
         CancellationToken cancellationToken)
     {
-        if (wanted.Count == 0) return (0, 0);
+        if (wanted.Count == 0) return (0, 0, 0);
 
         var gameIds = wanted.Select(w => w.Row.GameId!.Value).Distinct().ToList();
 
@@ -671,7 +676,7 @@ public class ImportService(
         // carry, so neither "rows without a status" nor "rows written" is how many are in no list.
         var unlisted = gameIds.Count(id => entries[id].StatusId is null);
 
-        return (imported, unlisted);
+        return (imported, gameIds.Count, unlisted);
     }
 
     /// <summary>

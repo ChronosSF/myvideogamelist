@@ -197,11 +197,19 @@ public record ImportPlayedStatusDto(
 /// built from — the promise of §C5 is that nothing is silently lost, and a count alone does not
 /// keep it.
 /// </param>
+/// <param name="Games">
+/// How many games the imported rows wrote, which is fewer than the job's <c>ImportedCount</c>
+/// whenever two of those rows name one game — as a source listing a game once per platform does.
+/// Answered here and stored nowhere, because the result screen is the one place that says how many
+/// games went in. <c>ImportedCount</c> stays a count of rows, so that it and <c>SkippedCount</c>
+/// still account for every row in the file (§C5).
+/// </param>
 /// <param name="Unlisted">
-/// How many of the games the commit wrote are in no list afterwards. The result screen says so,
+/// How many of those <paramref name="Games"/> are in no list afterwards. The result screen says so,
 /// because "now in your lists" is false of them: an entry with no status appears in no list
 /// (ADR 0019), and only the game's own page shows it.
 /// </param>
-public record ImportResultDto(ImportJobDto Job, IReadOnlyList<ImportSkippedRowDto> Skipped, int Unlisted);
+public record ImportResultDto(
+    ImportJobDto Job, IReadOnlyList<ImportSkippedRowDto> Skipped, int Games, int Unlisted);
 
 public record ImportSkippedRowDto(string Title, string? SourceStatus, string Reason);
