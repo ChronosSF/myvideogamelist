@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { RouterProvider, createMemoryRouter, useLoaderData } from 'react-router';
 import { GamesPage } from '@/pages/GamesPage';
@@ -9,9 +9,9 @@ import { game, platform } from '@/test/factories';
 import type { Route } from './+types/GamesPage';
 
 /*
- * The browse page while a navigation is still out: a page of the infinite scroll that answers as the
- * next browse renders. The loader is the test's, answering by the URL, so the page reads its loader
- * data as it does in the app.
+ * The browse page while a navigation is still out: a filter whose page has not landed, and a page of
+ * the infinite scroll that answers as the next browse renders. The loader is the test's, answering by
+ * the URL, so the page reads its loader data as it does in the app.
  */
 
 // A signed-out reader, the shared page's audience. Every hook a card may ask is answered here, for
@@ -91,6 +91,69 @@ beforeEach(() => {
 
 afterEach(() => {
     vi.unstubAllGlobals();
+});
+
+describe('GamesPage while a filter is on its way', () => {
+    it('shows the choice just made while its page loads', async () => {
+        // Rendered from the browse that landed, a select snapped back to its old value until the page
+        // did, and on Windows each arrow key on a closed select moved one option per page load.
+        const platformPage = held<PagedGamesResponse>();
+        renderBrowse(params => params.has('platform') ? platformPage.answer : { items: games(3, 1), hasMore: false });
+        const actor = userEvent.setup();
+
+        await actor.selectOptions(await screen.findByLabelText('Platform'), 'PC (Windows)');
+
+        expect(screen.getByLabelText('Platform')).toHaveValue('6');
+        await act(async () => platformPage.release({ items: games(1, 50), hasMore: false }));
+        expect(await screen.findByText('Game 50')).toBeInTheDocument();
+    });
+
+    /**
+     * Picks a platform, whose page is held, and types "zelda" before it lands. Once the search has
+     * gone out, past the debounce, every page still held answers and the browse settles.
+     */
+    async function searchOverAPendingFilter() {
+        const pages: Array<(page: PagedGamesResponse) => void> = [];
+        const router = renderBrowse(params => {
+            if (!params.has('platform')) return { items: games(3, 1), hasMore: false };
+            const page = held<PagedGamesResponse>();
+            pages.push(page.release);
+            return page.answer;
+        });
+        const actor = userEvent.setup();
+
+        await actor.selectOptions(await screen.findByLabelText('Platform'), 'PC (Windows)');
+        fireEvent.change(screen.getByLabelText('Search games'), { target: { value: 'zelda' } });
+
+        // The search goes out as the navigation still under way, or as the one that landed.
+        const searched = () => (router.state.navigation.location ?? router.state.location).search;
+        await waitFor(() => expect(searched()).toContain('search=zelda'), { timeout: 2000 });
+        await act(async () => pages.forEach(release => release({ items: [], hasMore: false })));
+        await waitFor(() => expect(router.state.navigation.state).toBe('idle'));
+        return router;
+    }
+
+    it('keeps the filter when a search is typed before its page lands', async () => {
+        // The search went out from the URL that had landed, without the filter, and replaced the
+        // navigation that carried it.
+        const router = await searchOverAPendingFilter();
+
+        const landed = new URLSearchParams(router.state.location.search);
+        expect(landed.get('platform')).toBe('6');
+        expect(landed.get('search')).toBe('zelda');
+    });
+
+    it('leaves the listing the filter was chosen from one step back', async () => {
+        // A navigation takes the replace or push of the one that interrupts it, so a search that
+        // replaced the filter still loading took the filter's own step, and Back skipped past the
+        // listing it was chosen from.
+        const router = await searchOverAPendingFilter();
+
+        // Not awaited: with nowhere to go back to, the navigation would never settle.
+        act(() => { void router.navigate(-1); });
+
+        await waitFor(() => expect(router.state.location.search).toBe(''));
+    });
 });
 
 describe('GamesPage paging into the next browse', () => {
