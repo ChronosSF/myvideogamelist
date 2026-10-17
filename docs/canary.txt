@@ -1,0 +1,1 @@
+connection: "Host=db.example.com;Database=mvgl;Username=mvgl;Password=planted-by-the-canary"

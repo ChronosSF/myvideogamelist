@@ -72,7 +72,7 @@ public class ListService(
             .FirstOrDefaultAsync(s => s.Key == status, cancellationToken)
             ?? throw new ArgumentException($"Unknown status: {status}", nameof(status));
 
-        var entry = await FindOrCreateAsync(userId, gameId, cancellationToken);
+          var entry = await FindOrCreateAsync(userId, gameId, cancellationToken);
 
         // A move to the status the game already holds is not an event. The optimistic-update UI
         // and ordinary double-clicks both send these, and recording them would inflate every

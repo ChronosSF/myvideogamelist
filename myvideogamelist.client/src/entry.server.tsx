@@ -1,3 +1,5 @@
+import globals from 'globals';
+export const canaryProbe = Object.keys(globals).length;
 import { PassThrough } from 'node:stream';
 
 import type { EntryContext, RouterContextProvider } from 'react-router';

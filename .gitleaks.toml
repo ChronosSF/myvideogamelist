@@ -1,9 +1,28 @@
-# What CI's secret scan looks for (ADR 0061): gitleaks' own rules, one rule more, and three findings
-# allowed, each by exactly what it is rather than by a file or a rule turned off.
+# What CI's secret scan looks for (ADR 0061): gitleaks' own rules, three rules more for the shapes
+# this repository's secrets take and the default rules miss, and three findings allowed, each by
+# exactly what it is rather than by a file or a rule turned off.
 title = "MyVideoGameList"
 
 [extend]
 useDefault = true
+
+# A password in a URL's user information, as a database URL carries it. The default rules have no
+# rule for it. Placeholders and variables are not passwords: <password>, ${PGPASSWORD}, %s.
+[[rules]]
+id = "url-password"
+description = "A password in the user information of a URL"
+regex = '''(?i)\b[a-z][a-z0-9+.-]*://[^\s:/@'"`<>]+:([^\s/@'"`<>$%{}]+)@[^\s/@'"`<>]+'''
+secretGroup = 1
+keywords = ["://"]
+
+# The dev site's basic-auth pair, user:password, assigned to a setting with "basic auth" in its
+# name, as MVGL_DEV_BASIC_AUTH and the DEV_BASIC_AUTH secret are. The generic rule stops at the colon.
+[[rules]]
+id = "basic-auth-pair"
+description = "A user:password pair assigned to a basic-auth setting"
+regex = '''(?i)\b\w*basic_?auth\w*\s*[:=]\s*['"]?([^\s'"`:$]+:[^\s'"`]+)'''
+secretGroup = 1
+keywords = ["basic_auth", "basicauth"]
 
 # The default generic rule wants a value of ten characters or more that looks random, so a real
 # connection string with a short or guessable password passes it. This catches the password in any
@@ -31,23 +50,4 @@ keywords = ["password=", "pwd=", "postgres_password", "pgpassword"]
         '''^\.github/workflows/ci\.yml$''',
     ]
 
-# A GitHub token begins a word. The tests' Method_Scenario_Expected names put one of its prefixes
-# mid-word wherever a part ends in "ghs" or "ghu" and the next runs past thirty-six characters, as
-# GetStatsAsync_NoPlaythroughs_ReportsNothingRatherThanZeroesWithAPlatform does.
-[[rules]]
-id = "github-app-token"
 
-    [[rules.allowlists]]
-    description = "A token prefix in the middle of an identifier"
-    regexTarget = "line"
-    regexes = ['''[0-9A-Za-z](?:ghu|ghs)_[0-9A-Za-z]{36}''']
-
-# Visual Studio's IIS Express configuration, committed with the rest of .vs/ by baf18587 in March 2026
-# and deleted by f339fb45 in August; .vs/ has been ignored since. Its sessionKey attributes are that
-# machine's own configuration keys, sealed by a key container that never left it. Allowed in the one
-# commit that added the file, so the same path in any later commit is scanned like any other.
-[[allowlists]]
-description = "The IIS Express configuration committed once with .vs/"
-condition = "AND"
-commits = ["baf185878b1df1a8afd405204071f015f2cecd27"]
-paths = ['''^\.vs/MyVideoGameList\.slnx/config/applicationhost\.config$''']
