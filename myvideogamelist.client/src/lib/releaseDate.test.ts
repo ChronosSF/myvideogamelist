@@ -10,6 +10,14 @@ describe('parseReleaseDate', () => {
     });
 });
 
+describe('the suite', () => {
+    it('runs west of Greenwich, where Date reads a bare day as the day before', () => {
+        // The zone's effect rather than process.env.TZ, which a worker thread would report without
+        // taking up the zone, leaving every date test where both readings agree.
+        expect(new Date('2027-01-01').getFullYear()).toBe(2026);
+    });
+});
+
 describe('releaseYear', () => {
     it('is the year of the day named, wherever the reader is', () => {
         // New Year's Day at UTC midnight is still the old year west of Greenwich.
