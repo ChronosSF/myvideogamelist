@@ -191,8 +191,9 @@ then stopped before it answered.
 
 - **`pull_request` has no branch filter**, so a pull request stacked on another's branch gets CI like
   any other, and the throwaway draft is not needed again. GitHub reads the trigger from the workflow in
-  the pull request's merge commit, so a stack begun before this landed gets CI once `master` is merged
-  into one of its branches. The run is of its merge with the branch it targets, not with `master`.
+  the pull request's merge commit, as this record's own pull request showed: #342 got CI against a
+  base whose workflow still filtered by branch. So a stack begun before this landed gets CI once
+  `master` is merged into one of its branches. The run is of its merge with the branch it targets.
   **Pushes run for `master` only**; `develop` is gone.
 - **A newer push to a pull request cancels the run it supersedes**, grouped by the pull request's ref.
   **A push to `master` is never grouped**: GitHub cancels a run waiting in a group whenever a newer one
@@ -209,7 +210,8 @@ CodeQL's C# job, which is still the slowest. The new jobs took 24 s (the audit),
 204 commits in 2.4 s) and 1:52 (the images, close to cold, since the base images had moved), and the
 format steps 20 s and 3 s. About 2.8 runner-minutes more a run, free on a public repository. A second
 throwaway, #335, broke one thing for each gate; each failed in its own job and named its cause, and
-every other job passed. The runners' SDK was 10.0.402.
+every other job passed. The runners' SDK was 10.0.402. With the review's changes, #342's own run took
+2:20, and the scan read 256 commits, merges' own changes included, in 2.2 s.
 
 ### 7. What the owner turns on
 
