@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using MyVideoGameList.Server.Data;
 using MyVideoGameList.Server.DTOs;
 using MyVideoGameList.Server.Models;
+using MyVideoGameList.Server.Services.Edge;
 
 namespace MyVideoGameList.Server.Services;
 
@@ -20,8 +21,18 @@ namespace MyVideoGameList.Server.Services;
 /// the log stays typed and narrow (ADR 0018). No IGDB call either, for the reason every write path
 /// here avoids one.
 /// </para>
+/// <para>
+/// <b>A rewrite or deletion of a public review is a withdrawal</b>, because the author's public
+/// profile renders the text and the edge keeps a copy of that page. Each one tells
+/// <see cref="ProfileWithdrawals"/> after it commits; a review written for the first time, or
+/// one that was private until now, publishes rather than withdraws and tells it nothing
+/// (ADR 0058).
+/// </para>
 /// </remarks>
-public class ReviewService(ApplicationDbContext db, TimeProvider clock) : IReviewService
+public class ReviewService(
+    ApplicationDbContext db,
+    TimeProvider clock,
+    ProfileWithdrawals withdrawals) : IReviewService
 {
     public async Task<ReviewDto?> GetAsync(
         string userId, int gameId, CancellationToken cancellationToken = default)
@@ -53,6 +64,9 @@ public class ReviewService(ApplicationDbContext db, TimeProvider clock) : IRevie
 
         if (existing is not null)
         {
+            // Read before the fields change: what the edge can hold is what was public until now.
+            var wasPublic = existing.Visibility == ReviewVisibility.Public;
+
             existing.Body = input.Body.Trim();
             existing.HasSpoilers = input.HasSpoilers;
             existing.Visibility = input.Visibility;
@@ -60,6 +74,17 @@ public class ReviewService(ApplicationDbContext db, TimeProvider clock) : IRevie
             existing.UpdatedAt = now;
 
             await db.SaveChangesAsync(cancellationToken);
+
+            // Any rewrite of a public review, not only one whose words changed: it also moves to the
+            // top of the profile's newest-first list, so every page of it has changed.
+            if (wasPublic)
+            {
+                await withdrawals.ReviewWithdrawnAsync(userId,
+                    existing.Visibility == ReviewVisibility.Public
+                        ? ReviewWithdrawal.Edited
+                        : ReviewWithdrawal.MadePrivate);
+            }
+
             return ToDto(existing);
         }
 
@@ -90,10 +115,14 @@ public class ReviewService(ApplicationDbContext db, TimeProvider clock) : IRevie
 
         if (review is null) return false;
 
+        var wasPublic = review.Visibility == ReviewVisibility.Public;
+
         // The entry, the score and the playthroughs stay: deleting what you wrote about a game is
         // not deleting your record of it.
         db.Reviews.Remove(review);
         await db.SaveChangesAsync(cancellationToken);
+
+        if (wasPublic) await withdrawals.ReviewWithdrawnAsync(userId, ReviewWithdrawal.Deleted);
         return true;
     }
 

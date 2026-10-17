@@ -30,7 +30,8 @@ public sealed class AppStack : Stack
         var albSubnets = data.Vpc.SelectSubnets(new SubnetSelection { SubnetGroupName = "alb" });
         var taskSubnets = new SubnetSelection { SubnetGroupName = "tasks" };
 
-        var apiService = Service(site, data, "api", ApiTask(site, data, albSubnets, imageTag), data.ApiSecurityGroup, taskSubnets, registerInNamespace: true);
+        var (apiTask, apiContainer) = ApiTask(site, data, albSubnets, imageTag);
+        var apiService = Service(site, data, "api", apiTask, data.ApiSecurityGroup, taskSubnets, registerInNamespace: true);
         var ssrService = Service(site, data, "ssr", SsrTask(site, data, imageTag), data.SsrSecurityGroup, taskSubnets, registerInNamespace: false);
 
         var alb = new ApplicationLoadBalancer(this, "Alb", new ApplicationLoadBalancerProps
@@ -105,6 +106,15 @@ public sealed class AppStack : Stack
 
         var edge = new Edge(this, "Edge", site, alb, edgeCertificate, data.BasicAuthStore, originVerify);
 
+        // The API takes a withdrawn profile off the edge itself, after the write that withdrew it
+        // (ADR 0058), so it is told which distribution - a resume makes a new one with a new id -
+        // and may create invalidations on that one, and do nothing else to it or to any other. The
+        // reference runs one way: the task definition waits for the distribution, which waits for
+        // the balancer, and neither of those refers back to a task or a service, so there is no
+        // cycle. It does mean a resume starts the API only once the distribution exists.
+        apiContainer.AddEnvironment("CloudFront__DistributionId", edge.Distribution.DistributionId);
+        edge.Distribution.GrantCreateInvalidation(apiTask.TaskRole);
+
         // The hostname is the zone's own name, so the alias sits at the zone apex, and it names the
         // distribution: the balancer is in no DNS record. A and AAAA both, since CloudFront is
         // dual-stack where the balancer was IPv4-only.
@@ -120,13 +130,20 @@ public sealed class AppStack : Stack
         _ = new CfnOutput(this, "DistributionDomainName", new CfnOutputProps { Value = edge.Distribution.DistributionDomainName });
     }
 
-    private FargateTaskDefinition ApiTask(Site site, DataStack data, ISelectedSubnets albSubnets, string imageTag)
+    /// <summary>
+    /// The API's task definition, and its container, which is handed back so that the distribution
+    /// id can join its environment once the distribution exists.
+    /// </summary>
+    private (FargateTaskDefinition Task, ContainerDefinition Container) ApiTask(
+        Site site, DataStack data, ISelectedSubnets albSubnets, string imageTag)
     {
         var task = Task(site, "api");
 
-        // The ring that signs the cookie lives in Parameter Store under this path, and this is the
-        // only thing the task role may do: read and write beneath it (ADR 0043). The repository is
-        // built on the first protect, not at boot, so a wrong policy fails the first sign-in.
+        // The ring that signs the cookie lives in Parameter Store under this path, and the task role
+        // may read and write beneath it and nowhere else in the store (ADR 0043). The repository is
+        // built on the first protect, not at boot, so a wrong policy fails the first sign-in. The
+        // one other thing the role may do is invalidate this stack's distribution, granted in the
+        // constructor once the distribution exists (ADR 0058).
         var parameterArn = $"arn:{Aws.PARTITION}:ssm:{Region}:{Account}:parameter{site.DataProtectionPath}";
         task.TaskRole.AddToPrincipalPolicy(new PolicyStatement(new PolicyStatementProps
         {
@@ -135,7 +152,7 @@ public sealed class AppStack : Stack
             Resources = [parameterArn, $"{parameterArn}/*"],
         }));
 
-        task.AddContainer("api", new ContainerDefinitionOptions
+        var container = task.AddContainer("api", new ContainerDefinitionOptions
         {
             Image = ContainerImage.FromEcrRepository(data.ApiRepository, imageTag),
             PortMappings = [new PortMapping { ContainerPort = 8080 }],
@@ -163,7 +180,7 @@ public sealed class AppStack : Stack
             Logging = Logging(site, "api"),
         });
 
-        return task;
+        return (task, container);
     }
 
     private FargateTaskDefinition SsrTask(Site site, DataStack data, string imageTag)

@@ -93,6 +93,14 @@ CloudFront section, and `Edge.cs` says it again beside each one. Three things ar
   then `Data`, then the credential, then `App`. After that, `resume` and the pipeline need nothing
   but `App`.
 
+- **The API takes a withdrawn profile off the edge itself** (ADR 0058): a profile made private,
+  renamed or deleted, or a review on it made private, edited or deleted. `App` passes it the
+  distribution's id as `CloudFront__DistributionId` and lets the API task role create
+  invalidations on that distribution and do nothing else to it. Because the task definition refers
+  to the distribution, a resume creates the API service only once the distribution exists. A
+  withdrawal that cannot be invalidated logs its paths, so a stuck one can be sent by hand with
+  `aws cloudfront create-invalidation --paths "<path>"`.
+
 ## Parking and resuming
 
 The balancer, not the containers, is what an idle environment pays for, so the lever that matters

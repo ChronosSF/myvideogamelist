@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using MyVideoGameList.Server.Data;
 using MyVideoGameList.Server.DTOs;
 using MyVideoGameList.Server.Models;
+using MyVideoGameList.Server.Services.Edge;
 
 namespace MyVideoGameList.Server.Services;
 
@@ -12,7 +13,8 @@ namespace MyVideoGameList.Server.Services;
 public class ListService(
     ApplicationDbContext db,
     IGameCacheService gameCache,
-    TimeProvider timeProvider) : IListService
+    TimeProvider timeProvider,
+    ProfileWithdrawals withdrawals) : IListService
 {
     /// <summary>Lowest and highest score the API will store.</summary>
     internal const short MinScore = 1;
@@ -193,6 +195,17 @@ public class ListService(
 
         if (entry is null) return false;
 
+        // The review goes with the entry through the cascade, and if it was public that is a
+        // review deleted from the author's profile like any other (ADR 0058). Asked before the row
+        // goes, because afterwards there is nothing left to ask.
+        var takesPublicReview = await db.Reviews
+            .AsNoTracking()
+            .AnyAsync(
+                r => r.UserId == userId
+                    && r.UserGameEntryId == entry.Id
+                    && r.Visibility == ReviewVisibility.Public,
+                cancellationToken);
+
         // Record the departure before the row goes, or the log loses the fact that the game ever
         // left a list. The events themselves survive: they hold no key to this row.
         if (entry.StatusId is not null)
@@ -200,6 +213,8 @@ public class ListService(
 
         db.UserGameEntries.Remove(entry);
         await db.SaveChangesAsync(cancellationToken);
+
+        if (takesPublicReview) await withdrawals.ReviewWithdrawnAsync(userId, ReviewWithdrawal.Deleted);
         return true;
     }
 
