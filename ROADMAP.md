@@ -78,8 +78,8 @@ is in the history (`git log -p -- ROADMAP.md`).
 | D4 | SES on a verified domain | #100 |
 | D5 | SES production access, requested early | #100 |
 | D6 | OAuth redirect URIs on the real domain | #111 |
-| D7 | Identity cookie domain | #98 |
-| D8 | `robots.txt`, sitemap, canonical URLs | Done — 0036; the search console registration is #98 |
+| D7 | Identity cookie domain | #98 — host-only, as today, since `www` only redirects: [0066](docs/decisions/0066-a-holding-page-until-production-takes-the-domain.md) §2 |
+| D8 | `robots.txt`, sitemap, canonical URLs | Done — 0036; the search console registration is 0066's, by hand |
 | D9 | Open Graph and Twitter cards | Done — 0036; the default share image is #139 |
 | D10 | Server-side rendering | Done — [0002](docs/decisions/0002-server-side-rendering.md) |
 | D11 | Bounce and complaint handling | #100 |

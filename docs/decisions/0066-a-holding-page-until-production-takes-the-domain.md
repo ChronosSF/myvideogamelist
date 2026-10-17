@@ -2,22 +2,22 @@
 
 **Status:** Implemented; deployed by hand to the production account, and destroyed when production
 takes the domain ([#98](https://github.com/ChronosSF/myvideogamelist/issues/98)). Answers #98's open
-question, apex or `www`. Builds on [0036](0036-what-a-crawler-is-told.md) and
-[0044](0044-what-the-deployment-walkthrough-settled.md).
+question, apex or `www`, and with it D7, the cookie's domain. Builds on
+[0036](0036-what-a-crawler-is-told.md) and [0044](0044-what-the-deployment-walkthrough-settled.md).
 
 ## Context
 
 `myvideogamelist.net` answers nothing. Its zone is in Route 53 in `mvgl-prod` (0044), with the mail
-records and the delegation of `dev.` in it and no record at the apex or at `www`, and production is
-#98, which is not paid for yet. Four things want an address that answers before then:
+records and the delegation of `dev.` in it and no address record at the apex or at `www`, and
+production is #98, which is not paid for yet. Four things want an address that answers before then:
 
 - **The Discord server and the repository**, which want somewhere to send people that says what this
   is.
 - **A first crawl.** A search engine takes weeks to come round to a new domain, and the visit is
   better spent on a page than on nothing.
-- **A Search Console property**, which 0036 left to the infrastructure and #98 owns, as the last of
-  D8. A Domain property is verified by a TXT record in the zone, and is then the place to submit a
-  sitemap and to see what the crawl made of it.
+- **A Search Console property**, which 0036 left to the infrastructure and #98 owned, as the last of
+  D8, until this record. A Domain property is verified by a TXT record in the zone, and is then the
+  place to submit a sitemap and to see what the crawl made of it.
 - **The condition 0044 put on asking SES for production access**: something live at the domain.
 
 ## Decision
@@ -42,22 +42,24 @@ good.
   `dev.myvideogamelist.net`, from `Site.Host`.
 - **The usual reason for `www` does not apply.** A zone apex cannot be a CNAME, but a Route 53
   alias record points the apex at CloudFront as a CNAME would point `www`.
-- **HSTS sent from the apex can cover every name under the domain** (§6), which sent from `www` it
-  cannot.
-- **The cost accepted.** The apex is tied to a DNS host that can alias it, Route 53 today. And a
-  cookie the app sets at the apex must stay host-only — no `Domain` attribute — or the browser
-  sends it to `dev.` as well. That is for D7, the cookie domain, to keep in mind.
+- **The cost accepted:** the apex is tied to a DNS host that can alias it, Route 53 today.
 
 So `www` answers with a 301 to the same path and query on the apex. Every other name the
 distribution can be reached by gets the same, its own `cloudfront.net` name included, so the page
 has one address. **When production takes the domain, its App stack keeps that redirect.**
+
+**This also answers D7, against its wording.** D7 asked for the Identity cookie's domain to be set
+explicitly, which it said mattered once `www` and the apex both resolve to the app. With `www` only
+redirecting, that never happens, so the cookie keeps no `Domain` attribute, as today, and stays
+host-only. `Domain=myvideogamelist.net` would now be the mistake: browsers would send production's
+session cookie to `dev.` as well.
 
 ### 3. One stack, whole in us-east-1, in the production account
 
 `Mvgl-prod-Holding` holds:
 
 - the certificate, validated by DNS, for the apex and `www`;
-- the bucket, read through origin access control;
+- the bucket, read through origin access control, which the stack empties before it deletes it;
 - the distribution, its function and its response headers policy;
 - the four alias records;
 - the deployment of `holding/site`.
@@ -100,15 +102,25 @@ image is still [#139](https://github.com/ChronosSF/myvideogamelist/issues/139).
 ### 6. The headers
 
 The app's document set, from `entry.server.tsx` and 0033 §5: `nosniff`,
-`strict-origin-when-cross-origin`, and `DENY` on framing. To it, two things the app does not send:
+`strict-origin-when-cross-origin`, and `DENY` on framing. To it, two things:
 
-- **The half of CSP the app cannot have yet**, because this page has no script: `default-src
-  'none'`, with the page's own stylesheet and favicon allowed, `base-uri` and `form-action` closed,
-  and `frame-ancestors 'none'`.
+- **A stricter content policy than an app document can carry**, because this page has no script:
+  `default-src 'none'`, with the page's own stylesheet and favicon allowed, `base-uri` and
+  `form-action` closed, and `frame-ancestors 'none'`.
 - **HSTS as 0033 states it**: a year, subdomains included, preload off. The app's documents do not
-  send it yet (#109), so this is the first response at the apex that does. **From a browser's first
-  visit, every name under the domain must answer over HTTPS for a year.** `dev.` does already, and
-  anything added later must.
+  send it yet (#109), so this is the first response at the apex that does, and it commits the
+  domain to more than "use HTTPS":
+  - **Every name under the domain, at any depth** — `www.`, `dev.`, anything under `dev.`, and any
+    name added later — from a browser's first HTTPS response from the apex, a stylesheet included.
+  - **A certificate error on any of them is a wall.** A browser holding the policy refuses an
+    invalid, expired or mismatched certificate with no way to click past it (RFC 6797 §8.4, §12.1).
+  - **Each response restarts the year** (§6.1.1), so the commitment outlives this stack: destroying
+    it withdraws nothing. Only `max-age=0` sent from the apex would, and only to browsers that come
+    back for it. Production's apex goes on sending the policy, which #109 asks of the app anyway.
+  - **Mail is unaffected**: MX, SPF, DKIM, DMARC and a MAIL FROM name are DNS, never fetched over
+    HTTP. A custom open and click tracking domain for SES is the exception. On the plain-HTTP setup
+    SES documents first, a CNAME to its tracking host, every tracked link fails for anybody who has
+    seen this page, so #100 has to use the HTTPS setup, with `HttpsPolicy: REQUIRE`.
 
 ### 7. The Search Console record belongs to the zone, not the stack
 
@@ -122,21 +134,32 @@ At #98, when the App stack takes the domain. A CloudFront alternate domain name 
 distribution at a time — a second is refused with `CNAMEAlreadyExists` — and the four records would
 collide in the same way. So the order is:
 
-1. destroy `Mvgl-prod-Holding`;
+1. destroy `Mvgl-prod-Holding`, which empties its bucket on the way;
 2. deploy production's App stack with both names, keeping §2's redirect.
 
-The minutes between are the domain with no answer, which before launch costs nothing. If it ever
-matters, `aws cloudfront update-domain-association` moves the names between two distributions in one
-account in place. The sitemap's address and the Search Console property carry over as they are.
+The minutes between are the domain with no answer, which before launch costs nothing. AWS documents
+a same-account move of a name from one distribution to another, `aws cloudfront
+update-domain-association` (the CloudFront guide's "Move an alternate domain name"), one name per
+call. The records still change hands with the stacks, so it would shorten the gap rather than remove
+the order.
+
+What stays behind is meant to, or is harmless:
+
+- the Search Console record (§7) and the sitemap's address, which production takes over as they are;
+- the CDK bootstrap, which production's certificate stack reuses;
+- the certificate's two validation records, which CloudFormation does not remove, and the log group
+  of the hook that empties the bucket, which Lambda makes and nothing deletes;
+- in browsers, HSTS (§6) and the 301 from `www` (§2), neither of which is retired with the stack.
 
 ## Consequences
 
 - **The production account gets its first CDK bootstrap**, in us-east-1, before this deploys.
   Production's certificate stack will use the same one; Frankfurt's is still #98's.
-- **The cost is cents.** The zone was already paid for. ACM certificates and alias queries to
-  CloudFront are free, and CloudFront's Always Free tier covers anything a holding page will see: a
-  terabyte, ten million requests and two million function invocations a month. The deployment's
-  Lambda runs only when the page is deployed.
+- **The cost is cents.** The zone was already paid for, and ACM certificates and alias queries to
+  CloudFront are free. CloudFront's Always Free tier — a terabyte, ten million requests and two
+  million function invocations a month — is the Organization's, shared with dev and the other
+  application, and a holding page barely touches it; at list price it would still be cents. The
+  deployment's Lambda runs only when the page is deployed.
 - **It is deployed by hand**, as the other long-lived stacks are, and no pipeline reaches the
   production account. A change to the page is a change to `holding/site` and the same deploy.
 - **The first synthesis with production's credentials writes the zone lookup into
