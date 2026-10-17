@@ -13,19 +13,38 @@ export interface HistoryDay {
 }
 
 /**
- * The reader's calendar day of an instant, as `yyyy-MM-dd`.
+ * The calendar day of an instant in a zone, as `yyyy-MM-dd` — by default the reader's own.
  *
- * **In the reader's own zone, so browser-only**: a server would answer in its own, and a move made
- * at 23:30 in Sofia is the next day in UTC. The history renders only once the page knows who is
- * signed in, which is never during a server render, and it waits for `useHydrated` besides.
+ * **The default is the runtime's zone, so it is browser-only**: a server would answer in its own,
+ * and a move made at 23:30 in Sofia is the next day in UTC. The history renders only once the page
+ * knows who is signed in, which is never during a server render, and it waits for `useHydrated`
+ * besides. The zone can be named so that a test can pin one either side of Greenwich whatever the
+ * machine it runs on — CI's is UTC, where reading the day in UTC by mistake would pass unnoticed.
+ *
+ * The parts are read from `Intl` rather than from a formatted string, whose order and separators
+ * belong to the locale.
  */
-export function localDay(iso: string): string {
+export function localDay(iso: string, timeZone?: string): string {
     const at = new Date(iso);
     if (Number.isNaN(at.getTime())) return iso.slice(0, 10);
 
-    const month = String(at.getMonth() + 1).padStart(2, '0');
-    const day = String(at.getDate()).padStart(2, '0');
-    return `${at.getFullYear()}-${month}-${day}`;
+    const parts = dayFormat(timeZone).formatToParts(at);
+    const part = (type: Intl.DateTimeFormatPartTypes) => parts.find(p => p.type === type)?.value ?? '';
+
+    return `${part('year')}-${part('month')}-${part('day')}`;
+}
+
+/** One formatter per zone, because a history of hundreds of items would otherwise build hundreds. */
+const dayFormats = new Map<string, Intl.DateTimeFormat>();
+
+function dayFormat(timeZone: string | undefined): Intl.DateTimeFormat {
+    const key = timeZone ?? '';
+    let format = dayFormats.get(key);
+    if (format === undefined) {
+        format = new Intl.DateTimeFormat('en-US', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' });
+        dayFormats.set(key, format);
+    }
+    return format;
 }
 
 /**
@@ -37,13 +56,13 @@ export function localDay(iso: string): string {
  * item can sit among the next morning's moves; it then gets a heading of its own rather than being
  * moved, because the order is the server's and a page boundary could fall anywhere.
  */
-export function historyDays(items: HistoryItem[]): HistoryDay[] {
+export function historyDays(items: HistoryItem[], timeZone?: string): HistoryDay[] {
     const days: HistoryDay[] = [];
 
     for (const item of items) {
         if (!KNOWN_KINDS.has(item.kind)) continue;
 
-        const key = item.at === null ? item.on : localDay(item.at);
+        const key = item.at === null ? item.on : localDay(item.at, timeZone);
         const last = days.at(-1);
 
         if (last?.key === key) last.items.push(item);

@@ -11,10 +11,10 @@ namespace MyVideoGameList.Server.Services;
 /// <remarks>
 /// All three are needed, and in that order. Two items can share a moment — a run started and
 /// finished on the same day sorts at one instant — so the kind breaks that tie, and the row's id
-/// breaks a tie between two of a kind, as the review's id does in <see cref="ReviewCursor"/>. Each
-/// half is a key that does not change while somebody reads: an event is never updated, and a
-/// playthrough's date or a score's moment that does change moves its item to a new place rather than
-/// shifting the ones around it.
+/// breaks a tie between two of a kind, as the review's id does in <see cref="ReviewCursor"/>. An
+/// event is never updated, so its place never moves. A run's date or a score edited while somebody
+/// reads moves its own item, which that reading may then pass over or show twice; every item whose
+/// key is unchanged keeps its place, which is what an offset could not promise.
 /// </remarks>
 internal readonly record struct HistoryPosition(DateTimeOffset At, int Kind, long Id);
 

@@ -77,6 +77,8 @@ function Probe({ account }: { account: string | null }) {
 }
 
 const text = (id: string) => screen.getByTestId(id);
+/** The game ids on screen, whole — a substring match would let '5,6' pass for '1,2,5,6'. */
+const items = () => text('items').textContent;
 const press = (name: string) => userEvent.click(screen.getByRole('button', { name }));
 
 afterEach(() => vi.unstubAllGlobals());
@@ -96,7 +98,7 @@ describe('useHistory', () => {
         render(<Probe account="alice" />);
 
         expect(text('loading')).toHaveTextContent('true');
-        await waitFor(() => expect(text('items')).toHaveTextContent('1,2'));
+        await waitFor(() => expect(items()).toBe('1,2'));
         expect(text('loading')).toHaveTextContent('false');
         expect(text('counts')).toHaveTextContent('4/3');
         expect(text('more')).toHaveTextContent('false');
@@ -115,7 +117,7 @@ describe('useHistory', () => {
 
         await press('more');
 
-        await waitFor(() => expect(text('items')).toHaveTextContent('1,2,3'));
+        await waitFor(() => expect(items()).toBe('1,2,3'));
         expect(text('more')).toHaveTextContent('false');
         expect(String(fetchMock.mock.calls[1][0])).toBe('/api/user/history?after=c1%26x');
     });
@@ -130,13 +132,31 @@ describe('useHistory', () => {
 
         await press('more');
         await waitFor(() => expect(text('more-error')).not.toBeEmptyDOMElement());
-        expect(text('items')).toHaveTextContent('1,2');
+        expect(items()).toBe('1,2');
         expect(text('restart')).toHaveTextContent('false');
         expect(text('error')).toBeEmptyDOMElement();
 
         await press('more');
-        await waitFor(() => expect(text('items')).toHaveTextContent('1,2,3'));
+        await waitFor(() => expect(items()).toBe('1,2,3'));
         expect(text('more-error')).toBeEmptyDOMElement();
+    });
+
+    it('offers another press, not a restart, when the next page fails on the server', async () => {
+        // Only a 400 means the cursor itself was refused. A 500 or a 503 is the server's own
+        // failure, which the same cursor may well get past next time.
+        stubApi({
+            '/api/user/history': [page([1, 2], 'c1')],
+            '/api/user/history?after=c1': ['fail'],
+        });
+        render(<Probe account="alice" />);
+        await waitFor(() => expect(text('more')).toHaveTextContent('true'));
+
+        await press('more');
+
+        await waitFor(() => expect(text('more-error')).not.toBeEmptyDOMElement());
+        expect(text('restart')).toHaveTextContent('false');
+        expect(text('more-error')).toHaveTextContent('Please try again.');
+        expect(items()).toBe('1,2');
     });
 
     it('offers the first page again when the cursor is refused, in the API\'s own words', async () => {
@@ -156,7 +176,26 @@ describe('useHistory', () => {
 
         await press('reload');
 
-        await waitFor(() => expect(text('items')).toHaveTextContent('5,6'));
+        await waitFor(() => expect(items()).toBe('5,6'));
+        expect(text('more-error')).toBeEmptyDOMElement();
+    });
+
+    it('shows a failed restart as a failure, not as the list it replaced', async () => {
+        // Starting again clears the old pages on the way, so when the first page then fails there is
+        // an error to show and nothing stale beside it pretending the restart worked.
+        stubApi({
+            '/api/user/history': [page([1, 2], 'stale'), 'fail'],
+            '/api/user/history?after=stale': ['refused'],
+        });
+        render(<Probe account="alice" />);
+        await waitFor(() => expect(text('more')).toHaveTextContent('true'));
+        await press('more');
+        await waitFor(() => expect(text('restart')).toHaveTextContent('true'));
+
+        await press('reload');
+
+        await waitFor(() => expect(text('error')).toHaveTextContent('Failed to load your history (500)'));
+        expect(text('items')).toBeEmptyDOMElement();
         expect(text('more-error')).toBeEmptyDOMElement();
     });
 
@@ -173,7 +212,7 @@ describe('useHistory', () => {
         // leave the previous account's history on screen under it.
         const { release } = stubApi({ '/api/user/history': [page([1]), 'held'] });
         const view = render(<Probe account="alice" />);
-        await waitFor(() => expect(text('items')).toHaveTextContent('1'));
+        await waitFor(() => expect(items()).toBe('1'));
 
         view.rerender(<Probe account="bob" />);
 
@@ -181,7 +220,7 @@ describe('useHistory', () => {
         expect(text('loading')).toHaveTextContent('true');
 
         await release(page([7]));
-        await waitFor(() => expect(text('items')).toHaveTextContent('7'));
+        await waitFor(() => expect(items()).toBe('7'));
     });
 
     it('drops a late answer from the previous account', async () => {
@@ -189,17 +228,17 @@ describe('useHistory', () => {
         const view = render(<Probe account="alice" />);
 
         view.rerender(<Probe account="bob" />);
-        await waitFor(() => expect(text('items')).toHaveTextContent('7'));
+        await waitFor(() => expect(items()).toBe('7'));
 
         await release(page([1]));
 
-        expect(text('items')).toHaveTextContent('7');
+        expect(items()).toBe('7');
     });
 
     it('goes back to nothing on sign-out', async () => {
         stubApi({ '/api/user/history': [page([1], 'c1')] });
         const view = render(<Probe account="alice" />);
-        await waitFor(() => expect(text('items')).toHaveTextContent('1'));
+        await waitFor(() => expect(items()).toBe('1'));
 
         view.rerender(<Probe account={null} />);
 
@@ -260,14 +299,16 @@ describe('historyReducer', () => {
         expect(next.loading).toBe(true);
     });
 
-    it('keeps the list on a reload, and cancels a "show more" the reload has aborted', () => {
-        // Nothing else would clear `loadingMore`: the aborted request dispatches nothing, and a
-        // reload that then failed would leave the button saying "Loading…" for good.
+    it('starts a reload from nothing, cancelling a "show more" the reload has aborted', () => {
+        // A reload here is always "start again", so nothing from before is left to show under its
+        // failure — and nothing else would clear `loadingMore`: the aborted request dispatches
+        // nothing, and the button would say "Loading…" for good.
         const next = historyReducer(
             { ...bob, moreError: { message: 'nope', restart: true } },
             { type: 'FETCH_START', account: 'bob' });
 
-        expect(next.items.map(item => item.gameId)).toEqual([1]);
+        expect(next.items).toEqual([]);
+        expect(next.next).toBeNull();
         expect(next.loading).toBe(true);
         expect(next.loadingMore).toBe(false);
         expect(next.moreError).toBeNull();

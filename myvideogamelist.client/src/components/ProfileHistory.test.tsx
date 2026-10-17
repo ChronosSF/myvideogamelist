@@ -5,13 +5,14 @@ import { MemoryRouter } from 'react-router';
 import { ProfileHistory } from '@/components/ProfileHistory';
 import type { UseHistoryResult } from '@/hooks/useHistory';
 import type { ListsContextValue } from '@/contexts/ListsContext';
+import type { HistoryItem } from '@/types/history';
 import { LIST_NAMES, type ListId } from '@/types/list';
 import { playthroughDateItem, scoreItem, statusItem } from '@/test/factories';
 
 /**
  * The hook, mocked: its fetching and its guards are tested beside it, and this file is about what
- * the page says. One module-level object, mutated per test and never rebuilt, because a fresh
- * object per render re-runs every effect depending on it.
+ * the page says and where focus goes. One module-level object, mutated per test and never rebuilt,
+ * because a fresh object per render re-runs every effect depending on it.
  */
 const history: UseHistoryResult = {
     items: [],
@@ -35,15 +36,25 @@ const lists = {
 
 vi.mock('@/hooks/useLists', () => ({ useLists: () => lists }));
 
-function renderHistory() {
-    return render(<MemoryRouter><ProfileHistory userId="user-1" /></MemoryRouter>);
+const page = () => <MemoryRouter><ProfileHistory userId="user-1" /></MemoryRouter>;
+
+function game(id: number, name: string) {
+    return { gameId: id, game: { id, name, coverImageUrl: null } };
 }
 
-/** The line under a game's title: what happened to it. */
-function sentenceFor(title: string): string {
+/** The item a game's title links from. */
+function itemFor(title: string): HTMLElement {
     const item = screen.getByRole('link', { name: title }).closest('li');
     if (item === null) throw new Error(`no item for ${title}`);
-    return item.querySelector('.history-item-what')?.textContent ?? '';
+    return item;
+}
+
+/**
+ * What the item says happened. The item's whole text, which is its title and then the sentence, so a
+ * word too many or too few — or two run together — fails.
+ */
+function says(title: string, sentence: string) {
+    expect(itemFor(title).textContent).toBe(`${title}${sentence}`);
 }
 
 beforeEach(() => {
@@ -64,42 +75,44 @@ beforeEach(() => {
 describe('ProfileHistory', () => {
     it('says each kind in its own words', () => {
         history.items = [
-            statusItem({ gameId: 1, game: { id: 1, name: 'Hades', coverImageUrl: null }, fromStatus: 'backlog', toStatus: 'playing' }),
-            statusItem({ gameId: 2, game: { id: 2, name: 'Celeste', coverImageUrl: null }, fromStatus: null, toStatus: 'backlog' }),
-            statusItem({ gameId: 3, game: { id: 3, name: 'Tunic', coverImageUrl: null }, fromStatus: 'dropped', toStatus: null }),
-            scoreItem({ gameId: 4, game: { id: 4, name: 'Outer Wilds', coverImageUrl: null }, score: 9 }),
-            playthroughDateItem({ gameId: 5, game: { id: 5, name: 'Inside', coverImageUrl: null }, kind: 'playthrough_started', playthroughType: 'completionist' }),
-            playthroughDateItem({ gameId: 6, game: { id: 6, name: 'Limbo', coverImageUrl: null }, kind: 'playthrough_finished', playthroughType: null }),
+            statusItem({ ...game(1, 'Hades'), fromStatus: 'backlog', toStatus: 'playing' }),
+            statusItem({ ...game(2, 'Celeste'), fromStatus: null, toStatus: 'backlog' }),
+            statusItem({ ...game(3, 'Tunic'), fromStatus: 'dropped', toStatus: null }),
+            scoreItem({ ...game(4, 'Outer Wilds'), score: 9 }),
+            playthroughDateItem({ ...game(5, 'Inside'), kind: 'playthrough_started', playthroughType: 'completionist' }),
+            playthroughDateItem({ ...game(6, 'Limbo'), kind: 'playthrough_finished', playthroughType: null }),
         ];
 
-        renderHistory();
+        render(page());
 
-        expect(sentenceFor('Hades')).toBe('Moved from Backlog to Playing');
-        expect(sentenceFor('Celeste')).toBe('Added to Backlog');
-        expect(sentenceFor('Tunic')).toBe('Removed from Dropped');
+        says('Hades', 'Moved from Backlog to Playing');
+        says('Celeste', 'Added to Backlog');
+        says('Tunic', 'Removed from Dropped');
         // The owner's own score on the scale they gave it, never a percentage (ADR 0021).
-        expect(sentenceFor('Outer Wilds')).toBe('Scored 9/10');
-        expect(sentenceFor('Inside')).toBe('Started a playthroughCompletionist');
-        expect(sentenceFor('Limbo')).toBe('Finished a playthrough');
+        says('Outer Wilds', 'Scored 9/10');
+        // The type a word of its own, read aloud and copied as one.
+        says('Inside', 'Started a playthrough Completionist');
+        says('Limbo', 'Finished a playthrough');
     });
 
-    it('names a list as its owner renamed it', () => {
+    it('names a list as its owner renamed it, the caption included', () => {
         // The owner's page reads `nameFor`, never the defaults (ADR 0031).
-        history.items = [statusItem({ game: { id: 1, name: 'Hades', coverImageUrl: null }, fromStatus: 'playing', toStatus: 'finished' })];
+        history.items = [statusItem({ ...game(1, 'Hades'), fromStatus: 'playing', toStatus: 'finished' })];
 
-        renderHistory();
+        render(page());
 
-        expect(sentenceFor('Hades')).toBe('Moved from Playing to Beaten');
+        says('Hades', 'Moved from Playing to Beaten');
+        expect(screen.getByText(/by a move to Beaten is listed twice here/)).toBeInTheDocument();
     });
 
     it('puts the items under their days, newest first as they came', () => {
         history.items = [
-            statusItem({ gameId: 1, game: { id: 1, name: 'Hades', coverImageUrl: null }, at: '2026-10-16T12:00:00+00:00' }),
-            playthroughDateItem({ gameId: 2, game: { id: 2, name: 'Inside', coverImageUrl: null }, on: '2026-10-16' }),
-            scoreItem({ gameId: 3, game: { id: 3, name: 'Celeste', coverImageUrl: null }, at: '2026-09-02T12:00:00+00:00' }),
+            statusItem({ ...game(1, 'Hades'), at: '2026-10-16T12:00:00+00:00' }),
+            playthroughDateItem({ ...game(2, 'Inside'), on: '2026-10-16' }),
+            scoreItem({ ...game(3, 'Celeste'), at: '2026-09-02T12:00:00+00:00' }),
         ];
 
-        renderHistory();
+        render(page());
 
         const days = within(screen.getByRole('list', { name: 'Your history, newest first' }))
             .getAllByRole('heading', { level: 3 })
@@ -115,10 +128,10 @@ describe('ProfileHistory', () => {
             statusItem({ gameId: 43, game: null }),
         ];
 
-        renderHistory();
+        render(page());
 
         expect(screen.getByRole('link', { name: 'Hades' })).toHaveAttribute('href', '/games/42');
-        expect(screen.getByText('A game whose details could not be loaded')).toBeInTheDocument();
+        expect(screen.getByText('This game\'s details are not available')).toBeInTheDocument();
         expect(screen.getAllByRole('link')).toHaveLength(1);
     });
 
@@ -127,7 +140,7 @@ describe('ProfileHistory', () => {
         history.importedStatuses = 312;
         history.undatedScores = 1;
 
-        renderHistory();
+        render(page());
 
         expect(screen.getByText(/312 of your games were put in their lists by an import/)).toBeInTheDocument();
         expect(screen.getByText(/One of your scores has no date/)).toBeInTheDocument();
@@ -136,9 +149,9 @@ describe('ProfileHistory', () => {
     it('says nothing about absences when nothing is missing', () => {
         history.items = [statusItem()];
 
-        renderHistory();
+        render(page());
 
-        expect(screen.queryByText(/import/)).not.toBeInTheDocument();
+        expect(screen.queryByText(/by an import/)).not.toBeInTheDocument();
         expect(screen.queryByText(/no date/)).not.toBeInTheDocument();
     });
 
@@ -147,17 +160,29 @@ describe('ProfileHistory', () => {
         // dates, and the note under it says where those games went.
         history.importedStatuses = 600;
 
-        renderHistory();
+        render(page());
 
         expect(screen.getByText(/Nothing with a date yet/)).toBeInTheDocument();
         expect(screen.getByText(/600 of your games were put in their lists by an import/)).toBeInTheDocument();
         expect(screen.queryByRole('list', { name: 'Your history, newest first' })).not.toBeInTheDocument();
     });
 
+    it('does not call a page of kinds it cannot draw empty', () => {
+        // A newer API in front of an older client: the items are there, and the next page may hold
+        // some this client knows, so the button stays and "nothing yet" would be false.
+        history.items = [{ ...statusItem(), kind: 'review' } as unknown as HistoryItem];
+        history.hasMore = true;
+
+        render(page());
+
+        expect(screen.queryByText(/Nothing with a date yet/)).not.toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Show older history' })).toBeInTheDocument();
+    });
+
     it('is busy while the first page is on its way', () => {
         history.loading = true;
 
-        renderHistory();
+        render(page());
 
         expect(screen.getByRole('region', { name: 'Your history' })).toHaveAttribute('aria-busy', 'true');
     });
@@ -165,37 +190,87 @@ describe('ProfileHistory', () => {
     it('offers to try again when the first page failed', async () => {
         history.error = 'Failed to load your history (500)';
 
-        renderHistory();
+        render(page());
         await userEvent.click(screen.getByRole('button', { name: 'Try again' }));
 
         expect(screen.getByRole('alert')).toHaveTextContent('Failed to load your history (500)');
         expect(history.reload).toHaveBeenCalledOnce();
     });
+});
 
-    it('asks for the next page, and starts again when the cursor is refused', async () => {
+describe('ProfileHistory\'s next page', () => {
+    it('offers no button when there is nothing older', () => {
+        history.items = [statusItem()];
+
+        render(page());
+
+        expect(screen.queryByRole('button')).not.toBeInTheDocument();
+    });
+
+    it('stays focusable while a page loads, and ignores a second press', async () => {
+        // aria-disabled rather than disabled: a disabled button would drop the focus it holds.
+        history.items = [statusItem()];
+        history.hasMore = true;
+        history.loadingMore = true;
+
+        render(page());
+        const button = screen.getByRole('button', { name: 'Loading…' });
+        await userEvent.click(button);
+
+        expect(button).toHaveAttribute('aria-disabled', 'true');
+        expect(button).toBeEnabled();
+        expect(history.loadMore).not.toHaveBeenCalled();
+    });
+
+    it('hands focus to the first item a page adds once it lands', async () => {
+        history.items = [statusItem({ ...game(1, 'Hades') })];
+        history.hasMore = true;
+        const view = render(page());
+
+        await userEvent.click(screen.getByRole('button', { name: 'Show older history' }));
+        expect(history.loadMore).toHaveBeenCalledOnce();
+
+        history.loadingMore = true;
+        view.rerender(page());
+        history.loadingMore = false;
+        history.items = [...history.items, statusItem({ ...game(2, 'Celeste') }), statusItem({ ...game(3, 'Tunic') })];
+        view.rerender(page());
+
+        expect(document.activeElement).toBe(itemFor('Celeste'));
+    });
+
+    it('leaves focus on the button when the page failed', async () => {
+        history.items = [statusItem({ ...game(1, 'Hades') })];
+        history.hasMore = true;
+        const view = render(page());
+        const button = screen.getByRole('button', { name: 'Show older history' });
+
+        await userEvent.click(button);
+        history.loadingMore = true;
+        view.rerender(page());
+        history.loadingMore = false;
+        history.moreError = { message: 'More of your history could not be loaded. Please try again.', restart: false };
+        view.rerender(page());
+
+        expect(screen.getByRole('alert')).toHaveTextContent('Please try again.');
+        expect(document.activeElement).toBe(button);
+        expect(button).toHaveAccessibleName('Show older history');
+    });
+
+    it('becomes the way back to the first page when the cursor is refused', async () => {
+        // A refused cursor fails the same way however often it is sent, so pressing again offers
+        // the first page instead — on the same button, so focus does not fall to the page — and
+        // the heading takes focus as the list makes way for it.
         history.items = [statusItem()];
         history.hasMore = true;
         history.moreError = { message: 'That is not a page of this history. Start again from the first.', restart: true };
 
-        renderHistory();
-        await userEvent.click(screen.getByRole('button', { name: 'Show more' }));
+        render(page());
         await userEvent.click(screen.getByRole('button', { name: 'Start again' }));
 
-        expect(history.loadMore).toHaveBeenCalledOnce();
+        expect(screen.getByRole('alert')).toHaveTextContent('Start again from the first.');
         expect(history.reload).toHaveBeenCalledOnce();
-        // The list stays: what failed was the next page, not the one on screen.
-        expect(screen.getByRole('list', { name: 'Your history, newest first' })).toBeInTheDocument();
-    });
-
-    it('offers no restart for a next page that only needs another press', () => {
-        history.items = [statusItem()];
-        history.hasMore = true;
-        history.moreError = { message: 'More of your history could not be loaded. Please try again.', restart: false };
-
-        renderHistory();
-
-        expect(screen.getByRole('alert')).toHaveTextContent('Please try again.');
-        expect(screen.queryByRole('button', { name: 'Start again' })).not.toBeInTheDocument();
-        expect(screen.getByRole('button', { name: 'Show more' })).toBeEnabled();
+        expect(history.loadMore).not.toHaveBeenCalled();
+        expect(document.activeElement).toBe(screen.getByRole('heading', { level: 2, name: 'Your history' }));
     });
 });

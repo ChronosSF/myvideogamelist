@@ -6,8 +6,9 @@ namespace MyVideoGameList.Server.DTOs;
 /// </summary>
 /// <remarks>
 /// <para>
-/// The owner's alone. Nothing here reaches the public profile, which publishes counts and never a
-/// dated record of what somebody did with which game (ADR 0027 §8, ADR 0062).
+/// The owner's alone. Nothing here reaches the public profile, which publishes counts, the month
+/// series and streaks, and the reviews its owner chose to publish — never this list of what
+/// somebody did with which game and when (ADR 0027 §8, ADR 0062).
 /// </para>
 /// <para>
 /// Every item is read from a row the user wrote, at the moment that row records. Nothing is

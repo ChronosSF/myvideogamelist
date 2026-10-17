@@ -114,11 +114,13 @@ public class HistoryCursorTests
     [InlineData("638930000000000000.5.42")]
     [InlineData("638930000000000000.3.-1")]
     [InlineData("99999999999999999999.3.42")]
+    [InlineData("3155378976000000000.3.42")]
     public void TryParse_RefusesAnAuthenticPayloadInTheWrongShape(string payload)
     {
         // Only this class writes under the purpose, so none of these can arrive today — a review
-        // cursor's two-part payload, an unknown kind among them. Parsed strictly all the same, so a
-        // format changed in a later version fails here rather than in SQL.
+        // cursor's two-part payload, an unknown kind among them, and an instant one tick past the
+        // last a DateTimeOffset can hold, which would otherwise throw from its constructor. Parsed
+        // strictly all the same, so a format changed in a later version fails here, not in SQL.
         var protector = Protector();
 
         Assert.False(HistoryCursor.TryParse(protector, protector.Protect(payload), out _));

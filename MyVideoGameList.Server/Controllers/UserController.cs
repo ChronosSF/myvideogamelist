@@ -298,10 +298,12 @@ public class UserController(
         {
             return Ok(await history.GetHistoryAsync(userId, after, cancellationToken));
         }
-        catch (ArgumentException)
+        catch (ArgumentException e) when (e.ParamName == nameof(after))
         {
             // The one rule an attribute cannot express, since it takes the key ring to check. Beside
-            // the parameter, in the shape every other 400 has.
+            // the parameter, in the shape every other 400 has. Filtered on the parameter, so that any
+            // other ArgumentException — an ArgumentOutOfRangeException is one — stays the 500 it is
+            // rather than telling the reader their page was the problem.
             ModelState.AddModelError(nameof(after), NotAPage);
             return ValidationProblem(ModelState);
         }

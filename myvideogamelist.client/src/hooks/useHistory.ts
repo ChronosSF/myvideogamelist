@@ -84,14 +84,13 @@ export function historyReducer(state: HistoryState, action: HistoryAction): Hist
     if (action.type === 'RESET') return initial(null);
 
     if (action.type === 'FETCH_START') {
-        // A different account means everything on screen belongs to nobody signed in any more, so it
-        // goes now, on the transition — not when the new first page lands, or a failure would leave
-        // the previous account's history under the new one's error. The same account asking again
-        // is a reload: it keeps what it shows until the answer arrives, and cancels any "show more",
-        // whose request the reload's effect has just aborted and which nothing else would clear.
-        return action.account === state.account
-            ? { ...state, loading: true, error: null, loadingMore: false, moreError: null }
-            : initial(action.account);
+        // Everything goes, now, on the request rather than when its answer lands. For a different
+        // account that is the guard: what is on screen belongs to nobody signed in any more, and a
+        // failure would otherwise leave it under the new account's error. For the same account it
+        // is what a reload means here — "Try again" and "Start again" both ask for the first page
+        // afresh — so nothing from before survives to be shown under the reload's own failure, and
+        // a "show more" the reload's effect has just aborted is not left loading for good.
+        return initial(action.account);
     }
 
     // Stamped, and not only because the requests are aborted when the account changes: the abort

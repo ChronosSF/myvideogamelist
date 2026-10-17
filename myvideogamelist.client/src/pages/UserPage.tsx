@@ -145,9 +145,10 @@ export function UserPage() {
                         <div className="user-card">
                             <ProfileStats userId={user.id} />
                         </div>
-                        {/* Under the figures it is the itemised version of: the same moves and
-                            dates, one at a time. Here only — the public profile publishes counts,
-                            never a dated record of what somebody did with which game. */}
+                        {/* Under the figures, as the records behind them: each move, score and run
+                            date as it was written, where the chart counts them by ADR 0047's rules.
+                            Here only — the public profile publishes counts, the month series and the
+                            reviews its owner chose to publish, and never this list. */}
                         <div className="user-card">
                             <ProfileHistory userId={user.id} />
                         </div>

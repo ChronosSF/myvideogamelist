@@ -10,6 +10,13 @@
     gap: 1rem;
 }
 
+/* The heading takes focus when the list starts again, so it shows where focus went. */
+.profile-history > .profile-heading:focus-visible {
+    outline: 2px solid var(--color-focus);
+    outline-offset: 4px;
+    border-radius: 0.25rem;
+}
+
 .history-days,
 .history-items {
     margin: 0;
@@ -44,6 +51,13 @@
     align-items: center;
     gap: 0.75rem;
     min-width: 0;
+    border-radius: 0.375rem;
+}
+
+/* Focused by script when a page lands, to hand the reader its first new item. */
+.history-item:focus-visible {
+    outline: 2px solid var(--color-focus);
+    outline-offset: 3px;
 }
 
 /* A cover at the size a line can carry, and the cover's own ground where there is none. */
@@ -74,10 +88,22 @@
 
 .history-item-game {
     margin: 0;
-    overflow: hidden;
     font-size: 0.875rem;
     font-weight: 600;
     color: var(--color-fg);
+}
+
+/*
+ * A long title is cut by the link itself rather than by the line around it, which would clip the
+ * link's focus outline down to nothing: an element's own overflow never clips its own outline. As
+ * wide as its title and no wider than the column, so the link is not a whole row to click.
+ */
+.history-item-link,
+.history-item-unknown {
+    display: block;
+    width: fit-content;
+    max-width: 100%;
+    overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
@@ -103,10 +129,11 @@
     color: var(--color-fg-muted);
 }
 
+/* The mark stays beside the sentence's first line, and a long sentence wraps beside it — never the
+   whole sentence dropping under a mark left alone, which is what wrapping the row did on a phone. */
 .history-item-what {
     display: flex;
-    flex-wrap: wrap;
-    align-items: center;
+    align-items: flex-start;
     gap: 0.4rem;
     margin: 0;
     font-size: 0.8125rem;
@@ -114,10 +141,16 @@
     color: var(--color-fg-muted);
 }
 
+.history-item-sentence {
+    min-width: 0;
+}
+
 .history-mark {
     flex-shrink: 0;
     width: 0.9rem;
     height: 0.9rem;
+    /* Centred on the first line: a line of 1.4 × 0.8125rem against the mark's 0.9rem. */
+    margin-top: 0.12rem;
 }
 
 .history-score {
@@ -125,12 +158,13 @@
     color: var(--color-fg-strong);
 }
 
-/* A run's type, as the label the completion times give it, with the type's own colour beside it. */
+/* A run's type, as the label the completion times give it, with the type's own colour beside it.
+   Set apart from the sentence by a real space rather than a margin, so it reads as a word of its
+   own aloud and starts flush when it wraps. */
 .history-type {
     display: inline-flex;
     align-items: center;
     gap: 0.3rem;
-    margin-left: 0.4rem;
     padding: 0.05rem 0.5rem;
     font-size: 0.75rem;
     font-weight: 500;
@@ -170,22 +204,16 @@
     outline-offset: 2px;
 }
 
-.history-more-btn:disabled {
+/* Loading, but still focusable: aria-disabled rather than disabled, so the focus it holds stays. */
+.history-more-btn[aria-disabled='true'] {
     cursor: wait;
     opacity: 0.6;
 }
 
 .history-more-error {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 0.6rem;
+    margin: 0;
     font-size: 0.8125rem;
     color: var(--color-danger-300);
-}
-
-.history-more-error p {
-    margin: 0;
 }
 
 /* What the history cannot list, set apart from it by a rule. */

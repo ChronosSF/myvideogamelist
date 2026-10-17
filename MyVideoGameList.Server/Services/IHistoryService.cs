@@ -11,7 +11,9 @@ public interface IHistoryService
     /// One page of the user's history, newest first, continuing after <paramref name="after"/>.
     /// </summary>
     /// <param name="after">
-    /// The <see cref="HistoryPageDto.Next"/> of the previous page, or null for the first.
+    /// The <see cref="HistoryPageDto.Next"/> of the previous page, or null for the first. An empty
+    /// <c>?after=</c> reaches here as null — model binding makes it so — and is the first page too:
+    /// it names no position, which is different from naming one this history never issued.
     /// </param>
     /// <exception cref="ArgumentException">
     /// <paramref name="after"/> is not a cursor this history issued. Never read as "from the start",

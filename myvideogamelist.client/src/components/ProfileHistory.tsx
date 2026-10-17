@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import { Link } from 'react-router';
 import { useHistory } from '@/hooks/useHistory';
 import { useLists } from '@/hooks/useLists';
@@ -11,13 +12,15 @@ import { PLAYTHROUGH_TIERS } from '@/types/playthrough';
 import './ProfileStats.css';
 import './ProfileHistory.css';
 
+const HEADING_ID = 'profile-history-heading';
+
 /**
  * What the owner has recorded with a date, newest first: moves between lists, scores, and the days
  * playthroughs started and finished — one list, read from three kinds of row (ADR 0062).
  *
- * The owner's page only. The public profile publishes counts and never a dated record of what
- * somebody did with which game, so this has no public counterpart, and the names are the owner's
- * own: a renamed list reads as they renamed it.
+ * The owner's page only. The public profile publishes counts, the month series and the reviews its
+ * owner chose to publish, and never this list, so it has no public counterpart; and the names are
+ * the owner's own — a renamed list reads as they renamed it.
  *
  * **It says nothing that no row records.** An imported status has no moment, nor does a score given
  * before the history kept one, so neither is listed — and rather than leave the reader to wonder
@@ -31,22 +34,40 @@ export function ProfileHistory({ userId }: { userId: string }) {
     // once the page knows who is signed in, so never on the server, and waits here all the same.
     const hydrated = useHydrated();
 
+    const days = historyDays(history.items);
+    const shown = days.reduce((count, day) => count + day.items.length, 0);
+
+    // Where keyboard focus goes once a page asked for by a press lands: the first item it added, so
+    // the reader carries on from there rather than from wherever the browser left them. Written by
+    // the press and read by the effect, never during render.
+    const focusFrom = useRef<number | null>(null);
+
+    useEffect(() => {
+        const from = focusFrom.current;
+        if (from === null || history.loadingMore) return;
+
+        focusFrom.current = null;
+        // A failed page added nothing, and the press's button is still where focus was.
+        document.querySelector<HTMLElement>(`[data-history-index="${from}"]`)?.focus();
+    }, [shown, history.loadingMore]);
+
     const heading = (
-        <h2 id="profile-history-heading" className="profile-heading">Your history</h2>
+        <h2 id={HEADING_ID} className="profile-heading" tabIndex={-1}>Your history</h2>
     );
 
     if (history.loading || !hydrated) {
         return (
-            <section className="profile-history" aria-labelledby="profile-history-heading" aria-busy="true">
+            <section className="profile-history" aria-labelledby={HEADING_ID} aria-busy="true">
                 {heading}
                 <p className="profile-empty">Reading back what you have recorded…</p>
             </section>
         );
     }
 
-    if (history.error !== null && history.items.length === 0) {
+    // Only ever with nothing to show: a request for the first page clears the list it replaces.
+    if (history.error !== null) {
         return (
-            <section className="profile-history" aria-labelledby="profile-history-heading">
+            <section className="profile-history" aria-labelledby={HEADING_ID}>
                 {heading}
                 <div className="profile-error" role="alert">
                     <p>{history.error}</p>
@@ -58,64 +79,80 @@ export function ProfileHistory({ userId }: { userId: string }) {
         );
     }
 
-    const days = historyDays(history.items);
     const listName = (key: ListId) => nameFor(key) || key;
 
+    // A refused cursor fails the same way however often it is sent, so the next page's button
+    // becomes the way back to the first one. The same button, so that focus stays on it; and the
+    // heading takes focus as the list makes way for the first page, which keeps it for that page.
+    const restart = history.moreError?.restart === true;
+    const startAgain = () => {
+        document.getElementById(HEADING_ID)?.focus();
+        history.reload();
+    };
+    const showOlder = () => {
+        if (history.loadingMore) return;
+        focusFrom.current = shown;
+        history.loadMore();
+    };
+
+    let position = 0;
+
     return (
-        <section className="profile-history" aria-labelledby="profile-history-heading">
+        <section className="profile-history" aria-labelledby={HEADING_ID}>
             {heading}
 
+            {/* Two things here differ from the figures above, and both are said: a score is the one
+                the game holds now (ADR 0062 §2), and the chart counts a finish recorded both ways
+                once, by the move, where this lists each record (ADR 0047 §1, 0062 §5). */}
             <p className="profile-caption">
-                Newest first: your moves between lists, the scores you give, and the days your
-                playthroughs started and finished.
+                {'Newest first: your moves between lists, the score each game holds now from the day '}
+                {'you gave it, and the days your playthroughs started and finished. A finish recorded '}
+                {`both on a run and by a move to ${listName('finished')} is listed twice here, and `}
+                {'counted once, by the move, in the chart above.'}
             </p>
 
-            {days.length === 0 ? (
+            {history.items.length === 0 ? (
                 <p className="profile-empty">
                     Nothing with a date yet. Move a game between your lists, score one, or log a
                     playthrough with its dates, and it shows here.
                 </p>
-            ) : (
+            ) : days.length > 0 && (
                 <ol className="history-days" aria-label="Your history, newest first">
-                    {days.map((day, index) => (
+                    {days.map((day, dayIndex) => (
                         // With its place, because a day can recur where a reader far enough east sees
                         // a dated item among the next morning's moves. Days are only ever appended
                         // to, so a page landing grows the last one without remounting it.
-                        <li key={`${day.key}-${index}`} className="history-day">
+                        <li key={`${day.key}-${dayIndex}`} className="history-day">
                             <h3 className="history-day-title">{day.label}</h3>
                             <ul className="history-items">
-                                {day.items.map((item, index) => (
+                                {day.items.map(item => {
                                     // Items carry no id, by design, and are only ever appended to or
-                                    // replaced wholesale, so their place is a stable enough key.
-                                    <HistoryRow key={index} item={item} listName={listName} />
-                                ))}
+                                    // replaced wholesale, so their place in the list is a stable key.
+                                    const index = position++;
+                                    return <HistoryRow key={index} index={index} item={item} listName={listName} />;
+                                })}
                             </ul>
                         </li>
                     ))}
                 </ol>
             )}
 
+            {history.moreError !== null && (
+                <p className="history-more-error" role="alert">{history.moreError.message}</p>
+            )}
+
             {history.hasMore && (
                 <div className="history-more">
+                    {/* aria-disabled rather than disabled while a page loads: a disabled button
+                        drops the keyboard focus it holds, and the press guards itself. */}
                     <button
                         type="button"
                         className="history-more-btn"
-                        onClick={history.loadMore}
-                        disabled={history.loadingMore}
+                        onClick={restart ? startAgain : showOlder}
+                        aria-disabled={history.loadingMore}
                     >
-                        {history.loadingMore ? 'Loading…' : 'Show more'}
+                        {history.loadingMore ? 'Loading…' : restart ? 'Start again' : 'Show older history'}
                     </button>
-                </div>
-            )}
-
-            {history.moreError !== null && (
-                <div className="history-more-error" role="alert">
-                    <p>{history.moreError.message}</p>
-                    {history.moreError.restart && (
-                        <button type="button" className="profile-retry" onClick={history.reload}>
-                            Start again
-                        </button>
-                    )}
                 </div>
             )}
 
@@ -161,20 +198,25 @@ const STATUS_MARK: Record<ListId, string> = {
     dropped: 'text-status-dropped',
 };
 
-interface HistoryRowProps {
+interface WhatProps {
     item: HistoryItem;
     listName: (key: ListId) => string;
 }
 
-/** One item: the game, then what happened to it, each kind drawn with its own mark. */
-function HistoryRow({ item, listName }: HistoryRowProps) {
+/**
+ * One item: the game, then what happened to it, each kind drawn with its own mark. Focusable by
+ * script only, so that a page that has just landed can hand the reader its first item.
+ */
+function HistoryRow({ item, index, listName }: WhatProps & { index: number }) {
     return (
-        <li className="history-item" data-kind={item.kind}>
+        <li className="history-item" data-kind={item.kind} data-history-index={index} tabIndex={-1}>
             <Cover item={item} />
             <div className="history-item-text">
                 <p className="history-item-game">
                     {item.game === null ? (
-                        <span className="history-item-unknown">A game whose details could not be loaded</span>
+                        // A game IGDB no longer lists, or one never fetched while IGDB is down: either
+                        // way the record is still the owner's, so it stays, unnamed and unlinked.
+                        <span className="history-item-unknown">This game's details are not available</span>
                     ) : (
                         <Link to={`/games/${item.gameId}`} className="history-item-link">{item.game.name}</Link>
                     )}
@@ -200,15 +242,15 @@ function Cover({ item }: { item: HistoryItem }) {
 }
 
 /** The sentence, in words a screen reader reads as a whole. */
-function What({ item, listName }: HistoryRowProps) {
+function What({ item, listName }: WhatProps) {
     switch (item.kind) {
         case 'status':
-            return <span>{statusSentence(item, listName)}</span>;
+            return <span className="history-item-sentence">{statusSentence(item, listName)}</span>;
         case 'score':
             // On the scale it was entered on, never a percentage: that means an average of other
             // people's (ADR 0021). Stars are the control that sets it, and nothing else.
             return (
-                <span>
+                <span className="history-item-sentence">
                     Scored <span className="history-score">{`${item.score}/${MAX_SCORE}`}</span>
                 </span>
             );
@@ -232,8 +274,10 @@ function PlaythroughWhat({ item }: { item: PlaythroughDateItem }) {
     const tier = PLAYTHROUGH_TIERS.find(t => t.key === item.playthroughType);
 
     return (
-        <span>
+        <span className="history-item-sentence">
             {item.kind === 'playthrough_started' ? 'Started a playthrough' : 'Finished a playthrough'}
+            {/* A real space, so the label is a word of its own when read aloud or copied. */}
+            {tier !== undefined && ' '}
             {tier !== undefined && (
                 <span className="history-type">
                     <span className={`history-type-dot ${tier.fill}`} aria-hidden="true" />
@@ -244,7 +288,7 @@ function PlaythroughWhat({ item }: { item: PlaythroughDateItem }) {
     );
 }
 
-/** The kind's mark: an arrow in the destination's colour, a play and a flag for a run, a number for a score. */
+/** The kind's mark: an arrow in the destination's colour, a play and a flag for a run, a number sign for a score. */
 function Mark({ item }: { item: HistoryItem }) {
     switch (item.kind) {
         case 'status':

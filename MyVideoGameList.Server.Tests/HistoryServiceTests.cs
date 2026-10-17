@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.EntityFrameworkCore;
@@ -15,10 +16,11 @@ namespace MyVideoGameList.Server.Tests;
 /// shown that no row records.
 /// </summary>
 /// <remarks>
-/// These run on the in-memory provider, which evaluates the union in .NET. What PostgreSQL makes of
-/// the same query — the typed placeholders, the day placed at noon UTC, the cursor's comparison
-/// pushed into every branch — was checked against the real database by hand, as ADR 0062 records;
-/// nothing here could notice it translating differently.
+/// These run on the in-memory provider, which evaluates the union in .NET. One test asks Npgsql to
+/// translate the query, with no connection, and checks what only the translation can show: one
+/// statement, and each day placed at noon in UTC by the database. What PostgreSQL then does with the
+/// SQL — the typed placeholders, the cursor's comparison pushed into every branch, the cost — was
+/// checked against the real database by hand, as ADR 0062 records.
 /// </remarks>
 public class HistoryServiceTests
 {
@@ -353,15 +355,17 @@ public class HistoryServiceTests
     [Fact]
     public async Task GetHistoryAsync_TiesWithinAKind_ListTheLaterRowFirst()
     {
+        // Added in descending game order, so the row's id and the game's sort opposite ways and a
+        // tie broken on the game would fail here.
         using var db = NewDb();
         var day = new DateOnly(2026, 9, 20);
-        AddRun(db, 10, finishedOn: day);
-        AddRun(db, 20, finishedOn: day);
         AddRun(db, 30, finishedOn: day);
+        AddRun(db, 20, finishedOn: day);
+        AddRun(db, 10, finishedOn: day);
 
         var items = (await NewService(db).GetHistoryAsync(UserId, after: null)).Items;
 
-        Assert.Equal([30, 20, 10], items.Select(i => i.GameId));
+        Assert.Equal([10, 20, 30], items.Select(i => i.GameId));
     }
 
     [Fact]
@@ -377,6 +381,34 @@ public class HistoryServiceTests
         var items = (await NewService(db).GetHistoryAsync(UserId, after: null)).Items;
 
         Assert.Equal(["status 10 playing>finished", "playthrough_finished 10 2026-09-30"], items.Select(Describe));
+    }
+
+    // ── What PostgreSQL is sent ───────────────────────────────────────────────────────
+
+    [Fact]
+    public void Items_TranslatesToOneStatementForPostgreSql()
+    {
+        // Every other test here runs the union in .NET, so it proves the query's meaning and not what
+        // Npgsql makes of it. That is the half that broke while this was built: `new DateTimeOffset(…)`
+        // for a day is not translated, a union cannot follow a client projection, and the in-memory
+        // provider fails the same way only with an unhelpful KeyNotFoundException. And it is the half
+        // that decides whether a day is placed at noon in UTC by the database, or in whatever zone
+        // the session has. Translating needs a provider, not a connection.
+        using var db = new ApplicationDbContext(
+            new DbContextOptionsBuilder<ApplicationDbContext>()
+                .UseNpgsql("Host=localhost;Database=never-opened")
+                .Options);
+
+        var sql = HistoryService
+            .Page(HistoryService.Items(db, UserId), new HistoryPosition(Now, HistoryKinds.Status, 42))
+            .ToQueryString();
+
+        // Four branches in one statement, each day placed at noon in UTC by the database itself —
+        // not in the session's zone — and the page taken after the cursor, in the database too.
+        Assert.Equal(3, Regex.Count(sql, "UNION ALL"));
+        Assert.Equal(2, Regex.Count(sql, "AT TIME ZONE 'UTC'"));
+        Assert.Contains("ORDER BY", sql);
+        Assert.Contains("LIMIT", sql);
     }
 
     // ── Pages ─────────────────────────────────────────────────────────────────────────
@@ -436,17 +468,37 @@ public class HistoryServiceTests
     public async Task GetHistoryAsync_TieAcrossAPageBoundary_ListsEveryItemOnce()
     {
         // Thirty-five runs finished on one day share one moment and one kind, so the row id in the
-        // cursor is all that carries the second page on from the right place.
+        // cursor is all that carries the second page on from the right place. Added with the game
+        // ids falling, so that a page carried on by the game's id instead would fail.
         using var db = NewDb();
         for (var i = 0; i < 35; i++)
-            AddRun(db, 100 + i, finishedOn: new DateOnly(2026, 9, 20));
+            AddRun(db, 200 - i, finishedOn: new DateOnly(2026, 9, 20));
 
         var pages = await ReadEveryPage(NewService(db));
 
         Assert.Equal([30, 5], pages.Select(p => p.Items.Count));
         Assert.Equal(
-            Enumerable.Range(100, 35).Reverse(),
+            Enumerable.Range(0, 35).Reverse().Select(i => 200 - i),
             pages.SelectMany(p => p.Items).Select(i => i.GameId));
+    }
+
+    [Fact]
+    public async Task GetHistoryAsync_BoundaryBetweenKindsAtOneMoment_CarriesOnToTheOtherKind()
+    {
+        // A run started and finished on one day is one moment and two kinds. With the page ending
+        // on the finish, only the kind in the cursor carries the next page on to the start — drop
+        // that comparison and the start is never shown.
+        using var db = NewDb();
+        for (var i = 0; i < HistoryService.ItemsPerPage - 1; i++)
+            AddEvent(db, 100 + i, null, ListStatusKeys.Backlog, Now.AddHours(-i));
+        var day = new DateOnly(2026, 9, 20);
+        AddRun(db, 7, startedOn: day, finishedOn: day);
+
+        var pages = await ReadEveryPage(NewService(db));
+
+        Assert.Equal([HistoryService.ItemsPerPage, 1], pages.Select(p => p.Items.Count));
+        Assert.Equal("playthrough_finished 7 2026-09-20", Describe(pages[0].Items[^1]));
+        Assert.Equal("playthrough_started 7 2026-09-20", Describe(pages[1].Items[0]));
     }
 
     [Fact]
@@ -484,9 +536,13 @@ public class HistoryServiceTests
         Assert.NotNull(foreign);
 
         var service = NewService(db, keys: keys);
-        await Assert.ThrowsAsync<ArgumentException>(() => service.GetHistoryAsync(UserId, "not-a-cursor"));
-        await Assert.ThrowsAsync<ArgumentException>(() => service.GetHistoryAsync(UserId, foreign));
-        await Assert.ThrowsAsync<ArgumentException>(() => service.GetHistoryAsync(UserId, review));
+        foreach (var cursor in new[] { "not-a-cursor", foreign, review })
+        {
+            // Named for the parameter, because that is what the controller's filter turns into the
+            // 400 beside it — any other ArgumentException is left to be the 500 it is.
+            var refused = await Assert.ThrowsAsync<ArgumentException>(() => service.GetHistoryAsync(UserId, cursor));
+            Assert.Equal("after", refused.ParamName);
+        }
     }
 
     [Fact]
@@ -522,10 +578,21 @@ public class HistoryServiceTests
         Entry(db, 20, ListStatusKeys.Playing, origin: EntryOrigins.Grouvee);
         AddEvent(db, 20, ListStatusKeys.Playing, ListStatusKeys.Dropped, Now.AddDays(-1));
 
+        // A game put in a list by hand, and moved since: listed, scored with a moment, and counted
+        // as neither — so a count of every entry, or of every listed one, fails here.
+        Entry(db, 30, ListStatusKeys.Backlog, score: 6, scoredAt: Now.AddDays(-5));
+        AddEvent(db, 30, null, ListStatusKeys.Backlog, Now.AddDays(-6));
+
         var page = await NewService(db).GetHistoryAsync(UserId, after: null);
 
         Assert.Equal(
-            ["status 20 playing>dropped", "playthrough_finished 10 2024-04-02", "playthrough_started 10 2024-03-01"],
+            [
+                "status 20 playing>dropped",
+                "score 30 6",
+                "status 30 ->backlog",
+                "playthrough_finished 10 2024-04-02",
+                "playthrough_started 10 2024-03-01"
+            ],
             page.Items.Select(Describe));
         Assert.Equal(2, page.ImportedStatuses);
         Assert.Equal(1, page.UndatedScores);
