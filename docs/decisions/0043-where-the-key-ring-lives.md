@@ -76,11 +76,15 @@ because the path is empty.
 - **A customer-managed KMS key.** A dollar a month and `kms:Encrypt`/`kms:Decrypt` on the task
   role, for a key whose only consumer is this ring. The AWS-managed key is enough until something
   else in the account needs a key policy of its own.
-- **Failing at startup when the store is unreachable.** The repository is constructed when
-  `KeyManagementOptions` is first resolved, which is the first protect or unprotect, not the boot.
-  Forcing a read at startup would make a Parameter Store blip a failed deploy rather than a failed
-  sign-in, and the health check that exists for this — a session surviving a redeploy — is a
-  better proof than a probe. Recorded here so that nobody adds the probe expecting it to be free.
+- **Failing at startup when the store is unreachable.** The store is read at boot already:
+  `AddDataProtection` registers the framework's `DataProtectionHostedService`, which loads the key
+  ring as the host starts. A failure there is logged at Error by the key ring provider ("An error
+  occurred while reading the key ring.") and then swallowed by that service, which lets the boot go
+  on; nothing is cached, so the first protect or unprotect reads the store again. Making that read fatal would make a Parameter Store blip a failed
+  deploy rather than a failed sign-in, and the health check that exists for this — a session
+  surviving a redeploy — is a better proof than a probe. Recorded here so that nobody makes the read
+  fatal expecting it to be free. This bullet first said the store was not read until the first protect
+  or unprotect; #296 corrected it, and the conclusion it drew was unchanged.
 
 ## Consequences
 
@@ -89,8 +93,10 @@ because the path is empty.
   repository supports on .NET 9 and later — but deletion happens only when something calls
   `IDeletableKeyManager.DeleteKeys`, and nothing here does, so the task role does not get it: a
   role that can delete the keys that mint every session is a capability nobody asked for. A
-  policy missing one of the two fails the first sign-in after a deploy, not the deploy — see
-  above — so the first thing to do after the first deploy is to sign in, redeploy, and reload.
+  policy missing `GetParametersByPath` fails the first sign-in after a deploy, not the deploy —
+  see above — and one missing `PutParameter` fails the first time a key has to be written: on the
+  first deploy, when the store is empty, and later when the current key comes due for replacement.
+  So the first thing to do after the first deploy is to sign in, redeploy, and reload.
 - **One path per environment, and the paths must differ.** Dev and prod reading the same ring
   would make a dev cookie valid in prod. The path is the environment boundary, and it is set in
   the task definition, not in an `appsettings` file.
