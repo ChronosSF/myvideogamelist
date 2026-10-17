@@ -182,7 +182,7 @@ the API's behaviour under Production ever needs a browser in front of it, this i
   the database, so the API only migrates it, and the default connection string is the same in both
   places.
 - **It is never reset.** Each run registers an account of its own, `e2e_` followed by the time and four
-  random characters, and looks at a game of its own, so no run reads a row another left.
+  random hex digits, and looks at a game of its own, so no run reads a row another left.
 
 **The departure from 0057.** 0057 kept every automated test off `mvgl-postgres`, the compose
 container, because a developer's own data lives there. A local run of this test writes to that
@@ -257,7 +257,12 @@ The service container's image is pulled from Docker Hub without signing in, as 0
 remedy for a refused pull, a login before the tests, cannot reach it: a service container is pulled
 before any step runs. It would take `credentials:` on the service itself.
 
-What it costs is measured on its first run, below.
+What it costs, measured on its first run (#311, a throwaway draft of this branch against `master`):
+66 s of runner time. The service container took 9 s to start, the browser and its libraries 15 s to
+install, and the API 12 s to build. The test step took 10 s, for the front end's build, both servers'
+starts, the migrations of an empty database and the test itself. The rest was setting up. Standard
+runners cost nothing on a public repository, and the C# CodeQL job took 2:48 on the same run and stays
+the slowest, so CI as a whole takes no longer than it did.
 
 ## Consequences
 
@@ -271,10 +276,15 @@ What it costs is measured on its first run, below.
   the API needs a rebuild.
 - **A page the test visits that asks IGDB something new gets an empty answer.** If the page needs
   more, the stand-in in `e2e/stand-ins.ts` grows to answer it. The stand-in is not a model of IGDB.
-- **A green run's log can show EF errors for `PK_CachedGames`.** After the reload, two requests miss
-  the cache for this run's game at once. The code handles that on purpose, but EF has already logged
-  the failed insert as an error. That is #304, and it was there before this test; since every run's
-  game is new, most runs show it.
+- **A green run's log shows errors and a warning that are not failures.**
+  - After the reload, two requests miss the cache for this run's game at once. The code handles that
+    on purpose, but EF has already logged the failed insert, twice, as errors. That is #304, and it
+    was there before this test; since every run's game is new, most runs show it.
+  - On an empty database, which is every CI run, EF also logs an error while it finds that there is no
+    history table yet, before it migrates. 0057 keeps that out of its suite by migrating through a
+    context of its own, which an API run as its own process cannot do.
+  - On Linux, Data Protection warns that the key it makes is stored unencrypted. On a runner thrown
+    away after the job, that is nothing.
 - **Not covered:**
   - TLS, and the edge's basic auth and cache behaviours, including what the cached ones withhold from
     the SSR server: a loader that came to read a cookie or a header would pass here and fail deployed.

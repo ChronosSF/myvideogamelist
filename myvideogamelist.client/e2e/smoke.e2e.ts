@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import { expect, test } from '@playwright/test';
 import { GAMES, SITE } from './stand-ins';
 
@@ -5,11 +6,12 @@ import { GAMES, SITE } from './stand-ins';
 const PASSWORD = 'smoke-test-1';
 
 /**
- * A username no earlier run has taken: the database keeps every account a run registers. `e2e_`, then
- * the time and four random characters in base 36, is sixteen characters of the twenty allowed.
+ * A username no earlier run has taken: the database keeps every account a run registers. `e2e_`, the
+ * time in base 36 and four random hex digits is sixteen characters of the twenty allowed. From
+ * `node:crypto` rather than `Math.random`, which CodeQL flags wherever its value meets a sign-up form.
  */
 function newUserName(): string {
-    return `e2e_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6).padEnd(4, '0')}`;
+    return `e2e_${Date.now().toString(36)}${randomBytes(2).toString('hex')}`;
 }
 
 /**
