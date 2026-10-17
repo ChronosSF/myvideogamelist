@@ -1342,6 +1342,31 @@ describe('GameUserPanel review', () => {
         expect(await screen.findByRole('button', { name: /delete my data/i })).toBeInTheDocument();
     });
 
+    it.each([
+        ['the last run', [playthrough({ id: 5, type: 'completionist' })]],
+        ['one of two runs', [playthrough({ id: 5, type: 'completionist' }), playthrough({ id: 6, type: 'rushed' })]],
+    ])('names no playthrough once the one it named is deleted, %s', async (_, runs) => {
+        // The server lets go of a deleted run's review (ADR 0025), and refuses a review that names a
+        // run that is gone as not one of yours.
+        const fetchMock = stubEntryFetch(
+            null,
+            200,
+            runs,
+            (_url, init) => init?.method === 'PUT'
+                ? new Response(JSON.stringify(review({ id: 3, ...JSON.parse(String(init.body)) })), { status: 200 })
+                : new Response(null, { status: 204 }),
+            review({ id: 3, body: 'The completionist run.', playthroughId: 5 }));
+        const sent = (method: string) => fetchMock.mock.calls.find(([, init]) => init?.method === method);
+        renderPanel();
+
+        await userEvent.click(await screen.findByRole('button', { name: 'Delete playthrough 1' }));
+        // The run gone from the panel, not only the request sent: the form reads the runs the panel holds.
+        await waitFor(() => expect(screen.queryAllByRole('button', { name: /^Delete playthrough/ })).toHaveLength(runs.length - 1));
+        await userEvent.click(await screen.findByRole('button', { name: 'Update review' }));
+
+        await waitFor(() => expect(sent('PUT')).toBeDefined());
+        expect(JSON.parse(String(sent('PUT')?.[1]?.body))).toMatchObject({ playthroughId: null });
+    });
 });
 
 describe('GameUserPanel ownership and notes', () => {
