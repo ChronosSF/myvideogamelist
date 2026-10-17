@@ -94,7 +94,8 @@ string on either, and the trailing-slash forms. A wildcard path costs the same a
   keeps the old window. `/u/*` would close the gap, at the price of emptying every profile from
   every edge on every review edit, anybody's, and was rejected for that. Redirecting every other
   spelling to the canonical one would close it properly. That is a change to 0036 §6's
-  render-under-any-case, and it is left as its own issue.
+  render-under-any-case, and it is left as its own issue,
+  [#320](https://github.com/ChronosSF/myvideogamelist/issues/320).
 
 **The sitemap path is `/sitemaps/profiles-*`, not `/sitemaps/profiles-*.xml`.** CloudFront honours
 a `*` only as the last character of a path, and its documentation says one anywhere else is matched
@@ -210,7 +211,8 @@ which is far more than the site makes; raise it when that stops being true.
 The ceiling bounds the bill, not who gets the allowance: an account looping until the ceiling is
 met leaves the rest of that day's withdrawals to the TTL. A limit per account on the endpoints that
 withdraw is what would stop that, and belongs with the rate limiting the site does not otherwise
-have on those endpoints (0033).
+have on those endpoints (0033): [#321](https://github.com/ChronosSF/myvideogamelist/issues/321),
+before the API is reachable without basic auth.
 
 ### 7. Without a distribution id, nothing AWS is registered
 
@@ -292,5 +294,6 @@ templates are byte-for-byte what master synthesises.
   endpoint pointed at a local stand-in for CloudFront. That run showed the request on the wire, a
   refused first attempt retried two seconds later under the same caller reference, and a stand-in
   that hung for twelve seconds. The reader's write still answered in under a second; the SDK timed
-  the hung call out at ten seconds and its own retry was accepted. Only a deploy shows the rest. The
-  check is: make a public profile private on dev and read `x-cache` on its next request.
+  the hung call out at ten seconds and its own retry was accepted. Only a deploy shows the rest, and
+  [#319](https://github.com/ChronosSF/myvideogamelist/issues/319) is that check: make a public
+  profile private on dev and read `x-cache` on its next request.
