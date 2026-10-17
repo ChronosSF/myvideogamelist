@@ -7,7 +7,8 @@ namespace Infra;
 /// <c>imageTag</c> is the git SHA the two images were pushed under, and without it the application
 /// and migration stacks carry an error the CLI refuses to deploy over, so the long-lived stacks
 /// deploy without one and nothing ever falls back to <c>latest</c>. The Region comes from the
-/// profile; nothing here names one except the certificate stack's <c>us-east-1</c>. See ADR 0044.
+/// profile; nothing here names one except <c>us-east-1</c>, for CloudFront's certificates. See ADR
+/// 0044. <c>env=prod</c> is, for now, the holding page and nothing else (ADR 0066).
 /// </summary>
 internal static class Program
 {
@@ -34,6 +35,19 @@ internal static class Program
         };
         // CloudFront reads certificates from us-east-1 and nowhere else.
         var edge = new Amazon.CDK.Environment { Account = account, Region = "us-east-1" };
+
+        // Production is a holding page until #98 builds the rest (ADR 0066): one stack, whole in
+        // us-east-1, in the account the domain's zone lives in, and nothing else. A Dns stack in
+        // particular must never be synthesised for it - it would create a second zone named for
+        // the domain beside the real one, which the production app looks up instead (ADR 0044).
+        // Not termination-protected: it is meant to be destroyed at #98, and holds nothing a deploy
+        // would not put back.
+        if (site.IsProduction)
+        {
+            _ = new HoldingStack(app, site.StackName("Holding"), new StackProps { Env = edge }, site);
+            app.Synth();
+            return;
+        }
 
         // The three long-lived stacks refuse deletion: a mistake in one of them is a zone whose
         // name servers are delegated to, or a database. The two per-release stacks stay disposable.
