@@ -9,6 +9,7 @@ import { GameNewsPanel } from '@/components/GameNewsPanel';
 import { GameUserPanel } from '@/components/GameUserPanel';
 import { GameCommunity } from '@/components/GameCommunity';
 import { CompletionTimes } from '@/components/CompletionTimes';
+import { parseReleaseDate } from '@/lib/releaseDate';
 import { SectionHeading } from '@/components/SectionHeading';
 import { GameRefRail } from '@/components/GameRefRail';
 import { MultiplayerSummary } from '@/components/MultiplayerSummary';
@@ -120,9 +121,12 @@ export function GamePage() {
         ? [...new Set([...details.collections, ...details.franchises])]
         : [];
 
-    const releaseYear = game.releaseDate ? new Date(game.releaseDate).getFullYear() : null;
-    const releaseDate = game.releaseDate
-        ? new Date(game.releaseDate).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+    // The day the API names, which `new Date` would read as UTC midnight: the day before, and a
+    // year before on 1 January, for anybody west of Greenwich, and a different day on the server.
+    const released = game.releaseDate ? parseReleaseDate(game.releaseDate) : null;
+    const releaseYear = released?.getFullYear() ?? null;
+    const releaseDate = released
+        ? released.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
         : null;
 
     const youtubeEmbedId = game.trailerUrl

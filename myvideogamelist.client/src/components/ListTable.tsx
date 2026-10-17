@@ -1,6 +1,7 @@
 import { Link } from 'react-router';
 import type { ListEntryDto } from '@/types/list';
 import { type SortKey, type SortState, SORT_OPTIONS, sortOption } from '@/lib/listSort';
+import { releaseYear } from '@/lib/releaseDate';
 import { hasCriticScore, ratingPercent } from '@/lib/score';
 import { ScoreBadge } from '@/components/ScoreBadge';
 import { ScoreInput } from '@/components/ScoreInput';
@@ -28,7 +29,7 @@ const SORTABLE: { key: SortKey; className: string }[] = [
 ];
 
 function year(date: string | null): string {
-    return date === null ? '—' : String(new Date(date).getFullYear());
+    return date === null ? '—' : String(releaseYear(date));
 }
 
 function shortDate(date: string | null): string {
