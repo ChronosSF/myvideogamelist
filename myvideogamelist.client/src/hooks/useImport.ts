@@ -8,6 +8,7 @@ import {
     type ImportMatchPass,
     type ImportResult,
     type ImportReview,
+    type ImportRowChoice,
     type ImportRowDecision,
 } from '@/types/import';
 
@@ -118,7 +119,11 @@ export interface UseImportReviewResult {
     saving: boolean;
     result: ImportResult | null;
     reload: () => void;
-    setDecisions: (decisions: ImportRowDecision[]) => Promise<void>;
+    /**
+     * Records decisions about some rows, applied on screen first. True once the server has them;
+     * false when they were refused or never arrived, by which time the rows are as they were.
+     */
+    setDecisions: (decisions: ImportRowChoice[]) => Promise<boolean>;
     /**
      * Puts every row the file says was played, without saying how that ended, into one list — or,
      * given null, back into none (ADR 0045).
@@ -173,8 +178,8 @@ export function useImportReview(accountId: string | null, jobId: string): UseImp
     if (actions.identity !== identity) dispatch({ type: 'RESET', identity });
 
     const setDecisions = useCallback(
-        async (decisions: ImportRowDecision[]) => {
-            if (decisions.length === 0) return;
+        async (decisions: ImportRowChoice[]) => {
+            if (decisions.length === 0) return true;
 
             const wanted = new Map(decisions.map(d => [d.rowId, d]));
 
@@ -195,7 +200,9 @@ export function useImportReview(accountId: string | null, jobId: string): UseImp
                 const response = await apiFetch(`/api/import/jobs/${jobId}/rows`, {
                     method: 'PATCH',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ rows: decisions }),
+                    // Only what the endpoint reads. The screen's own knowledge of a chosen game is
+                    // for the screen, and the server works it out again on the next read.
+                    body: JSON.stringify({ rows: decisions.map(toWire) }),
                 });
 
                 if (!response.ok) throw new Error(await problem(response, 'That change was not saved.'));
@@ -205,6 +212,8 @@ export function useImportReview(accountId: string | null, jobId: string): UseImp
             } finally {
                 dispatch({ type: 'WRITE_END', identity, error });
             }
+
+            return error === null;
         },
         [data, identity, jobId, patch],
     );
@@ -405,8 +414,13 @@ function withPlayedStatus(
     return { ...review, rows };
 }
 
-/** Applies decisions to the rows they name, and recounts what the commit button reads. */
-function applyDecisions(review: ImportReview, decisions: ImportRowDecision[]): ImportReview {
+/** A decision as the endpoint takes it: the screen's own fields left behind. */
+function toWire({ rowId, decision, gameId, status }: ImportRowChoice): ImportRowDecision {
+    return { rowId, decision, gameId, status };
+}
+
+/** Applies decisions to the rows they name, and recounts what the screen reads. */
+function applyDecisions(review: ImportReview, decisions: ImportRowChoice[]): ImportReview {
     const wanted = new Map(decisions.map(d => [d.rowId, d]));
 
     const rows = review.rows.map(row => {
@@ -421,7 +435,14 @@ function applyDecisions(review: ImportReview, decisions: ImportRowDecision[]): I
             // The alternatives go with the question, exactly as the server drops them: a row whose
             // game has been chosen must stop offering a list that no longer includes the choice.
             ...(decision.gameId
-                ? { gameId: decision.gameId, matchKind: IMPORT_MATCH.matched, candidates: [] }
+                ? {
+                    gameId: decision.gameId,
+                    matchKind: IMPORT_MATCH.matched,
+                    candidates: [],
+                    // What the screen knows of the game chosen, until the next read says it again.
+                    ...(decision.game ? { game: decision.game } : {}),
+                    ...(decision.alreadyTracked !== undefined ? { alreadyTracked: decision.alreadyTracked } : {}),
+                }
                 : {}),
         };
     });
@@ -472,8 +493,9 @@ function merge(review: ImportReview, pass: ImportMatchPass): ImportReview {
  * The counts the screen reads, recomputed from the rows rather than adjusted by a delta — a delta
  * has to be right about what changed, and this cannot be.
  *
- * Only the two the screen actually reads and local changes actually move. The rest of the summary
- * is the server's own count from the last read: recomputing figures nobody renders would be three
+ * Only the ones the screen actually reads and local changes actually move — a game chosen for a row
+ * can be one the user already has, which the tile beside the commit button counts. The rest of the
+ * summary is the server's own count from the last read: recomputing figures nobody renders would be
  * more counting rules to keep in step with the ones that produced them.
  */
 function recount(review: ImportReview, rows: ImportReview['rows']): ImportReview['summary'] {
@@ -481,5 +503,6 @@ function recount(review: ImportReview, rows: ImportReview['rows']): ImportReview
         ...review.summary,
         selected: rows.filter(row => row.decision === IMPORT_DECISION.import).length,
         unlooked: rows.filter(row => row.matchKind === IMPORT_MATCH.unlooked).length,
+        alreadyTracked: rows.filter(row => row.alreadyTracked).length,
     };
 }

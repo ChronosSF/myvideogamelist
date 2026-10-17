@@ -6,6 +6,7 @@ import {
     MIN_SEARCH_LENGTH,
     type ImportSearch,
     type SearchAnswer,
+    type SearchPacer,
     useImportSearch,
 } from '@/hooks/useImportSearch';
 import { formatCount } from '@/lib/format';
@@ -24,29 +25,36 @@ interface ImportRowSearchProps {
     onOpenChange: (open: boolean) => void;
     /** A game was chosen. The caller writes the decision, as it does for an offered candidate. */
     onChoose: (game: GameDto) => void;
+    /** The page's, so that every row's search keeps to one budget. */
+    pacer?: SearchPacer;
 }
 
 /**
- * What the search says about where it is: read out as it changes, and shown under the field.
+ * What the search says about where it is, read out as it changes and shown under the field.
  *
- * Nothing while it waits, or every pause in the typing would be read out as "searching". A full
- * page is said as the first of more, because "20 games found" would name the page's size as the
- * search's, and the way to a game past it is more of its title rather than another page.
+ * Only answers and failures. Nothing while it waits, or every pause in the typing would be read out
+ * as "searching", and nothing about a term too short to ask, which the first keystroke over the
+ * selected title always is. A full page is said as the first of more, because "20 games found"
+ * would name the page's size as the search's, and the way to a game past it is more of its title.
  */
 function announcement(search: ImportSearch): string {
     switch (search.status) {
         case 'idle':
-            return `Type at least ${MIN_SEARCH_LENGTH} letters to search.`;
         case 'waiting':
             return '';
         case 'failed':
-            return search.message;
+            // A 503's sentence asks for a moment and no retry is offered until the wait is over, so
+            // the end of the wait is said too — the Try again that appears is otherwise silent.
+            return search.busy && search.canRetry ? `${search.message} You can try again now.` : search.message;
         case 'answered': {
             const { games, hasMore } = search.answer;
             const term = `“${search.term}”`;
-            // IGDB's search is not fuzzy (ADR 0040): "Resedent Evil" finds nothing at all, and a
-            // misspelt title is exactly what leaves a row unmatched.
-            if (games.length === 0) return `No games found for ${term}. IGDB does not correct spelling, so check the title.`;
+            // IGDB's search is not fuzzy (ADR 0040) — "Resedent Evil" finds nothing at all — and it
+            // matches whole words, so a title with words IGDB's does not have finds nothing either:
+            // "Portal 2 Game of the Year Edition" is ADR 0040's own example.
+            if (games.length === 0) {
+                return `No games found for ${term}. IGDB matches whole words and does not correct spelling, so check the spelling, or try fewer words.`;
+            }
             if (hasMore) return `The first ${formatCount(games.length)} games for ${term}. Not among them? More of the title narrows the search.`;
             return `${formatCount(games.length)} ${games.length === 1 ? 'game' : 'games'} found for ${term}.`;
         }
@@ -54,21 +62,21 @@ function announcement(search: ImportSearch): string {
 }
 
 /**
- * Searching IGDB from a row nobody could place, and choosing its game there (§M4).
+ * Searching IGDB from a row nobody could place, and choosing its game there (§M4, issue 158).
  *
  * A row the matcher found nothing for, or offered only wrong games for, used to be resolved by
- * leaving the page to find an id. Here a plain action opens a field holding the row's own title —
- * the spelling IGDB was first asked with, which is what somebody corrects — and the results are
- * the same buttons an offered candidate is, so choosing one is the same act with the same words.
- * Closed, the row stays one line taller than it was.
+ * leaving the page to find an id. Here a plain action opens a field holding the row's title as the
+ * file spelled it — which is what somebody corrects — and the results are the same buttons an
+ * offered candidate is, so choosing one is the same act with the same words. Closed, the row stays
+ * one line taller than it was.
  *
  * Results are IGDB's own order, unfiltered (ADR 0032): a search ranks nothing itself, and the
  * matcher's floors exist to keep a guess from being made on somebody's behalf, where here the
  * person is choosing.
  */
-export function ImportRowSearch({ title, prompt, open, onOpenChange, onChoose }: ImportRowSearchProps) {
+export function ImportRowSearch({ title, prompt, open, onOpenChange, onChoose, pacer }: ImportRowSearchProps) {
     const [query, setQuery] = useState(() => title.trim().slice(0, MAX_SEARCH_LENGTH));
-    const search = useImportSearch(query, open);
+    const search = useImportSearch(query, open, pacer);
 
     // The answer on screen. Kept while the next term waits for its own, so the results do not blank
     // out at every pause, and dropped once there is nothing to ask about or the asking failed, so a
@@ -135,6 +143,9 @@ export function ImportRowSearch({ title, prompt, open, onOpenChange, onChoose }:
                     onKeyDown={onKeyDown}
                 >
                     <div className="flex items-center gap-2">
+                        {/* Sixteen pixels below sm, or iOS zooms the page in on every open. The
+                            outline is hidden rather than removed, so a forced-colours theme still
+                            draws one where the ring cannot be (issue 287). */}
                         <input
                             ref={inputRef}
                             type="search"
@@ -145,8 +156,7 @@ export function ImportRowSearch({ title, prompt, open, onOpenChange, onChoose }:
                             maxLength={MAX_SEARCH_LENGTH}
                             autoComplete="off"
                             spellCheck={false}
-                            enterKeyHint="search"
-                            className="grow min-w-0 px-2 py-1.5 bg-page border border-line-strong rounded text-sm text-fg placeholder-fg-faint focus:outline-none focus:ring-2 focus:ring-focus focus:border-transparent"
+                            className="grow min-w-0 px-2 py-1.5 bg-page border border-line-strong rounded text-base sm:text-sm text-fg placeholder-fg-muted focus:outline-hidden focus:ring-2 focus:ring-focus focus:border-transparent"
                         />
                         <button
                             type="button"
@@ -158,10 +168,15 @@ export function ImportRowSearch({ title, prompt, open, onOpenChange, onChoose }:
                     </div>
 
                     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+                        {/* Before the live region, which is empty while waiting and would otherwise
+                            push this along by a gap. */}
+                        {waiting && <p className="text-fg-muted">Searching…</p>}
+                        {search.status === 'idle' && (
+                            <p className="text-fg-muted">Type at least {MIN_SEARCH_LENGTH} letters to search.</p>
+                        )}
                         <p role="status" className={search.status === 'failed' ? 'text-danger-300' : 'text-fg-muted'}>
                             {announcement(search)}
                         </p>
-                        {waiting && <p className="text-fg-faint">Searching…</p>}
                         {search.status === 'failed' && search.canRetry && (
                             <button
                                 type="button"
@@ -182,7 +197,8 @@ export function ImportRowSearch({ title, prompt, open, onOpenChange, onChoose }:
                         every pause, but not pressable and not read out. A press here writes a game
                         into somebody's import, so it may only ever land on the answer to what is in
                         the field — and an answer from IGDB can take seconds, long enough to press a
-                        game the field has already moved on from. */}
+                        game the field has already moved on from. The press itself is refused too,
+                        for a browser that does not know `inert`. */}
                     {games.length > 0 && (
                         <ul
                             aria-label="IGDB results"
@@ -191,7 +207,12 @@ export function ImportRowSearch({ title, prompt, open, onOpenChange, onChoose }:
                         >
                             {games.map(game => (
                                 <li key={game.id}>
-                                    <ImportCandidateButton game={game} onChoose={() => onChoose(game)} />
+                                    <ImportCandidateButton
+                                        game={game}
+                                        onChoose={() => {
+                                            if (!waiting) onChoose(game);
+                                        }}
+                                    />
                                 </li>
                             ))}
                         </ul>

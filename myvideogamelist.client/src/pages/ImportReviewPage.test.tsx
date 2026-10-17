@@ -5,7 +5,7 @@ import { MemoryRouter, Route, Routes } from 'react-router';
 import { ImportReviewPage } from '@/pages/ImportReviewPage';
 import type { AuthContextValue } from '@/contexts/AuthContext';
 import type { UseImportReviewResult } from '@/hooks/useImport';
-import { SEARCH_DEBOUNCE_MS } from '@/hooks/useImportSearch';
+import { SEARCH_DEBOUNCE_MS, SEARCH_SPACING_MS } from '@/hooks/useImportSearch';
 import { game, importResult, importReview, importRow, userProfile } from '@/test/factories';
 import type { GameDto } from '@/types/game';
 
@@ -39,16 +39,20 @@ const review: UseImportReviewResult = {
     saving: false,
     result: null,
     reload: vi.fn(),
-    setDecisions: vi.fn(async () => {}),
+    setDecisions: vi.fn(async () => true),
     setPlayedStatus: vi.fn(async () => {}),
     match: vi.fn(async () => {}),
     commit: vi.fn(async () => true),
     cancel: vi.fn(async () => true),
 };
 
+/** The games the signed-in user already has in a list, as the lists context would answer. */
+const listed = new Set<number>();
+
 const lists = {
     nameFor: (id: string) => (id === 'finished' ? 'Beaten' : id),
     namesStatus: 'ready' as const,
+    getListFor: (gameId: number) => (listed.has(gameId) ? 'finished' : null),
     reload: vi.fn(),
 };
 
@@ -125,6 +129,7 @@ beforeEach(() => {
     review.matching = false;
     review.saving = false;
     review.result = null;
+    listed.clear();
     vi.clearAllMocks();
 });
 
@@ -488,14 +493,12 @@ describe('ImportReviewPage', () => {
         // §M3. IGDB holds a row per release, so a search for a popular game answers with several
         // entries carrying its exact title — this is the ordinary outcome for one, not an edge
         // case. The row is resolved by recognising a cover and a year rather than by reading ids.
+        const original = game({ id: 880, title: 'Resident Evil 2', releaseDate: '1998-01-21' });
         review.review = loaded([
             row({
                 id: 1, title: 'Resident Evil 2', releaseYear: null,
                 gameId: null, matchKind: 'ambiguous', decision: 'skip',
-                candidates: [
-                    game({ id: 19686, title: 'Resident Evil 2', releaseDate: '2019-01-25' }),
-                    game({ id: 880, title: 'Resident Evil 2', releaseDate: '1998-01-21' }),
-                ],
+                candidates: [game({ id: 19686, title: 'Resident Evil 2', releaseDate: '2019-01-25' }), original],
             }),
         ]);
         renderPage();
@@ -503,8 +506,9 @@ describe('ImportReviewPage', () => {
         await userEvent.click(screen.getByRole('button', { name: 'Use Resident Evil 2 (1998)' }));
 
         // Choosing also selects it: somebody who has just said "that one" has said they want it.
+        // The game rides along for the row's cover, and is not sent (`useImport`).
         expect(review.setDecisions).toHaveBeenCalledWith([
-            { rowId: 1, decision: 'import', gameId: 880 },
+            { rowId: 1, decision: 'import', gameId: 880, game: original, alreadyTracked: false },
         ]);
     });
 
@@ -547,11 +551,17 @@ describe('ImportReviewPage', () => {
             game({ id: 880, title: 'Resident Evil 2', releaseDate: '1998-01-21' }),
         ],
     });
-    const UNMATCHED = row({ id: 2, title: 'Resedent Evil', gameId: null, matchKind: 'unmatched', decision: 'skip' });
+    const UNMATCHED = row({
+        id: 2, title: 'Resedent Evil', releaseYear: null, gameId: null, matchKind: 'unmatched', decision: 'skip',
+    });
+    const RESIDENT_EVIL = game({ id: 424, title: 'Resident Evil', releaseDate: '1996-03-22' });
 
     /** A row as the decision leaves it: its game chosen and selected, its alternatives gone. */
     const resolved = (r: ReturnType<typeof row>, gameId: number) =>
         ({ ...r, gameId, matchKind: 'matched', candidates: [], decision: 'import' });
+
+    /** A row's title, which is where focus goes after a choice: it commits nothing when pressed. */
+    const titleOf = (title: string) => screen.getByText(new RegExp(`^${title}`), { selector: 'p[data-row-title]' });
 
     it('offers a search on a row nothing was found for, and on one whose candidates are all wrong', () => {
         // §M4. The two rows a matcher leaves for a person; the ambiguous one keeps its candidates and
@@ -567,7 +577,7 @@ describe('ImportReviewPage', () => {
     });
 
     it('offers no search on a row that has its game, or that nobody has looked up yet', async () => {
-        // An unlooked row is "Find these games"' to place, and usually is without anybody typing.
+        // An unlooked row is for "Find these games" to place, and usually is without anybody typing.
         review.review = loaded([
             row({ id: 1, title: 'Matched Game' }),
             row({ id: 2, title: 'No Id Here', gameId: null, matchKind: 'unlooked', decision: 'skip' }),
@@ -582,19 +592,37 @@ describe('ImportReviewPage', () => {
     });
 
     it('writes a searched game through the same decision an offered candidate takes', async () => {
-        // ADR 0040: chosen the same way, and so written the same way — the row's game, selected.
+        // #158: chosen the same way, and so written the same way — the row's game, selected.
         review.review = loaded([UNMATCHED]);
         renderPage();
 
-        const user = await searchRow('Resedent Evil', [game({ id: 424, title: 'Resident Evil', releaseDate: '1996-03-22' })]);
+        const user = await searchRow('Resedent Evil', [RESIDENT_EVIL]);
         await user.click(screen.getByRole('button', { name: 'Use Resident Evil (1996)' }));
 
         expect(review.setDecisions).toHaveBeenCalledExactlyOnceWith([
-            { rowId: 2, decision: 'import', gameId: 424 },
+            { rowId: 2, decision: 'import', gameId: 424, game: RESIDENT_EVIL, alreadyTracked: false },
         ]);
         // The search goes with the question it answered.
         expect(screen.queryByRole('searchbox')).not.toBeInTheDocument();
-        expect(screen.getByText('Resident Evil (1996) chosen for “Resedent Evil”.')).toBeInTheDocument();
+    });
+
+    it('leaves a chosen game the user already has unticked, and says why', async () => {
+        // §S8: an existing entry is overwritten only when somebody ticks it, which is why the
+        // matcher's rows for such a game start unticked. Importing it would write the file's status
+        // over the one its owner gave it, and the review would not say so until it was read again.
+        listed.add(424);
+        review.review = loaded([UNMATCHED]);
+        renderPage();
+
+        const user = await searchRow('Resedent Evil', [RESIDENT_EVIL]);
+        await user.click(screen.getByRole('button', { name: 'Use Resident Evil (1996)' }));
+
+        expect(review.setDecisions).toHaveBeenCalledExactlyOnceWith([
+            { rowId: 2, decision: 'skip', gameId: 424, game: RESIDENT_EVIL, alreadyTracked: true },
+        ]);
+        expect(screen.getByText(
+            'Resident Evil (1996) chosen for “Resedent Evil”. It is already in your lists, so it is left unticked.',
+        )).toBeInTheDocument();
     });
 
     it('keeps one search open at a time', async () => {
@@ -612,25 +640,113 @@ describe('ImportReviewPage', () => {
             .toHaveAttribute('aria-expanded', 'false');
     });
 
+    it('closes the open search when the filter changes', async () => {
+        // A row hidden by the filter would otherwise open again by itself, asking IGDB once more,
+        // when the filter brought it back.
+        review.review = loaded([UNMATCHED]);
+        renderPage();
+
+        const user = await searchRow('Resedent Evil', []);
+        await user.click(screen.getByRole('button', { name: /^All / }));
+
+        expect(screen.queryByRole('searchbox')).not.toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Search IGDB for Resedent Evil' }))
+            .toHaveAttribute('aria-expanded', 'false');
+    });
+
+    it("keeps every row's search to one budget", async () => {
+        // The spacing is the person's, not the field's: with a clock each, opening one row's search
+        // after another started two requests within half a second.
+        vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+        vi.stubGlobal('jest', { advanceTimersByTime: (ms: number) => vi.advanceTimersByTime(ms) });
+        const starts: { term: string | null; at: number }[] = [];
+        vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+            starts.push({ term: new URL(String(input), 'https://mvgl.test').searchParams.get('search'), at: Date.now() });
+            return { ok: true, status: 200, headers: new Headers(), json: async () => ({ items: [], hasMore: false }) } as unknown as Response;
+        }));
+
+        review.review = loaded([AMBIGUOUS, UNMATCHED]);
+        renderPage();
+        const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+
+        await user.click(screen.getByRole('button', { name: 'Search IGDB for Resedent Evil' }));
+        await act(async () => {
+            vi.advanceTimersByTime(SEARCH_DEBOUNCE_MS);
+        });
+        await user.click(screen.getByRole('button', { name: 'Search IGDB for Resident Evil 2' }));
+        await act(async () => {
+            vi.advanceTimersByTime(SEARCH_SPACING_MS);
+        });
+
+        expect(starts.map(s => s.term)).toEqual(['Resedent Evil', 'Resident Evil 2']);
+        expect(starts[1].at - starts[0].at).toBeGreaterThanOrEqual(SEARCH_SPACING_MS);
+    });
+
     it('moves focus to the next row once a game is chosen, and says what was chosen', async () => {
         // Under "Needs you" the row leaves the moment its game is chosen, taking the pressed button
         // with it. Left alone, focus would fall to the page and the next Tab start from the top.
         review.review = loaded([AMBIGUOUS, UNMATCHED]);
         const { rerenderPage } = renderPage();
 
+        // The region is there before anything is said in it, or the first thing said is not heard.
+        expect(screen.getByRole('status')).toBeEmptyDOMElement();
+
         await userEvent.click(screen.getByRole('button', { name: 'Use Resident Evil 2 (1998)' }));
-        expect(review.setDecisions).toHaveBeenCalledWith([{ rowId: 1, decision: 'import', gameId: 880 }]);
+        expect(review.setDecisions).toHaveBeenCalledOnce();
 
         review.review = loaded([resolved(AMBIGUOUS, 880), UNMATCHED]);
         rerenderPage();
 
         expect(screen.queryByText('Resident Evil 2')).not.toBeInTheDocument();
-        expect(screen.getByRole('button', { name: 'Search IGDB for Resedent Evil' })).toHaveFocus();
-        expect(screen.getByText('Resident Evil 2 (1998) chosen for “Resident Evil 2”.')).toBeInTheDocument();
+        expect(titleOf('Resedent Evil')).toHaveFocus();
+        expect(screen.getByRole('status')).toHaveTextContent('Resident Evil 2 (1998) chosen for “Resident Evil 2”.');
     });
 
-    it("leaves focus on the row's own checkbox when the row stays listed", async () => {
-        // Under "All" the row stays, and its checkbox says the game is now going in.
+    it('moves focus to the next row\'s title, never to a control that would choose for it', async () => {
+        // The next row is often ambiguous, and its first control is a candidate: a second Enter, or
+        // one held down, would choose a game for a row the person has not looked at.
+        const second = { ...AMBIGUOUS, id: 3, title: 'Doom', candidates: [game({ id: 7351, title: 'Doom', releaseDate: '2016-05-13' })] };
+        review.review = loaded([AMBIGUOUS, second]);
+        const { rerenderPage } = renderPage();
+
+        await userEvent.click(screen.getByRole('button', { name: 'Use Resident Evil 2 (1998)' }));
+        review.review = loaded([resolved(AMBIGUOUS, 880), second]);
+        rerenderPage();
+
+        expect(titleOf('Doom')).toHaveFocus();
+
+        await userEvent.keyboard('{Enter}');
+        expect(review.setDecisions).toHaveBeenCalledOnce();
+    });
+
+    it('moves focus to the row before when the last row was the one chosen for', async () => {
+        review.review = loaded([UNMATCHED, AMBIGUOUS]);
+        const { rerenderPage } = renderPage();
+
+        await userEvent.click(screen.getByRole('button', { name: 'Use Resident Evil 2 (1998)' }));
+        review.review = loaded([UNMATCHED, resolved(AMBIGUOUS, 880)]);
+        rerenderPage();
+
+        expect(titleOf('Resedent Evil')).toHaveFocus();
+    });
+
+    it('moves focus to the next row even when it has nothing to press', async () => {
+        // An unlooked row with a known shelf: its box is disabled, and it has no candidates and no
+        // search. Focus on its title still keeps the person where they were in the list.
+        const unlooked = row({ id: 4, title: 'No Id Here', releaseYear: null, gameId: null, matchKind: 'unlooked', decision: 'skip' });
+        review.review = loaded([AMBIGUOUS, unlooked]);
+        const { rerenderPage } = renderPage();
+
+        await userEvent.click(screen.getByRole('button', { name: 'Use Resident Evil 2 (1998)' }));
+        review.review = loaded([resolved(AMBIGUOUS, 880), unlooked]);
+        rerenderPage();
+
+        expect(titleOf('No Id Here')).toHaveFocus();
+    });
+
+    it("leaves focus on the row's own title when the row stays listed", async () => {
+        // Under "All" the row stays. Its title rather than its checkbox, which a second Space would
+        // untick.
         review.review = loaded([AMBIGUOUS, UNMATCHED]);
         const { rerenderPage } = renderPage();
 
@@ -640,7 +756,8 @@ describe('ImportReviewPage', () => {
         review.review = loaded([resolved(AMBIGUOUS, 880), UNMATCHED]);
         rerenderPage();
 
-        expect(screen.getByRole('checkbox', { name: 'Import Resident Evil 2' })).toHaveFocus();
+        expect(titleOf('Resident Evil 2')).toHaveFocus();
+        expect(screen.getByRole('checkbox', { name: 'Import Resident Evil 2' })).toBeChecked();
     });
 
     it('leaves focus on the line saying nothing is left, when that was the last row needing a decision', async () => {
@@ -653,6 +770,30 @@ describe('ImportReviewPage', () => {
         rerenderPage();
 
         expect(screen.getByText(/Nothing needs a decision/)).toHaveFocus();
+    });
+
+    it('puts focus back on the row when the choice could not be saved, and unsays it', async () => {
+        // The hook puts the row back beside the error before its promise settles. Without this,
+        // focus would stay on the row after it, and a second try at the same game would be
+        // announced as nothing at all.
+        let settle: (saved: boolean) => void = () => {};
+        vi.mocked(review.setDecisions).mockImplementationOnce(() => new Promise(resolve => {
+            settle = resolve;
+        }));
+        review.review = loaded([AMBIGUOUS, UNMATCHED]);
+        const { rerenderPage } = renderPage();
+
+        await userEvent.click(screen.getByRole('button', { name: 'Use Resident Evil 2 (1998)' }));
+        review.review = loaded([resolved(AMBIGUOUS, 880), UNMATCHED]);
+        rerenderPage();
+        expect(titleOf('Resedent Evil')).toHaveFocus();
+
+        review.review = loaded([AMBIGUOUS, UNMATCHED]);
+        rerenderPage();
+        await act(async () => settle(false));
+
+        expect(titleOf('Resident Evil 2')).toHaveFocus();
+        expect(screen.getByRole('status')).toBeEmptyDOMElement();
     });
 
     it('says when an unfinished import will be deleted, and what keeps it alive', () => {

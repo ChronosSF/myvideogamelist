@@ -9,6 +9,7 @@ import { useLists } from '@/hooks/useLists';
 import { useWishlist } from '@/hooks/useWishlist';
 import { useFavourites } from '@/hooks/useFavourites';
 import { useImportReview } from '@/hooks/useImport';
+import { createSearchPacer } from '@/hooks/useImportSearch';
 import { downloadSkippedRows } from '@/lib/importReport';
 import { expiresInWords } from '@/lib/importExpiry';
 import { releaseYear } from '@/lib/releaseDate';
@@ -55,7 +56,7 @@ export function ImportReviewPage() {
     const { jobId = '' } = useParams();
     const { user, loading: authLoading } = useAuth();
     const navigate = useNavigate();
-    const { nameFor, namesStatus, reload: reloadLists } = useLists();
+    const { nameFor, namesStatus, getListFor, reload: reloadLists } = useLists();
     const { reload: reloadWishlist } = useWishlist();
     const { reload: reloadFavourites } = useFavourites();
 
@@ -93,6 +94,10 @@ export function ImportReviewPage() {
     // term, and a screen of open panels is no longer a list somebody can work down.
     const [searchingRow, setSearchingRow] = useState<number | null>(null);
 
+    // One budget for every row's search: the spacing between requests, and a 503's wait, are the
+    // person's rather than each field's. See `SearchPacer`.
+    const [searchPacer] = useState(createSearchPacer);
+
     // What the last choice of a game did, read out politely. The row it was made on changes under
     // the press — the candidates go with the question, the search closes — and under "Needs you"
     // the row itself leaves, so without this nothing says that the press did anything.
@@ -101,9 +106,11 @@ export function ImportReviewPage() {
     const listRef = useRef<HTMLUListElement>(null);
     const nothingLeftRef = useRef<HTMLParagraphElement>(null);
 
-    // Where focus goes after a choice, consumed once the rows have re-rendered. A ref rather than
-    // state, because it is a request to the DOM about the next commit and not something to render.
+    // Where focus goes after a choice, consumed once the rows have re-rendered. A ref, because it is
+    // a request to the DOM about the next commit rather than something to render; the tick beside it
+    // makes a commit happen after a failed save, whose rollback may already have rendered.
     const refocus = useRef<{ rowId: number; index: number } | null>(null);
+    const [refocusTick, setRefocusTick] = useState(0);
 
     const signedOut = !authLoading && user === null;
 
@@ -145,24 +152,51 @@ export function ImportReviewPage() {
 
     /**
      * A game chosen for a row, whether the matcher offered it (§M3) or the row's own search found it
-     * (§M4): one write, the decision endpoint's, and one way of choosing (ADR 0040). Choosing also
-     * selects the row — somebody who has just said "that one" has said they want it.
+     * (§M4): one write, the decision endpoint's, and one way of choosing (issue 158). Choosing also
+     * selects the row — somebody who has just said "that one" has said they want it — unless the
+     * game is already in one of their lists. Importing it would write the file's status over theirs,
+     * and §S8 has an existing entry overwritten only when somebody ticks it, as the matcher's own
+     * rows for such a game start unticked. A game they hold in no list has no status to lose, which
+     * is why the lists are enough to ask.
      */
     const choose = (row: ImportReviewRow, game: GameDto, index: number) => {
         const year = game.releaseDate === null ? '' : ` (${releaseYear(game.releaseDate)})`;
+        const tracked = getListFor(game.id) !== null;
 
+        // Consumed by the render the decision's own update makes, which is the one that has moved
+        // the row: `setDecisions` applies it before its first await.
         refocus.current = { rowId: row.id, index };
         setSearchingRow(null);
-        setChosen(`${game.title}${year} chosen for “${row.title}”.`);
-        void setDecisions([{ rowId: row.id, decision: IMPORT_DECISION.import, gameId: game.id }]);
+        setChosen(tracked
+            ? `${game.title}${year} chosen for “${row.title}”. It is already in your lists, so it is left unticked.`
+            : `${game.title}${year} chosen for “${row.title}”.`);
+
+        void setDecisions([{
+            rowId: row.id,
+            decision: tracked ? IMPORT_DECISION.skip : IMPORT_DECISION.import,
+            gameId: game.id,
+            game,
+            alreadyTracked: tracked,
+        }]).then(saved => {
+            if (saved) return;
+            // The row is back as it was, beside the error. Focus goes back to it, and the sentence
+            // that said it was chosen goes, so a second try says it again rather than nothing.
+            refocus.current = { rowId: row.id, index };
+            setRefocusTick(tick => tick + 1);
+            setChosen('');
+        });
     };
 
     /**
      * Focus, after a choice, goes where the person would go next. The control they pressed is gone
      * by now, and left alone focus falls to the document, so the next Tab starts again from the top
-     * of a page that can hold hundreds of rows. Their own row when it is still listed, at its
-     * checkbox, which says the game is now going in; under "Needs you" it is not, and the next row is
-     * the one in its place. When none is left, the line saying so.
+     * of a page that can hold hundreds of rows. Their own row when it is still listed; under "Needs
+     * you" it is not, and the next row is the one in its place, or the one before when it was the
+     * last. When none is left, the line saying so.
+     *
+     * A row's title rather than any control in it: the next row's first control is often one of its
+     * candidates, and a second press of Enter, or one held down, would choose a game for a row the
+     * person has not looked at. From the title the next Tab reaches the row's controls.
      */
     useEffect(() => {
         const request = refocus.current;
@@ -174,11 +208,9 @@ export function ImportReviewPage() {
         const item = items.find(element => element.dataset.rowId === String(request.rowId))
             ?? items[request.index]
             ?? items[request.index - 1];
-        const control = item?.querySelector<HTMLElement>(
-            'input:not(:disabled), button:not(:disabled), select:not(:disabled)');
 
-        (control ?? nothingLeftRef.current)?.focus();
-    }, [visible]);
+        (item?.querySelector<HTMLElement>('[data-row-title]') ?? nothingLeftRef.current)?.focus();
+    }, [visible, refocusTick]);
 
     const showFilter = (next: Filter) => {
         setFilter(next);
@@ -347,7 +379,7 @@ export function ImportReviewPage() {
                         {visible.length === 0 && (
                             // Focusable from script only, as where a choice leaves focus once it
                             // was the last row needing one.
-                            <p ref={nothingLeftRef} tabIndex={-1} className="text-fg-muted text-sm py-12 text-center focus:outline-none">
+                            <p ref={nothingLeftRef} tabIndex={-1} className="text-fg-muted text-sm py-12 text-center rounded-lg focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus">
                                 {filter === 'attention'
                                     ? 'Nothing needs a decision — every game was matched and understood.'
                                     : 'No games here.'}
@@ -385,7 +417,14 @@ export function ImportReviewPage() {
                                     <GameCover url={row.game?.coverImageUrl} className="w-9 h-12" />
 
                                     <div className="min-w-0 grow">
-                                        <p className="text-fg text-sm font-medium truncate">
+                                        {/* Focusable from script only: where focus goes after a game
+                                            is chosen here or in the row before, since it commits
+                                            nothing when pressed. */}
+                                        <p
+                                            data-row-title
+                                            tabIndex={-1}
+                                            className="text-fg text-sm font-medium truncate rounded-sm focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus"
+                                        >
                                             {row.title}
                                             {row.releaseYear !== null && (
                                                 <span className="text-fg-faint font-normal"> ({row.releaseYear})</span>
@@ -448,6 +487,7 @@ export function ImportReviewPage() {
                                                 open={searchingRow === row.id}
                                                 onOpenChange={open => setSearchingRow(open ? row.id : null)}
                                                 onChoose={game => choose(row, game, index)}
+                                                pacer={searchPacer}
                                             />
                                         )}
 

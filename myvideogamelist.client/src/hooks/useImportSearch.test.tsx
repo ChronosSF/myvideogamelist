@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, renderHook } from '@testing-library/react';
 import {
+    createSearchPacer,
     MIN_SEARCH_LENGTH,
     SEARCH_DEBOUNCE_MS,
     SEARCH_REFUSED,
@@ -78,6 +79,15 @@ function renderSearch(query = '', enabled = true) {
     );
 }
 
+/** Two rows' searches on one page, sharing the page's pacer as the review's rows do. */
+function renderTwoRows(first: { query: string; enabled: boolean }, second: { query: string; enabled: boolean }) {
+    const pacer = createSearchPacer();
+    return renderHook(
+        ({ a, b }) => [useImportSearch(a.query, a.enabled, pacer), useImportSearch(b.query, b.enabled, pacer)] as const,
+        { initialProps: { a: first, b: second } },
+    );
+}
+
 /** Lets the faked clock run, as a pause in the typing. */
 async function pause(ms: number) {
     await act(async () => {
@@ -140,6 +150,16 @@ describe('useImportSearch', () => {
         expect(result.current.status).toBe('idle');
     });
 
+    it('asks about a two-letter title', async () => {
+        // Ys is a series of a dozen games, which is why the floor is two and not three.
+        const requests = stubApi();
+        renderSearch('Ys');
+
+        await pause(SEARCH_DEBOUNCE_MS);
+
+        expect(requests.map(r => r.term)).toEqual(['Ys']);
+    });
+
     it('asks nothing while the search is closed', async () => {
         const requests = stubApi();
         const { result } = renderSearch('resident evil', false);
@@ -198,11 +218,31 @@ describe('useImportSearch', () => {
         await requests[0].answer([RE]);
         expect(result.current).toMatchObject({ status: 'waiting', term: 'resident evil 2' });
 
-        await pause(SEARCH_SPACING_MS);
+        // The abandoned request still counts: it reached the API, which asked IGDB all the same.
+        await pause(SEARCH_SPACING_MS - 1);
+        expect(requests).toHaveLength(1);
+        await pause(1);
         expect(requests.map(r => r.term)).toEqual(['resident', 'resident evil 2']);
+        expect(requests[1].at - requests[0].at).toBe(SEARCH_SPACING_MS);
 
         await requests[1].answer([RE2]);
         expect(result.current).toMatchObject({ status: 'answered', answer: { games: [RE2] } });
+    });
+
+    it('drops an abandoned request whole, a 503 included', async () => {
+        // A 503 holds every term on the page. One that answers a request the field has already left
+        // is dropped with the rest of that request, rather than holding the term that replaced it.
+        const requests = stubApi({ honourAbort: false });
+        const { result, rerender } = renderSearch('resident');
+
+        await pause(SEARCH_DEBOUNCE_MS);
+        rerender({ query: 'resident evil 2', enabled: true });
+        await requests[0].respond(503, BUSY, { 'Retry-After': '30' });
+
+        expect(result.current).toMatchObject({ status: 'waiting', term: 'resident evil 2' });
+
+        await pause(SEARCH_SPACING_MS);
+        expect(requests.map(r => r.term)).toEqual(['resident', 'resident evil 2']);
     });
 
     it('abandons the request in flight when the search closes', async () => {
@@ -234,6 +274,28 @@ describe('useImportSearch', () => {
         expect(result.current).toMatchObject({ status: 'answered', answer: { games: [RE] } });
     });
 
+    it('forgets the oldest of more than twenty answered terms', async () => {
+        const requests = stubApi();
+        const { result, rerender } = renderSearch('term 1');
+
+        for (let n = 1; n <= 21; n++) {
+            rerender({ query: `term ${n}`, enabled: true });
+            await pause(SEARCH_SPACING_MS);
+            await requests[n - 1].answer([game({ id: n, title: `Term ${n}` })]);
+        }
+        expect(requests).toHaveLength(21);
+
+        rerender({ query: 'term 2', enabled: true });
+        await pause(SEARCH_SPACING_MS);
+        expect(requests).toHaveLength(21);
+        expect(result.current.status).toBe('answered');
+
+        rerender({ query: 'term 1', enabled: true });
+        await pause(SEARCH_SPACING_MS);
+        expect(requests.map(r => r.term).at(-1)).toBe('term 1');
+        expect(requests).toHaveLength(22);
+    });
+
     it("says IGDB's failure in the API's own sentence, and asks again when told to", async () => {
         const requests = stubApi();
         const { result } = renderSearch('resident evil');
@@ -253,6 +315,21 @@ describe('useImportSearch', () => {
 
         await requests[1].answer([RE]);
         expect(result.current.status).toBe('answered');
+    });
+
+    it('asks again when the search is closed and opened after a failure', async () => {
+        const requests = stubApi();
+        const { result, rerender } = renderSearch('resident evil');
+
+        await pause(SEARCH_DEBOUNCE_MS);
+        await requests[0].respond(502, OUTAGE);
+
+        rerender({ query: 'resident evil', enabled: false });
+        rerender({ query: 'resident evil', enabled: true });
+        expect(result.current.status).toBe('waiting');
+
+        await pause(SEARCH_SPACING_MS);
+        expect(requests).toHaveLength(2);
     });
 
     it('asks again when the term is edited after a failure', async () => {
@@ -335,5 +412,82 @@ describe('useImportSearch', () => {
         act(() => result.current.retry());
         await pause(SEARCH_DEBOUNCE_MS);
         expect(requests.map(r => r.term)).toEqual(['resident evil', 'resident evil 2']);
+    });
+
+    it('holds for a 429 as for a 503', async () => {
+        const requests = stubApi();
+        const { result } = renderSearch('resident evil');
+
+        await pause(SEARCH_DEBOUNCE_MS);
+        await requests[0].respond(429, {}, { 'Retry-After': '2' });
+
+        expect(result.current).toMatchObject({ status: 'failed', canRetry: false, busy: true });
+        await pause(2000);
+        expect(result.current).toMatchObject({ status: 'failed', canRetry: true, busy: true });
+    });
+
+    it("waits out no more than thirty seconds of a 503's Retry-After", async () => {
+        // A search shut for longer than somebody will wait is one they stop using.
+        const requests = stubApi();
+        const { result } = renderSearch('resident evil');
+
+        await pause(SEARCH_DEBOUNCE_MS);
+        await requests[0].respond(503, BUSY, { 'Retry-After': '120' });
+
+        await pause(29_999);
+        expect(result.current).toMatchObject({ status: 'failed', canRetry: false });
+        await pause(1);
+        expect(result.current).toMatchObject({ status: 'failed', canRetry: true });
+    });
+});
+
+describe('useImportSearch, two rows on one page', () => {
+    it('never starts two requests within a second, whichever row asks', async () => {
+        // With a clock each, opening one row's search after another started two requests within
+        // half a second: the budget is the person's, not the field's.
+        const requests = stubApi();
+        const { rerender } = renderTwoRows(
+            { query: 'Resedent Evil', enabled: true },
+            { query: 'Doom', enabled: false },
+        );
+
+        await pause(SEARCH_DEBOUNCE_MS);
+        expect(requests.map(r => r.term)).toEqual(['Resedent Evil']);
+
+        rerender({ a: { query: 'Resedent Evil', enabled: false }, b: { query: 'Doom', enabled: true } });
+        await pause(SEARCH_SPACING_MS - 1);
+        expect(requests).toHaveLength(1);
+
+        await pause(1);
+        expect(requests.map(r => r.term)).toEqual(['Resedent Evil', 'Doom']);
+        expect(requests[1].at - requests[0].at).toBe(SEARCH_SPACING_MS);
+    });
+
+    it("holds every row through one row's 503, and asks nothing by itself after", async () => {
+        // The queue is everybody's (ADR 0034), so moving to another row is not a way round it.
+        const requests = stubApi();
+        const { result, rerender } = renderTwoRows(
+            { query: 'Resedent Evil', enabled: true },
+            { query: 'Doom', enabled: false },
+        );
+
+        await pause(SEARCH_DEBOUNCE_MS);
+        await requests[0].respond(503, BUSY, { 'Retry-After': '5' });
+
+        rerender({ a: { query: 'Resedent Evil', enabled: false }, b: { query: 'Doom', enabled: true } });
+        expect(result.current[1]).toMatchObject({ status: 'failed', message: BUSY.detail, canRetry: false });
+
+        await pause(4999);
+        expect(requests).toHaveLength(1);
+
+        await pause(1);
+        expect(result.current[1]).toMatchObject({ status: 'failed', term: 'Doom', canRetry: true });
+
+        await pause(5000);
+        expect(requests).toHaveLength(1);
+
+        act(() => result.current[1].retry());
+        await pause(SEARCH_DEBOUNCE_MS);
+        expect(requests.map(r => r.term)).toEqual(['Resedent Evil', 'Doom']);
     });
 });

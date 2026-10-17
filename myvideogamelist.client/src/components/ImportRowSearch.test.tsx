@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ImportRowSearch } from '@/components/ImportRowSearch';
-import { SEARCH_DEBOUNCE_MS, SEARCH_SPACING_MS } from '@/hooks/useImportSearch';
+import { SEARCH_DEBOUNCE_MS, SEARCH_REFUSED, SEARCH_SPACING_MS } from '@/hooks/useImportSearch';
 import { game } from '@/test/factories';
 import type { GameDto } from '@/types/game';
 
@@ -11,7 +11,7 @@ import type { GameDto } from '@/types/game';
 interface Pending {
     term: string | null;
     answer: (games: GameDto[], hasMore?: boolean) => Promise<void>;
-    respond: (status: number, body: unknown) => Promise<void>;
+    respond: (status: number, body: unknown, headers?: Record<string, string>) => Promise<void>;
 }
 
 /** Stands in for the API, as the hook's own tests do: every request waits for the test to settle it. */
@@ -25,10 +25,10 @@ function stubApi() {
         });
     };
 
-    const response = (status: number, body: unknown) => ({
+    const response = (status: number, body: unknown, headers: Record<string, string> = {}) => ({
         ok: status >= 200 && status < 300,
         status,
-        headers: new Headers(),
+        headers: new Headers(headers),
         json: () => Promise.resolve(body),
     }) as unknown as Response;
 
@@ -38,7 +38,7 @@ function stubApi() {
             requests.push({
                 term: new URL(String(input), 'https://mvgl.test').searchParams.get('search'),
                 answer: (games, hasMore = false) => settle(() => resolve(response(200, { items: games, hasMore }))),
-                respond: (status, body) => settle(() => resolve(response(status, body))),
+                respond: (status, body, headers) => settle(() => resolve(response(status, body, headers))),
             });
         })));
 
@@ -89,6 +89,13 @@ const OUTAGE = {
     detail: 'Game data comes from IGDB, which did not answer. Your own lists, scores and playthroughs are unaffected.',
 };
 
+/** The API's own answer when its queue for IGDB is full (`UpstreamBusyHandler`). */
+const BUSY = {
+    title: 'Busy fetching game data',
+    status: 503,
+    detail: 'Too many people are browsing games at once. Try again in a moment — your own lists, scores and playthroughs are unaffected.',
+};
+
 beforeEach(() => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
     // Testing Library ends every userEvent call by waiting out a zero-length timeout, and moves the
@@ -118,7 +125,7 @@ describe('ImportRowSearch', () => {
     });
 
     it("opens on the row's own title, selected, with focus in the field", async () => {
-        // The spelling IGDB was first asked with is what somebody corrects; selected, so typing a
+        // The row's title as its file spelled it is what somebody corrects; selected, so typing a
         // new title replaces it instead.
         stubApi();
         const { user, toggle } = renderSearch();
@@ -133,8 +140,9 @@ describe('ImportRowSearch', () => {
         expect(toggle).toHaveAttribute('aria-expanded', 'true');
     });
 
-    it('says when IGDB found nothing, and why that is usually the spelling', async () => {
-        // IGDB's search is not fuzzy (ADR 0040), and a misspelt title is what left the row unmatched.
+    it('says when IGDB found nothing, and the two reasons that usually is', async () => {
+        // IGDB's search is not fuzzy (ADR 0040), so a misspelt title finds nothing, and it matches
+        // whole words, so a title with words IGDB's does not have finds nothing either.
         const requests = stubApi();
         const { user, toggle } = renderSearch();
 
@@ -145,12 +153,13 @@ describe('ImportRowSearch', () => {
         await requests[0].answer([]);
 
         expect(screen.getByRole('status')).toHaveTextContent(
-            'No games found for “Resedent Evil”. IGDB does not correct spelling, so check the title.');
+            'No games found for “Resedent Evil”. IGDB matches whole words and does not correct spelling, '
+            + 'so check the spelling, or try fewer words.');
     });
 
     it('shows each result as the candidate picker does, critic score beside it or why there is none', async () => {
-        // ADR 0040: a searched result and an offered candidate are chosen the same way. A search
-        // has no floor, so the score's sample travels with it (ADR 0016) — a lone 100 is a dash.
+        // #158: a searched result and an offered candidate are chosen the same way. A search has
+        // no floor, so the score's sample travels with it (ADR 0016) — a lone 100 is a dash.
         const requests = stubApi();
         const { user, toggle } = renderSearch();
 
@@ -174,7 +183,27 @@ describe('ImportRowSearch', () => {
             description: 'No critic reviews',
         })).toBeInTheDocument();
 
+        // And the dash is said on screen with its count, for anybody reading rather than listening.
+        expect(within(results).getByText('91')).toBeInTheDocument();
+        expect(within(results).getByText('— 1 critic review')).toBeInTheDocument();
+        expect(within(results).getByText('— no critic reviews')).toBeInTheDocument();
+
         expect(screen.getByRole('status')).toHaveTextContent('3 games found for “Resident Evil”.');
+    });
+
+    it('counts the critic reviews under the floor in the plural', async () => {
+        const requests = stubApi();
+        const { user, toggle } = renderSearch('Resident Evil');
+
+        await user.click(toggle);
+        await pause(SEARCH_DEBOUNCE_MS);
+        await requests[0].answer([game({ id: 5, title: 'Resident Evil', criticScore: 70, criticScoreCount: 3 })]);
+
+        expect(screen.getByText('— 3 critic reviews')).toBeInTheDocument();
+        expect(screen.getByRole('button', {
+            name: 'Use Resident Evil',
+            description: 'Too few critic reviews to score: 3',
+        })).toBeInTheDocument();
     });
 
     it('hands the chosen game to the row, which writes it as it writes an offered one', async () => {
@@ -207,9 +236,11 @@ describe('ImportRowSearch', () => {
 
     it('cannot press a game the field has moved on from', async () => {
         // A press writes a game into somebody's import, so it may only land on the answer to what is
-        // in the field. The last answer stays drawn while the next one comes, but inert.
+        // in the field. The last answer stays drawn while the next one comes, but inert — which
+        // jsdom does not implement, so the press is refused by the component as well, and that is
+        // what this can check.
         const requests = stubApi();
-        const { user, toggle } = renderSearch('Resident Evil');
+        const { onChoose, user, toggle } = renderSearch('Resident Evil');
 
         await user.click(toggle);
         await pause(SEARCH_DEBOUNCE_MS);
@@ -219,6 +250,9 @@ describe('ImportRowSearch', () => {
 
         expect(screen.getByRole('list', { name: 'IGDB results', hidden: true })).toHaveAttribute('inert');
         expect(screen.getByText('Searching…')).toBeInTheDocument();
+
+        await user.click(screen.getByRole('button', { name: 'Use Resident Evil (1996)', hidden: true }));
+        expect(onChoose).not.toHaveBeenCalled();
 
         await pause(1000);
         await requests[1].answer([RE_BUNDLE]);
@@ -272,7 +306,9 @@ describe('ImportRowSearch', () => {
         expect(screen.queryByRole('list', { name: 'IGDB results', hidden: true })).not.toBeInTheDocument();
     });
 
-    it('asks for more letters rather than searching on one', async () => {
+    it('asks for more letters rather than searching on one, without reading that out', async () => {
+        // Typing over the selected title always starts with one letter, so a hint in the live region
+        // would be read out at the start of nearly every search.
         const requests = stubApi();
         const { user, toggle } = renderSearch();
 
@@ -281,7 +317,57 @@ describe('ImportRowSearch', () => {
         await pause(5000);
 
         expect(requests).toHaveLength(0);
-        expect(screen.getByRole('status')).toHaveTextContent('Type at least 2 letters to search.');
+        expect(screen.getByText('Type at least 2 letters to search.')).toBeInTheDocument();
+        expect(screen.getByRole('status')).toBeEmptyDOMElement();
+    });
+
+    it('drops the results once the field is too short to search', async () => {
+        // Left up under the hint, and not inert since nothing is waiting, they could be pressed for a
+        // term nobody is searching.
+        const requests = stubApi();
+        const { user, toggle } = renderSearch('Resident Evil');
+
+        await user.click(toggle);
+        await pause(SEARCH_DEBOUNCE_MS);
+        await requests[0].answer([RE]);
+
+        await user.keyboard('R');
+
+        expect(screen.getByText('Type at least 2 letters to search.')).toBeInTheDocument();
+        expect(screen.queryByRole('list', { name: 'IGDB results', hidden: true })).not.toBeInTheDocument();
+    });
+
+    it('offers no retry for a question the API refused', async () => {
+        const requests = stubApi();
+        const { user, toggle } = renderSearch('Resident Evil');
+
+        await user.click(toggle);
+        await pause(SEARCH_DEBOUNCE_MS);
+        await requests[0].respond(400, { title: 'One or more validation errors occurred.' });
+
+        expect(screen.getByRole('status')).toHaveTextContent(SEARCH_REFUSED);
+        expect(screen.queryByRole('button', { name: 'Try again' })).not.toBeInTheDocument();
+    });
+
+    it("offers a retry only once a 503's wait is over, and says when it is", async () => {
+        // The API's own queue for IGDB is full. Its sentence asks for a moment; a button that did
+        // nothing for that moment would be worse than none, and the button appearing says nothing to
+        // a screen reader unless the words change with it.
+        const requests = stubApi();
+        const { user, toggle } = renderSearch('Resident Evil');
+
+        await user.click(toggle);
+        await pause(SEARCH_DEBOUNCE_MS);
+        await requests[0].respond(503, BUSY, { 'Retry-After': '2' });
+
+        expect(screen.getByRole('status')).toHaveTextContent(BUSY.detail);
+        expect(screen.queryByRole('button', { name: 'Try again' })).not.toBeInTheDocument();
+
+        await pause(2000);
+
+        expect(screen.getByRole('status')).toHaveTextContent(`${BUSY.detail} You can try again now.`);
+        expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument();
+        expect(requests).toHaveLength(1);
     });
 
     it('closes on Escape and hands focus back to the button that opened it', async () => {

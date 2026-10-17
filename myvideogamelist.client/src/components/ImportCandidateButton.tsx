@@ -10,9 +10,9 @@ import type { GameDto } from '@/types/game';
  * One game offered for a row of an import, as something to recognise and press.
  *
  * Both ways a row gets its game go through this: a candidate the matcher offered (§M3) and a result
- * of the row's own search (§M4). ADR 0040's reason for showing cover and year is that a row is
- * resolved by recognising a game rather than by reading one, and a searched result is chosen for
- * the same reason, so it reads the same and is pressed the same.
+ * of the row's own search (§M4). §M3 shows cover art and year so that a row is resolved by
+ * recognising a game rather than by reading one, and issue 158 asks that a searched result be chosen
+ * the same way, so it reads the same and is pressed the same.
  *
  * Named rather than left to its own text: a row of buttons each reading "Resident Evil 2 (1998)"
  * says what they are and not what pressing one does. The visible title is inside the name, so
@@ -47,11 +47,13 @@ export function ImportCandidateButton({ game, onChoose }: { game: GameDto; onCho
 
 /**
  * The critic score once it rests on `MIN_CRITIC_REVIEWS` reviews, or a dash with the count when it
- * rests on fewer (ADR 0016). A search carries no floor (ADR 0032), so its results reach the long
- * tail of IGDB — the re-release, the bundle, the fan project wearing a famous name — and next to a
- * canonical release a dash over "no critic reviews" is a large part of how one is told from the
- * other. A bare dash would read as "no score" where the truth is often "a score from too few
- * reviews to mean anything", so the count is said beside it.
+ * rests on fewer: a score is never shown without its sample (ADR 0016). A search carries no floor
+ * (ADR 0032), so its results reach games one critic loved — a lone 100 is a dash here. A bare dash
+ * would read as "no score" where the truth is often "a score from too few reviews to mean
+ * anything", so the count is said beside it.
+ *
+ * It is not what tells a release from its stubs: that is how many people rate a row (ADR 0040,
+ * decision 3), and older canonical releases often have no critic reviews at all.
  */
 function CriticScore({ game, id }: { game: GameDto; id: string }) {
     if (hasCriticScore(game)) {
@@ -66,7 +68,7 @@ function CriticScore({ game, id }: { game: GameDto; id: string }) {
     const reviews = `${formatCount(count)} critic ${count === 1 ? 'review' : 'reviews'}`;
 
     return (
-        <span id={id} className="text-[11px] text-fg-faint">
+        <span id={id} className="text-[11px] text-fg-muted">
             <span aria-hidden="true">— {count === 0 ? 'no critic reviews' : reviews}</span>
             <span className="sr-only">
                 {count === 0 ? 'No critic reviews' : `Too few critic reviews to score: ${formatCount(count)}`}
