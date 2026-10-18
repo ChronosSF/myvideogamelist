@@ -3,6 +3,8 @@
 **Status:** Implemented locally — the application now runs on PostgreSQL, with a container for
 development. The *hosted* half is still pending: the service is settled by
 [0014](0014-rds-postgresql-over-aurora.md) as RDS for PostgreSQL, but nothing is provisioned yet.
+The Testcontainers integration tests a consequence below calls unwritten are
+[0057](0057-the-api-is-tested-over-a-real-postgresql.md).
 
 ## Context
 
