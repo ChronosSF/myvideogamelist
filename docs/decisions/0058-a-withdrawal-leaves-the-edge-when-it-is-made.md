@@ -167,7 +167,8 @@ bounds how many are in flight.
 
 A failed attempt is retried after two seconds, doubling, to a ceiling of five minutes, which comes
 to about twenty attempts. A backoff that would land past the window is cut short to one last
-attempt just inside it. The retries stop **sixty-five minutes after the write**, `CACHE_PROFILE`'s
+attempt just inside it, and the window is checked again after the wait for the one-a-second
+spacing, which can itself run past it. The retries stop **sixty-five minutes after the write**, `CACHE_PROFILE`'s
 five minutes and its hour. By then every copy an edge fetched before the withdrawal has expired, and
 an invalidation sent later would remove nothing. Giving up costs exactly the window the site had
 before this existed. The horizon is restated on the server rather than shared, because the policy
@@ -210,7 +211,9 @@ refused each day is an error naming the ceiling, and the rest are logged at Debu
 met it cannot fill the log as fast as it saves. 500 is room for a few hundred withdrawals a day,
 which is far more than the site makes; raise it when that stops being true.
 
-Paths count when CloudFront accepts them, not when they are tried. A refused request is not an
+Paths count when CloudFront accepts them, not when they are tried, and against the UTC day of the
+acceptance: a withdrawal let through before midnight and accepted on a retry after it belongs to
+the new day's count. A refused request is not an
 invalidation, and counting it would let an hour's outage spend the day's allowance on nothing and
 refuse real withdrawals once CloudFront is back. A request accepted with its answer lost on the way
 back is counted when a retry is answered, since the retry carries the same caller reference. What
@@ -297,6 +300,11 @@ templates are byte-for-byte what master synthesises.
   role may make it, and what an invalidation does at the edge. The AWS client itself is not
   unit-tested. The queue, coalescing, the retry schedule, the horizon, the ceiling, the drain and
   the request built are unit-tested against a substitute client.
+
+  The two withdrawals whose review goes by PostgreSQL's cascade, rather than by a delete of its
+  own, are also run through the API in the integration suite ([0057](0057-the-api-is-tested-over-a-real-postgresql.md)),
+  whose host records what it was asked to invalidate: deleting everything recorded about a game,
+  and deleting the account. In-memory, a cascade deletes nothing the context is not tracking.
 
   By hand, against a local database: the six events, with no distribution configured, each logged
   the paths above. Then the API ran with a distribution id, made-up credentials and the SDK's

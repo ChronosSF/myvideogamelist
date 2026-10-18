@@ -338,11 +338,19 @@ internal sealed class CloudFrontEdgeInvalidator : BackgroundService, IEdgeInvali
             {
                 await PaceAsync(stoppingToken);
 
+                // And again after the wait for the spacing, which can run past the window: a
+                // request sent then would be a path paid for to remove nothing.
+                if (clock.GetUtcNow() >= giveUpAt)
+                {
+                    LogGaveUp(queued, attempt - 1, failure: null);
+                    return;
+                }
+
                 using var attemptTimeout = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
                 attemptTimeout.CancelAfter(pacing.AttemptTimeout);
 
                 var response = await cloudFront.CreateInvalidationAsync(Request(queued), attemptTimeout.Token);
-                pathsToday += queued.Invalidation.Paths.Count;
+                CountAccepted(queued.Invalidation.Paths.Count);
 
                 logger.LogInformation(
                     "Invalidated {Paths} ({Reason}) as {InvalidationId}, {Delay} after the write, on attempt {Attempt} ({CallerReference}).",
@@ -435,7 +443,8 @@ internal sealed class CloudFrontEdgeInvalidator : BackgroundService, IEdgeInvali
         lastSent = clock.GetUtcNow();
     }
 
-    private bool WithinDailyLimit(Queued queued)
+    /// <summary>The UTC day now, starting its count afresh when it is a new one.</summary>
+    private DateOnly Today()
     {
         var today = DateOnly.FromDateTime(clock.GetUtcNow().UtcDateTime);
         if (today != ceilingDay)
@@ -444,6 +453,23 @@ internal sealed class CloudFrontEdgeInvalidator : BackgroundService, IEdgeInvali
             pathsToday = 0;
             refusedToday = 0;
         }
+
+        return today;
+    }
+
+    /// <summary>
+    /// Counts accepted paths against the day CloudFront accepted them on, which for a withdrawal
+    /// tried before midnight and accepted on a retry after it is not the day it was let through on.
+    /// </summary>
+    private void CountAccepted(int paths)
+    {
+        Today();
+        pathsToday += paths;
+    }
+
+    private bool WithinDailyLimit(Queued queued)
+    {
+        var today = Today();
 
         if (pathsToday + queued.Invalidation.Paths.Count <= dailyPathLimit) return true;
 

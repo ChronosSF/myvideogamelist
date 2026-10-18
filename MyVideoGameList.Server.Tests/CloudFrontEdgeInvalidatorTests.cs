@@ -49,6 +49,35 @@ public class CloudFrontEdgeInvalidatorTests
         public void Advance(TimeSpan by) => _now = _now.Add(by);
     }
 
+    /// <summary>
+    /// A clock on which every wait passes at once: a timer moves the time on by its due time and
+    /// fires, so a delay taken through it is a step of the clock rather than of the test's time.
+    /// </summary>
+    private sealed class FastForwardClock(DateTimeOffset now) : TimeProvider
+    {
+        private long ticks = now.UtcTicks;
+
+        public override DateTimeOffset GetUtcNow() => new(Interlocked.Read(ref ticks), TimeSpan.Zero);
+
+        public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
+        {
+            if (dueTime != Timeout.InfiniteTimeSpan)
+            {
+                Interlocked.Add(ref ticks, dueTime.Ticks);
+                ThreadPool.QueueUserWorkItem(_ => callback(state));
+            }
+
+            return new Fired();
+        }
+
+        private sealed class Fired : ITimer
+        {
+            public bool Change(TimeSpan dueTime, TimeSpan period) => false;
+            public void Dispose() { }
+            public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+        }
+    }
+
     private static CloudFrontEdgeInvalidator Invalidator(
         IAmazonCloudFront cloudFront,
         TimeProvider? clock = null,
@@ -255,6 +284,49 @@ public class CloudFrontEdgeInvalidatorTests
             .SendAsync(Queued(Midday), CancellationToken.None)
             .WaitAsync(TimeSpan.FromSeconds(10));
 
+        Assert.Equal(2, Requests(cloudFront).Count);
+    }
+
+    [Fact]
+    public async Task SendAsync_PacingWaitRunsPastTheWindow_GivesUpWithoutSending()
+    {
+        // A hundred milliseconds of the window left and six hundred to wait for the spacing: a
+        // request sent after the wait would remove nothing and still be paid for.
+        var clock = new FastForwardClock(Midday);
+        var logger = new ListLogger<CloudFrontEdgeInvalidator>();
+        var cloudFront = Accepting();
+        var invalidator = Invalidator(cloudFront, clock, logger: logger,
+            pacing: Immediate with { Spacing = TimeSpan.FromMilliseconds(600) });
+        await invalidator.SendAsync(Queued(Midday, Another), CancellationToken.None);
+        var closing = Queued(Midday - CloudFrontEdgeInvalidator.Horizon + TimeSpan.FromMilliseconds(100));
+
+        await invalidator.SendAsync(closing, CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.Single(Requests(cloudFront));
+        Assert.Single(logger.At(LogLevel.Error), e => e.Message.StartsWith("Gave up"));
+    }
+
+    [Fact]
+    public async Task SendAsync_AcceptedJustAfterMidnight_CountsAgainstTheNewDay()
+    {
+        // Let through before midnight, accepted on a retry after it: counted on the old day, the
+        // new one would start from nothing and the ceiling would pass more than it says.
+        var clock = new ManualClock(new DateTimeOffset(2026, 3, 14, 23, 59, 59, TimeSpan.Zero));
+        var cloudFront = Substitute.For<IAmazonCloudFront>();
+        cloudFront.CreateInvalidationAsync(Arg.Any<CreateInvalidationRequest>(), Arg.Any<CancellationToken>())
+            .Returns(
+                _ =>
+                {
+                    clock.Advance(TimeSpan.FromSeconds(2));
+                    return Refused();
+                },
+                _ => Accepted());
+        var invalidator = Invalidator(cloudFront, clock, dailyPathLimit: 3);
+
+        await invalidator.SendAsync(Queued(clock.GetUtcNow()), CancellationToken.None); // 2 paths, accepted at 00:00:01
+        await invalidator.SendAsync(Queued(clock.GetUtcNow()), CancellationToken.None); // 2 more of the new day's 3
+
+        // The first one's two attempts, and nothing for the second.
         Assert.Equal(2, Requests(cloudFront).Count);
     }
 
