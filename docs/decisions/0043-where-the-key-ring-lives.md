@@ -3,7 +3,8 @@
 **Status:** Implemented in the code; proved only by a deploy. Settles the Data Protection key store
 that [0007](0007-aws-target-architecture.md) named as "S3 or DynamoDB with a KMS key" and
 [0015](0015-fargate-confirmed-and-nat-less-networking.md) carried forward unchanged. The deployment
-guide's D-3 is this record.
+guide's D-3 is this record. `AllowEphemeralKeys` has a second user besides the production image on
+a developer machine: the integration suite's test host ([0057](0057-the-api-is-tested-over-a-real-postgresql.md)).
 
 ## Context
 
