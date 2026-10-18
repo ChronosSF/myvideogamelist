@@ -304,6 +304,14 @@ public class CloudFrontEdgeInvalidatorTests
 
         Assert.Single(Requests(cloudFront));
         Assert.Single(logger.At(LogLevel.Error), e => e.Message.StartsWith("Gave up"));
+
+        // Nor is it the last request for the spacing: that is still the first, a spacing ago, so the
+        // next withdrawal goes without waiting.
+        var gaveUpAt = clock.GetUtcNow();
+        await invalidator.SendAsync(Queued(gaveUpAt), CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.Equal(2, Requests(cloudFront).Count);
+        Assert.Equal(gaveUpAt, clock.GetUtcNow());
     }
 
     [Fact]

@@ -346,6 +346,8 @@ internal sealed class CloudFrontEdgeInvalidator : BackgroundService, IEdgeInvali
                     return;
                 }
 
+                lastSent = clock.GetUtcNow();
+
                 using var attemptTimeout = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
                 attemptTimeout.CancelAfter(pacing.AttemptTimeout);
 
@@ -434,13 +436,16 @@ internal sealed class CloudFrontEdgeInvalidator : BackgroundService, IEdgeInvali
         },
     };
 
+    /// <summary>
+    /// Waits out the spacing since the last request. The caller stamps the next one, once it knows it
+    /// will send: a withdrawal given up on after the wait sent nothing to space the next from.
+    /// </summary>
     private async Task PaceAsync(CancellationToken stoppingToken)
     {
         // Never longer than the spacing itself, so a clock stepped backwards cannot stall the queue.
         var wait = lastSent + pacing.Spacing - clock.GetUtcNow();
         if (wait > pacing.Spacing) wait = pacing.Spacing;
         if (wait > TimeSpan.Zero) await Task.Delay(wait, clock, stoppingToken);
-        lastSent = clock.GetUtcNow();
     }
 
     /// <summary>The UTC day now, starting its count afresh when it is a new one.</summary>
