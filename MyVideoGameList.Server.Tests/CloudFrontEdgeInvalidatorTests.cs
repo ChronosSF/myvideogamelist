@@ -149,6 +149,26 @@ public class CloudFrontEdgeInvalidatorTests
     }
 
     [Fact]
+    public async Task Invalidate_SamePathsWhileWaiting_KeepsTheWaitingOneTryingForTheLaterWritesWindow()
+    {
+        // Waiting behind an hour of retries, the first write's window has closed but the second's
+        // has not: dropped on the first one's clock, the second withdrawal would never be sent.
+        var clock = new ManualClock(Midday);
+        var cloudFront = Accepting();
+        var invalidator = Invalidator(cloudFront, clock);
+        invalidator.Invalidate(Withdrawal);
+        clock.Advance(TimeSpan.FromMinutes(60));
+        invalidator.Invalidate(Withdrawal);
+        clock.Advance(TimeSpan.FromMinutes(10));
+
+        Assert.True(invalidator.TryTakeQueued(out var waiting));
+        await invalidator.SendAsync(waiting, CancellationToken.None);
+
+        Assert.Equal(Midday + TimeSpan.FromMinutes(60), waiting.QueuedAt);
+        Assert.Single(Requests(cloudFront));
+    }
+
+    [Fact]
     public void Invalidate_SamePathsOnceTheFirstIsBeingSent_IsQueuedAgain()
     {
         // Once taken off the queue the first may reach CloudFront before the second write commits,

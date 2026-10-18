@@ -38,7 +38,8 @@ namespace MyVideoGameList.Server.Services.Edge;
 /// with the same paths by returning the invalidation it already made — so a retry after a response
 /// lost on the way back cannot create a second one. A withdrawal whose paths are already waiting is
 /// not queued again: the one waiting goes out after both writes, so it covers both, and one account
-/// saving in a loop holds one place in the queue rather than all of them.
+/// saving in a loop holds one place in the queue rather than all of them. The one waiting takes the
+/// later write's time, so it is retried for as long as the later window is open.
 /// </para>
 /// <para>
 /// <b>Retried until <see cref="Horizon"/>, and never past it.</b> Any failure is retried, a
@@ -124,10 +125,10 @@ internal sealed class CloudFrontEdgeInvalidator : BackgroundService, IEdgeInvali
     private readonly Channel<Queued> queue;
 
     /// <summary>
-    /// The keys of everything queued and not yet taken off the queue to be sent, under
-    /// <see cref="gate"/>.
+    /// The keys of everything queued and not yet taken off the queue to be sent, each with the time
+    /// of the latest write it covers, under <see cref="gate"/>.
     /// </summary>
-    private readonly HashSet<string> waiting = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, DateTimeOffset> waiting = new(StringComparer.Ordinal);
     private readonly Lock gate = new();
     private volatile bool stopping;
 
@@ -181,18 +182,23 @@ internal sealed class CloudFrontEdgeInvalidator : BackgroundService, IEdgeInvali
 
         lock (gate)
         {
+            var now = clock.GetUtcNow();
+
             // Waiting and not yet sent: it goes out after this write committed, so it covers this
-            // withdrawal as well, and sending both would pay twice for one effect.
-            if (!stopping && waiting.Contains(key))
+            // withdrawal as well, and sending both would pay twice for one effect. It takes this
+            // write's time as its own, so it goes on trying for as long as this write's window is
+            // open, not only its first one's.
+            if (!stopping && waiting.ContainsKey(key))
             {
+                waiting[key] = now;
                 alreadyWaiting = true;
             }
             else
             {
-                var candidate = new Queued(invalidation, Guid.NewGuid().ToString("N"), clock.GetUtcNow(), key);
+                var candidate = new Queued(invalidation, Guid.NewGuid().ToString("N"), now, key);
                 if (queue.Writer.TryWrite(candidate))
                 {
-                    waiting.Add(key);
+                    waiting[key] = now;
                     queued = candidate;
                 }
             }
@@ -226,9 +232,31 @@ internal sealed class CloudFrontEdgeInvalidator : BackgroundService, IEdgeInvali
     /// </summary>
     internal bool TryTakeQueued([NotNullWhen(true)] out Queued? queued)
     {
-        if (!queue.Reader.TryRead(out queued)) return false;
-        lock (gate) waiting.Remove(queued.Key);
+        if (!queue.Reader.TryRead(out var taken))
+        {
+            queued = null;
+            return false;
+        }
+
+        queued = TakeOffWaiting(taken);
         return true;
+    }
+
+    /// <summary>
+    /// Takes a withdrawal off the waiting list as it goes out, dated by the latest write it covers.
+    /// </summary>
+    /// <remarks>
+    /// Off the list before the request goes out: a withdrawal arriving from here on may have
+    /// committed after this request reached CloudFront, so it is queued anew.
+    /// </remarks>
+    private Queued TakeOffWaiting(Queued queued)
+    {
+        lock (gate)
+        {
+            return waiting.Remove(queued.Key, out var latest) && latest > queued.QueuedAt
+                ? queued with { QueuedAt = latest }
+                : queued;
+        }
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -239,11 +267,9 @@ internal sealed class CloudFrontEdgeInvalidator : BackgroundService, IEdgeInvali
 
         try
         {
-            await foreach (var queued in queue.Reader.ReadAllAsync(stoppingToken))
+            await foreach (var taken in queue.Reader.ReadAllAsync(stoppingToken))
             {
-                // Off the waiting list before the request goes out: a withdrawal arriving from here
-                // on may have committed after this request reached CloudFront, so it is queued anew.
-                lock (gate) waiting.Remove(queued.Key);
+                var queued = TakeOffWaiting(taken);
 
                 try
                 {

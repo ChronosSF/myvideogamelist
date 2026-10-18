@@ -143,10 +143,12 @@ bounds how many are in flight.
   paths by returning the invalidation it already made, per the SDK's own documentation of
   `CallerReference`, so a retry after a response lost on the way back cannot create a second one.
 - **An event whose paths are already waiting is not queued again.** The one waiting is sent after
-  both writes, so it covers both. One account saving in a loop holds one place in the queue rather
-  than filling it ahead of everybody else's withdrawals. Once an event is taken off the queue to be
-  sent, the same paths queue anew, because the request may reach CloudFront before the next write
-  commits.
+  both writes, so it covers both. It takes the later write's time as its own, so it is retried
+  for as long as the later write's window is open: on the first one's clock, an event that waited
+  out an hour of retries ahead of it would be dropped with the second withdrawal's window still
+  open. One account saving in a loop holds one place in the queue rather than filling it ahead of
+  everybody else's withdrawals. Once an event is taken off the queue to be sent, the same paths
+  queue anew, because the request may reach CloudFront before the next write commits.
 - **One at a time, at most one a second, per task.** CloudFront's quotas page, as read in October
   2026, lists 150 paths a second and one wildcard invalidation a second, and every event carries a
   wildcard. The SDK still names the refusal `TooManyInvalidationsInProgress`, from an older quota
@@ -207,6 +209,13 @@ which bounds that to $2.50 a day a task. Past it, a withdrawal keeps the TTL win
 refused each day is an error naming the ceiling, and the rest are logged at Debug, so a loop that
 met it cannot fill the log as fast as it saves. 500 is room for a few hundred withdrawals a day,
 which is far more than the site makes; raise it when that stops being true.
+
+Paths count when CloudFront accepts them, not when they are tried. A refused request is not an
+invalidation, and counting it would let an hour's outage spend the day's allowance on nothing and
+refuse real withdrawals once CloudFront is back. A request accepted with its answer lost on the way
+back is counted when a retry is answered, since the retry carries the same caller reference. What
+goes uncounted is one accepted while every retry for an hour then fails, which is at most three
+paths over a bound that exists against loops, not as a meter.
 
 The ceiling bounds the bill, not who gets the allowance: an account looping until the ceiling is
 met leaves the rest of that day's withdrawals to the TTL. A limit per account on the endpoints that
