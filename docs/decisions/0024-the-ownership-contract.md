@@ -1,6 +1,7 @@
 # 0024. The ownership contract: one manifest, guarded in both directions
 
-**Status:** Implemented
+**Status:** Implemented. The deletion test the first consequence below declines to write has run against
+PostgreSQL since [0057](0057-the-api-is-tested-over-a-real-postgresql.md).
 
 > **Later note.** The "No UI yet" consequence below is closed. `/user` has a "Your data" card:
 > *Download my data* fetches the export and saves it under the name the API's `Content-Disposition`

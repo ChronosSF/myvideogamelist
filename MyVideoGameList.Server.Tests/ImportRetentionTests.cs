@@ -22,7 +22,8 @@ namespace MyVideoGameList.Server.Tests;
 /// What is deliberately <em>not</em> covered is the deletion: <c>ExecuteDeleteAsync</c> needs a
 /// relational provider and these tests run on EF InMemory. That is the same line
 /// <c>UserOwnedDataTests</c> draws when it declines to assert cascade behaviour — the model is
-/// asserted here, and the execution is left to the provider that actually implements it.
+/// asserted here, and the execution is left to the provider that actually implements it, in the
+/// integration suite's <c>ImportRetentionSweepTests</c> (<c>docs/decisions/0057-*</c>).
 /// </para>
 /// </remarks>
 public class ImportRetentionTests
