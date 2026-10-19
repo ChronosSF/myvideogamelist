@@ -196,24 +196,35 @@ internal sealed class ImportRetentionService(
         var deleted = 0;
         var swept = false;
 
-        for (var batch = 0; batch < MaxBatchesPerSweep; batch++)
+        try
         {
-            var removed = await DeleteBatchAsync(db, now, cancellationToken);
+            for (var batch = 0; batch < MaxBatchesPerSweep; batch++)
+            {
+                var removed = await DeleteBatchAsync(db, now, cancellationToken);
 
-            // The lock is held elsewhere. If that is another task's sweep — the ordinary case in a
-            // fleet — there is nothing to wait for, because it is deleting the same rows.
-            if (removed is null) break;
+                // The lock is held elsewhere. If that is another task's sweep — the ordinary case
+                // in a fleet — there is nothing to wait for, because it is deleting the same rows.
+                if (removed is null) break;
 
-            swept = true;
-            deleted += removed.Value;
+                swept = true;
+                deleted += removed.Value;
 
-            // A short batch means the predicate has run out of rows.
-            if (removed < BatchSize) break;
+                // A short batch means the predicate has run out of rows.
+                if (removed < BatchSize) break;
 
-            // Shutting down: stop between batches rather than leave the next one to throw, so the
-            // log below still counts what was deleted — including a batch whose commit finished
-            // after the signal, which the commit in DeleteBatchAsync deliberately lets it do.
-            if (cancellationToken.IsCancellationRequested) break;
+                // Shutting down: stop between batches rather than start one only for its first call
+                // to throw on the cancelled token.
+                if (cancellationToken.IsCancellationRequested) break;
+            }
+        }
+        finally
+        {
+            // Said however the pass ends. A shutdown that cancels a later batch, or a batch that
+            // fails, leaves by an exception, and what the batches before it committed would go out
+            // with it unlogged — including a batch whose commit finished after the signal, which
+            // the commit in DeleteBatchAsync deliberately lets it do.
+            if (deleted > 0)
+                logger.LogInformation("Import retention deleted {JobCount} expired job(s).", deleted);
         }
 
         if (!swept)
@@ -224,9 +235,7 @@ internal sealed class ImportRetentionService(
 
         blockedTicks = 0;
 
-        if (deleted > 0)
-            logger.LogInformation("Import retention deleted {JobCount} expired job(s).", deleted);
-        else
+        if (deleted == 0)
             // Not Information: an hourly "deleted 0" is noise that teaches people to stop reading
             // the log. Debug, so that "has it been running at all" still has an answer for anyone
             // who turns the level up to ask.
@@ -289,10 +298,12 @@ internal sealed class ImportRetentionService(
         ApplicationDbContext db, DateTimeOffset now, CancellationToken cancellationToken)
     {
         // Through the execution strategy rather than straight into BeginTransactionAsync. Today
-        // that strategy is NonRetryingExecutionStrategy and this wrapper does nothing whatsoever.
-        // It is here for the day somebody adds EnableRetryOnFailure to the UseNpgsql call in
-        // Program.cs — the ordinary hardening for a managed PostgreSQL, and one argument away from
-        // a line that already exists. From that moment a user-initiated transaction outside a
+        // that strategy is NpgsqlExecutionStrategy, which never retries: the most this wrapper does
+        // is hand a transient failure on as an InvalidOperationException around the
+        // NpgsqlException, which RunOnceAsync logs like any other failed sweep. It is here for the
+        // day somebody adds EnableRetryOnFailure to the UseNpgsql call in Program.cs — the
+        // ordinary hardening for a managed PostgreSQL, and one argument away from a line that
+        // already exists. From that moment a user-initiated transaction outside a
         // strategy throws InvalidOperationException instead of starting; RunOnceAsync would catch
         // it, log one line an hour and change nothing else, so retention would stop and nobody
         // would learn of it until an account ran out of MaxPendingJobs slots.

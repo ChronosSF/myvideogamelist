@@ -351,7 +351,7 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   about us; and it runs **once per ECS task**, so it serialises on
   `pg_try_advisory_xact_lock` — the transaction-scoped variant, because a session lock survives on
   a pooled connection after it is returned. That transaction runs inside
-  `db.Database.CreateExecutionStrategy()`, which does nothing today and stops the sweep throwing
+  `db.Database.CreateExecutionStrategy()`, which never retries today and stops the sweep throwing
   `InvalidOperationException` on the day somebody adds `EnableRetryOnFailure` to `UseNpgsql`:
   **EF refuses a user-initiated transaction under a retrying strategy**, and the sweep would fail
   into the log once an hour for ever without anything else breaking. A tick that cannot take the

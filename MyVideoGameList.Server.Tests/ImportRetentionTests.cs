@@ -35,12 +35,13 @@ namespace MyVideoGameList.Server.Tests;
 /// integration suite's <c>ImportRetentionSweepTests</c> (<c>docs/decisions/0057-*</c>).
 /// </para>
 /// <para>
-/// The batch around the deletion is covered only as far as doubles reach. <c>DeleteBatchAsync</c>
-/// and <c>SweepAsync</c> run here with the advisory lock and the <c>ExecuteDelete</c> answered by a
+/// The batch around the deletion is covered here only as far as doubles reach. <c>DeleteBatchAsync</c>
+/// and <c>SweepAsync</c> run with the advisory lock and the <c>ExecuteDelete</c> answered by a
 /// scripted query provider and the transaction substituted. That is enough to hold them to ADR 0038
-/// §4 — the stopping token bounds the work and never the commit, and a shutdown stops the loop
-/// between batches — and nothing more. Whether the lock excludes another task and what the
-/// <c>DELETE</c> removes were verified against a real PostgreSQL (§3 and §4).
+/// §4 — the commit on exactly <c>CancellationToken.None</c>, the <c>DELETE</c> on the stopping
+/// token, a shutdown stopping the loop between batches, and the count logged however a pass ends —
+/// and nothing more. What such a shutdown does to the rows themselves is
+/// <c>ImportRetentionSweepTests</c>'s to show, against PostgreSQL.
 /// </para>
 /// </remarks>
 public class ImportRetentionTests
@@ -326,6 +327,37 @@ public class ImportRetentionTests
         await sweep.SweepAsync(stopping.Token);
 
         await transaction.Received(1).CommitAsync(Arg.Any<CancellationToken>());
+        Assert.Equal(
+            [$"Import retention deleted {ImportRetentionService.BatchSize} expired job(s)."],
+            log.Written);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task SweepAsync_WhenAPassStopsPartWay_StillLogsWhatItDeleted(bool byShutdown)
+    {
+        // #265: a pass that stops part way — a shutdown that cancels its second batch, or a second
+        // batch that fails — leaves by an exception, which used to take the count of what the first
+        // batch had committed out with it, unlogged.
+        using var stopping = new CancellationTokenSource();
+        using var db = BatchDb(out _, out var queries);
+        queries.Deleted = ImportRetentionService.BatchSize;
+        var locks = 0;
+        queries.OnLock = () =>
+        {
+            if (++locks < 2) return;
+            if (byShutdown) stopping.Cancel();
+            else throw new InvalidOperationException("The second batch failed.");
+        };
+        var log = new Lines();
+        using var services = new ServiceCollection().AddScoped(_ => db).BuildServiceProvider();
+        var sweep = new ImportRetentionService(
+            services.GetRequiredService<IServiceScopeFactory>(), TimeProvider.System, log);
+
+        var thrown = await Assert.ThrowsAnyAsync<Exception>(() => sweep.SweepAsync(stopping.Token));
+
+        Assert.IsType(byShutdown ? typeof(OperationCanceledException) : typeof(InvalidOperationException), thrown);
         Assert.Equal(
             [$"Import retention deleted {ImportRetentionService.BatchSize} expired job(s)."],
             log.Written);
