@@ -9,7 +9,7 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.13" />
-    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.10.1" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.11.0" />
     <!-- The same pin as MyVideoGameList.Server.Tests, for the same reason: past the 10.0.7 that
          Amazon.AspNetCore.DataProtection.SSM pulls in transitively, which NuGet audit flags
          (NU1903). -->
