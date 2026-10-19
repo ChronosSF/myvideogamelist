@@ -1,3 +1,4 @@
+import type { AdminStats } from '@/types/adminStats';
 import type { UserProfile } from '@/types/auth';
 import type { GameDto, PlatformDto } from '@/types/game';
 import {
@@ -257,5 +258,31 @@ export function communityTimes(
             samples: tiers[type]?.samples ?? 0,
             medianMinutes: tiers[type]?.medianMinutes ?? null,
         })),
+    };
+}
+
+/**
+ * What `/api/admin/stats` answers: a little of everything, and twelve weeks from 27 July 2026 with
+ * sign-ups only in the newest.
+ */
+export function adminStats(overrides: Partial<AdminStats> = {}): AdminStats {
+    const weeks = Array.from({ length: 12 }, (_, i) => {
+        const starts = new Date(Date.UTC(2026, 6, 27 + 7 * i)).toISOString().slice(0, 10);
+        return { starts, signUps: i === 11 ? 4 : 0, listMoves: 10 + i, reviews: i % 2, playthroughs: 1 };
+    });
+    return {
+        countedAt: '2026-10-13T12:00:00Z',
+        accounts: { total: 42, publicProfiles: 9, seenToday: 3, seenInSevenDays: 11, seenInThirtyDays: 25, undated: 0 },
+        library: {
+            byStatus: { backlog: 310, playing: 27, on_hold: 12, finished: 205, dropped: 18 },
+            inNoList: 6,
+            fromImports: 140,
+            wishlisted: 88,
+            favourites: 31,
+        },
+        writing: { reviews: 57, publicReviews: 20, playthroughs: 160, timedPlaythroughs: 95 },
+        imports: { pending: 1, done: 2, cancelled: 0 },
+        weeks,
+        ...overrides,
     };
 }
