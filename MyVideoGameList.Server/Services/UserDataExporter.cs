@@ -135,7 +135,9 @@ public class UserDataExporter(ApplicationDbContext db, TimeProvider clock) : IUs
                 u.Bio,
                 u.Theme,
                 u.ListView,
-                u.ProfileVisibility))
+                u.ProfileVisibility,
+                u.CreatedAt,
+                u.LastSeenAt))
             .SingleOrDefaultAsync(cancellationToken);
 
         // The caller is authenticated, so a missing row means the account was deleted underneath

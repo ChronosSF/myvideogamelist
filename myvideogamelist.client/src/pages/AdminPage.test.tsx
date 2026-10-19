@@ -5,7 +5,7 @@ import { MemoryRouter } from 'react-router';
 import { AdminPage } from '@/pages/AdminPage';
 import type { AuthContextValue } from '@/contexts/AuthContext';
 import type { CuratedEvent, ShowcaseName } from '@/types/calendarAdmin';
-import { userProfile } from '@/test/factories';
+import { adminStats, userProfile } from '@/test/factories';
 
 /**
  * Auth, mocked: the real provider fetches, and the page only reads who is signed in. One
@@ -46,7 +46,7 @@ function event(overrides: Partial<CuratedEvent> = {}): CuratedEvent {
  * The admin API, in memory: it answers the page's reads from what it holds and applies its writes,
  * refusing a showcase name it already has in the shape the real one does.
  */
-function fakeApi(initial: { events?: CuratedEvent[]; names?: ShowcaseName[]; refuse?: number } = {}) {
+function fakeApi(initial: { events?: CuratedEvent[]; names?: ShowcaseName[]; refuse?: number; statsFail?: number } = {}) {
     const events = [...(initial.events ?? [])];
     const names = [...(initial.names ?? [])];
     let nextId = 100;
@@ -56,6 +56,9 @@ function fakeApi(initial: { events?: CuratedEvent[]; names?: ShowcaseName[]; ref
         const method = init?.method ?? 'GET';
         if (initial.refuse) return new Response(null, { status: initial.refuse });
 
+        if (url === '/api/admin/stats' && method === 'GET') {
+            return initial.statsFail ? new Response(null, { status: initial.statsFail }) : Response.json(adminStats());
+        }
         if (url === '/api/admin/calendar/events' && method === 'GET') return Response.json(events);
         if (url === '/api/admin/calendar/showcase-names' && method === 'GET') return Response.json(names);
 
@@ -142,6 +145,26 @@ describe('AdminPage for anybody who is not an admin', () => {
 });
 
 describe('AdminPage for an admin', () => {
+    it('counts what members do, above the calendar', async () => {
+        fakeApi();
+        renderPage();
+
+        const counted = await screen.findByRole('region', { name: 'Members, counted' });
+        expect(await within(counted).findByText('Seen in 7 days')).toBeInTheDocument();
+        expect(within(counted).getByRole('table')).toBeInTheDocument();
+        expect(await screen.findByRole('form', { name: 'Add an event' })).toBeInTheDocument();
+    });
+
+    it('keeps the calendar usable when the count fails, with a retry on the count alone', async () => {
+        fakeApi({ statsFail: 500 });
+        renderPage();
+
+        const counted = await screen.findByRole('region', { name: 'Members, counted' });
+        expect(await within(counted).findByRole('alert')).toHaveTextContent('could not be counted (500)');
+        expect(within(counted).getByRole('button', { name: 'Try again' })).toBeInTheDocument();
+        expect(await screen.findByRole('form', { name: 'Add an event' })).toBeInTheDocument();
+    });
+
     it('lists what is current or coming first, and folds away what is over', async () => {
         fakeApi({
             events: [

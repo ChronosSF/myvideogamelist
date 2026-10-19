@@ -64,6 +64,11 @@ public record UserDataExportDto(
 /// <paramref name="ProfileVisibility"/>: an export that recorded what somebody wrote but not
 /// whether they agreed to it being read would be missing the more consequential of the two.
 /// </para>
+/// <para>
+/// <paramref name="CreatedAt"/> and <paramref name="LastSeenAt"/> are not data the user entered but
+/// data recorded about them, which is the stronger reason to hand them over: what the site keeps
+/// about somebody is theirs to see (ADR 0051).
+/// </para>
 /// </remarks>
 public record AccountExportDto(
     string? Email,
@@ -73,7 +78,9 @@ public record AccountExportDto(
     string? Bio,
     string Theme,
     string ListView,
-    string ProfileVisibility);
+    string ProfileVisibility,
+    DateTimeOffset? CreatedAt,
+    DateTimeOffset? LastSeenAt);
 
 /// <summary>
 /// One game the user has recorded something about.
