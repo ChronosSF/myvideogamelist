@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { renderToString } from 'react-dom/server';
 import { fireEvent, render } from '@testing-library/react';
 import { Avatar } from '@/components/Avatar';
 
@@ -95,5 +96,19 @@ describe('Avatar', () => {
         rerender(<Avatar userName="alex" avatarUrl={next} className="test-avatar" />);
 
         expect(image()).toHaveAttribute('src', next);
+    });
+
+    it('renders on the server without a word to the console', () => {
+        // Every public profile renders an avatar on the server, so one warning per render would be
+        // one per page view in development, burying the warnings that matter. The server renderer
+        // skips the layout effect that keeps the failure callback current, and has to do so silently.
+        const error = vi.spyOn(console, 'error');
+        const warn = vi.spyOn(console, 'warn');
+
+        const html = renderToString(<Avatar userName="alex" avatarUrl={PICTURE} className="test-avatar" />);
+
+        expect(html).toContain(`src="${PICTURE}"`);
+        expect(error).not.toHaveBeenCalled();
+        expect(warn).not.toHaveBeenCalled();
     });
 });
