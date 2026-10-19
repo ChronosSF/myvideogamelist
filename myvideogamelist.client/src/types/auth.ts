@@ -7,7 +7,7 @@ export type ProfileVisibility = 'public' | 'private';
  * `userName` is the public handle — the whole of `/u/{userName}` — and is what the navbar renders.
  * The email is still here because the account settings page shows it, and nothing public does.
  */
-export interface UserProfile {
+export interface UserProfile extends ProfileDetails {
     id: string;
     email: string;
     userName: string;
@@ -21,6 +21,44 @@ export interface UserProfile {
      * server's policy for itself, so a client that believed this wrongly would be refused, not let in.
      */
     isAdmin: boolean;
+}
+
+/**
+ * What an account says about itself on its public profile, mirroring the three fields of
+ * `UpdateProfileDetailsDto` on the server. Null is "none": the handle alone, its initial for a
+ * picture, no bio. See `docs/decisions/0056-*`.
+ */
+export interface ProfileDetails {
+    /** Shown beside the handle, never instead of it. Never unique, never in a URL. */
+    displayName: string | null;
+    /** An `https:` address on one of `AVATAR_HOSTS`, which each reader's browser loads from there. */
+    avatarUrl: string | null;
+    /** Plain text, its line breaks its owner's. */
+    bio: string | null;
+}
+
+/**
+ * The limits `DisplayNamePolicy`, `AvatarUrlPolicy` and `BioPolicy` hold on the server, here for the
+ * inputs' `maxLength`. Both sides count UTF-16 code units, which is what `maxLength` counts.
+ */
+export const DISPLAY_NAME_MAX_LENGTH = 50;
+export const AVATAR_URL_MAX_LENGTH = 512;
+export const BIO_MAX_LENGTH = 500;
+
+/**
+ * A save of the profile details that the server refused, with the reason for each field it refused
+ * keyed by that field, so the form can put each message beside its input. `message` is the one to
+ * show when no field is named — the server unreachable, a conflict, or a body that was not the
+ * validation problem it should have been.
+ */
+export class ProfileDetailsError extends Error {
+    readonly fieldErrors: Partial<Record<keyof ProfileDetails, string>>;
+
+    constructor(message: string, fieldErrors: Partial<Record<keyof ProfileDetails, string>> = {}) {
+        super(message);
+        this.name = 'ProfileDetailsError';
+        this.fieldErrors = fieldErrors;
+    }
 }
 
 /**

@@ -52,6 +52,13 @@ public record UserDataExportDto(
 /// nothing to recommend it.
 /// </para>
 /// <para>
+/// <paramref name="DisplayName"/>, <paramref name="AvatarUrl"/> and <paramref name="Bio"/> are what
+/// the user wrote about themselves for their public profile, so they are here as everything else
+/// they wrote is. The avatar is its address, as stored: the picture was never ours to hand over.
+/// They are copied in by hand, because this is not a manifest table and nothing would notice their
+/// absence (ADR 0024).
+/// </para>
+/// <para>
 /// The username <em>is</em> data the user entered — they chose it, and it is the name everything
 /// they have written is published under — so it belongs here beside the address. So does
 /// <paramref name="ProfileVisibility"/>: an export that recorded what somebody wrote but not
@@ -61,6 +68,9 @@ public record UserDataExportDto(
 public record AccountExportDto(
     string? Email,
     string? UserName,
+    string? DisplayName,
+    string? AvatarUrl,
+    string? Bio,
     string Theme,
     string ListView,
     string ProfileVisibility);
