@@ -182,6 +182,60 @@ public class UserController(
     }
 
     /// <summary>
+    /// Replaces the display name, the avatar and the bio, all three at once.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Each was judged by its attribute before this runs, as it will be stored; what is written is
+    /// that stored form, so the response hands back exactly what the public profile will show. A
+    /// blank clears its field. Saving them on a private profile publishes nothing: they reach
+    /// <c>/u/{userName}</c> only while the profile is public, with everything else on it.
+    /// </para>
+    /// <para>
+    /// Rewriting or clearing one of them on a public profile takes back something the page
+    /// published, as editing a review on it does, so once saved the page leaves the edge (ADR 0056,
+    /// 0058). Setting one for the first time publishes, and waits out the window like any new
+    /// content; saving them again unchanged takes nothing back and sends nothing.
+    /// </para>
+    /// <para>
+    /// The avatar's address is stored and never requested from here (ADR 0056). No cancellation
+    /// token, as for the rename and the privacy switch: neither <see cref="UserManager{TUser}"/>
+    /// call here takes one.
+    /// </para>
+    /// </remarks>
+    [HttpPut("profile")]
+    public async Task<ActionResult<UserProfileDto>> UpdateProfileDetails(
+        [FromBody] UpdateProfileDetailsDto dto)
+    {
+        var user = await userManager.GetUserAsync(User);
+        if (user is null) return Unauthorized();
+
+        var displayName = DisplayNamePolicy.Normalise(dto.DisplayName);
+        var avatarUrl = AvatarUrlPolicy.Normalise(dto.AvatarUrl);
+        var bio = BioPolicy.Normalise(dto.Bio);
+
+        // Decided from the state before the save, as every withdrawal is: only a value the page has
+        // shown can be taken back.
+        var takesBack = TakesBack(user.DisplayName, displayName)
+            || TakesBack(user.AvatarUrl, avatarUrl)
+            || TakesBack(user.Bio, bio);
+
+        user.DisplayName = displayName;
+        user.AvatarUrl = avatarUrl;
+        user.Bio = bio;
+
+        var saved = await userManager.UpdateAsync(user);
+        if (!saved.Succeeded) return NotSaved(saved);
+
+        if (takesBack && user.ProfileVisibility == ProfileVisibility.Public && user.UserName is { } name)
+            withdrawals.ProfileDetailsChanged(name);
+
+        return Ok(Profile(user));
+
+        static bool TakesBack(string? shown, string? saving) => shown is not null && shown != saving;
+    }
+
+    /// <summary>
     /// The list-view preferences, fetched by the lists page alongside the lists themselves.
     /// Deliberately not folded into the profile endpoint, which is called on every page load and
     /// has no use for them.
@@ -396,7 +450,8 @@ public class UserController(
     /// hand back the in-memory object as though it had been written. For the privacy switch that
     /// would tell somebody a consent change had taken effect while the database still says
     /// otherwise. A 409, because the row was changed by another request between this one's read
-    /// and its write; the client shows its own generic failure and the user tries again.
+    /// and its write, and the user tries again. Its detail is Identity's wording, written for a log:
+    /// the profile details form says it in words of its own.
     /// </remarks>
     private ObjectResult NotSaved(IdentityResult result) =>
         Problem(

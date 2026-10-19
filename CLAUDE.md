@@ -195,6 +195,19 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   decision. A private profile and an unclaimed name are the same 404, so the endpoint cannot be used
   to ask whether a name has an account.
 
+- **A page loads images only from the hosts its policy names, and an avatar's host is in two
+  lists.** The document policy's `img-src` is `IMAGE_SOURCES` in `@/lib/securityHeaders`: this
+  origin, IGDB's CDN and the avatar hosts. **An image from any other host does not load**, in
+  development too, so a feature that shows one from somewhere new adds the host there on purpose.
+  An avatar host goes in both `AvatarUrlPolicy.Hosts`, which says what may be saved, and
+  `AVATAR_HOSTS` in `@/lib/avatar`, which `IMAGE_SOURCES` is built from; `serverMirrors.test.ts`
+  reads the server's file and fails when they differ. A host joins only once seen to serve an avatar
+  over HTTPS with `Access-Control-Allow-Origin`, no cookie and no reporting headers — Discord's CDN
+  and Twitch's are off for those — because the picture is loaded anonymously, with no referrer, by
+  every reader's browser. The address is stored as given and never fetched by the server. A display
+  name sits beside the handle and never replaces it, and a bio is plain text because it is rendered
+  as a text node. See `docs/decisions/0056-*`.
+
 - **A statistic about the user must not depend on IGDB being up.** `/api/user/stats` reads only
   our own tables, derives everything at read time, and is deliberately uncached — every figure
   changes the moment a game moves. The platform and genre breakdowns are the one part that needs
@@ -356,7 +369,7 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   about us; and it runs **once per ECS task**, so it serialises on
   `pg_try_advisory_xact_lock` — the transaction-scoped variant, because a session lock survives on
   a pooled connection after it is returned. That transaction runs inside
-  `db.Database.CreateExecutionStrategy()`, which does nothing today and stops the sweep throwing
+  `db.Database.CreateExecutionStrategy()`, which never retries today and stops the sweep throwing
   `InvalidOperationException` on the day somebody adds `EnableRetryOnFailure` to `UseNpgsql`:
   **EF refuses a user-initiated transaction under a retrying strategy**, and the sweep would fail
   into the log once an hour for ever without anything else breaking. A tick that cannot take the
@@ -375,7 +388,10 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   suite's `ImportRetentionSweepTests` runs it, batches and lock included, against PostgreSQL
   (`docs/decisions/0057-*`). It deletes **twenty-five jobs per statement and commits each
   batch**, because one unbounded `DELETE` over a backlog exceeds Npgsql's thirty-second default,
-  rolls back, deletes nothing, and is retried identically every hour for ever. And because it
+  rolls back, deletes nothing, and is retried identically every hour for ever. Each batch
+  **commits on `CancellationToken.None`**: the stopping token bounds the work, never the write
+  that keeps its result, or a shutdown landing between a batch's `DELETE` and its commit would
+  roll back a batch already done, leaving the next sweep to repeat it (ADR 0038 §4). And because it
   deletes rows no request asked it to, **every `ImportService` write stamps the job and treats an
   `UPDATE` that matches no row as "swept"** — the 404 each endpoint already had, rather than the 500
   an unclaimed `DbUpdateConcurrencyException` becomes. Anything else that deletes out from under a

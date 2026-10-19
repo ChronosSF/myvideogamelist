@@ -1,11 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useState } from 'react';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import { AuthProvider } from '@/contexts/AuthProvider';
 import { LoginDialog } from '@/components/LoginDialog';
 import { SignupDialog } from '@/components/SignupDialog';
 import { useAuth } from '@/hooks/useAuth';
-import { USERNAME_MAX_LENGTH, USERNAME_MIN_LENGTH } from '@/types/auth';
+import {
+    ProfileDetailsError,
+    USERNAME_MAX_LENGTH,
+    USERNAME_MIN_LENGTH,
+    type ProfileDetails,
+} from '@/types/auth';
 import { type Actor, quickActor } from '@/test/actor';
 import { userProfile } from '@/test/factories';
 import {
@@ -13,6 +18,7 @@ import {
     type ApiRoutes,
     empty,
     expectSentThroughApiFetch,
+    held,
     json,
     settle,
     stubApi,
@@ -420,24 +426,44 @@ describe('AuthProvider registering', () => {
 });
 
 /**
- * The provider's four other writes, from the account settings page and the navbar, driven from a
- * stand-in for those pages. Their own suites mock `useAuth` too.
+ * What the profile details form sends, as typed: spaces round the name and a line ending a browser
+ * sent as CRLF, which the server stores otherwise. Spread over the whole account, so a test can see
+ * that nothing but the three fields leaves the provider.
+ */
+const TYPED_DETAILS: ProfileDetails = { ...ALEX, displayName: '  Alex ', avatarUrl: null, bio: 'Hi.\r\n' };
+
+/**
+ * The provider's five other writes, from the account settings page and the navbar, driven from a
+ * stand-in for those pages. Their own suites mock `useAuth` too. A refused profile details save
+ * lists its refusals by field, which is what the form puts beside each input.
  */
 function AccountControls() {
     const auth = useAuth();
     const [said, setSaid] = useState<string | null>(null);
+    const [refused, setRefused] = useState<Partial<Record<keyof ProfileDetails, string>>>({});
     const attempt = (write: () => Promise<void>) => () => {
         setSaid(null);
-        write().catch((error: unknown) => setSaid(error instanceof Error ? error.message : 'failed'));
+        setRefused({});
+        write().catch((error: unknown) => {
+            setSaid(error instanceof Error ? error.message : 'failed');
+            if (error instanceof ProfileDetailsError) setRefused(error.fieldErrors);
+        });
     };
 
     return (
         <>
             <button type="button" onClick={attempt(() => auth.updateUserName('alex_two'))}>Rename</button>
             <button type="button" onClick={attempt(() => auth.updateProfileVisibility('public'))}>Publish profile</button>
+            <button type="button" onClick={attempt(() => auth.updateProfileDetails(TYPED_DETAILS))}>Save details</button>
             <button type="button" onClick={attempt(() => auth.deleteAccount(PASSWORD))}>Delete account</button>
             <button type="button" onClick={attempt(() => auth.logout())}>Sign out</button>
             {said !== null && <p role="alert">{said}</p>}
+            <ul aria-label="Refused">
+                {Object.entries(refused).map(([field, message]) => <li key={field}>{`${field}: ${message}`}</li>)}
+            </ul>
+            {auth.user !== null && (
+                <p>{`Display name ${JSON.stringify(auth.user.displayName)}, bio ${JSON.stringify(auth.user.bio)}`}</p>
+            )}
         </>
     );
 }
@@ -500,6 +526,118 @@ describe('AuthProvider account writes', () => {
         expect(screen.getByText('Signed in as alex')).toBeInTheDocument();
     });
 
+    it('saves exactly the three profile details, and shows them as the API stored them', async () => {
+        // The answer is what the server stored, which is not what was typed: the account on screen
+        // has to be the answer, or the form would disagree with the public page.
+        const actor = quickActor();
+        const api = await renderSignedIn({
+            'PUT /api/user/profile': () => json({ ...ALEX, displayName: 'Alex', avatarUrl: null, bio: 'Hi.' }),
+        });
+
+        await actor.click(screen.getByRole('button', { name: 'Save details' }));
+
+        expect(await screen.findByText('Display name "Alex", bio "Hi."')).toBeInTheDocument();
+        // Whatever else the object carried stays behind: the endpoint is told three things.
+        expect(api.callsTo('PUT', '/api/user/profile')[0].body)
+            .toEqual({ displayName: '  Alex ', avatarUrl: null, bio: 'Hi.\r\n' });
+    });
+
+    it('lists a refused save by field, whatever case the API keyed each in, and keeps what was stored', async () => {
+        const actor = quickActor();
+        await renderSignedIn({
+            'PUT /api/user/profile': () => json({
+                title: 'One or more validation errors occurred.',
+                status: 400,
+                errors: {
+                    // As ASP.NET keys them, by the C# name.
+                    DisplayName: ['A display name can be at most 50 characters.'],
+                    AvatarUrl: ['An avatar has to be the address of a picture, starting https://.'],
+                    // As a client might, and as nothing does yet.
+                    bio: ['A bio can be at most 500 characters.'],
+                    // A key naming no field — a body that would not parse, say — names nothing on the form.
+                    '$.bio': ['The JSON value could not be converted.'],
+                },
+            }, 400),
+        });
+
+        await actor.click(screen.getByRole('button', { name: 'Save details' }));
+
+        const refused = within(await screen.findByRole('list', { name: 'Refused' }));
+        await waitFor(() => expect(refused.getAllByRole('listitem')).toHaveLength(3));
+        expect(refused.getAllByRole('listitem').map(item => item.textContent)).toEqual([
+            'displayName: A display name can be at most 50 characters.',
+            'avatarUrl: An avatar has to be the address of a picture, starting https://.',
+            'bio: A bio can be at most 500 characters.',
+        ]);
+        expect(screen.getByText('Display name null, bio null')).toBeInTheDocument();
+    });
+
+    it("reads a refused save that names no field by the problem's own sentence", async () => {
+        const actor = quickActor();
+        await renderSignedIn({
+            'PUT /api/user/profile': () => json({
+                title: 'Bad Request',
+                status: 400,
+                detail: 'A non-empty request body is required.',
+            }, 400),
+        });
+
+        await actor.click(screen.getByRole('button', { name: 'Save details' }));
+
+        expect(await screen.findByRole('alert')).toHaveTextContent('A non-empty request body is required.');
+        expect(within(screen.getByRole('list', { name: 'Refused' })).queryAllByRole('listitem')).toHaveLength(0);
+    });
+
+    it("says a lost race in its own words rather than Identity's", async () => {
+        // The 409 a concurrent change to the account produces carries Identity's wording, which was
+        // written for a log rather than for the person saving.
+        const actor = quickActor();
+        await renderSignedIn({
+            'PUT /api/user/profile': () => json({
+                title: 'Conflict',
+                status: 409,
+                detail: 'Optimistic concurrency failure, object has been modified.',
+            }, 409),
+        });
+
+        await actor.click(screen.getByRole('button', { name: 'Save details' }));
+
+        expect(await screen.findByRole('alert'))
+            .toHaveTextContent('Your account was changed somewhere else at the same moment. Please save again.');
+    });
+
+    it('falls back to a sentence of its own when a refused save has no body it can read', async () => {
+        const actor = quickActor();
+        await renderSignedIn({
+            'PUT /api/user/profile': () => new Response('<html>Bad gateway</html>', { status: 502 }),
+        });
+
+        await actor.click(screen.getByRole('button', { name: 'Save details' }));
+
+        expect(await screen.findByRole('alert')).toHaveTextContent('Failed to save your profile details.');
+    });
+
+    it('does not put an account back on screen when its save answers after the sign-out', async () => {
+        // The save is still out when its owner signs out; its answer must not show them signed in
+        // again, with no cookie behind it, to whoever uses the machine next (ADR 0022). The same
+        // guard is on the rename and the privacy switch.
+        const actor = quickActor();
+        const save = held();
+        await renderSignedIn({
+            'PUT /api/user/profile': () => save.answer,
+            'POST /api/auth/logout': () => empty(),
+        });
+
+        await actor.click(screen.getByRole('button', { name: 'Save details' }));
+        await actor.click(screen.getByRole('button', { name: 'Sign out' }));
+        await screen.findByText('Nobody is signed in');
+
+        save.release(json({ ...ALEX, displayName: 'Alex' }));
+        await settle();
+
+        expect(screen.getByText('Nobody is signed in')).toBeInTheDocument();
+    });
+
     // #331: `logout` signs the reader out on screen whatever the API answered.
     it.skip('keeps the session, and says so, when the API refuses to sign out (#331)', async () => {
         // Shown signed out while the cookie lives on, the reader leaves a shared computer signed in.
@@ -517,11 +655,12 @@ describe('AuthProvider and the write guard', () => {
     it('marks the other account writes as sent through apiFetch', async () => {
         // The API refuses a POST, PUT or DELETE without the header (ADR 0033); a write sent with
         // bare `fetch` is a 403 that looks like a bug. Signing in, registering and deleting the
-        // account are asserted beside what they do, above; these are the other three.
+        // account are asserted beside what they do, above; these are the other four.
         const actor = quickActor();
         const api = await renderSignedIn({
             'PUT /api/user/username': () => json({ ...ALEX, userName: 'alex_two' }),
             'PUT /api/user/privacy': () => json({ ...ALEX, userName: 'alex_two', profileVisibility: 'public' }),
+            'PUT /api/user/profile': () => json({ ...ALEX, userName: 'alex_two', profileVisibility: 'public', displayName: 'Alex' }),
             'POST /api/auth/logout': () => empty(),
         });
 
@@ -529,12 +668,15 @@ describe('AuthProvider and the write guard', () => {
         await screen.findByText('Signed in as alex_two');
         await actor.click(screen.getByRole('button', { name: 'Publish profile' }));
         await waitFor(() => expect(api.callsTo('PUT', '/api/user/privacy')).toHaveLength(1));
+        await actor.click(screen.getByRole('button', { name: 'Save details' }));
+        await screen.findByText('Display name "Alex", bio null');
         await actor.click(screen.getByRole('button', { name: 'Sign out' }));
         await screen.findByText('Nobody is signed in');
 
         expect(api.writes().map(call => `${call.method} ${call.path}`)).toEqual([
             'PUT /api/user/username',
             'PUT /api/user/privacy',
+            'PUT /api/user/profile',
             'POST /api/auth/logout',
         ]);
         for (const write of api.writes()) expectSentThroughApiFetch(write);
