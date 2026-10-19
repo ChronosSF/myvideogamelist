@@ -7,6 +7,7 @@ updates:
     directories:
       - /MyVideoGameList.Server
       - /MyVideoGameList.Server.Tests
+      - /MyVideoGameList.Server.IntegrationTests
       - /infra/src/Infra
     schedule:
       interval: weekly
@@ -17,6 +18,14 @@ updates:
           - "Microsoft.AspNetCore.*"
           - "Microsoft.EntityFrameworkCore.*"
           - "Microsoft.Extensions.*"
+          # Pinned in both test projects, past the copy the SSM provider pulls in; it moves with
+          # the framework.
+          - "System.Security.Cryptography.Xml"
+      # One PR for the test framework both test projects run on, so the two never differ.
+      test:
+        patterns:
+          - "xunit*"
+          - "Microsoft.NET.Test.Sdk"
       # One PR for the CDK library and its constructs package, which move together.
       cdk:
         patterns:

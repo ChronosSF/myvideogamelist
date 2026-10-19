@@ -57,7 +57,7 @@ internal sealed class ImportRetentionService(
     /// within this database matters — anything else taking the same number would exclude itself
     /// against this for no reason, so it is declared here rather than inline.
     /// </summary>
-    private const long LockKey = 0x4D56474C_494D_5054;
+    internal const long LockKey = 0x4D56474C_494D_5054;
 
     /// <summary>
     /// How many jobs one <c>DELETE</c> takes.
