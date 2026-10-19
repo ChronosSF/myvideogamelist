@@ -26,8 +26,9 @@ public sealed class DataProtectionKeysOptions
 
     /// <summary>
     /// Outside Development, the acknowledgement that the ring is not shared and will not survive
-    /// the process. For running the production image on a developer machine, and nothing else: a
-    /// deployment that sets this signs everyone out on every deploy, by its own decision.
+    /// the process. For running the production image on a developer machine, and for the
+    /// integration suite's test host (ADR 0057), and nothing else: a deployment that sets this
+    /// signs everyone out on every deploy, by its own decision.
     /// </summary>
     public bool AllowEphemeralKeys { get; set; }
 }

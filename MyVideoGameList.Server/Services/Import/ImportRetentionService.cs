@@ -57,7 +57,7 @@ internal sealed class ImportRetentionService(
     /// within this database matters — anything else taking the same number would exclude itself
     /// against this for no reason, so it is declared here rather than inline.
     /// </summary>
-    private const long LockKey = 0x4D56474C_494D_5054;
+    internal const long LockKey = 0x4D56474C_494D_5054;
 
     /// <summary>
     /// How many jobs one <c>DELETE</c> takes.
@@ -71,7 +71,7 @@ internal sealed class ImportRetentionService(
     /// the statement times out, the transaction rolls back, <b>nothing</b> is deleted, and the next
     /// tick runs the identical statement against the identical backlog an hour later, for ever.
     /// </remarks>
-    private const int BatchSize = 25;
+    internal const int BatchSize = 25;
 
     /// <summary>
     /// How many batches one sweep runs before leaving the rest to the next one.
@@ -185,7 +185,7 @@ internal sealed class ImportRetentionService(
     /// kept small by this very sweep. Revisit if it ever appears in a slow query log.
     /// </para>
     /// </remarks>
-    private async Task SweepAsync(CancellationToken cancellationToken)
+    internal async Task SweepAsync(CancellationToken cancellationToken)
     {
         using var scope = scopeFactory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
@@ -196,19 +196,35 @@ internal sealed class ImportRetentionService(
         var deleted = 0;
         var swept = false;
 
-        for (var batch = 0; batch < MaxBatchesPerSweep; batch++)
+        try
         {
-            var removed = await DeleteBatchAsync(db, now, cancellationToken);
+            for (var batch = 0; batch < MaxBatchesPerSweep; batch++)
+            {
+                var removed = await DeleteBatchAsync(db, now, cancellationToken);
 
-            // The lock is held elsewhere. If that is another task's sweep — the ordinary case in a
-            // fleet — there is nothing to wait for, because it is deleting the same rows.
-            if (removed is null) break;
+                // The lock is held elsewhere. If that is another task's sweep — the ordinary case
+                // in a fleet — there is nothing to wait for, because it is deleting the same rows.
+                if (removed is null) break;
 
-            swept = true;
-            deleted += removed.Value;
+                swept = true;
+                deleted += removed.Value;
 
-            // A short batch means the predicate has run out of rows.
-            if (removed < BatchSize) break;
+                // A short batch means the predicate has run out of rows.
+                if (removed < BatchSize) break;
+
+                // Shutting down: stop between batches rather than start one only for its first call
+                // to throw on the cancelled token.
+                if (cancellationToken.IsCancellationRequested) break;
+            }
+        }
+        finally
+        {
+            // Said however the pass ends. A shutdown that cancels a later batch, or a batch that
+            // fails, leaves by an exception, and what the batches before it committed would go out
+            // with it unlogged — including a batch whose commit finished after the signal, which
+            // the commit in DeleteBatchAsync deliberately lets it do.
+            if (deleted > 0)
+                logger.LogInformation("Import retention deleted {JobCount} expired job(s).", deleted);
         }
 
         if (!swept)
@@ -219,9 +235,7 @@ internal sealed class ImportRetentionService(
 
         blockedTicks = 0;
 
-        if (deleted > 0)
-            logger.LogInformation("Import retention deleted {JobCount} expired job(s).", deleted);
-        else
+        if (deleted == 0)
             // Not Information: an hourly "deleted 0" is noise that teaches people to stop reading
             // the log. Debug, so that "has it been running at all" still has an answer for anyone
             // who turns the level up to ask.
@@ -275,14 +289,21 @@ internal sealed class ImportRetentionService(
     /// How many jobs went, or <c>null</c> when another task holds the lock and this one should
     /// stop rather than spin.
     /// </returns>
-    private static async Task<int?> DeleteBatchAsync(
+    /// <remarks>
+    /// Internal rather than private so that <c>ImportRetentionTests</c> can run it against doubles
+    /// and hold its two tokens to the rule at the commit below. The lock and the delete themselves
+    /// still need PostgreSQL to test.
+    /// </remarks>
+    internal static async Task<int?> DeleteBatchAsync(
         ApplicationDbContext db, DateTimeOffset now, CancellationToken cancellationToken)
     {
         // Through the execution strategy rather than straight into BeginTransactionAsync. Today
-        // that strategy is NonRetryingExecutionStrategy and this wrapper does nothing whatsoever.
-        // It is here for the day somebody adds EnableRetryOnFailure to the UseNpgsql call in
-        // Program.cs — the ordinary hardening for a managed PostgreSQL, and one argument away from
-        // a line that already exists. From that moment a user-initiated transaction outside a
+        // that strategy is NpgsqlExecutionStrategy, which never retries: the most this wrapper does
+        // is hand a transient failure on as an InvalidOperationException around the
+        // NpgsqlException, which RunOnceAsync logs like any other failed sweep. It is here for the
+        // day somebody adds EnableRetryOnFailure to the UseNpgsql call in Program.cs — the
+        // ordinary hardening for a managed PostgreSQL, and one argument away from a line that
+        // already exists. From that moment a user-initiated transaction outside a
         // strategy throws InvalidOperationException instead of starting; RunOnceAsync would catch
         // it, log one line an hour and change nothing else, so retention would stop and nobody
         // would learn of it until an account ran out of MaxPendingJobs slots.
@@ -315,7 +336,16 @@ internal sealed class ImportRetentionService(
                 .Take(BatchSize)
                 .ExecuteDeleteAsync(token);
 
-            await transaction.CommitAsync(token);
+            // On CancellationToken.None rather than `token`, deliberately: the stopping token
+            // bounds the work, never the write that keeps its result — and here that write is the
+            // commit. A shutdown that cancels the DELETE abandons the batch, and the rollback loses
+            // nothing that had finished. Once the DELETE has returned the batch is finished, and a
+            // token already cancelled when the commit starts would only throw it away: Npgsql
+            // checks it before sending COMMIT, so the transaction rolls back and the next sweep
+            // deletes the same jobs again. Npgsql's command timeout still bounds the commit, and a
+            // stopping host waits for it no longer than HostOptions.ShutdownTimeout; a COMMIT
+            // still in flight when the process exits is applied or discarded whole. ADR 0038 §4.
+            await transaction.CommitAsync(CancellationToken.None);
             return deleted;
         }, cancellationToken);
     }
