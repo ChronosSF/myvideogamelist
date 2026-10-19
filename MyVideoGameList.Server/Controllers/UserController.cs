@@ -7,6 +7,7 @@ using MyVideoGameList.Server.DTOs;
 using MyVideoGameList.Server.Models;
 using MyVideoGameList.Server.Security;
 using MyVideoGameList.Server.Services;
+using MyVideoGameList.Server.Services.Edge;
 
 namespace MyVideoGameList.Server.Controllers;
 
@@ -23,6 +24,7 @@ public class UserController(
     ITrackedNewsService trackedNews,
     IListNameService listNames,
     AdminAccounts admins,
+    ProfileWithdrawals withdrawals,
     TimeProvider clock) : ControllerBase
 {
     /// <summary>
@@ -73,9 +75,17 @@ public class UserController(
             // cooldown as well.
             if (user.UserName != dto.UserName)
             {
+                var previousCase = user.UserName;
                 user.UserName = dto.UserName;
                 var saved = await userManager.UpdateAsync(user);
                 if (!saved.Succeeded) return NotSaved(saved);
+
+                // It still invalidates, both spellings, though it releases no name. Invalidation
+                // paths are case-sensitive and every later withdrawal names the new spelling, so the
+                // copies the edge holds under the old one — the spelling the site itself linked to
+                // and the sitemap listed until now — would be out of reach of all of them (ADR 0058).
+                if (user.ProfileVisibility == ProfileVisibility.Public && previousCase is not null)
+                    withdrawals.ProfileRenamed(previousCase, dto.UserName);
             }
 
             return Ok(Profile(user));
@@ -117,6 +127,16 @@ public class UserController(
             return ValidationProblem(ModelState);
         }
 
+        // The old name is released for anybody to claim, and the edge would go on serving this
+        // profile under it; the new one may hold a 404 from before it was taken. Both go, and the
+        // sitemap that lists the old one. A private profile has nothing at the edge to take.
+        if (user.ProfileVisibility == ProfileVisibility.Public
+            && previous is not null
+            && user.UserName is { } renamed)
+        {
+            withdrawals.ProfileRenamed(previous, renamed);
+        }
+
         // SetUserNameAsync rotates the security stamp, and the cookie this request arrived with
         // carries the old one. Identity's SecurityStampValidator re-checks the cookie against the
         // account every thirty minutes and signs out on a mismatch, so without a reissued cookie a
@@ -131,9 +151,16 @@ public class UserController(
     /// Turns the public profile at <c>/u/{userName}</c> on or off.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// Its own endpoint rather than a field on a general settings update, because it is the one
     /// preference here whose effect is on other people. Turning it off does not delete anything: a
     /// private profile is a 404 to every reader, and turning it back on restores the same page.
+    /// </para>
+    /// <para>
+    /// Turning it off is a withdrawal of consent, so the page and the sitemap that lists it are
+    /// taken off the edge once the change is saved, rather than served from there until their TTL
+    /// runs out (ADR 0058). Turning it on publishes, and invalidates nothing.
+    /// </para>
     /// </remarks>
     [HttpPut("privacy")]
     public async Task<ActionResult<UserProfileDto>> UpdatePrivacy(
@@ -142,9 +169,14 @@ public class UserController(
         var user = await userManager.GetUserAsync(User);
         if (user is null) return Unauthorized();
 
+        var wasPublic = user.ProfileVisibility == ProfileVisibility.Public;
+
         user.ProfileVisibility = dto.ProfileVisibility;
         var saved = await userManager.UpdateAsync(user);
         if (!saved.Succeeded) return NotSaved(saved);
+
+        if (wasPublic && user.ProfileVisibility != ProfileVisibility.Public && user.UserName is { } name)
+            withdrawals.ProfileMadePrivate(name);
 
         return Ok(Profile(user));
     }
@@ -338,9 +370,15 @@ public class UserController(
         if (!await userManager.CheckPasswordAsync(user, dto.Password))
             return Unauthorized(new { message = "Password is incorrect." });
 
+        // Taken while the account still exists: a public profile is about to stop existing, and
+        // the edge has to be told under the name it is cached by (ADR 0058).
+        var publicName = user.ProfileVisibility == ProfileVisibility.Public ? user.UserName : null;
+
         var result = await userManager.DeleteAsync(user);
         if (!result.Succeeded)
             return Problem(string.Join(" ", result.Errors.Select(e => e.Description)));
+
+        if (publicName is not null) withdrawals.AccountDeleted(publicName);
 
         // The account is gone, so the cookie now authenticates nothing. Clearing it here saves the
         // client from holding a credential for a user that cannot be looked up.

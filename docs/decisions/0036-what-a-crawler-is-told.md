@@ -3,7 +3,11 @@
 **Status:** Implemented. The basic auth that keeps dev private is a CloudFront Function on every
 behaviour, with the three public community endpoints exempt because the browser withholds
 `Authorization` from a `credentials: 'omit'` request —
-[0044](0044-what-the-deployment-walkthrough-settled.md).
+[0044](0044-what-the-deployment-walkthrough-settled.md). The invalidation the consequences below
+anticipate (D14) is [0058](0058-a-withdrawal-leaves-the-edge-when-it-is-made.md), and it names the
+profile files as `/sitemaps/profiles-*`. The `/sitemaps/profiles-*.xml` in the consequences below
+describes the files; as an invalidation path it would match nothing, because CloudFront reads a `*`
+that is not the last character literally.
 
 ## Context
 
