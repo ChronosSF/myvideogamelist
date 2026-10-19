@@ -37,8 +37,10 @@ public enum ReviewWithdrawal
 /// for consent: a profile switched back to private, renamed or deleted, or a review made private,
 /// edited or deleted, should stop being served when its owner says so. Those six are the events,
 /// with a seventh that can be one of them: everything recorded about a game deleted, which takes
-/// its review with it. Nothing else is. A favourite removed, a score changed, a statistic that
-/// moved: those are a profile's content changing, and they keep the window (ADR 0029).
+/// its review with it. ADR 0056 adds an eighth on the same argument as an edited review: a display
+/// name, an avatar or a bio rewritten or cleared. Nothing else is. A favourite removed, a score
+/// changed, a statistic that moved: those are a profile's content changing, and they keep the
+/// window (ADR 0029).
 /// </para>
 /// <para>
 /// <b>Every method is called after the write has committed, and none of them can fail it.</b>
@@ -121,6 +123,14 @@ public sealed class ProfileWithdrawals(
     /// <summary>An account whose profile was public, deleted.</summary>
     public void AccountDeleted(string userName) =>
         Send("account deleted", Profile(userName), ProfileSitemaps);
+
+    /// <summary>
+    /// A public profile's display name, avatar or bio rewritten or cleared: what its owner wrote
+    /// about themselves for the page, taken back as an edited review's words are (ADR 0056). The
+    /// sitemap lists names, not what the page says, so it is left alone.
+    /// </summary>
+    public void ProfileDetailsChanged(string userName) =>
+        Send("profile details changed", Profile(userName));
 
     /// <summary>
     /// A review made private or edited while it was public, or deleted whatever it was.
