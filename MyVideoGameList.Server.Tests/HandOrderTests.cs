@@ -200,7 +200,7 @@ public class HandOrderTests
     }
 
     private static ListService NewService(ApplicationDbContext db, IGameCacheService? igdb = null) =>
-        new(db, igdb ?? Substitute.For<IGameCacheService>(), new FixedClock(Midday));
+        new(db, igdb ?? Substitute.For<IGameCacheService>(), new FixedClock(Midday), EdgeFakes.Withdrawals(db));
 
     private static short StatusId(ApplicationDbContext db, string key) =>
         db.ListStatuses.Single(s => s.Key == key).Id;
