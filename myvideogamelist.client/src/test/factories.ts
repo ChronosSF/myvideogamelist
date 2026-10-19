@@ -1,6 +1,6 @@
 import type { AdminStats } from '@/types/adminStats';
 import type { UserProfile } from '@/types/auth';
-import type { GameDto, PlatformDto } from '@/types/game';
+import type { GameDetailsDto, GameDto, PlatformDto } from '@/types/game';
 import {
     IMPORT_DECISION,
     IMPORT_MATCH,
@@ -45,6 +45,28 @@ export function game(overrides: Partial<GameDto> = {}): GameDto {
         developers: [],
         publishers: [],
         details: null,
+        ...overrides,
+    };
+}
+
+/** The detail fields only the game page carries, all empty unless a test says otherwise. */
+export function gameDetails(overrides: Partial<GameDetailsDto> = {}): GameDetailsDto {
+    return {
+        timeToBeat: null,
+        screenshots: [],
+        similarGames: [],
+        dlcs: [],
+        expansions: [],
+        parentGame: null,
+        gameModes: [],
+        multiplayerModes: null,
+        themes: [],
+        playerPerspectives: [],
+        gameEngines: [],
+        collections: [],
+        franchises: [],
+        languages: [],
+        stores: [],
         ...overrides,
     };
 }
