@@ -29,7 +29,7 @@ namespace MyVideoGameList.Server.IntegrationTests;
 /// The factory removes the application's own sweep, so nothing deletes under the other classes'
 /// tests; each test here starts one of its own and stops it again. Not covered: the warning a
 /// sixth blocked tick running gives, which needs six hours or a clock this does not fake, and the
-/// execution strategy, which does nothing until <c>Program.cs</c> configures a retrying one.
+/// execution strategy, which never retries until <c>Program.cs</c> configures one that does.
 /// </para>
 /// </remarks>
 public class ImportRetentionSweepTests(ApiFactory api) : IClassFixture<ApiFactory>
@@ -116,6 +116,62 @@ public class ImportRetentionSweepTests(ApiFactory api) : IClassFixture<ApiFactor
         Assert.DoesNotContain(pass.Statements, statement => statement.StartsWith("delete"));
         await using var after = api.Database();
         Assert.True(await after.ImportJobs.AnyAsync(job => job.Id == expired.Job.Id));
+    }
+
+    [Fact]
+    public async Task Sweep_StoppedTheMomentAFullBatchIsDeleted_CommitsItLogsItAndStartsNoOther()
+    {
+        // #96 (ADR 0038 §4): the stopping token bounds the work, never the commit that keeps it.
+        // The host's stop lands between a full batch's DELETE and its commit, through StopAsync as
+        // a SIGTERM's would. On the stopping token Npgsql refused to send that COMMIT, so the
+        // finished batch rolled back and every one of these survived to be deleted again. Exactly
+        // one batch, and older than anything another test leaves, so the batch is these and the
+        // test leaves nothing behind for the next.
+        var now = DateTimeOffset.UtcNow;
+        var userId = await RegisterAsync("stopped");
+        await SeedAsync(Enumerable.Range(0, ImportRetentionService.BatchSize)
+            .Select(i => Job(userId, ImportJobStates.Pending, updated: now.AddDays(-20),
+                created: now.AddDays(-400).AddMinutes(i), rows: 1))
+            .ToArray());
+
+        var log = new RecordingLogger<ImportRetentionService>();
+        var stopped = new TaskCompletionSource<Task>(TaskCreationOptions.RunContinuationsAsynchronously);
+        ImportRetentionService? sweep = null;
+        var recorder = new Statements(onDelete: () => stopped.TrySetResult(sweep!.StopAsync(CancellationToken.None)));
+
+        await using var scopes = new ServiceCollection()
+            .AddDbContext<ApplicationDbContext>(options => options
+                .UseNpgsql(api.ConnectionString)
+                .AddInterceptors(recorder))
+            .BuildServiceProvider();
+
+        sweep = new ImportRetentionService(
+            scopes.GetRequiredService<IServiceScopeFactory>(), TimeProvider.System, log);
+
+        await sweep.StartAsync(CancellationToken.None);
+
+        try
+        {
+            if (await Task.WhenAny(stopped.Task, Task.Delay(TimeSpan.FromSeconds(15))) != stopped.Task)
+                Assert.Fail($"The sweep deleted nothing within 15 seconds. It logged: {Logged(log)}");
+
+            await (await stopped.Task).WaitAsync(TimeSpan.FromSeconds(15));
+        }
+        finally
+        {
+            // A second stop is a no-op once the first has finished; this one is for a failure above.
+            await sweep.StopAsync(CancellationToken.None);
+        }
+
+        // The batch committed after the stop and was logged, and no other DELETE followed it.
+        Assert.Equal([$"delete {ImportRetentionService.BatchSize}", "commit"], recorder.Events);
+        Assert.Contains(log.Entries, entry => entry.Level == LogLevel.Information
+            && entry.Message == $"Import retention deleted {ImportRetentionService.BatchSize} expired job(s).");
+        Assert.DoesNotContain(log.Entries, entry => entry.Level >= LogLevel.Warning);
+
+        await using var after = api.Database();
+        Assert.False(await after.ImportJobs.AnyAsync(job => job.UserId == userId));
+        Assert.False(await after.ImportRows.AnyAsync(row => row.UserId == userId));
     }
 
     private sealed record Seeded(ImportJob Job, IReadOnlyList<ImportRow> Rows);
@@ -244,9 +300,9 @@ public class ImportRetentionSweepTests(ApiFactory api) : IClassFixture<ApiFactor
 
     /// <summary>
     /// Each <c>DELETE</c> of jobs with how many it took, and each commit, in the order the sweep's
-    /// context ran them.
+    /// context ran them; <paramref name="onDelete"/>, when given, runs as each <c>DELETE</c> returns.
     /// </summary>
-    private sealed class Statements : DbCommandInterceptor, IDbTransactionInterceptor
+    private sealed class Statements(Action? onDelete = null) : DbCommandInterceptor, IDbTransactionInterceptor
     {
         private readonly ConcurrentQueue<string> events = new();
 
@@ -259,7 +315,10 @@ public class ImportRetentionSweepTests(ApiFactory api) : IClassFixture<ApiFactor
             CancellationToken cancellationToken = default)
         {
             if (command.CommandText.StartsWith("DELETE FROM \"ImportJobs\"", StringComparison.Ordinal))
+            {
                 events.Enqueue($"delete {result}");
+                onDelete?.Invoke();
+            }
 
             return ValueTask.FromResult(result);
         }

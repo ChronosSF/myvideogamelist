@@ -351,7 +351,7 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   about us; and it runs **once per ECS task**, so it serialises on
   `pg_try_advisory_xact_lock` — the transaction-scoped variant, because a session lock survives on
   a pooled connection after it is returned. That transaction runs inside
-  `db.Database.CreateExecutionStrategy()`, which does nothing today and stops the sweep throwing
+  `db.Database.CreateExecutionStrategy()`, which never retries today and stops the sweep throwing
   `InvalidOperationException` on the day somebody adds `EnableRetryOnFailure` to `UseNpgsql`:
   **EF refuses a user-initiated transaction under a retrying strategy**, and the sweep would fail
   into the log once an hour for ever without anything else breaking. A tick that cannot take the
@@ -370,7 +370,10 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   suite's `ImportRetentionSweepTests` runs it, batches and lock included, against PostgreSQL
   (`docs/decisions/0057-*`). It deletes **twenty-five jobs per statement and commits each
   batch**, because one unbounded `DELETE` over a backlog exceeds Npgsql's thirty-second default,
-  rolls back, deletes nothing, and is retried identically every hour for ever. And because it
+  rolls back, deletes nothing, and is retried identically every hour for ever. Each batch
+  **commits on `CancellationToken.None`**: the stopping token bounds the work, never the write
+  that keeps its result, or a shutdown landing between a batch's `DELETE` and its commit would
+  roll back a batch already done, leaving the next sweep to repeat it (ADR 0038 §4). And because it
   deletes rows no request asked it to, **every `ImportService` write stamps the job and treats an
   `UPDATE` that matches no row as "swept"** — the 404 each endpoint already had, rather than the 500
   an unclaimed `DbUpdateConcurrencyException` becomes. Anything else that deletes out from under a
