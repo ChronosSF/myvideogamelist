@@ -347,6 +347,93 @@ public class ProfileWithdrawalTests
     }
 
     // ---------------------------------------------------------------------------------------
+    // What a public profile says about its owner (ADR 0056)
+    // ---------------------------------------------------------------------------------------
+
+    private static readonly UpdateProfileDetailsDto Shown =
+        new("Alice Liddell", "https://i.imgur.com/removed.png", "Mostly RPGs.");
+
+    [Fact]
+    public async Task UpdateProfileDetails_FirstSetOnAPublicProfile_InvalidatesNothing()
+    {
+        // From nothing to something publishes, as a first review does: it reaches the page when the
+        // window closes, like any new content.
+        var edge = new RecordingEdgeInvalidator();
+        using var site = new Site(edge);
+        var alice = await site.AccountAsync("alice", ProfileVisibility.Public);
+
+        var result = await site.Controller(alice).UpdateProfileDetails(Shown);
+
+        Assert.IsType<OkObjectResult>(result.Result);
+        Assert.Empty(edge.Sent);
+    }
+
+    public static TheoryData<UpdateProfileDetailsDto> WhatTakesSomethingBack() =>
+    [
+        Shown with { DisplayName = "Alice" },
+        Shown with { DisplayName = null },
+        Shown with { AvatarUrl = "https://avatars.githubusercontent.com/u/9919?v=4" },
+        Shown with { AvatarUrl = null },
+        Shown with { Bio = "Mostly RPGs, slowly." },
+        Shown with { Bio = "   " },
+    ];
+
+    [Theory]
+    [MemberData(nameof(WhatTakesSomethingBack))]
+    public async Task UpdateProfileDetails_ShownValueRewrittenOrCleared_InvalidatesTheProfileOnlyOnceStored(
+        UpdateProfileDetailsDto rewrite)
+    {
+        // A rewritten or cleared value takes back what the page showed, as an edited review does.
+        // The profile's page only: the sitemap lists names, and no name changed.
+        var edge = new RecordingEdgeInvalidator();
+        using var site = new Site(edge);
+        var alice = await site.AccountAsync("alice", ProfileVisibility.Public);
+        await site.Controller(alice).UpdateProfileDetails(Shown);
+        ApplicationUser? storedWhenSent = null;
+        edge.OnInvalidate = _ => storedWhenSent = site.StoredUser(alice.Id);
+
+        var result = await site.Controller(alice).UpdateProfileDetails(rewrite);
+
+        Assert.IsType<OkObjectResult>(result.Result);
+        AssertSent(edge, "profile details changed", "/u/alice*");
+        Assert.NotNull(storedWhenSent);
+        Assert.Equal(DisplayNamePolicy.Normalise(rewrite.DisplayName), storedWhenSent.DisplayName);
+        Assert.Equal(AvatarUrlPolicy.Normalise(rewrite.AvatarUrl), storedWhenSent.AvatarUrl);
+        Assert.Equal(BioPolicy.Normalise(rewrite.Bio), storedWhenSent.Bio);
+    }
+
+    [Fact]
+    public async Task UpdateProfileDetails_SavedAgainAsTheSameStoredValues_InvalidatesNothing()
+    {
+        // Typed differently but stored the same: nothing the page showed has been taken back, and a
+        // save button pressed in a loop is not a way to spend money (ADR 0058 §1).
+        var edge = new RecordingEdgeInvalidator();
+        using var site = new Site(edge);
+        var alice = await site.AccountAsync("alice", ProfileVisibility.Public);
+        await site.Controller(alice).UpdateProfileDetails(Shown);
+
+        await site.Controller(alice).UpdateProfileDetails(
+            new UpdateProfileDetailsDto("  Alice   Liddell ", " https://i.imgur.com/removed.png ", "Mostly RPGs.\r\n"));
+
+        Assert.Empty(edge.Sent);
+    }
+
+    [Fact]
+    public async Task UpdateProfileDetails_PrivateProfile_InvalidatesNothing()
+    {
+        // A private profile serves nothing at the edge to take back.
+        var edge = new RecordingEdgeInvalidator();
+        using var site = new Site(edge);
+        var alice = await site.AccountAsync("alice", ProfileVisibility.Private);
+        await site.Controller(alice).UpdateProfileDetails(Shown);
+
+        await site.Controller(alice).UpdateProfileDetails(new UpdateProfileDetailsDto(null, null, null));
+
+        Assert.Null(site.StoredUser(alice.Id)?.Bio);
+        Assert.Empty(edge.Sent);
+    }
+
+    // ---------------------------------------------------------------------------------------
     // A review on a public profile
     // ---------------------------------------------------------------------------------------
 

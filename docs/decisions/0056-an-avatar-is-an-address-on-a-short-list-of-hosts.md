@@ -1,7 +1,8 @@
 # 0056. An avatar is an address on a short list of hosts, and a display name stands beside the handle
 
 **Status:** Implemented
-**Amends:** [0033](0033-what-the-api-refuses.md) §5, whose document policy gains `img-src`
+**Amends:** [0033](0033-what-the-api-refuses.md) §5, whose document policy gains `img-src`;
+[0058](0058-a-withdrawal-leaves-the-edge-when-it-is-made.md) §1, whose table gains an eighth event
 
 ## Context
 
@@ -196,6 +197,23 @@ in it is linked.
 - **`PUT /api/user/profile` replaces all three at once**; a blank clears one. Each attribute judges
   the value as it will be stored, and a refusal is a `ValidationProblemDetails` keyed by its field.
 
+### 8. Rewriting or clearing one on a public profile takes the page off the edge
+
+[0058](0058-a-withdrawal-leaves-the-edge-when-it-is-made.md) takes a public profile off the edge
+when its owner takes back something it published, and an edited review is one of its events. A
+display name, an avatar or a bio rewritten or cleared is the same act: the owner's own words, or
+picture, taken back from a page the edge keeps for up to sixty-five minutes. So it is an eighth row
+in 0058 §1's table, decided where the write is made, after the commit, as the others are:
+
+| Event | Where | Paths | Sends nothing when |
+|---|---|---|---|
+| Profile details rewritten or cleared | `UserController.UpdateProfileDetails` | `/u/{name}*` | every changed value is being set for the first time, the save stored nothing new, or the profile is not public |
+
+The before-state decides it, as 0058 says. A value set where there was none publishes, and reaches
+the page when the window closes like any new content. Saved again as the same stored values — typed
+differently, normalised the same — takes nothing back, and a save button pressed in a loop is not a
+way to spend paths. The sitemap is left alone, because it lists names and no name changed.
+
 ### Rejected
 
 - **An upload, for now.** Its costs are listed above. #200's banner may need one, being wider than
@@ -222,9 +240,10 @@ in it is linked.
   name, avatar and bio can be anything their owner writes, as a public review already can. Nothing
   reports one and no admin tool clears one: [0042](0042-admins-are-named-in-configuration.md) keeps
   the admin page to reference data. Moderating what members publish is #307.
-- **A change to the three outlives itself at the edge**, like any change to a public profile: five
-  minutes, and up to an hour stale (0027 §10). The form says so. Clearing a bio is a withdrawal in
-  all but name, and is a line on #99.
+- **A detail set for the first time waits out the edge's window**, like any new content on a public
+  profile: five minutes, and up to an hour stale (0027 §10). The form says a change can take up to
+  about an hour, which stays true of an addition and is the worst case for a withdrawal while §8's
+  invalidation depends on a distribution being configured (0058 §7).
 - **The display name appears on the profile and nowhere else yet.** The navbar still draws the
   handle's initial in its own circle, and the game page's member reviews name the handle alone:
   #308.

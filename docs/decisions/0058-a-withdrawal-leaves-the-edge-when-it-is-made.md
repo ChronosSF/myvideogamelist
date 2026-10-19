@@ -4,7 +4,9 @@
 [0027](0027-usernames-and-public-profiles.md) records for a withdrawn profile (ROADMAP D14,
 [#99](https://github.com/ChronosSF/myvideogamelist/issues/99)), for the page and for the profile
 sitemap file [0036](0036-what-a-crawler-is-told.md) §5 gave the same window. Corrects the sitemap
-path 0036 named.
+path 0036 named. §1's table gains an eighth event in
+[0056](0056-an-avatar-is-an-address-on-a-short-list-of-hosts.md) §8: a public profile's display
+name, avatar or bio rewritten or cleared.
 
 ## Context
 

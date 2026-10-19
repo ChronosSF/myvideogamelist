@@ -192,6 +192,12 @@ public class UserController(
     /// <c>/u/{userName}</c> only while the profile is public, with everything else on it.
     /// </para>
     /// <para>
+    /// Rewriting or clearing one of them on a public profile takes back something the page
+    /// published, as editing a review on it does, so once saved the page leaves the edge (ADR 0056,
+    /// 0058). Setting one for the first time publishes, and waits out the window like any new
+    /// content; saving them again unchanged takes nothing back and sends nothing.
+    /// </para>
+    /// <para>
     /// The avatar's address is stored and never requested from here (ADR 0056). No cancellation
     /// token, as for the rename and the privacy switch: neither <see cref="UserManager{TUser}"/>
     /// call here takes one.
@@ -204,14 +210,29 @@ public class UserController(
         var user = await userManager.GetUserAsync(User);
         if (user is null) return Unauthorized();
 
-        user.DisplayName = DisplayNamePolicy.Normalise(dto.DisplayName);
-        user.AvatarUrl = AvatarUrlPolicy.Normalise(dto.AvatarUrl);
-        user.Bio = BioPolicy.Normalise(dto.Bio);
+        var displayName = DisplayNamePolicy.Normalise(dto.DisplayName);
+        var avatarUrl = AvatarUrlPolicy.Normalise(dto.AvatarUrl);
+        var bio = BioPolicy.Normalise(dto.Bio);
+
+        // Decided from the state before the save, as every withdrawal is: only a value the page has
+        // shown can be taken back.
+        var takesBack = TakesBack(user.DisplayName, displayName)
+            || TakesBack(user.AvatarUrl, avatarUrl)
+            || TakesBack(user.Bio, bio);
+
+        user.DisplayName = displayName;
+        user.AvatarUrl = avatarUrl;
+        user.Bio = bio;
 
         var saved = await userManager.UpdateAsync(user);
         if (!saved.Succeeded) return NotSaved(saved);
 
+        if (takesBack && user.ProfileVisibility == ProfileVisibility.Public && user.UserName is { } name)
+            withdrawals.ProfileDetailsChanged(name);
+
         return Ok(Profile(user));
+
+        static bool TakesBack(string? shown, string? saving) => shown is not null && shown != saving;
     }
 
     /// <summary>
