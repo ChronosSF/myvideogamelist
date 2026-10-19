@@ -196,8 +196,9 @@ three stayed, so the work is still bounded. And a whole tick over thirty expired
 moment its first batch's `DELETE` returned, committed that batch of twenty-five, started no second
 one, and logged the twenty-five. `ImportRetentionTests` holds the code to all of this with doubles
 standing in for the lock, the `DELETE` and the transaction, since InMemory runs neither of the first
-two: one test fails when the commit goes back on the stopping token, another when the `DELETE` comes
-off it, and a third when the loop no longer stops between batches.
+two: one test fails when the commit is given any token but `CancellationToken.None`, the stopping
+token or a fresh one, another when the `DELETE` comes off it, and a third when the loop no longer
+stops between batches.
 
 ### 5. No index for the predicate
 

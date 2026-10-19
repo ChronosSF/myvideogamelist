@@ -284,8 +284,11 @@ public class ImportRetentionTests
 
         Assert.True(stopping.IsCancellationRequested, "The shutdown never landed.");
         Assert.Equal(queries.Deleted, deleted);
-        await transaction.Received(1).CommitAsync(
-            Arg.Is<CancellationToken>(token => !token.IsCancellationRequested));
+
+        // Exactly CancellationToken.None, which is what the comment at the commit promises, and not
+        // merely a token nobody has cancelled yet: a fresh token from a source of its own would pass
+        // that and still leave something able to abort the commit later.
+        await transaction.Received(1).CommitAsync(CancellationToken.None);
     }
 
     [Fact]
