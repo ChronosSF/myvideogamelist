@@ -1,5 +1,6 @@
-import { existsSync, readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { AVATAR_HOSTS, AVATAR_SERVICES } from '@/lib/avatar';
 import { IGDB_IMAGE_HOST } from '@/lib/securityHeaders';
@@ -12,17 +13,19 @@ import { AVATAR_URL_MAX_LENGTH, BIO_MAX_LENGTH, DISPLAY_NAME_MAX_LENGTH } from '
  * is saved and then refused by every reader's browser; a host on the client's and not the server's
  * is one readers can be sent to that nobody can name; IGDB's image host changing on the server
  * without the page's policy following it blocks every cover on the site; and an input's `maxLength`
- * longer than the server's limit is a refusal the form could have prevented.
+ * longer than the server's limit is a refusal the form could have prevented. `@/types/auth.test.ts`
+ * holds the username's rules to `UserNamePolicy` the same way.
  */
 
 /**
- * A file of the server's, found from the client's own directory, which is where `npm run test` runs
- * here and in CI. Under jsdom a module's own URL is not a file to resolve against.
+ * A file of the server's, resolved from this file's own path as a string, as `auth.test.ts` does:
+ * jsdom replaces the global `URL`, and Node's `fileURLToPath` refuses one of jsdom's.
  */
 function serverSource(path: string): string {
-    const file = resolve(process.cwd(), '../MyVideoGameList.Server', path);
-    if (!existsSync(file)) throw new Error(`${file} not found: run the tests from myvideogamelist.client`);
-    return readFileSync(file, 'utf8');
+    return readFileSync(
+        resolve(dirname(fileURLToPath(import.meta.url)), '../../../MyVideoGameList.Server', path),
+        'utf8',
+    );
 }
 
 /** The value of `public const int {name} = …;` in a server source file. */
