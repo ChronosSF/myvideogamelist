@@ -30,7 +30,7 @@ the sitemap files on the first three. Five things it left open, or did not know:
 
 ## Decision
 
-### 1. Six events, each decided where its write is made
+### 1. Seven events, each decided where its write is made
 
 | Event | Where | Paths | Sends nothing when |
 |---|---|---|---|
@@ -39,13 +39,15 @@ the sitemap files on the first three. Five things it left open, or did not know:
 | Account deleted | `UserController.DeleteAccount` | `/u/{name}*`, `/sitemaps/profiles-*` | the profile was private |
 | Review made private | `ReviewService.UpsertAsync` | `/u/{name}*` | the profile is not public now |
 | Review edited: its words or its spoiler warning changed | `ReviewService.UpsertAsync` | `/u/{name}*` | the review was not public before the save, it was saved again unchanged, or the profile is not public now |
-| Review deleted | `ReviewService.DeleteAsync`, and `ListService.DeleteEntryAsync` when the entry carried a public review | `/u/{name}*` | the review was not public, or the profile is not public now |
+| Review deleted, public or not | `ReviewService.DeleteAsync` | `/u/{name}*` | the profile is not public now |
+| Everything recorded about a game deleted, whatever it held | `ListService.DeleteEntryAsync` | `/u/{name}*` | the profile is not public now |
 
-**Only a write that takes back something published counts.** The before-state decides it. A first
-review, or a private one made public, publishes, and reaches the page when the TTL runs out like
-any other new content. A favourite removed, a score changed, a statistic that moved: those are the
-profile's content changing, and keep the window, as
-[0029](0029-favourites-are-an-axis-and-a-showcase.md) and the statistics tiers' spec already say.
+**Only a write that takes back something published counts.** The before-state decides it, except
+for the two deletes, which decide nothing from what they read (below). A first review, or a
+private one made public, publishes, and reaches the page when the TTL runs out like any other new
+content. A favourite removed, a score changed, a statistic that moved: those are the profile's
+content changing, and keep the window, as [0029](0029-favourites-are-an-axis-and-a-showcase.md)
+and the statistics tiers' spec already say.
 
 **A review saved again unchanged is not an edit.** It moves to the top of the profile's
 newest-first list, which is content. Nothing it said has been taken back. Treating it as an edit
@@ -57,9 +59,22 @@ names the new spelling. The copies the edge holds under the old one would theref
 reach of all of them. Those copies are the ones the site itself made: the old spelling was the
 canonical URL, every link and the sitemap's entry until now.
 
-**Deleting everything recorded about a game deletes its review**, through the cascade, and is the
-same withdrawal. `ListService` asks whether the entry carries a public review before the row goes,
-because afterwards there is nothing left to ask.
+**A delete is decided by nothing it read.** Deleting everything recorded about a game deletes its
+review through the cascade. The first draft asked before the delete whether the entry carried a
+public review, because afterwards there is nothing left to ask. That question can be overtaken.
+Between it and the cascade, the user's own request can publish the review. A render in between can
+put it at the edge, and the cascade then takes it with nothing sent. Asking instead whether there
+is any review at all is overtaken the same way, by a review written in between. A review deleted
+on its own has the same race on one row, since it is read, and its visibility with it, before the
+delete. So both deletes invalidate whatever they took, and the cost is a path where there was
+nothing to withdraw: a private review, or a game with no review, as in a library cleaned up a game
+at a time.
+
+The alternative was to hold the rows: a transaction, through the execution strategy as
+[0038](0038-where-scheduled-work-lives.md) requires, that locks the entry and its review before
+asking. That is SQL the in-memory tests cannot run, and a lock on every delete to save a path on
+some of them. The profile is still asked about, after the commit (§3), and a profile that is not
+public then sends nothing: one made private in between sent its own invalidation.
 
 Game pages are not on the list and must not join it. They never carry review text, because
 [0028](0028-a-games-community-view.md) §4 fetches member reviews after hydration for exactly this
@@ -116,18 +131,33 @@ throws, for every write: the write stands and the answer is a success. `ProfileW
 class rather than an interface for that reason. It is where the guarantee lives, so it is not
 something to swap out; the seam is `IEdgeInvalidator` beneath it.
 
-For the three review events, `ProfileWithdrawals` reads the author's name and visibility after the
-write, so that a rename landing between the two is answered under the name the profile has now. It
-reads them **without the request's cancellation token**. That token is cancelled when the reader
-closes the tab, and passing it would let a closed tab cancel the invalidation of something the
-database already holds. This is the one place a request's token is deliberately dropped, and the
-method says why.
+For the review events and the entry deletion, `ProfileWithdrawals` reads the owner's name and
+visibility after the write, so that a rename landing between the two is answered under the name
+the profile has now. It reads them **without the request's cancellation token**. That token is
+cancelled when the reader closes the tab, and passing it would let a closed tab cancel the
+invalidation of something the database already holds. This is the one place a request's token is
+deliberately dropped, and the method says why.
 
-One race is left. A render of the page that began before the commit can read the old rows and
-reach the edge after CloudFront has processed the invalidation. It is then kept for the full
-window. That needs a request for the same profile in flight at the moment of the commit, and slow
-enough to finish after an invalidation that reaches every edge within a few seconds. A second
-invalidation a minute later would close it, at twice the paths, and is not done.
+**The before-states that are still read are safe, all but one.** The three profile events decide
+from the account row that they then write through Identity. Identity's `UserStore` gives that row
+a new concurrency stamp on every update, and the stamp is a concurrency token, so a write whose row
+changed between its read and its save is refused as a concurrency failure, and a refused write
+sends nothing.
+
+Two races are left. **A render in flight**: a render of the page that began before the commit can
+read the old rows and reach the edge after CloudFront has processed the invalidation. It is then
+kept for the full window. That needs a request for the same profile in flight at the moment of the
+commit, and slow enough to finish after an invalidation that reaches every edge within a few
+seconds. A second invalidation a minute later would close it, at twice the paths, and is not done.
+
+**Two saves of one review at once.** A review has no stamp. Its author, saving it from two tabs at
+once, can have one save decide from a state the other has already replaced. One publishes it. The
+other read it private, saves it private again and sends nothing, and a render between the two
+commits keeps the published words at the edge for the full window. A concurrency token on reviews
+would close it by refusing the second save, and a row lock by making it wait. Either changes every
+review write, and the lock is SQL the in-memory tests cannot run. It is left, because it needs the
+author's own two saves of one review within milliseconds of each other and a render landing
+between them, and what it costs is the window the site had before this record.
 
 ### 4. Queued, sent from the background, one request per event
 
@@ -307,11 +337,12 @@ templates are byte-for-byte what master synthesises.
   to invalidate: deleting everything recorded about a game, and deleting the account. In-memory, a
   cascade deletes nothing the context is not tracking.
 
-  By hand, against a local database: the six events, with no distribution configured, each logged
-  the paths above. Then the API ran with a distribution id, made-up credentials and the SDK's
-  endpoint pointed at a local stand-in for CloudFront. That run showed the request on the wire, a
-  refused first attempt retried two seconds later under the same caller reference, and a stand-in
-  that hung for twelve seconds. The reader's write still answered in under a second; the SDK timed
-  the hung call out at ten seconds and its own retry was accepted. Only a deploy shows the rest, and
+  By hand, against a local database: the events as they stood before the two deletes stopped
+  reading the review (§1), with no distribution configured, each logged the paths above. Then the
+  API ran with a distribution id, made-up credentials and the SDK's endpoint pointed at a local
+  stand-in for CloudFront. That run showed the request on the wire, a refused first attempt retried
+  two seconds later under the same caller reference, and a stand-in that hung for twelve seconds.
+  The reader's write still answered in under a second; the SDK timed the hung call out at ten
+  seconds and its own retry was accepted. Only a deploy shows the rest, and
   [#319](https://github.com/ChronosSF/myvideogamelist/issues/319) is that check: make a public
   profile private on dev and read `x-cache` on its next request.

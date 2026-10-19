@@ -4,19 +4,24 @@ using MyVideoGameList.Server.Models;
 
 namespace MyVideoGameList.Server.Services.Edge;
 
-/// <summary>What happened to a review that was public on a public profile.</summary>
+/// <summary>
+/// What happened to a review that may take back something a public profile published.
+/// </summary>
 public enum ReviewWithdrawal
 {
-    /// <summary>Rewritten and set to private in the same save.</summary>
+    /// <summary>Public until this save, which rewrote it and set it to private.</summary>
     MadePrivate,
 
     /// <summary>
-    /// Still public, with different words or a spoiler warning added or taken off: the edge holds
-    /// what its author has taken back.
+    /// Public until this save and still public, with different words or a spoiler warning added or
+    /// taken off: the edge holds what its author has taken back.
     /// </summary>
     Edited,
 
-    /// <summary>Deleted, on its own or with everything else recorded about the game.</summary>
+    /// <summary>
+    /// Deleted, whether or not it was public when the delete read it: another of its author's
+    /// requests can publish it between that read and the delete (ADR 0058 §1).
+    /// </summary>
     Deleted,
 }
 
@@ -30,9 +35,10 @@ public enum ReviewWithdrawal
 /// that (<c>CACHE_PROFILE</c>, ADR 0027 §10), and so is the profile sitemap file that lists it
 /// (ADR 0036 §5). That window is acceptable for content — a new score, a finished game — and not
 /// for consent: a profile switched back to private, renamed or deleted, or a review made private,
-/// edited or deleted, should stop being served when its owner says so. These six are the events,
-/// and nothing else is. A favourite removed, a score changed, a statistic that moved: those are a
-/// profile's content changing, and they keep the window (ADR 0029).
+/// edited or deleted, should stop being served when its owner says so. Those six are the events,
+/// with a seventh that can be one of them: everything recorded about a game deleted, which takes
+/// its review with it. Nothing else is. A favourite removed, a score changed, a statistic that
+/// moved: those are a profile's content changing, and they keep the window (ADR 0029).
 /// </para>
 /// <para>
 /// <b>Every method is called after the write has committed, and none of them can fail it.</b>
@@ -117,14 +123,40 @@ public sealed class ProfileWithdrawals(
         Send("account deleted", Profile(userName), ProfileSitemaps);
 
     /// <summary>
-    /// A review that was public has been changed, made private or deleted. Invalidates the
-    /// author's profile if that profile is public now; a private one serves nothing to withdraw.
+    /// A review made private or edited while it was public, or deleted whatever it was.
+    /// Invalidates the author's profile if that profile is public now.
+    /// </summary>
+    public Task ReviewWithdrawnAsync(string userId, ReviewWithdrawal withdrawal) =>
+        ProfileChangedAsync(userId, withdrawal switch
+        {
+            ReviewWithdrawal.MadePrivate => "review made private",
+            ReviewWithdrawal.Edited => "review edited",
+            _ => "review deleted",
+        });
+
+    /// <summary>
+    /// Everything recorded about a game deleted, whatever it held. Invalidates the owner's profile
+    /// if that profile is public now.
+    /// </summary>
+    /// <remarks>
+    /// Whether the entry carried a public review, or any review, is deliberately not asked. The
+    /// cascade takes whatever review the entry has when the row goes, and the owner's own request
+    /// can write one or publish one between any question asked before the delete and the delete
+    /// itself; afterwards there is nothing left to ask. So a game with no review costs a path too
+    /// (ADR 0058 §1).
+    /// </remarks>
+    public Task EntryDeletedAsync(string userId) => ProfileChangedAsync(userId, "entry deleted");
+
+    /// <summary>
+    /// Invalidates the profile of the account a write has just changed, if that profile is public
+    /// now; a private one serves nothing to withdraw.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// The author's name and visibility are read here, after the write, rather than handed in from
-    /// before it, so that a rename landing between the two is answered under the name the profile
-    /// has now — the rename itself took the old one off the edge.
+    /// The name and visibility are read here, after the write, rather than handed in from before
+    /// it. A rename landing between the two is then answered under the name the profile has now,
+    /// since the rename itself took the old one off the edge. And a profile made private between
+    /// them is left to the invalidation that change sent.
     /// </para>
     /// <para>
     /// <b>No cancellation token, on purpose.</b> This runs after the write has committed, and the
@@ -133,38 +165,33 @@ public sealed class ProfileWithdrawals(
     /// already holds it — an invalidation is owed whether or not anybody waits for the response.
     /// </para>
     /// </remarks>
-    public async Task ReviewWithdrawnAsync(string userId, ReviewWithdrawal withdrawal)
+    private async Task ProfileChangedAsync(string userId, string reason)
     {
         try
         {
-            var author = await db.Users
+            var owner = await db.Users
                 .AsNoTracking()
                 .Where(u => u.Id == userId)
                 .Select(u => new { u.UserName, u.ProfileVisibility })
                 .FirstOrDefaultAsync(CancellationToken.None);
 
-            if (author?.UserName is not { } userName
-                || author.ProfileVisibility != ProfileVisibility.Public)
+            if (owner?.UserName is not { } userName
+                || owner.ProfileVisibility != ProfileVisibility.Public)
             {
                 return;
             }
 
-            Send(withdrawal switch
-            {
-                ReviewWithdrawal.MadePrivate => "review made private",
-                ReviewWithdrawal.Edited => "review edited",
-                _ => "review deleted",
-            }, Profile(userName));
+            Send(reason, Profile(userName));
         }
         catch (Exception e)
         {
-            // Swallowed deliberately, like everything after the commit: the review is already
-            // withdrawn for every request that reaches the origin, and the edge keeps its copy for
-            // at most the window it had before this existed.
+            // Swallowed deliberately, like everything after the commit: what was withdrawn is
+            // already gone for every request that reaches the origin, and the edge keeps its copy
+            // for at most the window it had before this existed.
             logger.LogError(e,
-                "Could not look up the author of a withdrawn review ({Withdrawal}) for account {UserId}; "
+                "Could not look up account {UserId} after a withdrawal ({Reason}); "
                 + "their profile was not invalidated and stays at the edge until its TTL runs out.",
-                withdrawal, userId);
+                userId, reason);
         }
     }
 

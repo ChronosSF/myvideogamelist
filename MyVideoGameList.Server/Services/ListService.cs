@@ -195,17 +195,6 @@ public class ListService(
 
         if (entry is null) return false;
 
-        // The review goes with the entry through the cascade, and if it was public that is a
-        // review deleted from the author's profile like any other (ADR 0058). Asked before the row
-        // goes, because afterwards there is nothing left to ask.
-        var takesPublicReview = await db.Reviews
-            .AsNoTracking()
-            .AnyAsync(
-                r => r.UserId == userId
-                    && r.UserGameEntryId == entry.Id
-                    && r.Visibility == ReviewVisibility.Public,
-                cancellationToken);
-
         // Record the departure before the row goes, or the log loses the fact that the game ever
         // left a list. The events themselves survive: they hold no key to this row.
         if (entry.StatusId is not null)
@@ -214,7 +203,12 @@ public class ListService(
         db.UserGameEntries.Remove(entry);
         await db.SaveChangesAsync(cancellationToken);
 
-        if (takesPublicReview) await withdrawals.ReviewWithdrawnAsync(userId, ReviewWithdrawal.Deleted);
+        // The review goes with the entry through the cascade, so the profile comes off the edge
+        // whatever the entry held. Asking first whether it carried a public review, or any review,
+        // would be answered before the cascade, and the user's own request can publish one or
+        // write one in between: the cascade would then take a review the edge may hold, with
+        // nothing sent (ADR 0058 §1).
+        await withdrawals.EntryDeletedAsync(userId);
         return true;
     }
 

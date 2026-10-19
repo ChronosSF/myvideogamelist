@@ -22,11 +22,12 @@ namespace MyVideoGameList.Server.Services;
 /// here avoids one.
 /// </para>
 /// <para>
-/// <b>Changing or deleting a public review is a withdrawal</b>, because the author's public
-/// profile renders the text and the edge keeps a copy of that page. Each one tells
-/// <see cref="ProfileWithdrawals"/> after it commits. A review written for the first time, one that
-/// was private until now, and one saved again unchanged withdraw nothing and tell it nothing
-/// (ADR 0058).
+/// <b>Changing a public review is a withdrawal, and so is deleting any review</b>, because the
+/// author's public profile renders the text and the edge keeps a copy of that page. Each one tells
+/// <see cref="ProfileWithdrawals"/> after it commits. A delete does so whatever it read of the
+/// review's visibility, which the author's own request can change before the delete lands. A
+/// review written for the first time, a private one rewritten, and one saved again unchanged
+/// withdraw nothing and tell it nothing (ADR 0058).
 /// </para>
 /// </remarks>
 public class ReviewService(
@@ -65,6 +66,8 @@ public class ReviewService(
         if (existing is not null)
         {
             // Read before the fields change: what the edge can hold is what was public until now.
+            // A save of this review by another of its author's requests, landing between this read
+            // and the write below, is not seen; ADR 0058 §3 says why that race is left open.
             var published = existing.Visibility == ReviewVisibility.Public
                 ? (existing.Body, existing.HasSpoilers)
                 : ((string, bool)?)null;
@@ -119,14 +122,16 @@ public class ReviewService(
 
         if (review is null) return false;
 
-        var wasPublic = review.Visibility == ReviewVisibility.Public;
-
         // The entry, the score and the playthroughs stay: deleting what you wrote about a game is
         // not deleting your record of it.
         db.Reviews.Remove(review);
         await db.SaveChangesAsync(cancellationToken);
 
-        if (wasPublic) await withdrawals.ReviewWithdrawnAsync(userId, ReviewWithdrawal.Deleted);
+        // Whatever its visibility was when it was read above. Another of the author's requests can
+        // publish it between that read and this delete, and a render in between can put it at the
+        // edge, so private as read is not private as deleted. The cost is a path when a private
+        // review goes (ADR 0058 §1).
+        await withdrawals.ReviewWithdrawnAsync(userId, ReviewWithdrawal.Deleted);
         return true;
     }
 

@@ -29,8 +29,9 @@ namespace MyVideoGameList.Server.Tests;
 /// Through the code that makes each write — the three account endpoints and the two services that
 /// delete or rewrite a review — rather than through <see cref="ProfileWithdrawals"/> alone, because
 /// the decision that matters is made at the call site: whether the profile was public before the
-/// write, whether the review was. A withdrawals class that names the right paths is no use to a
-/// controller that never calls it, or calls it before it saves.
+/// write, whether the review was, and for the two deletes, that nothing read before the write
+/// decides anything. A withdrawals class that names the right paths is no use to a controller that
+/// never calls it, or calls it before it saves.
 /// </para>
 /// <para>
 /// What a write stored is read back through a scope of its own, not the one the write ran in: the
@@ -47,7 +48,6 @@ public class ProfileWithdrawalTests
     // Identity's default rules, which AddIdentityCore applies here and Program.cs relaxes.
     private const string Password = "Password1!";
     private const int GameId = 42;
-    private const int OtherGameId = 43;
     private static readonly DateTimeOffset Midday = new(2026, 3, 14, 12, 0, 0, TimeSpan.Zero);
 
     private const string Sitemaps = "/sitemaps/profiles-*";
@@ -497,15 +497,34 @@ public class ProfileWithdrawalTests
     }
 
     [Fact]
-    public async Task DeleteAsync_PrivateReview_InvalidatesNothing()
+    public async Task DeleteAsync_PrivateReview_InvalidatesTheProfileAnyway()
     {
+        // Private as the delete read it is not private as the delete took it: another of the
+        // author's requests can publish it in between, and a render can put it at the edge. So the
+        // delete asks nothing of it, at the price of a path where there was nothing to withdraw.
         var edge = new RecordingEdgeInvalidator();
         using var site = new Site(edge);
         var alice = await site.AccountAsync("alice", ProfileVisibility.Public);
         var reviews = site.Get<ReviewService>();
         await reviews.UpsertAsync(alice.Id, GameId, Review(ReviewVisibility.Private));
 
-        await reviews.DeleteAsync(alice.Id, GameId);
+        Assert.True(await reviews.DeleteAsync(alice.Id, GameId));
+
+        AssertSent(edge, "review deleted", "/u/alice*");
+    }
+
+    [Fact]
+    public async Task DeleteAsync_ReviewOnAPrivateProfile_InvalidatesNothing()
+    {
+        // The one question left, asked after the commit: a private profile serves nothing to
+        // withdraw, and a profile made private in between sent its own invalidation.
+        var edge = new RecordingEdgeInvalidator();
+        using var site = new Site(edge);
+        var alice = await site.AccountAsync("alice", ProfileVisibility.Private);
+        var reviews = site.Get<ReviewService>();
+        await reviews.UpsertAsync(alice.Id, GameId, Review(ReviewVisibility.Public));
+
+        Assert.True(await reviews.DeleteAsync(alice.Id, GameId));
 
         Assert.Empty(edge.Sent);
     }
@@ -513,8 +532,7 @@ public class ProfileWithdrawalTests
     [Fact]
     public async Task DeleteEntryAsync_TakingAPublicReviewWithIt_InvalidatesTheProfileOnlyOnceItIsGone()
     {
-        // Deleting everything recorded about a game deletes its review through the cascade, which
-        // is the same withdrawal as deleting the review by itself.
+        // Deleting everything recorded about a game deletes its review through the cascade.
         var edge = new RecordingEdgeInvalidator();
         using var site = new Site(edge);
         var alice = await site.AccountAsync("alice", ProfileVisibility.Public);
@@ -524,42 +542,49 @@ public class ProfileWithdrawalTests
 
         Assert.True(await site.Get<ListService>().DeleteEntryAsync(alice.Id, GameId));
 
-        AssertSent(edge, "review deleted", "/u/alice*");
+        AssertSent(edge, "entry deleted", "/u/alice*");
         Assert.True(goneWhenSent);
     }
 
-    [Fact]
-    public async Task DeleteEntryAsync_WithAPrivateReview_InvalidatesNothing()
+    [Theory]
+    [InlineData(ReviewVisibility.Private)]
+    [InlineData(null)]
+    public async Task DeleteEntryAsync_WithAPrivateReviewOrNone_InvalidatesTheProfileAnyway(string? review)
     {
+        // The rule this pins: whatever the entry held. Between any question asked before the delete
+        // and the cascade that settles it, the user's own request can publish the review, or write
+        // one where there was none. So "it had a public review" and "it had a review at all" are
+        // overtaken the same way. Nothing is asked, and a game with no review costs a path.
         var edge = new RecordingEdgeInvalidator();
         using var site = new Site(edge);
         var alice = await site.AccountAsync("alice", ProfileVisibility.Public);
-        await site.Get<ReviewService>().UpsertAsync(alice.Id, GameId, Review(ReviewVisibility.Private));
-
-        await site.Get<ListService>().DeleteEntryAsync(alice.Id, GameId);
-
-        Assert.Empty(edge.Sent);
-    }
-
-    [Fact]
-    public async Task DeleteEntryAsync_PublicReviewOnAnotherGame_InvalidatesNothing()
-    {
-        // The question asked before the delete is about the entry being deleted, not the account.
-        var edge = new RecordingEdgeInvalidator();
-        using var site = new Site(edge);
-        var alice = await site.AccountAsync("alice", ProfileVisibility.Public);
-        await site.Get<ReviewService>().UpsertAsync(alice.Id, OtherGameId, Review(ReviewVisibility.Public));
         await site.Get<ListService>().SetScoreAsync(alice.Id, GameId, 8);
+        if (review is not null) await site.Get<ReviewService>().UpsertAsync(alice.Id, GameId, Review(review));
 
-        await site.Get<ListService>().DeleteEntryAsync(alice.Id, GameId);
+        Assert.True(await site.Get<ListService>().DeleteEntryAsync(alice.Id, GameId));
+
+        AssertSent(edge, "entry deleted", "/u/alice*");
+    }
+
+    [Fact]
+    public async Task DeleteEntryAsync_OnAPrivateProfile_InvalidatesNothing()
+    {
+        // As for a review, the profile is asked about after the commit, and a private one serves
+        // nothing to withdraw.
+        var edge = new RecordingEdgeInvalidator();
+        using var site = new Site(edge);
+        var alice = await site.AccountAsync("alice", ProfileVisibility.Private);
+        await site.Get<ReviewService>().UpsertAsync(alice.Id, GameId, Review(ReviewVisibility.Public));
+
+        Assert.True(await site.Get<ListService>().DeleteEntryAsync(alice.Id, GameId));
 
         Assert.Empty(edge.Sent);
     }
 
     [Fact]
-    public async Task DeleteEntryAsync_AnotherAccountsPublicReview_InvalidatesNothing()
+    public async Task DeleteEntryAsync_AnotherAccountsReviewOfTheGame_InvalidatesOnlyTheDeletersProfile()
     {
-        // And scoped to the account deleting, like the delete itself.
+        // Scoped to the account deleting, like the delete itself.
         var edge = new RecordingEdgeInvalidator();
         using var site = new Site(edge);
         var alice = await site.AccountAsync("alice", ProfileVisibility.Public);
@@ -567,9 +592,9 @@ public class ProfileWithdrawalTests
         await site.Get<ListService>().SetScoreAsync(alice.Id, GameId, 8);
         await site.Get<ReviewService>().UpsertAsync(bob.Id, GameId, Review(ReviewVisibility.Public));
 
-        await site.Get<ListService>().DeleteEntryAsync(alice.Id, GameId);
+        Assert.True(await site.Get<ListService>().DeleteEntryAsync(alice.Id, GameId));
 
-        Assert.Empty(edge.Sent);
+        AssertSent(edge, "entry deleted", "/u/alice*");
     }
 
     // ---------------------------------------------------------------------------------------
