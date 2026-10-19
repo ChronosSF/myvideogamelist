@@ -43,7 +43,7 @@ grow a forward pointer when a later record or an issue closes something it left 
 | [0021](0021-one-control-for-a-score.md) | Stars are the user's own score; every aggregate is a number out of 100 | Implemented |
 | [0022](0022-entry-surrogate-key-and-the-wishlist-axis.md) | The entry gets a surrogate key, and the wishlist is an axis rather than a status | Implemented |
 | [0023](0023-profile-statistics-derived-at-read-time.md) | Profile statistics are derived at read time, and split by what they depend on | Implemented; §4's chart amended by 0047 |
-| [0024](0024-the-ownership-contract.md) | One export manifest for every user-owned table, guarded in both directions | Implemented; one snapshot since #95, shown by hand until #104; its cascades asserted against PostgreSQL by 0057 |
+| [0024](0024-the-ownership-contract.md) | One export manifest for every user-owned table, guarded in both directions | Implemented; one snapshot since #95; its cascades and its snapshot tested against PostgreSQL by 0057 |
 | [0025](0025-playthroughs-and-reviews.md) | Playthroughs and reviews: what a user records about actually playing a game | Implemented |
 | [0026](0026-a-library-import-records-ownership-not-history.md) | A library import records ownership, not history | Accepted; its framework shipped in 0037, the Steam source is an open issue; §3 amended by 0047 |
 | [0027](0027-usernames-and-public-profiles.md) | Usernames are a namespace, and a profile is published only when asked | Implemented; the sitemap is 0036, D14 is 0058 |
@@ -72,7 +72,7 @@ grow a forward pointer when a later record or an issue closes something it left 
 | [0050](0050-an-imported-run-takes-its-type-from-the-source.md) | An imported run takes its type from the source's completion level | Implemented |
 | [0051](0051-admin-statistics-are-counted-never-listed.md) | Admin statistics are counted, never listed | Implemented |
 | [0056](0056-an-avatar-is-an-address-on-a-short-list-of-hosts.md) | An avatar is an address on a short list of hosts, which the document policy's `img-src` names too; a display name stands beside the handle; a bio is plain text | Implemented |
-| [0057](0057-the-api-is-tested-over-a-real-postgresql.md) | The API is tested over a real PostgreSQL: one container a run, a database a class, and IGDB out of reach | Implemented; the export-snapshot test went in skipped, waiting for #263 |
+| [0057](0057-the-api-is-tested-over-a-real-postgresql.md) | The API is tested over a real PostgreSQL: one container a run, a database a class, and IGDB out of reach | Implemented; the export-snapshot test went in skipped and runs since #263 |
 | [0058](0058-a-withdrawal-leaves-the-edge-when-it-is-made.md) | A withdrawal leaves the edge when it is made, and its retry stops when the TTL would have | Implemented; proved only by a deploy; §1's eighth event is 0056 |
 
 **Status** — *Accepted*: decided, not yet built. *Implemented*: decided and in the code.

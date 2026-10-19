@@ -1,6 +1,7 @@
 # 0057. The API is tested over a real PostgreSQL: one container a run, a database a class, and IGDB out of reach
 
-**Status:** Implemented. The export-snapshot test went in skipped, waiting for #263.
+**Status:** Implemented. The export-snapshot test went in skipped, waiting for #263, which switched it
+on.
 **Amends:** [0043](0043-where-the-key-ring-lives.md), which gave `AllowEphemeralKeys` one purpose;
 the integration suite's test host is a second.
 

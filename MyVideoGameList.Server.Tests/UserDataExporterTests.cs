@@ -27,8 +27,8 @@ namespace MyVideoGameList.Server.Tests;
 /// place. That is the line <c>UserOwnedDataTests</c> draws for a cascade and
 /// <c>ImportRetentionTests</c> for the sweep's delete. What is pinned instead is the request — one
 /// transaction, at that level, over before the export returns — which the provider's own
-/// transaction manager would otherwise drop unseen. Whether PostgreSQL honours it is for the
-/// integration tests (#104); until then it is the run by hand recorded on #95.
+//// transaction manager would otherwise drop unseen. Whether PostgreSQL honours it is shown by the
+/// integration suite's <c>ExportSnapshotTests</c> (<c>docs/decisions/0057-*</c>).
 /// </para>
 /// </remarks>
 public class UserDataExporterTests

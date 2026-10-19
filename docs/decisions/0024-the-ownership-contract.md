@@ -1,9 +1,8 @@
 # 0024. The ownership contract: one manifest, guarded in both directions
 
-**Status:** Implemented. Since #95 the export reads every section in one snapshot; that it holds is
-shown against PostgreSQL by hand, until #104's integration tests. The deletion test the first
-consequence below declines to write has run against PostgreSQL since
-[0057](0057-the-api-is-tested-over-a-real-postgresql.md).
+**Status:** Implemented. Since #95 the export reads every section in one snapshot. The deletion test
+the first consequence below declines to write, and a test that the snapshot holds, run against
+PostgreSQL in [0057](0057-the-api-is-tested-over-a-real-postgresql.md)'s integration suite.
 
 > **Later note.** The "No UI yet" consequence below is closed. `/user` has a "Your data" card:
 > *Download my data* fetches the export and saves it under the name the API's `Content-Disposition`
