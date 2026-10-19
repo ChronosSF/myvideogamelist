@@ -54,7 +54,12 @@ public class UserDataExporterTests
         string theme = "dark",
         string listView = ListViewModes.Tiles,
         string userName = "someone",
-        string profileVisibility = ProfileVisibility.Private)
+        string profileVisibility = ProfileVisibility.Private,
+        string? displayName = null,
+        string? avatarUrl = null,
+        string? bio = null,
+        DateTimeOffset? createdAt = null,
+        DateTimeOffset? lastSeenAt = null)
     {
         db.Users.Add(new ApplicationUser
         {
@@ -63,7 +68,12 @@ public class UserDataExporterTests
             Email = email,
             Theme = theme,
             ListView = listView,
-            ProfileVisibility = profileVisibility
+            ProfileVisibility = profileVisibility,
+            DisplayName = displayName,
+            AvatarUrl = avatarUrl,
+            Bio = bio,
+            CreatedAt = createdAt,
+            LastSeenAt = lastSeenAt
         });
         db.SaveChanges();
     }
@@ -238,9 +248,11 @@ public class UserDataExporterTests
         using var db = NewDb();
 
         AddAccount(db, UserId, "mine@test.local", theme: "light", listView: ListViewModes.Table,
-            userName: "mine", profileVisibility: ProfileVisibility.Public);
+            userName: "mine", profileVisibility: ProfileVisibility.Public,
+            displayName: "Mine Truly", avatarUrl: "https://i.imgur.com/mine.png", bio: "My bio.");
         AddAccount(db, OtherUserId, "theirs@test.local", theme: "dark", listView: ListViewModes.Tiles,
-            userName: "theirs");
+            userName: "theirs",
+            displayName: "Theirs", avatarUrl: "https://i.imgur.com/theirs.png", bio: "Their bio.");
 
         AddEntry(db, gameId: 11, status: ListStatusKeys.Playing, score: 8);
         AddEvent(db, gameId: 11, from: null, to: ListStatusKeys.Playing);
@@ -271,6 +283,12 @@ public class UserDataExporterTests
         // entered, so both travel with the rest of it (ADR 0027).
         Assert.Equal(ProfileVisibility.Public, export.Account.ProfileVisibility);
 
+        // So is what they wrote about themselves for that profile. Not a manifest table, so nothing
+        // but this would notice the three missing (ADR 0024); the avatar travels as its address.
+        Assert.Equal("Mine Truly", export.Account.DisplayName);
+        Assert.Equal("https://i.imgur.com/mine.png", export.Account.AvatarUrl);
+        Assert.Equal("My bio.", export.Account.Bio);
+
         Assert.Equal([11], export.Entries.Select(e => e.GameId));
         Assert.Equal([11], export.Events.Select(e => e.GameId));
         Assert.Equal([11], export.Playthroughs.Select(p => p.GameId));
@@ -293,6 +311,9 @@ public class UserDataExporterTests
 
         Assert.Equal(Now, export.ExportedAt);
         Assert.Equal("new@test.local", export.Account.Email);
+        Assert.Null(export.Account.DisplayName);
+        Assert.Null(export.Account.AvatarUrl);
+        Assert.Null(export.Account.Bio);
         Assert.Empty(export.Entries);
         Assert.Empty(export.Events);
         Assert.Empty(export.Playthroughs);
@@ -301,6 +322,26 @@ public class UserDataExporterTests
         Assert.Empty(export.Favourites);
         Assert.Empty(export.ListSortPreferences);
         Assert.Empty(export.ListNames);
+    }
+
+    [Fact]
+    public async Task ExportAsync_Account_CarriesWhenItWasCreatedAndLastSeen()
+    {
+        // Recorded about the user rather than entered by them, which is the stronger reason the export
+        // owes them (ADR 0051). An account from before they were recorded exports them as null.
+        using var db = NewDb();
+        var createdAt = new DateTimeOffset(2026, 3, 1, 9, 0, 0, TimeSpan.Zero);
+        var lastSeenAt = new DateTimeOffset(2026, 6, 14, 18, 30, 0, TimeSpan.Zero);
+        AddAccount(db, UserId, "mine@test.local", createdAt: createdAt, lastSeenAt: lastSeenAt);
+        AddAccount(db, OtherUserId, "older@test.local", userName: "older");
+
+        var export = await NewExporter(db).ExportAsync(UserId, default);
+        var older = await NewExporter(db).ExportAsync(OtherUserId, default);
+
+        Assert.Equal(createdAt, export.Account.CreatedAt);
+        Assert.Equal(lastSeenAt, export.Account.LastSeenAt);
+        Assert.Null(older.Account.CreatedAt);
+        Assert.Null(older.Account.LastSeenAt);
     }
 
     [Fact]

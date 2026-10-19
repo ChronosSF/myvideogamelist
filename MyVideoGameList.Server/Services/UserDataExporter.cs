@@ -128,7 +128,16 @@ public class UserDataExporter(ApplicationDbContext db, TimeProvider clock) : IUs
             .AsNoTracking()
             .Where(u => u.Id == userId)
             .Select(u => new AccountExportDto(
-                u.Email, u.UserName, u.Theme, u.ListView, u.ProfileVisibility))
+                u.Email,
+                u.UserName,
+                u.DisplayName,
+                u.AvatarUrl,
+                u.Bio,
+                u.Theme,
+                u.ListView,
+                u.ProfileVisibility,
+                u.CreatedAt,
+                u.LastSeenAt))
             .SingleOrDefaultAsync(cancellationToken);
 
         // The caller is authenticated, so a missing row means the account was deleted underneath

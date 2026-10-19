@@ -1,5 +1,5 @@
 import { createContext } from 'react';
-import type { ProfileVisibility, UserProfile } from '@/types/auth';
+import type { ProfileDetails, ProfileVisibility, UserProfile } from '@/types/auth';
 
 export interface AuthContextValue {
     user: UserProfile | null;
@@ -14,6 +14,12 @@ export interface AuthContextValue {
     updateUserName: (userName: string) => Promise<void>;
     /** Turns the public profile at `/u/{userName}` on or off. */
     updateProfileVisibility: (visibility: ProfileVisibility) => Promise<void>;
+    /**
+     * Replaces the display name, the avatar and the bio, all three at once; a null clears one.
+     * Rejects with a `ProfileDetailsError`, whose `fieldErrors` hold the server's reason for each
+     * field it refused, so the form can show each beside its input.
+     */
+    updateProfileDetails: (details: ProfileDetails) => Promise<void>;
     /**
      * Deletes the account and everything in it, confirmed by its password, and leaves nobody signed
      * in. Rejects with the server's message — a wrong password is a sentence for the user — and
