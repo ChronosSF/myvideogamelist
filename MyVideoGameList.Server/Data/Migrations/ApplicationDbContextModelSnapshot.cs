@@ -163,12 +163,24 @@ namespace MyVideoGameList.Server.Data.Migrations
                     b.Property<int>("AccessFailedCount")
                         .HasColumnType("integer");
 
+                    b.Property<string>("AvatarUrl")
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)");
+
+                    b.Property<string>("Bio")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
                     b.Property<string>("ConcurrencyStamp")
                         .IsConcurrencyToken()
                         .HasColumnType("text");
 
                     b.Property<DateTimeOffset?>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("DisplayName")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
 
                     b.Property<string>("Email")
                         .HasMaxLength(256)
@@ -242,6 +254,8 @@ namespace MyVideoGameList.Server.Data.Migrations
 
                     b.ToTable("AspNetUsers", null, t =>
                         {
+                            t.HasCheckConstraint("CK_AspNetUsers_AvatarUrl_Https", "\"AvatarUrl\" IS NULL OR \"AvatarUrl\" ILIKE 'https://%'");
+
                             t.HasCheckConstraint("CK_AspNetUsers_ProfileVisibility", "\"ProfileVisibility\" IN ('public', 'private')");
                         });
                 });

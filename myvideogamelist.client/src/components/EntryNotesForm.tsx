@@ -35,6 +35,10 @@ export function EntryNotesForm({ notes, onSave, pending, error }: EntryNotesForm
     // Blank is no notes, exactly as the server reads it, so clearing the box and saving clears them.
     const normalised = draft.trim() === '' ? null : draft.trim();
     const unchanged = normalised === notes;
+    // Saving an emptied box takes the notes away, so the button says so, in the neutral fill rather
+    // than a save's primary. Never in the delete's red: it writes what the box says over what was
+    // saved, as every save does, and a save that shortens the notes loses as much.
+    const clearing = notes !== null && normalised === null;
 
     const handleSubmit = (event: React.FormEvent) => {
         event.preventDefault();
@@ -64,8 +68,8 @@ export function EntryNotesForm({ notes, onSave, pending, error }: EntryNotesForm
             )}
 
             <div className="game-user-panel-confirm">
-                <button type="submit" className="danger" disabled={pending || unchanged}>
-                    {notes !== null && normalised === null ? 'Clear notes' : 'Save notes'}
+                <button type="submit" className={clearing ? undefined : 'primary'} disabled={pending || unchanged}>
+                    {clearing ? 'Clear notes' : 'Save notes'}
                 </button>
             </div>
         </form>

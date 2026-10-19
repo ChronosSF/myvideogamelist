@@ -58,7 +58,6 @@ change — so each can follow its own feature. The last column is the issue that
 
 | Table / change | Notes | Issue |
 |---|---|---|
-| `ApplicationUser` + `DisplayName`, `AvatarUrl`, `Bio` | Additive. `CreatedAt` is deliberately not added: the public profile says "tracking games here since" from the event log's first entry, because backfilling a join date for accounts that predate the column would be inventing a fact ([0027](decisions/0027-usernames-and-public-profiles.md)) | #119 |
 | `ApplicationUser` + `Region`, `Currency` | ITAD is region-aware and a EUR user must not be shown USD prices | #132 |
 | `ExternalAccountLinks` | `(UserId, Provider, ExternalId)`. Identity's `AspNetUserLogins` covers OAuth sign-in, but a SteamID64 held for *import* is not a login credential and does not belong there | #124 |
 | A `friends` value on `ProfileVisibility` and `Review.Visibility` | One additive migration in each of two columns; the "narrower wins" rule in [0027](decisions/0027-usernames-and-public-profiles.md) already says how they combine | #120 |
