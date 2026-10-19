@@ -101,11 +101,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const [user, setUser] = useState<UserProfile | null>(null);
     const [loading, setLoading] = useState(true);
 
+    // Abandoned on cleanup, as the other providers' reads are, and for a reason that comes up far
+    // more often than an unmount: since React 19.3, Strict Mode runs a hydrated tree's effects twice
+    // in development, cleaning up in between, as it already did for a client-rendered one — so this
+    // runs twice on every page load. Without the abort both answers would land, and the second
+    // would replace `user` with an equal object, which the lists, the wishlist and the favourites
+    // each take as a reason to fetch again.
     useEffect(() => {
-        fetch('/api/auth/me', { credentials: 'include' })
+        const controller = new AbortController();
+
+        fetch('/api/auth/me', { credentials: 'include', signal: controller.signal })
             .then(res => (res.ok ? res.json() : null))
-            .then((data: UserProfile | null) => setUser(data))
-            .finally(() => setLoading(false));
+            .then((data: UserProfile | null) => {
+                if (!controller.signal.aborted) setUser(data);
+            })
+            // An unreachable API rejects rather than answering, and means nobody signed in just as a
+            // refusal does. The abort lands here too, and is dropped.
+            .catch(() => {
+                if (!controller.signal.aborted) setUser(null);
+            })
+            .finally(() => {
+                if (!controller.signal.aborted) setLoading(false);
+            });
+
+        return () => controller.abort();
     }, []);
 
     const login = async (email: string, password: string, rememberMe: boolean) => {
