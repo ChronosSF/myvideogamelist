@@ -14,8 +14,8 @@
  * This copy is what lets a page load them: the document policy's `img-src` adds these to its own
  * sources (`IMAGE_SOURCES` in `@/lib/securityHeaders`), so a host here is a host every reader's
  * browser may be sent to. An image host that is not an avatar host belongs there, not here.
- * `avatar.test.ts` reads the server's list and fails when the two differ — a host on the server's
- * list and not on this one would be saved and then refused by every browser.
+ * `serverMirrors.test.ts` reads the server's list and fails when the two differ — a host on the
+ * server's list and not on this one would be saved and then refused by every browser.
  */
 export const AVATAR_HOSTS: readonly string[] = [
     'gravatar.com',
