@@ -256,7 +256,7 @@ the review screen treats that as the end of the job rather than as something to 
 
 Both are deleted by a scheduled sweep rather than on access, because nobody requests a deletion:
 the user whose rows they are has by construction stopped interacting with them. That is the
-application's only background job, and ADR
+application's only scheduled job, and ADR
 [0038](../docs/decisions/0038-where-scheduled-work-lives.md) records what it owes a fleet running
 several copies of itself.
 
