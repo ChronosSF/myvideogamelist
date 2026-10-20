@@ -4,7 +4,7 @@ import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useImportReview } from '@/hooks/useImport';
 import { IMPORT_MATCH } from '@/types/import';
-import { importJob, importReview, importRow } from '@/test/factories';
+import { importJob, importResult, importReview, importRow } from '@/test/factories';
 
 /**
  * The matching loop, which is the one piece of this hook that can run away.
@@ -354,11 +354,7 @@ describe('useImportReview, a change still on its way', () => {
                     return Promise.resolve(Response.json(
                         { detail: 'The import could not be finished.' }, { status: commitStatus }));
                 }
-                return Promise.resolve(Response.json({
-                    job: importJob({ state: 'done', importedCount: 2, skippedCount: 0 }),
-                    skipped: [],
-                    unlisted: 0,
-                }));
+                return Promise.resolve(Response.json(importResult({ imported: 2 })));
             }
 
             throw new Error(`unexpected fetch: ${init.method} ${url}`);

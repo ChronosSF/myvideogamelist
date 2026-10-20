@@ -32,7 +32,7 @@ internal static class ImportRetention
     /// <para>
     /// By this point a closed job is one small row and nothing else — the commit or the cancel that
     /// closed it deleted its <c>ImportRow</c>s — so these seven days keep a receipt: which file was
-    /// imported, when, how many games went in and how many were passed over. That is exactly what
+    /// imported, when, how many rows went in and how many were passed over. That is exactly what
     /// <c>/import</c> lists, and it is the only thing left to keep.
     /// </para>
     /// <para>

@@ -38,7 +38,7 @@ public class ReviewServiceTests
     }
 
     private static ReviewService NewService(ApplicationDbContext db, TimeProvider? clock = null) =>
-        new(db, clock ?? new FixedClock(Midday));
+        new(db, clock ?? new FixedClock(Midday), EdgeFakes.Withdrawals(db));
 
     private static PlaythroughService NewPlaythroughs(ApplicationDbContext db) =>
         new(db, new MemoryCache(new MemoryCacheOptions()), new FixedClock(Midday));
@@ -126,7 +126,8 @@ public class ReviewServiceTests
     public async Task UpsertAsync_GameAlreadyInAList_LeavesTheStatusAlone()
     {
         using var db = NewDb();
-        var lists = new ListService(db, Substitute.For<IGameCacheService>(), new FixedClock(Midday));
+        var lists = new ListService(
+            db, Substitute.For<IGameCacheService>(), new FixedClock(Midday), EdgeFakes.Withdrawals(db));
         await lists.SetListEntryAsync(UserId, GameId, ListStatusKeys.Finished);
 
         await NewService(db).UpsertAsync(UserId, GameId, Input());
