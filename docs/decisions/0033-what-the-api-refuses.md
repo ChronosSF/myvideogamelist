@@ -117,6 +117,11 @@ link generation and cookie domains key on, and `AllowedHosts` already states it.
 | `X-Frame-Options` | `DENY` | `DENY` |
 | `Content-Security-Policy` | `default-src 'none'; frame-ancestors 'none'` | `frame-ancestors 'none'` |
 
+> **Later note.** The documents' `Content-Security-Policy` above is superseded. It is now drawn per
+> render: `script-src 'self' 'nonce-…'; object-src 'none'; base-uri 'none'; frame-ancestors 'none';
+> img-src …`. The script half is [0053](0053-a-documents-scripts-carry-its-renders-nonce.md), and the
+> image half [0056](0056-an-avatar-is-an-address-on-a-short-list-of-hosts.md).
+
 The API's is the strictest policy there is, because JSON loads nothing and frames nothing. The
 OpenAPI document and the Scalar UI are exempt from that one directive, being the only thing this
 process serves that is a page.
@@ -133,7 +138,8 @@ Router hydrates from an inline script, so restricting scripts means a per-reques
 `<Scripts nonce>`, and a wrong nonce is a blank page rather than a warning. That is a change of its
 own, not a line in this one.
 
-> **Later note.** That change is [0053](0053-a-documents-scripts-carry-its-renders-nonce.md).
+> **Later note.** No longer absent: [0053](0053-a-documents-scripts-carry-its-renders-nonce.md) is
+> that change, with the nonce drawn per render in `entry.server.tsx`.
 
 HSTS ships alongside: a year, subdomains included, deployed only. Preload stays off — submission to
 the browsers' preload list is slow and awkward to undo, and belongs to whoever owns the domain

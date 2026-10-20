@@ -356,9 +356,9 @@ describe('a .data response', () => {
 
 describe('an error document', () => {
     it.each([
-        ['/missing', 404, 'Page not found'],
-        ['/unavailable', 502, '502'],
-    ])('carries the same policy for a thrown %s, and works under it', async (path, status, title) => {
+        [404, '/missing', 'Page not found'],
+        [502, '/unavailable', '502'],
+    ])('carries the same policy for a thrown %i, and works under it', async (status, path, title) => {
         const document = await render(path);
 
         expect(document.response.status).toBe(status);
