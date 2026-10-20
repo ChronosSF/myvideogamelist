@@ -141,9 +141,10 @@ done here from the start. Everything up to IGDB's answer runs on the stopping to
 abandons the request and the transaction rolls back with nothing written. Once IGDB has answered,
 the request has been paid for, and cancelling the write would throw the answer away to ask for it
 again on another task a minute later — so the save and the commit run on `CancellationToken.None`,
-bounded by the database's command timeout instead. The save is pinned by a test that cancels the
-stopping token in the same moment IGDB answers and finds the answer saved; the commit sits under the
-lock, which only a real database runs, and is held to the same rule by reading.
+bounded by the database's command timeout instead. Both are pinned against PostgreSQL by the
+integration suite's `GameCacheRefreshJobTests` ([0057](0057-the-api-is-tested-over-a-real-postgresql.md)),
+which stops the host in the moment IGDB answers and finds the answer committed — and which fails
+with the commit moved onto the stopping token.
 
 **IGDB not answering** — a host not reached, a broken circuit, a timeout, our own throttle, a body
 cut off, missing credentials; the list `UpstreamFailureHandler` and `UpstreamBusyHandler` already
@@ -160,6 +161,14 @@ would stop the refresh of the whole table. So that batch is **held back for an h
 error naming its ids, and the queue moves on; its rows fall back to their readers, as before this job
 existed. Splitting the batch to find the one game would refresh the other forty-nine as well, at the
 cost of state the job does not otherwise need; not done.
+
+**The database refusing what IGDB said** is held back the same way, which Copilot's review of the
+pull request found missing: a title longer than `CachedGames.Title`'s 512 characters is read and
+mapped without complaint and only fails at the save, after the hold-back above has been passed, so
+the batch rolled back unwritten and was the oldest thing due on every tick again. What counts is
+PostgreSQL's classes 22 and 23 — a value too long, a character it will not store, a constraint —
+which are refused alike however often the same rows are written. Anything else from the save, a
+dropped connection or a timeout, is a failed tick like any other, and the next one tries again.
 
 ### 6. Behind is a warning, hourly, and never a `/readyz` failure
 
@@ -243,8 +252,8 @@ one game's panel. Measured on the running API:
   treats every row with a payload as a game somebody here tracks, so the job does too. At fifty to a
   request, ten thousand such rows are two hundred requests a day, 0.06% of the allowance; whether the
   table should keep them at all is its own question, not this job's, and is #253.
-- **A batch IGDB answers unreadably costs its own rows, not the table**, held back an hour at a time
-  until the code reading it is fixed, and named in an error each time.
+- **A batch IGDB answers unreadably, or with a value the database refuses, costs its own rows, not
+  the table**, held back an hour at a time until the code is fixed, and named in an error each time.
 - **The distributed cache is no longer a pure swap for the Steam feeds.** 0012 says moving to
   `IDistributedCache` changes nothing else. The record of which feeds were read is per process, and
   the Steam job takes no lock because each process warms only its own copy; with the copy shared,
@@ -254,8 +263,10 @@ one game's panel. Measured on the running API:
   the composed payload (fifteen minutes), the trending list (hourly) and the games behind the news
   (half an hour) are still fetched by whoever recomposes the page after they lapse — and the last of
   those by `/news` and a game's panel too. Not in #102; it is #252.
-- **Not verified:** two tasks contending for the lock (one instance here, as with 0038); the
-  strategy wrapper and the change-tracker clear under `EnableRetryOnFailure`, which nothing here
-  turns on; the fifteen-second bound against an IGDB slow enough to reach it; and the held-back
-  batch against a real answer that cannot be read, since none is known — it is unit-tested with one
-  that throws.
+- **Run against PostgreSQL since:** the lock held by another session, the commit after a stop, and a
+  refused write, by `GameCacheRefreshJobTests` — each checked by breaking the code it covers.
+- **Not verified:** two application tasks contending for the lock (the suite holds it from a session
+  of its own, which is the same refusal to the try-lock); the strategy wrapper and the
+  change-tracker clear under `EnableRetryOnFailure`, which nothing here turns on; the fifteen-second
+  bound against an IGDB slow enough to reach it; and the held-back batch against a real answer that
+  cannot be read, since none is known — it is unit-tested with one that throws.

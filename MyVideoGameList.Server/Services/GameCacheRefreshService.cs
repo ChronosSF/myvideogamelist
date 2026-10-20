@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using MyVideoGameList.Server.Data;
 using MyVideoGameList.Server.DTOs;
+using Npgsql;
 using Polly.CircuitBreaker;
 using Polly.RateLimiting;
 using Polly.Timeout;
@@ -47,7 +48,7 @@ internal sealed class GameCacheRefreshService(
     /// The advisory lock each batch serialises on. "MVGLGAME" in ASCII, and only its uniqueness in
     /// this database matters — <c>ImportRetentionService</c> holds "MVGLIMPT".
     /// </summary>
-    private const long LockKey = 0x4D56474C_4741_4D45;
+    internal const long LockKey = 0x4D56474C_4741_4D45;
 
     /// <summary>
     /// How often a refresh that is behind says so again while it stays behind.
@@ -74,14 +75,16 @@ internal sealed class GameCacheRefreshService(
     private static readonly TimeSpan IgdbWaitLimit = TimeSpan.FromSeconds(15);
 
     /// <summary>
-    /// How long a batch IGDB answered in a shape this code cannot read is kept out of the queue.
+    /// How long a batch is kept out of the queue when IGDB answered it in a shape this code cannot
+    /// read, or with a value the database refuses to store.
     /// </summary>
     /// <remarks>
     /// <para>
     /// Retrying it on the next tick would retry it for ever: nothing is written, so it stays the
-    /// oldest thing due and comes first every time, and one game the mapping cannot read would stop
-    /// the refresh of the whole table. Held back, it costs only its own rows, which fall back to
-    /// their readers — refreshed at a day, as before this job existed — while the queue moves on.
+    /// oldest thing due and comes first every time, and one game the mapping cannot read — or one
+    /// title longer than its column — would stop the refresh of the whole table. Held back, it
+    /// costs only its own rows, which fall back to their readers — refreshed at a day, as before
+    /// this job existed — while the queue moves on.
     /// </para>
     /// <para>
     /// An hour, so the error that names the rows repeats on the warning's rhythm, and so they are
@@ -323,7 +326,7 @@ internal sealed class GameCacheRefreshService(
             // expect, or a mapping that met a null. That may be one game's, and retrying it would
             // stop the whole queue behind it, so these rows wait an hour instead. An error, unlike
             // IGDB failing to answer, because the fix is ours.
-            foreach (var id in ids) heldBack[id] = now + HoldBackFor;
+            HoldBack(ids, now);
 
             logger.LogError(
                 ex,
@@ -349,10 +352,48 @@ internal sealed class GameCacheRefreshService(
             GameCacheService.Apply(row, answered.GetValueOrDefault(row.GameId), stamp);
 
         // From here the answer has been paid for. See the remarks above.
-        await db.SaveChangesAsync(CancellationToken.None);
+        try
+        {
+            await db.SaveChangesAsync(CancellationToken.None);
+        }
+        catch (DbUpdateException ex) when (IsRefusedWrite(ex))
+        {
+            // The answer was read, and the database would not store it: a title longer than its
+            // column, a character PostgreSQL will not keep. As deterministic as an unreadable answer
+            // and as able to stop the queue — the transaction rolls back unwritten and the batch is
+            // the oldest thing due again — so it is held back the same way. Found by Copilot's review
+            // of #256.
+            HoldBack(ids, now);
+
+            logger.LogError(
+                ex,
+                "The database refused what IGDB said about {Count} cached game(s). They are held back "
+                + "from the refresh until {Until} and left to their readers meanwhile: {Ids}.",
+                ids.Count, now + HoldBackFor, string.Join(',', ids));
+
+            return new Batch(rows.Count, Answered: false, 0, took, oldest);
+        }
 
         return new Batch(rows.Count, Answered: true, rows.Count(row => row.Payload is null), took, oldest);
     }
+
+    private void HoldBack(IReadOnlyList<int> ids, DateTimeOffset now)
+    {
+        foreach (var id in ids) heldBack[id] = now + HoldBackFor;
+    }
+
+    /// <summary>
+    /// Whether the database refused a write for what it held, rather than failing to take it at all.
+    /// </summary>
+    /// <remarks>
+    /// PostgreSQL's class 22, data exceptions — a value too long for its column, a character it will
+    /// not store — and class 23, integrity constraint violations. Both are refused the same way
+    /// however often the same rows are written. Anything else — a dropped connection, a timeout, a
+    /// row nobody can update any more — is a tick that failed, and the next one tries again.
+    /// </remarks>
+    internal static bool IsRefusedWrite(DbUpdateException exception) =>
+        exception.InnerException is PostgresException { SqlState: var state }
+        && (state.StartsWith("22", StringComparison.Ordinal) || state.StartsWith("23", StringComparison.Ordinal));
 
     /// <summary>
     /// Whether a failure means IGDB could not be asked or did not answer, rather than that it

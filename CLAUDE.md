@@ -41,7 +41,7 @@ Open `https://localhost:58546`.
 | `npm run visual` | Before-and-after screenshots of the pages, compared pixel by pixel, for a change meant to look the same. Needs two dev servers and a local test account, whose email and password it reads from the shell or from `visual/.env` (ignored by git); `visual/playwright.config.ts` says how. Not run by CI |
 | `npm run build` | Production build |
 | `dotnet test MyVideoGameList.Server.Tests/MyVideoGameList.Server.Tests.csproj` | Server unit tests |
-| `dotnet test MyVideoGameList.Server.IntegrationTests/MyVideoGameList.Server.IntegrationTests.csproj` | The API over a real PostgreSQL, for what InMemory cannot do: auth and the lists end to end, the cascades, the retention sweep, and the export's snapshot. Needs Docker running; starts and removes a container of its own, never `mvgl-postgres`. About fifteen seconds once built. See ADR 0057 |
+| `dotnet test MyVideoGameList.Server.IntegrationTests/MyVideoGameList.Server.IntegrationTests.csproj` | The API over a real PostgreSQL, for what InMemory cannot do: auth and the lists end to end, the cascades, the retention sweep, the cache refresh's lock and commit, and the export's snapshot. Needs Docker running; starts and removes a container of its own, never `mvgl-postgres`. About fifteen seconds once built. See ADR 0057 |
 | `dotnet ef migrations add <Name>` | From `MyVideoGameList.Server/` |
 | `dotnet ef database update` | Applies migrations by hand; only needed outside Development |
 | `docker compose up -d --wait` | Local PostgreSQL. `--wait` blocks until it accepts connections |
@@ -403,11 +403,14 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   session holds the key, so for the sweep, work still expired after six skipped ticks running means
   the holder is not a sweep, and that logs a warning. The refresh cannot use that rule — rows fall
   due all day, so work is nearly always waiting — and warns instead, hourly, while any row is
-  **twenty-five hours old**, which no row reaches while the refresh keeps up. It holds its lock
+  **twenty-five hours old**, which no row reaches while the refresh keeps up. A batch whose answer
+  cannot be read, or whose write PostgreSQL refuses, is held back an hour rather than retried at the
+  head of the queue for ever. It holds its lock
   **across the IGDB request**, so no two tasks pay for the same rows, bounded at fifteen seconds
   because the transaction also holds back any migration of the table; once IGDB has answered it
   **saves and commits on `CancellationToken.None`**: the stopping token bounds the work, not the
-  write (#96). Unlike the sweep it writes tracked rows, so **each attempt clears the change
+  write (#96); the integration suite's `GameCacheRefreshJobTests` runs the lock, that commit and a
+  refused write against PostgreSQL. Unlike the sweep it writes tracked rows, so **each attempt clears the change
   tracker** — under a retrying strategy a commit that failed after its save would otherwise leave
   the retry rows already marked saved, and stamp the stale payload fresh. Its pace, one request of
   fifty ids a minute, is the `GameCacheRefresh` section, checked at startup. **The Steam refresh

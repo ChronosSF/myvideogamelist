@@ -496,6 +496,32 @@ public class GameCacheRefreshTests
         Assert.Equal(unanswered, GameCacheRefreshService.IsUnanswered(failure));
     }
 
+    [Theory]
+    [InlineData("22001", true)] // a value too long for its column
+    [InlineData("22P05", true)] // a character PostgreSQL will not store in jsonb
+    [InlineData("23514", true)] // a check constraint
+    [InlineData("40001", false)] // a serialisation failure: try again
+    [InlineData("08006", false)] // the connection went: try again
+    public void IsRefusedWrite_SortsADatabaseFailureByWhetherRetryingCouldHelp(string sqlState, bool refused)
+    {
+        // Refused for what the rows hold means refused again on every tick, which would stop the
+        // queue behind them; anything else is a tick that failed, and the next one tries again. The
+        // write itself is refused for real, by PostgreSQL, in GameCacheRefreshJobTests.
+        var failure = new DbUpdateException(
+            "An error occurred while saving the entity changes.",
+            new Npgsql.PostgresException("Refused.", "ERROR", "ERROR", sqlState));
+
+        Assert.Equal(refused, GameCacheRefreshService.IsRefusedWrite(failure));
+    }
+
+    [Fact]
+    public void IsRefusedWrite_AFailureThatIsNotTheDatabaseSaying_IsNotRefused()
+    {
+        // A concurrency failure carries no PostgreSQL error: a row gone from under the batch, which
+        // the next tick will not select again.
+        Assert.False(GameCacheRefreshService.IsRefusedWrite(new DbUpdateConcurrencyException("Gone.")));
+    }
+
     [Fact]
     public async Task RefreshDueAsync_WhenIgdbTimesOutWithoutAShutdown_TreatsItAsIgdbFailing()
     {
