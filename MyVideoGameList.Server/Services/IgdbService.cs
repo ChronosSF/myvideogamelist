@@ -48,6 +48,13 @@ public class IgdbService(
     private const int EsrbOrganization = 1;
 
     /// <summary>
+    /// The IGDB <c>website_types</c> id "Official Website", read from a website's <c>type</c>. This
+    /// replaced the old <c>websites.category</c> field, which no longer exists — asking for it returns
+    /// nothing.
+    /// </summary>
+    private const int OfficialWebsiteType = 1;
+
+    /// <summary>
     /// IGDB <c>popularity_type</c> 5, "24hr Peak Players", sourced from Steam.
     /// </summary>
     /// <remarks>
@@ -103,7 +110,7 @@ public class IgdbService(
         "cover.image_id," +
         "artworks.image_id," +
         "videos.video_id," +
-        "websites.url,websites.category," +
+        "websites.url,websites.type," +
         "rating,aggregated_rating,aggregated_rating_count," +
         "total_rating,total_rating_count," +
         "age_ratings.organization,age_ratings.rating_category," +
@@ -117,7 +124,13 @@ public class IgdbService(
     /// screenshots, language tables and three sets of related games multiply by the page size,
     /// and a grid of cover art has no use for any of them.
     /// </summary>
+    /// <remarks>
+    /// The store links read the websites the listing already asks for, and add the game's
+    /// <c>external_games</c> here. Those carry a row per regional retail listing as well — Elden Ring
+    /// has 49 from Amazon alone — which a page of twenty games would multiply for nothing.
+    /// </remarks>
     private const string GameDetailFieldList =
+        "external_games.url,external_games.external_game_source," +
         "screenshots.image_id," +
         "themes.name,player_perspectives.name,game_modes.name,game_engines.name," +
         "collections.name,franchises.name," +
@@ -1023,8 +1036,15 @@ public class IgdbService(
             ? $"https://www.youtube.com/watch?v={vidId}"
             : null;
 
-        var website = g.Websites?.FirstOrDefault(w => w.Category == 3)?.Url
-            ?? g.Websites?.FirstOrDefault()?.Url;
+        // The official site or nothing. It used to fall back to the first link of any kind, which was
+        // every game's answer once IGDB stopped returning `category`: The Witcher 3's "Official Site"
+        // was its Facebook page. The stores have a row of their own on the game page now. In id order,
+        // as the store links are, so that a game with two gives the same answer on every read.
+        var website = g.Websites?
+            .Where(w => w.Type == OfficialWebsiteType)
+            .OrderBy(w => w.Id)
+            .Select(w => WebAddress(w.Url))
+            .FirstOrDefault(address => address is not null);
 
         // The headline score is total_rating - IGDB's blend of critic and user scores - because it
         // is backed by orders of magnitude more opinions than aggregated_rating alone. Falls back
@@ -1108,7 +1128,8 @@ public class IgdbService(
             Names(g.GameEngines),
             Names(g.Collections),
             Names(g.Franchises),
-            MapLanguages(g.LanguageSupports));
+            MapLanguages(g.LanguageSupports),
+            StoreLinks.Map(g.Websites, g.ExternalGames));
     }
 
     private static List<string> Names(List<IgdbNamedEntity>? entities) =>

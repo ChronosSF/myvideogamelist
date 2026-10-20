@@ -227,6 +227,49 @@ public class MapEsrbRatingTests
 }
 
 /// <summary>
+/// IGDB behind a stub: the token request answered, the games endpoint answered with a payload of IGDB's
+/// own JSON, and every other endpoint with no rows.
+/// </summary>
+internal sealed class StubIgdb(string gamesPayload) : HttpMessageHandler
+{
+    private const string TokenPayload =
+        """{ "access_token": "token", "expires_in": 3600, "token_type": "bearer" }""";
+
+    /// <summary>The last Apicalypse query the service sent to the games endpoint.</summary>
+    public string? Query { get; private set; }
+
+    /// <summary>A service that asks this stub, with a cache of its own.</summary>
+    public IgdbService NewService()
+    {
+        var factory = Substitute.For<IHttpClientFactory>();
+        factory.CreateClient("Igdb").Returns(_ => new HttpClient(this, disposeHandler: false));
+
+        var configuration = Substitute.For<IConfiguration>();
+        configuration["Igdb:ClientId"].Returns("client-id");
+        configuration["Igdb:ClientSecret"].Returns("client-secret");
+
+        return new IgdbService(
+            factory, configuration, new MemoryCache(new MemoryCacheOptions()),
+            NullLogger<IgdbService>.Instance);
+    }
+
+    protected override async Task<HttpResponseMessage> SendAsync(
+        HttpRequestMessage request, CancellationToken cancellationToken)
+    {
+        if (request.RequestUri?.Host == "id.twitch.tv") return Json(TokenPayload);
+
+        var query = await request.Content!.ReadAsStringAsync(cancellationToken);
+        if (request.RequestUri?.AbsolutePath != "/v4/games") return Json("[]");
+
+        Query = query;
+        return Json(gamesPayload);
+    }
+
+    private static HttpResponseMessage Json(string body) =>
+        new(HttpStatusCode.OK) { Content = new StringContent(body, Encoding.UTF8, "application/json") };
+}
+
+/// <summary>
 /// The listing against a stubbed IGDB, over the two joints a mapping test cannot see: the fields the
 /// query actually asks for, and the binding from IGDB's own JSON onto the model. The ESRB bug lived
 /// in exactly that gap — correct C# over fields the query no longer asked for — and every test that
@@ -235,8 +278,9 @@ public class MapEsrbRatingTests
 public class GetGamesAsyncTests
 {
     /// <summary>
-    /// The Witcher 3's age ratings as live IGDB returned them, under the fields it returns today.
-    /// Organization 1 is the ESRB and its rating category 6 is "M".
+    /// The Witcher 3's age ratings and websites as live IGDB returned them, under the fields it returns
+    /// today. Organization 1 is the ESRB and its rating category 6 is "M"; website type 1 is "Official
+    /// Website", listed after its Facebook page (4), Wikipedia (3) and Steam (13).
     /// </summary>
     private const string GamesPayload = """
         [
@@ -251,59 +295,40 @@ public class GetGamesAsyncTests
               { "id": 46963, "organization": 4, "rating_category": 22 },
               { "id": 78138, "organization": 5, "rating_category": 26 },
               { "id": 187952, "organization": 1, "rating_category": 6 }
+            ],
+            "websites": [
+              { "id": 19103, "url": "https://www.facebook.com/CDPROJEKTRED", "type": 4 },
+              { "id": 19102, "url": "https://en.wikipedia.org/wiki/The_Witcher_3:_Wild_Hunt", "type": 3 },
+              { "id": 19107, "url": "https://store.steampowered.com/app/292030", "type": 13 },
+              { "id": 66471, "url": "http://www.thewitcher.com", "type": 1 }
             ]
           }
         ]
         """;
 
-    private const string TokenPayload =
-        """{ "access_token": "token", "expires_in": 3600, "token_type": "bearer" }""";
-
-    /// <summary>Answers the token request, then every query with <see cref="GamesPayload"/>.</summary>
-    private sealed class StubHandler : HttpMessageHandler
-    {
-        /// <summary>The Apicalypse query the service sent.</summary>
-        public string? Query { get; private set; }
-
-        protected override async Task<HttpResponseMessage> SendAsync(
-            HttpRequestMessage request, CancellationToken cancellationToken)
-        {
-            if (request.RequestUri?.Host == "id.twitch.tv") return Json(TokenPayload);
-
-            Query = await request.Content!.ReadAsStringAsync(cancellationToken);
-            return Json(GamesPayload);
-        }
-
-        private static HttpResponseMessage Json(string body) =>
-            new(HttpStatusCode.OK) { Content = new StringContent(body, Encoding.UTF8, "application/json") };
-    }
-
-    private static (IgdbService Service, StubHandler Igdb) NewService()
-    {
-        var handler = new StubHandler();
-
-        var factory = Substitute.For<IHttpClientFactory>();
-        factory.CreateClient("Igdb").Returns(_ => new HttpClient(handler));
-
-        var configuration = Substitute.For<IConfiguration>();
-        configuration["Igdb:ClientId"].Returns("client-id");
-        configuration["Igdb:ClientSecret"].Returns("client-secret");
-
-        var service = new IgdbService(
-            factory, configuration, new MemoryCache(new MemoryCacheOptions()),
-            NullLogger<IgdbService>.Instance);
-
-        return (service, handler);
-    }
+    /// <summary>Lethal Company's websites as live IGDB returned them: it has no official site.</summary>
+    private const string NoOfficialSitePayload = """
+        [
+          {
+            "id": 212089,
+            "name": "Lethal Company",
+            "websites": [
+              { "id": 499540, "url": "https://www.twitch.tv/directory/game/Lethal%20Company", "type": 6 },
+              { "id": 301537, "url": "https://store.steampowered.com/app/1966720", "type": 13 },
+              { "id": 599533, "url": "https://en.wikipedia.org/wiki/Lethal_Company", "type": 3 }
+            ]
+          }
+        ]
+        """;
 
     [Fact]
     public async Task WithAnyQuery_AsksForTheAgeRatingFieldsTheMappingReads()
     {
         // The removed `age_ratings.category,age_ratings.rating` answered 200 with rows holding only an
         // id, so the badge vanished with nothing logged. The same constant feeds the detail query.
-        var (service, igdb) = NewService();
+        var igdb = new StubIgdb(GamesPayload);
 
-        await service.GetGamesAsync();
+        await igdb.NewService().GetGamesAsync();
 
         Assert.Contains("age_ratings.organization,age_ratings.rating_category", igdb.Query);
     }
@@ -313,11 +338,237 @@ public class GetGamesAsyncTests
     {
         // The half no mapping test reaches: snake_case onto Organization and RatingCategory. Misname
         // either and EsrbRating is null again while every MapEsrbRating test still passes.
-        var (service, _) = NewService();
-
-        var games = await service.GetGamesAsync();
+        var games = await new StubIgdb(GamesPayload).NewService().GetGamesAsync();
 
         Assert.Equal("M", Assert.Single(games.Items).EsrbRating);
+    }
+
+    [Fact]
+    public async Task WithAnyQuery_AsksForTheWebsiteTypeNotTheRemovedCategory()
+    {
+        // `websites.category` went the way of the age ratings' fields: asked for, it is simply left out,
+        // and every game's official site became whichever link IGDB happened to list first.
+        var igdb = new StubIgdb(GamesPayload);
+
+        await igdb.NewService().GetGamesAsync();
+
+        Assert.Contains("websites.url,websites.type", igdb.Query);
+        Assert.DoesNotContain("websites.category", igdb.Query);
+    }
+
+    [Fact]
+    public async Task WithAnyQuery_LeavesTheExternalGamesToTheDetailQuery()
+    {
+        // ADR 0017. A game's external_games carry a row per regional retail listing — Elden Ring has 49
+        // from Amazon — and only the game page's store links read any of them.
+        var igdb = new StubIgdb(GamesPayload);
+
+        await igdb.NewService().GetGamesAsync();
+
+        // DoesNotContain passes on a null, which a listing that stopped asking the games endpoint would be.
+        Assert.NotNull(igdb.Query);
+        Assert.DoesNotContain("external_games", igdb.Query);
+    }
+
+    [Fact]
+    public async Task WithIgdbsOwnJson_TakesTheOfficialWebsiteOverTheLinksListedBeforeIt()
+    {
+        var games = await new StubIgdb(GamesPayload).NewService().GetGamesAsync();
+
+        Assert.Equal("http://www.thewitcher.com/", Assert.Single(games.Items).Website);
+    }
+
+    [Fact]
+    public async Task WithNoOfficialWebsite_HasNoWebsiteRatherThanAnotherLink()
+    {
+        // The page calls this link "Official Site". A Wikipedia article or a store page under that name
+        // is a wrong answer, where no link is an honest one.
+        var games = await new StubIgdb(NoOfficialSitePayload).NewService().GetGamesAsync();
+
+        Assert.Null(Assert.Single(games.Items).Website);
+    }
+
+    [Fact]
+    public async Task WithSeveralOfficialWebsites_TakesTheOldestThatIsAWebAddress()
+    {
+        // Made up: IGDB's rows carry one official site each for the games looked at. In id order, so the
+        // answer does not follow IGDB's listing order, and past one that is no address at all.
+        const string payload = """
+            [
+              {
+                "id": 1942,
+                "name": "The Witcher 3: Wild Hunt",
+                "websites": [
+                  { "id": 3, "url": "https://www.thewitcher.com/en/witcher3", "type": 1 },
+                  { "id": 2, "url": "https://thewitcher.com", "type": 1 },
+                  { "id": 1, "url": "www.thewitcher.com", "type": 1 }
+                ]
+              }
+            ]
+            """;
+
+        var games = await new StubIgdb(payload).NewService().GetGamesAsync();
+
+        Assert.Equal("https://thewitcher.com/", Assert.Single(games.Items).Website);
+    }
+
+    [Fact]
+    public async Task WithIgdbsOwnJson_CarriesNoDetails()
+    {
+        var games = await new StubIgdb(GamesPayload).NewService().GetGamesAsync();
+
+        Assert.Null(Assert.Single(games.Items).Details);
+    }
+}
+
+/// <summary>
+/// The game page's query against a stubbed IGDB, over the same two joints as the listing's: the
+/// fields asked for, and IGDB's own JSON bound through to the store links.
+/// </summary>
+public class GetGameByIdAsyncTests
+{
+    /// <summary>
+    /// The Witcher 3's websites and external games as live IGDB returned them on 2026-10-17, under the
+    /// fields the detail query asks for. Every store it is sold on has a website row, which wins, so this
+    /// binds the websites; <see cref="MonumentValleyPayload"/> binds the synced rows. Source 20 is Amazon,
+    /// 14 Twitch, 3 GiantBomb, 10 YouTube.
+    /// </summary>
+    private const string WitcherPayload = """
+        [
+          {
+            "id": 1942,
+            "name": "The Witcher 3: Wild Hunt",
+            "websites": [
+              { "id": 19103, "url": "https://www.facebook.com/CDPROJEKTRED", "type": 4 },
+              { "id": 141346, "url": "https://www.epicgames.com/store/en-US/product/the-witcher-3-wild-hunt/home", "type": 16 },
+              { "id": 793706, "url": "https://www.xbox.com/en-us/games/store/the-witcher-3-wild-hunt/BR765873CQJD", "type": 22 },
+              { "id": 793707, "url": "https://store.playstation.com/en-us/concept/204794", "type": 23 },
+              { "id": 793708, "url": "https://www.nintendo.com/games/detail/the-witcher-3-wild-hunt-switch/", "type": 24 },
+              { "id": 19102, "url": "https://en.wikipedia.org/wiki/The_Witcher_3:_Wild_Hunt", "type": 3 },
+              { "id": 19107, "url": "https://store.steampowered.com/app/292030", "type": 13 },
+              { "id": 66471, "url": "http://www.thewitcher.com", "type": 1 },
+              { "id": 119948, "url": "https://www.gog.com/game/the_witcher_3_wild_hunt", "type": 17 },
+              { "id": 19101, "url": "http://witcher.wikia.com/wiki/The_Witcher_3:_Wild_Hunt", "type": 2 },
+              { "id": 19104, "url": "https://twitter.com/witchergame", "type": 5 },
+              { "id": 78076, "url": "https://www.reddit.com/r/witcher", "type": 14 },
+              { "id": 19105, "url": "https://www.instagram.com/cdpred", "type": 8 },
+              { "id": 19106, "url": "https://www.youtube.com/user/WitcherGame", "type": 9 },
+              { "id": 512145, "url": "https://www.twitch.tv/directory/game/The%20Witcher%203:%20Wild%20Hunt", "type": 6 },
+              { "id": 670803, "url": "https://discord.gg/thewitcher", "type": 18 }
+            ],
+            "external_games": [
+              { "id": 2176359, "url": "https://store.playstation.com/en-us/concept/204794", "external_game_source": 36 },
+              { "id": 211029, "url": "https://www.xbox.com/en-us/games/store/the-witcher-3-wild-hunt/BR765873CQJD", "external_game_source": 11 },
+              { "id": 246257, "url": "https://www.twitch.tv/directory/game/The Witcher 3: Wild Hunt", "external_game_source": 14 },
+              { "id": 1937739, "external_game_source": 20 },
+              { "id": 1931970, "external_game_source": 20 },
+              { "id": 11306, "url": "https://store.steampowered.com/app/292030", "external_game_source": 1 },
+              { "id": 78478, "url": "https://www.gog.com/en/game/the_witcher_3_wild_hunt", "external_game_source": 5 },
+              { "id": 2067884, "url": "https://www.gog.com/en/game/the_witcher_3_wild_hunt", "external_game_source": 5 },
+              { "id": 119254, "url": "https://www.giantbomb.com/games/3030-41484/", "external_game_source": 3 },
+              { "id": 189745, "url": "https://gaming.youtube.com/game/UCprFOIVpCqQLUMsWBNwt0PQ", "external_game_source": 10 },
+              { "id": 1928370, "url": "https://amazon.com/dp/B07SH3D6HT", "external_game_source": 20 }
+            ]
+          }
+        ]
+        """;
+
+    /// <summary>
+    /// Monument Valley's websites and external games as live IGDB returned them on 2026-10-17, under the
+    /// fields the detail query asks for. Its Steam page is a website row, but the PlayStation Store and
+    /// the Microsoft Store are only in its synced rows. Source 15 is Android and 13 Apple.
+    /// </summary>
+    private const string MonumentValleyPayload = """
+        [
+          {
+            "id": 8900,
+            "name": "Monument Valley",
+            "websites": [
+              { "id": 868148, "url": "https://monumentvalley.fandom.com/wiki/Monument_Valley_Wiki", "type": 2 },
+              { "id": 868149, "url": "https://x.com/ustwogames", "type": 5 },
+              { "id": 868150, "url": "https://www.youtube.com/@ustwogames", "type": 9 },
+              { "id": 868151, "url": "https://en.wikipedia.org/wiki/Monument_Valley_(video_game)", "type": 3 },
+              { "id": 868152, "url": "https://www.reddit.com/r/MonumentValley", "type": 14 },
+              { "id": 868153, "url": "https://bsky.app/profile/ustwogames.co.uk", "type": 19 },
+              { "id": 336403, "url": "https://www.twitch.tv/directory/game/Monument%20Valley", "type": 6 },
+              { "id": 1120066, "url": "https://play.google.com/store/apps/details?id=com.ustwo.monumentvalley", "type": 12 },
+              { "id": 1120067, "url": "https://apps.apple.com/us/app/monument-valley/id728293409", "type": 10 },
+              { "id": 1120068, "url": "https://www.facebook.com/monumentvalleygame", "type": 4 },
+              { "id": 1120065, "url": "https://store.steampowered.com/app/1927720", "type": 13 },
+              { "id": 1120069, "url": "https://www.instagram.com/ustwogames", "type": 8 },
+              { "id": 1120070, "url": "https://discord.gg/p6jM2AHahc", "type": 18 },
+              { "id": 1063380, "url": "https://www.monumentvalleygame.com/mv1", "type": 1 }
+            ],
+            "external_games": [
+              { "id": 352303, "url": "https://play.google.com/store/apps/details?id=com.ustwo.monumentvalley", "external_game_source": 15 },
+              { "id": 188977, "url": "https://gaming.youtube.com/game/UC8rvuMtGNc9e9gqTzSihE5w", "external_game_source": 10 },
+              { "id": 115158, "url": "https://www.giantbomb.com/games/3030-45914/", "external_game_source": 3 },
+              { "id": 249262, "url": "https://www.twitch.tv/directory/game/Monument Valley", "external_game_source": 14 },
+              { "id": 224878, "url": "https://itunes.apple.com/us/app/monument-valley/id728293409?mt=8&uo=4", "external_game_source": 13 },
+              { "id": 3001204, "url": "https://www.xbox.com/en-us/games/store/monument-valley/9NT17X2MR55H", "external_game_source": 11 },
+              { "id": 2995315, "url": "https://store.playstation.com/en-us/concept/10013172", "external_game_source": 36 }
+            ]
+          }
+        ]
+        """;
+
+    [Fact]
+    public async Task WithAnyId_AsksForTheFieldsTheStoreLinksRead()
+    {
+        var igdb = new StubIgdb(WitcherPayload);
+
+        await igdb.NewService().GetGameByIdAsync(1942);
+
+        Assert.Contains("websites.url,websites.type", igdb.Query);
+        Assert.Contains("external_games.url,external_games.external_game_source", igdb.Query);
+    }
+
+    [Fact]
+    public async Task WithIgdbsOwnJson_BindsTheWebsitesThroughToOneLinkPerStore()
+    {
+        // The half no mapping test reaches: `type` onto the model. Misname it and the row is empty on
+        // every game page while every StoreLinks test still passes.
+        var game = await new StubIgdb(WitcherPayload).NewService().GetGameByIdAsync(1942);
+
+        Assert.NotNull(game);
+        Assert.NotNull(game.Details);
+        Assert.Equal(
+            [
+                new StoreLinkDto("Steam", "https://store.steampowered.com/app/292030"),
+                new StoreLinkDto("GOG", "https://www.gog.com/game/the_witcher_3_wild_hunt"),
+                new StoreLinkDto("Epic Games Store", "https://www.epicgames.com/store/en-US/product/the-witcher-3-wild-hunt/home"),
+                new StoreLinkDto("PlayStation Store", "https://store.playstation.com/en-us/concept/204794"),
+                new StoreLinkDto("Microsoft Store", "https://www.xbox.com/en-us/games/store/the-witcher-3-wild-hunt/BR765873CQJD"),
+                new StoreLinkDto("Nintendo eShop", "https://www.nintendo.com/games/detail/the-witcher-3-wild-hunt-switch/"),
+            ],
+            game.Details.Stores);
+    }
+
+    [Fact]
+    public async Task WithIgdbsOwnJson_BindsTheSyncedRowsThroughToTheStoresOnlyTheyName()
+    {
+        // The other half: `external_games`, its `url` and its `external_game_source` onto the model.
+        // Misname any of them and these two stores vanish from every page that has no website row for
+        // them, while every StoreLinks test still passes.
+        var game = await new StubIgdb(MonumentValleyPayload).NewService().GetGameByIdAsync(8900);
+
+        Assert.NotNull(game);
+        Assert.NotNull(game.Details);
+        Assert.Equal(
+            [
+                new StoreLinkDto("Steam", "https://store.steampowered.com/app/1927720"),
+                new StoreLinkDto("PlayStation Store", "https://store.playstation.com/en-us/concept/10013172"),
+                new StoreLinkDto("Microsoft Store", "https://www.xbox.com/en-us/games/store/monument-valley/9NT17X2MR55H"),
+            ],
+            game.Details.Stores);
+    }
+
+    [Fact]
+    public async Task WithIgdbsOwnJson_TakesTheOfficialWebsiteHereToo()
+    {
+        var game = await new StubIgdb(WitcherPayload).NewService().GetGameByIdAsync(1942);
+
+        Assert.Equal("http://www.thewitcher.com/", game?.Website);
     }
 }
 
@@ -512,6 +763,7 @@ public class MapToDetailsDtoTests
         Assert.Empty(result.Dlcs);
         Assert.Empty(result.Themes);
         Assert.Empty(result.Languages);
+        Assert.Empty(result.Stores);
         Assert.Null(result.ParentGame);
         Assert.Null(result.TimeToBeat);
         Assert.Null(result.MultiplayerModes);

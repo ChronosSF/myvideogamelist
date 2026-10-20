@@ -296,6 +296,40 @@ public class ConnectedReleaseServiceTests
         Assert.Equal(2, entry.Releases.Count);
     }
 
+    [Fact]
+    public async Task GetAsync_AnUpdateOfAGameInTheSet_IsAnUpdate_InTheApisWords()
+    {
+        // F1 keeps an update for the game it updates, and the client says what it is: "Update for Zenless Zone
+        // Zero". As read on 2026-10-15, its 3.3 is due on 21 October 2026, known to the day, in no series.
+        using var db = NewDb();
+        Track(db, 200551, ListStatusKeys.Playing);
+        await db.SaveChangesAsync();
+
+        var known = new CalendarGame[]
+        {
+            new(200551, "Zenless Zone Zero", null, IgdbGameTypes.MainGame, null, null, []),
+            new(422423, "Zenless Zone Zero: Update 3.3 - Journey to the Sky", null, IgdbGameTypes.Update, 200551, null, []),
+        }.ToDictionary(g => g.Id);
+        var day = new DateOnly(2026, 10, 21);
+
+        var igdb = Substitute.For<IIgdbService>();
+        igdb.GetCalendarGamesAsync(Arg.Any<IEnumerable<int>>(), Arg.Any<CancellationToken>())
+            .Returns(call => Task.FromResult<IReadOnlyDictionary<int, CalendarGame>>(
+                call.Arg<IEnumerable<int>>().Where(known.ContainsKey).ToDictionary(id => id, id => known[id])));
+        igdb.GetConnectedReleaseRowsAsync(
+                Arg.Any<IReadOnlyCollection<int>>(), Arg.Any<IReadOnlyCollection<int>>(),
+                Arg.Any<DateOnly>(), Arg.Any<DateOnly>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
+            .Returns(new ConnectedReleaseRows(
+                [new(975751, 422423, day, 0, 2026, 10, new PlatformDto(6, "PC (Microsoft Windows)", "PC", null, null), null)], false));
+
+        var entry = Assert.Single(await NewService(db, igdb).GetAsync(UserId, new DateOnly(2026, 10, 15), new DateOnly(2026, 10, 29), withPeriods: false));
+
+        Assert.Equal(("day", day), (entry.Precision, entry.Starts));
+        var release = Assert.Single(entry.Releases);
+        Assert.Equal(("Zenless Zone Zero: Update 3.3 - Journey to the Sky", "update"), (release.Title, release.Kind));
+        Assert.Equal(new ReleaseReasonDto("child", 200551, "Zenless Zone Zero", "list", ListStatusKeys.Playing, null), release.Reason);
+    }
+
     // Read on 2026-10-08: Little Witch in the Woods was "2026" on Switch, and came out on Switch on 16 September.
     private static readonly CalendarGame LittleWitch = new(130577, "Little Witch in the Woods", null, IgdbGameTypes.MainGame, null, null, []);
     private static readonly PlatformDto Switch = new(130, "Nintendo Switch", "Switch", null, null);

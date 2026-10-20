@@ -39,7 +39,9 @@ public static class ScheduledWork
 
         // Deleting import jobs past their retention. A hosted service rather than a method
         // somewhere, because nothing requests it — see the class for the scoping, failure and
-        // multi-task rules that go with that, which the two below copy.
+        // multi-task rules that go with that, which the two below copy. One more hosted service,
+        // which sends CloudFront invalidations from a queue rather than on a schedule, is
+        // registered by AddEdgeInvalidation and runs under the same StopHost (ADR 0058).
         services.AddHostedService<ImportRetentionService>();
 
         // Refreshing CachedGames from IGDB before a reader finds a row a day old (ADR 0052). Its

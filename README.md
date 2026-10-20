@@ -92,7 +92,9 @@ npm run lint         # ESLint
 npm run typecheck    # generate route types, then tsc
 npm run build        # production build
 
-dotnet test          # server unit tests
+cd ..
+dotnet test MyVideoGameList.Server.Tests/MyVideoGameList.Server.Tests.csproj                     # server unit tests
+dotnet test MyVideoGameList.Server.IntegrationTests/MyVideoGameList.Server.IntegrationTests.csproj   # the API over PostgreSQL; needs Docker
 ```
 
 ### Serving the production build
@@ -123,6 +125,7 @@ Health endpoints: `/healthz` (liveness) and `/readyz` (database + IGDB reachabil
 ## CI
 
 Pull requests and pushes to `master` are validated by GitHub Actions: the client is linted,
-type-checked and built; the server is built and unit-tested; CodeQL analyses both languages.
+type-checked and built; the server is built and unit-tested, and its integration suite runs against
+PostgreSQL in a container; CodeQL analyses both languages.
 
 [![CI](../../actions/workflows/ci.yml/badge.svg)](../../actions/workflows/ci.yml)

@@ -12,6 +12,12 @@ import type { ActivityMonth, LibraryStats, ScoreStats } from './stats';
 export interface PublicProfile {
     /** As its owner capitalised it, not as the URL was typed. */
     userName: string;
+    /** Shown beside `userName`, never instead of it: the handle is what says whose page this is. */
+    displayName: string | null;
+    /** On one of `AVATAR_HOSTS`, loaded by the reader's browser; null for the handle's initial. */
+    avatarUrl: string | null;
+    /** Plain text, rendered as a text node with its line breaks kept. */
+    bio: string | null;
     activity: PublicActivity;
     library: LibraryStats;
     scores: ScoreStats;

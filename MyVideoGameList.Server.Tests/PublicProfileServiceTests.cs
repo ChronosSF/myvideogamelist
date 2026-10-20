@@ -54,7 +54,10 @@ public class PublicProfileServiceTests
         ApplicationDbContext db,
         string userId,
         string userName,
-        string visibility = ProfileVisibility.Public)
+        string visibility = ProfileVisibility.Public,
+        string? displayName = null,
+        string? avatarUrl = null,
+        string? bio = null)
     {
         db.Users.Add(new ApplicationUser
         {
@@ -63,7 +66,10 @@ public class PublicProfileServiceTests
             // Set exactly as Identity would set it, because that is the column the lookup matches.
             NormalizedUserName = userName.ToUpperInvariant(),
             Email = $"{userName}@test.local",
-            ProfileVisibility = visibility
+            ProfileVisibility = visibility,
+            DisplayName = displayName,
+            AvatarUrl = avatarUrl,
+            Bio = bio
         });
         db.SaveChanges();
     }
@@ -208,6 +214,54 @@ public class PublicProfileServiceTests
     }
 
     // ── What crosses the gate ─────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task GetProfileAsync_PublicProfile_CarriesWhatTheOwnerWroteAboutThemselves()
+    {
+        using var db = NewDb();
+        AddAccount(db, UserId, "alex",
+            displayName: "Alex Smith",
+            avatarUrl: "https://i.imgur.com/removed.png",
+            bio: "Mostly RPGs.\n\nSlowly.");
+
+        var profile = await NewService(db).GetProfileAsync("alex", default);
+
+        Assert.NotNull(profile);
+        // The handle travels as well, and is still the name the page is addressed by.
+        Assert.Equal("alex", profile.UserName);
+        Assert.Equal("Alex Smith", profile.DisplayName);
+        Assert.Equal("https://i.imgur.com/removed.png", profile.AvatarUrl);
+        // As written, line breaks and all: the page shows it as plain text.
+        Assert.Equal("Mostly RPGs.\n\nSlowly.", profile.Bio);
+    }
+
+    [Fact]
+    public async Task GetProfileAsync_NothingWrittenAboutThemselves_LeavesAllThreeNull()
+    {
+        using var db = NewDb();
+        AddAccount(db, UserId, "alex");
+
+        var profile = await NewService(db).GetProfileAsync("alex", default);
+
+        Assert.NotNull(profile);
+        Assert.Null(profile.DisplayName);
+        Assert.Null(profile.AvatarUrl);
+        Assert.Null(profile.Bio);
+    }
+
+    [Fact]
+    public async Task GetProfileAsync_PrivateProfileThatWroteAboutThemselves_ReturnsNull()
+    {
+        // Writing a bio on a private profile publishes nothing: it reaches the page only once the
+        // profile is public, with everything else on it.
+        using var db = NewDb();
+        AddAccount(db, UserId, "alex", ProfileVisibility.Private,
+            displayName: "Alex Smith",
+            avatarUrl: "https://i.imgur.com/removed.png",
+            bio: "Mostly RPGs.");
+
+        Assert.Null(await NewService(db).GetProfileAsync("alex", default));
+    }
 
     [Fact]
     public async Task GetProfileAsync_CountsOnlyPublicReviews()
