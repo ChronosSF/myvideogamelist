@@ -71,7 +71,8 @@ public record GameDetailsDto(
     IEnumerable<string> GameEngines,
     IEnumerable<string> Collections,
     IEnumerable<string> Franchises,
-    IEnumerable<LanguageSupportDto> Languages);
+    IEnumerable<LanguageSupportDto> Languages,
+    IEnumerable<StoreLinkDto> Stores);
 
 /// <summary>A game referenced from another game, carrying just enough to render a cover card.</summary>
 public record GameRefDto(int Id, string Name, string? CoverImageUrl);
@@ -102,6 +103,12 @@ public record MultiplayerModesDto(
 
 /// <summary>One language and the ways it is supported — audio, subtitles, interface.</summary>
 public record LanguageSupportDto(string Language, IEnumerable<string> SupportTypes);
+
+/// <summary>
+/// A store a game is sold on, by the name the page shows, and the address of the game's page there.
+/// No price: prices are IsThereAnyDeal's to give (ADR 0009), and this needs no key.
+/// </summary>
+public record StoreLinkDto(string Store, string Url);
 
 public record PagedGamesResponse(IEnumerable<GameDto> Items, bool HasMore)
 {

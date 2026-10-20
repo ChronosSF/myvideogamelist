@@ -53,7 +53,8 @@ public class ListServiceTests
 
     private static ListService NewService(
         ApplicationDbContext db, IGameCacheService? igdb = null, TimeProvider? clock = null) =>
-        new(db, igdb ?? Substitute.For<IGameCacheService>(), clock ?? new FixedClock(Midday));
+        new(db, igdb ?? Substitute.For<IGameCacheService>(), clock ?? new FixedClock(Midday),
+            EdgeFakes.Withdrawals(db));
 
     private static short StatusId(ApplicationDbContext db, string key) =>
         db.ListStatuses.Single(s => s.Key == key).Id;
@@ -417,7 +418,7 @@ public class ScoreAndEntryTests
 
     private static ListService NewService(
         ApplicationDbContext db, IGameCacheService? igdb = null, TimeProvider? clock = null) =>
-        new(db, igdb ?? IgdbReturning(Game(10)), clock ?? new FixedClock(Midday));
+        new(db, igdb ?? IgdbReturning(Game(10)), clock ?? new FixedClock(Midday), EdgeFakes.Withdrawals(db));
 
     // ------------------------------------------------ the score stands on its own
 

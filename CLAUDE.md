@@ -41,6 +41,7 @@ Open `https://localhost:58546`.
 | `npm run visual` | Before-and-after screenshots of the pages, compared pixel by pixel, for a change meant to look the same. Needs two dev servers and a local test account, whose email and password it reads from the shell or from `visual/.env` (ignored by git); `visual/playwright.config.ts` says how. Not run by CI |
 | `npm run build` | Production build |
 | `dotnet test MyVideoGameList.Server.Tests/MyVideoGameList.Server.Tests.csproj` | Server unit tests |
+| `dotnet test MyVideoGameList.Server.IntegrationTests/MyVideoGameList.Server.IntegrationTests.csproj` | The API over a real PostgreSQL, for what InMemory cannot do: auth and the lists end to end, the cascades, the retention sweep, and the export's snapshot. Needs Docker running; starts and removes a container of its own, never `mvgl-postgres`. About fifteen seconds once built. See ADR 0057 |
 | `dotnet ef migrations add <Name>` | From `MyVideoGameList.Server/` |
 | `dotnet ef database update` | Applies migrations by hand; only needed outside Development |
 | `docker compose up -d --wait` | Local PostgreSQL. `--wait` blocks until it accepts connections |
@@ -61,6 +62,7 @@ MyVideoGameList.Server/         ASP.NET Core 10 API
   Security/                     Rate limits, forwarded headers, security headers, the write guard, the admin policy
   Errors/                       What each kind of failure leaves as
 MyVideoGameList.Server.Tests/   xUnit tests
+MyVideoGameList.Server.IntegrationTests/  The API over PostgreSQL in a container, for what InMemory cannot do
 myvideogamelist.client/
   src/root.tsx                  HTML document, providers, global ErrorBoundary
   src/entry.server.tsx          Owned, not generated. Where every document response gets its headers
@@ -111,10 +113,11 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   `AddDataProtectionKeys` therefore persists to the path in `DataProtection:ParameterPath`, falls
   back to the user-profile ring in Development only, and otherwise **fails at startup** unless
   `DataProtection:AllowEphemeralKeys` says the loss is meant, which it is only for running the
-  production image on a developer machine. Two things the code cannot check: the task role needs
+  production image on a developer machine or the integration suite's test host (ADR 0057). Two things the code cannot check: the task role needs
   `ssm:GetParametersByPath` and `ssm:PutParameter` on that path — not `ssm:DeleteParameter`,
-  because nothing deletes keys — and the repository is built on the first protect rather than at
-  boot, so a wrong policy fails the first sign-in. Keep `SetApplicationName("MyVideoGameList")` — the default discriminator is the content
+  because nothing deletes keys — and a missing read fails the first sign-in, not the deploy: the
+  framework's `DataProtectionHostedService` reads the ring at boot, but a failure there is only
+  logged, at Error, and the first protect reads again. Keep `SetApplicationName("MyVideoGameList")` — the default discriminator is the content
   root path, and changing the image's working directory would orphan every cookie while the keys
   stayed readable. One path per environment, so dev and prod cannot read each other's cookies. The
   proof is a session surviving a redeploy, which no local test can give. See
@@ -124,6 +127,9 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   `dotnet user-secrets set "Admin:AccountIds:0" "<account id>"`. An id, never a username — a name
   can be given up and claimed by somebody else. A later admin page goes behind the same policy, on
   the controller's class, and edits reference data only, never a user's. See `docs/decisions/0042-*`.
+  Its statistics count and never list: totals across every account, nothing that selects one. The
+  `LastSeenAt` they read is written by `GET /api/auth/me`, once a UTC day, the one write behind a
+  `GET`, so keep that endpoint uncached. See `docs/decisions/0051-*`.
 
 - **IGDB is the source of truth for game data, but a library renders from `CachedGames`.** There
   are no local game/genre/platform tables; they were removed, and `UserGameEntry.GameId` holds an
@@ -142,7 +148,9 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   nothing — check the field still exists before debugging your own code.
   `age_ratings.category` and `age_ratings.rating` went the same way — use `organization` (ESRB is
   `1`) and `rating_category`. *Requesting* a removed field is just as quiet: it is left out of the
-  response, which hid every ESRB badge.
+  response, which hid every ESRB badge. `websites.category` went the same way: its absence made
+  every game's "Official Site" whichever link IGDB listed first — use `type`, a `website_types` id
+  (official is `1`).
 
 - **An IGDB release date is not always a day.** `release_dates.date_format` says how much of it is
   known — 0 the day, 1 the month, 2 the year, 3 to 6 a quarter, 7 nothing — and for anything but a
@@ -193,6 +201,19 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   decision. A private profile and an unclaimed name are the same 404, so the endpoint cannot be used
   to ask whether a name has an account.
 
+- **A page loads images only from the hosts its policy names, and an avatar's host is in two
+  lists.** The document policy's `img-src` is `IMAGE_SOURCES` in `@/lib/securityHeaders`: this
+  origin, IGDB's CDN and the avatar hosts. **An image from any other host does not load**, in
+  development too, so a feature that shows one from somewhere new adds the host there on purpose.
+  An avatar host goes in both `AvatarUrlPolicy.Hosts`, which says what may be saved, and
+  `AVATAR_HOSTS` in `@/lib/avatar`, which `IMAGE_SOURCES` is built from; `serverMirrors.test.ts`
+  reads the server's file and fails when they differ. A host joins only once seen to serve an avatar
+  over HTTPS with `Access-Control-Allow-Origin`, no cookie and no reporting headers — Discord's CDN
+  and Twitch's are off for those — because the picture is loaded anonymously, with no referrer, by
+  every reader's browser. The address is stored as given and never fetched by the server. A display
+  name sits beside the handle and never replaces it, and a bio is plain text because it is rendered
+  as a text node. See `docs/decisions/0056-*`.
+
 - **A statistic about the user must not depend on IGDB being up.** `/api/user/stats` reads only
   our own tables, derives everything at read time, and is deliberately uncached — every figure
   changes the moment a game moves. The platform and genre breakdowns are the one part that needs
@@ -208,14 +229,21 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   that cannot exist without its parent must not be left orphaned or block the parent's deletion.
   That is what makes the import sweep's bare `DELETE FROM "ImportJobs"` safe. An optional pointer
   between siblings is outside the rule — a review's link to the playthrough it describes is
-  `SetNull`, so deleting one run does not take the prose with it. The manifest is
+  `SetNull`, so deleting one run does not take the prose with it. The three deletion rules — with
+  the account, with a parent, and the review's unlink — are also run against PostgreSQL by the
+  integration suite's `OwnershipCascadeTests`, which fails until its `RecordEverythingAsync` gives
+  an account a row in the new table (`docs/decisions/0057-*`). The manifest is
   `UserDataExporter.Manifest`, keyed by entity `Type`, and it is the *only* place to register:
   `ExportAsync` walks it. A new *column* on a registered table trips nothing, because each section is
   a hand-written projection — add it to that reader too, as `Ownership` and `Notes` were
   (`docs/decisions/0030-*`). Statuses export as their `Key`, never the seeded id. The export is free
   and stays free — portability is a right, and the paid "Export" in the monetisation table is a
   nicer *format* on top, so do not put an entitlement check on `/api/user/export`. It makes no IGDB
-  call, for the same reason the stats do not. See `docs/decisions/0024-*`.
+  call, for the same reason the stats do not. **It reads one snapshot**: every section runs in one
+  `REPEATABLE READ` transaction, so a new section must read through the context it is handed — a
+  service or scope with its own context reads outside the snapshot. InMemory has no isolation and
+  cannot see it; the integration suite's `ExportSnapshotTests` shows it holding against PostgreSQL,
+  over the import's two sections only. See `docs/decisions/0024-*` and `0057-*`.
 
 - **A child table of the entry carries its own `UserId`, because the ownership guard keys on it.**
   `UserOwnedDataTests` selects user-owned entities by the *presence of a `UserId` property* and then
@@ -346,7 +374,7 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   about us; and it runs **once per ECS task**, so it serialises on
   `pg_try_advisory_xact_lock` — the transaction-scoped variant, because a session lock survives on
   a pooled connection after it is returned. That transaction runs inside
-  `db.Database.CreateExecutionStrategy()`, which does nothing today and stops the sweep throwing
+  `db.Database.CreateExecutionStrategy()`, which never retries today and stops the sweep throwing
   `InvalidOperationException` on the day somebody adds `EnableRetryOnFailure` to `UseNpgsql`:
   **EF refuses a user-initiated transaction under a retrying strategy**, and the sweep would fail
   into the log once an hour for ever without anything else breaking. A tick that cannot take the
@@ -361,10 +389,14 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   ever. **`UpdatedAt` is the last saved decision, never the upload** — every write to a job stamps
   it, so the pending window is silence rather than a deadline, and a review worked through over
   several weekends is not deleted underneath its owner. **`ExecuteDeleteAsync` needs a relational provider**, so the predicate is an `Expression`
-  the tests run against InMemory and the deletion itself is not unit-tested — change it and verify
-  it against the real container. It deletes **twenty-five jobs per statement and commits each
+  the tests run against InMemory and the deletion itself is not unit-tested — the integration
+  suite's `ImportRetentionSweepTests` runs it, batches and lock included, against PostgreSQL
+  (`docs/decisions/0057-*`). It deletes **twenty-five jobs per statement and commits each
   batch**, because one unbounded `DELETE` over a backlog exceeds Npgsql's thirty-second default,
-  rolls back, deletes nothing, and is retried identically every hour for ever. And because it
+  rolls back, deletes nothing, and is retried identically every hour for ever. Each batch
+  **commits on `CancellationToken.None`**: the stopping token bounds the work, never the write
+  that keeps its result, or a shutdown landing between a batch's `DELETE` and its commit would
+  roll back a batch already done, leaving the next sweep to repeat it (ADR 0038 §4). And because it
   deletes rows no request asked it to, **every `ImportService` write stamps the job and treats an
   `UPDATE` that matches no row as "swept"** — the 404 each endpoint already had, rather than the 500
   an unclaimed `DbUpdateConcurrencyException` becomes. Anything else that deletes out from under a
