@@ -8,9 +8,10 @@ import {
     UNSAFE_withComponentProps,
     UNSAFE_withErrorBoundaryProps,
 } from 'react-router';
+import { Suspense } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import * as entry from '@/entry.server';
-import { CACHE_GAME, CACHE_NOT_FOUND } from '@/lib/cache';
+import { CACHE_GAME, CACHE_NOT_FOUND, PRIVATE_NO_STORE } from '@/lib/cache';
 import { RESOURCE_POLICY } from '@/lib/securityHeaders';
 import * as notFound from '@/pages/NotFoundPage';
 import * as root from '@/root';
@@ -64,6 +65,25 @@ function page() {
 
 const later = () => ({ later: held.promise });
 
+/** A part of a page that fails to render, inside a boundary, so the rest of the page still does. */
+function Unfinished(): never {
+    throw new Error('A part of the page failed to render.');
+}
+
+function faltering() {
+    return (
+        <>
+            <p>A page</p>
+            <Suspense fallback={<p>Loading</p>}>
+                <Unfinished />
+            </Suspense>
+        </>
+    );
+}
+
+/** A game page's policy, which asks the edge to keep the document for an hour. */
+const shared = () => ({ 'Cache-Control': CACHE_GAME });
+
 function leaf(id: string, path: string, module: NonNullable<ServerBuild['routes'][string]>['module']) {
     return { id, path, parentId: 'root', module };
 }
@@ -106,11 +126,7 @@ const build: ServerBuild = {
         // No `headers` export, so the root's `private, no-store`: streamed.
         private: leaf('private', 'private', { default: page, loader: later }),
         // A game page's policy: shared, so sent whole.
-        shared: leaf('shared', 'shared', {
-            default: page,
-            loader: later,
-            headers: () => ({ 'Cache-Control': CACHE_GAME }),
-        }),
+        shared: leaf('shared', 'shared', { default: page, loader: later, headers: shared }),
         missing: leaf('missing', 'missing', {
             default: page,
             loader: () => {
@@ -136,6 +152,15 @@ const build: ServerBuild = {
                 throw new Error('The page failed to render.');
             },
         }),
+        // The same, on a page the edge shares: the second render gets the page's headers.
+        'crashing-shared': leaf('crashing-shared', 'crashing-shared', {
+            default: () => {
+                throw new Error('The page failed to render.');
+            },
+            headers: shared,
+        }),
+        // A boundary that fails after the shell, on a page the edge shares.
+        'faltering-shared': leaf('faltering-shared', 'faltering-shared', { default: faltering, headers: shared }),
         'not-found': leaf('not-found', '*', notFound),
     },
     assets: {
@@ -148,6 +173,8 @@ const build: ServerBuild = {
             unavailable: asset('unavailable', 'unavailable', 'root', true),
             failing: asset('failing', 'failing', 'root', true),
             crashing: asset('crashing', 'crashing', 'root', false),
+            'crashing-shared': asset('crashing-shared', 'crashing-shared', 'root', false),
+            'faltering-shared': asset('faltering-shared', 'faltering-shared', 'root', false),
             'not-found': asset('not-found', '*', 'root', true),
         },
         url: '/assets/manifest.js',
@@ -318,6 +345,13 @@ describe('a .data response', () => {
         expect(response.headers.get('Content-Security-Policy')).toBe(RESOURCE_POLICY);
         expect(await response.text()).toContain('released');
     });
+
+    it('is noindexed by a deployment that is not for indexing, like every other response', async () => {
+        // The test environment configures nothing, so this is such a deployment (ADR 0036).
+        const response = await handle(request('/private.data'));
+
+        expect(response.headers.get('X-Robots-Tag')).toBe('noindex, nofollow');
+    });
 });
 
 describe('an error document', () => {
@@ -350,6 +384,24 @@ describe('an error document', () => {
         expect(logged).toHaveBeenCalled();
         expect(document.response.status).toBe(500);
         expect(document.body).toContain('Something went wrong');
+        expectEveryScriptToCarryTheNonce(document);
+    });
+
+    it.each([
+        // The shell failed, and React Router renders the error boundary over the headers it had
+        // computed for the page, which ask the edge to keep it for an hour.
+        ['/crashing-shared', 'Something went wrong'],
+        // A boundary failed after the shell, and the entry made the status a 500 itself.
+        ['/faltering-shared', 'A page'],
+    ])('is never stored by a shared cache, even from a page that is (%s)', async (path, text) => {
+        vi.spyOn(console, 'error').mockImplementation(() => {});
+
+        const document = await render(path);
+
+        // Caching a failure outlives the failure (ADR 0013).
+        expect(document.response.status).toBe(500);
+        expect(document.response.headers.get('Cache-Control')).toBe(PRIVATE_NO_STORE);
+        expect(document.body).toContain(text);
         expectEveryScriptToCarryTheNonce(document);
     });
 

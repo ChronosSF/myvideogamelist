@@ -520,10 +520,13 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   `docs/decisions/0036-*`.
 
 - **A degraded or error response must never be cacheable.** Caching a failure outlives the
-  failure. Note three traps: a thrown `Response`'s headers are replaced by the boundary route's
-  (the root reads `errorHeaders` to honour them); a loader that degrades to a 200 has to attach
-  `no-store` itself via `data()`; and an *API* that degrades to a 200 has to say so in its payload,
-  because neither the loader nor a CDN can tell that 200 from a healthy one. `/api/home` does, with
+  failure. Note four traps: a thrown `Response`'s headers are replaced by the boundary route's
+  (the root reads `errorHeaders` to honour them); a page that fails *while rendering* is re-rendered
+  as its error boundary over the headers React Router computed for the page — a game page's hour
+  at the edge included — so `entry.server.tsx` sets `private, no-store` on any 5xx itself; a loader
+  that degrades to a 200 has to attach `no-store` itself via `data()`; and an *API* that degrades to
+  a 200 has to say so in its payload, because neither the loader nor a CDN can tell that 200 from a
+  healthy one. `/api/home` does, with
   `degraded`, and the loader reads it failing closed — only an explicit `false` is shared-cached.
 
 - **`fetch` rejects when the API is unreachable** — it does not return `!response.ok`. A loader
