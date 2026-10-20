@@ -298,6 +298,22 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   attach with `OnStarting` rather than on the way in, because `UseExceptionHandler` clears the
   response — headers included — before writing a 500 or a 502.
 
+- **A document runs only the scripts its own render wrote.** Its `script-src` names a nonce drawn
+  once per render in `entry.server.tsx` and handed to `<ServerRouter>` and to the stream; an inline
+  script without it never runs, and a page whose hydration scripts never run is dead. A new inline
+  script of ours, such as the palette script #208 plans, goes in by its hash in `documentPolicy`, and
+  a script from another host is refused until a record decides its hosts or `'strict-dynamic'`
+  (Google's tag, #242, is the first). A shared cache keeps the nonce whole only because header and
+  body are stored together, so **nothing at the edge may set, rewrite or remove
+  `Content-Security-Policy` on a document** — a response headers policy replacing it names no nonce
+  and every page dies — **and no document may carry an `ETag` or `Last-Modified`**, because a 304
+  keeps the old body under the new header. A HEAD carries no policy, and a document a shared cache
+  may store is sent whole rather than streamed, so that its nonce is never seen before its body is
+  final. On a shared page that nonce is public, so **never add a sink that parses a string as markup
+  in the browser** (`dangerouslySetInnerHTML` of anything but a constant, `innerHTML`, `srcdoc`, …):
+  0053 §2 holds because there is none (#250). The root renders `<Links nonce="">` on purpose —
+  without it every page reports a hydration mismatch in development. See `docs/decisions/0053-*`.
+
 - **A third party's failure is a 502, our own throttle is a 503, ours is a 500, and a reader who
   left is a 499.** IGDB calls go through a resilience pipeline — retry outermost, then the breaker,
   then the four-a-second limiter, then a per-attempt timeout, with a total timeout over all of it.
@@ -504,10 +520,13 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   `docs/decisions/0036-*`.
 
 - **A degraded or error response must never be cacheable.** Caching a failure outlives the
-  failure. Note three traps: a thrown `Response`'s headers are replaced by the boundary route's
-  (the root reads `errorHeaders` to honour them); a loader that degrades to a 200 has to attach
-  `no-store` itself via `data()`; and an *API* that degrades to a 200 has to say so in its payload,
-  because neither the loader nor a CDN can tell that 200 from a healthy one. `/api/home` does, with
+  failure. Note four traps: a thrown `Response`'s headers are replaced by the boundary route's
+  (the root reads `errorHeaders` to honour them); a page that fails *while rendering* is re-rendered
+  as its error boundary over the headers React Router computed for the page — a game page's hour
+  at the edge included — so `entry.server.tsx` sets `private, no-store` on any 5xx itself; a loader
+  that degrades to a 200 has to attach `no-store` itself via `data()`; and an *API* that degrades to
+  a 200 has to say so in its payload, because neither the loader nor a CDN can tell that 200 from a
+  healthy one. `/api/home` does, with
   `degraded`, and the loader reads it failing closed — only an explicit `false` is shared-cached.
 
 - **`fetch` rejects when the API is unreachable** — it does not return `!response.ok`. A loader
