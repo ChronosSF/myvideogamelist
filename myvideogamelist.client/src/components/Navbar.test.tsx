@@ -31,6 +31,9 @@ vi.mock('@/hooks/useAuth', () => ({ useAuth: () => auth }));
 
 const ALEX: UserProfile = userProfile();
 
+/** A picture on one of the avatar hosts, as `/api/auth/me` carries it. */
+const PICTURE = 'https://avatars.githubusercontent.com/u/9919?v=4';
+
 /** `/api/auth/me` has come back, with an account or with nobody. */
 function authAnswered(user: UserProfile | null) {
     auth.user = user;
@@ -280,6 +283,28 @@ describe('Navbar user menu', () => {
         expect(within(menu).getByText('@alex')).toBeInTheDocument();
         expect(within(menu).getByRole('menuitem', { name: 'My Profile' })).toHaveAttribute('href', '/user');
         expect(within(menu).getByRole('menuitem', { name: 'Sign Out' })).toBeInTheDocument();
+    });
+
+    it('wears the account\'s picture, asked for as the public profile asks for it', () => {
+        // Through Avatar, so with no referrer and anonymously (ADR 0056). Found inside the button
+        // rather than by a role: the picture is decorative and hidden from assistive technology,
+        // and the button's label is what is read.
+        authAnswered({ ...ALEX, avatarUrl: PICTURE });
+        renderNavbar();
+        const image = screen.getByRole('button', { name: 'User menu' }).querySelector('img');
+
+        expect(image).toHaveAttribute('src', PICTURE);
+        expect(image).toHaveAttribute('referrerpolicy', 'no-referrer');
+        expect(image).toHaveAttribute('crossorigin', 'anonymous');
+    });
+
+    it('wears the handle\'s initial for an account with no picture', () => {
+        authAnswered(ALEX);
+        renderNavbar();
+        const button = screen.getByRole('button', { name: 'User menu' });
+
+        expect(button.querySelector('img')).toBeNull();
+        expect(button).toHaveTextContent('A');
     });
 
     it('has no public page to offer for a private profile', async () => {
