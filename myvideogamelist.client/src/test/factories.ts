@@ -1,13 +1,15 @@
 import type { AdminStats } from '@/types/adminStats';
 import type { UserProfile } from '@/types/auth';
-import type { GameDto, PlatformDto } from '@/types/game';
+import type { GameDetailsDto, GameDto, PlatformDto } from '@/types/game';
 import {
     IMPORT_DECISION,
     IMPORT_MATCH,
     IMPORT_STATE,
     type ImportJob,
+    type ImportResult,
     type ImportReview,
     type ImportReviewRow,
+    type ImportSkippedRow,
 } from '@/types/import';
 import type { ListEntryDto } from '@/types/list';
 import type { EntryDetailDto, PlaythroughDto, ReviewDto } from '@/types/playthrough';
@@ -44,6 +46,28 @@ export function game(overrides: Partial<GameDto> = {}): GameDto {
         developers: [],
         publishers: [],
         details: null,
+        ...overrides,
+    };
+}
+
+/** The detail fields only the game page carries, all empty unless a test says otherwise. */
+export function gameDetails(overrides: Partial<GameDetailsDto> = {}): GameDetailsDto {
+    return {
+        timeToBeat: null,
+        screenshots: [],
+        similarGames: [],
+        dlcs: [],
+        expansions: [],
+        parentGame: null,
+        gameModes: [],
+        multiplayerModes: null,
+        themes: [],
+        playerPerspectives: [],
+        gameEngines: [],
+        collections: [],
+        franchises: [],
+        languages: [],
+        stores: [],
         ...overrides,
     };
 }
@@ -182,6 +206,32 @@ export function importReview(rows: ImportReviewRow[], job: Partial<ImportJob> = 
             selected: rows.filter(row => row.decision === IMPORT_DECISION.import).length,
         },
         rows,
+    };
+}
+
+/**
+ * What a commit answers, with the job's counts derived from what was imported and skipped rather
+ * than restated — for `importReview`'s reason, and because the two add up to every row in the file.
+ * Each imported row names a game of its own unless `games` says otherwise.
+ */
+export function importResult({ imported = 1, games = imported, unlisted = 0, skipped = [] }: {
+    imported?: number;
+    games?: number;
+    unlisted?: number;
+    skipped?: ImportSkippedRow[];
+} = {}): ImportResult {
+    return {
+        job: importJob({
+            state: IMPORT_STATE.done,
+            rowCount: imported + skipped.length,
+            importedCount: imported,
+            skippedCount: skipped.length,
+            completedAt: '2026-09-22T12:30:00Z',
+            expiresAt: '2026-09-29T12:30:00Z',
+        }),
+        skipped,
+        games,
+        unlisted,
     };
 }
 

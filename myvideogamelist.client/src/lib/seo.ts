@@ -1,5 +1,5 @@
 import type { MetaDescriptor } from 'react-router';
-import { applySecurityHeaders } from '@/lib/securityHeaders';
+import { applySecurityHeaders, RESOURCE_POLICY } from '@/lib/securityHeaders';
 
 /**
  * What a crawler or a link unfurler is told about this site, and by which deployment.
@@ -77,7 +77,8 @@ export function applyIndexingHeaders(headers: Headers, site: SiteConfig = siteCo
  * A response that is not a document: robots.txt and the sitemaps.
  *
  * These are resource routes, which return their own `Response` and so never pass through
- * `entry.server.tsx`. Whatever that file adds to every document has to be added here by hand.
+ * `entry.server.tsx`. Whatever that file adds to every document has to be added here by hand —
+ * except the document's content policy, which names scripts a resource never has.
  */
 export function resourceResponse(
     body: string,
@@ -86,7 +87,7 @@ export function resourceResponse(
     status = 200,
 ): Response {
     const headers = new Headers({ 'Content-Type': contentType, 'Cache-Control': cacheControl });
-    applySecurityHeaders(headers);
+    applySecurityHeaders(headers, RESOURCE_POLICY);
     applyIndexingHeaders(headers);
 
     return new Response(body, { status, headers });

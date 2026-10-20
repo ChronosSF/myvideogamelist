@@ -41,7 +41,7 @@ Open `https://localhost:58546`.
 | `npm run visual` | Before-and-after screenshots of the pages, compared pixel by pixel, for a change meant to look the same. Needs two dev servers and a local test account, whose email and password it reads from the shell or from `visual/.env` (ignored by git); `visual/playwright.config.ts` says how. Not run by CI |
 | `npm run build` | Production build |
 | `dotnet test MyVideoGameList.Server.Tests/MyVideoGameList.Server.Tests.csproj` | Server unit tests |
-| `dotnet test MyVideoGameList.Server.IntegrationTests/MyVideoGameList.Server.IntegrationTests.csproj` | The API over a real PostgreSQL, for what InMemory cannot do: auth and the lists end to end, the cascades, the retention sweep, and the export's snapshot once #263 is merged. Needs Docker running; starts and removes a container of its own, never `mvgl-postgres`. About fifteen seconds once built. See ADR 0057 |
+| `dotnet test MyVideoGameList.Server.IntegrationTests/MyVideoGameList.Server.IntegrationTests.csproj` | The API over a real PostgreSQL, for what InMemory cannot do: auth and the lists end to end, the cascades, the retention sweep, and the export's snapshot. Needs Docker running; starts and removes a container of its own, never `mvgl-postgres`. About fifteen seconds once built. See ADR 0057 |
 | `dotnet ef migrations add <Name>` | From `MyVideoGameList.Server/` |
 | `dotnet ef database update` | Applies migrations by hand; only needed outside Development |
 | `docker compose up -d --wait` | Local PostgreSQL. `--wait` blocks until it accepts connections |
@@ -115,8 +115,9 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   `DataProtection:AllowEphemeralKeys` says the loss is meant, which it is only for running the
   production image on a developer machine or the integration suite's test host (ADR 0057). Two things the code cannot check: the task role needs
   `ssm:GetParametersByPath` and `ssm:PutParameter` on that path — not `ssm:DeleteParameter`,
-  because nothing deletes keys — and the repository is built on the first protect rather than at
-  boot, so a wrong policy fails the first sign-in. Keep `SetApplicationName("MyVideoGameList")` — the default discriminator is the content
+  because nothing deletes keys — and a missing read fails the first sign-in, not the deploy: the
+  framework's `DataProtectionHostedService` reads the ring at boot, but a failure there is only
+  logged, at Error, and the first protect reads again. Keep `SetApplicationName("MyVideoGameList")` — the default discriminator is the content
   root path, and changing the image's working directory would orphan every cookie while the keys
   stayed readable. One path per environment, so dev and prod cannot read each other's cookies. The
   proof is a session surviving a redeploy, which no local test can give. See
@@ -147,7 +148,9 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   nothing — check the field still exists before debugging your own code.
   `age_ratings.category` and `age_ratings.rating` went the same way — use `organization` (ESRB is
   `1`) and `rating_category`. *Requesting* a removed field is just as quiet: it is left out of the
-  response, which hid every ESRB badge.
+  response, which hid every ESRB badge. `websites.category` went the same way: its absence made
+  every game's "Official Site" whichever link IGDB listed first — use `type`, a `website_types` id
+  (official is `1`).
 
 - **An IGDB release date is not always a day.** `release_dates.date_format` says how much of it is
   known — 0 the day, 1 the month, 2 the year, 3 to 6 a quarter, 7 nothing — and for anything but a
@@ -236,7 +239,11 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   (`docs/decisions/0030-*`). Statuses export as their `Key`, never the seeded id. The export is free
   and stays free — portability is a right, and the paid "Export" in the monetisation table is a
   nicer *format* on top, so do not put an entitlement check on `/api/user/export`. It makes no IGDB
-  call, for the same reason the stats do not. See `docs/decisions/0024-*`.
+  call, for the same reason the stats do not. **It reads one snapshot**: every section runs in one
+  `REPEATABLE READ` transaction, so a new section must read through the context it is handed — a
+  service or scope with its own context reads outside the snapshot. InMemory has no isolation and
+  cannot see it; the integration suite's `ExportSnapshotTests` shows it holding against PostgreSQL,
+  over the import's two sections only. See `docs/decisions/0024-*` and `0057-*`.
 
 - **A child table of the entry carries its own `UserId`, because the ownership guard keys on it.**
   `UserOwnedDataTests` selects user-owned entities by the *presence of a `UserId` property* and then
@@ -300,6 +307,22 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   output and must be re-diffed against it on a React Router major. On the API side the headers
   attach with `OnStarting` rather than on the way in, because `UseExceptionHandler` clears the
   response — headers included — before writing a 500 or a 502.
+
+- **A document runs only the scripts its own render wrote.** Its `script-src` names a nonce drawn
+  once per render in `entry.server.tsx` and handed to `<ServerRouter>` and to the stream; an inline
+  script without it never runs, and a page whose hydration scripts never run is dead. A new inline
+  script of ours, such as the palette script #208 plans, goes in by its hash in `documentPolicy`, and
+  a script from another host is refused until a record decides its hosts or `'strict-dynamic'`
+  (Google's tag, #242, is the first). A shared cache keeps the nonce whole only because header and
+  body are stored together, so **nothing at the edge may set, rewrite or remove
+  `Content-Security-Policy` on a document** — a response headers policy replacing it names no nonce
+  and every page dies — **and no document may carry an `ETag` or `Last-Modified`**, because a 304
+  keeps the old body under the new header. A HEAD carries no policy, and a document a shared cache
+  may store is sent whole rather than streamed, so that its nonce is never seen before its body is
+  final. On a shared page that nonce is public, so **never add a sink that parses a string as markup
+  in the browser** (`dangerouslySetInnerHTML` of anything but a constant, `innerHTML`, `srcdoc`, …):
+  0053 §2 holds because there is none (#250). The root renders `<Links nonce="">` on purpose —
+  without it every page reports a hydration mismatch in development. See `docs/decisions/0053-*`.
 
 - **A third party's failure is a 502, our own throttle is a 503, ours is a 500, and a reader who
   left is a 499.** IGDB calls go through a resilience pipeline — retry outermost, then the breaker,
@@ -507,10 +530,13 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   `docs/decisions/0036-*`.
 
 - **A degraded or error response must never be cacheable.** Caching a failure outlives the
-  failure. Note three traps: a thrown `Response`'s headers are replaced by the boundary route's
-  (the root reads `errorHeaders` to honour them); a loader that degrades to a 200 has to attach
-  `no-store` itself via `data()`; and an *API* that degrades to a 200 has to say so in its payload,
-  because neither the loader nor a CDN can tell that 200 from a healthy one. `/api/home` does, with
+  failure. Note four traps: a thrown `Response`'s headers are replaced by the boundary route's
+  (the root reads `errorHeaders` to honour them); a page that fails *while rendering* is re-rendered
+  as its error boundary over the headers React Router computed for the page — a game page's hour
+  at the edge included — so `entry.server.tsx` sets `private, no-store` on any 5xx itself; a loader
+  that degrades to a 200 has to attach `no-store` itself via `data()`; and an *API* that degrades to
+  a 200 has to say so in its payload, because neither the loader nor a CDN can tell that 200 from a
+  healthy one. `/api/home` does, with
   `degraded`, and the loader reads it failing closed — only an explicit `false` is shared-cached.
 
 - **`fetch` rejects when the API is unreachable** — it does not return `!response.ok`. A loader

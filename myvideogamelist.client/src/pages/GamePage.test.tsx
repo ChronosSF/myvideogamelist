@@ -7,7 +7,8 @@ import type { AuthContextValue } from '@/contexts/AuthContext';
 import type { UseGameCommunityResult } from '@/hooks/useGameCommunity';
 import { MIN_MEMBER_SCORES } from '@/lib/score';
 import type { UserProfile } from '@/types/auth';
-import { game, userProfile } from '@/test/factories';
+import { game, gameDetails, userProfile } from '@/test/factories';
+import type { GameDetailsDto, GameDto } from '@/types/game';
 import type { Route } from './+types/GamePage';
 
 /**
@@ -69,12 +70,12 @@ function authAnswered(user: UserProfile | null) {
 }
 
 /** The route with its loader's answer already in hand, as it is on the server. */
-function renderPage() {
+function renderPage(loaded: GameDto = CELESTE) {
     const Stub = createRoutesStub([{ id: 'game', path: '/games/:id', Component: GamePage }]);
     return render(
         <Stub
             initialEntries={['/games/1']}
-            hydrationData={{ loaderData: { game: { game: CELESTE } } }}
+            hydrationData={{ loaderData: { game: { game: loaded } } }}
         />,
     );
 }
@@ -171,6 +172,44 @@ describe('GamePage trailer', () => {
         expect(await screen.findByRole('heading', { level: 1, name: 'Hades' })).toBeInTheDocument();
         expect(screen.queryByTitle('Hades trailer')).not.toBeInTheDocument();
         expect(screen.getByRole('button', { name: /Play trailer/ })).toBeInTheDocument();
+    });
+});
+
+describe('GamePage where to play', () => {
+    it('lists the stores the API named, in the server render', () => {
+        // In the loader's data, so a crawler and a reader without JavaScript get the row as well.
+        renderPage(game({
+            id: 1,
+            title: 'Celeste',
+            details: gameDetails({
+                stores: [
+                    { store: 'Steam', url: 'https://store.steampowered.com/app/504230' },
+                    { store: 'itch.io', url: 'https://mattmakesgames.itch.io/celeste' },
+                ],
+            }),
+        }));
+
+        const row = screen.getByRole('list', { name: 'Where to play' });
+        expect(within(row).getByRole('link', { name: /^Steam/ }))
+            .toHaveAttribute('href', 'https://store.steampowered.com/app/504230');
+        expect(within(row).getByRole('link', { name: /^itch\.io/ }))
+            .toHaveAttribute('href', 'https://mattmakesgames.itch.io/celeste');
+    });
+
+    it('has no row for a game IGDB names no store for', () => {
+        renderPage(game({ id: 1, title: 'Celeste', details: gameDetails() }));
+
+        expect(screen.queryByRole('heading', { name: 'Where to play' })).not.toBeInTheDocument();
+    });
+
+    it('has no row, and does not fail, when the details lack the stores', () => {
+        // A game page's data is shared-cached for an hour and served stale for up to a day after, so a
+        // copy made before the stores existed can reach a client that expects them.
+        const { stores: _, ...older } = gameDetails();
+        renderPage(game({ id: 1, title: 'Celeste', details: older as GameDetailsDto }));
+
+        expect(screen.getByRole('heading', { level: 1, name: 'Celeste' })).toBeInTheDocument();
+        expect(screen.queryByRole('heading', { name: 'Where to play' })).not.toBeInTheDocument();
     });
 });
 
