@@ -4,6 +4,7 @@ import type { CommunityScores, GameReview } from '@/types/community';
 import { formatCount } from '@/lib/format';
 import { formatDate } from '@/lib/stats';
 import { hasMemberScore, MAX_SCORE, MIN_MEMBER_SCORES, ratingPercent } from '@/lib/score';
+import { Avatar } from '@/components/Avatar';
 import { ReviewCard } from '@/components/ReviewCard';
 import { ScoreBadge } from '@/components/ScoreBadge';
 import { ScoreColumns } from '@/components/ScoreColumns';
@@ -163,19 +164,24 @@ function GameReviewCard({ review, isViewer }: { review: GameReview; isViewer: bo
         <ReviewCard
             head={
                 <>
-                    {/* Decorative: the name beside it says the same thing. */}
-                    <span
-                        className="flex items-center justify-center shrink-0 w-9 h-9 rounded-full bg-gradient-to-br from-primary-600 to-primary-700 text-on-primary text-sm font-bold"
-                        aria-hidden="true"
-                    >
-                        {review.userName.charAt(0).toUpperCase()}
-                    </span>
+                    {/* Their picture, or their handle's initial. Decorative: the name beside it
+                        says the same thing. */}
+                    <Avatar userName={review.userName} avatarUrl={review.avatarUrl} className="review-avatar" />
 
                     <div className="review-card-meta">
                         <p>
-                            {/* Always linkable: only a public profile's reviews are listed. */}
+                            {/* Always linkable: only a public profile's reviews are listed. A display
+                                name sits beside the handle and never replaces it, as on the profile
+                                (ADR 0056), in a `bdi` so a name written right to left cannot reorder
+                                the handle after it. Tested for presence: an API a release behind
+                                sends no display name, and the handle alone is right for that. */}
                             <Link to={`/u/${review.userName}`} className="review-card-title">
-                                {review.userName}
+                                {review.displayName ? (
+                                    <>
+                                        <bdi>{review.displayName}</bdi>{' '}
+                                        <span className="review-card-handle">@{review.userName}</span>
+                                    </>
+                                ) : review.userName}
                             </Link>
                             {isViewer && (
                                 <span className="ml-2 px-1.5 py-0.5 rounded text-xs font-medium bg-primary-500/15 text-primary-300">
@@ -197,6 +203,8 @@ function GameReviewCard({ review, isViewer }: { review: GameReview; isViewer: bo
             }
             body={review.body}
             hasSpoilers={review.hasSpoilers}
+            // The handle, not the display name: it is what says whose review this is, and a
+            // display name is anybody's to choose.
             revealLabel={`Show ${review.userName}'s review — they marked it as containing spoilers`}
         />
     );

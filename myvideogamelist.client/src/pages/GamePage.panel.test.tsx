@@ -47,7 +47,7 @@ function theApi(): ApiRoutes {
         const published = own !== null && own.visibility === 'public' && ALEX.profileVisibility === 'public';
         return {
             reviews: published && own !== null
-                ? [{ userName: ALEX.userName, body: own.body, hasSpoilers: own.hasSpoilers, score, createdAt: own.createdAt, updatedAt: own.updatedAt }]
+                ? [{ userName: ALEX.userName, displayName: ALEX.displayName, avatarUrl: ALEX.avatarUrl, body: own.body, hasSpoilers: own.hasSpoilers, score, createdAt: own.createdAt, updatedAt: own.updatedAt }]
                 : [],
             total: published ? 1 : 0,
             next: null,

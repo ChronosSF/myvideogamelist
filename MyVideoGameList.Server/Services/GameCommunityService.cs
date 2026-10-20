@@ -114,6 +114,9 @@ public class GameCommunityService(
                 // Read for the cursor only; it never reaches the response unencrypted.
                 r.Id,
                 r.User.UserName,
+                // Beside the handle on the card (ADR 0056), as on the profile it links to.
+                r.User.DisplayName,
+                r.User.AvatarUrl,
                 r.Body,
                 r.HasSpoilers,
                 // The author's score, which lives on the entry rather than on the review.
@@ -132,7 +135,8 @@ public class GameCommunityService(
         // public document without somebody writing it in.
         var reviews = page
             .Select(r => new GameReviewDto(
-                r.UserName!, r.Body, r.HasSpoilers, r.Score, r.CreatedAt, r.UpdatedAt))
+                r.UserName!, r.DisplayName, r.AvatarUrl, r.Body, r.HasSpoilers, r.Score, r.CreatedAt,
+                r.UpdatedAt))
             .ToList();
 
         return new GameReviewsDto(reviews, total, next);
