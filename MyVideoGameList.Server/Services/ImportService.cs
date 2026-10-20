@@ -323,7 +323,9 @@ public class ImportService(
 
         if (job is null || job.State != ImportJobStates.Pending) return false;
 
-        var wanted = decisions.Rows.ToDictionary(r => r.RowId);
+        // A row named twice takes the last of its decisions, as a list named twice takes the last of
+        // its names, rather than failing as a duplicate key.
+        var wanted = decisions.Rows.GroupBy(r => r.RowId).ToDictionary(group => group.Key, group => group.Last());
 
         // Scoped to the job and the user in the predicate, so a row id belonging to somebody else's
         // job simply is not found — the scoping is the authorization.
