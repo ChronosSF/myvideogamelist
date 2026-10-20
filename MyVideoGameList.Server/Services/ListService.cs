@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using MyVideoGameList.Server.Data;
 using MyVideoGameList.Server.DTOs;
 using MyVideoGameList.Server.Models;
+using MyVideoGameList.Server.Services.Edge;
 
 namespace MyVideoGameList.Server.Services;
 
@@ -12,7 +13,8 @@ namespace MyVideoGameList.Server.Services;
 public class ListService(
     ApplicationDbContext db,
     IGameCacheService gameCache,
-    TimeProvider timeProvider) : IListService
+    TimeProvider timeProvider,
+    ProfileWithdrawals withdrawals) : IListService
 {
     /// <summary>Lowest and highest score the API will store.</summary>
     internal const short MinScore = 1;
@@ -200,6 +202,13 @@ public class ListService(
 
         db.UserGameEntries.Remove(entry);
         await db.SaveChangesAsync(cancellationToken);
+
+        // The review goes with the entry through the cascade, so the profile comes off the edge
+        // whatever the entry held. Asking first whether it carried a public review, or any review,
+        // would be answered before the cascade, and the user's own request can publish one or
+        // write one in between: the cascade would then take a review the edge may hold, with
+        // nothing sent (ADR 0058 §1).
+        await withdrawals.EntryDeletedAsync(userId);
         return true;
     }
 

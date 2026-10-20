@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { AVATAR_HOSTS } from '@/lib/avatar';
 import {
     applySecurityHeaders,
     createNonce,
@@ -48,8 +49,14 @@ describe('applySecurityHeaders', () => {
 
 describe('documentPolicy', () => {
     it('is exactly this, so that a change to it is a change to this test', () => {
+        // Written out whole, so a host added or lost anywhere in the chain that builds it shows here.
         expect(documentPolicy('abc')).toBe(
-            "script-src 'self' 'nonce-abc'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'",
+            "script-src 'self' 'nonce-abc'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; "
+            + "img-src 'self' https://images.igdb.com https://gravatar.com "
+            + 'https://www.gravatar.com https://secure.gravatar.com https://0.gravatar.com '
+            + 'https://1.gravatar.com https://2.gravatar.com https://avatars.githubusercontent.com '
+            + 'https://avatars.steamstatic.com https://avatars.akamai.steamstatic.com '
+            + 'https://avatars.fastly.steamstatic.com https://i.imgur.com',
         );
     });
 
@@ -68,6 +75,29 @@ describe('documentPolicy', () => {
         expect(policy.get('base-uri')).toEqual(["'none'"]);
         expect(policy.get('object-src')).toEqual(["'none'"]);
         expect(policy.get('frame-ancestors')).toEqual(["'none'"]);
+    });
+});
+
+describe('the images a page may load', () => {
+    const imgSrc = () => directives(documentPolicy('abc')).get('img-src');
+
+    it('come from this origin, IGDB and the avatar hosts, and nowhere else', () => {
+        expect(imgSrc()).toEqual([
+            "'self'",
+            'https://images.igdb.com',
+            ...AVATAR_HOSTS.map(host => `https://${host}`),
+        ]);
+    });
+
+    it('name hosts, never a scheme or a wildcard that would admit any of them', () => {
+        // `https:` would send every reader's browser wherever a profile's owner pointed their avatar,
+        // which is the whole of what ADR 0056 decided against. A third party that publishes its
+        // hosts only as wildcards (#242, #143) is a decision to take in that record, not here.
+        for (const source of imgSrc() ?? []) {
+            expect(source).not.toMatch(/^(https?|data|blob):$/);
+            expect(source).not.toContain('*');
+            if (source !== "'self'") expect(source).toMatch(/^https:\/\/[a-z0-9.-]+$/);
+        }
     });
 });
 

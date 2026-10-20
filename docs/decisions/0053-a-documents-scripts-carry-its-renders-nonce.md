@@ -107,8 +107,13 @@ visible when the header is sent. Anything in the body that was fixed before then
 ### 3. The policy
 
 ```
-script-src 'self' 'nonce-…'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'
+script-src 'self' 'nonce-…'; object-src 'none'; base-uri 'none'; frame-ancestors 'none';
+img-src 'self' https://images.igdb.com https://gravatar.com …
 ```
+
+`img-src` is [0056](0056-an-avatar-is-an-address-on-a-short-list-of-hosts.md)'s, which landed first
+and wrote it into the fixed policy this record replaced. It needs no nonce, and `documentPolicy`
+writes it with the rest. Its tests moved across with it.
 
 - **`'self'`** admits the scripts loaded from files: the route modules a navigation imports and the
   module preloads. Nothing else on this origin answers with script. The API sends JSON under

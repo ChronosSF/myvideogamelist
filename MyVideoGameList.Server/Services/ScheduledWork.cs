@@ -36,9 +36,11 @@ public static class ScheduledWork
         services.Configure<HostOptions>(options =>
             options.BackgroundServiceExceptionBehavior = BackgroundServiceExceptionBehavior.StopHost);
 
-        // The application's only background job: deleting import jobs past their retention. A
+        // The application's only scheduled job: deleting import jobs past their retention. A
         // hosted service rather than a method somewhere, because nothing requests it — see the
-        // class for the scoping, failure and multi-task rules that go with that.
+        // class for the scoping, failure and multi-task rules that go with that. The one other
+        // hosted service, which sends CloudFront invalidations from a queue rather than on a
+        // schedule, is registered by AddEdgeInvalidation and runs under the same StopHost (ADR 0058).
         services.AddHostedService<ImportRetentionService>();
 
         return services;

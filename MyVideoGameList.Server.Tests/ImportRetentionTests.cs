@@ -1,16 +1,25 @@
+using System.Collections;
+using System.Linq.Expressions;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Query;
+using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using MyVideoGameList.Server.Data;
 using MyVideoGameList.Server.Models;
 using MyVideoGameList.Server.Services;
 using MyVideoGameList.Server.Services.Import;
+using NSubstitute;
 
 namespace MyVideoGameList.Server.Tests;
 
 /// <summary>
-/// Which jobs the retention sweep selects.
+/// Which jobs the retention sweep selects, and how far a shutdown reaches into a batch.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -22,7 +31,17 @@ namespace MyVideoGameList.Server.Tests;
 /// What is deliberately <em>not</em> covered is the deletion: <c>ExecuteDeleteAsync</c> needs a
 /// relational provider and these tests run on EF InMemory. That is the same line
 /// <c>UserOwnedDataTests</c> draws when it declines to assert cascade behaviour — the model is
-/// asserted here, and the execution is left to the provider that actually implements it.
+/// asserted here, and the execution is left to the provider that actually implements it, in the
+/// integration suite's <c>ImportRetentionSweepTests</c> (<c>docs/decisions/0057-*</c>).
+/// </para>
+/// <para>
+/// The batch around the deletion is covered here only as far as doubles reach. <c>DeleteBatchAsync</c>
+/// and <c>SweepAsync</c> run with the advisory lock and the <c>ExecuteDelete</c> answered by a
+/// scripted query provider and the transaction substituted. That is enough to hold them to ADR 0038
+/// §4 — the commit on exactly <c>CancellationToken.None</c>, the <c>DELETE</c> on the stopping
+/// token, a shutdown stopping the loop between batches, and the count logged however a pass ends —
+/// and nothing more. What such a shutdown does to the rows themselves is
+/// <c>ImportRetentionSweepTests</c>'s to show, against PostgreSQL.
 /// </para>
 /// </remarks>
 public class ImportRetentionTests
@@ -250,5 +269,254 @@ public class ImportRetentionTests
         // leave a sweep that deletes reviews people are part way through and keeps receipts nobody
         // reads. This is the one assertion that says the ordering is the point.
         Assert.True(ImportRetention.KeepAbandoned > ImportRetention.KeepCompleted);
+    }
+
+    [Fact]
+    public async Task DeleteBatchAsync_WhenShutdownArrivesOnceTheDeleteHasReturned_StillCommits()
+    {
+        // Issue #96, and the change that would undo it while looking like tidying: handing the
+        // commit the stopping token like every other call. The shutdown lands the moment the
+        // DELETE returns. On that token the commit used to be refused before COMMIT was sent, so a
+        // batch that had finished rolled back for the next sweep to delete again.
+        using var stopping = new CancellationTokenSource();
+        using var db = BatchDb(out var transaction, out var queries);
+        queries.OnDelete = stopping.Cancel;
+
+        var deleted = await ImportRetentionService.DeleteBatchAsync(db, Now, stopping.Token);
+
+        Assert.True(stopping.IsCancellationRequested, "The shutdown never landed.");
+        Assert.Equal(queries.Deleted, deleted);
+
+        // Exactly CancellationToken.None, which is what the comment at the commit promises, and not
+        // merely a token nobody has cancelled yet: a fresh token from a source of its own would pass
+        // that and still leave something able to abort the commit later.
+        await transaction.Received(1).CommitAsync(CancellationToken.None);
+    }
+
+    [Fact]
+    public async Task DeleteBatchAsync_WhenShutdownArrivesBeforeTheDelete_AbandonsTheBatch()
+    {
+        // The other half of the rule, so that the test above cannot be satisfied by taking the
+        // token off everything: the stopping token still bounds the work, and a shutdown that
+        // lands before the DELETE is sent stops the batch there, with nothing committed.
+        using var stopping = new CancellationTokenSource();
+        using var db = BatchDb(out var transaction, out var queries);
+        queries.OnLock = stopping.Cancel;
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => ImportRetentionService.DeleteBatchAsync(db, Now, stopping.Token));
+
+        await transaction.DidNotReceive().CommitAsync(Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task SweepAsync_WhenShutdownArrivesDuringAFullBatch_LogsItAndStartsNoOther()
+    {
+        // The batch that DeleteBatchAsync now keeps through a shutdown has to be counted. Left to
+        // the next batch, the cancelled token would throw and carry the sweep's log line away with
+        // it, so the loop stops between batches instead. Only a full batch would start another.
+        using var stopping = new CancellationTokenSource();
+        using var db = BatchDb(out var transaction, out var queries);
+        queries.Deleted = ImportRetentionService.BatchSize;
+        queries.OnDelete = stopping.Cancel;
+        var log = new Lines();
+        using var services = new ServiceCollection().AddScoped(_ => db).BuildServiceProvider();
+        var sweep = new ImportRetentionService(
+            services.GetRequiredService<IServiceScopeFactory>(), TimeProvider.System, log);
+
+        await sweep.SweepAsync(stopping.Token);
+
+        await transaction.Received(1).CommitAsync(Arg.Any<CancellationToken>());
+        Assert.Equal(
+            [$"Import retention deleted {ImportRetentionService.BatchSize} expired job(s)."],
+            log.Written);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task SweepAsync_WhenAPassStopsPartWay_StillLogsWhatItDeleted(bool byShutdown)
+    {
+        // #265: a pass that stops part way — a shutdown that cancels its second batch, or a second
+        // batch that fails — leaves by an exception, which used to take the count of what the first
+        // batch had committed out with it, unlogged.
+        using var stopping = new CancellationTokenSource();
+        using var db = BatchDb(out _, out var queries);
+        queries.Deleted = ImportRetentionService.BatchSize;
+        var locks = 0;
+        queries.OnLock = () =>
+        {
+            if (++locks < 2) return;
+            if (byShutdown) stopping.Cancel();
+            else throw new InvalidOperationException("The second batch failed.");
+        };
+        var log = new Lines();
+        using var services = new ServiceCollection().AddScoped(_ => db).BuildServiceProvider();
+        var sweep = new ImportRetentionService(
+            services.GetRequiredService<IServiceScopeFactory>(), TimeProvider.System, log);
+
+        var thrown = await Assert.ThrowsAnyAsync<Exception>(() => sweep.SweepAsync(stopping.Token));
+
+        Assert.IsType(byShutdown ? typeof(OperationCanceledException) : typeof(InvalidOperationException), thrown);
+        Assert.Equal(
+            [$"Import retention deleted {ImportRetentionService.BatchSize} expired job(s)."],
+            log.Written);
+    }
+
+    /// <summary>
+    /// A context in which <see cref="ImportRetentionService.DeleteBatchAsync"/> runs to its commit
+    /// on InMemory, which by itself it cannot: InMemory's transactions throw by default,
+    /// <c>SqlQuery</c> refuses a database facade that is not relational, and InMemory cannot
+    /// translate <c>ExecuteDelete</c>. <see cref="RelationalFacade"/> answers the first two — a
+    /// relational facade whose transaction is a substitute recording the token its commit is given
+    /// — and <see cref="ScriptedQueries"/> answers the queries themselves.
+    /// </summary>
+    /// <remarks>
+    /// Everything replaced is public EF API, though the provider-facing kind. A release that adds a
+    /// member to <see cref="IDatabaseFacadeDependencies"/> fails to compile here rather than to
+    /// pass; the new member can throw like the others a batch never reaches.
+    /// </remarks>
+    private static ApplicationDbContext BatchDb(
+        out IDbContextTransaction transaction, out ScriptedQueries queries)
+    {
+        var db = new ApplicationDbContext(
+            new DbContextOptionsBuilder<ApplicationDbContext>()
+                .UseInMemoryDatabase(Guid.NewGuid().ToString())
+                .ReplaceService<IDatabaseFacadeDependencies, RelationalFacade>()
+                .ReplaceService<IAsyncQueryProvider, ScriptedQueries>()
+                .Options);
+
+        // Both are scoped, so these are the very instances db.Database and db.ImportJobs use.
+        transaction = ((RelationalFacade)db.GetService<IDatabaseFacadeDependencies>()).Transaction;
+        queries = (ScriptedQueries)db.GetService<IAsyncQueryProvider>();
+        return db;
+    }
+
+    /// <summary>
+    /// The two queries a batch runs, answered without a database: the advisory lock — the only
+    /// <c>Single</c> in a batch — as taken, and the <c>ExecuteDelete</c> as having removed
+    /// <see cref="Deleted"/> jobs. Like a real provider, each refuses a token already cancelled
+    /// before it does anything; then it runs its hook, which is where a test lands its shutdown.
+    /// </summary>
+    private sealed class ScriptedQueries : IAsyncQueryProvider
+    {
+        public int Deleted { get; set; } = 3;
+
+        public Action? OnLock { get; set; }
+
+        public Action? OnDelete { get; set; }
+
+        public IQueryable<TElement> CreateQuery<TElement>(Expression expression) =>
+            new Scripted<TElement>(this, expression);
+
+        public TResult ExecuteAsync<TResult>(
+            Expression expression, CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var method = ((MethodCallExpression)expression).Method;
+
+            if (method.DeclaringType == typeof(Queryable) && method.Name == nameof(Queryable.Single))
+            {
+                OnLock?.Invoke();
+                return (TResult)(object)Task.FromResult(true);
+            }
+
+            if (method.Name == nameof(EntityFrameworkQueryableExtensions.ExecuteDelete))
+            {
+                OnDelete?.Invoke();
+                return (TResult)(object)Task.FromResult(Deleted);
+            }
+
+            throw new NotSupportedException($"A batch runs no {method.Name}.");
+        }
+
+        public IQueryable CreateQuery(Expression expression) => throw new NotSupportedException();
+
+        public object Execute(Expression expression) => throw new NotSupportedException();
+
+        public TResult Execute<TResult>(Expression expression) => throw new NotSupportedException();
+    }
+
+    private sealed class Scripted<T>(IQueryProvider provider, Expression expression)
+        : IOrderedQueryable<T>
+    {
+        public Type ElementType => typeof(T);
+
+        public Expression Expression => expression;
+
+        public IQueryProvider Provider => provider;
+
+        public IEnumerator<T> GetEnumerator() => throw new NotSupportedException();
+
+        IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+    }
+
+    /// <summary>
+    /// What <c>db.Database</c> takes its services from, made relational so that <c>SqlQuery</c>
+    /// accepts it. A batch reaches four members — the transaction manager, the execution strategy
+    /// factory, the query provider and the type mappings — and the rest throw, so a batch that
+    /// started to need one would say so rather than run against a default.
+    /// </summary>
+    private sealed class RelationalFacade : IRelationalDatabaseFacadeDependencies
+    {
+        public RelationalFacade(
+            IExecutionStrategyFactory executionStrategyFactory,
+            IAsyncQueryProvider queryProvider,
+            ITypeMappingSource typeMappingSource)
+        {
+            ExecutionStrategyFactory = executionStrategyFactory;
+            QueryProvider = queryProvider;
+            TypeMappingSource = typeMappingSource;
+            TransactionManager.BeginTransactionAsync(Arg.Any<CancellationToken>())
+                .Returns(Task.FromResult(Transaction));
+        }
+
+        public IDbContextTransaction Transaction { get; } = Substitute.For<IDbContextTransaction>();
+
+        public IDbContextTransactionManager TransactionManager { get; } =
+            Substitute.For<IDbContextTransactionManager>();
+
+        public IExecutionStrategyFactory ExecutionStrategyFactory { get; }
+
+        public IAsyncQueryProvider QueryProvider { get; }
+
+        public ITypeMappingSource TypeMappingSource { get; }
+
+        public IDatabaseCreator DatabaseCreator => throw new NotSupportedException();
+
+        public IExecutionStrategy ExecutionStrategy => throw new NotSupportedException();
+
+        public IEnumerable<IDatabaseProvider> DatabaseProviders => throw new NotSupportedException();
+
+        public IConcurrencyDetector ConcurrencyDetector => throw new NotSupportedException();
+
+        public ICoreSingletonOptions CoreOptions => throw new NotSupportedException();
+
+        public IAdHocMapper AdHocMapper => throw new NotSupportedException();
+
+        public IRelationalConnection RelationalConnection => throw new NotSupportedException();
+
+        public IRawSqlCommandBuilder RawSqlCommandBuilder => throw new NotSupportedException();
+
+        public IRelationalCommandDiagnosticsLogger CommandLogger => throw new NotSupportedException();
+
+        IDiagnosticsLogger<DbLoggerCategory.Database.Command> IDatabaseFacadeDependencies.CommandLogger =>
+            CommandLogger;
+    }
+
+    /// <summary>Every line the sweep logs, as it would read.</summary>
+    private sealed class Lines : ILogger<ImportRetentionService>
+    {
+        public List<string> Written { get; } = [];
+
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(
+            LogLevel logLevel, EventId eventId, TState state, Exception? exception,
+            Func<TState, Exception?, string> formatter) =>
+            Written.Add(formatter(state, exception));
     }
 }
