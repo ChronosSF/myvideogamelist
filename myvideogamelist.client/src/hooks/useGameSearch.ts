@@ -153,6 +153,23 @@ function holdFor(response: Response): number {
 }
 
 /**
+ * Whether an item has every field a row of the dropdown reads, as the type it reads it as: `null` or
+ * a value, exactly as the API writes them. Only those fields — the rest of a `GameDto` is never shown
+ * here, and checking it would refuse an answer over a field that cannot break anything.
+ */
+function isListedGame(item: unknown): item is GameDto {
+    if (typeof item !== 'object' || item === null) return false;
+    const game = item as Record<keyof GameDto, unknown>;
+    const nullOr = (value: unknown, type: 'string' | 'number') => value === null || typeof value === type;
+    return typeof game.id === 'number'
+        && typeof game.title === 'string'
+        && nullOr(game.releaseDate, 'string')
+        && nullOr(game.coverImageUrl, 'string')
+        && nullOr(game.criticScore, 'number')
+        && nullOr(game.criticScoreCount, 'number');
+}
+
+/**
  * One request, settled as the action it calls for. Never rejects: a request aborted because the term
  * moved on settles as a failure too, which the caller drops unread.
  *
@@ -177,15 +194,17 @@ async function ask(term: string, signal: AbortSignal): Promise<Action> {
     try {
         const page: unknown = await response.json();
         const { items, hasMore } = (page ?? {}) as { items?: unknown; hasMore?: unknown };
-        // Checked rather than trusted, because the answer is rendered in the navbar of every page and
-        // a crash there takes the page with it. Cut to size as well: an API older than this client,
-        // mid-deploy, ignores `limit` and sends a whole page.
-        if (!Array.isArray(items)) return failed(term, SEARCH_UNREACHABLE);
+        // Checked rather than trusted, game by game, because the answer is rendered in the navbar of
+        // every page and a crash there takes the page with it. One game that is not what a row reads
+        // fails the answer whole, as unreachable: listing the rest would pass a broken API off as a
+        // search that found less. Cut to size as well: an API older than this client, mid-deploy,
+        // ignores `limit` and sends a whole page.
+        if (!Array.isArray(items) || !items.every(isListedGame)) return failed(term, SEARCH_UNREACHABLE);
         return {
             type: 'answered',
             term,
             answer: {
-                games: items.slice(0, TYPEAHEAD_SIZE) as GameDto[],
+                games: items.slice(0, TYPEAHEAD_SIZE),
                 hasMore: hasMore === true || items.length > TYPEAHEAD_SIZE,
             },
         };

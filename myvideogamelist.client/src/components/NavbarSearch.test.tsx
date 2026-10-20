@@ -576,6 +576,25 @@ describe('NavbarSearch failing', () => {
         expect(box).toBeInTheDocument();
     });
 
+    it.each([
+        ['a null in place of a game', [null]],
+        ['a title that is not text', [{ ...ZELDA, title: 42 }]],
+        ['one wrong game among right ones', [ZELDA, { ...BOTW, criticScore: '97' }]],
+    ])('fails an answer with %s whole, rather than crashing the navbar', async (_case, items) => {
+        // The first is the review's case. Rendered, any of them would throw in the navbar of every
+        // page, and the root boundary renders without one.
+        const requests = stubApi();
+        const { user, box } = renderSearch();
+        await user.type(box, 'zelda');
+        await pause(SEARCH_DEBOUNCE_MS);
+
+        await requests[0].respond(200, { items, hasMore: false });
+
+        expect(line(SEARCH_UNREACHABLE)).toBeVisible();
+        expect(screen.queryByRole('option')).not.toBeInTheDocument();
+        expect(box).toBeInTheDocument();
+    });
+
     it('asks again when the term moves on from a failure and comes back', async () => {
         const requests = stubApi();
         const { user, box } = renderSearch();
