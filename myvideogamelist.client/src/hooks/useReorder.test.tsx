@@ -577,6 +577,33 @@ describe('useReorder with a pointer', () => {
         expect(onMove).toHaveBeenCalledExactlyOnceWith(1, 4);
     });
 
+    it('drops a game where a fast drag\'s first move took it, with no move after that one', () => {
+        // A flick can cross the threshold and reach its place in one move and be let go there.
+        rows();
+        const onMove = vi.fn();
+        render(<Harness onMove={onMove} />);
+
+        fireEvent.pointerDown(handle('Outer Wilds'), pointer(170));
+        fireEvent.pointerMove(handle('Outer Wilds'), pointer(15));
+        expect(shown()).toEqual(['Outer Wilds', 'Celeste', 'Hades', 'Cuphead']);
+
+        fireEvent.pointerUp(handle('Outer Wilds'), pointer(15));
+        expect(onMove).toHaveBeenCalledExactlyOnceWith(4, null);
+    });
+
+    it('drops a game where the pointer is let go, should the release land past its last move', () => {
+        rows();
+        const onMove = vi.fn();
+        render(<Harness onMove={onMove} />);
+
+        fireEvent.pointerDown(handle('Outer Wilds'), pointer(170));
+        fireEvent.pointerMove(handle('Outer Wilds'), pointer(160));
+        fireEvent.pointerUp(handle('Outer Wilds'), pointer(60));
+
+        expect(onMove).toHaveBeenCalledExactlyOnceWith(4, 1);
+        expect(shown()).toEqual(['Celeste', 'Outer Wilds', 'Hades', 'Cuphead']);
+    });
+
     it('treats a press that does not travel as no drag at all', () => {
         rows();
         const onMove = vi.fn();

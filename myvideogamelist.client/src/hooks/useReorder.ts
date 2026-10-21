@@ -502,12 +502,19 @@ export function useReorder({ ids, nameOf, onMove, canMove, disabled = false }: R
                 return;
             }
             lift(pressed.id, 'pointer');
+            // A fast drag's first move can already have carried the pointer over another place.
+            retarget();
         },
         onPointerUp: event => {
             const pressed = press.current;
             if (pressed === null || pressed.pointerId !== event.pointerId) return;
 
             if (live()?.via === 'pointer') {
+                // The game lands where the pointer is let go, which a release can carry past its
+                // last move.
+                pointer.current = { x: event.clientX, y: event.clientY };
+                retarget();
+
                 // The click this release may still produce comes before anything queued now runs.
                 dragEnded.current = true;
                 setTimeout(() => {
