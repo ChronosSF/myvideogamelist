@@ -53,6 +53,7 @@ function Harness({ ids: initial = [1, 2, 3, 4], answer = true, canMove, disabled
                 ))}
             </ul>
             <button type="button">Somewhere else</button>
+            <p>Somewhere plain</p>
             <button type="button" onClick={() => setIds(previous => previous.slice(1))}>Lose the first game</button>
             <button type="button" onClick={() => setIds(previous => [previous[1], previous[0], ...previous.slice(2)])}>
                 Swap the first two games
@@ -62,6 +63,8 @@ function Harness({ ids: initial = [1, 2, 3, 4], answer = true, canMove, disabled
 }
 
 const handle = (name: string) => screen.getByRole('button', { name: `Move ${name}` });
+/** Text that takes no focus, so that a press on it is a press and nothing else. */
+const plain = () => screen.getByText('Somewhere plain');
 const shown = () => screen.getAllByRole('listitem').map(item => item.textContent?.replace(/^\d+/, ''));
 const announced = () => document.querySelector('[aria-live="assertive"]')?.textContent?.trim();
 const ORIGINAL = ['Celeste', 'Hades', 'Cuphead', 'Outer Wilds'];
@@ -220,7 +223,7 @@ describe('useReorder from the keyboard', () => {
         expect(onMove).not.toHaveBeenCalled();
     });
 
-    it('puts the game back when the pointer presses anywhere but a handle', async () => {
+    it('puts the game back when the pointer taps anywhere but a handle', async () => {
         const onMove = vi.fn();
         render(<Harness onMove={onMove} />);
 
@@ -230,6 +233,19 @@ describe('useReorder from the keyboard', () => {
 
         expect(shown()).toEqual(ORIGINAL);
         expect(onMove).not.toHaveBeenCalled();
+    });
+
+    it('keeps the move through a press elsewhere that the browser takes for a scroll', async () => {
+        const onMove = vi.fn();
+        render(<Harness onMove={onMove} />);
+
+        handle('Hades').focus();
+        await userEvent.keyboard(' {ArrowDown}');
+        fireEvent.pointerDown(plain(), { pointerId: 2, clientX: 100, clientY: 300 });
+        fireEvent.pointerCancel(plain(), { pointerId: 2, clientX: 100, clientY: 300 });
+        await userEvent.keyboard(' ');
+
+        expect(onMove).toHaveBeenCalledExactlyOnceWith(2, 3);
     });
 
     it('says so at the end of the list rather than saying nothing, and says it again audibly', async () => {
@@ -422,7 +438,7 @@ describe('useReorder with taps instead of a drag', () => {
         expect(onMove).toHaveBeenCalledExactlyOnceWith(3, null);
     });
 
-    it('puts the game back on a press anywhere but a handle', async () => {
+    it('puts the game back on a tap anywhere but a handle', async () => {
         const onMove = vi.fn();
         render(<Harness onMove={onMove} />);
 
@@ -431,6 +447,86 @@ describe('useReorder with taps instead of a drag', () => {
 
         expect(onMove).not.toHaveBeenCalled();
         expect(handle('Hades')).not.toHaveAttribute('aria-pressed');
+    });
+
+    // A press away from the handles puts a held game back only once it has ended where it began, which
+    // is what lets a tap carry a game to a place off the screen (issue 264). A swipe to scroll begins as a
+    // press too, and the browser ends it with a pointercancel rather than a release; a mouse selecting
+    // text travels; and either can scroll the page meanwhile. These presses are fired rather than played
+    // by user-event, which moves focus as a mouse does, so that what they test is the press, not a blur.
+    const touch = (clientY: number, pointerId = 2) => ({ pointerId, pointerType: 'touch', clientX: 100, clientY });
+
+    it('keeps a game held through a swipe the browser takes for a scroll, and places it with the next tap', async () => {
+        const onMove = vi.fn();
+        render(<Harness onMove={onMove} />);
+
+        await userEvent.click(handle('Outer Wilds'));
+        fireEvent.pointerDown(plain(), touch(300));
+        fireEvent.pointerCancel(plain(), touch(300));
+        fireEvent.scroll(document);
+
+        expect(handle('Outer Wilds')).toHaveAttribute('aria-pressed', 'true');
+
+        await userEvent.click(handle('Hades'));
+        expect(onMove).toHaveBeenCalledExactlyOnceWith(4, 1);
+        expect(shown()).toEqual(['Celeste', 'Outer Wilds', 'Hades', 'Cuphead']);
+    });
+
+    it('forgets a press the browser cancelled, whatever comes after it', async () => {
+        render(<Harness />);
+
+        await userEvent.click(handle('Hades'));
+        fireEvent.pointerDown(plain(), touch(300));
+        fireEvent.pointerCancel(plain(), touch(300));
+        fireEvent.pointerUp(plain(), touch(300));
+
+        expect(handle('Hades')).toHaveAttribute('aria-pressed', 'true');
+    });
+
+    it('keeps a game held through a press that travels before it is let go', async () => {
+        render(<Harness />);
+
+        await userEvent.click(handle('Hades'));
+        fireEvent.pointerDown(plain(), touch(300));
+        fireEvent.pointerUp(plain(), touch(340));
+
+        expect(handle('Hades')).toHaveAttribute('aria-pressed', 'true');
+    });
+
+    it('keeps a game held through a press that the page scrolls under', async () => {
+        render(<Harness />);
+
+        await userEvent.click(handle('Hades'));
+        fireEvent.pointerDown(plain(), touch(300));
+        fireEvent.scroll(document);
+        fireEvent.pointerUp(plain(), touch(300));
+
+        expect(handle('Hades')).toHaveAttribute('aria-pressed', 'true');
+    });
+
+    it('puts a game back once a press away from the handles ends where it began, a fingertip\'s slide included', async () => {
+        const onMove = vi.fn();
+        render(<Harness onMove={onMove} />);
+
+        await userEvent.click(handle('Hades'));
+        fireEvent.pointerDown(plain(), touch(300));
+        expect(handle('Hades')).toHaveAttribute('aria-pressed', 'true');
+
+        fireEvent.pointerUp(plain(), touch(306));
+
+        expect(handle('Hades')).not.toHaveAttribute('aria-pressed');
+        expect(onMove).not.toHaveBeenCalled();
+        expect(announced()).toBe('Move cancelled. Hades is back at number 2 of 4.');
+    });
+
+    it('waits for the release of the press that began away from the handles, and no other', async () => {
+        render(<Harness />);
+
+        await userEvent.click(handle('Hades'));
+        fireEvent.pointerDown(plain(), touch(300, 2));
+        fireEvent.pointerUp(plain(), touch(300, 3));
+
+        expect(handle('Hades')).toHaveAttribute('aria-pressed', 'true');
     });
 
     it('will not pick up a game whose own save is still out', async () => {
