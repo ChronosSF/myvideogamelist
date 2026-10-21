@@ -23,6 +23,7 @@ const auth: AuthContextValue = {
     logout: vi.fn(async () => {}),
     updateUserName: vi.fn(async () => {}),
     updateProfileVisibility: vi.fn(async () => {}),
+    updateProfileDetails: vi.fn(async () => {}),
     deleteAccount: vi.fn(async () => {}),
 };
 
@@ -119,6 +120,23 @@ describe('UserPage once the account is known', () => {
         const tracking = screen.getByText(`tracking for ${user.id}`);
         const history = screen.getByText(`history for ${user.id}`);
         expect(tracking.compareDocumentPosition(history) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    });
+});
+
+describe('UserPage profile details', () => {
+    it('never shows one account\'s half-typed details under another', async () => {
+        // Both accounts have nothing stored, so only the card's key tells their drafts apart: without
+        // it, a display name typed by one would sit, ready to save, under the other's name.
+        const actor = userEvent.setup();
+        stubFetch();
+        authAnswered(userProfile({ id: 'user-1', userName: 'alex' }));
+        const view = renderPage();
+
+        await actor.type(screen.getByLabelText('Display name'), 'Alex Smith');
+        authAnswered(userProfile({ id: 'user-2', userName: 'sam', email: 'sam@test.local' }));
+        view.rerender(<MemoryRouter><UserPage /></MemoryRouter>);
+
+        expect(screen.getByLabelText('Display name')).toHaveValue('');
     });
 });
 

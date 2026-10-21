@@ -119,6 +119,24 @@ describe('ReleaseLine', () => {
         expect(friday).toHaveTextContent('On your wishlist — out on Switch 2');
     });
 
+    it('puts an update on its day, as an update for the game it updates', () => {
+        // Gran Turismo 7's Spec IV, which IGDB types an update: there because the reader plays the game.
+        line.releases.data = [releaseEntry('2026-10-15', [connectedRelease({
+            gameId: 416116,
+            title: 'Gran Turismo 7: Spec IV',
+            kind: 'update',
+            platforms: [platform(48, 'PlayStation 4', 'PS4'), platform(167, 'PlayStation 5', 'PS5'), platform(390, 'PlayStation VR2', 'PSVR2')],
+            reason: { relation: 'child', gameId: 101006, title: 'Gran Turismo 7', membership: 'list', list: 'playing' },
+        })])];
+        renderLine();
+
+        const thursday = within(screen.getByRole('list', { name: 'Days' })).getAllByRole('listitem')[9];
+        expect(thursday).toHaveTextContent('Thursday, October 15');
+        expect(within(thursday).getByRole('link', { name: 'Gran Turismo 7: Spec IV' })).toHaveAttribute('href', '/games/416116');
+        expect(within(thursday).getByText("Update for Gran Turismo 7, which you're playing")).toBeInTheDocument();
+        expect(within(thursday).getByText('PS4, PS5, PSVR2')).toBeInTheDocument();
+    });
+
     it('shows a group as one, named after what its releases share, with all of them a click away (L5)', async () => {
         line.releases.data = [KINGDOM_HEARTS];
         renderLine();

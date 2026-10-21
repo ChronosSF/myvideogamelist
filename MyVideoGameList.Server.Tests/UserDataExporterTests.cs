@@ -1,4 +1,9 @@
+using System.Data;
+using System.Data.Common;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Storage;
 using MyVideoGameList.Server.Data;
 using MyVideoGameList.Server.Models;
 using MyVideoGameList.Server.Services;
@@ -10,9 +15,21 @@ namespace MyVideoGameList.Server.Tests;
 /// a complete document even when there is nothing in it.
 /// </summary>
 /// <remarks>
+/// <para>
 /// The scoping test is the important one. Everything else here is a shape that would be noticed the
 /// first time somebody opened the file; a document that quietly carried somebody else's rows would
 /// not be, and it is the failure this feature could not recover from.
+/// </para>
+/// <para>
+/// What is deliberately <em>not</em> covered is the snapshot. The exporter reads every section in
+/// one <c>REPEATABLE READ</c> transaction, and the in-memory provider has no isolation: a test that
+/// deleted a job and its rows between two sections would tear the document here with the fix in
+/// place. That is the line <c>UserOwnedDataTests</c> draws for a cascade and
+/// <c>ImportRetentionTests</c> for the sweep's delete. What is pinned instead is the request — one
+/// transaction, at that level, over before the export returns — which the provider's own
+//// transaction manager would otherwise drop unseen. Whether PostgreSQL honours it is shown by the
+/// integration suite's <c>ExportSnapshotTests</c> (<c>docs/decisions/0057-*</c>).
+/// </para>
 /// </remarks>
 public class UserDataExporterTests
 {
@@ -31,11 +48,19 @@ public class UserDataExporterTests
     /// <c>HasData</c>, so these tests resolve the same five keys the migration seeds rather than a
     /// local copy that could drift from them.
     /// </summary>
+    /// <remarks>
+    /// The exporter reads inside a transaction, and the in-memory provider has none: asked for one,
+    /// it throws. Ignoring that warning, rather than opening the transaction behind a seam these
+    /// tests step around, keeps them on the exporter's real path — the execution strategy, the
+    /// transaction and the commit all run here, as no-ops — so what they prove is that the document
+    /// is what it was.
+    /// </remarks>
     private static ApplicationDbContext NewDb()
     {
         var db = new ApplicationDbContext(
             new DbContextOptionsBuilder<ApplicationDbContext>()
                 .UseInMemoryDatabase(Guid.NewGuid().ToString())
+                .ConfigureWarnings(warnings => warnings.Ignore(InMemoryEventId.TransactionIgnoredWarning))
                 .Options);
         db.Database.EnsureCreated();
         return db;
@@ -54,7 +79,12 @@ public class UserDataExporterTests
         string theme = "dark",
         string listView = ListViewModes.Tiles,
         string userName = "someone",
-        string profileVisibility = ProfileVisibility.Private)
+        string profileVisibility = ProfileVisibility.Private,
+        string? displayName = null,
+        string? avatarUrl = null,
+        string? bio = null,
+        DateTimeOffset? createdAt = null,
+        DateTimeOffset? lastSeenAt = null)
     {
         db.Users.Add(new ApplicationUser
         {
@@ -63,7 +93,12 @@ public class UserDataExporterTests
             Email = email,
             Theme = theme,
             ListView = listView,
-            ProfileVisibility = profileVisibility
+            ProfileVisibility = profileVisibility,
+            DisplayName = displayName,
+            AvatarUrl = avatarUrl,
+            Bio = bio,
+            CreatedAt = createdAt,
+            LastSeenAt = lastSeenAt
         });
         db.SaveChanges();
     }
@@ -238,9 +273,11 @@ public class UserDataExporterTests
         using var db = NewDb();
 
         AddAccount(db, UserId, "mine@test.local", theme: "light", listView: ListViewModes.Table,
-            userName: "mine", profileVisibility: ProfileVisibility.Public);
+            userName: "mine", profileVisibility: ProfileVisibility.Public,
+            displayName: "Mine Truly", avatarUrl: "https://i.imgur.com/mine.png", bio: "My bio.");
         AddAccount(db, OtherUserId, "theirs@test.local", theme: "dark", listView: ListViewModes.Tiles,
-            userName: "theirs");
+            userName: "theirs",
+            displayName: "Theirs", avatarUrl: "https://i.imgur.com/theirs.png", bio: "Their bio.");
 
         AddEntry(db, gameId: 11, status: ListStatusKeys.Playing, score: 8);
         AddEvent(db, gameId: 11, from: null, to: ListStatusKeys.Playing);
@@ -271,6 +308,12 @@ public class UserDataExporterTests
         // entered, so both travel with the rest of it (ADR 0027).
         Assert.Equal(ProfileVisibility.Public, export.Account.ProfileVisibility);
 
+        // So is what they wrote about themselves for that profile. Not a manifest table, so nothing
+        // but this would notice the three missing (ADR 0024); the avatar travels as its address.
+        Assert.Equal("Mine Truly", export.Account.DisplayName);
+        Assert.Equal("https://i.imgur.com/mine.png", export.Account.AvatarUrl);
+        Assert.Equal("My bio.", export.Account.Bio);
+
         Assert.Equal([11], export.Entries.Select(e => e.GameId));
         Assert.Equal([11], export.Events.Select(e => e.GameId));
         Assert.Equal([11], export.Playthroughs.Select(p => p.GameId));
@@ -293,6 +336,9 @@ public class UserDataExporterTests
 
         Assert.Equal(Now, export.ExportedAt);
         Assert.Equal("new@test.local", export.Account.Email);
+        Assert.Null(export.Account.DisplayName);
+        Assert.Null(export.Account.AvatarUrl);
+        Assert.Null(export.Account.Bio);
         Assert.Empty(export.Entries);
         Assert.Empty(export.Events);
         Assert.Empty(export.Playthroughs);
@@ -301,6 +347,26 @@ public class UserDataExporterTests
         Assert.Empty(export.Favourites);
         Assert.Empty(export.ListSortPreferences);
         Assert.Empty(export.ListNames);
+    }
+
+    [Fact]
+    public async Task ExportAsync_Account_CarriesWhenItWasCreatedAndLastSeen()
+    {
+        // Recorded about the user rather than entered by them, which is the stronger reason the export
+        // owes them (ADR 0051). An account from before they were recorded exports them as null.
+        using var db = NewDb();
+        var createdAt = new DateTimeOffset(2026, 3, 1, 9, 0, 0, TimeSpan.Zero);
+        var lastSeenAt = new DateTimeOffset(2026, 6, 14, 18, 30, 0, TimeSpan.Zero);
+        AddAccount(db, UserId, "mine@test.local", createdAt: createdAt, lastSeenAt: lastSeenAt);
+        AddAccount(db, OtherUserId, "older@test.local", userName: "older");
+
+        var export = await NewExporter(db).ExportAsync(UserId, default);
+        var older = await NewExporter(db).ExportAsync(OtherUserId, default);
+
+        Assert.Equal(createdAt, export.Account.CreatedAt);
+        Assert.Equal(lastSeenAt, export.Account.LastSeenAt);
+        Assert.Null(older.Account.CreatedAt);
+        Assert.Null(older.Account.LastSeenAt);
     }
 
     [Fact]
@@ -624,7 +690,131 @@ public class UserDataExporterTests
         // answer. Failing beats handing back a document about an account that does not exist.
         using var db = NewDb();
 
-        await Assert.ThrowsAsync<InvalidOperationException>(
+        var thrown = await Assert.ThrowsAsync<InvalidOperationException>(
             () => NewExporter(db).ExportAsync(UserId, default));
+
+        // The message as well as the type, because the in-memory provider throws this type too when
+        // asked for a transaction. Until NewDb learned to ignore that, a bare type check passed on
+        // it without the account ever being read.
+        Assert.StartsWith("No account row", thrown.Message);
+    }
+
+    /// <summary>
+    /// A transaction manager that records what it is asked for and opens nothing.
+    /// </summary>
+    /// <remarks>
+    /// The in-memory provider's own manager never sees an isolation level:
+    /// <c>BeginTransactionAsync(IsolationLevel)</c> hands the level on only to a relational manager,
+    /// and calls the parameterless overload on any other. So this one is relational, which is all it
+    /// takes for the level to arrive where a test can read it.
+    /// </remarks>
+    private sealed class RecordingTransactions : IRelationalTransactionManager
+    {
+        public List<RecordedTransaction> Begun { get; } = [];
+
+        public IDbContextTransaction? CurrentTransaction => null;
+
+        public IDbContextTransaction BeginTransaction() => Begin(IsolationLevel.Unspecified);
+
+        public Task<IDbContextTransaction> BeginTransactionAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult(Begin(IsolationLevel.Unspecified));
+
+        public IDbContextTransaction BeginTransaction(IsolationLevel isolationLevel) => Begin(isolationLevel);
+
+        public Task<IDbContextTransaction> BeginTransactionAsync(
+            IsolationLevel isolationLevel, CancellationToken cancellationToken = default) =>
+            Task.FromResult(Begin(isolationLevel));
+
+        private IDbContextTransaction Begin(IsolationLevel isolationLevel)
+        {
+            var transaction = new RecordedTransaction(isolationLevel);
+            Begun.Add(transaction);
+            return transaction;
+        }
+
+        public void ResetState() { }
+
+        public Task ResetStateAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+        // Nothing the exporter calls. Throwing rather than pretending means a call to any of them
+        // fails the test that made it instead of passing over it.
+        public void CommitTransaction() => throw new NotSupportedException();
+
+        public Task CommitTransactionAsync(CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public void RollbackTransaction() => throw new NotSupportedException();
+
+        public Task RollbackTransactionAsync(CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public IDbContextTransaction? UseTransaction(DbTransaction? transaction) =>
+            throw new NotSupportedException();
+
+        public IDbContextTransaction? UseTransaction(DbTransaction? transaction, Guid transactionId) =>
+            throw new NotSupportedException();
+
+        public Task<IDbContextTransaction?> UseTransactionAsync(
+            DbTransaction? transaction, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public Task<IDbContextTransaction?> UseTransactionAsync(
+            DbTransaction? transaction, Guid transactionId, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+    }
+
+    /// <summary>
+    /// One transaction <see cref="RecordingTransactions"/> handed out: its level, and whether it was
+    /// ended — committed, rolled back or disposed, any of which closes a real one.
+    /// </summary>
+    private sealed class RecordedTransaction(IsolationLevel isolationLevel) : IDbContextTransaction
+    {
+        public IsolationLevel IsolationLevel { get; } = isolationLevel;
+
+        public bool Ended { get; private set; }
+
+        public Guid TransactionId { get; } = Guid.NewGuid();
+
+        public void Commit() => Ended = true;
+
+        public Task CommitAsync(CancellationToken cancellationToken = default) => End();
+
+        public void Rollback() => Ended = true;
+
+        public Task RollbackAsync(CancellationToken cancellationToken = default) => End();
+
+        public void Dispose() => Ended = true;
+
+        public ValueTask DisposeAsync() => new(End());
+
+        private Task End()
+        {
+            Ended = true;
+            return Task.CompletedTask;
+        }
+    }
+
+    [Fact]
+    public async Task ExportAsync_Transaction_IsOneRepeatableReadEndedBeforeItReturns()
+    {
+        // The request, not the snapshot: one transaction, at the level that makes it a snapshot,
+        // over before the document goes back to be written. The level is the whole of the fix and
+        // the one thing a refactor could drop with every other test still green — the sweep's own
+        // BeginTransactionAsync takes none, and copying it would bring #95 back. Whether PostgreSQL
+        // honours the level is beyond this provider; see the class remarks.
+        using var db = new ApplicationDbContext(
+            new DbContextOptionsBuilder<ApplicationDbContext>()
+                .UseInMemoryDatabase(Guid.NewGuid().ToString())
+                .ReplaceService<IDbContextTransactionManager, RecordingTransactions>()
+                .Options);
+        db.Database.EnsureCreated();
+        AddAccount(db, UserId, "mine@test.local");
+
+        await NewExporter(db).ExportAsync(UserId, default);
+
+        var transactions = (RecordingTransactions)db.GetService<IDbContextTransactionManager>();
+        var transaction = Assert.Single(transactions.Begun);
+        Assert.Equal(IsolationLevel.RepeatableRead, transaction.IsolationLevel);
+        Assert.True(transaction.Ended);
     }
 }

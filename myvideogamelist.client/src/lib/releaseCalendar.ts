@@ -272,8 +272,24 @@ const UNDATED_BANDS: readonly { kind: UndatedKind; label: string }[] = [
     { kind: 'series', label: 'From the same series' },
 ];
 
-/** What a child adds to its game, where the rest of a game's children make it again. */
-const ADD_ONS: ReadonlySet<ReleaseKind> = new Set<ReleaseKind>(['dlc', 'expansion', 'standalone_expansion', 'episode', 'season']);
+/**
+ * What each kind of child is to its game: something added to it, or the game made again. A record rather
+ * than a list of the add-ons, so that a new kind does not compile until somebody has said which it is.
+ */
+const CHILD_BAND: Record<ReleaseKind, Extract<UndatedKind, 'addons' | 'versions'>> = {
+    // A main game is a child only as an edition, which F3 folds.
+    game: 'versions',
+    dlc: 'addons',
+    expansion: 'addons',
+    standalone_expansion: 'addons',
+    episode: 'addons',
+    season: 'addons',
+    remake: 'versions',
+    remaster: 'versions',
+    expanded_game: 'versions',
+    port: 'versions',
+    update: 'addons',
+};
 
 /**
  * The band an entry goes in, from its strongest release — the one whose reason a group is shown with, so
@@ -287,7 +303,7 @@ function undatedKind(entry: UndatedEntry): UndatedKind {
         case 'itself':
             return 'yours';
         case 'child':
-            return ADD_ONS.has(strongest.kind) ? 'addons' : 'versions';
+            return CHILD_BAND[strongest.kind];
         case 'series':
             return 'series';
     }

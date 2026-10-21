@@ -45,7 +45,7 @@ public class HistoryEndpointTests
 
         return new UserController(
             users, null!, null!, Substitute.For<IStatsService>(), history, null!, null!, null!, null!, null!,
-            TimeProvider.System)
+            null!, TimeProvider.System)
         {
             ControllerContext = new ControllerContext
             {

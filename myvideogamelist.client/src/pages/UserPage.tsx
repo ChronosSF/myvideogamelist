@@ -6,6 +6,7 @@ import { ProfileHistory } from '@/components/ProfileHistory';
 import { FavouritesShowcase } from '@/components/FavouritesShowcase';
 import { AccountIdentityCard } from '@/components/AccountIdentityCard';
 import { AccountDataCard } from '@/components/AccountDataCard';
+import { ProfileDetailsCard } from '@/components/ProfileDetailsCard';
 import { ListNamesCard } from '@/components/ListNamesCard';
 import { PageHeader } from '@/components/PageHeader';
 import { PRIVATE_NO_STORE } from '@/lib/cache';
@@ -133,6 +134,11 @@ export function UserPage() {
                         {/* Directly under it, because the two answer the same question from
                             opposite sides: what we know you by, and what everybody else does. */}
                         <AccountIdentityCard user={user} />
+
+                        {/* Then what that public page says about you, under the switch that decides
+                            whether anybody reads it. Keyed by the account, so drafts typed for one
+                            are never shown, or saved, under another. */}
+                        <ProfileDetailsCard key={user.id} user={user} />
                     </section>
 
                     {/* The main column, because what the user has done is the reason they came here

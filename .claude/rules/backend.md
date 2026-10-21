@@ -2,6 +2,7 @@
 paths:
   - "MyVideoGameList.Server/**/*.cs"
   - "MyVideoGameList.Server.Tests/**/*.cs"
+  - "MyVideoGameList.Server.IntegrationTests/**/*.cs"
 ---
 
 # Backend conventions
@@ -46,8 +47,10 @@ paths:
   That is what lets a list, a wishlist, a shelf of favourites or a public profile survive an IGDB
   outage, and it is where the tombstone rule above is enforced for good rather than for a process
   lifetime. Reach for `IIgdbService` directly only for queries over the whole catalogue — browse,
-  search, a user's connected releases, the calendar's showcases — or for the game page's detail
-  fields. See `docs/decisions/0035-*`.
+  search, a user's connected releases, the calendar's showcases — for the game page's detail
+  fields, or to refresh the cache itself: `GameCacheRefreshService` has to see the IGDB failures
+  `IGameCacheService` swallows on a reader's behalf, and writes through `GameCacheService.Apply`.
+  See `docs/decisions/0035-*` and `0052-*`.
 
 ## The pipeline and its failures
 
@@ -75,6 +78,10 @@ paths:
 
 - xUnit in `MyVideoGameList.Server.Tests/`, EF Core InMemory for the database, NSubstitute
   for collaborators.
+- What InMemory cannot show — a cascade, a set-based delete, an isolation level, a constraint —
+  belongs in `MyVideoGameList.Server.IntegrationTests/`, which boots `Program.cs` through
+  `ApiFactory` over PostgreSQL in a container. IGDB is unreachable there: seed `CachedGames`
+  through `ApiFactory.CacheGamesAsync` instead. See `docs/decisions/0057-*`.
 - Pure functions worth testing directly are `internal` and exposed via `InternalsVisibleTo`
   rather than made public.
 - Name tests `Method_Scenario_ExpectedResult`.
