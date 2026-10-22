@@ -778,3 +778,75 @@ public class MapToDetailsDtoTests
         Assert.Equal(["Fantasy", "Open world"], result.Themes);
     }
 }
+
+public class GetGamesByIdsUncachedAsyncTests
+{
+    private const string TokenPayload =
+        """{ "access_token": "token", "expires_in": 3600, "token_type": "bearer" }""";
+
+    private const string GamesPayload = """[ { "id": 1942, "name": "The Witcher 3: Wild Hunt" } ]""";
+
+    /// <summary>Answers the token request, then every query with one game, counting the queries.</summary>
+    private sealed class CountingHandler : HttpMessageHandler
+    {
+        private int _queries;
+
+        public int Queries => _queries;
+
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            if (request.RequestUri?.Host == "id.twitch.tv") return Task.FromResult(Json(TokenPayload));
+
+            Interlocked.Increment(ref _queries);
+            return Task.FromResult(Json(GamesPayload));
+        }
+
+        private static HttpResponseMessage Json(string body) =>
+            new(HttpStatusCode.OK) { Content = new StringContent(body, Encoding.UTF8, "application/json") };
+    }
+
+    private static (IgdbService Service, CountingHandler Igdb) NewService()
+    {
+        var handler = new CountingHandler();
+
+        var factory = Substitute.For<IHttpClientFactory>();
+        factory.CreateClient("Igdb").Returns(_ => new HttpClient(handler, disposeHandler: false));
+
+        var configuration = Substitute.For<IConfiguration>();
+        configuration["Igdb:ClientId"].Returns("client-id");
+        configuration["Igdb:ClientSecret"].Returns("client-secret");
+
+        var service = new IgdbService(
+            factory, configuration, new MemoryCache(new MemoryCacheOptions()),
+            NullLogger<IgdbService>.Instance);
+
+        return (service, handler);
+    }
+
+    [Fact]
+    public async Task GetGamesByIdsUncachedAsync_AskedTwiceForTheSameIds_AsksIgdbTwice()
+    {
+        // The background refresh is there for a fresh answer, and its id sets never repeat. Through
+        // the remembered lookup every batch would sit in memory for half an hour (ADR 0052).
+        var (service, igdb) = NewService();
+
+        await service.GetGamesByIdsUncachedAsync([1942]);
+        var games = await service.GetGamesByIdsUncachedAsync([1942]);
+
+        Assert.Equal(2, igdb.Queries);
+        Assert.Equal("The Witcher 3: Wild Hunt", Assert.Single(games).Title);
+    }
+
+    [Fact]
+    public async Task GetGamesByIdsAsync_AskedTwiceForTheSameIds_AsksIgdbOnce()
+    {
+        // The contrast that gives the test above its meaning: the ordinary lookup remembers.
+        var (service, igdb) = NewService();
+
+        await service.GetGamesByIdsAsync([1942]);
+        await service.GetGamesByIdsAsync([1942]);
+
+        Assert.Equal(1, igdb.Queries);
+    }
+}

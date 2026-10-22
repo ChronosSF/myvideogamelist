@@ -1,6 +1,7 @@
 # 0035. A local copy of what IGDB said, so a library renders without them
 
-**Status:** Implemented
+**Status:** Implemented. §2's background refresh is [0052](0052-a-background-refresh-ahead-of-the-reader.md),
+which rewrites a row an hour before a reader would and leaves the refresh on read as the fallback.
 
 ## Context
 

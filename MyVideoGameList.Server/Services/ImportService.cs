@@ -323,7 +323,9 @@ public class ImportService(
 
         if (job is null || job.State != ImportJobStates.Pending) return false;
 
-        var wanted = decisions.Rows.ToDictionary(r => r.RowId);
+        // A row named twice takes the last of its decisions, as a list named twice takes the last of
+        // its names, rather than failing as a duplicate key.
+        var wanted = decisions.Rows.GroupBy(r => r.RowId).ToDictionary(group => group.Key, group => group.Last());
 
         // Scoped to the job and the user in the predicate, so a row id belonging to somebody else's
         // job simply is not found — the scoping is the authorization.
@@ -430,11 +432,15 @@ public class ImportService(
             wanted.Add((row, payload));
         }
 
-        var (imported, unlisted) = await WriteAsync(userId, job.Source, wanted, cancellationToken);
+        var (imported, games, unlisted) = await WriteAsync(userId, job.Source, wanted, cancellationToken);
 
         var now = clock.GetUtcNow();
 
         job.State = ImportJobStates.Done;
+
+        // Both are counts of rows, so that together they account for every row in the file — what
+        // §C5's failure report is reconciled against. Two rows can name one game, so the games
+        // those rows went into are a different number, answered in the result and stored nowhere.
         job.ImportedCount = imported;
         job.SkippedCount = skipped.Count;
         job.CompletedAt = now;
@@ -457,7 +463,7 @@ public class ImportService(
         // its window — which is the race SaveTouchingAsync turns into this method's own 404.
         if (!await SaveTouchingAsync(job, now, cancellationToken)) return null;
 
-        return new ImportResultDto(ToDto(job), skipped, unlisted);
+        return new ImportResultDto(ToDto(job), skipped, games, unlisted);
     }
 
     public async Task<bool> CancelAsync(
@@ -567,15 +573,16 @@ public class ImportService(
     /// actually touched at the top of "recently moved".
     /// </remarks>
     /// <returns>
-    /// How many rows were written, and how many of the games written are in no list afterwards.
+    /// How many rows were written, how many games those rows went into — fewer whenever two of
+    /// them name one game — and how many of those games are in no list afterwards.
     /// </returns>
-    private async Task<(int Imported, int Unlisted)> WriteAsync(
+    private async Task<(int Imported, int Games, int Unlisted)> WriteAsync(
         string userId,
         string source,
         IReadOnlyList<(ImportRow Row, ImportRowPayload Payload)> wanted,
         CancellationToken cancellationToken)
     {
-        if (wanted.Count == 0) return (0, 0);
+        if (wanted.Count == 0) return (0, 0, 0);
 
         var gameIds = wanted.Select(w => w.Row.GameId!.Value).Distinct().ToList();
 
@@ -620,8 +627,16 @@ public class ImportService(
             }
 
             // Only fills what is empty. An import is new information about a game, not a correction
-            // of what its owner already recorded by hand.
-            entry.Score ??= payload.Score;
+            // of what its owner already recorded by hand. Its `ScoredAt` stays null, as
+            // `StatusChangedAt` is never stamped here: the source says what the score is and not when
+            // it was given, so an imported score has no place in the history (ADR 0062). Written as
+            // a pair with that null, so a score given in another tab since this commit read the entry
+            // cannot leave its moment beside the imported score.
+            if (entry.Score is null && payload.Score is { } importedScore)
+            {
+                entry.Score = importedScore;
+                EntryStore.WriteScoredAtWithScore(db, entry);
+            }
 
             // Truncated to the column's length rather than left to fail. A Grouvee review can run
             // past 2,000 characters, and a note that long would abort the whole commit on the final
@@ -671,7 +686,7 @@ public class ImportService(
         // carry, so neither "rows without a status" nor "rows written" is how many are in no list.
         var unlisted = gameIds.Count(id => entries[id].StatusId is null);
 
-        return (imported, unlisted);
+        return (imported, gameIds.Count, unlisted);
     }
 
     /// <summary>

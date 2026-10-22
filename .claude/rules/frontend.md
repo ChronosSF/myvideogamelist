@@ -49,8 +49,12 @@ component plus optional `loader`, `meta`, `links`, `headers` and `ErrorBoundary`
   loader: `meta` also runs in the browser, where the environment does not exist. A per-user route
   adds `NOINDEX` instead, and a `noindex` page gets no canonical URL. See `docs/decisions/0036-*`.
 - A resource route (`src/resources/`) returns its own `Response` and never reaches
-  `entry.server.tsx`. Send it through `resourceResponse`, which adds what that file would have, and
-  state its `Cache-Control` like any other route.
+  `entry.server.tsx`. Send it through `resourceResponse`, which adds the headers that file would
+  have, with a content policy that loads nothing in place of a document's nonce, and state its
+  `Cache-Control` like any other route.
+- **Never render an inline `<script>` of our own without deciding how it is admitted.** A document's
+  `script-src` names only its render's nonce and `'self'` (`docs/decisions/0053-*`). A script whose
+  text never changes goes in by its hash in `documentPolicy`.
 - Route types come from `react-router typegen`; import them as `./+types/<RouteName>`.
 
 ## Talking to the API
@@ -115,6 +119,12 @@ that are easy to get wrong and were got wrong once (`docs/decisions/0022-*`):
 - **Do not call `setState` synchronously inside an effect.** Adjust state during render
   (React's documented pattern for resetting on a prop change), or use `useSyncExternalStore`
   for external state. ESLint enforces this via `react-hooks/set-state-in-effect`.
+- **Every effect has to survive running twice.** React Router's client entry wraps the app in
+  `<StrictMode>`, and since React 19.3 that runs a hydrated tree's effects, their cleanups and the
+  effects again in development: the root providers on every page load, not only what a navigation
+  mounts. A read aborts in its cleanup and drops whatever its aborted request settles with, as the
+  providers do. Without the abort both answers land — `AuthProvider`'s second one had the lists, the
+  wishlist and the favourites read twice on every page load, which is what made this a rule.
 - Always handle loading and error states explicitly. Never leave a silent broken UI.
 - One component per file; filename matches the export.
 

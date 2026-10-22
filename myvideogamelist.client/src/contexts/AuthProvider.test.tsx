@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { useState } from 'react';
+import { StrictMode, useState } from 'react';
+import { renderToString } from 'react-dom/server';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import { AuthProvider } from '@/contexts/AuthProvider';
 import { LoginDialog } from '@/components/LoginDialog';
@@ -21,10 +22,12 @@ import {
     held,
     json,
     settle,
+    signedInRoutes,
     stubApi,
     tearDownApi,
     unreachable,
 } from '@/test/api';
+import { AppProviders } from '@/test/providers';
 
 /**
  * The sign-in and sign-up dialogs over the real `AuthProvider`, with only the network played by the
@@ -156,8 +159,7 @@ describe('AuthProvider on load', () => {
         expect(await screen.findByText('Nobody is signed in')).toBeInTheDocument();
     });
 
-    // #314: the read has no `catch`, so the screen is right and the rejection escapes unhandled.
-    it.skip('takes an unreachable API for nobody signed in, without an unhandled rejection (#314)', async () => {
+    it('takes an unreachable API for nobody signed in, without an unhandled rejection', async () => {
         const unhandled: unknown[] = [];
         const record = (reason: unknown) => unhandled.push(reason);
         process.on('unhandledRejection', record);
@@ -170,6 +172,36 @@ describe('AuthProvider on load', () => {
             expect(unhandled).toEqual([]);
         } finally {
             process.off('unhandledRejection', record);
+        }
+    });
+
+    it('reads the account once when Strict Mode hydrates the providers', async () => {
+        // React Router's client entry hydrates every page inside <StrictMode>, and since React 19.3
+        // that runs a hydrated tree's effects twice in development, so `/me` is asked twice. Were the
+        // first answer applied too, the second would hand the providers an equal but new `user`, and
+        // every read keyed on it would go out again. The answers are released one at a time, as a
+        // network delivers them: released together they would be batched into one render, which
+        // hides exactly that.
+        const answers = [held(), held()];
+        let asked = 0;
+        const api = stubApi({
+            ...signedInRoutes(ALEX),
+            'GET /api/auth/me': () => answers[asked++].answer,
+        });
+        const page = <StrictMode><AppProviders><Session /></AppProviders></StrictMode>;
+        const container = document.body.appendChild(document.createElement('div'));
+        container.innerHTML = renderToString(page);
+
+        render(page, { container, hydrate: true });
+        for (const { release } of answers) {
+            release(json(ALEX));
+            await settle();
+        }
+
+        expect(asked, 'Strict Mode asked who is signed in twice').toBe(2);
+        expect(screen.getByText('Signed in as alex')).toBeInTheDocument();
+        for (const path of ['/api/lists', '/api/user/list-preferences', '/api/wishlist', '/api/favourites']) {
+            expect(api.callsTo('GET', path), path).toHaveLength(1);
         }
     });
 });

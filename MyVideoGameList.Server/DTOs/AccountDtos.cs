@@ -97,6 +97,12 @@ public record AccountExportDto(
 /// including a future importer of our own. Null means the game is in none of the user's lists,
 /// which is a real state (ADR 0019) rather than missing data.
 /// </param>
+/// <param name="ScoredAt">
+/// When the score was given, or null — always null with no score, and also for a score given before
+/// the column existed or brought in by an import, since nothing recorded when those were given
+/// (ADR 0062). Exported for the reason <paramref name="Origin"/> is: it is what says which scores the
+/// history could place, and a document without it would read as though every score were undated.
+/// </param>
 /// <param name="Ownership">One of <c>OwnershipKinds</c>, already a permanent key, or null.</param>
 /// <param name="Notes">The user's private notes on the game. Theirs, so theirs to take.</param>
 /// <param name="Origin">
@@ -109,6 +115,7 @@ public record EntryExportDto(
     int GameId,
     string? Status,
     int? Score,
+    DateTimeOffset? ScoredAt,
     string? Ownership,
     string? Notes,
     string Origin,

@@ -6,13 +6,16 @@ import {
     IMPORT_MATCH,
     IMPORT_STATE,
     type ImportJob,
+    type ImportResult,
     type ImportReview,
     type ImportReviewRow,
+    type ImportSkippedRow,
 } from '@/types/import';
 import type { ListEntryDto } from '@/types/list';
 import type { CommunityScores } from '@/types/community';
 import type { CommunityTimes, EntryDetailDto, PlaythroughDto, PlaythroughTypeKey, ReviewDto } from '@/types/playthrough';
 import type { CalendarEvents, ConnectedRelease, ReleaseEntry, ReleaseReason } from '@/types/releases';
+import type { HistoryPage, PlaythroughDateItem, ScoreItem, StatusItem } from '@/types/history';
 
 /**
  * Fixture builders for the two DTOs the list views are built on.
@@ -207,6 +210,32 @@ export function importReview(rows: ImportReviewRow[], job: Partial<ImportJob> = 
     };
 }
 
+/**
+ * What a commit answers, with the job's counts derived from what was imported and skipped rather
+ * than restated — for `importReview`'s reason, and because the two add up to every row in the file.
+ * Each imported row names a game of its own unless `games` says otherwise.
+ */
+export function importResult({ imported = 1, games = imported, unlisted = 0, skipped = [] }: {
+    imported?: number;
+    games?: number;
+    unlisted?: number;
+    skipped?: ImportSkippedRow[];
+} = {}): ImportResult {
+    return {
+        job: importJob({
+            state: IMPORT_STATE.done,
+            rowCount: imported + skipped.length,
+            importedCount: imported,
+            skippedCount: skipped.length,
+            completedAt: '2026-09-22T12:30:00Z',
+            expiresAt: '2026-09-29T12:30:00Z',
+        }),
+        skipped,
+        games,
+        unlisted,
+    };
+}
+
 /** The signed-in account, as `/api/auth/me` returns it. */
 export function userProfile(overrides: Partial<UserProfile> = {}): UserProfile {
     return {
@@ -281,6 +310,51 @@ export function communityTimes(
             medianMinutes: tiers[type]?.medianMinutes ?? null,
         })),
     };
+}
+
+/** A move between lists, from Backlog to Playing on the game with id 1 unless a test says otherwise. */
+export function statusItem(overrides: Partial<StatusItem> = {}): StatusItem {
+    return {
+        kind: 'status',
+        at: '2026-10-16T12:00:00+00:00',
+        on: null,
+        gameId: 1,
+        game: { id: 1, name: 'A Game', coverImageUrl: null },
+        fromStatus: 'backlog',
+        toStatus: 'playing',
+        ...overrides,
+    };
+}
+
+/** A score of 8, given at midday UTC — which is the same day for nearly any test machine's zone. */
+export function scoreItem(overrides: Partial<ScoreItem> = {}): ScoreItem {
+    return {
+        kind: 'score',
+        at: '2026-10-16T12:00:00+00:00',
+        on: null,
+        gameId: 1,
+        game: { id: 1, name: 'A Game', coverImageUrl: null },
+        score: 8,
+        ...overrides,
+    };
+}
+
+/** An untyped run's finish, unless a test says it started or gives it a type. */
+export function playthroughDateItem(overrides: Partial<PlaythroughDateItem> = {}): PlaythroughDateItem {
+    return {
+        kind: 'playthrough_finished',
+        at: null,
+        on: '2026-10-16',
+        gameId: 1,
+        game: { id: 1, name: 'A Game', coverImageUrl: null },
+        playthroughType: null,
+        ...overrides,
+    };
+}
+
+/** What `/api/user/history` answers: the last page, with nothing missing, unless a test says otherwise. */
+export function historyPage(overrides: Partial<HistoryPage> = {}): HistoryPage {
+    return { items: [], next: null, importedStatuses: 0, undatedScores: 0, ...overrides };
 }
 
 /**

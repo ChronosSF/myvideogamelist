@@ -143,6 +143,7 @@ public class ProfileWithdrawalTests
                 signIn,
                 Get<ApplicationDbContext>(),
                 Substitute.For<IStatsService>(),
+                Substitute.For<IHistoryService>(),
                 Substitute.For<IUserDataExporter>(),
                 Get<IUserNameClaimService>(),
                 Substitute.For<ITrackedNewsService>(),

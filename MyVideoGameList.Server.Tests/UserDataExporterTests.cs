@@ -465,6 +465,29 @@ public class UserDataExporterTests
     }
 
     [Fact]
+    public async Task ExportAsync_Entry_CarriesWhenItsScoreWasGiven()
+    {
+        // The same hand-written projection again. Without the moment the document would read as
+        // though every score were undated, when the history can place some of them (ADR 0062).
+        using var db = NewDb();
+        AddAccount(db, UserId, "mine@test.local");
+        var scoredAt = new DateTimeOffset(2026, 10, 16, 21, 4, 0, TimeSpan.Zero);
+        db.UserGameEntries.Add(new UserGameEntry
+        {
+            UserId = UserId, GameId = 11, Score = 8, ScoredAt = scoredAt, AddedAt = Now
+        });
+        db.UserGameEntries.Add(new UserGameEntry
+        {
+            UserId = UserId, GameId = 12, Score = 6, AddedAt = Now.AddDays(1)
+        });
+        db.SaveChanges();
+
+        var export = await NewExporter(db).ExportAsync(UserId, default);
+
+        Assert.Equal([scoredAt, null], export.Entries.Select(e => e.ScoredAt));
+    }
+
+    [Fact]
     public async Task ExportAsync_EntryTheUserMadeThemselves_ExportsOriginManual()
     {
         // The default has to survive into the document as a value rather than as an empty string:

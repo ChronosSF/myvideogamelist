@@ -77,6 +77,10 @@ Resource routes under `src/resources/`, not files in `public/`, because what the
 the deployment. A resource route returns its own `Response` and never passes through
 `entry.server.tsx`, so `resourceResponse` adds by hand what that file adds to a document.
 
+> **Later note.** Except the content policy, which since
+> [0053](0053-a-documents-scripts-carry-its-renders-nonce.md) names a document's own nonce. A resource
+> renders no script, so it gets the API's policy instead, one that loads nothing (0053 §4).
+
 ### 4. The sitemap lists what we have something to say about, from our own tables
 
 - **Games: every `CachedGames` row that is not a tombstone** — the games a member has put on a list,

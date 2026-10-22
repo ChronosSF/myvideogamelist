@@ -41,7 +41,7 @@ Open `https://localhost:58546`.
 | `npm run visual` | Before-and-after screenshots of the pages, compared pixel by pixel, for a change meant to look the same. Needs two dev servers and a local test account, whose email and password it reads from the shell or from `visual/.env` (ignored by git); `visual/playwright.config.ts` says how. Not run by CI |
 | `npm run build` | Production build |
 | `dotnet test MyVideoGameList.Server.Tests/MyVideoGameList.Server.Tests.csproj` | Server unit tests |
-| `dotnet test MyVideoGameList.Server.IntegrationTests/MyVideoGameList.Server.IntegrationTests.csproj` | The API over a real PostgreSQL, for what InMemory cannot do: auth and the lists end to end, the cascades, the retention sweep, and the export's snapshot. Needs Docker running; starts and removes a container of its own, never `mvgl-postgres`. About fifteen seconds once built. See ADR 0057 |
+| `dotnet test MyVideoGameList.Server.IntegrationTests/MyVideoGameList.Server.IntegrationTests.csproj` | The API over a real PostgreSQL, for what InMemory cannot do: auth and the lists end to end, the cascades, the retention sweep, the cache refresh's lock and commit, and the export's snapshot. Needs Docker running; starts and removes a container of its own, never `mvgl-postgres`. About fifteen seconds once built. See ADR 0057 |
 | `dotnet ef migrations add <Name>` | From `MyVideoGameList.Server/` |
 | `dotnet ef database update` | Applies migrations by hand; only needed outside Development |
 | `docker compose up -d --wait` | Local PostgreSQL. `--wait` blocks until it accepts connections |
@@ -115,8 +115,9 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   `DataProtection:AllowEphemeralKeys` says the loss is meant, which it is only for running the
   production image on a developer machine or the integration suite's test host (ADR 0057). Two things the code cannot check: the task role needs
   `ssm:GetParametersByPath` and `ssm:PutParameter` on that path — not `ssm:DeleteParameter`,
-  because nothing deletes keys — and the repository is built on the first protect rather than at
-  boot, so a wrong policy fails the first sign-in. Keep `SetApplicationName("MyVideoGameList")` — the default discriminator is the content
+  because nothing deletes keys — and a missing read fails the first sign-in, not the deploy: the
+  framework's `DataProtectionHostedService` reads the ring at boot, but a failure there is only
+  logged, at Error, and the first protect reads again. Keep `SetApplicationName("MyVideoGameList")` — the default discriminator is the content
   root path, and changing the image's working directory would orphan every cookie while the keys
   stayed readable. One path per environment, so dev and prod cannot read each other's cookies. The
   proof is a session surviving a redeploy, which no local test can give. See
@@ -133,7 +134,9 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
 - **IGDB is the source of truth for game data, but a library renders from `CachedGames`.** There
   are no local game/genre/platform tables; they were removed, and `UserGameEntry.GameId` holds an
   IGDB id with no foreign key. What exists instead is one `jsonb` row per IGDB id holding the mapped
-  `GameDto`, refreshed on read after a day. **Anything rendering games somebody already tracks —
+  `GameDto`, rewritten in the background an hour before it is a day old (ADR 0052), and on read once
+  it is, as the fallback; both go through `GameCacheService.Apply`, and both thresholds derive from
+  `RefreshAfter`. **Anything rendering games somebody already tracks —
   lists, wishlist, favourites, public profiles — goes through `IGameCacheService`, never
   `IIgdbService`**, because that is what makes those pages survive an IGDB outage; browse, search
   and the game page's detail query stay live, since no local copy can answer a query over the whole
@@ -302,6 +305,22 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   attach with `OnStarting` rather than on the way in, because `UseExceptionHandler` clears the
   response — headers included — before writing a 500 or a 502.
 
+- **A document runs only the scripts its own render wrote.** Its `script-src` names a nonce drawn
+  once per render in `entry.server.tsx` and handed to `<ServerRouter>` and to the stream; an inline
+  script without it never runs, and a page whose hydration scripts never run is dead. A new inline
+  script of ours, such as the palette script #208 plans, goes in by its hash in `documentPolicy`, and
+  a script from another host is refused until a record decides its hosts or `'strict-dynamic'`
+  (Google's tag, #242, is the first). A shared cache keeps the nonce whole only because header and
+  body are stored together, so **nothing at the edge may set, rewrite or remove
+  `Content-Security-Policy` on a document** — a response headers policy replacing it names no nonce
+  and every page dies — **and no document may carry an `ETag` or `Last-Modified`**, because a 304
+  keeps the old body under the new header. A HEAD carries no policy, and a document a shared cache
+  may store is sent whole rather than streamed, so that its nonce is never seen before its body is
+  final. On a shared page that nonce is public, so **never add a sink that parses a string as markup
+  in the browser** (`dangerouslySetInnerHTML` of anything but a constant, `innerHTML`, `srcdoc`, …):
+  0053 §2 holds because there is none (#250). The root renders `<Links nonce="">` on purpose —
+  without it every page reports a hydration mismatch in development. See `docs/decisions/0053-*`.
+
 - **A third party's failure is a 502, our own throttle is a 503, ours is a 500, and a reader who
   left is a 499.** IGDB calls go through a resilience pipeline — retry outermost, then the breaker,
   then the four-a-second limiter, then a per-attempt timeout, with a total timeout over all of it.
@@ -334,8 +353,8 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   than a transition and an event would carry the import's own timestamp as permanent fabricated
   history. So `UserGameEntry.Origin` names the source — `manual` means every status that entry has
   held has an event behind it, anything else means it may not — and it is set whenever the import
-  writes a status, over an existing entry as well as a new one. `StatusChangedAt` stays null for
-  the same reason. **An imported playthrough's type is the source's completion level, translated
+  writes a status, over an existing entry as well as a new one. The import never stamps
+  `StatusChangedAt` or `ScoredAt`, for the same reason. **An imported playthrough's type is the source's completion level, translated
   by the source**: Grouvee's "Main Story" and "Main Story + Extras" are `normally`, "100% Completion"
   is `completionist`, and nothing imported is `rushed`. A typed run with a duration feeds the
   community medians, so only strings seen in a real export are mapped and anything else stays
@@ -352,6 +371,21 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   stay events-only, `LogStartedAt` stays the first status change, and no event is ever synthesised
   to make an import count. See `docs/decisions/0026-*`, `0037-*` and `0047-*`.
 
+- **The owner's history is a union of rows, and a score's moment is `ScoredAt`.**
+  `/api/user/history` is one `UNION ALL` of the events, the entries' `ScoredAt`, and the
+  playthroughs' start and finish dates, paged by an encrypted cursor over (moment, kind, id) and
+  never by offset. It adds no event type and writes nothing of the user's. **Only `SetScoreAsync`
+  stamps `ScoredAt`**: when the user's score changes, never on a same-score write, cleared with the
+  score, never backfilled, never by an import. **Any other path that changes a score must clear
+  it**, or the history dates a score at a time nobody gave it — the check constraint refuses only a
+  moment with no score — and every write that changes a score goes through
+  `EntryStore.WriteScoredAtWithScore`, because EF updates only the columns it saw change and a tab
+  that scored the game meanwhile would keep its moment. A playthrough's day sorts at noon UTC and
+  goes out as the day; an imported status and an undated score have no item, and the page is told
+  how many of each from `Origin` and the null `ScoredAt`s. It lists a run's finish beside a move to
+  Finished, where the chart counts one (ADR 0047's precedence is a counting rule), and it is not on
+  the public profile. See `docs/decisions/0062-*`.
+
 - **A closed import has no rows, and a review is only ever of a pending job.** A commit or a cancel
   deletes the job's `ImportRow`s in the same `SaveChangesAsync` that closes it (ADR 0037, ADR 0039),
   because by then everything a row held has become a `UserGameEntry` or a count on the job and
@@ -367,25 +401,44 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   somebody their part-finished review is safe for longer than it is. A job already gone answers
   404, which the review screen renders as the end of that import rather than as a retryable error.
 
-- **Scheduled work is a `BackgroundService`, and there is exactly one.** `ImportRetentionService`
-  sweeps expired import jobs hourly, and is the shape the next one copies (ADR 0038). Three things
-  about it are easy to get wrong: a hosted service is a **singleton**, so it takes
-  `IServiceScopeFactory` and makes a scope per tick rather than injecting the scoped `DbContext`;
-  an exception escaping `ExecuteAsync` **stops the whole host**, so the loop catches per tick —
-  `ScheduledWork.AddScheduledWork` registers every scheduled service and is the **only** place
-  allowed to configure `HostOptions`, which is what lets a test assert that behaviour out of the
-  application's own registration instead of out of a bare `new HostOptions()` that says nothing
-  about us; and it runs **once per ECS task**, so it serialises on
+- **Scheduled work is a `BackgroundService`, and there are three.** `ImportRetentionService`
+  sweeps expired import jobs hourly, and is the shape the others copy (ADR 0038);
+  `GameCacheRefreshService` rewrites `CachedGames` rows from IGDB an hour before a reader would find
+  them a day old, and `SteamNewsRefreshService` fetches the Steam feeds people are reading before
+  they expire (ADR 0052). The CloudFront invalidator is a fourth hosted service, but works a queue
+  rather than a clock (ADR 0058). Three things about them are easy to get wrong: a hosted service is a
+  **singleton**, so it takes `IServiceScopeFactory` and makes a scope per tick rather than injecting
+  the scoped `DbContext`; an exception escaping `ExecuteAsync` **stops the whole host**, so the loop
+  catches per tick — `ScheduledWork.AddScheduledWork` registers every scheduled service and is the
+  **only** place allowed to configure `HostOptions`, which is what lets a test assert that behaviour
+  out of the application's own registration instead of out of a bare `new HostOptions()` that says
+  nothing about us; and each runs **once per ECS task**, so the two on the database serialise on
   `pg_try_advisory_xact_lock` — the transaction-scoped variant, because a session lock survives on
   a pooled connection after it is returned. That transaction runs inside
-  `db.Database.CreateExecutionStrategy()`, which never retries today and stops the sweep throwing
+  `db.Database.CreateExecutionStrategy()`, which never retries today and stops either job throwing
   `InvalidOperationException` on the day somebody adds `EnableRetryOnFailure` to `UseNpgsql`:
-  **EF refuses a user-initiated transaction under a retrying strategy**, and the sweep would fail
-  into the log once an hour for ever without anything else breaking. A tick that cannot take the
+  **EF refuses a user-initiated transaction under a retrying strategy**, and the job would fail
+  into the log on every tick for ever without anything else breaking. A tick that cannot take the
   lock **counts what is waiting** rather than just returning: the try-lock is false when *any*
-  session holds the key, so work still expired after six skipped ticks running means the holder is
-  not a sweep, and that logs a warning. A stalled sweep is deliberately **not** a `/readyz`
-  failure — the instance still serves. Retention is two windows, not §S9's one, and **which one applies is decided by
+  session holds the key, so for the sweep, work still expired after six skipped ticks running means
+  the holder is not a sweep, and that logs a warning. The refresh cannot use that rule — rows fall
+  due all day, so work is nearly always waiting — and warns instead, hourly, while any row is
+  **twenty-five hours old**, which no row reaches while the refresh keeps up. A batch whose answer
+  cannot be read, or whose write PostgreSQL refuses, is held back an hour rather than retried at the
+  head of the queue for ever. It holds its lock
+  **across the IGDB request**, so no two tasks pay for the same rows, bounded at fifteen seconds
+  because the transaction also holds back any migration of the table; once IGDB has answered it
+  **saves and commits on `CancellationToken.None`**: the stopping token bounds the work, not the
+  write (#96); the integration suite's `GameCacheRefreshJobTests` runs the lock, that commit and a
+  refused write against PostgreSQL. Unlike the sweep it writes tracked rows, so **each attempt clears the change
+  tracker** — under a retrying strategy a commit that failed after its save would otherwise leave
+  the retry rows already marked saved, and stamp the stale payload fresh. Its pace, one request of
+  fifty ids a minute, is the `GameCacheRefresh` section, checked at startup. **The Steam refresh
+  takes no lock, deliberately**: what it warms is its own process's memory, so a lock would leave
+  every other task's feeds cold, and it refreshes only the feeds read since they were fetched, so
+  what it adds is at most one request per feed after its last read. A stalled sweep or refresh is
+  deliberately **not** a `/readyz` failure — the instance still serves.
+  Retention is two windows, not §S9's one, and **which one applies is decided by
   `CompletedAt`, never by `State`** — `MaxPendingJobs` counts from the same column so the cap and
   the sweep mean the same jobs, and `CK_ImportJobs_Completion` keeps the two columns agreeing.
   Seven days from `CompletedAt` for a closed job, fourteen from `UpdatedAt` for an unfinished one, because a job
@@ -510,10 +563,13 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   a game by its members' score alone, at `MIN_MEMBER_SCORES`; see `docs/decisions/0069-*`.
 
 - **A degraded or error response must never be cacheable.** Caching a failure outlives the
-  failure. Note three traps: a thrown `Response`'s headers are replaced by the boundary route's
-  (the root reads `errorHeaders` to honour them); a loader that degrades to a 200 has to attach
-  `no-store` itself via `data()`; and an *API* that degrades to a 200 has to say so in its payload,
-  because neither the loader nor a CDN can tell that 200 from a healthy one. `/api/home` does, with
+  failure. Note four traps: a thrown `Response`'s headers are replaced by the boundary route's
+  (the root reads `errorHeaders` to honour them); a page that fails *while rendering* is re-rendered
+  as its error boundary over the headers React Router computed for the page — a game page's hour
+  at the edge included — so `entry.server.tsx` sets `private, no-store` on any 5xx itself; a loader
+  that degrades to a 200 has to attach `no-store` itself via `data()`; and an *API* that degrades to
+  a 200 has to say so in its payload, because neither the loader nor a CDN can tell that 200 from a
+  healthy one. `/api/home` does, with
   `degraded`, and the loader reads it failing closed — only an explicit `false` is shared-cached.
 
 - **`fetch` rejects when the API is unreachable** — it does not return `!response.ok`. A loader
