@@ -32,7 +32,8 @@ public record IgdbGame(
     [property: JsonPropertyName("similar_games")] List<IgdbRelatedGame>? SimilarGames,
     List<IgdbRelatedGame>? Dlcs,
     List<IgdbRelatedGame>? Expansions,
-    [property: JsonPropertyName("parent_game")] IgdbRelatedGame? ParentGame);
+    [property: JsonPropertyName("parent_game")] IgdbRelatedGame? ParentGame,
+    [property: JsonPropertyName("external_games")] List<IgdbExternalGame>? ExternalGames = null);
 
 public record IgdbCover(
     int Id,
@@ -50,10 +51,20 @@ public record IgdbVideo(
     int Id,
     [property: JsonPropertyName("video_id")] string? VideoId);
 
+/// <summary>
+/// One of a game's links: its official site, a wiki, a social account or a store page.
+/// </summary>
+/// <remarks>
+/// What kind of link it is lives in <see cref="Type"/>, a <c>website_types</c> id — <em>not</em> the
+/// older <c>category</c>. IGDB has removed that field: asking for it leaves it out of every row, so the
+/// official site was read off whichever link IGDB listed first, which for The Witcher 3 was its
+/// Facebook page. Verified against live IGDB on 2026-10-17: 1 is "Official Website", and the stores are
+/// 13 "Steam", 15 "Itch", 16 "Epic", 17 "GOG", 22 "Xbox", 23 "Playstation" and 24 "Nintendo".
+/// </remarks>
 public record IgdbWebsite(
     int Id,
     string? Url,
-    int Category);
+    int? Type);
 
 /// <summary>
 /// One rating board's rating of a game. A game rated in several regions carries one row per board.
@@ -225,12 +236,20 @@ public record IgdbCalendarGame(
 /// The <c>uid</c> arrives as a string even for Steam, where it is numerically an AppID, so
 /// callers must parse it rather than assume it is well formed.
 /// </para>
+/// <para>
+/// <see cref="Url"/> is the game's page on that store. Of the store sources the game page links to,
+/// only Steam ever leaves it out — 1,509 of its 178,646 rows on 2026-10-17 — and it marks a game
+/// Steam has stopped selling: for 45 games whose only Steam link was such a row, Lumines and realMyst
+/// among them, the page built from the AppID redirected to Steam's front page. So the store links pass
+/// over a row without one rather than build it from <see cref="Uid"/>.
+/// </para>
 /// </remarks>
 public record IgdbExternalGame(
     int Id,
     int? Game,
     string? Uid,
-    [property: JsonPropertyName("external_game_source")] int? ExternalGameSource);
+    [property: JsonPropertyName("external_game_source")] int? ExternalGameSource,
+    string? Url = null);
 
 /// <summary>
 /// A row from the IGDB <c>popularity_primitives</c> endpoint: one popularity score for one game

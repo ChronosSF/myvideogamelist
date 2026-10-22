@@ -26,8 +26,9 @@ public sealed class DataProtectionKeysOptions
 
     /// <summary>
     /// Outside Development, the acknowledgement that the ring is not shared and will not survive
-    /// the process. For running the production image on a developer machine, and nothing else: a
-    /// deployment that sets this signs everyone out on every deploy, by its own decision.
+    /// the process. For running the production image on a developer machine, and for the
+    /// integration suite's test host (ADR 0057), and nothing else: a deployment that sets this
+    /// signs everyone out on every deploy, by its own decision.
     /// </summary>
     public bool AllowEphemeralKeys { get; set; }
 }
@@ -55,11 +56,14 @@ public static class DataProtectionKeys
         {
             // The Systems Manager client comes from the task's own environment: the region from
             // AWS_REGION, which the ECS agent sets, and credentials from the task role. Nothing is
-            // configured here, and nothing is read until the first protect or unprotect — the
-            // repository is built when KeyManagementOptions is first resolved, not at startup — so
-            // a task role missing ssm:GetParametersByPath fails the first sign-in rather than the
-            // boot. The proof that this works is a session surviving a redeploy, and only a deploy
-            // can give it.
+            // configured here. The store is first read as the host starts, by the framework's
+            // DataProtectionHostedService, which AddDataProtection registers to load the ring early.
+            // A failure there is logged at Error by the key ring provider ("An error occurred while
+            // reading the key ring."), then swallowed by that service, which lets the boot go on; and
+            // nothing is cached, so the first protect or unprotect reads the store again. So a task
+            // role missing ssm:GetParametersByPath fails the first sign-in rather than the boot all
+            // the same. The proof that this works is a session surviving a
+            // redeploy, and only a deploy can give it.
             dataProtection.PersistKeysToAWSSystemsManager(settings.ParameterPath);
             return services;
         }

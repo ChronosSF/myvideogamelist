@@ -51,7 +51,19 @@ public record ListNameInputDto(
 /// Every list's name at once, replacing whatever was saved — the same whole-set contract the sort
 /// preferences use, so a list left out goes back to its default.
 /// </summary>
-public record UpdateListNamesDto([Required] List<ListNameInputDto> Names);
+/// <remarks>
+/// A <c>null</c> among the names is refused here, as a 400. Model validation passes over a null
+/// element of a collection without a word, so <c>[null]</c> would otherwise reach the service and
+/// fail there as a 500.
+/// </remarks>
+public record UpdateListNamesDto([Required] List<ListNameInputDto> Names) : IValidatableObject
+{
+    public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
+    {
+        if (Names.Any(name => name is null))
+            yield return new ValidationResult("Every entry must name a list.", [nameof(Names)]);
+    }
+}
 
 /// <summary>The names as saved, normalised, for renamed lists only.</summary>
 public record ListNamesDto(IReadOnlyDictionary<string, string> Names);
@@ -87,8 +99,19 @@ public record ListSortPreferenceDto(
     string SortKey,
     bool Descending);
 
+/// <remarks>
+/// A <c>null</c> among the sorts is refused here, as a 400, for the reason <see cref="UpdateListNamesDto"/>
+/// gives. Left to the controller it was a 500, and one that came after the layout had already been saved.
+/// </remarks>
 public record UpdateListPreferencesDto(
     [Required]
     [AllowedValues(ListViewModes.Tiles, ListViewModes.Table)]
     string View,
-    List<ListSortPreferenceDto>? Sorts);
+    List<ListSortPreferenceDto>? Sorts) : IValidatableObject
+{
+    public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
+    {
+        if (Sorts?.Any(sort => sort is null) == true)
+            yield return new ValidationResult("Every sort must name a list.", [nameof(Sorts)]);
+    }
+}

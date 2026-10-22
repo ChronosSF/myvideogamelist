@@ -58,9 +58,13 @@ public class PublicProfileService(
             .CountAsync(f => f.UserId == user.Id, cancellationToken);
 
         // Copied across field by field on purpose — see PublicProfileDto for why this is not a
-        // cast, a mapper or a subset attribute.
+        // cast, a mapper or a subset attribute. The three things the owner wrote about themselves
+        // come straight off the account row, as the handle does: nothing else is read to show them.
         return new PublicProfileDto(
             UserName: user.UserName!,
+            DisplayName: user.DisplayName,
+            AvatarUrl: user.AvatarUrl,
+            Bio: user.Bio,
             Activity: new PublicActivityDto(
                 figures.Activity.LogStartedAt,
                 figures.Activity.Months,

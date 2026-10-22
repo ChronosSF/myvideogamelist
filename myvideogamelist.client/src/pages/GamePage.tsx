@@ -14,6 +14,7 @@ import { SectionHeading } from '@/components/SectionHeading';
 import { GameRefRail } from '@/components/GameRefRail';
 import { MultiplayerSummary } from '@/components/MultiplayerSummary';
 import { ScreenshotGallery } from '@/components/ScreenshotGallery';
+import { StoreLinks } from '@/components/StoreLinks';
 import { TrailerPlayer } from '@/components/TrailerPlayer';
 import { formatCount } from '@/lib/format';
 import { pageMeta, siteConfig } from '@/lib/seo';
@@ -300,6 +301,10 @@ export function GamePage() {
                                 </div>
                             </section>
                         )}
+
+                        {/* Where it is sold, next to what it runs on. Hides itself when IGDB names
+                            no store. */}
+                        <StoreLinks stores={details?.stores ?? []} />
 
                         {/* How to play: solo, together, and with how many. */}
                         {details && (details.gameModes.length > 0 || details.multiplayerModes) && (
