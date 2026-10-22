@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { useAuth } from '@/hooks/useAuth';
 import { ProfileStats } from '@/components/ProfileStats';
+import { ProfileHistory } from '@/components/ProfileHistory';
 import { FavouritesShowcase } from '@/components/FavouritesShowcase';
 import { AccountIdentityCard } from '@/components/AccountIdentityCard';
 import { AccountDataCard } from '@/components/AccountDataCard';
@@ -149,6 +150,13 @@ export function UserPage() {
                         </div>
                         <div className="user-card">
                             <ProfileStats userId={user.id} />
+                        </div>
+                        {/* Under the figures, as the records behind them: each move, score and run
+                            date as it was written, where the chart counts them by ADR 0047's rules.
+                            Here only — the public profile publishes counts, the month series and the
+                            reviews its owner chose to publish, and never this list. */}
+                        <div className="user-card">
+                            <ProfileHistory userId={user.id} />
                         </div>
                     </div>
 

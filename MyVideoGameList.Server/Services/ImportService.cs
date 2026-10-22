@@ -627,8 +627,16 @@ public class ImportService(
             }
 
             // Only fills what is empty. An import is new information about a game, not a correction
-            // of what its owner already recorded by hand.
-            entry.Score ??= payload.Score;
+            // of what its owner already recorded by hand. Its `ScoredAt` stays null, as
+            // `StatusChangedAt` is never stamped here: the source says what the score is and not when
+            // it was given, so an imported score has no place in the history (ADR 0062). Written as
+            // a pair with that null, so a score given in another tab since this commit read the entry
+            // cannot leave its moment beside the imported score.
+            if (entry.Score is null && payload.Score is { } importedScore)
+            {
+                entry.Score = importedScore;
+                EntryStore.WriteScoredAtWithScore(db, entry);
+            }
 
             // Truncated to the column's length rather than left to fail. A Grouvee review can run
             // past 2,000 characters, and a note that long would abort the whole commit on the final

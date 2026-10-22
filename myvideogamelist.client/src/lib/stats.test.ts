@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatDate, formatHours, formatMonth, formatRate, isYearStart, tallyBy } from '@/lib/stats';
+import { formatDate, formatDay, formatHours, formatMonth, formatRate, isYearStart, tallyBy } from '@/lib/stats';
 import { emptyLists, type ListEntryDto, type ListId } from '@/types/list';
 import { entry, platform } from '@/test/factories';
 
@@ -130,5 +130,18 @@ describe('formatDate', () => {
 
     it('passes an unparseable value through', () => {
         expect(formatDate('not a date')).toBe('not a date');
+    });
+});
+
+describe('formatDay', () => {
+    it('writes a calendar day out in words, from its digits alone', () => {
+        // Never through `new Date`, which reads `2026-03-01` as UTC midnight and so as the last day of
+        // February for anybody west of Greenwich.
+        expect(formatDay('2026-10-07')).toBe('7 October 2026');
+        expect(formatDay('2026-03-01')).toBe('1 March 2026');
+    });
+
+    it('passes anything that is not a day through', () => {
+        expect(formatDay('soon')).toBe('soon');
     });
 });
