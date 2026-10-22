@@ -236,8 +236,8 @@ public class UserDataExporter(ApplicationDbContext db, TimeProvider clock) : IUs
             .ThenBy(e => e.GameId)
             .Select(e => new
             {
-                e.GameId, e.StatusId, e.Score, e.Ownership, e.Notes, e.Origin, e.AddedAt, e.StatusChangedAt,
-                e.Position
+                e.GameId, e.StatusId, e.Score, e.ScoredAt, e.Ownership, e.Notes, e.Origin, e.AddedAt,
+                e.StatusChangedAt, e.Position
             })
             .ToListAsync(cancellationToken);
 
@@ -245,8 +245,8 @@ public class UserDataExporter(ApplicationDbContext db, TimeProvider clock) : IUs
         // here — the manifest guard cannot see columns, only tables (ADR 0026 notes the same trap).
         draft.Entries = rows
             .Select(e => new EntryExportDto(
-                e.GameId, Key(draft, e.StatusId), e.Score, e.Ownership, e.Notes, e.Origin, e.AddedAt,
-                e.StatusChangedAt, e.Position))
+                e.GameId, Key(draft, e.StatusId), e.Score, e.ScoredAt, e.Ownership, e.Notes, e.Origin,
+                e.AddedAt, e.StatusChangedAt, e.Position))
             .ToList();
     }
 

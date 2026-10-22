@@ -94,6 +94,27 @@ internal static class EntryStore
 
         return new EntrySet(found, created);
     }
+
+    /// <summary>
+    /// Makes the coming save write the entry's <see cref="UserGameEntry.ScoredAt"/> with its score,
+    /// whether or not the moment's value changed in this context. Call it whenever a write changes
+    /// the score.
+    /// </summary>
+    /// <remarks>
+    /// EF's <c>UPDATE</c> carries only the columns it saw change, and a moment that was null and is
+    /// still null has not changed here — so clearing an undated score, or an import filling an empty
+    /// one, would write the score alone. A request that scored the game in between, in another tab,
+    /// then leaves its moment behind beside a score it no longer belongs to: a cleared score keeps a
+    /// date, which the check constraint refuses as a 500, and an imported score takes the other
+    /// request's date, which the history shows as the moment it was given (ADR 0062). Written as a
+    /// pair, the last writer wins whole. An entry being added is inserted whole, so it needs nothing.
+    /// </remarks>
+    public static void WriteScoredAtWithScore(ApplicationDbContext db, UserGameEntry entry)
+    {
+        var tracked = db.Entry(entry);
+        if (tracked.State is EntityState.Unchanged or EntityState.Modified)
+            tracked.Property(e => e.ScoredAt).IsModified = true;
+    }
 }
 
 /// <summary>
