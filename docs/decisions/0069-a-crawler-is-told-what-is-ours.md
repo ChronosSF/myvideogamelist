@@ -166,7 +166,7 @@ fits. From the local copy:
 - **No `SITE_URL`, no structured data.** Every URL in it is absolute and built from the configured
   origin, as the canonical URL is (0036 §6), so a deployment with no public address writes none.
 
-### 5. Through `meta`, and what 0053's script policy makes of it
+### 5. Through `meta`, and what [0053](0053-a-documents-scripts-carry-its-renders-nonce.md)'s script policy makes of it
 
 Each block is a `script:ld+json` descriptor returned from the route's `meta`, which React Router
 8.4's `<Meta>` renders on the server as `<script type="application/ld+json">` in the head. It
@@ -174,17 +174,16 @@ escapes the JSON's `&`, `<`, `>`, U+2028 and U+2029 as `\u` sequences, so a titl
 `</script>` cannot end the block; Super Mario 64's developer arrives as
 `Nintendo Entertainment Analysis \u0026 Development`.
 
-Under ADR 0053's policy, `script-src 'self' 'nonce-…'`, which
-[#254](https://github.com/ChronosSF/myvideogamelist/pull/254) adds, the blocks carry no nonce and
-need neither it nor a hash. A script whose type is not JavaScript is a data block: the browser never
-runs it, so it never consults `script-src` about it. #254's own entry test already leaves data
-blocks out of its check that every script carries the nonce. And 0053 §2's rule that no
-`dangerouslySetInnerHTML` enter `src/` holds: the one that writes these is React Router's, and it
-writes escaped JSON into an element whose contents HTML reads as raw text, so no markup can come of
-it. Checked with #254's branch merged into this one locally: the header names a nonce, every
-JavaScript block carries it and the two JSON-LD blocks do not, the page hydrates, no violation is
-reported on load or on a client-side navigation to another game, which rewrites both blocks, and the
-client suite passes.
+Under 0053's policy, `script-src 'self' 'nonce-…'`, the blocks carry no nonce and need neither it
+nor a hash. A script whose type is not JavaScript is a data block: the browser never runs it, so it
+never consults `script-src` about it. 0053's own entry test already leaves data blocks out of its
+check that every script carries the nonce. And 0053 §2's rule that no `dangerouslySetInnerHTML`
+enter `src/` holds: the one that writes these is React Router's, and it writes escaped JSON into an
+element whose contents HTML reads as raw text, so no markup can come of it. Checked twice: with
+#254's branch merged into this one before it reached master, and again on master once it had, under
+React 19.3. Each time the header names a nonce, every JavaScript block carries it and the two
+JSON-LD blocks do not, the page hydrates, and no violation is reported on load or on a client-side
+navigation to another game, which rewrites both blocks.
 
 One thing would change that. On a client-side navigation React writes each block through
 `innerHTML`, so if #251 enforces 0053 §2 with Trusted Types rather than a lint rule, the default
@@ -195,13 +194,15 @@ page or the home page throws.
 
 0036 §4 rejected topping the game files up with popular games because it would make the sitemap
 depend on IGDB, and left the door open for later. Read from `CachedGames` alone, there is nothing to
-top up with. The sitemap already lists every row that is not a tombstone, and the table is written
-only by reads of games somebody has — lists, wishlist, favourites, profiles, an import's review —
-and by the import matcher warming the games it is about to show. Browse, search, the trending rail
-and the game page never write to it, on purpose: `IGameCacheService.StoreAsync` explains why filling
-it from listings would grow it without bound, and [0012](0012-steam-news-without-a-database.md)
-keeps the rail out of the database. In the local copy that is 682 rows, 682 listed. Any rule for
-"popular" over that table picks a subset of what is already there.
+top up with. The sitemap already lists every row that is not a tombstone, and rows enter the table
+only through reads of games somebody has — lists, wishlist, favourites, profiles, an import's review
+— and through the import matcher warming the games it is about to show. The background refresh
+[0052](0052-a-background-refresh-ahead-of-the-reader.md) added rewrites rows already there and adds
+none. Browse, search, the trending rail and the game page never write to it, on purpose:
+`IGameCacheService.StoreAsync` explains why filling it from listings would grow it without bound,
+and [0012](0012-steam-news-without-a-database.md) keeps the rail out of the database. In the local
+copy that is 682 rows, 682 listed. Any rule for "popular" over that table picks a subset of what is
+already there.
 
 A real top-up needs games from outside the table: an IGDB call in the sitemap, or rows written for
 games no member has. Both are what 0036 §4 and `StoreAsync` reject, so it stays rejected.
