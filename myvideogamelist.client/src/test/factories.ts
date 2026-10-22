@@ -14,6 +14,7 @@ import {
 import type { ListEntryDto } from '@/types/list';
 import type { EntryDetailDto, PlaythroughDto, ReviewDto } from '@/types/playthrough';
 import type { CalendarEvents, ConnectedRelease, ReleaseEntry, ReleaseReason } from '@/types/releases';
+import type { HistoryPage, PlaythroughDateItem, ScoreItem, StatusItem } from '@/types/history';
 
 /**
  * Fixture builders for the two DTOs the list views are built on.
@@ -288,6 +289,51 @@ export function releaseEntry(starts: string, releases: ConnectedRelease[] = [con
 /** What `/api/calendar/events` answers: nothing, unless a test says otherwise. */
 export function calendarEvents(overrides: Partial<CalendarEvents> = {}): CalendarEvents {
     return { curated: [], showcases: [], degraded: false, ...overrides };
+}
+
+/** A move between lists, from Backlog to Playing on the game with id 1 unless a test says otherwise. */
+export function statusItem(overrides: Partial<StatusItem> = {}): StatusItem {
+    return {
+        kind: 'status',
+        at: '2026-10-16T12:00:00+00:00',
+        on: null,
+        gameId: 1,
+        game: { id: 1, name: 'A Game', coverImageUrl: null },
+        fromStatus: 'backlog',
+        toStatus: 'playing',
+        ...overrides,
+    };
+}
+
+/** A score of 8, given at midday UTC — which is the same day for nearly any test machine's zone. */
+export function scoreItem(overrides: Partial<ScoreItem> = {}): ScoreItem {
+    return {
+        kind: 'score',
+        at: '2026-10-16T12:00:00+00:00',
+        on: null,
+        gameId: 1,
+        game: { id: 1, name: 'A Game', coverImageUrl: null },
+        score: 8,
+        ...overrides,
+    };
+}
+
+/** An untyped run's finish, unless a test says it started or gives it a type. */
+export function playthroughDateItem(overrides: Partial<PlaythroughDateItem> = {}): PlaythroughDateItem {
+    return {
+        kind: 'playthrough_finished',
+        at: null,
+        on: '2026-10-16',
+        gameId: 1,
+        game: { id: 1, name: 'A Game', coverImageUrl: null },
+        playthroughType: null,
+        ...overrides,
+    };
+}
+
+/** What `/api/user/history` answers: the last page, with nothing missing, unless a test says otherwise. */
+export function historyPage(overrides: Partial<HistoryPage> = {}): HistoryPage {
+    return { items: [], next: null, importedStatuses: 0, undatedScores: 0, ...overrides };
 }
 
 /**
