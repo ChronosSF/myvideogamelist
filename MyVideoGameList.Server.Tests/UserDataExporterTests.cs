@@ -224,13 +224,14 @@ public class UserDataExporterTests
     }
 
     private static void AddFavourite(
-        ApplicationDbContext db, int gameId, DateTimeOffset? at = null, string userId = UserId)
+        ApplicationDbContext db, int gameId, DateTimeOffset? at = null, string userId = UserId, int? position = null)
     {
         db.UserFavourites.Add(new UserFavourite
         {
             UserId = userId,
             GameId = gameId,
-            AddedAt = at ?? Now
+            AddedAt = at ?? Now,
+            Position = position
         });
         db.SaveChanges();
     }
@@ -400,6 +401,24 @@ public class UserDataExporterTests
 
         Assert.Equal([12, 11], export.Favourites.Select(f => f.GameId));
         Assert.Equal(Now.AddDays(-30), export.Favourites[0].AddedAt);
+    }
+
+    [Fact]
+    public async Task ExportAsync_Favourite_CarriesItsHandArrangedPosition()
+    {
+        // The favourite's projection is written by hand too, and the order somebody arranged their
+        // showcase in is theirs to take (ADR 0024, ADR 0064) — as stored, not as a rank, and in the
+        // section's own oldest-first order rather than the showcase's.
+        using var db = NewDb();
+        AddAccount(db, UserId, "mine@test.local");
+        AddFavourite(db, gameId: 11, at: Now.AddDays(-30));
+        AddFavourite(db, gameId: 12, at: Now.AddDays(-1), position: -1024);
+
+        var export = await NewExporter(db).ExportAsync(UserId, default);
+
+        Assert.Equal([11, 12], export.Favourites.Select(f => f.GameId));
+        Assert.Null(export.Favourites[0].Position);
+        Assert.Equal(-1024, export.Favourites[1].Position);
     }
 
     [Fact]

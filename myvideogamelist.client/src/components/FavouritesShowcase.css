@@ -1,0 +1,71 @@
+/* The owner's showcase on /user: its heading with the Arrange toggle, and the grid it is laid out as
+   while it is arranged (ADR 0064). The grips and the lifted cover are Reorder.css's. */
+
+.favourites-showcase-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+}
+
+.favourites-showcase-arrange {
+    padding: 0.35rem 0.75rem;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--color-fg-soft);
+    background: color-mix(in srgb, var(--color-raised) 60%, transparent);
+    border: 1px solid var(--color-line-strong);
+    border-radius: 0.45rem;
+    cursor: pointer;
+    transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+
+.favourites-showcase-arrange:hover {
+    color: var(--color-fg-strong);
+    border-color: color-mix(in srgb, var(--color-primary-500) 60%, transparent);
+}
+
+.favourites-showcase-arrange[aria-pressed='true'] {
+    color: var(--color-on-primary);
+    background: var(--color-primary-600);
+    border-color: var(--color-primary-500);
+}
+
+.favourites-showcase-arrange[aria-pressed='true']:hover {
+    background: var(--color-primary-500);
+}
+
+.favourites-showcase-arrange:focus-visible {
+    outline: 2px solid var(--color-focus);
+    outline-offset: 2px;
+}
+
+/* Every cover on screen while it is arranged, so any place is a drag or a tap away: three to a row on a
+   phone, where two would make a long page to drag across, and as many as the column fits once it is
+   wider, each about as wide as the row's covers. By the width of the section, which is a container
+   (ProfileStats.css), since the column it sits in is not the viewport's width. */
+.favourites-showcase-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.75rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+@container (width >= 30rem) {
+    .favourites-showcase-grid {
+        grid-template-columns: repeat(auto-fill, minmax(6.5rem, 1fr));
+        gap: 1rem;
+    }
+}
+
+.favourites-showcase-error {
+    margin: 0;
+    padding: 0.6rem 0.85rem;
+    font-size: 0.8125rem;
+    color: var(--color-danger-300);
+    background: color-mix(in srgb, var(--color-danger-900) 20%, transparent);
+    border: 1px solid color-mix(in srgb, var(--color-danger-700) 50%, transparent);
+    border-radius: 0.5rem;
+}

@@ -35,6 +35,25 @@ export const MAX_POSITION_WRITES = 10_000;
  */
 const SPREAD_GAP = 64;
 
+/**
+ * Why a planned move cannot be sent, in the words the page shows, or null when it can.
+ *
+ * Every order arranged by hand refuses the same two moves before anything changes (ADR 0054 §5): one
+ * that would write a game whose own save is still out — with two writes in flight for one row, the
+ * first to fail rolls back over the second — and one that would carry more positions than a write may.
+ * Said here once, so that the backlog and the favourites refuse them alike: refused in silence, the
+ * game would only snap back, and a sighted user hears nothing of what the control announces.
+ */
+export function moveRefusal(writes: readonly PositionWrite[], saving: (id: number) => boolean): string | null {
+    if (writes.some(write => saving(write.id))) {
+        return 'Another change to one of these games is still saving. Try the move again in a moment.';
+    }
+    if (writes.length > MAX_POSITION_WRITES) {
+        return 'That move would place more games at once than can be saved. Place a few of them higher up first.';
+    }
+    return null;
+}
+
 /** One game in a hand order: its id, and its position or null when it was never placed. */
 export interface Placed {
     id: number;

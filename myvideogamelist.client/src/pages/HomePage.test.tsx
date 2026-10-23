@@ -3,6 +3,7 @@ import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
 import { HomePage, headers, loader } from '@/pages/HomePage';
 import type { AuthContextValue } from '@/contexts/AuthContext';
+import type { FavouritesContextValue } from '@/contexts/FavouritesContext';
 import { CACHE_HOME, PRIVATE_NO_STORE } from '@/lib/cache';
 import { game } from '@/test/factories';
 import type { HomeResponse, NewsItemDto } from '@/types/news';
@@ -26,6 +27,11 @@ const auth: AuthContextValue = {
 };
 
 vi.mock('@/hooks/useAuth', () => ({ useAuth: () => auth }));
+
+/** Nobody's favourites: the visitor here is signed out. Hoisted and handed back whole, as above. */
+const favourites = { isFavourite: () => false } as unknown as FavouritesContextValue;
+
+vi.mock('@/hooks/useFavourites', () => ({ useFavourites: () => favourites }));
 
 const SITE = { siteUrl: 'https://myvideogamelist.net', indexable: true };
 

@@ -383,12 +383,15 @@ public class UserDataExporter(ApplicationDbContext db, TimeProvider clock) : IUs
     private static async Task ReadFavouritesAsync(
         ApplicationDbContext db, ExportDraft draft, CancellationToken cancellationToken)
     {
+        // Oldest first like every other section, not in the showcase's order: the order is the
+        // positions, which travel as they are stored. A hand-written projection, so a new column on the
+        // favourite is exported only when it is added here (ADR 0024).
         draft.Favourites = await db.UserFavourites
             .AsNoTracking()
             .Where(f => f.UserId == draft.UserId)
             .OrderBy(f => f.AddedAt)
             .ThenBy(f => f.GameId)
-            .Select(f => new FavouriteExportDto(f.GameId, f.AddedAt))
+            .Select(f => new FavouriteExportDto(f.GameId, f.AddedAt, f.Position))
             .ToListAsync(cancellationToken);
     }
 

@@ -57,6 +57,7 @@ public class ListsController(
     /// </para>
     /// </remarks>
     [HttpPatch("{status}/positions")]
+    [RequestSizeLimit(HandOrder.MaxRequestBytes)]
     public async Task<IActionResult> SetPositions(
         [AllowedValues(
             ListStatusKeys.Backlog,

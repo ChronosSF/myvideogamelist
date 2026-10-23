@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { createRoutesStub, Link, Outlet } from 'react-router';
 import { GamePage, meta } from '@/pages/GamePage';
 import type { AuthContextValue } from '@/contexts/AuthContext';
+import type { FavouritesContextValue } from '@/contexts/FavouritesContext';
 import type { UseGameCommunityResult } from '@/hooks/useGameCommunity';
 import { MIN_MEMBER_SCORES } from '@/lib/score';
 import type { UserProfile } from '@/types/auth';
@@ -52,6 +53,14 @@ const community: UseGameCommunityResult = {
 
 vi.mock('@/hooks/useGameCommunity', () => ({ useGameCommunity: () => community }));
 
+/** The reader's favourites, as far as the rosette reads them. Hoisted and handed back whole, as above. */
+const favoured = new Set<number>();
+const favourites = {
+    isFavourite: (gameId: number) => favoured.has(gameId),
+} as unknown as FavouritesContextValue;
+
+vi.mock('@/hooks/useFavourites', () => ({ useFavourites: () => favourites }));
+
 // All four fetch for themselves after hydration. What this suite is about is which of three things
 // the sidebar shows and what the hero says, so the panel — which has a suite of its own — is
 // reduced to the heading a reader knows it by, and the sections that render nothing until their
@@ -85,6 +94,7 @@ beforeEach(() => {
     auth.loading = true;
     community.settled = false;
     community.scores = null;
+    favoured.clear();
 });
 
 describe('GamePage sidebar before auth has answered', () => {
@@ -172,6 +182,44 @@ describe('GamePage trailer', () => {
         expect(await screen.findByRole('heading', { level: 1, name: 'Hades' })).toBeInTheDocument();
         expect(screen.queryByTitle('Hades trailer')).not.toBeInTheDocument();
         expect(screen.getByRole('button', { name: /Play trailer/ })).toBeInTheDocument();
+    });
+});
+
+/**
+ * The rosette drawn on a cover. By its class, the one exception to querying by role: the mark is
+ * deliberately outside the accessibility tree, and what it says is asserted through the words instead.
+ */
+const coverMarks = (root: HTMLElement) => root.querySelectorAll('.favourite-mark-cover');
+
+describe('GamePage related games', () => {
+    const TUNIC = { id: 2, name: 'Tunic', coverImageUrl: null };
+    const HADES = { id: 3, name: 'Hades', coverImageUrl: null };
+    const FAREWELL = { id: 4, name: 'Farewell', coverImageUrl: null };
+
+    function renderWithDetails(details: GameDetailsDto) {
+        authAnswered(userProfile());
+        renderPage(game({ id: 1, title: 'Celeste', details }));
+    }
+
+    it("marks the reader's favourites among the similar games, in the names of their links", () => {
+        favoured.add(TUNIC.id);
+        renderWithDetails(gameDetails({ similarGames: [TUNIC, HADES] }));
+
+        const rail = screen.getByRole('list', { name: 'Games similar to Celeste' });
+        expect(within(rail).getAllByRole('link').map(link => link.textContent))
+            .toEqual(['Tunic, one of your favourites', 'Hades']);
+        expect(coverMarks(within(rail).getByRole('link', { name: /Tunic/ }))).toHaveLength(1);
+        expect(coverMarks(rail)).toHaveLength(1);
+    });
+
+    it("marks the reader's favourites among the expansions and DLC too", () => {
+        favoured.add(FAREWELL.id);
+        renderWithDetails(gameDetails({ expansions: [FAREWELL], dlcs: [HADES] }));
+
+        const rail = screen.getByRole('list', { name: 'Expansions and DLC for Celeste' });
+        expect(within(rail).getAllByRole('link').map(link => link.textContent))
+            .toEqual(['Farewell, one of your favourites', 'Hades']);
+        expect(coverMarks(rail)).toHaveLength(1);
     });
 });
 

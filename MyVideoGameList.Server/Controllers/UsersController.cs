@@ -63,7 +63,8 @@ public class UsersController(IPublicProfileService profiles) : ControllerBase
     }
 
     /// <summary>
-    /// The games that user has made favourites, most recent first.
+    /// The games that user has made favourites, in the order they arranged them: those placed by hand
+    /// first, then the rest most recent first.
     /// </summary>
     /// <remarks>
     /// Not paged. A showcase is read as a whole, and the profile page renders it on the server in one

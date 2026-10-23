@@ -8,6 +8,7 @@ import { ReorderAnnouncer } from '@/components/ReorderAnnouncer';
 import { ReorderHandle } from '@/components/ReorderHandle';
 import { useLists } from '@/hooks/useLists';
 import { useAuth } from '@/hooks/useAuth';
+import { useFavourites } from '@/hooks/useFavourites';
 import { useReorder } from '@/hooks/useReorder';
 import { type ListEntryDto, type ListId, HAND_ORDERED_LISTS, LIST_IDS } from '@/types/list';
 import type { PlatformDto } from '@/types/game';
@@ -42,6 +43,7 @@ export function ListsPage() {
         lists, loading, error, mutationError, isPending,
         view, setView, sortFor, setSort, setScore, removeFromList, moveInOrder, nameFor,
     } = useLists();
+    const { isFavourite } = useFavourites();
 
     // Nobody is signed in or out until auth has answered: the server render never knows, and the
     // first client render has to match it. Checking `user` alone told every signed-in visitor to
@@ -299,6 +301,7 @@ export function ListsPage() {
                         sort={sort}
                         listName={nameFor(activeTab)}
                         isPending={isPending}
+                        isFavourite={isFavourite}
                         onSortChange={next => setSort(activeTab, next)}
                         onScoreChange={(gameId, score) => void setScore(gameId, score)}
                         onRemove={gameId => void removeFromList(activeTab, gameId)}

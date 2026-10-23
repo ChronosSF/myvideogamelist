@@ -453,20 +453,39 @@ public class HandOrderTests
     }
 
     [Fact]
-    public void TheCheckConstraint_HoldsPositionsToTheBoundsTheApiAccepts()
+    public void CheckConstraints_EveryHandOrderedTable_HoldsPositionsToTheBoundsTheApiAccepts()
     {
-        // The DTO's range and the column's constraint are one rule written twice; this fails if
-        // they drift. The design-time model, because check constraints are migration metadata.
+        // The DTO's range and each column's constraint are one rule written twice; this fails if they
+        // drift. It walks every IHandOrdered entity in the model, so whichever has no check fails it,
+        // and the tripwire names the two there are, so that a third is added here on purpose, as
+        // UserOwnedDataTests' inventory is. The design-time model, because check constraints are
+        // migration metadata.
         using var db = new ApplicationDbContext(Options(Guid.NewGuid().ToString()));
 
-        var constraint = db.GetService<IDesignTimeModel>().Model
-            .FindEntityType(typeof(UserGameEntry))!
-            .GetCheckConstraints()
-            .Single(c => c.ModelName == "CK_UserGameEntries_Position_Range");
+        var handOrdered = db.GetService<IDesignTimeModel>().Model.GetEntityTypes()
+            .Where(type => typeof(IHandOrdered).IsAssignableFrom(type.ClrType))
+            .ToList();
 
-        Assert.Contains($">= {HandOrder.MinPosition}", constraint.Sql);
-        Assert.Contains($"<= {HandOrder.MaxPosition}", constraint.Sql);
-        Assert.Contains("\"Position\" IS NULL", constraint.Sql);
+        // The backlog's and the showcase's.
+        Assert.Equal(
+            [nameof(UserFavourite), nameof(UserGameEntry)],
+            handOrdered.Select(type => type.ClrType.Name).Order());
+
+        foreach (var type in handOrdered)
+        {
+            // By its suffix: the table's name is the relational model's, which this provider lacks.
+            var constraint = Assert.Single(
+                type.GetCheckConstraints(),
+                c => c.ModelName.EndsWith("_Position_Range", StringComparison.Ordinal));
+
+            // Written out rather than interpolated, so that a check formatted in another culture's
+            // minus sign fails here instead of passing beside it.
+            Assert.Contains("\"Position\" >= -1000000000", constraint.Sql);
+            Assert.Contains("\"Position\" <= 1000000000", constraint.Sql);
+            Assert.Contains("\"Position\" IS NULL", constraint.Sql);
+            Assert.Equal(-1_000_000_000, HandOrder.MinPosition);
+            Assert.Equal(1_000_000_000, HandOrder.MaxPosition);
+        }
     }
 
     [Fact]

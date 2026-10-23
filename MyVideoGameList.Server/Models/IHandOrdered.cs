@@ -2,7 +2,7 @@ namespace MyVideoGameList.Server.Models;
 
 /// <summary>
 /// One game in a list its owner can put in an order by hand — the backlog's "what I will play
-/// next", and whatever is arranged the same way after it.
+/// next" and the favourites showcase (ADR 0064), and whatever is arranged the same way after them.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -14,9 +14,11 @@ namespace MyVideoGameList.Server.Models;
 /// </para>
 /// <para>
 /// Null means the game has never been placed. Placed games come first, in ascending order; the
-/// rest follow in the order they joined the list. So a list nobody has arranged needs no rows
-/// written at all, and a game that arrives later queues at the end rather than taking a place
-/// nobody gave it. See <c>docs/decisions/0054-a-hand-arranged-order-is-a-sparse-position.md</c>.
+/// rest follow in the order the list's own comparator gives them, so a list nobody has arranged needs
+/// no rows written at all, and a game that arrives later takes no place nobody gave it. The backlog
+/// queues its unplaced games oldest first, so an arrival waits at the end (ADR 0054); the favourites
+/// showcase shows them newest first, as every favourite was shown before it had an order, so an arrival
+/// shows right after the placed (ADR 0064).
 /// </para>
 /// <para>
 /// The client computes every number and the server stores what it is sent, checked against
@@ -63,4 +65,12 @@ public static class HandOrder
     /// writes every unplaced game in front of it.
     /// </summary>
     public const int MaxWrites = 10_000;
+
+    /// <summary>
+    /// The most a write of positions may weigh, in bytes, checked before the body is read.
+    /// <see cref="MaxWrites"/> positions at their longest are about 450 KB; without this the body could
+    /// be Kestrel's default of 30 MB, read whole into a million positions before the bound on their
+    /// number refused them, by any signed-in account and as often as it liked.
+    /// </summary>
+    public const int MaxRequestBytes = 1024 * 1024;
 }
