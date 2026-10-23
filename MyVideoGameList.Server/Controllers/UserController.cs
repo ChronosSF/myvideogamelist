@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
@@ -7,6 +8,7 @@ using MyVideoGameList.Server.DTOs;
 using MyVideoGameList.Server.Models;
 using MyVideoGameList.Server.Security;
 using MyVideoGameList.Server.Services;
+using MyVideoGameList.Server.Services.Edge;
 
 namespace MyVideoGameList.Server.Controllers;
 
@@ -18,11 +20,13 @@ public class UserController(
     SignInManager<ApplicationUser> signInManager,
     ApplicationDbContext db,
     IStatsService stats,
+    IHistoryService history,
     IUserDataExporter exporter,
     IUserNameClaimService claims,
     ITrackedNewsService trackedNews,
     IListNameService listNames,
     AdminAccounts admins,
+    ProfileWithdrawals withdrawals,
     TimeProvider clock) : ControllerBase
 {
     /// <summary>
@@ -73,9 +77,17 @@ public class UserController(
             // cooldown as well.
             if (user.UserName != dto.UserName)
             {
+                var previousCase = user.UserName;
                 user.UserName = dto.UserName;
                 var saved = await userManager.UpdateAsync(user);
                 if (!saved.Succeeded) return NotSaved(saved);
+
+                // It still invalidates, both spellings, though it releases no name. Invalidation
+                // paths are case-sensitive and every later withdrawal names the new spelling, so the
+                // copies the edge holds under the old one — the spelling the site itself linked to
+                // and the sitemap listed until now — would be out of reach of all of them (ADR 0058).
+                if (user.ProfileVisibility == ProfileVisibility.Public && previousCase is not null)
+                    withdrawals.ProfileRenamed(previousCase, dto.UserName);
             }
 
             return Ok(Profile(user));
@@ -117,6 +129,16 @@ public class UserController(
             return ValidationProblem(ModelState);
         }
 
+        // The old name is released for anybody to claim, and the edge would go on serving this
+        // profile under it; the new one may hold a 404 from before it was taken. Both go, and the
+        // sitemap that lists the old one. A private profile has nothing at the edge to take.
+        if (user.ProfileVisibility == ProfileVisibility.Public
+            && previous is not null
+            && user.UserName is { } renamed)
+        {
+            withdrawals.ProfileRenamed(previous, renamed);
+        }
+
         // SetUserNameAsync rotates the security stamp, and the cookie this request arrived with
         // carries the old one. Identity's SecurityStampValidator re-checks the cookie against the
         // account every thirty minutes and signs out on a mismatch, so without a reissued cookie a
@@ -131,9 +153,16 @@ public class UserController(
     /// Turns the public profile at <c>/u/{userName}</c> on or off.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// Its own endpoint rather than a field on a general settings update, because it is the one
     /// preference here whose effect is on other people. Turning it off does not delete anything: a
     /// private profile is a 404 to every reader, and turning it back on restores the same page.
+    /// </para>
+    /// <para>
+    /// Turning it off is a withdrawal of consent, so the page and the sitemap that lists it are
+    /// taken off the edge once the change is saved, rather than served from there until their TTL
+    /// runs out (ADR 0058). Turning it on publishes, and invalidates nothing.
+    /// </para>
     /// </remarks>
     [HttpPut("privacy")]
     public async Task<ActionResult<UserProfileDto>> UpdatePrivacy(
@@ -142,11 +171,70 @@ public class UserController(
         var user = await userManager.GetUserAsync(User);
         if (user is null) return Unauthorized();
 
+        var wasPublic = user.ProfileVisibility == ProfileVisibility.Public;
+
         user.ProfileVisibility = dto.ProfileVisibility;
         var saved = await userManager.UpdateAsync(user);
         if (!saved.Succeeded) return NotSaved(saved);
 
+        if (wasPublic && user.ProfileVisibility != ProfileVisibility.Public && user.UserName is { } name)
+            withdrawals.ProfileMadePrivate(name);
+
         return Ok(Profile(user));
+    }
+
+    /// <summary>
+    /// Replaces the display name, the avatar and the bio, all three at once.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Each was judged by its attribute before this runs, as it will be stored; what is written is
+    /// that stored form, so the response hands back exactly what the public profile will show. A
+    /// blank clears its field. Saving them on a private profile publishes nothing: they reach
+    /// <c>/u/{userName}</c> only while the profile is public, with everything else on it.
+    /// </para>
+    /// <para>
+    /// Rewriting or clearing one of them on a public profile takes back something the page
+    /// published, as editing a review on it does, so once saved the page leaves the edge (ADR 0056,
+    /// 0058). Setting one for the first time publishes, and waits out the window like any new
+    /// content; saving them again unchanged takes nothing back and sends nothing.
+    /// </para>
+    /// <para>
+    /// The avatar's address is stored and never requested from here (ADR 0056). No cancellation
+    /// token, as for the rename and the privacy switch: neither <see cref="UserManager{TUser}"/>
+    /// call here takes one.
+    /// </para>
+    /// </remarks>
+    [HttpPut("profile")]
+    public async Task<ActionResult<UserProfileDto>> UpdateProfileDetails(
+        [FromBody] UpdateProfileDetailsDto dto)
+    {
+        var user = await userManager.GetUserAsync(User);
+        if (user is null) return Unauthorized();
+
+        var displayName = DisplayNamePolicy.Normalise(dto.DisplayName);
+        var avatarUrl = AvatarUrlPolicy.Normalise(dto.AvatarUrl);
+        var bio = BioPolicy.Normalise(dto.Bio);
+
+        // Decided from the state before the save, as every withdrawal is: only a value the page has
+        // shown can be taken back.
+        var takesBack = TakesBack(user.DisplayName, displayName)
+            || TakesBack(user.AvatarUrl, avatarUrl)
+            || TakesBack(user.Bio, bio);
+
+        user.DisplayName = displayName;
+        user.AvatarUrl = avatarUrl;
+        user.Bio = bio;
+
+        var saved = await userManager.UpdateAsync(user);
+        if (!saved.Succeeded) return NotSaved(saved);
+
+        if (takesBack && user.ProfileVisibility == ProfileVisibility.Public && user.UserName is { } name)
+            withdrawals.ProfileDetailsChanged(name);
+
+        return Ok(Profile(user));
+
+        static bool TakesBack(string? shown, string? saving) => shown is not null && shown != saving;
     }
 
     /// <summary>
@@ -261,6 +349,56 @@ public class UserController(
     }
 
     /// <summary>
+    /// A page of the signed-in user's history, newest first: their status changes, their scores and
+    /// their playthroughs' dates as one list.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The owner's own, and only from the principal, like the figures above. There is no public
+    /// counterpart: the public profile publishes counts, and a dated list of what somebody did with
+    /// which game is not one (ADR 0062).
+    /// </para>
+    /// <para>
+    /// Paged by cursor, as a game's reviews are (ADR 0028): each page ends with the <c>after</c> for
+    /// the next, encrypted. The attribute refuses anything not shaped like a token; one that is
+    /// shaped right and does not decrypt is the same 400, from the service.
+    /// </para>
+    /// <para>
+    /// <c>no-store</c>, for the reason <see cref="GetNews"/> gives: it differs per account, and
+    /// nothing between here and the browser should keep one person's history for the next.
+    /// </para>
+    /// </remarks>
+    [HttpGet("history")]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public async Task<ActionResult<HistoryPageDto>> GetHistory(
+        CancellationToken cancellationToken,
+        // Absent for the first page; otherwise the `next` the previous page returned. The page shows
+        // a refusal's sentence, so the shape check says the same as the key ring's below rather than
+        // reciting the pattern.
+        [FromQuery][RegularExpression(HistoryCursor.Pattern, ErrorMessage = NotAPage)] string? after = null)
+    {
+        var userId = userManager.GetUserId(User);
+        if (userId is null) return Unauthorized();
+
+        try
+        {
+            return Ok(await history.GetHistoryAsync(userId, after, cancellationToken));
+        }
+        catch (ArgumentException e) when (e.ParamName == nameof(after))
+        {
+            // The one rule an attribute cannot express, since it takes the key ring to check. Beside
+            // the parameter, in the shape every other 400 has. Filtered on the parameter, so that any
+            // other ArgumentException — an ArgumentOutOfRangeException is one — stays the 500 it is
+            // rather than telling the reader their page was the problem.
+            ModelState.AddModelError(nameof(after), NotAPage);
+            return ValidationProblem(ModelState);
+        }
+    }
+
+    /// <summary>What a refused history cursor tells the reader, whichever check refused it.</summary>
+    private const string NotAPage = "That is not a page of this history. Start again from the first.";
+
+    /// <summary>
     /// Steam news for the games the signed-in user tracks, newest first — the <c>/news</c> page.
     /// </summary>
     /// <remarks>
@@ -338,9 +476,15 @@ public class UserController(
         if (!await userManager.CheckPasswordAsync(user, dto.Password))
             return Unauthorized(new { message = "Password is incorrect." });
 
+        // Taken while the account still exists: a public profile is about to stop existing, and
+        // the edge has to be told under the name it is cached by (ADR 0058).
+        var publicName = user.ProfileVisibility == ProfileVisibility.Public ? user.UserName : null;
+
         var result = await userManager.DeleteAsync(user);
         if (!result.Succeeded)
             return Problem(string.Join(" ", result.Errors.Select(e => e.Description)));
+
+        if (publicName is not null) withdrawals.AccountDeleted(publicName);
 
         // The account is gone, so the cookie now authenticates nothing. Clearing it here saves the
         // client from holding a credential for a user that cannot be looked up.
@@ -358,7 +502,8 @@ public class UserController(
     /// hand back the in-memory object as though it had been written. For the privacy switch that
     /// would tell somebody a consent change had taken effect while the database still says
     /// otherwise. A 409, because the row was changed by another request between this one's read
-    /// and its write; the client shows its own generic failure and the user tries again.
+    /// and its write, and the user tries again. Its detail is Identity's wording, written for a log:
+    /// the profile details form says it in words of its own.
     /// </remarks>
     private ObjectResult NotSaved(IdentityResult result) =>
         Problem(

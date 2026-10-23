@@ -21,7 +21,21 @@ export interface ListEntryDto {
     score: number | null;
     addedAt: string;
     statusChangedAt: string | null;
+    /**
+     * Where the user put the game in its list by hand, or null when they never placed it — a sparse
+     * number from `@/lib/handOrder`, not an index. Cleared by the server whenever the game changes
+     * list, so it only ever means a place in the list the entry is in. See `docs/decisions/0054-*`.
+     */
+    position: number | null;
 }
+
+/**
+ * The lists that offer an order arranged by hand. The backlog alone: "what I will play next" is a
+ * question about the games waiting, and the other four already have an order that means something —
+ * when a game was started, finished, put down. The server stores a position for any list, so adding
+ * one here is the whole of offering it.
+ */
+export const HAND_ORDERED_LISTS: readonly ListId[] = ['backlog'];
 
 /**
  * How the user has a game, mirroring the server's `OwnershipKinds`. A key rather than a label, and

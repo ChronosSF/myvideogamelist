@@ -69,9 +69,10 @@ public sealed class Edge : Construct
             MinTtl = Duration.Seconds(0),
             DefaultTtl = Duration.Seconds(0),
             MaxTtl = Duration.Days(365),
-            // 0032's six browse parameters, `page` for a public profile, and React Router's
-            // `_routes`, which a .data request carries once a route opts out of revalidation.
-            QueryStringBehavior = CacheQueryStringBehavior.AllowList("search", "sort", "platform", "genre", "year", "minScore", "page", "_routes"),
+            // 0032's six browse parameters and 0067's `esrb`, `page` for a public profile, and React
+            // Router's `_routes`, which a .data request carries once a route opts out of revalidation.
+            // Nine of the ten names a cache policy holds by default; an eleventh needs a quota increase.
+            QueryStringBehavior = CacheQueryStringBehavior.AllowList("search", "sort", "platform", "genre", "year", "minScore", "esrb", "page", "_routes"),
             // The server render reads no cookie and no header.
             HeaderBehavior = CacheHeaderBehavior.None(),
             CookieBehavior = CacheCookieBehavior.None(),

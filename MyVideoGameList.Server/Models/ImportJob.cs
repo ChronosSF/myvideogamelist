@@ -99,6 +99,10 @@ public class ImportJob
     public int RowCount { get; set; }
 
     /// <summary>How many rows the commit actually wrote. Null until the job is committed.</summary>
+    /// <remarks>
+    /// Rows, not games. Two rows can name one game, so how many games went in is a different number,
+    /// which the commit answers in <c>ImportResultDto.Games</c> and nothing stores.
+    /// </remarks>
     public int? ImportedCount { get; set; }
 
     /// <summary>

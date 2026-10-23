@@ -179,7 +179,7 @@ export function PlaythroughForm({
             )}
 
             <div className="game-user-panel-confirm">
-                <button type="submit" className="danger" disabled={pending}>
+                <button type="submit" className="primary" disabled={pending}>
                     {editing === null ? 'Log playthrough' : 'Save playthrough'}
                 </button>
                 {editing !== null && (

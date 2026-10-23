@@ -55,10 +55,11 @@ public class UserNameClaimServiceTests
     /// store, with the username alphabet <c>Program.cs</c> configures. A substitute would not run
     /// the validator whose read is half of the race.
     /// </summary>
-    private static ServiceProvider Request(string store, IInterceptor? interceptor = null)
+    private static ServiceProvider Request(string store, IInterceptor? interceptor = null, TimeProvider? clock = null)
     {
         var services = new ServiceCollection();
         services.AddLogging();
+        services.AddSingleton(clock ?? TimeProvider.System);
         services.AddDbContext<ApplicationDbContext>(options =>
         {
             options.UseInMemoryDatabase(store);
@@ -95,6 +96,28 @@ public class UserNameClaimServiceTests
         Assert.False(result.Succeeded);
         Assert.Contains(result.Errors,
             e => e.Code == nameof(IdentityErrorDescriber.DuplicateUserName));
+    }
+
+    private sealed class FixedClock(DateTimeOffset now) : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => now;
+    }
+
+    [Fact]
+    public async Task RegisterAsync_DatesTheAccount_CreatedAndFirstSeenAtTheSameMoment()
+    {
+        // Every account is created through this service, which is what makes it the place to date one:
+        // the admin statistics count sign-ups by this, and the active by the second (ADR 0051).
+        var now = new DateTimeOffset(2026, 10, 13, 9, 30, 0, TimeSpan.Zero);
+        using var request = Request(Guid.NewGuid().ToString(), clock: new FixedClock(now));
+
+        var result = await Service(request).RegisterAsync(NewUser("alex"), Password);
+
+        Assert.True(result.Succeeded);
+        var saved = await Manager(request).FindByNameAsync("alex");
+        Assert.NotNull(saved);
+        Assert.Equal(now, saved.CreatedAt);
+        Assert.Equal(now, saved.LastSeenAt);
     }
 
     [Fact]
