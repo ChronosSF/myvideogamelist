@@ -21,7 +21,9 @@ interface GameRefTileProps {
     linked?: boolean;
 }
 
-const FRAME = 'group block focus:outline-none focus-visible:ring-2 focus-visible:ring-focus rounded-xl';
+// `outline-hidden`, not `outline-none`: in forced colours the ring is dropped with every other shadow,
+// and only this keeps an outline there to show focus (issue 287).
+const FRAME = 'group block focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus rounded-xl';
 
 /**
  * One game as its cover and its name, linking to its page: an item of a `GameRefRail`, or of the
