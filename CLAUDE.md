@@ -154,7 +154,11 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   `1`) and `rating_category`. *Requesting* a removed field is just as quiet: it is left out of the
   response, which hid every ESRB badge. `websites.category` went the same way: its absence made
   every game's "Official Site" whichever link IGDB listed first — use `type`, a `website_types` id
-  (official is `1`).
+  (official is `1`). And a `where` over the rows of a game's `age_ratings` is matched against
+  **one row**: `organization = 2 & rating_category = (4)` finds nothing for a game whose PEGI row
+  and E10+ row are two rows, and `!=` means "some row differs", so no clause can ask for a row to
+  be absent. That is why the ESRB filter drops games in `GetGamesAsync`; see
+  `docs/decisions/0067-*`.
 
 - **An IGDB release date is not always a day.** `release_dates.date_format` says how much of it is
   known — 0 the day, 1 the month, 2 the year, 3 to 6 a quarter, 7 nothing — and for anything but a
@@ -532,7 +536,9 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   critics; Popular needs ten ratings; Newest and A to Z need ten ratings *and* a critic, because
   without one they fill with shovelware. The filters apply to a search, but never an order: IGDB
   answers a `search` with a `sort` with a 406. Every browse parameter is in the URL through
-  `@/lib/gameBrowse`, and all six belong in the CDN cache key. See `docs/decisions/0032-*`.
+  `@/lib/gameBrowse`, and all seven belong in the CDN cache key — the allowlist in
+  `infra/src/Infra/Edge.cs`, which also decides what reaches the origin at all. See
+  `docs/decisions/0032-*`.
 
 - **Stars mean the user's own score and nothing else.** One `ScoreInput` — five stars, half-star
   steps, which is exactly the 1–10 the database stores. Everything averaged from other people

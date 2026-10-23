@@ -8,7 +8,6 @@ using Microsoft.Extensions.Logging;
 using MyVideoGameList.Server.Data;
 using MyVideoGameList.Server.Models;
 using MyVideoGameList.Server.Services.Import;
-using Npgsql;
 
 namespace MyVideoGameList.Server.IntegrationTests;
 
@@ -98,16 +97,8 @@ public class ImportRetentionSweepTests(ApiFactory api) : IClassFixture<ApiFactor
         var expired = Job(userId, ImportJobStates.Pending, updated: DateTimeOffset.UtcNow.AddDays(-20), rows: 1);
         await SeedAsync(expired);
 
-        // Not pooled, so closing it ends the session, and the lock with it, before the next test.
-        await using var holder = new NpgsqlConnection(
-            new NpgsqlConnectionStringBuilder(api.ConnectionString) { Pooling = false }.ConnectionString);
-        await holder.OpenAsync();
-
-        await using (var take = new NpgsqlCommand("SELECT pg_advisory_lock(@key)", holder))
-        {
-            take.Parameters.AddWithValue("key", ImportRetentionService.LockKey);
-            await take.ExecuteNonQueryAsync();
-        }
+        // Let go of when the test ends, before the next one sweeps.
+        await using var holder = await AdvisoryLockHolder.TakeAsync(api.ConnectionString, ImportRetentionService.LockKey);
 
         // The pass that cannot take the lock says so, and only at its end.
         var pass = await SweepAsync((logged, _) => Task.FromResult(logged.Logged.Any(entry =>
