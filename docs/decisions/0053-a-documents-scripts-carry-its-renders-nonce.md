@@ -107,8 +107,13 @@ visible when the header is sent. Anything in the body that was fixed before then
 ### 3. The policy
 
 ```
-script-src 'self' 'nonce-…'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'
+script-src 'self' 'nonce-…'; object-src 'none'; base-uri 'none'; frame-ancestors 'none';
+img-src 'self' https://images.igdb.com https://gravatar.com …
 ```
+
+`img-src` is [0056](0056-an-avatar-is-an-address-on-a-short-list-of-hosts.md)'s, which landed first
+and wrote it into the fixed policy this record replaced. It needs no nonce, and `documentPolicy`
+writes it with the rest. Its tests moved across with it.
 
 - **`'self'`** admits the scripts loaded from files: the route modules a navigation imports and the
   module preloads. Nothing else on this origin answers with script. The API sends JSON under
@@ -138,6 +143,10 @@ Checked in a browser: the policy refuses an injected inline script, an inline ha
 - **A failed shell is a second render.** React Router calls the entry again with the same headers to
   render the error boundary. That call draws its own nonce, and its `set` replaces the first one's, so
   the header always names the nonce of the body that is sent.
+- **Those headers are the failed page's**, `Cache-Control` included, so a game page that failed while
+  rendering would have sent its 500 with an hour at the edge. A boundary that fails after the shell
+  makes the status a 500 the same way. The entry marks any 5xx `private, no-store` where it builds the
+  response, because a failure is never stored ([0013](0013-http-caching-policy.md)).
 - **The test is `entry.server.test.tsx`.** It renders each of these, plus a crawler, a private page
   whose data lands after the shell and a shared one that is sent whole, through React Router's own
   request handler and the real root route, as a server render with no DOM. It checks every script

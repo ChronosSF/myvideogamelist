@@ -9,6 +9,7 @@ using MyVideoGameList.Server.Models;
 using MyVideoGameList.Server.Observability;
 using MyVideoGameList.Server.Security;
 using MyVideoGameList.Server.Services;
+using MyVideoGameList.Server.Services.Edge;
 using MyVideoGameList.Server.Services.Import;
 using Scalar.AspNetCore;
 
@@ -72,6 +73,7 @@ builder.Services.AddScoped<IListNameService, ListNameService>();
 builder.Services.AddScoped<IPlaythroughService, PlaythroughService>();
 builder.Services.AddScoped<IReviewService, ReviewService>();
 builder.Services.AddScoped<IStatsService, StatsService>();
+builder.Services.AddScoped<IHistoryService, HistoryService>();
 builder.Services.AddScoped<IPublicProfileService, PublicProfileService>();
 builder.Services.AddScoped<IGameCommunityService, GameCommunityService>();
 builder.Services.AddScoped<ISitemapService, SitemapService>();
@@ -82,6 +84,7 @@ builder.Services.AddScoped<IImportService, ImportService>();
 builder.Services.AddScoped<IImportMatcher, ImportMatcher>();
 builder.Services.AddScoped<ICalendarCurationService, CalendarCurationService>();
 builder.Services.AddScoped<ICalendarEventService, CalendarEventService>();
+builder.Services.AddScoped<IAdminStatsService, AdminStatsService>();
 // What is coming for a user's games. Asks IGDB directly rather than through the game cache: what it
 // finds is mostly games nobody tracks yet — a sequel, a DLC — which is catalogue, not somebody's shelf.
 builder.Services.AddScoped<IConnectedReleaseService, ConnectedReleaseService>();
@@ -90,6 +93,12 @@ builder.Services.AddScoped<IConnectedReleaseService, ConnectedReleaseService>();
 // (ADR 0038). One call rather than a line per service, because what happens when a background
 // service throws is part of the same decision and is configured there.
 builder.Services.AddScheduledWork();
+
+// A profile switched to private, renamed or deleted, or a review on it made private, edited or
+// deleted, is taken off CloudFront after the write commits rather than left there until the cached
+// page's TTL runs out. CloudFront only where a distribution id is configured; everywhere else the
+// paths are logged and nothing reaches AWS. See docs/decisions/0058-*.
+builder.Services.AddEdgeInvalidation(builder.Configuration);
 
 // The clock, injected so the event log's timestamps are controllable in tests.
 builder.Services.AddSingleton(TimeProvider.System);

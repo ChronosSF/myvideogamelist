@@ -4,6 +4,7 @@ import { CACHE_GAME, CACHE_NOT_FOUND } from '@/lib/cache';
 import { loaderFetch, upstreamFailure } from '@/lib/trace.server';
 import type { GameDto } from '@/types/game';
 import { useAuth } from '@/hooks/useAuth';
+import { useFavourites } from '@/hooks/useFavourites';
 import { useGameCommunity } from '@/hooks/useGameCommunity';
 import { GameNewsPanel } from '@/components/GameNewsPanel';
 import { GameUserPanel } from '@/components/GameUserPanel';
@@ -13,6 +14,7 @@ import { SectionHeading } from '@/components/SectionHeading';
 import { GameRefRail } from '@/components/GameRefRail';
 import { MultiplayerSummary } from '@/components/MultiplayerSummary';
 import { ScreenshotGallery } from '@/components/ScreenshotGallery';
+import { StoreLinks } from '@/components/StoreLinks';
 import { TrailerPlayer } from '@/components/TrailerPlayer';
 import { formatCount } from '@/lib/format';
 import { pageMeta, siteConfig } from '@/lib/seo';
@@ -100,6 +102,10 @@ export function GamePage() {
     const { game } = useLoaderData<typeof loader>();
 
     const { user, loading: authLoading } = useAuth();
+
+    // The reader's own, for the rosette on the related games' covers. Empty in the server render and
+    // until the favourites arrive, so the shared-cached page is the same for everybody (ADR 0064).
+    const { isFavourite } = useFavourites();
 
     // Fetched after hydration and never in the loader — the page is edge-cached for up to a day, and
     // a review its author withdraws must not outlive the withdrawal there (ADR 0028). Called here
@@ -292,6 +298,10 @@ export function GamePage() {
                             </section>
                         )}
 
+                        {/* Where it is sold, next to what it runs on. Hides itself when IGDB names
+                            no store. */}
+                        <StoreLinks stores={details?.stores ?? []} />
+
                         {/* How to play: solo, together, and with how many. */}
                         {details && (details.gameModes.length > 0 || details.multiplayerModes) && (
                             <section>
@@ -375,6 +385,7 @@ export function GamePage() {
                                 <GameRefRail
                                     games={[...details.expansions, ...details.dlcs]}
                                     label={`Expansions and DLC for ${game.title}`}
+                                    isFavourite={isFavourite}
                                 />
                             </section>
                         )}
@@ -396,6 +407,7 @@ export function GamePage() {
                                 <GameRefRail
                                     games={details.similarGames}
                                     label={`Games similar to ${game.title}`}
+                                    isFavourite={isFavourite}
                                 />
                             </section>
                         )}

@@ -85,7 +85,7 @@ is in the history (`git log -p -- ROADMAP.md`).
 | D11 | Bounce and complaint handling | #100 |
 | D12 | CloudFront behaviours matching the per-route `Cache-Control` | #97 — Phase 10 of the guide |
 | D13 | Behaviours written against React Router 8's `.data` URLs | #97 — Phase 10; [0011](docs/decisions/0011-react-router-8-upgrade.md) |
-| D14 | CloudFront invalidation when a profile is withdrawn | #99 |
+| D14 | CloudFront invalidation when a profile is withdrawn | Done — [0058](docs/decisions/0058-a-withdrawal-leaves-the-edge-when-it-is-made.md) |
 
 ### Price tracking (P), monetisation (M) and ads (A)
 

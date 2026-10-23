@@ -7,7 +7,7 @@ import { isbot } from 'isbot';
 import type { RenderToPipeableStreamOptions } from 'react-dom/server';
 import { renderToPipeableStream } from 'react-dom/server';
 
-import { mayBeShared } from '@/lib/cache';
+import { mayBeShared, PRIVATE_NO_STORE } from '@/lib/cache';
 import {
     applySecurityHeaders,
     createNonce,
@@ -29,6 +29,7 @@ import { currentTrace } from '@/lib/trace.server';
  *   `<ServerRouter nonce>` and the stream's `nonce` option;
  * - the two `apply…Headers` calls, and a HEAD's policy taken off again;
  * - a document a shared cache may store waits for all its content, as a crawler's does;
+ * - a 5xx document is `private, no-store`, whatever the page it replaced asked for;
  * - `handleDataRequest` and `handleError`, which the template does not have;
  * - the request's trace id beside a streaming error the template logs bare.
  *
@@ -124,6 +125,14 @@ export default function handleRequest(
 
                     responseHeaders.set('Content-Type', 'text/html');
 
+                    // Ours: a failure is never stored (ADR 0013). React Router renders a failed
+                    // shell's error boundary over the headers it computed for the page that failed —
+                    // a game page's hour at the edge included — and `onError` below turns a boundary
+                    // that failed into a 500 without touching them. This is where both are sent.
+                    if (responseStatusCode >= 500) {
+                        responseHeaders.set('Cache-Control', PRIVATE_NO_STORE);
+                    }
+
                     pipe(body);
 
                     resolve(
@@ -155,15 +164,19 @@ export default function handleRequest(
  *
  * React Router labels them `text/x-script`, so without `nosniff` a browser would run one as a
  * classic script, and the documents' `script-src 'self'` would let an injected
- * `<script src="….data">` ask it to. They render nothing, so they take what a resource route sends.
- * A copy rather than the response itself, because a `Response` can arrive with headers that cannot
- * be changed.
+ * `<script src="….data">` ask it to. They render nothing, so they take what a resource route sends:
+ * those headers, and the `noindex` a deployment not for indexing puts on every response. A copy
+ * rather than the response itself, because a `Response` can arrive with headers that cannot be
+ * changed.
  */
 export function handleDataRequest(response: Response): Response {
+    const headers = applySecurityHeaders(new Headers(response.headers), RESOURCE_POLICY);
+    applyIndexingHeaders(headers);
+
     return new Response(response.body, {
         status: response.status,
         statusText: response.statusText,
-        headers: applySecurityHeaders(new Headers(response.headers), RESOURCE_POLICY),
+        headers,
     });
 }
 

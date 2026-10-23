@@ -82,7 +82,8 @@ that are easy to get wrong and were got wrong once (`docs/decisions/0022-*`):
   state. Restore membership and the values, **not a position** — an index captured before the
   request is stale once another item leaves from in front of it, and the lists are rendered through
   `sortEntries` anyway. The wishlist keeps its order from `addedAt`: derive order from a value, or
-  do not preserve it.
+  do not preserve it. A hand order's position (`docs/decisions/0054-*`) is such a value — a sparse
+  number, not an index — so its undo puts back the number each game had, which the lock keeps true.
 - **Take the per-game lock for every mutation that writes the entry**, scoring included. Two
   requests in flight for one game means the first to fail rolls back over what the second saved.
   The lock is also what makes the captured position safe to trust while the request is out.
@@ -122,6 +123,12 @@ that are easy to get wrong and were got wrong once (`docs/decisions/0022-*`):
 - **Do not call `setState` synchronously inside an effect.** Adjust state during render
   (React's documented pattern for resetting on a prop change), or use `useSyncExternalStore`
   for external state. ESLint enforces this via `react-hooks/set-state-in-effect`.
+- **Every effect has to survive running twice.** React Router's client entry wraps the app in
+  `<StrictMode>`, and since React 19.3 that runs a hydrated tree's effects, their cleanups and the
+  effects again in development: the root providers on every page load, not only what a navigation
+  mounts. A read aborts in its cleanup and drops whatever its aborted request settles with, as the
+  providers do. Without the abort both answers land — `AuthProvider`'s second one had the lists, the
+  wishlist and the favourites read twice on every page load, which is what made this a rule.
 - Always handle loading and error states explicitly. Never leave a silent broken UI.
 - One component per file; filename matches the export.
 
@@ -168,6 +175,15 @@ When nothing fits, add a token, named for its job rather than its look. Don't wr
 Translucent black and white, for shadows and scrims, are the one exception.
 
 There is one theme, dark: no `light:` variant and no `[data-theme='light']` rules (ADR 0048).
+
+## Images
+
+- **An image loads only from a host the document policy names**: `IMAGE_SOURCES` in
+  `@/lib/securityHeaders`, which is this origin, IGDB's CDN and the avatar hosts. Showing one from
+  anywhere else means adding its host there, on purpose; it fails in development exactly as deployed.
+- **A member's picture goes through `Avatar`**, never a bare `<img>`. It loads anonymously and with
+  no referrer, and falls back to the handle's initial on any failure, one before hydration included
+  (`docs/decisions/0056-*`).
 
 ## Tests
 
