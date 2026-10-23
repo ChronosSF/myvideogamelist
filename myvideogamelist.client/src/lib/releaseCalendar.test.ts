@@ -199,7 +199,7 @@ describe('undatedBands', () => {
     });
 
     it('counts every add-on as one, and every other child as the game made again', () => {
-        const addOns: ReleaseKind[] = ['dlc', 'expansion', 'standalone_expansion', 'episode', 'season'];
+        const addOns: ReleaseKind[] = ['dlc', 'expansion', 'standalone_expansion', 'episode', 'season', 'update'];
         const madeAgain: ReleaseKind[] = ['game', 'remake', 'remaster', 'expanded_game', 'port'];
 
         const bands = undatedBands([...addOns, ...madeAgain].map((kind, index) => undated(index + 1, 'child', kind)));

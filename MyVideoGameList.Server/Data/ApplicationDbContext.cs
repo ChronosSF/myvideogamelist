@@ -108,6 +108,13 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
                 // any two stored positions can be added or subtracted without overflow, and only a
                 // constraint makes that true of every row rather than of the rows the API wrote.
                 t.HasCheckConstraint("CK_UserGameEntries_Position_Range", PositionInRange);
+
+                // A score's moment belongs to the score beside it, so there is no moment without
+                // one. Clearing a score clears both, and the history reads only rows that pass
+                // this: a date left behind by a cleared score would be shown against whatever an
+                // import put in the column next, as though it had been given then (ADR 0062).
+                t.HasCheckConstraint(
+                    "CK_UserGameEntries_ScoredAt_HasScore", "\"ScoredAt\" IS NULL OR \"Score\" IS NOT NULL");
             });
 
         // Sorting a list by "recently added" or "recently moved" is the default view, so both
@@ -222,6 +229,12 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
     /// outlives any one validation attribute, and a row saying something other than public or
     /// private would silently be treated as private by every read that compares against a literal.
     /// </para>
+    /// <para>
+    /// The avatar's constraint is the same argument with less in it. Its host list changes, so that
+    /// stays in <see cref="AvatarUrlPolicy"/>, where adding a host is not a migration; what never
+    /// changes is that a public page loads it over HTTPS, and that much the database says too (ADR
+    /// 0056).
+    /// </para>
     /// </remarks>
     private static void ConfigureApplicationUsers(ModelBuilder modelBuilder)
     {
@@ -235,9 +248,23 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
             .HasMaxLength(16)
             .HasDefaultValue(Models.ProfileVisibility.Private);
 
-        users.ToTable(t => t.HasCheckConstraint(
-            "CK_AspNetUsers_ProfileVisibility",
-            "\"ProfileVisibility\" IN ('public', 'private')"));
+        // Bounded to what each policy allows. The policies count UTF-16 code units and PostgreSQL
+        // counts characters, so a value the API accepts always fits.
+        users.Property(u => u.DisplayName).HasMaxLength(DisplayNamePolicy.MaxLength);
+        users.Property(u => u.AvatarUrl).HasMaxLength(AvatarUrlPolicy.MaxLength);
+        users.Property(u => u.Bio).HasMaxLength(BioPolicy.MaxLength);
+
+        users.ToTable(t =>
+        {
+            t.HasCheckConstraint(
+                "CK_AspNetUsers_ProfileVisibility",
+                "\"ProfileVisibility\" IN ('public', 'private')");
+
+            // ILIKE because the address is stored as given, and `HTTPS://` is a spelling of it.
+            t.HasCheckConstraint(
+                "CK_AspNetUsers_AvatarUrl_Https",
+                "\"AvatarUrl\" IS NULL OR \"AvatarUrl\" ILIKE 'https://%'");
+        });
     }
 
     private static void ConfigureListStatuses(ModelBuilder modelBuilder)

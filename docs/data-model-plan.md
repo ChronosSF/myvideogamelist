@@ -58,7 +58,6 @@ change — so each can follow its own feature. The last column is the issue that
 
 | Table / change | Notes | Issue |
 |---|---|---|
-| `ApplicationUser` + `DisplayName`, `AvatarUrl`, `Bio` | Additive. `CreatedAt` is deliberately not added: the public profile says "tracking games here since" from the event log's first entry, because backfilling a join date for accounts that predate the column would be inventing a fact ([0027](decisions/0027-usernames-and-public-profiles.md)) | #119 |
 | `ApplicationUser` + `Region`, `Currency` | ITAD is region-aware and a EUR user must not be shown USD prices | #132 |
 | `ExternalAccountLinks` | `(UserId, Provider, ExternalId)`. Identity's `AspNetUserLogins` covers OAuth sign-in, but a SteamID64 held for *import* is not a login credential and does not belong there | #124 |
 | A `friends` value on `ProfileVisibility` and `Review.Visibility` | One additive migration in each of two columns; the "narrower wins" rule in [0027](decisions/0027-usernames-and-public-profiles.md) already says how they combine | #120 |
@@ -88,7 +87,7 @@ everything built *on top of* other people's reviews and lists.
 | Table | Notes | Issue |
 |---|---|---|
 | `ReviewVotes` | `(UserId, ReviewId, IsHelpful)`. The game-page review list ships without it, most recent first ([0028](decisions/0028-a-games-community-view.md)) | #121 |
-| `UserFollows` | `(FollowerId, FolloweeId, CreatedAt)`. The activity feed needs no table of its own — it is `UserGameEvents` joined to this. It has to read `Origin`: an imported status has no event behind it ([0026](decisions/0026-a-library-import-records-ownership-not-history.md), [0037](decisions/0037-a-tracker-import-carries-history.md)) | #120 |
+| `UserFollows` | `(FollowerId, FolloweeId, CreatedAt)`. The activity feed needs no table of its own — it is `UserGameEvents` joined to this. It has to read `Origin`: an imported status has no event behind it ([0026](decisions/0026-a-library-import-records-ownership-not-history.md), [0037](decisions/0037-a-tracker-import-carries-history.md)). The owner's history ([0062](decisions/0062-the-history-is-three-rows-unioned-and-what-has-no-moment-has-no-item.md)) also unions scores and run dates, a shape the feed could take; whether followed people's scores and dates are theirs to publish is #120's question | #120 |
 | `CustomLists` | `(Id, UserId, Name, Slug, Description, Visibility, IsRanked, CreatedAt)`. The free tier caps at three, enforced against this table ([0010](decisions/0010-monetization-model.md)) | #134 |
 | `CustomListItems` | `(CustomListId, GameId, Position, Note, AddedAt)`. `AddedAt` is what lets the feed show list additions without a second event log — see below | #134 |
 | `CustomListLikes` | `(UserId, CustomListId)` | #134 |
@@ -108,6 +107,15 @@ statistical query has to filter on, so `UserGameEvents` stays typed and narrow
 ([0018](decisions/0018-append-only-status-event-log.md)). The feed unions
 `CustomListItems.AddedAt` with the events at query time; a denormalised feed table, if one is
 ever needed, is then a performance change made with full history in hand.
+
+The owner's history is the same kind of union, over the three kinds of record that exist
+([0062](decisions/0062-the-history-is-three-rows-unioned-and-what-has-no-moment-has-no-item.md)):
+the events, a score at the entry's `ScoredAt`, and a playthrough's `StartedOn` and `FinishedOn`,
+one `UNION ALL` paged by a cursor. `ScoredAt` is the one column it needed, and it passes this
+document's test only from the day it shipped: no row recorded when an earlier score was given, so
+those scores have no moment and no backfill invents one. Whether custom-list additions belong in
+that list too is #134's to decide; if they do, `CustomListItems.AddedAt` is one more branch of the
+same query.
 
 ### Notifications and prices
 

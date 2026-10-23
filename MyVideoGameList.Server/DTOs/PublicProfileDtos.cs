@@ -28,6 +28,18 @@ namespace MyVideoGameList.Server.DTOs;
 /// As stored, so the page shows the capitalisation its owner chose rather than whatever the
 /// visitor happened to type into the URL.
 /// </param>
+/// <param name="DisplayName">
+/// The name they are shown by, or null. Published because it exists to be: the owner wrote it for
+/// this page. It is shown beside <paramref name="UserName"/> and never instead of it, since the handle
+/// is what says whose page this is (ADR 0027).
+/// </param>
+/// <param name="AvatarUrl">
+/// Their picture's address, or null for the handle's initial. The reader's browser loads it from its
+/// host, which is always one of a short list (ADR 0056).
+/// </param>
+/// <param name="Bio">
+/// What they wrote about themselves, as plain text, or null. Published for the display name's reason.
+/// </param>
 /// <param name="Reviews">
 /// How many public reviews this user has written — the count the page needs before it fetches any
 /// of them, and the number that decides whether the section appears at all.
@@ -39,6 +51,9 @@ namespace MyVideoGameList.Server.DTOs;
 /// </param>
 public record PublicProfileDto(
     string UserName,
+    string? DisplayName,
+    string? AvatarUrl,
+    string? Bio,
     PublicActivityDto Activity,
     LibraryStatsDto Library,
     ScoreStatsDto Scores,

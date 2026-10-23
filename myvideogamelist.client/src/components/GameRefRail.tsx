@@ -29,11 +29,15 @@ export function GameRefRail({ games, label, isFavourite, sayFavourites = true }:
 
     return (
         <ul
-            className="relative flex gap-4 overflow-x-auto pb-4 -mx-4 px-4 sm:mx-0 sm:px-0 snap-x scroll-smooth"
+            className="relative flex gap-4 overflow-x-auto pb-4 -mx-4 px-4 sm:mx-0 sm:px-0 scroll-px-4 sm:scroll-px-0 snap-x scroll-smooth"
             // Positioned, so that the visually hidden words beside a favourite's title are placed inside
             // it. Placed against the page instead, those of a cover scrolled out of view widened the
             // page by the rail's overflow, and a phone could scroll it sideways — as the lists' table
             // and the two-week line once did (ListTable.css, ReleaseLine.css).
+            // Snapped to the gutter below `sm`, where the first card sits. Snapped to the rail's own
+            // edge, that card's snap position was sixteen pixels in, so the rail scrolled itself there
+            // before the first paint — and Chrome counts that as a scroll, which ends the page's LCP
+            // measurement with nothing recorded (issue 315).
             // Scrolls independently of the page, so it is a named, focusable region rather than a
             // silent overflow container a keyboard user cannot reach.
             tabIndex={0}

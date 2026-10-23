@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using MyVideoGameList.Server.Data;
 using MyVideoGameList.Server.DTOs;
 using MyVideoGameList.Server.Models;
+using MyVideoGameList.Server.Services.Edge;
 
 namespace MyVideoGameList.Server.Services;
 
@@ -12,7 +13,8 @@ namespace MyVideoGameList.Server.Services;
 public class ListService(
     ApplicationDbContext db,
     IGameCacheService gameCache,
-    TimeProvider timeProvider) : IListService
+    TimeProvider timeProvider,
+    ProfileWithdrawals withdrawals) : IListService
 {
     /// <summary>Lowest and highest score the API will store.</summary>
     internal const short MinScore = 1;
@@ -245,10 +247,20 @@ public class ListService(
 
         var entry = await FindOrCreateAsync(userId, gameId, cancellationToken);
 
-        // Scoring a game the user has never listed is legitimate, and creates the entry with no
-        // status — the score stands on its own.
-        entry.Score = score;
+        // A write of the score the game already holds changes nothing, its moment included. It is
+        // not a new judgement, as a move to the status a game already holds is not a new event:
+        // stamped, it would carry an old score to the top of the history on a repeated click.
+        if (score != entry.Score)
+        {
+            // When the score was given, which is what puts it in the history (ADR 0062). Cleared
+            // with the score, so a moment never outlives the score it belongs to.
+            entry.ScoredAt = score is null ? null : timeProvider.GetUtcNow();
+            entry.Score = score;
+            EntryStore.WriteScoredAtWithScore(db, entry);
+        }
 
+        // Saved either way: scoring a game the user has never listed is legitimate, and creates the
+        // entry with no status — the score stands on its own — even when what it writes is no score.
         await db.SaveChangesAsync(cancellationToken);
     }
 
@@ -326,6 +338,13 @@ public class ListService(
 
         db.UserGameEntries.Remove(entry);
         await db.SaveChangesAsync(cancellationToken);
+
+        // The review goes with the entry through the cascade, so the profile comes off the edge
+        // whatever the entry held. Asking first whether it carried a public review, or any review,
+        // would be answered before the cascade, and the user's own request can publish one or
+        // write one in between: the cascade would then take a review the edge may hold, with
+        // nothing sent (ADR 0058 §1).
+        await withdrawals.EntryDeletedAsync(userId);
         return true;
     }
 

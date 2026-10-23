@@ -121,6 +121,13 @@ interface Moving {
 /** How far a press on a handle travels before it is a drag rather than a tap. */
 const DRAG_THRESHOLD = 4;
 
+/**
+ * How far a press away from the handles can travel and still be a tap, the one press that puts a held
+ * game back. More than a drag's threshold, because a fingertip slides a little in a tap; a press that
+ * goes further is a scroll or a selection, not the user letting go of the game.
+ */
+const TAP_SLOP = 10;
+
 /** How close to the top or bottom of the window a drag has to come to scroll it. */
 const SCROLL_EDGE = 56;
 
@@ -376,26 +383,66 @@ export function useReorder({ ids, nameOf, onMove, canMove, disabled = false }: R
         };
     }, [dragging]);
 
-    // A held game is called off by a press anywhere but this list's handles: the pointer has gone to
+    // A held game is put back by a tap anywhere but this list's handles: the pointer has gone to
     // something else, and the game should not stay in the air waiting for a press that will not come.
-    // A press on one of the handles is that handle's business — its click puts the held game there.
-    const onDocumentPointerDown = useEffectEvent((event: globalThis.PointerEvent) => {
+    // Not by any other press, though. On a touch screen the swipe that scrolls to where the game is
+    // going starts as a press like any other, and calling the hold off there let a tap carry a game
+    // only to a place already on screen (issue 264). So a press counts once it is let go within a tap's
+    // distance of where it began, with nothing scrolled meanwhile, and one the browser takes over to
+    // scroll, which it ends with a `pointercancel`, is forgotten. A press on one of the handles is that
+    // handle's business — its click puts the held game there.
+    const isAwayFromHandles = useEffectEvent((event: globalThis.PointerEvent) => {
         const current = live();
-        if (current === null || current.via === 'pointer') return;
+        if (current === null || current.via === 'pointer') return false;
 
         const target = event.target instanceof Element ? event.target : null;
-        if (target?.closest('[data-reorder-handle]') && list()?.contains(target)) return;
-
-        cancel();
+        return !(target?.closest('[data-reorder-handle]') && list()?.contains(target));
+    });
+    const onTapAway = useEffectEvent(() => {
+        const current = live();
+        if (current !== null && current.via !== 'pointer') cancel();
     });
 
     const holding = moving !== null && moving.via !== 'pointer';
     useEffect(() => {
         if (!holding) return;
 
-        const onPointerDown = (event: globalThis.PointerEvent) => onDocumentPointerDown(event);
-        document.addEventListener('pointerdown', onPointerDown, true);
-        return () => document.removeEventListener('pointerdown', onPointerDown, true);
+        let away: { pointerId: number; x: number; y: number; scrolled: boolean } | null = null;
+
+        const onPointerDown = (event: globalThis.PointerEvent) => {
+            away = isAwayFromHandles(event)
+                ? { pointerId: event.pointerId, x: event.clientX, y: event.clientY, scrolled: false }
+                : null;
+        };
+        const onScroll = () => {
+            if (away !== null) away.scrolled = true;
+        };
+        const onPointerUp = (event: globalThis.PointerEvent) => {
+            const begun = away;
+            if (begun === null || begun.pointerId !== event.pointerId) return;
+            away = null;
+
+            const travelled = Math.hypot(event.clientX - begun.x, event.clientY - begun.y);
+            if (!begun.scrolled && travelled <= TAP_SLOP) onTapAway();
+        };
+        const onPointerCancel = (event: globalThis.PointerEvent) => {
+            if (away?.pointerId === event.pointerId) away = null;
+        };
+
+        // Captured, so a press is seen wherever it lands and whatever stops it on the way. A scroll
+        // does not bubble, but it is captured on its way to whatever scrolled, the page included.
+        const capture = { capture: true };
+        const scroll = { capture: true, passive: true };
+        document.addEventListener('pointerdown', onPointerDown, capture);
+        document.addEventListener('pointerup', onPointerUp, capture);
+        document.addEventListener('pointercancel', onPointerCancel, capture);
+        document.addEventListener('scroll', onScroll, scroll);
+        return () => {
+            document.removeEventListener('pointerdown', onPointerDown, capture);
+            document.removeEventListener('pointerup', onPointerUp, capture);
+            document.removeEventListener('pointercancel', onPointerCancel, capture);
+            document.removeEventListener('scroll', onScroll, scroll);
+        };
     }, [holding]);
 
     // The game whose handle has focus stays in view as the order changes around it: each step of a
@@ -470,12 +517,19 @@ export function useReorder({ ids, nameOf, onMove, canMove, disabled = false }: R
                 return;
             }
             lift(pressed.id, 'pointer');
+            // A fast drag's first move can already have carried the pointer over another place.
+            retarget();
         },
         onPointerUp: event => {
             const pressed = press.current;
             if (pressed === null || pressed.pointerId !== event.pointerId) return;
 
             if (live()?.via === 'pointer') {
+                // The game lands where the pointer is let go, which a release can carry past its
+                // last move.
+                pointer.current = { x: event.clientX, y: event.clientY };
+                retarget();
+
                 // The click this release may still produce comes before anything queued now runs.
                 dragEnded.current = true;
                 setTimeout(() => {

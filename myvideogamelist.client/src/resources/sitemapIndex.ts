@@ -22,8 +22,8 @@ import type { Route } from './+types/sitemapIndex';
  * serves `/api/*` and nothing else (ADR 0003). The API supplies the counts; see
  * `SitemapController`.
  */
-export async function loader({ request }: Route.LoaderArgs) {
-    const summary = await sitemapFeed<SitemapSummary>('/api/sitemap');
+export async function loader({ request, context }: Route.LoaderArgs) {
+    const summary = await sitemapFeed<SitemapSummary>(context, '/api/sitemap');
     if (summary === null) return sitemapUnavailable();
 
     const origin = sitemapOrigin(request);

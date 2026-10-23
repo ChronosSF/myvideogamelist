@@ -1,7 +1,7 @@
 import { Link, useLoaderData } from 'react-router';
 import type { Route } from './+types/GamePage';
-import { apiUrl } from '@/lib/api';
-import { CACHE_GAME, CACHE_NOT_FOUND, PRIVATE_NO_STORE } from '@/lib/cache';
+import { CACHE_GAME, CACHE_NOT_FOUND } from '@/lib/cache';
+import { loaderFetch, upstreamFailure } from '@/lib/trace.server';
 import type { GameDto } from '@/types/game';
 import { useAuth } from '@/hooks/useAuth';
 import { useFavourites } from '@/hooks/useFavourites';
@@ -14,6 +14,7 @@ import { SectionHeading } from '@/components/SectionHeading';
 import { GameRefRail } from '@/components/GameRefRail';
 import { MultiplayerSummary } from '@/components/MultiplayerSummary';
 import { ScreenshotGallery } from '@/components/ScreenshotGallery';
+import { StoreLinks } from '@/components/StoreLinks';
 import { TrailerPlayer } from '@/components/TrailerPlayer';
 import { formatCount } from '@/lib/format';
 import { pageMeta, siteConfig } from '@/lib/seo';
@@ -34,7 +35,7 @@ function InfoChip({ label }: { label: string }) {
  * empty shell. A missing or malformed id throws a 404 Response, which the root
  * ErrorBoundary renders and which returns a genuine 404 status.
  */
-export async function loader({ params }: Route.LoaderArgs) {
+export async function loader({ params, context }: Route.LoaderArgs) {
     const id = Number(params.id);
 
     // A thrown Response carries its own headers and bypasses the `headers` export below, so the
@@ -48,15 +49,11 @@ export async function loader({ params }: Route.LoaderArgs) {
 
     if (!Number.isInteger(id) || id <= 0) throw notFound();
 
-    const badGateway = () => new Response('Failed to load game.', {
-        status: 502,
-        statusText: 'Bad Gateway',
-        headers: { 'Cache-Control': PRIVATE_NO_STORE },
-    });
+    const badGateway = () => upstreamFailure(context, 'Failed to load game.');
 
     let response: Response;
     try {
-        response = await fetch(apiUrl(`/api/games/${id}`));
+        response = await loaderFetch(context, `/api/games/${id}`);
     } catch {
         // fetch rejects rather than returning !ok when the API is unreachable.
         throw badGateway();
@@ -300,6 +297,10 @@ export function GamePage() {
                                 </div>
                             </section>
                         )}
+
+                        {/* Where it is sold, next to what it runs on. Hides itself when IGDB names
+                            no store. */}
+                        <StoreLinks stores={details?.stores ?? []} />
 
                         {/* How to play: solo, together, and with how many. */}
                         {details && (details.gameModes.length > 0 || details.multiplayerModes) && (

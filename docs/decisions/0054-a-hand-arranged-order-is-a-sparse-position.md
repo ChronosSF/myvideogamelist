@@ -106,8 +106,10 @@ the list alone.
 - **The list is checked when the rows are read, not in the update**, which goes by key. A move out of the
   list landing in the moment between the two leaves that game a number in a list it has left. Nothing
   reads a position outside its own list, and the next change of list clears it. Closing the gap would
-  take an `UPDATE` with the status in its predicate, which the in-memory provider the tests run on cannot
-  execute. That is not worth it for a number nobody sees.
+  take an `UPDATE` with the status in its predicate, which the in-memory provider the unit tests run on
+  cannot execute, so every test of the write would move to the PostgreSQL suite
+  ([0057](0057-the-api-is-tested-over-a-real-postgresql.md)). That is not worth it for a number nobody
+  sees.
 - **Any of the five lists.** A position means nothing to the server, like a sort preference. The client
   offers the order on the backlog alone, through `HAND_ORDERED_LISTS`, and a list that is later given
   one needs no server change.
@@ -182,12 +184,24 @@ put down, called off, and "could not be moved" when the save fails.
   screen reader's own "activate" does in browse mode, since that sends a click and no keys.
   - A press on a grip never moves focus. Otherwise the held game's grip would lose focus to the tapped
     one, and that reads as the user moving on.
-  - A press anywhere else puts the held game back.
 - **From the keyboard.** Space or Enter picks a game up. Up and Down move it by a row of the grid, and by
   one in a list or a single row. Left and Right move it by one, and Home and End send it to either end.
   Space or Enter puts it down; a held key's repeats are ignored, and Space's release is stopped so the
   click a button makes on it cannot undo the pick-up. Escape, Tab, or focus going elsewhere puts it
   back.
+- **A held game goes back on a tap anywhere but a grip, and on no other press.** That holds whether a tap
+  or the keyboard picked it up.
+  - On a touch screen, the swipe that scrolls to where a game is going starts as a press like any other.
+    A first version put the game back on that press, so a tap could carry a game only to a place
+    already on screen (#264).
+  - A press away from the grips now counts once it is let go within ten pixels of where it began, with
+    nothing scrolled meanwhile. Ten rather than a drag's four, because a fingertip slides a little in a
+    tap.
+  - A press the browser takes over to pan or scroll ends in a `pointercancel`, and is forgotten whatever
+    follows it.
+  - The rule is kept with pointer events rather than `click`. A click is sent for a press let go
+    somewhere else too, to the innermost element holding both ends, so a `click` would take a press that
+    travelled for a tap.
 
 **The grip is a real `<button>` whose only content is an icon**, named "Move {title}" and described by
 hidden instructions. The game's place is text beside it rather than inside it. That keeps the name the
@@ -253,6 +267,14 @@ publishes the favourites, and a showcase arranged by hand is an order its owner 
   three and the moved one. Each statement updated `Position` alone.
 - Moving a placed game to Playing cleared it on the server. Moving it back put it last in the backlog, in
   the browser and in the database alike.
+- The integration suite ([0057](0057-the-api-is-tested-over-a-real-postgresql.md)) repeats what a test
+  can, in `HandOrderFlowTests`:
+  - positions written through the API and read back from the lists and the export;
+  - a move out of the backlog clearing one;
+  - the API's refusals, the null among the positions included;
+  - PostgreSQL refusing a position one past either bound and storing one at each;
+  - and a row deleted as the store's save begins: the save is rolled back whole, and the retry writes
+    the rest.
 
 **What #117 reuses:**
 - On the server: `IHandOrdered` and `HandOrderStore`, `PositionDto` and `SetPositionsDto`.
