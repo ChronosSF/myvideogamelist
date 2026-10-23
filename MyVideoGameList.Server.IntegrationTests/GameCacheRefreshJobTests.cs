@@ -5,7 +5,6 @@ using Microsoft.Extensions.Options;
 using MyVideoGameList.Server.Data;
 using MyVideoGameList.Server.Models;
 using MyVideoGameList.Server.Services;
-using Npgsql;
 
 namespace MyVideoGameList.Server.IntegrationTests;
 
@@ -52,7 +51,7 @@ public sealed class GameCacheRefreshJobTests(ApiFactory api) : IClassFixture<Api
         var igdb = new AnsweringIgdb(ids => ids.Select(id => ApiFactory.Game(id) with { Title = "Hades II" }).ToList());
         var refresh = NewRefresh(igdb);
 
-        await using (var holder = await HoldLockAsync())
+        await using (await AdvisoryLockHolder.TakeAsync(api.ConnectionString, GameCacheRefreshService.LockKey))
         {
             await refresh.RunOnceAsync(CancellationToken.None);
 
@@ -61,7 +60,7 @@ public sealed class GameCacheRefreshJobTests(ApiFactory api) : IClassFixture<Api
             Assert.Contains(log.Entries, entry => entry.Message.Contains("skipped a tick"));
         }
 
-        // Released with the session, as another task's is with its transaction.
+        // Released before the block ends, as another task's is by the time its commit returns.
         await refresh.RunOnceAsync(CancellationToken.None);
 
         Assert.Equal(1, igdb.Calls);
@@ -152,22 +151,5 @@ public sealed class GameCacheRefreshJobTests(ApiFactory api) : IClassFixture<Api
     {
         await using var db = api.Database();
         return (await db.CachedGames.SingleAsync(game => game.GameId == id)).Title;
-    }
-
-    /// <summary>
-    /// The refresh's advisory lock, taken by a session of its own. Not pooled, so disposing it ends
-    /// the session and releases the lock with it.
-    /// </summary>
-    private async Task<NpgsqlConnection> HoldLockAsync()
-    {
-        var holder = new NpgsqlConnection(
-            new NpgsqlConnectionStringBuilder(api.ConnectionString) { Pooling = false }.ConnectionString);
-        await holder.OpenAsync();
-
-        await using var take = new NpgsqlCommand("SELECT pg_advisory_lock(@key)", holder);
-        take.Parameters.AddWithValue("key", GameCacheRefreshService.LockKey);
-        await take.ExecuteNonQueryAsync();
-
-        return holder;
     }
 }

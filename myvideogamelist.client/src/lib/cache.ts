@@ -68,9 +68,11 @@ export const CACHE_GAME = sharedCache(3600, 86_400);
  * The browse and search listing.
  *
  * Shorter than a game page despite similar content, because the response varies by query
- * string. **The CloudFront cache policy must include `search`, `sort`, `platform`, `genre`, `year`
- * and `minScore` in the cache key**, or every visitor is served whichever listing happened to
- * populate the edge first. `@/lib/gameBrowse` is the list of what the page reads.
+ * string. **The CloudFront cache policy must include `search`, `sort`, `platform`, `genre`, `year`,
+ * `minScore` and `esrb` in the cache key**, or every visitor is served whichever listing happened to
+ * populate the edge first — and a parameter left out of it is not even sent to the origin, so the
+ * filter is dropped from every render rather than only from the shared copy. `@/lib/gameBrowse` is
+ * the list of what the page reads, and `infra/src/Infra/Edge.cs` is the policy.
  */
 export const CACHE_GAMES_LIST = sharedCache(600, 3600);
 

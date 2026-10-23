@@ -51,7 +51,7 @@ grow a forward pointer when a later record or an issue closes something it left 
 | [0029](0029-favourites-are-an-axis-and-a-showcase.md) | Favourites are an axis like the wishlist, share its code, and are shown on the profile | Implemented; §4's mark on cards and §6's order amended by 0064 |
 | [0030](0030-ownership-and-notes-belong-to-the-entry.md) | Ownership and notes belong to the entry, stay private, and are written under the game's lock | Implemented |
 | [0031](0031-a-list-rename-is-a-label-its-owner-sees.md) | A list rename is a label, checked as a set, and seen only by its owner | Implemented |
-| [0032](0032-each-browse-order-carries-its-own-floor.md) | Browse filters: every order is one IGDB query, and each carries its own floor | Implemented |
+| [0032](0032-each-browse-order-carries-its-own-floor.md) | Browse filters: every order is one IGDB query, and each carries its own floor | Implemented; decision 2 amended by 0067 |
 | [0033](0033-what-the-api-refuses.md) | What the API refuses: guessing, volume, forged writes, and unattributed addresses | Implemented; §5's `img-src` is 0056, its `script-src` 0053 |
 | [0034](0034-failing-in-one-shape.md) | Failing in one shape: IGDB is retried and broken, and every error says so the same way | Implemented; its `traceId` is the request's trace since 0059 |
 | [0035](0035-a-local-copy-of-what-igdb-said.md) | A local copy of what IGDB said, so a library renders without them | Implemented; refreshed in the background by 0052 |
@@ -80,6 +80,7 @@ grow a forward pointer when a later record or an issue closes something it left 
 | [0059](0059-a-request-is-known-by-its-trace-and-a-build-by-its-commit.md) | A request is known by its trace from the page to the API's log, and a build by its commit | Implemented; OpenTelemetry and the alarms are #103 |
 | [0062](0062-the-history-is-three-rows-unioned-and-what-has-no-moment-has-no-item.md) | The history is three kinds of row unioned at query time, and what has no moment has no item | Implemented |
 | [0064](0064-the-showcase-is-arranged-by-hand-and-shown-in-that-order.md) | The favourites showcase is arranged by hand and shown in that order, and a favourite is marked on every card its owner sees | Implemented |
+| [0067](0067-the-esrb-filter-lists-a-game-under-its-badge.md) | The ESRB filter lists a game under the rating its badge shows | Implemented |
 | [0069](0069-a-crawler-is-told-what-is-ours.md) | A crawler is told what is ours: the member score in the server render, a description that leads with it, and structured data | Implemented |
 
 **Status** — *Accepted*: decided, not yet built. *Implemented*: decided and in the code.
