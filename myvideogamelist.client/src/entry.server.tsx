@@ -1,8 +1,8 @@
 import { PassThrough } from 'node:stream';
 
-import type { EntryContext, RouterContextProvider } from 'react-router';
+import type { EntryContext, HandleErrorFunction, RouterContextProvider } from 'react-router';
 import { createReadableStreamFromReadable } from '@react-router/node';
-import { ServerRouter } from 'react-router';
+import { isRouteErrorResponse, ServerRouter } from 'react-router';
 import { isbot } from 'isbot';
 import type { RenderToPipeableStreamOptions } from 'react-dom/server';
 import { renderToPipeableStream } from 'react-dom/server';
@@ -15,6 +15,7 @@ import {
     RESOURCE_POLICY,
 } from '@/lib/securityHeaders';
 import { applyIndexingHeaders } from '@/lib/seo';
+import { currentTrace } from '@/lib/trace.server';
 
 /**
  * The server entry, which React Router generates unless the app provides one.
@@ -29,11 +30,11 @@ import { applyIndexingHeaders } from '@/lib/seo';
  * - the two `apply…Headers` calls, and a HEAD's policy taken off again;
  * - a document a shared cache may store waits for all its content, as a crawler's does;
  * - a 5xx document is `private, no-store`, whatever the page it replaced asked for;
- * - `handleDataRequest`, which the template does not have;
- * - `loadContext` renamed `_loadContext`, for the linter.
+ * - `handleDataRequest` and `handleError`, which the template does not have;
+ * - the request's trace id beside a streaming error the template logs bare.
  *
- * The content policy's reasoning is ADR 0053. Re-run `react-router reveal` on a React Router major
- * and diff it against this file.
+ * The content policy's reasoning is ADR 0053, and the trace's is ADR 0059. Re-run
+ * `react-router reveal` on a React Router major and diff it against this file.
  */
 
 export const streamTimeout = 5_000;
@@ -43,9 +44,8 @@ export default function handleRequest(
     responseStatusCode: number,
     responseHeaders: Headers,
     routerContext: EntryContext,
-    // Unused, and named for the linter rather than dropped: it is positional, and the next
-    // person to need it should find it where React Router's own template has it.
-    _loadContext: RouterContextProvider,
+    // Where the root's middleware put the request's trace, for the error logged below.
+    loadContext: RouterContextProvider,
 ) {
     // One nonce per render, and this call is a render: an error boundary that replaces a failed
     // shell is a second call with the same `responseHeaders`, so it draws a fresh nonce and the
@@ -151,7 +151,7 @@ export default function handleRequest(
                     // errors encountered during initial shell rendering since they'll
                     // reject and get logged in handleDocumentRequest.
                     if (shellRendered) {
-                        console.error(error);
+                        logFailure(request, loadContext, error);
                     }
                 },
             },
@@ -178,4 +178,37 @@ export function handleDataRequest(response: Response): Response {
         statusText: response.statusText,
         headers,
     });
+}
+
+/**
+ * What React Router logs when a loader, an action or a render fails, which without this export is
+ * the error alone, now with the request's trace id beside it.
+ *
+ * React Router passes this an error, never a `Response` a loader threw, so the 502 a page shows its
+ * reader a reference on is not logged here: the API logged the failure itself, under the same id,
+ * or `loaderFetch` logged the call that never reached it. What does come here is an exception, whose
+ * page shows no reference, because in production the page never sees which request it was; the id
+ * is still on the response's `X-Trace-Id`.
+ *
+ * As the default does, it says nothing about a request whose reader has gone, and logs the error
+ * inside an error response rather than the response.
+ */
+export const handleError: HandleErrorFunction = (error, { request, context }) => {
+    if (request.signal.aborted) return;
+
+    // An error response React Router made itself, a 405 say, holds the error it stands for.
+    const underlying = isRouteErrorResponse(error) && 'error' in error ? error.error : undefined;
+    logFailure(request, context, underlying ?? error);
+};
+
+/**
+ * One failure, with what it was serving and under which trace: `none` for the few requests React
+ * Router answers before any middleware runs, which carry no `X-Trace-Id` for a line to match. The
+ * path is as the parsed URL spells it, percent-encoded, so a crafted one cannot break the line; the
+ * query is left out, because what somebody searched for is theirs.
+ */
+function logFailure(request: Request, context: Readonly<RouterContextProvider> | undefined, error: unknown) {
+    const { pathname } = new URL(request.url);
+    const traceId = currentTrace(context)?.traceId ?? 'none';
+    console.error(`${request.method} ${pathname} failed, trace ${traceId}:`, error);
 }

@@ -95,6 +95,7 @@ describe('GamePage loader', () => {
     it('fails with a 502 nothing may keep when the API fails or cannot be reached, whatever the figures did', async () => {
         // Cached at the edge, a failure would outlive whatever caused it.
         const failures: [string, () => Response | Promise<Response>][] = [['refused', () => empty(500)], ['unreachable', unreachable]];
+        vi.spyOn(console, 'error').mockImplementation(() => {});
 
         for (const [failure, answer] of failures) {
             stubApi(routes({ 'GET /api/games/1942': answer }));
@@ -119,6 +120,7 @@ describe('GamePage loader', () => {
             ['scores refused', { 'GET /api/games/1942/community-scores': () => empty(500) }],
             ['times unreachable', { 'GET /api/games/1942/community-times': unreachable }],
         ];
+        vi.spyOn(console, 'error').mockImplementation(() => {});
 
         for (const [what, overrides] of missing) {
             stubApi(routes(overrides));

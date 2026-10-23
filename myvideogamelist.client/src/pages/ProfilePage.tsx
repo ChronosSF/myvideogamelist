@@ -1,9 +1,9 @@
 import { Link, data } from 'react-router';
-import { apiUrl } from '@/lib/api';
 import { CACHE_NOT_FOUND, CACHE_PROFILE, PRIVATE_NO_STORE } from '@/lib/cache';
 import { lastPage, pageFrom, pageSearch } from '@/lib/paging';
 import { type SiteConfig, NOINDEX, pageMeta, siteConfig } from '@/lib/seo';
 import { formatDate, formatHours, formatRate } from '@/lib/stats';
+import { loaderFetch, upstreamFailure } from '@/lib/trace.server';
 import { MAX_SCORE } from '@/lib/score';
 import type { PublicFavourites, PublicProfile, PublicReviews } from '@/types/profile';
 import { ActivityChart } from '@/components/ActivityChart';
@@ -110,7 +110,7 @@ export function meta({ loaderData }: Route.MetaArgs) {
  * A private profile and an unclaimed username are both a 404 from the API, deliberately, and both
  * become the same page here.
  */
-export async function loader({ params, request }: Route.LoaderArgs) {
+export async function loader({ params, request, context }: Route.LoaderArgs) {
     const userName = encodeURIComponent(params.userName);
 
     // A thrown Response carries its own headers and bypasses the `headers` export above, so each
@@ -122,11 +122,7 @@ export async function loader({ params, request }: Route.LoaderArgs) {
         headers: { 'Cache-Control': CACHE_NOT_FOUND },
     });
 
-    const badGateway = () => new Response('Failed to load profile.', {
-        status: 502,
-        statusText: 'Bad Gateway',
-        headers: { 'Cache-Control': PRIVATE_NO_STORE },
-    });
+    const badGateway = () => upstreamFailure(context, 'Failed to load profile.');
 
     // `?page=` names a page of reviews or it names nothing, and nothing is a 404 like any other
     // URL that resolves to no resource. There are unboundedly many malformed and out-of-range
@@ -137,9 +133,9 @@ export async function loader({ params, request }: Route.LoaderArgs) {
     // `allSettled` rather than `all`: a rejection from the reviews or the favourites request must not
     // take the profile down with it, and `all` rejects on the first of any.
     const [profileResult, reviewsResult, favouritesResult] = await Promise.allSettled([
-        fetch(apiUrl(`/api/users/${userName}`)),
-        fetch(apiUrl(`/api/users/${userName}/reviews?page=${page}`)),
-        fetch(apiUrl(`/api/users/${userName}/favourites`)),
+        loaderFetch(context, `/api/users/${userName}`),
+        loaderFetch(context, `/api/users/${userName}/reviews?page=${page}`),
+        loaderFetch(context, `/api/users/${userName}/favourites`),
     ]);
 
     // A rejection is the unreachable-API case, which `!response.ok` never reports.

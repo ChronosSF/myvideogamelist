@@ -1,7 +1,7 @@
-import { Link, data, useLoaderData } from 'react-router';
+import { Link, data, useLoaderData, type RouterContextProvider } from 'react-router';
 import type { Route } from './+types/GamePage';
-import { apiUrl } from '@/lib/api';
 import { CACHE_GAME, CACHE_NOT_FOUND, PRIVATE_NO_STORE } from '@/lib/cache';
+import { loaderFetch, upstreamFailure } from '@/lib/trace.server';
 import type { CommunityScores } from '@/types/community';
 import type { GameDto } from '@/types/game';
 import type { CommunityTimes } from '@/types/playthrough';
@@ -49,9 +49,13 @@ const FIGURES_DEADLINE_MS = 1_000;
  * A JSON body from the API as `accept` reads it, or null for a bad status, a body `accept` refuses,
  * a deadline passed and an unreachable API alike: for the reads a game page can stand without.
  */
-async function readOptional<T>(path: string, accept: (body: unknown) => T | null): Promise<T | null> {
+async function readOptional<T>(
+    context: Readonly<RouterContextProvider>,
+    path: string,
+    accept: (body: unknown) => T | null,
+): Promise<T | null> {
     try {
-        const response = await fetch(apiUrl(path), { signal: AbortSignal.timeout(FIGURES_DEADLINE_MS) });
+        const response = await loaderFetch(context, path, { signal: AbortSignal.timeout(FIGURES_DEADLINE_MS) });
         return response.ok ? accept(await response.json()) : null;
     } catch {
         // `catch` as well as `ok`, because an unreachable API makes `fetch` reject rather than
@@ -95,7 +99,7 @@ function timesFrom(body: unknown): CommunityTimes | null {
  * aggregate names nobody, so the same hour costs a reader no more than a figure up to an hour old,
  * which the browser's own request replaces once the page has hydrated.
  */
-export async function loader({ params }: Route.LoaderArgs) {
+export async function loader({ params, context }: Route.LoaderArgs) {
     const id = Number(params.id);
 
     // A thrown Response carries its own headers and bypasses the `headers` export below, so the
@@ -109,19 +113,15 @@ export async function loader({ params }: Route.LoaderArgs) {
 
     if (!Number.isInteger(id) || id <= 0) throw notFound();
 
-    const badGateway = () => new Response('Failed to load game.', {
-        status: 502,
-        statusText: 'Bad Gateway',
-        headers: { 'Cache-Control': PRIVATE_NO_STORE },
-    });
+    const badGateway = () => upstreamFailure(context, 'Failed to load game.');
 
     // All three at once: the members' figures do not wait on the game, and the game does not wait
     // on them. Neither of those two can fail the page, or hold it past their deadline.
     const [response, scores, times] = await Promise.all([
         // fetch rejects rather than returning !ok when the API is unreachable.
-        fetch(apiUrl(`/api/games/${id}`)).catch(() => null),
-        readOptional(`/api/games/${id}/community-scores`, scoresFrom),
-        readOptional(`/api/games/${id}/community-times`, timesFrom),
+        loaderFetch(context, `/api/games/${id}`).catch(() => null),
+        readOptional(context, `/api/games/${id}/community-scores`, scoresFrom),
+        readOptional(context, `/api/games/${id}/community-times`, timesFrom),
     ]);
 
     if (response === null) throw badGateway();
