@@ -237,7 +237,7 @@ public class UserDataExporter(ApplicationDbContext db, TimeProvider clock) : IUs
             .Select(e => new
             {
                 e.GameId, e.StatusId, e.Score, e.ScoredAt, e.Ownership, e.Notes, e.Origin, e.AddedAt,
-                e.StatusChangedAt
+                e.StatusChangedAt, e.Position
             })
             .ToListAsync(cancellationToken);
 
@@ -246,7 +246,7 @@ public class UserDataExporter(ApplicationDbContext db, TimeProvider clock) : IUs
         draft.Entries = rows
             .Select(e => new EntryExportDto(
                 e.GameId, Key(draft, e.StatusId), e.Score, e.ScoredAt, e.Ownership, e.Notes, e.Origin,
-                e.AddedAt, e.StatusChangedAt))
+                e.AddedAt, e.StatusChangedAt, e.Position))
             .ToList();
     }
 

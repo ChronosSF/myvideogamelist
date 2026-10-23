@@ -443,6 +443,23 @@ public class UserDataExporterTests
     }
 
     [Fact]
+    public async Task ExportAsync_Entry_CarriesItsHandArrangedPosition()
+    {
+        // The same trap for the next column: the order somebody arranged their backlog in is theirs
+        // to take, and the hand-written projection is the only thing that would carry it.
+        using var db = NewDb();
+        AddAccount(db, UserId, "mine@test.local");
+        db.UserGameEntries.Add(new UserGameEntry { UserId = UserId, GameId = 11, Position = -2048, AddedAt = Now });
+        db.UserGameEntries.Add(new UserGameEntry { UserId = UserId, GameId = 12, AddedAt = Now });
+        db.SaveChanges();
+
+        var export = await NewExporter(db).ExportAsync(UserId, default);
+
+        Assert.Equal(-2048, export.Entries.Single(e => e.GameId == 11).Position);
+        Assert.Null(export.Entries.Single(e => e.GameId == 12).Position);
+    }
+
+    [Fact]
     public async Task ExportAsync_Entry_CarriesItsOrigin()
     {
         // Same trap as the ownership and notes above, and a worse one to fall into: without the

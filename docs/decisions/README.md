@@ -39,7 +39,7 @@ grow a forward pointer when a later record or an issue closes something it left 
 | [0017](0017-detail-data-off-the-listing.md) | Detail-only game data stays out of the listing payload | Implemented |
 | [0018](0018-append-only-status-event-log.md) | Status changes are recorded in an append-only event log | Amended by 0019 |
 | [0019](0019-entry-survives-leaving-every-list.md) | A user's entry survives the game leaving every list | Implemented |
-| [0020](0020-list-view-preferences-in-the-database.md) | List view preferences live in the database; sorting is client-side | Implemented |
+| [0020](0020-list-view-preferences-in-the-database.md) | List view preferences live in the database; sorting is client-side | Implemented; the tie-break amended for the hand order by 0054 |
 | [0021](0021-one-control-for-a-score.md) | Stars are the user's own score; every aggregate is a number out of 100 | Implemented |
 | [0022](0022-entry-surrogate-key-and-the-wishlist-axis.md) | The entry gets a surrogate key, and the wishlist is an axis rather than a status | Implemented |
 | [0023](0023-profile-statistics-derived-at-read-time.md) | Profile statistics are derived at read time, and split by what they depend on | Implemented; §4's chart amended by 0047 |
@@ -73,6 +73,7 @@ grow a forward pointer when a later record or an issue closes something it left 
 | [0051](0051-admin-statistics-are-counted-never-listed.md) | Admin statistics are counted, never listed | Implemented |
 | [0052](0052-a-background-refresh-ahead-of-the-reader.md) | A background refresh: cached games an hour before a reader would, Steam feeds before they expire | Implemented |
 | [0053](0053-a-documents-scripts-carry-its-renders-nonce.md) | A document's scripts carry its render's nonce, and a shared cache keeps the pair whole | Implemented |
+| [0054](0054-a-hand-arranged-order-is-a-sparse-position.md) | A hand-arranged order is a sparse position the client computes, and a change of list clears it | Implemented |
 | [0056](0056-an-avatar-is-an-address-on-a-short-list-of-hosts.md) | An avatar is an address on a short list of hosts, which the document policy's `img-src` names too; a display name stands beside the handle; a bio is plain text | Implemented |
 | [0057](0057-the-api-is-tested-over-a-real-postgresql.md) | The API is tested over a real PostgreSQL: one container a run, a database a class, and IGDB out of reach | Implemented; the export-snapshot test went in skipped and runs since #263 |
 | [0058](0058-a-withdrawal-leaves-the-edge-when-it-is-made.md) | A withdrawal leaves the edge when it is made, and its retry stops when the TTL would have | Implemented; proved only by a deploy; §1's eighth event is 0056 |

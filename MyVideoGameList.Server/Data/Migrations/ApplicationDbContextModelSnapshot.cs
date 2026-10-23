@@ -715,6 +715,9 @@ namespace MyVideoGameList.Server.Data.Migrations
                         .HasMaxLength(16)
                         .HasColumnType("character varying(16)");
 
+                    b.Property<int?>("Position")
+                        .HasColumnType("integer");
+
                     b.Property<short?>("Score")
                         .HasColumnType("smallint");
 
@@ -747,6 +750,8 @@ namespace MyVideoGameList.Server.Data.Migrations
                     b.ToTable("UserGameEntries", t =>
                         {
                             t.HasCheckConstraint("CK_UserGameEntries_Ownership", "\"Ownership\" IS NULL OR \"Ownership\" IN ('owned', 'subscription', 'borrowed')");
+
+                            t.HasCheckConstraint("CK_UserGameEntries_Position_Range", "\"Position\" IS NULL OR (\"Position\" >= -1000000000 AND \"Position\" <= 1000000000)");
 
                             t.HasCheckConstraint("CK_UserGameEntries_Score_Range", "\"Score\" IS NULL OR (\"Score\" >= 1 AND \"Score\" <= 10)");
 
