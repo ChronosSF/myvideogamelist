@@ -1,9 +1,11 @@
 # 0066. A holding page at the domain until production takes it, and the apex is canonical
 
-**Status:** Implemented; deployed by hand to the production account, and destroyed when production
-takes the domain ([#98](https://github.com/ChronosSF/myvideogamelist/issues/98)). Answers #98's open
-question, apex or `www`, and with it D7, the cookie's domain. Builds on
-[0036](0036-what-a-crawler-is-told.md) and [0044](0044-what-the-deployment-walkthrough-settled.md).
+**Status:** Implemented; deployed by hand to the production account on 2026-10-23 and checked from
+outside: the apex answers with every header in §6, `www` and plain HTTP redirect to it, and a
+missing page is a 404 with the same headers. Destroyed when production takes the domain
+([#98](https://github.com/ChronosSF/myvideogamelist/issues/98)). Answers #98's open question, apex or
+`www`, and with it D7, the cookie's domain. Builds on [0036](0036-what-a-crawler-is-told.md) and
+[0044](0044-what-the-deployment-walkthrough-settled.md).
 
 ## Context
 
