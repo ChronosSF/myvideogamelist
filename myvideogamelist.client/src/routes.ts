@@ -39,6 +39,10 @@ export default [
     route('sitemap.xml', 'resources/sitemapIndex.ts'),
     route('sitemaps/:file', 'resources/sitemapFile.ts'),
 
+    // Which commit this server was built from, for whoever is asking what is live. The API answers
+    // the same question at /api/version, under /api/ so that the two never collide (ADR 0059).
+    route('version', 'resources/version.ts'),
+
     // Anything else renders the root ErrorBoundary as a 404.
     route('*', 'pages/NotFoundPage.tsx'),
 ] satisfies RouteConfig;

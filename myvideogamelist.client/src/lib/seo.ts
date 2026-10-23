@@ -74,7 +74,7 @@ export function applyIndexingHeaders(headers: Headers, site: SiteConfig = siteCo
 }
 
 /**
- * A response that is not a document: robots.txt and the sitemaps.
+ * A response that is not a document: robots.txt, the sitemaps and /version.
  *
  * These are resource routes, which return their own `Response` and so never pass through
  * `entry.server.tsx`. Whatever that file adds to every document has to be added here by hand —

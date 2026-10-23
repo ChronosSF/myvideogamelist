@@ -24,7 +24,7 @@ const STATIC_PATHS = ['/', '/games'];
  * plain integer; for a profile it is the name as its owner capitalised it, which is what the API
  * returns and what `ProfilePage` builds its canonical URL from.
  */
-export async function loader({ params, request }: Route.LoaderArgs) {
+export async function loader({ params, request, context }: Route.LoaderArgs) {
     const file = sitemapFileFrom(params.file);
     if (file === null) return sitemapNotFound();
 
@@ -35,7 +35,7 @@ export async function loader({ params, request }: Route.LoaderArgs) {
     }
 
     if (file.kind === 'games') {
-        const ids = await sitemapFeed<number[]>(`/api/sitemap/games?page=${file.page}`);
+        const ids = await sitemapFeed<number[]>(context, `/api/sitemap/games?page=${file.page}`);
         if (ids === null) return sitemapUnavailable();
 
         // Past the last file. The index never names one, so this is a URL somebody made up.
@@ -44,7 +44,7 @@ export async function loader({ params, request }: Route.LoaderArgs) {
         return sitemapXml(urlSet(ids.map(id => `${origin}/games/${id}`)), CACHE_SITEMAP);
     }
 
-    const names = await sitemapFeed<string[]>(`/api/sitemap/profiles?page=${file.page}`);
+    const names = await sitemapFeed<string[]>(context, `/api/sitemap/profiles?page=${file.page}`);
     if (names === null) return sitemapUnavailable();
     if (names.length === 0) return sitemapNotFound();
 
