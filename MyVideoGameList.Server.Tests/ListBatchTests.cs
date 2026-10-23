@@ -64,7 +64,7 @@ public class ListBatchTests
     }
 
     private static ListService NewService(ApplicationDbContext db, TimeProvider? clock = null) =>
-        new(db, Substitute.For<IGameCacheService>(), clock ?? new FixedClock(Midday));
+        new(db, Substitute.For<IGameCacheService>(), clock ?? new FixedClock(Midday), EdgeFakes.Withdrawals(db));
 
     private static short StatusId(ApplicationDbContext db, string key) =>
         db.ListStatuses.Single(s => s.Key == key).Id;

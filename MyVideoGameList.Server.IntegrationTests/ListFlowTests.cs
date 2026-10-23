@@ -27,7 +27,7 @@ public class ListFlowTests(ApiFactory api) : IClassFixture<ApiFactory>
                  { ListStatusKeys.Backlog, ListStatusKeys.Playing, ListStatusKeys.Playing, ListStatusKeys.Finished })
         {
             var move = await browser.SendAsync(HttpMethod.Put, $"/api/lists/{gameId}", new SetListEntryDto(status));
-            await move.ExpectAsync(HttpStatusCode.NoContent);
+            await move.ExpectAsync(HttpStatusCode.OK);
         }
 
         var lists = await browser.GetJsonAsync<ListsDto>("/api/lists");
@@ -64,7 +64,7 @@ public class ListFlowTests(ApiFactory api) : IClassFixture<ApiFactory>
         await browser.RegisterAsync(Browsers.NewUserName("remover"));
 
         await (await browser.SendAsync(HttpMethod.Put, $"/api/lists/{gameId}",
-            new SetListEntryDto(ListStatusKeys.Backlog))).ExpectAsync(HttpStatusCode.NoContent);
+            new SetListEntryDto(ListStatusKeys.Backlog))).ExpectAsync(HttpStatusCode.OK);
         await (await browser.SendAsync(HttpMethod.Put, $"/api/entries/{gameId}/score",
             new SetScoreDto(8))).ExpectAsync(HttpStatusCode.NoContent);
 
@@ -105,7 +105,7 @@ public class ListFlowTests(ApiFactory api) : IClassFixture<ApiFactory>
         using var browser = api.CreateBrowser();
         await browser.RegisterAsync(Browsers.NewUserName("stale"));
         await (await browser.SendAsync(HttpMethod.Put, $"/api/lists/{gameId}",
-            new SetListEntryDto(ListStatusKeys.Playing))).ExpectAsync(HttpStatusCode.NoContent);
+            new SetListEntryDto(ListStatusKeys.Playing))).ExpectAsync(HttpStatusCode.OK);
 
         var igdb = api.Igdb.Calls.Count;
         var lists = await browser.GetJsonAsync<ListsDto>("/api/lists");
