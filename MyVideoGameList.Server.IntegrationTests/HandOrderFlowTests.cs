@@ -1,7 +1,6 @@
 using System.Net;
 using System.Text;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Diagnostics;
 using MyVideoGameList.Server.Data;
 using MyVideoGameList.Server.DTOs;
 using MyVideoGameList.Server.Models;
@@ -232,23 +231,5 @@ public class HandOrderFlowTests(ApiFactory api) : IClassFixture<ApiFactory>
         var user = await browser.RegisterAsync(Browsers.NewUserName("bounded"));
         await PutAsync(browser, gameId, ListStatusKeys.Backlog);
         return user.Id;
-    }
-
-    /// <summary>
-    /// Runs a step as each save of the context it is attached to begins, numbered from one: the moment
-    /// a write that has read its rows is about to send them.
-    /// </summary>
-    private sealed class BeforeEachSave(Func<int, Task> step) : SaveChangesInterceptor
-    {
-        public int Saves { get; private set; }
-
-        public override async ValueTask<InterceptionResult<int>> SavingChangesAsync(
-            DbContextEventData eventData,
-            InterceptionResult<int> result,
-            CancellationToken cancellationToken = default)
-        {
-            await step(++Saves);
-            return result;
-        }
     }
 }

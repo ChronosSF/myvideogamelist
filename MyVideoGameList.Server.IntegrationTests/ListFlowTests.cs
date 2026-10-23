@@ -1,13 +1,17 @@
 using System.Net;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using MyVideoGameList.Server.Data;
 using MyVideoGameList.Server.DTOs;
 using MyVideoGameList.Server.Models;
+using MyVideoGameList.Server.Services;
 
 namespace MyVideoGameList.Server.IntegrationTests;
 
 /// <summary>
 /// Adding a game, moving it and taking it out, read back the two ways a user can: the lists, and
-/// the event log as the export carries it (ADR 0018, 0019).
+/// the event log as the export carries it (ADR 0018, 0019). And a move of several games at once,
+/// saved when a row it was about to write is deleted underneath it (ADR 0055).
 /// </summary>
 public class ListFlowTests(ApiFactory api) : IClassFixture<ApiFactory>
 {
@@ -112,5 +116,87 @@ public class ListFlowTests(ApiFactory api) : IClassFixture<ApiFactory>
 
         Assert.Equal("Game 26226", Assert.Single(lists.Lists[ListStatusKeys.Playing]).Game.Title);
         Assert.Equal(["GetGamesByIdsAsync"], api.Igdb.CallsSince(igdb));
+    }
+
+    /// <remarks>
+    /// The unit suite can only imitate this race: the in-memory provider has no transaction to roll
+    /// back and keeps the inserts of a save that failed, so a retry there would meet the first
+    /// attempt's events. Here the first save is undone whole, which is what lets the retry record each
+    /// move once.
+    /// </remarks>
+    [Fact]
+    public async Task SetStatusesAsync_ARowDeletedBetweenItsReadAndItsSave_AnswersItMissingAndMovesTheRestOnce()
+    {
+        int[] games = [5501, 5502, 5503];
+        await api.CacheGamesAsync(games);
+
+        using var browser = api.CreateBrowser();
+        var user = await browser.RegisterAsync(Browsers.NewUserName("batcher"));
+        foreach (var game in games)
+        {
+            await (await browser.SendAsync(HttpMethod.Put, $"/api/lists/{game}",
+                new SetListEntryDto(ListStatusKeys.Backlog))).ExpectAsync(HttpStatusCode.OK);
+        }
+
+        // One game's row, deleted through another connection once the batch has read it and is about
+        // to save, as "delete my data" in another tab would take it. The save sends the other two
+        // changes and all three events inside its transaction before it learns that this row is gone.
+        var deleted = games[1];
+        int? eventsWhenTheRetryBegan = null;
+        var saves = new BeforeEachSave(async save =>
+        {
+            await using var other = api.Database();
+
+            if (save == 1)
+            {
+                await other.UserGameEntries
+                    .Where(entry => entry.UserId == user.Id && entry.GameId == deleted)
+                    .ExecuteDeleteAsync();
+            }
+            else
+            {
+                eventsWhenTheRetryBegan = await other.UserGameEvents.CountAsync(e => e.UserId == user.Id);
+            }
+        });
+
+        await using var db = new ApplicationDbContext(new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseNpgsql(api.ConnectionString)
+            .AddInterceptors(saves)
+            .Options);
+
+        // The application's own service and collaborators, over the context that lets the row go.
+        await using var scope = api.Services.CreateAsyncScope();
+        var listService = ActivatorUtilities.CreateInstance<ListService>(scope.ServiceProvider, db);
+
+        var results = await listService.SetStatusesAsync(user.Id, games, ListStatusKeys.Finished);
+
+        Assert.Equal(
+            [
+                (games[0], StatusChangeOutcomes.Moved),
+                (deleted, StatusChangeOutcomes.Missing),
+                (games[2], StatusChangeOutcomes.Moved),
+            ],
+            results.Select(result => (result.GameId, result.Outcome)));
+        Assert.Equal(2, saves.Saves);
+
+        // The first save was rolled back whole: when the second began, the log held the three arrivals
+        // in the backlog and nothing of it, so each move to Finished below is the retry's.
+        Assert.Equal(3, eventsWhenTheRetryBegan);
+
+        // One move for each game that moved, none twice, and none for the game whose row went. Its
+        // arrival stays, since an event holds no key to the entry it was about.
+        var export = await browser.GetJsonAsync<UserDataExportDto>("/api/user/export");
+        Assert.Equal(
+            [(games[0], ListStatusKeys.Finished), (games[2], ListStatusKeys.Finished)],
+            export.Entries.OrderBy(entry => entry.GameId).Select(entry => (entry.GameId, entry.Status)));
+        Assert.Equal(
+            [
+                (games[0], null, ListStatusKeys.Backlog),
+                (games[0], ListStatusKeys.Backlog, ListStatusKeys.Finished),
+                (deleted, null, ListStatusKeys.Backlog),
+                (games[2], null, ListStatusKeys.Backlog),
+                (games[2], ListStatusKeys.Backlog, ListStatusKeys.Finished),
+            ],
+            export.Events.OrderBy(e => e.GameId).Select(e => (e.GameId, e.FromStatus, e.ToStatus)));
     }
 }

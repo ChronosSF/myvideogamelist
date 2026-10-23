@@ -242,20 +242,22 @@ it with focus back on its button, and its checkboxes are a group named by its he
 - **A game deleted elsewhere.** A game was deleted through the API around the page, as another tab would.
   Moving it with another, the batch answered it `missing`, created nothing and recorded nothing for it. The
   other game moved with its event, and the page said "1 of the 2 games was not moved".
-- **A row deleted between the read and the save.** A harness in a scratch project deleted the row through a
-  second connection at exactly that moment. The first save found it gone and was rolled back, and the
-  retry saved the other two. The answer was `moved, missing, moved`, and exactly two events were recorded:
-  none for the deleted game, and none twice. The harness is not in the repository. The check belongs with
-  the integration tests, and is a line on [#104](https://github.com/ChronosSF/myvideogamelist/issues/104).
 - **The hand order.** A placed game moved out of the backlog lost its place. Moved back with another game,
   both arrived unplaced at the end, with one `StatusChangedAt`, in title order. A reload drew the same order.
 - **Ownership.** Chosen on a game page, it showed in the table on returning without a reload. The ownership
   filter appeared once there were two kinds, and it stopped the hand order being rearranged.
 
+**A row deleted between the read and the save is checked on every run** of the integration suite
+([0057](0057-the-api-is-tested-over-a-real-postgresql.md)), in `ListFlowTests`. It deletes the row through a
+second connection at exactly that moment. The first save finds it gone and is rolled back whole, and the
+retry saves the other two. The answer is `moved, missing, moved`, and exactly two moves are recorded: none for
+the deleted game, and none twice. A harness in a scratch project showed the same before the suite existed;
+the test is the line [#104](https://github.com/ChronosSF/myvideogamelist/issues/104) left open for it.
+
 **What the in-memory tests cannot see.** The in-memory provider is not transactional. It applies a save's
 event inserts before it reaches the update that fails, and keeps them. So the deleted-row tests raise the
 concurrency failure from an interceptor, before the provider writes anything, which is what PostgreSQL's
-rolled-back transaction amounts to. The real retry is the harness's to show, above.
+rolled-back transaction amounts to. The real retry is the integration suite's to show, above.
 
 **Inherited, not new.** EF writes the entry by key, with no concurrency token. So a move landing between
 this batch's read of a game and its save leaves the batch's event with a stale `from`, exactly as two single
