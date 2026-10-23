@@ -139,11 +139,23 @@ public record ImportMatchPassDto(ImportJobDto Job, IReadOnlyList<ImportReviewRow
 /// The user's decisions about some rows. Only the rows named are touched, so the review screen can
 /// send one row or a bulk selection through the same endpoint.
 /// </summary>
+/// <remarks>
+/// A <c>null</c> among the rows is refused here, as a 400. Model validation passes over a null element
+/// of a collection without a word, so <c>[null]</c> would otherwise reach the service and fail there as
+/// a 500.
+/// </remarks>
 public record ImportDecisionsDto(
     [Required]
     [MinLength(1, ErrorMessage = "Send at least one row.")]
     [MaxLength(5000, ErrorMessage = "Too many rows in one request.")]
-    IReadOnlyList<ImportRowDecisionDto> Rows);
+    IReadOnlyList<ImportRowDecisionDto> Rows) : IValidatableObject
+{
+    public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
+    {
+        if (Rows.Any(row => row is null))
+            yield return new ValidationResult("Every row must be a decision.", [nameof(Rows)]);
+    }
+}
 
 /// <summary>
 /// What to do with one row, and optionally what to fix about it first.
@@ -197,11 +209,20 @@ public record ImportPlayedStatusDto(
 /// built from — the promise of §C5 is that nothing is silently lost, and a count alone does not
 /// keep it.
 /// </param>
+/// <param name="Games">
+/// How many games the imported rows went into, counting an entry the user already had as well as
+/// one the commit created. Fewer than the job's <c>ImportedCount</c> whenever two of those rows name
+/// one game, as a source listing a game once per platform does. Answered here and stored nowhere:
+/// <c>ImportedCount</c> stays a count of rows, so that it and <c>SkippedCount</c> still account for
+/// every row in the file (§C5), and those two counts are the whole of the receipt <c>/import</c>
+/// keeps.
+/// </param>
 /// <param name="Unlisted">
-/// How many of the games the commit wrote are in no list afterwards. The result screen says so,
+/// How many of those <paramref name="Games"/> are in no list afterwards. The result screen says so,
 /// because "now in your lists" is false of them: an entry with no status appears in no list
 /// (ADR 0019), and only the game's own page shows it.
 /// </param>
-public record ImportResultDto(ImportJobDto Job, IReadOnlyList<ImportSkippedRowDto> Skipped, int Unlisted);
+public record ImportResultDto(
+    ImportJobDto Job, IReadOnlyList<ImportSkippedRowDto> Skipped, int Games, int Unlisted);
 
 public record ImportSkippedRowDto(string Title, string? SourceStatus, string Reason);

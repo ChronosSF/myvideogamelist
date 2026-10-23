@@ -130,6 +130,27 @@ export function gamesApiPath(offset: number, browse: GameBrowse): string {
     return `/api/games?${params}`;
 }
 
+/**
+ * The browse page's address for a plain search, which is what the navbar's box submits to. No order,
+ * which ADR 0032 has a search drop; and no filters, though they would apply to a search, because the
+ * box is on every page and offers none — and the dropdown has to list the first games of exactly the
+ * page Enter opens.
+ */
+export function searchPagePath(search: string): string {
+    const query = browseParams({ ...EMPTY_BROWSE, search: search.trim() }).toString();
+    return query ? `/games?${query}` : '/games';
+}
+
+/**
+ * The first `limit` games of a plain search: the browse page's own first page for that search, cut
+ * short by the API. It is the page's query to the letter — the term trimmed as `browseFrom` trims
+ * it, offset and all — because that is what puts the two on one cache entry on the server, so a
+ * search the typeahead has answered costs IGDB nothing more when Enter opens it in full.
+ */
+export function searchApiPath(search: string, limit: number): string {
+    return `${gamesApiPath(0, { ...EMPTY_BROWSE, search: search.trim() })}&limit=${limit}`;
+}
+
 /** Whether anything narrows the listing, the order aside. */
 export function isFiltered(browse: GameBrowse): boolean {
     return browse.platform !== null || browse.genre !== null || browse.year !== null || browse.minScore !== null

@@ -6,6 +6,8 @@ import {
     browseParams,
     gamesApiPath,
     isFiltered,
+    searchApiPath,
+    searchPagePath,
     yearsFrom,
 } from '@/lib/gameBrowse';
 
@@ -81,6 +83,30 @@ describe('gamesApiPath', () => {
     it('asks the API for the same browse, at an offset', () => {
         expect(gamesApiPath(40, { ...EMPTY_BROWSE, sort: 'name', genre: 12 }))
             .toBe('/api/games?sort=name&genre=12&offset=40');
+    });
+});
+
+describe('searchPagePath', () => {
+    it('opens the browse page on a plain search, trimmed', () => {
+        expect(searchPagePath('  zelda ')).toBe('/games?search=zelda');
+        expect(searchPagePath('a&b=c')).toBe('/games?search=a%26b%3Dc');
+    });
+
+    it('opens the plain catalogue for an empty box, on its one address', () => {
+        expect(searchPagePath('')).toBe('/games');
+        expect(searchPagePath('   ')).toBe('/games');
+    });
+});
+
+describe('searchApiPath', () => {
+    it('is the first-page request of the page Enter opens, with a limit', () => {
+        // Exactly the loader's request for that URL, so the two share one cache entry on the server
+        // and opening a search the dropdown has answered costs IGDB nothing.
+        const page = new URL(searchPagePath(' hollow knight '), 'https://mvgl.test');
+        const loaderAsks = gamesApiPath(0, browseFrom(page.searchParams));
+
+        expect(searchApiPath(' hollow knight ', 6)).toBe(`${loaderAsks}&limit=6`);
+        expect(searchApiPath(' hollow knight ', 6)).toBe('/api/games?search=hollow+knight&offset=0&limit=6');
     });
 });
 
