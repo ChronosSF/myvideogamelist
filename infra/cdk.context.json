@@ -9,5 +9,9 @@
       "PrefixListId": "pl-a3a144ca",
       "Identifier": "pl-a3a144ca"
     }
-  ]
+  ],
+  "hosted-zone:account=381466680659:domainName=myvideogamelist.net:region=us-east-1": {
+    "Id": "/hostedzone/Z0425538J91LD6EDYYVV",
+    "Name": "myvideogamelist.net."
+  }
 }
