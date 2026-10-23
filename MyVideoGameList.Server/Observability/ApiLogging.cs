@@ -16,9 +16,11 @@ namespace MyVideoGameList.Server.Observability;
 /// nothing to say they belong together.
 /// </para>
 /// <para>
-/// The scopes go into every line: the trace id ASP.NET puts there from the request's activity, the
-/// request path and the request id. That is what lets one id find everything a request wrote
-/// (ADR 0059).
+/// Deployed, the scopes go into every line: the trace id ASP.NET puts there from the request's
+/// activity, the request path and the request id. That is what lets one id find everything a request
+/// wrote (ADR 0059). On a developer's machine they stay off, because the plain console prints them as
+/// a line of their own under every entry, every SQL statement's included. There the request's own
+/// line names its trace in its message, next to whatever else that request wrote.
 /// </para>
 /// </remarks>
 public static class ApiLogging
@@ -47,8 +49,8 @@ public static class ApiLogging
             // One line still, because quotes, backslashes and control characters are escaped all the
             // same. What the relaxed encoder leaves alone is everything an HTML page would care about,
             // which a log line read in CloudWatch is not: with the default one, every stack frame of
-            // an async method reads `<QueryAsync>d__12`, and every quoted identifier in a
-            // failed SQL command `"…"`, in the raw stream and in `aws logs tail`.
+            // an async method reads `\u003CQueryAsync\u003Ed__12`, and every quoted identifier in a
+            // failed SQL command `\u0022…\u0022`, in the raw stream and in `aws logs tail`.
             options.JsonWriterOptions = new JsonWriterOptions
             {
                 Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,

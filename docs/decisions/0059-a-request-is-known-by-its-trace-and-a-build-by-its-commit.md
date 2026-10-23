@@ -113,10 +113,11 @@ fails, as `traceId`. The SSR server is not in that path and does not need to be.
 Development: every scope, a UTC timestamp to the millisecond, one line per entry, and an exception's
 stack inside its own line. The encoder is the relaxed one, which still escapes quotes, backslashes and
 control characters but leaves `<`, `>` and `+` alone, so that a stack frame of an async method reads as
-written in the raw stream rather than as `<QueryAsync>d__12`. Development keeps the plain
-console a person reads. Activity tracking is stated (`TraceId`, `SpanId`, `ParentId`) rather than
-inherited from the host's default, because the correlation rests on it, and it must not grow `TraceState`
-or `Baggage`, which are a caller's text.
+written in the raw stream rather than as `\u003CQueryAsync\u003Ed__12`. Development keeps the plain
+console a person reads, without scopes, which it would print as a line of their own under every entry,
+each SQL statement's included; there the request line names its trace in its message. Activity tracking
+is stated (`TraceId`, `SpanId`, `ParentId`) rather than inherited from the host's default, because the
+correlation rests on it, and it must not grow `TraceState` or `Baggage`, which are a caller's text.
 
 So every line written while serving a request carries, as scopes, its `TraceId`, its `SpanId`, a
 `ParentId` that is the SSR server's span when a render made the call, and the `RequestPath` and
