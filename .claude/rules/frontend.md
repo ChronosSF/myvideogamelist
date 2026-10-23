@@ -79,7 +79,8 @@ that are easy to get wrong and were got wrong once (`docs/decisions/0022-*`):
   state. Restore membership and the values, **not a position** — an index captured before the
   request is stale once another item leaves from in front of it, and the lists are rendered through
   `sortEntries` anyway. The wishlist keeps its order from `addedAt`: derive order from a value, or
-  do not preserve it.
+  do not preserve it. A hand order's position (`docs/decisions/0054-*`) is such a value — a sparse
+  number, not an index — so its undo puts back the number each game had, which the lock keeps true.
 - **Take the per-game lock for every mutation that writes the entry**, scoring included. Two
   requests in flight for one game means the first to fail rolls back over what the second saved.
   The lock is also what makes the captured position safe to trust while the request is out.

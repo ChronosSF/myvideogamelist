@@ -85,6 +85,10 @@ public class ListService(
         entry.StatusId = target.Id;
         entry.StatusChangedAt = timeProvider.GetUtcNow();
 
+        // A place in the old list's hand order is no place in the new one, so the game arrives
+        // unplaced — at the end of the list it joins, like any other arrival. See IHandOrdered.
+        entry.Position = null;
+
         // One SaveChanges, so the event and the state change land in the same transaction or
         // neither does. A recorded transition that did not happen is as bad as a missing one.
         await db.SaveChangesAsync(cancellationToken);
@@ -108,8 +112,50 @@ public class ListService(
         entry.StatusId = null;
         entry.StatusChangedAt = timeProvider.GetUtcNow();
 
+        // Its place in the list it left goes with it, as on any other move.
+        entry.Position = null;
+
         await db.SaveChangesAsync(cancellationToken);
         return true;
+    }
+
+    /// <summary>
+    /// Places some of the games in one of the user's lists where they have arranged them by hand.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Scoped to the list as well as to the user: a game that has left it since the client last
+    /// looked is passed over, so a stale tab does not give a Playing game a place in the backlog's
+    /// order. Records no event — an order is not a status transition — and creates no entry, since
+    /// a game in a list already has one.
+    /// </para>
+    /// <para>
+    /// The scope is checked when the rows are read, not in the update, which goes by key. A move out
+    /// of the list landing in the moment between the two leaves the game a number in a list it has
+    /// left: nothing reads a position outside its own list, and the next change of list clears it.
+    /// Closing that would take an <c>UPDATE</c> with the status in its predicate, which the in-memory
+    /// provider the tests run on cannot execute — not worth it for a number nobody sees (ADR 0054).
+    /// </para>
+    /// </remarks>
+    public async Task SetPositionsAsync(
+        string userId,
+        string status,
+        IReadOnlyCollection<PositionDto> positions,
+        CancellationToken cancellationToken = default)
+    {
+        var statusId = await db.ListStatuses
+            .AsNoTracking()
+            .Where(s => s.Key == status)
+            .Select(s => (short?)s.Id)
+            .FirstOrDefaultAsync(cancellationToken)
+            ?? throw new ArgumentException($"Unknown status: {status}", nameof(status));
+
+        await HandOrderStore.WriteAsync(
+            db,
+            db.UserGameEntries.Where(e => e.StatusId == statusId),
+            userId,
+            positions,
+            cancellationToken);
     }
 
     public async Task SetScoreAsync(
@@ -235,7 +281,7 @@ public class ListService(
         EntryStore.FindOrCreateAsync(db, timeProvider, userId, gameId, cancellationToken);
 
     private static ListEntryDto ToDto(UserGameEntry entry, GameDto game) =>
-        new(game, entry.Score, entry.AddedAt, entry.StatusChangedAt);
+        new(game, entry.Score, entry.AddedAt, entry.StatusChangedAt, entry.Position);
 
     private void AppendEvent(string userId, int gameId, short? from, short? to) =>
         db.UserGameEvents.Add(new UserGameEvent

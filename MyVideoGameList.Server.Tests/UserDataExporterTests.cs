@@ -224,13 +224,14 @@ public class UserDataExporterTests
     }
 
     private static void AddFavourite(
-        ApplicationDbContext db, int gameId, DateTimeOffset? at = null, string userId = UserId)
+        ApplicationDbContext db, int gameId, DateTimeOffset? at = null, string userId = UserId, int? position = null)
     {
         db.UserFavourites.Add(new UserFavourite
         {
             UserId = userId,
             GameId = gameId,
-            AddedAt = at ?? Now
+            AddedAt = at ?? Now,
+            Position = position
         });
         db.SaveChanges();
     }
@@ -403,6 +404,24 @@ public class UserDataExporterTests
     }
 
     [Fact]
+    public async Task ExportAsync_Favourite_CarriesItsHandArrangedPosition()
+    {
+        // The favourite's projection is written by hand too, and the order somebody arranged their
+        // showcase in is theirs to take (ADR 0024, ADR 0064) — as stored, not as a rank, and in the
+        // section's own oldest-first order rather than the showcase's.
+        using var db = NewDb();
+        AddAccount(db, UserId, "mine@test.local");
+        AddFavourite(db, gameId: 11, at: Now.AddDays(-30));
+        AddFavourite(db, gameId: 12, at: Now.AddDays(-1), position: -1024);
+
+        var export = await NewExporter(db).ExportAsync(UserId, default);
+
+        Assert.Equal([11, 12], export.Favourites.Select(f => f.GameId));
+        Assert.Null(export.Favourites[0].Position);
+        Assert.Equal(-1024, export.Favourites[1].Position);
+    }
+
+    [Fact]
     public async Task ExportAsync_EntryInAStatus_CarriesTheKeyRatherThanTheId()
     {
         // The id is a seeded constant of this database and would mean nothing anywhere else; the
@@ -440,6 +459,23 @@ public class UserDataExporterTests
         var entry = Assert.Single(export.Entries);
         Assert.Equal(OwnershipKinds.Subscription, entry.Ownership);
         Assert.Equal("Leaves the service in March.", entry.Notes);
+    }
+
+    [Fact]
+    public async Task ExportAsync_Entry_CarriesItsHandArrangedPosition()
+    {
+        // The same trap for the next column: the order somebody arranged their backlog in is theirs
+        // to take, and the hand-written projection is the only thing that would carry it.
+        using var db = NewDb();
+        AddAccount(db, UserId, "mine@test.local");
+        db.UserGameEntries.Add(new UserGameEntry { UserId = UserId, GameId = 11, Position = -2048, AddedAt = Now });
+        db.UserGameEntries.Add(new UserGameEntry { UserId = UserId, GameId = 12, AddedAt = Now });
+        db.SaveChanges();
+
+        var export = await NewExporter(db).ExportAsync(UserId, default);
+
+        Assert.Equal(-2048, export.Entries.Single(e => e.GameId == 11).Position);
+        Assert.Null(export.Entries.Single(e => e.GameId == 12).Position);
     }
 
     [Fact]

@@ -679,11 +679,17 @@ namespace MyVideoGameList.Server.Data.Migrations
                     b.Property<DateTimeOffset>("AddedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<int?>("Position")
+                        .HasColumnType("integer");
+
                     b.HasKey("UserId", "GameId");
 
                     b.HasIndex("UserId", "AddedAt");
 
-                    b.ToTable("UserFavourites");
+                    b.ToTable("UserFavourites", t =>
+                        {
+                            t.HasCheckConstraint("CK_UserFavourites_Position_Range", "\"Position\" IS NULL OR (\"Position\" >= -1000000000 AND \"Position\" <= 1000000000)");
+                        });
                 });
 
             modelBuilder.Entity("MyVideoGameList.Server.Models.UserGameEntry", b =>
@@ -714,6 +720,9 @@ namespace MyVideoGameList.Server.Data.Migrations
                     b.Property<string>("Ownership")
                         .HasMaxLength(16)
                         .HasColumnType("character varying(16)");
+
+                    b.Property<int?>("Position")
+                        .HasColumnType("integer");
 
                     b.Property<short?>("Score")
                         .HasColumnType("smallint");
@@ -747,6 +756,8 @@ namespace MyVideoGameList.Server.Data.Migrations
                     b.ToTable("UserGameEntries", t =>
                         {
                             t.HasCheckConstraint("CK_UserGameEntries_Ownership", "\"Ownership\" IS NULL OR \"Ownership\" IN ('owned', 'subscription', 'borrowed')");
+
+                            t.HasCheckConstraint("CK_UserGameEntries_Position_Range", "\"Position\" IS NULL OR (\"Position\" >= -1000000000 AND \"Position\" <= 1000000000)");
 
                             t.HasCheckConstraint("CK_UserGameEntries_Score_Range", "\"Score\" IS NULL OR (\"Score\" >= 1 AND \"Score\" <= 10)");
 

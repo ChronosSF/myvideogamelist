@@ -1,14 +1,16 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { fireEvent, render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { ListsPage } from '@/pages/ListsPage';
 import type { AuthContextValue } from '@/contexts/AuthContext';
+import type { FavouritesContextValue } from '@/contexts/FavouritesContext';
 import type { ListsContextValue } from '@/contexts/ListsContext';
 import type { WishlistContextValue } from '@/contexts/WishlistContext';
-import { DEFAULT_SORT } from '@/lib/listSort';
+import { DEFAULT_SORT, MANUAL_SORT } from '@/lib/listSort';
 import type { UserProfile } from '@/types/auth';
 import { emptyLists, LIST_NAMES, type ListId } from '@/types/list';
-import { entry, userProfile } from '@/test/factories';
+import { entry, platform, userProfile } from '@/test/factories';
 
 /**
  * Auth and the lists, mocked rather than provided: both real providers fetch, and the page only
@@ -44,6 +46,7 @@ const lists: ListsContextValue = {
     getListFor: () => null,
     scoreFor: () => null,
     setScore: vi.fn(async () => true),
+    moveInOrder: vi.fn(async () => true),
     setOwnership: vi.fn(async () => true),
     setNotes: vi.fn(async () => true),
     deleteEntry: vi.fn(async () => true),
@@ -73,6 +76,14 @@ vi.mock('@/hooks/useAuth', () => ({ useAuth: () => auth }));
 vi.mock('@/hooks/useLists', () => ({ useLists: () => lists }));
 vi.mock('@/hooks/useWishlist', () => ({ useWishlist: () => wishlist }));
 
+/** The reader's favourites, as far as the rosette reads them. Hoisted and handed back whole, as above. */
+const favoured = new Set<number>();
+const favourites = {
+    isFavourite: (gameId: number) => favoured.has(gameId),
+} as unknown as FavouritesContextValue;
+
+vi.mock('@/hooks/useFavourites', () => ({ useFavourites: () => favourites }));
+
 /** `/api/auth/me` has come back, with an account or with nobody. */
 function authAnswered(user: UserProfile | null) {
     auth.user = user;
@@ -92,6 +103,7 @@ beforeEach(() => {
     lists.loading = false;
     lists.error = null;
     lists.nameFor = (id: ListId) => LIST_NAMES[id];
+    favoured.clear();
 });
 
 describe('ListsPage before auth has answered', () => {
@@ -178,5 +190,196 @@ describe('ListsPage and renamed lists', () => {
         expect(screen.getByRole('tab', { name: /Beaten/ })).toBeInTheDocument();
         expect(screen.queryByRole('tab', { name: /Finished/ })).not.toBeInTheDocument();
         expect(screen.getByRole('tab', { name: /Playing/ })).toBeInTheDocument();
+    });
+});
+
+describe('ListsPage and the hand order', () => {
+    // Three backlog games across two platforms, so the platform filter is offered: one placed, and two
+    // that follow it in the order they joined. Held in the reverse of that order, so that only the
+    // page sorting them puts them right.
+    const SWITCH = platform(130, 'Switch');
+    const PC = platform(6, 'PC');
+    const BACKLOG = [
+        entry({ game: { id: 3, title: 'Cuphead', platforms: [PC] }, statusChangedAt: '2026-03-01T00:00:00Z' }),
+        entry({ game: { id: 2, title: 'Hades', platforms: [PC] }, statusChangedAt: '2026-02-01T00:00:00Z' }),
+        entry({ game: { id: 1, title: 'Celeste', platforms: [SWITCH] }, position: 0 }),
+    ];
+
+    const grips = () => screen.getAllByRole('button', { name: /^Move / }).map(grip => grip.getAttribute('aria-label'));
+
+    /** Covers or rows on a fifty-pixel pitch down the page, since jsdom lays nothing out. */
+    function layOutDownThePage() {
+        vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+            if (!this.hasAttribute('data-reorder-item')) return new DOMRect(0, 0, 800, 600);
+            return new DOMRect(0, [...this.parentElement!.children].indexOf(this) * 50, 800, 40);
+        });
+    }
+
+    /** A drag of one game's grip from one point to another, as a pointer makes it. */
+    function drag(name: string, fromY: number, toY: number) {
+        const grip = screen.getByRole('button', { name: `Move ${name}` });
+        fireEvent.pointerDown(grip, { button: 0, pointerId: 1, clientX: 10, clientY: fromY });
+        fireEvent.pointerMove(grip, { button: 0, pointerId: 1, clientX: 10, clientY: fromY + 10 });
+        fireEvent.pointerMove(grip, { button: 0, pointerId: 1, clientX: 10, clientY: toY });
+        fireEvent.pointerUp(grip, { button: 0, pointerId: 1, clientX: 10, clientY: toY });
+    }
+
+    beforeEach(() => {
+        authAnswered(userProfile());
+        lists.lists = { ...emptyLists(), backlog: BACKLOG, playing: [entry({ game: { id: 9, title: 'Tunic' } })] };
+        lists.sortFor = (id: ListId) => (id === 'backlog' ? MANUAL_SORT : DEFAULT_SORT);
+        lists.view = 'tiles';
+        lists.moveInOrder = vi.fn(async () => true);
+    });
+
+    afterEach(() => {
+        lists.sortFor = () => DEFAULT_SORT;
+        lists.view = 'tiles';
+        lists.isPending = () => false;
+        vi.restoreAllMocks();
+    });
+
+    const openBacklog = () => userEvent.click(screen.getByRole('tab', { name: /Backlog/ }));
+
+    it('offers "My order" on the backlog and on no other list', async () => {
+        renderPage();
+        const options = () => [...(screen.getByLabelText('Sort') as HTMLSelectElement).options].map(o => o.textContent);
+
+        expect(options()).not.toContain('My order');
+
+        await openBacklog();
+        expect(options()).toContain('My order');
+    });
+
+    it('draws the backlog in its hand order with a handle on every game, and says how to use them', async () => {
+        renderPage();
+        await openBacklog();
+
+        expect(grips()).toEqual(['Move Celeste', 'Move Hades', 'Move Cuphead']);
+        expect(screen.getByText(/drag a game by its handle/i)).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Move Hades' })).toHaveAccessibleDescription(/press space or enter to pick it up/i);
+    });
+
+    it('draws the grid as a list while it is an order, so each game\'s place can be heard', async () => {
+        renderPage();
+        await openBacklog();
+
+        const order = screen.getByRole('list');
+        expect(within(order).getAllByRole('listitem').map(item => item.querySelector('h3')?.textContent))
+            .toEqual(['Celeste', 'Hades', 'Cuphead']);
+    });
+
+    it('draws a game being moved where it would land, before it is put down', async () => {
+        renderPage();
+        await openBacklog();
+
+        screen.getByRole('button', { name: 'Move Cuphead' }).focus();
+        await userEvent.keyboard(' {ArrowLeft}');
+
+        expect(grips()).toEqual(['Move Celeste', 'Move Cuphead', 'Move Hades']);
+        expect(lists.moveInOrder).not.toHaveBeenCalled();
+    });
+
+    it('drags a cover to a new place in the grid through the provider', async () => {
+        layOutDownThePage();
+        renderPage();
+        await openBacklog();
+
+        drag('Celeste', 20, 120);
+
+        expect(lists.moveInOrder).toHaveBeenCalledExactlyOnceWith('backlog', 1, 3);
+    });
+
+    it('drags a row to a new place in the table through the provider', async () => {
+        lists.view = 'table';
+        layOutDownThePage();
+        renderPage();
+        await openBacklog();
+
+        drag('Cuphead', 120, 20);
+
+        expect(lists.moveInOrder).toHaveBeenCalledExactlyOnceWith('backlog', 3, null);
+    });
+
+    it('leaves the grip of a game whose save is out unable to move it', async () => {
+        lists.isPending = id => id === 2;
+        renderPage();
+        await openBacklog();
+
+        expect(screen.getByRole('button', { name: 'Move Hades' })).toHaveAttribute('aria-disabled', 'true');
+        expect(screen.getByRole('button', { name: 'Move Celeste' })).not.toHaveAttribute('aria-disabled');
+    });
+
+    it('moves a game from the keyboard through the provider, after the game it now follows', async () => {
+        renderPage();
+        await openBacklog();
+
+        screen.getByRole('button', { name: 'Move Cuphead' }).focus();
+        await userEvent.keyboard(' {ArrowLeft} ');
+
+        expect(lists.moveInOrder).toHaveBeenCalledExactlyOnceWith('backlog', 3, 1);
+    });
+
+    it('has no handles in any other order', async () => {
+        lists.sortFor = () => DEFAULT_SORT;
+        renderPage();
+        await openBacklog();
+
+        expect(screen.queryByRole('button', { name: /^Move / })).not.toBeInTheDocument();
+    });
+
+    it('shows the order but will not rearrange it while a filter hides part of the list', async () => {
+        // A game dropped between two that the filter left showing would land among games the user
+        // cannot see.
+        renderPage();
+        await openBacklog();
+
+        await userEvent.click(screen.getByRole('button', { name: /all platforms/i }));
+        await userEvent.click(screen.getByRole('checkbox', { name: 'Switch' }));
+
+        expect(screen.queryByRole('button', { name: /^Move / })).not.toBeInTheDocument();
+        expect(screen.getByText(/clear the platform filter to rearrange your order/i)).toBeInTheDocument();
+    });
+
+    it('puts the handles in a column of their own in the table', async () => {
+        lists.view = 'table';
+        renderPage();
+        await openBacklog();
+
+        // The column says it is the sort, and each row's place is text in it, as a column's value is.
+        expect(screen.getByRole('columnheader', { name: 'Order' })).toHaveAttribute('aria-sort', 'ascending');
+        const rows = screen.getAllByRole('row').slice(1);
+        expect(rows.map(row => within(row).getByRole('button', { name: /^Move / }).getAttribute('aria-label')))
+            .toEqual(['Move Celeste', 'Move Hades', 'Move Cuphead']);
+        expect(rows.map(row => row.querySelector('.col-order')?.textContent)).toEqual(['1', '2', '3']);
+    });
+});
+
+describe('ListsPage favourites', () => {
+    beforeEach(() => {
+        authAnswered(userProfile());
+        lists.lists = { ...emptyLists(), playing: [entry({ game: { id: 7, title: 'Tunic' } })] };
+    });
+
+    afterEach(() => {
+        lists.view = 'tiles';
+    });
+
+    it('marks a favourite on its card', async () => {
+        favoured.add(7);
+        renderPage();
+        await userEvent.click(screen.getByRole('tab', { name: /Playing/ }));
+
+        expect(screen.getByRole('heading', { name: 'Tunic, one of your favourites' })).toBeInTheDocument();
+    });
+
+    it('marks a favourite in the table as well', async () => {
+        lists.view = 'table';
+        favoured.add(7);
+        renderPage();
+        await userEvent.click(screen.getByRole('tab', { name: /Playing/ }));
+
+        const row = screen.getByRole('row', { name: /Tunic/ });
+        expect(within(row).getByRole('img', { name: 'One of your favourites' })).toBeInTheDocument();
     });
 });

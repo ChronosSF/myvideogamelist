@@ -6,6 +6,7 @@ import type { CommunityScores } from '@/types/community';
 import type { GameDto } from '@/types/game';
 import type { CommunityTimes } from '@/types/playthrough';
 import { useAuth } from '@/hooks/useAuth';
+import { useFavourites } from '@/hooks/useFavourites';
 import { useGameCommunity } from '@/hooks/useGameCommunity';
 import { GameNewsPanel } from '@/components/GameNewsPanel';
 import { GameUserPanel } from '@/components/GameUserPanel';
@@ -197,6 +198,10 @@ export function GamePage() {
     const { game, scores: renderedScores = null } = useLoaderData<typeof loader>();
 
     const { user, loading: authLoading } = useAuth();
+
+    // The reader's own, for the rosette on the related games' covers. Empty in the server render and
+    // until the favourites arrive, so the shared-cached page is the same for everybody (ADR 0064).
+    const { isFavourite } = useFavourites();
 
     // The reviews are fetched here, after hydration, and never in the loader — the page is
     // edge-cached for up to a day, and a review its author withdraws must not outlive the withdrawal
@@ -486,6 +491,7 @@ export function GamePage() {
                                 <GameRefRail
                                     games={[...details.expansions, ...details.dlcs]}
                                     label={`Expansions and DLC for ${game.title}`}
+                                    isFavourite={isFavourite}
                                 />
                             </section>
                         )}
@@ -511,6 +517,7 @@ export function GamePage() {
                                 <GameRefRail
                                     games={details.similarGames}
                                     label={`Games similar to ${game.title}`}
+                                    isFavourite={isFavourite}
                                 />
                             </section>
                         )}

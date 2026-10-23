@@ -111,6 +111,12 @@ public record AccountExportDto(
 /// <see cref="UserDataExportDto.Events"/> (ADR 0026): without it, an imported library reads as a
 /// history that simply lost its events.
 /// </param>
+/// <param name="Position">
+/// Where the user put the game in its list by hand, or null when they never placed it. A sparse
+/// number rather than a rank: the list reads in ascending order of it, with the unplaced games after
+/// in the order they joined (ADR 0054). Exported as stored, because the number is the data and a rank
+/// would be a reading of it.
+/// </param>
 public record EntryExportDto(
     int GameId,
     string? Status,
@@ -120,7 +126,8 @@ public record EntryExportDto(
     string? Notes,
     string Origin,
     DateTimeOffset AddedAt,
-    DateTimeOffset? StatusChangedAt);
+    DateTimeOffset? StatusChangedAt,
+    int? Position);
 
 /// <summary>
 /// One recorded status transition, in the order it happened.
@@ -190,7 +197,13 @@ public record WishlistExportDto(int GameId, DateTimeOffset AddedAt);
 /// One favourite game. Another axis like the wishlist, so <c>AddedAt</c> is its entire history too
 /// (ADR 0029).
 /// </summary>
-public record FavouriteExportDto(int GameId, DateTimeOffset AddedAt);
+/// <param name="Position">
+/// Where the user put the game in their showcase by hand, or null when they never placed it. A sparse
+/// number rather than a rank: the showcase reads in ascending order of it, with the unplaced favourites
+/// after, newest first (ADR 0064). Exported as stored, as the entry's is (ADR 0054 §9), because the
+/// number is the data and a rank would be one reading of it.
+/// </param>
+public record FavouriteExportDto(int GameId, DateTimeOffset AddedAt, int? Position);
 
 /// <summary>
 /// How the user has chosen to sort one status list. Only the lists they actually re-sorted have a

@@ -6,10 +6,11 @@ namespace MyVideoGameList.Server.Models;
 /// </summary>
 /// <remarks>
 /// <para>
-/// An axis row is a membership and a timestamp and nothing else. It has no status, no score, writes
-/// no <see cref="UserGameEvent"/>, and needs no <see cref="UserGameEntry"/>, because wanting a game
-/// or loving one is not exclusive with whatever list it sits in (ADR 0022). <see cref="AddedAt"/> is
-/// the axis's entire history.
+/// An axis row is a membership and a timestamp. It has no status, no score, writes no
+/// <see cref="UserGameEvent"/>, and needs no <see cref="UserGameEntry"/>, because wanting a game or
+/// loving one is not exclusive with whatever list it sits in (ADR 0022). <see cref="AddedAt"/> is the
+/// axis's entire history. An axis its owner can arrange — the favourites — also carries a position,
+/// through <see cref="IHandOrdered"/>; nothing here reads or writes it.
 /// </para>
 /// <para>
 /// The interface exists so that the idempotent add and remove, which have a race in them each, are
