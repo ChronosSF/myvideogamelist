@@ -94,7 +94,8 @@ npm run typecheck    # generate route types, then tsc
 npm run build        # production build
 npm run e2e          # the browser smoke test: needs `docker compose up -d --wait`, and once,
                      # `npx playwright install chromium`
-npm run lighthouse   # Lighthouse on five pages of the same build, phone and desktop; needs the same
+npm run lighthouse   # Lighthouse on five pages of the same build, phone and desktop: needs what
+                     # `npm run e2e` does, and IGDB's image host to be reachable
 
 cd ..
 dotnet test MyVideoGameList.Server.Tests/MyVideoGameList.Server.Tests.csproj                     # server unit tests
