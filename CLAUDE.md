@@ -44,7 +44,7 @@ build behind a stand-in that does route `/api` (ADR 0060).
 | `npm run e2e` | The browser smoke test, over the production shape: sign up, add a game to a list, reload, it is still there. Builds the front end and serves it with `react-router-serve` beside the API under `dotnet run`, with a stand-in in front that routes `/api/*` to the API as the balancer does, and one for IGDB behind, so it needs no IGDB credentials. Needs PostgreSQL up, ports 5180–5183 free, and once, `npx playwright install chromium`. Keeps a database of its own on the compose server, `mvgl_e2e`, never `myvideogamelist`, created on the first run; `E2E_CONNECTION_STRING` points it elsewhere. Run by CI. See ADR 0060 |
 | `npm run lighthouse` | Lighthouse CI on five pages of the `npm run e2e` shape, on a phone and a desktop, then axe-core on the same pages. Fails on an accessibility, best-practices or SEO score, or a count of console errors, that leaves `lighthouse/budgets.ts`'s baseline, on layout shift over 0.02 or script or page weight over budget, and on an axe rule or contrast pair a page did not already break; performance warns. Needs PostgreSQL up, ports 5190–5193 free, IGDB's image host reachable and, once, `npx playwright install chromium`. Keeps `mvgl_lighthouse` (or `LIGHTHOUSE_CONNECTION_STRING`); reports in `lighthouse/reports/`. Run by CI. See ADR 0068 |
 | `npm run build` | Production build |
-| `npm run audit` | `npm audit` over the lock file, devDependencies included, with no install: high and critical fail, lower ones are printed. CI's Dependency audit job runs it. `scripts/audit.mjs` holds the advisories accepted for want of any fix, each with its reason and a date. See ADR 0061 |
+| `npm run audit` | `npm audit` over the lock file, devDependencies included, with no install: high and critical fail, lower ones are printed. `npm run audit:lighthouse` does the same over Lighthouse CI's lock file, and CI's Dependency audit job runs both. `scripts/audit.mjs` holds a list of accepted advisories for each, every entry with its reason and a date: the client's for want of any fix, Lighthouse CI's for want of one its dependents' ranges allow (ADR 0068 §9). See ADR 0061 |
 | `dotnet test MyVideoGameList.Server.Tests/MyVideoGameList.Server.Tests.csproj` | Server unit tests |
 | `dotnet test MyVideoGameList.Server.IntegrationTests/MyVideoGameList.Server.IntegrationTests.csproj` | The API over a real PostgreSQL, for what InMemory cannot do: auth and the lists end to end, the cascades, the retention sweep, the cache refresh's lock and commit, and the export's snapshot. Needs Docker running; starts and removes a container of its own, never `mvgl-postgres`. About fifteen seconds once built. See ADR 0057 |
 | `dotnet format MyVideoGameList.slnx` | Formats the C# as `.editorconfig` says. With `--verify-no-changes` it is CI's check, in the Server job; `dotnet format infra/src/Infra/Infra.csproj` is the CDK app's |
@@ -118,9 +118,10 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
 - **CI gates every pull request, whatever branch it targets, and an advisory can turn it red
   overnight.** Beside the builds and tests it checks the formatting, audits every package (NuGet's at
   every severity, npm's at high and critical), scans every commit for secrets, and builds both images,
-  starting the SSR one. A finding with a fixed version is fixed; one with none is suppressed by its
-  advisory, in `Directory.Build.props` or `myvideogamelist.client/scripts/audit.mjs`, never by
-  lowering the level. A credential committed on purpose is allowed by its value and its file in
+  starting the SSR one. A finding with a fixed version is fixed; one with none (in Lighthouse CI's
+  tree, none in range) is suppressed by its advisory, in `Directory.Build.props` or
+  `myvideogamelist.client/scripts/audit.mjs`, never by lowering the level. A credential committed on
+  purpose, or a test fixture that looks like one, is allowed by its value and its file in
   `.gitleaks.toml`. Once the owner's ruleset is on, the job names are its required checks: a job it
   does not name gates nothing, and a name it requires that no job reports any more holds every pull
   request, the renaming one included, so change the ruleset just before merging a rename. See

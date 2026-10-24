@@ -190,8 +190,10 @@ jobs:
   # same pages, which fails on a rule or a contrast pair a page did not already break. The IGDB
   # stand-in answers with real games, so the covers come from IGDB's image host, the one site the
   # audit's browser reaches outside the runner; an outage there fails the job, so re-run it once the
-  # host is back. The reports are an artifact and the figures a table in the job summary; nothing goes
-  # to LHCI's public storage. Deploy dev waits on this as on every job. See ADR 0068.
+  # host is back, on master only for its newest commit, since Deploy dev deploys whichever commit a
+  # successful run was for (#339). The reports are an artifact and the figures a table in the job
+  # summary; nothing goes to LHCI's public storage. Deploy dev waits on this as on every job. See ADR
+  # 0068.
   lighthouse:
     name: Lighthouse
     # Pinned, unlike the other jobs: the baseline was measured on this image, and a new one brings new
@@ -279,13 +281,13 @@ jobs:
           if-no-files-found: ignore
           include-hidden-files: true
 
-  # Known vulnerabilities in every package either side resolves, direct or transitive, as NuGet's and
-  # npm's advisory data describe them on the day of the run. A job of its own, so that an advisory
-  # published overnight turns this check red and leaves the build and test jobs saying what they say.
-  # Each later step runs even when an earlier one fails, so one run reports every finding. A finding
-  # with no fixed version has a way through on each side, and a new lock file needs a step of its own:
-  # Lighthouse CI's has none, on purpose (ADR 0068 §9). Deploy dev waits on this as on every job. See
-  # ADR 0061.
+  # Known vulnerabilities in every package either side resolves, and in Lighthouse CI's, direct or
+  # transitive, as NuGet's and npm's advisory data describe them on the day of the run. A job of its
+  # own, so that an advisory published overnight turns this check red and leaves the build and test
+  # jobs saying what they say. Each later step runs even when an earlier one fails, so one run reports
+  # every finding. A finding with no fixed version has a way through on each side, and a new lock file
+  # needs a step of its own, as Lighthouse CI's has. Deploy dev waits on this as on every job. See ADR
+  # 0061.
   audit:
     name: Dependency audit
     runs-on: ubuntu-latest
@@ -318,6 +320,14 @@ jobs:
         if: ${{ !cancelled() }}
         working-directory: myvideogamelist.client
         run: npm run audit
+
+      # Lighthouse CI's lock file, against a list of its own in the same script: a tool whose
+      # dependencies are not overridden (ADR 0068 §9), so an advisory with no fix in range is judged and
+      # listed there rather than patched under it, and a new one fails until it is.
+      - name: npm, Lighthouse CI
+        if: ${{ !cancelled() }}
+        working-directory: myvideogamelist.client
+        run: npm run audit:lighthouse
 
   # Every commit reachable from what is being tested, searched for secrets by gitleaks with
   # .gitleaks.toml. For a pull request that is the history of its merge with the base: the commits it
@@ -357,16 +367,17 @@ jobs:
             exit 1
           fi
 
-  # Both images, built as Deploy dev builds them and pushed nowhere, so that what breaks only an image
-  # fails before a merge rather than at the next deploy. vite.config.ts once needed the .NET SDK to
-  # build, which GitHub's runners have and node:24 does not (ADR 0044). And the SSR image installs its
-  # production dependencies alone, so a server that imports a devDependency builds and then fails to
-  # start (ADR 0060): which is why that image is then started and asked for /robots.txt, the path the
-  # balancer's health check asks for. Layers come from the Actions cache that Deploy dev writes on
-  # master, while they still match: a base image that has moved since makes every layer above it
-  # rebuild. CI only reads that cache, so a pull request adds no image layers to it. The builds pull
-  # from Docker Hub, MCR, nuget.org and npm, none of it retried, so re-run a failure once before looking
-  # into it. Deploy dev waits on this as on every job. See ADR 0061.
+  # Both images, built as Deploy dev builds them, less the two build arguments that name the commit
+  # (ADR 0059), and pushed nowhere, so that what breaks only an image fails before a merge rather than
+  # at the next deploy. vite.config.ts once needed the .NET SDK to build, which GitHub's runners have
+  # and node:24 does not (ADR 0044). And the SSR image installs its production dependencies alone, so a
+  # server that imports a devDependency builds and then fails to start (ADR 0060): which is why that
+  # image is then started and asked for /robots.txt, the path the balancer's health check asks for.
+  # Layers come from the Actions cache that Deploy dev writes on master, while they still match: a base
+  # image that has moved since makes every layer above it rebuild. CI only reads that cache, so a pull
+  # request adds no image layers to it. The builds pull from Docker Hub, MCR, nuget.org and npm, none of
+  # it retried, so re-run a failure once before looking into it, on master only for its newest commit
+  # (#339). Deploy dev waits on this as on every job. See ADR 0061.
   images:
     name: Images
     runs-on: ubuntu-latest
@@ -446,6 +457,9 @@ jobs:
   codeql:
     name: CodeQL (${{ matrix.language }})
     runs-on: ubuntu-latest
+    # A hang ends here rather than at the six-hour default, which would hold a master commit's deploy as
+    # long; the slowest leg, C#, takes about three minutes.
+    timeout-minutes: 20
     permissions:
       security-events: write
       actions: read

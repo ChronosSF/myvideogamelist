@@ -96,7 +96,8 @@ npm run e2e          # the browser smoke test: needs `docker compose up -d --wai
                      # `npx playwright install chromium`
 npm run lighthouse   # Lighthouse on five pages of the same build, phone and desktop: needs what
                      # `npm run e2e` does, and IGDB's image host to be reachable
-npm run audit        # npm audit, failing at high and critical
+npm run audit        # npm audit, failing at high and critical; `npm run audit:lighthouse` does the
+                     # same over Lighthouse CI's own lock file
 
 cd ..
 dotnet test MyVideoGameList.Server.Tests/MyVideoGameList.Server.Tests.csproj                     # server unit tests

@@ -55,8 +55,8 @@ keywords = ["password", "pwd="]
     regexes = ['''^spotlightor$''']
     paths = ['''^MyVideoGameList\.Server\.Tests/StoreLinksTests\.cs$''']
 
-    # The Lighthouse audit gives its sign-in script the run's throwaway account as
-    # LIGHTHOUSE_PASSWORD: account.password, a property of the account it registered (ADR 0068). A
+    # The Lighthouse audit gives its sign-in script the password of the run's throwaway account as
+    # LIGHTHOUSE_PASSWORD: account.password, a property of the account it registered (ADR 0068): a
     # reference, of a kind the allowlist of references above does not know.
     [[rules.allowlists]]
     description = "The Lighthouse audit's account's password, handed to its sign-in script by reference"

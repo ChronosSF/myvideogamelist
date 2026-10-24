@@ -13,6 +13,7 @@
     "typecheck": "react-router typegen && tsc -b",
     "lint": "eslint . && node scripts/check-colours.mjs",
     "audit": "node scripts/audit.mjs",
+    "audit:lighthouse": "node scripts/audit.mjs lighthouse",
     "test": "vitest run",
     "test:watch": "vitest",
     "visual": "playwright test -c visual/playwright.config.ts",

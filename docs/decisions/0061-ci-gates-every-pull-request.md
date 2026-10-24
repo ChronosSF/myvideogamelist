@@ -26,7 +26,9 @@ What was measured before deciding:
 - **Both test projects resolved `System.Security.Cryptography.Xml` 10.0.12, and through it
   `System.Security.Cryptography.Pkcs` 10.0.12**: five advisories, fixed in 10.0.13 (#259). A
   vulnerability gate would have been red on its first run.
-- **`npm audit` found nothing** in the client's 410 packages.
+- **`npm audit` found nothing** in the client's 410 packages. By 2026-10-24, when `master` was merged into
+  this record's pull request, two high advisories had been published against packages the client
+  resolves, body-parser's and zod's, and both fixes are taken (§2).
 - **The gitleaks GitHub Action is no longer MIT.** Its README says the licence changed with v2.0.0 to
   one in its `LICENSE.txt`, which the README does not reproduce, under "All Rights Reserved". The
   gitleaks tool itself is MIT, as its release image's `org.opencontainers.image.licenses` label says.
@@ -35,7 +37,8 @@ What was measured before deciding:
   in August, holds that machine's configuration keys. And a test's name,
   `GetStatsAsync_NoPlaythroughs_ReportsNothingRatherThanZeroesWithAPlatform`, matches a GitHub token
   from its "ghs_". The local container's credentials match no default rule, because the generic one
-  wants ten characters or more.
+  wants ten characters or more. By that merge of 2026-10-24 `master`'s history had added a third, an
+  itch.io page's access key in a test, which §3 allows.
 
 ## Decision
 
@@ -70,9 +73,10 @@ the two ask for.
 
 ### 2. Known vulnerabilities fail a job of their own
 
-**Dependency audit** restores every .NET project and audits the client's lock file. A job of its own,
-so that an advisory published overnight turns one check red and leaves the build and test jobs saying
-what they say. Each step runs even when an earlier one fails, so one run reports every finding.
+**Dependency audit** restores every .NET project and audits the client's lock file and Lighthouse CI's.
+A job of its own, so that an advisory published overnight turns one check red and leaves the build and
+test jobs saying what they say. Each step runs even when an earlier one fails, so one run reports every
+finding.
 
 **NuGet's own audit, at restore.** `Directory.Build.props` states the .NET 10 SDK's defaults, audit on,
 mode `all`, level `low`, so an SDK whose defaults differ cannot narrow it without a change there; the
@@ -86,8 +90,10 @@ advisory data and would otherwise pass as clean.
 - **Rejected: `dotnet list package --vulnerable`**, which exits 0 whatever it finds. **Rejected:
   `WarningsAsErrors` for CI**, which fails the same way but in every job that restores the package,
   several checks red for one advisory and their build and test results lost with them.
-- **The two pins move to 10.0.13**, which takes `Pkcs` to 10.0.13 with it. That is #284's change for
-  the unit project, which this makes redundant; #281 bumps the framework packages and is unaffected.
+- **The two pins are at 10.0.13**, which takes `Pkcs` to 10.0.13 with it. This record's pull request
+  moved them, and `master` had too by the time the two met, through Dependabot's grouped #360; #284 and
+  #281, which made parts of the same change, were closed unmerged. What the pull request leaves in the
+  two project files is the comment saying why each pin is there.
 - **A finding with a fixed version is answered by taking it**: a parent bumped, or the package pinned
   where it resolves. **A finding with none**, judged not to reach anything here, is suppressed by its
   advisory's URL with a `NuGetAuditSuppress` item in `Directory.Build.props`, with the reason and the
@@ -110,6 +116,14 @@ nothing: `npm audit` reads `package-lock.json` alone.
   entry past its day fails, so does one that matches nothing found or lacks a reason or a day, and so
   does an audit that produced no report. Each was seen to, against a lock file holding lodash 4.17.20
   and minimist 1.2.5.
+- **Lighthouse CI's lock file has a step and a list of its own.** `npm run audit:lighthouse` runs the
+  same script over `lighthouse/package-lock.json` (0068 §9), a tree that installs wherever
+  `npm run lighthouse` runs as well as in its job. One rule differs: 0068 does not override a tool's
+  dependencies under it, so a fix is taken only where its dependents' ranges allow, and an advisory
+  whose fix lies outside them is listed with why the audit cannot reach it. On 2026-10-24 that took
+  body-parser 1.20.9 within express's range and listed five highs, basic-ftp's, extract-zip's two,
+  tmp's and zod 3's, each with its reason and a day three months on. An unlisted high there fails the
+  job as it does in the client, and so does an entry that matches nothing, both seen to on a copy.
 
 ### 3. Every commit is scanned for secrets, by gitleaks
 
@@ -163,17 +177,21 @@ And it allows seven findings, each by exactly what it is:
   throwaway account's password by reference (0068), in that one file.
 
 Planted fakes, 48 lines each marked to be found or passed, came out as marked, and the four rules find
-nothing in the history. A second throwaway run (§6) took two of the allowlists out and found exactly
-what they allow. The itch.io keys, the avatar address and the audit's reference came in with master's
-history when this record's pull request was brought up to date, on 2026-10-24. Each is allowed as one
-value in one file, and 13 planted lines showed the same value in another file, and another value in the
-same file, still found. This record describes those values rather than quoting them, because the scan
-reads it too and allows each value only where it is.
+nothing in the history that the list above does not allow. A second throwaway run (§6) took two of the
+allowlists out and found exactly what they allow. The itch.io keys, the avatar address and the audit's
+reference came in with `master`'s history when this record's pull request was brought up to date, on
+2026-10-24. Each is allowed as one value in one file. Thirteen planted lines checked that: each value
+passed in its own file, and the same value in another file, or another value in the same file, was
+still found. This record describes those values rather than quoting them, because the scan reads it
+too and allows each value only where it is.
 
 **Not covered:** `Password = value` with spaces and a lower-case `_password:`, which are how C# assigns
 a property and TypeScript names a parameter; binary files; a secret with nothing around it to recognise
-it by; and any secret that starts with "true", contains "false" or ends with "null", which a global
-allowlist that comes with gitleaks' default rules passes, and which extending them cannot remove.
+it by; any secret that starts with "true", contains "false" or ends with "null", which a global
+allowlist that comes with gitleaks' default rules passes, and which extending them cannot remove; and
+anything in a path that the same allowlist skips, among them `.gitleaks.toml` itself,
+`package-lock.json` and `node_modules/`, at any depth. So no value written in the configuration is ever
+checked, and each allowlist entry is a person's word that its value is not a secret.
 
 ### 4. Both images are built, and the SSR one is started
 
@@ -218,19 +236,21 @@ then stopped before it answered.
 ### 6. What it costs
 
 Measured on #332, a throwaway draft of this branch against `master`: the run took 2:34, as long as
-CodeQL's C# job, which is still the slowest. The new jobs took 24 s (the audit), 10 s (the scan, of
+CodeQL's C# job, then the slowest. The new jobs took 24 s (the audit), 10 s (the scan, of
 204 commits in 2.4 s) and 1:52 (the images, close to cold, since the base images had moved), and the
 format steps 20 s and 3 s. About 2.8 runner-minutes more a run, free on a public repository. A second
 throwaway, #335, broke one thing for each gate; each failed in its own job and named its cause, and
 every other job passed. The runners' SDK was 10.0.402. With the review's changes, #342's own run took
-2:20, and the scan read 256 commits, merges' own changes included, in 2.2 s.
+2:20, and the scan read 256 commits, merges' own changes included, in 2.2 s. Since 0068's Lighthouse
+job joined the workflow it is the slowest by far: #342's run of 2026-10-24 (40089095509), after
+`master` was merged in, took 8:29, Lighthouse 8:07 of it and CodeQL's C# job 2:48.
 
 ### 7. What the owner turns on
 
 **A ruleset on `master`** with every job above as a required check, strict, with no bypass: Client,
-Server, Server integration, Browser smoke test, Lighthouse (0068), Infrastructure, Dependency audit,
-Secret scan, Images, the three CodeQL jobs, and the code-scanning result GitHub posts as `CodeQL`. No bypass means the
-owner's own pushes go through a pull request too.
+Server, Server integration, Browser smoke test, Lighthouse, Infrastructure, Dependency audit, Secret
+scan, Images, the three CodeQL jobs, and the code-scanning result GitHub posts as `CodeQL`. Lighthouse's
+job is 0068's. No bypass means the owner's own pushes go through a pull request too.
 
 - **Strict** means a pull request must be current with `master` before it merges. It is what makes a
   stacked pull request's checks mean anything: when its base merges, GitHub retargets it to `master`,
@@ -239,6 +259,8 @@ owner's own pushes go through a pull request too.
 - **Its cost** is that each merge sends the others back to update and run again. A repository owned by
   a person has no merge queue, so the way to keep that cheap is to update only the pull request about to
   merge. A run is twelve jobs since 0068 added Lighthouse's, and GitHub's free plan runs twenty at once.
+  Each update costs a run's wall time, about eight and a half minutes since Lighthouse's job, which
+  takes nearly all of it (§6).
 
 **GitHub's own secret scanning and push protection.** On a public repository GitHub already tells a
 provider about a leaked token of theirs; turning secret scanning on adds alerts the owner can see, and
@@ -256,8 +278,10 @@ The pull request that built this record gives the exact commands for both.
 - **The images job pulls `node:24` and `node:24-slim` from Docker Hub without signing in**, as 0057's
   and 0060's jobs pull theirs, so the anonymous pull limit those records name reaches it too, and so
   does their remedy, a login before the builds.
-- **A committed credential needs an allowlist entry** naming the value and the file, with the reason.
-  A new local-only credential is a decision to make in `.gitleaks.toml`, not a rule to switch off.
+- **A committed credential, or a test fixture that looks like one, needs an allowlist entry** naming
+  the value and the file, with the reason, as the itch.io keys, the avatar address and the audit's
+  reference have. A new local-only credential is a decision to make in `.gitleaks.toml`, not a rule to
+  switch off.
 - **Every gate reads its settings from the commit it tests**, `.editorconfig`, `Directory.Build.props`,
   `audit.mjs`'s list and `.gitleaks.toml` alike, so a pull request can loosen one, in its own diff,
   where review sees it. The scan guards against a mistake, not an author who means to publish a secret.
@@ -268,10 +292,9 @@ The pull request that built this record gives the exact commands for both.
   has whatever is installed; 10.0.402 and 10.0.303 agree on every file today. An SDK whose formatter
   disagrees turns every pull request red at once, and the answer is a `dotnet format` commit, or
   pinning the SDK in a `global.json`, which every job and every machine would then follow.
-- **A new lock file is not audited until it has a step**, as `myvideogamelist.client/package-lock.json`
-  has. Lighthouse CI's, `lighthouse/package-lock.json`, has none on purpose: it is a tool only its own
-  job runs, no image holds it, and 0068 §9 says why its advisories stay out of the client's audit. The
-  CDK CLI that Deploy dev installs has no lock file at all (#339).
+- **A new lock file is not audited until it has a step**, as the client's and Lighthouse CI's have,
+  each against its own list in `audit.mjs`. The CDK CLI that Deploy dev installs has no lock file at
+  all (#339).
 - **Pull requests merged before this one were never format-checked.** This one's own check runs over
   them once they land, so it merges last, after a `dotnet format` commit if its check asks for one;
   from then on each pull request passes the check itself.
