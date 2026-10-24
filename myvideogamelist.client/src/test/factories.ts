@@ -12,8 +12,9 @@ import {
     type ImportSkippedRow,
 } from '@/types/import';
 import type { ListEntryDto } from '@/types/list';
+import type { CommunityScores } from '@/types/community';
 import type { TagDto } from '@/types/tag';
-import type { EntryDetailDto, PlaythroughDto, ReviewDto } from '@/types/playthrough';
+import type { CommunityTimes, EntryDetailDto, PlaythroughDto, PlaythroughTypeKey, ReviewDto } from '@/types/playthrough';
 import type { CalendarEvents, ConnectedRelease, ReleaseEntry, ReleaseReason } from '@/types/releases';
 import type { HistoryPage, PlaythroughDateItem, ScoreItem, StatusItem } from '@/types/history';
 
@@ -296,6 +297,27 @@ export function releaseEntry(starts: string, releases: ConnectedRelease[] = [con
 /** What `/api/calendar/events` answers: nothing, unless a test says otherwise. */
 export function calendarEvents(overrides: Partial<CalendarEvents> = {}): CalendarEvents {
     return { curated: [], showcases: [], degraded: false, ...overrides };
+}
+
+/** What `/api/games/{id}/community-scores` answers: nobody's scores and nobody tracking, unless a test says otherwise. */
+export function communityScores(overrides: Partial<CommunityScores> = {}): CommunityScores {
+    return { scored: 0, mean: null, distribution: Array<number>(10).fill(0), tracked: 0, ...overrides };
+}
+
+/**
+ * What `/api/games/{id}/community-times` answers: always all three tiers, in effort order, with no
+ * runs in any of them but the ones a test names.
+ */
+export function communityTimes(
+    tiers: Partial<Record<PlaythroughTypeKey, { samples: number; medianMinutes: number | null }>> = {},
+): CommunityTimes {
+    return {
+        buckets: (['rushed', 'normally', 'completionist'] as const).map(type => ({
+            type,
+            samples: tiers[type]?.samples ?? 0,
+            medianMinutes: tiers[type]?.medianMinutes ?? null,
+        })),
+    };
 }
 
 /** A move between lists, from Backlog to Playing on the game with id 1 unless a test says otherwise. */

@@ -7,7 +7,7 @@ import type { CommunityScores, GameReview, GameReviews } from '@/types/community
 
 /** A scores document told apart by how many members scored, which is all these tests read. */
 function scores(scored: number): CommunityScores {
-    return { scored, mean: scored === 0 ? null : 8, distribution: [0, 0, 0, 0, 0, 0, 0, scored, 0, 0] };
+    return { scored, mean: scored === 0 ? null : 8, distribution: [0, 0, 0, 0, 0, 0, 0, scored, 0, 0], tracked: scored };
 }
 
 function review(userName: string): GameReview {

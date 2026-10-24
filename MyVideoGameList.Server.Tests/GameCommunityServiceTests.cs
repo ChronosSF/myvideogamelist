@@ -242,6 +242,63 @@ public class GameCommunityServiceTests
         Assert.Equal(1, scores.Distribution.Sum());
     }
 
+    // ── How many track it ─────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task GetScoresAsync_MembersWithTheGameInAList_AreCountedAsTracking()
+    {
+        using var db = NewDb();
+        AddEntry(db, AddAccount(db, "alex"), status: ListStatusKeys.Playing);
+        AddEntry(db, AddAccount(db, "sam"), score: 7, status: ListStatusKeys.Finished);
+        AddEntry(db, AddAccount(db, "nadia"), status: ListStatusKeys.Backlog);
+
+        var scores = await NewService(db).GetScoresAsync(GameId);
+
+        // Tracking needs no score: two of the three have none.
+        Assert.Equal(3, scores.Tracked);
+        Assert.Equal(1, scores.Scored);
+    }
+
+    [Fact]
+    public async Task GetScoresAsync_EntryInNoList_IsNotCountedAsTracking()
+    {
+        // The entry outlives leaving every list, and keeps its score (ADR 0019). Its score still
+        // counts; the game is no longer tracked, which is what a profile's statistics say too.
+        using var db = NewDb();
+        AddEntry(db, AddAccount(db, "alex"), score: 4, status: null);
+        AddEntry(db, AddAccount(db, "sam"), status: ListStatusKeys.Dropped);
+
+        var scores = await NewService(db).GetScoresAsync(GameId);
+
+        Assert.Equal(1, scores.Tracked);
+        Assert.Equal(1, scores.Scored);
+    }
+
+    [Fact]
+    public async Task GetScoresAsync_TrackingFromAPrivateProfile_CountsForThisGameAlone()
+    {
+        // A count names nobody, so a private profile's library counts as its scores do. Another
+        // game's entry is somebody else's figure.
+        using var db = NewDb();
+        var alex = AddAccount(db, "alex", ProfileVisibility.Private);
+        AddEntry(db, alex, status: ListStatusKeys.Playing);
+        AddEntry(db, alex, gameId: OtherGameId, status: ListStatusKeys.Playing);
+
+        var scores = await NewService(db).GetScoresAsync(GameId);
+
+        Assert.Equal(1, scores.Tracked);
+    }
+
+    [Fact]
+    public async Task GetScoresAsync_NobodyTracksIt_TrackedIsZero()
+    {
+        using var db = NewDb();
+
+        var scores = await NewService(db).GetScoresAsync(GameId);
+
+        Assert.Equal(0, scores.Tracked);
+    }
+
     // ── The reviews: which cross the gate ─────────────────────────────────────────────
 
     [Fact]
