@@ -1,6 +1,6 @@
 # 0020. List view preferences live in the database, and sorting happens on the client
 
-**Status:** Implemented
+**Status:** Implemented; the title tie-break amended for the hand order by [0054](0054-a-hand-arranged-order-is-a-sparse-position.md)
 
 ## Context
 

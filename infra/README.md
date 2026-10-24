@@ -26,6 +26,35 @@ The long-lived stacks are deployed from a developer machine; the pipeline deploy
 origin-facing prefix list and nothing else, so there is no way to reach the environment except
 through the distribution, and no parameter that would open one.
 
+## Production, until #98: the holding page
+
+`-c env=prod` synthesises one stack and none of the five above: `Mvgl-prod-Holding`, whole in
+`us-east-1`, in the production account. It serves `holding/site` at `myvideogamelist.net` from a
+private bucket through a distribution, and sends `www` to the apex (ADR 0066).
+
+```bash
+cdk deploy Mvgl-prod-Holding --profile mvgl-prod -c env=prod
+```
+
+- **The account needs a CDK bootstrap in `us-east-1` first, once.** Run it from the repository root,
+  not from here: the CLI builds the app wherever it finds a `cdk.json`, and the app refuses to build
+  without an `env`.
+
+  ```bash
+  cdk bootstrap "aws://$(aws sts get-caller-identity --profile mvgl-prod --query Account --output text)/us-east-1" --profile mvgl-prod
+  ```
+
+- **It looks the domain's zone up, and never creates one.** The zone was made by hand in that
+  account and holds the mail records and dev's delegation. The first synthesis with the profile
+  signed in writes the answer into `cdk.context.json`; commit it, as dev's lookups are.
+- **A change to the page is a change to `holding/site` and the same command.** The deployment
+  replaces the bucket's contents, then invalidates the distribution and waits for it.
+- **The Search Console record is in the zone by hand, never in the stack.** The stack is destroyed
+  when production takes the domain, and the record has to outlive it.
+- **Production's App stack cannot deploy with the domain while this stack holds it.** CloudFront
+  gives an alternate domain name to one distribution at a time, and the records would collide too:
+  destroy this stack first. The destroy empties the bucket itself.
+
 ## The pipeline
 
 `.github/workflows/deploy-dev.yml` runs after every green CI run of a push to master, and by
@@ -92,6 +121,21 @@ CloudFront section, and `Edge.cs` says it again beside each one. Three things ar
   when the consuming stack deploys: `EdgeCert` in `us-east-1` (its certificate output is new),
   then `Data`, then the credential, then `App`. After that, `resume` and the pipeline need nothing
   but `App`.
+
+- **The API takes a withdrawn profile off the edge itself** (ADR 0058): a profile made private,
+  renamed or deleted, a review on it made private, edited or deleted, or everything recorded about
+  a game deleted. `App` passes it the distribution's id as `CloudFront__DistributionId` and lets
+  the API task role create invalidations on that distribution and do nothing else to it. Because
+  the task definition refers to the distribution, a resume creates the API service only once the
+  distribution exists, and a park deletes the API service before the distribution. Each task sends
+  at most `CloudFront__DailyPathLimit` paths a UTC day (500 unless set), because every path past
+  the account's free thousand a month is paid for. A withdrawal that cannot be invalidated
+  logs its paths, so a stuck one can be sent by hand, each path quoted so the shell leaves its `*`
+  alone:
+
+  ```bash
+  aws cloudfront create-invalidation --profile mvgl-dev --distribution-id <DistributionId output> --paths "/u/<name>*" "/sitemaps/profiles-*"
+  ```
 
 ## Parking and resuming
 

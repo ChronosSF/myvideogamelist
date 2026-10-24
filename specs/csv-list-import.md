@@ -256,7 +256,7 @@ the review screen treats that as the end of the job rather than as something to 
 
 Both are deleted by a scheduled sweep rather than on access, because nobody requests a deletion:
 the user whose rows they are has by construction stopped interacting with them. That is the
-application's only background job, and ADR
+application's only scheduled job, and ADR
 [0038](../docs/decisions/0038-where-scheduled-work-lives.md) records what it owes a fleet running
 several copies of itself.
 
@@ -268,7 +268,7 @@ several copies of itself.
 | C2 | Column mapping table — our field, their column, a live preview of the first three values |
 | C3 | Review screen — virtualised list grouped into auto / ambiguous / unmatched, a bulk "accept all auto", and a per-row candidate picker with cover art |
 | C4 | Progress state while matching runs, resumable — the user can close the tab and come back to the job |
-| C5 | Result summary: imported, skipped, failed, with a downloadable CSV of the rows that did not import, so nothing is silently lost. It also says how many imported games are in no list, since only their own game pages show those |
+| C5 | Result summary: imported and skipped, with a downloadable CSV of the rows that did not import and why, so nothing is silently lost — a row that could not be imported is one of the skipped rather than a third count. It also says how many imported games are in no list, since only their own game pages show those. Imported and skipped count rows, so that together they account for every row in the file; the summary counts the games the imported rows went into, and says how many rows that was whenever two of them named one game |
 | C6 | Empty and error states in the pattern the lists page already uses (roadmap Tier 2) |
 | C7 | One question for every row played without an outcome (§3.2): which list they all go into, no list by default, changeable until the commit |
 

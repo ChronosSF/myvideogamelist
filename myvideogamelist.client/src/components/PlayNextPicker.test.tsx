@@ -3,6 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { PlayNextPicker } from '@/components/PlayNextPicker';
+import type { FavouritesContextValue } from '@/contexts/FavouritesContext';
 import { DEFAULT_SORT } from '@/lib/listSort';
 import { emptyLists, LIST_NAMES, type ListEntryDto, type ListId } from '@/types/list';
 import { entry } from '@/test/factories';
@@ -42,6 +43,14 @@ const listsValue = {
 
 vi.mock('@/hooks/useLists', () => ({ useLists: () => listsValue }));
 
+/** The reader's favourites, as far as the rosette reads them. Hoisted and handed back whole, as above. */
+const favoured = new Set<number>();
+const favourites = {
+    isFavourite: (gameId: number) => favoured.has(gameId),
+} as unknown as FavouritesContextValue;
+
+vi.mock('@/hooks/useFavourites', () => ({ useFavourites: () => favourites }));
+
 const HADES = entry({ game: { id: 1, title: 'Hades' } });
 const CELESTE = entry({ game: { id: 2, title: 'Celeste' } });
 const OUTER_WILDS = entry({ game: { id: 3, title: 'Outer Wilds' } });
@@ -64,6 +73,7 @@ beforeEach(() => {
     listsValue.addToList.mockResolvedValue(undefined);
     // The first draw lands on the first game unless a test says otherwise.
     vi.spyOn(Math, 'random').mockReturnValue(0);
+    favoured.clear();
 });
 
 afterEach(() => vi.restoreAllMocks());
@@ -176,5 +186,26 @@ describe('PlayNextPicker with nothing to pick', () => {
 
         expect(screen.getByText('Your backlog could not be loaded just now.')).toBeInTheDocument();
         expect(screen.queryByText(/your backlog is empty/i)).not.toBeInTheDocument();
+    });
+});
+
+describe('PlayNextPicker favourites', () => {
+    it('says so when the game it picked is one of the reader\'s favourites', () => {
+        backlog([HADES]);
+        favoured.add(HADES.game.id);
+        render(picker());
+
+        expect(screen.getByRole('img', { name: 'One of your favourites' })).toBeInTheDocument();
+        expect(pickedTitle()).toBe('Hades');
+        // Read whole when it changes, so a reroll or the favourites arriving late is heard with the
+        // game it is about rather than as "One of your favourites" alone.
+        expect(screen.getByRole('link', { name: 'Hades' }).closest('[aria-live]')).toHaveAttribute('aria-atomic', 'true');
+    });
+
+    it('marks nothing on a game that is not one', () => {
+        backlog([HADES]);
+        render(picker());
+
+        expect(screen.queryByRole('img', { name: 'One of your favourites' })).not.toBeInTheDocument();
     });
 });
