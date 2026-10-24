@@ -34,6 +34,8 @@ public record UserDataExportDto(
     IReadOnlyList<EventExportDto> Events,
     IReadOnlyList<PlaythroughExportDto> Playthroughs,
     IReadOnlyList<ReviewExportDto> Reviews,
+    IReadOnlyList<TagExportDto> Tags,
+    IReadOnlyList<EntryTagExportDto> EntryTags,
     IReadOnlyList<WishlistExportDto> Wishlist,
     IReadOnlyList<FavouriteExportDto> Favourites,
     IReadOnlyList<ListSortExportDto> ListSortPreferences,
@@ -186,6 +188,24 @@ public record ReviewExportDto(
     string Visibility,
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt);
+
+/// <summary>
+/// One tag the user made, whether or not any game carries it now.
+/// </summary>
+/// <remarks>
+/// No id: it is an internal surrogate key with no meaning outside this database, which is why the
+/// entry's own <c>Id</c> is left out too. The name is the key instead — unique per account without
+/// regard to case — so <see cref="EntryTagExportDto.Tag"/> can name it, as a status is named by its key
+/// rather than its seeded id (ADR 0024 §4, ADR 0065).
+/// </remarks>
+public record TagExportDto(string Name, DateTimeOffset CreatedAt);
+
+/// <summary>
+/// One tag on one game. <c>AddedAt</c> is the link's entire history by design — a tag is not a status
+/// and writes no events (ADR 0065).
+/// </summary>
+/// <param name="Tag">The tag's name, exactly as it appears in <see cref="UserDataExportDto.Tags"/>.</param>
+public record EntryTagExportDto(int GameId, string Tag, DateTimeOffset AddedAt);
 
 /// <summary>
 /// One wishlisted game. <c>AddedAt</c> is its entire history by design — the wishlist is an axis of

@@ -3,6 +3,9 @@ import { Link } from 'react-router';
 import { GameCard } from '@/components/GameCard';
 import { ListTable } from '@/components/ListTable';
 import { ListToolbar } from '@/components/ListToolbar';
+import { ListTagFilter } from '@/components/ListTagFilter';
+import { TagChips } from '@/components/TagChips';
+import { useListTagFilter } from '@/hooks/useListTagFilter';
 import { PageHeader } from '@/components/PageHeader';
 import { ReorderAnnouncer } from '@/components/ReorderAnnouncer';
 import { ReorderHandle } from '@/components/ReorderHandle';
@@ -57,6 +60,9 @@ export function ListsPage() {
     // selection means "everything", so the filter starts inert.
     const [platformIds, setPlatformIds] = useState<number[]>([]);
 
+    // By tag as well, ticks and all in a hook of its own (ADR 0065).
+    const tagFilter = useListTagFilter(lists, user?.id ?? null);
+
     const entries = lists[activeTab];
     const sort = sortFor(activeTab);
 
@@ -78,19 +84,25 @@ export function ListsPage() {
         return [...seen.values()].sort((a, b) => a.name.localeCompare(b.name));
     }, [lists]);
 
+    const { matches: matchesTags } = tagFilter;
     const visible = useMemo(() => {
         const filtered = platformIds.length === 0
             ? entries
             : entries.filter(entry => entry.game.platforms.some(p => platformIds.includes(p.id)));
-        return sortEntries(filtered, sort);
-    }, [entries, platformIds, sort]);
+        return sortEntries(filtered.filter(matchesTags), sort);
+    }, [entries, platformIds, sort, matchesTags]);
+
+    const clearFilters = () => {
+        setPlatformIds([]);
+        tagFilter.setSelected([]);
+    };
 
     // The hand order, where this list offers one. It can be rearranged only when every game in it is
     // on screen: a game dropped between two that a filter has left showing would land among games
     // the user cannot see, in an order they never chose.
     const offerManual = HAND_ORDERED_LISTS.includes(activeTab);
     const manual = sort.key === MANUAL_SORT.key;
-    const arranging = manual && platformIds.length === 0;
+    const arranging = manual && platformIds.length === 0 && !tagFilter.active;
 
     const byId = useMemo(() => new Map(visible.map(entry => [entry.game.id, entry])), [visible]);
     const reorder = useReorder({
@@ -193,14 +205,25 @@ export function ListsPage() {
                         platforms={platforms}
                         selectedPlatformIds={platformIds}
                         onPlatformsChange={setPlatformIds}
-                    />
+                    >
+                        <ListTagFilter
+                            tags={tagFilter.offered}
+                            selected={tagFilter.selected}
+                            onChange={tagFilter.setSelected}
+                            countFor={tagId => tagFilter.countIn(entries, tagId)}
+                            shown={visible.length}
+                            total={entries.length}
+                        />
+                    </ListToolbar>
                 )}
 
                 {signedIn && !loading && !error && entries.length > 0 && manual && (
                     <p className="lists-order-hint">
                         {arranging
                             ? 'Drag a game by its handle to where you mean to play it — or press a handle and then the handle of the game whose place it should take, or pick one up with Space and move it with the arrow keys. Games you have not placed follow, in the order they joined your backlog.'
-                            : 'Clear the platform filter to rearrange your order.'}
+                            : tagFilter.active
+                                ? 'Clear the filters to rearrange your order.'
+                                : 'Clear the platform filter to rearrange your order.'}
                     </p>
                 )}
 
@@ -211,14 +234,16 @@ export function ListsPage() {
                 {signedIn && !loading && !error && entries.length > 0 && visible.length === 0 && (
                     <div className="text-center py-16">
                         <p className="text-fg-muted text-sm mb-3">
-                            No games in {nameFor(activeTab)} match the platform filter.
+                            {tagFilter.active
+                                ? `No games in ${nameFor(activeTab)} match the filters.`
+                                : `No games in ${nameFor(activeTab)} match the platform filter.`}
                         </p>
                         <button
                             type="button"
                             className="text-primary-400 text-sm font-semibold hover:underline"
-                            onClick={() => setPlatformIds([])}
+                            onClick={clearFilters}
                         >
-                            Clear the filter
+                            {tagFilter.active ? 'Clear the filters' : 'Clear the filter'}
                         </button>
                     </div>
                 )}
@@ -287,10 +312,14 @@ export function ListsPage() {
                                     rank={index + 1}
                                     variant="overlay"
                                 />
-                                <GameCard game={entry.game} />
+                                <GameCard game={entry.game}>
+                                    <TagChips tags={tagFilter.tagsOf(entry)} max={3} />
+                                </GameCard>
                             </div>
                         ) : (
-                            <GameCard key={entry.game.id} game={entry.game} />
+                            <GameCard key={entry.game.id} game={entry.game}>
+                                <TagChips tags={tagFilter.tagsOf(entry)} max={3} />
+                            </GameCard>
                         ))}
                     </div>
                 )}
@@ -306,6 +335,7 @@ export function ListsPage() {
                         onScoreChange={(gameId, score) => void setScore(gameId, score)}
                         onRemove={gameId => void removeFromList(activeTab, gameId)}
                         reorder={arranging ? reorder : undefined}
+                        tagsFor={tagFilter.tagsOf}
                     />
                 )}
             </div>

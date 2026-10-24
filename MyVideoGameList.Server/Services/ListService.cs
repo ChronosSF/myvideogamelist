@@ -43,10 +43,15 @@ public class ListService(
         var games = (await gameCache.GetGamesAsync(allIds, cancellationToken))
             .ToDictionary(g => g.Id);
 
+        // The ids alone; the names are the client's one read of /api/tags (ADR 0065).
+        var tags = await EntryTagReader.ForListsAsync(db, userId, cancellationToken);
+
         IReadOnlyList<ListEntryDto> EntriesForStatus(short statusId) =>
             entries
                 .Where(e => e.StatusId == statusId)
-                .Select(e => games.TryGetValue(e.GameId, out var game) ? ToDto(e, game) : null)
+                .Select(e => games.TryGetValue(e.GameId, out var game)
+                    ? ToDto(e, game, tags.GetValueOrDefault(e.Id) ?? [])
+                    : null)
                 .OfType<ListEntryDto>()
                 .ToList();
 
@@ -63,7 +68,10 @@ public class ListService(
         if (entry is null) return null;
 
         var game = (await gameCache.GetGamesAsync([gameId], cancellationToken)).FirstOrDefault();
-        return game is null ? null : new EntryDto(ToDto(entry, game), entry.Ownership, entry.Notes);
+        if (game is null) return null;
+
+        var tags = await EntryTagReader.ForEntryAsync(db, userId, entry.Id, cancellationToken);
+        return new EntryDto(ToDto(entry, game, tags), entry.Ownership, entry.Notes);
     }
 
     public async Task SetListEntryAsync(
@@ -280,8 +288,8 @@ public class ListService(
         string userId, int gameId, CancellationToken cancellationToken) =>
         EntryStore.FindOrCreateAsync(db, timeProvider, userId, gameId, cancellationToken);
 
-    private static ListEntryDto ToDto(UserGameEntry entry, GameDto game) =>
-        new(game, entry.Score, entry.AddedAt, entry.StatusChangedAt, entry.Position);
+    private static ListEntryDto ToDto(UserGameEntry entry, GameDto game, IReadOnlyList<int> tagIds) =>
+        new(game, entry.Score, entry.AddedAt, entry.StatusChangedAt, entry.Position, tagIds);
 
     private void AppendEvent(string userId, int gameId, short? from, short? to) =>
         db.UserGameEvents.Add(new UserGameEvent

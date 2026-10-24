@@ -145,9 +145,10 @@ export function tearDownApi() {
 }
 
 /**
- * The five reads `AppProviders` makes once `/api/auth/me` names `user` — the account, its lists as
- * `lists` has them, its list preferences, its wishlist and its favourites — answered as an account
- * that has renamed no list and has nothing on either axis. Spread a test's own routes after it.
+ * The six reads `AppProviders` makes once `/api/auth/me` names `user` — the account, its lists as
+ * `lists` has them, its list preferences, its wishlist, its favourites and its tags — answered as an
+ * account that has renamed no list, has nothing on either axis and has made no tag. Spread a test's
+ * own routes after it.
  *
  * Signed out, the providers read `/api/auth/me` and nothing else.
  */
@@ -158,6 +159,7 @@ export function signedInRoutes(user: UserProfile, lists: Partial<Record<ListId, 
         'GET /api/user/list-preferences': () => json({ view: 'tiles', sorts: {}, names: {} }),
         'GET /api/wishlist': () => json([]),
         'GET /api/favourites': () => json([]),
+        'GET /api/tags': () => json([]),
     };
 }
 

@@ -341,6 +341,13 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   without case, and the names form edits only when `namesStatus` is `ready`: a failed read looks like
   "nothing renamed", and saving from it would reset every list. See `docs/decisions/0031-*`.
 
+- **A tag is on the list row by id, and its name is `/api/tags`'s.** Every reader resolves
+  `ListEntryDto.TagIds` through `useTags`, so a rename changes nothing on the lists and an id it does not
+  know is not drawn. A game's tags are written as the whole set through `ListsProvider.setTags`, under the
+  game's lock — they are on the row a move's rollback restores. Tags are the owner's alone: only the
+  owner's reads may answer with a `ListEntryDto`, and `TagPrivacyTests` walks every anonymous action to keep
+  it so. A tag change writes no event. See `docs/decisions/0065-*`.
+
 - **Every write carries `X-MVGL-Request`, and `apiFetch` is what puts it there.** Cookie
   authentication means a browser attaches the session to a cross-site request as readily as to one
   of ours, so the API refuses any `POST`, `PUT`, `PATCH` or `DELETE` without that header — in local

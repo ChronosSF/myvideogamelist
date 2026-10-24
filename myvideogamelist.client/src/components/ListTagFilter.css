@@ -1,0 +1,160 @@
+/* The platform filter's look, in classes of its own so that this one does not change when that one is
+   restyled. */
+
+.list-tag-filter {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.list-tag-filter-button {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    max-width: 14rem;
+    padding: 0.35rem 0.6rem;
+    font-size: 0.8rem;
+    font-weight: 500;
+    color: var(--color-fg-soft);
+    background: color-mix(in srgb, var(--color-surface) 70%, transparent);
+    border: 1px solid var(--color-line-strong);
+    border-radius: 0.5rem;
+    cursor: pointer;
+    transition: background 0.12s, border-color 0.12s, color 0.12s;
+}
+
+.list-tag-filter-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.list-tag-filter-button:hover {
+    color: var(--color-fg-strong);
+    border-color: color-mix(in srgb, var(--color-primary-500) 60%, transparent);
+}
+
+.list-tag-filter-button.active {
+    color: var(--color-on-primary);
+    background: color-mix(in srgb, var(--color-primary-600) 85%, transparent);
+    border-color: color-mix(in srgb, var(--color-primary-600) 90%, transparent);
+}
+
+.list-tag-filter-button:focus-visible,
+.list-tag-filter-head button:focus-visible,
+.list-tag-filter-panel input:focus-visible {
+    outline: 2px solid var(--color-focus);
+    outline-offset: 2px;
+}
+
+.list-tag-filter-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 20;
+}
+
+.list-tag-filter-panel {
+    position: absolute;
+    top: calc(100% + 0.4rem);
+    left: 0;
+    z-index: 21;
+    display: flex;
+    flex-direction: column;
+    min-width: 15rem;
+    max-width: min(20rem, calc(100vw - 2rem));
+    /* Only the checkboxes scroll: the heading and the note saying nothing is saved stay in view. */
+    max-height: 22rem;
+    overflow: hidden;
+    padding: 0.6rem;
+    background: var(--color-page);
+    border: 1px solid var(--color-line-strong);
+    border-radius: 0.6rem;
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.45);
+}
+
+/* Opened from the button's right edge, when its left edge is too near the right of a narrow screen. */
+.list-tag-filter-panel.align-end {
+    right: 0;
+    left: auto;
+}
+
+.list-tag-filter-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 0 0.25rem 0.45rem;
+    font-size: 0.68rem;
+    font-weight: 600;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: var(--color-fg-faint);
+    border-bottom: 1px solid var(--color-line);
+}
+
+.list-tag-filter-head button {
+    font-size: 0.68rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    color: var(--color-primary-400);
+    text-transform: none;
+    background: none;
+    border: none;
+    cursor: pointer;
+}
+
+.list-tag-filter-panel ul {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: 0.1rem;
+    min-height: 0;
+    overflow-y: auto;
+    margin: 0.35rem 0 0;
+    padding: 0;
+    list-style: none;
+}
+
+.list-tag-filter-panel label {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.3rem 0.25rem;
+    font-size: 0.82rem;
+    color: var(--color-fg-soft);
+    border-radius: 0.35rem;
+    cursor: pointer;
+}
+
+.list-tag-filter-panel label:hover {
+    background: color-mix(in srgb, var(--color-raised) 60%, transparent);
+}
+
+.list-tag-filter-panel input {
+    flex-shrink: 0;
+    width: 0.95rem;
+    height: 0.95rem;
+    cursor: pointer;
+}
+
+.list-tag-filter-name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--color-tag-300);
+}
+
+.list-tag-filter-count {
+    flex-shrink: 0;
+    font-size: 0.72rem;
+    color: var(--color-fg-muted);
+}
+
+.list-tag-filter-note {
+    margin: 0.5rem 0.25rem 0;
+    font-size: 0.68rem;
+    line-height: 1.4;
+    color: var(--color-fg-faint);
+}

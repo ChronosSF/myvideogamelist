@@ -8,6 +8,7 @@ import { AccountIdentityCard } from '@/components/AccountIdentityCard';
 import { AccountDataCard } from '@/components/AccountDataCard';
 import { ProfileDetailsCard } from '@/components/ProfileDetailsCard';
 import { ListNamesCard } from '@/components/ListNamesCard';
+import { TagsCard } from '@/components/TagsCard';
 import { PageHeader } from '@/components/PageHeader';
 import { PRIVATE_NO_STORE } from '@/lib/cache';
 import { NOINDEX } from '@/lib/seo';
@@ -179,6 +180,10 @@ export function UserPage() {
                         {/* First, because it changes how the site reads to this person and to
                             nobody else. */}
                         <ListNamesCard />
+
+                        {/* Beside the list names: both are words the owner chose that only the owner
+                            sees. */}
+                        <TagsCard />
 
                         {/* Here rather than beside the export in "Your data", which is the
                             section holding the one thing that cannot be undone — an import is
