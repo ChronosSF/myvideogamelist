@@ -1,18 +1,22 @@
 import { Link, useLoaderData } from 'react-router';
 import type { Route } from './+types/GamePage';
-import { apiUrl } from '@/lib/api';
-import { CACHE_GAME, CACHE_NOT_FOUND, PRIVATE_NO_STORE } from '@/lib/cache';
+import { CACHE_GAME, CACHE_NOT_FOUND } from '@/lib/cache';
+import { loaderFetch, upstreamFailure } from '@/lib/trace.server';
 import type { GameDto } from '@/types/game';
 import { useAuth } from '@/hooks/useAuth';
+import { useFavourites } from '@/hooks/useFavourites';
 import { useGameCommunity } from '@/hooks/useGameCommunity';
 import { GameNewsPanel } from '@/components/GameNewsPanel';
 import { GameUserPanel } from '@/components/GameUserPanel';
 import { GameCommunity } from '@/components/GameCommunity';
 import { CompletionTimes } from '@/components/CompletionTimes';
+import { parseReleaseDate } from '@/lib/releaseDate';
 import { SectionHeading } from '@/components/SectionHeading';
 import { GameRefRail } from '@/components/GameRefRail';
 import { MultiplayerSummary } from '@/components/MultiplayerSummary';
+import { multiplayerSummary } from '@/lib/multiplayer';
 import { ScreenshotGallery } from '@/components/ScreenshotGallery';
+import { StoreLinks } from '@/components/StoreLinks';
 import { TrailerPlayer } from '@/components/TrailerPlayer';
 import { formatCount } from '@/lib/format';
 import { pageMeta, siteConfig } from '@/lib/seo';
@@ -33,7 +37,7 @@ function InfoChip({ label }: { label: string }) {
  * empty shell. A missing or malformed id throws a 404 Response, which the root
  * ErrorBoundary renders and which returns a genuine 404 status.
  */
-export async function loader({ params }: Route.LoaderArgs) {
+export async function loader({ params, context }: Route.LoaderArgs) {
     const id = Number(params.id);
 
     // A thrown Response carries its own headers and bypasses the `headers` export below, so the
@@ -47,15 +51,11 @@ export async function loader({ params }: Route.LoaderArgs) {
 
     if (!Number.isInteger(id) || id <= 0) throw notFound();
 
-    const badGateway = () => new Response('Failed to load game.', {
-        status: 502,
-        statusText: 'Bad Gateway',
-        headers: { 'Cache-Control': PRIVATE_NO_STORE },
-    });
+    const badGateway = () => upstreamFailure(context, 'Failed to load game.');
 
     let response: Response;
     try {
-        response = await fetch(apiUrl(`/api/games/${id}`));
+        response = await loaderFetch(context, `/api/games/${id}`);
     } catch {
         // fetch rejects rather than returning !ok when the API is unreachable.
         throw badGateway();
@@ -105,6 +105,10 @@ export function GamePage() {
 
     const { user, loading: authLoading } = useAuth();
 
+    // The reader's own, for the rosette on the related games' covers. Empty in the server render and
+    // until the favourites arrive, so the shared-cached page is the same for everybody (ADR 0064).
+    const { isFavourite } = useFavourites();
+
     // Fetched after hydration and never in the loader — the page is edge-cached for up to a day, and
     // a review its author withdraws must not outlive the withdrawal there (ADR 0028). Called here
     // rather than in the section so the hero's badge and the section share one pair of requests,
@@ -120,9 +124,12 @@ export function GamePage() {
         ? [...new Set([...details.collections, ...details.franchises])]
         : [];
 
-    const releaseYear = game.releaseDate ? new Date(game.releaseDate).getFullYear() : null;
-    const releaseDate = game.releaseDate
-        ? new Date(game.releaseDate).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+    // The day the API names, which `new Date` would read as UTC midnight: the day before, and a
+    // year before on 1 January, for anybody west of Greenwich, and a different day on the server.
+    const released = game.releaseDate ? parseReleaseDate(game.releaseDate) : null;
+    const releaseYear = released?.getFullYear() ?? null;
+    const releaseDate = released
+        ? released.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
         : null;
 
     const youtubeEmbedId = game.trailerUrl
@@ -296,8 +303,14 @@ export function GamePage() {
                             </section>
                         )}
 
+                        {/* Where it is sold, next to what it runs on. Hides itself when IGDB names
+                            no store. */}
+                        <StoreLinks stores={details?.stores ?? []} />
+
                         {/* How to play: solo, together, and with how many. */}
-                        {details && (details.gameModes.length > 0 || details.multiplayerModes) && (
+                        {details && (details.gameModes.length > 0
+                            // And no heading at all when neither the modes nor the summary have anything to say.
+                            || (details.multiplayerModes !== null && multiplayerSummary(details.multiplayerModes) !== null)) && (
                             <section>
                                 <SectionHeading>How to play</SectionHeading>
                                 <div className="space-y-3">
@@ -379,6 +392,7 @@ export function GamePage() {
                                 <GameRefRail
                                     games={[...details.expansions, ...details.dlcs]}
                                     label={`Expansions and DLC for ${game.title}`}
+                                    isFavourite={isFavourite}
                                 />
                             </section>
                         )}
@@ -400,6 +414,7 @@ export function GamePage() {
                                 <GameRefRail
                                     games={details.similarGames}
                                     label={`Games similar to ${game.title}`}
+                                    isFavourite={isFavourite}
                                 />
                             </section>
                         )}

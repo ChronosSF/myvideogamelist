@@ -23,6 +23,7 @@ const auth: AuthContextValue = {
     logout: vi.fn(async () => {}),
     updateUserName: vi.fn(async () => {}),
     updateProfileVisibility: vi.fn(async () => {}),
+    updateProfileDetails: vi.fn(async () => {}),
     deleteAccount: vi.fn(async () => {}),
 };
 
@@ -34,6 +35,11 @@ vi.mock('@/hooks/useAuth', () => ({ useAuth: () => auth }));
  */
 vi.mock('@/components/ProfileStats', () => ({
     ProfileStats: ({ userId }: { userId: string }) => <div>tracking for {userId}</div>,
+}));
+
+/** And the history, which pages through its own endpoint and is tested beside itself. */
+vi.mock('@/components/ProfileHistory', () => ({
+    ProfileHistory: ({ userId }: { userId: string }) => <div>history for {userId}</div>,
 }));
 
 /** Likewise the favourites and the list names, which read providers this page does not mount. */
@@ -104,6 +110,36 @@ describe('UserPage before the account is known', () => {
     });
 });
 
+describe('UserPage once the account is known', () => {
+    it('shows the history under the figures, for the signed-in account', () => {
+        const user = userProfile();
+        authAnswered(user);
+        stubFetch();
+        renderPage();
+
+        const tracking = screen.getByText(`tracking for ${user.id}`);
+        const history = screen.getByText(`history for ${user.id}`);
+        expect(tracking.compareDocumentPosition(history) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    });
+});
+
+describe('UserPage profile details', () => {
+    it('never shows one account\'s half-typed details under another', async () => {
+        // Both accounts have nothing stored, so only the card's key tells their drafts apart: without
+        // it, a display name typed by one would sit, ready to save, under the other's name.
+        const actor = userEvent.setup();
+        stubFetch();
+        authAnswered(userProfile({ id: 'user-1', userName: 'alex' }));
+        const view = renderPage();
+
+        await actor.type(screen.getByLabelText('Display name'), 'Alex Smith');
+        authAnswered(userProfile({ id: 'user-2', userName: 'sam', email: 'sam@test.local' }));
+        view.rerender(<MemoryRouter><UserPage /></MemoryRouter>);
+
+        expect(screen.getByLabelText('Display name')).toHaveValue('');
+    });
+});
+
 describe('UserPage account deletion', () => {
     beforeEach(() => {
         authAnswered(userProfile());
@@ -148,5 +184,21 @@ describe('UserPage account deletion', () => {
         expect(await screen.findByText('Password is incorrect.')).toBeInTheDocument();
         expect(screen.getByRole('dialog', { name: 'Delete your account?' })).toBeInTheDocument();
         expect(screen.queryByText('Your account has been deleted.')).not.toBeInTheDocument();
+    });
+});
+
+describe('UserPage signing out', () => {
+    it('says why under the button when the sign-out does not happen', async () => {
+        // The account is still signed in, so the page stays as it is and says so.
+        authAnswered(userProfile());
+        vi.mocked(auth.logout).mockRejectedValueOnce(new Error('Could not sign you out. Please try again.'));
+        const actor = userEvent.setup();
+        stubFetch();
+        renderPage();
+
+        await actor.click(screen.getByRole('button', { name: 'Sign Out' }));
+
+        expect(await screen.findByRole('alert')).toHaveTextContent('Could not sign you out. Please try again.');
+        expect(screen.getByRole('button', { name: 'Sign Out' })).toBeInTheDocument();
     });
 });

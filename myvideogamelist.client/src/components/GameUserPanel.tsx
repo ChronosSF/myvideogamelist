@@ -106,6 +106,23 @@ export function GameUserPanel({ game, profileVisibility, onCommunityChange }: Ga
     const favourite = favourites.isFavourite(game.id);
     const ready = entryStatus === 'ready';
 
+    // A list move or a score the API refused. The provider puts either back itself, which on its own
+    // reads as a click that did not register, and says why only on the lists page. A move answers
+    // with nothing, so it is checked once the game's lock is released: the game anywhere but where it
+    // was sent means the provider put it back, which it does only when the request failed. Adjusted
+    // during render, as the panel's other reconciliations are.
+    const [move, setMove] = useState<{ to: ListId } | { outOf: ListId } | null>(null);
+    const [listError, setListError] = useState<string | null>(null);
+    const [scoreError, setScoreError] = useState<string | null>(null);
+    if (move !== null && !pending) {
+        setMove(null);
+        if ('to' in move && currentList !== move.to) {
+            setListError(`Could not move this game to ${nameFor(move.to)}. Please try again.`);
+        } else if ('outOf' in move && currentList === move.outOf) {
+            setListError(`Could not take this game out of ${nameFor(move.outOf)}. Please try again.`);
+        }
+    }
+
     useEffect(() => {
         const controller = new AbortController();
 
@@ -144,14 +161,19 @@ export function GameUserPanel({ game, profileVisibility, onCommunityChange }: Ga
     const handleScore = async (next: number | null) => {
         const previous = score;
         setLocalScore(next);
+        setScoreError(null);
         const saved = await setScore(game.id, next);
-        if (saved) onCommunityChange();
-        else setLocalScore(previous);
+        if (saved) {
+            onCommunityChange();
+        } else {
+            setLocalScore(previous);
+            setScoreError('Could not save your score. Please try again.');
+        }
     };
 
     /**
-     * Shown at once and put back if the save fails, as the score is — with a message, unlike the
-     * score's revert: a toggle that goes back on its own reads as a click that did not register.
+     * Shown at once, and put back with a message if the save fails, as the score is: a toggle that
+     * goes back on its own reads as a click that did not register.
      * The provider takes the per-game lock, so no other write to this entry can be out at the time.
      */
     const handleOwnership = async (next: Ownership | null) => {
@@ -194,6 +216,8 @@ export function GameUserPanel({ game, profileVisibility, onCommunityChange }: Ga
         setLocalScore(null);
         setLocalOwnership(null);
         setLocalNotes(null);
+        setListError(null);
+        setScoreError(null);
 
         // The playthroughs and the review go with the entry — the composite foreign key cascades
         // both — so the panel must not go on showing what the server has just discarded.
@@ -331,7 +355,11 @@ export function GameUserPanel({ game, profileVisibility, onCommunityChange }: Ga
 
     const handleListClick = async (listId: ListId) => {
         if (pending) return;
-        if (isInList(listId, game.id)) await removeFromList(listId, game.id);
+        const leaving = isInList(listId, game.id);
+        // The last refusal comes down as this one goes out, so a second is a new alert.
+        setListError(null);
+        setMove(leaving ? { outOf: listId } : { to: listId });
+        if (leaving) await removeFromList(listId, game.id);
         else await addToList(listId, game);
     };
 
@@ -368,6 +396,9 @@ export function GameUserPanel({ game, profileVisibility, onCommunityChange }: Ga
                 </div>
                 {currentList === null && (
                     <p className="game-user-panel-hint">Not in any of your lists.</p>
+                )}
+                {listError !== null && (
+                    <p className="game-user-panel-hint" role="alert">{listError}</p>
                 )}
             </div>
 
@@ -472,6 +503,9 @@ export function GameUserPanel({ game, profileVisibility, onCommunityChange }: Ga
                         Kept whatever list this is in, or none.
                     </span>
                 </div>
+                {scoreError !== null && (
+                    <p className="game-user-panel-hint" role="alert">{scoreError}</p>
+                )}
             </div>
 
             {/* Toggles like the statuses above, so pressing the one that is on clears it — but a

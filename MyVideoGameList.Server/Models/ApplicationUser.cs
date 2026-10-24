@@ -51,6 +51,33 @@ public class ApplicationUser : IdentityUser
     public string ProfileVisibility { get; set; } = Models.ProfileVisibility.Private;
 
     /// <summary>
+    /// The name the account is shown by on its public profile, or null for none. See
+    /// <see cref="DisplayNamePolicy"/>.
+    /// </summary>
+    /// <remarks>
+    /// <b>Not a second namespace</b> (ADR 0027): never unique, never looked up, never in a URL. The
+    /// handle in <see cref="IdentityUser.UserName"/> is what identifies the account, so it is shown
+    /// beside this and never replaced by it.
+    /// </remarks>
+    public string? DisplayName { get; set; }
+
+    /// <summary>
+    /// The address of the account's picture, or null for the handle's initial. See
+    /// <see cref="AvatarUrlPolicy"/>.
+    /// </summary>
+    /// <remarks>
+    /// Stored as given and never fetched by this server: each reader's browser loads it from its
+    /// host, which is why it may only name one of a short list of hosts (ADR 0056).
+    /// </remarks>
+    public string? AvatarUrl { get; set; }
+
+    /// <summary>
+    /// A few lines the account's owner wrote about themselves, as plain text, or null for none. See
+    /// <see cref="BioPolicy"/>.
+    /// </summary>
+    public string? Bio { get; set; }
+
+    /// <summary>
     /// When <see cref="IdentityUser.UserName"/> was last changed, or null if it never has been.
     /// </summary>
     /// <remarks>
@@ -61,4 +88,27 @@ public class ApplicationUser : IdentityUser
     /// is what the cooldown in <c>UserController</c> is measured from.
     /// </remarks>
     public DateTimeOffset? UserNameChangedAt { get; set; }
+
+    /// <summary>
+    /// When the account was created, or null for one created before this was recorded.
+    /// </summary>
+    /// <remarks>
+    /// Stamped by <see cref="Services.UserNameClaimService"/>, which every new account goes through.
+    /// Counted for the admin statistics' sign-ups each week, and never shown one account at a time
+    /// (ADR 0051). In the account's data export with the rest of it.
+    /// </remarks>
+    public DateTimeOffset? CreatedAt { get; set; }
+
+    /// <summary>
+    /// The first moment the account's owner was seen signed in on the last day they were, or null
+    /// before that was recorded.
+    /// </summary>
+    /// <remarks>
+    /// Written at most once a UTC day, by <c>GET /api/auth/me</c>, which the client asks on every page
+    /// it loads (<see cref="Services.AccountActivity"/>). A day is all the admin statistics need —
+    /// seen today, in the last week, in the last month — and anything finer would be a record of
+    /// somebody's every visit that nothing reads. Counted, never shown one account at a time (ADR
+    /// 0051), and in the account's data export.
+    /// </remarks>
+    public DateTimeOffset? LastSeenAt { get; set; }
 }

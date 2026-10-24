@@ -1,5 +1,8 @@
 import { Link } from 'react-router';
 import type { GameDto } from '@/types/game';
+import { useFavourites } from '@/hooks/useFavourites';
+import { FavouriteMark } from './FavouriteMark';
+import { FavouriteWords } from './FavouriteWords';
 
 interface TrendingRailProps {
     games: GameDto[];
@@ -12,11 +15,22 @@ interface TrendingRailProps {
  * because showing a live catalogue is more convincing than describing one (ROADMAP §3.2).
  */
 export function TrendingRail({ games }: TrendingRailProps) {
+    // The reader's own, marked after hydration on a rail that is the same for everybody (ADR 0064).
+    const { isFavourite } = useFavourites();
+
     if (games.length === 0) return null;
 
     return (
         <ul
-            className="flex gap-4 overflow-x-auto pb-4 -mx-4 px-4 sm:mx-0 sm:px-0 snap-x snap-mandatory scroll-smooth"
+            className="relative flex gap-4 overflow-x-auto pb-4 -mx-4 px-4 sm:mx-0 sm:px-0 scroll-px-4 sm:scroll-px-0 snap-x snap-mandatory scroll-smooth"
+            // Positioned, so that the visually hidden words beside a favourite's title are placed inside
+            // it. Placed against the page instead, those of a cover scrolled out of view widened the
+            // page by the rail's overflow, and a phone could scroll it sideways — as the lists' table
+            // and the two-week line once did (ListTable.css, ReleaseLine.css).
+            // Snapped to the gutter below `sm`, where the first card sits. Snapped to the rail's own
+            // edge, that card's snap position was sixteen pixels in, so the rail scrolled itself there
+            // before the first paint — and Chrome counts that as a scroll, which ends the page's LCP
+            // measurement with nothing recorded (issue 315).
             // The rail scrolls independently of the page, so it is a focusable region with a name
             // rather than a silent overflow container a keyboard user cannot reach.
             tabIndex={0}
@@ -46,10 +60,13 @@ export function TrendingRail({ games }: TrendingRailProps) {
                             >
                                 {index + 1}
                             </span>
+
+                            {isFavourite(game.id) && <FavouriteMark variant="cover" />}
                         </div>
 
                         <p className="mt-2 text-sm font-medium text-fg leading-snug line-clamp-2 group-hover:text-primary-400 transition-colors">
                             {game.title}
+                            {isFavourite(game.id) && <FavouriteWords />}
                         </p>
                     </Link>
                 </li>

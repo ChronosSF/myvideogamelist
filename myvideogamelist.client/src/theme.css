@@ -101,7 +101,7 @@
     --color-favourite-400: oklch(70.2% 0.183 293.541); /* The edge of a favourite's mark once the game is one */
     --color-favourite-500: oklch(60.6% 0.25 292.717);  /* The edge of the control that makes a favourite, and the base of its tints */
     --color-favourite-600: oklch(54.1% 0.281 293.009); /* That control under the pointer */
-    --color-favourite-700: oklch(49.1% 0.27 292.581);  /* That control once the game is a favourite */
+    --color-favourite-700: oklch(49.1% 0.27 292.581);  /* That control once the game is a favourite, and the mark on a favourite's cover */
 
     --color-wishlist-600: oklch(59.2% 0.249 0.584);  /* The wishlist's pink, set apart from the statuses' blue: its control under the pointer */
     --color-wishlist-700: oklch(52.5% 0.223 3.958);  /* That control once the game is on the wishlist */

@@ -30,9 +30,19 @@ public class GamesController(
     /// A page of the browse listing, or of a search, with optional filters and an order.
     /// </summary>
     /// <remarks>
-    /// Every filter is a bounded integer checked by attribute, which is what lets the query builder
-    /// interpolate them without escaping. An unknown order is a 400 rather than a quiet fall back to
-    /// the default, so a mistyped link says so. See ADR 0032.
+    /// <para>
+    /// Every filter is checked by attribute — a bounded integer, or a key the query builder holds an
+    /// IGDB id for — which is what lets the builder interpolate them without escaping. An unknown
+    /// order or rating is a 400 rather than a quiet fall back to the default, so a mistyped link says
+    /// so. See ADR 0032.
+    /// </para>
+    /// <para>
+    /// <paramref name="limit"/> cuts the page short; it never changes what is asked of IGDB. The
+    /// service is always asked for a whole page and the first <paramref name="limit"/> games of it
+    /// are returned, so the navbar's typeahead — a search with a small page — lists exactly the
+    /// first games the browse page lists for the same search, and the two share one cache entry:
+    /// pressing Enter after the dropdown has answered costs IGDB nothing.
+    /// </para>
     /// </remarks>
     [HttpGet]
     public async Task<ActionResult<PagedGamesResponse>> GetGames(
@@ -47,14 +57,26 @@ public class GamesController(
             GameSortKeys.Name)] string? sort = null,
         [FromQuery][Range(1, int.MaxValue)] int? platform = null,
         [FromQuery][Range(1, int.MaxValue)] int? genre = null,
+        // A key, as the order is, rather than IGDB's id: it is in URLs people share, and IGDB has
+        // already replaced the fields its age ratings are read from once. The query builder
+        // interpolates the id it holds for the key, never the key itself.
+        [FromQuery][AllowedValues(
+            null,
+            EsrbRatingKeys.EC,
+            EsrbRatingKeys.E,
+            EsrbRatingKeys.E10,
+            EsrbRatingKeys.T,
+            EsrbRatingKeys.M,
+            EsrbRatingKeys.AO)] string? esrb = null,
         // First releases before 1950 are not what anybody browses by year for, and the range keeps
         // the year arithmetic in the query builder well inside DateTimeOffset.
         [FromQuery][Range(1950, 2100)] int? year = null,
-        [FromQuery][Range(1, 100)] int? minScore = null)
+        [FromQuery][Range(1, 100)] int? minScore = null,
+        [FromQuery][Range(1, PageSize)] int limit = PageSize)
     {
-        var browse = new GameBrowseQuery(sort ?? GameSortKeys.Rating, platform, genre, year, minScore);
+        var browse = new GameBrowseQuery(sort ?? GameSortKeys.Rating, platform, genre, year, minScore, esrb);
         var result = await igdbService.GetGamesAsync(offset, PageSize, search, browse, cancellationToken);
-        return Ok(result);
+        return Ok(result.FirstOf(limit));
     }
 
     /// <summary>

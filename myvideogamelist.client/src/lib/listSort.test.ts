@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_SORT, SORT_OPTIONS, sortEntries, sortOption, type SortKey } from '@/lib/listSort';
+import {
+    DEFAULT_SORT,
+    MANUAL_OPTION,
+    MANUAL_SORT,
+    SORT_OPTIONS,
+    sortEntries,
+    sortOption,
+    type SortKey,
+} from '@/lib/listSort';
 import { entry } from '@/test/factories';
 
 /** Titles in the order the comparator produced them, which is what every assertion here checks. */
@@ -183,5 +191,63 @@ describe('the sort catalogue', () => {
     it('falls back to the first option for an unrecognised key', () => {
         // Keys are persisted server-side, so a stale or hand-edited preference must not crash.
         expect(sortOption('nonsense' as SortKey)).toBe(SORT_OPTIONS[0]);
+    });
+
+    it('keeps the hand order out of the options every list offers, and still names it', () => {
+        expect(SORT_OPTIONS.map(option => option.key)).not.toContain('manual');
+        expect(sortOption('manual')).toBe(MANUAL_OPTION);
+        expect(MANUAL_SORT).toEqual({ key: 'manual', descending: false });
+    });
+});
+
+describe('the hand order', () => {
+    /** The titles the hand order puts first to last, which is what each assertion checks. */
+    const byHand = (entries: ReturnType<typeof entry>[], descending = false) =>
+        sortEntries(entries, { key: 'manual', descending }).map(e => e.game.title);
+
+    it('puts placed games first, by position, whatever their dates', () => {
+        const entries = [
+            entry({ game: { id: 1, title: 'Old, placed second' }, position: 2048, addedAt: '2020-01-01T00:00:00Z' }),
+            entry({ game: { id: 2, title: 'Unplaced' }, position: null, addedAt: '2019-01-01T00:00:00Z' }),
+            entry({ game: { id: 3, title: 'New, placed first' }, position: -1024, addedAt: '2026-06-01T00:00:00Z' }),
+        ];
+
+        expect(byHand(entries)).toEqual(['New, placed first', 'Old, placed second', 'Unplaced']);
+    });
+
+    it('queues the unplaced in the order they joined the list, oldest first', () => {
+        // Joined is when the status last changed; an imported game has no such date and falls back
+        // to when it was added. So a game moved into the backlog today waits behind one imported
+        // into it years ago, however old the moved game's entry is.
+        const entries = [
+            entry({ game: { id: 1, title: 'Moved in today' }, addedAt: '2018-01-01T00:00:00Z', statusChangedAt: '2026-10-15T00:00:00Z' }),
+            entry({ game: { id: 2, title: 'Imported' }, addedAt: '2021-03-01T00:00:00Z', statusChangedAt: null }),
+            entry({ game: { id: 3, title: 'Moved in last year' }, addedAt: '2025-01-01T00:00:00Z', statusChangedAt: '2025-02-01T00:00:00Z' }),
+        ];
+
+        expect(byHand(entries)).toEqual(['Imported', 'Moved in last year', 'Moved in today']);
+    });
+
+    it('breaks a tie the same way every time: arrival, then title, then the game', () => {
+        // Two tabs placing two games at one number, or one import landing a shelf at one moment.
+        const at = '2026-01-01T00:00:00Z';
+        const entries = [
+            entry({ game: { id: 9, title: 'Same' }, position: 1024, addedAt: at }),
+            entry({ game: { id: 4, title: 'Same' }, position: 1024, addedAt: at }),
+            entry({ game: { id: 5, title: 'Earlier' }, position: 1024, addedAt: '2025-01-01T00:00:00Z' }),
+            entry({ game: { id: 6, title: 'Alpha' }, position: 1024, addedAt: at }),
+        ];
+
+        expect(sortEntries(entries, MANUAL_SORT).map(e => e.game.id)).toEqual([5, 6, 4, 9]);
+    });
+
+    it('has no direction, so a stored descending changes nothing', () => {
+        const entries = [
+            entry({ game: { id: 1, title: 'Second' }, position: 2 }),
+            entry({ game: { id: 2, title: 'First' }, position: 1 }),
+        ];
+
+        expect(byHand(entries, true)).toEqual(byHand(entries, false));
+        expect(byHand(entries, true)).toEqual(['First', 'Second']);
     });
 });

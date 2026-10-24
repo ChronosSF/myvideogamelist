@@ -1,6 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { useState, type ReactNode } from 'react';
 import { GameUserPanel } from '@/components/GameUserPanel';
 import { ListsContext, type ListsContextValue } from '@/contexts/ListsContext';
 import { WishlistContext, type WishlistContextValue } from '@/contexts/WishlistContext';
@@ -32,6 +33,7 @@ function contextValue(overrides: Partial<ListsContextValue> = {}): ListsContextV
         getListFor: () => null,
         scoreFor: () => null,
         setScore: vi.fn(async () => true),
+        moveInOrder: vi.fn(async () => true),
         setOwnership: vi.fn(async () => true),
         setNotes: vi.fn(async () => true),
         deleteEntry: vi.fn(async () => true),
@@ -70,10 +72,12 @@ function favouritesValue(overrides: Partial<FavouritesContextValue> = {}): Favou
         loading: false,
         error: null,
         mutationError: null,
+        orderError: null,
         isFavourite: () => false,
         isPending: () => false,
         add: vi.fn(async () => true),
         remove: vi.fn(async () => true),
+        moveInOrder: vi.fn(async () => true),
         reload: vi.fn(),
         ...overrides,
     };
@@ -163,6 +167,16 @@ function shownScore(): number | null {
     return checked === undefined ? null : Number((checked as HTMLInputElement).value);
 }
 
+/**
+ * That a button is drawn as a save: in the primary, and not in the red, which is the confirmation's
+ * Delete's alone. jsdom applies no stylesheet, so the fill is asked of the class.
+ */
+function expectDrawnAsSave(name: string) {
+    const button = screen.getByRole('button', { name });
+    expect(button).toHaveClass('primary');
+    expect(button).not.toHaveClass('danger');
+}
+
 /** A `setScore` whose promise the test resolves, so the optimistic state is observable. */
 function deferredSetScore() {
     let settle!: (saved: boolean) => void;
@@ -220,6 +234,87 @@ describe('GameUserPanel list placement', () => {
         await userEvent.click(screen.getByRole('button', { name: 'Playing' }));
 
         expect(ctx.removeFromList).toHaveBeenCalledWith('playing', 1);
+    });
+
+    /**
+     * Lists that move the game at once and hold its lock while the request is out, then keep the
+     * move or put it back, as `ListsProvider` does. The test settles each request.
+     */
+    function renderMovingPanel(from: ListId | null) {
+        let settle!: (saved: boolean) => void;
+
+        function Lists({ children }: { children: ReactNode }) {
+            const [held, setHeld] = useState({ list: from, pending: false });
+            const move = async (to: ListId | null) => {
+                const before = held.list;
+                setHeld({ list: to, pending: true });
+                const saved = await new Promise<boolean>(resolve => { settle = resolve; });
+                setHeld({ list: saved ? to : before, pending: false });
+            };
+            const value = contextValue({
+                isPending: () => held.pending,
+                getListFor: () => held.list,
+                isInList: (listId: ListId) => held.list === listId,
+                addToList: (listId: ListId) => move(listId),
+                removeFromList: () => move(null),
+            });
+            return <ListsContext.Provider value={value}>{children}</ListsContext.Provider>;
+        }
+
+        render(
+            <Lists>
+                <WishlistContext.Provider value={wishlistValue()}>
+                    <FavouritesContext.Provider value={favouritesValue()}>
+                        <GameUserPanel game={CELESTE} profileVisibility="private" onCommunityChange={vi.fn()} />
+                    </FavouritesContext.Provider>
+                </WishlistContext.Provider>
+            </Lists>,
+        );
+        return { finish: (saved: boolean) => act(async () => { settle(saved); }) };
+    }
+
+    it('says so when a move is refused, rather than only putting the game back', async () => {
+        // Put back without a word, a refused move reads as a click that did not register.
+        stubEntryFetch(null, 404);
+        const { finish } = renderMovingPanel('playing');
+        await settled();
+
+        await userEvent.click(screen.getByRole('button', { name: 'Finished' }));
+        expect(screen.getByRole('button', { name: 'Finished' })).toHaveAttribute('aria-pressed', 'true');
+        expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+        await finish(false);
+
+        expect(screen.getByRole('button', { name: 'Playing' })).toHaveAttribute('aria-pressed', 'true');
+        expect(screen.getByRole('alert')).toHaveTextContent('Could not move this game to Finished. Please try again.');
+    });
+
+    it('says so when taking the game out is refused', async () => {
+        stubEntryFetch(null, 404);
+        const { finish } = renderMovingPanel('playing');
+        await settled();
+
+        await userEvent.click(screen.getByRole('button', { name: 'Playing' }));
+        await finish(false);
+
+        expect(screen.getByRole('button', { name: 'Playing' })).toHaveAttribute('aria-pressed', 'true');
+        expect(screen.getByRole('alert')).toHaveTextContent('Could not take this game out of Playing. Please try again.');
+    });
+
+    it('takes the refusal down as the move is tried again, and keeps it down once it is kept', async () => {
+        stubEntryFetch(null, 404);
+        const { finish } = renderMovingPanel(null);
+        await settled();
+
+        await userEvent.click(screen.getByRole('button', { name: 'Backlog' }));
+        await finish(false);
+        expect(screen.getByRole('alert')).toHaveTextContent('Could not move this game to Backlog. Please try again.');
+
+        await userEvent.click(screen.getByRole('button', { name: 'Backlog' }));
+        expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+        await finish(true);
+
+        expect(screen.getByRole('button', { name: 'Backlog' })).toHaveAttribute('aria-pressed', 'true');
+        expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     });
 });
 
@@ -294,6 +389,23 @@ describe('GameUserPanel scoring', () => {
 
         // ...and back to what the server still holds once the save is refused.
         expect(shownScore()).toBe(6);
+    });
+
+    it('says why the score went back, and takes that down once a score saves', async () => {
+        stubEntryFetch(6);
+        const { setScore, finish } = deferredSetScore();
+        renderPanel({ setScore });
+
+        await waitFor(() => expect(shownScore()).toBe(6));
+        await userEvent.click(screen.getByRole('radio', { name: '2 out of 10' }));
+        await finish(false);
+
+        expect(screen.getByRole('alert')).toHaveTextContent('Could not save your score. Please try again.');
+
+        await userEvent.click(screen.getByRole('radio', { name: '4 out of 10' }));
+        await finish(true);
+
+        expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     });
 
     it('keeps the shown score when the save succeeds', async () => {
@@ -471,6 +583,23 @@ describe('GameUserPanel deleting everything', () => {
         await userEvent.click(screen.getByRole('button', { name: 'Delete' }));
 
         await waitFor(() => expect(shownScore()).toBeNull());
+    });
+
+    it('draws only its Delete in red, and only the saves in the primary', async () => {
+        // A save in the red reads as this Delete, and a Cancel or a Delete in the primary reads as a
+        // save. Mid-edit, so that the playthrough form's Cancel is on screen as well.
+        stubEntryFetch(7, 200, [playthrough({ id: 5 })], undefined, review({ id: 3 }));
+        renderPanel();
+
+        await userEvent.click(await screen.findByRole('button', { name: 'Edit playthrough 1' }));
+        await userEvent.click(screen.getByRole('button', { name: /delete my data/i }));
+
+        // Every button, found by role and asked for its class: "no other" has no query of its own.
+        const drawnIn = (fill: string) => screen.getAllByRole('button')
+            .filter(button => button.classList.contains(fill))
+            .map(button => button.textContent);
+        expect(drawnIn('danger')).toEqual(['Delete']);
+        expect(drawnIn('primary')).toEqual(['Save notes', 'Save playthrough', 'Update review']);
     });
 
     it('backs out on cancel without deleting', async () => {
@@ -1033,6 +1162,17 @@ describe('GameUserPanel playthroughs', () => {
         expect(String(fetchMock.mock.calls[1][0])).toBe('/api/entries/1/playthroughs/5');
     });
 
+    it('draws Log playthrough as a save, and Save playthrough while editing', async () => {
+        stubEntryFetch(null, 200, [playthrough({ id: 5, minutesPlayed: 60 })]);
+        renderPanel();
+
+        await userEvent.click(await screen.findByRole('button', { name: 'Edit playthrough 1' }));
+        expectDrawnAsSave('Save playthrough');
+
+        await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+        expectDrawnAsSave('Log playthrough');
+    });
+
     it('backs out of an edit without saving', async () => {
         const fetchMock = stubEntryFetch(null, 200, [playthrough({ id: 5, minutesPlayed: 60 })]);
         renderPanel();
@@ -1160,6 +1300,20 @@ describe('GameUserPanel review', () => {
         });
     });
 
+    it('draws Save review as a save, and Update review once there is one', async () => {
+        stubEntryFetch(null, 200, [], () =>
+            new Response(JSON.stringify(review({ id: 3, body: 'Superb.' })), { status: 200 }));
+        renderPanel();
+        await settled();
+        expectDrawnAsSave('Save review');
+
+        await userEvent.type(screen.getByLabelText('What you thought'), 'Superb.');
+        await userEvent.click(screen.getByRole('button', { name: 'Save review' }));
+
+        await screen.findByRole('button', { name: 'Update review' });
+        expectDrawnAsSave('Update review');
+    });
+
     it('offers to name the playthrough it is about, once there are any', async () => {
         stubEntryFetch(null, 200, [playthrough({ id: 5, type: 'completionist' })]);
         renderPanel();
@@ -1241,6 +1395,32 @@ describe('GameUserPanel review', () => {
         renderPanel();
 
         expect(await screen.findByRole('button', { name: /delete my data/i })).toBeInTheDocument();
+    });
+
+    it.each([
+        ['the last run', [playthrough({ id: 5, type: 'completionist' })]],
+        ['one of two runs', [playthrough({ id: 5, type: 'completionist' }), playthrough({ id: 6, type: 'rushed' })]],
+    ])('names no playthrough once the one it named is deleted, %s', async (_, runs) => {
+        // The server lets go of a deleted run's review (ADR 0025), and refuses a review that names a
+        // run that is gone as not one of yours.
+        const fetchMock = stubEntryFetch(
+            null,
+            200,
+            runs,
+            (_url, init) => init?.method === 'PUT'
+                ? new Response(JSON.stringify(review({ id: 3, ...JSON.parse(String(init.body)) })), { status: 200 })
+                : new Response(null, { status: 204 }),
+            review({ id: 3, body: 'The completionist run.', playthroughId: 5 }));
+        const sent = (method: string) => fetchMock.mock.calls.find(([, init]) => init?.method === method);
+        renderPanel();
+
+        await userEvent.click(await screen.findByRole('button', { name: 'Delete playthrough 1' }));
+        // The run gone from the panel, not only the request sent: the form reads the runs the panel holds.
+        await waitFor(() => expect(screen.queryAllByRole('button', { name: /^Delete playthrough/ })).toHaveLength(runs.length - 1));
+        await userEvent.click(await screen.findByRole('button', { name: 'Update review' }));
+
+        await waitFor(() => expect(sent('PUT')).toBeDefined());
+        expect(JSON.parse(String(sent('PUT')?.[1]?.body))).toMatchObject({ playthroughId: null });
     });
 });
 
@@ -1373,6 +1553,22 @@ describe('GameUserPanel ownership and notes', () => {
         await userEvent.click(screen.getByRole('button', { name: 'Clear notes' }));
 
         expect(ctx.setNotes).toHaveBeenCalledWith(1, null);
+    });
+
+    it('draws Save notes as a save, and Clear notes in neither the primary nor the red', async () => {
+        // Clearing writes what the box says, as any save does, so it is not drawn as the delete;
+        // and it takes the notes away rather than keeping them, so it is not drawn as a save.
+        stubDetail({ notes: 'Old thought.' });
+        renderPanel();
+        await settled();
+        await waitFor(() => expect(notesBox()).toHaveValue('Old thought.'));
+        expectDrawnAsSave('Save notes');
+
+        await userEvent.clear(notesBox());
+
+        const clear = screen.getByRole('button', { name: 'Clear notes' });
+        expect(clear).not.toHaveClass('primary');
+        expect(clear).not.toHaveClass('danger');
     });
 
     it('keeps what was typed and says so when the notes do not save', async () => {

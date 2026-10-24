@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
     EMPTY_BROWSE,
+    ESRB_RATINGS,
     browseFrom,
     browseParams,
     gamesApiPath,
     isFiltered,
+    searchApiPath,
+    searchPagePath,
     yearsFrom,
 } from '@/lib/gameBrowse';
 
@@ -12,8 +15,23 @@ const params = (query: string) => new URLSearchParams(query);
 
 describe('browseFrom', () => {
     it('reads every part of a browse from the query string', () => {
-        expect(browseFrom(params('search=%20zelda%20&sort=newest&platform=130&genre=12&year=2024&minScore=80')))
-            .toEqual({ search: 'zelda', sort: 'newest', platform: 130, genre: 12, year: 2024, minScore: 80 });
+        expect(browseFrom(params('search=%20zelda%20&sort=newest&platform=130&genre=12&year=2024&minScore=80&esrb=m')))
+            .toEqual({ search: 'zelda', sort: 'newest', platform: 130, genre: 12, year: 2024, minScore: 80, esrb: 'm' });
+    });
+
+    it('offers exactly the ESRB keys the API accepts', () => {
+        // The server's EsrbRatingKeys, spelled out: a key offered here that the API refuses turns the
+        // whole page into a 502, and one it accepts that is missing here cannot be chosen.
+        expect(ESRB_RATINGS.map(rating => rating.key)).toEqual(['ec', 'e', 'e10', 't', 'm', 'ao']);
+        for (const { key } of ESRB_RATINGS) expect(browseFrom(params(`esrb=${key}`)).esrb).toBe(key);
+    });
+
+    it('reads anything but a key as no ESRB rating', () => {
+        // Rating Pending is not offered, the badge's own codes are not keys, and nor is IGDB's id: the
+        // API answers each with a 400. An empty value it reads as no rating, as this does.
+        for (const esrb of ['rp', 'M', 'E10%2B', '6', 'bogus', '']) {
+            expect(browseFrom(params(`esrb=${esrb}`)).esrb).toBeNull();
+        }
     });
 
     it('is the plain catalogue for an empty query', () => {
@@ -48,9 +66,16 @@ describe('browseParams', () => {
     });
 
     it('round-trips through browseFrom', () => {
-        const browse = { search: 'hades', sort: 'popular' as const, platform: 6, genre: null, year: 2020, minScore: 90 };
+        const browse = {
+            search: 'hades', sort: 'popular' as const, platform: 6, genre: null, year: 2020, minScore: 90, esrb: 't' as const,
+        };
 
         expect(browseFrom(browseParams(browse))).toEqual(browse);
+    });
+
+    it('puts the ESRB rating in the URL as its key, after the other filters', () => {
+        expect(browseParams({ ...EMPTY_BROWSE, platform: 130, esrb: 'e10' }).toString()).toBe('platform=130&esrb=e10');
+        expect(browseParams({ ...EMPTY_BROWSE, esrb: null }).toString()).toBe('');
     });
 });
 
@@ -61,10 +86,38 @@ describe('gamesApiPath', () => {
     });
 });
 
+describe('searchPagePath', () => {
+    it('opens the browse page on a plain search, trimmed', () => {
+        expect(searchPagePath('  zelda ')).toBe('/games?search=zelda');
+        expect(searchPagePath('a&b=c')).toBe('/games?search=a%26b%3Dc');
+    });
+
+    it('opens the plain catalogue for an empty box, on its one address', () => {
+        expect(searchPagePath('')).toBe('/games');
+        expect(searchPagePath('   ')).toBe('/games');
+    });
+});
+
+describe('searchApiPath', () => {
+    it('is the first-page request of the page Enter opens, with a limit', () => {
+        // Exactly the loader's request for that URL, so the two share one cache entry on the server
+        // and opening a search the dropdown has answered costs IGDB nothing.
+        const page = new URL(searchPagePath(' hollow knight '), 'https://mvgl.test');
+        const loaderAsks = gamesApiPath(0, browseFrom(page.searchParams));
+
+        expect(searchApiPath(' hollow knight ', 6)).toBe(`${loaderAsks}&limit=6`);
+        expect(searchApiPath(' hollow knight ', 6)).toBe('/api/games?search=hollow+knight&offset=0&limit=6');
+    });
+});
+
 describe('isFiltered', () => {
     it('does not count the order or a search as a filter', () => {
         expect(isFiltered({ ...EMPTY_BROWSE, sort: 'newest', search: 'x' })).toBe(false);
         expect(isFiltered({ ...EMPTY_BROWSE, year: 2001 })).toBe(true);
+    });
+
+    it('counts an ESRB rating as a filter', () => {
+        expect(isFiltered({ ...EMPTY_BROWSE, esrb: 'ao' })).toBe(true);
     });
 });
 

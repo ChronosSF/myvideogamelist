@@ -1,12 +1,12 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { data, useNavigation, useSearchParams } from 'react-router';
 import { GameCard } from '@/components/GameCard';
 import { GameBrowseFilters } from '@/components/GameBrowseFilters';
 import { PageHeader } from '@/components/PageHeader';
 import type { GameDto, GenreDto, PagedGamesResponse, PlatformDto } from '@/types/game';
-import { apiUrl } from '@/lib/api';
 import { CACHE_GAMES_LIST, PRIVATE_NO_STORE } from '@/lib/cache';
 import { pageMeta, siteConfig } from '@/lib/seo';
+import { loaderFetch, upstreamFailure } from '@/lib/trace.server';
 import {
     type GameBrowse,
     browseFrom,
@@ -54,23 +54,19 @@ async function optionsFrom<T>(result: PromiseSettledResult<Response>): Promise<T
  * games with it; the page then renders without that one filter, and uncached, so the gap is not
  * pinned at the edge.
  */
-export async function loader({ request }: Route.LoaderArgs) {
+export async function loader({ request, context }: Route.LoaderArgs) {
     const browse = browseFrom(new URL(request.url).searchParams);
 
     // Unlike the home page, there is nothing left to show if this fails — the list *is* the
     // page. A real 502 tells a crawler to come back rather than indexing an empty result set.
-    const badGateway = () => new Response('Failed to load games.', {
-        status: 502,
-        statusText: 'Bad Gateway',
-        headers: { 'Cache-Control': PRIVATE_NO_STORE },
-    });
+    const badGateway = () => upstreamFailure(context, 'Failed to load games.');
 
     // `allSettled`, so the options can fail on their own. fetch rejects rather than returning !ok
     // when the API is unreachable, and a rejection here must not surface as an unhandled 500.
     const [gamesResult, genresResult, platformsResult] = await Promise.allSettled([
-        fetch(apiUrl(gamesApiPath(0, browse))),
-        fetch(apiUrl('/api/genres')),
-        fetch(apiUrl('/api/platforms/active')),
+        loaderFetch(context, gamesApiPath(0, browse)),
+        loaderFetch(context, '/api/genres'),
+        loaderFetch(context, '/api/platforms/active'),
     ]);
 
     if (gamesResult.status === 'rejected' || !gamesResult.value.ok) throw badGateway();
@@ -139,8 +135,18 @@ export function GamesPage({ loaderData }: Route.ComponentProps) {
     // what a pending navigation is compared against.
     const activeKey = browseParams(browse).toString();
 
-    const [searchParams, setSearchParams] = useSearchParams();
+    const [, setSearchParams] = useSearchParams();
     const navigation = useNavigation();
+
+    // The browse a navigation is on its way to, when one is out. `browse` is the last loader result
+    // that *landed*, so it is a step behind from the click that starts a navigation until it settles.
+    // Kept from one render to the next while the query string is the same, because the search
+    // debounce below depends on it, and a new object every render would restart its timer.
+    const pendingSearch = navigation.location?.pathname === '/games' ? navigation.location.search : null;
+    const pendingBrowse = useMemo(
+        () => (pendingSearch === null ? null : browseFrom(new URLSearchParams(pendingSearch))),
+        [pendingSearch],
+    );
 
     // The first page comes from the loader and is already in the HTML. Only pages beyond it are
     // client state, so the server-rendered results are never re-fetched just to be re-displayed.
@@ -194,22 +200,25 @@ export function GamesPage({ loaderData }: Route.ComponentProps) {
         const timer = setTimeout(() => {
             setPushedSearch(trimmed);
 
-            const next = new URLSearchParams(searchParams);
-            if (trimmed) next.set('search', trimmed);
-            else next.delete('search');
-
-            // replace, so typing does not add one history entry per debounce interval.
-            setSearchParams(next, { replace: true, preventScrollReset: true });
+            // On the browse that is on its way when there is one, as a filter change is. Built on the
+            // URL that landed, a term typed while a filter's page loads would replace that navigation
+            // without the filter.
+            //
+            // A replace, so typing does not add one history entry per debounce interval — except
+            // over a filter still loading. A navigation takes the replace or push of the one that
+            // interrupts it, so a replace there would take the filter's own step, and Back would skip
+            // the listing the filter was chosen from.
+            const filterPending = pendingBrowse !== null
+                && browseParams({ ...pendingBrowse, search: '' }).toString()
+                    !== browseParams({ ...browse, search: '' }).toString();
+            setSearchParams(
+                browseParams({ ...(pendingBrowse ?? browse), search: trimmed }),
+                { replace: !filterPending, preventScrollReset: true },
+            );
         }, SEARCH_DEBOUNCE_MS);
 
         return () => clearTimeout(timer);
-    }, [search, activeSearch, pushedSearch, searchParams, setSearchParams]);
-
-    // The browse a navigation is on its way to, when one is out. `browse` is the last loader result
-    // that *landed*, so it is a step behind from the click that starts a navigation until it settles.
-    const pendingBrowse = navigation.location && navigation.location.pathname === '/games'
-        ? browseFrom(new URLSearchParams(navigation.location.search))
-        : null;
+    }, [search, activeSearch, pushedSearch, pendingBrowse, browse, setSearchParams]);
 
     /**
      * A change of order or filter, applied to the URL at once.
@@ -231,11 +240,13 @@ export function GamesPage({ loaderData }: Route.ComponentProps) {
         );
     };
 
-    const clearFilters = () => changeBrowse({ platform: null, genre: null, year: null, minScore: null });
+    const clearFilters = () => changeBrowse({ platform: null, genre: null, year: null, minScore: null, esrb: null });
 
     // Abandon an in-flight "load more" when the result set changes underneath it, so a late
-    // page of the previous browse cannot append itself to the new one.
-    useEffect(() => () => {
+    // page of the previous browse cannot append itself to the new one. A layout effect, so the
+    // abort lands in the commit that puts the new browse on screen: a passive effect runs after
+    // that commit, and a page that answered in between was appended to the new listing.
+    useLayoutEffect(() => () => {
         isLoadingMoreRef.current = false;
         loadMoreControllerRef.current?.abort();
     }, [activeKey]);
@@ -327,7 +338,7 @@ export function GamesPage({ loaderData }: Route.ComponentProps) {
                 </div>
 
                 <GameBrowseFilters
-                    browse={browse}
+                    browse={pendingBrowse ?? browse}
                     platforms={platforms}
                     genres={genres}
                     years={yearsFrom(currentYear)}
