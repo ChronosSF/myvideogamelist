@@ -14,8 +14,9 @@
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
 
-# The project file first, alone, so the restore layer is reused until a package changes.
-COPY NuGet.Config ./
+# The project file first, alone, so the restore layer is reused until a package changes. Its
+# versions are in Directory.Packages.props, without which the restore fails on every package.
+COPY NuGet.Config Directory.Packages.props ./
 COPY MyVideoGameList.Server/MyVideoGameList.Server.csproj MyVideoGameList.Server/
 RUN dotnet restore MyVideoGameList.Server/MyVideoGameList.Server.csproj
 
