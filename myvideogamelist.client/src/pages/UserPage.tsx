@@ -50,6 +50,11 @@ export function UserPage() {
      */
     const [accountDeleted, setAccountDeleted] = useState(false);
 
+    // A sign-out the server refused, or could not be asked for: the account is still signed in, and
+    // this says so under the button rather than leaving a press that did nothing.
+    const [logoutError, setLogoutError] = useState<string | null>(null);
+    const [signingOut, setSigningOut] = useState(false);
+
     // `loading` before `user`: the server render never knows who is signed in, and neither does the
     // first client render, so without it every visit opened on "sign in" and then replaced it.
     if (loading || !user) {
@@ -97,7 +102,17 @@ export function UserPage() {
     }
 
     const handleLogout = async () => {
-        await logout();
+        if (signingOut) return;
+        setLogoutError(null);
+        setSigningOut(true);
+        try {
+            await logout();
+        } catch (error) {
+            setLogoutError(error instanceof Error ? error.message : 'Could not sign you out. Please try again.');
+            return;
+        } finally {
+            setSigningOut(false);
+        }
         navigate('/');
     };
 
@@ -177,9 +192,14 @@ export function UserPage() {
                             <Link to="/import" className="user-btn user-card-action">Start an import</Link>
                         </div>
 
-                        <button type="button" className="user-logout-btn" onClick={handleLogout}>
-                            Sign Out
+                        {/* aria-disabled rather than disabled while the request is out, so the
+                            button keeps its focus; the press guards itself. */}
+                        <button type="button" className="user-logout-btn" onClick={handleLogout} aria-disabled={signingOut}>
+                            {signingOut ? 'Signing out…' : 'Sign Out'}
                         </button>
+                        {logoutError !== null && (
+                            <p className="-mt-2 text-sm text-danger-300 text-center" role="alert">{logoutError}</p>
+                        )}
 
                         {/* Last, below Sign Out, where a settings page conventionally keeps the
                             one thing on it that cannot be undone. A section of its own, since

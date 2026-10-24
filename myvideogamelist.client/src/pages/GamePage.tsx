@@ -14,6 +14,7 @@ import { parseReleaseDate } from '@/lib/releaseDate';
 import { SectionHeading } from '@/components/SectionHeading';
 import { GameRefRail } from '@/components/GameRefRail';
 import { MultiplayerSummary } from '@/components/MultiplayerSummary';
+import { multiplayerSummary } from '@/lib/multiplayer';
 import { ScreenshotGallery } from '@/components/ScreenshotGallery';
 import { StoreLinks } from '@/components/StoreLinks';
 import { TrailerPlayer } from '@/components/TrailerPlayer';
@@ -307,7 +308,9 @@ export function GamePage() {
                         <StoreLinks stores={details?.stores ?? []} />
 
                         {/* How to play: solo, together, and with how many. */}
-                        {details && (details.gameModes.length > 0 || details.multiplayerModes) && (
+                        {details && (details.gameModes.length > 0
+                            // And no heading at all when neither the modes nor the summary have anything to say.
+                            || (details.multiplayerModes !== null && multiplayerSummary(details.multiplayerModes) !== null)) && (
                             <section>
                                 <SectionHeading>How to play</SectionHeading>
                                 <div className="space-y-3">
