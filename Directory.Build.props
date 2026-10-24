@@ -14,9 +14,10 @@
   </PropertyGroup>
 
   <!-- A finding with a fixed version is answered by taking it: a parent bumped, or the package pinned
-       in the project that resolves it, as the test projects pin System.Security.Cryptography.Xml. Only
-       an advisory with no fixed version, judged not to reach anything here, is suppressed, by its URL,
-       with the reason and the issue that will remove the line:
+       in the project that resolves it, as the test projects pin System.Security.Cryptography.Xml -
+       the reference in the project, its version in Directory.Packages.props. Only an advisory with no
+       fixed version, judged not to reach anything here, is suppressed, by its URL, with the reason and
+       the issue that will remove the line:
 
          <ItemGroup>
            <NuGetAuditSuppress Include="https://github.com/advisories/GHSA-xxxx-xxxx-xxxx" />
