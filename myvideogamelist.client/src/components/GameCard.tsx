@@ -2,6 +2,7 @@ import { useState, type ReactNode } from 'react';
 import { Link } from 'react-router';
 import type { GameDto } from '@/types/game';
 import { hasCriticScore, ratingPercent } from '@/lib/score';
+import { parseReleaseDate } from '@/lib/releaseDate';
 import { CARD_BODY, CARD_COVER, CARD_FRAME, GAME_GRID_COVER_SIZES } from '@/lib/gameGrid';
 import { CoverImage } from '@/components/CoverImage';
 import { ScoreBadge } from '@/components/ScoreBadge';
@@ -30,7 +31,9 @@ interface GameCardProps {
  * its cover's `sizes` is worked out from.
  */
 export function GameCard({ game, eager = false, children }: GameCardProps) {
-    const releaseYear = game.releaseDate ? new Date(game.releaseDate).getFullYear() : null;
+    // The day as the calendar names it: `new Date` would read it as UTC midnight, the year before for a
+    // game out on 1 January anywhere west of Greenwich, and the server and the browser could disagree.
+    const releaseYear = game.releaseDate ? parseReleaseDate(game.releaseDate).getFullYear() : null;
     const { user } = useAuth();
     const { addToList, removeFromList, isInList, isPending, nameFor } = useLists();
     const wishlist = useWishlist();

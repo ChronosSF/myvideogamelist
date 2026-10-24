@@ -299,3 +299,24 @@ describe('GameCard and renamed lists', () => {
         expect(screen.queryByRole('button', { name: 'Dropped' })).not.toBeInTheDocument();
     });
 });
+
+describe('GameCard release year', () => {
+    it('reads a game out on 1 January as that year, wherever the reader is', () => {
+        // The suite runs in Honolulu (vitest.config.ts), where `new Date('2025-01-01')` is still 2024
+        // (issue 267).
+        render(
+            <MemoryRouter>
+                <ListsContext.Provider value={listsValue()}>
+                    <WishlistContext.Provider value={wishlistValue()}>
+                        <FavouritesContext.Provider value={favouritesValue()}>
+                            <GameCard game={game({ id: 3, title: 'Balatro', releaseDate: '2025-01-01' })} />
+                        </FavouritesContext.Provider>
+                    </WishlistContext.Provider>
+                </ListsContext.Provider>
+            </MemoryRouter>,
+        );
+
+        expect(screen.getByText('2025')).toBeInTheDocument();
+        expect(screen.queryByText('2024')).not.toBeInTheDocument();
+    });
+});
