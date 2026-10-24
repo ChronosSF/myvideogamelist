@@ -283,8 +283,9 @@ jobs:
   # npm's advisory data describe them on the day of the run. A job of its own, so that an advisory
   # published overnight turns this check red and leaves the build and test jobs saying what they say.
   # Each later step runs even when an earlier one fails, so one run reports every finding. A finding
-  # with no fixed version has a way through on each side, and a new lock file needs a step of its own.
-  # Deploy dev waits on this as on every job. See ADR 0061.
+  # with no fixed version has a way through on each side, and a new lock file needs a step of its own:
+  # Lighthouse CI's has none, on purpose (ADR 0068 §9). Deploy dev waits on this as on every job. See
+  # ADR 0061.
   audit:
     name: Dependency audit
     runs-on: ubuntu-latest

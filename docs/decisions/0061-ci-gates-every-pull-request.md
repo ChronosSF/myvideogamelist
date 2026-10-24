@@ -148,8 +148,9 @@ comments and refuses a `.gitleaksignore`. It extends gitleaks' default rules wit
 And it allows three findings, each by exactly what it is:
 
 - **The local container's credentials, mvgl/localdev**, committed on purpose so that a fresh checkout
-  runs (CLAUDE.md's "Running locally", and 0060, which names the four files), as that value in those
-  four files only. The same password in a fifth file fails, and so does another password in one of them.
+  runs (CLAUDE.md's "Running locally"; 0060 names four of the files, and 0068 the Lighthouse audit's
+  config), as that value in those five files only. The same password in a sixth file fails, and so does
+  another password in one of them.
 - **The one test name's 40-character match**, and nothing else the token rule finds.
 - **The IIS Express configuration**, in the one commit that added it, `baf18587`, at that path. Its keys
   are that machine's own, sealed by a key container that never left it, and `.vs/` is ignored since.
@@ -216,8 +217,8 @@ every other job passed. The runners' SDK was 10.0.402. With the review's changes
 ### 7. What the owner turns on
 
 **A ruleset on `master`** with every job above as a required check, strict, with no bypass: Client,
-Server, Server integration, Browser smoke test, Infrastructure, Dependency audit, Secret scan, Images,
-the three CodeQL jobs, and the code-scanning result GitHub posts as `CodeQL`. No bypass means the
+Server, Server integration, Browser smoke test, Lighthouse (0068), Infrastructure, Dependency audit,
+Secret scan, Images, the three CodeQL jobs, and the code-scanning result GitHub posts as `CodeQL`. No bypass means the
 owner's own pushes go through a pull request too.
 
 - **Strict** means a pull request must be current with `master` before it merges. It is what makes a
@@ -226,7 +227,7 @@ owner's own pushes go through a pull request too.
   let it merge untested against `master`.
 - **Its cost** is that each merge sends the others back to update and run again. A repository owned by
   a person has no merge queue, so the way to keep that cheap is to update only the pull request about to
-  merge. A run is eleven jobs, and GitHub's free plan runs twenty at once.
+  merge. A run is twelve jobs since 0068 added Lighthouse's, and GitHub's free plan runs twenty at once.
 
 **GitHub's own secret scanning and push protection.** On a public repository GitHub already tells a
 provider about a leaked token of theirs; turning secret scanning on adds alerts the owner can see, and
@@ -257,7 +258,9 @@ The pull request that built this record gives the exact commands for both.
   disagrees turns every pull request red at once, and the answer is a `dotnet format` commit, or
   pinning the SDK in a `global.json`, which every job and every machine would then follow.
 - **A new lock file is not audited until it has a step**, as `myvideogamelist.client/package-lock.json`
-  has. The CDK CLI that Deploy dev installs has no lock file at all (#339).
+  has. Lighthouse CI's, `lighthouse/package-lock.json`, has none on purpose: it is a tool only its own
+  job runs, no image holds it, and 0068 §9 says why its advisories stay out of the client's audit. The
+  CDK CLI that Deploy dev installs has no lock file at all (#339).
 - **Pull requests merged before this one were never format-checked.** This one's own check runs over
   them once they land, so it merges last, after a `dotnet format` commit if its check asks for one;
   from then on each pull request passes the check itself.
