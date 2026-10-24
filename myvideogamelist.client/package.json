@@ -21,7 +21,7 @@
     "lighthouse": "npm install --prefix lighthouse --no-audit --no-fund && react-router build && playwright test -c lighthouse/playwright.config.ts"
   },
   "dependencies": {
-    "@react-router/dev": "^8.4.0",
+    "@react-router/dev": "^8.5.0",
     "@react-router/node": "^8.3.0",
     "@react-router/serve": "^8.3.0",
     "@tailwindcss/vite": "^4.2.2",
