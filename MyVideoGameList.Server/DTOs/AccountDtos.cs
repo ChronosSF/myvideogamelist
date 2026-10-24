@@ -54,18 +54,35 @@ public record UserDataExportDto(
 /// nothing to recommend it.
 /// </para>
 /// <para>
+/// <paramref name="DisplayName"/>, <paramref name="AvatarUrl"/> and <paramref name="Bio"/> are what
+/// the user wrote about themselves for their public profile, so they are here as everything else
+/// they wrote is. The avatar is its address, as stored: the picture was never ours to hand over.
+/// They are copied in by hand, because this is not a manifest table and nothing would notice their
+/// absence (ADR 0024).
+/// </para>
+/// <para>
 /// The username <em>is</em> data the user entered — they chose it, and it is the name everything
 /// they have written is published under — so it belongs here beside the address. So does
 /// <paramref name="ProfileVisibility"/>: an export that recorded what somebody wrote but not
 /// whether they agreed to it being read would be missing the more consequential of the two.
 /// </para>
+/// <para>
+/// <paramref name="CreatedAt"/> and <paramref name="LastSeenAt"/> are not data the user entered but
+/// data recorded about them, which is the stronger reason to hand them over: what the site keeps
+/// about somebody is theirs to see (ADR 0051).
+/// </para>
 /// </remarks>
 public record AccountExportDto(
     string? Email,
     string? UserName,
+    string? DisplayName,
+    string? AvatarUrl,
+    string? Bio,
     string Theme,
     string ListView,
-    string ProfileVisibility);
+    string ProfileVisibility,
+    DateTimeOffset? CreatedAt,
+    DateTimeOffset? LastSeenAt);
 
 /// <summary>
 /// One game the user has recorded something about.
@@ -82,6 +99,12 @@ public record AccountExportDto(
 /// including a future importer of our own. Null means the game is in none of the user's lists,
 /// which is a real state (ADR 0019) rather than missing data.
 /// </param>
+/// <param name="ScoredAt">
+/// When the score was given, or null — always null with no score, and also for a score given before
+/// the column existed or brought in by an import, since nothing recorded when those were given
+/// (ADR 0062). Exported for the reason <paramref name="Origin"/> is: it is what says which scores the
+/// history could place, and a document without it would read as though every score were undated.
+/// </param>
 /// <param name="Ownership">One of <c>OwnershipKinds</c>, already a permanent key, or null.</param>
 /// <param name="Notes">The user's private notes on the game. Theirs, so theirs to take.</param>
 /// <param name="Origin">
@@ -90,15 +113,23 @@ public record AccountExportDto(
 /// <see cref="UserDataExportDto.Events"/> (ADR 0026): without it, an imported library reads as a
 /// history that simply lost its events.
 /// </param>
+/// <param name="Position">
+/// Where the user put the game in its list by hand, or null when they never placed it. A sparse
+/// number rather than a rank: the list reads in ascending order of it, with the unplaced games after
+/// in the order they joined (ADR 0054). Exported as stored, because the number is the data and a rank
+/// would be a reading of it.
+/// </param>
 public record EntryExportDto(
     int GameId,
     string? Status,
     int? Score,
+    DateTimeOffset? ScoredAt,
     string? Ownership,
     string? Notes,
     string Origin,
     DateTimeOffset AddedAt,
-    DateTimeOffset? StatusChangedAt);
+    DateTimeOffset? StatusChangedAt,
+    int? Position);
 
 /// <summary>
 /// One recorded status transition, in the order it happened.
@@ -186,7 +217,13 @@ public record WishlistExportDto(int GameId, DateTimeOffset AddedAt);
 /// One favourite game. Another axis like the wishlist, so <c>AddedAt</c> is its entire history too
 /// (ADR 0029).
 /// </summary>
-public record FavouriteExportDto(int GameId, DateTimeOffset AddedAt);
+/// <param name="Position">
+/// Where the user put the game in their showcase by hand, or null when they never placed it. A sparse
+/// number rather than a rank: the showcase reads in ascending order of it, with the unplaced favourites
+/// after, newest first (ADR 0064). Exported as stored, as the entry's is (ADR 0054 §9), because the
+/// number is the data and a rank would be one reading of it.
+/// </param>
+public record FavouriteExportDto(int GameId, DateTimeOffset AddedAt, int? Position);
 
 /// <summary>
 /// How the user has chosen to sort one status list. Only the lists they actually re-sorted have a

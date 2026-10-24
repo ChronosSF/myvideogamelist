@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { Link } from 'react-router';
 import { useLists } from '@/hooks/useLists';
+import { useFavourites } from '@/hooks/useFavourites';
 import { formatCount } from '@/lib/format';
+import { FavouriteMark } from './FavouriteMark';
 import type { ListEntryDto } from '@/types/list';
 
 /**
@@ -14,6 +16,7 @@ import type { ListEntryDto } from '@/types/list';
  */
 export function PlayNextPicker() {
     const { lists, loading, error, isPending, addToList } = useLists();
+    const { isFavourite } = useFavourites();
     const backlog = lists.backlog;
 
     /**
@@ -86,8 +89,11 @@ export function PlayNextPicker() {
             <div className="play-next-body">
                 {/* A live region, so a reroll says what it landed on to somebody who cannot see
                     the cover change. */}
-                <p className="play-next-title" aria-live="polite">
+                <p className="play-next-title" aria-live="polite" aria-atomic="true">
                     <Link to={`/games/${game.id}`}>{game.title}</Link>
+                    {/* After the title, on a cover too small for the round mark. In the live region,
+                        so a reroll onto a favourite says so. */}
+                    {isFavourite(game.id) && <FavouriteMark variant="inline" />}
                 </p>
                 {/* Counted as the others plus this one rather than as the backlog's length, which is
                     one short while a start is in flight. */}

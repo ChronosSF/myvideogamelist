@@ -45,6 +45,42 @@ public class ListsController(
         return NoContent();
     }
 
+    /// <summary>
+    /// Puts some of a list's games where the user has arranged them by hand — the backlog's "what I
+    /// will play next".
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A <c>PATCH</c>, as the import's row decisions are: it writes the games it names and leaves every
+    /// other game in the list where it was, which is what keeps a move to one row (ADR 0054). The
+    /// numbers are the client's; the server checks their range and that each game is in this list.
+    /// </para>
+    /// <para>
+    /// Any of the five lists, though the client offers the order on the backlog alone. Like a sort
+    /// preference, a position means nothing to the server, and a list that is later given an order of
+    /// its own should need no change here.
+    /// </para>
+    /// </remarks>
+    [HttpPatch("{status}/positions")]
+    [RequestSizeLimit(HandOrder.MaxRequestBytes)]
+    public async Task<IActionResult> SetPositions(
+        [AllowedValues(
+            ListStatusKeys.Backlog,
+            ListStatusKeys.Playing,
+            ListStatusKeys.OnHold,
+            ListStatusKeys.Finished,
+            ListStatusKeys.Dropped)]
+        string status,
+        [FromBody] SetPositionsDto dto,
+        CancellationToken cancellationToken)
+    {
+        var user = await userManager.GetUserAsync(User);
+        if (user is null) return Unauthorized();
+
+        await listService.SetPositionsAsync(user.Id, status, dto.Positions, cancellationToken);
+        return NoContent();
+    }
+
     [HttpDelete("{gameId:int}")]
     public async Task<IActionResult> RemoveListEntry(
         [Range(1, int.MaxValue)] int gameId,

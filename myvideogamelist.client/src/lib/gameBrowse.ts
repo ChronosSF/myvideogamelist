@@ -26,6 +26,23 @@ export const GAME_SORTS: { key: GameSort; label: string; hint: string }[] = [
 /** The critic-score floors offered, out of 100 — the scale every aggregate is shown on (ADR 0021). */
 export const MIN_SCORES = [90, 80, 70, 60] as const;
 
+/** The server's `EsrbRatingKeys`. */
+export type EsrbRating = 'ec' | 'e' | 'e10' | 't' | 'm' | 'ao';
+
+/**
+ * The ESRB ratings the filter offers, youngest audience first, by the names the ESRB gives them:
+ * every one IGDB lists under the ESRB but Rating Pending, which says that a game has none yet. The
+ * server refuses any other key, so this list and `EsrbRatingKeys` change together.
+ */
+export const ESRB_RATINGS: { key: EsrbRating; label: string }[] = [
+    { key: 'ec', label: 'Early Childhood' },
+    { key: 'e', label: 'Everyone' },
+    { key: 'e10', label: 'Everyone 10+' },
+    { key: 't', label: 'Teen' },
+    { key: 'm', label: 'Mature 17+' },
+    { key: 'ao', label: 'Adults Only 18+' },
+];
+
 /** The years the server accepts. A URL outside them is dropped here rather than sent to be refused. */
 const MIN_YEAR = 1950;
 const MAX_YEAR = 2100;
@@ -48,6 +65,8 @@ export interface GameBrowse {
     genre: number | null;
     year: number | null;
     minScore: number | null;
+    /** Only games whose ESRB rating is this one, which leaves out every game without one. */
+    esrb: EsrbRating | null;
 }
 
 export const EMPTY_BROWSE: GameBrowse = {
@@ -57,6 +76,7 @@ export const EMPTY_BROWSE: GameBrowse = {
     genre: null,
     year: null,
     minScore: null,
+    esrb: null,
 };
 
 function positiveInt(value: string | null, max = MAX_ID): number | null {
@@ -73,6 +93,7 @@ function positiveInt(value: string | null, max = MAX_ID): number | null {
 export function browseFrom(params: URLSearchParams): GameBrowse {
     const sort = params.get('sort');
     const year = positiveInt(params.get('year'), MAX_YEAR);
+    const esrb = params.get('esrb');
 
     return {
         search: params.get('search')?.trim() ?? '',
@@ -81,6 +102,7 @@ export function browseFrom(params: URLSearchParams): GameBrowse {
         genre: positiveInt(params.get('genre')),
         year: year !== null && year >= MIN_YEAR ? year : null,
         minScore: positiveInt(params.get('minScore'), 100),
+        esrb: ESRB_RATINGS.some(r => r.key === esrb) ? esrb as EsrbRating : null,
     };
 }
 
@@ -97,6 +119,7 @@ export function browseParams(browse: GameBrowse): URLSearchParams {
     if (browse.genre !== null) params.set('genre', String(browse.genre));
     if (browse.year !== null) params.set('year', String(browse.year));
     if (browse.minScore !== null) params.set('minScore', String(browse.minScore));
+    if (browse.esrb !== null) params.set('esrb', browse.esrb);
     return params;
 }
 
@@ -107,9 +130,31 @@ export function gamesApiPath(offset: number, browse: GameBrowse): string {
     return `/api/games?${params}`;
 }
 
+/**
+ * The browse page's address for a plain search, which is what the navbar's box submits to. No order,
+ * which ADR 0032 has a search drop; and no filters, though they would apply to a search, because the
+ * box is on every page and offers none — and the dropdown has to list the first games of exactly the
+ * page Enter opens.
+ */
+export function searchPagePath(search: string): string {
+    const query = browseParams({ ...EMPTY_BROWSE, search: search.trim() }).toString();
+    return query ? `/games?${query}` : '/games';
+}
+
+/**
+ * The first `limit` games of a plain search: the browse page's own first page for that search, cut
+ * short by the API. It is the page's query to the letter — the term trimmed as `browseFrom` trims
+ * it, offset and all — because that is what puts the two on one cache entry on the server, so a
+ * search the typeahead has answered costs IGDB nothing more when Enter opens it in full.
+ */
+export function searchApiPath(search: string, limit: number): string {
+    return `${gamesApiPath(0, { ...EMPTY_BROWSE, search: search.trim() })}&limit=${limit}`;
+}
+
 /** Whether anything narrows the listing, the order aside. */
 export function isFiltered(browse: GameBrowse): boolean {
-    return browse.platform !== null || browse.genre !== null || browse.year !== null || browse.minScore !== null;
+    return browse.platform !== null || browse.genre !== null || browse.year !== null || browse.minScore !== null
+        || browse.esrb !== null;
 }
 
 /**

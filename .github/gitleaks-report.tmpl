@@ -1,0 +1,8 @@
+{{- /*
+  What CI's secret scan prints for each finding (ADR 0061): where it is and which rule found it, and
+  nothing of the line it is on. The log is public, and even redacted, gitleaks' own verbose output
+  shows the text around a secret, which can hold another one.
+*/ -}}
+{{- range . }}
+{{ .RuleID }}: {{ .File }}:{{ .StartLine }}{{ if .Commit }} in {{ .Commit }}{{ end }} ({{ .Fingerprint }})
+{{- end }}

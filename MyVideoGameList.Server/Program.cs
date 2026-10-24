@@ -6,35 +6,33 @@ using MyVideoGameList.Server.Data;
 using MyVideoGameList.Server.Errors;
 using MyVideoGameList.Server.HealthChecks;
 using MyVideoGameList.Server.Models;
+using MyVideoGameList.Server.Observability;
 using MyVideoGameList.Server.Security;
 using MyVideoGameList.Server.Services;
+using MyVideoGameList.Server.Services.Edge;
 using MyVideoGameList.Server.Services.Import;
 using Scalar.AspNetCore;
 
+// Before the host exists, so that no request's activity is ever made in another format: a caller's
+// traceparent that cannot be read starts a trace of our own rather than sharing an all-zero one.
+// See Observability/TraceIds.cs and docs/decisions/0059-*.
+TraceIds.UseW3COnly();
+
 var builder = WebApplication.CreateBuilder(args);
+
+// JSON lines with every scope, the trace id among them, wherever this is deployed; the plain
+// console on a developer's machine.
+builder.Logging.AddApiConsole(builder.Environment);
 
 builder.Services.AddControllers();
 builder.Services.AddOpenApi();
 builder.Services.AddApiRateLimiting();
 
-// One machine-readable shape for every failure, instead of a raw 500 with an HTML body in
-// Development and an empty one everywhere else. The handlers run in the order they are registered
-// and each declines what is not theirs: a reader who navigated away, our own throttle refusing a
-// call under load, and a third party that did not answer.
-builder.Services.AddProblemDetails(options => options.CustomizeProblemDetails = context =>
-{
-    // Correlating a user's report with a log line needs an identifier in both. This is the
-    // request id, not anything about the person.
-    context.ProblemDetails.Extensions["traceId"] = context.HttpContext.TraceIdentifier;
-
-    // The exception, in Development only. The alternative is reading the console beside a
-    // useless response - and putting it in a deployed answer would hand out stack traces.
-    if (context.HttpContext.RequestServices.GetRequiredService<IHostEnvironment>().IsDevelopment()
-        && context.Exception is not null)
-    {
-        context.ProblemDetails.Extensions["exception"] = context.Exception.ToString();
-    }
-});
+// One machine-readable shape for every failure, carrying the request's trace id; see
+// Errors/ProblemDetailsShape.cs. The handlers run in the order they are registered and each
+// declines what is not theirs: a reader who navigated away, our own throttle refusing a call under
+// load, and a third party that did not answer.
+builder.Services.AddApiProblemDetails();
 builder.Services.AddExceptionHandler<ClientDisconnectHandler>();
 builder.Services.AddExceptionHandler<UpstreamBusyHandler>();
 builder.Services.AddExceptionHandler<UpstreamFailureHandler>();
@@ -76,6 +74,7 @@ builder.Services.AddScoped<IPlaythroughService, PlaythroughService>();
 builder.Services.AddScoped<IReviewService, ReviewService>();
 builder.Services.AddScoped<ITagService, TagService>();
 builder.Services.AddScoped<IStatsService, StatsService>();
+builder.Services.AddScoped<IHistoryService, HistoryService>();
 builder.Services.AddScoped<IPublicProfileService, PublicProfileService>();
 builder.Services.AddScoped<IGameCommunityService, GameCommunityService>();
 builder.Services.AddScoped<ISitemapService, SitemapService>();
@@ -86,6 +85,7 @@ builder.Services.AddScoped<IImportService, ImportService>();
 builder.Services.AddScoped<IImportMatcher, ImportMatcher>();
 builder.Services.AddScoped<ICalendarCurationService, CalendarCurationService>();
 builder.Services.AddScoped<ICalendarEventService, CalendarEventService>();
+builder.Services.AddScoped<IAdminStatsService, AdminStatsService>();
 // What is coming for a user's games. Asks IGDB directly rather than through the game cache: what it
 // finds is mostly games nobody tracks yet — a sequel, a DLC — which is catalogue, not somebody's shelf.
 builder.Services.AddScoped<IConnectedReleaseService, ConnectedReleaseService>();
@@ -94,6 +94,12 @@ builder.Services.AddScoped<IConnectedReleaseService, ConnectedReleaseService>();
 // (ADR 0038). One call rather than a line per service, because what happens when a background
 // service throws is part of the same decision and is configured there.
 builder.Services.AddScheduledWork();
+
+// A profile switched to private, renamed or deleted, or a review on it made private, edited or
+// deleted, is taken off CloudFront after the write commits rather than left there until the cached
+// page's TTL runs out. CloudFront only where a distribution id is configured; everywhere else the
+// paths are logged and nothing reaches AWS. See docs/decisions/0058-*.
+builder.Services.AddEdgeInvalidation(builder.Configuration);
 
 // The clock, injected so the event log's timestamps are controllable in tests.
 builder.Services.AddSingleton(TimeProvider.System);
@@ -228,6 +234,11 @@ if (app.Environment.IsDevelopment())
 // Off unless configured; see the ForwardedHeaders section in appsettings.json.
 app.UseProxyHeaders();
 
+// The line every request leaves, and the trace id on every answer. Above the exception handler on
+// purpose: it has to see the status that handler ends a failed request with and the time it took,
+// and it throws nothing of its own that the handler would have had to turn into a ProblemDetails.
+app.UseRequestLog();
+
 // Outside everything it is meant to catch, and outside the security headers below for a reason
 // that is easy to get backwards: this middleware clears the response - headers included - before
 // writing its own, so those headers are attached when the response starts rather than on the way
@@ -284,5 +295,8 @@ app.MapHealthChecks("/readyz", new HealthCheckOptions
         [HealthStatus.Unhealthy] = StatusCodes.Status503ServiceUnavailable
     }
 });
+
+// Which commit is running is GET /api/version, a controller like any other API call and for the
+// reason Controllers/VersionController.cs gives: the distribution reaches it there.
 
 app.Run();

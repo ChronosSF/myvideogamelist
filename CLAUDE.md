@@ -22,13 +22,15 @@ cd myvideogamelist.client && npm run dev
 The database runs in Docker so local matches production; the app itself is deliberately not
 containerised, because that would cost hot reload on both sides. Credentials for the local
 container are committed in `compose.yaml` and `appsettings.Development.json` on purpose, so a
-fresh checkout runs with no setup — they reach nothing beyond this machine.
+fresh checkout runs with no setup — they reach nothing beyond this machine. The browser smoke test's
+and the Lighthouse audit's configs and CI jobs carry the same pair, for the same reason.
 
 Open `https://localhost:58546`.
 
 **Never use `npm start` for local work.** It serves the production build, which has no
 `/api` proxy: pages render, but every client-side request 404s. See
-`docs/decisions/0003-two-process-deployment.md`.
+`docs/decisions/0003-two-process-deployment.md`. The browser smoke test, `npm run e2e`, serves that
+build behind a stand-in that does route `/api` (ADR 0060).
 
 ## Commands
 
@@ -39,8 +41,15 @@ Open `https://localhost:58546`.
 | `npm run typecheck` | `react-router typegen && tsc -b` — use this, never bare `tsc` |
 | `npm run test` | Vitest, jsdom + Testing Library. `npm run test:watch` to iterate |
 | `npm run visual` | Before-and-after screenshots of the pages, compared pixel by pixel, for a change meant to look the same. Needs two dev servers and a local test account, whose email and password it reads from the shell or from `visual/.env` (ignored by git); `visual/playwright.config.ts` says how. Not run by CI |
+| `npm run e2e` | The browser smoke test, over the production shape: sign up, add a game to a list, reload, it is still there. Builds the front end and serves it with `react-router-serve` beside the API under `dotnet run`, with a stand-in in front that routes `/api/*` to the API as the balancer does, and one for IGDB behind, so it needs no IGDB credentials. Needs PostgreSQL up, ports 5180–5183 free, and once, `npx playwright install chromium`. Keeps a database of its own on the compose server, `mvgl_e2e`, never `myvideogamelist`, created on the first run; `E2E_CONNECTION_STRING` points it elsewhere. Run by CI. See ADR 0060 |
+| `npm run lighthouse` | Lighthouse CI on five pages of the `npm run e2e` shape, on a phone and a desktop, then axe-core on the same pages. Fails on an accessibility, best-practices or SEO score, or a count of console errors, that leaves `lighthouse/budgets.ts`'s baseline, on layout shift over 0.02 or script or page weight over budget, and on an axe rule or contrast pair a page did not already break; performance warns. Needs PostgreSQL up, ports 5190–5193 free, IGDB's image host reachable and, once, `npx playwright install chromium`. Keeps `mvgl_lighthouse` (or `LIGHTHOUSE_CONNECTION_STRING`); reports in `lighthouse/reports/`. Run by CI. See ADR 0068 |
 | `npm run build` | Production build |
+| `npm run audit` | `npm audit` over the lock file, devDependencies included, with no install: high and critical fail, lower ones are printed. `npm run audit:lighthouse` does the same over Lighthouse CI's lock file, and CI's Dependency audit job runs both. `scripts/audit.mjs` holds a list of accepted advisories for each, every entry with its reason and a date: the client's for want of any fix, Lighthouse CI's for want of one its dependents' ranges allow (ADR 0068 §9). See ADR 0061 |
 | `dotnet test MyVideoGameList.Server.Tests/MyVideoGameList.Server.Tests.csproj` | Server unit tests |
+| `dotnet test MyVideoGameList.Server.IntegrationTests/MyVideoGameList.Server.IntegrationTests.csproj` | The API over a real PostgreSQL, for what InMemory cannot do: auth and the lists end to end, the cascades, the retention sweep, the cache refresh's lock and commit, and the export's snapshot. Needs Docker running; starts and removes a container of its own, never `mvgl-postgres`. About fifteen seconds once built. See ADR 0057 |
+| `dotnet format MyVideoGameList.slnx` | Formats the C# as `.editorconfig` says. With `--verify-no-changes` it is CI's check, in the Server job; `dotnet format infra/src/Infra/Infra.csproj` is the CDK app's |
+| `dotnet restore MyVideoGameList.slnx -warnaserror:NU1900,NU1901,NU1902,NU1903,NU1904` | CI's NuGet audit: a known vulnerability in any package, transitive ones included, fails it, where any build only warns. The same for `infra/src/Infra/Infra.csproj`. A suppression, for an advisory nothing fixes, goes in `Directory.Build.props`. See ADR 0061 |
+| `docker run --rm --network none -v "${PWD}:/repo:ro" ghcr.io/gitleaks/gitleaks:v8.30.1 git /repo --config /repo/.gitleaks.toml --log-opts="HEAD --diff-merges=first-parent" --ignore-gitleaks-allow --redact --verbose` | CI's secret scan, over every commit `HEAD` reaches, from the root of a clone, in bash or PowerShell; in Git Bash put `MSYS_NO_PATHCONV=1` in front. Not from a worktree, whose `.git` points outside the mount: there it says "0 commits scanned", which is a scan that read nothing. `.gitleaks.toml` says what it allows, and why |
 | `dotnet ef migrations add <Name>` | From `MyVideoGameList.Server/` |
 | `dotnet ef database update` | Applies migrations by hand; only needed outside Development |
 | `docker compose up -d --wait` | Local PostgreSQL. `--wait` blocks until it accepts connections |
@@ -51,7 +60,8 @@ Open `https://localhost:58546`.
 
 Health endpoints: `/healthz` (liveness, no dependency checks) and `/readyz` (database and
 IGDB reachability). A degraded IGDB returns 200, not 503 — browsing breaks but stored lists
-still work, so the instance should stay in rotation.
+still work, so the instance should stay in rotation. Which commit is running: `/api/version` on the
+API and `/version` on the SSR server, each `{ sha, builtAt }`, `unknown` locally (ADR 0059).
 
 ## Layout
 
@@ -60,14 +70,20 @@ MyVideoGameList.Server/         ASP.NET Core 10 API
   Controllers/  Services/  Models/  DTOs/  Data/  HealthChecks/
   Security/                     Rate limits, forwarded headers, security headers, the write guard, the admin policy
   Errors/                       What each kind of failure leaves as
+  Observability/                The trace id, the request log, the JSON console, /api/version
 MyVideoGameList.Server.Tests/   xUnit tests
+MyVideoGameList.Server.IntegrationTests/  The API over PostgreSQL in a container, for what InMemory cannot do
 myvideogamelist.client/
   src/root.tsx                  HTML document, providers, global ErrorBoundary
   src/entry.server.tsx          Owned, not generated. Where every document response gets its headers
   src/routes.ts                 Route table. `/u/:userName` is the one public per-person page
   src/pages/                    Route modules (default export + optional loader/meta)
-  src/resources/                Resource routes: robots.txt and the sitemaps. A loader, no component
-  src/lib/                      apiUrl(), useHydrated(), pageMeta()
+  src/resources/                Resource routes: robots.txt, the sitemaps and /version. A loader, no component
+  src/lib/                      apiUrl(), useHydrated(), pageMeta(); loaderFetch() in trace.server.ts
+  e2e/                          The browser smoke test, and its stand-ins for the edge and for IGDB
+  lighthouse/                   The Lighthouse audit on the same harness: its pages, budgets and package
+holding/                        The static page at myvideogamelist.net until production takes the domain:
+                                site/ is what is served, share/ draws its share image (ADR 0066)
 docs/decisions/                 Architecture decision records
 docs/data-model-plan.md         The tables not built yet, and the two constraints every table answers to
 scripts/                        Dev-only tools. The seeding tools print SQL to stdout and never open
@@ -75,6 +91,8 @@ scripts/                        Dev-only tools. The seeding tools print SQL to s
                                 dev-env.mjs is the exception: it acts on AWS, through a signed-in
                                 CLI profile, and prints every command before running it
 ROADMAP.md                      Not the plan any more: where it lives (GitHub issues), and the old IDs' map
+.editorconfig  Directory.Build.props  .gitleaks.toml
+                                The house style, NuGet's audit, and what the secret scan allows (ADR 0061)
 ```
 
 ## Things that will bite you
@@ -97,6 +115,18 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   sends the origin-verify header; the site is behind basic auth at the edge, with three public
   aggregate endpoints exempt. See `docs/decisions/0044-*`, `0046-*` and `infra/README.md`.
 
+- **CI gates every pull request, whatever branch it targets, and an advisory can turn it red
+  overnight.** Beside the builds and tests it checks the formatting, audits every package (NuGet's at
+  every severity, npm's at high and critical), scans every commit for secrets, and builds both images,
+  starting the SSR one. A finding with a fixed version is fixed; one with none (in Lighthouse CI's
+  tree, none in range) is suppressed by its advisory, in `Directory.Build.props` or
+  `myvideogamelist.client/scripts/audit.mjs`, never by lowering the level. A credential committed on
+  purpose, or a test fixture that looks like one, is allowed by its value and its file in
+  `.gitleaks.toml`. Once the owner's ruleset is on, the job names are its required checks: a job it
+  does not name gates nothing, and a name it requires that no job reports any more holds every pull
+  request, the renaming one included, so change the ruleset just before merging a rename. See
+  `docs/decisions/0061-*`.
+
 - **The PostgreSQL container volume mounts at `/var/lib/postgresql`, not `.../data`.**
   PostgreSQL 18 images changed this and refuse to start if they find data at the old path. The
   symptom is a container that restart-loops with an error about `pg_ctlcluster`.
@@ -111,10 +141,11 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   `AddDataProtectionKeys` therefore persists to the path in `DataProtection:ParameterPath`, falls
   back to the user-profile ring in Development only, and otherwise **fails at startup** unless
   `DataProtection:AllowEphemeralKeys` says the loss is meant, which it is only for running the
-  production image on a developer machine. Two things the code cannot check: the task role needs
+  production image on a developer machine or the integration suite's test host (ADR 0057). Two things the code cannot check: the task role needs
   `ssm:GetParametersByPath` and `ssm:PutParameter` on that path — not `ssm:DeleteParameter`,
-  because nothing deletes keys — and the repository is built on the first protect rather than at
-  boot, so a wrong policy fails the first sign-in. Keep `SetApplicationName("MyVideoGameList")` — the default discriminator is the content
+  because nothing deletes keys — and a missing read fails the first sign-in, not the deploy: the
+  framework's `DataProtectionHostedService` reads the ring at boot, but a failure there is only
+  logged, at Error, and the first protect reads again. Keep `SetApplicationName("MyVideoGameList")` — the default discriminator is the content
   root path, and changing the image's working directory would orphan every cookie while the keys
   stayed readable. One path per environment, so dev and prod cannot read each other's cookies. The
   proof is a session surviving a redeploy, which no local test can give. See
@@ -124,11 +155,16 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   `dotnet user-secrets set "Admin:AccountIds:0" "<account id>"`. An id, never a username — a name
   can be given up and claimed by somebody else. A later admin page goes behind the same policy, on
   the controller's class, and edits reference data only, never a user's. See `docs/decisions/0042-*`.
+  Its statistics count and never list: totals across every account, nothing that selects one. The
+  `LastSeenAt` they read is written by `GET /api/auth/me`, once a UTC day, the one write behind a
+  `GET`, so keep that endpoint uncached. See `docs/decisions/0051-*`.
 
 - **IGDB is the source of truth for game data, but a library renders from `CachedGames`.** There
   are no local game/genre/platform tables; they were removed, and `UserGameEntry.GameId` holds an
   IGDB id with no foreign key. What exists instead is one `jsonb` row per IGDB id holding the mapped
-  `GameDto`, refreshed on read after a day. **Anything rendering games somebody already tracks —
+  `GameDto`, rewritten in the background an hour before it is a day old (ADR 0052), and on read once
+  it is, as the fallback; both go through `GameCacheService.Apply`, and both thresholds derive from
+  `RefreshAfter`. **Anything rendering games somebody already tracks —
   lists, wishlist, favourites, public profiles — goes through `IGameCacheService`, never
   `IIgdbService`**, because that is what makes those pages survive an IGDB outage; browse, search
   and the game page's detail query stay live, since no local copy can answer a query over the whole
@@ -142,7 +178,13 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   nothing — check the field still exists before debugging your own code.
   `age_ratings.category` and `age_ratings.rating` went the same way — use `organization` (ESRB is
   `1`) and `rating_category`. *Requesting* a removed field is just as quiet: it is left out of the
-  response, which hid every ESRB badge.
+  response, which hid every ESRB badge. `websites.category` went the same way: its absence made
+  every game's "Official Site" whichever link IGDB listed first — use `type`, a `website_types` id
+  (official is `1`). And a `where` over the rows of a game's `age_ratings` is matched against
+  **one row**: `organization = 2 & rating_category = (4)` finds nothing for a game whose PEGI row
+  and E10+ row are two rows, and `!=` means "some row differs", so no clause can ask for a row to
+  be absent. That is why the ESRB filter drops games in `GetGamesAsync`; see
+  `docs/decisions/0067-*`.
 
 - **An IGDB release date is not always a day.** `release_dates.date_format` says how much of it is
   known — 0 the day, 1 the month, 2 the year, 3 to 6 a quarter, 7 nothing — and for anything but a
@@ -163,11 +205,19 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   add a foreign key to `UserGameEntries`, because a wishlisted game usually has no entry at all.
 
 - **Favourites are a second axis on the wishlist's code, so fix either one in the shared place.**
-  `UserFavourites` has the wishlist's shape, and both write through `GameAxisStore` on the server and
-  run on `useGameAxis` on the client — a race guard or a session stamp added to one provider by hand
-  is exactly the drift ADR 0022 records. Each provider keeps its own context and pending set. A
-  favourite is marked with a rosette, never a star, and is published on a public profile where the
-  wishlist shows only its size. See `docs/decisions/0029-*`.
+  `UserFavourites` has the wishlist's shape plus a hand-ordered position, and both write through
+  `GameAxisStore` on the server and run on `useGameAxis` on the client — a race guard or a session
+  stamp added to one provider by hand is exactly the drift ADR 0022 records. Each provider keeps its
+  own context and pending set. A favourite is marked with a rosette, never a star, and is published on
+  a public profile where the wishlist shows only its size. The showcase's hand order is on that shared
+  code too — `moveInOrder` in `useGameAxis`, which the wishlist gives no `order` and so cannot use —
+  and its steps are `moveInHandOrder` (`@/lib/handOrderMove`), which the backlog's move runs as well,
+  so a step added there is added to both orders. A move's failure is `orderError`, never
+  `mutationError`, which every game page's favourite toggle shows. The public profile shows the
+  favourites in their order: the order crosses, the positions never do. The reader's own rosette is
+  drawn on every card of their games and the site's, and on nothing of somebody else's profile,
+  which is why `GameRefRail` takes `isFavourite` rather than reading the context. See
+  `docs/decisions/0029-*` and `0064-*`.
 
 - **`UserName` is the public handle, not the email — and login had to be fixed for it.**
   `SignInManager.PasswordSignInAsync(string, …)` resolves its first argument as a *username*, which
@@ -193,6 +243,19 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   decision. A private profile and an unclaimed name are the same 404, so the endpoint cannot be used
   to ask whether a name has an account.
 
+- **A page loads images only from the hosts its policy names, and an avatar's host is in two
+  lists.** The document policy's `img-src` is `IMAGE_SOURCES` in `@/lib/securityHeaders`: this
+  origin, IGDB's CDN and the avatar hosts. **An image from any other host does not load**, in
+  development too, so a feature that shows one from somewhere new adds the host there on purpose.
+  An avatar host goes in both `AvatarUrlPolicy.Hosts`, which says what may be saved, and
+  `AVATAR_HOSTS` in `@/lib/avatar`, which `IMAGE_SOURCES` is built from; `serverMirrors.test.ts`
+  reads the server's file and fails when they differ. A host joins only once seen to serve an avatar
+  over HTTPS with `Access-Control-Allow-Origin`, no cookie and no reporting headers — Discord's CDN
+  and Twitch's are off for those — because the picture is loaded anonymously, with no referrer, by
+  every reader's browser. The address is stored as given and never fetched by the server. A display
+  name sits beside the handle and never replaces it, and a bio is plain text because it is rendered
+  as a text node. See `docs/decisions/0056-*`.
+
 - **A statistic about the user must not depend on IGDB being up.** `/api/user/stats` reads only
   our own tables, derives everything at read time, and is deliberately uncached — every figure
   changes the moment a game moves. The platform and genre breakdowns are the one part that needs
@@ -208,14 +271,21 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   that cannot exist without its parent must not be left orphaned or block the parent's deletion.
   That is what makes the import sweep's bare `DELETE FROM "ImportJobs"` safe. An optional pointer
   between siblings is outside the rule — a review's link to the playthrough it describes is
-  `SetNull`, so deleting one run does not take the prose with it. The manifest is
+  `SetNull`, so deleting one run does not take the prose with it. The three deletion rules — with
+  the account, with a parent, and the review's unlink — are also run against PostgreSQL by the
+  integration suite's `OwnershipCascadeTests`, which fails until its `RecordEverythingAsync` gives
+  an account a row in the new table (`docs/decisions/0057-*`). The manifest is
   `UserDataExporter.Manifest`, keyed by entity `Type`, and it is the *only* place to register:
   `ExportAsync` walks it. A new *column* on a registered table trips nothing, because each section is
   a hand-written projection — add it to that reader too, as `Ownership` and `Notes` were
   (`docs/decisions/0030-*`). Statuses export as their `Key`, never the seeded id. The export is free
   and stays free — portability is a right, and the paid "Export" in the monetisation table is a
   nicer *format* on top, so do not put an entitlement check on `/api/user/export`. It makes no IGDB
-  call, for the same reason the stats do not. See `docs/decisions/0024-*`.
+  call, for the same reason the stats do not. **It reads one snapshot**: every section runs in one
+  `REPEATABLE READ` transaction, so a new section must read through the context it is handed — a
+  service or scope with its own context reads outside the snapshot. InMemory has no isolation and
+  cannot see it; the integration suite's `ExportSnapshotTests` shows it holding against PostgreSQL,
+  over the import's two sections only. See `docs/decisions/0024-*` and `0057-*`.
 
 - **A child table of the entry carries its own `UserId`, because the ownership guard keys on it.**
   `UserOwnedDataTests` selects user-owned entities by the *presence of a `UserId` property* and then
@@ -245,6 +315,20 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   such as the author's name. `GameUserPanel` calls the hook's `reload` after the reader's own
   score or review changes, or the section beside it shows the write as though it had failed. See
   `docs/decisions/0028-*`.
+
+- **A change of list clears the entry's hand-arranged position, and every writer of a status owes
+  that.** `UserGameEntries.Position` is the backlog's "My order": a sparse number, null for a game never
+  placed, and a place in the list the game is in *now* — so `ListService`'s moves and removals and the
+  import's commit set it to null whenever `StatusId` changes, and the client's optimistic move does the
+  same. A new path that writes a status and forgets puts a returning game at a stale number rather than
+  among the unplaced, who queue by when they joined the list. The numbers are computed on the client
+  (`planMove` in `@/lib/handOrder`) and stored as sent, checked for range by the DTO and by
+  `CK_UserGameEntries_Position_Range`, and for the list; the control — drag, tap, or keyboard — is
+  `useReorder`, which the favourites showcase reuses unchanged. `UserFavourites.Position` is the same
+  number on the other axis, written through the same `HandOrderStore`; a favourite has no list to
+  leave, so only its own removal loses its place. A new hand-ordered table needs its range check, and
+  `HandOrderTests` fails until it has one and is named in that test's inventory; `ModelSnapshotTests`
+  fails until a migration carries it. See `docs/decisions/0054-*` and `0064-*`.
 
 - **A list's label reads `nameFor` from the lists context, never `LIST_NAMES`** — except on a public
   profile, which keeps the defaults because a rename is its owner's alone. `LIST_NAMES` is the
@@ -277,13 +361,30 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   attach with `OnStarting` rather than on the way in, because `UseExceptionHandler` clears the
   response — headers included — before writing a 500 or a 502.
 
+- **A document runs only the scripts its own render wrote.** Its `script-src` names a nonce drawn
+  once per render in `entry.server.tsx` and handed to `<ServerRouter>` and to the stream; an inline
+  script without it never runs, and a page whose hydration scripts never run is dead. A new inline
+  script of ours, such as the palette script #208 plans, goes in by its hash in `documentPolicy`, and
+  a script from another host is refused until a record decides its hosts or `'strict-dynamic'`
+  (Google's tag, #242, is the first). A shared cache keeps the nonce whole only because header and
+  body are stored together, so **nothing at the edge may set, rewrite or remove
+  `Content-Security-Policy` on a document** — a response headers policy replacing it names no nonce
+  and every page dies — **and no document may carry an `ETag` or `Last-Modified`**, because a 304
+  keeps the old body under the new header. A HEAD carries no policy, and a document a shared cache
+  may store is sent whole rather than streamed, so that its nonce is never seen before its body is
+  final. On a shared page that nonce is public, so **never add a sink that parses a string as markup
+  in the browser** (`dangerouslySetInnerHTML` of anything but a constant, `innerHTML`, `srcdoc`, …):
+  0053 §2 holds because there is none (#250). The root renders `<Links nonce="">` on purpose —
+  without it every page reports a hydration mismatch in development. See `docs/decisions/0053-*`.
+
 - **A third party's failure is a 502, our own throttle is a 503, ours is a 500, and a reader who
   left is a 499.** IGDB calls go through a resilience pipeline — retry outermost, then the breaker,
   then the four-a-second limiter, then a per-attempt timeout, with a total timeout over all of it.
   That order is load-bearing: with the limiter outside the retry it would pace *operations*, and
   three attempts would share one permit. Every error body is a `ProblemDetails` with a `traceId`,
   which means writing it through `IProblemDetailsService` and never by hand; the exception itself is
-  included in Development only. `/readyz` still answers 200 while IGDB is down, deliberately. See
+  included in Development only. That `traceId` is the request's W3C trace id, so it is the id the page
+  that made the call names (see "One id names a request" below). `/readyz` still answers 200 while IGDB is down, deliberately. See
   `docs/decisions/0034-*`.
 
 - **The rate limiter is narrow on purpose, and the lockout says nothing.** Ten attempts per address
@@ -309,8 +410,8 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   than a transition and an event would carry the import's own timestamp as permanent fabricated
   history. So `UserGameEntry.Origin` names the source — `manual` means every status that entry has
   held has an event behind it, anything else means it may not — and it is set whenever the import
-  writes a status, over an existing entry as well as a new one. `StatusChangedAt` stays null for
-  the same reason. **An imported playthrough's type is the source's completion level, translated
+  writes a status, over an existing entry as well as a new one. The import never stamps
+  `StatusChangedAt` or `ScoredAt`, for the same reason. **An imported playthrough's type is the source's completion level, translated
   by the source**: Grouvee's "Main Story" and "Main Story + Extras" are `normally`, "100% Completion"
   is `completionist`, and nothing imported is `rushed`. A typed run with a duration feeds the
   community medians, so only strings seen in a real export are mapped and anything else stays
@@ -327,6 +428,21 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   stay events-only, `LogStartedAt` stays the first status change, and no event is ever synthesised
   to make an import count. See `docs/decisions/0026-*`, `0037-*` and `0047-*`.
 
+- **The owner's history is a union of rows, and a score's moment is `ScoredAt`.**
+  `/api/user/history` is one `UNION ALL` of the events, the entries' `ScoredAt`, and the
+  playthroughs' start and finish dates, paged by an encrypted cursor over (moment, kind, id) and
+  never by offset. It adds no event type and writes nothing of the user's. **Only `SetScoreAsync`
+  stamps `ScoredAt`**: when the user's score changes, never on a same-score write, cleared with the
+  score, never backfilled, never by an import. **Any other path that changes a score must clear
+  it**, or the history dates a score at a time nobody gave it — the check constraint refuses only a
+  moment with no score — and every write that changes a score goes through
+  `EntryStore.WriteScoredAtWithScore`, because EF updates only the columns it saw change and a tab
+  that scored the game meanwhile would keep its moment. A playthrough's day sorts at noon UTC and
+  goes out as the day; an imported status and an undated score have no item, and the page is told
+  how many of each from `Origin` and the null `ScoredAt`s. It lists a run's finish beside a move to
+  Finished, where the chart counts one (ADR 0047's precedence is a counting rule), and it is not on
+  the public profile. See `docs/decisions/0062-*`.
+
 - **A closed import has no rows, and a review is only ever of a pending job.** A commit or a cancel
   deletes the job's `ImportRow`s in the same `SaveChangesAsync` that closes it (ADR 0037, ADR 0039),
   because by then everything a row held has become a `UserGameEntry` or a count on the job and
@@ -342,25 +458,44 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   somebody their part-finished review is safe for longer than it is. A job already gone answers
   404, which the review screen renders as the end of that import rather than as a retryable error.
 
-- **Scheduled work is a `BackgroundService`, and there is exactly one.** `ImportRetentionService`
-  sweeps expired import jobs hourly, and is the shape the next one copies (ADR 0038). Three things
-  about it are easy to get wrong: a hosted service is a **singleton**, so it takes
-  `IServiceScopeFactory` and makes a scope per tick rather than injecting the scoped `DbContext`;
-  an exception escaping `ExecuteAsync` **stops the whole host**, so the loop catches per tick —
-  `ScheduledWork.AddScheduledWork` registers every scheduled service and is the **only** place
-  allowed to configure `HostOptions`, which is what lets a test assert that behaviour out of the
-  application's own registration instead of out of a bare `new HostOptions()` that says nothing
-  about us; and it runs **once per ECS task**, so it serialises on
+- **Scheduled work is a `BackgroundService`, and there are three.** `ImportRetentionService`
+  sweeps expired import jobs hourly, and is the shape the others copy (ADR 0038);
+  `GameCacheRefreshService` rewrites `CachedGames` rows from IGDB an hour before a reader would find
+  them a day old, and `SteamNewsRefreshService` fetches the Steam feeds people are reading before
+  they expire (ADR 0052). The CloudFront invalidator is a fourth hosted service, but works a queue
+  rather than a clock (ADR 0058). Three things about them are easy to get wrong: a hosted service is a
+  **singleton**, so it takes `IServiceScopeFactory` and makes a scope per tick rather than injecting
+  the scoped `DbContext`; an exception escaping `ExecuteAsync` **stops the whole host**, so the loop
+  catches per tick — `ScheduledWork.AddScheduledWork` registers every scheduled service and is the
+  **only** place allowed to configure `HostOptions`, which is what lets a test assert that behaviour
+  out of the application's own registration instead of out of a bare `new HostOptions()` that says
+  nothing about us; and each runs **once per ECS task**, so the two on the database serialise on
   `pg_try_advisory_xact_lock` — the transaction-scoped variant, because a session lock survives on
   a pooled connection after it is returned. That transaction runs inside
-  `db.Database.CreateExecutionStrategy()`, which does nothing today and stops the sweep throwing
+  `db.Database.CreateExecutionStrategy()`, which never retries today and stops either job throwing
   `InvalidOperationException` on the day somebody adds `EnableRetryOnFailure` to `UseNpgsql`:
-  **EF refuses a user-initiated transaction under a retrying strategy**, and the sweep would fail
-  into the log once an hour for ever without anything else breaking. A tick that cannot take the
+  **EF refuses a user-initiated transaction under a retrying strategy**, and the job would fail
+  into the log on every tick for ever without anything else breaking. A tick that cannot take the
   lock **counts what is waiting** rather than just returning: the try-lock is false when *any*
-  session holds the key, so work still expired after six skipped ticks running means the holder is
-  not a sweep, and that logs a warning. A stalled sweep is deliberately **not** a `/readyz`
-  failure — the instance still serves. Retention is two windows, not §S9's one, and **which one applies is decided by
+  session holds the key, so for the sweep, work still expired after six skipped ticks running means
+  the holder is not a sweep, and that logs a warning. The refresh cannot use that rule — rows fall
+  due all day, so work is nearly always waiting — and warns instead, hourly, while any row is
+  **twenty-five hours old**, which no row reaches while the refresh keeps up. A batch whose answer
+  cannot be read, or whose write PostgreSQL refuses, is held back an hour rather than retried at the
+  head of the queue for ever. It holds its lock
+  **across the IGDB request**, so no two tasks pay for the same rows, bounded at fifteen seconds
+  because the transaction also holds back any migration of the table; once IGDB has answered it
+  **saves and commits on `CancellationToken.None`**: the stopping token bounds the work, not the
+  write (#96); the integration suite's `GameCacheRefreshJobTests` runs the lock, that commit and a
+  refused write against PostgreSQL. Unlike the sweep it writes tracked rows, so **each attempt clears the change
+  tracker** — under a retrying strategy a commit that failed after its save would otherwise leave
+  the retry rows already marked saved, and stamp the stale payload fresh. Its pace, one request of
+  fifty ids a minute, is the `GameCacheRefresh` section, checked at startup. **The Steam refresh
+  takes no lock, deliberately**: what it warms is its own process's memory, so a lock would leave
+  every other task's feeds cold, and it refreshes only the feeds read since they were fetched, so
+  what it adds is at most one request per feed after its last read. A stalled sweep or refresh is
+  deliberately **not** a `/readyz` failure — the instance still serves.
+  Retention is two windows, not §S9's one, and **which one applies is decided by
   `CompletedAt`, never by `State`** — `MaxPendingJobs` counts from the same column so the cap and
   the sweep mean the same jobs, and `CK_ImportJobs_Completion` keeps the two columns agreeing.
   Seven days from `CompletedAt` for a closed job, fourteen from `UpdatedAt` for an unfinished one, because a job
@@ -368,10 +503,14 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   ever. **`UpdatedAt` is the last saved decision, never the upload** — every write to a job stamps
   it, so the pending window is silence rather than a deadline, and a review worked through over
   several weekends is not deleted underneath its owner. **`ExecuteDeleteAsync` needs a relational provider**, so the predicate is an `Expression`
-  the tests run against InMemory and the deletion itself is not unit-tested — change it and verify
-  it against the real container. It deletes **twenty-five jobs per statement and commits each
+  the tests run against InMemory and the deletion itself is not unit-tested — the integration
+  suite's `ImportRetentionSweepTests` runs it, batches and lock included, against PostgreSQL
+  (`docs/decisions/0057-*`). It deletes **twenty-five jobs per statement and commits each
   batch**, because one unbounded `DELETE` over a backlog exceeds Npgsql's thirty-second default,
-  rolls back, deletes nothing, and is retried identically every hour for ever. And because it
+  rolls back, deletes nothing, and is retried identically every hour for ever. Each batch
+  **commits on `CancellationToken.None`**: the stopping token bounds the work, never the write
+  that keeps its result, or a shutdown landing between a batch's `DELETE` and its commit would
+  roll back a batch already done, leaving the next sweep to repeat it (ADR 0038 §4). And because it
   deletes rows no request asked it to, **every `ImportService` write stamps the job and treats an
   `UPDATE` that matches no row as "swept"** — the 404 each endpoint already had, rather than the 500
   an unclaimed `DbUpdateConcurrencyException` becomes. Anything else that deletes out from under a
@@ -430,7 +569,9 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   critics; Popular needs ten ratings; Newest and A to Z need ten ratings *and* a critic, because
   without one they fill with shovelware. The filters apply to a search, but never an order: IGDB
   answers a `search` with a `sort` with a 406. Every browse parameter is in the URL through
-  `@/lib/gameBrowse`, and all six belong in the CDN cache key. See `docs/decisions/0032-*`.
+  `@/lib/gameBrowse`, and all seven belong in the CDN cache key — the allowlist in
+  `infra/src/Infra/Edge.cs`, which also decides what reaches the origin at all. See
+  `docs/decisions/0032-*`.
 
 - **Stars mean the user's own score and nothing else.** One `ScoreInput` — five stars, half-star
   steps, which is exactly the 1–10 the database stores. Everything averaged from other people
@@ -479,10 +620,13 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   `docs/decisions/0036-*`.
 
 - **A degraded or error response must never be cacheable.** Caching a failure outlives the
-  failure. Note three traps: a thrown `Response`'s headers are replaced by the boundary route's
-  (the root reads `errorHeaders` to honour them); a loader that degrades to a 200 has to attach
-  `no-store` itself via `data()`; and an *API* that degrades to a 200 has to say so in its payload,
-  because neither the loader nor a CDN can tell that 200 from a healthy one. `/api/home` does, with
+  failure. Note four traps: a thrown `Response`'s headers are replaced by the boundary route's
+  (the root reads `errorHeaders` to honour them); a page that fails *while rendering* is re-rendered
+  as its error boundary over the headers React Router computed for the page — a game page's hour
+  at the edge included — so `entry.server.tsx` sets `private, no-store` on any 5xx itself; a loader
+  that degrades to a 200 has to attach `no-store` itself via `data()`; and an *API* that degrades to
+  a 200 has to say so in its payload, because neither the loader nor a CDN can tell that 200 from a
+  healthy one. `/api/home` does, with
   `degraded`, and the loader reads it failing closed — only an explicit `false` is shared-cached.
 
 - **`fetch` rejects when the API is unreachable** — it does not return `!response.ok`. A loader
@@ -498,8 +642,22 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   the commit. Passing a constant, a boolean, or dropping the parameter puts one account's data under
   another's name. Apply the same shape to any new account-scoped hook.
 
-- **Loaders run on the server**, where a relative URL has no origin. Use `apiUrl()` from
-  `@/lib/api` for any fetch that may run during SSR.
+- **Loaders run on the server**, where a relative URL has no origin. A loader calls the API with
+  `loaderFetch(context, path)` from `@/lib/trace.server`, which resolves the path as `apiUrl()` does
+  and sends the render's trace.
+
+- **One id names a request from the page to the API's log, and a log line never carries a query
+  string, a header or a form.** The root's middleware draws a W3C trace for every request React Router
+  routes and answers with it in `X-Trace-Id`; `loaderFetch` sends it as `traceparent`, and the API
+  continues it, so its log lines carry it as `TraceId` and its `ProblemDetails` as `traceId`. The lint
+  refuses an import of `apiUrl` outside `@/lib/api` and `loaderFetch`, because the API would log a call
+  made any other way under a trace of its own. A loader whose call failed throws
+  `upstreamFailure(context, message)`, which is what puts the id on the error page, and a call that
+  never reached the API is logged by `loaderFetch`, the one failure the API has no line for. Outside Development the API logs one JSON object per line, every scope included,
+  and one line per request with its status; never lower `Microsoft.AspNetCore` below `Warning`, whose
+  own request lines print the query, and a search can be an email address. `TraceIds.UseW3COnly()` in
+  `Program.cs` is what stops a later-version `traceparent` writing its own text into every line. See
+  `docs/decisions/0059-*`.
 
 - **Never touch `window`, `document` or `localStorage` during render or in a `useState`
   initializer** — it breaks SSR. Read browser-only state through `useSyncExternalStore` with a

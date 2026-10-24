@@ -56,6 +56,19 @@ export function formatMonth(month: string): string {
     return index === null ? month : MONTHS_SHORT[index];
 }
 
+/**
+ * A calendar day, `2026-05-01`, as `1 May 2026`.
+ *
+ * Split rather than parsed. `new Date('2026-05-01')` is UTC midnight and renders as the previous day
+ * for anybody west of Greenwich, which is the slip `formatMonth` avoids for months. A day has no
+ * time and no zone, so its digits are the whole of it.
+ */
+export function formatDay(iso: string): string {
+    const [year, month, day] = iso.split('-').map(Number);
+    if (!Number.isInteger(month) || month < 1 || month > 12) return iso;
+    return `${day} ${MONTHS_LONG[month - 1]} ${year}`;
+}
+
 /** An ISO timestamp as `25 August 2026`, for prose rather than an axis. */
 export function formatDate(iso: string): string {
     const at = new Date(iso);

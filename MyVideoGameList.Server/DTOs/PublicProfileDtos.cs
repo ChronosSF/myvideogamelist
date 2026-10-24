@@ -28,6 +28,18 @@ namespace MyVideoGameList.Server.DTOs;
 /// As stored, so the page shows the capitalisation its owner chose rather than whatever the
 /// visitor happened to type into the URL.
 /// </param>
+/// <param name="DisplayName">
+/// The name they are shown by, or null. Published because it exists to be: the owner wrote it for
+/// this page. It is shown beside <paramref name="UserName"/> and never instead of it, since the handle
+/// is what says whose page this is (ADR 0027).
+/// </param>
+/// <param name="AvatarUrl">
+/// Their picture's address, or null for the handle's initial. The reader's browser loads it from its
+/// host, which is always one of a short list (ADR 0056).
+/// </param>
+/// <param name="Bio">
+/// What they wrote about themselves, as plain text, or null. Published for the display name's reason.
+/// </param>
 /// <param name="Reviews">
 /// How many public reviews this user has written — the count the page needs before it fetches any
 /// of them, and the number that decides whether the section appears at all.
@@ -39,6 +51,9 @@ namespace MyVideoGameList.Server.DTOs;
 /// </param>
 public record PublicProfileDto(
     string UserName,
+    string? DisplayName,
+    string? AvatarUrl,
+    string? Bio,
     PublicActivityDto Activity,
     LibraryStatsDto Library,
     ScoreStatsDto Scores,
@@ -126,8 +141,13 @@ public record PublicReviewDto(
 /// <para>
 /// <see cref="GameRefDto"/> rather than <see cref="GameDto"/>: a showcase is a row of covers that
 /// link to their game pages, and the server-rendered profile has no use for every score and platform
-/// of each. It does not say when each became a favourite either: the order is the whole of what a
-/// reader needs from that, and the dates are the owner's data rather than part of the showcase.
+/// of each. It does not say when each became a favourite either: the dates are the owner's data rather
+/// than part of the showcase.
+/// </para>
+/// <para>
+/// The order is the one the owner arranged (ADR 0064), carried by the order of <c>Games</c> and by
+/// nothing else: the positions behind it are numbers for the owner's client to plan moves with, as
+/// the dates are the owner's data, and a reader needs neither to see a row in its order.
 /// </para>
 /// </remarks>
 public record PublicFavouritesDto(string UserName, IReadOnlyList<GameRefDto> Games);

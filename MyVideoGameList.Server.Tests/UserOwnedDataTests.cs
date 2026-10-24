@@ -28,7 +28,9 @@ namespace MyVideoGameList.Server.Tests;
 /// on the EF in-memory provider, which cascades only to rows the context happens to be tracking, so
 /// such a test would pass or fail for reasons that have nothing to do with PostgreSQL. The cascade
 /// is established by the model assertion below plus the <c>ON DELETE CASCADE</c> the migrations
-/// emit from it. See <c>docs/decisions/0024-the-ownership-contract.md</c>.
+/// emit from it, and shown against PostgreSQL by the integration suite's
+/// <c>OwnershipCascadeTests</c>. See <c>docs/decisions/0024-the-ownership-contract.md</c> and
+/// <c>0057-*</c>.
 /// </para>
 /// </remarks>
 public class UserOwnedDataTests

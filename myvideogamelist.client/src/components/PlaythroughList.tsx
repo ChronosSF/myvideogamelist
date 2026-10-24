@@ -2,6 +2,7 @@ import type { PlatformDto } from '@/types/game';
 import type { PlaythroughDto } from '@/types/playthrough';
 import { playthroughLabel } from '@/types/playthrough';
 import { formatExactMinutes } from '@/lib/duration';
+import { formatDay } from '@/lib/stats';
 
 interface PlaythroughListProps {
     playthroughs: PlaythroughDto[];
@@ -125,22 +126,4 @@ function dateRange(playthrough: PlaythroughDto): string | null {
     return started === null
         ? `Finished ${finished}`
         : `${started}, finished ${finished}`;
-}
-
-const MONTHS = [
-    'January', 'February', 'March', 'April', 'May', 'June',
-    'July', 'August', 'September', 'October', 'November', 'December',
-];
-
-/**
- * `2026-05-01` as `1 May 2026`.
- *
- * Split rather than parsed. `new Date('2026-05-01')` is UTC midnight and renders as the previous
- * day for anybody west of Greenwich, which is exactly the bug `@/lib/stats` documents for months.
- * And not `toLocaleString`, whose month is numeric in some locales.
- */
-function formatDay(iso: string): string {
-    const [year, month, day] = iso.split('-').map(Number);
-    if (!Number.isInteger(month) || month < 1 || month > 12) return iso;
-    return `${day} ${MONTHS[month - 1]} ${year}`;
 }

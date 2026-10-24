@@ -109,6 +109,20 @@ Accept: application/json
 GET {{MyVideoGameList.Server_HostAddress}}/api/user/news
 Accept: application/json
 
+### Say who you are on your public profile
+# Needs the Identity cookie, and the header every write needs. All three at once; null or blank
+# clears one. The avatar is an https address on one of AvatarUrlPolicy.Hosts, stored as given and
+# never fetched by the server — see docs/decisions/0056-*.
+PUT {{MyVideoGameList.Server_HostAddress}}/api/user/profile
+Content-Type: application/json
+X-MVGL-Request: 1
+
+{
+  "displayName": "Stamen",
+  "avatarUrl": "https://avatars.githubusercontent.com/u/9919?v=4",
+  "bio": "Mostly RPGs.\nSlowly."
+}
+
 ### Export everything the signed-in user has entered
 # Needs the Identity cookie. Free and IGDB-free — see docs/decisions/0024-the-ownership-contract.md.
 GET {{MyVideoGameList.Server_HostAddress}}/api/user/export

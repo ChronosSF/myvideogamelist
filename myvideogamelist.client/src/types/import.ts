@@ -38,6 +38,10 @@ export interface ImportJob {
     fileName: string;
     state: string;
     rowCount: number;
+    /**
+     * Rows imported, not games — two rows can name one game, and only the commit's answer says how
+     * many games that made (`ImportResult.games`). Null until the job is committed.
+     */
     importedCount: number | null;
     skippedCount: number | null;
     createdAt: string;
@@ -144,8 +148,15 @@ export interface ImportResult {
     /** Every row that did not import, with the reason. What the failure report is built from. */
     skipped: ImportSkippedRow[];
     /**
-     * How many of the games written are in no list afterwards. An entry with no status shows in no
-     * list, only on its game's own page, so "now in your lists" is false of these (ADR 0019).
+     * How many games the imported rows went into, an entry the user already had included: fewer
+     * than `job.importedCount` whenever two of those rows named one game, as a source listing a game
+     * once per platform does. Nothing stores it — the job's counts stay rows, so imported and
+     * skipped still add up to every row in the file.
+     */
+    games: number;
+    /**
+     * How many of those games are in no list afterwards. An entry with no status shows in no list,
+     * only on its game's own page, so "now in your lists" is false of these (ADR 0019).
      */
     unlisted: number;
 }

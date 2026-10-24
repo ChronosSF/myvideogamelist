@@ -39,6 +39,13 @@ export interface ListsContextValue {
     /** Returns false when the save failed, so a caller holding its own copy can revert. */
     setScore: (gameId: number, score: number | null) => Promise<boolean>;
     /**
+     * Moves a game in the list's hand order to sit right after `afterGameId`, or first when that is
+     * null — optimistically, under the per-game lock of every game it writes, and undone if the save
+     * fails. False when it failed, or was refused because a game it would write is still saving.
+     * See `docs/decisions/0054-*`.
+     */
+    moveInOrder: (listId: ListId, gameId: number, afterGameId: number | null) => Promise<boolean>;
+    /**
      * Says how the user has the game, or clears it with null. Takes the per-game lock, because it
      * writes the same entry row as a score or a move; nothing in the lists shows it, so the caller
      * holds the value and reverts on false.

@@ -16,8 +16,17 @@ import { TagsProvider } from '@/contexts/TagsProvider';
 import { Navbar } from '@/components/Navbar';
 import { SiteFooter } from '@/components/SiteFooter';
 import { PRIVATE_NO_STORE } from '@/lib/cache';
+import { isUpstreamFailure } from '@/lib/trace';
+import { traceMiddleware } from '@/lib/trace.server';
 import './index.css';
 import './App.css';
+
+/**
+ * Every request this server handles draws its trace here, before any loader runs, and answers with
+ * its id in `X-Trace-Id`. The loaders send it to the API as `traceparent`; see `@/lib/trace.server`
+ * and ADR 0059. Server middleware, which React Router leaves out of the browser's bundle.
+ */
+export const middleware: Route.MiddlewareFunction[] = [traceMiddleware];
 
 export function meta() {
     return [
@@ -62,7 +71,17 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 <meta charSet="UTF-8" />
                 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
                 <Meta />
-                <Links />
+                {/*
+                  An explicit empty nonce, so that the links render the same on both sides.
+                  Left alone, <Links> takes the render's nonce from <ServerRouter> while the
+                  hydrating client has none, and a browser blanks a nonce attribute once it has
+                  read it. React compares a stylesheet link's attributes when it hydrates it, so the
+                  server's nonce="" against no attribute on the client is a hydration mismatch,
+                  which in development the critical-CSS link reports on every page. A link needs no
+                  nonce under this policy: same-origin preloads are admitted by 'self', and no
+                  style-src is set. A style-src naming the nonce would change that; see ADR 0053 §5.
+                */}
+                <Links nonce="" />
             </head>
             <body>
                 {children}
@@ -103,12 +122,21 @@ export default function Root() {
 export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
     let title = 'Something went wrong';
     let detail = 'An unexpected error occurred. Please try again.';
+    // The id of the request that failed, when the failure says. Rendered on the server and again
+    // from the same error while hydrating, so both sides show the same text.
+    let reference: string | null = null;
 
     if (isRouteErrorResponse(error)) {
         title = error.status === 404 ? 'Page not found' : `${error.status} ${error.statusText}`;
-        detail = error.status === 404
-            ? "We couldn't find the page you were looking for."
-            : error.data ?? detail;
+
+        if (isUpstreamFailure(error.data)) {
+            detail = error.data.message;
+            reference = error.data.traceId;
+        } else if (error.status === 404) {
+            detail = "We couldn't find the page you were looking for.";
+        } else if (typeof error.data === 'string' && error.data !== '') {
+            detail = error.data;
+        }
     } else if (import.meta.env.DEV && error instanceof Error) {
         detail = error.message;
     }
@@ -122,6 +150,14 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
                 <div className="text-center max-w-md">
                     <h1 className="text-3xl font-bold text-fg-strong mb-3">{title}</h1>
                     <p className="text-fg-muted mb-8">{detail}</p>
+                    {reference && (
+                        // What somebody reporting this can quote: the id on the API's lines for the
+                        // failed call, or on this server's line when the call never reached it.
+                        <p className="text-sm text-fg-faint -mt-4 mb-8">
+                            If you report this, quote{' '}
+                            <code className="font-mono text-fg-soft select-all break-all">{reference}</code>.
+                        </p>
+                    )}
                     <a
                         href="/"
                         className="inline-flex items-center gap-2 px-5 py-2.5 bg-primary-600 hover:bg-primary-500 text-on-primary font-semibold rounded-xl transition-colors"

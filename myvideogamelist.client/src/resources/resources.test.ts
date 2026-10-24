@@ -1,7 +1,9 @@
+import { RouterContextProvider } from 'react-router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { loader as robotsLoader } from '@/resources/robotsTxt';
 import { loader as indexLoader } from '@/resources/sitemapIndex';
 import { loader as fileLoader } from '@/resources/sitemapFile';
+import { loader as versionLoader } from '@/resources/version';
 import { CACHE_NOT_FOUND, CACHE_PROFILE, CACHE_SITEMAP, PRIVATE_NO_STORE } from '@/lib/cache';
 import type { Route as IndexRoute } from './+types/sitemapIndex';
 import type { Route as FileRoute } from './+types/sitemapFile';
@@ -18,13 +20,18 @@ function stubApi(feeds: Record<string, unknown>) {
     return fetchMock;
 }
 
+// The context is where the request's trace lives, which every call to the API carries.
 const index = () =>
-    indexLoader({ request: new Request('https://internal.example/sitemap.xml') } as unknown as IndexRoute.LoaderArgs);
+    indexLoader({
+        request: new Request('https://internal.example/sitemap.xml'),
+        context: new RouterContextProvider(),
+    } as unknown as IndexRoute.LoaderArgs);
 
 const file = (name: string) =>
     fileLoader({
         request: new Request(`https://internal.example/sitemaps/${name}`),
         params: { file: name },
+        context: new RouterContextProvider(),
     } as unknown as FileRoute.LoaderArgs);
 
 function asProduction() {
@@ -143,5 +150,35 @@ describe('/sitemaps/:file', () => {
 
         expect(response.status).toBe(502);
         expect(response.headers.get('Cache-Control')).toBe(PRIVATE_NO_STORE);
+    });
+});
+
+describe('/version', () => {
+    it('answers what the image says it was built from, uncached', async () => {
+        vi.stubEnv('BUILD_SHA', '6f84a2ed08be4a3e5fd1b8b777dd3a5fdff7f9a5');
+        vi.stubEnv('BUILD_TIME', '2026-10-15T09:00:00Z');
+
+        const response = versionLoader();
+
+        expect(response.headers.get('Content-Type')).toBe('application/json; charset=utf-8');
+        expect(response.headers.get('Cache-Control')).toBe(PRIVATE_NO_STORE);
+        expect(response.headers.get('X-Content-Type-Options')).toBe('nosniff');
+        expect(await response.json()).toEqual({
+            sha: '6f84a2ed08be4a3e5fd1b8b777dd3a5fdff7f9a5',
+            builtAt: '2026-10-15T09:00:00Z',
+        });
+    });
+
+    it('says unknown where the build did not say, as on a developer machine', async () => {
+        vi.stubEnv('BUILD_SHA', '');
+        vi.stubEnv('BUILD_TIME', undefined);
+
+        expect(await versionLoader().json()).toEqual({ sha: 'unknown', builtAt: 'unknown' });
+    });
+
+    it('stays out of an index on a deployment that is indexed', () => {
+        asProduction();
+
+        expect(versionLoader().headers.get('X-Robots-Tag')).toBe('noindex');
     });
 });
