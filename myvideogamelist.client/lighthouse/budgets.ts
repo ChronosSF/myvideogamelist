@@ -58,6 +58,13 @@ interface Baseline {
  * heading order and a description list (#329). Best practices is 96 on every signed-out page because of
  * the 401 the session check logs (#316). SEO is 66 on the lists page because it says `noindex`, as every
  * page that is one member's own does (ADR 0036).
+ *
+ * Three figures have moved since, a point each: accessibility on a desktop for the game page, the profile
+ * and the lists, when the navbar's search (#270) arrived. From 64rem it is a box in the bar, a labelled
+ * combobox, and it brings audits those pages had nothing for: a field's label, and ARIA roles and the
+ * attributes they require. It passes them. The home page gains the same audits and still rounds to 0.96;
+ * browse already had a search field. Below 64rem the search waits behind a toggle, so a phone's figures
+ * are as they were.
  */
 const BASELINE: Record<FormFactor, Record<PageKey, Baseline>> = {
     mobile: {
@@ -70,9 +77,9 @@ const BASELINE: Record<FormFactor, Record<PageKey, Baseline>> = {
     desktop: {
         home: { accessibility: 0.96, bestPractices: 0.96, seo: 1, consoleErrors: 1, kib: 870, performance: 1 },
         games: { accessibility: 0.95, bestPractices: 0.96, seo: 1, consoleErrors: 1, kib: 937, performance: 0.99 },
-        game: { accessibility: 0.92, bestPractices: 0.96, seo: 1, consoleErrors: 1, kib: 2106, performance: 1 },
-        profile: { accessibility: 0.94, bestPractices: 0.96, seo: 1, consoleErrors: 1, kib: 587, performance: 1 },
-        lists: { accessibility: 0.95, bestPractices: 1, seo: 0.66, consoleErrors: 0, kib: 587, performance: 0.99 },
+        game: { accessibility: 0.93, bestPractices: 0.96, seo: 1, consoleErrors: 1, kib: 2106, performance: 1 },
+        profile: { accessibility: 0.95, bestPractices: 0.96, seo: 1, consoleErrors: 1, kib: 587, performance: 1 },
+        lists: { accessibility: 0.96, bestPractices: 1, seo: 0.66, consoleErrors: 0, kib: 587, performance: 0.99 },
     },
 };
 
