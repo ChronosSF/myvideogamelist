@@ -2,7 +2,10 @@ import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
 import type { CommunityScores, GameReview, GameReviews } from '@/types/community';
 
 export interface UseGameCommunityResult {
-    /** Whether both first requests have answered, either way. Nothing renders before this. */
+    /**
+     * Whether both first requests have answered, either way. The section is a skeleton before this —
+     * and again while it retries after both failed.
+     */
     settled: boolean;
     /** Null while loading, and when the request failed. */
     scores: CommunityScores | null;
@@ -14,11 +17,16 @@ export interface UseGameCommunityResult {
     loadingMore: boolean;
     /** The last "show more" failed. Cleared by the next attempt. */
     moreFailed: boolean;
+    /**
+     * A reload is out while the section keeps what it shows, so a half that had failed can say it is
+     * trying again rather than sit under a button that seems to do nothing.
+     */
+    reloading: boolean;
     loadMore: () => void;
     /**
      * Asks for both halves again. For after the reader has changed something they show — their score,
      * their review, or everything they had recorded about the game — so the page reflects the write
-     * rather than reading as though it had failed.
+     * rather than reading as though it had failed; and for the section's "Try again" after a failure.
      */
     reload: () => void;
 }
@@ -40,10 +48,12 @@ export interface GameCommunityState {
     next: string | null;
     loadingMore: boolean;
     moreFailed: boolean;
+    reloading: boolean;
 }
 
 export type GameCommunityAction =
     | { type: 'RESET'; gameId: number }
+    | { type: 'RELOAD'; gameId: number }
     | { type: 'SETTLED'; gameId: number; scores: CommunityScores | null; reviews: GameReviews | null }
     | { type: 'MORE_START'; gameId: number }
     | { type: 'MORE_SUCCESS'; gameId: number; after: string; reviews: GameReviews }
@@ -59,6 +69,7 @@ function initial(gameId: number): GameCommunityState {
         next: null,
         loadingMore: false,
         moreFailed: false,
+        reloading: false,
     };
 }
 
@@ -79,6 +90,15 @@ export function gameCommunityReducer(
     if (action.gameId !== state.gameId) return state;
 
     switch (action.type) {
+        // Asked again. When both halves had failed there is nothing on screen worth keeping, so the
+        // section goes back to waiting and shows it, rather than leaving "could not be loaded" up
+        // under a retry button that seems to do nothing. Anything else stays until the answer lands,
+        // marked as being asked for again. Before the first answer there is nothing to mark.
+        case 'RELOAD':
+            if (!state.settled) return state;
+            return state.scores === null && state.total === null
+                ? { ...state, settled: false }
+                : { ...state, reloading: true };
         case 'SETTLED': {
             // A second answer for the game on screen is a reload. A half that fails then keeps what
             // the reader was already looking at: it was right a moment ago, and blanking a section
@@ -92,6 +112,7 @@ export function gameCommunityReducer(
                 ...state,
                 ...reviews,
                 settled: true,
+                reloading: false,
                 scores: action.scores ?? (reload ? state.scores : null),
                 // A reload cancels any "show more" still in flight, so nothing else would clear these.
                 loadingMore: false,
@@ -149,8 +170,9 @@ async function getJson<T>(url: string, signal: AbortSignal): Promise<T | null> {
  *   the server — so rendering it here as well would add a duplicate, not a page.
  *
  * Both requests are made together and land together, so the section appears once rather than
- * growing twice. Either can fail alone; a failure is reported by a null and never by an error
- * banner, for the reason `useCommunityTimes` gives.
+ * growing twice. Either can fail alone; a failure is reported by a null and never by a message of
+ * its own, so the section decides what to say: inside the section and never as a banner over a page
+ * that rendered perfectly well, for the reason `useCommunityTimes` gives.
  *
  * Further pages follow the cursor each page ends with, never a page number: a review withdrawn or
  * rewritten while somebody reads moves every offset after it, and an offset then skips a review for
@@ -211,7 +233,11 @@ export function useGameCommunity(gameId: number): UseGameCommunityResult {
         });
     }, [gameId, state.next, state.loadingMore]);
 
-    const reload = useCallback(() => setReloads(count => count + 1), []);
+    // Stamped like everything else, so a reload asked for one game cannot unsettle the next.
+    const reload = useCallback(() => {
+        dispatch({ type: 'RELOAD', gameId });
+        setReloads(count => count + 1);
+    }, [gameId]);
 
     return {
         settled: state.settled,
@@ -221,6 +247,7 @@ export function useGameCommunity(gameId: number): UseGameCommunityResult {
         hasMore: state.next !== null,
         loadingMore: state.loadingMore,
         moreFailed: state.moreFailed,
+        reloading: state.reloading,
         loadMore,
         reload,
     };

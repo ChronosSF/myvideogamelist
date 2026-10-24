@@ -1,4 +1,5 @@
 import { Link } from 'react-router';
+import { CoverImage } from '@/components/CoverImage';
 import type { NewsItemDto } from '@/types/news';
 import { useHydrated } from '@/lib/useHydrated';
 
@@ -49,10 +50,13 @@ export function NewsCard({ item, showGame = true }: NewsCardProps) {
                     className="shrink-0"
                     aria-label={item.gameTitle}
                 >
-                    <img
-                        src={item.gameCoverUrl}
+                    {/* Its `w-14 h-20` box, less the border, is narrower than three by four, so
+                        `object-cover` scales the cover to the box's height: three quarters of 5rem
+                        less the border is the width it is drawn at. */}
+                    <CoverImage
+                        url={item.gameCoverUrl}
                         alt=""
-                        loading="lazy"
+                        sizes="calc((5rem - 2px) * 3 / 4)"
                         className="w-14 h-20 object-cover rounded-lg border border-line"
                     />
                 </Link>

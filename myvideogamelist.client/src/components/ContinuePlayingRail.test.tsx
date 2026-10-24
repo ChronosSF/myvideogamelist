@@ -100,6 +100,16 @@ describe('ContinuePlayingRail', () => {
         expect(titles).toEqual(['Newer', 'Older']);
     });
 
+    it('loads the covers in view with the page, and the rest of the rail as it is scrolled', () => {
+        playing(Array.from({ length: 8 }, (_, index) => entry({
+            game: { id: index + 1, title: `Game ${index + 1}`, coverImageUrl: `https://images.igdb.com/igdb/image/upload/t_cover_big/co${index + 1}.jpg` },
+        })));
+        const { container } = renderRail();
+
+        expect([...container.querySelectorAll('img')].map(cover => cover.getAttribute('loading')))
+            .toEqual([...Array<string>(6).fill('eager'), 'lazy', 'lazy']);
+    });
+
     it('is a named, focusable region because it scrolls on its own', () => {
         playing([entry({ game: { id: 1 } })]);
         renderRail();

@@ -42,6 +42,7 @@ function community(overrides: Partial<UseGameCommunityResult> = {}): UseGameComm
         hasMore: false,
         loadingMore: false,
         moreFailed: false,
+        reloading: false,
         loadMore: vi.fn(),
         reload: vi.fn(),
         ...overrides,
@@ -58,36 +59,141 @@ function renderSection(value: UseGameCommunityResult, viewer: string | null = nu
 
 const heading = () => screen.queryByRole('heading', { name: 'Member scores & reviews' });
 
-describe('GameCommunity when there is nothing to show', () => {
-    it('renders nothing until both requests have answered', () => {
+/**
+ * The section's body: the box below the heading that holds whichever state it is in. Found through the
+ * heading's section because jsdom lays nothing out, so its least height can only be read as a class.
+ */
+const body = () => heading()!.closest('section')!.children[1];
+
+/** The body's least height, as the `min-h-*` class it carries. */
+const leastHeight = () => [...body().classList].find(name => name.startsWith('min-h-'));
+
+describe('GameCommunity before it has answered', () => {
+    it('holds its place with a skeleton, and says in words what it is waiting for', () => {
         // Every server render is in this state, and so is the first client render.
-        const { container } = renderSection(community({ settled: false }));
+        renderSection(community({ settled: false }));
 
-        expect(container).toBeEmptyDOMElement();
+        expect(heading()).toBeInTheDocument();
+        expect(screen.getByRole('status')).toHaveTextContent('Loading member scores and reviews…');
+        expect(body()).toContainElement(screen.getByRole('status'));
     });
 
-    it('renders nothing for a game nobody has scored or reviewed', () => {
-        const { container } = renderSection(community({ scores: NOBODY, total: 0 }));
+    it('is as tall waiting as it is with nothing to show or after a failure, so neither moves the page', () => {
+        // For most games the answer is "nothing yet", so the skeleton is that state's height. The
+        // failure fits inside the same height at a phone's width; both were measured in a browser.
+        const heights = [
+            community({ settled: false }),
+            community({ scores: NOBODY, total: 0 }),
+            community({ scores: null, total: null }),
+        ].map(state => {
+            const { unmount } = renderSection(state);
+            const height = leastHeight();
+            unmount();
+            return height;
+        });
 
-        expect(container).toBeEmptyDOMElement();
+        expect(heights[0]).toBeDefined();
+        expect(new Set(heights).size).toBe(1);
+    });
+});
+
+/*
+ * These replaced tests that pinned "renders nothing" for the cases below, which ADR 0028 §3 chose as
+ * the quieter answer. ADR 0070 amends it: once the section holds its place with a skeleton, nothing
+ * after it would be a blank where the skeleton was, which a reader cannot tell from a failure.
+ */
+describe('GameCommunity when there is nothing to show yet', () => {
+    it('says what would put something here, for a game nobody has scored or reviewed', () => {
+        renderSection(community({ scores: NOBODY, total: 0 }));
+
+        expect(screen.getByText('No member score or reviews yet.')).toBeInTheDocument();
+        expect(screen.getByText(
+            `A member score is shown once ${MIN_MEMBER_SCORES} members have scored this. `
+                + 'Reviews show here as members publish them.',
+        )).toBeInTheDocument();
     });
 
-    it('renders nothing when a few members have scored it and nobody has written anything', () => {
-        // A section whose only content is "too few to show" is noise rather than information.
-        const { container } = renderSection(community({
-            scores: { ...SCORED, scored: MIN_MEMBER_SCORES - 1 },
-            total: 0,
-        }));
+    it('counts the members who have scored it, while there are too few for a score', () => {
+        // Under the floor a score is a count and never a number (ADR 0016), and the count is part of
+        // what tells the reader how far off one is.
+        renderSection(community({ scores: { ...SCORED, scored: MIN_MEMBER_SCORES - 1 }, total: 0 }));
 
-        expect(container).toBeEmptyDOMElement();
+        expect(screen.getByText('No member score or reviews yet.')).toBeInTheDocument();
+        expect(screen.getByText(
+            `Only ${MIN_MEMBER_SCORES - 1} members have scored this so far. `
+                + `A member score is shown once ${MIN_MEMBER_SCORES} have. Reviews show here as members publish them.`,
+        )).toBeInTheDocument();
+        expect(screen.queryByText(/^Member score:/)).not.toBeInTheDocument();
     });
 
-    it('renders nothing, and raises no alert, when both requests failed', () => {
-        // A community section that did not load is not worth an error banner on a page that
-        // rendered perfectly well.
-        const { container } = renderSection(community({ scores: null, total: null }));
+    it('says there are no reviews yet beside a score that cleared the floor', () => {
+        renderSection(community({ total: 0 }));
 
-        expect(container).toBeEmptyDOMElement();
+        expect(screen.getByText('Member score: 84 out of 100, from 23 scores')).toBeInTheDocument();
+        expect(screen.getByText('No reviews yet. They show here as members publish them.')).toBeInTheDocument();
+    });
+});
+
+describe('GameCommunity when it could not load', () => {
+    it('says so and offers to ask again when both requests failed, without raising an alert', async () => {
+        // An alert would interrupt a screen reader to announce a side section of a page that
+        // rendered perfectly well. Silence, which this used to be, cannot be told from no reviews.
+        const reload = vi.fn();
+        renderSection(community({ scores: null, total: null, reload }));
+
+        expect(screen.getByText('Member scores and reviews could not be loaded just now')).toBeInTheDocument();
+        expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+
+        await userEvent.click(screen.getByRole('button', { name: 'Try again' }));
+        expect(reload).toHaveBeenCalledTimes(1);
+    });
+
+    it("moves focus to the section's heading when it asks again, since the button gives way", async () => {
+        // The skeleton takes the failure's place, button and all; focus would otherwise fall to the
+        // page's body halfway down a long page.
+        renderSection(community({ scores: null, total: null }));
+
+        await userEvent.click(screen.getByRole('button', { name: 'Try again' }));
+
+        expect(heading()).toHaveFocus();
+    });
+
+    it('offers to ask again when only the reviews failed', async () => {
+        const reload = vi.fn();
+        renderSection(community({ total: null, reload }));
+
+        await userEvent.click(screen.getByRole('button', { name: 'Try again' }));
+        expect(reload).toHaveBeenCalledTimes(1);
+    });
+
+    it('says the member score failed rather than leaving a blank where it would be', async () => {
+        // Silence there would read as nobody having scored the game.
+        const reload = vi.fn();
+        renderSection(community({ scores: null, total: 0, reload }));
+
+        expect(screen.getByText('The member score could not be loaded just now.')).toBeInTheDocument();
+        expect(screen.getByText('No reviews yet. They show here as members publish them.')).toBeInTheDocument();
+
+        await userEvent.click(screen.getByRole('button', { name: 'Try again' }));
+        expect(reload).toHaveBeenCalledTimes(1);
+    });
+
+    it('says the member score failed above the reviews that did load', () => {
+        renderSection(community({ scores: null, reviews: [review()], total: 1 }));
+
+        expect(screen.getByText('The member score could not be loaded just now.')).toBeInTheDocument();
+        expect(screen.getByText('The best side quests in the genre.')).toBeInTheDocument();
+    });
+
+    it('says it is trying again while a reload is out, and does not ask twice', async () => {
+        const reload = vi.fn();
+        renderSection(community({ total: null, reloading: true, reload }));
+
+        const button = screen.getByRole('button', { name: 'Trying again…' });
+        expect(button).toHaveAttribute('aria-disabled', 'true');
+
+        await userEvent.click(button);
+        expect(reload).not.toHaveBeenCalled();
     });
 });
 
@@ -185,7 +291,8 @@ describe('GameCommunity reviews', () => {
     it('says the reviews failed rather than implying there are none, when the score loaded', () => {
         renderSection(community({ total: null }));
 
-        expect(screen.getByText('Reviews could not be loaded just now.')).toBeInTheDocument();
+        expect(screen.getByText(/^Reviews could not be loaded just now\./)).toBeInTheDocument();
+        expect(screen.queryByText(/no reviews yet/i)).not.toBeInTheDocument();
         expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     });
 });

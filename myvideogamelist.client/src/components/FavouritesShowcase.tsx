@@ -17,6 +17,14 @@ interface FavouritesShowcaseProps {
     profileVisibility: ProfileVisibility;
 }
 
+/**
+ * An arranged tile is a column of the showcase's grid, whose container sets its width
+ * (FavouritesShowcase.css): three columns under 30rem and columns of 6.5rem or more beyond, so never as
+ * much as 9.5rem. Less the cover's one-pixel border on either side. Lazy, so a browser that knows `auto`
+ * takes the width it is really laid out at.
+ */
+const ARRANGED_COVER_SIZES = 'calc(9.5rem - 2px)';
+
 function asRef(item: FavouriteDto): GameRefDto {
     return { id: item.game.id, name: item.game.title, coverImageUrl: item.game.coverImageUrl };
 }
@@ -150,6 +158,7 @@ export function FavouritesShowcase({ profileVisibility }: FavouritesShowcaseProp
                                     favourite={isFavourite(item.game.id)}
                                     sayFavourite={false}
                                     linked={false}
+                                    sizes={ARRANGED_COVER_SIZES}
                                 />
                             </li>
                         ))}
@@ -160,6 +169,8 @@ export function FavouritesShowcase({ profileVisibility }: FavouritesShowcaseProp
                     <GameRefRail
                         games={items.map(asRef)}
                         label="Your favourite games"
+                        // At the top of the account page's main column, in view as it opens.
+                        eager={6}
                         isFavourite={isFavourite}
                         sayFavourites={false}
                     />

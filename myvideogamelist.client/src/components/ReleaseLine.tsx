@@ -8,6 +8,12 @@ import { layoutLine, type LineDay, type LineEvent } from '@/lib/releaseLine';
 import { CURATED_EVENT_KIND_LABELS } from '@/types/calendarAdmin';
 import './ReleaseLine.css';
 
+/**
+ * A cover on the line is drawn across the line's card track, `--line-card` (9rem), less the card's
+ * padding on either side and the cover's border.
+ */
+const COVER_SIZES = 'calc(9rem - 0.75rem - 2px)';
+
 function DayColumn({ day, isToday, eager }: { day: LineDay; isToday: boolean; eager: boolean }) {
     const label = dayLabel(day.day);
 
@@ -29,7 +35,7 @@ function DayColumn({ day, isToday, eager }: { day: LineDay; isToday: boolean; ea
             </p>
             {day.entries.map(entry => (
                 <div key={`${entry.groupName ?? ''}|${entry.releases.map(r => r.gameId).join(',')}`} className="release-line-card">
-                    <ReleaseCard entry={entry} eager={eager} />
+                    <ReleaseCard entry={entry} sizes={COVER_SIZES} eager={eager} />
                 </div>
             ))}
         </li>

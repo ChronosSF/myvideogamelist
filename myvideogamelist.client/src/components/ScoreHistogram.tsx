@@ -24,12 +24,13 @@ interface ScoreHistogramProps {
  * must never be told to go and rate a game.
  */
 export function ScoreHistogram({ scores, owner }: ScoreHistogramProps) {
+    // Both say what fills this in. Only the owner is told to do it.
     if (scores.scored === 0) {
         return (
             <p className="profile-empty">
                 {owner === undefined
                     ? 'No scores yet. Rate a game and this fills in.'
-                    : `${owner} has not scored anything yet.`}
+                    : `${owner} has not scored anything yet. Their scores will show here, from 1 to ${MAX_SCORE}, as they rate games.`}
             </p>
         );
     }

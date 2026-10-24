@@ -21,9 +21,10 @@ import { currentTrace } from '@/lib/trace.server';
  * The server entry, which React Router generates unless the app provides one.
  *
  * It is owned here for one reason: it is the only place every document response passes through.
- * A route's `headers` export is bypassed by a thrown `Response`, so the 404s and the 502s — the
- * responses most worth being careful with — would go out bare. Everything below is
- * `react-router reveal`'s output verbatim, reformatted to this codebase's style, except:
+ * A route's `headers` export is bypassed by a `Response` it throws unless that route is its own error
+ * boundary, so headers set there would leave the 404s and the 502s — the responses most worth being
+ * careful with — going out bare. Everything below is `react-router reveal`'s output verbatim,
+ * reformatted to this codebase's style, except:
  *
  * - the nonce, drawn once per render, and the two places it is handed to the renderers:
  *   `<ServerRouter nonce>` and the stream's `nonce` option;
