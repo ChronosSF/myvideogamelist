@@ -51,6 +51,10 @@ vi.mock('@/components/ListNamesCard', () => ({
     ListNamesCard: () => <div>list names</div>,
 }));
 
+vi.mock('@/components/TagsCard', () => ({
+    TagsCard: () => <div>tags</div>,
+}));
+
 /**
  * Answers nothing, because the page makes no request of its own — everything it shows either comes
  * from auth or belongs to a child mocked above — so a stray fetch fails loudly.
@@ -184,5 +188,21 @@ describe('UserPage account deletion', () => {
         expect(await screen.findByText('Password is incorrect.')).toBeInTheDocument();
         expect(screen.getByRole('dialog', { name: 'Delete your account?' })).toBeInTheDocument();
         expect(screen.queryByText('Your account has been deleted.')).not.toBeInTheDocument();
+    });
+});
+
+describe('UserPage signing out', () => {
+    it('says why under the button when the sign-out does not happen', async () => {
+        // The account is still signed in, so the page stays as it is and says so.
+        authAnswered(userProfile());
+        vi.mocked(auth.logout).mockRejectedValueOnce(new Error('Could not sign you out. Please try again.'));
+        const actor = userEvent.setup();
+        stubFetch();
+        renderPage();
+
+        await actor.click(screen.getByRole('button', { name: 'Sign Out' }));
+
+        expect(await screen.findByRole('alert')).toHaveTextContent('Could not sign you out. Please try again.');
+        expect(screen.getByRole('button', { name: 'Sign Out' })).toBeInTheDocument();
     });
 });

@@ -101,7 +101,8 @@ jobs:
         if: steps.pushed.outputs.api != 'true' || steps.pushed.outputs.ssr != 'true'
 
       # provenance: false, because the attestation manifest BuildKit otherwise pushes alongside
-      # shows in ECR as an untagged image and counts against the lifecycle rule's twenty.
+      # shows in ECR as an untagged image and counts against the lifecycle rule's twenty. CI's Images
+      # job reads the two cache scopes written here, so rename them in both files (ADR 0061).
       - name: Build and push the API image
         if: steps.pushed.outputs.api != 'true'
         uses: docker/build-push-action@v7

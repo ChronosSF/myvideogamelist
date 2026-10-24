@@ -1,0 +1,45 @@
+/*
+ * A shape standing in for content on its way: the colour of what sits on a surface. Only the fill is set
+ * here. The size, the shape and the display come from the classes beside it, because these rules are
+ * unlayered and would otherwise outrank Tailwind's.
+ */
+.skeleton {
+    background-color: var(--color-raised);
+}
+
+/*
+ * A sheen passing across a whole skeleton — a card, a table, a panel — rather than across each of its
+ * shapes. Every animated sheen is a layer of its own on the compositor, and a page of cards drew one per
+ * shape, a few hundred at once; one per card is a few dozen.
+ *
+ * Translucent white, which shades whatever is under it rather than colouring it (ADR 0049), moved with a
+ * transform so that it animates on the compositor rather than repainting each frame.
+ */
+.skeleton-sheen {
+    position: relative;
+    overflow: hidden;
+}
+
+.skeleton-sheen::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background-image: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.06), transparent);
+    animation: skeleton-sheen 1.6s ease-in-out infinite;
+    pointer-events: none;
+}
+
+@keyframes skeleton-sheen {
+    to {
+        transform: translateX(100%);
+    }
+}
+
+/* Still for anybody who has asked for less motion: the shapes alone say that something is coming. */
+@media (prefers-reduced-motion: reduce) {
+    .skeleton-sheen::after {
+        animation: none;
+        display: none;
+    }
+}

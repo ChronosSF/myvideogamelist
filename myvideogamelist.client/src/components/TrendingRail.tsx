@@ -1,4 +1,5 @@
 import { Link } from 'react-router';
+import { CoverImage } from '@/components/CoverImage';
 import type { GameDto } from '@/types/game';
 import { useFavourites } from '@/hooks/useFavourites';
 import { FavouriteMark } from './FavouriteMark';
@@ -7,6 +8,9 @@ import { FavouriteWords } from './FavouriteWords';
 interface TrendingRailProps {
     games: GameDto[];
 }
+
+/** Each cover is drawn across its card, `w-32 sm:w-36`, less the one-pixel border on either side. */
+const COVER_SIZES = '(min-width: 40rem) calc(9rem - 2px), calc(8rem - 2px)';
 
 /**
  * A horizontally scrolling strip of cover art.
@@ -40,16 +44,17 @@ export function TrendingRail({ games }: TrendingRailProps) {
                 <li key={game.id} className="shrink-0 snap-start">
                     <Link
                         to={`/games/${game.id}`}
-                        className="group block w-32 sm:w-36 focus:outline-none focus-visible:ring-2 focus-visible:ring-focus rounded-xl"
+                        className="group block w-32 sm:w-36 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus rounded-xl"
                     >
                         <div className="relative aspect-[3/4] rounded-xl overflow-hidden bg-surface border border-line group-hover:border-primary-500/60 transition-all duration-300 group-hover:-translate-y-1 shadow-lg">
                             {game.coverImageUrl && (
-                                <img
-                                    src={game.coverImageUrl}
+                                <CoverImage
+                                    url={game.coverImageUrl}
                                     alt=""
-                                    /* The first few are above the fold on most screens; the rest
-                                       are scrolled to, so they can wait. */
-                                    loading={index < 6 ? 'eager' : 'lazy'}
+                                    sizes={COVER_SIZES}
+                                    // The first few are above the fold on most screens; the rest are
+                                    // scrolled to, so they can wait.
+                                    eager={index < 6}
                                     className="w-full h-full object-cover"
                                 />
                             )}

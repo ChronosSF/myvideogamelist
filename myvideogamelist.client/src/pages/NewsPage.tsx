@@ -1,5 +1,7 @@
 import { Link } from 'react-router';
+import { LoadingState } from '@/components/LoadingState';
 import { NewsCard } from '@/components/NewsCard';
+import { NewsCardSkeleton } from '@/components/NewsCardSkeleton';
 import { PageHeader } from '@/components/PageHeader';
 import { useAuth } from '@/hooks/useAuth';
 import { useTrackedNews } from '@/hooks/useTrackedNews';
@@ -58,14 +60,14 @@ export function NewsPage() {
                     </div>
                 )}
 
-                {/* Auth's wait as well as the fetch's, so the two read as one loading state. */}
+                {/* Auth's wait as well as the fetch's, so the two read as one loading state. Drawn in
+                    the list's own grid, three rows of it. */}
                 {(authLoading || (signedIn && loading)) && (
-                    <div className="flex items-center justify-center py-24">
-                        <div className="flex flex-col items-center gap-4" role="status">
-                            <div className="w-10 h-10 border-4 border-primary-500/30 border-t-primary-500 rounded-full animate-spin" aria-hidden="true" />
-                            <p className="text-fg-muted text-sm">Loading news for your games…</p>
+                    <LoadingState label="Loading news for your games…">
+                        <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+                            {Array.from({ length: 6 }, (_, index) => <NewsCardSkeleton key={index} />)}
                         </div>
-                    </div>
+                    </LoadingState>
                 )}
 
                 {signedIn && !loading && error !== null && (

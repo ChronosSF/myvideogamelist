@@ -5,7 +5,8 @@ import { WishlistPage } from '@/pages/WishlistPage';
 import type { AuthContextValue } from '@/contexts/AuthContext';
 import type { WishlistContextValue } from '@/contexts/WishlistContext';
 import type { UserProfile } from '@/types/auth';
-import { userProfile } from '@/test/factories';
+import { LIST_NAMES, type ListId } from '@/types/list';
+import { game, userProfile } from '@/test/factories';
 
 /**
  * Auth and the wishlist, mocked rather than provided: both real providers fetch, and the page only
@@ -39,8 +40,22 @@ const wishlist: WishlistContextValue = {
     reload: vi.fn(),
 };
 
+/** The lists, as far as a wishlisted game's card reads them. Hoisted and handed back whole, as above. */
+const lists = {
+    addToList: vi.fn(async () => {}),
+    removeFromList: vi.fn(async () => {}),
+    isInList: () => false,
+    isPending: () => false,
+    nameFor: (id: ListId) => LIST_NAMES[id],
+};
+
+/** The favourites, as far as a card's rosette reads them: none. Hoisted and handed back whole, as above. */
+const favourites = { isFavourite: () => false };
+
 vi.mock('@/hooks/useAuth', () => ({ useAuth: () => auth }));
 vi.mock('@/hooks/useWishlist', () => ({ useWishlist: () => wishlist }));
+vi.mock('@/hooks/useLists', () => ({ useLists: () => lists }));
+vi.mock('@/hooks/useFavourites', () => ({ useFavourites: () => favourites }));
 
 /** `/api/auth/me` has come back, with an account or with nobody. */
 function authAnswered(user: UserProfile | null) {
@@ -57,6 +72,7 @@ beforeEach(() => {
     // has not been told whose wishlist to fetch, so it is not loading anything either.
     auth.user = null;
     auth.loading = true;
+    wishlist.items = [];
     wishlist.loading = false;
     wishlist.error = null;
 });
@@ -98,5 +114,19 @@ describe('WishlistPage once auth has answered', () => {
         expect(screen.getByText(/nothing on your wishlist yet/i)).toBeInTheDocument();
         expect(screen.queryByRole('status')).not.toBeInTheDocument();
         expect(screen.queryByText(/sign in to keep a wishlist/i)).not.toBeInTheDocument();
+    });
+});
+
+describe('WishlistPage covers', () => {
+    it('loads the first row of covers with the page, and the rest as they are scrolled near', () => {
+        authAnswered(userProfile());
+        wishlist.items = Array.from({ length: 8 }, (_, index) => ({
+            game: game({ id: index + 1, title: `Game ${index + 1}`, coverImageUrl: `https://images.igdb.com/igdb/image/upload/t_cover_big/co${index + 1}.jpg` }),
+            addedAt: `2026-10-0${index + 1}T12:00:00Z`,
+        }));
+        renderPage();
+
+        expect(screen.getAllByRole('img', { name: / cover$/ }).map(cover => cover.getAttribute('loading')))
+            .toEqual([...Array<string>(6).fill('eager'), 'lazy', 'lazy']);
     });
 });

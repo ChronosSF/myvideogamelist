@@ -6,6 +6,7 @@ import { GameCard } from '@/components/GameCard';
 import { FavouritesContext, type FavouritesContextValue } from '@/contexts/FavouritesContext';
 import { ListsContext, type ListsContextValue } from '@/contexts/ListsContext';
 import { WishlistContext, type WishlistContextValue } from '@/contexts/WishlistContext';
+import { GAME_GRID_COVER_SIZES } from '@/lib/gameGrid';
 import { DEFAULT_SORT } from '@/lib/listSort';
 import { game } from '@/test/factories';
 import { LIST_NAMES, type ListId } from '@/types/list';
@@ -42,6 +43,7 @@ function listsValue(overrides: Partial<ListsContextValue> = {}): ListsContextVal
         moveInOrder: vi.fn(async () => true),
         setOwnership: vi.fn(async () => true),
         setNotes: vi.fn(async () => true),
+        setTags: vi.fn(async () => ({ ok: true as const })),
         deleteEntry: vi.fn(async () => true),
         view: 'tiles',
         setView: vi.fn(),
@@ -211,6 +213,52 @@ describe('GameCard wishlist failure', () => {
     });
 });
 
+describe('GameCard cover', () => {
+    const COVERED = game({
+        id: 2,
+        title: 'Hades',
+        coverImageUrl: 'https://images.igdb.com/igdb/image/upload/t_cover_big/co39vc.jpg',
+    });
+
+    function renderCovered(eager?: boolean) {
+        render(
+            <MemoryRouter>
+                <ListsContext.Provider value={listsValue()}>
+                    <WishlistContext.Provider value={wishlistValue()}>
+                        <FavouritesContext.Provider value={favouritesValue()}>
+                            <GameCard game={COVERED} eager={eager} />
+                        </FavouritesContext.Provider>
+                    </WishlistContext.Provider>
+                </ListsContext.Provider>
+            </MemoryRouter>,
+        );
+        return screen.getByRole('img', { name: 'Hades cover' });
+    }
+
+    it("offers the smaller sizes, chosen by the width the grid's columns draw it at", () => {
+        const img = renderCovered();
+
+        expect(img.getAttribute('srcset')).toContain('/t_cover_small_2x/co39vc.jpg 180w');
+        expect(img).toHaveAttribute('sizes', `auto, ${GAME_GRID_COVER_SIZES}`);
+    });
+
+    it('waits until it is scrolled near, below the first row', () => {
+        const img = renderCovered();
+
+        expect(img).toHaveAttribute('loading', 'lazy');
+        expect(img).toHaveAttribute('decoding', 'async');
+    });
+
+    it('loads with the page in the first row, where it may be the largest first paint', () => {
+        const img = renderCovered(true);
+
+        expect(img).not.toHaveAttribute('loading', 'lazy');
+        expect(img).not.toHaveAttribute('decoding', 'async');
+        // Chosen before layout, so by the grid's own arithmetic alone.
+        expect(img).toHaveAttribute('sizes', GAME_GRID_COVER_SIZES);
+    });
+});
+
 /**
  * The rosette drawn on a cover. By its class, the one exception to querying by role: the mark is
  * deliberately outside the accessibility tree, and what it says is asserted through the words instead.
@@ -249,5 +297,26 @@ describe('GameCard and renamed lists', () => {
 
         expect(screen.getByRole('button', { name: 'Nope' })).toHaveAttribute('title', 'Add to Nope');
         expect(screen.queryByRole('button', { name: 'Dropped' })).not.toBeInTheDocument();
+    });
+});
+
+describe('GameCard release year', () => {
+    it('reads a game out on 1 January as that year, wherever the reader is', () => {
+        // The suite runs in Honolulu (vitest.config.ts), where `new Date('2025-01-01')` is still 2024
+        // (issue 267).
+        render(
+            <MemoryRouter>
+                <ListsContext.Provider value={listsValue()}>
+                    <WishlistContext.Provider value={wishlistValue()}>
+                        <FavouritesContext.Provider value={favouritesValue()}>
+                            <GameCard game={game({ id: 3, title: 'Balatro', releaseDate: '2025-01-01' })} />
+                        </FavouritesContext.Provider>
+                    </WishlistContext.Provider>
+                </ListsContext.Provider>
+            </MemoryRouter>,
+        );
+
+        expect(screen.getByText('2025')).toBeInTheDocument();
+        expect(screen.queryByText('2024')).not.toBeInTheDocument();
     });
 });

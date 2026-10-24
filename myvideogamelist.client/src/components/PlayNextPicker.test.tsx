@@ -30,6 +30,7 @@ const listsValue = {
     setScore: vi.fn(async () => true),
     setOwnership: vi.fn(async () => true),
     setNotes: vi.fn(async () => true),
+    setTags: vi.fn(async () => ({ ok: true as const })),
     deleteEntry: vi.fn(async () => true),
     view: 'tiles' as const,
     setView: vi.fn(),
@@ -86,6 +87,15 @@ describe('PlayNextPicker', () => {
         expect(pickedTitle()).toBe('Hades');
         expect(screen.getByRole('link', { name: 'Hades' })).toHaveAttribute('href', '/games/1');
         expect(screen.getByText('Picked from the 2 games in your backlog.')).toBeInTheDocument();
+    });
+
+    it('loads its cover with the page, since it is in the first screen', () => {
+        backlog([entry({
+            game: { id: 1, title: 'Hades', coverImageUrl: 'https://images.igdb.com/igdb/image/upload/t_cover_big/co1.jpg' },
+        })]);
+        const { container } = render(picker());
+
+        expect(container.querySelector('img')).toHaveAttribute('loading', 'eager');
     });
 
     it('lands wherever the draw says', () => {

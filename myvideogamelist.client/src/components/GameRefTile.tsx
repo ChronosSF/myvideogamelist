@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { Link } from 'react-router';
 import type { GameRefDto } from '@/types/game';
+import { CoverImage } from './CoverImage';
 import { FavouriteMark } from './FavouriteMark';
 import { FavouriteWords } from './FavouriteWords';
 
@@ -19,6 +20,13 @@ interface GameRefTileProps {
      * press that misses a grip would leave the page, and the mode with it.
      */
     linked?: boolean;
+    /**
+     * How wide the cover is drawn, as an `<img sizes>` value (`CoverImage`). The tile is as wide as
+     * whatever holds it, so the holder says.
+     */
+    sizes: string;
+    /** Load the cover with the page, for a tile in view before any scrolling (`CoverImage`). */
+    eager?: boolean;
 }
 
 // `outline-hidden`, not `outline-none`: in forced colours the ring is dropped with every other shadow,
@@ -29,15 +37,16 @@ const FRAME = 'group block focus:outline-hidden focus-visible:ring-2 focus-visib
  * One game as its cover and its name, linking to its page: an item of a `GameRefRail`, or of the
  * favourites showcase while it is being arranged. As wide as whatever holds it.
  */
-export function GameRefTile({ game, favourite = false, sayFavourite = true, linked = true }: GameRefTileProps) {
+export function GameRefTile({ game, favourite = false, sayFavourite = true, linked = true, sizes, eager = false }: GameRefTileProps) {
     const content: ReactNode = (
         <>
             <div className="relative aspect-[3/4] rounded-xl overflow-hidden bg-surface border border-line group-hover:border-primary-500/60 transition-all duration-300 group-hover:-translate-y-1 shadow-lg">
                 {game.coverImageUrl ? (
-                    <img
-                        src={game.coverImageUrl}
+                    <CoverImage
+                        url={game.coverImageUrl}
                         alt=""
-                        loading="lazy"
+                        sizes={sizes}
+                        eager={eager}
                         className="w-full h-full object-cover"
                     />
                 ) : (

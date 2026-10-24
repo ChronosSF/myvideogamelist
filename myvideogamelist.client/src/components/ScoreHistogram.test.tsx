@@ -45,12 +45,15 @@ describe("ScoreHistogram on somebody else's profile", () => {
         expect(screen.queryByRole('list', { name: /^Your scores/ })).not.toBeInTheDocument();
     });
 
-    it('does not tell a visitor to go and rate a game', () => {
+    it('says what will fill it in, and does not tell a visitor to go and rate a game', () => {
         // The empty columns are not the visitor's to fill, so the call to action would be a
-        // request they cannot act on for an account that is not theirs.
+        // request they cannot act on for an account that is not theirs. What fills them is still
+        // worth saying: an empty section that says nothing reads as one that failed.
         render(<ScoreHistogram scores={NOTHING_SCORED} owner="Nadia" />);
 
-        expect(screen.getByText('Nadia has not scored anything yet.')).toBeInTheDocument();
+        expect(screen.getByText(
+            'Nadia has not scored anything yet. Their scores will show here, from 1 to 10, as they rate games.',
+        )).toBeInTheDocument();
         expect(screen.queryByText(/rate a game/i)).not.toBeInTheDocument();
     });
 });

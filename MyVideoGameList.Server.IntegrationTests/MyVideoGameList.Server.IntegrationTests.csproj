@@ -10,9 +10,9 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
-    <!-- The same pin as MyVideoGameList.Server.Tests, for the same reason: past the 10.0.7 that
-         Amazon.AspNetCore.DataProtection.SSM pulls in transitively, which NuGet audit flags
-         (NU1903). -->
+    <!-- The same pin as MyVideoGameList.Server.Tests, for the same reason: past the copies NuGet
+         audit flags, the 10.0.7 that Amazon.AspNetCore.DataProtection.SSM pulls in transitively and
+         10.0.12, whose advisories and its Pkcs dependency's are fixed in 10.0.13 (#259). -->
     <PackageReference Include="System.Security.Cryptography.Xml" />
     <PackageReference Include="Testcontainers.PostgreSql" />
     <PackageReference Include="xunit" />

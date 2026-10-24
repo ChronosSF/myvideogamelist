@@ -1,21 +1,69 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router';
+import { EmptyState } from '@/components/EmptyState';
+import { ErrorState } from '@/components/ErrorState';
 import { GameCard } from '@/components/GameCard';
+import { GameGridSkeleton } from '@/components/GameGridSkeleton';
 import { ListTable } from '@/components/ListTable';
+import { ListTableSkeleton } from '@/components/ListTableSkeleton';
 import { ListToolbar } from '@/components/ListToolbar';
+import { LoadingState } from '@/components/LoadingState';
+import { ListTagFilter } from '@/components/ListTagFilter';
+import { TagChips } from '@/components/TagChips';
+import { useListTagFilter } from '@/hooks/useListTagFilter';
 import { PageHeader } from '@/components/PageHeader';
 import { ReorderAnnouncer } from '@/components/ReorderAnnouncer';
 import { ReorderHandle } from '@/components/ReorderHandle';
+import { Skeleton } from '@/components/Skeleton';
 import { useLists } from '@/hooks/useLists';
 import { useAuth } from '@/hooks/useAuth';
 import { useFavourites } from '@/hooks/useFavourites';
 import { useReorder } from '@/hooks/useReorder';
 import { type ListEntryDto, type ListId, HAND_ORDERED_LISTS, LIST_IDS } from '@/types/list';
 import type { PlatformDto } from '@/types/game';
+import { GAME_GRID, GAME_GRID_FIRST_ROW } from '@/lib/gameGrid';
 import { MANUAL_SORT, sortEntries } from '@/lib/listSort';
 import './ListsPage.css';
 import { PRIVATE_NO_STORE } from '@/lib/cache';
 import { NOINDEX } from '@/lib/seo';
+
+/** A heroicon's path: a padlock, for a page that needs somebody signed in. */
+const LOCK_ICON = 'M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z';
+
+/** A heroicon's path: an empty clipboard, for a list with nothing on it. */
+const LIST_ICON = 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2';
+
+/** How many shapes stand in for a list whose length is not known yet: two rows of tiles at the widest. */
+const SKELETON_TILES = GAME_GRID_FIRST_ROW * 2;
+const SKELETON_ROWS = 8;
+
+/**
+ * `ListToolbar` before the lists arrive, in its own box: the toolbar appears above any list with games in
+ * it, so leaving it out would push the list down by its height the moment it landed. A control with words
+ * in it is 2.025rem tall, what its 0.8rem type, padding and border come to; the two layout buttons show an
+ * icon only, so they are 1.7rem and their border. On a phone those two wrap to a line of their own, as the
+ * real ones do, and that line is only as tall as they are.
+ */
+function ToolbarSkeleton() {
+    const control = 'block h-[2.025rem] rounded-lg';
+    const icon = 'block h-[calc(1.7rem+2px)] w-[calc(2.2rem+2px)] rounded-lg';
+    return (
+        <div className="list-toolbar skeleton-sheen">
+            <div className="list-toolbar-group">
+                <Skeleton className="block w-8 h-3 rounded-sm" />
+                <Skeleton className={`${control} w-32`} />
+                <Skeleton className={`${control} w-9`} />
+            </div>
+            <div className="list-toolbar-group">
+                <Skeleton className={`${control} w-28`} />
+            </div>
+            <div className="list-toolbar-group list-toolbar-views">
+                <Skeleton className={icon} />
+                <Skeleton className={icon} />
+            </div>
+        </div>
+    );
+}
 
 /**
  * This route's whole content is the signed-in user's lists. Stated explicitly rather than left to inherit the root default, so that changing the
@@ -40,7 +88,7 @@ export function meta() {
 export function ListsPage() {
     const { user, loading: authLoading } = useAuth();
     const {
-        lists, loading, error, mutationError, isPending,
+        lists, loading, error, mutationError, isPending, reload,
         view, setView, sortFor, setSort, setScore, removeFromList, moveInOrder, nameFor,
     } = useLists();
     const { isFavourite } = useFavourites();
@@ -56,6 +104,9 @@ export function ListsPage() {
     // Transient and deliberately not persisted, unlike the sort and the layout. An empty
     // selection means "everything", so the filter starts inert.
     const [platformIds, setPlatformIds] = useState<number[]>([]);
+
+    // By tag as well, ticks and all in a hook of its own (ADR 0065).
+    const tagFilter = useListTagFilter(lists, user?.id ?? null);
 
     const entries = lists[activeTab];
     const sort = sortFor(activeTab);
@@ -78,19 +129,25 @@ export function ListsPage() {
         return [...seen.values()].sort((a, b) => a.name.localeCompare(b.name));
     }, [lists]);
 
+    const { matches: matchesTags } = tagFilter;
     const visible = useMemo(() => {
         const filtered = platformIds.length === 0
             ? entries
             : entries.filter(entry => entry.game.platforms.some(p => platformIds.includes(p.id)));
-        return sortEntries(filtered, sort);
-    }, [entries, platformIds, sort]);
+        return sortEntries(filtered.filter(matchesTags), sort);
+    }, [entries, platformIds, sort, matchesTags]);
+
+    const clearFilters = () => {
+        setPlatformIds([]);
+        tagFilter.setSelected([]);
+    };
 
     // The hand order, where this list offers one. It can be rearranged only when every game in it is
     // on screen: a game dropped between two that a filter has left showing would land among games
     // the user cannot see, in an order they never chose.
     const offerManual = HAND_ORDERED_LISTS.includes(activeTab);
     const manual = sort.key === MANUAL_SORT.key;
-    const arranging = manual && platformIds.length === 0;
+    const arranging = manual && platformIds.length === 0 && !tagFilter.active;
 
     const byId = useMemo(() => new Map(visible.map(entry => [entry.game.id, entry])), [visible]);
     const reorder = useReorder({
@@ -147,40 +204,34 @@ export function ListsPage() {
                 role="tabpanel"
                 aria-labelledby={`lists-tab-${activeTab}`}
             >
-                {signedOut && (
-                    <div className="flex items-center justify-center py-24">
-                        <div className="text-center">
-                            <svg className="w-14 h-14 text-fg-dim mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                            </svg>
-                            <p className="text-fg-muted font-medium mb-3">
-                                Sign in to manage your game lists.
-                            </p>
-                        </div>
-                    </div>
-                )}
+                {signedOut && <EmptyState icon={LOCK_ICON} message="Sign in to manage your game lists." />}
 
                 {/* Auth's wait as well as the fetch's. The lists are asked for the moment auth
-                    answers, so the two read as one loading state rather than two in a row. */}
+                    answers, so the two read as one loading state rather than two in a row. Drawn as
+                    the layout the reader keeps their lists in, which the preferences may already have
+                    said; until they do, it is the default, tiles, as the page itself would be. */}
                 {(authLoading || (signedIn && loading)) && (
-                    <div className="flex items-center justify-center py-24">
-                        <div className="flex flex-col items-center gap-4" role="status">
-                            <div className="w-10 h-10 border-4 border-primary-500/30 border-t-primary-500 rounded-full animate-spin" aria-hidden="true" />
-                            <p className="text-fg-muted text-sm">Loading your lists…</p>
-                        </div>
-                    </div>
+                    <LoadingState label="Loading your lists…">
+                        <ToolbarSkeleton />
+                        {view === 'table'
+                            ? <ListTableSkeleton rows={SKELETON_ROWS} />
+                            : <GameGridSkeleton count={SKELETON_TILES} />}
+                    </LoadingState>
                 )}
 
+                {/* The way out of a failed load without reloading the page. The skeleton takes the
+                    error's place, button and all, so focus goes to the tab whose list is loading
+                    rather than falling to the page's body. */}
                 {signedIn && !loading && error && (
-                    <div className="flex items-center justify-center py-24">
-                        <div className="bg-danger-900/20 border border-danger-700/50 rounded-xl p-8 max-w-md text-center">
-                            <svg className="w-10 h-10 text-danger-400 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M12 4a8 8 0 100 16 8 8 0 000-16z" />
-                            </svg>
-                            <p className="text-danger-300 font-medium mb-1">Failed to load lists</p>
-                            <p className="text-danger-400/70 text-sm">{error}</p>
-                        </div>
-                    </div>
+                    <ErrorState
+                        title="Failed to load lists"
+                        onRetry={() => {
+                            document.getElementById(`lists-tab-${activeTab}`)?.focus();
+                            reload();
+                        }}
+                    >
+                        {error}
+                    </ErrorState>
                 )}
 
                 {signedIn && !loading && !error && entries.length > 0 && (
@@ -193,14 +244,25 @@ export function ListsPage() {
                         platforms={platforms}
                         selectedPlatformIds={platformIds}
                         onPlatformsChange={setPlatformIds}
-                    />
+                    >
+                        <ListTagFilter
+                            tags={tagFilter.offered}
+                            selected={tagFilter.selected}
+                            onChange={tagFilter.setSelected}
+                            countFor={tagId => tagFilter.countIn(entries, tagId)}
+                            shown={visible.length}
+                            total={entries.length}
+                        />
+                    </ListToolbar>
                 )}
 
                 {signedIn && !loading && !error && entries.length > 0 && manual && (
                     <p className="lists-order-hint">
                         {arranging
                             ? 'Drag a game by its handle to where you mean to play it — or press a handle and then the handle of the game whose place it should take, or pick one up with Space and move it with the arrow keys. Games you have not placed follow, in the order they joined your backlog.'
-                            : 'Clear the platform filter to rearrange your order.'}
+                            : tagFilter.active
+                                ? 'Clear the filters to rearrange your order.'
+                                : 'Clear the platform filter to rearrange your order.'}
                     </p>
                 )}
 
@@ -211,67 +273,56 @@ export function ListsPage() {
                 {signedIn && !loading && !error && entries.length > 0 && visible.length === 0 && (
                     <div className="text-center py-16">
                         <p className="text-fg-muted text-sm mb-3">
-                            No games in {nameFor(activeTab)} match the platform filter.
+                            {tagFilter.active
+                                ? `No games in ${nameFor(activeTab)} match the filters.`
+                                : `No games in ${nameFor(activeTab)} match the platform filter.`}
                         </p>
                         <button
                             type="button"
                             className="text-primary-400 text-sm font-semibold hover:underline"
-                            onClick={() => setPlatformIds([])}
+                            onClick={clearFilters}
                         >
-                            Clear the filter
+                            {tagFilter.active ? 'Clear the filters' : 'Clear the filter'}
                         </button>
                     </div>
                 )}
 
                 {signedIn && !loading && !error && entries.length === 0 && (
-                    <div className="flex items-center justify-center py-24">
-                        <div className="text-center">
-                            <svg
-                                className="w-14 h-14 text-fg-dim mx-auto mb-4"
-                                fill="none"
-                                stroke="currentColor"
-                                viewBox="0 0 24 24"
-                                aria-hidden="true"
-                            >
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                    <EmptyState icon={LIST_ICON} message={`No games in ${nameFor(activeTab)} yet.`}>
+                        <Link
+                            to="/games"
+                            className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary-600 hover:bg-primary-500 text-on-primary text-sm font-semibold rounded-lg transition-colors"
+                        >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                             </svg>
-                            <p className="text-fg-muted font-medium mb-3">
-                                No games in {nameFor(activeTab)} yet.
-                            </p>
-                            <Link
-                                to="/games"
-                                className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary-600 hover:bg-primary-500 text-on-primary text-sm font-semibold rounded-lg transition-colors"
-                            >
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                                </svg>
-                                Browse Games
-                            </Link>
+                            Browse games
+                        </Link>
 
-                            {/* Retyping a few hundred games is the single biggest reason people
-                                abandon a new tracker — the premise the whole importer rests on
-                                (`specs/csv-list-import.md` §1) — and an empty library is the only
-                                moment that person is still here to be told there is a way out of
-                                it. The importer's one other link is a card on the account page,
-                                which is where somebody goes to run it a second time rather than
-                                where a new account looks. Quiet, and second, because browsing is
-                                still the right first move for somebody who tracked nothing
-                                anywhere. */}
-                            {libraryEmpty && (
-                                <Link
-                                    to="/import"
-                                    className="block mt-4 text-primary-400 text-sm font-semibold hover:underline"
-                                >
-                                    Bring your games across from another tracker
-                                </Link>
-                            )}
-                        </div>
-                    </div>
+                        {/* Retyping a few hundred games is the single biggest reason people
+                            abandon a new tracker — the premise the whole importer rests on
+                            (`specs/csv-list-import.md` §1) — and an empty library is the only
+                            moment that person is still here to be told there is a way out of
+                            it. The importer's one other link is a card on the account page,
+                            which is where somebody goes to run it a second time rather than
+                            where a new account looks. Quiet, and second, because browsing is
+                            still the right first move for somebody who tracked nothing
+                            anywhere. */}
+                        {libraryEmpty && (
+                            <Link
+                                to="/import"
+                                className="block mt-4 text-primary-400 text-sm font-semibold hover:underline"
+                            >
+                                Bring your games across from another tracker
+                            </Link>
+                        )}
+                    </EmptyState>
                 )}
 
+                {/* The first row loads with the page: it is what the reader is looking at. */}
                 {signedIn && !loading && !error && visible.length > 0 && view === 'tiles' && (
                     <div
-                        className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4"
+                        className={GAME_GRID}
                         // A list while it is an order, so assistive technology hears each game's place.
                         {...(arranging ? { ...reorder.listProps(), role: 'list' } : {})}
                     >
@@ -287,10 +338,14 @@ export function ListsPage() {
                                     rank={index + 1}
                                     variant="overlay"
                                 />
-                                <GameCard game={entry.game} />
+                                <GameCard game={entry.game} eager={index < GAME_GRID_FIRST_ROW}>
+                                    <TagChips tags={tagFilter.tagsOf(entry)} max={3} />
+                                </GameCard>
                             </div>
                         ) : (
-                            <GameCard key={entry.game.id} game={entry.game} />
+                            <GameCard key={entry.game.id} game={entry.game} eager={index < GAME_GRID_FIRST_ROW}>
+                                <TagChips tags={tagFilter.tagsOf(entry)} max={3} />
+                            </GameCard>
                         ))}
                     </div>
                 )}
@@ -306,6 +361,7 @@ export function ListsPage() {
                         onScoreChange={(gameId, score) => void setScore(gameId, score)}
                         onRemove={gameId => void removeFromList(activeTab, gameId)}
                         reorder={arranging ? reorder : undefined}
+                        tagsFor={tagFilter.tagsOf}
                     />
                 )}
             </div>

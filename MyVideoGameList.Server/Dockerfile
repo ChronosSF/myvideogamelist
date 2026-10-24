@@ -1,6 +1,7 @@
 # syntax=docker/dockerfile:1
 #
-# The API image. Build context is the repository root, so the root NuGet.Config applies:
+# The API image. Build context is the repository root, so the root NuGet.Config,
+# Directory.Build.props and Directory.Packages.props apply:
 #
 #   docker build -t mvgl-api:local -f MyVideoGameList.Server/Dockerfile \
 #     --build-arg GIT_SHA=$(git rev-parse HEAD) --build-arg BUILD_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ) .
@@ -14,9 +15,10 @@
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
 
-# The project file first, alone, so the restore layer is reused until a package changes. Its
-# versions are in Directory.Packages.props, without which the restore fails on every package.
-COPY NuGet.Config Directory.Packages.props ./
+# The project file first, alone, so the restore layer is reused until a package changes. Beside it
+# go the three root files every restore reads, so the image builds as every other build does - the
+# project's package versions among them, in Directory.Packages.props.
+COPY NuGet.Config Directory.Build.props Directory.Packages.props ./
 COPY MyVideoGameList.Server/MyVideoGameList.Server.csproj MyVideoGameList.Server/
 RUN dotnet restore MyVideoGameList.Server/MyVideoGameList.Server.csproj
 

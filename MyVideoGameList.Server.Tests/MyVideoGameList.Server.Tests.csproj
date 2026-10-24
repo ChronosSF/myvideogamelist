@@ -13,9 +13,11 @@
     <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="NSubstitute" />
-    <!-- Pins past the 10.0.7 that Amazon.AspNetCore.DataProtection.SSM pulls in transitively,
-         which NuGet audit flags (NU1903). The server project gets the patched copy from the
-         shared framework; this test project is not a web project and resolves it as a package. -->
+    <!-- Pins past the copies NuGet audit flags: the 10.0.7 that Amazon.AspNetCore.DataProtection.SSM
+         pulls in transitively, and 10.0.12, whose advisories and those of the
+         System.Security.Cryptography.Pkcs it brings are fixed in 10.0.13 (#259). The server project
+         gets the patched copy from the shared framework; this test project is not a web project and
+         resolves it as a package. -->
     <PackageReference Include="System.Security.Cryptography.Xml" />
     <PackageReference Include="xunit" />
     <PackageReference Include="xunit.runner.visualstudio" />

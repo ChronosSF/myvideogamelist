@@ -95,6 +95,14 @@ updates:
         update-types:
           - minor
           - patch
+  # Lighthouse CI, which keeps a lockfile of its own so that its dependencies stay out of the
+  # client's (ADR 0068). One direct dependency, so nothing to group.
+  - package-ecosystem: npm
+    directory: /myvideogamelist.client/lighthouse
+    schedule:
+      interval: monthly
+    cooldown:
+      default-days: 7
   - package-ecosystem: github-actions
     directory: /
     schedule:

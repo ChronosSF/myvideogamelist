@@ -1,9 +1,13 @@
 import { Link } from 'react-router';
+import { CoverImage } from '@/components/CoverImage';
 import { useLists } from '@/hooks/useLists';
 import { useFavourites } from '@/hooks/useFavourites';
 import { FavouriteMark } from './FavouriteMark';
 import { FavouriteWords } from './FavouriteWords';
 import { sortEntries, type SortState } from '@/lib/listSort';
+
+/** Each cover is drawn across its card, `w-32 sm:w-36`, less the one-pixel border on either side. */
+const COVER_SIZES = '(min-width: 40rem) calc(9rem - 2px), calc(8rem - 2px)';
 
 /**
  * Most recently moved into Playing first, rather than the lists page's "recently added".
@@ -83,14 +87,15 @@ export function ContinuePlayingRail() {
                     <li key={game.id} className="shrink-0 snap-start w-32 sm:w-36">
                         <Link
                             to={`/games/${game.id}`}
-                            className="group block focus:outline-none focus-visible:ring-2 focus-visible:ring-focus rounded-xl"
+                            className="group block focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus rounded-xl"
                         >
                             <div className="relative aspect-[3/4] rounded-xl overflow-hidden bg-surface border border-line group-hover:border-primary-500/60 transition-all duration-300 shadow-lg">
                                 {game.coverImageUrl && (
-                                    <img
-                                        src={game.coverImageUrl}
+                                    <CoverImage
+                                        url={game.coverImageUrl}
                                         alt=""
-                                        loading={index < 6 ? 'eager' : 'lazy'}
+                                        sizes={COVER_SIZES}
+                                        eager={index < 6}
                                         className="w-full h-full object-cover"
                                     />
                                 )}

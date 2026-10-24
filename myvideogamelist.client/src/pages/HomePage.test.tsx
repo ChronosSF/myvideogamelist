@@ -5,18 +5,12 @@ import { HomePage, headers, loader } from '@/pages/HomePage';
 import type { AuthContextValue } from '@/contexts/AuthContext';
 import type { FavouritesContextValue } from '@/contexts/FavouritesContext';
 import { CACHE_HOME, PRIVATE_NO_STORE } from '@/lib/cache';
-import { game } from '@/test/factories';
+import { calendarEvents, game, userProfile } from '@/test/factories';
 import type { HomeResponse, NewsItemDto } from '@/types/news';
+import type { CalendarCuratedEvent, CalendarEvents } from '@/types/releases';
 import type { Route } from './+types/HomePage';
 
-/**
- * A visitor nobody has signed in as, once `/api/auth/me` has said so. One module-level object handed
- * back on every call, never a fresh literal — a new object per render re-runs any effect depending on
- * it, which ends in a heap crash rather than an assertion failure.
- */
-const auth: AuthContextValue = {
-    user: null,
-    loading: false,
+const authActions = {
     login: vi.fn(async () => {}),
     register: vi.fn(async () => {}),
     logout: vi.fn(async () => {}),
@@ -26,7 +20,31 @@ const auth: AuthContextValue = {
     deleteAccount: vi.fn(async () => {}),
 };
 
-vi.mock('@/hooks/useAuth', () => ({ useAuth: () => auth }));
+/**
+ * A visitor nobody has signed in as, once `/api/auth/me` has said so. Module-level objects handed back
+ * on every call, never a fresh literal — a new object per render re-runs any effect depending on it,
+ * which ends in a heap crash rather than an assertion failure.
+ */
+const SIGNED_OUT: AuthContextValue = { user: null, loading: false, ...authActions };
+
+/** Before `/api/auth/me` has answered — which is every server render, and the render that hydrates it. */
+const UNKNOWN: AuthContextValue = { user: null, loading: true, ...authActions };
+
+const SIGNED_IN: AuthContextValue = { user: userProfile({ userName: 'bob' }), loading: false, ...authActions };
+
+/** Which of the three the page is told; each test that needs another sets it. */
+const auth = vi.hoisted(() => ({ current: null as AuthContextValue | null }));
+
+vi.mock('@/hooks/useAuth', () => ({ useAuth: () => auth.current }));
+
+// The signed-in hero's own sections read the user's data, and are not what these tests are about. The
+// line stands in as a landmark, so that a test can see it is the line that is there.
+vi.mock('@/components/HomeStatsStrip', () => ({ HomeStatsStrip: () => null }));
+vi.mock('@/components/ContinuePlayingRail', () => ({ ContinuePlayingRail: () => null }));
+vi.mock('@/components/PlayNextPicker', () => ({ PlayNextPicker: () => null }));
+vi.mock('@/components/ReleaseLine', () => ({
+    ReleaseLine: () => <section aria-label="Coming up" />,
+}));
 
 /** Nobody's favourites: the visitor here is signed out. Hoisted and handed back whole, as above. */
 const favourites = { isFavourite: () => false } as unknown as FavouritesContextValue;
@@ -47,8 +65,25 @@ const NEWS: NewsItemDto = {
     publishedAt: '2026-09-01T12:00:00+00:00',
 };
 
+/** Steam's Next Fest, as the admin page holds it: on the 19th to the 26th. */
+const NEXT_FEST: CalendarCuratedEvent = {
+    id: 2,
+    kind: 'fest',
+    store: 'steam',
+    name: 'Steam Next Fest',
+    startsOn: '2026-10-19',
+    endsOn: '2026-10-26',
+    url: 'https://partner.steamgames.com/doc/marketing/upcoming_events',
+};
+
+/** The day the tests' loader runs on, in UTC, and the reader's own once hydrated. */
+const TODAY = '2026-10-17';
+
+/** The showcases and sales of an answer that brought none. */
+const NO_EVENTS: CalendarEvents = { curated: [], showcases: [], degraded: true };
+
 /** What is left of the page when the API gave the loader nothing to build it from. */
-const NOTHING: HomeResponse = { spotlight: null, popular: [], news: [], degraded: true };
+const NOTHING: HomeResponse = { spotlight: null, popular: [], news: [], events: NO_EVENTS, degraded: true };
 
 /** `/api/home` answering with `body` — a 200 unless told otherwise, which is what it sends even with IGDB down. */
 function stubHome(body: unknown, status = 200) {
@@ -62,32 +97,59 @@ const loaderArgs = () => ({ context: new RouterContextProvider() }) as unknown a
 const policyOf = (result: Awaited<ReturnType<typeof loader>>) =>
     new Headers(result.init?.headers).get('Cache-Control');
 
+/** The page, given what the loader would have handed it. */
+function renderHome(home: HomeResponse) {
+    const props = { loaderData: { ...home, site: SITE, today: TODAY } } as unknown as Route.ComponentProps;
+    return render(<MemoryRouter><HomePage {...props} /></MemoryRouter>);
+}
+
 beforeEach(() => {
     vi.stubEnv('SITE_URL', SITE.siteUrl);
     vi.stubEnv('SITE_INDEXABLE', 'true');
+    auth.current = SIGNED_OUT;
+
+    // Midday on the 17th in UTC, which is when the loader runs; the reader's own day is the 17th too
+    // everywhere but the few timezones past +11, where it is the 18th and the panel's fest is still on.
+    // Only the date is faked, so nothing waiting on a timer stalls.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-10-17T12:00:00Z'));
 });
 
 afterEach(() => {
+    vi.useRealTimers();
     vi.unstubAllEnvs();
     vi.unstubAllGlobals();
 });
 
 describe('HomePage loader', () => {
     it('shares an answer the API says is whole', async () => {
-        const home: HomeResponse = { spotlight: null, popular: [game()], news: [NEWS], degraded: false };
+        const home: HomeResponse = {
+            spotlight: null, popular: [game()], news: [NEWS], events: calendarEvents({ curated: [NEXT_FEST] }), degraded: false,
+        };
         stubHome(home);
 
         const result = await loader(loaderArgs());
 
         expect(policyOf(result)).toBe(CACHE_HOME);
-        expect(result.data).toEqual({ ...home, site: SITE });
+        expect(result.data).toEqual({ ...home, site: SITE, today: TODAY });
+    });
+
+    it('hands the page the day it ran on in UTC, which is not always the reader’s', async () => {
+        // Half past eleven at night in New York is already the next day in UTC. The page counts from this
+        // until it hydrates, and from the reader's own day after.
+        vi.setSystemTime(new Date('2026-10-17T23:30:00-04:00'));
+        stubHome({ spotlight: null, popular: [game()], news: [NEWS], events: calendarEvents(), degraded: false });
+
+        const result = await loader(loaderArgs());
+
+        expect(result.data.today).toBe('2026-10-18');
     });
 
     it('does not let a degraded 200 be cached', async () => {
         // IGDB down with the API up. The status is a 200 and the body is a well-formed payload, so
         // nothing but the flag separates this from a healthy answer — and read as one, an empty
         // home page was pinned at the edge for five minutes and served stale for ten more.
-        stubHome({ spotlight: null, popular: [], news: [], degraded: true });
+        stubHome({ spotlight: null, popular: [], news: [], events: calendarEvents(), degraded: true });
 
         const result = await loader(loaderArgs());
 
@@ -97,19 +159,31 @@ describe('HomePage loader', () => {
     it('still renders what a degraded answer has, with the site beside it', async () => {
         // The news failed and the covers did not. The page shows the covers; it is just not kept.
         // `meta` reads `site` whichever way the loader went, so it rides along here too.
-        const home: HomeResponse = { spotlight: null, popular: [game()], news: [], degraded: true };
+        const home: HomeResponse = { spotlight: null, popular: [game()], news: [], events: calendarEvents(), degraded: true };
         stubHome(home);
 
         const result = await loader(loaderArgs());
 
         expect(policyOf(result)).toBe(PRIVATE_NO_STORE);
-        expect(result.data).toEqual({ ...home, site: SITE });
+        expect(result.data).toEqual({ ...home, site: SITE, today: TODAY });
+    });
+
+    it('does not let an answer missing its showcases be cached, and keeps the sales it has', async () => {
+        // IGDB could not be asked for the showcases. The API says so twice: in the events, for the panel,
+        // and in the composite's own flag, which is the one the policy is chosen by.
+        const events = calendarEvents({ curated: [NEXT_FEST], degraded: true });
+        stubHome({ spotlight: null, popular: [game()], news: [NEWS], events, degraded: true });
+
+        const result = await loader(loaderArgs());
+
+        expect(policyOf(result)).toBe(PRIVATE_NO_STORE);
+        expect(result.data.events).toEqual(events);
     });
 
     it('fails closed on an answer that does not say, however whole it looks', async () => {
         // An API older than this build, in the middle of a deploy. Both rails are full, which is
         // exactly why this is not judged from the rails.
-        stubHome({ spotlight: null, popular: [game()], news: [NEWS] });
+        stubHome({ spotlight: null, popular: [game()], news: [NEWS], events: calendarEvents() });
 
         const result = await loader(loaderArgs());
 
@@ -122,13 +196,25 @@ describe('HomePage loader', () => {
         expect(result.data.degraded).toBe(true);
     });
 
+    it('fails closed on an answer with no showcases and sales, though it says it is whole', async () => {
+        // An API from before the panel, mid-deploy, says it is whole because as far as it knows it is.
+        // Kept at the edge, its page would go on lacking the panel after the API caught up.
+        stubHome({ spotlight: null, popular: [game()], news: [NEWS], degraded: false });
+
+        const result = await loader(loaderArgs());
+
+        expect(policyOf(result)).toBe(PRIVATE_NO_STORE);
+        expect(result.data.degraded).toBe(true);
+        expect(result.data.events).toEqual(NO_EVENTS);
+    });
+
     it('degrades, uncached, when the API answers with an error', async () => {
         stubHome({ title: 'Bad Gateway', status: 502 }, 502);
 
         const result = await loader(loaderArgs());
 
         expect(policyOf(result)).toBe(PRIVATE_NO_STORE);
-        expect(result.data).toEqual({ ...NOTHING, site: SITE });
+        expect(result.data).toEqual({ ...NOTHING, site: SITE, today: TODAY });
     });
 
     it('degrades, uncached, when the API cannot be reached', async () => {
@@ -138,7 +224,7 @@ describe('HomePage loader', () => {
         const result = await loader(loaderArgs());
 
         expect(policyOf(result)).toBe(PRIVATE_NO_STORE);
-        expect(result.data).toEqual({ ...NOTHING, site: SITE });
+        expect(result.data).toEqual({ ...NOTHING, site: SITE, today: TODAY });
     });
 });
 
@@ -147,18 +233,77 @@ describe('HomePage for a signed-out visitor', () => {
         // Everything a visitor sees arrives through the loader, cached once for everybody. What is
         // coming for somebody's games is asked for by the two-week line, which only a signed-in user
         // sees — the Releasing soon rail before it learned that fetching at the page requested the
-        // releases for every visitor and showed them to none.
+        // releases for every visitor and showed them to none. The showcases and sales are in the
+        // loader's answer for the same reason.
         const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
             throw new Error(`unexpected fetch: ${String(input)}`);
         });
         vi.stubGlobal('fetch', fetchMock);
-        const home: HomeResponse = { spotlight: null, popular: [game()], news: [NEWS], degraded: false };
-        const props = { loaderData: { ...home, site: SITE } } as unknown as Route.ComponentProps;
+
+        renderHome({
+            spotlight: null, popular: [game()], news: [NEWS], events: calendarEvents({ curated: [NEXT_FEST] }), degraded: false,
+        });
+
+        expect(screen.getByRole('heading', { name: 'Trending right now' })).toBeInTheDocument();
+        expect(screen.getByRole('heading', { name: 'Showcases and sales' })).toBeInTheDocument();
+        expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it('shows the showcases and sales first among the shared sections, where the line would be', () => {
+        renderHome({
+            spotlight: null, popular: [game()], news: [NEWS], events: calendarEvents({ curated: [NEXT_FEST] }), degraded: false,
+        });
+
+        const headings = screen.getAllByRole('heading', { level: 2 }).map(h => h.textContent);
+        expect(headings).toEqual(['Showcases and sales', 'Trending right now', 'Latest news']);
+        expect(screen.getByRole('link', { name: /Steam Next Fest/ })).toBeInTheDocument();
+    });
+
+    it('draws no panel when nothing is on', () => {
+        renderHome({ spotlight: null, popular: [game()], news: [NEWS], events: calendarEvents(), degraded: false });
+
+        expect(screen.queryByRole('heading', { name: 'Showcases and sales' })).toBeNull();
+        expect(screen.getByRole('heading', { name: 'Trending right now' })).toBeInTheDocument();
+    });
+
+    it('renders data from the build before this one, which has no showcases and sales, without them', () => {
+        // A navigation inside the app in a deploy's first minutes, answered from the edge with a payload
+        // the previous build wrote. It has no `events`, and must cost the panel rather than the page.
+        const { events: _missing, ...older } = {
+            spotlight: null, popular: [game()], news: [NEWS], events: calendarEvents(), degraded: false,
+        } satisfies HomeResponse;
+        const props = { loaderData: { ...older, site: SITE } } as unknown as Route.ComponentProps;
 
         render(<MemoryRouter><HomePage {...props} /></MemoryRouter>);
 
         expect(screen.getByRole('heading', { name: 'Trending right now' })).toBeInTheDocument();
-        expect(fetchMock).not.toHaveBeenCalled();
+        expect(screen.queryByRole('heading', { name: 'Showcases and sales' })).toBeNull();
+    });
+
+    it('shows the panel while nobody knows yet who is reading, as the server render does', () => {
+        auth.current = UNKNOWN;
+
+        renderHome({
+            spotlight: null, popular: [game()], news: [NEWS], events: calendarEvents({ curated: [NEXT_FEST] }), degraded: false,
+        });
+
+        expect(screen.getByRole('heading', { name: 'Showcases and sales' })).toBeInTheDocument();
+    });
+});
+
+describe('HomePage for somebody signed in', () => {
+    it('leaves the showcases and sales to the two-week line, rather than showing every one twice', () => {
+        auth.current = SIGNED_IN;
+
+        renderHome({
+            spotlight: null, popular: [game()], news: [NEWS], events: calendarEvents({ curated: [NEXT_FEST] }), degraded: false,
+        });
+
+        expect(screen.getByRole('heading', { name: 'Welcome back, bob' })).toBeInTheDocument();
+        expect(screen.getByRole('region', { name: 'Coming up' })).toBeInTheDocument();
+        expect(screen.queryByRole('heading', { name: 'Showcases and sales' })).toBeNull();
+        expect(screen.queryByRole('link', { name: /Steam Next Fest/ })).toBeNull();
+        expect(screen.getByRole('heading', { name: 'Trending right now' })).toBeInTheDocument();
     });
 });
 

@@ -28,10 +28,12 @@ This is the category of bug that is easy to introduce and annoying to diagnose.
 - **Never format in the runtime's default locale during render.** A bare `toLocaleString()`, or an
   `Intl` formatter given no locale, formats in Node's locale on the server and the reader's in the
   browser. Where those disagree so does the text — `5487` against `5,487` — and hydration fails.
-  Counts go through `formatCount` from `@/lib/format`. A locale alone does not make a date safe:
-  without a `timeZone` each side formats in its own, so a release date shows the day before for a
-  reader west of Greenwich. Anything that has to follow the reader's locale, timezone or clock
-  waits for `useHydrated`.
+  Counts go through `formatCount` from `@/lib/format`. A locale alone does not make an instant
+  safe: without a `timeZone` each side formats a timestamp in its own zone. A release date is a day,
+  not an instant: parse it with `parseReleaseDate` from `@/lib/releaseDate` and format it with no
+  `timeZone`, and every runtime reads the day it names. `new Date('YYYY-MM-DD')` is UTC midnight,
+  the day before west of Greenwich, and `timeZone: 'UTC'` on a parsed day is the same slip east of
+  it. Anything that has to follow the reader's locale, timezone or clock waits for `useHydrated`.
 
 ## Route modules
 
@@ -131,6 +133,23 @@ that are easy to get wrong and were got wrong once (`docs/decisions/0022-*`):
   wishlist and the favourites read twice on every page load, which is what made this a rule.
 - Always handle loading and error states explicitly. Never leave a silent broken UI.
 - One component per file; filename matches the export.
+
+## Empty, failed and loading states, and covers
+
+Nothing new shows as a blank or a bare spinner (`docs/decisions/0070-*`):
+
+- **Something empty is an `EmptyState`** saying what is missing and what would put something there. On
+  a page other people read, such as a public profile, it says what will fill it and never asks the
+  reader to do anything.
+- **A failure is an `ErrorState`** with "Try again" wherever retrying could help. A retry that removes
+  the button moves focus somewhere that stays, as the member section moves it to its heading.
+- **Something loading is a `LoadingState` around a skeleton** drawn in the content's own boxes: the
+  card's classes from `@/lib/gameGrid`, text lines as `SkeletonLine`, which is one line of the type
+  around it. It is not `aria-busy`, which belongs on a container updated in place.
+- **A cover is a `CoverImage`** with the `sizes` its box is drawn at, worked out from that component's
+  CSS. It is lazy unless it is in the first screen, and never lazy as a page's largest first paint.
+
+The wishlist and news pages' empty and failed states predate these and keep their own markup.
 
 ## Showing a score
 

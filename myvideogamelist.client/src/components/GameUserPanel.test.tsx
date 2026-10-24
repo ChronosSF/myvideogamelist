@@ -1,15 +1,18 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { useState, type ReactNode } from 'react';
 import { GameUserPanel } from '@/components/GameUserPanel';
 import { ListsContext, type ListsContextValue } from '@/contexts/ListsContext';
 import { WishlistContext, type WishlistContextValue } from '@/contexts/WishlistContext';
 import { FavouritesContext, type FavouritesContextValue } from '@/contexts/FavouritesContext';
+import { TagsContext, type TagsContextValue } from '@/contexts/TagsContext';
 import { DEFAULT_SORT } from '@/lib/listSort';
 import type { ProfileVisibility } from '@/types/auth';
 import { LIST_NAMES, type ListId } from '@/types/list';
 import type { PlaythroughDto, ReviewDto } from '@/types/playthrough';
-import { entryDetail, game, platform, playthrough, review } from '@/test/factories';
+import { entryDetail, game, platform, playthrough, review, tag } from '@/test/factories';
+import type { TagDto } from '@/types/tag';
 
 const CELESTE = game({
     id: 1,
@@ -35,6 +38,7 @@ function contextValue(overrides: Partial<ListsContextValue> = {}): ListsContextV
         moveInOrder: vi.fn(async () => true),
         setOwnership: vi.fn(async () => true),
         setNotes: vi.fn(async () => true),
+        setTags: vi.fn(async () => ({ ok: true as const })),
         deleteEntry: vi.fn(async () => true),
         view: 'tiles',
         setView: vi.fn(),
@@ -82,30 +86,53 @@ function favouritesValue(overrides: Partial<FavouritesContextValue> = {}): Favou
     };
 }
 
+/** And the account's tags are a fourth, which the tag editor reads. */
+function tagsValue(overrides: Partial<TagsContextValue> = {}): TagsContextValue {
+    const tags = overrides.tags ?? [];
+    const byId = new Map(tags.map(t => [t.id, t]));
+    return {
+        tags,
+        status: 'ready',
+        reload: vi.fn(),
+        tagFor: id => byId.get(id),
+        byId,
+        createTag: vi.fn(async () => ({ ok: false as const, error: 'unused' })),
+        renameTag: vi.fn(async () => ({ ok: false as const, error: 'unused' })),
+        deleteTag: vi.fn(async () => true),
+        adjustCounts: vi.fn(),
+        ...overrides,
+    };
+}
+
 function renderPanel(
     overrides: Partial<ListsContextValue> = {},
     wishlistOverrides: Partial<WishlistContextValue> = {},
     profileVisibility: ProfileVisibility = 'private',
     favouritesOverrides: Partial<FavouritesContextValue> = {},
+    tagsOverrides: Partial<TagsContextValue> = {},
 ) {
     const value = contextValue(overrides);
     const wishlist = wishlistValue(wishlistOverrides);
     const favourites = favouritesValue(favouritesOverrides);
+    const tags = tagsValue(tagsOverrides);
     const onCommunityChange = vi.fn();
-    render(
+    const rendered = render(
         <ListsContext.Provider value={value}>
             <WishlistContext.Provider value={wishlist}>
                 <FavouritesContext.Provider value={favourites}>
-                    <GameUserPanel
-                        game={CELESTE}
-                        profileVisibility={profileVisibility}
-                        onCommunityChange={onCommunityChange}
-                    />
+                    <TagsContext.Provider value={tags}>
+                        <GameUserPanel
+                            game={CELESTE}
+                            profileVisibility={profileVisibility}
+                            onCommunityChange={onCommunityChange}
+                        />
+                    </TagsContext.Provider>
                 </FavouritesContext.Provider>
             </WishlistContext.Provider>
         </ListsContext.Provider>,
     );
-    return { ...value, wishlist, favourites, onCommunityChange };
+    // `rendered` and `listsValue` rather than `view` and `lists`, which are fields of the lists context.
+    return { ...value, wishlist, favourites, tags, onCommunityChange, rendered, listsValue: value };
 }
 
 /**
@@ -234,6 +261,89 @@ describe('GameUserPanel list placement', () => {
 
         expect(ctx.removeFromList).toHaveBeenCalledWith('playing', 1);
     });
+
+    /**
+     * Lists that move the game at once and hold its lock while the request is out, then keep the
+     * move or put it back, as `ListsProvider` does. The test settles each request.
+     */
+    function renderMovingPanel(from: ListId | null) {
+        let settle!: (saved: boolean) => void;
+
+        function Lists({ children }: { children: ReactNode }) {
+            const [held, setHeld] = useState({ list: from, pending: false });
+            const move = async (to: ListId | null) => {
+                const before = held.list;
+                setHeld({ list: to, pending: true });
+                const saved = await new Promise<boolean>(resolve => { settle = resolve; });
+                setHeld({ list: saved ? to : before, pending: false });
+            };
+            const value = contextValue({
+                isPending: () => held.pending,
+                getListFor: () => held.list,
+                isInList: (listId: ListId) => held.list === listId,
+                addToList: (listId: ListId) => move(listId),
+                removeFromList: () => move(null),
+            });
+            return <ListsContext.Provider value={value}>{children}</ListsContext.Provider>;
+        }
+
+        render(
+            <Lists>
+                <WishlistContext.Provider value={wishlistValue()}>
+                    <FavouritesContext.Provider value={favouritesValue()}>
+                        <TagsContext.Provider value={tagsValue()}>
+                            <GameUserPanel game={CELESTE} profileVisibility="private" onCommunityChange={vi.fn()} />
+                        </TagsContext.Provider>
+                    </FavouritesContext.Provider>
+                </WishlistContext.Provider>
+            </Lists>,
+        );
+        return { finish: (saved: boolean) => act(async () => { settle(saved); }) };
+    }
+
+    it('says so when a move is refused, rather than only putting the game back', async () => {
+        // Put back without a word, a refused move reads as a click that did not register.
+        stubEntryFetch(null, 404);
+        const { finish } = renderMovingPanel('playing');
+        await settled();
+
+        await userEvent.click(screen.getByRole('button', { name: 'Finished' }));
+        expect(screen.getByRole('button', { name: 'Finished' })).toHaveAttribute('aria-pressed', 'true');
+        expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+        await finish(false);
+
+        expect(screen.getByRole('button', { name: 'Playing' })).toHaveAttribute('aria-pressed', 'true');
+        expect(screen.getByRole('alert')).toHaveTextContent('Could not move this game to Finished. Please try again.');
+    });
+
+    it('says so when taking the game out is refused', async () => {
+        stubEntryFetch(null, 404);
+        const { finish } = renderMovingPanel('playing');
+        await settled();
+
+        await userEvent.click(screen.getByRole('button', { name: 'Playing' }));
+        await finish(false);
+
+        expect(screen.getByRole('button', { name: 'Playing' })).toHaveAttribute('aria-pressed', 'true');
+        expect(screen.getByRole('alert')).toHaveTextContent('Could not take this game out of Playing. Please try again.');
+    });
+
+    it('takes the refusal down as the move is tried again, and keeps it down once it is kept', async () => {
+        stubEntryFetch(null, 404);
+        const { finish } = renderMovingPanel(null);
+        await settled();
+
+        await userEvent.click(screen.getByRole('button', { name: 'Backlog' }));
+        await finish(false);
+        expect(screen.getByRole('alert')).toHaveTextContent('Could not move this game to Backlog. Please try again.');
+
+        await userEvent.click(screen.getByRole('button', { name: 'Backlog' }));
+        expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+        await finish(true);
+
+        expect(screen.getByRole('button', { name: 'Backlog' })).toHaveAttribute('aria-pressed', 'true');
+        expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    });
 });
 
 describe('GameUserPanel scoring', () => {
@@ -307,6 +417,23 @@ describe('GameUserPanel scoring', () => {
 
         // ...and back to what the server still holds once the save is refused.
         expect(shownScore()).toBe(6);
+    });
+
+    it('says why the score went back, and takes that down once a score saves', async () => {
+        stubEntryFetch(6);
+        const { setScore, finish } = deferredSetScore();
+        renderPanel({ setScore });
+
+        await waitFor(() => expect(shownScore()).toBe(6));
+        await userEvent.click(screen.getByRole('radio', { name: '2 out of 10' }));
+        await finish(false);
+
+        expect(screen.getByRole('alert')).toHaveTextContent('Could not save your score. Please try again.');
+
+        await userEvent.click(screen.getByRole('radio', { name: '4 out of 10' }));
+        await finish(true);
+
+        expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     });
 
     it('keeps the shown score when the save succeeds', async () => {
@@ -437,16 +564,18 @@ describe('GameUserPanel deleting everything', () => {
         expect(screen.getByText(/history of moving it between lists is kept/i)).toBeInTheDocument();
     });
 
-    it('warns that the ownership, notes, playthroughs and review go too', async () => {
-        // All of them go with the entry — the playthroughs and review by cascade, the ownership and
-        // notes because they are columns on it — so the confirmation has to name them.
+    it('warns that the ownership, tags, notes, playthroughs and review go too', async () => {
+        // All of them go with the entry — the playthroughs, review and tag links by cascade, the
+        // ownership and notes because they are columns on it — so the confirmation has to name them.
+        // The tags themselves are the account's, not the game's, and stay.
         stubEntryFetch(null, 200, [playthrough({ id: 5 })]);
         renderPanel();
 
         await userEvent.click(await screen.findByRole('button', { name: /delete my data/i }));
 
-        expect(screen.getByText(/score, list placement, ownership, notes, playthroughs\s+and review/i))
+        expect(screen.getByText(/score, list placement, ownership, tags, notes,\s+playthroughs and review/i))
             .toBeInTheDocument();
+        expect(screen.getByText(/so are the tags themselves/i)).toBeInTheDocument();
     });
 
     it('offers it for a game that is only played, with no score and no list', async () => {
@@ -1297,6 +1426,32 @@ describe('GameUserPanel review', () => {
 
         expect(await screen.findByRole('button', { name: /delete my data/i })).toBeInTheDocument();
     });
+
+    it.each([
+        ['the last run', [playthrough({ id: 5, type: 'completionist' })]],
+        ['one of two runs', [playthrough({ id: 5, type: 'completionist' }), playthrough({ id: 6, type: 'rushed' })]],
+    ])('names no playthrough once the one it named is deleted, %s', async (_, runs) => {
+        // The server lets go of a deleted run's review (ADR 0025), and refuses a review that names a
+        // run that is gone as not one of yours.
+        const fetchMock = stubEntryFetch(
+            null,
+            200,
+            runs,
+            (_url, init) => init?.method === 'PUT'
+                ? new Response(JSON.stringify(review({ id: 3, ...JSON.parse(String(init.body)) })), { status: 200 })
+                : new Response(null, { status: 204 }),
+            review({ id: 3, body: 'The completionist run.', playthroughId: 5 }));
+        const sent = (method: string) => fetchMock.mock.calls.find(([, init]) => init?.method === method);
+        renderPanel();
+
+        await userEvent.click(await screen.findByRole('button', { name: 'Delete playthrough 1' }));
+        // The run gone from the panel, not only the request sent: the form reads the runs the panel holds.
+        await waitFor(() => expect(screen.queryAllByRole('button', { name: /^Delete playthrough/ })).toHaveLength(runs.length - 1));
+        await userEvent.click(await screen.findByRole('button', { name: 'Update review' }));
+
+        await waitFor(() => expect(sent('PUT')).toBeDefined());
+        expect(JSON.parse(String(sent('PUT')?.[1]?.body))).toMatchObject({ playthroughId: null });
+    });
 });
 
 describe('GameUserPanel ownership and notes', () => {
@@ -1488,5 +1643,234 @@ describe('GameUserPanel and renamed lists', () => {
 
         // The label is the user's; what is sent is still the permanent key.
         expect(ctx.addToList).toHaveBeenCalledWith('backlog', CELESTE);
+    });
+});
+
+describe('GameUserPanel tags', () => {
+    const COOP = tag({ id: 1, name: 'Co-op', count: 4 });
+    const SHORT = tag({ id: 2, name: 'short', count: 1 });
+
+    /** The entry read, carrying whatever tag ids a test gives it. */
+    function stubTagged(tagIds: number[]) {
+        const fetchMock = vi.fn(async () => new Response(
+            JSON.stringify(entryDetail({ entry: { game: { id: 1, title: 'Celeste' }, tagIds } })),
+            { status: 200 },
+        ));
+        vi.stubGlobal('fetch', fetchMock);
+        return fetchMock;
+    }
+
+    const box = () => screen.getByRole('combobox', { name: 'Add a tag to Celeste' });
+    const chips = () => screen.queryAllByRole('button', { name: /^Remove the tag / })
+        .map(button => button.getAttribute('aria-label')?.replace('Remove the tag ', ''));
+
+    function renderTagged(tagIds: number[], lists: Partial<ListsContextValue> = {}, tags: Partial<TagsContextValue> = {}) {
+        stubTagged(tagIds);
+        return renderPanel(lists, {}, 'private', {}, { tags: [COOP, SHORT], ...tags });
+    }
+
+    it("shows the game's tags by name, from the account's tags", async () => {
+        renderTagged([1]);
+        await settled();
+
+        await waitFor(() => expect(chips()).toEqual(['Co-op']));
+        expect(box()).toBeEnabled();
+    });
+
+    it('puts one of the account’s tags on the game as the whole set, and moves the counts once it saved', async () => {
+        const ctx = renderTagged([1]);
+        await settled();
+        await waitFor(() => expect(chips()).toEqual(['Co-op']));
+
+        await userEvent.type(box(), 'short{Enter}');
+
+        expect(ctx.setTags).toHaveBeenCalledWith(1, [1, 2]);
+        await waitFor(() => expect(ctx.tags.adjustCounts).toHaveBeenCalledWith([1], [1, 2]));
+        expect(chips()).toEqual(['Co-op', 'short']);
+    });
+
+    it('takes a tag off the game', async () => {
+        const ctx = renderTagged([1, 2]);
+        await settled();
+        await waitFor(() => expect(chips()).toEqual(['Co-op', 'short']));
+
+        await userEvent.click(screen.getByRole('button', { name: 'Remove the tag Co-op' }));
+
+        expect(ctx.setTags).toHaveBeenCalledWith(1, [2]);
+        await waitFor(() => expect(ctx.tags.adjustCounts).toHaveBeenCalledWith([1, 2], [2]));
+    });
+
+    it('makes a new tag and then puts it on the game', async () => {
+        const created = tag({ id: 7, name: 'replay' });
+        const createTag = vi.fn(async () => ({ ok: true as const, tag: created }));
+        const ctx = renderTagged([1], {}, { createTag });
+        await settled();
+        await waitFor(() => expect(chips()).toEqual(['Co-op']));
+
+        await userEvent.type(box(), 'replay{Enter}');
+
+        expect(createTag).toHaveBeenCalledWith('replay');
+        await waitFor(() => expect(ctx.setTags).toHaveBeenCalledWith(1, [1, 7]));
+    });
+
+    it('holds the panel’s other writes to this game while the tag is being made', async () => {
+        // Two requests — the tag, then the game's set — and nothing else may write the entry between.
+        let finish!: (result: { ok: true; tag: TagDto }) => void;
+        const createTag = vi.fn(() => new Promise<{ ok: true; tag: TagDto }>(resolve => { finish = resolve; }));
+        const ctx = renderTagged([], {}, { createTag });
+        await settled();
+
+        await userEvent.type(box(), 'replay{Enter}');
+
+        expect(screen.getByRole('button', { name: 'Playing' })).toBeDisabled();
+        expect(screen.getByLabelText('Your score for Celeste')).toBeDisabled();
+        expect(screen.getByRole('button', { name: 'Owned' })).toBeDisabled();
+        expect(ctx.setTags).not.toHaveBeenCalled();
+
+        await act(async () => { finish({ ok: true, tag: tag({ id: 7, name: 'replay' }) }); });
+
+        expect(ctx.setTags).toHaveBeenCalledWith(1, [7]);
+        expect(screen.getByRole('button', { name: 'Playing' })).toBeEnabled();
+    });
+
+    it('holds a delete asked for before the tag was made, which would otherwise race its set', async () => {
+        // The question was open when the tag was typed. A delete landing before the set-write would have
+        // the set-write make the entry again.
+        let finish!: (result: { ok: true; tag: TagDto }) => void;
+        const createTag = vi.fn(() => new Promise<{ ok: true; tag: TagDto }>(resolve => { finish = resolve; }));
+        const ctx = renderTagged([1], {}, { createTag });
+        await settled();
+
+        await userEvent.click(await screen.findByRole('button', { name: /delete my data/i }));
+        await userEvent.type(box(), 'replay{Enter}');
+
+        const del = screen.getByRole('button', { name: 'Delete' });
+        expect(del).toBeDisabled();
+        await userEvent.click(del);
+        expect(ctx.deleteEntry).not.toHaveBeenCalled();
+
+        await act(async () => { finish({ ok: true, tag: tag({ id: 7, name: 'replay' }) }); });
+
+        expect(ctx.setTags).toHaveBeenCalledWith(1, [1, 7]);
+        expect(screen.getByRole('button', { name: 'Delete' })).toBeEnabled();
+    });
+
+    it('writes no set when the tag is made after the panel has gone', async () => {
+        // The reader followed a link to another game, or signed out: nothing may be written for a game
+        // nobody is looking at, under whatever cookie is current by then.
+        let finish!: (result: { ok: true; tag: TagDto }) => void;
+        const createTag = vi.fn(() => new Promise<{ ok: true; tag: TagDto }>(resolve => { finish = resolve; }));
+        const ctx = renderTagged([], {}, { createTag });
+        await settled();
+
+        await userEvent.type(box(), 'replay{Enter}');
+        ctx.rendered.unmount();
+        await act(async () => { finish({ ok: true, tag: tag({ id: 7, name: 'replay' }) }); });
+
+        expect(ctx.setTags).not.toHaveBeenCalled();
+    });
+
+    it('writes no set when the tag made is one the game already carries', async () => {
+        // This tab's list was out of date: another tab had made the tag and put it on this game.
+        const createTag = vi.fn(async () => ({ ok: true as const, tag: tag({ id: 1, name: 'Co-op' }) }));
+        const ctx = renderTagged([1], {}, { createTag, tags: [] });
+        await settled();
+
+        await userEvent.type(box(), 'Co-op{Enter}');
+
+        await waitFor(() => expect(createTag).toHaveBeenCalledWith('Co-op'));
+        expect(ctx.setTags).not.toHaveBeenCalled();
+    });
+
+    it('shows why a tag could not be made, and writes no set', async () => {
+        const createTag = vi.fn(async () => ({
+            ok: false as const,
+            error: 'You have 200 tags, which is as many as an account can hold.',
+        }));
+        const ctx = renderTagged([], {}, { createTag });
+        await settled();
+
+        await userEvent.type(box(), 'one too many{Enter}');
+
+        expect(await screen.findByRole('alert')).toHaveTextContent('as many as an account can hold');
+        expect(ctx.setTags).not.toHaveBeenCalled();
+    });
+
+    it('puts the tags back, and says why in the server’s words, when the save fails', async () => {
+        const ctx = renderTagged([1], {
+            setTags: vi.fn(async () => ({ ok: false as const, error: 'One of those tags is not one of yours, or has been deleted. Reload the page and try again.' })),
+        });
+        await settled();
+        await waitFor(() => expect(chips()).toEqual(['Co-op']));
+
+        await userEvent.type(box(), 'short{Enter}');
+
+        // The server's own sentence, which says what to do about it.
+        expect(await screen.findByRole('alert')).toHaveTextContent('Reload the page and try again.');
+        expect(chips()).toEqual(['Co-op']);
+        expect(ctx.tags.adjustCounts).not.toHaveBeenCalled();
+    });
+
+    it('keeps a tag this tab cannot name in the set it sends, and asks for the tags again once', async () => {
+        // Made in another tab after this one read the account's tags. Sending the set without it would
+        // take it off the game; it stays, and a fresh read can draw its chip.
+        const ctx = renderTagged([1, 42]);
+        await settled();
+        await waitFor(() => expect(chips()).toEqual(['Co-op']));
+
+        await waitFor(() => expect(ctx.tags.reload).toHaveBeenCalledTimes(1));
+
+        await userEvent.type(box(), 'short{Enter}');
+
+        expect(ctx.setTags).toHaveBeenCalledWith(1, [1, 42, 2]);
+    });
+
+    it('asks for the account’s tags again only once, even when the fresh read still lacks the tag', async () => {
+        // Deleted between this panel's read of the game and the fresh read of the tags: asking again
+        // would ask for ever.
+        const ctx = renderTagged([1, 42]);
+        await settled();
+        await waitFor(() => expect(ctx.tags.reload).toHaveBeenCalledTimes(1));
+
+        // The read goes out and comes back, still without 42.
+        for (const status of ['loading', 'ready'] as const) {
+            const next = tagsValue({ tags: [COOP, SHORT], status, reload: ctx.tags.reload });
+            ctx.rendered.rerender(
+                <ListsContext.Provider value={ctx.listsValue}>
+                    <WishlistContext.Provider value={ctx.wishlist}>
+                        <FavouritesContext.Provider value={ctx.favourites}>
+                            <TagsContext.Provider value={next}>
+                                <GameUserPanel game={CELESTE} profileVisibility="private" onCommunityChange={ctx.onCommunityChange} />
+                            </TagsContext.Provider>
+                        </FavouritesContext.Provider>
+                    </WishlistContext.Provider>
+                </ListsContext.Provider>,
+            );
+        }
+
+        await waitFor(() => expect(chips()).toEqual(['Co-op']));
+        expect(ctx.tags.reload).toHaveBeenCalledTimes(1);
+    });
+
+    it('offers no editor over account tags that did not arrive, and a way to ask again', async () => {
+        const ctx = renderTagged([1], {}, { status: 'failed', tags: [] });
+        await settled();
+
+        expect(box()).toBeDisabled();
+        const alert = screen.getByText(/your tags could not be loaded/i);
+        await userEvent.click(within(alert).getByRole('button', { name: 'Try again' }));
+        expect(ctx.tags.reload).toHaveBeenCalled();
+    });
+
+    it('offers the delete for a game that only carries tags, and moves their counts down after it', async () => {
+        const ctx = renderTagged([1, 2]);
+        await settled();
+
+        await userEvent.click(await screen.findByRole('button', { name: /delete my data/i }));
+        await userEvent.click(screen.getByRole('button', { name: 'Delete' }));
+
+        await waitFor(() => expect(ctx.tags.adjustCounts).toHaveBeenCalledWith([1, 2], []));
+        expect(chips()).toEqual([]);
+        expect(screen.getByText('No tags on this game yet.')).toBeInTheDocument();
     });
 });

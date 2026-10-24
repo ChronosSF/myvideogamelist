@@ -65,10 +65,6 @@ change — so each can follow its own feature. The last column is the issue that
 
 ### The tracker
 
-| Table / change | Notes | Issue |
-|---|---|---|
-| `Tags` + `UserGameEntryTags` | User-scoped tags, not a global vocabulary | #135 |
-
 The backlog's own order shipped as `UserGameEntries.Position` with #116: nullable, sparse, a place in
 the list the entry is in now and cleared by any change of list, with the numbers computed on the client
 and stored as sent ([0054](decisions/0054-a-hand-arranged-order-is-a-sparse-position.md)). Nothing
@@ -78,6 +74,13 @@ The favourites' order shipped as `UserFavourites.Position` with #117, on the sam
 first, then the rest newest first, and published on the public profile as an order, never as the
 numbers ([0064](decisions/0064-the-showcase-is-arranged-by-hand-and-shown-in-that-order.md)). The export
 carries it as stored.
+
+`Tags` and `UserGameEntryTags` were on this list and shipped with #135
+([0065](decisions/0065-tags-are-the-owners-own-words.md)). A tag is its owner's — a name unique per
+account without regard to case, never a global vocabulary — and the link carries its own `UserId` and
+reaches both the entry and the tag through composite keys, so one account's game can only ever carry that
+account's tags. Both cascade from the account, both are in the export, by the tag's name rather than its
+id, and nothing public reads either. A tag change writes no event: the link's `AddedAt` is its history.
 
 ### Community
 

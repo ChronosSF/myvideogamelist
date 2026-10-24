@@ -1,10 +1,14 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { data, useNavigation, useSearchParams } from 'react-router';
 import { GameCard } from '@/components/GameCard';
+import { GameCardSkeleton } from '@/components/GameCardSkeleton';
+import { GameGridSkeleton } from '@/components/GameGridSkeleton';
 import { GameBrowseFilters } from '@/components/GameBrowseFilters';
+import { LoadingState } from '@/components/LoadingState';
 import { PageHeader } from '@/components/PageHeader';
 import type { GameDto, GenreDto, PagedGamesResponse, PlatformDto } from '@/types/game';
 import { CACHE_GAMES_LIST, PRIVATE_NO_STORE } from '@/lib/cache';
+import { GAME_GRID, GAME_GRID_FIRST_ROW } from '@/lib/gameGrid';
 import { pageMeta, siteConfig } from '@/lib/seo';
 import { loaderFetch, upstreamFailure } from '@/lib/trace.server';
 import {
@@ -95,8 +99,14 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     );
 }
 
+/**
+ * Whatever the loader decided, which states a policy on every answer, and a thrown 502 carries its own.
+ * The fallback is reached only by a loader that threw something else — a body that did not parse, say —
+ * and it fails closed: a client-side navigation's `.data` request reaches this function for this
+ * route's own failure, and `CACHE_GAMES_LIST` there kept the error at the edge for ten minutes.
+ */
 export function headers({ loaderHeaders }: Route.HeadersArgs) {
-    return { 'Cache-Control': loaderHeaders.get('Cache-Control') ?? CACHE_GAMES_LIST };
+    return { 'Cache-Control': loaderHeaders.get('Cache-Control') ?? PRIVATE_NO_STORE };
 }
 
 export function meta({ loaderData, location }: Route.MetaArgs) {
@@ -135,8 +145,18 @@ export function GamesPage({ loaderData }: Route.ComponentProps) {
     // what a pending navigation is compared against.
     const activeKey = browseParams(browse).toString();
 
-    const [searchParams, setSearchParams] = useSearchParams();
+    const [, setSearchParams] = useSearchParams();
     const navigation = useNavigation();
+
+    // The browse a navigation is on its way to, when one is out. `browse` is the last loader result
+    // that *landed*, so it is a step behind from the click that starts a navigation until it settles.
+    // Kept from one render to the next while the query string is the same, because the search
+    // debounce below depends on it, and a new object every render would restart its timer.
+    const pendingSearch = navigation.location?.pathname === '/games' ? navigation.location.search : null;
+    const pendingBrowse = useMemo(
+        () => (pendingSearch === null ? null : browseFrom(new URLSearchParams(pendingSearch))),
+        [pendingSearch],
+    );
 
     // The first page comes from the loader and is already in the HTML. Only pages beyond it are
     // client state, so the server-rendered results are never re-fetched just to be re-displayed.
@@ -190,22 +210,25 @@ export function GamesPage({ loaderData }: Route.ComponentProps) {
         const timer = setTimeout(() => {
             setPushedSearch(trimmed);
 
-            const next = new URLSearchParams(searchParams);
-            if (trimmed) next.set('search', trimmed);
-            else next.delete('search');
-
-            // replace, so typing does not add one history entry per debounce interval.
-            setSearchParams(next, { replace: true, preventScrollReset: true });
+            // On the browse that is on its way when there is one, as a filter change is. Built on the
+            // URL that landed, a term typed while a filter's page loads would replace that navigation
+            // without the filter.
+            //
+            // A replace, so typing does not add one history entry per debounce interval — except
+            // over a filter still loading. A navigation takes the replace or push of the one that
+            // interrupts it, so a replace there would take the filter's own step, and Back would skip
+            // the listing the filter was chosen from.
+            const filterPending = pendingBrowse !== null
+                && browseParams({ ...pendingBrowse, search: '' }).toString()
+                    !== browseParams({ ...browse, search: '' }).toString();
+            setSearchParams(
+                browseParams({ ...(pendingBrowse ?? browse), search: trimmed }),
+                { replace: !filterPending, preventScrollReset: true },
+            );
         }, SEARCH_DEBOUNCE_MS);
 
         return () => clearTimeout(timer);
-    }, [search, activeSearch, pushedSearch, searchParams, setSearchParams]);
-
-    // The browse a navigation is on its way to, when one is out. `browse` is the last loader result
-    // that *landed*, so it is a step behind from the click that starts a navigation until it settles.
-    const pendingBrowse = navigation.location && navigation.location.pathname === '/games'
-        ? browseFrom(new URLSearchParams(navigation.location.search))
-        : null;
+    }, [search, activeSearch, pushedSearch, pendingBrowse, browse, setSearchParams]);
 
     /**
      * A change of order or filter, applied to the URL at once.
@@ -230,8 +253,10 @@ export function GamesPage({ loaderData }: Route.ComponentProps) {
     const clearFilters = () => changeBrowse({ platform: null, genre: null, year: null, minScore: null, esrb: null });
 
     // Abandon an in-flight "load more" when the result set changes underneath it, so a late
-    // page of the previous browse cannot append itself to the new one.
-    useEffect(() => () => {
+    // page of the previous browse cannot append itself to the new one. A layout effect, so the
+    // abort lands in the commit that puts the new browse on screen: a passive effect runs after
+    // that commit, and a page that answered in between was appended to the new listing.
+    useLayoutEffect(() => () => {
         isLoadingMoreRef.current = false;
         loadMoreControllerRef.current?.abort();
     }, [activeKey]);
@@ -317,13 +342,13 @@ export function GamesPage({ loaderData }: Route.ComponentProps) {
                         placeholder="Search games…"
                         value={search}
                         onChange={e => setSearch(e.target.value)}
-                        className="w-full pl-9 pr-4 py-2 bg-surface border border-line-strong rounded-lg text-fg-strong placeholder-fg-faint text-sm focus:outline-none focus:ring-2 focus:ring-focus focus:border-transparent"
+                        className="w-full pl-9 pr-4 py-2 bg-surface border border-line-strong rounded-lg text-fg-strong placeholder-fg-faint text-sm focus:outline-hidden focus:ring-2 focus:ring-focus focus:border-transparent"
                         aria-label="Search games"
                     />
                 </div>
 
                 <GameBrowseFilters
-                    browse={browse}
+                    browse={pendingBrowse ?? browse}
                     platforms={platforms}
                     genres={genres}
                     years={yearsFrom(currentYear)}
@@ -334,13 +359,11 @@ export function GamesPage({ loaderData }: Route.ComponentProps) {
 
             {/* Content */}
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+                {/* A page of results' worth, which is what the loader is fetching. */}
                 {loading && (
-                    <div className="flex items-center justify-center py-24">
-                        <div className="flex flex-col items-center gap-4">
-                            <div className="w-10 h-10 border-4 border-primary-500/30 border-t-primary-500 rounded-full animate-spin" aria-label="Loading" />
-                            <p className="text-fg-muted text-sm">Loading games…</p>
-                        </div>
-                    </div>
+                    <LoadingState label="Loading games…">
+                        <GameGridSkeleton count={PAGE_SIZE} />
+                    </LoadingState>
                 )}
 
                 {error && (
@@ -387,22 +410,26 @@ export function GamesPage({ loaderData }: Route.ComponentProps) {
                     </div>
                 )}
 
+                {/* The first row is server-rendered and is this page's largest first paint, so its
+                    covers load with the page; the rest wait until they are scrolled near. While the
+                    next page is on its way, its shapes continue the grid, so the cards that arrive
+                    take their places rather than pushing in under a spinner. */}
                 {!loading && !error && games.length > 0 && (
-                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
-                        {games.map(game => (
-                            <GameCard key={game.id} game={game} />
+                    <div className={GAME_GRID} aria-busy={loadingMore || undefined}>
+                        {games.map((game, index) => (
+                            <GameCard key={game.id} game={game} eager={index < GAME_GRID_FIRST_ROW} />
+                        ))}
+                        {loadingMore && Array.from({ length: GAME_GRID_FIRST_ROW }, (_, index) => (
+                            <GameCardSkeleton key={`next-${index}`} />
                         ))}
                     </div>
                 )}
 
-                {/* Infinite-scroll sentinel / load-more indicator */}
+                {/* Infinite-scroll sentinel, and the words for what the shapes above are. The status is
+                    always there and only its words come and go, because a live region is announced
+                    when what is in it changes, not when it is added already full. */}
                 <div ref={sentinelRef} className="mt-8 flex justify-center">
-                    {loadingMore && (
-                        <div className="flex items-center gap-3 text-fg-muted text-sm">
-                            <div className="w-5 h-5 border-2 border-primary-500/30 border-t-primary-500 rounded-full animate-spin" aria-label="Loading more" />
-                            Loading more games…
-                        </div>
-                    )}
+                    <p role="status" className="sr-only">{loadingMore ? 'Loading more games…' : ''}</p>
                 </div>
             </div>
         </div>

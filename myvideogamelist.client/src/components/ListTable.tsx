@@ -1,12 +1,16 @@
 import { Link } from 'react-router';
 import type { ListEntryDto } from '@/types/list';
+import type { TagDto } from '@/types/tag';
 import { type SortKey, type SortState, SORT_OPTIONS, sortOption } from '@/lib/listSort';
+import { releaseYear } from '@/lib/releaseDate';
 import { hasCriticScore, ratingPercent } from '@/lib/score';
+import { CoverImage } from '@/components/CoverImage';
 import { ScoreBadge } from '@/components/ScoreBadge';
 import { ScoreInput } from '@/components/ScoreInput';
 import { ReorderHandle } from '@/components/ReorderHandle';
 import { FavouriteMark } from '@/components/FavouriteMark';
 import type { Reorder } from '@/hooks/useReorder';
+import { TagChips } from '@/components/TagChips';
 import './ListTable.css';
 
 interface ListTableProps {
@@ -25,6 +29,8 @@ interface ListTableProps {
      * a first column, and `entries` is already in the order to draw, a game being moved included.
      */
     reorder?: Reorder;
+    /** A row's tags, resolved and in name order, drawn under its title. */
+    tagsFor?: (entry: ListEntryDto) => TagDto[];
 }
 
 /** Columns that double as sort controls, in display order. */
@@ -38,7 +44,7 @@ const SORTABLE: { key: SortKey; className: string }[] = [
 ];
 
 function year(date: string | null): string {
-    return date === null ? '—' : String(new Date(date).getFullYear());
+    return date === null ? '—' : String(releaseYear(date));
 }
 
 function shortDate(date: string | null): string {
@@ -64,6 +70,7 @@ export function ListTable({
     isFavourite,
     listName,
     reorder,
+    tagsFor,
 }: ListTableProps) {
     const sortBy = (key: SortKey) => {
         // Clicking the active column flips direction; a new column starts in whichever direction
@@ -132,8 +139,9 @@ export function ListTable({
 
                                 <td className="col-cover">
                                     <Link to={`/games/${game.id}`} tabIndex={-1} aria-hidden="true">
+                                        {/* `.col-cover img` draws it 2.25rem wide. */}
                                         {game.coverImageUrl ? (
-                                            <img src={game.coverImageUrl} alt="" loading="lazy" />
+                                            <CoverImage url={game.coverImageUrl} alt="" sizes="2.25rem" />
                                         ) : (
                                             <span className="list-table-nocover" />
                                         )}
@@ -145,6 +153,11 @@ export function ListTable({
                                     {/* After the title rather than on a thumbnail too small to carry it,
                                         and named itself, since it is not inside the link. */}
                                     {isFavourite(game.id) && <FavouriteMark variant="inline" />}
+                                    {tagsFor && (
+                                        <div className="list-table-tags">
+                                            <TagChips tags={tagsFor(entry)} max={4} />
+                                        </div>
+                                    )}
                                 </td>
 
                                 <td className="col-score">

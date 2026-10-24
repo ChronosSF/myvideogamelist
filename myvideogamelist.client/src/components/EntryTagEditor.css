@@ -1,0 +1,141 @@
+.entry-tags {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.entry-tags-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.3rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+/* The chip of TagChips, with room for its remove button. */
+.entry-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.15rem;
+    max-width: 100%;
+    padding: 0.1rem 0.15rem 0.1rem 0.55rem;
+    font-size: 0.75rem;
+    color: var(--color-tag-300);
+    background: color-mix(in srgb, var(--color-tag-900) 45%, transparent);
+    border: 1px solid color-mix(in srgb, var(--color-tag-800) 70%, transparent);
+    border-radius: 9999px;
+}
+
+.entry-tag-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.entry-tag-remove {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 1.25rem;
+    height: 1.25rem;
+    padding: 0;
+    color: inherit;
+    background: none;
+    border: none;
+    border-radius: 9999px;
+    cursor: pointer;
+}
+
+.entry-tag-remove svg {
+    width: 0.7rem;
+    height: 0.7rem;
+}
+
+.entry-tag-remove:hover:not(:disabled):not([aria-disabled='true']) {
+    color: var(--color-fg-strong);
+    background: color-mix(in srgb, var(--color-tag-800) 80%, transparent);
+}
+
+.entry-tag-remove:focus-visible,
+.entry-tags-input:focus-visible {
+    outline: 2px solid var(--color-focus);
+    outline-offset: 2px;
+}
+
+.entry-tag-remove:disabled,
+.entry-tag-remove[aria-disabled='true'] {
+    cursor: default;
+    opacity: 0.55;
+}
+
+.entry-tags-combo {
+    position: relative;
+}
+
+.entry-tags-input {
+    width: 100%;
+    padding: 0.3rem 0.45rem;
+    font: inherit;
+    font-size: 0.78rem;
+    color: var(--color-fg);
+    background: color-mix(in srgb, var(--color-page) 60%, transparent);
+    border: 1px solid var(--color-line-strong);
+    border-radius: 0.35rem;
+}
+
+.entry-tags-input::placeholder {
+    color: var(--color-fg-dim);
+}
+
+.entry-tags-input:disabled {
+    opacity: 0.55;
+}
+
+/* Floats over what follows rather than pushing it down, as a menu does. */
+.entry-tags-options {
+    position: absolute;
+    top: calc(100% + 0.25rem);
+    left: 0;
+    right: 0;
+    z-index: 20;
+    max-height: 16rem;
+    overflow-y: auto;
+    margin: 0;
+    padding: 0.25rem;
+    list-style: none;
+    background: var(--color-page);
+    border: 1px solid var(--color-line-strong);
+    border-radius: 0.5rem;
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.45);
+}
+
+.entry-tags-option {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 0.35rem 0.45rem;
+    font-size: 0.78rem;
+    color: var(--color-fg-soft);
+    border-radius: 0.35rem;
+    cursor: pointer;
+}
+
+.entry-tags-option.active {
+    color: var(--color-fg-strong);
+    background: var(--color-raised);
+}
+
+.entry-tags-option-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.entry-tags-option-count {
+    flex-shrink: 0;
+    font-size: 0.68rem;
+    color: var(--color-fg-muted);
+}

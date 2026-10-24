@@ -1,7 +1,10 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Link } from 'react-router';
 import type { GameDto } from '@/types/game';
 import { hasCriticScore, ratingPercent } from '@/lib/score';
+import { parseReleaseDate } from '@/lib/releaseDate';
+import { CARD_BODY, CARD_COVER, CARD_FRAME, GAME_GRID_COVER_SIZES } from '@/lib/gameGrid';
+import { CoverImage } from '@/components/CoverImage';
 import { ScoreBadge } from '@/components/ScoreBadge';
 import { FavouriteMark } from '@/components/FavouriteMark';
 import { FavouriteWords } from '@/components/FavouriteWords';
@@ -14,10 +17,23 @@ import './GameCard.css';
 
 interface GameCardProps {
     game: GameDto;
+    /** Drawn under the title. The lists page puts the game's tags here; nothing else does. */
+    children?: ReactNode;
+    /**
+     * Load the cover with the page, for a card in the grid's first row. Lazily otherwise. The pages
+     * decide, since only they know where the card sits.
+     */
+    eager?: boolean;
 }
 
-export function GameCard({ game }: GameCardProps) {
-    const releaseYear = game.releaseDate ? new Date(game.releaseDate).getFullYear() : null;
+/**
+ * A game in the grid the games, lists and wishlist pages share (`@/lib/gameGrid`), which is the width
+ * its cover's `sizes` is worked out from.
+ */
+export function GameCard({ game, eager = false, children }: GameCardProps) {
+    // The day as the calendar names it: `new Date` would read it as UTC midnight, the year before for a
+    // game out on 1 January anywhere west of Greenwich, and the server and the browser could disagree.
+    const releaseYear = game.releaseDate ? parseReleaseDate(game.releaseDate).getFullYear() : null;
     const { user } = useAuth();
     const { addToList, removeFromList, isInList, isPending, nameFor } = useLists();
     const wishlist = useWishlist();
@@ -62,12 +78,12 @@ export function GameCard({ game }: GameCardProps) {
 
     return (
         <article
-            className="game-card-root bg-surface rounded-xl overflow-hidden flex flex-col shadow-lg hover:shadow-primary-900/40 hover:shadow-xl transition-all duration-300 hover:-translate-y-1 border border-line hover:border-primary-600/50"
+            className={`game-card-root ${CARD_FRAME} hover:shadow-primary-900/40 hover:shadow-xl transition-all duration-300 hover:-translate-y-1 hover:border-primary-600/50`}
             onMouseLeave={() => setOverlayOpen(false)}
         >
             {/* Cover Image */}
             <div
-                className={`relative aspect-[3/4] bg-page overflow-hidden${user ? ' cursor-pointer' : ''}`}
+                className={`${CARD_COVER}${user ? ' cursor-pointer' : ''}`}
                 onClick={user ? () => setOverlayOpen(o => !o) : undefined}
                 role={user ? 'button' : undefined}
                 tabIndex={user ? 0 : undefined}
@@ -76,11 +92,12 @@ export function GameCard({ game }: GameCardProps) {
                 onKeyDown={user ? (e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setOverlayOpen(o => !o); } }) : undefined}
             >
                 {game.coverImageUrl ? (
-                    <img
-                        src={game.coverImageUrl}
+                    <CoverImage
+                        url={game.coverImageUrl}
                         alt={`${game.title} cover`}
+                        sizes={GAME_GRID_COVER_SIZES}
+                        eager={eager}
                         className="w-full h-full object-cover"
-                        loading="lazy"
                     />
                 ) : (
                     <div className="w-full h-full flex items-center justify-center text-fg-dim">
@@ -190,7 +207,7 @@ export function GameCard({ game }: GameCardProps) {
             </div>
 
             {/* Card Body */}
-            <div className="p-4 flex flex-col gap-2 flex-1">
+            <div className={CARD_BODY}>
                 {/* In the body rather than the overlay, which is only visible on hover — a
                     message that disappears when the pointer moves away is no message. */}
                 {wishlistFailed && (
@@ -210,6 +227,8 @@ export function GameCard({ game }: GameCardProps) {
                         <span className="text-fg-faint text-xs shrink-0 mt-0.5">{releaseYear}</span>
                     )}
                 </div>
+
+                {children}
 
                 {/* The player rating, out of 100 like the critic score above it. Stars on a card
                     would be a score nobody on this page gave — see ADR 0021. */}

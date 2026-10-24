@@ -1,4 +1,4 @@
-import { useId, useState } from 'react';
+import { useId, useState, type ReactNode } from 'react';
 import type { PlatformDto } from '@/types/game';
 import type { ViewMode } from '@/types/list';
 import { type SortState, MANUAL_OPTION, SORT_OPTIONS, sortOption } from '@/lib/listSort';
@@ -15,6 +15,8 @@ interface ListToolbarProps {
     platforms: PlatformDto[];
     selectedPlatformIds: number[];
     onPlatformsChange: (ids: number[]) => void;
+    /** Further filters, drawn after the platforms' — the tag filter. */
+    children?: ReactNode;
 }
 
 /**
@@ -32,6 +34,7 @@ export function ListToolbar({
     platforms,
     selectedPlatformIds,
     onPlatformsChange,
+    children,
 }: ListToolbarProps) {
     const [filterOpen, setFilterOpen] = useState(false);
     const sortId = useId();
@@ -138,6 +141,8 @@ export function ListToolbar({
                     )}
                 </div>
             )}
+
+            {children}
 
             <div className="list-toolbar-group list-toolbar-views" role="group" aria-label="List layout">
                 <button

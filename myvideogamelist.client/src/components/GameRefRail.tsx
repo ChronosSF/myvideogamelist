@@ -6,6 +6,11 @@ interface GameRefRailProps {
     /** Names the scroll region for keyboard and screen-reader users. */
     label: string;
     /**
+     * How many covers load with the page, for a rail at the top of one, as a profile's favourites are.
+     * None by default: on a game page the rails sit far below the fold.
+     */
+    eager?: number;
+    /**
      * Which of the games are the reader's own favourites, to mark them (`docs/decisions/0064-*`). Left
      * out on somebody else's profile: a rail of their favourites is theirs, and the reader's rosette on
      * some of them would read as the owner's.
@@ -18,13 +23,16 @@ interface GameRefRailProps {
     sayFavourites?: boolean;
 }
 
+/** Each cover is drawn across its card, `w-28 sm:w-32`, less the one-pixel border on either side. */
+const COVER_SIZES = '(min-width: 40rem) calc(8rem - 2px), calc(7rem - 2px)';
+
 /**
  * A horizontally scrolling strip of related games — similar titles, DLC, expansions.
  *
  * Deliberately not `TrendingRail`: that one takes a full `GameDto` and stamps a popularity rank
  * on each cover, neither of which applies to a related-games list.
  */
-export function GameRefRail({ games, label, isFavourite, sayFavourites = true }: GameRefRailProps) {
+export function GameRefRail({ games, label, eager = 0, isFavourite, sayFavourites = true }: GameRefRailProps) {
     if (games.length === 0) return null;
 
     return (
@@ -43,9 +51,15 @@ export function GameRefRail({ games, label, isFavourite, sayFavourites = true }:
             tabIndex={0}
             aria-label={label}
         >
-            {games.map(game => (
+            {games.map((game, index) => (
                 <li key={game.id} className="shrink-0 snap-start w-28 sm:w-32">
-                    <GameRefTile game={game} favourite={isFavourite?.(game.id) ?? false} sayFavourite={sayFavourites} />
+                    <GameRefTile
+                        game={game}
+                        favourite={isFavourite?.(game.id) ?? false}
+                        sayFavourite={sayFavourites}
+                        sizes={COVER_SIZES}
+                        eager={index < eager}
+                    />
                 </li>
             ))}
         </ul>

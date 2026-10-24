@@ -25,8 +25,8 @@
     <PackageVersion Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
     <PackageVersion Include="NSubstitute" Version="6.2.0" />
     <PackageVersion Include="Scalar.AspNetCore" Version="2.18.0" />
-    <!-- Referenced by the two test projects only, past the copy the SSM provider pulls in; the
-         server gets the patched one from the shared framework. See the test projects. -->
+    <!-- Referenced by the two test projects only, past the copies NuGet audit flags; the server
+         gets the patched one from the shared framework. The test projects say which copies. -->
     <PackageVersion Include="System.Security.Cryptography.Xml" Version="10.0.13" />
     <PackageVersion Include="Testcontainers.PostgreSql" Version="4.16.0" />
     <PackageVersion Include="xunit" Version="2.9.3" />
