@@ -94,6 +94,8 @@ npm run typecheck    # generate route types, then tsc
 npm run build        # production build
 npm run e2e          # the browser smoke test: needs `docker compose up -d --wait`, and once,
                      # `npx playwright install chromium`
+npm run lighthouse   # Lighthouse on five pages of the same build, phone and desktop: needs what
+                     # `npm run e2e` does, and IGDB's image host to be reachable
 npm run audit        # npm audit, failing at high and critical
 
 cd ..
@@ -138,8 +140,9 @@ Every pull request, whatever branch it targets, and every push to `master` are v
 Actions: the client is linted, type-checked and built; the server is built, unit-tested and checked
 against the house style in `.editorconfig`, and its integration suite runs against PostgreSQL in a
 container; a browser smoke test runs the production build and the API behind a stand-in for what
-routes between them; every package on both sides is audited for known vulnerabilities; every commit
-is scanned for secrets; both images are built, and the SSR one started; and CodeQL analyses both
-languages and the workflows. See [ADR 0061](docs/decisions/0061-ci-gates-every-pull-request.md).
+routes between them, and Lighthouse audits five of its pages; every package on both sides is
+audited for known vulnerabilities; every commit is scanned for secrets; both images are built, and
+the SSR one started; and CodeQL analyses both languages and the workflows. See
+[ADR 0061](docs/decisions/0061-ci-gates-every-pull-request.md).
 
 [![CI](../../actions/workflows/ci.yml/badge.svg)](../../actions/workflows/ci.yml)

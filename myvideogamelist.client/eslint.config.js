@@ -40,12 +40,32 @@ export default tseslint.config(
           'clientLoader',
           'action',
           'clientAction',
+          'middleware',
           'shouldRevalidate',
           'ErrorBoundary',
           'HydrateFallback',
           'Layout',
         ],
       }],
+
+      // A loader's call to the API goes through `loaderFetch` from `@/lib/trace.server`, which
+      // sends the render's trace. A call to `apiUrl(…)` made any other way reaches the API under a
+      // trace of its own, and nothing then joins the API's log to the page that asked (ADR 0059).
+      // Refused at the import rather than at the call, so that a URL kept in a variable first, or a
+      // `globalThis.fetch`, is refused as well.
+      'no-restricted-imports': ['error', {
+        paths: [{
+          name: '@/lib/api',
+          importNames: ['apiUrl'],
+          message: "Call the API from a loader with loaderFetch(context, path) from @/lib/trace.server, which carries the render's traceparent.",
+        }],
+      }],
     },
+  },
+  {
+    // The one module that may: `loaderFetch` itself. `apiFetch`, beside `apiUrl` in `@/lib/api`,
+    // imports nothing.
+    files: ['src/lib/trace.server.ts'],
+    rules: { 'no-restricted-imports': 'off' },
   },
 )

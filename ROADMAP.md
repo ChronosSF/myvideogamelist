@@ -78,14 +78,14 @@ is in the history (`git log -p -- ROADMAP.md`).
 | D4 | SES on a verified domain | #100 |
 | D5 | SES production access, requested early | #100 |
 | D6 | OAuth redirect URIs on the real domain | #111 |
-| D7 | Identity cookie domain | #98 |
-| D8 | `robots.txt`, sitemap, canonical URLs | Done — 0036; the search console registration is #98 |
+| D7 | Identity cookie domain | #98 — host-only, as today, since `www` only redirects: [0066](docs/decisions/0066-a-holding-page-until-production-takes-the-domain.md) §2 |
+| D8 | `robots.txt`, sitemap, canonical URLs | Done — 0036; the search console registration is 0066's, by hand |
 | D9 | Open Graph and Twitter cards | Done — 0036; the default share image is #139 |
 | D10 | Server-side rendering | Done — [0002](docs/decisions/0002-server-side-rendering.md) |
 | D11 | Bounce and complaint handling | #100 |
 | D12 | CloudFront behaviours matching the per-route `Cache-Control` | #97 — Phase 10 of the guide |
 | D13 | Behaviours written against React Router 8's `.data` URLs | #97 — Phase 10; [0011](docs/decisions/0011-react-router-8-upgrade.md) |
-| D14 | CloudFront invalidation when a profile is withdrawn | #99 |
+| D14 | CloudFront invalidation when a profile is withdrawn | Done — [0058](docs/decisions/0058-a-withdrawal-leaves-the-edge-when-it-is-made.md) |
 
 ### Price tracking (P), monetisation (M) and ads (A)
 
@@ -107,9 +107,9 @@ is in the history (`git log -p -- ROADMAP.md`).
 | §2 | Tiers 1–3 | The `feature` issues |
 | §4 | Monetisation | The table is in 0010; the statistics tiers are `specs/profile-statistics-tiers.md` and #149; the rest of the work is M and A above |
 | §5 Data & state | PostgreSQL, migrations, keys, cache | PostgreSQL and the migration gate are done — [0008](docs/decisions/0008-postgresql-over-sqlite.md), `CLAUDE.md`; the keys and the migration step are #97; #101; #102 |
-| §5 Resilience | Retry, breaker, limits, lockout, CSRF, headers, errors | Done — [0033](docs/decisions/0033-what-the-api-refuses.md), [0034](docs/decisions/0034-failing-in-one-shape.md); `script-src` is #108; edge rate limiting is #109 |
-| §5 Observability | Health, logs, traces, alarms, `/version` | Health endpoints done; the rest is #103 |
-| §5 Quality gates | Tests, CI, scanning, branch protection | Unit tests, CI on every pull request, the browser smoke test ([0060](docs/decisions/0060-one-browser-test-over-the-production-shape.md)), and the format check, dependency audits, secret scan and image builds ([0061](docs/decisions/0061-ci-gates-every-pull-request.md)) are done; branch protection and GitHub's secret scanning, settings only the owner can turn on, are what is left of #106; #104, #107 |
+| §5 Resilience | Retry, breaker, limits, lockout, CSRF, headers, errors | Done — [0033](docs/decisions/0033-what-the-api-refuses.md), [0034](docs/decisions/0034-failing-in-one-shape.md), [0053](docs/decisions/0053-a-documents-scripts-carry-its-renders-nonce.md); edge rate limiting is #109 |
+| §5 Observability | Health, logs, traces, alarms, `/version` | Health endpoints, structured logs, the trace id and `/version` done (0059); OpenTelemetry and the alarms are #103 |
+| §5 Quality gates | Tests, CI, scanning, branch protection | Unit tests, CI on every pull request, the integration suite ([0057](docs/decisions/0057-the-api-is-tested-over-a-real-postgresql.md)), the client test coverage (#107), the browser smoke test ([0060](docs/decisions/0060-one-browser-test-over-the-production-shape.md)), Lighthouse ([0068](docs/decisions/0068-lighthouse-on-the-production-shape.md)), and the format check, dependency audits, secret scan and image builds ([0061](docs/decisions/0061-ci-gates-every-pull-request.md)) are done; branch protection and GitHub's secret scanning, settings only the owner can turn on, are what is left of #106 |
 | §6 | AWS deployment | 0007, 0014, 0015 and the guide; #97, #98, #109 |
 | §7 | Sequencing | The pinned issue #147 |
 | Phase 0 | Clean the foundation | Done |

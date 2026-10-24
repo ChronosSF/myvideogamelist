@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using MyVideoGameList.Server.Data;
 using MyVideoGameList.Server.DTOs;
 using MyVideoGameList.Server.Models;
+using MyVideoGameList.Server.Services.Edge;
 
 namespace MyVideoGameList.Server.Services;
 
@@ -20,8 +21,19 @@ namespace MyVideoGameList.Server.Services;
 /// the log stays typed and narrow (ADR 0018). No IGDB call either, for the reason every write path
 /// here avoids one.
 /// </para>
+/// <para>
+/// <b>Changing a public review is a withdrawal, and so is deleting any review</b>, because the
+/// author's public profile renders the text and the edge keeps a copy of that page. Each one tells
+/// <see cref="ProfileWithdrawals"/> after it commits. A delete does so whatever it read of the
+/// review's visibility, which the author's own request can change before the delete lands. A
+/// review written for the first time, a private one rewritten, and one saved again unchanged
+/// withdraw nothing and tell it nothing (ADR 0058).
+/// </para>
 /// </remarks>
-public class ReviewService(ApplicationDbContext db, TimeProvider clock) : IReviewService
+public class ReviewService(
+    ApplicationDbContext db,
+    TimeProvider clock,
+    ProfileWithdrawals withdrawals) : IReviewService
 {
     public async Task<ReviewDto?> GetAsync(
         string userId, int gameId, CancellationToken cancellationToken = default)
@@ -53,6 +65,13 @@ public class ReviewService(ApplicationDbContext db, TimeProvider clock) : IRevie
 
         if (existing is not null)
         {
+            // Read before the fields change: what the edge can hold is what was public until now.
+            // A save of this review by another of its author's requests, landing between this read
+            // and the write below, is not seen; ADR 0058 §3 says why that race is left open.
+            var published = existing.Visibility == ReviewVisibility.Public
+                ? (existing.Body, existing.HasSpoilers)
+                : ((string, bool)?)null;
+
             existing.Body = input.Body.Trim();
             existing.HasSpoilers = input.HasSpoilers;
             existing.Visibility = input.Visibility;
@@ -60,6 +79,19 @@ public class ReviewService(ApplicationDbContext db, TimeProvider clock) : IRevie
             existing.UpdatedAt = now;
 
             await db.SaveChangesAsync(cancellationToken);
+
+            // Withdrawn when it was public and now says something else or nothing: different words,
+            // a spoiler warning added or taken off, or no longer public. Saved again unchanged it
+            // withdraws nothing — its move up the newest-first list is content, like a new score —
+            // and sends nothing, which also keeps a save button pressed in a loop off the bill.
+            if (published is { } before)
+            {
+                if (existing.Visibility != ReviewVisibility.Public)
+                    await withdrawals.ReviewWithdrawnAsync(userId, ReviewWithdrawal.MadePrivate);
+                else if (before != (existing.Body, existing.HasSpoilers))
+                    await withdrawals.ReviewWithdrawnAsync(userId, ReviewWithdrawal.Edited);
+            }
+
             return ToDto(existing);
         }
 
@@ -94,6 +126,12 @@ public class ReviewService(ApplicationDbContext db, TimeProvider clock) : IRevie
         // not deleting your record of it.
         db.Reviews.Remove(review);
         await db.SaveChangesAsync(cancellationToken);
+
+        // Whatever its visibility was when it was read above. Another of the author's requests can
+        // publish it between that read and this delete, and a render in between can put it at the
+        // edge, so private as read is not private as deleted. The cost is a path when a private
+        // review goes (ADR 0058 §1).
+        await withdrawals.ReviewWithdrawnAsync(userId, ReviewWithdrawal.Deleted);
         return true;
     }
 

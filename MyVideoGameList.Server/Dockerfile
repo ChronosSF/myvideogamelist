@@ -3,7 +3,8 @@
 # The API image. Build context is the repository root, so the root NuGet.Config and
 # Directory.Build.props apply:
 #
-#   docker build -t mvgl-api:local -f MyVideoGameList.Server/Dockerfile .
+#   docker build -t mvgl-api:local -f MyVideoGameList.Server/Dockerfile \
+#     --build-arg GIT_SHA=$(git rev-parse HEAD) --build-arg BUILD_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ) .
 #
 # Three stages. `build` publishes the application; `bundle` produces the EF migration bundle
 # that the migration task runs before each release (ADR 0007, 0044); `final` is the runtime
@@ -57,6 +58,16 @@ COPY --from=build /app/publish ./
 # Beside appsettings.json on purpose: EF resolves configuration from the directory the bundle
 # runs in, and the migration task overrides the entry point to /app/efbundle.
 COPY --from=bundle /app/efbundle ./efbundle
+# Which commit this is and when it was built, for GET /api/version (ADR 0059). The deploy workflow
+# passes both; a build without them says "unknown". Declared here, after every RUN, because a
+# build argument that changes misses the cache for every RUN after its declaration, and these
+# change on every commit: anywhere earlier, each build would reinstall the packages above.
+ARG GIT_SHA=unknown
+ARG BUILD_TIME=unknown
+ENV Build__Sha=$GIT_SHA \
+    Build__Time=$BUILD_TIME
+LABEL org.opencontainers.image.revision=$GIT_SHA \
+      org.opencontainers.image.created=$BUILD_TIME
 # The image's own non-root user; 8080 is its default port.
 USER $APP_UID
 EXPOSE 8080

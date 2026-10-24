@@ -31,6 +31,18 @@ public interface IListService
         string userId, int gameId, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Puts some of the games in one of the user's lists where the user has arranged them by hand.
+    /// Games that are not in that list are passed over; every game not named keeps its position.
+    /// Records no event. See <c>IHandOrdered</c>.
+    /// </summary>
+    /// <exception cref="ArgumentException">The status key is not one of the seeded statuses.</exception>
+    Task SetPositionsAsync(
+        string userId,
+        string status,
+        IReadOnlyCollection<PositionDto> positions,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Sets the user's score out of 10, or clears it with null. Independent of list membership —
     /// scoring a game that is in no list is legitimate and creates the entry.
     /// </summary>

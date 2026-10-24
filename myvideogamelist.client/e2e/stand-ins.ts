@@ -13,8 +13,18 @@ import {
  * the two processes, what routes between them when deployed, the distribution and the balancer behind
  * it; behind the API, IGDB. Both run in the test runner's own process as its global setup, which
  * Playwright starts once the two servers are answering and stops before it stops them. The API and the
- * SSR server are processes of their own, as they are deployed (ADR 0060).
+ * SSR server are processes of their own, as they are deployed (ADR 0060). The Lighthouse audit runs
+ * the same two on ports of its own, with an IGDB that knows real games (`lighthouse/harness.ts`, ADR
+ * 0068).
  */
+
+/** Where one run's four servers listen: the two under test, and the two stand-ins. */
+export interface HarnessPorts {
+    api: number;
+    igdb: number;
+    ssr: number;
+    distribution: number;
+}
 
 /**
  * Fixed rather than picked by the system, because the API is told where IGDB is as it starts, before
@@ -26,17 +36,14 @@ import {
  * 58646). And below 32768, out of the range Windows and Linux hand out for outgoing connections, where
  * Windows also reserves blocks of ports at boot for Hyper-V.
  */
-export const PORTS = { api: 5180, igdb: 5181, ssr: 5182, distribution: 5183 } as const;
+export const PORTS = { api: 5180, igdb: 5181, ssr: 5182, distribution: 5183 } as const satisfies HarnessPorts;
 
 /**
  * Loopback by address rather than by name, so that nothing depends on which of IPv4 and IPv6 a name
  * resolves to first. The browser is the exception: it opens `localhost`, as an address bar would.
  */
-const loopback = (port: number) => `http://127.0.0.1:${port}`;
+export const loopback = (port: number) => `http://127.0.0.1:${port}`;
 
-export const API = loopback(PORTS.api);
-export const SSR = loopback(PORTS.ssr);
-export const IGDB = loopback(PORTS.igdb);
 export const SITE = `http://localhost:${PORTS.distribution}`;
 
 /** What the API is given to sign in to IGDB with. The stand-in accepts these and nothing else. */
@@ -92,7 +99,7 @@ function endToEndRaw(raw: string[]): string[] {
  * still render, since their loaders reach the API directly, and every request the browser makes to the
  * API fails on the SSR server, a read with a 404 and a write with a 405.
  */
-function forwardAsTheEdge(viewer: IncomingMessage, reply: ServerResponse) {
+function forwardAsTheEdge(viewer: IncomingMessage, reply: ServerResponse, origins: { api: string; ssr: string }) {
     const path = viewer.url ?? '/';
     const toApi = path.startsWith('/api/');
 
@@ -101,7 +108,7 @@ function forwardAsTheEdge(viewer: IncomingMessage, reply: ServerResponse) {
         return;
     }
 
-    const origin = new URL(toApi ? API : SSR);
+    const origin = new URL(toApi ? origins.api : origins.ssr);
     const forwarded = request(
         { host: origin.hostname, port: origin.port, method: viewer.method, path, headers: endToEnd(viewer.headers) },
         answer => {
@@ -136,22 +143,27 @@ function json(reply: ServerResponse, status: number, body: unknown) {
 }
 
 /**
- * The games a query looks up by id, among the ones this IGDB knows: the game page's lookup and the game
- * cache's, `where id = 2000000123;` and `where id = (2000000123,…);`.
+ * The ids a query looks games up by: the game page's lookup and the game cache's, `where id = 12;` and
+ * `where id = (12,34);`. None for any other query.
  */
-function gamesLookedUp(query: string): object[] {
-    const ids = /where id = \(?([\d,]+)\)?;/.exec(query)?.[1].split(',').map(Number) ?? [];
-    return ids.filter(id => id >= GAMES.firstId).map(gameRow);
+export function idsIn(query: string): number[] {
+    return /where id = \(?([\d,]+)\)?;/.exec(query)?.[1].split(',').map(Number) ?? [];
 }
 
+/** The games a query looks up by id, among the ones the smoke test's IGDB knows. */
+function gamesLookedUp(query: string): object[] {
+    return idsIn(query).filter(id => id >= GAMES.firstId).map(gameRow);
+}
+
+/** What a stand-in for IGDB answers a query with, given the endpoint it was sent to. */
+export type IgdbAnswer = (endpoint: string, query: string) => unknown[];
+
 /**
- * IGDB, as far as this test reaches it, at the two addresses the API is configured with: Twitch's
- * token endpoint, and the query endpoints under `/v4`. A query needs the token the stand-in issued.
- * It answers a lookup of its games with those games, and everything else — a Steam id, completion
- * times, a release date — with nothing, which is what IGDB says of a game it knows little about. So
- * no Steam id is found, and the API never asks Steam for news.
+ * IGDB, as far as a run reaches it, at the two addresses the API is configured with: Twitch's token
+ * endpoint, and the query endpoints under `/v4`. A query needs the token the stand-in issued, and is
+ * answered with whatever `answer` makes of it.
  */
-async function answerAsIgdb(asked: IncomingMessage, reply: ServerResponse) {
+async function answerAsIgdb(asked: IncomingMessage, reply: ServerResponse, answer: IgdbAnswer) {
     const body = await readBody(asked);
     const path = asked.url ?? '/';
 
@@ -177,7 +189,7 @@ async function answerAsIgdb(asked: IncomingMessage, reply: ServerResponse) {
         return refuse(401, 'not the token this stand-in issued');
     }
 
-    json(reply, 200, endpoint === 'games' ? gamesLookedUp(body) : []);
+    json(reply, 200, answer(endpoint, body));
 }
 
 function listen(server: Server, port: number): Promise<Server> {
@@ -195,15 +207,19 @@ function close(server: Server): Promise<void> {
     return new Promise(resolve => server.close(() => resolve()));
 }
 
-/** The run's global setup. What it returns is the run's teardown. */
-export default async function startStandIns(): Promise<() => Promise<void>> {
+/** Both stand-ins, on the given ports, with IGDB answering through `answer`. What it returns stops them. */
+export async function startStandIns(ports: HarnessPorts, answer: IgdbAnswer): Promise<() => Promise<void>> {
     const igdb = await listen(
-        createServer((asked, reply) => void answerAsIgdb(asked, reply).catch(() => reply.destroy())),
-        PORTS.igdb,
+        createServer((asked, reply) => void answerAsIgdb(asked, reply, answer).catch(() => reply.destroy())),
+        ports.igdb,
     );
 
     try {
-        const edge = await listen(createServer(forwardAsTheEdge), PORTS.distribution);
+        const origins = { api: loopback(ports.api), ssr: loopback(ports.ssr) };
+        const edge = await listen(
+            createServer((viewer, reply) => forwardAsTheEdge(viewer, reply, origins)),
+            ports.distribution,
+        );
         return async () => {
             await Promise.all([close(edge), close(igdb)]);
         };
@@ -211,4 +227,14 @@ export default async function startStandIns(): Promise<() => Promise<void>> {
         await close(igdb);
         throw error;
     }
+}
+
+/**
+ * The smoke test's global setup. What it returns is the run's teardown. Its IGDB answers a lookup of
+ * its games with those games, and everything else — a Steam id, completion times, a release date —
+ * with nothing, which is what IGDB says of a game it knows little about. So no Steam id is found, and
+ * the API never asks Steam for news.
+ */
+export default function startSmokeStandIns(): Promise<() => Promise<void>> {
+    return startStandIns(PORTS, (endpoint, query) => (endpoint === 'games' ? gamesLookedUp(query) : []));
 }

@@ -40,6 +40,21 @@ updates:
         patterns:
           - "react-router"
           - "@react-router/*"
+      # One PR for React and its renderer, and for their types. react-dom refuses to load beside
+      # any other version of react, and nothing moves react-dom when react moves, so a PR for react
+      # alone fails every client test — which is how 19.3 arrived.
+      react:
+        patterns:
+          - "react"
+          - "react-dom"
+          - "@types/react"
+          - "@types/react-dom"
+  # Lighthouse CI, which keeps a lockfile of its own so that its dependencies stay out of the
+  # client's (ADR 0068).
+  - package-ecosystem: npm
+    directory: /myvideogamelist.client/lighthouse
+    schedule:
+      interval: weekly
   - package-ecosystem: github-actions
     directory: /
     schedule:
