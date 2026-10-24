@@ -26,7 +26,7 @@ describe('GamePage loader', () => {
 
         const result = await load('26226');
 
-        expect(result.game).toMatchObject({ id: 26226, title: 'Celeste' });
+        expect(result.data.game).toMatchObject({ id: 26226, title: 'Celeste' });
         expect(api.calls.map(call => `${call.method} ${call.path}`)).toEqual(['GET /api/games/26226']);
     });
 
@@ -62,7 +62,14 @@ describe('GamePage loader', () => {
         }
     });
 
-    it('lets the page itself be cached at the edge', () => {
-        expect(headers()['Cache-Control']).toBe(CACHE_GAME);
+    it('lets the page itself be cached at the edge', async () => {
+        // The policy rides on the loader's answer, and `headers` hands on whatever the loader decided
+        // (ADR 0070), so a failure it threw is never given the page's.
+        stubApi({ 'GET /api/games/26226': () => json(game({ id: 26226, title: 'Celeste' })) });
+
+        const loaderHeaders = new Headers((await load('26226')).init?.headers);
+
+        expect(loaderHeaders.get('Cache-Control')).toBe(CACHE_GAME);
+        expect(headers({ loaderHeaders } as unknown as Route.HeadersArgs)['Cache-Control']).toBe(CACHE_GAME);
     });
 });

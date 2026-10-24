@@ -1,5 +1,6 @@
 import { useId, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
+import { CoverImage } from '@/components/CoverImage';
 import { PageHeader } from '@/components/PageHeader';
 import { useAuth } from '@/hooks/useAuth';
 import { useLists } from '@/hooks/useLists';
@@ -313,7 +314,7 @@ export function ImportReviewPage() {
                                             decide(row, event.target.checked ? IMPORT_DECISION.import : IMPORT_DECISION.skip)}
                                     />
 
-                                    <Cover url={row.game?.coverImageUrl} className="w-9 h-12" />
+                                    <Cover url={row.game?.coverImageUrl} className="w-9 h-12" sizes="2.25rem" />
 
                                     <div className="min-w-0 grow">
                                         <p className="text-fg text-sm font-medium truncate">
@@ -507,10 +508,15 @@ function PlayedChoice({ id, count, status, disabled, label, onChoose }: {
     );
 }
 
-/** A game's cover, or the space one would take. */
-function Cover({ url, className }: { url?: string | null; className: string }) {
+/**
+ * A game's cover, or the space one would take. A review can run to hundreds of rows, each a thumbnail a
+ * few rems wide, which is where loading the smallest size IGDB has saves the most.
+ *
+ * @param sizes The width the classes draw it at, as an `<img sizes>` value.
+ */
+function Cover({ url, className, sizes }: { url?: string | null; className: string; sizes: string }) {
     return url
-        ? <img src={url} alt="" className={`${className} object-cover rounded shrink-0`} loading="lazy" />
+        ? <CoverImage url={url} alt="" sizes={sizes} className={`${className} object-cover rounded shrink-0`} />
         : <div className={`${className} rounded bg-raised/60 shrink-0`} aria-hidden="true" />;
 }
 
@@ -531,7 +537,7 @@ function CandidateButton({ candidate, onChoose }: { candidate: GameDto; onChoose
             onClick={onChoose}
             className="flex items-center gap-2 pl-1 pr-2.5 py-1 bg-page/60 border border-line-strong hover:border-primary-500 rounded-lg text-left transition-colors"
         >
-            <Cover url={candidate.coverImageUrl} className="w-6 h-8" />
+            <Cover url={candidate.coverImageUrl} className="w-6 h-8" sizes="1.5rem" />
             <span className="text-xs text-fg font-medium">
                 {candidate.title}
                 {year !== null && (

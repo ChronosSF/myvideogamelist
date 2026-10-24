@@ -1,7 +1,7 @@
-import { useId, useState } from 'react';
+import { useId, useState, type ReactNode } from 'react';
 import type { PlatformDto } from '@/types/game';
 import type { ViewMode } from '@/types/list';
-import { type SortState, SORT_OPTIONS, sortOption } from '@/lib/listSort';
+import { type SortState, MANUAL_OPTION, SORT_OPTIONS, sortOption } from '@/lib/listSort';
 import './ListToolbar.css';
 
 interface ListToolbarProps {
@@ -9,10 +9,14 @@ interface ListToolbarProps {
     onViewChange: (view: ViewMode) => void;
     sort: SortState;
     onSortChange: (sort: SortState) => void;
+    /** Whether this list can be put in an order by hand, which adds "My order" to the sorts. */
+    offerManual?: boolean;
     /** Every platform present in the user's lists, so no option filters to nothing. */
     platforms: PlatformDto[];
     selectedPlatformIds: number[];
     onPlatformsChange: (ids: number[]) => void;
+    /** Further filters, drawn after the platforms' — the tag filter. */
+    children?: ReactNode;
 }
 
 /**
@@ -26,15 +30,18 @@ export function ListToolbar({
     onViewChange,
     sort,
     onSortChange,
+    offerManual = false,
     platforms,
     selectedPlatformIds,
     onPlatformsChange,
+    children,
 }: ListToolbarProps) {
     const [filterOpen, setFilterOpen] = useState(false);
     const sortId = useId();
     const filterId = useId();
 
     const allSelected = selectedPlatformIds.length === 0;
+    const sorts = offerManual ? [...SORT_OPTIONS, MANUAL_OPTION] : SORT_OPTIONS;
 
     const toggle = (id: number) => {
         // An empty selection means "everything", so the first click has to seed the set with all
@@ -60,27 +67,30 @@ export function ListToolbar({
                         onSortChange({ key, descending: sortOption(key).defaultDescending });
                     }}
                 >
-                    {SORT_OPTIONS.map(option => (
+                    {sorts.map(option => (
                         <option key={option.key} value={option.key}>{option.label}</option>
                     ))}
                 </select>
 
-                <button
-                    type="button"
-                    className="list-toolbar-direction"
-                    onClick={() => onSortChange({ ...sort, descending: !sort.descending })}
-                    aria-label={sort.descending ? 'Sorted descending. Switch to ascending' : 'Sorted ascending. Switch to descending'}
-                    title={sort.descending ? 'Descending' : 'Ascending'}
-                >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                        <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d={sort.descending ? 'M19 14l-7 7m0 0l-7-7m7 7V3' : 'M5 10l7-7m0 0l7 7m-7-7v18'}
-                        />
-                    </svg>
-                </button>
+                {/* A hand order has no direction: read backwards it is not one anybody arranged. */}
+                {sort.key !== MANUAL_OPTION.key && (
+                    <button
+                        type="button"
+                        className="list-toolbar-direction"
+                        onClick={() => onSortChange({ ...sort, descending: !sort.descending })}
+                        aria-label={sort.descending ? 'Sorted descending. Switch to ascending' : 'Sorted ascending. Switch to descending'}
+                        title={sort.descending ? 'Descending' : 'Ascending'}
+                    >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                            <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d={sort.descending ? 'M19 14l-7 7m0 0l-7-7m7 7V3' : 'M5 10l7-7m0 0l7 7m-7-7v18'}
+                            />
+                        </svg>
+                    </button>
+                )}
             </div>
 
             {platforms.length > 1 && (
@@ -131,6 +141,8 @@ export function ListToolbar({
                     )}
                 </div>
             )}
+
+            {children}
 
             <div className="list-toolbar-group list-toolbar-views" role="group" aria-label="List layout">
                 <button

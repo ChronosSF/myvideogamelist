@@ -4,7 +4,8 @@ namespace MyVideoGameList.Server.Services;
 
 /// <summary>
 /// The showcases and sales the two-week line and the calendar show beside somebody's releases
-/// (<c>specs/release-timeline-and-calendar.md</c> §5, §6 and B2): the same for everybody.
+/// (<c>specs/release-timeline-and-calendar.md</c> §5, §6 and B2), and the home page shows on their own to
+/// whoever has no line (§2.3): the same for everybody.
 /// </summary>
 /// <remarks>
 /// Only reads the admin page's two tables — what the page writes is <see cref="ICalendarCurationService"/>'s

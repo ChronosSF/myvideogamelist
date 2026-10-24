@@ -224,13 +224,14 @@ public class UserDataExporterTests
     }
 
     private static void AddFavourite(
-        ApplicationDbContext db, int gameId, DateTimeOffset? at = null, string userId = UserId)
+        ApplicationDbContext db, int gameId, DateTimeOffset? at = null, string userId = UserId, int? position = null)
     {
         db.UserFavourites.Add(new UserFavourite
         {
             UserId = userId,
             GameId = gameId,
-            AddedAt = at ?? Now
+            AddedAt = at ?? Now,
+            Position = position
         });
         db.SaveChanges();
     }
@@ -403,6 +404,24 @@ public class UserDataExporterTests
     }
 
     [Fact]
+    public async Task ExportAsync_Favourite_CarriesItsHandArrangedPosition()
+    {
+        // The favourite's projection is written by hand too, and the order somebody arranged their
+        // showcase in is theirs to take (ADR 0024, ADR 0064) — as stored, not as a rank, and in the
+        // section's own oldest-first order rather than the showcase's.
+        using var db = NewDb();
+        AddAccount(db, UserId, "mine@test.local");
+        AddFavourite(db, gameId: 11, at: Now.AddDays(-30));
+        AddFavourite(db, gameId: 12, at: Now.AddDays(-1), position: -1024);
+
+        var export = await NewExporter(db).ExportAsync(UserId, default);
+
+        Assert.Equal([11, 12], export.Favourites.Select(f => f.GameId));
+        Assert.Null(export.Favourites[0].Position);
+        Assert.Equal(-1024, export.Favourites[1].Position);
+    }
+
+    [Fact]
     public async Task ExportAsync_EntryInAStatus_CarriesTheKeyRatherThanTheId()
     {
         // The id is a seeded constant of this database and would mean nothing anywhere else; the
@@ -443,6 +462,23 @@ public class UserDataExporterTests
     }
 
     [Fact]
+    public async Task ExportAsync_Entry_CarriesItsHandArrangedPosition()
+    {
+        // The same trap for the next column: the order somebody arranged their backlog in is theirs
+        // to take, and the hand-written projection is the only thing that would carry it.
+        using var db = NewDb();
+        AddAccount(db, UserId, "mine@test.local");
+        db.UserGameEntries.Add(new UserGameEntry { UserId = UserId, GameId = 11, Position = -2048, AddedAt = Now });
+        db.UserGameEntries.Add(new UserGameEntry { UserId = UserId, GameId = 12, AddedAt = Now });
+        db.SaveChanges();
+
+        var export = await NewExporter(db).ExportAsync(UserId, default);
+
+        Assert.Equal(-2048, export.Entries.Single(e => e.GameId == 11).Position);
+        Assert.Null(export.Entries.Single(e => e.GameId == 12).Position);
+    }
+
+    [Fact]
     public async Task ExportAsync_Entry_CarriesItsOrigin()
     {
         // Same trap as the ownership and notes above, and a worse one to fall into: without the
@@ -462,6 +498,29 @@ public class UserDataExporterTests
         var export = await NewExporter(db).ExportAsync(UserId, default);
 
         Assert.Equal(EntryOrigins.Grouvee, Assert.Single(export.Entries).Origin);
+    }
+
+    [Fact]
+    public async Task ExportAsync_Entry_CarriesWhenItsScoreWasGiven()
+    {
+        // The same hand-written projection again. Without the moment the document would read as
+        // though every score were undated, when the history can place some of them (ADR 0062).
+        using var db = NewDb();
+        AddAccount(db, UserId, "mine@test.local");
+        var scoredAt = new DateTimeOffset(2026, 10, 16, 21, 4, 0, TimeSpan.Zero);
+        db.UserGameEntries.Add(new UserGameEntry
+        {
+            UserId = UserId, GameId = 11, Score = 8, ScoredAt = scoredAt, AddedAt = Now
+        });
+        db.UserGameEntries.Add(new UserGameEntry
+        {
+            UserId = UserId, GameId = 12, Score = 6, AddedAt = Now.AddDays(1)
+        });
+        db.SaveChanges();
+
+        var export = await NewExporter(db).ExportAsync(UserId, default);
+
+        Assert.Equal([scoredAt, null], export.Entries.Select(e => e.ScoredAt));
     }
 
     [Fact]
@@ -658,6 +717,138 @@ public class UserDataExporterTests
         var export = await NewExporter(db).ExportAsync(UserId, default);
 
         Assert.Equal(["First", "Second", "Third"], export.Reviews.Select(r => r.Body));
+    }
+
+    // ---------------------------------------------------------------- tags (ADR 0065)
+
+    private static int AddTag(
+        ApplicationDbContext db, string name, DateTimeOffset? createdAt = null, string userId = UserId)
+    {
+        var tag = new Tag
+        {
+            UserId = userId,
+            Name = name,
+            NormalizedName = TagNamePolicy.Key(name),
+            CreatedAt = createdAt ?? Now
+        };
+        db.Tags.Add(tag);
+        db.SaveChanges();
+        return tag.Id;
+    }
+
+    /// <summary>One tag on the user's entry for a game, creating that entry if it is not there.</summary>
+    private static void TagGame(
+        ApplicationDbContext db, int gameId, int tagId, DateTimeOffset? at = null, string userId = UserId)
+    {
+        var entry = db.UserGameEntries.FirstOrDefault(e => e.UserId == userId && e.GameId == gameId);
+        if (entry is null)
+        {
+            AddEntry(db, gameId, status: null, userId: userId);
+            entry = db.UserGameEntries.Single(e => e.UserId == userId && e.GameId == gameId);
+        }
+
+        db.UserGameEntryTags.Add(new UserGameEntryTag
+        {
+            UserId = userId,
+            Entry = entry,
+            TagId = tagId,
+            AddedAt = at ?? Now
+        });
+        db.SaveChanges();
+    }
+
+    [Fact]
+    public async Task ExportAsync_Tags_NameTheirGamesByNameRatherThanById()
+    {
+        // The tag's id is a surrogate of this database, as the entry's is; the name is unique per account,
+        // so it is the key anything reading the document can join on (ADR 0024 §4).
+        using var db = NewDb();
+        AddAccount(db, UserId, "mine@test.local");
+        var coop = AddTag(db, "Co-op", createdAt: Now.AddDays(-20));
+        var brief = AddTag(db, "short", createdAt: Now.AddDays(-10));
+        AddTag(db, "someday", createdAt: Now.AddDays(-5));
+
+        TagGame(db, gameId: 11, coop, at: Now.AddDays(-2));
+        TagGame(db, gameId: 11, brief, at: Now.AddDays(-2));
+        TagGame(db, gameId: 12, coop, at: Now.AddDays(-1));
+
+        var export = await NewExporter(db).ExportAsync(UserId, default);
+
+        // Every tag, including one no game carries: it is still theirs. Oldest first.
+        Assert.Equal(
+            [("Co-op", Now.AddDays(-20)), ("short", Now.AddDays(-10)), ("someday", Now.AddDays(-5))],
+            export.Tags.Select(t => (t.Name, t.CreatedAt)));
+
+        // Oldest first, then by game, then by the tag's name, so the order is total.
+        Assert.Equal(
+            [(11, "Co-op", Now.AddDays(-2)), (11, "short", Now.AddDays(-2)), (12, "Co-op", Now.AddDays(-1))],
+            export.EntryTags.Select(l => (l.GameId, l.Tag, l.AddedAt)));
+    }
+
+    [Fact]
+    public async Task ExportAsync_Tags_AreOrderedByWhenTheyWereMade()
+    {
+        // Seeded newest first: the in-memory provider answers in the order rows went in, so only the
+        // reader's own ordering can put them right.
+        using var db = NewDb();
+        AddAccount(db, UserId, "mine@test.local");
+        AddTag(db, "newest", createdAt: Now.AddDays(-1));
+        AddTag(db, "oldest", createdAt: Now.AddDays(-30));
+        AddTag(db, "middle", createdAt: Now.AddDays(-10));
+
+        var export = await NewExporter(db).ExportAsync(UserId, default);
+
+        Assert.Equal(["oldest", "middle", "newest"], export.Tags.Select(t => t.Name));
+    }
+
+    [Fact]
+    public async Task ExportAsync_EntryTags_AreOrderedByTimeThenGameThenTagName()
+    {
+        // At one moment and on one game, only the tag's name can order two links — "short" was put on
+        // before "Co-op" here, and comes after it.
+        using var db = NewDb();
+        AddAccount(db, UserId, "mine@test.local");
+        var coop = AddTag(db, "Co-op");
+        var brief = AddTag(db, "short");
+
+        TagGame(db, gameId: 12, brief, at: Now.AddDays(-1));
+        TagGame(db, gameId: 11, brief, at: Now.AddDays(-2));
+        TagGame(db, gameId: 11, coop, at: Now.AddDays(-2));
+        TagGame(db, gameId: 10, coop, at: Now.AddDays(-1));
+
+        var export = await NewExporter(db).ExportAsync(UserId, default);
+
+        Assert.Equal(
+            [(11, "Co-op"), (11, "short"), (10, "Co-op"), (12, "short")],
+            export.EntryTags.Select(l => (l.GameId, l.Tag)));
+    }
+
+    [Fact]
+    public async Task ExportAsync_AnotherUsersTags_AreNeverIncluded()
+    {
+        using var db = NewDb();
+        AddAccount(db, UserId, "mine@test.local", userName: "mine");
+        AddAccount(db, OtherUserId, "theirs@test.local", userName: "theirs");
+
+        TagGame(db, gameId: 11, AddTag(db, "mine"));
+        TagGame(db, gameId: 11, AddTag(db, "theirs", userId: OtherUserId), userId: OtherUserId);
+
+        var export = await NewExporter(db).ExportAsync(UserId, default);
+
+        Assert.Equal(["mine"], export.Tags.Select(t => t.Name));
+        Assert.Equal(["mine"], export.EntryTags.Select(l => l.Tag));
+    }
+
+    [Fact]
+    public async Task ExportAsync_UserWithNoTags_ExportsBothSectionsEmpty()
+    {
+        using var db = NewDb();
+        AddAccount(db, UserId, "new@test.local");
+
+        var export = await NewExporter(db).ExportAsync(UserId, default);
+
+        Assert.Empty(export.Tags);
+        Assert.Empty(export.EntryTags);
     }
 
     [Fact]

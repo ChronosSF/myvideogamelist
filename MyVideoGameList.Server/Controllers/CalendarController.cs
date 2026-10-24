@@ -9,10 +9,10 @@ namespace MyVideoGameList.Server.Controllers;
 /// (<c>specs/release-timeline-and-calendar.md</c> §8.2, B2).
 /// </summary>
 /// <remarks>
-/// Anonymous, because it is the same for everybody and says nothing about anybody: the line asks it beside
-/// <c>/api/user/releases</c>, and #128 may yet show it to visitors who have not signed in. The service keeps
-/// IGDB's part once for everybody; nothing in front of the API keeps a copy, since the edge caches nothing
-/// under <c>/api/</c> (ADR 0044).
+/// Anonymous, because it is the same for everybody and says nothing about anybody: the line and the calendar
+/// ask it beside <c>/api/user/releases</c>. A visitor with no line has the same answer through
+/// <c>/api/home</c> instead (ADR 0063). The service keeps IGDB's part once for everybody; nothing in front of
+/// the API keeps a copy, since the edge caches nothing under <c>/api/</c> (ADR 0044).
 /// </remarks>
 [ApiController]
 [Route("api/calendar")]

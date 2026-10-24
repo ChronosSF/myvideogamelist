@@ -1,0 +1,8 @@
+<Project>
+  <!-- Stops MSBuild reaching the repository root's Directory.Packages.props, which manages the
+       API's versions. The CDK app is its own solution with its own two packages, and keeps their
+       versions in Infra.csproj, where Dependabot's infra entry reads them. -->
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+</Project>

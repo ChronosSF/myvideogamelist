@@ -62,6 +62,12 @@ Nothing here is a new figure and nothing is computed differently. The tier decid
 *copied out* of the documents 0023 already derives, in the same place 0027 §8 already decides
 what is copied out for a visitor.
 
+**The owner's history is not in this table yet.** `/api/user/history` (ADR
+[0062](../docs/decisions/0062-the-history-is-three-rows-unioned-and-what-has-no-moment-has-no-item.md))
+lists the owner's own records back to them, each with its date: a move, a score, a run's start or
+finish. It derives no figure from them, beyond two counts of what it cannot list. So it is neither of
+§2's kinds, and where it falls is question 5 in §8. It is on the owner's page only, never a visitor's.
+
 ## 3. Where each tier shows
 
 ### 3.1 The owner's own page — `/user`
@@ -172,3 +178,8 @@ verify the split. The real entitlement is #142.
    and the seam is what matters.
 4. **Mean score.** The one full-tier figure people compare across profiles. Proposed: full — it is
    depth, and the histogram beside it plainly is.
+5. **The owner's history** (ADR 0062). A list of the owner's own records, not a figure. Proposed:
+   basic, on every tier. The free export already carries every record it shows (0024), and putting
+   it behind a subscription would sell access to the owner's own data rather than depth. The case
+   for full is 0024 §5's own: a nicer presentation of the export's data is convenience, which 0010
+   sells. Until #149 ships, the whole page is free, and the history with it.

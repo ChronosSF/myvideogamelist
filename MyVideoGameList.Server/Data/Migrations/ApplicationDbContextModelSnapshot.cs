@@ -18,7 +18,7 @@ namespace MyVideoGameList.Server.Data.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "10.0.12")
+                .HasAnnotation("ProductVersion", "10.0.13")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
@@ -668,6 +668,39 @@ namespace MyVideoGameList.Server.Data.Migrations
                     b.ToTable("ShowcaseNames");
                 });
 
+            modelBuilder.Entity("MyVideoGameList.Server.Models.Tag", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)");
+
+                    b.Property<string>("NormalizedName")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId", "NormalizedName")
+                        .IsUnique();
+
+                    b.ToTable("Tags");
+                });
+
             modelBuilder.Entity("MyVideoGameList.Server.Models.UserFavourite", b =>
                 {
                     b.Property<string>("UserId")
@@ -679,11 +712,17 @@ namespace MyVideoGameList.Server.Data.Migrations
                     b.Property<DateTimeOffset>("AddedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<int?>("Position")
+                        .HasColumnType("integer");
+
                     b.HasKey("UserId", "GameId");
 
                     b.HasIndex("UserId", "AddedAt");
 
-                    b.ToTable("UserFavourites");
+                    b.ToTable("UserFavourites", t =>
+                        {
+                            t.HasCheckConstraint("CK_UserFavourites_Position_Range", "\"Position\" IS NULL OR (\"Position\" >= -1000000000 AND \"Position\" <= 1000000000)");
+                        });
                 });
 
             modelBuilder.Entity("MyVideoGameList.Server.Models.UserGameEntry", b =>
@@ -715,8 +754,14 @@ namespace MyVideoGameList.Server.Data.Migrations
                         .HasMaxLength(16)
                         .HasColumnType("character varying(16)");
 
+                    b.Property<int?>("Position")
+                        .HasColumnType("integer");
+
                     b.Property<short?>("Score")
                         .HasColumnType("smallint");
+
+                    b.Property<DateTimeOffset?>("ScoredAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<DateTimeOffset?>("StatusChangedAt")
                         .HasColumnType("timestamp with time zone");
@@ -745,8 +790,38 @@ namespace MyVideoGameList.Server.Data.Migrations
                         {
                             t.HasCheckConstraint("CK_UserGameEntries_Ownership", "\"Ownership\" IS NULL OR \"Ownership\" IN ('owned', 'subscription', 'borrowed')");
 
+                            t.HasCheckConstraint("CK_UserGameEntries_Position_Range", "\"Position\" IS NULL OR (\"Position\" >= -1000000000 AND \"Position\" <= 1000000000)");
+
                             t.HasCheckConstraint("CK_UserGameEntries_Score_Range", "\"Score\" IS NULL OR (\"Score\" >= 1 AND \"Score\" <= 10)");
+
+                            t.HasCheckConstraint("CK_UserGameEntries_ScoredAt_HasScore", "\"ScoredAt\" IS NULL OR \"Score\" IS NOT NULL");
                         });
+                });
+
+            modelBuilder.Entity("MyVideoGameList.Server.Models.UserGameEntryTag", b =>
+                {
+                    b.Property<int>("UserGameEntryId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("TagId")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("AddedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("UserGameEntryId", "TagId");
+
+                    b.HasIndex("UserId");
+
+                    b.HasIndex("TagId", "UserId");
+
+                    b.HasIndex("UserGameEntryId", "UserId");
+
+                    b.ToTable("UserGameEntryTags");
                 });
 
             modelBuilder.Entity("MyVideoGameList.Server.Models.UserGameEvent", b =>
@@ -1012,6 +1087,17 @@ namespace MyVideoGameList.Server.Data.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("MyVideoGameList.Server.Models.Tag", b =>
+                {
+                    b.HasOne("MyVideoGameList.Server.Models.ApplicationUser", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
             modelBuilder.Entity("MyVideoGameList.Server.Models.UserFavourite", b =>
                 {
                     b.HasOne("MyVideoGameList.Server.Models.ApplicationUser", "User")
@@ -1037,6 +1123,35 @@ namespace MyVideoGameList.Server.Data.Migrations
                         .IsRequired();
 
                     b.Navigation("Status");
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("MyVideoGameList.Server.Models.UserGameEntryTag", b =>
+                {
+                    b.HasOne("MyVideoGameList.Server.Models.ApplicationUser", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("MyVideoGameList.Server.Models.Tag", "Tag")
+                        .WithMany()
+                        .HasForeignKey("TagId", "UserId")
+                        .HasPrincipalKey("Id", "UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("MyVideoGameList.Server.Models.UserGameEntry", "Entry")
+                        .WithMany()
+                        .HasForeignKey("UserGameEntryId", "UserId")
+                        .HasPrincipalKey("Id", "UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Entry");
+
+                    b.Navigation("Tag");
 
                     b.Navigation("User");
                 });

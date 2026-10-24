@@ -22,15 +22,18 @@ This is the category of bug that is easy to introduce and annoying to diagnose.
 - For browser-only state, use `useSyncExternalStore` with a fixed server snapshot, as
   `@/lib/useHydrated` does. Reading in an effect also works but commits a throwaway render
   first, and `getSnapshot` must return a stable reference or React loops.
-- Server-side loaders have no origin to resolve a relative URL against. Use `apiUrl()` from
-  `@/lib/api` for any fetch that can run during SSR.
+- Server-side loaders have no origin to resolve a relative URL against. A loader calls the API with
+  `loaderFetch(context, path)` from `@/lib/trace.server`, which resolves the path as `apiUrl()` does
+  and sends the render's trace as `traceparent`. The lint refuses an import of `apiUrl` anywhere else.
 - **Never format in the runtime's default locale during render.** A bare `toLocaleString()`, or an
   `Intl` formatter given no locale, formats in Node's locale on the server and the reader's in the
   browser. Where those disagree so does the text — `5487` against `5,487` — and hydration fails.
-  Counts go through `formatCount` from `@/lib/format`. A locale alone does not make a date safe:
-  without a `timeZone` each side formats in its own, so a release date shows the day before for a
-  reader west of Greenwich. Anything that has to follow the reader's locale, timezone or clock
-  waits for `useHydrated`.
+  Counts go through `formatCount` from `@/lib/format`. A locale alone does not make an instant
+  safe: without a `timeZone` each side formats a timestamp in its own zone. A release date is a day,
+  not an instant: parse it with `parseReleaseDate` from `@/lib/releaseDate` and format it with no
+  `timeZone`, and every runtime reads the day it names. `new Date('YYYY-MM-DD')` is UTC midnight,
+  the day before west of Greenwich, and `timeZone: 'UTC'` on a parsed day is the same slip east of
+  it. Anything that has to follow the reader's locale, timezone or clock waits for `useHydrated`.
 
 ## Route modules
 
@@ -41,7 +44,9 @@ component plus optional `loader`, `meta`, `links`, `headers` and `ErrorBoundary`
   or indexed. Authenticated, user-specific views can stay client-side.
 - Throw a `Response` from a loader for not-found and upstream failures. The root
   `ErrorBoundary` renders it and the correct HTTP status reaches crawlers — a soft 404 that
-  returns 200 is worse than useless for SEO.
+  returns 200 is worse than useless for SEO. An upstream failure is `upstreamFailure(context,
+  message)`, which carries the trace id the error page asks a reader to quote
+  (`docs/decisions/0059-*`).
 - Give every indexable route a `meta` export that returns `pageMeta(...)` from `@/lib/seo` — it is
   the whole set (title, description, canonical URL, Open Graph, the card), and a leaf's `meta`
   replaces the root's rather than merging with it, so a hand-written list states half of them. Build
@@ -49,8 +54,12 @@ component plus optional `loader`, `meta`, `links`, `headers` and `ErrorBoundary`
   loader: `meta` also runs in the browser, where the environment does not exist. A per-user route
   adds `NOINDEX` instead, and a `noindex` page gets no canonical URL. See `docs/decisions/0036-*`.
 - A resource route (`src/resources/`) returns its own `Response` and never reaches
-  `entry.server.tsx`. Send it through `resourceResponse`, which adds what that file would have, and
-  state its `Cache-Control` like any other route.
+  `entry.server.tsx`. Send it through `resourceResponse`, which adds the headers that file would
+  have, with a content policy that loads nothing in place of a document's nonce, and state its
+  `Cache-Control` like any other route.
+- **Never render an inline `<script>` of our own without deciding how it is admitted.** A document's
+  `script-src` names only its render's nonce and `'self'` (`docs/decisions/0053-*`). A script whose
+  text never changes goes in by its hash in `documentPolicy`.
 - Route types come from `react-router typegen`; import them as `./+types/<RouteName>`.
 
 ## Talking to the API
@@ -75,7 +84,8 @@ that are easy to get wrong and were got wrong once (`docs/decisions/0022-*`):
   state. Restore membership and the values, **not a position** — an index captured before the
   request is stale once another item leaves from in front of it, and the lists are rendered through
   `sortEntries` anyway. The wishlist keeps its order from `addedAt`: derive order from a value, or
-  do not preserve it.
+  do not preserve it. A hand order's position (`docs/decisions/0054-*`) is such a value — a sparse
+  number, not an index — so its undo puts back the number each game had, which the lock keeps true.
 - **Take the per-game lock for every mutation that writes the entry**, scoring included. Two
   requests in flight for one game means the first to fail rolls back over what the second saved.
   The lock is also what makes the captured position safe to trust while the request is out.
@@ -123,6 +133,23 @@ that are easy to get wrong and were got wrong once (`docs/decisions/0022-*`):
   wishlist and the favourites read twice on every page load, which is what made this a rule.
 - Always handle loading and error states explicitly. Never leave a silent broken UI.
 - One component per file; filename matches the export.
+
+## Empty, failed and loading states, and covers
+
+Nothing new shows as a blank or a bare spinner (`docs/decisions/0070-*`):
+
+- **Something empty is an `EmptyState`** saying what is missing and what would put something there. On
+  a page other people read, such as a public profile, it says what will fill it and never asks the
+  reader to do anything.
+- **A failure is an `ErrorState`** with "Try again" wherever retrying could help. A retry that removes
+  the button moves focus somewhere that stays, as the member section moves it to its heading.
+- **Something loading is a `LoadingState` around a skeleton** drawn in the content's own boxes: the
+  card's classes from `@/lib/gameGrid`, text lines as `SkeletonLine`, which is one line of the type
+  around it. It is not `aria-busy`, which belongs on a container updated in place.
+- **A cover is a `CoverImage`** with the `sizes` its box is drawn at, worked out from that component's
+  CSS. It is lazy unless it is in the first screen, and never lazy as a page's largest first paint.
+
+The wishlist and news pages' empty and failed states predate these and keep their own markup.
 
 ## Showing a score
 

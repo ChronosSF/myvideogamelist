@@ -94,7 +94,8 @@ public record ListSortPreferenceDto(
         ListSortKeys.ReleaseDate,
         ListSortKeys.Score,
         ListSortKeys.Rating,
-        ListSortKeys.CriticScore)]
+        ListSortKeys.CriticScore,
+        ListSortKeys.Manual)]
     string SortKey,
     bool Descending);
 

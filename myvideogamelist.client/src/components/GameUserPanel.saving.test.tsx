@@ -146,8 +146,7 @@ describe('GameUserPanel moving between lists, with the real provider', () => {
         await waitFor(() => expect(shownIn()).toEqual(['Playing']));
     });
 
-    // #317: the panel shows the wishlist's and the favourites' failures, and not the lists'.
-    it.skip('says so when the API refuses the move, rather than only putting it back (#317)', async () => {
+    it('says so when the API refuses the move, rather than only putting it back', async () => {
         const actor = quickActor();
         renderPanel({ 'PUT /api/lists/1': () => empty(500) }, PLAYING);
         await loaded('Playing');
@@ -235,8 +234,7 @@ describe('GameUserPanel playthroughs and the review', () => {
             .toEqual(['1. Rushed', '2. Normally']));
     });
 
-    // #330: the review form holds on to the id of a run the panel has deleted.
-    it.skip('names no playthrough in the review once the one it named is deleted (#330)', async () => {
+    it('names no playthrough in the review once the one it named is deleted', async () => {
         // The server lets go of a deleted run's reviews (ADR 0025: the link is SetNull), and refuses a
         // review naming a run that is gone as "not one of yours".
         const actor = quickActor();

@@ -97,6 +97,19 @@ async function detailsProblem(response: Response): Promise<ProfileDetailsError> 
     return new ProfileDetailsError(message, fieldErrors);
 }
 
+/**
+ * `apiFetch`, with an unreachable API turned into a sentence of the site's own. `fetch` rejects then
+ * rather than answering, carrying the browser's message: "Failed to fetch" in Chrome, something else
+ * in every other browser, and nothing somebody signing in can act on.
+ */
+async function send(path: string, init: RequestInit): Promise<Response> {
+    try {
+        return await apiFetch(path, init);
+    } catch {
+        throw new Error('We could not reach MyVideoGameList just now. Please try again.');
+    }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
     const [user, setUser] = useState<UserProfile | null>(null);
     const [loading, setLoading] = useState(true);
@@ -128,7 +141,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }, []);
 
     const login = async (email: string, password: string, rememberMe: boolean) => {
-        const res = await apiFetch('/api/auth/login', {
+        const res = await send('/api/auth/login', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ email, password, rememberMe }),
@@ -139,7 +152,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
 
     const register = async (email: string, password: string, userName: string) => {
-        const res = await apiFetch('/api/auth/register', {
+        const res = await send('/api/auth/register', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ email, password, userName }),
@@ -149,8 +162,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(await res.json() as UserProfile);
     };
 
+    /**
+     * Signed out on screen only once the server has said the session is over: its 204, or the 401 of
+     * a session that had already ended, in another tab or by expiring. Any other answer — a 502 from
+     * the edge, say — leaves the cookie alive, and showing nobody signed in would send somebody away
+     * from a shared computer still signed in. So it throws, as the other writes here do, and the
+     * caller says why.
+     */
     const logout = async () => {
-        await apiFetch('/api/auth/logout', { method: 'POST' });
+        const res = await send('/api/auth/logout', { method: 'POST' });
+        if (!res.ok && res.status !== 401) throw new Error(await problem(res, 'Could not sign you out. Please try again.'));
+
         setUser(null);
     };
 
@@ -170,7 +192,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
      * typed rather than what was stored would disagree with the URL it just built.
      */
     const updateUserName = async (userName: string) => {
-        const res = await apiFetch('/api/user/username', {
+        const res = await send('/api/user/username', {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ userName }),
@@ -181,7 +203,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
 
     const updateProfileVisibility = async (profileVisibility: ProfileVisibility) => {
-        const res = await apiFetch('/api/user/privacy', {
+        const res = await send('/api/user/privacy', {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ profileVisibility }),
@@ -213,7 +235,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
      * `user` is also what empties the list and wishlist providers, which reset on the transition.
      */
     const deleteAccount = async (password: string) => {
-        const res = await apiFetch('/api/user', {
+        const res = await send('/api/user', {
             method: 'DELETE',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ password }),
