@@ -40,6 +40,10 @@ export function GameCard({ game, eager = false, children }: GameCardProps) {
     const { isFavourite } = useFavourites();
     const [overlayOpen, setOverlayOpen] = useState(false);
 
+    // Signed in, a press on a badge is a press on the toggle beneath it. Signed out there is no toggle,
+    // and the critic score keeps the tooltip that names its count.
+    const passThrough = user ? ' pointer-events-none' : '';
+
     const wishlisted = wishlist.isWishlisted(game.id);
 
     // Marked, not offered: a favourite is made on the game's page (ADR 0029 §4), and the card says
@@ -99,10 +103,26 @@ export function GameCard({ game, eager = false, children }: GameCardProps) {
                     </div>
                 )}
 
+                {/* The overlay's toggle, over the whole cover. Empty, and beside the badges rather
+                    than around them, because a control's name has to contain the words it shows and a
+                    control may not hold other controls: the cover was once the button itself, and it
+                    showed a score and held the list buttons (issue 329). Under the badges, which let a
+                    press through to it, rather than over them: over them, it hides their colours from
+                    a contrast check. */}
+                {user && (
+                    <button
+                        type="button"
+                        className="absolute inset-0 cursor-pointer focus:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-focus"
+                        onClick={() => setOverlayOpen(o => !o)}
+                        aria-label={`Open list options for ${game.title}`}
+                        aria-expanded={overlayOpen}
+                    />
+                )}
+
                 {/* Critic score. Suppressed below MIN_CRITIC_REVIEWS: IGDB averages with no floor,
                     so a lone perfect review would otherwise sit here as a green 100. */}
                 {hasCriticScore(game) && (
-                    <div className="absolute top-2 right-2">
+                    <div className={`absolute top-2 right-2${passThrough}`}>
                         <ScoreBadge
                             variant="square"
                             kind="critics"
@@ -114,29 +134,14 @@ export function GameCard({ game, eager = false, children }: GameCardProps) {
 
                 {/* ESRB badge */}
                 {game.esrbRating && (
-                    <div className="absolute top-2 left-2 px-1.5 py-0.5 bg-page/80 backdrop-blur-sm rounded text-xs font-mono text-fg-soft border border-line-strong">
+                    <div className={`absolute top-2 left-2 px-1.5 py-0.5 bg-page/80 backdrop-blur-sm rounded text-xs font-mono text-fg-soft border border-line-strong${passThrough}`}>
                         {game.esrbRating}
                     </div>
                 )}
 
-                {/* Before the overlay, which covers it on hover. Said in words in the heading, where
-                    the rest of the card's name is: the mark itself is decoration. */}
+                {/* Before the overlay, which covers it on hover. Said in words in the heading: the
+                    mark itself is decoration, and lets a press through as the badges do. */}
                 {favourite && <FavouriteMark variant="cover" />}
-
-                {/* The overlay's toggle: over the art and the badges, so a tap anywhere on the cover
-                    lands on it, and under the overlay. Empty, and beside them rather than around them,
-                    because a control's name has to contain the words it shows and a control may not
-                    hold other controls: the cover was once the button itself, and it showed a score and
-                    held the list buttons (issue 329). */}
-                {user && (
-                    <button
-                        type="button"
-                        className="absolute inset-0 cursor-pointer focus:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-focus"
-                        onClick={() => setOverlayOpen(o => !o)}
-                        aria-label={`Open list options for ${game.title}`}
-                        aria-expanded={overlayOpen}
-                    />
-                )}
 
                 {/* List selection overlay — only shown when authenticated; visible on hover (CSS) or tap (state) */}
                 {user && (

@@ -69,6 +69,14 @@ interface Baseline {
  * performance on a phone for the home, game and profile pages, which had no score until #315's fix came
  * with #272. Theirs are the scores of each page's median run, as the job's summary gives a page with no
  * baseline.
+ *
+ * One figure fell a point with nothing on its page getting worse: accessibility on a desktop for the
+ * lists, 0.9556 to 0.9541, when a game card's list toggle stopped being its cover (#329). The cover was a
+ * `div` with `role="button"`, which `aria-command-name` audits and which passed it; the toggle is a
+ * `<button>`, which that audit does not cover, and a passing audit that stops applying takes its weight
+ * out of the average. What the change fixed does not count: Lighthouse has no `nested-interactive` audit
+ * and weighs `label-content-name-mismatch` at nothing. A phone's figure moved the same way, 0.9541 to
+ * 0.9526, and rounds to 0.95 either side.
  */
 const BASELINE: Record<FormFactor, Record<PageKey, Baseline>> = {
     mobile: {
@@ -83,7 +91,7 @@ const BASELINE: Record<FormFactor, Record<PageKey, Baseline>> = {
         games: { accessibility: 0.95, bestPractices: 0.96, seo: 1, consoleErrors: 1, kib: 937, performance: 0.99 },
         game: { accessibility: 0.93, bestPractices: 0.96, seo: 1, consoleErrors: 1, kib: 2106, performance: 1 },
         profile: { accessibility: 0.95, bestPractices: 0.96, seo: 1, consoleErrors: 1, kib: 587, performance: 1 },
-        lists: { accessibility: 0.96, bestPractices: 1, seo: 0.66, consoleErrors: 0, kib: 587, performance: 0.99 },
+        lists: { accessibility: 0.95, bestPractices: 1, seo: 0.66, consoleErrors: 0, kib: 587, performance: 0.99 },
     },
 };
 
