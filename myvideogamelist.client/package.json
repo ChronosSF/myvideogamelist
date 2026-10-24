@@ -14,7 +14,9 @@
     "lint": "eslint . && node scripts/check-colours.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
-    "visual": "playwright test -c visual/playwright.config.ts"
+    "visual": "playwright test -c visual/playwright.config.ts",
+    "e2e": "react-router build && playwright test -c e2e/playwright.config.ts",
+    "lighthouse": "npm install --prefix lighthouse --no-audit --no-fund && react-router build && playwright test -c lighthouse/playwright.config.ts"
   },
   "dependencies": {
     "@react-router/dev": "^8.4.0",
@@ -28,6 +30,7 @@
     "tailwindcss": "^4.2.1"
   },
   "devDependencies": {
+    "@axe-core/playwright": "4.13.0",
     "@eslint/js": "^10.0.1",
     "@playwright/test": "1.63.0",
     "@testing-library/jest-dom": "^7.0.1",

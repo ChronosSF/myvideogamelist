@@ -7,14 +7,26 @@ namespace Infra;
 /// </summary>
 public sealed record Site(string Env)
 {
+    /// <summary>The registered domain, whose zone lives in the production account (ADR 0044).</summary>
+    public const string Domain = "myvideogamelist.net";
+
+    /// <summary>Production's <c>env</c>: the one environment that answers at the domain itself.</summary>
+    public const string Production = "prod";
+
+    public bool IsProduction => Env == Production;
+
     /// <summary>The resource-name prefix: <c>mvgl-dev</c>.</summary>
     public string Prefix => $"mvgl-{Env}";
 
     /// <summary>The stack-name prefix: <c>Mvgl-dev-Data</c>.</summary>
     public string StackName(string part) => $"Mvgl-{Env}-{part}";
 
-    /// <summary>The public hostname, and the name of the environment's hosted zone.</summary>
-    public string Host => $"{Env}.myvideogamelist.net";
+    /// <summary>
+    /// The public hostname, and the name of the environment's hosted zone: <c>dev.myvideogamelist.net</c>,
+    /// whose zone is delegated from the domain's, and for production the domain itself - the apex is
+    /// the canonical host and <c>www</c> only redirects to it (ADR 0066).
+    /// </summary>
+    public string Host => IsProduction ? Domain : $"{Env}.{Domain}";
 
     /// <summary>The Cloud Map private namespace the SSR server finds the API through.</summary>
     public string InternalDomain => $"{Prefix}.internal";

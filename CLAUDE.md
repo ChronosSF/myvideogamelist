@@ -22,13 +22,15 @@ cd myvideogamelist.client && npm run dev
 The database runs in Docker so local matches production; the app itself is deliberately not
 containerised, because that would cost hot reload on both sides. Credentials for the local
 container are committed in `compose.yaml` and `appsettings.Development.json` on purpose, so a
-fresh checkout runs with no setup — they reach nothing beyond this machine.
+fresh checkout runs with no setup — they reach nothing beyond this machine. The browser smoke test's
+and the Lighthouse audit's configs and CI jobs carry the same pair, for the same reason.
 
 Open `https://localhost:58546`.
 
 **Never use `npm start` for local work.** It serves the production build, which has no
 `/api` proxy: pages render, but every client-side request 404s. See
-`docs/decisions/0003-two-process-deployment.md`.
+`docs/decisions/0003-two-process-deployment.md`. The browser smoke test, `npm run e2e`, serves that
+build behind a stand-in that does route `/api` (ADR 0060).
 
 ## Commands
 
@@ -39,6 +41,8 @@ Open `https://localhost:58546`.
 | `npm run typecheck` | `react-router typegen && tsc -b` — use this, never bare `tsc` |
 | `npm run test` | Vitest, jsdom + Testing Library. `npm run test:watch` to iterate |
 | `npm run visual` | Before-and-after screenshots of the pages, compared pixel by pixel, for a change meant to look the same. Needs two dev servers and a local test account, whose email and password it reads from the shell or from `visual/.env` (ignored by git); `visual/playwright.config.ts` says how. Not run by CI |
+| `npm run e2e` | The browser smoke test, over the production shape: sign up, add a game to a list, reload, it is still there. Builds the front end and serves it with `react-router-serve` beside the API under `dotnet run`, with a stand-in in front that routes `/api/*` to the API as the balancer does, and one for IGDB behind, so it needs no IGDB credentials. Needs PostgreSQL up, ports 5180–5183 free, and once, `npx playwright install chromium`. Keeps a database of its own on the compose server, `mvgl_e2e`, never `myvideogamelist`, created on the first run; `E2E_CONNECTION_STRING` points it elsewhere. Run by CI. See ADR 0060 |
+| `npm run lighthouse` | Lighthouse CI on five pages of the `npm run e2e` shape, on a phone and a desktop, then axe-core on the same pages. Fails on an accessibility, best-practices or SEO score, or a count of console errors, that leaves `lighthouse/budgets.ts`'s baseline, on layout shift over 0.02 or script or page weight over budget, and on an axe rule or contrast pair a page did not already break; performance warns. Needs PostgreSQL up, ports 5190–5193 free, IGDB's image host reachable and, once, `npx playwright install chromium`. Keeps `mvgl_lighthouse` (or `LIGHTHOUSE_CONNECTION_STRING`); reports in `lighthouse/reports/`. Run by CI. See ADR 0068 |
 | `npm run build` | Production build |
 | `dotnet test MyVideoGameList.Server.Tests/MyVideoGameList.Server.Tests.csproj` | Server unit tests |
 | `dotnet test MyVideoGameList.Server.IntegrationTests/MyVideoGameList.Server.IntegrationTests.csproj` | The API over a real PostgreSQL, for what InMemory cannot do: auth and the lists end to end, the cascades, the retention sweep, the cache refresh's lock and commit, and the export's snapshot. Needs Docker running; starts and removes a container of its own, never `mvgl-postgres`. About fifteen seconds once built. See ADR 0057 |
@@ -72,6 +76,10 @@ myvideogamelist.client/
   src/pages/                    Route modules (default export + optional loader/meta)
   src/resources/                Resource routes: robots.txt, the sitemaps and /version. A loader, no component
   src/lib/                      apiUrl(), useHydrated(), pageMeta(); loaderFetch() in trace.server.ts
+  e2e/                          The browser smoke test, and its stand-ins for the edge and for IGDB
+  lighthouse/                   The Lighthouse audit on the same harness: its pages, budgets and package
+holding/                        The static page at myvideogamelist.net until production takes the domain:
+                                site/ is what is served, share/ draws its share image (ADR 0066)
 docs/decisions/                 Architecture decision records
 docs/data-model-plan.md         The tables not built yet, and the two constraints every table answers to
 scripts/                        Dev-only tools. The seeding tools print SQL to stdout and never open

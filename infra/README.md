@@ -26,6 +26,35 @@ The long-lived stacks are deployed from a developer machine; the pipeline deploy
 origin-facing prefix list and nothing else, so there is no way to reach the environment except
 through the distribution, and no parameter that would open one.
 
+## Production, until #98: the holding page
+
+`-c env=prod` synthesises one stack and none of the five above: `Mvgl-prod-Holding`, whole in
+`us-east-1`, in the production account. It serves `holding/site` at `myvideogamelist.net` from a
+private bucket through a distribution, and sends `www` to the apex (ADR 0066).
+
+```bash
+cdk deploy Mvgl-prod-Holding --profile mvgl-prod -c env=prod
+```
+
+- **The account needs a CDK bootstrap in `us-east-1` first, once.** Run it from the repository root,
+  not from here: the CLI builds the app wherever it finds a `cdk.json`, and the app refuses to build
+  without an `env`.
+
+  ```bash
+  cdk bootstrap "aws://$(aws sts get-caller-identity --profile mvgl-prod --query Account --output text)/us-east-1" --profile mvgl-prod
+  ```
+
+- **It looks the domain's zone up, and never creates one.** The zone was made by hand in that
+  account and holds the mail records and dev's delegation. The first synthesis with the profile
+  signed in writes the answer into `cdk.context.json`; commit it, as dev's lookups are.
+- **A change to the page is a change to `holding/site` and the same command.** The deployment
+  replaces the bucket's contents, then invalidates the distribution and waits for it.
+- **The Search Console record is in the zone by hand, never in the stack.** The stack is destroyed
+  when production takes the domain, and the record has to outlive it.
+- **Production's App stack cannot deploy with the domain while this stack holds it.** CloudFront
+  gives an alternate domain name to one distribution at a time, and the records would collide too:
+  destroy this stack first. The destroy empties the bucket itself.
+
 ## The pipeline
 
 `.github/workflows/deploy-dev.yml` runs after every green CI run of a push to master, and by
@@ -47,7 +76,7 @@ immutable, so it could not push them again anyway.
 
 The `dev` environment holds four variables, none secret: `AWS_ROLE_ARN`, `AWS_REGION`,
 `AWS_ACCOUNT_ID` and `DEV_DEPLOY_ENABLED`, and one secret, `DEV_BASIC_AUTH`, the basic-auth pair
-as `user:password`, which only the smoke test reads; until it is set the authenticated checks are
+as `user:password`, which only Deploy dev's smoke test reads; until it is set the authenticated checks are
 skipped with a warning. The environment admits deployments from `master` only.
 `scripts/dev-env.mjs park` and `resume` set the gate; nothing else should.
 
@@ -69,7 +98,7 @@ CloudFront section, and `Edge.cs` says it again beside each one. Three things ar
   function compares the whole header byte for byte - but what a shell stores and what a browser
   sends for punctuation or accented letters are two encodings that have to agree, and the first
   pair set here did not pass the browser's prompt until it was simplified. Change the pair with
-  the same command, then update the GitHub secret, or the smoke test fails with a 401.
+  the same command, then update the GitHub secret, or Deploy dev's smoke test fails with a 401.
 
   Three paths are exempt, because the client fetches them with `credentials: 'omit'` and the
   browser then withholds the `Authorization` header too: a game's reviews, community scores and

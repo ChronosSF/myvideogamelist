@@ -89,7 +89,176 @@ jobs:
       - name: Test
         run: dotnet test MyVideoGameList.Server.IntegrationTests/MyVideoGameList.Server.IntegrationTests.csproj --no-build --verbosity normal --blame-hang-timeout 5m --blame-hang-dump-type none
 
-  # #105's Playwright smoke test: a job block of its own here. Its pull request replaces this line.
+  # One browser test over the two-process shape that is deployed: sign up, add a game to a list,
+  # reload, and it is still there. The front end's production build and the API run as two processes
+  # behind a stand-in for what routes between them deployed, which sends /api/* to one and everything
+  # else to the other, as the balancer does. So the application's half of the failure ADR 0003
+  # describes - pages that render while every request the browser makes to the API fails - fails here,
+  # before a merge. Whether the deployed edge itself routes is scripts/dev-check.mjs's to check. IGDB
+  # is a stand-in too, and no credential is needed. Deploy dev waits on this as on every job. See
+  # ADR 0060.
+  e2e:
+    name: Browser smoke test
+    runs-on: ubuntu-latest
+    # A hang ends here rather than at a far longer default.
+    timeout-minutes: 15
+    services:
+      # compose.yaml's image and credentials, so the test's default connection string is the same here
+      # as on a developer's machine; the image is in PostgresServer.cs and the Lighthouse job too,
+      # so change the four together. The database exists from the start, and the API only migrates it. Checked over TCP,
+      # because the image's first-run setup answers on its socket before the real server listens; and
+      # pulled before any step runs, so a Docker Hub login would need `credentials:` here.
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_DB: mvgl_e2e
+          POSTGRES_USER: mvgl
+          POSTGRES_PASSWORD: localdev
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -h 127.0.0.1 -U mvgl -d mvgl_e2e"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 30
+    defaults:
+      run:
+        working-directory: myvideogamelist.client
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24.x'
+          cache: npm
+          cache-dependency-path: myvideogamelist.client/package-lock.json
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+
+      - run: npm ci
+
+      # The headless shell alone, which is what a headless run launches, and the libraries it needs.
+      - name: Install the browser
+        run: npx playwright install --with-deps --only-shell chromium
+
+      # Its own step, so a compile error fails here rather than as an API that never started. Under CI
+      # the test runs this build as it is, without building again.
+      - name: Build the API
+        run: dotnet build ../MyVideoGameList.Server/MyVideoGameList.Server.csproj
+
+      # Builds the front end, starts both servers and the two stand-ins, and runs the test.
+      - name: Run the test
+        run: npm run e2e
+
+      # Every request, response and DOM snapshot of a failed run: `npx playwright show-trace` on the zip.
+      # Named for the attempt, so a re-run of a failure uploads a trace of its own.
+      - name: Upload the trace
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-trace-${{ github.run_attempt }}
+          path: myvideogamelist.client/e2e/test-results/
+          retention-days: 14
+          if-no-files-found: ignore
+
+  # Lighthouse on the same production shape, page by page, on a phone and on a desktop: three runs
+  # each, judged on the median. What moves only when a page does fails the job when it moves:
+  # accessibility, best practices, SEO and the console's errors against the baseline, layout shift and
+  # the weight of script and of everything against a limit. Performance warns, and fails only under a
+  # floor, because a lab score on a shared runner moves with the runner. Then axe-core in full on the
+  # same pages, which fails on a rule or a contrast pair a page did not already break. The IGDB
+  # stand-in answers with real games, so the covers come from IGDB's image host, the one site the
+  # audit's browser reaches outside the runner; an outage there fails the job, so re-run it once the
+  # host is back. The reports are an artifact and the figures a table in the job summary; nothing goes
+  # to LHCI's public storage. Deploy dev waits on this as on every job. See ADR 0068.
+  lighthouse:
+    name: Lighthouse
+    # Pinned, unlike the other jobs: the baseline was measured on this image, and a new one brings new
+    # fonts and libraries under the browser. Moving it is a pull request that re-takes the baseline.
+    runs-on: ubuntu-24.04
+    # A hang ends here rather than at a far longer default. Thirty audits take most of a run.
+    timeout-minutes: 30
+    services:
+      # As the smoke test's, with a database of the audit's own name, and checked over TCP for the same
+      # reason. The image is in three other places, so change the four together.
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_DB: mvgl_lighthouse
+          POSTGRES_USER: mvgl
+          POSTGRES_PASSWORD: localdev
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -h 127.0.0.1 -U mvgl -d mvgl_lighthouse"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 30
+    defaults:
+      run:
+        working-directory: myvideogamelist.client
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24.x'
+          cache: npm
+          cache-dependency-path: |
+            myvideogamelist.client/package-lock.json
+            myvideogamelist.client/lighthouse/package-lock.json
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+
+      - run: npm ci
+
+      # Lighthouse CI has a lockfile of its own, so that its dependencies stay out of the client's.
+      - run: npm ci --prefix lighthouse
+
+      # Chromium itself rather than the headless shell the smoke test uses: Lighthouse audits in the
+      # browser's own headless mode, and the axe test asks for it by channel. Pinned with Playwright, so a
+      # score moves only when Playwright is bumped.
+      - name: Install the browser
+        run: npx playwright install --with-deps --no-shell chromium
+
+      # Its own step, so a compile error fails here rather than as an API that never started. Under CI
+      # the audit runs this build as it is, without building again.
+      - name: Build the API
+        run: dotnet build ../MyVideoGameList.Server/MyVideoGameList.Server.csproj
+
+      # Builds the front end, starts both servers and the two stand-ins, seeds an account, runs
+      # Lighthouse CI on mobile and then on desktop, and then axe. Both tables go to the job summary.
+      - name: Audit
+        run: npm run lighthouse
+
+      # Each page's median report, as HTML to open and as JSON, with the summary and the thresholds.
+      # Named for the attempt, so a re-run uploads reports of its own.
+      - name: Upload the reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: lighthouse-reports-${{ github.run_attempt }}
+          path: myvideogamelist.client/lighthouse/reports/
+          retention-days: 14
+          if-no-files-found: ignore
+
+      # Every run of a failed audit, which never reached the reports when Lighthouse CI stopped early: some
+      # forty megabytes, so only then. The browser's profiles stay behind.
+      - name: Upload every run
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: lighthouse-runs-${{ github.run_attempt }}
+          path: |
+            myvideogamelist.client/lighthouse/.lighthouseci/
+            !myvideogamelist.client/lighthouse/.lighthouseci/chrome-profile-*/
+          retention-days: 14
+          if-no-files-found: ignore
+          include-hidden-files: true
 
   # #106's format check, audits and secret scanning: jobs of their own. Its PR replaces this line.
 

@@ -7,7 +7,9 @@ behaviour, with the three public community endpoints exempt because the browser 
 anticipate (D14) is [0058](0058-a-withdrawal-leaves-the-edge-when-it-is-made.md), and it names the
 profile files as `/sitemaps/profiles-*`. The `/sitemaps/profiles-*.xml` in the consequences below
 describes the files; as an invalidation path it would match nothing, because CloudFront reads a `*`
-that is not the last character literally.
+that is not the last character literally. The search console's record, and the holding page that
+answers at the domain until production does, are
+[0066](0066-a-holding-page-until-production-takes-the-domain.md).
 
 ## Context
 
