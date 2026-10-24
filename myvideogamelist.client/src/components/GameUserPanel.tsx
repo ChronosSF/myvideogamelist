@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import type { ProfileVisibility } from '@/types/auth';
 import type { GameDto } from '@/types/game';
 import { type ListId, type Ownership, LIST_IDS, OWNERSHIPS, OWNERSHIP_NAMES } from '@/types/list';
@@ -12,11 +12,14 @@ import type {
 import { useLists } from '@/hooks/useLists';
 import { useWishlist } from '@/hooks/useWishlist';
 import { useFavourites } from '@/hooks/useFavourites';
+import { useTags } from '@/hooks/useTags';
+import { type TagDto, tagsFor } from '@/types/tag';
 import { ScoreInput } from '@/components/ScoreInput';
 import { PlaythroughForm } from '@/components/PlaythroughForm';
 import { PlaythroughList } from '@/components/PlaythroughList';
 import { ReviewForm } from '@/components/ReviewForm';
 import { EntryNotesForm } from '@/components/EntryNotesForm';
+import { EntryTagEditor } from '@/components/EntryTagEditor';
 import { apiFetch } from '@/lib/api';
 import './GameUserPanel.css';
 
@@ -66,11 +69,12 @@ type EntryStatus = 'loading' | 'ready' | 'failed';
  */
 export function GameUserPanel({ game, profileVisibility, onCommunityChange }: GameUserPanelProps) {
     const {
-        isInList, getListFor, addToList, removeFromList, setScore, setOwnership, setNotes, deleteEntry, isPending,
-        nameFor,
+        isInList, getListFor, addToList, removeFromList, setScore, setOwnership, setNotes, setTags, deleteEntry,
+        isPending, nameFor,
     } = useLists();
     const wishlist = useWishlist();
     const favourites = useFavourites();
+    const tags = useTags();
 
     // The provider only knows about games that are in a list. A game that was scored and then
     // taken out of every list still has an entry, so the panel asks for it directly — and that
@@ -78,6 +82,8 @@ export function GameUserPanel({ game, profileVisibility, onCommunityChange }: Ga
     const [score, setLocalScore] = useState<number | null>(null);
     const [ownership, setLocalOwnership] = useState<Ownership | null>(null);
     const [notes, setLocalNotes] = useState<string | null>(null);
+    // Ids, as the entry carries them; the names are the account's tags, from `useTags`.
+    const [tagIds, setLocalTagIds] = useState<number[]>([]);
     const [playthroughs, setPlaythroughs] = useState<PlaythroughDto[]>([]);
     const [review, setReview] = useState<ReviewDto | null>(null);
     const [entryStatus, setEntryStatus] = useState<EntryStatus>('loading');
@@ -99,9 +105,29 @@ export function GameUserPanel({ game, profileVisibility, onCommunityChange }: Ga
 
     const [ownershipError, setOwnershipError] = useState<string | null>(null);
 
+    const [tagsError, setTagsError] = useState<string | null>(null);
+    /**
+     * A tag being made for this game. Two requests — the tag, then the game's set — and the second runs
+     * from the first one's continuation, so for the time between them this panel treats the game as
+     * locked: its own controls are the only other writers of this entry, and holding them off is what
+     * keeps the set-write from overlapping a move or a score of the same game.
+     */
+    const [creatingTag, setCreatingTag] = useState(false);
+
+    /**
+     * Whether this panel is still mounted. The page keys it per game and per account, so a tag still
+     * being made when the reader leaves must not go on to write the set for a game nobody is looking at,
+     * under whatever cookie is current by then.
+     */
+    const mounted = useRef(true);
+    useEffect(() => {
+        mounted.current = true;
+        return () => { mounted.current = false; };
+    }, []);
+
     const ownershipLabelId = useId();
     const currentList = getListFor(game.id);
-    const pending = isPending(game.id);
+    const pending = isPending(game.id) || creatingTag;
     const wishlisted = wishlist.isWishlisted(game.id);
     const favourite = favourites.isFavourite(game.id);
     const ready = entryStatus === 'ready';
@@ -139,6 +165,7 @@ export function GameUserPanel({ game, profileVisibility, onCommunityChange }: Ga
                 setLocalScore(detail?.entry.score ?? null);
                 setLocalOwnership(detail?.ownership ?? null);
                 setLocalNotes(detail?.notes ?? null);
+                setLocalTagIds(detail?.entry.tagIds ?? []);
                 setPlaythroughs(detail?.playthroughs ?? []);
                 setReview(detail?.review ?? null);
                 setEntryStatus('ready');
@@ -151,6 +178,18 @@ export function GameUserPanel({ game, profileVisibility, onCommunityChange }: Ga
 
         return () => controller.abort();
     }, [game.id, entryAttempt]);
+
+    // A tag on this game that the account's tags do not know was made after they were read — in another
+    // tab. Asked for again once, so its chip can be drawn; never more than once a mount, because a read
+    // that still lacks it would otherwise be asked for for ever.
+    const { reload: reloadTags } = tags;
+    const unknownTag = ready && tags.status === 'ready' && tagIds.some(id => !tags.byId.has(id));
+    const resyncedTags = useRef(false);
+    useEffect(() => {
+        if (!unknownTag || resyncedTags.current) return;
+        resyncedTags.current = true;
+        reloadTags();
+    }, [unknownTag, reloadTags]);
 
     /** From the click rather than the effect, which may not set state synchronously. */
     const retryEntry = () => {
@@ -187,6 +226,62 @@ export function GameUserPanel({ game, profileVisibility, onCommunityChange }: Ga
         }
     };
 
+    /**
+     * Shown at once and put back if the save fails, as the ownership is. The set sent keeps every id
+     * the entry carries, including one this tab's list of tags does not know yet — made in another tab —
+     * so a change here never takes off a tag it could not show.
+     */
+    const saveTags = async (next: number[]): Promise<boolean> => {
+        const previous = tagIds;
+        setLocalTagIds(next);
+        setTagsError(null);
+
+        const saved = await setTags(game.id, next);
+        if (!saved.ok) {
+            // The server's own sentence where it gave one — a tag deleted in another tab says to reload —
+            // and the provider's otherwise.
+            setLocalTagIds(previous);
+            setTagsError(saved.error);
+            return false;
+        }
+
+        tags.adjustCounts(previous, next);
+        return true;
+    };
+
+    const handleAddTag = (tag: TagDto) => {
+        if (!tagIds.includes(tag.id)) void saveTags([...tagIds, tag.id]);
+    };
+
+    const handleRemoveTag = (tag: TagDto) => {
+        void saveTags(tagIds.filter(id => id !== tag.id));
+    };
+
+    /**
+     * Not optimistic for the tag itself, which has no id until the server gives it one. Answers whether
+     * the game now carries it, so the editor clears its box only for a name that landed.
+     */
+    const handleCreateTag = async (name: string): Promise<boolean> => {
+        setCreatingTag(true);
+        setTagsError(null);
+
+        const created = await tags.createTag(name);
+        if (!mounted.current) return false;
+
+        if (!created.ok) {
+            setCreatingTag(false);
+            setTagsError(created.error);
+            return false;
+        }
+
+        // Released in the same update that takes the provider's lock below, so no render falls between
+        // the two with this game unlocked. A name the game already carries — this tab's list was out of
+        // date — is nothing to write.
+        setCreatingTag(false);
+        if (tagIds.includes(created.tag.id)) return true;
+        return saveTags([...tagIds, created.tag.id]);
+    };
+
     /** Not optimistic: the box keeps what was typed until the server has it, as the review does. */
     const handleNotesSave = async (next: string | null) => {
         setSavingNotes(true);
@@ -200,6 +295,10 @@ export function GameUserPanel({ game, profileVisibility, onCommunityChange }: Ga
     };
 
     const handleDelete = async () => {
+        // Another write to this entry is out — or a tag is being made, which the provider's own lock does
+        // not see. A delete now could land before that write, which would then bring the entry back.
+        if (pending) return;
+
         setConfirmingDelete(false);
         setDeleteError(null);
 
@@ -218,6 +317,10 @@ export function GameUserPanel({ game, profileVisibility, onCommunityChange }: Ga
         setLocalNotes(null);
         setListError(null);
         setScoreError(null);
+
+        // The links go with the entry, so the games each tag is on are one fewer.
+        tags.adjustCounts(tagIds, []);
+        setLocalTagIds([]);
 
         // The playthroughs and the review go with the entry — the composite foreign key cascades
         // both — so the panel must not go on showing what the server has just discarded.
@@ -367,6 +470,7 @@ export function GameUserPanel({ game, profileVisibility, onCommunityChange }: Ga
         || score !== null
         || ownership !== null
         || notes !== null
+        || tagIds.length > 0
         || playthroughs.length > 0
         || review !== null;
 
@@ -479,8 +583,8 @@ export function GameUserPanel({ game, profileVisibility, onCommunityChange }: Ga
             {entryStatus === 'failed' && (
                 <div className="game-user-panel-section">
                     <p className="game-user-panel-hint" role="alert">
-                        Your score, ownership, notes, playthroughs and review for this game could not
-                        be loaded, so they cannot be changed just now.{' '}
+                        Your score, ownership, tags, notes, playthroughs and review for this game could
+                        not be loaded, so they cannot be changed just now.{' '}
                         <button type="button" className="game-user-panel-retry" onClick={retryEntry}>
                             Try again
                         </button>
@@ -540,6 +644,31 @@ export function GameUserPanel({ game, profileVisibility, onCommunityChange }: Ga
                 )}
             </div>
 
+            {/* Beside the ownership and the notes, which are the entry's other fields of its own. The
+                account's tags are a read of their own, and an editor offered over one that failed would
+                show none of this game's and "create" tags the account already has. */}
+            <div className="game-user-panel-section">
+                <EntryTagEditor
+                    tags={tagsFor(tagIds, tags.byId)}
+                    vocabulary={tags.tags}
+                    onAdd={handleAddTag}
+                    onCreate={handleCreateTag}
+                    onRemove={handleRemoveTag}
+                    busy={pending}
+                    disabled={!ready || tags.status !== 'ready'}
+                    error={tagsError}
+                    gameTitle={game.title}
+                />
+                {tags.status === 'failed' && (
+                    <p className="game-user-panel-hint" role="alert">
+                        Your tags could not be loaded, so they cannot be changed just now.{' '}
+                        <button type="button" className="game-user-panel-retry" onClick={tags.reload}>
+                            Try again
+                        </button>
+                    </p>
+                )}
+            </div>
+
             <div className="game-user-panel-section">
                 <EntryNotesForm
                     notes={notes}
@@ -587,12 +716,17 @@ export function GameUserPanel({ game, profileVisibility, onCommunityChange }: Ga
                     {confirmingDelete ? (
                         <>
                             <p className="game-user-panel-hint">
-                                Delete your score, list placement, ownership, notes, playthroughs
-                                and review for this game? Your history of moving it between lists
-                                is kept.
+                                Delete your score, list placement, ownership, tags, notes,
+                                playthroughs and review for this game? Your history of moving it
+                                between lists is kept, and so are the tags themselves.
                             </p>
                             <div className="game-user-panel-confirm">
-                                <button type="button" className="danger" onClick={() => void handleDelete()}>
+                                <button
+                                    type="button"
+                                    className="danger"
+                                    onClick={() => void handleDelete()}
+                                    disabled={pending}
+                                >
                                     Delete
                                 </button>
                                 <button type="button" onClick={() => setConfirmingDelete(false)}>

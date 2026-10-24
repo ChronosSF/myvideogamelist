@@ -27,6 +27,11 @@ export interface ListEntryDto {
      * list, so it only ever means a place in the list the entry is in. See `docs/decisions/0054-*`.
      */
     position: number | null;
+    /**
+     * The user's tags on the game, by id; empty when it carries none. The names come from the
+     * account's tags (`useTags`), so a rename changes nothing here — see `docs/decisions/0065-*`.
+     */
+    tagIds: number[];
 }
 
 /**

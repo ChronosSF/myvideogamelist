@@ -97,6 +97,8 @@ public class UserDataExporter(ApplicationDbContext db, TimeProvider clock) : IUs
             { typeof(UserGameEvent), new("events", ReadEventsAsync) },
             { typeof(UserGamePlaythrough), new("playthroughs", ReadPlaythroughsAsync) },
             { typeof(Review), new("reviews", ReadReviewsAsync) },
+            { typeof(Tag), new("tags", ReadTagsAsync) },
+            { typeof(UserGameEntryTag), new("entryTags", ReadEntryTagsAsync) },
             { typeof(UserWishlistItem), new("wishlist", ReadWishlistAsync) },
             { typeof(UserFavourite), new("favourites", ReadFavouritesAsync) },
             { typeof(UserListSortPreference), new("listSortPreferences", ReadListSortPreferencesAsync) },
@@ -135,6 +137,8 @@ public class UserDataExporter(ApplicationDbContext db, TimeProvider clock) : IUs
         public IReadOnlyList<EventExportDto> Events { get; set; } = [];
         public IReadOnlyList<PlaythroughExportDto> Playthroughs { get; set; } = [];
         public IReadOnlyList<ReviewExportDto> Reviews { get; set; } = [];
+        public IReadOnlyList<TagExportDto> Tags { get; set; } = [];
+        public IReadOnlyList<EntryTagExportDto> EntryTags { get; set; } = [];
         public IReadOnlyList<WishlistExportDto> Wishlist { get; set; } = [];
         public IReadOnlyList<FavouriteExportDto> Favourites { get; set; } = [];
         public IReadOnlyList<ListSortExportDto> ListSortPreferences { get; set; } = [];
@@ -143,8 +147,8 @@ public class UserDataExporter(ApplicationDbContext db, TimeProvider clock) : IUs
         public IReadOnlyList<ImportRowExportDto> ImportRows { get; set; } = [];
 
         public UserDataExportDto ToDocument(DateTimeOffset exportedAt, AccountExportDto account) =>
-            new(exportedAt, account, Entries, Events, Playthroughs, Reviews, Wishlist, Favourites,
-                ListSortPreferences, ListNames, ImportJobs, ImportRows);
+            new(exportedAt, account, Entries, Events, Playthroughs, Reviews, Tags, EntryTags, Wishlist,
+                Favourites, ListSortPreferences, ListNames, ImportJobs, ImportRows);
     }
 
     public async Task<UserDataExportDto> ExportAsync(string userId, CancellationToken cancellationToken)
@@ -326,6 +330,40 @@ public class UserDataExporter(ApplicationDbContext db, TimeProvider clock) : IUs
             .ThenBy(r => r.Id)
             .Select(r => new ReviewExportDto(
                 r.Entry.GameId, r.Body, r.HasSpoilers, r.Visibility, r.CreatedAt, r.UpdatedAt))
+            .ToListAsync(cancellationToken);
+    }
+
+    /// <remarks>
+    /// Oldest first, then by the key, so two exports of unchanged data are byte-identical. Every tag the
+    /// user made, including one no game carries any more: it is still theirs.
+    /// </remarks>
+    private static async Task ReadTagsAsync(
+        ApplicationDbContext db, ExportDraft draft, CancellationToken cancellationToken)
+    {
+        draft.Tags = await db.Tags
+            .AsNoTracking()
+            .Where(t => t.UserId == draft.UserId)
+            .OrderBy(t => t.CreatedAt)
+            .ThenBy(t => t.Id)
+            .Select(t => new TagExportDto(t.Name, t.CreatedAt))
+            .ToListAsync(cancellationToken);
+    }
+
+    /// <remarks>
+    /// Joined to the entry for the game id and to the tag for its name, because neither surrogate key
+    /// means anything outside this database. Oldest first, then by game, then by the tag's folded name —
+    /// unique per account, so the order is total and two exports of unchanged data are byte-identical.
+    /// </remarks>
+    private static async Task ReadEntryTagsAsync(
+        ApplicationDbContext db, ExportDraft draft, CancellationToken cancellationToken)
+    {
+        draft.EntryTags = await db.UserGameEntryTags
+            .AsNoTracking()
+            .Where(l => l.UserId == draft.UserId)
+            .OrderBy(l => l.AddedAt)
+            .ThenBy(l => l.Entry.GameId)
+            .ThenBy(l => l.Tag.NormalizedName)
+            .Select(l => new EntryTagExportDto(l.Entry.GameId, l.Tag.Name, l.AddedAt))
             .ToListAsync(cancellationToken);
     }
 
