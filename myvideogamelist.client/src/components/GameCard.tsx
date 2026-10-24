@@ -82,15 +82,7 @@ export function GameCard({ game, eager = false, children }: GameCardProps) {
             onMouseLeave={() => setOverlayOpen(false)}
         >
             {/* Cover Image */}
-            <div
-                className={`${CARD_COVER}${user ? ' cursor-pointer' : ''}`}
-                onClick={user ? () => setOverlayOpen(o => !o) : undefined}
-                role={user ? 'button' : undefined}
-                tabIndex={user ? 0 : undefined}
-                aria-label={user ? `Open list options for ${game.title}` : undefined}
-                aria-expanded={user ? overlayOpen : undefined}
-                onKeyDown={user ? (e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setOverlayOpen(o => !o); } }) : undefined}
-            >
+            <div className={CARD_COVER}>
                 {game.coverImageUrl ? (
                     <CoverImage
                         url={game.coverImageUrl}
@@ -127,9 +119,24 @@ export function GameCard({ game, eager = false, children }: GameCardProps) {
                     </div>
                 )}
 
-                {/* Before the overlay, which covers it on hover. Said in words in the heading: this
-                    cover is a button whose name is its own, and a screen reader hears nothing inside it. */}
+                {/* Before the overlay, which covers it on hover. Said in words in the heading, where
+                    the rest of the card's name is: the mark itself is decoration. */}
                 {favourite && <FavouriteMark variant="cover" />}
+
+                {/* The overlay's toggle: over the art and the badges, so a tap anywhere on the cover
+                    lands on it, and under the overlay. Empty, and beside them rather than around them,
+                    because a control's name has to contain the words it shows and a control may not
+                    hold other controls: the cover was once the button itself, and it showed a score and
+                    held the list buttons (issue 329). */}
+                {user && (
+                    <button
+                        type="button"
+                        className="absolute inset-0 cursor-pointer focus:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-focus"
+                        onClick={() => setOverlayOpen(o => !o)}
+                        aria-label={`Open list options for ${game.title}`}
+                        aria-expanded={overlayOpen}
+                    />
+                )}
 
                 {/* List selection overlay — only shown when authenticated; visible on hover (CSS) or tap (state) */}
                 {user && (

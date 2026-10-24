@@ -135,7 +135,7 @@ export const KNOWN_VIOLATIONS: Record<PageKey, readonly string[]> = {
     games: ['color-contrast', 'heading-order'],
     game: ['color-contrast', 'definition-list'],
     profile: ['color-contrast', 'heading-order'],
-    lists: ['color-contrast', 'heading-order', 'nested-interactive'],
+    lists: ['color-contrast', 'heading-order'],
 };
 
 /**
