@@ -1,32 +1,59 @@
-# Version updates, weekly, one PR per ecosystem and directory. Without this file Dependabot
-# opens security updates only, so a pinned version - the CDK library in infra/, pinned on purpose
-# so that synthesis cannot change under an unchanged source - would never move at all.
+# Version updates, monthly, grouped so that a run is a handful of pull requests rather than one per
+# package. Without this file Dependabot opens security updates only, so a pinned version - the CDK
+# library in infra/, pinned on purpose so that synthesis cannot change under an unchanged source -
+# would never move at all.
+#
+# None of the easing below touches security updates: they ignore the schedule and the cooldown,
+# arrive as soon as an advisory is published, and have their own limit of ten open pull requests.
+#
+# Within an entry, a package joins the first group it matches, so the named groups come first and
+# the catch-all last. The catch-all takes minor and patch updates only: a major version gets a pull
+# request of its own, because that is the one that needs reading.
+#
+# The cooldown waits a week after a release before proposing it, so a package that ships three
+# patches in four days - AWSSDK does - arrives once, at the last of them, and a release withdrawn
+# within days never arrives at all.
 version: 2
 updates:
+  # The API and both test projects, through the one manifest at the root, Directory.Packages.props.
+  # Listing the three project directories instead made each group one pull request per project,
+  # every one bumping the same versions.
   - package-ecosystem: nuget
-    directories:
-      - /MyVideoGameList.Server
-      - /MyVideoGameList.Server.Tests
-      - /MyVideoGameList.Server.IntegrationTests
-      - /infra/src/Infra
+    directory: /
     schedule:
-      interval: weekly
+      interval: monthly
+    cooldown:
+      default-days: 7
     groups:
-      # One PR for the framework's own packages, which move together on patch Tuesday.
+      # The framework's own packages, which move together on patch Tuesday.
       dotnet:
         patterns:
           - "Microsoft.AspNetCore.*"
           - "Microsoft.EntityFrameworkCore.*"
           - "Microsoft.Extensions.*"
-          # Pinned in both test projects, past the copy the SSM provider pulls in; it moves with
+          # Pinned for both test projects, past the copy the SSM provider pulls in; it moves with
           # the framework.
           - "System.Security.Cryptography.Xml"
-      # One PR for the test framework both test projects run on, so the two never differ.
+      # The test framework both test projects run on.
       test:
         patterns:
           - "xunit*"
           - "Microsoft.NET.Test.Sdk"
-      # One PR for the CDK library and its constructs package, which move together.
+      minor-and-patch:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
+  # The CDK app, its own solution with its own versions in Infra.csproj.
+  - package-ecosystem: nuget
+    directory: /infra/src/Infra
+    schedule:
+      interval: monthly
+    cooldown:
+      default-days: 7
+    groups:
+      # The CDK library and its constructs package, which move together.
       cdk:
         patterns:
           - "Amazon.CDK.*"
@@ -34,22 +61,49 @@ updates:
   - package-ecosystem: npm
     directory: /myvideogamelist.client
     schedule:
-      interval: weekly
+      interval: monthly
+    cooldown:
+      default-days: 7
+    ignore:
+      # The types describe the Node the code runs on, 24 in CI and in the image, so they move to a
+      # new major when the runtime does and not when the types package does.
+      - dependency-name: "@types/node"
+        update-types:
+          - "version-update:semver-major"
     groups:
       react-router:
         patterns:
           - "react-router"
           - "@react-router/*"
-      # One PR for React and its renderer, and for their types. react-dom refuses to load beside
-      # any other version of react, and nothing moves react-dom when react moves, so a PR for react
-      # alone fails every client test — which is how 19.3 arrived.
+      # React and its renderer, and their types. react-dom refuses to load beside any other version
+      # of react, and nothing moves react-dom when react moves, so a PR for react alone fails every
+      # client test — which is how 19.3 arrived.
       react:
         patterns:
           - "react"
           - "react-dom"
           - "@types/react"
           - "@types/react-dom"
+      # One release, three packages: the metapackage, the parser and the plugin.
+      typescript-eslint:
+        patterns:
+          - "typescript-eslint"
+          - "@typescript-eslint/*"
+      minor-and-patch:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
+  # Lighthouse CI, which keeps a lockfile of its own so that its dependencies stay out of the
+  # client's (ADR 0068). One direct dependency, so nothing to group.
+  - package-ecosystem: npm
+    directory: /myvideogamelist.client/lighthouse
+    schedule:
+      interval: monthly
+    cooldown:
+      default-days: 7
   - package-ecosystem: github-actions
     directory: /
     schedule:
-      interval: weekly
+      interval: monthly

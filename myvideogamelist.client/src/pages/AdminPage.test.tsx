@@ -144,6 +144,29 @@ describe('AdminPage for anybody who is not an admin', () => {
     });
 });
 
+describe('AdminPage while it loads', () => {
+    it('draws its two cards as shapes, and says in words what it is waiting for', () => {
+        auth.loading = true;
+        renderPage();
+
+        expect(screen.getByRole('status')).toHaveTextContent('Loading the admin page…');
+        expect(document.querySelectorAll('.admin-card.skeleton-sheen')).toHaveLength(2);
+        expect(document.querySelector('.animate-spin')).toBeNull();
+    });
+
+    it("keeps them until the calendar's data answers, then puts the cards in their place", async () => {
+        fakeApi({ events: [event()] });
+        renderPage();
+
+        // A status of its own: the statistics card above says "Counting…" in another (ADR 0051).
+        expect(screen.getByText("Loading the calendar's data…")).toHaveAttribute('role', 'status');
+
+        expect(await screen.findByRole('list', { name: 'Current and upcoming' })).toBeInTheDocument();
+        expect(screen.queryByText("Loading the calendar's data…")).not.toBeInTheDocument();
+        expect(document.querySelectorAll('.skeleton-sheen')).toHaveLength(0);
+    });
+});
+
 describe('AdminPage for an admin', () => {
     it('counts what members do, above the calendar', async () => {
         fakeApi();

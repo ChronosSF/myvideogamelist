@@ -35,3 +35,11 @@ obj\*/
 /visual/report/
 /visual/test-results/
 /visual/.auth/
+
+# The browser smoke test's traces and screenshots, kept only when it fails (`npm run e2e`)
+/e2e/test-results/
+
+# The Lighthouse audit's reports and Lighthouse CI's working files (`npm run lighthouse`)
+/lighthouse/reports/
+/lighthouse/.lighthouseci/
+/lighthouse/test-results/

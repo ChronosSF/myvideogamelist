@@ -1,8 +1,11 @@
-﻿using System.Net;
+﻿using System.ComponentModel.DataAnnotations;
+using System.Net;
+using System.Reflection;
 using System.Text;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
+using MyVideoGameList.Server.Controllers;
 using MyVideoGameList.Server.DTOs;
 using MyVideoGameList.Server.Models.Igdb;
 using MyVideoGameList.Server.Services;
@@ -173,6 +176,52 @@ public class BuildQueryTests
     {
         Assert.Empty(Conditions(Browse(new GameBrowseQuery(GameSortKeys.Name), search: "hades")));
     }
+
+    [Fact]
+    public void Esrb_AsksForAnEsrbRowOfThatRating_BesideTheOrdersFloor()
+    {
+        var query = Browse(new GameBrowseQuery(Esrb: EsrbRatingKeys.M));
+
+        Assert.Equal(
+            ["age_ratings.organization = 1", "age_ratings.rating_category = (6)", "aggregated_rating_count >= 8"],
+            Conditions(query));
+    }
+
+    [Theory]
+    // The ids that live IGDB's age_rating_categories listed under organization 1 on 17 October 2026.
+    [InlineData(EsrbRatingKeys.EC, 2)]
+    [InlineData(EsrbRatingKeys.E, 3)]
+    [InlineData(EsrbRatingKeys.E10, 4)]
+    [InlineData(EsrbRatingKeys.T, 5)]
+    [InlineData(EsrbRatingKeys.M, 6)]
+    [InlineData(EsrbRatingKeys.AO, 7)]
+    public void Esrb_EachKey_AsksForTheCategoryIgdbListsForIt(string key, int category) =>
+        Assert.Contains(
+            $"age_ratings.rating_category = ({category})",
+            Conditions(Browse(new GameBrowseQuery(Esrb: key))));
+
+    [Fact]
+    public void Esrb_NarrowsASearchAndAPlatformLikeEveryOtherFilter()
+    {
+        var query = Browse(new GameBrowseQuery(PlatformId: 130, Esrb: EsrbRatingKeys.T), search: "zelda");
+
+        Assert.Equal(
+            ["platforms = (130)", "age_ratings.organization = 1", "age_ratings.rating_category = (5)"],
+            Conditions(query));
+    }
+
+    [Theory]
+    [InlineData("rp")]
+    [InlineData("M")]
+    [InlineData("6")]
+    [InlineData("")]
+    public void Esrb_AnythingButAKey_IsRefusedRatherThanReadAsNoFilter(string esrb)
+    {
+        // The controller answers the first three with a 400 and binds an empty value as no filter at
+        // all. One that reached the builder some other way must not become the whole unfiltered
+        // catalogue under a page that says it is filtered.
+        Assert.Throws<ArgumentOutOfRangeException>(() => Browse(new GameBrowseQuery(Esrb: esrb)));
+    }
 }
 
 public class MapEsrbRatingTests
@@ -211,6 +260,29 @@ public class MapEsrbRatingTests
     public void WithOnlyOtherBoards_ReturnsNull()
         => Assert.Null(IgdbService.MapEsrbRating([Rating(organization: 2, ratingCategory: 12)]));
 
+    [Fact]
+    public void WithTwoEsrbRatings_ReadsTheStricter_WhicheverComesFirst()
+    {
+        // Monster Train 2's ESRB rows in the order live IGDB returned them: E10+, then T. Rows do not
+        // come back in id order, so "the first one" was never a rule anybody could state.
+        Assert.Equal("T", IgdbService.MapEsrbRating([Rating(2, 9), Rating(Esrb, 4), Rating(Esrb, 5)]));
+        Assert.Equal("T", IgdbService.MapEsrbRating([Rating(Esrb, 5), Rating(Esrb, 4)]));
+
+        // Sonic X Shadow Generations: E10+, then E twice.
+        Assert.Equal("E10+", IgdbService.MapEsrbRating([Rating(Esrb, 4), Rating(Esrb, 3), Rating(Esrb, 3)]));
+    }
+
+    [Fact]
+    public void WithAPendingRatingBesideARealOne_ReadsTheRealOne()
+    {
+        Assert.Equal("E", IgdbService.MapEsrbRating([Rating(Esrb, 1), Rating(Esrb, 3)]));
+        Assert.Equal("RP", IgdbService.MapEsrbRating([Rating(Esrb, 1)]));
+    }
+
+    [Fact]
+    public void WithAnUnknownCategoryBesideAKnownOne_ReadsTheKnownOne()
+        => Assert.Equal("M", IgdbService.MapEsrbRating([Rating(Esrb, 8), Rating(Esrb, 6)]));
+
     [Theory]
     [InlineData(0)]
     [InlineData(8)]
@@ -227,16 +299,69 @@ public class MapEsrbRatingTests
 }
 
 /// <summary>
-/// IGDB behind a stub: the token request answered, the games endpoint answered with a payload of IGDB's
-/// own JSON, and every other endpoint with no rows.
+/// The ESRB filter's keys where the API checks them and where the query builder reads them. A key the
+/// API allows and the builder does not know is a 500; one the builder knows and the API refuses is a
+/// rating nobody can choose. Neither shows until somebody picks it.
 /// </summary>
-internal sealed class StubIgdb(string gamesPayload) : HttpMessageHandler
+public class EsrbFilterKeysTests
+{
+    /// <summary>What model validation holds <c>?esrb=</c> to, which is where the 400 comes from.</summary>
+    private static AllowedValuesAttribute AllowedByTheApi() =>
+        typeof(GamesController).GetMethod(nameof(GamesController.GetGames))!
+            .GetParameters().Single(p => p.Name == "esrb")
+            .GetCustomAttribute<AllowedValuesAttribute>()!;
+
+    [Fact]
+    public void TheApi_AllowsExactlyTheRatingsTheQueryBuilderFiltersBy()
+    {
+        var filterable = IgdbService.EsrbRatings.Select(r => r.Key).OfType<string>().Order();
+
+        Assert.Equal(filterable, AllowedByTheApi().Values.OfType<string>().Order());
+    }
+
+    [Fact]
+    public void TheApi_AllowsNoFilter()
+    {
+        // AllowedValues refuses null unless null is one of its values, and no filter is a null.
+        Assert.True(AllowedByTheApi().IsValid(null));
+    }
+
+    [Theory]
+    [InlineData("rp")]
+    [InlineData("M")]
+    [InlineData("E10+")]
+    [InlineData("6")]
+    public void TheApi_RefusesAnythingElse(string esrb) => Assert.False(AllowedByTheApi().IsValid(esrb));
+
+    [Fact]
+    public void EveryKey_StandsForItsOwnRating()
+    {
+        // Two rows sharing a key would both filter as the first of them.
+        foreach (var rating in IgdbService.EsrbRatings)
+        {
+            if (rating.Key is { } key) Assert.Same(rating, IgdbService.EsrbFilter(key));
+        }
+    }
+}
+
+/// <summary>
+/// IGDB behind a stub: the token request answered, the games endpoint answered with IGDB's own JSON —
+/// one payload for every query, or the one a query picks — and every other endpoint with no rows.
+/// </summary>
+internal sealed class StubIgdb(Func<string, string> answerGames) : HttpMessageHandler
 {
     private const string TokenPayload =
         """{ "access_token": "token", "expires_in": 3600, "token_type": "bearer" }""";
 
+    public StubIgdb(string gamesPayload) : this(_ => gamesPayload)
+    {
+    }
+
     /// <summary>The last Apicalypse query the service sent to the games endpoint.</summary>
     public string? Query { get; private set; }
+
+    /// <summary>How many queries reached the games endpoint, which is how a test sees a cache answer.</summary>
+    public int Queries { get; private set; }
 
     /// <summary>A service that asks this stub, with a cache of its own.</summary>
     public IgdbService NewService()
@@ -262,7 +387,8 @@ internal sealed class StubIgdb(string gamesPayload) : HttpMessageHandler
         if (request.RequestUri?.AbsolutePath != "/v4/games") return Json("[]");
 
         Query = query;
-        return Json(gamesPayload);
+        Queries++;
+        return Json(answerGames(query));
     }
 
     private static HttpResponseMessage Json(string body) =>
@@ -306,6 +432,43 @@ public class GetGamesAsyncTests
         ]
         """;
 
+    /// <summary>Monster Train 2's age ratings as live IGDB returned them: a PEGI row, then E10+ and T.</summary>
+    private const string MonsterTrain2 = """
+        {
+          "id": 332273,
+          "name": "Monster Train 2",
+          "age_ratings": [
+            { "id": 203752, "organization": 2, "rating_category": 9 },
+            { "id": 203751, "organization": 1, "rating_category": 4 },
+            { "id": 245363, "organization": 1, "rating_category": 5 }
+          ]
+        }
+        """;
+
+    /// <summary>Celeste's age ratings as live IGDB returned them, its one ESRB row an E10+.</summary>
+    private const string Celeste = """
+        {
+          "id": 26226,
+          "name": "Celeste",
+          "age_ratings": [
+            { "id": 34568, "organization": 2, "rating_category": 9 },
+            { "id": 129309, "organization": 5, "rating_category": 25 },
+            { "id": 96521, "organization": 6, "rating_category": 28 },
+            { "id": 68800, "organization": 3, "rating_category": 13 },
+            { "id": 110564, "organization": 7, "rating_category": 35 },
+            { "id": 189813, "organization": 1, "rating_category": 4 },
+            { "id": 177613, "organization": 4, "rating_category": 20 }
+          ]
+        }
+        """;
+
+    /// <summary>
+    /// What live IGDB answers over those two games: both hold an E10+ row, so a query for E10+ — or for
+    /// no rating at all — gets both, and only Monster Train 2 holds a T.
+    /// </summary>
+    private static string TwoE10Games(string query) =>
+        query.Contains("age_ratings.rating_category = (5)") ? $"[{MonsterTrain2}]" : $"[{MonsterTrain2},{Celeste}]";
+
     /// <summary>Lethal Company's websites as live IGDB returned them: it has no official site.</summary>
     private const string NoOfficialSitePayload = """
         [
@@ -341,6 +504,72 @@ public class GetGamesAsyncTests
         var games = await new StubIgdb(GamesPayload).NewService().GetGamesAsync();
 
         Assert.Equal("M", Assert.Single(games.Items).EsrbRating);
+    }
+
+    private static readonly GameBrowseQuery E10 = new(Esrb: EsrbRatingKeys.E10);
+
+    [Fact]
+    public async Task WithAnEsrbFilter_ListsAGameOnlyUnderTheRatingItsBadgeShows()
+    {
+        // IGDB answers "an E10+ row" with both games, and Monster Train 2's badge says T — the
+        // stricter of its two. A page filtered to E10+ does not carry it.
+        var igdb = new StubIgdb(TwoE10Games);
+
+        var games = await igdb.NewService().GetGamesAsync(browse: E10);
+
+        Assert.Contains("age_ratings.rating_category = (4)", igdb.Query);
+        var celeste = Assert.Single(games.Items);
+        Assert.Equal("Celeste", celeste.Title);
+        Assert.Equal("E10+", celeste.EsrbRating);
+    }
+
+    [Fact]
+    public async Task WithAnEsrbFilter_ListsAGameUnderItsBadgesRating()
+    {
+        var games = await new StubIgdb(TwoE10Games).NewService()
+            .GetGamesAsync(browse: new GameBrowseQuery(Esrb: EsrbRatingKeys.T));
+
+        var monsterTrain = Assert.Single(games.Items);
+        Assert.Equal("Monster Train 2", monsterTrain.Title);
+        Assert.Equal("T", monsterTrain.EsrbRating);
+    }
+
+    [Theory]
+    // IGDB returns both games: a full page of two, or a short page of three.
+    [InlineData(2, true)]
+    [InlineData(3, false)]
+    public async Task WithAnEsrbFilter_ReadsWhetherThereIsMoreFromIgdbsPageNotFromWhatIsLeft(int limit, bool hasMore)
+    {
+        // A full page with a game dropped is still a full page, and the next one may hold more; a short
+        // one is the last whatever was dropped from it.
+        var games = await new StubIgdb(TwoE10Games).NewService().GetGamesAsync(offset: 0, limit: limit, browse: E10);
+
+        Assert.Single(games.Items);
+        Assert.Equal(hasMore, games.HasMore);
+    }
+
+    [Fact]
+    public async Task WithoutAnEsrbFilter_ListsEveryGameIgdbReturned()
+    {
+        var games = await new StubIgdb(TwoE10Games).NewService().GetGamesAsync();
+
+        Assert.Equal(["T", "E10+"], games.Items.Select(g => g.EsrbRating));
+    }
+
+    [Fact]
+    public async Task TheCacheKey_TellsTheEsrbFiltersApart()
+    {
+        // Left out of the key, the first listing to be cached would be served for every rating.
+        var igdb = new StubIgdb(TwoE10Games);
+        var service = igdb.NewService();
+
+        await service.GetGamesAsync();
+        await service.GetGamesAsync(browse: E10);
+        await service.GetGamesAsync(browse: new GameBrowseQuery(Esrb: EsrbRatingKeys.T));
+        var again = await service.GetGamesAsync(browse: E10);
+
+        Assert.Equal(3, igdb.Queries);
+        Assert.Equal("Celeste", Assert.Single(again.Items).Title);
     }
 
     [Fact]
@@ -572,6 +801,77 @@ public class GetGameByIdAsyncTests
     }
 }
 
+/// <summary>
+/// Where the service sends its two kinds of request. Configurable so that the browser smoke test can
+/// answer for IGDB over HTTP (ADR 0060), and IGDB's own addresses whenever nothing is configured,
+/// which is every deployment.
+/// </summary>
+public class IgdbAddressTests
+{
+    /// <summary>Answers the token request and every query, and keeps the address each went to.</summary>
+    private sealed class RecordingHandler : HttpMessageHandler
+    {
+        public List<Uri> Asked { get; } = [];
+
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            Asked.Add(request.RequestUri!);
+            var body = request.RequestUri!.AbsolutePath.EndsWith("/token")
+                ? """{ "access_token": "token", "expires_in": 3600, "token_type": "bearer" }"""
+                : "[]";
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(body, Encoding.UTF8, "application/json"),
+            });
+        }
+    }
+
+    private static async Task<List<Uri>> AskForAGameAsync(string? baseUrl, string? tokenUrl)
+    {
+        var handler = new RecordingHandler();
+
+        var factory = Substitute.For<IHttpClientFactory>();
+        factory.CreateClient("Igdb").Returns(_ => new HttpClient(handler));
+
+        var configuration = Substitute.For<IConfiguration>();
+        configuration["Igdb:ClientId"].Returns("client-id");
+        configuration["Igdb:ClientSecret"].Returns("client-secret");
+        configuration["Igdb:BaseUrl"].Returns(baseUrl);
+        configuration["Igdb:TokenUrl"].Returns(tokenUrl);
+
+        var service = new IgdbService(
+            factory, configuration, new MemoryCache(new MemoryCacheOptions()),
+            NullLogger<IgdbService>.Instance);
+
+        await service.GetGameByIdAsync(1942);
+        return handler.Asked;
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    public async Task GetGameByIdAsync_WithNoAddressConfigured_AsksTwitchThenIgdb(string? unset)
+    {
+        var asked = await AskForAGameAsync(unset, unset);
+
+        Assert.Equal(
+            [new Uri("https://id.twitch.tv/oauth2/token"), new Uri("https://api.igdb.com/v4/games")],
+            asked);
+    }
+
+    [Fact]
+    public async Task GetGameByIdAsync_WithAddressesConfigured_AsksThoseInstead()
+    {
+        // A trailing slash on the base is the natural way to write one, and must not double up.
+        var asked = await AskForAGameAsync("http://127.0.0.1:8080/v4/", "http://127.0.0.1:8080/oauth2/token");
+
+        Assert.Equal(
+            [new Uri("http://127.0.0.1:8080/oauth2/token"), new Uri("http://127.0.0.1:8080/v4/games")],
+            asked);
+    }
+}
+
 public class MapTimeToBeatTests
 {
     private static IgdbGameTimeToBeat Row(int? hastily, int? normally, int? completely, int? count) =>
@@ -776,5 +1076,77 @@ public class MapToDetailsDtoTests
             Game(themes: [new(1, "Fantasy"), new(2, null), new(3, "Open world")]), null);
 
         Assert.Equal(["Fantasy", "Open world"], result.Themes);
+    }
+}
+
+public class GetGamesByIdsUncachedAsyncTests
+{
+    private const string TokenPayload =
+        """{ "access_token": "token", "expires_in": 3600, "token_type": "bearer" }""";
+
+    private const string GamesPayload = """[ { "id": 1942, "name": "The Witcher 3: Wild Hunt" } ]""";
+
+    /// <summary>Answers the token request, then every query with one game, counting the queries.</summary>
+    private sealed class CountingHandler : HttpMessageHandler
+    {
+        private int _queries;
+
+        public int Queries => _queries;
+
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            if (request.RequestUri?.Host == "id.twitch.tv") return Task.FromResult(Json(TokenPayload));
+
+            Interlocked.Increment(ref _queries);
+            return Task.FromResult(Json(GamesPayload));
+        }
+
+        private static HttpResponseMessage Json(string body) =>
+            new(HttpStatusCode.OK) { Content = new StringContent(body, Encoding.UTF8, "application/json") };
+    }
+
+    private static (IgdbService Service, CountingHandler Igdb) NewService()
+    {
+        var handler = new CountingHandler();
+
+        var factory = Substitute.For<IHttpClientFactory>();
+        factory.CreateClient("Igdb").Returns(_ => new HttpClient(handler, disposeHandler: false));
+
+        var configuration = Substitute.For<IConfiguration>();
+        configuration["Igdb:ClientId"].Returns("client-id");
+        configuration["Igdb:ClientSecret"].Returns("client-secret");
+
+        var service = new IgdbService(
+            factory, configuration, new MemoryCache(new MemoryCacheOptions()),
+            NullLogger<IgdbService>.Instance);
+
+        return (service, handler);
+    }
+
+    [Fact]
+    public async Task GetGamesByIdsUncachedAsync_AskedTwiceForTheSameIds_AsksIgdbTwice()
+    {
+        // The background refresh is there for a fresh answer, and its id sets never repeat. Through
+        // the remembered lookup every batch would sit in memory for half an hour (ADR 0052).
+        var (service, igdb) = NewService();
+
+        await service.GetGamesByIdsUncachedAsync([1942]);
+        var games = await service.GetGamesByIdsUncachedAsync([1942]);
+
+        Assert.Equal(2, igdb.Queries);
+        Assert.Equal("The Witcher 3: Wild Hunt", Assert.Single(games).Title);
+    }
+
+    [Fact]
+    public async Task GetGamesByIdsAsync_AskedTwiceForTheSameIds_AsksIgdbOnce()
+    {
+        // The contrast that gives the test above its meaning: the ordinary lookup remembers.
+        var (service, igdb) = NewService();
+
+        await service.GetGamesByIdsAsync([1942]);
+        await service.GetGamesByIdsAsync([1942]);
+
+        Assert.Equal(1, igdb.Queries);
     }
 }

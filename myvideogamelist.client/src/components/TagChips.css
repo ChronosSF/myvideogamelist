@@ -1,0 +1,33 @@
+.tag-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+/* A pill like a genre's, in the tags' own orange, and cut short rather than wrapped: a chip is a label,
+   and the whole name is in its title. */
+.tag-chip {
+    max-width: 100%;
+    overflow: hidden;
+    padding: 0.05rem 0.45rem;
+    font-size: 0.7rem;
+    line-height: 1.4;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--color-tag-300);
+    background: color-mix(in srgb, var(--color-tag-900) 45%, transparent);
+    border: 1px solid color-mix(in srgb, var(--color-tag-800) 70%, transparent);
+    border-radius: 9999px;
+}
+
+.tag-chips-more {
+    padding: 0.05rem 0.2rem;
+    font-size: 0.7rem;
+    line-height: 1.4;
+    color: var(--color-fg-muted);
+    white-space: nowrap;
+}

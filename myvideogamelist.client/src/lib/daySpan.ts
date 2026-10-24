@@ -40,6 +40,17 @@ export function localToday(now: Date = new Date()): string {
     return `${now.getFullYear()}-${month}-${date}`;
 }
 
+/**
+ * The day an instant falls on in UTC, as `YYYY-MM-DD`: the same answer on the server as in every
+ * browser, so it is what a server render puts in place of the reader's own day, which only the
+ * browser can know.
+ */
+export function utcDay(instant: Date): string {
+    const month = String(instant.getUTCMonth() + 1).padStart(2, '0');
+    const date = String(instant.getUTCDate()).padStart(2, '0');
+    return `${instant.getUTCFullYear()}-${month}-${date}`;
+}
+
 const DAY_MS = 86_400_000;
 
 /** The day as a count of days since 1970, in UTC, where every day is exactly as long as the next. */

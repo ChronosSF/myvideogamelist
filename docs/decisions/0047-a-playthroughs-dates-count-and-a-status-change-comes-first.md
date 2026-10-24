@@ -1,6 +1,8 @@
 # 0047. A playthrough's dates count in the activity figures, and a status change comes first
 
-**Status:** Implemented
+**Status:** Implemented. The precedence is a rule for what activity *counts*: the owner's history,
+which lists records rather than counting them, shows a run's dates beside the moves and says where
+the two differ ([0062](0062-the-history-is-three-rows-unioned-and-what-has-no-moment-has-no-item.md) §5).
 **Amends:** [0026](0026-a-library-import-records-ownership-not-history.md) §3, and
 [0023](0023-profile-statistics-derived-at-read-time.md) §4 on where the chart starts and what it counts
 

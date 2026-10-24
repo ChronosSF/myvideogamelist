@@ -87,13 +87,12 @@ public class PublicProfileService(
         if (user is null) return null;
 
         // Scoped on the favourite's own UserId, in the predicate — the same boundary the reviews
-        // draw — and in the order the owner's own page reads them: newest first, the game id
-        // breaking a tie so the row does not depend on what order the database returns.
-        var gameIds = await db.UserFavourites
-            .AsNoTracking()
-            .Where(f => f.UserId == user.Id)
-            .OrderByDescending(f => f.AddedAt)
-            .ThenBy(f => f.GameId)
+        // draw — and in the order the owner's own page reads them, which is the one they arranged:
+        // a showcase is made to be shown, and the order is part of what it shows (ADR 0064). Only
+        // the order crosses; the positions themselves, like the dates, stay the owner's.
+        var gameIds = await FavouriteService.InShowcaseOrder(db.UserFavourites
+                .AsNoTracking()
+                .Where(f => f.UserId == user.Id))
             .Select(f => f.GameId)
             .ToListAsync(cancellationToken);
 

@@ -12,9 +12,13 @@
     "start": "react-router-serve ./build/server/index.js",
     "typecheck": "react-router typegen && tsc -b",
     "lint": "eslint . && node scripts/check-colours.mjs",
+    "audit": "node scripts/audit.mjs",
+    "audit:lighthouse": "node scripts/audit.mjs lighthouse",
     "test": "vitest run",
     "test:watch": "vitest",
-    "visual": "playwright test -c visual/playwright.config.ts"
+    "visual": "playwright test -c visual/playwright.config.ts",
+    "e2e": "react-router build && playwright test -c e2e/playwright.config.ts",
+    "lighthouse": "npm install --prefix lighthouse --no-audit --no-fund && react-router build && playwright test -c lighthouse/playwright.config.ts"
   },
   "dependencies": {
     "@react-router/dev": "^8.4.0",
@@ -28,12 +32,13 @@
     "tailwindcss": "^4.2.1"
   },
   "devDependencies": {
+    "@axe-core/playwright": "4.13.0",
     "@eslint/js": "^10.0.1",
     "@playwright/test": "1.63.0",
     "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^16.3.3",
     "@testing-library/user-event": "^14.6.6",
-    "@types/node": "^26.6.5",
+    "@types/node": "^24.19.2",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@typescript-eslint/eslint-plugin": "^8.57.1",

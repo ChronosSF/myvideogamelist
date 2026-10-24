@@ -47,16 +47,24 @@ paths:
   That is what lets a list, a wishlist, a shelf of favourites or a public profile survive an IGDB
   outage, and it is where the tombstone rule above is enforced for good rather than for a process
   lifetime. Reach for `IIgdbService` directly only for queries over the whole catalogue — browse,
-  search, a user's connected releases, the calendar's showcases — or for the game page's detail
-  fields. See `docs/decisions/0035-*`.
+  search, a user's connected releases, the calendar's showcases — for the game page's detail
+  fields, or to refresh the cache itself: `GameCacheRefreshService` has to see the IGDB failures
+  `IGameCacheService` swallows on a reader's behalf, and writes through `GameCacheService.Apply`.
+  See `docs/decisions/0035-*` and `0052-*`.
 
 ## The pipeline and its failures
 
-- Middleware lives in `Security/` and `Errors/`, and the order in `Program.cs` is load-bearing:
-  forwarded headers first, then the exception handler, then security headers, the write guard and
-  the rate limiter. Anything added above the exception handler will not be seen by a failed request,
-  and anything cheap that can refuse a request belongs above the limiter — a request refused after
-  taking a permit has spent somebody's budget to be told no.
+- Middleware lives in `Security/`, `Errors/` and `Observability/`, and the order in `Program.cs` is
+  load-bearing: forwarded headers first, then the request log, then the exception handler, then
+  security headers, the write guard and the rate limiter. An exception thrown above the exception
+  handler never becomes a `ProblemDetails`, so nothing that can throw goes there; the request log does
+  because it has to see the status the handler ends a failure with, and throws nothing itself. Anything
+  cheap that can refuse a request belongs above the limiter — a request refused after taking a permit
+  has spent somebody's budget to be told no.
+- **A log line carries no query string, no header and no form value**, because any of them can hold
+  an email address, a cookie or a token. Log a request's method and path, through `LogText`, and let
+  the scopes carry the trace id. A request's `ProblemDetails` carries that same id as `traceId`
+  (`docs/decisions/0059-*`).
 - **Do not catch a third party's failure to return a 500.** `HttpRequestException`, a broken circuit
   and a timeout are turned into a 502 centrally by `UpstreamFailureHandler`; a service that swallows
   one is deciding on the caller's behalf that a degraded page is better than an honest error. The

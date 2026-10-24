@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
@@ -19,6 +20,7 @@ public class UserController(
     SignInManager<ApplicationUser> signInManager,
     ApplicationDbContext db,
     IStatsService stats,
+    IHistoryService history,
     IUserDataExporter exporter,
     IUserNameClaimService claims,
     ITrackedNewsService trackedNews,
@@ -345,6 +347,56 @@ public class UserController(
 
         return Ok(await stats.GetStatsAsync(userId, cancellationToken));
     }
+
+    /// <summary>
+    /// A page of the signed-in user's history, newest first: their status changes, their scores and
+    /// their playthroughs' dates as one list.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The owner's own, and only from the principal, like the figures above. There is no public
+    /// counterpart: the public profile publishes counts, and a dated list of what somebody did with
+    /// which game is not one (ADR 0062).
+    /// </para>
+    /// <para>
+    /// Paged by cursor, as a game's reviews are (ADR 0028): each page ends with the <c>after</c> for
+    /// the next, encrypted. The attribute refuses anything not shaped like a token; one that is
+    /// shaped right and does not decrypt is the same 400, from the service.
+    /// </para>
+    /// <para>
+    /// <c>no-store</c>, for the reason <see cref="GetNews"/> gives: it differs per account, and
+    /// nothing between here and the browser should keep one person's history for the next.
+    /// </para>
+    /// </remarks>
+    [HttpGet("history")]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public async Task<ActionResult<HistoryPageDto>> GetHistory(
+        CancellationToken cancellationToken,
+        // Absent for the first page; otherwise the `next` the previous page returned. The page shows
+        // a refusal's sentence, so the shape check says the same as the key ring's below rather than
+        // reciting the pattern.
+        [FromQuery][RegularExpression(HistoryCursor.Pattern, ErrorMessage = NotAPage)] string? after = null)
+    {
+        var userId = userManager.GetUserId(User);
+        if (userId is null) return Unauthorized();
+
+        try
+        {
+            return Ok(await history.GetHistoryAsync(userId, after, cancellationToken));
+        }
+        catch (ArgumentException e) when (e.ParamName == nameof(after))
+        {
+            // The one rule an attribute cannot express, since it takes the key ring to check. Beside
+            // the parameter, in the shape every other 400 has. Filtered on the parameter, so that any
+            // other ArgumentException — an ArgumentOutOfRangeException is one — stays the 500 it is
+            // rather than telling the reader their page was the problem.
+            ModelState.AddModelError(nameof(after), NotAPage);
+            return ValidationProblem(ModelState);
+        }
+    }
+
+    /// <summary>What a refused history cursor tells the reader, whichever check refused it.</summary>
+    private const string NotAPage = "That is not a page of this history. Start again from the first.";
 
     /// <summary>
     /// Steam news for the games the signed-in user tracks, newest first — the <c>/news</c> page.

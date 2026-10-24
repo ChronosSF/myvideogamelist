@@ -37,6 +37,11 @@ vi.mock('@/components/ProfileStats', () => ({
     ProfileStats: ({ userId }: { userId: string }) => <div>tracking for {userId}</div>,
 }));
 
+/** And the history, which pages through its own endpoint and is tested beside itself. */
+vi.mock('@/components/ProfileHistory', () => ({
+    ProfileHistory: ({ userId }: { userId: string }) => <div>history for {userId}</div>,
+}));
+
 /** Likewise the favourites and the list names, which read providers this page does not mount. */
 vi.mock('@/components/FavouritesShowcase', () => ({
     FavouritesShowcase: () => <div>favourites</div>,
@@ -44,6 +49,10 @@ vi.mock('@/components/FavouritesShowcase', () => ({
 
 vi.mock('@/components/ListNamesCard', () => ({
     ListNamesCard: () => <div>list names</div>,
+}));
+
+vi.mock('@/components/TagsCard', () => ({
+    TagsCard: () => <div>tags</div>,
 }));
 
 /**
@@ -102,6 +111,19 @@ describe('UserPage before the account is known', () => {
         renderPage();
 
         expect(fetchMock).not.toHaveBeenCalled();
+    });
+});
+
+describe('UserPage once the account is known', () => {
+    it('shows the history under the figures, for the signed-in account', () => {
+        const user = userProfile();
+        authAnswered(user);
+        stubFetch();
+        renderPage();
+
+        const tracking = screen.getByText(`tracking for ${user.id}`);
+        const history = screen.getByText(`history for ${user.id}`);
+        expect(tracking.compareDocumentPosition(history) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     });
 });
 
@@ -166,5 +188,21 @@ describe('UserPage account deletion', () => {
         expect(await screen.findByText('Password is incorrect.')).toBeInTheDocument();
         expect(screen.getByRole('dialog', { name: 'Delete your account?' })).toBeInTheDocument();
         expect(screen.queryByText('Your account has been deleted.')).not.toBeInTheDocument();
+    });
+});
+
+describe('UserPage signing out', () => {
+    it('says why under the button when the sign-out does not happen', async () => {
+        // The account is still signed in, so the page stays as it is and says so.
+        authAnswered(userProfile());
+        vi.mocked(auth.logout).mockRejectedValueOnce(new Error('Could not sign you out. Please try again.'));
+        const actor = userEvent.setup();
+        stubFetch();
+        renderPage();
+
+        await actor.click(screen.getByRole('button', { name: 'Sign Out' }));
+
+        expect(await screen.findByRole('alert')).toHaveTextContent('Could not sign you out. Please try again.');
+        expect(screen.getByRole('button', { name: 'Sign Out' })).toBeInTheDocument();
     });
 });

@@ -1,6 +1,8 @@
 # 0034. Failing in one shape: IGDB is retried and broken, and every error says so the same way
 
-**Status:** Implemented
+**Status:** Implemented. §5's `traceId` is the request's W3C trace id since
+[0059](0059-a-request-is-known-by-its-trace-and-a-build-by-its-commit.md), the same id the page that made
+the call names, rather than ASP.NET's request identifier.
 
 ## Context
 

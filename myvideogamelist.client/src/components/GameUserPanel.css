@@ -37,6 +37,12 @@
     color: var(--color-fg-faint);
 }
 
+/* The panel's failures, in the colour an error's words take. A hint's own colour is too faint for a
+   sentence somebody has to read, and in it a refusal read as one more hint beside the others. */
+.game-user-panel-hint[role='alert'] {
+    color: var(--color-danger-300);
+}
+
 /* Five statuses wrap as chips rather than stacking as full-width rows — the sidebar is narrow
    and a five-high stack of buttons dominates it. */
 .game-user-panel-lists {
@@ -176,6 +182,12 @@
 
 .game-user-panel-confirm button.danger:hover {
     background: var(--color-danger-700);
+}
+
+/* The delete's own question, held while another write to the game — a tag being made — is out. */
+.game-user-panel-danger .game-user-panel-confirm button:disabled {
+    cursor: default;
+    opacity: 0.55;
 }
 
 /*

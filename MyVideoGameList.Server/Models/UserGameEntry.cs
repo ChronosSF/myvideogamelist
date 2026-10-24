@@ -79,7 +79,7 @@ public static class EntryOrigins
 /// <see cref="UserGameEvent"/>, because these fields are overwritten in place.
 /// </para>
 /// </remarks>
-public class UserGameEntry
+public class UserGameEntry : IHandOrdered
 {
     /// <summary>
     /// Surrogate key. Uniqueness is still <c>(UserId, GameId)</c>, enforced by a unique index —
@@ -104,6 +104,42 @@ public class UserGameEntry
     /// scored while Dropped, which is often the most informative score there is.
     /// </summary>
     public short? Score { get; set; }
+
+    /// <summary>
+    /// When the user gave the game the <see cref="Score"/> it holds now. Null when it holds none,
+    /// and when nobody knows: a score given before this column existed, or one an import brought in.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// What puts a score in the history (ADR 0062). A score change appends no event (ADR 0019), so
+    /// without this a score is a value with no moment attached, and the history could show it only
+    /// at a time it would have to make up.
+    /// </para>
+    /// <para>
+    /// Stamped by <c>ListService.SetScoreAsync</c> and by nothing else: set when the user's score
+    /// changes, left alone by a write of the score the game already holds, and cleared with the
+    /// score. <b>Any other write that changes a score must clear it</b>, because the moment would
+    /// otherwise describe a score nobody gave then; only a write into an empty score, which has no
+    /// moment to clear, can leave it null by doing nothing. Every write that changes a score writes
+    /// the two together, through <c>EntryStore.WriteScoredAtWithScore</c>, so a write racing another
+    /// in a second tab cannot keep the other's moment. The database refuses a moment with no score,
+    /// and no more than that: pairing it with the right score is the writers' job.
+    /// </para>
+    /// <para>
+    /// <b>Never backfilled</b>, because no row recorded when an existing score was given, and a
+    /// migration stamping one would be inventing that moment for every score at once. <b>Never set
+    /// by an import</b> either, for the reason <see cref="StatusChangedAt"/> is never stamped there
+    /// (ADR 0026 §5): the source says what somebody thought of a game, not when they decided it, and
+    /// the import's own clock would put the whole library at the top of the history as though it had
+    /// all been scored in one afternoon.
+    /// </para>
+    /// <para>
+    /// Current state, like the score: changing a score moves this, and the earlier score and its
+    /// moment are gone. A history of scores would be a table of its own, which ADR 0019 left as a
+    /// separate decision.
+    /// </para>
+    /// </remarks>
+    public DateTimeOffset? ScoredAt { get; set; }
 
     /// <summary>
     /// One of <see cref="OwnershipKinds"/>, or null when the user has not said. Current state, like
@@ -141,6 +177,25 @@ public class UserGameEntry
     /// </para>
     /// </remarks>
     public string Origin { get; set; } = EntryOrigins.Manual;
+
+    /// <summary>
+    /// Where the user has put this game in its list by hand — the backlog's "what I will play
+    /// next". Sparse and nullable; see <see cref="IHandOrdered"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A place in the list the game is in now, and in no other. <b>Every write that changes
+    /// <see cref="StatusId"/> clears it</b> — <c>ListService</c>'s moves and removals and the
+    /// import's commit — because a number chosen between two backlog neighbours means nothing in
+    /// Playing, and a game that comes back to the backlog arrives at the end of it like any other
+    /// arrival. A move to the status the game already holds changes nothing, so it keeps its place.
+    /// </para>
+    /// <para>
+    /// Nothing statistical reads it, and no public read carries it: an order is its owner's
+    /// (ADR 0031). It is exported with the entry.
+    /// </para>
+    /// </remarks>
+    public int? Position { get; set; }
 
     /// <summary>When the user first recorded anything about this game. Never updated afterwards.</summary>
     public DateTimeOffset AddedAt { get; set; }

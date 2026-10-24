@@ -43,10 +43,15 @@ public class ListService(
         var games = (await gameCache.GetGamesAsync(allIds, cancellationToken))
             .ToDictionary(g => g.Id);
 
+        // The ids alone; the names are the client's one read of /api/tags (ADR 0065).
+        var tags = await EntryTagReader.ForListsAsync(db, userId, cancellationToken);
+
         IReadOnlyList<ListEntryDto> EntriesForStatus(short statusId) =>
             entries
                 .Where(e => e.StatusId == statusId)
-                .Select(e => games.TryGetValue(e.GameId, out var game) ? ToDto(e, game) : null)
+                .Select(e => games.TryGetValue(e.GameId, out var game)
+                    ? ToDto(e, game, tags.GetValueOrDefault(e.Id) ?? [])
+                    : null)
                 .OfType<ListEntryDto>()
                 .ToList();
 
@@ -63,7 +68,10 @@ public class ListService(
         if (entry is null) return null;
 
         var game = (await gameCache.GetGamesAsync([gameId], cancellationToken)).FirstOrDefault();
-        return game is null ? null : new EntryDto(ToDto(entry, game), entry.Ownership, entry.Notes);
+        if (game is null) return null;
+
+        var tags = await EntryTagReader.ForEntryAsync(db, userId, entry.Id, cancellationToken);
+        return new EntryDto(ToDto(entry, game, tags), entry.Ownership, entry.Notes);
     }
 
     public async Task SetListEntryAsync(
@@ -84,6 +92,10 @@ public class ListService(
         AppendEvent(userId, gameId, from: entry.StatusId, to: target.Id);
         entry.StatusId = target.Id;
         entry.StatusChangedAt = timeProvider.GetUtcNow();
+
+        // A place in the old list's hand order is no place in the new one, so the game arrives
+        // unplaced — at the end of the list it joins, like any other arrival. See IHandOrdered.
+        entry.Position = null;
 
         // One SaveChanges, so the event and the state change land in the same transaction or
         // neither does. A recorded transition that did not happen is as bad as a missing one.
@@ -108,8 +120,50 @@ public class ListService(
         entry.StatusId = null;
         entry.StatusChangedAt = timeProvider.GetUtcNow();
 
+        // Its place in the list it left goes with it, as on any other move.
+        entry.Position = null;
+
         await db.SaveChangesAsync(cancellationToken);
         return true;
+    }
+
+    /// <summary>
+    /// Places some of the games in one of the user's lists where they have arranged them by hand.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Scoped to the list as well as to the user: a game that has left it since the client last
+    /// looked is passed over, so a stale tab does not give a Playing game a place in the backlog's
+    /// order. Records no event — an order is not a status transition — and creates no entry, since
+    /// a game in a list already has one.
+    /// </para>
+    /// <para>
+    /// The scope is checked when the rows are read, not in the update, which goes by key. A move out
+    /// of the list landing in the moment between the two leaves the game a number in a list it has
+    /// left: nothing reads a position outside its own list, and the next change of list clears it.
+    /// Closing that would take an <c>UPDATE</c> with the status in its predicate, which the in-memory
+    /// provider the tests run on cannot execute — not worth it for a number nobody sees (ADR 0054).
+    /// </para>
+    /// </remarks>
+    public async Task SetPositionsAsync(
+        string userId,
+        string status,
+        IReadOnlyCollection<PositionDto> positions,
+        CancellationToken cancellationToken = default)
+    {
+        var statusId = await db.ListStatuses
+            .AsNoTracking()
+            .Where(s => s.Key == status)
+            .Select(s => (short?)s.Id)
+            .FirstOrDefaultAsync(cancellationToken)
+            ?? throw new ArgumentException($"Unknown status: {status}", nameof(status));
+
+        await HandOrderStore.WriteAsync(
+            db,
+            db.UserGameEntries.Where(e => e.StatusId == statusId),
+            userId,
+            positions,
+            cancellationToken);
     }
 
     public async Task SetScoreAsync(
@@ -121,10 +175,20 @@ public class ListService(
 
         var entry = await FindOrCreateAsync(userId, gameId, cancellationToken);
 
-        // Scoring a game the user has never listed is legitimate, and creates the entry with no
-        // status — the score stands on its own.
-        entry.Score = score;
+        // A write of the score the game already holds changes nothing, its moment included. It is
+        // not a new judgement, as a move to the status a game already holds is not a new event:
+        // stamped, it would carry an old score to the top of the history on a repeated click.
+        if (score != entry.Score)
+        {
+            // When the score was given, which is what puts it in the history (ADR 0062). Cleared
+            // with the score, so a moment never outlives the score it belongs to.
+            entry.ScoredAt = score is null ? null : timeProvider.GetUtcNow();
+            entry.Score = score;
+            EntryStore.WriteScoredAtWithScore(db, entry);
+        }
 
+        // Saved either way: scoring a game the user has never listed is legitimate, and creates the
+        // entry with no status — the score stands on its own — even when what it writes is no score.
         await db.SaveChangesAsync(cancellationToken);
     }
 
@@ -224,8 +288,8 @@ public class ListService(
         string userId, int gameId, CancellationToken cancellationToken) =>
         EntryStore.FindOrCreateAsync(db, timeProvider, userId, gameId, cancellationToken);
 
-    private static ListEntryDto ToDto(UserGameEntry entry, GameDto game) =>
-        new(game, entry.Score, entry.AddedAt, entry.StatusChangedAt);
+    private static ListEntryDto ToDto(UserGameEntry entry, GameDto game, IReadOnlyList<int> tagIds) =>
+        new(game, entry.Score, entry.AddedAt, entry.StatusChangedAt, entry.Position, tagIds);
 
     private void AppendEvent(string userId, int gameId, short? from, short? to) =>
         db.UserGameEvents.Add(new UserGameEvent

@@ -29,10 +29,17 @@ public class GetLatestNewsAsyncTests
     private static TaskCanceledException Timeout() =>
         new("The request was canceled due to the configured HttpClient.Timeout.", new TimeoutException());
 
-    private sealed class StubHandler(Func<HttpResponseMessage> respond) : HttpMessageHandler
+    private sealed class StubHandler(Func<HttpResponseMessage> respond, List<Uri>? asked = null)
+        : HttpMessageHandler
     {
         protected override Task<HttpResponseMessage> SendAsync(
-            HttpRequestMessage request, CancellationToken cancellationToken) => Task.FromResult(respond());
+            HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            if (asked is not null)
+                lock (asked) asked.Add(request.RequestUri!);
+
+            return Task.FromResult(respond());
+        }
     }
 
     /// <summary>An IGDB that knows Hades and its Steam AppID.</summary>
@@ -46,15 +53,60 @@ public class GetLatestNewsAsyncTests
         return igdb;
     }
 
-    /// <summary>A service whose Steam answers with <paramref name="steam"/>, or a 404 by default.</summary>
-    private static SteamNewsService NewService(IIgdbService igdb, Func<HttpResponseMessage>? steam = null)
+    /// <summary>
+    /// A service whose Steam answers with <paramref name="steam"/>, or a 404 by default, and writes
+    /// every URL it is asked for into <paramref name="asked"/>.
+    /// </summary>
+    private static SteamNewsService NewService(
+        IIgdbService igdb, Func<HttpResponseMessage>? steam = null, List<Uri>? asked = null)
     {
         var factory = Substitute.For<IHttpClientFactory>();
         factory.CreateClient("Steam").Returns(_ => new HttpClient(
-            new StubHandler(steam ?? (() => new HttpResponseMessage(HttpStatusCode.NotFound)))));
+            new StubHandler(steam ?? (() => new HttpResponseMessage(HttpStatusCode.NotFound)), asked)));
 
         return new SteamNewsService(
-            factory, igdb, new MemoryCache(new MemoryCacheOptions()), NullLogger<SteamNewsService>.Instance);
+            factory, igdb, new MemoryCache(new MemoryCacheOptions()), TimeProvider.System,
+            NullLogger<SteamNewsService>.Instance);
+    }
+
+    /// <summary>How many items the one feed asked for was asked for.</summary>
+    private static int CountAskedFor(List<Uri> asked) =>
+        int.Parse(System.Web.HttpUtility.ParseQueryString(Assert.Single(asked).Query)["count"]!);
+
+    [Theory]
+    [InlineData(20, 3, 9)] // /news: twenty items, three a game
+    [InlineData(8, 2, 6)] // the home rail: eight items, two a game
+    public async Task GetLatestNewsAsync_WithAPerGameCap_AsksEachFeedForThreeTimesTheCap(
+        int count, int maxPerGame, int expected)
+    {
+        // A game contributes at most its cap however long its feed is, so asking for three times
+        // the whole page — sixty items a game for /news — fetched twenty times what it could keep.
+        var asked = new List<Uri>();
+
+        await NewService(IgdbKnowingHades(), asked: asked).GetLatestNewsAsync([Hades.Id], count, maxPerGame);
+
+        Assert.Equal(expected, CountAskedFor(asked));
+    }
+
+    [Fact]
+    public async Task GetNewsForGameAsync_WithNoCap_AsksForThreeTimesTheCount()
+    {
+        // One game's panel has no cap, because every item on it is that game's.
+        var asked = new List<Uri>();
+
+        await NewService(IgdbKnowingHades(), asked: asked).GetNewsForGameAsync(Hades.Id, count: 5);
+
+        Assert.Equal(15, CountAskedFor(asked));
+    }
+
+    [Fact]
+    public async Task GetLatestNewsAsync_WithACapAboveTheCount_AsksForNoMoreThanTheCountNeeds()
+    {
+        var asked = new List<Uri>();
+
+        await NewService(IgdbKnowingHades(), asked: asked).GetLatestNewsAsync([Hades.Id], count: 4, maxPerGame: 10);
+
+        Assert.Equal(12, CountAskedFor(asked));
     }
 
     [Fact]

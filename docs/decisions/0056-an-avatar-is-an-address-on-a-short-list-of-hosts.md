@@ -26,7 +26,7 @@ site might have needed consent for". After that change, a game page reached only
 for an image URL and asks for the same answer as this one.
 
 Neither content policy says anything about images. Master's is `frame-ancestors 'none'`.
-[0053](https://github.com/ChronosSF/myvideogamelist/pull/254), open as #254, adds `script-src`,
+[0053](0053-a-documents-scripts-carry-its-renders-nonce.md), open as #254, adds `script-src`,
 `object-src` and `base-uri`. Neither names `img-src` or `default-src`, so no image is blocked today.
 The question was therefore what `img-src` says once it is written, and this change writes it.
 
@@ -235,6 +235,8 @@ way to spend paths. The sitemap is left alone, because it lists names and no nam
 - **0053 and this record write the same header.** Whichever lands second moves
   `img-src ${IMAGE_SOURCES}` into 0053's `documentPolicy`, carries this record's tests of it across,
   and points 0053's §3 here.
+
+  > **Later note.** 0053 landed second, in #254, and did all three.
 - **A Gravatar address carries a hash of an email address**, which anybody who can guess the address
   can confirm. The form says so beside the field.
 - **An avatar can change after it is set**, since the picture is the host's. A profile's display

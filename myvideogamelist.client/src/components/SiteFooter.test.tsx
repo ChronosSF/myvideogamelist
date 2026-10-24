@@ -9,12 +9,21 @@ function renderFooter() {
     render(<RouterProvider router={router} />);
 }
 
+/**
+ * A link out of the site, by its name and the words that say it opens a new tab. Those words keep
+ * their space inside the hidden text, which Testing Library's name computation trims; and jsdom, which
+ * does no layout, leaves the absolutely positioned text inline, so nothing separates it from the name,
+ * where a browser lays it out as a box of its own and does.
+ */
+const outside = (name: string) => (accessibleName: string) =>
+    accessibleName === `${name} (opens in a new tab)` || accessibleName === `${name}(opens in a new tab)`;
+
 describe('SiteFooter', () => {
     it('credits IGDB and Steam, with links a crawler may follow', () => {
         renderFooter();
 
-        const igdb = screen.getByRole('link', { name: 'IGDB.com' });
-        const steam = screen.getByRole('link', { name: 'Steam' });
+        const igdb = screen.getByRole('link', { name: outside('IGDB.com') });
+        const steam = screen.getByRole('link', { name: outside('Steam') });
         expect(igdb).toHaveAttribute('href', 'https://www.igdb.com');
         expect(steam).toHaveAttribute('href', 'https://store.steampowered.com');
         // Steam's terms forbid a nofollow on a link to it.
@@ -25,7 +34,7 @@ describe('SiteFooter', () => {
     it('opens the Discord invite in a new tab, as every link out of the site opens', () => {
         renderFooter();
 
-        const discord = screen.getByRole('link', { name: 'Discord' });
+        const discord = screen.getByRole('link', { name: outside('Discord') });
         expect(discord).toHaveAttribute('href', DISCORD_INVITE_URL);
         expect(discord).toHaveAttribute('target', '_blank');
         expect(discord).toHaveAttribute('rel', 'noopener noreferrer');

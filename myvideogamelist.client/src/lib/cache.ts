@@ -24,6 +24,20 @@
 export const PRIVATE_NO_STORE = 'private, no-store';
 
 /**
+ * Whether a shared cache may store a response sent with this `Cache-Control`.
+ *
+ * True unless it says `private` or `no-store` in so many words, so that a missing header counts as
+ * shared: `entry.server.tsx` sends such a document whole rather than streaming it (ADR 0053), and
+ * the direction to be wrong in is the one that costs a slower first byte. `private="Set-Cookie"`
+ * names fields rather than the response, which stays storable, so it counts as shared too.
+ */
+export function mayBeShared(cacheControl: string | null): boolean {
+    return !(cacheControl ?? '')
+        .split(',')
+        .some((directive) => /^(?:private|no-store)$/i.test(directive.trim()));
+}
+
+/**
  * Cacheable by shared caches for `sMaxAge` seconds, then servable stale for `staleWhileRevalidate`
  * more while the CDN refreshes in the background.
  *
@@ -38,9 +52,10 @@ export function sharedCache(sMaxAge: number, staleWhileRevalidate: number): stri
 /**
  * The home page. Short, because the news and trending rails are the reason to visit.
  *
- * Total staleness is this plus the server's own 15-minute `/api/home` cache, so roughly 20
- * minutes worst case. Shortening this alone would not make the page fresher — the API cache is
- * the binding constraint and would have to come down with it.
+ * Total staleness is this plus the server's own 15-minute `/api/home` cache: fifteen minutes in
+ * the API, five fresh at the edge and up to ten more served stale while the edge revalidates, so
+ * roughly half an hour worst case. Shortening this alone would not make the page fresher — the API
+ * cache is the binding constraint and would have to come down with it.
  */
 export const CACHE_HOME = sharedCache(300, 600);
 
@@ -54,9 +69,11 @@ export const CACHE_GAME = sharedCache(3600, 86_400);
  * The browse and search listing.
  *
  * Shorter than a game page despite similar content, because the response varies by query
- * string. **The CloudFront cache policy must include `search`, `sort`, `platform`, `genre`, `year`
- * and `minScore` in the cache key**, or every visitor is served whichever listing happened to
- * populate the edge first. `@/lib/gameBrowse` is the list of what the page reads.
+ * string. **The CloudFront cache policy must include `search`, `sort`, `platform`, `genre`, `year`,
+ * `minScore` and `esrb` in the cache key**, or every visitor is served whichever listing happened to
+ * populate the edge first — and a parameter left out of it is not even sent to the origin, so the
+ * filter is dropped from every render rather than only from the shared copy. `@/lib/gameBrowse` is
+ * the list of what the page reads, and `infra/src/Infra/Edge.cs` is the policy.
  */
 export const CACHE_GAMES_LIST = sharedCache(600, 3600);
 

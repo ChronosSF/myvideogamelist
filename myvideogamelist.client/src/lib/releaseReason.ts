@@ -27,6 +27,22 @@ const CHILD_OF: Record<ReleaseKind, string> = {
     remaster: 'Remaster of',
     expanded_game: 'New edition of',
     port: 'Port of',
+    update: 'Update for',
+};
+
+/** The same for a run of them in one group (F6): "Updates for Fallout 76". */
+const CHILDREN_OF: Record<ReleaseKind, string> = {
+    game: 'New editions of',
+    dlc: 'DLC for',
+    expansion: 'Expansions for',
+    standalone_expansion: 'Standalone expansions for',
+    episode: 'New episodes of',
+    season: 'New seasons of',
+    remake: 'Remakes of',
+    remaster: 'Remasters of',
+    expanded_game: 'New editions of',
+    port: 'Ports of',
+    update: 'Updates for',
 };
 
 /** The game's place in the set as a sentence about it: "you finished God of War". */
@@ -170,11 +186,12 @@ export function entryReason(entry: Pick<ReleaseEntry, 'releases'>, options: Reas
         case 'child': {
             if (name === null) return 'Connected to one of your games';
 
-            // A run of DLC for one game is the one group that can be called what it is.
+            // A run of one kind of child for one game — its DLC, its updates — is the one group that can be
+            // called what it is.
             const alike = entry.releases.every(r =>
                 r.reason.relation === 'child' && r.reason.gameId === reason.gameId && r.kind === strongest.kind);
             return alike
-                ? `${CHILD_OF[strongest.kind]} ${name}, ${afterName(reason)}`
+                ? `${CHILDREN_OF[strongest.kind]} ${name}, ${afterName(reason)}`
                 : `Connected to ${name}, ${afterName(reason)}`;
         }
         case 'series':

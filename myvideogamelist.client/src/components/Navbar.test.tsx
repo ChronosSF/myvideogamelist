@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMemoryRouter, RouterProvider } from 'react-router';
 import { Navbar } from '@/components/Navbar';
@@ -448,6 +448,94 @@ describe('Navbar user menu', () => {
         await actor.click(screen.getByRole('button', { name: 'User menu' }));
 
         expect(screen.queryByRole('menuitem', { name: 'Admin' })).not.toBeInTheDocument();
+    });
+
+    it('stays open on the reason when the sign-out does not happen', async () => {
+        // Still signed in: closing the menu on nothing would read as the sign-out having worked.
+        authAnswered(ALEX);
+        vi.mocked(auth.logout).mockRejectedValueOnce(new Error('Could not sign you out. Please try again.'));
+        const actor = userEvent.setup();
+        const router = renderNavbar('/games');
+
+        await actor.click(screen.getByRole('button', { name: 'User menu' }));
+        await actor.click(screen.getByRole('menuitem', { name: 'Sign Out' }));
+
+        expect(await screen.findByRole('alert')).toHaveTextContent('Could not sign you out. Please try again.');
+        expect(screen.getByRole('menu')).toBeInTheDocument();
+        expect(router.state.location.pathname).toBe('/games');
+
+        // Closed, it takes the reason with it, so the next opening does not begin on an old failure.
+        await actor.click(document.querySelector<HTMLElement>('.navbar-dropdown-overlay')!);
+        await actor.click(screen.getByRole('button', { name: 'User menu' }));
+        expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    });
+
+    it('says it is signing out, and takes no second press, while the request is out', async () => {
+        authAnswered(ALEX);
+        let finish!: () => void;
+        vi.mocked(auth.logout).mockImplementationOnce(() => new Promise<void>(resolve => { finish = resolve; }));
+        const actor = userEvent.setup();
+        renderNavbar('/games');
+
+        await actor.click(screen.getByRole('button', { name: 'User menu' }));
+        await actor.click(screen.getByRole('menuitem', { name: 'Sign Out' }));
+        const item = screen.getByRole('menuitem', { name: 'Signing out…' });
+        await actor.click(item);
+
+        expect(item).toHaveAttribute('aria-disabled', 'true');
+        expect(auth.logout).toHaveBeenCalledTimes(1);
+        await act(async () => finish());
+    });
+
+    it('opens again on the reason when the refusal lands after the menu was closed', async () => {
+        // Nothing else on screen would say the sign-out did not happen.
+        authAnswered(ALEX);
+        let refuse!: (error: Error) => void;
+        vi.mocked(auth.logout).mockImplementationOnce(() => new Promise<void>((_, reject) => { refuse = reject; }));
+        const actor = userEvent.setup();
+        renderNavbar('/games');
+
+        await actor.click(screen.getByRole('button', { name: 'User menu' }));
+        await actor.click(screen.getByRole('menuitem', { name: 'Sign Out' }));
+        await actor.click(document.querySelector<HTMLElement>('.navbar-dropdown-overlay')!);
+        expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+        await act(async () => refuse(new Error('Could not sign you out. Please try again.')));
+
+        expect(screen.getByRole('menu')).toBeInTheDocument();
+        expect(screen.getByRole('alert')).toHaveTextContent('Could not sign you out. Please try again.');
+    });
+
+    it('takes the last reason down when the sign-out is tried again', async () => {
+        // A second refusal is then a new alert, and is announced as one.
+        authAnswered(ALEX);
+        let refuse!: (error: Error) => void;
+        vi.mocked(auth.logout)
+            .mockRejectedValueOnce(new Error('Could not sign you out. Please try again.'))
+            .mockImplementationOnce(() => new Promise<void>((_, reject) => { refuse = reject; }));
+        const actor = userEvent.setup();
+        renderNavbar('/games');
+
+        await actor.click(screen.getByRole('button', { name: 'User menu' }));
+        await actor.click(screen.getByRole('menuitem', { name: 'Sign Out' }));
+        expect(await screen.findByRole('alert')).toBeInTheDocument();
+        await actor.click(screen.getByRole('menuitem', { name: 'Sign Out' }));
+
+        expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+        await act(async () => refuse(new Error('Could not sign you out. Please try again.')));
+        expect(screen.getByRole('alert')).toBeInTheDocument();
+    });
+
+    it('closes and goes home once signed out', async () => {
+        authAnswered(ALEX);
+        const actor = userEvent.setup();
+        const router = renderNavbar('/games');
+
+        await actor.click(screen.getByRole('button', { name: 'User menu' }));
+        await actor.click(screen.getByRole('menuitem', { name: 'Sign Out' }));
+
+        expect(auth.logout).toHaveBeenCalledTimes(1);
+        await waitFor(() => expect(router.state.location.pathname).toBe('/'));
+        expect(screen.queryByRole('menu')).not.toBeInTheDocument();
     });
 
     it('closes when the page behind it is clicked', async () => {
