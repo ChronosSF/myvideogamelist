@@ -28,10 +28,12 @@ This is the category of bug that is easy to introduce and annoying to diagnose.
 - **Never format in the runtime's default locale during render.** A bare `toLocaleString()`, or an
   `Intl` formatter given no locale, formats in Node's locale on the server and the reader's in the
   browser. Where those disagree so does the text — `5487` against `5,487` — and hydration fails.
-  Counts go through `formatCount` from `@/lib/format`. A locale alone does not make a date safe:
-  without a `timeZone` each side formats in its own, so a release date shows the day before for a
-  reader west of Greenwich. Anything that has to follow the reader's locale, timezone or clock
-  waits for `useHydrated`.
+  Counts go through `formatCount` from `@/lib/format`. A locale alone does not make an instant
+  safe: without a `timeZone` each side formats a timestamp in its own zone. A release date is a day,
+  not an instant: parse it with `parseReleaseDate` from `@/lib/releaseDate` and format it with no
+  `timeZone`, and every runtime reads the day it names. `new Date('YYYY-MM-DD')` is UTC midnight,
+  the day before west of Greenwich, and `timeZone: 'UTC'` on a parsed day is the same slip east of
+  it. Anything that has to follow the reader's locale, timezone or clock waits for `useHydrated`.
 
 ## Route modules
 
