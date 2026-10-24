@@ -122,17 +122,11 @@
     background: rgba(255, 255, 255, 0.1);
 }
 
+/* The size. The circle and the initial's colours are the Avatar component's. */
 .navbar-avatar {
     width: 1.75rem;
     height: 1.75rem;
-    border-radius: 50%;
-    background: var(--color-primary-500);
-    color: var(--color-on-primary);
     font-size: 0.75rem;
-    font-weight: 700;
-    display: flex;
-    align-items: center;
-    justify-content: center;
 }
 
 /* Stands in for the Sign In / Sign Up pair until auth has answered: nothing in it, just the room
