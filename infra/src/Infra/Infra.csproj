@@ -24,6 +24,9 @@
     <!-- The CloudFront Function's source, read at synthesis from beside the built assembly rather
          than from a working directory nobody controls. -->
     <None Include="functions\**" CopyToOutputDirectory="PreserveNewest" />
+    <!-- The holding page's files (ADR 0066), copied beside it as holding\ for the same reason, and
+         uploaded to the bucket from there exactly as they are. -->
+    <None Include="..\..\..\holding\site\**" LinkBase="holding" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

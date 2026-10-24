@@ -2,9 +2,11 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { useAuth } from '@/hooks/useAuth';
 import { ProfileStats } from '@/components/ProfileStats';
+import { ProfileHistory } from '@/components/ProfileHistory';
 import { FavouritesShowcase } from '@/components/FavouritesShowcase';
 import { AccountIdentityCard } from '@/components/AccountIdentityCard';
 import { AccountDataCard } from '@/components/AccountDataCard';
+import { ProfileDetailsCard } from '@/components/ProfileDetailsCard';
 import { ListNamesCard } from '@/components/ListNamesCard';
 import { PageHeader } from '@/components/PageHeader';
 import { PRIVATE_NO_STORE } from '@/lib/cache';
@@ -147,6 +149,11 @@ export function UserPage() {
                         {/* Directly under it, because the two answer the same question from
                             opposite sides: what we know you by, and what everybody else does. */}
                         <AccountIdentityCard user={user} />
+
+                        {/* Then what that public page says about you, under the switch that decides
+                            whether anybody reads it. Keyed by the account, so drafts typed for one
+                            are never shown, or saved, under another. */}
+                        <ProfileDetailsCard key={user.id} user={user} />
                     </section>
 
                     {/* The main column, because what the user has done is the reason they came here
@@ -158,6 +165,13 @@ export function UserPage() {
                         </div>
                         <div className="user-card">
                             <ProfileStats userId={user.id} />
+                        </div>
+                        {/* Under the figures, as the records behind them: each move, score and run
+                            date as it was written, where the chart counts them by ADR 0047's rules.
+                            Here only — the public profile publishes counts, the month series and the
+                            reviews its owner chose to publish, and never this list. */}
+                        <div className="user-card">
+                            <ProfileHistory userId={user.id} />
                         </div>
                     </div>
 

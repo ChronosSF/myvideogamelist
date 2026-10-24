@@ -1,6 +1,6 @@
 # 0029. Favourites are an axis like the wishlist, share its code, and are shown on the profile
 
-**Status:** Implemented
+**Status:** Implemented; §4's mark on cards and §6's order amended by [0064](0064-the-showcase-is-arranged-by-hand-and-shown-in-that-order.md)
 
 ## Context
 

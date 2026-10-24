@@ -33,6 +33,7 @@ function contextValue(overrides: Partial<ListsContextValue> = {}): ListsContextV
         getListFor: () => null,
         scoreFor: () => null,
         setScore: vi.fn(async () => true),
+        moveInOrder: vi.fn(async () => true),
         setOwnership: vi.fn(async () => true),
         setNotes: vi.fn(async () => true),
         deleteEntry: vi.fn(async () => true),
@@ -71,10 +72,12 @@ function favouritesValue(overrides: Partial<FavouritesContextValue> = {}): Favou
         loading: false,
         error: null,
         mutationError: null,
+        orderError: null,
         isFavourite: () => false,
         isPending: () => false,
         add: vi.fn(async () => true),
         remove: vi.fn(async () => true),
+        moveInOrder: vi.fn(async () => true),
         reload: vi.fn(),
         ...overrides,
     };
@@ -162,6 +165,16 @@ async function settled() {
 function shownScore(): number | null {
     const checked = screen.getAllByRole('radio').find(radio => (radio as HTMLInputElement).checked);
     return checked === undefined ? null : Number((checked as HTMLInputElement).value);
+}
+
+/**
+ * That a button is drawn as a save: in the primary, and not in the red, which is the confirmation's
+ * Delete's alone. jsdom applies no stylesheet, so the fill is asked of the class.
+ */
+function expectDrawnAsSave(name: string) {
+    const button = screen.getByRole('button', { name });
+    expect(button).toHaveClass('primary');
+    expect(button).not.toHaveClass('danger');
 }
 
 /** A `setScore` whose promise the test resolves, so the optimistic state is observable. */
@@ -570,6 +583,23 @@ describe('GameUserPanel deleting everything', () => {
         await userEvent.click(screen.getByRole('button', { name: 'Delete' }));
 
         await waitFor(() => expect(shownScore()).toBeNull());
+    });
+
+    it('draws only its Delete in red, and only the saves in the primary', async () => {
+        // A save in the red reads as this Delete, and a Cancel or a Delete in the primary reads as a
+        // save. Mid-edit, so that the playthrough form's Cancel is on screen as well.
+        stubEntryFetch(7, 200, [playthrough({ id: 5 })], undefined, review({ id: 3 }));
+        renderPanel();
+
+        await userEvent.click(await screen.findByRole('button', { name: 'Edit playthrough 1' }));
+        await userEvent.click(screen.getByRole('button', { name: /delete my data/i }));
+
+        // Every button, found by role and asked for its class: "no other" has no query of its own.
+        const drawnIn = (fill: string) => screen.getAllByRole('button')
+            .filter(button => button.classList.contains(fill))
+            .map(button => button.textContent);
+        expect(drawnIn('danger')).toEqual(['Delete']);
+        expect(drawnIn('primary')).toEqual(['Save notes', 'Save playthrough', 'Update review']);
     });
 
     it('backs out on cancel without deleting', async () => {
@@ -1132,6 +1162,17 @@ describe('GameUserPanel playthroughs', () => {
         expect(String(fetchMock.mock.calls[1][0])).toBe('/api/entries/1/playthroughs/5');
     });
 
+    it('draws Log playthrough as a save, and Save playthrough while editing', async () => {
+        stubEntryFetch(null, 200, [playthrough({ id: 5, minutesPlayed: 60 })]);
+        renderPanel();
+
+        await userEvent.click(await screen.findByRole('button', { name: 'Edit playthrough 1' }));
+        expectDrawnAsSave('Save playthrough');
+
+        await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+        expectDrawnAsSave('Log playthrough');
+    });
+
     it('backs out of an edit without saving', async () => {
         const fetchMock = stubEntryFetch(null, 200, [playthrough({ id: 5, minutesPlayed: 60 })]);
         renderPanel();
@@ -1257,6 +1298,20 @@ describe('GameUserPanel review', () => {
             visibility: 'public',
             playthroughId: null,
         });
+    });
+
+    it('draws Save review as a save, and Update review once there is one', async () => {
+        stubEntryFetch(null, 200, [], () =>
+            new Response(JSON.stringify(review({ id: 3, body: 'Superb.' })), { status: 200 }));
+        renderPanel();
+        await settled();
+        expectDrawnAsSave('Save review');
+
+        await userEvent.type(screen.getByLabelText('What you thought'), 'Superb.');
+        await userEvent.click(screen.getByRole('button', { name: 'Save review' }));
+
+        await screen.findByRole('button', { name: 'Update review' });
+        expectDrawnAsSave('Update review');
     });
 
     it('offers to name the playthrough it is about, once there are any', async () => {
@@ -1498,6 +1553,22 @@ describe('GameUserPanel ownership and notes', () => {
         await userEvent.click(screen.getByRole('button', { name: 'Clear notes' }));
 
         expect(ctx.setNotes).toHaveBeenCalledWith(1, null);
+    });
+
+    it('draws Save notes as a save, and Clear notes in neither the primary nor the red', async () => {
+        // Clearing writes what the box says, as any save does, so it is not drawn as the delete;
+        // and it takes the notes away rather than keeping them, so it is not drawn as a save.
+        stubDetail({ notes: 'Old thought.' });
+        renderPanel();
+        await settled();
+        await waitFor(() => expect(notesBox()).toHaveValue('Old thought.'));
+        expectDrawnAsSave('Save notes');
+
+        await userEvent.clear(notesBox());
+
+        const clear = screen.getByRole('button', { name: 'Clear notes' });
+        expect(clear).not.toHaveClass('primary');
+        expect(clear).not.toHaveClass('danger');
     });
 
     it('keeps what was typed and says so when the notes do not save', async () => {

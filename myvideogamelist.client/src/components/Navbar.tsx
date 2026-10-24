@@ -4,9 +4,14 @@ import { useAuth } from '@/hooks/useAuth';
 import { LoginDialog } from '@/components/LoginDialog';
 import { SignupDialog } from '@/components/SignupDialog';
 import { Logo } from '@/components/Logo';
+import { NavbarSearch } from '@/components/NavbarSearch';
+import { useMediaQuery } from '@/lib/useMediaQuery';
 import './Navbar.css';
 
 type DialogState = 'none' | 'login' | 'signup';
+
+/** Where the search box moves into the bar, matching `NavbarSearch.css`. */
+const SEARCH_IN_BAR = '(width >= 64rem)';
 
 interface NavItem {
     to: string;
@@ -26,14 +31,27 @@ export function Navbar() {
     const mainMenuId = useId();
     const mainMenuButton = useRef<HTMLButtonElement>(null);
 
-    // Any navigation closes it — a back-swipe included, which touches nothing in the menu and so
-    // would otherwise leave it open over the next page. Adjusted during render rather than in an
+    // The search box below lg, where it opens from a button as a panel of its own. At most one of
+    // it, the main menu and the user menu is open at a time.
+    const [searchOpen, setSearchOpen] = useState(false);
+
+    // From lg the box is in the bar and there is no panel, so a window widened past it with the panel
+    // open drops it: left set, it would keep the box acting as the panel does — staying open when
+    // focus goes nowhere — where nothing on screen says it is one.
+    const searchInBar = useMediaQuery(SEARCH_IN_BAR);
+    if (searchOpen && searchInBar) {
+        setSearchOpen(false);
+    }
+
+    // Any navigation closes both panels — a back-swipe included, which touches nothing in either and
+    // so would otherwise leave one open over the next page. Adjusted during render rather than in an
     // effect, which would paint it open over that page for a commit and trips
     // react-hooks/set-state-in-effect.
     const [lastLocationKey, setLastLocationKey] = useState(location.key);
     if (lastLocationKey !== location.key) {
         setLastLocationKey(location.key);
         setMainMenuOpen(false);
+        setSearchOpen(false);
     }
 
     // The main menu is painted in the bar's own colours, so the same pairs hold there.
@@ -42,8 +60,10 @@ export function Navbar() {
             ? 'bg-primary-600/20 text-primary-400'
             : 'text-fg-muted hover:text-fg-strong hover:bg-surface';
 
+    // Narrower below lg, where the search button sits beside them: six links, the button and the
+    // user menu only fit a 768px bar with eight pixels taken from each link.
     const navLinkClass = ({ isActive }: { isActive: boolean }) =>
-        `px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${navLinkColours(isActive)}`;
+        `px-2 lg:px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${navLinkColours(isActive)}`;
 
     // Stacked full width in the main menu, and tall enough to hit with a thumb.
     const mainMenuLinkClass = ({ isActive }: { isActive: boolean }) =>
@@ -128,6 +148,7 @@ export function Navbar() {
                                     className="navbar-menu-btn"
                                     onClick={() => {
                                         setMenuOpen(false);
+                                        setSearchOpen(false);
                                         setMainMenuOpen(o => !o);
                                     }}
                                     aria-expanded={mainMenuOpen}
@@ -178,6 +199,17 @@ export function Navbar() {
                         </div>
 
                         <div className="flex items-center gap-2 min-w-0">
+                            <NavbarSearch
+                                panelOpen={searchOpen}
+                                onPanelOpenChange={open => {
+                                    if (open) {
+                                        setMainMenuOpen(false);
+                                        setMenuOpen(false);
+                                    }
+                                    setSearchOpen(open);
+                                }}
+                            />
+
                             {/* Navigation Links */}
                             <nav className="hidden md:flex items-center gap-1" aria-label="Main navigation">
                                 {navItems.map(item => (
@@ -201,6 +233,7 @@ export function Navbar() {
                                         className="navbar-user-btn"
                                         onClick={() => {
                                             setMainMenuOpen(false);
+                                            setSearchOpen(false);
                                             setMenuOpen(o => !o);
                                         }}
                                         aria-haspopup="true"
@@ -320,6 +353,9 @@ export function Navbar() {
             {/* Outside the header on purpose — see .navbar-scrim. */}
             {mainMenuOpen && (
                 <div className="navbar-scrim md:hidden" onClick={() => setMainMenuOpen(false)} aria-hidden="true" />
+            )}
+            {searchOpen && (
+                <div className="navbar-scrim lg:hidden" onClick={() => setSearchOpen(false)} aria-hidden="true" />
             )}
 
             {dialog === 'login' && (

@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="dark">
+    <!--
+        What the distribution answers, with a 404, for any address the bucket has nothing at (ADR 0066).
+        It is also an object in the bucket, so /404.html itself answers 200; the noindex is for that
+        address, and no canonical URL goes with it, since the two together say different things.
+        Every link is from the root, because this page is served at whatever address was asked for.
+    -->
+    <title>Page not found - MyVideoGameList</title>
+    <meta name="robots" content="noindex">
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+    <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+    <header class="site-header">
+        <div class="wrap">
+            <a class="brand" href="/">
+                <svg class="brand-mark" viewBox="0 0 64 64" aria-hidden="true" focusable="false">
+                    <mask id="logo-gap">
+                        <rect width="64" height="64" fill="white"/>
+                        <rect x="37" y="-3" width="30" height="30" rx="11" fill="black"/>
+                    </mask>
+                    <g mask="url(#logo-gap)">
+                        <rect class="logo-tile" y="8" width="56" height="56" rx="15"/>
+                        <path class="logo-play" d="M21 26 40 36 21 46Z" stroke-width="6" stroke-linejoin="round"/>
+                    </g>
+                    <rect class="logo-badge" x="40" width="24" height="24" rx="8"/>
+                    <path class="logo-check" d="M45.5 12 49.5 16 58 7" fill="none" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                <span>MyVideoGame<span class="brand-accent">List</span></span>
+            </a>
+        </div>
+    </header>
+
+    <main class="not-found">
+        <div class="wrap">
+            <h1>Page not found</h1>
+            <p class="lead">
+                There is nothing at this address yet. MyVideoGameList is not open, and its home page
+                says what it will be.
+            </p>
+            <p class="actions">
+                <a class="button" href="/">Go to the home page</a>
+            </p>
+        </div>
+    </main>
+
+    <footer class="site-footer">
+        <div class="wrap">
+            <p>&copy; 2026 MyVideoGameList</p>
+            <p><a href="https://github.com/ChronosSF/myvideogamelist">Code on GitHub</a></p>
+        </div>
+    </footer>
+</body>
+</html>

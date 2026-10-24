@@ -4,10 +4,12 @@ import userEvent from '@testing-library/user-event';
 import { createRoutesStub, Link, Outlet } from 'react-router';
 import { GamePage, meta } from '@/pages/GamePage';
 import type { AuthContextValue } from '@/contexts/AuthContext';
+import type { FavouritesContextValue } from '@/contexts/FavouritesContext';
 import type { UseGameCommunityResult } from '@/hooks/useGameCommunity';
 import { MIN_MEMBER_SCORES } from '@/lib/score';
 import type { UserProfile } from '@/types/auth';
-import { game, userProfile } from '@/test/factories';
+import { game, gameDetails, userProfile } from '@/test/factories';
+import type { GameDetailsDto, GameDto } from '@/types/game';
 import type { Route } from './+types/GamePage';
 
 /**
@@ -26,6 +28,7 @@ const auth: AuthContextValue = {
     logout: vi.fn(async () => {}),
     updateUserName: vi.fn(async () => {}),
     updateProfileVisibility: vi.fn(async () => {}),
+    updateProfileDetails: vi.fn(async () => {}),
     deleteAccount: vi.fn(async () => {}),
 };
 
@@ -50,6 +53,14 @@ const community: UseGameCommunityResult = {
 
 vi.mock('@/hooks/useGameCommunity', () => ({ useGameCommunity: () => community }));
 
+/** The reader's favourites, as far as the rosette reads them. Hoisted and handed back whole, as above. */
+const favoured = new Set<number>();
+const favourites = {
+    isFavourite: (gameId: number) => favoured.has(gameId),
+} as unknown as FavouritesContextValue;
+
+vi.mock('@/hooks/useFavourites', () => ({ useFavourites: () => favourites }));
+
 // All four fetch for themselves after hydration. What this suite is about is which of three things
 // the sidebar shows and what the hero says, so the panel — which has a suite of its own — is
 // reduced to the heading a reader knows it by, and the sections that render nothing until their
@@ -68,12 +79,12 @@ function authAnswered(user: UserProfile | null) {
 }
 
 /** The route with its loader's answer already in hand, as it is on the server. */
-function renderPage() {
+function renderPage(loaded: GameDto = CELESTE) {
     const Stub = createRoutesStub([{ id: 'game', path: '/games/:id', Component: GamePage }]);
     return render(
         <Stub
             initialEntries={['/games/1']}
-            hydrationData={{ loaderData: { game: { game: CELESTE } } }}
+            hydrationData={{ loaderData: { game: { game: loaded } } }}
         />,
     );
 }
@@ -83,6 +94,7 @@ beforeEach(() => {
     auth.loading = true;
     community.settled = false;
     community.scores = null;
+    favoured.clear();
 });
 
 describe('GamePage sidebar before auth has answered', () => {
@@ -98,6 +110,19 @@ describe('GamePage sidebar before auth has answered', () => {
         expect(within(sidebar).queryByRole('heading', { name: 'Your copy' })).not.toBeInTheDocument();
         expect(within(sidebar).queryByText(/sign in to track this game/i)).not.toBeInTheDocument();
         expect(within(sidebar).queryByRole('status')).not.toBeInTheDocument();
+    });
+});
+
+describe('GamePage release date', () => {
+    it('names the day IGDB gives, and its year, west of Greenwich too', () => {
+        // The suite runs west of Greenwich, where 1 January read as UTC midnight is New Year's Eve.
+        const celeste = game({ id: 1, title: 'Celeste', releaseDate: '2027-01-01' });
+        const Stub = createRoutesStub([{ id: 'game', path: '/games/:id', Component: GamePage }]);
+        render(<Stub initialEntries={['/games/1']} hydrationData={{ loaderData: { game: { game: celeste } } }} />);
+
+        expect(within(screen.getByRole('heading', { level: 1 })).getByText('(2027)')).toBeInTheDocument();
+        // Under the title, and again in the sidebar's details.
+        expect(screen.getAllByText('January 1, 2027')).toHaveLength(2);
     });
 });
 
@@ -170,6 +195,82 @@ describe('GamePage trailer', () => {
         expect(await screen.findByRole('heading', { level: 1, name: 'Hades' })).toBeInTheDocument();
         expect(screen.queryByTitle('Hades trailer')).not.toBeInTheDocument();
         expect(screen.getByRole('button', { name: /Play trailer/ })).toBeInTheDocument();
+    });
+});
+
+/**
+ * The rosette drawn on a cover. By its class, the one exception to querying by role: the mark is
+ * deliberately outside the accessibility tree, and what it says is asserted through the words instead.
+ */
+const coverMarks = (root: HTMLElement) => root.querySelectorAll('.favourite-mark-cover');
+
+describe('GamePage related games', () => {
+    const TUNIC = { id: 2, name: 'Tunic', coverImageUrl: null };
+    const HADES = { id: 3, name: 'Hades', coverImageUrl: null };
+    const FAREWELL = { id: 4, name: 'Farewell', coverImageUrl: null };
+
+    function renderWithDetails(details: GameDetailsDto) {
+        authAnswered(userProfile());
+        renderPage(game({ id: 1, title: 'Celeste', details }));
+    }
+
+    it("marks the reader's favourites among the similar games, in the names of their links", () => {
+        favoured.add(TUNIC.id);
+        renderWithDetails(gameDetails({ similarGames: [TUNIC, HADES] }));
+
+        const rail = screen.getByRole('list', { name: 'Games similar to Celeste' });
+        expect(within(rail).getAllByRole('link').map(link => link.textContent))
+            .toEqual(['Tunic, one of your favourites', 'Hades']);
+        expect(coverMarks(within(rail).getByRole('link', { name: /Tunic/ }))).toHaveLength(1);
+        expect(coverMarks(rail)).toHaveLength(1);
+    });
+
+    it("marks the reader's favourites among the expansions and DLC too", () => {
+        favoured.add(FAREWELL.id);
+        renderWithDetails(gameDetails({ expansions: [FAREWELL], dlcs: [HADES] }));
+
+        const rail = screen.getByRole('list', { name: 'Expansions and DLC for Celeste' });
+        expect(within(rail).getAllByRole('link').map(link => link.textContent))
+            .toEqual(['Farewell, one of your favourites', 'Hades']);
+        expect(coverMarks(rail)).toHaveLength(1);
+    });
+});
+
+describe('GamePage where to play', () => {
+    it('lists the stores the API named, in the server render', () => {
+        // In the loader's data, so a crawler and a reader without JavaScript get the row as well.
+        renderPage(game({
+            id: 1,
+            title: 'Celeste',
+            details: gameDetails({
+                stores: [
+                    { store: 'Steam', url: 'https://store.steampowered.com/app/504230' },
+                    { store: 'itch.io', url: 'https://mattmakesgames.itch.io/celeste' },
+                ],
+            }),
+        }));
+
+        const row = screen.getByRole('list', { name: 'Where to play' });
+        expect(within(row).getByRole('link', { name: /^Steam/ }))
+            .toHaveAttribute('href', 'https://store.steampowered.com/app/504230');
+        expect(within(row).getByRole('link', { name: /^itch\.io/ }))
+            .toHaveAttribute('href', 'https://mattmakesgames.itch.io/celeste');
+    });
+
+    it('has no row for a game IGDB names no store for', () => {
+        renderPage(game({ id: 1, title: 'Celeste', details: gameDetails() }));
+
+        expect(screen.queryByRole('heading', { name: 'Where to play' })).not.toBeInTheDocument();
+    });
+
+    it('has no row, and does not fail, when the details lack the stores', () => {
+        // A game page's data is shared-cached for an hour and served stale for up to a day after, so a
+        // copy made before the stores existed can reach a client that expects them.
+        const { stores: _, ...older } = gameDetails();
+        renderPage(game({ id: 1, title: 'Celeste', details: older as GameDetailsDto }));
+
+        expect(screen.getByRole('heading', { level: 1, name: 'Celeste' })).toBeInTheDocument();
+        expect(screen.queryByRole('heading', { name: 'Where to play' })).not.toBeInTheDocument();
     });
 });
 

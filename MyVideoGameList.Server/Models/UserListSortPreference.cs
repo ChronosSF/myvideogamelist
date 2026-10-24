@@ -24,6 +24,18 @@ public static class ListSortKeys
 
     /// <summary>IGDB's critics-only aggregate.</summary>
     public const string CriticScore = "critic_score";
+
+    /// <summary>
+    /// The order the user arranged by hand — <see cref="UserGameEntry.Position"/>, with the games
+    /// never placed after it in the order they joined the list. It has no direction: a hand order
+    /// read backwards is not one anybody arranged, so the client sends <c>Descending</c> false with
+    /// it and ignores the flag on the way back.
+    /// </summary>
+    /// <remarks>
+    /// Accepted for every list, like the other keys; the client offers it on the backlog alone and
+    /// falls back to the default for a list it does not offer it on. See ADR 0054.
+    /// </remarks>
+    public const string Manual = "manual";
 }
 
 /// <summary>How a list view is laid out.</summary>

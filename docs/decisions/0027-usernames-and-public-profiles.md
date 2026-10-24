@@ -1,6 +1,6 @@
 # 0027. Usernames are a namespace, and a profile is published only when asked
 
-**Status:** Implemented. Of the consequences below, the sitemap is [0036](0036-what-a-crawler-is-told.md), and the edge invalidation on withdrawal (D14) is an open GitHub issue.
+**Status:** Implemented. Of the consequences below, the sitemap is [0036](0036-what-a-crawler-is-told.md), and the edge invalidation on withdrawal (D14) is [0058](0058-a-withdrawal-leaves-the-edge-when-it-is-made.md). "A withdrawn profile outlives its withdrawal at the edge" describes the site before 0058, which built the infrastructure it says is missing; the window it describes now remains only where an invalidation fails or the daily ceiling holds one back.
 
 ## Context
 
