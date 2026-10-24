@@ -10,7 +10,10 @@ import type { ListId } from '@/types/list';
 /** How much of a release date IGDB knows (spec §4). The two-week line asks only for `day`. */
 export type ReleasePrecision = 'day' | 'month' | 'quarter' | 'year';
 
-/** What a release is, from IGDB's game type — only the ones F1 keeps. */
+/**
+ * What a release is, from IGDB's game type — only the ones F1 keeps. An `update` is only ever the game
+ * itself or one of its children: no series brings one in.
+ */
 export type ReleaseKind =
     | 'game'
     | 'dlc'
@@ -21,7 +24,8 @@ export type ReleaseKind =
     | 'remake'
     | 'remaster'
     | 'expanded_game'
-    | 'port';
+    | 'port'
+    | 'update';
 
 /** R1, R2 and R3: the game itself, one of its children, or another game in its series. */
 export type ReleaseRelation = 'itself' | 'child' | 'series';

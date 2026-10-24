@@ -4,6 +4,8 @@
 node_modules
 build
 .react-router
+# The Lighthouse audit, which the image never runs, and the package and reports it keeps beside it.
+lighthouse
 coverage
 Dockerfile
 .dockerignore

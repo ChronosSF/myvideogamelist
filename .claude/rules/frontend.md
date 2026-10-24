@@ -22,8 +22,9 @@ This is the category of bug that is easy to introduce and annoying to diagnose.
 - For browser-only state, use `useSyncExternalStore` with a fixed server snapshot, as
   `@/lib/useHydrated` does. Reading in an effect also works but commits a throwaway render
   first, and `getSnapshot` must return a stable reference or React loops.
-- Server-side loaders have no origin to resolve a relative URL against. Use `apiUrl()` from
-  `@/lib/api` for any fetch that can run during SSR.
+- Server-side loaders have no origin to resolve a relative URL against. A loader calls the API with
+  `loaderFetch(context, path)` from `@/lib/trace.server`, which resolves the path as `apiUrl()` does
+  and sends the render's trace as `traceparent`. The lint refuses an import of `apiUrl` anywhere else.
 - **Never format in the runtime's default locale during render.** A bare `toLocaleString()`, or an
   `Intl` formatter given no locale, formats in Node's locale on the server and the reader's in the
   browser. Where those disagree so does the text — `5487` against `5,487` — and hydration fails.
@@ -43,7 +44,9 @@ component plus optional `loader`, `meta`, `links`, `headers` and `ErrorBoundary`
   or indexed. Authenticated, user-specific views can stay client-side.
 - Throw a `Response` from a loader for not-found and upstream failures. The root
   `ErrorBoundary` renders it and the correct HTTP status reaches crawlers — a soft 404 that
-  returns 200 is worse than useless for SEO.
+  returns 200 is worse than useless for SEO. An upstream failure is `upstreamFailure(context,
+  message)`, which carries the trace id the error page asks a reader to quote
+  (`docs/decisions/0059-*`).
 - Give every indexable route a `meta` export that returns `pageMeta(...)` from `@/lib/seo` — it is
   the whole set (title, description, canonical URL, Open Graph, the card), and a leaf's `meta`
   replaces the root's rather than merging with it, so a hand-written list states half of them. Build
@@ -51,8 +54,12 @@ component plus optional `loader`, `meta`, `links`, `headers` and `ErrorBoundary`
   loader: `meta` also runs in the browser, where the environment does not exist. A per-user route
   adds `NOINDEX` instead, and a `noindex` page gets no canonical URL. See `docs/decisions/0036-*`.
 - A resource route (`src/resources/`) returns its own `Response` and never reaches
-  `entry.server.tsx`. Send it through `resourceResponse`, which adds what that file would have, and
-  state its `Cache-Control` like any other route.
+  `entry.server.tsx`. Send it through `resourceResponse`, which adds the headers that file would
+  have, with a content policy that loads nothing in place of a document's nonce, and state its
+  `Cache-Control` like any other route.
+- **Never render an inline `<script>` of our own without deciding how it is admitted.** A document's
+  `script-src` names only its render's nonce and `'self'` (`docs/decisions/0053-*`). A script whose
+  text never changes goes in by its hash in `documentPolicy`.
 - Route types come from `react-router typegen`; import them as `./+types/<RouteName>`.
 
 ## Talking to the API
@@ -77,7 +84,8 @@ that are easy to get wrong and were got wrong once (`docs/decisions/0022-*`):
   state. Restore membership and the values, **not a position** — an index captured before the
   request is stale once another item leaves from in front of it, and the lists are rendered through
   `sortEntries` anyway. The wishlist keeps its order from `addedAt`: derive order from a value, or
-  do not preserve it.
+  do not preserve it. A hand order's position (`docs/decisions/0054-*`) is such a value — a sparse
+  number, not an index — so its undo puts back the number each game had, which the lock keeps true.
 - **Take the per-game lock for every mutation that writes the entry**, scoring included. Two
   requests in flight for one game means the first to fail rolls back over what the second saved.
   The lock is also what makes the captured position safe to trust while the request is out.
@@ -117,6 +125,12 @@ that are easy to get wrong and were got wrong once (`docs/decisions/0022-*`):
 - **Do not call `setState` synchronously inside an effect.** Adjust state during render
   (React's documented pattern for resetting on a prop change), or use `useSyncExternalStore`
   for external state. ESLint enforces this via `react-hooks/set-state-in-effect`.
+- **Every effect has to survive running twice.** React Router's client entry wraps the app in
+  `<StrictMode>`, and since React 19.3 that runs a hydrated tree's effects, their cleanups and the
+  effects again in development: the root providers on every page load, not only what a navigation
+  mounts. A read aborts in its cleanup and drops whatever its aborted request settles with, as the
+  providers do. Without the abort both answers land — `AuthProvider`'s second one had the lists, the
+  wishlist and the favourites read twice on every page load, which is what made this a rule.
 - Always handle loading and error states explicitly. Never leave a silent broken UI.
 - One component per file; filename matches the export.
 
@@ -163,6 +177,15 @@ When nothing fits, add a token, named for its job rather than its look. Don't wr
 Translucent black and white, for shadows and scrims, are the one exception.
 
 There is one theme, dark: no `light:` variant and no `[data-theme='light']` rules (ADR 0048).
+
+## Images
+
+- **An image loads only from a host the document policy names**: `IMAGE_SOURCES` in
+  `@/lib/securityHeaders`, which is this origin, IGDB's CDN and the avatar hosts. Showing one from
+  anywhere else means adding its host there, on purpose; it fails in development exactly as deployed.
+- **A member's picture goes through `Avatar`**, never a bare `<img>`. It loads anonymously and with
+  no referrer, and falls back to the handle's initial on any failure, one before hydration included
+  (`docs/decisions/0056-*`).
 
 ## Tests
 

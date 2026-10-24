@@ -12,6 +12,9 @@
 
 services:
     db:
+        # The integration tests run this image too (PostgresServer.Image in
+        # MyVideoGameList.Server.IntegrationTests), and so do the browser smoke test's and the Lighthouse
+        # audit's service containers in .github/workflows/ci.yml, so change the four together.
         image: postgres:18-alpine
         container_name: mvgl-postgres
         restart: unless-stopped

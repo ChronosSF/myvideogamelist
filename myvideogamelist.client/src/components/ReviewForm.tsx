@@ -145,7 +145,7 @@ export function ReviewForm({
             )}
 
             <div className="game-user-panel-confirm">
-                <button type="submit" className="danger" disabled={pending}>
+                <button type="submit" className="primary" disabled={pending}>
                     {review === null ? 'Save review' : 'Update review'}
                 </button>
                 {review !== null && (

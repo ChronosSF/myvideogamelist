@@ -11,6 +11,7 @@ function renderTable(overrides: {
     entries?: ReturnType<typeof entry>[];
     sort?: SortState;
     pendingIds?: number[];
+    favouriteIds?: number[];
 } = {}) {
     const handlers = {
         onSortChange: vi.fn(),
@@ -18,6 +19,7 @@ function renderTable(overrides: {
         onRemove: vi.fn(),
     };
     const pending = overrides.pendingIds ?? [];
+    const favourites = overrides.favouriteIds ?? [];
 
     render(
         <MemoryRouter>
@@ -26,6 +28,7 @@ function renderTable(overrides: {
                 sort={overrides.sort ?? DEFAULT_SORT}
                 listName="Playing"
                 isPending={id => pending.includes(id)}
+                isFavourite={id => favourites.includes(id)}
                 {...handlers}
             />
         </MemoryRouter>,
@@ -212,5 +215,17 @@ describe('ListTable actions', () => {
         });
 
         expect(screen.getByLabelText('Your score for Ready')).toBeEnabled();
+    });
+});
+
+describe('ListTable favourites', () => {
+    it("marks one of the reader's favourites after its title, in words a screen reader is given", () => {
+        renderTable({
+            entries: [entry({ game: { id: 1, title: 'Celeste' } }), entry({ game: { id: 2, title: 'Hades' } })],
+            favouriteIds: [2],
+        });
+
+        expect(within(row('Hades')).getByRole('img', { name: 'One of your favourites' })).toBeInTheDocument();
+        expect(within(row('Celeste')).queryByRole('img', { name: 'One of your favourites' })).not.toBeInTheDocument();
     });
 });

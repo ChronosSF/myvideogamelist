@@ -165,13 +165,16 @@ export function AccountIdentityCard({ user }: { user: UserProfile }) {
             </div>
             <p className="user-card-hint">
                 {isPublic
-                    // Both halves of what "public" covers, because one of them is prose the user
-                    // wrote and may not expect to be republished by a settings toggle.
-                    ? 'Your lists, scores and activity are visible at the address below, '
-                        + 'along with any review you marked public.'
-                    : 'Nobody else can see your lists, scores or reviews. Publishing shows '
-                        + 'your tracking and the reviews you marked public — never your '
-                        + 'email address or your private reviews.'}
+                    // Everything "public" covers, because some of it is prose the user wrote — the
+                    // reviews, the bio — and may not expect to be republished by a settings toggle.
+                    ? 'Your lists, scores, activity and favourites — in the order you arrange '
+                        + 'them — are visible at the address below, along with your profile '
+                        + 'details and any review you marked public.'
+                    : 'Nobody else can see your lists, scores, favourites or reviews. Publishing '
+                        + 'shows your tracking, your favourites in the order you arrange them, your '
+                        + 'profile details — display name, picture and bio — and the reviews you '
+                        + 'marked public, never your email address or your '
+                        + 'private reviews.'}
             </p>
 
             {/*

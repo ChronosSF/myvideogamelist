@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import { MemoryRouter } from 'react-router';
+import { MemoryRouter, RouterContextProvider } from 'react-router';
 import { HomePage, headers, loader } from '@/pages/HomePage';
 import type { AuthContextValue } from '@/contexts/AuthContext';
+import type { FavouritesContextValue } from '@/contexts/FavouritesContext';
 import { CACHE_HOME, PRIVATE_NO_STORE } from '@/lib/cache';
 import { game } from '@/test/factories';
 import type { HomeResponse, NewsItemDto } from '@/types/news';
@@ -21,10 +22,16 @@ const auth: AuthContextValue = {
     logout: vi.fn(async () => {}),
     updateUserName: vi.fn(async () => {}),
     updateProfileVisibility: vi.fn(async () => {}),
+    updateProfileDetails: vi.fn(async () => {}),
     deleteAccount: vi.fn(async () => {}),
 };
 
 vi.mock('@/hooks/useAuth', () => ({ useAuth: () => auth }));
+
+/** Nobody's favourites: the visitor here is signed out. Hoisted and handed back whole, as above. */
+const favourites = { isFavourite: () => false } as unknown as FavouritesContextValue;
+
+vi.mock('@/hooks/useFavourites', () => ({ useFavourites: () => favourites }));
 
 const SITE = { siteUrl: 'https://myvideogamelist.net', indexable: true };
 
@@ -48,6 +55,9 @@ function stubHome(body: unknown, status = 200) {
     vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify(body), { status })));
 }
 
+/** What React Router hands the loader: the context is where the request's trace lives. */
+const loaderArgs = () => ({ context: new RouterContextProvider() }) as unknown as Route.LoaderArgs;
+
 /** The policy a loader attached through `data()`. */
 const policyOf = (result: Awaited<ReturnType<typeof loader>>) =>
     new Headers(result.init?.headers).get('Cache-Control');
@@ -67,7 +77,7 @@ describe('HomePage loader', () => {
         const home: HomeResponse = { spotlight: null, popular: [game()], news: [NEWS], degraded: false };
         stubHome(home);
 
-        const result = await loader();
+        const result = await loader(loaderArgs());
 
         expect(policyOf(result)).toBe(CACHE_HOME);
         expect(result.data).toEqual({ ...home, site: SITE });
@@ -79,7 +89,7 @@ describe('HomePage loader', () => {
         // home page was pinned at the edge for five minutes and served stale for ten more.
         stubHome({ spotlight: null, popular: [], news: [], degraded: true });
 
-        const result = await loader();
+        const result = await loader(loaderArgs());
 
         expect(policyOf(result)).toBe(PRIVATE_NO_STORE);
     });
@@ -90,7 +100,7 @@ describe('HomePage loader', () => {
         const home: HomeResponse = { spotlight: null, popular: [game()], news: [], degraded: true };
         stubHome(home);
 
-        const result = await loader();
+        const result = await loader(loaderArgs());
 
         expect(policyOf(result)).toBe(PRIVATE_NO_STORE);
         expect(result.data).toEqual({ ...home, site: SITE });
@@ -101,7 +111,7 @@ describe('HomePage loader', () => {
         // exactly why this is not judged from the rails.
         stubHome({ spotlight: null, popular: [game()], news: [NEWS] });
 
-        const result = await loader();
+        const result = await loader(loaderArgs());
 
         expect(policyOf(result)).toBe(PRIVATE_NO_STORE);
         expect(result.data.popular).toHaveLength(1);
@@ -115,7 +125,7 @@ describe('HomePage loader', () => {
     it('degrades, uncached, when the API answers with an error', async () => {
         stubHome({ title: 'Bad Gateway', status: 502 }, 502);
 
-        const result = await loader();
+        const result = await loader(loaderArgs());
 
         expect(policyOf(result)).toBe(PRIVATE_NO_STORE);
         expect(result.data).toEqual({ ...NOTHING, site: SITE });
@@ -125,7 +135,7 @@ describe('HomePage loader', () => {
         // fetch rejects rather than returning !ok, and a rejection here must not become a 500.
         vi.stubGlobal('fetch', vi.fn(async () => { throw new TypeError('fetch failed'); }));
 
-        const result = await loader();
+        const result = await loader(loaderArgs());
 
         expect(policyOf(result)).toBe(PRIVATE_NO_STORE);
         expect(result.data).toEqual({ ...NOTHING, site: SITE });
