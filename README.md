@@ -96,10 +96,13 @@ npm run e2e          # the browser smoke test: needs `docker compose up -d --wai
                      # `npx playwright install chromium`
 npm run lighthouse   # Lighthouse on five pages of the same build, phone and desktop: needs what
                      # `npm run e2e` does, and IGDB's image host to be reachable
+npm run audit        # npm audit, failing at high and critical; `npm run audit:lighthouse` does the
+                     # same over Lighthouse CI's own lock file
 
 cd ..
 dotnet test MyVideoGameList.Server.Tests/MyVideoGameList.Server.Tests.csproj                     # server unit tests
 dotnet test MyVideoGameList.Server.IntegrationTests/MyVideoGameList.Server.IntegrationTests.csproj   # the API over PostgreSQL; needs Docker
+dotnet format MyVideoGameList.slnx                                                               # the house style, as .editorconfig says
 ```
 
 ### Serving the production build
@@ -134,9 +137,13 @@ Health endpoints: `/healthz` (liveness) and `/readyz` (database + IGDB reachabil
 
 ## CI
 
-Pull requests and pushes to `master` are validated by GitHub Actions: the client is linted,
-type-checked and built; the server is built and unit-tested, and its integration suite runs against
-PostgreSQL in a container; a browser smoke test runs the production build and the API behind a
-stand-in for what routes between them, and Lighthouse audits five of its pages; CodeQL analyses both languages.
+Every pull request, whatever branch it targets, and every push to `master` are validated by GitHub
+Actions: the client is linted, type-checked and built; the server is built, unit-tested and checked
+against the house style in `.editorconfig`, and its integration suite runs against PostgreSQL in a
+container; a browser smoke test runs the production build and the API behind a stand-in for what
+routes between them, and Lighthouse audits five of its pages; every package on both sides is
+audited for known vulnerabilities; every commit is scanned for secrets; both images are built, and
+the SSR one started; and CodeQL analyses both languages and the workflows. See
+[ADR 0061](docs/decisions/0061-ci-gates-every-pull-request.md).
 
 [![CI](../../actions/workflows/ci.yml/badge.svg)](../../actions/workflows/ci.yml)

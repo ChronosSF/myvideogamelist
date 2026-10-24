@@ -2,7 +2,10 @@
 
 **Status:** Implemented. Built on [0060](0060-one-browser-test-over-the-production-shape.md)'s
 harness. Three pages went without a performance assertion on a phone until #315 was fixed, and have
-had a baseline since 2026-10-24 (§5).
+had a baseline since 2026-10-24 (§5). What it left to #106 is in
+[0061](0061-ci-gates-every-pull-request.md): the secret scan allows its local credentials and its
+sign-in script's password by reference, and the Dependency audit audits its lockfile against a list of
+its own (§9).
 
 ## Context
 
@@ -261,6 +264,16 @@ of that file.
 Overrides that bump the fixable ones were not added: two of them have no fixed version at all, and
 replacing a tool's dependencies under it is how the tool breaks between one update and the next.
 
+**What 0061 made of it.** Those counts are the first ones, of 2026-10-17. By 2026-10-24 `sprintf-js`'s
+advisory had been withdrawn, and two new highs had reached the tree, `body-parser` under LHCI's express
+and `zod` 3 under puppeteer's `chromium-bidi`, the same two the client then took fixes for.
+`body-parser` 1.20.9 is inside express's range and is taken, which is no override; nothing inside its
+dependents' ranges fixes any of the rest. [0061](0061-ci-gates-every-pull-request.md)'s Dependency
+audit now audits this lockfile too, on its own, against a list in `scripts/audit.mjs` that names each of
+the five highs left (`basic-ftp`, `extract-zip`'s two, `tmp` and `zod`) with why the audit cannot reach
+it and a day to look again, so a new advisory here fails the job until somebody has judged it. An
+advisory with a fix in range is taken, as `body-parser`'s was.
+
 ### 10. axe in full, beside it
 
 Lighthouse's accessibility score runs a subset of axe-core's rules and folds them into one weighted
@@ -307,7 +320,7 @@ that new is the one to wait for.
 - **`postgres:18-alpine` is in four places now**: `compose.yaml`, `PostgresServer`, and the two service
   containers in `ci.yml`, and each file says to change them together. The local container's credentials
   are in five files: `compose.yaml`, `appsettings.Development.json`, the smoke test's and the audit's
-  configs, and `ci.yml`, twice. #106's secret scanning has to allow all of them.
+  configs, and `ci.yml`, twice. #106's secret scanning has to allow all of them, and 0061's does.
 - **Under #254's document policy the audit is unchanged.** Checked with that branch's code in place:
   every page loaded with no violation in its console and the same scores. Lighthouse's own code runs
   through the DevTools protocol, which a page's policy does not govern. What did break was ours: the
