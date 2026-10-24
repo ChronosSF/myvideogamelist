@@ -49,8 +49,7 @@ describe('MultiplayerSummary', () => {
         expect(container).toBeEmptyDOMElement();
     });
 
-    // #318: the component says only co-op ceilings are shown, and falls back to the lobby's.
-    it.skip('never offers a competitive lobby size as how many can play together (#318)', () => {
+    it('never offers a competitive lobby size as how many can play together', () => {
         // A co-op game whose co-op ceilings IGDB does not know, and whose matches hold sixty-four.
         // `onlineMax` says nothing about playing together and is, by the component's own account, the
         // number people misread.

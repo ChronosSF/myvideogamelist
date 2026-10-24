@@ -211,16 +211,87 @@ describe('GameCommunity more reviews', () => {
         expect(screen.queryByText(/^Showing/)).not.toBeInTheDocument();
     });
 
-    it('holds the button while a page is on its way', () => {
-        renderSection(community({ reviews: TEN, total: 12, hasMore: true, loadingMore: true }));
+    it('holds the button while a page is on its way, without letting go of its focus', async () => {
+        // aria-disabled rather than disabled: a disabled button drops the keyboard focus it holds.
+        const loadMore = vi.fn();
+        renderSection(community({ reviews: TEN, total: 12, hasMore: true, loadingMore: true, loadMore }));
+        const button = screen.getByRole('button', { name: 'Loading…' });
 
-        expect(screen.getByRole('button', { name: 'Loading…' })).toBeDisabled();
+        await userEvent.click(button);
+
+        expect(button).toHaveAttribute('aria-disabled', 'true');
+        expect(button).toHaveFocus();
+        expect(loadMore).not.toHaveBeenCalled();
+    });
+
+    it('hands keyboard focus to the first review the page it asked for adds', async () => {
+        const TWELVE = [...TEN, review({ userName: 'member10' }), review({ userName: 'member11' })];
+        const view = renderSection(community({ reviews: TEN, total: 12, hasMore: true }));
+        const rerender = (value: UseGameCommunityResult) =>
+            view.rerender(<MemoryRouter><GameCommunity community={value} viewer={null} /></MemoryRouter>);
+
+        await userEvent.click(screen.getByRole('button', { name: 'Show more reviews' }));
+        rerender(community({ reviews: TEN, total: 12, hasMore: true, loadingMore: true }));
+        // Enabled to the DOM as well as focused: jsdom keeps the focus of a button that turns disabled,
+        // where a browser lets it go, so the focus alone would not show the button had stayed usable.
+        expect(screen.getByRole('button', { name: 'Loading…' })).toBeEnabled();
+        expect(screen.getByRole('button', { name: 'Loading…' })).toHaveFocus();
+
+        // The last page: the button goes, and focus with it unless something takes it first.
+        rerender(community({ reviews: TWELVE, total: 12, hasMore: false }));
+
+        const list = screen.getByRole('list', { name: 'Member reviews' });
+        expect(within(list).getAllByRole('listitem')[10]).toHaveFocus();
+    });
+
+    it('hands keyboard focus to the last review when the last page adds nothing', async () => {
+        // Its reviews withdrawn since the count was taken: the button goes all the same, and the last
+        // review takes the focus rather than the body.
+        const view = renderSection(community({ reviews: TEN, total: 12, hasMore: true }));
+        const rerender = (value: UseGameCommunityResult) =>
+            view.rerender(<MemoryRouter><GameCommunity community={value} viewer={null} /></MemoryRouter>);
+
+        await userEvent.click(screen.getByRole('button', { name: 'Show more reviews' }));
+        rerender(community({ reviews: TEN, total: 12, hasMore: true, loadingMore: true }));
+        rerender(community({ reviews: TEN, total: 10, hasMore: false }));
+
+        const list = screen.getByRole('list', { name: 'Member reviews' });
+        expect(within(list).getAllByRole('listitem')[9]).toHaveFocus();
+    });
+
+    it('leaves keyboard focus where the reader put it, if they moved on while the page loaded', async () => {
+        const TWELVE = [...TEN, review({ userName: 'member10' }), review({ userName: 'member11' })];
+        const view = renderSection(community({ reviews: TEN, total: 12, hasMore: true }));
+        const rerender = (value: UseGameCommunityResult) =>
+            view.rerender(<MemoryRouter><GameCommunity community={value} viewer={null} /></MemoryRouter>);
+
+        await userEvent.click(screen.getByRole('button', { name: 'Show more reviews' }));
+        rerender(community({ reviews: TEN, total: 12, hasMore: true, loadingMore: true }));
+        // Back to the last review's author, as a reader might while waiting; anywhere else would do.
+        await userEvent.tab({ shift: true });
+        expect(screen.getByRole('link', { name: 'member9' })).toHaveFocus();
+        rerender(community({ reviews: TWELVE, total: 12, hasMore: false }));
+
+        expect(screen.getByRole('link', { name: 'member9' })).toHaveFocus();
     });
 
     it('says when a page failed, beside the button that tries again', () => {
         renderSection(community({ reviews: TEN, total: 12, hasMore: true, moreFailed: true }));
 
         expect(screen.getByRole('alert')).toHaveTextContent(/could not load more reviews/i);
-        expect(screen.getByRole('button', { name: 'Show more reviews' })).toBeEnabled();
+        expect(screen.getByRole('button', { name: 'Show more reviews' })).toHaveAttribute('aria-disabled', 'false');
+    });
+
+    it('leaves keyboard focus on the button when the page it asked for fails', async () => {
+        // The page added nothing, and the button is still there to try again.
+        const view = renderSection(community({ reviews: TEN, total: 12, hasMore: true }));
+        const rerender = (value: UseGameCommunityResult) =>
+            view.rerender(<MemoryRouter><GameCommunity community={value} viewer={null} /></MemoryRouter>);
+
+        await userEvent.click(screen.getByRole('button', { name: 'Show more reviews' }));
+        rerender(community({ reviews: TEN, total: 12, hasMore: true, loadingMore: true }));
+        rerender(community({ reviews: TEN, total: 12, hasMore: true, moreFailed: true }));
+
+        expect(screen.getByRole('button', { name: 'Show more reviews' })).toHaveFocus();
     });
 });

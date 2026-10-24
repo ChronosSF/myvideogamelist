@@ -161,10 +161,13 @@ public class GamesController(
         {
             return Ok(await communityService.GetReviewsAsync(id, after, cancellationToken));
         }
-        catch (ArgumentException)
+        catch (ArgumentException exception) when (exception.ParamName == nameof(after))
         {
             // The one rule an attribute cannot express, since it takes the key ring to check. Put
             // in the shape ValidationProblemDetails gives every other 400, beside the parameter.
+            // Only the service's refusal of the cursor, which names it: any other ArgumentException,
+            // out of range from deeper code say, is a fault rather than a bad page, and goes on to
+            // the exception handler as a 500.
             ModelState.AddModelError(nameof(after), "That is not a page of this list. Start again from the first.");
             return ValidationProblem(ModelState);
         }

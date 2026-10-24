@@ -40,7 +40,7 @@ export function TrendingRail({ games }: TrendingRailProps) {
                 <li key={game.id} className="shrink-0 snap-start">
                     <Link
                         to={`/games/${game.id}`}
-                        className="group block w-32 sm:w-36 focus:outline-none focus-visible:ring-2 focus-visible:ring-focus rounded-xl"
+                        className="group block w-32 sm:w-36 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus rounded-xl"
                     >
                         <div className="relative aspect-[3/4] rounded-xl overflow-hidden bg-surface border border-line group-hover:border-primary-500/60 transition-all duration-300 group-hover:-translate-y-1 shadow-lg">
                             {game.coverImageUrl && (

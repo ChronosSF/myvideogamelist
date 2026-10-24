@@ -578,8 +578,13 @@ public class GameCommunityServiceTests
         Assert.NotNull(foreign);
 
         var service = NewService(db);
-        await Assert.ThrowsAsync<ArgumentException>(() => service.GetReviewsAsync(GameId, "not-a-cursor"));
-        await Assert.ThrowsAsync<ArgumentException>(() => service.GetReviewsAsync(GameId, foreign));
+        var malformed = await Assert.ThrowsAsync<ArgumentException>(() => service.GetReviewsAsync(GameId, "not-a-cursor"));
+        var unreadable = await Assert.ThrowsAsync<ArgumentException>(() => service.GetReviewsAsync(GameId, foreign));
+
+        // Named for the parameter, which is what GamesController.GetReviews answers as a bad page:
+        // under any other name the refusal would go on to the exception handler as a 500.
+        Assert.Equal("after", malformed.ParamName);
+        Assert.Equal("after", unreadable.ParamName);
     }
 
     [Fact]

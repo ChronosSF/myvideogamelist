@@ -94,7 +94,8 @@ export function NewsCard({ item, showGame = true }: NewsCardProps) {
                     rel="noopener noreferrer"
                     className="block font-semibold text-fg-strong leading-snug group-hover:text-primary-400 transition-colors"
                 >
-                    {item.title}
+                    {item.title}{' '}
+                    <span className="sr-only">(opens in a new tab)</span>
                 </a>
 
                 {item.excerpt && (
