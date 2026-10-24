@@ -213,6 +213,70 @@ describe('GameCard wishlist failure', () => {
     });
 });
 
+describe('GameCard list options toggle', () => {
+    const toggle = () => screen.getByRole('button', { name: 'Open list options for Celeste' });
+
+    it('shows no words and holds no other control', () => {
+        // A control's name has to contain the words it shows (WCAG 2.5.3), and a control may not hold
+        // another: the cover was once the toggle itself, around a score and the list buttons (issue 329).
+        renderCard();
+
+        expect(toggle()).toBeEmptyDOMElement();
+        expect(toggle().contains(screen.getByRole('button', { name: 'Backlog' }))).toBe(false);
+    });
+
+    it('opens the overlay and closes it again', async () => {
+        renderCard();
+
+        expect(toggle()).toHaveAttribute('aria-expanded', 'false');
+        await userEvent.click(toggle());
+        expect(toggle()).toHaveAttribute('aria-expanded', 'true');
+        await userEvent.click(toggle());
+        expect(toggle()).toHaveAttribute('aria-expanded', 'false');
+    });
+
+    it('opens from the keyboard', async () => {
+        renderCard();
+
+        toggle().focus();
+        await userEvent.keyboard('{Enter}');
+        expect(toggle()).toHaveAttribute('aria-expanded', 'true');
+        await userEvent.keyboard(' ');
+        expect(toggle()).toHaveAttribute('aria-expanded', 'false');
+    });
+
+    it('opens when the tap lands on the overlay rather than the toggle', async () => {
+        // On a phone, a tap hovers the card before it clicks, which shows the overlay and puts it under
+        // the finger. By its class: the overlay is a presentation layer with no role to find it by.
+        const { container } = render(
+            <MemoryRouter>
+                <ListsContext.Provider value={listsValue()}>
+                    <WishlistContext.Provider value={wishlistValue()}>
+                        <FavouritesContext.Provider value={favouritesValue()}>
+                            <GameCard game={CELESTE} />
+                        </FavouritesContext.Provider>
+                    </WishlistContext.Provider>
+                </ListsContext.Provider>
+            </MemoryRouter>,
+        );
+
+        await userEvent.click(container.querySelector('.game-card-overlay')!);
+        expect(toggle()).toHaveAttribute('aria-expanded', 'true');
+
+        await userEvent.click(container.querySelector('.game-card-overlay')!);
+        expect(toggle()).toHaveAttribute('aria-expanded', 'true');
+    });
+
+    it('leaves the overlay open when a list button inside it is pressed', async () => {
+        renderCard();
+
+        await userEvent.click(toggle());
+        await userEvent.click(screen.getByRole('button', { name: 'Backlog' }));
+
+        expect(toggle()).toHaveAttribute('aria-expanded', 'true');
+    });
+});
+
 describe('GameCard cover', () => {
     const COVERED = game({
         id: 2,
@@ -267,8 +331,7 @@ const coverMarks = () => document.querySelectorAll('.favourite-mark-cover');
 
 describe('GameCard favourite mark', () => {
     it("marks one of the reader's favourites, and says so in its heading", () => {
-        // The rosette on the cover is decoration: the cover is a button with a name of its own, so a
-        // screen reader would hear nothing inside it. The heading is where the words go (ADR 0064).
+        // The rosette on the cover is decoration. The heading is where the words go (ADR 0064).
         renderCard({}, {}, { isFavourite: id => id === CELESTE.id });
 
         expect(screen.getByRole('heading', { name: 'Celeste, one of your favourites' })).toBeInTheDocument();
