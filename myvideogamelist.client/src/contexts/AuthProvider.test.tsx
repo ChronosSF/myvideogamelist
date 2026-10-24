@@ -324,8 +324,7 @@ describe('AuthProvider signing in', () => {
         expect(onClose).not.toHaveBeenCalled();
     });
 
-    // #331: the dialog shows the browser's own error, which reads "Failed to fetch" in Chrome.
-    it.skip('says in its own words that the API could not be reached, not in the browser\'s (#331)', async () => {
+    it('says in its own words that the API could not be reached, not in the browser\'s', async () => {
         const actor = quickActor();
         await openSignIn({ 'POST /api/auth/login': unreachable });
 
@@ -670,8 +669,7 @@ describe('AuthProvider account writes', () => {
         expect(screen.getByText('Nobody is signed in')).toBeInTheDocument();
     });
 
-    // #331: `logout` signs the reader out on screen whatever the API answered.
-    it.skip('keeps the session, and says so, when the API refuses to sign out (#331)', async () => {
+    it('keeps the session, and says so, when the API refuses to sign out', async () => {
         // Shown signed out while the cookie lives on, the reader leaves a shared computer signed in.
         const actor = quickActor();
         await renderSignedIn({ 'POST /api/auth/logout': () => empty(502) });
