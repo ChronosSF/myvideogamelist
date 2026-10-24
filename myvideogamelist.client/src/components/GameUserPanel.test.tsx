@@ -291,7 +291,9 @@ describe('GameUserPanel list placement', () => {
             <Lists>
                 <WishlistContext.Provider value={wishlistValue()}>
                     <FavouritesContext.Provider value={favouritesValue()}>
-                        <GameUserPanel game={CELESTE} profileVisibility="private" onCommunityChange={vi.fn()} />
+                        <TagsContext.Provider value={tagsValue()}>
+                            <GameUserPanel game={CELESTE} profileVisibility="private" onCommunityChange={vi.fn()} />
+                        </TagsContext.Provider>
                     </FavouritesContext.Provider>
                 </WishlistContext.Provider>
             </Lists>,

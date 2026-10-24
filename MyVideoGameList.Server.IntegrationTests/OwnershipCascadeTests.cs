@@ -73,12 +73,9 @@ public class OwnershipCascadeTests(ApiFactory api) : IClassFixture<ApiFactory>
     public async Task ExecuteDelete_OnAParentRow_TakesEveryRowThatCannotExistWithoutIt()
     {
         // The other edge, which UserOwnedDataTests asserts of the model and this asserts of the
-        // database: a playthrough or a review without its entry, an import row without its job. Each
-        // parent is deleted the way the retention sweep deletes jobs — one DELETE, nothing loaded —
-        // so only the constraint can take the children (ADR 0038).
-        using var browser = api.CreateBrowser();
-        var user = await RecordEverythingAsync(browser, "parent");
-
+        // database: a playthrough, a review or a tag's link without its entry, a link without its tag,
+        // an import row without its job. Each parent is deleted the way the retention sweep deletes
+        // jobs — one DELETE, nothing loaded — so only the constraint can take the children (ADR 0038).
         await using var db = api.Database();
 
         var dependents = db.Model.GetEntityTypes()
@@ -94,7 +91,9 @@ public class OwnershipCascadeTests(ApiFactory api) : IClassFixture<ApiFactory>
         Assert.Equal(
             [
                 (nameof(ImportJob), nameof(ImportRow)),
+                (nameof(Tag), nameof(UserGameEntryTag)),
                 (nameof(UserGameEntry), nameof(Review)),
+                (nameof(UserGameEntry), nameof(UserGameEntryTag)),
                 (nameof(UserGameEntry), nameof(UserGamePlaythrough)),
             ],
             dependents
@@ -103,6 +102,11 @@ public class OwnershipCascadeTests(ApiFactory api) : IClassFixture<ApiFactory>
 
         foreach (var family in dependents)
         {
+            // An account of its own for each parent, because a tag's link has two: deleting the
+            // entries first would leave no link for deleting the tags to be seen taking.
+            using var browser = api.CreateBrowser();
+            var user = await RecordEverythingAsync(browser, "parent");
+
             var parent = family.Key;
             var children = family.Distinct().ToList();
 
@@ -205,6 +209,11 @@ public class OwnershipCascadeTests(ApiFactory api) : IClassFixture<ApiFactory>
         // UserWishlistItems, UserFavourites.
         await Write(HttpMethod.Put, $"/api/wishlist/{Wanted}");
         await Write(HttpMethod.Put, $"/api/favourites/{Played}");
+
+        // Tags, UserGameEntryTags: one of the account's own tags, on the game it finished.
+        var created = await browser.SendAsync(HttpMethod.Post, "/api/tags", new TagNameDto("co-op"));
+        var tag = await created.ReadAsync<TagDto>(HttpStatusCode.Created);
+        await Write(HttpMethod.Put, $"/api/entries/{Played}/tags", new SetEntryTagsDto([tag.Id]));
 
         // UserListSortPreferences, UserListSettings.
         await Write(HttpMethod.Put, "/api/user/list-preferences", new UpdateListPreferencesDto(

@@ -708,7 +708,7 @@ public class TagServiceTests
         var cache = Substitute.For<IGameCacheService>();
         cache.GetGamesAsync(Arg.Any<IEnumerable<int>>(), Arg.Any<CancellationToken>())
             .Returns(gameIds.Select(Game).ToList());
-        return new ListService(db, cache, new FixedClock(Midday));
+        return new ListService(db, cache, new FixedClock(Midday), EdgeFakes.Withdrawals(db));
     }
 
     [Fact]

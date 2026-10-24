@@ -21,7 +21,7 @@ public record TagDto(int Id, string Name, int Count);
 /// A name for a new tag, or a new name for one that exists. Normalised by <see cref="TagNamePolicy"/>
 /// before it is stored, and refused beside the field when it cannot be.
 /// </summary>
-public record TagNameDto([Required] [ValidTagName] string Name);
+public record TagNameDto([Required][ValidTagName] string Name);
 
 /// <summary>
 /// Every tag one game should carry, replacing whatever it carried — the whole set, so that one change on
