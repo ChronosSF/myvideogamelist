@@ -1,5 +1,6 @@
 import { useId, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
+import { CoverImage } from '@/components/CoverImage';
 import { PageHeader } from '@/components/PageHeader';
 import { useAuth } from '@/hooks/useAuth';
 import { useLists } from '@/hooks/useLists';
@@ -136,7 +137,8 @@ export function ImportReviewPage() {
     if (result) {
         return (
             <ResultPanel
-                imported={result.job.importedCount ?? 0}
+                rows={result.job.importedCount ?? 0}
+                games={result.games}
                 unlisted={result.unlisted}
                 skipped={result.skipped}
                 fileName={result.job.fileName}
@@ -312,7 +314,7 @@ export function ImportReviewPage() {
                                             decide(row, event.target.checked ? IMPORT_DECISION.import : IMPORT_DECISION.skip)}
                                     />
 
-                                    <Cover url={row.game?.coverImageUrl} className="w-9 h-12" />
+                                    <Cover url={row.game?.coverImageUrl} className="w-9 h-12" sizes="2.25rem" />
 
                                     <div className="min-w-0 grow">
                                         <p className="text-fg text-sm font-medium truncate">
@@ -506,10 +508,15 @@ function PlayedChoice({ id, count, status, disabled, label, onChoose }: {
     );
 }
 
-/** A game's cover, or the space one would take. */
-function Cover({ url, className }: { url?: string | null; className: string }) {
+/**
+ * A game's cover, or the space one would take. A review can run to hundreds of rows, each a thumbnail a
+ * few rems wide, which is where loading the smallest size IGDB has saves the most.
+ *
+ * @param sizes The width the classes draw it at, as an `<img sizes>` value.
+ */
+function Cover({ url, className, sizes }: { url?: string | null; className: string; sizes: string }) {
     return url
-        ? <img src={url} alt="" className={`${className} object-cover rounded shrink-0`} loading="lazy" />
+        ? <CoverImage url={url} alt="" sizes={sizes} className={`${className} object-cover rounded shrink-0`} />
         : <div className={`${className} rounded bg-raised/60 shrink-0`} aria-hidden="true" />;
 }
 
@@ -530,7 +537,7 @@ function CandidateButton({ candidate, onChoose }: { candidate: GameDto; onChoose
             onClick={onChoose}
             className="flex items-center gap-2 pl-1 pr-2.5 py-1 bg-page/60 border border-line-strong hover:border-primary-500 rounded-lg text-left transition-colors"
         >
-            <Cover url={candidate.coverImageUrl} className="w-6 h-8" />
+            <Cover url={candidate.coverImageUrl} className="w-6 h-8" sizes="1.5rem" />
             <span className="text-xs text-fg font-medium">
                 {candidate.title}
                 {year !== null && (
@@ -587,24 +594,53 @@ function Badge({ children, tone = 'neutral' }: { children: React.ReactNode; tone
  * silently lost, and a number does not tell somebody which games to add by hand. The games in no
  * list are said out loud for the same reason — "now in your lists" was once the whole sentence, and
  * it was false of three-quarters of a real library.
+ *
+ * What it counts is games, because games are what is now in somebody's library. The rows they came
+ * from are a different number only when two of the rows it imported named one game — as a source
+ * that lists a game once per platform does — and only then does the panel speak of rows. Then it
+ * has to: after a review that said it would import 14, a bare "11 games" reads as three lost.
  */
-function ResultPanel({ imported, unlisted, skipped, fileName }: {
-    imported: number;
+function ResultPanel({ rows, games, unlisted, skipped, fileName }: {
+    /** The rows imported — the job's `importedCount`, which with the skipped ones is every row. */
+    rows: number;
+    /** The games those rows went into: fewer than `rows` when two of them named one game. */
+    games: number;
+    /** How many of those games are in no list. */
     unlisted: number;
     skipped: { title: string; sourceStatus: string | null; reason: string }[];
     fileName: string;
 }) {
+    const counted = (count: number, one: string, many: string) =>
+        `${formatCount(count)} ${count === 1 ? one : many}`;
+
+    const merged = games < rows;
+    const from = merged ? `, from ${counted(rows, 'row', 'rows')} of your file` : '';
+
+    // Straight after "rows of your file" a bare "them" could be the rows, and a row is in no list.
+    const ofThem = merged ? 'of the games' : 'of them';
+
+    const inNoList = games === 1
+        ? 'It is in no list, so it is on its own game page rather than in your lists.'
+        : unlisted === 1
+            ? `1 ${ofThem} is in no list, so it is on its own game page rather than in your lists.`
+            : `${formatCount(unlisted)} ${ofThem} are in no list, so they are on their own game pages rather than in your lists.`;
+
+    const outcome = unlisted === 0
+        ? `${counted(games, 'game is', 'games are')} now in your lists${from}.`
+        : `${counted(games, 'game was', 'games were')} imported${from}. ${inNoList}`;
+
+    // A skipped row is a row, and can be one whose game another row imported. Until the panel has
+    // spoken of rows, the file's rows are its games and need no noun of their own.
+    const passedOver = skipped.length === 0
+        ? ''
+        : ` ${merged ? counted(skipped.length, 'row was', 'rows were') : counted(skipped.length, 'was', 'were')} skipped.`;
+
     return (
         <div className="max-w-2xl mx-auto px-4 py-16 text-center">
             <h1 className="text-2xl font-bold text-fg-strong mb-2">Import finished</h1>
             <p className="text-fg-muted mb-8">
-                {unlisted === 0
-                    ? `${formatCount(imported)} ${imported === 1 ? 'game is' : 'games are'} now in your lists.`
-                    : `${formatCount(imported)} ${imported === 1 ? 'game was' : 'games were'} imported. `
-                        + (unlisted === 1
-                            ? '1 of them is in no list, so it is on its own game page rather than in your lists.'
-                            : `${formatCount(unlisted)} of them are in no list, so they are on their own game pages rather than in your lists.`)}
-                {skipped.length > 0 && ` ${formatCount(skipped.length)} ${skipped.length === 1 ? 'was' : 'were'} skipped.`}
+                {outcome}
+                {passedOver}
             </p>
 
             <div className="flex flex-wrap items-center justify-center gap-3">

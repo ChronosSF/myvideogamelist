@@ -38,11 +38,20 @@ public record LoginDto(string Email, string Password, bool RememberMe = false);
 /// (spec §7, A6). It decides what the client shows and nothing else: every admin endpoint asks the
 /// policy for itself.
 /// </para>
+/// <para>
+/// <paramref name="DisplayName"/>, <paramref name="AvatarUrl"/> and <paramref name="Bio"/> are what
+/// the settings page edits, and they ride here rather than behind a request of their own so that a
+/// save can hand the whole profile back as the other changes do. None is more than a few hundred
+/// characters, and this is the signed-in user's own response, never a shared one.
+/// </para>
 /// </remarks>
 public record UserProfileDto(
     string Id,
     string Email,
     string UserName,
+    string? DisplayName,
+    string? AvatarUrl,
+    string? Bio,
     string Theme,
     string ProfileVisibility,
     bool IsAdmin)
@@ -53,7 +62,16 @@ public record UserProfileDto(
     /// profile that is missing something the others carry.
     /// </summary>
     public static UserProfileDto For(ApplicationUser user, bool isAdmin) =>
-        new(user.Id, user.Email!, user.UserName!, user.Theme, user.ProfileVisibility, isAdmin);
+        new(
+            user.Id,
+            user.Email!,
+            user.UserName!,
+            user.DisplayName,
+            user.AvatarUrl,
+            user.Bio,
+            user.Theme,
+            user.ProfileVisibility,
+            isAdmin);
 }
 
 /// <summary>A rename. The one field, validated the same way registration validates it.</summary>
@@ -71,3 +89,23 @@ public record UpdateProfileVisibilityDto(
     [Required]
     [AllowedValues(ProfileVisibility.Public, ProfileVisibility.Private)]
     string ProfileVisibility);
+
+/// <summary>
+/// What the account says about itself on its public profile: the name it is shown by, a picture,
+/// and a few lines. All three at once, each optional.
+/// </summary>
+/// <remarks>
+/// <para>
+/// A replacement rather than a patch: the settings form shows all three and saves them together, so
+/// a field left out or sent blank is a field cleared. Each is judged as it will be stored — see
+/// <see cref="ProfileDetailAttribute"/> — and a refusal comes back keyed by its field.
+/// </para>
+/// <para>
+/// The attributes target the constructor parameters, as <see cref="ReviewInputDto"/>'s do. See ADR
+/// 0056 for what each one allows and why.
+/// </para>
+/// </remarks>
+public record UpdateProfileDetailsDto(
+    [DisplayNameText] string? DisplayName,
+    [AvatarUrl] string? AvatarUrl,
+    [BioText] string? Bio);

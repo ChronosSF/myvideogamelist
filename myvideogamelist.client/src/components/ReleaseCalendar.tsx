@@ -21,6 +21,26 @@ import './ReleaseCalendar.css';
 /** How many entries a band shows before "Show all": about two rows at full width. */
 const SHOWN_AT_FIRST = 12;
 
+/*
+ * How wide a cover is drawn, for the sizes it is fetched at. Below 768px the calendar is a list, and every
+ * cover is the list's 7.5rem art less its border.
+ *
+ * In a band or the undated list, a column of `calendar-entry-list` is at least `--calendar-card` (8.5rem)
+ * and stretches to share what is left of the row, which comes to about 9.5rem in practice.
+ *
+ * In the grid, a day is a seventh of the page container, less the grid's border and its six one-pixel
+ * gaps, less the day's own padding and the cover's border. The container is `max-w-7xl` with
+ * `px-4 sm:px-6 lg:px-8`, so its width is 76rem from 80rem up and the viewport less its padding below.
+ */
+const PHONE = '(max-width: 767.98px) calc(7.5rem - 2px)';
+const ENTRY_COVER_SIZES = `${PHONE}, calc(9.5rem - 2px)`;
+const DAY_COVER_SIZES = [
+    PHONE,
+    '(min-width: 80rem) calc((76rem - 8px) / 7 - 1rem - 2px)',
+    '(min-width: 64rem) calc((100vw - 4rem - 8px) / 7 - 1rem - 2px)',
+    'calc((100vw - 3rem - 8px) / 7 - 1rem - 2px)',
+].join(', ');
+
 function entryKey(entry: CardEntry): string {
     return `${entry.groupName ?? ''}|${entry.releases.map(r => r.gameId).join(',')}`;
 }
@@ -35,7 +55,7 @@ function EntryList({ entries, undated = false, label }: { entries: readonly Card
             <ul className="calendar-entry-list" aria-label={label}>
                 {shown.map(entry => (
                     <li key={entryKey(entry)}>
-                        <ReleaseCard entry={entry} undated={undated} />
+                        <ReleaseCard entry={entry} sizes={ENTRY_COVER_SIZES} undated={undated} />
                     </li>
                 ))}
             </ul>
@@ -118,7 +138,7 @@ function DayCell({ day, layout, today }: { day: CalendarDay; layout: MonthLayout
                 <ul className="calendar-day-entries" aria-label={`Due on ${label.full}`}>
                     {day.entries.map(entry => (
                         <li key={entryKey(entry)}>
-                            <ReleaseCard entry={entry} />
+                            <ReleaseCard entry={entry} sizes={DAY_COVER_SIZES} />
                         </li>
                     ))}
                 </ul>

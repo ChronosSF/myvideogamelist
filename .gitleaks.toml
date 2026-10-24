@@ -1,0 +1,135 @@
+# What CI's secret scan looks for (ADR 0061): gitleaks' own rules, four rules more for the shapes this
+# repository's secrets take and the default rules miss, and seven findings allowed, each by exactly
+# what it is rather than by a file or a rule turned off. This file is the one place a finding is
+# allowed: CI's scan ignores gitleaks:allow comments and refuses a .gitleaksignore.
+title = "MyVideoGameList"
+
+[extend]
+useDefault = true
+
+# A password in a connection string or a database container's environment, whatever it looks like:
+# the default generic rule wants ten characters or more that look random, so a real connection string
+# with a short or guessable password passes it. Npgsql's Password=, quoted or not; an upper-case
+# *_PASSWORD setting such as POSTGRES_PASSWORD, by = or by a YAML colon; and PGPASSWORD. Not
+# "Password = value" with spaces, which is how C# assigns a property, nor a lower-case _password: that
+# is a TypeScript parameter.
+[[rules]]
+id = "connection-password"
+description = "A password in a connection string or a database container's environment"
+regex = '''(?i)(?:(?:\b|_)(?:password|pwd)=['"]?|(?-i:\b[A-Z][A-Z0-9_]*_PASSWORD)\s*[:=]\s*['"]?|\bpgpassword\s*[:=]\s*['"]?)([^\s;'"`]+)'''
+secretGroup = 1
+keywords = ["password", "pwd="]
+
+    # A reference to a password is not one: $(command), ${VARIABLE}, ${{ secrets.X }}, $VARIABLE, and
+    # an interpolated {password}.
+    [[rules.allowlists]]
+    description = "A variable, an expression or an interpolation standing for the password"
+    regexTarget = "secret"
+    regexes = ['''^\$[({]''', '''^\$\w+$''', '''^\{\w+\}$''']
+
+    # The local container's credentials, mvgl/localdev, committed on purpose so that a fresh checkout
+    # runs with no setup (CLAUDE.md's "Running locally"; ADR 0060 names four of the files, and ADR 0068
+    # the Lighthouse audit's config). They reach nothing beyond a developer's machine or a runner.
+    # Allowed as that value in the five files that hold it, and nowhere else: the same password in a
+    # sixth file, or another password in one of these, still fails.
+    [[rules.allowlists]]
+    description = "The compose container's committed local credentials"
+    condition = "AND"
+    regexTarget = "secret"
+    regexes = ['''^localdev$''']
+    paths = [
+        '''^compose\.yaml$''',
+        '''^MyVideoGameList\.Server/appsettings\.Development\.json$''',
+        '''^myvideogamelist\.client/e2e/playwright\.config\.ts$''',
+        '''^myvideogamelist\.client/lighthouse/playwright\.config\.ts$''',
+        '''^\.github/workflows/ci\.yml$''',
+    ]
+
+    # An itch.io page's own password, in an address one of IGDB's rows holds, in the test that shows
+    # such a page is passed over rather than handed to every reader (#291). Not ours, and public
+    # wherever IGDB's data is.
+    [[rules.allowlists]]
+    description = "An itch.io page's password, in an address IGDB holds, in the store-links test"
+    condition = "AND"
+    regexTarget = "secret"
+    regexes = ['''^spotlightor$''']
+    paths = ['''^MyVideoGameList\.Server\.Tests/StoreLinksTests\.cs$''']
+
+    # The Lighthouse audit gives its sign-in script the password of the run's throwaway account as
+    # LIGHTHOUSE_PASSWORD: account.password, a property of the account it registered (ADR 0068): a
+    # reference, of a kind the allowlist of references above does not know.
+    [[rules.allowlists]]
+    description = "The Lighthouse audit's account's password, handed to its sign-in script by reference"
+    condition = "AND"
+    regexTarget = "secret"
+    regexes = ['''^account\.password,$''']
+    paths = ['''^myvideogamelist\.client/lighthouse/audit\.lh\.ts$''']
+
+# A password in a URL's user information, as a database URL carries it. The default rules have none.
+# A <placeholder> is not a password; gitleaks' own allowlist already passes ${VARIABLE} and %s.
+[[rules]]
+id = "url-password"
+description = "A password in the user information of a URL"
+regex = '''(?i)\b[a-z][a-z0-9+.-]*://[^\s:/@'"`<>]+:([^\s/@'"`<>]+)@[^\s/@'"`<>]+'''
+secretGroup = 1
+keywords = ["://"]
+
+    # The avatar policy's test of an address with credentials in its authority, which the policy
+    # refuses (ADR 0056): a made-up user:pass before a host on its list.
+    [[rules.allowlists]]
+    description = "An avatar address the policy test refuses for the credentials in it"
+    condition = "AND"
+    regexTarget = "match"
+    regexes = ['''^https://user:pass@i\.imgur\.com$''']
+    paths = ['''^MyVideoGameList\.Server\.Tests/ProfileDetailsPolicyTests\.cs$''']
+
+# The dev site's basic-auth pair, user:password, given to a setting with "basic auth" in its name, as
+# MVGL_DEV_BASIC_AUTH, the DEV_BASIC_AUTH secret and the basic-auth key are: by assignment, or as the
+# value of gh secret set's --body. The generic rule stops at the colon.
+[[rules]]
+id = "basic-auth-pair"
+description = "A user:password pair given to a basic-auth setting"
+regex = '''(?i)\b\w*basic[_-]?auth\w*(?:\s*[:=]\s*|\s+--body[ =])['"]?([^\s'"`:$<>]+:[^\s'"`<>]+)'''
+secretGroup = 1
+keywords = ["basic_auth", "basic-auth", "basicauth"]
+
+# The same pair as a header: Authorization: Basic and its base64.
+[[rules]]
+id = "basic-auth-header"
+description = "An Authorization header carrying basic credentials"
+regex = '''(?i)\bauthorization\b['"]?\s*[:=]\s*['"]?basic\s+([a-z0-9+/]{8,}={0,2})'''
+secretGroup = 1
+keywords = ["basic"]
+
+# A GitHub token begins a word. A test's Method_Scenario_Expected name can put one of its prefixes
+# mid-word, and GetStatsAsync_NoPlaythroughs_ReportsNothingRatherThanZeroesWithAPlatform does, so
+# exactly that match is allowed and nothing else the rule finds.
+[[rules]]
+id = "github-app-token"
+
+    [[rules.allowlists]]
+    description = "A token prefix in the middle of one test's name"
+    regexTarget = "secret"
+    regexes = ['''^ghs_ReportsNothingRatherThanZeroesWithAP$''']
+
+# gitleaks' generic rule finds an itch.io page's access key in an address one of IGDB's rows holds, in
+# the test that shows such a page is passed over (#291), so exactly that key is allowed, there.
+[[rules]]
+id = "generic-api-key"
+
+    [[rules.allowlists]]
+    description = "An itch.io page's access key, in an address IGDB holds, in the store-links test"
+    condition = "AND"
+    regexTarget = "secret"
+    regexes = ['''^TRIX3AO2dkZuRl7jtCfA29NMKYQ$''']
+    paths = ['''^MyVideoGameList\.Server\.Tests/StoreLinksTests\.cs$''']
+
+# Visual Studio's IIS Express configuration, committed with the rest of .vs/ by baf18587 in March 2026
+# and deleted by f339fb45 in August; .vs/ has been ignored since. Its sessionKey attributes are that
+# machine's own configuration keys, sealed by a key container that never left it. Allowed in the one
+# commit that added the file, so the same path in any later commit is scanned like any other.
+[[allowlists]]
+description = "The IIS Express configuration committed once with .vs/"
+condition = "AND"
+commits = ["baf185878b1df1a8afd405204071f015f2cecd27"]
+paths = ['''^\.vs/MyVideoGameList\.slnx/config/applicationhost\.config$''']

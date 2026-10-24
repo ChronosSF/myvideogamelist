@@ -5,6 +5,13 @@ import { DISCORD_INVITE_URL } from '@/lib/links';
 /** How a link out of the site opens, as everywhere else on the site. Never `nofollow`: see below. */
 const OUTSIDE = { target: '_blank', rel: 'noopener noreferrer' } as const;
 
+/**
+ * What a screen reader hears after each of those links' names, since nothing else says it leaves for
+ * a new tab. The space is inside the hidden text: before it, it would be an underlined gap ahead of
+ * the full stop that follows each credit.
+ */
+const NEW_TAB = <span className="sr-only"> (opens in a new tab)</span>;
+
 const LINK = 'text-fg-soft hover:text-fg-strong transition-colors';
 const CREDIT = 'text-fg-soft hover:text-fg-strong underline underline-offset-2 transition-colors';
 const HEADING = 'text-xs font-semibold uppercase tracking-wider text-fg-muted mb-3';
@@ -46,7 +53,7 @@ export function SiteFooter() {
                         <div>
                             <h2 className={HEADING}>Community</h2>
                             <ul className="space-y-2">
-                                <li><a href={DISCORD_INVITE_URL} {...OUTSIDE} className={LINK}>Discord</a></li>
+                                <li><a href={DISCORD_INVITE_URL} {...OUTSIDE} className={LINK}>Discord{NEW_TAB}</a></li>
                             </ul>
                         </div>
                         <div>
@@ -61,8 +68,8 @@ export function SiteFooter() {
                 <div className="mt-10 pt-6 border-t border-line flex flex-col gap-2 text-xs text-fg-muted md:flex-row md:justify-between">
                     <p>© 2026 MyVideoGameList</p>
                     <p>
-                        Game data from <a href="https://www.igdb.com" {...OUTSIDE} className={CREDIT}>IGDB.com</a>.
-                        {' '}News from <a href="https://store.steampowered.com" {...OUTSIDE} className={CREDIT}>Steam</a>.
+                        Game data from <a href="https://www.igdb.com" {...OUTSIDE} className={CREDIT}>IGDB.com{NEW_TAB}</a>.
+                        {' '}News from <a href="https://store.steampowered.com" {...OUTSIDE} className={CREDIT}>Steam{NEW_TAB}</a>.
                         {' '}Not affiliated with or endorsed by Valve.
                     </p>
                 </div>

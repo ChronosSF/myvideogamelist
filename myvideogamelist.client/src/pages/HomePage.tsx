@@ -8,10 +8,10 @@ import { ReleaseLine } from '@/components/ReleaseLine';
 import { ShowcasesAndSales } from '@/components/ShowcasesAndSales';
 import { TrendingRail } from '@/components/TrendingRail';
 import { NewsCard } from '@/components/NewsCard';
-import { apiUrl } from '@/lib/api';
 import { CACHE_HOME, PRIVATE_NO_STORE } from '@/lib/cache';
 import { utcDay } from '@/lib/daySpan';
 import { type SiteConfig, pageMeta, siteConfig } from '@/lib/seo';
+import { loaderFetch } from '@/lib/trace.server';
 import type { UserProfile } from '@/types/auth';
 import type { HomeResponse } from '@/types/news';
 import type { CalendarEvents } from '@/types/releases';
@@ -73,7 +73,7 @@ const NO_EVENTS: CalendarEvents = { curated: [], showcases: [], degraded: true }
  * That is the opposite of the game route, where an upstream failure genuinely means there is no
  * page.
  */
-export async function loader() {
+export async function loader({ context }: Route.LoaderArgs) {
     const site = siteConfig();
     const today = utcDay(new Date());
 
@@ -111,7 +111,7 @@ export async function loader() {
     const nothing = () => respond({ spotlight: null, popular: [], news: [], events: NO_EVENTS, degraded: true });
 
     try {
-        const response = await fetch(apiUrl('/api/home'));
+        const response = await loaderFetch(context, '/api/home');
         if (!response.ok) return nothing();
 
         return respond(await response.json() as HomeAnswer);

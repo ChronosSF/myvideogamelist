@@ -1,4 +1,5 @@
 import { Link } from 'react-router';
+import { CoverImage } from '@/components/CoverImage';
 import { Rosette } from '@/components/Rosette';
 import { useAddToBacklog } from '@/hooks/useAddToBacklog';
 import { useFavouriteToggle } from '@/hooks/useFavouriteToggle';
@@ -11,17 +12,22 @@ export type CardEntry = Pick<ReleaseEntry, 'groupName' | 'releases'>;
 
 interface ReleaseCardProps {
     entry: CardEntry;
+    /**
+     * How wide the cover is drawn, as an `<img sizes>` value. The card is as wide as whatever holds it,
+     * so only what holds it can say: a column of the line, a day of the calendar, a column of a band.
+     */
+    sizes: string;
     /** Load the cover at once, for what is in view before any scrolling. Lazily otherwise. */
     eager?: boolean;
     /** Whether IGDB has no date for it at all, which its reason says (K4). */
     undated?: boolean;
 }
 
-function Cover({ release, eager }: { release: ConnectedRelease; eager: boolean }) {
+function Cover({ release, sizes, eager }: { release: ConnectedRelease; sizes: string; eager: boolean }) {
     return (
         <div className="release-card-cover">
             {release.coverImageUrl && (
-                <img src={release.coverImageUrl} alt="" loading={eager ? 'eager' : 'lazy'} />
+                <CoverImage url={release.coverImageUrl} alt="" sizes={sizes} eager={eager} />
             )}
         </div>
     );
@@ -31,7 +37,7 @@ function Cover({ release, eager }: { release: ConnectedRelease; eager: boolean }
  * One release on its own: the card the lists' rails use, with the two actions that fit here — put it in
  * the Backlog, or make it a favourite.
  */
-function SingleRelease({ entry, release, eager, undated }: Required<ReleaseCardProps> & { release: ConnectedRelease }) {
+function SingleRelease({ entry, release, sizes, eager, undated }: Required<ReleaseCardProps> & { release: ConnectedRelease }) {
     const backlog = useAddToBacklog(release);
     const favourite = useFavouriteToggle(release);
 
@@ -41,7 +47,7 @@ function SingleRelease({ entry, release, eager, undated }: Required<ReleaseCardP
                 {/* Out of the tab order and hidden from screen readers: the title below is the same
                     link, and a link a screen reader meets twice is one too many. */}
                 <Link to={`/games/${release.gameId}`} tabIndex={-1} aria-hidden="true" className="release-card-link">
-                    <Cover release={release} eager={eager} />
+                    <Cover release={release} sizes={sizes} eager={eager} />
                 </Link>
                 {favourite.canToggle && (
                     // In the cover's corner, where it stays once the game is a favourite: the mark is the
@@ -153,17 +159,17 @@ function GroupMember({ release }: { release: ConnectedRelease }) {
  * As wide as whatever holds it. The rest of a game's actions are on its page; here there are the two that
  * fit a view of what is coming.
  */
-export function ReleaseCard({ entry, eager = false, undated = false }: ReleaseCardProps) {
+export function ReleaseCard({ entry, sizes, eager = false, undated = false }: ReleaseCardProps) {
     const [first] = entry.releases;
     const count = entry.releases.length;
 
-    if (count === 1) return <SingleRelease entry={entry} release={first} eager={eager} undated={undated} />;
+    if (count === 1) return <SingleRelease entry={entry} release={first} sizes={sizes} eager={eager} undated={undated} />;
 
     const cover = entry.releases.find(r => r.coverImageUrl !== null) ?? first;
     return (
         <div className="release-card">
             <div className="release-card-stack">
-                <Cover release={cover} eager={eager} />
+                <Cover release={cover} sizes={sizes} eager={eager} />
             </div>
             <div className="release-card-text">
                 <p className="release-card-title">{entry.groupName ?? first.title}</p>

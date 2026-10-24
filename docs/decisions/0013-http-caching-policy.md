@@ -3,6 +3,8 @@
 **Status:** Implemented. What CloudFront has to do to honour these headers — a cache policy with
 a minimum TTL of 0, explicit uncached behaviours shaped for `.data` URLs, an error caching TTL of
 0, and an invalidation after every deploy — is [0044](0044-what-the-deployment-walkthrough-settled.md).
+The Result below held for documents and not for a client-side navigation's `.data` request to a game
+page, whose error went out with the game's policy; [0070](0070-nothing-shows-as-a-blank.md) closes that.
 
 ## Context
 

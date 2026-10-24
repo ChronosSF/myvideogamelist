@@ -25,11 +25,20 @@ namespace MyVideoGameList.Server.Services;
 /// the answer, and anything else is rethrown because it was not this race. See
 /// <c>docs/decisions/0027-usernames-and-public-profiles.md</c>.
 /// </para>
+/// <para>
+/// Every account is created here, so this is also where one is dated: when it was created, and when
+/// its owner was first seen, which is the same moment (ADR 0051).
+/// </para>
 /// </remarks>
-public class UserNameClaimService(UserManager<ApplicationUser> userManager) : IUserNameClaimService
+public class UserNameClaimService(UserManager<ApplicationUser> userManager, TimeProvider clock) : IUserNameClaimService
 {
-    public Task<IdentityResult> RegisterAsync(ApplicationUser user, string password) =>
-        TranslatingTheRace(user, () => userManager.CreateAsync(user, password));
+    public Task<IdentityResult> RegisterAsync(ApplicationUser user, string password)
+    {
+        var now = clock.GetUtcNow();
+        user.CreatedAt = now;
+        user.LastSeenAt = now;
+        return TranslatingTheRace(user, () => userManager.CreateAsync(user, password));
+    }
 
     public Task<IdentityResult> RenameAsync(ApplicationUser user, string userName) =>
         TranslatingTheRace(user, () => userManager.SetUserNameAsync(user, userName));

@@ -65,19 +65,21 @@ export default function TermsPage() {
                     </p>
                     <p className={P}>
                         Your username is how other people see you once you publish your profile, and the address of
-                        that profile. Until then the site shows it to nobody else. Don&rsquo;t choose one that
-                        pretends to be somebody else or that is offensive; we may suspend an account that does.
+                        that profile. A display name, a picture and a bio, if you give your profile them, are shown
+                        beside it. Until then the site shows none of these to anybody else. Don&rsquo;t choose a
+                        name or a picture that pretends to be somebody else or that is offensive; we may suspend an
+                        account that does.
                     </p>
 
                     <h2 className={H2}>What you put on the site</h2>
                     <p className={P}>
-                        Your lists, scores, notes, playthroughs and reviews are yours. You let us store them, and
-                        show them the way the site&rsquo;s settings say:
+                        Your lists, scores, notes, playthroughs, reviews and what you write about yourself are
+                        yours. You let us store them, and show them the way the site&rsquo;s settings say:
                     </p>
                     <ul className={LIST}>
                         <li>
-                            your profile, with your tracking, your favourites and the reviews you mark public, only
-                            once you make it public;
+                            your profile, with your display name, picture and bio, your tracking, your favourites
+                            and the reviews you mark public, only once you make it public;
                         </li>
                         <li>
                             your scores and playthrough times, without your name, in the figures each game shows,
@@ -158,6 +160,9 @@ export default function TermsPage() {
                         Ask us on{' '}
                         <a href={DISCORD_INVITE_URL} target="_blank" rel="noopener noreferrer" className={LINK}>
                             our Discord server
+                            {/* The space inside the hidden text: before it, it would be an
+                                underlined gap ahead of the full stop. */}
+                            <span className="sr-only"> (opens in a new tab)</span>
                         </a>.
                     </p>
                 </div>

@@ -81,9 +81,10 @@ backend's URL. The dev server renders pages and forwards `/api/*` to ASP.NET on
 
 > **Use `npm run dev`, not `npm start`.**
 > `npm start` serves the production build, which has no `/api` proxy — pages render but
-> every client-side request 404s. In a real deployment a reverse proxy (CloudFront, nginx)
-> routes `/api/*` to the API and everything else to the SSR server; `npm run dev` stands in
-> for that locally. See [Serving the production build](#serving-the-production-build).
+> every client-side request 404s. In a real deployment something in front of both routes `/api/*`
+> to the API and everything else to the SSR server (here the load balancer behind CloudFront;
+> nginx would do elsewhere); `npm run dev` stands in for that locally. See
+> [Serving the production build](#serving-the-production-build).
 
 ### Other commands
 
@@ -92,8 +93,17 @@ cd myvideogamelist.client
 npm run lint         # ESLint
 npm run typecheck    # generate route types, then tsc
 npm run build        # production build
+npm run e2e          # the browser smoke test: needs `docker compose up -d --wait`, and once,
+                     # `npx playwright install chromium`
+npm run lighthouse   # Lighthouse on five pages of the same build, phone and desktop: needs what
+                     # `npm run e2e` does, and IGDB's image host to be reachable
+npm run audit        # npm audit, failing at high and critical; `npm run audit:lighthouse` does the
+                     # same over Lighthouse CI's own lock file
 
-dotnet test          # server unit tests
+cd ..
+dotnet test MyVideoGameList.Server.Tests/MyVideoGameList.Server.Tests.csproj                     # server unit tests
+dotnet test MyVideoGameList.Server.IntegrationTests/MyVideoGameList.Server.IntegrationTests.csproj   # the API over PostgreSQL; needs Docker
+dotnet format MyVideoGameList.slnx                                                               # the house style, as .editorconfig says
 ```
 
 ### Serving the production build
@@ -105,6 +115,11 @@ request the browser makes will 404.
 That is the correct production shape: the SSR server is not meant to be the API gateway. To
 exercise the built app end to end locally you need something in front of both, for example
 nginx routing `/api/*` to `http://localhost:5039` and `/*` to `http://localhost:3000`.
+
+The browser smoke test, `npm run e2e`, does exactly that for one test: it serves the build and the
+API side by side, with a stand-in in front of both that routes as the deployed load balancer does,
+and one for IGDB behind the API. See
+[ADR 0060](docs/decisions/0060-one-browser-test-over-the-production-shape.md).
 
 Health endpoints: `/healthz` (liveness) and `/readyz` (database + IGDB reachability).
 
@@ -123,7 +138,13 @@ Health endpoints: `/healthz` (liveness) and `/readyz` (database + IGDB reachabil
 
 ## CI
 
-Pull requests and pushes to `master` are validated by GitHub Actions: the client is linted,
-type-checked and built; the server is built and unit-tested; CodeQL analyses both languages.
+Every pull request, whatever branch it targets, and every push to `master` are validated by GitHub
+Actions: the client is linted, type-checked and built; the server is built, unit-tested and checked
+against the house style in `.editorconfig`, and its integration suite runs against PostgreSQL in a
+container; a browser smoke test runs the production build and the API behind a stand-in for what
+routes between them, and Lighthouse audits five of its pages; every package on both sides is
+audited for known vulnerabilities; every commit is scanned for secrets; both images are built, and
+the SSR one started; and CodeQL analyses both languages and the workflows. See
+[ADR 0061](docs/decisions/0061-ci-gates-every-pull-request.md).
 
 [![CI](../../actions/workflows/ci.yml/badge.svg)](../../actions/workflows/ci.yml)

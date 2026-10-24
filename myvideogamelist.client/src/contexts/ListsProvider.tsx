@@ -2,12 +2,13 @@ import { useEffect, useReducer, useState, type ReactNode } from 'react';
 import type { GameDto } from '@/types/game';
 import {
     type ListId, type ListEntryDto, type ListNames, type Ownership, type ViewMode,
-    LIST_IDS, LIST_NAMES, emptyLists,
+    HAND_ORDERED_LISTS, LIST_IDS, LIST_NAMES, emptyLists,
 } from '@/types/list';
-import { type SortState, DEFAULT_SORT } from '@/lib/listSort';
+import { type SortState, DEFAULT_SORT, MANUAL_SORT, sortEntries } from '@/lib/listSort';
+import { moveInHandOrder } from '@/lib/handOrderMove';
 import { useAuth } from '@/hooks/useAuth';
 import { apiFetch } from '@/lib/api';
-import { ListsContext, type SaveListNamesResult } from './ListsContext';
+import { ListsContext, type SaveListNamesResult, type SaveResult } from './ListsContext';
 
 interface ApiListsResponse {
     lists: Record<ListId, ListEntryDto[]>;
@@ -84,6 +85,14 @@ interface ListsState {
     pending: ReadonlySet<number>;
 }
 
+/**
+ * The fields of a game's row that a write to its entry changes in place, wherever the game sits — its
+ * score and its tags. One action carries any of them, so the next such field joins this type rather than
+ * adding a third copy of the same loop (ADR 0022's lesson: a guard added to one copy is missed on the
+ * others).
+ */
+type RowFields = Partial<Pick<ListEntryDto, 'score' | 'tagIds'>>;
+
 type ListsAction =
     | { type: 'RESET' }
     | { type: 'FETCH_START'; session: string | null }
@@ -95,22 +104,31 @@ type ListsAction =
     // write the previous account's names over the next one's.
     | { type: 'NAMES_SAVED'; session: string | null; names: ListNames }
     /*
-     * The three a mutation raises, and the reason they name one game rather than carrying a set of
-     * lists. Every one of them is computed inside the reducer from whatever state is current when
-     * it arrives, and touches only the game it names — so a mutation for another game completing
-     * in the meantime survives both the optimistic write and the rollback.
+     * Three of the four a mutation raises — `SET_POSITIONS` below is the fourth — and the reason they
+     * name one game rather than carrying a set of lists. Every one of them is computed inside the
+     * reducer from whatever state is current when it arrives, and touches only the game it names — so
+     * a mutation for another game completing in the meantime survives both the optimistic write and
+     * the rollback.
      *
-     * None of them carries a position, and that is deliberate: a list is never rendered in the
-     * order it is held in. `ListsPage` runs every list through `sortEntries`, which is a total
-     * order — title breaks the tie for every key, precisely so the result cannot depend on the
-     * order the API happened to return. An index captured before a request is also wrong by the
-     * time it is used, because another game may have left the list from in front of it. The
-     * wishlist is the opposite case and keeps its order from `addedAt`, a value rather than a
-     * position, because that page does render its array as it stands.
+     * None of them carries an index, and that is deliberate: a list is never rendered in the order it
+     * is held in. `ListsPage` runs every list through `sortEntries`, which is a total order — every key
+     * ends in a tie-break, precisely so the result cannot depend on the order the API happened to
+     * return. An index captured before a request is also wrong by the time it is used, because another
+     * game may have left the list from in front of it. The wishlist is the opposite case and keeps its
+     * order from `addedAt`, a value rather than an index, because that page does render its array as it
+     * stands; and so is a hand order, whose sparse `position` rides on the entry `PLACE_ENTRY` carries
+     * (`docs/decisions/0054-*`).
      */
     | { type: 'PLACE_ENTRY'; session: string | null; listId: ListId; entry: ListEntryDto }
     | { type: 'DROP_ENTRY'; session: string | null; gameId: number }
-    | { type: 'SET_ENTRY_SCORE'; session: string | null; gameId: number; score: number | null }
+    | { type: 'SET_ENTRY_FIELDS'; session: string | null; gameId: number; fields: RowFields }
+    /*
+     * A move in a hand order, and its undo. It names positions by game, as values — the sparse numbers
+     * of `@/lib/handOrder`, not indexes — so it touches nothing but the games it names, and an undo
+     * that puts back the values those games had is exact: every one of them was locked for the
+     * duration, so nothing else can have moved it in between.
+     */
+    | { type: 'SET_POSITIONS'; session: string | null; listId: ListId; positions: { gameId: number; position: number | null }[] }
     | { type: 'SET_VIEW'; view: ViewMode }
     | { type: 'SET_SORT'; listId: ListId; sort: SortState }
     | { type: 'MUTATION_ERROR'; session: string | null; error: string }
@@ -209,15 +227,26 @@ function reducer(state: ListsState, action: ListsAction): ListsState {
         case 'DROP_ENTRY':
             return ifCurrent(state, action.session, () =>
                 ({ ...state, lists: without(state.lists, action.gameId) }));
-        case 'SET_ENTRY_SCORE':
+        // One game's own fields, wherever it sits, and nothing else touched.
+        case 'SET_ENTRY_FIELDS':
             return ifCurrent(state, action.session, () => {
                 const lists = { ...state.lists };
                 for (const id of LIST_IDS) {
                     if (!lists[id].some(e => e.game.id === action.gameId)) continue;
                     lists[id] = lists[id].map(e =>
-                        e.game.id === action.gameId ? { ...e, score: action.score } : e);
+                        e.game.id === action.gameId ? { ...e, ...action.fields } : e);
                 }
                 return { ...state, lists };
+            });
+        case 'SET_POSITIONS':
+            // Only in the list the move was made in: a game that has left it since has no place in
+            // its order to be given back.
+            return ifCurrent(state, action.session, () => {
+                const positions = new Map(action.positions.map(p => [p.gameId, p.position]));
+                const list = state.lists[action.listId].map(entry => positions.has(entry.game.id)
+                    ? { ...entry, position: positions.get(entry.game.id) ?? null }
+                    : entry);
+                return { ...state, lists: { ...state.lists, [action.listId]: list } };
             });
         case 'SET_VIEW':
             return { ...state, view: action.view, viewWrittenSinceRead: true };
@@ -245,6 +274,20 @@ function reducer(state: ListsState, action: ListsAction): ListsState {
     }
 }
 
+/**
+ * The sentence the server gave for refusing a write — the first message in a `ValidationProblemDetails`'
+ * `errors` — or the fallback for a body that says nothing useful, which is what a 500 or a proxy's error
+ * page looks like.
+ */
+async function refusal(res: Response, fallback: string): Promise<string> {
+    try {
+        const problem = (await res.json()) as { errors?: Record<string, string[]> };
+        return Object.values(problem.errors ?? {}).flat()[0] ?? fallback;
+    } catch {
+        return fallback;
+    }
+}
+
 /** Every list with one game taken out of whichever one held it, and nothing else changed. */
 function without(
     lists: Record<ListId, ListEntryDto[]>,
@@ -264,7 +307,7 @@ function without(
  *
  * A mutation captures this for the one game it is about, which is the whole of what it needs to
  * undo itself — and, unlike the set of lists it used to keep, it says nothing about any other
- * game, so a rollback built from it cannot disturb one. Deliberately not a position: see
+ * game, so a rollback built from it cannot disturb one. Deliberately not an index: see
  * `PLACE_ENTRY`.
  */
 interface EntryOrigin {
@@ -428,7 +471,13 @@ export function ListsProvider({ children }: { children: ReactNode }) {
         persistPreferences(state.view, { ...state.sorts, [listId]: sort });
     };
 
-    const sortFor = (listId: ListId): SortState => state.sorts[listId] ?? DEFAULT_SORT;
+    // A hand order stored for a list that does not offer one — written by hand against the API, or
+    // left behind if a list stops offering it — reads as the default rather than as a sort the
+    // toolbar has no option for.
+    const sortFor = (listId: ListId): SortState => {
+        const sort = state.sorts[listId] ?? DEFAULT_SORT;
+        return sort.key === MANUAL_SORT.key && !HAND_ORDERED_LISTS.includes(listId) ? DEFAULT_SORT : sort;
+    };
 
     const nameFor = (listId: ListId): string => state.names[listId] ?? LIST_NAMES[listId];
 
@@ -518,10 +567,13 @@ export function ListsProvider({ children }: { children: ReactNode }) {
         // stays true for as long as it takes to undo.
         const origin = locate(state.lists, game.id);
 
-        // A move carries the existing entry across so the score does not blink out and back.
+        // A move carries the existing entry across so the score does not blink out and back. Not its
+        // place in a hand order, which the server clears on any change of list: the game arrives at
+        // the end of the one it joins, as `byHand` reads a game with no position.
+        const now = new Date().toISOString();
         const moved: ListEntryDto = origin
-            ? { ...origin.entry, statusChangedAt: new Date().toISOString() }
-            : { game, score: null, addedAt: new Date().toISOString(), statusChangedAt: new Date().toISOString() };
+            ? { ...origin.entry, statusChangedAt: now, position: origin.listId === listId ? origin.entry.position : null }
+            : { game, score: null, addedAt: now, statusChangedAt: now, position: null, tagIds: [] };
 
         // Appended rather than placed: a game just moved to a list is the most recent thing in it.
         dispatch({ type: 'PLACE_ENTRY', session, listId, entry: moved });
@@ -568,40 +620,107 @@ export function ListsProvider({ children }: { children: ReactNode }) {
         }
     };
 
-    const setScore = async (gameId: number, score: number | null): Promise<boolean> => {
-        // Scoring takes the same per-game lock as a status change, because it writes the same
-        // entry row. Without it two scores set in quick succession could both be in flight, and
-        // the first one failing would roll the second one back to a value neither had asked for.
-        if (state.pending.has(gameId)) return false;
+    /**
+     * Writes fields of a game's row through its entry — its score, its tags — shown at once wherever the
+     * game sits and put back if the save fails.
+     *
+     * Under the per-game lock, because the row is the one a move writes: two scores set in quick
+     * succession could otherwise both be in flight, and the first one failing would roll the second back
+     * to a value neither had asked for; and a move of the same game rolling back would put its row back as
+     * it was captured, fields and all, over a save that had succeeded. The undo puts back these fields of
+     * this game and nothing else, from the values captured under that lock.
+     *
+     * The entry may be in no list at all, in which case there is nothing on screen to update and the
+     * request is the whole of it — a caller holding its own copy reverts it on a failure.
+     *
+     * A refusal is answered with the server's own sentence where it gave one (`errors` in its
+     * `ValidationProblemDetails`), which is the one worth showing; otherwise with `failure`.
+     */
+    const writeRowFields = async (
+        gameId: number,
+        fields: RowFields,
+        send: () => Promise<Response>,
+        failure: string,
+    ): Promise<SaveResult> => {
+        if (state.pending.has(gameId)) {
+            return { ok: false, error: 'Another change to this game is still saving. Please try again.' };
+        }
         startPending(gameId);
 
-        // The entry may be in no list at all, in which case there is nothing on screen to update
-        // optimistically and the server call is the whole operation.
-        const previous = locate(state.lists, gameId)?.entry.score ?? null;
-        dispatch({ type: 'SET_ENTRY_SCORE', session, gameId, score });
+        const row = locate(state.lists, gameId)?.entry;
+        const previous: RowFields | null = row === undefined
+            ? null
+            : Object.fromEntries(Object.keys(fields).map(key => [key, row[key as keyof RowFields]]));
+        dispatch({ type: 'SET_ENTRY_FIELDS', session, gameId, fields });
 
-        const undo = () => dispatch({ type: 'SET_ENTRY_SCORE', session, gameId, score: previous });
+        const undo = () => {
+            if (previous !== null) dispatch({ type: 'SET_ENTRY_FIELDS', session, gameId, fields: previous });
+        };
 
         try {
-            const res = await apiFetch(`/api/entries/${gameId}/score`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ score }),
-            });
+            const res = await send();
 
             if (!res.ok) {
-                rollBack(undo, 'Failed to save your score. Please try again.');
-                return false;
+                const error = await refusal(res, failure);
+                rollBack(undo, error);
+                return { ok: false, error };
             }
             dispatch({ type: 'CLEAR_MUTATION_ERROR', session });
-            return true;
+            return { ok: true };
         } catch {
-            rollBack(undo, 'Failed to save your score. Please try again.');
-            return false;
+            // A rejection is the unreachable-API case, which `!res.ok` never sees.
+            rollBack(undo, failure);
+            return { ok: false, error: failure };
         } finally {
             endPending(gameId);
         }
     };
+
+    const setScore = async (gameId: number, score: number | null): Promise<boolean> => {
+        const result = await writeRowFields(
+            gameId,
+            { score },
+            () => apiFetch(`/api/entries/${gameId}/score`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ score }),
+            }),
+            'Failed to save your score. Please try again.',
+        );
+        return result.ok;
+    };
+
+    /**
+     * Moves a game in a list's hand order to sit right after another, or first when that is null.
+     *
+     * `planMove` decides which positions to write — the moved game's, and only rarely a few of its
+     * neighbours' — and every game those writes touch takes its per-game lock, because a position is
+     * a column of the entry row like a score: with two writes out for one game, the first to fail
+     * would roll back over the second. A move that would need a game whose own write is still out is
+     * refused rather than queued, and returns false having changed nothing; that is a neighbour in a
+     * spread or a passed unplaced game, since the moved game's own handle is inert while it is busy.
+     *
+     * The undo puts back the position each of those games had, which is exact for the reason the lock
+     * gives: nothing else can have moved them while this request was out.
+     *
+     * The steps are `moveInHandOrder`'s, which the favourites' move runs too; what is this provider's is
+     * the list's hand order, its locks, and its actions — a refusal or a failure in the page's banner.
+     */
+    const moveInOrder = (listId: ListId, gameId: number, afterGameId: number | null): Promise<boolean> =>
+        moveInHandOrder({
+            ordered: sortEntries(state.lists[listId], MANUAL_SORT)
+                .map(entry => ({ id: entry.game.id, position: entry.position })),
+            gameId,
+            afterGameId,
+            endpoint: `/api/lists/${listId}/positions`,
+            saving: id => state.pending.has(id),
+            lock: startPending,
+            unlock: endPending,
+            show: positions => dispatch({ type: 'SET_POSITIONS', session, listId, positions }),
+            fail: error => dispatch({ type: 'MUTATION_ERROR', session, error }),
+            saved: () => dispatch({ type: 'CLEAR_MUTATION_ERROR', session }),
+            failed: 'Failed to save your order. Please try again.',
+        });
 
     /**
      * Writes one of the entry's own fields — how the user has the game, or their notes on it.
@@ -647,6 +766,19 @@ export function ListsProvider({ children }: { children: ReactNode }) {
 
     const setNotes = (gameId: number, notes: string | null): Promise<boolean> =>
         writeEntryField(gameId, 'notes', { notes }, 'Failed to save your notes. Please try again.');
+
+    /** Replaces the game's tags with this set — the whole set, in one request (ADR 0065). */
+    const setTags = (gameId: number, tagIds: number[]): Promise<SaveResult> =>
+        writeRowFields(
+            gameId,
+            { tagIds },
+            () => apiFetch(`/api/entries/${gameId}/tags`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ tagIds }),
+            }),
+            'Failed to save your tags. Please try again.',
+        );
 
     const deleteEntry = async (gameId: number): Promise<boolean> => {
         if (state.pending.has(gameId)) return false;
@@ -702,8 +834,10 @@ export function ListsProvider({ children }: { children: ReactNode }) {
             getListFor,
             scoreFor,
             setScore,
+            moveInOrder,
             setOwnership,
             setNotes,
+            setTags,
             deleteEntry,
             view: state.view,
             setView,

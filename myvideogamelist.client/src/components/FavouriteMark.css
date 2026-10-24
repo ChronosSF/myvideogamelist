@@ -1,0 +1,44 @@
+/* The mark on a game the reader has made a favourite (ADR 0064): the release card's rosette as it reads
+   once a game is a favourite — filled, white on the favourite's violet — without the button, since here
+   it changes nothing. */
+
+.favourite-mark {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* In the bottom corner of a cover, which nothing else on any cover uses: the ESRB rating, the critic
+   score, a rank and a hand order's grip all sit along the top. Under a card's hover overlay, and a
+   press on it is a press on the cover. */
+.favourite-mark-cover {
+    position: absolute;
+    right: 0.375rem;
+    bottom: 0.375rem;
+    width: 1.75rem;
+    height: 1.75rem;
+    color: var(--color-fg-strong);
+    background: color-mix(in srgb, var(--color-favourite-700) 90%, transparent);
+    border: 1px solid color-mix(in srgb, var(--color-favourite-400) 80%, transparent);
+    border-radius: 9999px;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.45);
+    pointer-events: none;
+}
+
+.favourite-mark-cover svg {
+    width: 1rem;
+    height: 1rem;
+}
+
+/* After a title in a line of text, at the size of the text: a table row, or a cover too small to carry
+   the round one. */
+.favourite-mark-inline {
+    margin-left: 0.35em;
+    vertical-align: -0.125em;
+    color: var(--color-favourite-300);
+}
+
+.favourite-mark-inline svg {
+    width: 1em;
+    height: 1em;
+}

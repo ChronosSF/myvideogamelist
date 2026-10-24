@@ -1,6 +1,6 @@
 # 0032. Browse filters: every order is one IGDB query, and each carries its own floor
 
-**Status:** Implemented
+**Status:** Implemented; decision 2 amended by 0067, which adds the ESRB filter left out here
 
 ## Context
 

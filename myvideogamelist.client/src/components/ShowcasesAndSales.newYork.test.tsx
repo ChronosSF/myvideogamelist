@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act } from 'react';
 import { hydrateRoot } from 'react-dom/client';
 import { renderToString } from 'react-dom/server';
+import { RouterContextProvider } from 'react-router';
 import { within } from '@testing-library/react';
 import { ShowcasesAndSales } from '@/components/ShowcasesAndSales';
 import { eventDays, startTime } from '@/lib/calendarEvents';
@@ -13,10 +14,9 @@ import type { CalendarShowcase } from '@/types/releases';
 /**
  * The panel, its days and its loader in a timezone far from UTC.
  *
- * Everywhere else these tests run in whatever zone the machine has, and CI's is UTC, where a reader's
- * day and UTC's are the same day at every instant: a panel that used one in place of the other would
- * pass. So this file pins New York before anything is imported — four hours behind UTC in October,
- * so that its evenings are already tomorrow in UTC.
+ * Everywhere else these tests run in Honolulu (`vitest.config.ts`), ten hours behind UTC all year. This
+ * file pins New York instead, before anything is imported — four hours behind UTC in October, so that
+ * its evenings are already tomorrow in UTC — because the instants below were chosen for that offset.
  *
  * Pinned through `process.env.TZ`, which Node applies to the whole process the moment it is set. So it
  * needs what `vitest.config.ts` leaves at its defaults: the `forks` pool, and a process for each file
@@ -71,7 +71,8 @@ describe('in New York', () => {
             spotlight: null, popular: [], news: [], events: calendarEvents(), degraded: false,
         }))));
 
-        const result = await loader();
+        // With a context, which the loader's calls are traced through (ADR 0059).
+        const result = await loader({ context: new RouterContextProvider() } as unknown as Parameters<typeof loader>[0]);
 
         expect(result.data.today).toBe('2026-10-18');
     });

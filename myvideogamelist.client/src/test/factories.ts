@@ -1,16 +1,21 @@
+import type { AdminStats } from '@/types/adminStats';
 import type { UserProfile } from '@/types/auth';
-import type { GameDto, PlatformDto } from '@/types/game';
+import type { GameDetailsDto, GameDto, PlatformDto } from '@/types/game';
 import {
     IMPORT_DECISION,
     IMPORT_MATCH,
     IMPORT_STATE,
     type ImportJob,
+    type ImportResult,
     type ImportReview,
     type ImportReviewRow,
+    type ImportSkippedRow,
 } from '@/types/import';
 import type { ListEntryDto } from '@/types/list';
+import type { TagDto } from '@/types/tag';
 import type { EntryDetailDto, PlaythroughDto, ReviewDto } from '@/types/playthrough';
 import type { CalendarEvents, ConnectedRelease, ReleaseEntry, ReleaseReason } from '@/types/releases';
+import type { HistoryPage, PlaythroughDateItem, ScoreItem, StatusItem } from '@/types/history';
 
 /**
  * Fixture builders for the two DTOs the list views are built on.
@@ -47,6 +52,28 @@ export function game(overrides: Partial<GameDto> = {}): GameDto {
     };
 }
 
+/** The detail fields only the game page carries, all empty unless a test says otherwise. */
+export function gameDetails(overrides: Partial<GameDetailsDto> = {}): GameDetailsDto {
+    return {
+        timeToBeat: null,
+        screenshots: [],
+        similarGames: [],
+        dlcs: [],
+        expansions: [],
+        parentGame: null,
+        gameModes: [],
+        multiplayerModes: null,
+        themes: [],
+        playerPerspectives: [],
+        gameEngines: [],
+        collections: [],
+        franchises: [],
+        languages: [],
+        stores: [],
+        ...overrides,
+    };
+}
+
 /**
  * `game` is omitted from the base before being re-added as a partial. Intersecting
  * `Partial<ListEntryDto>` with `{ game?: Partial<GameDto> }` collapses the property back to a
@@ -61,8 +88,15 @@ export function entry(
         score: null,
         addedAt: '2026-01-01T00:00:00+00:00',
         statusChangedAt: null,
+        position: null,
+        tagIds: [],
         ...rest,
     };
+}
+
+/** One of the account's tags, carried by no game unless a test says otherwise. */
+export function tag(overrides: Partial<TagDto> = {}): TagDto {
+    return { id: 1, name: 'co-op', count: 0, ...overrides };
 }
 
 /** One logged playthrough, with everything the panel does not assert on left blank. */
@@ -183,12 +217,41 @@ export function importReview(rows: ImportReviewRow[], job: Partial<ImportJob> = 
     };
 }
 
+/**
+ * What a commit answers, with the job's counts derived from what was imported and skipped rather
+ * than restated — for `importReview`'s reason, and because the two add up to every row in the file.
+ * Each imported row names a game of its own unless `games` says otherwise.
+ */
+export function importResult({ imported = 1, games = imported, unlisted = 0, skipped = [] }: {
+    imported?: number;
+    games?: number;
+    unlisted?: number;
+    skipped?: ImportSkippedRow[];
+} = {}): ImportResult {
+    return {
+        job: importJob({
+            state: IMPORT_STATE.done,
+            rowCount: imported + skipped.length,
+            importedCount: imported,
+            skippedCount: skipped.length,
+            completedAt: '2026-09-22T12:30:00Z',
+            expiresAt: '2026-09-29T12:30:00Z',
+        }),
+        skipped,
+        games,
+        unlisted,
+    };
+}
+
 /** The signed-in account, as `/api/auth/me` returns it. */
 export function userProfile(overrides: Partial<UserProfile> = {}): UserProfile {
     return {
         id: 'user-1',
         email: 'alex@test.local',
         userName: 'alex',
+        displayName: null,
+        avatarUrl: null,
+        bio: null,
         profileVisibility: 'private',
         isAdmin: false,
         ...overrides,
@@ -233,4 +296,75 @@ export function releaseEntry(starts: string, releases: ConnectedRelease[] = [con
 /** What `/api/calendar/events` answers: nothing, unless a test says otherwise. */
 export function calendarEvents(overrides: Partial<CalendarEvents> = {}): CalendarEvents {
     return { curated: [], showcases: [], degraded: false, ...overrides };
+}
+
+/** A move between lists, from Backlog to Playing on the game with id 1 unless a test says otherwise. */
+export function statusItem(overrides: Partial<StatusItem> = {}): StatusItem {
+    return {
+        kind: 'status',
+        at: '2026-10-16T12:00:00+00:00',
+        on: null,
+        gameId: 1,
+        game: { id: 1, name: 'A Game', coverImageUrl: null },
+        fromStatus: 'backlog',
+        toStatus: 'playing',
+        ...overrides,
+    };
+}
+
+/** A score of 8, given at midday UTC — which is the same day for nearly any test machine's zone. */
+export function scoreItem(overrides: Partial<ScoreItem> = {}): ScoreItem {
+    return {
+        kind: 'score',
+        at: '2026-10-16T12:00:00+00:00',
+        on: null,
+        gameId: 1,
+        game: { id: 1, name: 'A Game', coverImageUrl: null },
+        score: 8,
+        ...overrides,
+    };
+}
+
+/** An untyped run's finish, unless a test says it started or gives it a type. */
+export function playthroughDateItem(overrides: Partial<PlaythroughDateItem> = {}): PlaythroughDateItem {
+    return {
+        kind: 'playthrough_finished',
+        at: null,
+        on: '2026-10-16',
+        gameId: 1,
+        game: { id: 1, name: 'A Game', coverImageUrl: null },
+        playthroughType: null,
+        ...overrides,
+    };
+}
+
+/** What `/api/user/history` answers: the last page, with nothing missing, unless a test says otherwise. */
+export function historyPage(overrides: Partial<HistoryPage> = {}): HistoryPage {
+    return { items: [], next: null, importedStatuses: 0, undatedScores: 0, ...overrides };
+}
+
+/**
+ * What `/api/admin/stats` answers: a little of everything, and twelve weeks from 27 July 2026 with
+ * sign-ups only in the newest.
+ */
+export function adminStats(overrides: Partial<AdminStats> = {}): AdminStats {
+    const weeks = Array.from({ length: 12 }, (_, i) => {
+        const starts = new Date(Date.UTC(2026, 6, 27 + 7 * i)).toISOString().slice(0, 10);
+        return { starts, signUps: i === 11 ? 4 : 0, listMoves: 10 + i, reviews: i % 2, playthroughs: 1 };
+    });
+    return {
+        countedAt: '2026-10-13T12:00:00Z',
+        accounts: { total: 42, publicProfiles: 9, seenToday: 3, seenInSevenDays: 11, seenInThirtyDays: 25, undated: 0 },
+        library: {
+            byStatus: { backlog: 310, playing: 27, on_hold: 12, finished: 205, dropped: 18 },
+            inNoList: 6,
+            fromImports: 140,
+            wishlisted: 88,
+            favourites: 31,
+        },
+        writing: { reviews: 57, publicReviews: 20, playthroughs: 160, timedPlaythroughs: 95 },
+        imports: { pending: 1, done: 2, cancelled: 0 },
+        weeks,
+        ...overrides,
+    };
 }

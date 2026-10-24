@@ -56,9 +56,15 @@ jobs:
           # The commit CI tested, not whatever master is by the time this runs.
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
+      # The tag, and what both images answer at /version and /api/version: the full commit and one
+      # build time for the release. Compare the two answers by sha: a re-run that finishes a
+      # half-pushed release builds the second image later, with a time of its own.
       - name: Name the release
         id: release
-        run: echo "tag=$(git rev-parse --short=12 HEAD)" >> "$GITHUB_OUTPUT"
+        run: |
+          echo "tag=$(git rev-parse --short=12 HEAD)" >> "$GITHUB_OUTPUT"
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "built=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
 
       - uses: aws-actions/configure-aws-credentials@v6
         with:
@@ -95,7 +101,8 @@ jobs:
         if: steps.pushed.outputs.api != 'true' || steps.pushed.outputs.ssr != 'true'
 
       # provenance: false, because the attestation manifest BuildKit otherwise pushes alongside
-      # shows in ECR as an untagged image and counts against the lifecycle rule's twenty.
+      # shows in ECR as an untagged image and counts against the lifecycle rule's twenty. CI's Images
+      # job reads the two cache scopes written here, so rename them in both files (ADR 0061).
       - name: Build and push the API image
         if: steps.pushed.outputs.api != 'true'
         uses: docker/build-push-action@v7
@@ -105,6 +112,9 @@ jobs:
           platforms: linux/amd64
           push: true
           provenance: false
+          build-args: |
+            GIT_SHA=${{ steps.release.outputs.sha }}
+            BUILD_TIME=${{ steps.release.outputs.built }}
           tags: ${{ env.REGISTRY }}/mvgl/api:${{ steps.release.outputs.tag }}
           cache-from: type=gha,scope=api
           cache-to: type=gha,scope=api,mode=max
@@ -117,6 +127,9 @@ jobs:
           platforms: linux/amd64
           push: true
           provenance: false
+          build-args: |
+            GIT_SHA=${{ steps.release.outputs.sha }}
+            BUILD_TIME=${{ steps.release.outputs.built }}
           tags: ${{ env.REGISTRY }}/mvgl/ssr:${{ steps.release.outputs.tag }}
           cache-from: type=gha,scope=ssr
           cache-to: type=gha,scope=ssr,mode=max

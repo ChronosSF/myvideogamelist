@@ -169,6 +169,47 @@ describe('ReleaseCalendar, a month', () => {
         expect(within(screen.getByRole('list', { name: 'Days in October' })).queryByRole('link')).not.toBeInTheDocument();
     });
 
+    it("fetches a day's cover for a seventh of the grid, and a band's for its column", () => {
+        // The two are drawn at different widths, so one `sizes` for both fetches one of them wrong.
+        const covered = (entry: ReleaseEntry): ReleaseEntry => ({
+            ...entry,
+            releases: entry.releases.map(release => ({
+                ...release,
+                coverImageUrl: `https://images.igdb.com/igdb/image/upload/t_cover_big/co${release.gameId}.jpg`,
+            })),
+        });
+        calendar.releases.data = [covered(LAUFEY), covered(SONGS_OF_THE_PAST)];
+        renderCalendar();
+
+        const dayCover = screen.getByRole('list', { name: 'Due on Friday, October 16' }).querySelector('img');
+        const bandCover = screen.getByRole('region', { name: 'Sometime in Q4 2026 · October to December' }).querySelector('img');
+        expect(dayCover?.getAttribute('sizes')).toContain('/ 7');
+        expect(bandCover?.getAttribute('sizes')).not.toContain('/ 7');
+        expect(dayCover).toHaveAttribute('srcset');
+        expect(bandCover).toHaveAttribute('srcset');
+    });
+
+    it("puts an update known only to its year in the year's band, as an update for the game it updates", () => {
+        // Silksong's Sea of Sorrow, which IGDB types an update and knows only to be due in 2026.
+        calendar.releases.data = [{
+            ...releaseEntry('2026-01-01', [connectedRelease({
+                gameId: 381684,
+                title: 'Hollow Knight: Silksong - Sea of Sorrow',
+                kind: 'update',
+                platforms: [platform(508, 'Nintendo Switch 2', 'Switch 2'), platform(6, 'PC (Microsoft Windows)', 'PC'), PS5],
+                reason: { relation: 'child', gameId: 115289, title: 'Hollow Knight: Silksong', membership: 'list', list: 'backlog' },
+            })]),
+            precision: 'year',
+        }];
+        renderCalendar();
+
+        const band = screen.getByRole('region', { name: 'Sometime in 2026' });
+        expect(within(band).getByRole('link', { name: 'Hollow Knight: Silksong - Sea of Sorrow' })).toHaveAttribute('href', '/games/381684');
+        expect(within(band).getByText('Update for Hollow Knight: Silksong, which you plan to play')).toBeInTheDocument();
+        expect(within(band).getByText('Switch 2, PC, PS5')).toBeInTheDocument();
+        expect(within(screen.getByRole('list', { name: 'Days in October' })).queryByRole('link')).not.toBeInTheDocument();
+    });
+
     it('reads out a sale once, with its dates, however many weeks it crosses', () => {
         calendar.events.data = AUTUMN_SALE;
         renderCalendar();

@@ -54,7 +54,10 @@ public class PublicProfileServiceTests
         ApplicationDbContext db,
         string userId,
         string userName,
-        string visibility = ProfileVisibility.Public)
+        string visibility = ProfileVisibility.Public,
+        string? displayName = null,
+        string? avatarUrl = null,
+        string? bio = null)
     {
         db.Users.Add(new ApplicationUser
         {
@@ -63,7 +66,10 @@ public class PublicProfileServiceTests
             // Set exactly as Identity would set it, because that is the column the lookup matches.
             NormalizedUserName = userName.ToUpperInvariant(),
             Email = $"{userName}@test.local",
-            ProfileVisibility = visibility
+            ProfileVisibility = visibility,
+            DisplayName = displayName,
+            AvatarUrl = avatarUrl,
+            Bio = bio
         });
         db.SaveChanges();
     }
@@ -208,6 +214,54 @@ public class PublicProfileServiceTests
     }
 
     // ── What crosses the gate ─────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task GetProfileAsync_PublicProfile_CarriesWhatTheOwnerWroteAboutThemselves()
+    {
+        using var db = NewDb();
+        AddAccount(db, UserId, "alex",
+            displayName: "Alex Smith",
+            avatarUrl: "https://i.imgur.com/removed.png",
+            bio: "Mostly RPGs.\n\nSlowly.");
+
+        var profile = await NewService(db).GetProfileAsync("alex", default);
+
+        Assert.NotNull(profile);
+        // The handle travels as well, and is still the name the page is addressed by.
+        Assert.Equal("alex", profile.UserName);
+        Assert.Equal("Alex Smith", profile.DisplayName);
+        Assert.Equal("https://i.imgur.com/removed.png", profile.AvatarUrl);
+        // As written, line breaks and all: the page shows it as plain text.
+        Assert.Equal("Mostly RPGs.\n\nSlowly.", profile.Bio);
+    }
+
+    [Fact]
+    public async Task GetProfileAsync_NothingWrittenAboutThemselves_LeavesAllThreeNull()
+    {
+        using var db = NewDb();
+        AddAccount(db, UserId, "alex");
+
+        var profile = await NewService(db).GetProfileAsync("alex", default);
+
+        Assert.NotNull(profile);
+        Assert.Null(profile.DisplayName);
+        Assert.Null(profile.AvatarUrl);
+        Assert.Null(profile.Bio);
+    }
+
+    [Fact]
+    public async Task GetProfileAsync_PrivateProfileThatWroteAboutThemselves_ReturnsNull()
+    {
+        // Writing a bio on a private profile publishes nothing: it reaches the page only once the
+        // profile is public, with everything else on it.
+        using var db = NewDb();
+        AddAccount(db, UserId, "alex", ProfileVisibility.Private,
+            displayName: "Alex Smith",
+            avatarUrl: "https://i.imgur.com/removed.png",
+            bio: "Mostly RPGs.");
+
+        Assert.Null(await NewService(db).GetProfileAsync("alex", default));
+    }
 
     [Fact]
     public async Task GetProfileAsync_CountsOnlyPublicReviews()
@@ -427,13 +481,18 @@ public class PublicProfileServiceTests
     // ── The favourites ────────────────────────────────────────────────────────────────
 
     private static void AddFavourite(
-        ApplicationDbContext db, int gameId, string userId = UserId, DateTimeOffset? addedAt = null)
+        ApplicationDbContext db,
+        int gameId,
+        string userId = UserId,
+        DateTimeOffset? addedAt = null,
+        int? position = null)
     {
         db.UserFavourites.Add(new UserFavourite
         {
             UserId = userId,
             GameId = gameId,
-            AddedAt = addedAt ?? Now
+            AddedAt = addedAt ?? Now,
+            Position = position
         });
         db.SaveChanges();
     }
@@ -497,6 +556,26 @@ public class PublicProfileServiceTests
 
         Assert.NotNull(favourites);
         Assert.Equal([12, 13, 11], favourites.Games.Select(g => g.Id));
+    }
+
+    [Fact]
+    public async Task GetFavouritesAsync_SomePlacedByHand_ReturnsThemInTheOwnersOrder()
+    {
+        // A showcase is made to be shown, and its order is part of what it shows (ADR 0064): the
+        // favourites placed by hand lead, by position and against their dates, and the rest follow
+        // newest first — the order the owner's own page draws.
+        using var db = NewDb();
+        AddAccount(db, UserId, "alex");
+        AddFavourite(db, gameId: 11, addedAt: Now.AddDays(-10), position: -1024);
+        AddFavourite(db, gameId: 12, addedAt: Now);
+        AddFavourite(db, gameId: 13, addedAt: Now.AddDays(-5), position: 2048);
+        AddFavourite(db, gameId: 14, addedAt: Now.AddDays(-1));
+
+        var favourites = await NewService(db, IgdbKnowing(Game(11, "A"), Game(12, "B"), Game(13, "C"), Game(14, "D")))
+            .GetFavouritesAsync("alex", default);
+
+        Assert.NotNull(favourites);
+        Assert.Equal([11, 13, 12, 14], favourites.Games.Select(g => g.Id));
     }
 
     [Fact]

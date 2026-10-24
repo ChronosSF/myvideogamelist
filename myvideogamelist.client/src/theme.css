@@ -101,13 +101,19 @@
     --color-favourite-400: oklch(70.2% 0.183 293.541); /* The edge of a favourite's mark once the game is one */
     --color-favourite-500: oklch(60.6% 0.25 292.717);  /* The edge of the control that makes a favourite, and the base of its tints */
     --color-favourite-600: oklch(54.1% 0.281 293.009); /* That control under the pointer */
-    --color-favourite-700: oklch(49.1% 0.27 292.581);  /* That control once the game is a favourite */
+    --color-favourite-700: oklch(49.1% 0.27 292.581);  /* That control once the game is a favourite, and the mark on a favourite's cover */
 
     --color-wishlist-600: oklch(59.2% 0.249 0.584);  /* The wishlist's pink, set apart from the statuses' blue: its control under the pointer */
     --color-wishlist-700: oklch(52.5% 0.223 3.958);  /* That control once the game is on the wishlist */
 
     --color-ownership-500: oklch(70.4% 0.14 182.503);  /* How the user has a game, in teal, set apart from the statuses: its control under the pointer */
     --color-ownership-700: oklch(51.1% 0.096 186.391); /* That control once it is chosen */
+
+    /* A tag the user put on a game, in orange, so their own words are never taken for IGDB's genres
+       beside them: 300 for the words, 800 for the edge, 900 for the tint. orange-300, -800, -900 */
+    --color-tag-300: oklch(83.7% 0.128 66.29);
+    --color-tag-800: oklch(47% 0.157 37.304);
+    --color-tag-900: oklch(40.8% 0.123 38.172);
 
     --color-multiplayer-300: oklch(82.7% 0.119 306.383); /* How a game is played together, set apart from its genres: the words */
     --color-multiplayer-800: oklch(43.8% 0.218 303.724); /* The edge */
