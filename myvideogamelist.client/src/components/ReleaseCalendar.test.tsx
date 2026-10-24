@@ -189,6 +189,27 @@ describe('ReleaseCalendar, a month', () => {
         expect(bandCover).toHaveAttribute('srcset');
     });
 
+    it("puts an update known only to its year in the year's band, as an update for the game it updates", () => {
+        // Silksong's Sea of Sorrow, which IGDB types an update and knows only to be due in 2026.
+        calendar.releases.data = [{
+            ...releaseEntry('2026-01-01', [connectedRelease({
+                gameId: 381684,
+                title: 'Hollow Knight: Silksong - Sea of Sorrow',
+                kind: 'update',
+                platforms: [platform(508, 'Nintendo Switch 2', 'Switch 2'), platform(6, 'PC (Microsoft Windows)', 'PC'), PS5],
+                reason: { relation: 'child', gameId: 115289, title: 'Hollow Knight: Silksong', membership: 'list', list: 'backlog' },
+            })]),
+            precision: 'year',
+        }];
+        renderCalendar();
+
+        const band = screen.getByRole('region', { name: 'Sometime in 2026' });
+        expect(within(band).getByRole('link', { name: 'Hollow Knight: Silksong - Sea of Sorrow' })).toHaveAttribute('href', '/games/381684');
+        expect(within(band).getByText('Update for Hollow Knight: Silksong, which you plan to play')).toBeInTheDocument();
+        expect(within(band).getByText('Switch 2, PC, PS5')).toBeInTheDocument();
+        expect(within(screen.getByRole('list', { name: 'Days in October' })).queryByRole('link')).not.toBeInTheDocument();
+    });
+
     it('reads out a sale once, with its dates, however many weeks it crosses', () => {
         calendar.events.data = AUTUMN_SALE;
         renderCalendar();

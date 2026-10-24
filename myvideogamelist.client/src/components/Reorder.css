@@ -1,0 +1,124 @@
+/* A game's place in a hand-arranged list and the grip it is moved by (ADR 0054). The table's own
+   drawing of a lifted row is in ListTable.css, beside the hover rule it has to outrank. */
+
+.reorder-handle {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.1rem;
+    padding-left: 0.5rem;
+    font-size: 0.75rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+    color: var(--color-fg-soft);
+    border: 1px solid var(--color-line-strong);
+    border-radius: 0.45rem;
+    user-select: none;
+    -webkit-user-select: none;
+    transition: background 0.12s, border-color 0.12s, color 0.12s;
+}
+
+.reorder-handle:hover {
+    color: var(--color-fg-strong);
+    border-color: color-mix(in srgb, var(--color-primary-500) 60%, transparent);
+}
+
+.reorder-rank {
+    min-width: 1ch;
+}
+
+/* The button itself: at least 24 by 24, the smallest target WCAG 2.5.8 allows. */
+.reorder-grip {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1.5rem;
+    min-height: 1.5rem;
+    padding: 0 0.35rem;
+    color: inherit;
+    background: none;
+    border: none;
+    border-radius: 0.4rem;
+    cursor: grab;
+    /* The grip's own drag is the gesture: without this a touch on it scrolls the page instead. */
+    touch-action: none;
+}
+
+.reorder-grip svg {
+    width: 0.5rem;
+    height: 0.8rem;
+}
+
+.reorder-grip:focus-visible {
+    outline: 2px solid var(--color-focus);
+    outline-offset: 2px;
+}
+
+/* While its game's own write is out. Still focusable, which `disabled` would not be. */
+.reorder-grip[aria-disabled='true'] {
+    cursor: progress;
+    opacity: 0.55;
+}
+
+/* A game held by a tap or from the keyboard, and the game being dragged: one state, one look. */
+.reorder-handle:has(> .reorder-grip[aria-pressed='true']),
+[data-reorder-state='lifted'] .reorder-handle {
+    color: var(--color-on-primary);
+    background: var(--color-primary-600);
+    border-color: var(--color-primary-500);
+}
+
+/* While a game is held, every other grip takes it: a press on one puts the held game in its place. */
+[data-reorder-holding] .reorder-grip:not([aria-pressed='true']) {
+    cursor: pointer;
+}
+
+/* On a cover, over its top edge, between the ESRB badge and the critic score in its corners. */
+.reorder-handle-overlay {
+    position: absolute;
+    top: 0.5rem;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 2;
+    background: color-mix(in srgb, var(--color-sunken) 82%, transparent);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+}
+
+.reorder-handle-inline {
+    background: color-mix(in srgb, var(--color-surface) 70%, transparent);
+}
+
+/* Room under the sticky navigation bar, and a little below, when a moved game is scrolled into view. */
+[data-reorder-item] {
+    scroll-margin-top: 4.5rem;
+    scroll-margin-bottom: 1rem;
+}
+
+/* The tile a game is wrapped in when its list can be rearranged: what the handle is placed over. */
+.reorder-tile {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+}
+
+.reorder-tile > .game-card-root {
+    flex: 1;
+}
+
+/* The game being moved, drawn where it would land. */
+.reorder-tile[data-reorder-state='lifted'] {
+    z-index: 3;
+    border-radius: 0.75rem;
+    outline: 2px solid var(--color-primary-500);
+    outline-offset: 3px;
+    box-shadow: 0 18px 40px rgba(0, 0, 0, 0.5);
+}
+
+/* Everywhere while a game is dragged, so the cursor does not flicker back over what it crosses. */
+html.reorder-dragging,
+html.reorder-dragging * {
+    cursor: grabbing !important;
+    user-select: none !important;
+    -webkit-user-select: none !important;
+}

@@ -1,18 +1,23 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Link } from 'react-router';
 import type { GameDto } from '@/types/game';
 import { hasCriticScore, ratingPercent } from '@/lib/score';
 import { CARD_BODY, CARD_COVER, CARD_FRAME, GAME_GRID_COVER_SIZES } from '@/lib/gameGrid';
 import { CoverImage } from '@/components/CoverImage';
 import { ScoreBadge } from '@/components/ScoreBadge';
+import { FavouriteMark } from '@/components/FavouriteMark';
+import { FavouriteWords } from '@/components/FavouriteWords';
 import { type ListId, LIST_IDS } from '@/types/list';
 import { useLists } from '@/hooks/useLists';
 import { useWishlist } from '@/hooks/useWishlist';
+import { useFavourites } from '@/hooks/useFavourites';
 import { useAuth } from '@/hooks/useAuth';
 import './GameCard.css';
 
 interface GameCardProps {
     game: GameDto;
+    /** Drawn under the title. The lists page puts the game's tags here; nothing else does. */
+    children?: ReactNode;
     /**
      * Load the cover with the page, for a card in the grid's first row. Lazily otherwise. The pages
      * decide, since only they know where the card sits.
@@ -24,14 +29,19 @@ interface GameCardProps {
  * A game in the grid the games, lists and wishlist pages share (`@/lib/gameGrid`), which is the width
  * its cover's `sizes` is worked out from.
  */
-export function GameCard({ game, eager = false }: GameCardProps) {
+export function GameCard({ game, eager = false, children }: GameCardProps) {
     const releaseYear = game.releaseDate ? new Date(game.releaseDate).getFullYear() : null;
     const { user } = useAuth();
     const { addToList, removeFromList, isInList, isPending, nameFor } = useLists();
     const wishlist = useWishlist();
+    const { isFavourite } = useFavourites();
     const [overlayOpen, setOverlayOpen] = useState(false);
 
     const wishlisted = wishlist.isWishlisted(game.id);
+
+    // Marked, not offered: a favourite is made on the game's page (ADR 0029 §4), and the card says
+    // which games already are one wherever it is drawn (ADR 0064).
+    const favourite = isFavourite(game.id);
 
     /**
      * Cards appear on Games and Lists, and neither of those renders the wishlist provider's
@@ -113,6 +123,10 @@ export function GameCard({ game, eager = false }: GameCardProps) {
                         {game.esrbRating}
                     </div>
                 )}
+
+                {/* Before the overlay, which covers it on hover. Said in words in the heading: this
+                    cover is a button whose name is its own, and a screen reader hears nothing inside it. */}
+                {favourite && <FavouriteMark variant="cover" />}
 
                 {/* List selection overlay — only shown when authenticated; visible on hover (CSS) or tap (state) */}
                 {user && (
@@ -204,11 +218,14 @@ export function GameCard({ game, eager = false }: GameCardProps) {
                         <Link to={`/games/${game.id}`} className="hover:text-primary-400 transition-colors">
                             {game.title}
                         </Link>
+                        {favourite && <FavouriteWords />}
                     </h3>
                     {releaseYear && (
                         <span className="text-fg-faint text-xs shrink-0 mt-0.5">{releaseYear}</span>
                     )}
                 </div>
+
+                {children}
 
                 {/* The player rating, out of 100 like the critic score above it. Stars on a card
                     would be a score nobody on this page gave — see ADR 0021. */}

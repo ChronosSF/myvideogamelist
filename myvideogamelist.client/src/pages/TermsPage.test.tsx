@@ -26,6 +26,10 @@ describe('TermsPage', () => {
         expect(screen.getByRole('heading', { level: 1, name: 'Terms of use' })).toBeInTheDocument();
         expect(screen.getByRole('heading', { name: 'Your data, and keeping a copy' })).toBeInTheDocument();
         expect(screen.getByRole('link', { name: 'your profile page' })).toHaveAttribute('href', '/user');
-        expect(screen.getByRole('link', { name: 'our Discord server' })).toHaveAttribute('href', DISCORD_INVITE_URL);
+        // The words that say it opens a new tab keep their space inside the hidden text, ahead of the
+        // full stop. Testing Library's name computation trims it, and jsdom does no layout to separate
+        // the hidden text as a browser does.
+        expect(screen.getByRole('link', { name: /^our Discord server ?\(opens in a new tab\)$/ }))
+            .toHaveAttribute('href', DISCORD_INVITE_URL);
     });
 });

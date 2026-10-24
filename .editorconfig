@@ -1,0 +1,51 @@
+# The house style, as the code is written (ADR 0061). CI's `dotnet format --verify-no-changes`
+# enforces the formatting below: indentation, braces, spacing, line breaks and the order of usings.
+# The code-style preferences further down are suggestions, so an editor offers them and nothing
+# fails on them.
+root = true
+
+[*.cs]
+indent_style = space
+indent_size = 4
+insert_final_newline = true
+# Neither charset nor end_of_line is set. Some files carry a BOM and most do not, and git converts
+# line endings on checkout (core.autocrlf), so either setting would make the check rewrite files
+# whose only difference is how they were saved.
+
+# Usings: one block, System first, outside a file-scoped namespace.
+dotnet_sort_system_directives_first = true
+dotnet_separate_import_directive_groups = false
+csharp_using_directive_placement = outside_namespace:suggestion
+csharp_style_namespace_declarations = file_scoped:suggestion
+
+# Braces on a line of their own. A single statement goes without them, even one that wraps.
+csharp_new_line_before_open_brace = all
+csharp_new_line_before_else = true
+csharp_new_line_before_catch = true
+csharp_new_line_before_finally = true
+csharp_prefer_braces = false
+
+# An initializer may put several short members on one line, as the seed data and the export's
+# projections do. The formatter's default gives every member a line of its own, which is what the
+# check objected to, 46 times, before this file existed.
+csharp_new_line_before_members_in_object_initializers = false
+csharp_new_line_before_members_in_anonymous_types = false
+
+# var for locals, and primary constructors.
+csharp_style_var_for_built_in_types = true:suggestion
+csharp_style_var_when_type_is_apparent = true:suggestion
+csharp_style_var_elsewhere = true:suggestion
+csharp_style_prefer_primary_constructors = true:suggestion
+
+# A collection expression wherever the target type allows one, except at the end of a LINQ chain,
+# which says ToList() or ToArray().
+dotnet_style_prefer_collection_expression = when_types_loosely_match:suggestion
+dotnet_diagnostic.IDE0305.severity = none
+
+# EF's output, written by `dotnet ef migrations add`: nothing here should ask it to look different.
+[MyVideoGameList.Server/Data/Migrations/*.cs]
+generated_code = true
+
+[*.{csproj,props,targets,slnx}]
+indent_style = space
+indent_size = 2

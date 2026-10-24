@@ -7,7 +7,7 @@ import { GameGridSkeleton } from '@/components/GameGridSkeleton';
 import { CARD_BODY, CARD_COVER, CARD_FRAME, GAME_GRID } from '@/lib/gameGrid';
 import { game } from '@/test/factories';
 
-// The card reads these three, and their real providers would fetch.
+// The card reads these four, and their real providers would fetch.
 vi.mock('@/hooks/useAuth', () => {
     const value = { user: null, loading: false };
     return { useAuth: () => value };
@@ -19,6 +19,10 @@ vi.mock('@/hooks/useLists', () => {
 vi.mock('@/hooks/useWishlist', () => {
     const value = { isWishlisted: () => false, isPending: () => false, add: vi.fn(), remove: vi.fn() };
     return { useWishlist: () => value };
+});
+vi.mock('@/hooks/useFavourites', () => {
+    const value = { isFavourite: () => false };
+    return { useFavourites: () => value };
 });
 
 /**

@@ -1,5 +1,6 @@
 import { useId } from 'react';
 import { Link } from 'react-router';
+import { useLayoutEffect, useRef } from 'react';
 import type { UseGameCommunityResult } from '@/hooks/useGameCommunity';
 import type { CommunityScores, GameReview } from '@/types/community';
 import { formatCount } from '@/lib/format';
@@ -232,11 +233,43 @@ interface MemberReviewsProps extends GameCommunityProps {
  */
 function MemberReviews({ community, viewer, reviews, total }: MemberReviewsProps) {
     const { hasMore, loadingMore, moreFailed, loadMore } = community;
+    const list = useRef<HTMLOListElement>(null);
+    const more = useRef<HTMLButtonElement>(null);
+
+    // Where keyboard focus goes once a page asked for by a press lands: the first review it added, so
+    // the reader carries on from there rather than from the button beneath them, or, once the last
+    // page takes the button away, from the document's body. Written by the press and read here, in
+    // the commit that adds the page, so focus never rests on the body in between.
+    const focusFrom = useRef<number | null>(null);
+    useLayoutEffect(() => {
+        const from = focusFrom.current;
+        if (from === null || loadingMore) return;
+
+        focusFrom.current = null;
+        // Only from the button, or from the body once the last page has taken the button away. A
+        // reader who moved on while the page loaded, into the search box say, keeps the focus where
+        // they put it, and the rest of what they type with it.
+        const active = document.activeElement;
+        const lost = active === null || active === document.body;
+        if (!lost && active !== more.current) return;
+
+        const items = list.current?.querySelectorAll<HTMLElement>(':scope > li');
+        // A failed page added nothing, and the button that was pressed still has the focus. A last page
+        // that added nothing either, its reviews withdrawn since, took the button with it: the last
+        // review takes the focus then, rather than the body.
+        (items?.[from] ?? (lost ? items?.[from - 1] : undefined))?.focus();
+    }, [reviews.length, loadingMore]);
+
+    const showMore = () => {
+        if (loadingMore) return;
+        focusFrom.current = reviews.length;
+        loadMore();
+    };
 
     return (
         <div>
             {/* Named, because the section holds a second list — the score columns — right above. */}
-            <ol className="review-list" aria-label="Member reviews">
+            <ol ref={list} className="review-list" aria-label="Member reviews">
                 {reviews.map(review => (
                     // The name and the moment it was written, not the name alone. Names can change
                     // hands while somebody reads, and a key two reviews shared would hand one card's
@@ -251,11 +284,14 @@ function MemberReviews({ community, viewer, reviews, total }: MemberReviewsProps
 
             {hasMore && (
                 <div className="mt-4 flex flex-wrap items-center gap-3">
+                    {/* aria-disabled rather than disabled while a page loads: a disabled button
+                        drops the keyboard focus it holds, and the press guards itself. */}
                     <button
+                        ref={more}
                         type="button"
-                        onClick={loadMore}
-                        disabled={loadingMore}
-                        className="px-4 py-2 rounded-lg text-sm font-medium bg-surface border border-line-strong text-fg hover:border-primary-500 disabled:opacity-60 disabled:cursor-wait transition-colors"
+                        onClick={showMore}
+                        aria-disabled={loadingMore}
+                        className="px-4 py-2 rounded-lg text-sm font-medium bg-surface border border-line-strong text-fg hover:border-primary-500 aria-disabled:opacity-60 aria-disabled:cursor-wait transition-colors"
                     >
                         {loadingMore ? 'Loading…' : 'Show more reviews'}
                     </button>

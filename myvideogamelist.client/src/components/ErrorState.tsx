@@ -19,6 +19,11 @@ interface ErrorStateProps {
     titleAs?: 'h1' | 'p';
     /** `page` when it is all a page has to show; `section` inside a page that has other things on it. */
     size?: 'page' | 'section';
+    /**
+     * The id of the request that failed, when the failure carries one (ADR 0059): what somebody
+     * reporting it can quote, offered as the root's error page offers it.
+     */
+    reference?: string | null;
 }
 
 /**
@@ -43,6 +48,7 @@ export function ErrorState({
     retrying = false,
     titleAs: Title = 'p',
     size = 'page',
+    reference = null,
 }: ErrorStateProps) {
     const page = size === 'page';
     const titleId = useId();
@@ -64,6 +70,12 @@ export function ErrorState({
                 </svg>
                 <Title id={titleId} className="text-danger-300 font-medium mb-1">{title}</Title>
                 {children !== undefined && <p className="text-danger-300/80 text-sm">{children}</p>}
+                {reference !== null && (
+                    <p className="text-danger-300/80 text-xs mt-2">
+                        If you report this, quote{' '}
+                        <code className="font-mono select-all break-all">{reference}</code>.
+                    </p>
+                )}
                 {onRetry !== undefined && (
                     <button
                         type="button"

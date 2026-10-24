@@ -12,9 +12,9 @@ import type { Route } from './+types/GamesPage';
 type Tag = Partial<Record<'title' | 'name' | 'content' | 'rel' | 'href', string>>;
 
 /**
- * A signed-out reader, for the cards a result set renders: each reads auth, the lists and the
- * wishlist, whose real providers would fetch. One object each, handed back on every call, because a
- * fresh literal per render re-runs every effect that depends on it.
+ * A signed-out reader, for the cards a result set renders: each reads auth, the lists, the wishlist
+ * and the favourites, whose real providers would fetch. One object each, handed back on every call,
+ * because a fresh literal per render re-runs every effect that depends on it.
  */
 const signedOut = { user: null, loading: false };
 const noLists = {
@@ -30,10 +30,12 @@ const noWishlist = {
     add: vi.fn(async () => true),
     remove: vi.fn(async () => true),
 };
+const noFavourites = { isFavourite: () => false };
 
 vi.mock('@/hooks/useAuth', () => ({ useAuth: () => signedOut }));
 vi.mock('@/hooks/useLists', () => ({ useLists: () => noLists }));
 vi.mock('@/hooks/useWishlist', () => ({ useWishlist: () => noWishlist }));
+vi.mock('@/hooks/useFavourites', () => ({ useFavourites: () => noFavourites }));
 
 const SITE = { siteUrl: 'https://myvideogamelist.net', indexable: true };
 
@@ -57,12 +59,13 @@ describe('GamesPage meta', () => {
         expect(noindex(tagsFor('?search=zelda', { search: 'zelda' }))).toBe(true);
         expect(noindex(tagsFor('?sort=newest', { sort: 'newest' }))).toBe(true);
         expect(noindex(tagsFor('?platform=6', { platform: 6 }))).toBe(true);
+        expect(noindex(tagsFor('?esrb=m', { esrb: 'm' }))).toBe(true);
     });
 
     it('keeps out a query the loader could not use, which it reads as the plain catalogue', () => {
         // Every one of these parses to the default browse, so a decision made on the browse would
         // index each of them as another copy of the catalogue.
-        for (const query of ['?sort=bogus', '?platform=0', '?sort=rating']) {
+        for (const query of ['?sort=bogus', '?platform=0', '?sort=rating', '?esrb=rp']) {
             expect(noindex(tagsFor(query)), query).toBe(true);
         }
     });
@@ -87,10 +90,11 @@ const GENRES: GenreDto[] = [{ id: 12, name: 'Role-playing (RPG)', description: n
 
 /**
  * The page in a data router whose loader can be held open, which is the only way to have one
- * navigation still in flight while the next filter is chosen. The component is handed the plain
- * catalogue throughout, because that is what a loader that has not answered yet leaves on screen.
+ * navigation still in flight while the next filter is chosen. The component is handed the browse it
+ * opened on throughout — the plain catalogue unless told otherwise — because that is what a loader
+ * that has not answered yet leaves on screen.
  */
-function renderBrowsePage() {
+function renderBrowsePage(opened: { url: string; browse: Partial<GameBrowse> } = { url: '/games', browse: {} }) {
     const requested: string[] = [];
     let release: (() => void) | null = null;
 
@@ -108,7 +112,7 @@ function renderBrowsePage() {
                     {...({
                         loaderData: {
                             page: { items: [], hasMore: false },
-                            browse: EMPTY_BROWSE,
+                            browse: { ...EMPTY_BROWSE, ...opened.browse },
                             genres: GENRES,
                             platforms: PLATFORMS,
                             currentYear: 2026,
@@ -117,7 +121,7 @@ function renderBrowsePage() {
                 />
             ),
         }],
-        { initialEntries: ['/games'] },
+        { initialEntries: [opened.url] },
     );
 
     render(<RouterProvider router={router} />);
@@ -146,6 +150,27 @@ describe('GamesPage filters', () => {
         await actor.selectOptions(screen.getByLabelText('Genre'), 'Role-playing (RPG)');
 
         expect(requested).toEqual(['', '?platform=6', '?platform=6&genre=12']);
+    });
+
+    it('puts an ESRB rating in the URL beside a platform', async () => {
+        const actor = userEvent.setup();
+        const { requested } = renderBrowsePage();
+
+        await actor.selectOptions(await screen.findByLabelText('Platform'), 'PC (Windows)');
+        await actor.selectOptions(screen.getByLabelText('ESRB rating'), 'Mature 17+');
+
+        expect(requested).toEqual(['', '?platform=6', '?platform=6&esrb=m']);
+    });
+
+    it('clears an ESRB rating with the other filters', async () => {
+        const actor = userEvent.setup();
+        const { requested } = renderBrowsePage({ url: '/games?platform=6&esrb=m', browse: { platform: 6, esrb: 'm' } });
+
+        // The one beside the selects; the empty page offers the same.
+        const [clear] = await screen.findAllByRole('button', { name: 'Clear filters' });
+        await actor.click(clear);
+
+        expect(requested).toEqual(['?platform=6&esrb=m', '']);
     });
 
     it('draws a page of card shapes, and says so in words, while another result set loads', async () => {

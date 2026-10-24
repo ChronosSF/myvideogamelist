@@ -2,11 +2,14 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { useAuth } from '@/hooks/useAuth';
 import { ProfileStats } from '@/components/ProfileStats';
+import { ProfileHistory } from '@/components/ProfileHistory';
 import { FavouritesShowcase } from '@/components/FavouritesShowcase';
 import { AccountIdentityCard } from '@/components/AccountIdentityCard';
 import { AccountDataCard } from '@/components/AccountDataCard';
+import { ProfileDetailsCard } from '@/components/ProfileDetailsCard';
 import { ListNamesCard } from '@/components/ListNamesCard';
 import { LoadingState } from '@/components/LoadingState';
+import { TagsCard } from '@/components/TagsCard';
 import { PageHeader } from '@/components/PageHeader';
 import { Skeleton } from '@/components/Skeleton';
 import { PRIVATE_NO_STORE } from '@/lib/cache';
@@ -85,6 +88,11 @@ export function UserPage() {
      */
     const [accountDeleted, setAccountDeleted] = useState(false);
 
+    // A sign-out the server refused, or could not be asked for: the account is still signed in, and
+    // this says so under the button rather than leaving a press that did nothing.
+    const [logoutError, setLogoutError] = useState<string | null>(null);
+    const [signingOut, setSigningOut] = useState(false);
+
     // `loading` before `user`: the server render never knows who is signed in, and neither does the
     // first client render, so without it every visit opened on "sign in" and then replaced it.
     if (loading) {
@@ -140,7 +148,17 @@ export function UserPage() {
     }
 
     const handleLogout = async () => {
-        await logout();
+        if (signingOut) return;
+        setLogoutError(null);
+        setSigningOut(true);
+        try {
+            await logout();
+        } catch (error) {
+            setLogoutError(error instanceof Error ? error.message : 'Could not sign you out. Please try again.');
+            return;
+        } finally {
+            setSigningOut(false);
+        }
         navigate('/');
     };
 
@@ -177,6 +195,11 @@ export function UserPage() {
                         {/* Directly under it, because the two answer the same question from
                             opposite sides: what we know you by, and what everybody else does. */}
                         <AccountIdentityCard user={user} />
+
+                        {/* Then what that public page says about you, under the switch that decides
+                            whether anybody reads it. Keyed by the account, so drafts typed for one
+                            are never shown, or saved, under another. */}
+                        <ProfileDetailsCard key={user.id} user={user} />
                     </section>
 
                     {/* The main column, because what the user has done is the reason they came here
@@ -189,12 +212,23 @@ export function UserPage() {
                         <div className="user-card">
                             <ProfileStats userId={user.id} />
                         </div>
+                        {/* Under the figures, as the records behind them: each move, score and run
+                            date as it was written, where the chart counts them by ADR 0047's rules.
+                            Here only — the public profile publishes counts, the month series and the
+                            reviews its owner chose to publish, and never this list. */}
+                        <div className="user-card">
+                            <ProfileHistory userId={user.id} />
+                        </div>
                     </div>
 
                     <section className="user-page-prefs" aria-label="Preferences">
                         {/* First, because it changes how the site reads to this person and to
                             nobody else. */}
                         <ListNamesCard />
+
+                        {/* Beside the list names: both are words the owner chose that only the owner
+                            sees. */}
+                        <TagsCard />
 
                         {/* Here rather than beside the export in "Your data", which is the
                             section holding the one thing that cannot be undone — an import is
@@ -208,9 +242,14 @@ export function UserPage() {
                             <Link to="/import" className="user-btn user-card-action">Start an import</Link>
                         </div>
 
-                        <button type="button" className="user-logout-btn" onClick={handleLogout}>
-                            Sign Out
+                        {/* aria-disabled rather than disabled while the request is out, so the
+                            button keeps its focus; the press guards itself. */}
+                        <button type="button" className="user-logout-btn" onClick={handleLogout} aria-disabled={signingOut}>
+                            {signingOut ? 'Signing out…' : 'Sign Out'}
                         </button>
+                        {logoutError !== null && (
+                            <p className="-mt-2 text-sm text-danger-300 text-center" role="alert">{logoutError}</p>
+                        )}
 
                         {/* Last, below Sign Out, where a settings page conventionally keeps the
                             one thing on it that cannot be undone. A section of its own, since

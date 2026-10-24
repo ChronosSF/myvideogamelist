@@ -8,14 +8,21 @@ import { ListTable } from '@/components/ListTable';
 import { ListTableSkeleton } from '@/components/ListTableSkeleton';
 import { ListToolbar } from '@/components/ListToolbar';
 import { LoadingState } from '@/components/LoadingState';
+import { ListTagFilter } from '@/components/ListTagFilter';
+import { TagChips } from '@/components/TagChips';
+import { useListTagFilter } from '@/hooks/useListTagFilter';
 import { PageHeader } from '@/components/PageHeader';
+import { ReorderAnnouncer } from '@/components/ReorderAnnouncer';
+import { ReorderHandle } from '@/components/ReorderHandle';
 import { Skeleton } from '@/components/Skeleton';
 import { useLists } from '@/hooks/useLists';
 import { useAuth } from '@/hooks/useAuth';
-import { type ListId, LIST_IDS } from '@/types/list';
+import { useFavourites } from '@/hooks/useFavourites';
+import { useReorder } from '@/hooks/useReorder';
+import { type ListEntryDto, type ListId, HAND_ORDERED_LISTS, LIST_IDS } from '@/types/list';
 import type { PlatformDto } from '@/types/game';
 import { GAME_GRID, GAME_GRID_FIRST_ROW } from '@/lib/gameGrid';
-import { sortEntries } from '@/lib/listSort';
+import { MANUAL_SORT, sortEntries } from '@/lib/listSort';
 import './ListsPage.css';
 import { PRIVATE_NO_STORE } from '@/lib/cache';
 import { NOINDEX } from '@/lib/seo';
@@ -82,8 +89,9 @@ export function ListsPage() {
     const { user, loading: authLoading } = useAuth();
     const {
         lists, loading, error, mutationError, isPending, reload,
-        view, setView, sortFor, setSort, setScore, removeFromList, nameFor,
+        view, setView, sortFor, setSort, setScore, removeFromList, moveInOrder, nameFor,
     } = useLists();
+    const { isFavourite } = useFavourites();
 
     // Nobody is signed in or out until auth has answered: the server render never knows, and the
     // first client render has to match it. Checking `user` alone told every signed-in visitor to
@@ -96,6 +104,9 @@ export function ListsPage() {
     // Transient and deliberately not persisted, unlike the sort and the layout. An empty
     // selection means "everything", so the filter starts inert.
     const [platformIds, setPlatformIds] = useState<number[]>([]);
+
+    // By tag as well, ticks and all in a hook of its own (ADR 0065).
+    const tagFilter = useListTagFilter(lists, user?.id ?? null);
 
     const entries = lists[activeTab];
     const sort = sortFor(activeTab);
@@ -118,12 +129,40 @@ export function ListsPage() {
         return [...seen.values()].sort((a, b) => a.name.localeCompare(b.name));
     }, [lists]);
 
+    const { matches: matchesTags } = tagFilter;
     const visible = useMemo(() => {
         const filtered = platformIds.length === 0
             ? entries
             : entries.filter(entry => entry.game.platforms.some(p => platformIds.includes(p.id)));
-        return sortEntries(filtered, sort);
-    }, [entries, platformIds, sort]);
+        return sortEntries(filtered.filter(matchesTags), sort);
+    }, [entries, platformIds, sort, matchesTags]);
+
+    const clearFilters = () => {
+        setPlatformIds([]);
+        tagFilter.setSelected([]);
+    };
+
+    // The hand order, where this list offers one. It can be rearranged only when every game in it is
+    // on screen: a game dropped between two that a filter has left showing would land among games
+    // the user cannot see, in an order they never chose.
+    const offerManual = HAND_ORDERED_LISTS.includes(activeTab);
+    const manual = sort.key === MANUAL_SORT.key;
+    const arranging = manual && platformIds.length === 0 && !tagFilter.active;
+
+    const byId = useMemo(() => new Map(visible.map(entry => [entry.game.id, entry])), [visible]);
+    const reorder = useReorder({
+        ids: visible.map(entry => entry.game.id),
+        nameOf: id => byId.get(id)?.game.title ?? 'This game',
+        onMove: (id, afterId) => moveInOrder(activeTab, id, afterId),
+        canMove: id => !isPending(id),
+        disabled: !arranging,
+    });
+
+    // While a game is being moved it is drawn where it would land; the rest of the time this is the
+    // sorted list as it stands.
+    const shown: ListEntryDto[] = arranging
+        ? reorder.order.flatMap(id => byId.get(id) ?? [])
+        : visible;
 
     return (
         <div className="min-h-screen">
@@ -201,23 +240,49 @@ export function ListsPage() {
                         onViewChange={setView}
                         sort={sort}
                         onSortChange={next => setSort(activeTab, next)}
+                        offerManual={offerManual}
                         platforms={platforms}
                         selectedPlatformIds={platformIds}
                         onPlatformsChange={setPlatformIds}
-                    />
+                    >
+                        <ListTagFilter
+                            tags={tagFilter.offered}
+                            selected={tagFilter.selected}
+                            onChange={tagFilter.setSelected}
+                            countFor={tagId => tagFilter.countIn(entries, tagId)}
+                            shown={visible.length}
+                            total={entries.length}
+                        />
+                    </ListToolbar>
+                )}
+
+                {signedIn && !loading && !error && entries.length > 0 && manual && (
+                    <p className="lists-order-hint">
+                        {arranging
+                            ? 'Drag a game by its handle to where you mean to play it — or press a handle and then the handle of the game whose place it should take, or pick one up with Space and move it with the arrow keys. Games you have not placed follow, in the order they joined your backlog.'
+                            : tagFilter.active
+                                ? 'Clear the filters to rearrange your order.'
+                                : 'Clear the platform filter to rearrange your order.'}
+                    </p>
+                )}
+
+                {signedIn && !loading && !error && arranging && visible.length > 0 && (
+                    <ReorderAnnouncer reorder={reorder} />
                 )}
 
                 {signedIn && !loading && !error && entries.length > 0 && visible.length === 0 && (
                     <div className="text-center py-16">
                         <p className="text-fg-muted text-sm mb-3">
-                            No games in {nameFor(activeTab)} match the platform filter.
+                            {tagFilter.active
+                                ? `No games in ${nameFor(activeTab)} match the filters.`
+                                : `No games in ${nameFor(activeTab)} match the platform filter.`}
                         </p>
                         <button
                             type="button"
                             className="text-primary-400 text-sm font-semibold hover:underline"
-                            onClick={() => setPlatformIds([])}
+                            onClick={clearFilters}
                         >
-                            Clear the filter
+                            {tagFilter.active ? 'Clear the filters' : 'Clear the filter'}
                         </button>
                     </div>
                 )}
@@ -256,22 +321,47 @@ export function ListsPage() {
 
                 {/* The first row loads with the page: it is what the reader is looking at. */}
                 {signedIn && !loading && !error && visible.length > 0 && view === 'tiles' && (
-                    <div className={GAME_GRID}>
-                        {visible.map((entry, index) => (
-                            <GameCard key={entry.game.id} game={entry.game} eager={index < GAME_GRID_FIRST_ROW} />
+                    <div
+                        className={GAME_GRID}
+                        // A list while it is an order, so assistive technology hears each game's place.
+                        {...(arranging ? { ...reorder.listProps(), role: 'list' } : {})}
+                    >
+                        {shown.map((entry, index) => arranging ? (
+                            <div
+                                key={entry.game.id}
+                                className="reorder-tile"
+                                role="listitem"
+                                {...reorder.itemProps(entry.game.id)}
+                            >
+                                <ReorderHandle
+                                    handle={reorder.handleProps(entry.game.id)}
+                                    rank={index + 1}
+                                    variant="overlay"
+                                />
+                                <GameCard game={entry.game} eager={index < GAME_GRID_FIRST_ROW}>
+                                    <TagChips tags={tagFilter.tagsOf(entry)} max={3} />
+                                </GameCard>
+                            </div>
+                        ) : (
+                            <GameCard key={entry.game.id} game={entry.game} eager={index < GAME_GRID_FIRST_ROW}>
+                                <TagChips tags={tagFilter.tagsOf(entry)} max={3} />
+                            </GameCard>
                         ))}
                     </div>
                 )}
 
                 {signedIn && !loading && !error && visible.length > 0 && view === 'table' && (
                     <ListTable
-                        entries={visible}
+                        entries={shown}
                         sort={sort}
                         listName={nameFor(activeTab)}
                         isPending={isPending}
+                        isFavourite={isFavourite}
                         onSortChange={next => setSort(activeTab, next)}
                         onScoreChange={(gameId, score) => void setScore(gameId, score)}
                         onRemove={gameId => void removeFromList(activeTab, gameId)}
+                        reorder={arranging ? reorder : undefined}
+                        tagsFor={tagFilter.tagsOf}
                     />
                 )}
             </div>

@@ -1,9 +1,11 @@
 import { Link, data, isRouteErrorResponse, useLoaderData, useRevalidator } from 'react-router';
 import type { Route } from './+types/GamePage';
-import { apiUrl } from '@/lib/api';
 import { CACHE_GAME, CACHE_NOT_FOUND, PRIVATE_NO_STORE } from '@/lib/cache';
+import { isUpstreamFailure } from '@/lib/trace';
+import { loaderFetch, upstreamFailure } from '@/lib/trace.server';
 import type { GameDto } from '@/types/game';
 import { useAuth } from '@/hooks/useAuth';
+import { useFavourites } from '@/hooks/useFavourites';
 import { useGameCommunity } from '@/hooks/useGameCommunity';
 import { CoverImage } from '@/components/CoverImage';
 import { EmptyState } from '@/components/EmptyState';
@@ -12,10 +14,13 @@ import { GameNewsPanel } from '@/components/GameNewsPanel';
 import { GameUserPanel } from '@/components/GameUserPanel';
 import { GameCommunity } from '@/components/GameCommunity';
 import { CompletionTimes } from '@/components/CompletionTimes';
+import { parseReleaseDate } from '@/lib/releaseDate';
 import { SectionHeading } from '@/components/SectionHeading';
 import { GameRefRail } from '@/components/GameRefRail';
 import { MultiplayerSummary } from '@/components/MultiplayerSummary';
+import { multiplayerSummary } from '@/lib/multiplayer';
 import { ScreenshotGallery } from '@/components/ScreenshotGallery';
+import { StoreLinks } from '@/components/StoreLinks';
 import { TrailerPlayer } from '@/components/TrailerPlayer';
 import { formatCount } from '@/lib/format';
 import { pageMeta, siteConfig } from '@/lib/seo';
@@ -24,10 +29,11 @@ import { ScoreBadge } from '@/components/ScoreBadge';
 import './GamePage.css';
 
 /**
- * The body of the 502 thrown when the API answered 502 itself, which for this endpoint means IGDB
+ * The message of the 502 thrown when the API answered 502 itself, which for this endpoint means IGDB
  * failed: the API turns a third party's failure into a 502 and nothing else into one (ADR 0034), and
- * the detail query is the one live IGDB call on this page (ADR 0017). The boundary reads it to say
- * whose failure it was, which decides what it can promise still works.
+ * the detail query is the one live IGDB call on this page (ADR 0017). It goes out as every failed
+ * call's does, with the trace id (`upstreamFailure`, ADR 0059), and the boundary reads it to say whose
+ * failure it was, which decides what it can promise still works.
  */
 const IGDB_UNAVAILABLE = 'IGDB did not answer.';
 
@@ -47,7 +53,7 @@ function InfoChip({ label }: { label: string }) {
  * missing or malformed id throws a 404 Response and a failure a 502, which this route's own
  * ErrorBoundary renders inside the site's frame and which reach the client as genuine statuses.
  */
-export async function loader({ params }: Route.LoaderArgs) {
+export async function loader({ params, context }: Route.LoaderArgs) {
     const id = Number(params.id);
 
     // A thrown Response carries its own headers, and `headers` below hands them on. A 404 gets a
@@ -61,15 +67,11 @@ export async function loader({ params }: Route.LoaderArgs) {
 
     if (!Number.isInteger(id) || id <= 0) throw notFound();
 
-    const badGateway = (body = 'Failed to load game.') => new Response(body, {
-        status: 502,
-        statusText: 'Bad Gateway',
-        headers: { 'Cache-Control': PRIVATE_NO_STORE },
-    });
+    const badGateway = (message = 'Failed to load game.') => upstreamFailure(context, message);
 
     let response: Response;
     try {
-        response = await fetch(apiUrl(`/api/games/${id}`));
+        response = await loaderFetch(context, `/api/games/${id}`);
     } catch {
         // fetch rejects rather than returning !ok when the API is unreachable.
         throw badGateway();
@@ -152,6 +154,10 @@ export function GamePage() {
 
     const { user, loading: authLoading } = useAuth();
 
+    // The reader's own, for the rosette on the related games' covers. Empty in the server render and
+    // until the favourites arrive, so the shared-cached page is the same for everybody (ADR 0064).
+    const { isFavourite } = useFavourites();
+
     // Fetched after hydration and never in the loader — the page is edge-cached for up to a day, and
     // a review its author withdraws must not outlive the withdrawal there (ADR 0028). Called here
     // rather than in the section so the hero's badge and the section share one pair of requests,
@@ -167,9 +173,12 @@ export function GamePage() {
         ? [...new Set([...details.collections, ...details.franchises])]
         : [];
 
-    const releaseYear = game.releaseDate ? new Date(game.releaseDate).getFullYear() : null;
-    const releaseDate = game.releaseDate
-        ? new Date(game.releaseDate).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+    // The day the API names, which `new Date` would read as UTC midnight: the day before, and a
+    // year before on 1 January, for anybody west of Greenwich, and a different day on the server.
+    const released = game.releaseDate ? parseReleaseDate(game.releaseDate) : null;
+    const releaseYear = released?.getFullYear() ?? null;
+    const releaseDate = released
+        ? released.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
         : null;
 
     const youtubeEmbedId = game.trailerUrl
@@ -349,8 +358,14 @@ export function GamePage() {
                             </section>
                         )}
 
+                        {/* Where it is sold, next to what it runs on. Hides itself when IGDB names
+                            no store. */}
+                        <StoreLinks stores={details?.stores ?? []} />
+
                         {/* How to play: solo, together, and with how many. */}
-                        {details && (details.gameModes.length > 0 || details.multiplayerModes) && (
+                        {details && (details.gameModes.length > 0
+                            // And no heading at all when neither the modes nor the summary have anything to say.
+                            || (details.multiplayerModes !== null && multiplayerSummary(details.multiplayerModes) !== null)) && (
                             <section>
                                 <SectionHeading>How to play</SectionHeading>
                                 <div className="space-y-3">
@@ -432,6 +447,7 @@ export function GamePage() {
                                 <GameRefRail
                                     games={[...details.expansions, ...details.dlcs]}
                                     label={`Expansions and DLC for ${game.title}`}
+                                    isFavourite={isFavourite}
                                 />
                             </section>
                         )}
@@ -453,6 +469,7 @@ export function GamePage() {
                                 <GameRefRail
                                     games={details.similarGames}
                                     label={`Games similar to ${game.title}`}
+                                    isFavourite={isFavourite}
                                 />
                             </section>
                         )}
@@ -603,7 +620,8 @@ export function GamePage() {
                                         rel="noopener noreferrer"
                                         className="inline-flex items-center gap-1 text-sm text-primary-400 hover:text-primary-300 transition-colors break-all"
                                     >
-                                        Official Site
+                                        Official Site{' '}
+                                        <span className="sr-only">(opens in a new tab)</span>
                                         <svg className="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
                                         </svg>
@@ -620,7 +638,8 @@ export function GamePage() {
                                         rel="noopener noreferrer"
                                         className="inline-flex items-center gap-1 text-sm text-primary-400 hover:text-primary-300 transition-colors"
                                     >
-                                        Watch Trailer
+                                        Watch Trailer{' '}
+                                        <span className="sr-only">(opens in a new tab)</span>
                                         <svg className="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
                                         </svg>
@@ -671,6 +690,10 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
         );
     }
 
+    // The id of the request that failed, when the failure says, as the root's boundary shows it: this
+    // one takes the root's place for this page's failures, and the id is what a report can quote.
+    const reference = isRouteErrorResponse(error) && isUpstreamFailure(error.data) ? error.data.traceId : null;
+
     return (
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <ErrorState
@@ -678,6 +701,7 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
                 titleAs="h1"
                 onRetry={() => void revalidator.revalidate()}
                 retrying={revalidator.state === 'loading'}
+                reference={reference}
             >
                 {whoseFailure(error)}
             </ErrorState>
@@ -687,7 +711,7 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
 
 /** What a failure to load the game was, as far as its status says, and so what still works. */
 function whoseFailure(error: unknown): string {
-    if (isRouteErrorResponse(error) && error.data === IGDB_UNAVAILABLE) {
+    if (isRouteErrorResponse(error) && isUpstreamFailure(error.data) && error.data.message === IGDB_UNAVAILABLE) {
         return 'Game details come from IGDB, which is not answering just now. Lists and profiles keep working without it.';
     }
     // The API's own words for its throttle, with what is unaffected put as this page puts it.

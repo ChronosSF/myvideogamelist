@@ -29,6 +29,7 @@ describe('ListTableSkeleton', () => {
                     sort={DEFAULT_SORT}
                     listName="Playing"
                     isPending={() => false}
+                    isFavourite={() => false}
                     onSortChange={vi.fn()}
                     onScoreChange={vi.fn()}
                     onRemove={vi.fn()}

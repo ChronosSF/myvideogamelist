@@ -24,6 +24,7 @@ const auth: AuthContextValue = {
     logout: vi.fn(async () => {}),
     updateUserName: vi.fn(async () => {}),
     updateProfileVisibility: vi.fn(async () => {}),
+    updateProfileDetails: vi.fn(async () => {}),
     deleteAccount: vi.fn(async () => {}),
 };
 
@@ -48,9 +49,13 @@ const lists = {
     nameFor: (id: ListId) => LIST_NAMES[id],
 };
 
+/** The favourites, as far as a card's rosette reads them: none. Hoisted and handed back whole, as above. */
+const favourites = { isFavourite: () => false };
+
 vi.mock('@/hooks/useAuth', () => ({ useAuth: () => auth }));
 vi.mock('@/hooks/useWishlist', () => ({ useWishlist: () => wishlist }));
 vi.mock('@/hooks/useLists', () => ({ useLists: () => lists }));
+vi.mock('@/hooks/useFavourites', () => ({ useFavourites: () => favourites }));
 
 /** `/api/auth/me` has come back, with an account or with nobody. */
 function authAnswered(user: UserProfile | null) {
