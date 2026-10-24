@@ -16,12 +16,24 @@ public class IgdbService(
 {
     private const string TokenCacheKey = "igdb_access_token";
     private const string ImageBaseUrl = "https://images.igdb.com/igdb/image/upload";
-    private const string GamesEndpoint = "https://api.igdb.com/v4/games";
-    private const string ReleaseDatesEndpoint = "https://api.igdb.com/v4/release_dates";
-    private const string ExternalGamesEndpoint = "https://api.igdb.com/v4/external_games";
-    private const string PopularityEndpoint = "https://api.igdb.com/v4/popularity_primitives";
-    private const string TimeToBeatEndpoint = "https://api.igdb.com/v4/game_time_to_beats";
-    private const string EventsEndpoint = "https://api.igdb.com/v4/events";
+
+    /// <summary>
+    /// IGDB's API, under which every endpoint below is a path, unless <c>Igdb:BaseUrl</c> names
+    /// another address.
+    /// </summary>
+    private const string DefaultBaseUrl = "https://api.igdb.com/v4";
+
+    /// <summary>
+    /// Where Twitch issues the token IGDB accepts, unless <c>Igdb:TokenUrl</c> names another address.
+    /// </summary>
+    private const string DefaultTokenUrl = "https://id.twitch.tv/oauth2/token";
+
+    private const string GamesEndpoint = "games";
+    private const string ReleaseDatesEndpoint = "release_dates";
+    private const string ExternalGamesEndpoint = "external_games";
+    private const string PopularityEndpoint = "popularity_primitives";
+    private const string TimeToBeatEndpoint = "game_time_to_beats";
+    private const string EventsEndpoint = "events";
 
     // Buffer (in seconds) subtracted from the token's reported expiry so we refresh before it actually expires
     private const int TokenExpiryBufferSeconds = 120;
@@ -112,7 +124,7 @@ public class IgdbService(
     /// </remarks>
     private const int MinListedRatingCount = 10;
 
-    private const string GenresEndpoint = "https://api.igdb.com/v4/genres";
+    private const string GenresEndpoint = "genres";
 
     /// <summary>
     /// Games per <c>external_games</c> lookup. Deliberately well below <see cref="MaxBatchSize"/>:
@@ -194,6 +206,22 @@ public class IgdbService(
         }
     }
 
+    /// <summary>
+    /// Where the queries go: IGDB's own address unless configuration names another. No deployment
+    /// names one. The browser smoke test does, so that a stand-in on the same machine answers over
+    /// HTTP and this class runs exactly as it does against IGDB (ADR 0060).
+    /// </summary>
+    private string BaseUrl => Configured("Igdb:BaseUrl") ?? DefaultBaseUrl;
+
+    /// <summary>Where the token request goes, on the same terms as <see cref="BaseUrl"/>.</summary>
+    private string TokenUrl => Configured("Igdb:TokenUrl") ?? DefaultTokenUrl;
+
+    /// <summary>A configured address without its trailing slash, or null when none is set.</summary>
+    private string? Configured(string key) =>
+        configuration[key] is { } address && !string.IsNullOrWhiteSpace(address)
+            ? address.Trim().TrimEnd('/')
+            : null;
+
     private async Task<string> GetAccessTokenAsync(CancellationToken cancellationToken)
     {
         if (cache.TryGetValue(TokenCacheKey, out string? cached) && cached is not null)
@@ -206,7 +234,7 @@ public class IgdbService(
                 new KeyValuePair<string, string>("client_secret", ClientSecret),
                 new KeyValuePair<string, string>("grant_type", "client_credentials")
             ]);
-        var response = await client.PostAsync("https://id.twitch.tv/oauth2/token", content, cancellationToken);
+        var response = await client.PostAsync(TokenUrl, content, cancellationToken);
 
         response.EnsureSuccessStatusCode();
 
@@ -228,7 +256,7 @@ public class IgdbService(
     {
         var accessToken = await GetAccessTokenAsync(cancellationToken);
 
-        using var request = new HttpRequestMessage(HttpMethod.Post, endpoint);
+        using var request = new HttpRequestMessage(HttpMethod.Post, $"{BaseUrl}/{endpoint}");
         request.Headers.Add("Client-ID", ClientId);
         request.Headers.Add("Authorization", $"Bearer {accessToken}");
         request.Content = new StringContent(query, Encoding.UTF8, "text/plain");

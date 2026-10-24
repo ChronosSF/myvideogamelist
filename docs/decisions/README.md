@@ -22,7 +22,7 @@ grow a forward pointer when a later record or an issue closes something it left 
 |---|---|---|
 | [0001](0001-igdb-as-source-of-truth.md) | IGDB is the source of truth for game data | Implemented; the cache it called for is 0035 |
 | [0002](0002-server-side-rendering.md) | Server-side rendering via React Router framework mode | Implemented |
-| [0003](0003-two-process-deployment.md) | Two processes; the SSR server does not proxy `/api` | Implemented |
+| [0003](0003-two-process-deployment.md) | Two processes; the SSR server does not proxy `/api` | Implemented; the built app is run end to end, behind a stand-in for what routes between the two, by the browser smoke test, 0060 |
 | [0004](0004-release-dates-for-calendar.md) | Upcoming releases are built on `release_dates` | Implemented; its endpoint retired by #165, its reasoning carried by `/api/user/releases` |
 | [0005](0005-secrets-handling.md) | Secrets come from user secrets and environment variables | Implemented |
 | [0006](0006-codeql-buildless.md) | CodeQL runs buildless (`build-mode: none`) | Implemented |
@@ -75,9 +75,10 @@ grow a forward pointer when a later record or an issue closes something it left 
 | [0053](0053-a-documents-scripts-carry-its-renders-nonce.md) | A document's scripts carry its render's nonce, and a shared cache keeps the pair whole | Implemented |
 | [0054](0054-a-hand-arranged-order-is-a-sparse-position.md) | A hand-arranged order is a sparse position the client computes, and a change of list clears it | Implemented; §9 answered for the favourites by 0064 |
 | [0056](0056-an-avatar-is-an-address-on-a-short-list-of-hosts.md) | An avatar is an address on a short list of hosts, which the document policy's `img-src` names too; a display name stands beside the handle; a bio is plain text | Implemented |
-| [0057](0057-the-api-is-tested-over-a-real-postgresql.md) | The API is tested over a real PostgreSQL: one container a run, a database a class, and IGDB out of reach | Implemented; the export-snapshot test went in skipped and runs since #263 |
+| [0057](0057-the-api-is-tested-over-a-real-postgresql.md) | The API is tested over a real PostgreSQL: one container a run, a database a class, and IGDB out of reach | Implemented; the export-snapshot test went in skipped and runs since #263; the front end it left to #105 is 0060 |
 | [0058](0058-a-withdrawal-leaves-the-edge-when-it-is-made.md) | A withdrawal leaves the edge when it is made, and its retry stops when the TTL would have | Implemented; proved only by a deploy; §1's eighth event is 0056 |
 | [0059](0059-a-request-is-known-by-its-trace-and-a-build-by-its-commit.md) | A request is known by its trace from the page to the API's log, and a build by its commit | Implemented; OpenTelemetry and the alarms are #103 |
+| [0060](0060-one-browser-test-over-the-production-shape.md) | One browser test over the production shape: two processes, a stand-in for what routes between them, and IGDB answered over HTTP | Implemented |
 | [0062](0062-the-history-is-three-rows-unioned-and-what-has-no-moment-has-no-item.md) | The history is three kinds of row unioned at query time, and what has no moment has no item | Implemented |
 | [0064](0064-the-showcase-is-arranged-by-hand-and-shown-in-that-order.md) | The favourites showcase is arranged by hand and shown in that order, and a favourite is marked on every card its owner sees | Implemented |
 | [0066](0066-a-holding-page-until-production-takes-the-domain.md) | A holding page at the domain until production takes it, and the apex is canonical | Implemented; deployed 2026-10-23, retired by #98 |
