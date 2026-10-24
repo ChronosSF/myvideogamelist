@@ -1,6 +1,7 @@
 import { useId, useRef, useState } from 'react';
 import { Link, NavLink, useLocation, useNavigate } from 'react-router';
 import { useAuth } from '@/hooks/useAuth';
+import { Avatar } from '@/components/Avatar';
 import { LoginDialog } from '@/components/LoginDialog';
 import { SignupDialog } from '@/components/SignupDialog';
 import { Logo } from '@/components/Logo';
@@ -240,12 +241,15 @@ export function Navbar() {
                                         aria-expanded={menuOpen}
                                         aria-label="User menu"
                                     >
-                                        {/* The username, not the email. The initial of an address
-                                            is an initial of something the user did not choose to
-                                            be known by, and often is not even a letter. */}
-                                        <span className="navbar-avatar" aria-hidden="true">
-                                            {user.userName.charAt(0).toUpperCase()}
-                                        </span>
+                                        {/* The account's own picture, or its handle's initial when
+                                            it has none or it does not load: the same circle the
+                                            public profile draws (ADR 0056). The handle's and never
+                                            the email's, which is not a name the user chose. */}
+                                        <Avatar
+                                            userName={user.userName}
+                                            avatarUrl={user.avatarUrl}
+                                            className="navbar-avatar"
+                                        />
                                         <svg className="w-3.5 h-3.5 text-fg-muted ml-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                                         </svg>

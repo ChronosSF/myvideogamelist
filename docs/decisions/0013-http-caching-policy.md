@@ -58,6 +58,11 @@ exists to avoid.
 - Total home-page staleness is the CDN TTL *plus* the server's 15-minute `/api/home` cache —
   about 20 minutes. Shortening the CDN TTL alone will not make it fresher.
 
+  > **Later note.** About half an hour, not 20 minutes, in the worst case: the figure leaves out
+  > `stale-while-revalidate`, under which the edge may serve a copy for up to ten minutes past its
+  > five. [0063](0063-the-showcases-and-sales-for-everybody.md) sizes the home page's window of
+  > showcases and sales for that half hour.
+
 ### Three things only the failure path revealed
 
 Testing with the API stopped, rather than only while healthy, found all three:
