@@ -34,7 +34,8 @@ interface Baseline {
     kib: number;
     /**
      * Null where Lighthouse finds no largest contentful paint, and so gives no performance score at
-     * all: the home, game and profile pages on a phone, until #315 is fixed.
+     * all, which leaves the page's performance unasserted. None is null now: the home, game and profile
+     * pages on a phone were, until #315 was fixed.
      */
     performance: number | null;
 }
@@ -59,19 +60,22 @@ interface Baseline {
  * the 401 the session check logs (#316). SEO is 66 on the lists page because it says `noindex`, as every
  * page that is one member's own does (ADR 0036).
  *
- * Three figures have moved since, a point each: accessibility on a desktop for the game page, the profile
- * and the lists, when the navbar's search (#270) arrived. From 64rem it is a box in the bar, a labelled
- * combobox, and it brings audits those pages had nothing for: a field's label, and ARIA roles and the
- * attributes they require. It passes them. The home page gains the same audits and still rounds to 0.96;
- * browse already had a search field. Below 64rem the search waits behind a toggle, so a phone's figures
- * are as they were.
+ * Six figures are from a later run, 40070934403 on 2026-10-24, once master was merged in. Three rose a
+ * point: accessibility on a desktop for the game page, the profile and the lists, when the navbar's search
+ * (#270) arrived. From 64rem it is a box in the bar, a labelled combobox, and it brings audits those pages
+ * had nothing for: a field's label, and ARIA roles and the attributes they require. It passes them. The
+ * home page gains the same audits and still rounds to 0.96; browse already had a search field. Below 64rem
+ * the search waits behind a toggle, so a phone's figures are as they were. The other three are new:
+ * performance on a phone for the home, game and profile pages, which had no score until #315's fix came
+ * with #272. Theirs are the scores of each page's median run, as the job's summary gives a page with no
+ * baseline.
  */
 const BASELINE: Record<FormFactor, Record<PageKey, Baseline>> = {
     mobile: {
-        home: { accessibility: 0.96, bestPractices: 0.96, seo: 1, consoleErrors: 1, kib: 807, performance: null },
+        home: { accessibility: 0.96, bestPractices: 0.96, seo: 1, consoleErrors: 1, kib: 807, performance: 0.87 },
         games: { accessibility: 0.95, bestPractices: 0.96, seo: 1, consoleErrors: 1, kib: 803, performance: 0.9 },
-        game: { accessibility: 0.92, bestPractices: 0.96, seo: 1, consoleErrors: 1, kib: 2106, performance: null },
-        profile: { accessibility: 0.94, bestPractices: 0.96, seo: 1, consoleErrors: 1, kib: 587, performance: null },
+        game: { accessibility: 0.92, bestPractices: 0.96, seo: 1, consoleErrors: 1, kib: 2106, performance: 0.87 },
+        profile: { accessibility: 0.94, bestPractices: 0.96, seo: 1, consoleErrors: 1, kib: 587, performance: 0.89 },
         lists: { accessibility: 0.95, bestPractices: 1, seo: 0.66, consoleErrors: 0, kib: 587, performance: 0.89 },
     },
     desktop: {

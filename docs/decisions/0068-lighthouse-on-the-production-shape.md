@@ -1,7 +1,8 @@
 # 0068. Lighthouse on the production shape: five pages, a phone and a desktop, and only what the runner cannot move fails the build
 
 **Status:** Implemented. Built on [0060](0060-one-browser-test-over-the-production-shape.md)'s
-harness. Performance on a phone goes unasserted on three pages until #315.
+harness. Three pages went without a performance assertion on a phone until #315 was fixed, and have
+had a baseline since 2026-10-24 (§5).
 
 ## Context
 
@@ -178,10 +179,14 @@ section the page did not have, an improvement — change the baseline in `lighth
 same pull request and say why in its description.
 
 **No largest contentful paint, no performance score.** On a phone, the home, game and profile pages
-record none: a rail scrolls itself into its snap position before the first paint, and Chrome ends the
-measurement at a scroll (#315). Lighthouse then scores no performance at all, so those three go
-unasserted, the summary says "no LCP", and it warns the day one of them scores, so that its baseline is
-written then.
+recorded none at first: a rail scrolled itself into its snap position before the first paint, and Chrome
+ends the measurement at a scroll (#315). Lighthouse then scores no performance at all. A page whose
+baseline has no performance score goes unasserted: the summary says "no LCP", and warns the day the page
+scores, so that its baseline is written then. The three scored once #272 brought #315's fix, and their
+baselines, 87, 87 and 89, are what GitHub's runner gave each page's median run on 2026-10-24 (run
+40070934403). Once a page has a baseline, losing its LCP fails the job: LHCI fails an assertion that no
+run gave a value for, and the summary marks it "❌ no value". If only one or two of the three runs lose
+it, LHCI takes the median of the others.
 
 ### 6. Lab data, not field data
 

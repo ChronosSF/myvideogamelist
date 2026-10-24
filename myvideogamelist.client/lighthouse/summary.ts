@@ -243,9 +243,9 @@ export function summarise(outcomes: Outcome[], unaudited: FormFactor[]): { markd
         '',
         `The median of ${RUNS} runs of each page, on the production build behind the stand-in for the `
             + 'edge (ADR 0068). ❌ fails the job, ⚠️ only warns. A figure held exactly fails when it moves '
-            + 'either way, and its baseline is in brackets. "No LCP" is a page Lighthouse gives no performance '
-            + "score, a rail's scroll snapping having ended the measurement (#315). Every report is in this "
-            + "run's `lighthouse-reports` artifact.",
+            + 'either way, and its baseline is in brackets. "No LCP" is a page without a performance baseline '
+            + 'that Lighthouse gave no performance score (three pages, until #315 was fixed). Every report is '
+            + "in this run's `lighthouse-reports` artifact.",
     ];
 
     for (const formFactor of FORM_FACTORS) {
