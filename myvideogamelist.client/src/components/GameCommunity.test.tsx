@@ -16,9 +16,14 @@ const SCORED: CommunityScores = {
 
 const NOBODY: CommunityScores = { scored: 0, mean: null, distribution: Array<number>(10).fill(0) };
 
+/** A picture on one of the avatar hosts, as the API carries it. */
+const PICTURE = 'https://avatars.githubusercontent.com/u/9919?v=4';
+
 function review(overrides: Partial<GameReview> = {}): GameReview {
     return {
         userName: 'alex',
+        displayName: null,
+        avatarUrl: null,
         body: 'The best side quests in the genre.',
         hasSpoilers: false,
         score: null,
@@ -255,6 +260,47 @@ describe('GameCommunity reviews', () => {
         expect(screen.getByRole('link', { name: 'Nadia' })).toHaveAttribute('href', '/u/Nadia');
     });
 
+    it("puts the author's display name beside their handle, never in its place", () => {
+        // As on the profile (ADR 0056): the handle is what says whose review it is. The name is in
+        // a bdi, so one written right to left cannot reorder the handle after it.
+        renderSection(community({ reviews: [review({ userName: 'Nadia', displayName: 'Nadia Ali' })], total: 1 }));
+
+        const link = screen.getByRole('link', { name: 'Nadia Ali @Nadia' });
+        expect(link).toHaveAttribute('href', '/u/Nadia');
+        expect(link.querySelector('bdi')).toHaveTextContent(/^Nadia Ali$/);
+    });
+
+    it('names the handle alone when the API sends no display name', () => {
+        // An API a release behind, during a rolling deploy, sends neither new field. Absent has to
+        // read as unset, not as the word "undefined" beside the handle.
+        renderSection(community({
+            reviews: [review({ userName: 'Nadia', displayName: undefined, avatarUrl: undefined })],
+            total: 1,
+        }));
+
+        expect(screen.getByRole('link', { name: 'Nadia' })).toBeInTheDocument();
+        expect(screen.queryByText(/undefined/)).not.toBeInTheDocument();
+    });
+
+    it("shows the author's picture, asked for as the profile asks for it", () => {
+        // Through Avatar, so with no referrer and anonymously (ADR 0056). Found inside the card
+        // rather than by a role: the picture is decorative, and the name beside it is what is read.
+        renderSection(community({ reviews: [review({ avatarUrl: PICTURE })], total: 1 }));
+
+        const image = within(screen.getByRole('list', { name: 'Member reviews' })).getByRole('listitem').querySelector('img');
+        expect(image).toHaveAttribute('src', PICTURE);
+        expect(image).toHaveAttribute('referrerpolicy', 'no-referrer');
+        expect(image).toHaveAttribute('crossorigin', 'anonymous');
+    });
+
+    it("shows the handle's initial for an author with no picture", () => {
+        renderSection(community({ reviews: [review({ userName: 'nadia' })], total: 1 }));
+
+        const card = within(screen.getByRole('list', { name: 'Member reviews' })).getByRole('listitem');
+        expect(card.querySelector('img')).toBeNull();
+        expect(card.querySelector('.avatar')).toHaveTextContent(/^N$/);
+    });
+
     it("shows the author's own score out of ten, never as a percentage", () => {
         renderSection(community({ reviews: [review({ score: 9 })], total: 1 }));
 
@@ -286,6 +332,17 @@ describe('GameCommunity reviews', () => {
         await user.click(screen.getByRole('button', { name: /show sam's review/i }));
 
         expect(screen.getByText('The dog dies.')).toBeInTheDocument();
+    });
+
+    it('names the handle on the spoiler control, even beside a display name', () => {
+        // The control's text is its whole accessible name, and a display name is anybody's to
+        // choose: two "Sam"s could share one, never a handle.
+        renderSection(community({
+            reviews: [review({ userName: 'sam', displayName: 'Sam Rivera', hasSpoilers: true })],
+            total: 1,
+        }));
+
+        expect(screen.getByRole('button', { name: /^Show sam's review/ })).toBeInTheDocument();
     });
 
     it('says the reviews failed rather than implying there are none, when the score loaded', () => {
