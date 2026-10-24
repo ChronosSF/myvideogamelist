@@ -119,6 +119,7 @@ beforeEach(() => {
     lists.loading = false;
     lists.error = null;
     lists.view = 'tiles';
+    lists.reload = vi.fn();
     lists.nameFor = (id: ListId) => LIST_NAMES[id];
     favoured.clear();
     tags.tags = [];
@@ -165,6 +166,59 @@ describe('ListsPage once auth has answered', () => {
     });
 });
 
+describe('ListsPage while the lists load', () => {
+    it('draws the lists as shapes in the layout the reader keeps them in, not a spinner', () => {
+        authAnswered(userProfile());
+        lists.loading = true;
+        lists.view = 'table';
+        const { container } = renderPage();
+
+        const loading = screen.getByRole('status').parentElement;
+        expect(loading?.querySelector('table.list-table')).not.toBeNull();
+        expect(loading?.querySelector('.list-toolbar')).not.toBeNull();
+        expect(container.querySelector('.animate-spin')).toBeNull();
+    });
+
+    it('draws two rows of cards for a reader who keeps their lists as tiles', () => {
+        // Tiles are the default, so this is also what a reader whose preference has not loaded sees.
+        authAnswered(userProfile());
+        lists.loading = true;
+        renderPage();
+
+        const loading = screen.getByRole('status').parentElement;
+        expect(loading?.querySelector('table')).toBeNull();
+        expect(loading?.querySelector('.list-toolbar')).not.toBeNull();
+        expect(loading?.querySelectorAll('.grid > .skeleton-sheen')).toHaveLength(12);
+    });
+});
+
+describe('ListsPage when the lists could not be loaded', () => {
+    it('says what failed, with the reason, and asks again when told to', async () => {
+        authAnswered(userProfile());
+        lists.error = 'Failed to load your lists.';
+        const reload = vi.fn();
+        lists.reload = reload;
+        renderPage();
+
+        expect(screen.getByText('Failed to load lists')).toBeInTheDocument();
+        expect(screen.getByText('Failed to load your lists.')).toBeInTheDocument();
+
+        await userEvent.click(screen.getByRole('button', { name: 'Try again' }));
+        expect(reload).toHaveBeenCalledTimes(1);
+    });
+
+    it('puts focus on the tab whose list it asks for, since the button gives way to the skeleton', async () => {
+        authAnswered(userProfile());
+        lists.error = 'Failed to load your lists.';
+        renderPage();
+
+        await userEvent.click(screen.getByRole('tab', { name: /Finished/ }));
+        await userEvent.click(screen.getByRole('button', { name: 'Try again' }));
+
+        expect(screen.getByRole('tab', { name: /Finished/ })).toHaveFocus();
+    });
+});
+
 describe('ListsPage when nothing is tracked yet', () => {
     const importLink = { name: /bring your games across/i };
 
@@ -175,7 +229,7 @@ describe('ListsPage when nothing is tracked yet', () => {
         authAnswered(userProfile());
         renderPage();
 
-        expect(screen.getByRole('link', { name: 'Browse Games' })).toHaveAttribute('href', '/games');
+        expect(screen.getByRole('link', { name: 'Browse games' })).toHaveAttribute('href', '/games');
         expect(screen.getByRole('link', importLink)).toHaveAttribute('href', '/import');
     });
 
@@ -184,7 +238,7 @@ describe('ListsPage when nothing is tracked yet', () => {
         lists.lists = { ...emptyLists(), playing: [entry({ game: { id: 7, title: 'Hollow Knight' } })] };
         renderPage();
 
-        expect(screen.queryByRole('link', { name: 'Browse Games' })).not.toBeInTheDocument();
+        expect(screen.queryByRole('link', { name: 'Browse games' })).not.toBeInTheDocument();
         expect(screen.queryByRole('link', importLink)).not.toBeInTheDocument();
     });
 
@@ -195,8 +249,24 @@ describe('ListsPage when nothing is tracked yet', () => {
         lists.lists = { ...emptyLists(), finished: [entry({ game: { id: 7, title: 'Hollow Knight' } })] };
         renderPage();
 
-        expect(screen.getByRole('link', { name: 'Browse Games' })).toBeInTheDocument();
+        expect(screen.getByRole('link', { name: 'Browse games' })).toBeInTheDocument();
         expect(screen.queryByRole('link', importLink)).not.toBeInTheDocument();
+    });
+});
+
+describe('ListsPage covers', () => {
+    it('loads the first row of covers with the page, and the rest as they are scrolled near', () => {
+        authAnswered(userProfile());
+        lists.lists = {
+            ...emptyLists(),
+            playing: Array.from({ length: 8 }, (_, index) => entry({
+                game: { id: index + 1, title: `Game ${index + 1}`, coverImageUrl: `https://images.igdb.com/igdb/image/upload/t_cover_big/co${index + 1}.jpg` },
+            })),
+        };
+        renderPage();
+
+        expect(screen.getAllByRole('img', { name: / cover$/ }).map(cover => cover.getAttribute('loading')))
+            .toEqual([...Array<string>(6).fill('eager'), 'lazy', 'lazy']);
     });
 });
 

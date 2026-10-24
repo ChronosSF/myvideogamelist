@@ -1,3 +1,4 @@
+import { useId } from 'react';
 import { Link } from 'react-router';
 import { useLayoutEffect, useRef } from 'react';
 import type { UseGameCommunityResult } from '@/hooks/useGameCommunity';
@@ -5,10 +6,14 @@ import type { CommunityScores, GameReview } from '@/types/community';
 import { formatCount } from '@/lib/format';
 import { formatDate } from '@/lib/stats';
 import { hasMemberScore, MAX_SCORE, MIN_MEMBER_SCORES, ratingPercent } from '@/lib/score';
+import { EmptyState } from '@/components/EmptyState';
+import { ErrorState } from '@/components/ErrorState';
+import { LoadingState } from '@/components/LoadingState';
 import { ReviewCard } from '@/components/ReviewCard';
 import { ScoreBadge } from '@/components/ScoreBadge';
 import { ScoreColumns } from '@/components/ScoreColumns';
 import { SectionHeading } from '@/components/SectionHeading';
+import { Skeleton } from '@/components/Skeleton';
 
 interface GameCommunityProps {
     /** From `useGameCommunity`, which the page calls so the hero's badge and this share one fetch. */
@@ -19,6 +24,16 @@ interface GameCommunityProps {
      */
     viewer: string | null;
 }
+
+/** A heroicon's path: two speech bubbles, for a conversation nobody has started yet. */
+const CONVERSATION_ICON = 'M17 8h2a2 2 0 012 2v6a2 2 0 01-2 2h-2v4l-4-4H9a1.994 1.994 0 01-1.414-.586m0 0L11 14h4a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2v4l.586-.586z';
+
+/**
+ * The least height the section's body takes, whichever state it is in. Waiting, nothing yet and failed
+ * all fit inside it at a phone's width, so whichever replaces the skeleton moves nothing under it; and
+ * for most games the answer is "nothing yet", so most pages move nothing at all.
+ */
+const BODY_HEIGHT = 'min-h-[13rem]';
 
 /**
  * What MyVideoGameList members make of a game: their score, how it spreads, and the reviews they
@@ -32,36 +47,138 @@ interface GameCommunityProps {
  * **Every figure carries its sample size**, and ours go behind a floor (ADR 0016): under
  * `MIN_MEMBER_SCORES` there is a count and no number, and no distribution either.
  *
- * Renders nothing until both requests have answered, so it appears once rather than growing twice,
- * and nothing at all when there is nothing to read. A failure says nothing, as the community
- * completion times do — except that a failed review list beside a score that loaded says so, since
- * silence there would read as nobody having written one.
+ * Always there, in the lists page's pattern (issue 127): a skeleton until both requests have
+ * answered, so the section appears once rather than growing twice; then what members have said, or
+ * what would put something here when nobody has said anything yet, or what failed with a way to ask
+ * again. It used to render nothing in those last cases, which a reader cannot tell from a section
+ * that never loaded. See `docs/decisions/0070-*`, which amends ADR 0028 §3 to say so.
  */
 export function GameCommunity({ community, viewer }: GameCommunityProps) {
-    const { settled, scores, reviews, total } = community;
-
-    if (!settled) return null;
-
-    const hasReviews = total !== null && total > 0;
-
-    // A score under the floor with nothing written would leave a section whose only content is
-    // "too few to show" — noise, as the completion times' members row judges the same case.
-    if (!hasMemberScore(scores) && !hasReviews) return null;
-
     return (
-        <section aria-labelledby="member-reviews-heading" className="space-y-5">
-            <SectionHeading id="member-reviews-heading">Member scores &amp; reviews</SectionHeading>
+        <section aria-labelledby={HEADING_ID} className="space-y-5">
+            <SectionHeading id={HEADING_ID} focusable>Member scores &amp; reviews</SectionHeading>
+            <CommunityBody community={community} viewer={viewer} />
+        </section>
+    );
+}
 
-            {scores !== null && scores.scored > 0 && <MemberScore scores={scores} />}
+const HEADING_ID = 'member-reviews-heading';
+
+function CommunityBody({ community, viewer }: GameCommunityProps) {
+    const { settled, scores, reviews, total, reloading, reload } = community;
+
+    // Every "Try again" here gives way to something else — the skeleton, or what loaded — and focus
+    // would fall to the page's body with the button. The section's heading is where it goes instead,
+    // which is also where somebody reading it would start again.
+    const retry = () => {
+        document.getElementById(HEADING_ID)?.focus();
+        reload();
+    };
+
+    // Every server render, and the first client render: the game page is shared-cached, and both
+    // halves are fetched after hydration (ADR 0028).
+    if (!settled) {
+        return (
+            <LoadingState label="Loading member scores and reviews…" className={`flex flex-col justify-center ${BODY_HEIGHT}`}>
+                <CommunitySkeleton />
+            </LoadingState>
+        );
+    }
+
+    // Nothing true can be said about the game when neither half answered, so the section says what
+    // failed and offers to ask again, as the lists page does. Not an alert: the page around it
+    // rendered perfectly well, and an alert would interrupt a screen reader to announce a side panel.
+    if (scores === null && total === null) {
+        return (
+            <div className={`flex flex-col justify-center ${BODY_HEIGHT}`}>
+                <ErrorState
+                    size="section"
+                    title="Member scores and reviews could not be loaded just now"
+                    onRetry={retry}
+                />
+            </div>
+        );
+    }
+
+    // Nobody has said anything that can be shown yet, which is where most games are. The floor is
+    // part of what would change that: under it a score is a count and not a number (ADR 0016), so a
+    // game a few members have scored is still waiting, and it says how many.
+    if (scores !== null && !hasMemberScore(scores) && total === 0) {
+        return (
+            <div className={`flex flex-col justify-center ${BODY_HEIGHT}`}>
+                <EmptyState
+                    size="section"
+                    icon={CONVERSATION_ICON}
+                    message="No member score or reviews yet."
+                    detail={nothingYet(scores.scored)}
+                />
+            </div>
+        );
+    }
+
+    // Something to show. A half that did not answer says so beside the one that did, since silence
+    // where a score or the reviews should be would read as there being none.
+    return (
+        <div className={`space-y-5 ${BODY_HEIGHT}`}>
+            {scores === null
+                ? <HalfFailed what="The member score" retrying={reloading} onRetry={retry} />
+                : scores.scored > 0 && <MemberScore scores={scores} />}
 
             {total === null ? (
-                <p className="text-sm text-fg-muted">
-                    Reviews could not be loaded just now.
-                </p>
-            ) : hasReviews && (
+                <HalfFailed what="Reviews" retrying={reloading} onRetry={retry} />
+            ) : total > 0 ? (
                 <MemberReviews community={community} viewer={viewer} total={total} reviews={reviews} />
+            ) : (
+                <p className="text-sm text-fg-muted">
+                    No reviews yet. They show here as members publish them.
+                </p>
             )}
-        </section>
+        </div>
+    );
+}
+
+/**
+ * One half of the section that did not load, beside the half that did, with a way to ask again that
+ * says when it is asking — marked disabled rather than disabled while it does, so it keeps its place in
+ * the tab order, as `ErrorState`'s button does.
+ */
+function HalfFailed({ what, retrying, onRetry }: { what: string; retrying: boolean; onRetry: () => void }) {
+    const sentenceId = useId();
+
+    return (
+        <p className="text-sm text-fg-muted">
+            <span id={sentenceId}>{`${what} could not be loaded just now.`}</span>{' '}
+            <button
+                type="button"
+                className="text-primary-400 font-semibold hover:underline aria-disabled:opacity-60 aria-disabled:cursor-wait"
+                onClick={retrying ? undefined : onRetry}
+                aria-disabled={retrying || undefined}
+                aria-describedby={sentenceId}
+            >
+                {retrying ? 'Trying again…' : 'Try again'}
+            </button>
+        </p>
+    );
+}
+
+/** What would put a member score here, from where the game stands. */
+function nothingYet(scored: number): string {
+    const reviews = 'Reviews show here as members publish them.';
+    if (scored === 0) return `A member score is shown once ${MIN_MEMBER_SCORES} members have scored this. ${reviews}`;
+
+    return `Only ${scored} ${scored === 1 ? 'member has' : 'members have'} scored this so far. `
+        + `A member score is shown once ${MIN_MEMBER_SCORES} have. ${reviews}`;
+}
+
+/** The section's empty state before it is known to be one: an icon's place and a sentence's two lines. */
+function CommunitySkeleton() {
+    return (
+        <div className="flex flex-col items-center py-6 skeleton-sheen">
+            <Skeleton className="block w-10 h-10 mb-3 rounded-full" />
+            <Skeleton className="block w-56 max-w-full h-4 mb-4 rounded-sm" />
+            <Skeleton className="block w-80 max-w-full h-3 mb-2 rounded-sm" />
+            <Skeleton className="block w-64 max-w-full h-3 rounded-sm" />
+        </div>
     );
 }
 

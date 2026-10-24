@@ -41,7 +41,8 @@ export function ProfileFavourites({ userName, count, favourites }: ProfileFavour
                         : `${userName} has ${count} favourites, but they could not be loaded just now.`}
                 </p>
             ) : (
-                <GameRefRail games={favourites.games} label={`${userName}'s favourite games`} />
+                // The first thing on the page under the name, so the covers in view load with it.
+                <GameRefRail games={favourites.games} label={`${userName}'s favourite games`} eager={6} />
             )}
         </section>
     );

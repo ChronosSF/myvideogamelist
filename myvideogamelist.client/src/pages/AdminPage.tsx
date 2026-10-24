@@ -3,8 +3,10 @@ import { useAdminStats } from '@/hooks/useAdminStats';
 import { useCalendarAdmin } from '@/hooks/useCalendarAdmin';
 import { AdminStatsCard } from '@/components/AdminStatsCard';
 import { CuratedEventsCard } from '@/components/CuratedEventsCard';
+import { LoadingState } from '@/components/LoadingState';
 import { PageHeader } from '@/components/PageHeader';
 import { ShowcaseNamesCard } from '@/components/ShowcaseNamesCard';
+import { Skeleton } from '@/components/Skeleton';
 import { PRIVATE_NO_STORE } from '@/lib/cache';
 import { NOINDEX } from '@/lib/seo';
 import './AdminPage.css';
@@ -22,14 +24,38 @@ export function meta() {
     ];
 }
 
-function Notice({ children, busy = false }: { children: React.ReactNode; busy?: boolean }) {
+function Notice({ children }: { children: React.ReactNode }) {
     return (
         <div className="flex flex-col items-center gap-4 py-24 text-center" role="status">
-            {busy && (
-                <div className="w-10 h-10 border-4 border-primary-500/30 border-t-primary-500 rounded-full animate-spin" aria-hidden="true" />
-            )}
             <p className="text-fg-muted text-sm">{children}</p>
         </div>
+    );
+}
+
+/** One of the page's cards before its data: the card's own frame and height, its title and its hint. */
+function CardSkeleton({ height }: { height: string }) {
+    return (
+        <div className={`admin-card skeleton-sheen ${height}`}>
+            <Skeleton className="block h-6 w-48 rounded" />
+            <Skeleton className="block h-4 w-full max-w-lg mt-2 rounded-sm" />
+            <Skeleton className="block h-10 w-full max-w-md mt-5 rounded-lg" />
+        </div>
+    );
+}
+
+/**
+ * The two cards before the calendar's data arrives, in the cards' own frames and at the heights they
+ * came to at a desktop's width with the calendar's data in them (543 and 249 pixels), so the cards land
+ * on them. A narrower screen stacks the forms' fields, and the cards grow past these. Before the account
+ * is known it stands for the whole page, short by the statistics card, which opens above it once the
+ * page is an admin's and draws its own "Counting…" in its own frame (ADR 0051).
+ */
+function AdminSkeleton({ label }: { label: string }) {
+    return (
+        <LoadingState label={label}>
+            <CardSkeleton height="min-h-[543px]" />
+            <CardSkeleton height="min-h-[249px]" />
+        </LoadingState>
     );
 }
 
@@ -59,7 +85,7 @@ export function AdminPage() {
             </div>
         );
     } else if (curation.data === null) {
-        calendar = <Notice busy>Loading the calendar&apos;s data…</Notice>;
+        calendar = <AdminSkeleton label="Loading the calendar's data…" />;
     } else {
         calendar = (
             <>
@@ -80,7 +106,7 @@ export function AdminPage() {
 
     let body: React.ReactNode;
     if (loading) {
-        body = <Notice busy>Loading…</Notice>;
+        body = <AdminSkeleton label="Loading the admin page…" />;
     } else if (!user) {
         body = <Notice>Sign in to use this page.</Notice>;
     } else if (!admin) {

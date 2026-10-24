@@ -74,6 +74,9 @@ reads counts as missing, and so does a scores answer with no `tracked` count, wh
 older than this build in the middle of a deploy. `headers` now hands on whatever policy the loader
 set; on a `.data` request, which does not bubble a loader's error to the root, that is also a thrown
 404's or 502's own, where the route used to answer the game's hour regardless.
+[0070](0070-nothing-shows-as-a-blank.md) made the same change when it gave the route an error
+boundary of its own, and its `headers`, which this one merged into, reads a thrown response's policy
+first.
 
 **The copy holds nothing the page would not show.** The loader's data is in the shared HTML for as
 long as §1's bound. 0028's consequences accepted that a lone member's score is readable in the API's
