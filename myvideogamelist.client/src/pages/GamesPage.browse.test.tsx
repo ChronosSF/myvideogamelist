@@ -392,8 +392,7 @@ describe('GamesPage search box', () => {
         expect(gamesRequests()).toEqual([asked(''), asked('search=zel&platform=6')]);
     });
 
-    // #285: the debounce builds its URL from the page that landed, not the one on its way.
-    it.skip('keeps a filter whose page is still loading when a search is typed after it (#285)', async () => {
+    it('keeps a filter whose page is still loading when a search is typed after it', async () => {
         // Fixed, both navigations carry the platform and both loaders get this answer, so each takes
         // a copy: a response's body can be read once.
         const platformPage = held();
@@ -655,8 +654,7 @@ describe('GamesPage pagination', () => {
         expect(screen.queryByText(`Game ${PAGE_SIZE + 1}`)).not.toBeInTheDocument();
     });
 
-    // #333: the page still out is cancelled from an effect, which runs only after the commit.
-    it.skip('drops a page of the previous browse that lands as the next one renders (#333)', async () => {
+    it('drops a page of the previous browse that lands as the next one renders', async () => {
         // The page still out is cancelled from an effect, which runs after the commit, so for that
         // moment it can still land, and be added to the new listing.
         const actor = quickActor();
@@ -751,8 +749,7 @@ describe('GamesPage while a listing loads', () => {
         expect(await screen.findByText('Game 50')).toBeInTheDocument();
     });
 
-    // #285: the selects render the browse that landed, so a choice snaps back until its page does.
-    it.skip('shows the choice just made while its page loads (#285)', async () => {
+    it('shows the choice just made while its page loads', async () => {
         const actor = quickActor();
         const next = held();
         await openBrowse('/games', call => call.query.has('platform') ? next.answer : json(page(games(3))));

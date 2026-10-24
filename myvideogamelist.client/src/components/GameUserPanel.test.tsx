@@ -1,6 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { useState, type ReactNode } from 'react';
 import { GameUserPanel } from '@/components/GameUserPanel';
 import { ListsContext, type ListsContextValue } from '@/contexts/ListsContext';
 import { WishlistContext, type WishlistContextValue } from '@/contexts/WishlistContext';
@@ -236,6 +237,87 @@ describe('GameUserPanel list placement', () => {
 
         expect(ctx.removeFromList).toHaveBeenCalledWith('playing', 1);
     });
+
+    /**
+     * Lists that move the game at once and hold its lock while the request is out, then keep the
+     * move or put it back, as `ListsProvider` does. The test settles each request.
+     */
+    function renderMovingPanel(from: ListId | null) {
+        let settle!: (saved: boolean) => void;
+
+        function Lists({ children }: { children: ReactNode }) {
+            const [held, setHeld] = useState({ list: from, pending: false });
+            const move = async (to: ListId | null) => {
+                const before = held.list;
+                setHeld({ list: to, pending: true });
+                const saved = await new Promise<boolean>(resolve => { settle = resolve; });
+                setHeld({ list: saved ? to : before, pending: false });
+            };
+            const value = contextValue({
+                isPending: () => held.pending,
+                getListFor: () => held.list,
+                isInList: (listId: ListId) => held.list === listId,
+                addToList: (listId: ListId) => move(listId),
+                removeFromList: () => move(null),
+            });
+            return <ListsContext.Provider value={value}>{children}</ListsContext.Provider>;
+        }
+
+        render(
+            <Lists>
+                <WishlistContext.Provider value={wishlistValue()}>
+                    <FavouritesContext.Provider value={favouritesValue()}>
+                        <GameUserPanel game={CELESTE} profileVisibility="private" onCommunityChange={vi.fn()} />
+                    </FavouritesContext.Provider>
+                </WishlistContext.Provider>
+            </Lists>,
+        );
+        return { finish: (saved: boolean) => act(async () => { settle(saved); }) };
+    }
+
+    it('says so when a move is refused, rather than only putting the game back', async () => {
+        // Put back without a word, a refused move reads as a click that did not register.
+        stubEntryFetch(null, 404);
+        const { finish } = renderMovingPanel('playing');
+        await settled();
+
+        await userEvent.click(screen.getByRole('button', { name: 'Finished' }));
+        expect(screen.getByRole('button', { name: 'Finished' })).toHaveAttribute('aria-pressed', 'true');
+        expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+        await finish(false);
+
+        expect(screen.getByRole('button', { name: 'Playing' })).toHaveAttribute('aria-pressed', 'true');
+        expect(screen.getByRole('alert')).toHaveTextContent('Could not move this game to Finished. Please try again.');
+    });
+
+    it('says so when taking the game out is refused', async () => {
+        stubEntryFetch(null, 404);
+        const { finish } = renderMovingPanel('playing');
+        await settled();
+
+        await userEvent.click(screen.getByRole('button', { name: 'Playing' }));
+        await finish(false);
+
+        expect(screen.getByRole('button', { name: 'Playing' })).toHaveAttribute('aria-pressed', 'true');
+        expect(screen.getByRole('alert')).toHaveTextContent('Could not take this game out of Playing. Please try again.');
+    });
+
+    it('takes the refusal down as the move is tried again, and keeps it down once it is kept', async () => {
+        stubEntryFetch(null, 404);
+        const { finish } = renderMovingPanel(null);
+        await settled();
+
+        await userEvent.click(screen.getByRole('button', { name: 'Backlog' }));
+        await finish(false);
+        expect(screen.getByRole('alert')).toHaveTextContent('Could not move this game to Backlog. Please try again.');
+
+        await userEvent.click(screen.getByRole('button', { name: 'Backlog' }));
+        expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+        await finish(true);
+
+        expect(screen.getByRole('button', { name: 'Backlog' })).toHaveAttribute('aria-pressed', 'true');
+        expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    });
 });
 
 describe('GameUserPanel scoring', () => {
@@ -309,6 +391,23 @@ describe('GameUserPanel scoring', () => {
 
         // ...and back to what the server still holds once the save is refused.
         expect(shownScore()).toBe(6);
+    });
+
+    it('says why the score went back, and takes that down once a score saves', async () => {
+        stubEntryFetch(6);
+        const { setScore, finish } = deferredSetScore();
+        renderPanel({ setScore });
+
+        await waitFor(() => expect(shownScore()).toBe(6));
+        await userEvent.click(screen.getByRole('radio', { name: '2 out of 10' }));
+        await finish(false);
+
+        expect(screen.getByRole('alert')).toHaveTextContent('Could not save your score. Please try again.');
+
+        await userEvent.click(screen.getByRole('radio', { name: '4 out of 10' }));
+        await finish(true);
+
+        expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     });
 
     it('keeps the shown score when the save succeeds', async () => {
@@ -1298,6 +1397,32 @@ describe('GameUserPanel review', () => {
         renderPanel();
 
         expect(await screen.findByRole('button', { name: /delete my data/i })).toBeInTheDocument();
+    });
+
+    it.each([
+        ['the last run', [playthrough({ id: 5, type: 'completionist' })]],
+        ['one of two runs', [playthrough({ id: 5, type: 'completionist' }), playthrough({ id: 6, type: 'rushed' })]],
+    ])('names no playthrough once the one it named is deleted, %s', async (_, runs) => {
+        // The server lets go of a deleted run's review (ADR 0025), and refuses a review that names a
+        // run that is gone as not one of yours.
+        const fetchMock = stubEntryFetch(
+            null,
+            200,
+            runs,
+            (_url, init) => init?.method === 'PUT'
+                ? new Response(JSON.stringify(review({ id: 3, ...JSON.parse(String(init.body)) })), { status: 200 })
+                : new Response(null, { status: 204 }),
+            review({ id: 3, body: 'The completionist run.', playthroughId: 5 }));
+        const sent = (method: string) => fetchMock.mock.calls.find(([, init]) => init?.method === method);
+        renderPanel();
+
+        await userEvent.click(await screen.findByRole('button', { name: 'Delete playthrough 1' }));
+        // The run gone from the panel, not only the request sent: the form reads the runs the panel holds.
+        await waitFor(() => expect(screen.queryAllByRole('button', { name: /^Delete playthrough/ })).toHaveLength(runs.length - 1));
+        await userEvent.click(await screen.findByRole('button', { name: 'Update review' }));
+
+        await waitFor(() => expect(sent('PUT')).toBeDefined());
+        expect(JSON.parse(String(sent('PUT')?.[1]?.body))).toMatchObject({ playthroughId: null });
     });
 });
 

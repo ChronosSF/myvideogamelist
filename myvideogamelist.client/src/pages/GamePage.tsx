@@ -10,9 +10,11 @@ import { GameNewsPanel } from '@/components/GameNewsPanel';
 import { GameUserPanel } from '@/components/GameUserPanel';
 import { GameCommunity } from '@/components/GameCommunity';
 import { CompletionTimes } from '@/components/CompletionTimes';
+import { parseReleaseDate } from '@/lib/releaseDate';
 import { SectionHeading } from '@/components/SectionHeading';
 import { GameRefRail } from '@/components/GameRefRail';
 import { MultiplayerSummary } from '@/components/MultiplayerSummary';
+import { multiplayerSummary } from '@/lib/multiplayer';
 import { ScreenshotGallery } from '@/components/ScreenshotGallery';
 import { StoreLinks } from '@/components/StoreLinks';
 import { TrailerPlayer } from '@/components/TrailerPlayer';
@@ -122,9 +124,12 @@ export function GamePage() {
         ? [...new Set([...details.collections, ...details.franchises])]
         : [];
 
-    const releaseYear = game.releaseDate ? new Date(game.releaseDate).getFullYear() : null;
-    const releaseDate = game.releaseDate
-        ? new Date(game.releaseDate).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+    // The day the API names, which `new Date` would read as UTC midnight: the day before, and a
+    // year before on 1 January, for anybody west of Greenwich, and a different day on the server.
+    const released = game.releaseDate ? parseReleaseDate(game.releaseDate) : null;
+    const releaseYear = released?.getFullYear() ?? null;
+    const releaseDate = released
+        ? released.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
         : null;
 
     const youtubeEmbedId = game.trailerUrl
@@ -303,7 +308,9 @@ export function GamePage() {
                         <StoreLinks stores={details?.stores ?? []} />
 
                         {/* How to play: solo, together, and with how many. */}
-                        {details && (details.gameModes.length > 0 || details.multiplayerModes) && (
+                        {details && (details.gameModes.length > 0
+                            // And no heading at all when neither the modes nor the summary have anything to say.
+                            || (details.multiplayerModes !== null && multiplayerSummary(details.multiplayerModes) !== null)) && (
                             <section>
                                 <SectionHeading>How to play</SectionHeading>
                                 <div className="space-y-3">
@@ -558,7 +565,8 @@ export function GamePage() {
                                         rel="noopener noreferrer"
                                         className="inline-flex items-center gap-1 text-sm text-primary-400 hover:text-primary-300 transition-colors break-all"
                                     >
-                                        Official Site
+                                        Official Site{' '}
+                                        <span className="sr-only">(opens in a new tab)</span>
                                         <svg className="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
                                         </svg>
@@ -575,7 +583,8 @@ export function GamePage() {
                                         rel="noopener noreferrer"
                                         className="inline-flex items-center gap-1 text-sm text-primary-400 hover:text-primary-300 transition-colors"
                                     >
-                                        Watch Trailer
+                                        Watch Trailer{' '}
+                                        <span className="sr-only">(opens in a new tab)</span>
                                         <svg className="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
                                         </svg>

@@ -32,7 +32,9 @@ export function ReviewCard({ head, body, hasSpoilers, revealLabel }: ReviewCardP
     const [revealed, setRevealed] = useState(false);
 
     return (
-        <li className="review-card">
+        // Focusable from script, though not from the tab key, so that a list adding reviews can hand
+        // keyboard focus to the first one it added.
+        <li className="review-card" tabIndex={-1}>
             <div className="review-card-head">{head}</div>
 
             {hasSpoilers && !revealed ? (

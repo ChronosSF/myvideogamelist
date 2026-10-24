@@ -113,6 +113,19 @@ describe('GamePage sidebar before auth has answered', () => {
     });
 });
 
+describe('GamePage release date', () => {
+    it('names the day IGDB gives, and its year, west of Greenwich too', () => {
+        // The suite runs west of Greenwich, where 1 January read as UTC midnight is New Year's Eve.
+        const celeste = game({ id: 1, title: 'Celeste', releaseDate: '2027-01-01' });
+        const Stub = createRoutesStub([{ id: 'game', path: '/games/:id', Component: GamePage }]);
+        render(<Stub initialEntries={['/games/1']} hydrationData={{ loaderData: { game: { game: celeste } } }} />);
+
+        expect(within(screen.getByRole('heading', { level: 1 })).getByText('(2027)')).toBeInTheDocument();
+        // Under the title, and again in the sidebar's details.
+        expect(screen.getAllByText('January 1, 2027')).toHaveLength(2);
+    });
+});
+
 describe('GamePage sidebar once auth has answered', () => {
     it('asks a signed-out visitor to sign in', () => {
         authAnswered(null);
@@ -182,6 +195,16 @@ describe('GamePage trailer', () => {
         expect(await screen.findByRole('heading', { level: 1, name: 'Hades' })).toBeInTheDocument();
         expect(screen.queryByTitle('Hades trailer')).not.toBeInTheDocument();
         expect(screen.getByRole('button', { name: /Play trailer/ })).toBeInTheDocument();
+    });
+
+    it('says that the trailer and the official site open in a new tab', () => {
+        // A trailer YouTube cannot embed is a link out, as the official site is.
+        const celeste = game({ id: 1, title: 'Celeste', trailerUrl: 'https://vimeo.com/celeste', website: 'https://www.celestegame.com' });
+        const Stub = createRoutesStub([{ id: 'game', path: '/games/:id', Component: GamePage }]);
+        render(<Stub initialEntries={['/games/1']} hydrationData={{ loaderData: { game: { game: celeste } } }} />);
+
+        expect(screen.getByRole('link', { name: 'Watch Trailer (opens in a new tab)' })).toHaveAttribute('target', '_blank');
+        expect(screen.getByRole('link', { name: 'Official Site (opens in a new tab)' })).toHaveAttribute('target', '_blank');
     });
 });
 

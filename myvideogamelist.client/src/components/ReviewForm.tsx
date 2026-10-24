@@ -64,13 +64,21 @@ export function ReviewForm({
     const set = <K extends keyof Draft>(key: K, value: Draft[K]) =>
         setDraft(current => ({ ...current, [key]: value }));
 
+    // The run the review names, while that run still exists. Deleting a playthrough lets go of the
+    // review's link on the server (ADR 0025), but leaves the draft holding the old id: the select
+    // shows "The game in general", since no option matches, and the save would still send the id,
+    // to be refused as not one of the author's playthroughs.
+    const playthroughId = playthroughs.some(playthrough => String(playthrough.id) === draft.playthroughId)
+        ? draft.playthroughId
+        : '';
+
     const handleSubmit = (event: React.FormEvent) => {
         event.preventDefault();
         onSave({
             body: draft.body.trim(),
             hasSpoilers: draft.hasSpoilers,
             visibility: draft.visibility,
-            playthroughId: draft.playthroughId === '' ? null : Number(draft.playthroughId),
+            playthroughId: playthroughId === '' ? null : Number(playthroughId),
         });
     };
 
@@ -126,7 +134,7 @@ export function ReviewForm({
                     <label htmlFor={`${fieldId}-playthrough`}>About which playthrough</label>
                     <select
                         id={`${fieldId}-playthrough`}
-                        value={draft.playthroughId}
+                        value={playthroughId}
                         onChange={event => set('playthroughId', event.target.value)}
                         disabled={pending}
                     >

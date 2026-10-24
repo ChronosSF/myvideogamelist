@@ -801,6 +801,77 @@ public class GetGameByIdAsyncTests
     }
 }
 
+/// <summary>
+/// Where the service sends its two kinds of request. Configurable so that the browser smoke test can
+/// answer for IGDB over HTTP (ADR 0060), and IGDB's own addresses whenever nothing is configured,
+/// which is every deployment.
+/// </summary>
+public class IgdbAddressTests
+{
+    /// <summary>Answers the token request and every query, and keeps the address each went to.</summary>
+    private sealed class RecordingHandler : HttpMessageHandler
+    {
+        public List<Uri> Asked { get; } = [];
+
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            Asked.Add(request.RequestUri!);
+            var body = request.RequestUri!.AbsolutePath.EndsWith("/token")
+                ? """{ "access_token": "token", "expires_in": 3600, "token_type": "bearer" }"""
+                : "[]";
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(body, Encoding.UTF8, "application/json"),
+            });
+        }
+    }
+
+    private static async Task<List<Uri>> AskForAGameAsync(string? baseUrl, string? tokenUrl)
+    {
+        var handler = new RecordingHandler();
+
+        var factory = Substitute.For<IHttpClientFactory>();
+        factory.CreateClient("Igdb").Returns(_ => new HttpClient(handler));
+
+        var configuration = Substitute.For<IConfiguration>();
+        configuration["Igdb:ClientId"].Returns("client-id");
+        configuration["Igdb:ClientSecret"].Returns("client-secret");
+        configuration["Igdb:BaseUrl"].Returns(baseUrl);
+        configuration["Igdb:TokenUrl"].Returns(tokenUrl);
+
+        var service = new IgdbService(
+            factory, configuration, new MemoryCache(new MemoryCacheOptions()),
+            NullLogger<IgdbService>.Instance);
+
+        await service.GetGameByIdAsync(1942);
+        return handler.Asked;
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    public async Task GetGameByIdAsync_WithNoAddressConfigured_AsksTwitchThenIgdb(string? unset)
+    {
+        var asked = await AskForAGameAsync(unset, unset);
+
+        Assert.Equal(
+            [new Uri("https://id.twitch.tv/oauth2/token"), new Uri("https://api.igdb.com/v4/games")],
+            asked);
+    }
+
+    [Fact]
+    public async Task GetGameByIdAsync_WithAddressesConfigured_AsksThoseInstead()
+    {
+        // A trailing slash on the base is the natural way to write one, and must not double up.
+        var asked = await AskForAGameAsync("http://127.0.0.1:8080/v4/", "http://127.0.0.1:8080/oauth2/token");
+
+        Assert.Equal(
+            [new Uri("http://127.0.0.1:8080/oauth2/token"), new Uri("http://127.0.0.1:8080/v4/games")],
+            asked);
+    }
+}
+
 public class MapTimeToBeatTests
 {
     private static IgdbGameTimeToBeat Row(int? hastily, int? normally, int? completely, int? count) =>

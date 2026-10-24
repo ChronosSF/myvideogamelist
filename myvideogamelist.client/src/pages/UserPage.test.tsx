@@ -186,3 +186,19 @@ describe('UserPage account deletion', () => {
         expect(screen.queryByText('Your account has been deleted.')).not.toBeInTheDocument();
     });
 });
+
+describe('UserPage signing out', () => {
+    it('says why under the button when the sign-out does not happen', async () => {
+        // The account is still signed in, so the page stays as it is and says so.
+        authAnswered(userProfile());
+        vi.mocked(auth.logout).mockRejectedValueOnce(new Error('Could not sign you out. Please try again.'));
+        const actor = userEvent.setup();
+        stubFetch();
+        renderPage();
+
+        await actor.click(screen.getByRole('button', { name: 'Sign Out' }));
+
+        expect(await screen.findByRole('alert')).toHaveTextContent('Could not sign you out. Please try again.');
+        expect(screen.getByRole('button', { name: 'Sign Out' })).toBeInTheDocument();
+    });
+});

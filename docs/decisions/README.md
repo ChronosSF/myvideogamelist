@@ -22,7 +22,7 @@ grow a forward pointer when a later record or an issue closes something it left 
 |---|---|---|
 | [0001](0001-igdb-as-source-of-truth.md) | IGDB is the source of truth for game data | Implemented; the cache it called for is 0035 |
 | [0002](0002-server-side-rendering.md) | Server-side rendering via React Router framework mode | Implemented |
-| [0003](0003-two-process-deployment.md) | Two processes; the SSR server does not proxy `/api` | Implemented |
+| [0003](0003-two-process-deployment.md) | Two processes; the SSR server does not proxy `/api` | Implemented; the built app is run end to end, behind a stand-in for what routes between the two, by the browser smoke test, 0060 |
 | [0004](0004-release-dates-for-calendar.md) | Upcoming releases are built on `release_dates` | Implemented; its endpoint retired by #165, its reasoning carried by `/api/user/releases` |
 | [0005](0005-secrets-handling.md) | Secrets come from user secrets and environment variables | Implemented |
 | [0006](0006-codeql-buildless.md) | CodeQL runs buildless (`build-mode: none`) | Implemented |
@@ -63,7 +63,7 @@ grow a forward pointer when a later record or an issue closes something it left 
 | [0041](0041-what-the-roadmap-decided-on-its-own.md) | The plan moves to GitHub issues, and what the roadmap decided on its own | Implemented |
 | [0042](0042-admins-are-named-in-configuration.md) | Admins are account ids in configuration, behind one server-side policy | Implemented |
 | [0043](0043-where-the-key-ring-lives.md) | The key ring lives in Parameter Store, under a name that does not move, and never nowhere by accident | Implemented; proved only by a deploy; `AllowEphemeralKeys` also set by the integration suite, 0057 |
-| [0044](0044-what-the-deployment-walkthrough-settled.md) | What the deployment walkthrough settled, and where it found the records wrong | Accepted; built by #97 |
+| [0044](0044-what-the-deployment-walkthrough-settled.md) | What the deployment walkthrough settled, and where it found the records wrong | Accepted; built by #97; the client-image job it left to #106 is 0061 |
 | [0045](0045-an-import-asks-once-about-what-it-will-not-guess.md) | An import asks once about what it will not guess: one list for every game played without an outcome | Implemented |
 | [0046](0046-the-balancer-answers-its-own-distribution.md) | The balancer answers its own distribution, and what else the CloudFront phase settled | Implemented |
 | [0047](0047-a-playthroughs-dates-count-and-a-status-change-comes-first.md) | A playthrough's dates count in the activity figures, and a status change comes first | Implemented; a rule for what is counted, which the history's list does not apply (0062) |
@@ -76,13 +76,16 @@ grow a forward pointer when a later record or an issue closes something it left 
 | [0054](0054-a-hand-arranged-order-is-a-sparse-position.md) | A hand-arranged order is a sparse position the client computes, and a change of list clears it | Implemented; §9 answered for the favourites by 0064; §8 extended to every filter by 0055 |
 | [0055](0055-several-games-move-in-one-request-and-ownership-is-on-the-list-row.md) | Several games move in one request, through the single move's rule, and ownership is on the list row | Implemented |
 | [0056](0056-an-avatar-is-an-address-on-a-short-list-of-hosts.md) | An avatar is an address on a short list of hosts, which the document policy's `img-src` names too; a display name stands beside the handle; a bio is plain text | Implemented |
-| [0057](0057-the-api-is-tested-over-a-real-postgresql.md) | The API is tested over a real PostgreSQL: one container a run, a database a class, and IGDB out of reach | Implemented; the export-snapshot test went in skipped and runs since #263 |
+| [0057](0057-the-api-is-tested-over-a-real-postgresql.md) | The API is tested over a real PostgreSQL: one container a run, a database a class, and IGDB out of reach | Implemented; the export-snapshot test went in skipped and runs since #263; the front end it left to #105 is 0060 |
 | [0058](0058-a-withdrawal-leaves-the-edge-when-it-is-made.md) | A withdrawal leaves the edge when it is made, and its retry stops when the TTL would have | Implemented; proved only by a deploy; §1's eighth event is 0056 |
 | [0059](0059-a-request-is-known-by-its-trace-and-a-build-by-its-commit.md) | A request is known by its trace from the page to the API's log, and a build by its commit | Implemented; OpenTelemetry and the alarms are #103 |
+| [0060](0060-one-browser-test-over-the-production-shape.md) | One browser test over the production shape: two processes, a stand-in for what routes between them, and IGDB answered over HTTP | Implemented; the images it leaves out are 0061 |
+| [0061](0061-ci-gates-every-pull-request.md) | CI gates every pull request: the house style, known vulnerabilities, secrets in the history, and the images | Implemented; branch protection and GitHub's own secret scanning are settings the owner turns on, and what is left of #106 |
 | [0062](0062-the-history-is-three-rows-unioned-and-what-has-no-moment-has-no-item.md) | The history is three kinds of row unioned at query time, and what has no moment has no item | Implemented |
 | [0064](0064-the-showcase-is-arranged-by-hand-and-shown-in-that-order.md) | The favourites showcase is arranged by hand and shown in that order, and a favourite is marked on every card its owner sees | Implemented |
 | [0066](0066-a-holding-page-until-production-takes-the-domain.md) | A holding page at the domain until production takes it, and the apex is canonical | Implemented; deployed 2026-10-23, retired by #98 |
 | [0067](0067-the-esrb-filter-lists-a-game-under-its-badge.md) | The ESRB filter lists a game under the rating its badge shows | Implemented |
+| [0068](0068-lighthouse-on-the-production-shape.md) | Lighthouse on the production shape: five pages, a phone and a desktop, and only what the runner cannot move fails the build | Implemented; its credentials are allowed, and its lockfile audited, by 0061 |
 
 **Status** — *Accepted*: decided, not yet built. *Implemented*: decided and in the code.
 *Superseded*: replaced by a later record.

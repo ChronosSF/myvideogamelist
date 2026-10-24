@@ -25,7 +25,7 @@ interface GameBrowseFiltersProps {
 
 const selectClass =
     'w-full sm:w-auto px-3 py-2 bg-surface border border-line-strong '
-    + 'rounded-lg text-fg-strong text-sm focus:outline-none focus:ring-2 focus:ring-focus '
+    + 'rounded-lg text-fg-strong text-sm focus:outline-hidden focus:ring-2 focus:ring-focus '
     + 'focus:border-transparent disabled:opacity-60';
 
 const labelClass = 'block text-xs font-semibold uppercase tracking-wide text-fg-muted mb-1';
