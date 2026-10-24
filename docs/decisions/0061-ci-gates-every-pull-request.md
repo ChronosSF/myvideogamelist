@@ -145,7 +145,7 @@ comments and refuses a `.gitleaksignore`. It extends gitleaks' default rules wit
 - **`basic-auth-pair`** and **`basic-auth-header`**: a `user:password` pair given to a setting named for
   basic auth, as `MVGL_DEV_BASIC_AUTH` is, and an `Authorization: Basic` header.
 
-And it allows three findings, each by exactly what it is:
+And it allows seven findings, each by exactly what it is:
 
 - **The local container's credentials, mvgl/localdev**, committed on purpose so that a fresh checkout
   runs (CLAUDE.md's "Running locally"; 0060 names four of the files, and 0068 the Lighthouse audit's
@@ -154,10 +154,21 @@ And it allows three findings, each by exactly what it is:
 - **The one test name's 40-character match**, and nothing else the token rule finds.
 - **The IIS Express configuration**, in the one commit that added it, `baf18587`, at that path. Its keys
   are that machine's own, sealed by a key container that never left it, and `.vs/` is ignored since.
+- **Two itch.io pages' keys, a `secret` and a `password`**, in addresses IGDB's rows hold, in the
+  store-links test that shows such a page is passed over (#291). They are those pages' own, and public
+  wherever IGDB's data is.
+- **The avatar policy test's address with a made-up user and password in it**, which the policy refuses
+  for its credentials (0056).
+- **The Lighthouse audit's `LIGHTHOUSE_PASSWORD` entry**, which hands its sign-in script the run's
+  throwaway account's password by reference (0068), in that one file.
 
 Planted fakes, 48 lines each marked to be found or passed, came out as marked, and the four rules find
 nothing in the history. A second throwaway run (§6) took two of the allowlists out and found exactly
-what they allow.
+what they allow. The itch.io keys, the avatar address and the audit's reference came in with master's
+history when this record's pull request was brought up to date, on 2026-10-24. Each is allowed as one
+value in one file, and 13 planted lines showed the same value in another file, and another value in the
+same file, still found. This record describes those values rather than quoting them, because the scan
+reads it too and allows each value only where it is.
 
 **Not covered:** `Password = value` with spaces and a lower-case `_password:`, which are how C# assigns
 a property and TypeScript names a parameter; binary files; a secret with nothing around it to recognise
