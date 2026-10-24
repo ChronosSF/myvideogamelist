@@ -134,18 +134,21 @@ and not the skip. Verified by holding the key from `psql` with an expired job se
 arrives, quoting the lock as `5572719981890457684`; releasing the lock and restarting swept the job
 normally.
 
-**The transaction runs inside `CreateExecutionStrategy()`, which today does nothing.** EF refuses a
-user-initiated transaction when a retrying execution strategy is configured, and
-`EnableRetryOnFailure` is the ordinary hardening for a managed PostgreSQL — one argument away from
-the `UseNpgsql` line that already exists in `Program.cs`. Adding it would make every sweep throw
-`InvalidOperationException: The configured execution strategy 'NpgsqlRetryingExecutionStrategy' does
-not support user-initiated transactions`, which `RunOnceAsync` catches, logs once an hour, and
-otherwise absorbs: retention would stop and nothing else in the application would fail, so nobody
-would learn of it until an account ran out of `MaxPendingJobs` slots. Verified by adding
-`EnableRetryOnFailure` locally and watching exactly that exception arrive, then watching the same
-build sweep cleanly with the strategy wrapper in place. The wrapper spans the **whole** transaction
-rather than the delete alone, because the advisory lock is transaction-scoped: a retried attempt
-opens a new transaction and has to take the lock again rather than proceed without it.
+**The transaction runs inside `CreateExecutionStrategy()`, which today never retries.** Without
+`EnableRetryOnFailure` that is `NpgsqlExecutionStrategy`, whose only effect is to hand a transient
+failure on as an `InvalidOperationException` around the `NpgsqlException`; the first version of this
+record said it did nothing. EF refuses a user-initiated transaction when a retrying execution
+strategy is configured, and `EnableRetryOnFailure` is the ordinary hardening for a managed
+PostgreSQL — one argument away from the `UseNpgsql` line that already exists in `Program.cs`. Adding
+it would make every sweep throw `InvalidOperationException: The configured execution strategy
+'NpgsqlRetryingExecutionStrategy' does not support user-initiated transactions`, which
+`RunOnceAsync` catches, logs once an hour, and otherwise absorbs: retention would stop and nothing
+else in the application would fail, so nobody would learn of it until an account ran out of
+`MaxPendingJobs` slots. Verified by adding `EnableRetryOnFailure` locally and watching exactly that
+exception arrive, then watching the same build sweep cleanly with the strategy wrapper in place. The
+wrapper spans the **whole** transaction rather than the delete alone, because the advisory lock is
+transaction-scoped: a retried attempt opens a new transaction and has to take the lock again rather
+than proceed without it.
 
 ### 4. In batches, each its own transaction
 
@@ -169,6 +172,42 @@ each a `DELETE FROM "ImportJobs" WHERE "Id" IN (SELECT ... ORDER BY "CreatedAt" 
 their 165 `ImportRows` went with them through the cascade. All three that had to survive did: a
 receipt from three days ago, a pending job created forty days ago whose owner saved a decision two
 days ago, and a real job from an earlier session.
+
+**The stopping token bounds the work, never the write that keeps its result.** Here that write is
+the commit alone, because the `DELETE` is itself the work: a shutdown that cancels it abandons the
+batch, and the rollback loses nothing that had finished. Once the `DELETE` has returned the batch is
+finished and only the commit keeps it, so the commit runs on `CancellationToken.None`. The first
+version committed on the stopping token, and Npgsql checks a token before it sends anything: a
+shutdown landing between the two refused the `COMMIT`, rolled the finished batch back, and left the
+next sweep to delete the same jobs again
+([#96](https://github.com/ChronosSF/myvideogamelist/issues/96)). That was wasted work and never lost
+data — the delete is idempotent, and the lock goes with the transaction either way — but this class
+is the one the next job copies, and its work may cost more to repeat. A job whose work is a request
+and whose write is a `SaveChanges` keeps the save off the token as well as the commit. Without the
+token the commit is still bounded by Npgsql's command timeout — the connection string's, thirty
+seconds while nothing sets one — and a stopping host waits for it no longer than
+`HostOptions.ShutdownTimeout`, one budget for every hosted service; a `COMMIT` still in flight when
+the process exits is applied or discarded whole, never in part. The loop stops between batches once
+the token has fired, rather than starting a batch only for its first call to throw, and the sweep's
+log line counts what was deleted however the pass ends: after a shutdown that cancels a later batch,
+or a batch that fails, as well as after the last
+([#265](https://github.com/ChronosSF/myvideogamelist/issues/265)). Without that, the exception would
+carry the count away, a batch whose commit finished after the signal included.
+
+Verified against a real PostgreSQL by cancelling the stopping token the moment the `DELETE` had
+removed three expired jobs. Committed on the stopping token, the commit threw
+`OperationCanceledException` and all three jobs were still there; committed on `None`, it went
+through and none were. Cancelled just before the `DELETE` instead, the batch was abandoned and all
+three stayed, so the work is still bounded. And a whole tick over thirty expired jobs, cancelled the
+moment its first batch's `DELETE` returned, committed that batch of twenty-five, started no second
+one, and logged the twenty-five. `ImportRetentionTests` holds the code to all of this with doubles
+standing in for the lock, the `DELETE` and the transaction, since InMemory runs neither of the first
+two: one test fails when the commit is given any token but `CancellationToken.None`, the stopping
+token or a fresh one, another when the `DELETE` comes off it, a third when the loop no longer stops
+between batches, and a fourth when a pass that stops part way no longer logs what it deleted. And
+`ImportRetentionSweepTests` repeats the whole tick against PostgreSQL, in CI since
+[0057](0057-the-api-is-tested-over-a-real-postgresql.md): the host's stop lands as a full batch's
+`DELETE` returns, and the batch must be committed and logged, with no second one started.
 
 ### 5. No index for the predicate
 
@@ -234,5 +273,6 @@ That is the same call [0034](0034-failing-in-one-shape.md) makes when it keeps `
 through an IGDB outage. Stated here so the absence reads as a decision.
 
 **The next background job copies this.** Whatever it is — CloudFront invalidation (ROADMAP D14), a
-`CachedGames` refresh, scheduled exports — it inherits the scoping rule, the catch-per-tick rule and
-the question of what it owes a fleet running N copies of it.
+`CachedGames` refresh, scheduled exports — it inherits the scoping rule, the catch-per-tick rule, a
+stopping token that bounds the work and never the write that keeps its result, and the question of
+what it owes a fleet running N copies of it.

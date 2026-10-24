@@ -1,10 +1,11 @@
-import { describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { FavouritesShowcase } from '@/components/FavouritesShowcase';
 import { FavouritesContext, type FavouritesContextValue } from '@/contexts/FavouritesContext';
 import type { ProfileVisibility } from '@/types/auth';
+import type { FavouriteDto } from '@/types/favourite';
 import { game } from '@/test/factories';
 
 function favouritesValue(overrides: Partial<FavouritesContextValue> = {}): FavouritesContextValue {
@@ -13,10 +14,12 @@ function favouritesValue(overrides: Partial<FavouritesContextValue> = {}): Favou
         loading: false,
         error: null,
         mutationError: null,
+        orderError: null,
         isFavourite: () => false,
         isPending: () => false,
         add: vi.fn(async () => true),
         remove: vi.fn(async () => true),
+        moveInOrder: vi.fn(async () => true),
         reload: vi.fn(),
         ...overrides,
     };
@@ -92,5 +95,238 @@ describe('FavouritesShowcase', () => {
 
         await actor.click(screen.getByRole('button', { name: 'Try again' }));
         expect(value.reload).toHaveBeenCalled();
+    });
+});
+
+describe('FavouritesShowcase order', () => {
+    const TUNIC = { game: game({ id: 3, title: 'Tunic' }), addedAt: '2026-07-01T00:00:00Z' };
+
+    it('says how the row is ordered once some are placed', () => {
+        renderShowcase({ items: [{ ...CELESTE, position: 0 }, HADES, TUNIC] });
+
+        expect(screen.getByText(/3 games, the ones you placed first, then the rest most recent first/))
+            .toBeInTheDocument();
+    });
+
+    it('says the row is in the order arranged once every one is placed', () => {
+        renderShowcase({ items: [{ ...CELESTE, position: 0 }, { ...HADES, position: 1024 }] });
+
+        expect(screen.getByText(/2 games, in the order you arranged them/)).toBeInTheDocument();
+    });
+
+    it('tells the owner of a public profile that it shows them in this order', () => {
+        // The order is published with the favourites (ADR 0064), so the owner is told so where they
+        // arrange it.
+        renderShowcase({ items: [HADES, CELESTE] }, 'public');
+
+        expect(screen.getByText(/your public profile shows them too, in the same order/i)).toBeInTheDocument();
+    });
+
+    it("marks each of the row's covers as a favourite, without saying so again for each", () => {
+        // Every cover here is one — the same mark as on a card anywhere else, read from the same context.
+        // The list is named as the reader's favourites, so the words a mark carries elsewhere would only
+        // repeat it for every cover. The rosette is found by its class: it is outside the accessibility tree.
+        renderShowcase({ items: [HADES, CELESTE], isFavourite: () => true });
+
+        const rail = screen.getByRole('list', { name: 'Your favourite games' });
+        expect(within(rail).getAllByRole('link').map(link => link.textContent)).toEqual(['Hades', 'Celeste']);
+        expect(rail.querySelectorAll('.favourite-mark-cover')).toHaveLength(2);
+    });
+});
+
+describe('FavouritesShowcase arranging', () => {
+    const TUNIC = { game: game({ id: 3, title: 'Tunic' }), addedAt: '2026-07-01T00:00:00Z' };
+    const ITEMS = [HADES, CELESTE, TUNIC];
+
+    const arrange = () => userEvent.click(screen.getByRole('button', { name: 'Arrange' }));
+    const grips = () => screen.queryAllByRole('button', { name: /^Move / }).map(grip => grip.getAttribute('aria-label'));
+
+    afterEach(() => vi.restoreAllMocks());
+
+    it('is offered only once there are two to arrange', () => {
+        renderShowcase({ items: [HADES] });
+
+        expect(screen.queryByRole('button', { name: 'Arrange' })).not.toBeInTheDocument();
+    });
+
+    it('is not offered while the favourites are unknown', () => {
+        renderShowcase({ items: ITEMS, error: 'Failed to load your favourites (500)' });
+
+        expect(screen.queryByRole('button', { name: 'Arrange' })).not.toBeInTheDocument();
+    });
+
+    it('lays the favourites out with a handle on each, in their order, and says how to use them', async () => {
+        renderShowcase({ items: ITEMS });
+        expect(grips()).toEqual([]);
+
+        await arrange();
+
+        expect(screen.getByRole('button', { name: 'Arrange' })).toHaveAttribute('aria-pressed', 'true');
+        expect(grips()).toEqual(['Move Hades', 'Move Celeste', 'Move Tunic']);
+        expect(screen.getByRole('button', { name: 'Move Celeste' }))
+            .toHaveAccessibleDescription(/press space or enter to pick it up/i);
+        expect(screen.getByText(/drag a cover by its handle/i)).toBeInTheDocument();
+
+        // A list while it is an order, so each favourite's place is heard with it.
+        const order = screen.getByRole('list', { name: 'Your favourite games' });
+        expect(within(order).getAllByRole('listitem')).toHaveLength(3);
+    });
+
+    it('puts the row back when Arrange is pressed again', async () => {
+        renderShowcase({ items: ITEMS });
+
+        await arrange();
+        await arrange();
+
+        expect(screen.getByRole('button', { name: 'Arrange' })).toHaveAttribute('aria-pressed', 'false');
+        expect(grips()).toEqual([]);
+        expect(screen.getByText(/3 games, most recent first/)).toBeInTheDocument();
+    });
+
+    it('moves a favourite from the keyboard through the provider, after the favourite it now follows', async () => {
+        const value = renderShowcase({ items: ITEMS });
+        await arrange();
+
+        screen.getByRole('button', { name: 'Move Tunic' }).focus();
+        await userEvent.keyboard(' {ArrowLeft} ');
+
+        expect(value.moveInOrder).toHaveBeenCalledExactlyOnceWith(3, 2);
+    });
+
+    it('drags a cover to a new place through the provider', async () => {
+        // Covers on a fifty-pixel pitch down the page, since jsdom lays nothing out.
+        vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+            if (!this.hasAttribute('data-reorder-item')) return new DOMRect(0, 0, 800, 600);
+            return new DOMRect(0, [...this.parentElement!.children].indexOf(this) * 50, 800, 40);
+        });
+        const value = renderShowcase({ items: ITEMS });
+        await arrange();
+
+        const grip = screen.getByRole('button', { name: 'Move Hades' });
+        fireEvent.pointerDown(grip, { button: 0, pointerId: 1, clientX: 10, clientY: 20 });
+        fireEvent.pointerMove(grip, { button: 0, pointerId: 1, clientX: 10, clientY: 30 });
+        fireEvent.pointerMove(grip, { button: 0, pointerId: 1, clientX: 10, clientY: 120 });
+        fireEvent.pointerUp(grip, { button: 0, pointerId: 1, clientX: 10, clientY: 120 });
+
+        expect(value.moveInOrder).toHaveBeenCalledExactlyOnceWith(2, 3);
+    });
+
+    it('leaves the grip of a favourite whose save is out unable to move it', async () => {
+        renderShowcase({ items: ITEMS, isPending: id => id === 1 });
+        await arrange();
+
+        expect(screen.getByRole('button', { name: 'Move Celeste' })).toHaveAttribute('aria-disabled', 'true');
+        expect(screen.getByRole('button', { name: 'Move Hades' })).not.toHaveAttribute('aria-disabled');
+    });
+
+    it('shows why a move did not happen beside the covers while they are arranged, and only then', async () => {
+        // A refused or failed move has already been put back, so the covers stay; the reason is the
+        // only thing a sighted user would otherwise not know.
+        renderShowcase({ items: ITEMS, orderError: 'Failed to save the order of your favourites. Please try again.' });
+        expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+
+        await arrange();
+
+        expect(screen.getByRole('alert')).toHaveTextContent('Failed to save the order of your favourites.');
+        expect(grips()).toHaveLength(3);
+    });
+
+    it("does not show a favourite toggle's failure, which belongs to the game page it happened on", async () => {
+        renderShowcase({ items: ITEMS, mutationError: 'Failed to update your favourites. Please try again.' });
+
+        await arrange();
+
+        expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    });
+
+    it('moves a favourite into the place of the one whose grip is pressed after its own', async () => {
+        // The single-pointer way, which a screen reader's own activate takes too (ADR 0054 §7).
+        const value = renderShowcase({ items: ITEMS });
+        await arrange();
+
+        await userEvent.click(screen.getByRole('button', { name: 'Move Tunic' }));
+        await userEvent.click(screen.getByRole('button', { name: 'Move Hades' }));
+
+        expect(value.moveInOrder).toHaveBeenCalledExactlyOnceWith(3, null);
+    });
+
+    it('says each favourite\'s place beside its grip', async () => {
+        renderShowcase({ items: ITEMS });
+        await arrange();
+
+        const places = within(screen.getByRole('list', { name: 'Your favourite games' })).getAllByRole('listitem');
+        expect(places.map(place => within(place).getByText(/^\d+$/).textContent)).toEqual(['1', '2', '3']);
+    });
+
+    it('keeps the covers from leaving the page while they are arranged, and marks them all', async () => {
+        // A press that misses a grip on a phone would otherwise open the game's page and end the mode.
+        renderShowcase({ items: ITEMS, isFavourite: () => true });
+        await arrange();
+
+        const grid = screen.getByRole('list', { name: 'Your favourite games' });
+        expect(within(grid).queryAllByRole('link')).toHaveLength(0);
+        expect(grid.querySelectorAll('.favourite-mark-cover')).toHaveLength(3);
+    });
+
+    it('tells the owner of a public profile, while they arrange it, that it shows this order', async () => {
+        renderShowcase({ items: ITEMS }, 'public');
+        await arrange();
+
+        expect(screen.getByText(/drag a cover by its handle/i))
+            .toHaveTextContent(/your public profile shows them too, in the same order/i);
+    });
+
+    it('puts a held favourite back when the favourites reload under it', async () => {
+        // A reload takes the grid away for a moment. The game in the air goes back where it was rather
+        // than staying held, unseen, for a press that would land it somewhere nobody chose.
+        const view = render(
+            <MemoryRouter>
+                <FavouritesContext.Provider value={favouritesValue({ items: ITEMS })}>
+                    <FavouritesShowcase profileVisibility="private" />
+                </FavouritesContext.Provider>
+            </MemoryRouter>,
+        );
+        const rerender = (overrides: Partial<FavouritesContextValue>) => view.rerender(
+            <MemoryRouter>
+                <FavouritesContext.Provider value={favouritesValue({ items: ITEMS, ...overrides })}>
+                    <FavouritesShowcase profileVisibility="private" />
+                </FavouritesContext.Provider>
+            </MemoryRouter>,
+        );
+        await arrange();
+        screen.getByRole('button', { name: 'Move Tunic' }).focus();
+        await userEvent.keyboard(' ');
+        expect(screen.getByRole('button', { name: 'Move Tunic' })).toHaveAttribute('aria-pressed', 'true');
+
+        rerender({ loading: true });
+        rerender({});
+
+        expect(screen.getByRole('button', { name: 'Move Tunic' })).not.toHaveAttribute('aria-pressed');
+    });
+
+    it('stops arranging once there is only one favourite left, and does not start again by itself', async () => {
+        const view = render(
+            <MemoryRouter>
+                <FavouritesContext.Provider value={favouritesValue({ items: ITEMS })}>
+                    <FavouritesShowcase profileVisibility="private" />
+                </FavouritesContext.Provider>
+            </MemoryRouter>,
+        );
+        await arrange();
+
+        const rerender = (items: FavouriteDto[]) => view.rerender(
+            <MemoryRouter>
+                <FavouritesContext.Provider value={favouritesValue({ items })}>
+                    <FavouritesShowcase profileVisibility="private" />
+                </FavouritesContext.Provider>
+            </MemoryRouter>,
+        );
+
+        rerender([HADES]);
+        expect(grips()).toEqual([]);
+
+        rerender(ITEMS);
+        expect(screen.getByRole('button', { name: 'Arrange' })).toHaveAttribute('aria-pressed', 'false');
+        expect(grips()).toEqual([]);
     });
 });

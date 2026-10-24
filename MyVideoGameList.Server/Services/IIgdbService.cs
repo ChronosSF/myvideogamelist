@@ -24,6 +24,20 @@ public interface IIgdbService
         IEnumerable<int> ids, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// The same games as <see cref="GetGamesByIdsAsync"/>, asked of IGDB every time rather than
+    /// remembered by the set of ids.
+    /// </summary>
+    /// <remarks>
+    /// For the background refresh of <c>CachedGames</c> (ADR 0052), which asks about a different
+    /// set of ids on every tick and is there to fetch IGDB's answer rather than to reuse one. Through
+    /// the remembered lookup every game it refreshed would stay in memory for half an hour, under a
+    /// set of ids nobody will ask for again — fifteen hundred at the defaults, and ninety thousand at
+    /// the largest batch and shortest interval allowed, while a backlog that size lasts.
+    /// </remarks>
+    Task<IReadOnlyList<GameDto>> GetGamesByIdsUncachedAsync(
+        IReadOnlyCollection<int> ids, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// The most-played games right now, most popular first. Only games with cover art are
     /// returned, since the sole consumer is a rail of covers.
     /// </summary>

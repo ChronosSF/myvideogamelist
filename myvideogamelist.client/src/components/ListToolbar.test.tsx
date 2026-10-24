@@ -12,6 +12,7 @@ function renderToolbar(overrides: {
     selectedPlatformIds?: number[];
     platforms?: typeof PLATFORMS;
     view?: 'tiles' | 'table';
+    offerManual?: boolean;
 } = {}) {
     const handlers = {
         onViewChange: vi.fn(),
@@ -25,12 +26,38 @@ function renderToolbar(overrides: {
             sort={overrides.sort ?? DEFAULT_SORT}
             platforms={overrides.platforms ?? PLATFORMS}
             selectedPlatformIds={overrides.selectedPlatformIds ?? []}
+            offerManual={overrides.offerManual}
             {...handlers}
         />,
     );
 
     return handlers;
 }
+
+describe('ListToolbar and the hand order', () => {
+    const sortOptions = () =>
+        [...(screen.getByLabelText('Sort') as HTMLSelectElement).options].map(option => option.textContent);
+
+    it('offers "My order" only on a list that can be put in one', () => {
+        renderToolbar();
+        expect(sortOptions()).not.toContain('My order');
+    });
+
+    it('chooses it with no direction, since a hand order read backwards is nobody\'s', async () => {
+        const { onSortChange } = renderToolbar({ offerManual: true });
+
+        await userEvent.selectOptions(screen.getByLabelText('Sort'), 'manual');
+
+        expect(onSortChange).toHaveBeenCalledWith({ key: 'manual', descending: false });
+    });
+
+    it('drops the direction button while the hand order is the sort', () => {
+        renderToolbar({ offerManual: true, sort: { key: 'manual', descending: false } });
+
+        expect((screen.getByLabelText('Sort') as HTMLSelectElement).value).toBe('manual');
+        expect(screen.queryByRole('button', { name: /sorted (a|de)scending/i })).not.toBeInTheDocument();
+    });
+});
 
 describe('ListToolbar sorting', () => {
     it('shows the current sort key', () => {

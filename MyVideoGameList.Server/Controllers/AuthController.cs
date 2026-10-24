@@ -15,7 +15,8 @@ public class AuthController(
     UserManager<ApplicationUser> userManager,
     SignInManager<ApplicationUser> signInManager,
     IUserNameClaimService claims,
-    AdminAccounts admins) : ControllerBase
+    AdminAccounts admins,
+    TimeProvider clock) : ControllerBase
 {
     [HttpPost("register")]
     [EnableRateLimiting(RateLimiting.AuthWrites)]
@@ -91,12 +92,34 @@ public class AuthController(
         return NoContent();
     }
 
+    /// <summary>
+    /// Who is signed in, and the one place an account is seen (ADR 0051).
+    /// </summary>
+    /// <remarks>
+    /// The client asks this on every page it loads, so it is where <see cref="ApplicationUser.LastSeenAt"/>
+    /// is kept: at most once a UTC day, and best effort. A lost race with another write to the account
+    /// comes back as a failed <see cref="IdentityResult"/>, not an exception, and is left for the next
+    /// page. It is the one write behind a <c>GET</c>, which ADR 0033 otherwise keeps to the methods that
+    /// say so, and deliberately: forging it from another site records only that the browser it came
+    /// from was signed in, which it was. It says <c>no-store</c>, like every answer about one person:
+    /// nothing between here and the browser should keep one account for the next, and an answer kept
+    /// anywhere would skip the day's write.
+    /// </remarks>
     [HttpGet("me")]
     [Authorize]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
     public async Task<ActionResult<UserProfileDto>> Me()
     {
         var user = await userManager.GetUserAsync(User);
         if (user == null) return Unauthorized();
+
+        var now = clock.GetUtcNow();
+        if (AccountActivity.IsNewDay(user.LastSeenAt, now))
+        {
+            user.LastSeenAt = now;
+            await userManager.UpdateAsync(user);
+        }
+
         return Ok(Profile(user));
     }
 
