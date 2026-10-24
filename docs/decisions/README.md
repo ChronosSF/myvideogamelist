@@ -81,6 +81,7 @@ grow a forward pointer when a later record or an issue closes something it left 
 | [0060](0060-one-browser-test-over-the-production-shape.md) | One browser test over the production shape: two processes, a stand-in for what routes between them, and IGDB answered over HTTP | Implemented; the images it leaves out are 0061 |
 | [0061](0061-ci-gates-every-pull-request.md) | CI gates every pull request: the house style, known vulnerabilities, secrets in the history, and the images | Implemented; branch protection and GitHub's own secret scanning are settings the owner turns on, and what is left of #106 |
 | [0062](0062-the-history-is-three-rows-unioned-and-what-has-no-moment-has-no-item.md) | The history is three kinds of row unioned at query time, and what has no moment has no item | Implemented |
+| [0063](0063-the-showcases-and-sales-for-everybody.md) | The showcases and sales for everybody: one answer for every timezone, and the panel gives way to the line | Implemented |
 | [0064](0064-the-showcase-is-arranged-by-hand-and-shown-in-that-order.md) | The favourites showcase is arranged by hand and shown in that order, and a favourite is marked on every card its owner sees | Implemented |
 | [0065](0065-tags-are-the-owners-own-words.md) | Tags are the owner's own words: per account, by id on the row, set as a whole, and never published | Implemented |
 | [0066](0066-a-holding-page-until-production-takes-the-domain.md) | A holding page at the domain until production takes it, and the apex is canonical | Implemented; deployed 2026-10-23, retired by #98 |

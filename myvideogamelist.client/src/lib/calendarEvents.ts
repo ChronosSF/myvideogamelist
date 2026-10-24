@@ -1,10 +1,11 @@
-import { localToday } from '@/lib/daySpan';
-import type { CuratedEventKind } from '@/types/calendarAdmin';
+import { localToday, utcDay } from '@/lib/daySpan';
+import type { CuratedEventKind, CuratedEventStore } from '@/types/calendarAdmin';
 import type { CalendarEvents } from '@/types/releases';
 
 /**
  * The showcases and sales beside somebody's releases, as days on the reader's own calendar — what the
- * two-week line and the calendar both draw as bars (`specs/release-timeline-and-calendar.md` §5, §6).
+ * two-week line and the calendar both draw as bars, and the home page lists for whoever has no line
+ * (`specs/release-timeline-and-calendar.md` §2.3, §5, §6).
  */
 
 /** A sale, a fest or a showcase, as the days it runs on. */
@@ -14,6 +15,8 @@ export interface DayEvent {
     kind: CuratedEventKind;
     name: string;
     url: string | null;
+    /** The store that runs it, for a curated event that names one; null for every showcase from IGDB. */
+    store: CuratedEventStore | null;
     /** The days it runs on the reader's calendar, `YYYY-MM-DD`, the last inclusive. */
     startsOn: string;
     endsOn: string;
@@ -22,15 +25,23 @@ export interface DayEvent {
 }
 
 /**
- * The days an IGDB showcase is on, on the reader's own calendar (E4). The end is taken a millisecond
- * early, so that a show ending at midnight is not drawn across the day after it as well.
+ * Whose calendar a showcase's instants are read on. The reader's own, everywhere a reader's clock is
+ * known; UTC's in a server render, which has none, and in the hydrating render that has to match it.
  */
-function showcaseDays(startsAt: string, endsAt: string | null): { startsOn: string; endsOn: string } {
+export type DayZone = 'local' | 'utc';
+
+/**
+ * The days an IGDB showcase is on (E4). The end is taken a millisecond early, so that a show ending at
+ * midnight is not drawn across the day after it as well.
+ */
+function showcaseDays(startsAt: string, endsAt: string | null, zone: DayZone): { startsOn: string; endsOn: string } {
+    const day = (instant: number) => (zone === 'utc' ? utcDay(new Date(instant)) : localToday(new Date(instant)));
+
     const starts = Date.parse(startsAt);
-    const startsOn = localToday(new Date(starts));
+    const startsOn = day(starts);
     if (endsAt === null) return { startsOn, endsOn: startsOn };
 
-    const endsOn = localToday(new Date(Math.max(starts, Date.parse(endsAt) - 1)));
+    const endsOn = day(Math.max(starts, Date.parse(endsAt) - 1));
     return { startsOn, endsOn };
 }
 
@@ -39,9 +50,10 @@ function showcaseDays(startsAt: string, endsAt: string | null): { startsOn: stri
  * days. The server asked IGDB for a day either side of the window, since it cannot know whose day it
  * is; what falls outside is for the caller to leave out, which here it knows.
  *
- * Reads the reader's timezone, so it belongs only in output rendered after hydration.
+ * Read on the reader's timezone unless told otherwise, so only output rendered after hydration may
+ * leave `zone` out.
  */
-export function eventDays(events: CalendarEvents | null): DayEvent[] {
+export function eventDays(events: CalendarEvents | null, zone: DayZone = 'local'): DayEvent[] {
     if (events === null) return [];
 
     return [
@@ -50,6 +62,7 @@ export function eventDays(events: CalendarEvents | null): DayEvent[] {
             kind: e.kind,
             name: e.name,
             url: e.url,
+            store: e.store,
             startsOn: e.startsOn,
             endsOn: e.endsOn,
             startsAt: null,
@@ -59,7 +72,8 @@ export function eventDays(events: CalendarEvents | null): DayEvent[] {
             kind: 'showcase' as const,
             name: s.name,
             url: s.url,
-            ...showcaseDays(s.startsAt, s.endsAt),
+            store: null,
+            ...showcaseDays(s.startsAt, s.endsAt, zone),
             startsAt: s.startsAt,
         })),
     ];
@@ -67,8 +81,8 @@ export function eventDays(events: CalendarEvents | null): DayEvent[] {
 
 /**
  * A showcase's start on the reader's clock, in their own locale — "9:00 PM", "21:00". Safe only in
- * output that is never server-rendered: on the server it would format in Node's locale and timezone,
- * and the page would not hydrate.
+ * output rendered after hydration: on the server it would format in Node's locale and timezone, and the
+ * page would not hydrate.
  */
 export function startTime(startsAt: string): string {
     return new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' }).format(new Date(startsAt));

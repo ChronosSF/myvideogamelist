@@ -1,4 +1,5 @@
 import type { GameDto } from '@/types/game';
+import type { CalendarEvents } from '@/types/releases';
 
 export interface NewsItemDto {
     id: string;
@@ -17,6 +18,11 @@ export interface HomeResponse {
     spotlight: GameDto | null;
     popular: GameDto[];
     news: NewsItemDto[];
+    /**
+     * The showcases and sales on in the next two weeks for any reader, wherever they are: a day wider
+     * at each end than one reader's two weeks, in UTC, for the page to keep the reader's own days of.
+     */
+    events: CalendarEvents;
     /**
      * True when an upstream failed and the payload is missing what it would have supplied. The
      * response is a 200 either way, so this is all that tells the loader not to let the page built

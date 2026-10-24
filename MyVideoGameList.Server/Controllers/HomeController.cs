@@ -9,7 +9,8 @@ namespace MyVideoGameList.Server.Controllers;
 public class HomeController(IHomeService homeService) : ControllerBase
 {
     /// <summary>
-    /// The shared content of the home page — spotlight, popular covers and Steam news.
+    /// The shared content of the home page — spotlight, popular covers, Steam news, and the
+    /// showcases and sales of the next two weeks.
     /// </summary>
     [HttpGet]
     public async Task<ActionResult<HomeResponse>> GetHome(CancellationToken cancellationToken)

@@ -53,7 +53,7 @@ is in the history (`git log -p -- ROADMAP.md`).
 | H5 | Play-next picker | Done — `PlayNextPicker.tsx` |
 | H6 | Stats strip | Done — `HomeStatsStrip.tsx` |
 | H7 | Trending rail | Done — [0012](docs/decisions/0012-steam-news-without-a-database.md) |
-| H8 | Events banner from IGDB `events` | #128 |
+| H8 | Events banner from IGDB `events` | Done, as the showcases and sales for everybody — #128, [0063](docs/decisions/0063-the-showcases-and-sales-for-everybody.md); `ShowcasesAndSales.tsx` |
 | H9 | News for your games | Done — N5 |
 | N1 | IGDB → Steam AppID map | Done — 0012; `CLAUDE.md` on `external_game_source` |
 | N2 | Steam news fetch | Done — 0012 |
@@ -115,6 +115,6 @@ is in the history (`git log -p -- ROADMAP.md`).
 | Phase 0 | Clean the foundation | Done |
 | Phase 1 | Make it deployable | #97 |
 | Phase 2 | Make it a real tracker | Done, less the email flows — #112 |
-| Phase 3 | The home page | Done, less H8 |
+| Phase 3 | The home page | Done |
 | Phase 4 | Make it cool | The `feature` issues |
 | Phase 5 | Monetise | #141 first, then #142, then #143 |
