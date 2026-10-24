@@ -245,6 +245,28 @@ describe('GameCard list options toggle', () => {
         expect(toggle()).toHaveAttribute('aria-expanded', 'false');
     });
 
+    it('opens when the tap lands on the overlay rather than the toggle', async () => {
+        // On a phone, a tap hovers the card before it clicks, which shows the overlay and puts it under
+        // the finger. By its class: the overlay is a presentation layer with no role to find it by.
+        const { container } = render(
+            <MemoryRouter>
+                <ListsContext.Provider value={listsValue()}>
+                    <WishlistContext.Provider value={wishlistValue()}>
+                        <FavouritesContext.Provider value={favouritesValue()}>
+                            <GameCard game={CELESTE} />
+                        </FavouritesContext.Provider>
+                    </WishlistContext.Provider>
+                </ListsContext.Provider>
+            </MemoryRouter>,
+        );
+
+        await userEvent.click(container.querySelector('.game-card-overlay')!);
+        expect(toggle()).toHaveAttribute('aria-expanded', 'true');
+
+        await userEvent.click(container.querySelector('.game-card-overlay')!);
+        expect(toggle()).toHaveAttribute('aria-expanded', 'true');
+    });
+
     it('leaves the overlay open when a list button inside it is pressed', async () => {
         renderCard();
 

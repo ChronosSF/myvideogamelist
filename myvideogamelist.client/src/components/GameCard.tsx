@@ -143,11 +143,14 @@ export function GameCard({ game, eager = false, children }: GameCardProps) {
                     mark itself is decoration, and lets a press through as the badges do. */}
                 {favourite && <FavouriteMark variant="cover" />}
 
-                {/* List selection overlay — only shown when authenticated; visible on hover (CSS) or tap (state) */}
+                {/* List selection overlay — only shown when authenticated; visible on hover (CSS) or tap (state).
+                    A press on it opens it rather than closing it: on a phone, the tap that opens the
+                    overlay hovers the card before it clicks, so it lands on the overlay, not the toggle.
+                    It closes when the pointer leaves the card, or from the toggle. */}
                 {user && (
                     <div
                         className={`game-card-overlay${overlayOpen ? ' open' : ''}`}
-                        onClick={() => setOverlayOpen(false)}
+                        onClick={() => setOverlayOpen(true)}
                         role="presentation"
                     >
                         <div
