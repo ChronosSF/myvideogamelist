@@ -54,6 +54,8 @@ function fakeApi(initial: {
     events?: CuratedEvent[];
     names?: ShowcaseName[];
     picks?: ComingSoonPick[];
+    /** The status the picks' own read answers with, held by the test so that it can change it mid-test. */
+    picksRead?: { status: number };
     refuse?: number;
     statsFail?: number;
 } = {}) {
@@ -72,7 +74,10 @@ function fakeApi(initial: {
         }
         if (url === '/api/admin/calendar/events' && method === 'GET') return Response.json(events);
         if (url === '/api/admin/calendar/showcase-names' && method === 'GET') return Response.json(names);
-        if (url === '/api/admin/coming-soon' && method === 'GET') return Response.json(picks);
+        if (url === '/api/admin/coming-soon' && method === 'GET') {
+            const status = initial.picksRead?.status ?? 200;
+            return status === 200 ? Response.json(picks) : new Response(null, { status });
+        }
 
         if (url.startsWith('/api/admin/coming-soon/') && method === 'PUT') {
             const gameId = Number(url.split('/').pop());
@@ -362,6 +367,25 @@ describe('AdminPage for an admin', () => {
         await actor.click(screen.getByRole('button', { name: 'Save' }));
         expect(await screen.findByText('IGDB has no game with that id.')).toBeInTheDocument();
         expect(box).toHaveAttribute('aria-invalid', 'true');
+    });
+
+    it('keeps the calendar editable when the picks cannot be read, with a retry on the picks alone', async () => {
+        const picksRead = { status: 500 };
+        fakeApi({ names: [{ id: 1, prefix: 'Nintendo Direct' }], picksRead });
+        const actor = userEvent.setup();
+        renderPage();
+
+        // The calendar's cards are there and usable; the picks' card says what failed, and offers no form.
+        expect(await screen.findByRole('list', { name: 'Showcase names' })).toBeInTheDocument();
+        expect(screen.getByLabelText('Name starts with')).toBeEnabled();
+        expect(screen.getByText('The pinned and hidden games could not be loaded.')).toBeInTheDocument();
+        expect(screen.queryByLabelText('Game’s IGDB id, or its page’s address')).toBeNull();
+
+        picksRead.status = 200;
+        await actor.click(screen.getByRole('button', { name: 'Try again' }));
+
+        expect(await screen.findByLabelText('Game’s IGDB id, or its page’s address')).toBeInTheDocument();
+        expect(screen.queryByText('The pinned and hidden games could not be loaded.')).toBeNull();
     });
 
     it('removes a pick', async () => {

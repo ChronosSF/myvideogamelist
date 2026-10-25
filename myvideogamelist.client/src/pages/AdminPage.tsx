@@ -106,6 +106,8 @@ export function AdminPage() {
                     picks={curation.data.picks}
                     setPick={curation.setPick}
                     removePick={curation.removePick}
+                    reload={curation.reload}
+                    reloading={curation.loading}
                 />
             </>
         );

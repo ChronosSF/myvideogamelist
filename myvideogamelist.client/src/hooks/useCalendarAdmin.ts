@@ -8,8 +8,11 @@ export interface CalendarCuration {
     events: CuratedEvent[];
     /** Alphabetical. */
     names: ShowcaseName[];
-    /** The home page's Coming soon picks (ADR 0071): pinned games first, then by title. */
-    picks: ComingSoonPick[];
+    /**
+     * The home page's Coming soon picks (ADR 0071): pinned games first, then by title. Null when they could
+     * not be read, which costs their own card and not the calendar's two.
+     */
+    picks: ComingSoonPick[] | null;
 }
 
 /**
@@ -99,10 +102,18 @@ const JSON_HEADERS = { 'Content-Type': 'application/json' };
  */
 export function useCalendarAdmin(accountId: string | null) {
     const load = useCallback(async (signal: AbortSignal): Promise<CalendarCuration> => {
+        // The picks are the home page's, read beside the calendar's rather than as part of it: their failing
+        // leaves the events and the names as editable as ever. A refusal is still the whole page's, and an
+        // abort still ends the load.
+        const picksRead = readList<ComingSoonPick[]>('/api/admin/coming-soon', signal).catch((error: unknown) => {
+            if (error instanceof PermanentFetchError || signal.aborted) throw error;
+            return null;
+        });
+
         const [events, names, picks] = await Promise.all([
             readList<CuratedEvent[]>('/api/admin/calendar/events', signal),
             readList<ShowcaseName[]>('/api/admin/calendar/showcase-names', signal),
-            readList<ComingSoonPick[]>('/api/admin/coming-soon', signal),
+            picksRead,
         ]);
         return { events, names, picks };
     }, []);
@@ -209,7 +220,7 @@ export function useCalendarAdmin(accountId: string | null) {
             const saved = (await response.json()) as ComingSoonPick;
             patch(data => ({
                 ...data,
-                picks: [...data.picks.filter(p => p.gameId !== gameId), saved].sort(pinnedFirst),
+                picks: data.picks === null ? null : [...data.picks.filter(p => p.gameId !== gameId), saved].sort(pinnedFirst),
             }));
             return { ok: true };
         } catch {
@@ -222,7 +233,7 @@ export function useCalendarAdmin(accountId: string | null) {
             const response = await apiFetch(`/api/admin/coming-soon/${gameId}`, { method: 'DELETE' });
             if (!response.ok && response.status !== 404) return refusal(response, 'The game could not be removed.');
 
-            patch(data => ({ ...data, picks: data.picks.filter(p => p.gameId !== gameId) }));
+            patch(data => ({ ...data, picks: data.picks === null ? null : data.picks.filter(p => p.gameId !== gameId) }));
             return { ok: true };
         } catch {
             return UNREACHABLE;
