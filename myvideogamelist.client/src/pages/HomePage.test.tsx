@@ -149,15 +149,18 @@ function stubHome(body: unknown, status = 200) {
 }
 
 /** What React Router hands the loader: the context is where the request's trace lives. */
-const loaderArgs = () => ({ context: new RouterContextProvider() }) as unknown as Route.LoaderArgs;
+const loaderArgs = (cookie?: string) => ({
+    context: new RouterContextProvider(),
+    request: new Request(SITE.siteUrl, { headers: cookie === undefined ? {} : { Cookie: cookie } }),
+}) as unknown as Route.LoaderArgs;
 
 /** The policy a loader attached through `data()`. */
 const policyOf = (result: Awaited<ReturnType<typeof loader>>) =>
     new Headers(result.init?.headers).get('Cache-Control');
 
 /** The page, given what the loader would have handed it. */
-function renderHome(home: HomeResponse) {
-    const props = { loaderData: { ...home, site: SITE, today: TODAY } } as unknown as Route.ComponentProps;
+function renderHome(home: HomeResponse, { signedInFlag = false } = {}) {
+    const props = { loaderData: { ...home, site: SITE, today: TODAY, signedInFlag } } as unknown as Route.ComponentProps;
     return render(<MemoryRouter><AuthDialogProvider><HomePage {...props} /></AuthDialogProvider></MemoryRouter>);
 }
 
@@ -191,7 +194,7 @@ describe('HomePage loader', () => {
         const result = await loader(loaderArgs());
 
         expect(policyOf(result)).toBe(CACHE_HOME);
-        expect(result.data).toEqual({ ...home, site: SITE, today: TODAY });
+        expect(result.data).toEqual({ ...home, site: SITE, today: TODAY, signedInFlag: false });
     });
 
     it('hands the page the day it ran on in UTC, which is not always the reader’s', async () => {
@@ -203,6 +206,20 @@ describe('HomePage loader', () => {
         const result = await loader(loaderArgs());
 
         expect(result.data.today).toBe('2026-10-18');
+    });
+
+    it('reads the signed-in flag from the request, and nothing else from its cookies', async () => {
+        // The one cookie the edge lets through to this page, and the one it keeps a copy of it for (ADR 0074).
+        stubHome({ news: [NEWS], events: calendarEvents(), comingSoon: [], justOut: [], degraded: false });
+
+        const flagged = await loader(loaderArgs('theme=dark; mvgl_signed_in=1'));
+        const visitor = await loader(loaderArgs('theme=dark'));
+
+        expect(flagged.data.signedInFlag).toBe(true);
+        expect(visitor.data.signedInFlag).toBe(false);
+        // Both copies may be shared: neither holds anything of anybody's.
+        expect(policyOf(flagged)).toBe(CACHE_HOME);
+        expect(policyOf(visitor)).toBe(CACHE_HOME);
     });
 
     it('does not let a degraded 200 be cached', async () => {
@@ -225,7 +242,7 @@ describe('HomePage loader', () => {
         const result = await loader(loaderArgs());
 
         expect(policyOf(result)).toBe(PRIVATE_NO_STORE);
-        expect(result.data).toEqual({ ...home, site: SITE, today: TODAY });
+        expect(result.data).toEqual({ ...home, site: SITE, today: TODAY, signedInFlag: false });
     });
 
     it('does not let an answer missing its showcases be cached, and keeps the sales it has', async () => {
@@ -296,7 +313,7 @@ describe('HomePage loader', () => {
 
         const result = await loader(loaderArgs());
 
-        expect(result.data).toEqual({ ...home, site: SITE, today: TODAY });
+        expect(result.data).toEqual({ ...home, site: SITE, today: TODAY, signedInFlag: false });
     });
 
     it('degrades, uncached, when the API answers with an error', async () => {
@@ -305,7 +322,7 @@ describe('HomePage loader', () => {
         const result = await loader(loaderArgs());
 
         expect(policyOf(result)).toBe(PRIVATE_NO_STORE);
-        expect(result.data).toEqual({ ...NOTHING, site: SITE, today: TODAY });
+        expect(result.data).toEqual({ ...NOTHING, site: SITE, today: TODAY, signedInFlag: false });
     });
 
     it('degrades, uncached, when the API cannot be reached', async () => {
@@ -315,7 +332,7 @@ describe('HomePage loader', () => {
         const result = await loader(loaderArgs());
 
         expect(policyOf(result)).toBe(PRIVATE_NO_STORE);
-        expect(result.data).toEqual({ ...NOTHING, site: SITE, today: TODAY });
+        expect(result.data).toEqual({ ...NOTHING, site: SITE, today: TODAY, signedInFlag: false });
     });
 });
 
@@ -436,6 +453,41 @@ describe('HomePage for a signed-out visitor', () => {
         });
 
         expect(screen.getByRole('heading', { name: 'Showcases and sales' })).toBeInTheDocument();
+    });
+
+    it('draws the welcome when the flag is left over from a session that has ended', () => {
+        // `me` has answered nobody, which outranks the flag; the API clears it on the same answer.
+        renderHome(
+            { news: [NEWS], events: calendarEvents({ curated: [NEXT_FEST] }), comingSoon: [], justOut: [], degraded: false },
+            { signedInFlag: true });
+
+        expect(screen.getByRole('heading', { level: 1, name: "Every game you've played, in one list" })).toBeInTheDocument();
+        expect(screen.getByRole('heading', { name: 'Showcases and sales' })).toBeInTheDocument();
+    });
+});
+
+describe('HomePage for a browser that carries the signed-in flag, before anybody knows who', () => {
+    it('draws the signed-in top section, naming nobody, with each of the reader’s parts as its skeleton', () => {
+        // Every server render of the flagged copy, and the render that hydrates it (ADR 0074).
+        auth.current = UNKNOWN;
+
+        renderHome(
+            { news: [NEWS], events: calendarEvents({ curated: [NEXT_FEST] }), comingSoon: [], justOut: [], degraded: false },
+            { signedInFlag: true });
+
+        expect(screen.getByRole('heading', { level: 1, name: 'Welcome back' })).toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'Create an account' })).toBeNull();
+        expect(screen.getAllByRole('status').map(status => status.textContent)).toEqual([
+            'Loading your numbers…',
+            'Loading the games you are playing…',
+            'Loading a pick from your backlog…',
+        ]);
+        expect(screen.getByRole('heading', { name: 'Coming up' })).toBeInTheDocument();
+        expect(screen.getByText('Looking up what is coming for your games…')).toBeInTheDocument();
+        // The line's place, so the showcases and sales give way to it as they do once it is drawn.
+        expect(screen.queryByRole('heading', { name: 'Showcases and sales' })).toBeNull();
+        // Shown once auth has answered, as the navbar's link to the same page is.
+        expect(screen.queryByRole('link', { name: 'News for your games' })).toBeNull();
     });
 });
 

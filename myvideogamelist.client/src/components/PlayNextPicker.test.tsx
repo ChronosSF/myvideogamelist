@@ -182,11 +182,12 @@ describe('PlayNextPicker with nothing to pick', () => {
         expect(screen.getByRole('link', { name: 'Browse games' })).toHaveAttribute('href', '/games');
     });
 
-    it('renders nothing at all while the lists are still loading', () => {
+    it('draws the card’s shapes while the lists are still loading, and no empty state', () => {
         listsValue.loading = true;
-        const { container } = render(picker());
+        render(picker());
 
-        expect(container).toBeEmptyDOMElement();
+        expect(screen.getByRole('status')).toHaveTextContent('Loading a pick from your backlog…');
+        expect(screen.queryByText(/your backlog is empty/i)).not.toBeInTheDocument();
     });
 
     it('says the backlog could not be loaded, rather than that it is empty', () => {

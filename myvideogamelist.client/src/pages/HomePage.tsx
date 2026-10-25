@@ -2,10 +2,14 @@ import { Link, data } from 'react-router';
 import { useAuth } from '@/hooks/useAuth';
 import { ComingSoonRail } from '@/components/ComingSoonRail';
 import { ContinuePlayingRail } from '@/components/ContinuePlayingRail';
+import { ContinuePlayingSkeleton } from '@/components/ContinuePlayingSkeleton';
 import { HomeSectionHeading } from '@/components/HomeSectionHeading';
 import { HomeStatsStrip } from '@/components/HomeStatsStrip';
+import { HomeStatsStripSkeleton } from '@/components/HomeStatsStripSkeleton';
 import { PlayNextPicker } from '@/components/PlayNextPicker';
+import { PlayNextSkeleton } from '@/components/PlayNextSkeleton';
 import { ReleaseLine } from '@/components/ReleaseLine';
+import { ReleaseLineSkeleton } from '@/components/ReleaseLineSkeleton';
 import { ShowcasesAndSales } from '@/components/ShowcasesAndSales';
 import { JustOutRail } from '@/components/JustOutRail';
 import { WelcomePanel } from '@/components/WelcomePanel';
@@ -13,6 +17,7 @@ import { NewsCard } from '@/components/NewsCard';
 import { CACHE_HOME, PRIVATE_NO_STORE } from '@/lib/cache';
 import { utcDay } from '@/lib/daySpan';
 import { type SiteConfig, pageMeta, siteConfig } from '@/lib/seo';
+import { signedInFlagIn } from '@/lib/signedInFlag';
 import { siteStructuredData } from '@/lib/structuredData';
 import { loaderFetch } from '@/lib/trace.server';
 import type { UserProfile } from '@/types/auth';
@@ -59,6 +64,12 @@ type HomeData = HomeResponse & {
      * render hydrating the page counts from the same day the server did.
      */
     today: string;
+    /**
+     * Whether the request carried the cookie that says its browser is signed in, and nothing about who
+     * (ADR 0074). The page draws the signed-in top section from it until `/api/auth/me` has answered. The
+     * edge keeps a copy of the page for each value, so this is the only thing the two copies differ by.
+     */
+    signedInFlag: boolean;
 };
 
 /**
@@ -79,9 +90,12 @@ const NO_EVENTS: CalendarEvents = { curated: [], showcases: [], degraded: true }
  * That is the opposite of the game route, where an upstream failure genuinely means there is no
  * page.
  */
-export async function loader({ context }: Route.LoaderArgs) {
+export async function loader({ context, request }: Route.LoaderArgs) {
     const site = siteConfig();
     const today = utcDay(new Date());
+    // The one cookie the edge lets through to this page, and the one it keys the page on (ADR 0074).
+    // Locally there is no edge, and the browser's own cookies arrive; this reads the flag and no other.
+    const signedInFlag = signedInFlagIn(request.headers.get('Cookie'));
 
     // A degraded render must not be cached, and a 200 from the API does not mean the render is
     // whole: it answers 200 when IGDB or Steam fails too, so that the page still renders, and its
@@ -114,7 +128,7 @@ export async function loader({ context }: Route.LoaderArgs) {
         return data<HomeData>(
             {
                 news: home.news, events: events ?? NO_EVENTS, comingSoon: comingSoon ?? [], justOut: justOut ?? [],
-                degraded, site, today,
+                degraded, site, today, signedInFlag,
             },
             { headers: { 'Cache-Control': degraded ? PRIVATE_NO_STORE : CACHE_HOME } });
     };
@@ -136,20 +150,20 @@ export async function loader({ context }: Route.LoaderArgs) {
 /**
  * What a returning user lands on instead of the welcome panel (ROADMAP H1).
  *
- * Rendered only after hydration, and unavoidably so: this page is shared-cached, the server render
- * has no cookie, and `AuthProvider` learns who the user is from a fetch. So a signed-in visitor
- * sees the welcome panel for the length of one request and then this. Fixing that properly means a
- * cookie-varying SSR render and a CloudFront behaviour to match, which is ROADMAP D12's problem
- * rather than this component's.
+ * Drawn before anybody knows who the reader is, for a request whose browser carried the signed-in flag
+ * (ADR 0074): the page is shared-cached, so its server render may hold nothing of anybody's, and with
+ * `user` null each of the reader's own parts is its skeleton, the same one that part shows while it loads.
+ * Once `/api/auth/me` has named the reader the parts are drawn, and fill their skeletons' places. The
+ * line is never drawn by a server render, which cannot know the reader's day.
  */
-function SignedInHero({ user }: { user: UserProfile }) {
+function SignedInHero({ user }: { user: UserProfile | null }) {
     return (
         <section className="signed-in-hero">
             <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8 sm:py-10">
                 <div className="flex flex-wrap items-end justify-between gap-4 mb-6">
                     <div>
                         <h1 className="text-2xl sm:text-3xl font-bold text-fg-strong">
-                            Welcome back, {user.userName}
+                            Welcome back{user !== null && `, ${user.userName}`}
                         </h1>
                         <p className="text-sm text-fg-muted mt-1">
                             Pick up where you left off.
@@ -164,24 +178,24 @@ function SignedInHero({ user }: { user: UserProfile }) {
                     </Link>
                 </div>
 
-                <HomeStatsStrip userId={user.id} />
+                {user !== null ? <HomeStatsStrip userId={user.id} /> : <HomeStatsStripSkeleton />}
 
                 <h2 className="text-lg font-semibold text-fg-strong mt-8 mb-4">
                     Continue playing
                 </h2>
-                <ContinuePlayingRail />
+                {user !== null ? <ContinuePlayingRail /> : <ContinuePlayingSkeleton />}
 
                 {/* After the rail rather than before it: what you are playing, then what to play
                     once that is done. Starting the pick moves it into the rail above. */}
                 <h2 className="text-lg font-semibold text-fg-strong mt-8 mb-4">
                     Play next
                 </h2>
-                <PlayNextPicker />
+                {user !== null ? <PlayNextPicker /> : <PlayNextSkeleton />}
 
                 {/* Last in the hero, so directly above the panels everybody sees, which matter less to
                     somebody signed in than their own games do (L1). Brings its own heading, because
                     its sentence for an empty two weeks belongs inside the line it describes. */}
-                <ReleaseLine userId={user.id} />
+                {user !== null ? <ReleaseLine userId={user.id} /> : <ReleaseLineSkeleton />}
             </div>
         </section>
     );
@@ -193,17 +207,20 @@ export function HomePage({ loaderData }: Route.ComponentProps) {
     // by the build before this one, which has no showcases and sales at all. Without the default that
     // payload would be a TypeError, and the page its error boundary. `comingSoon` and `justOut` likewise,
     // for a copy written before the panel existed.
-    const { news, events = NO_EVENTS, comingSoon = [], justOut = [], today } = loaderData;
+    // `signedInFlag` too, false for a copy written before the flag existed.
+    const { news, events = NO_EVENTS, comingSoon = [], justOut = [], today, signedInFlag = false } = loaderData;
     const { user, loading } = useAuth();
-    const signedIn = user !== null && !loading;
+
+    // Whose top section to draw. Until `me` answers — every server render, and the render that hydrates
+    // it — the flag the request carried decides, so a signed-in reader's page arrives as theirs and a
+    // visitor's as the welcome (ADR 0074); once it has, the answer does. A flag left over from a session
+    // that ended costs that one page its placeholders, then the welcome panel, as every page cost before.
+    const signedIn = loading ? signedInFlag : user !== null;
 
     return (
         <div className="min-h-screen">
-            {/* The welcome panel while auth is still unknown, which includes every server render.
-                The alternative — nothing until `me` answers — flashes an empty page at the one
-                visitor the panel is written for. */}
             {signedIn
-                ? <SignedInHero user={user} />
+                ? <SignedInHero user={loading ? null : user} />
                 : <WelcomePanel />}
 
             {/* Everything below is the same for both, but for the showcases and sales, which give
@@ -255,7 +272,7 @@ export function HomePage({ loaderData }: Route.ComponentProps) {
                             // The same rail for everybody, so the way to one's own news is a link
                             // rather than a second rail. Shown once auth has answered, as the
                             // navbar's link to the same page is.
-                            action={signedIn ? { to: '/news', label: 'News for your games' } : undefined}
+                            action={!loading && user !== null ? { to: '/news', label: 'News for your games' } : undefined}
                         />
 
                         {/* grid-cols-1, not an implicit column: that one sizes to its content, and

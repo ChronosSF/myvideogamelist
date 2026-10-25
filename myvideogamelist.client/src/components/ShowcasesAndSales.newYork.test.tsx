@@ -72,7 +72,10 @@ describe('in New York', () => {
         }))));
 
         // With a context, which the loader's calls are traced through (ADR 0059).
-        const result = await loader({ context: new RouterContextProvider() } as unknown as Parameters<typeof loader>[0]);
+        const result = await loader({
+            context: new RouterContextProvider(),
+            request: new Request('https://myvideogamelist.net/'),
+        } as unknown as Parameters<typeof loader>[0]);
 
         expect(result.data.today).toBe('2026-10-18');
     });

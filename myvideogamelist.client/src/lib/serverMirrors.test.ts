@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { AVATAR_HOSTS, AVATAR_SERVICES } from '@/lib/avatar';
 import { IGDB_IMAGE_HOST } from '@/lib/securityHeaders';
+import { SIGNED_IN_FLAG } from '@/lib/signedInFlag';
 import { AVATAR_URL_MAX_LENGTH, BIO_MAX_LENGTH, DISPLAY_NAME_MAX_LENGTH } from '@/types/auth';
 
 /**
@@ -79,5 +80,11 @@ describe('what the client restates from the server', () => {
         if (base === null) throw new Error('IgdbService.ImageBaseUrl was not found');
 
         expect(new URL(base[1]).host).toBe(IGDB_IMAGE_HOST);
+    });
+
+    it('reads the signed-in flag by the name the server sets it under', () => {
+        // Apart, the API would set a cookie the home page never reads, and every signed-in reader would be
+        // drawn the welcome first again, with nothing failing (ADR 0074).
+        expect(serverSource('Security/SignedInFlag.cs')).toContain(`public const string CookieName = "${SIGNED_IN_FLAG}";`);
     });
 });
