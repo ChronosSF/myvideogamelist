@@ -88,7 +88,7 @@ export function NewsCard({ item, showGame = true }: NewsCardProps) {
                 </div>
 
                 {/*
-                  * Opens on Steam or the originating outlet, so it leaves the app: noopener is a
+                  * Opens on Steam, so it leaves the app: noopener is a
                   * security requirement, not a formality — without it the opened page can reach
                   * back through window.opener.
                   */}

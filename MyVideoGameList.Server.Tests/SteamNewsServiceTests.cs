@@ -100,6 +100,19 @@ public class GetLatestNewsAsyncTests
     }
 
     [Fact]
+    public async Task GetLatestNewsAsync_AsksSteamForTheGamesOwnAnnouncementsOnly()
+    {
+        // Unfiltered, Steam mixes in the press it collects, and for a single-player game that is most of
+        // its feed (ADR 0072). Every reader — the home rail, /news and a game's panel — asks through here.
+        var asked = new List<Uri>();
+
+        await NewService(IgdbKnowingHades(), asked: asked).GetLatestNewsAsync([Hades.Id]);
+
+        var query = System.Web.HttpUtility.ParseQueryString(Assert.Single(asked).Query);
+        Assert.Equal("steam_community_announcements", query["feeds"]);
+    }
+
+    [Fact]
     public async Task GetLatestNewsAsync_WithACapAboveTheCount_AsksForNoMoreThanTheCountNeeds()
     {
         var asked = new List<Uri>();
