@@ -82,18 +82,19 @@ public sealed class Edge : Construct
 
         // The home page's policy: the pages policy, with one cookie in the key - the flag the API sets
         // while a browser is signed in, which names nobody (ADR 0074, SignedInFlag on the server). Two
-        // copies of `/`, the visitor's and the signed-in reader's, each the same for everybody it is
-        // served to; the session cookie is in no key. A policy in the key travels to the origin too, so
-        // the server render reads the flag and nothing else.
+        // copies of `/` and of its .data, the visitor's and the signed-in reader's, each the same for
+        // everybody it is served to; the session cookie is in no key. A cookie in the key travels to the
+        // origin too, so the loader reads the flag and nothing else.
         var home = new CachePolicy(this, "Home", new CachePolicyProps
         {
             CachePolicyName = $"{site.Prefix}-home",
-            Comment = "The home page: as the pages, and a copy each for a browser with and without the signed-in flag",
+            Comment = "The home page and its .data: as the pages, and a copy each for a browser with and without the signed-in flag",
             MinTtl = Duration.Seconds(0),
             DefaultTtl = Duration.Seconds(0),
             MaxTtl = Duration.Days(365),
-            // The home page reads no query string; `_routes` is for a .data request, which is not this path.
-            QueryStringBehavior = CacheQueryStringBehavior.None(),
+            // The home page reads no query string of its own. `_routes` is React Router's, which its .data
+            // request carries once a route opts out of revalidation, as on the pages policy.
+            QueryStringBehavior = CacheQueryStringBehavior.AllowList("_routes"),
             HeaderBehavior = CacheHeaderBehavior.None(),
             CookieBehavior = CacheCookieBehavior.AllowList("mvgl_signed_in"),
             EnableAcceptEncodingGzip = true,
@@ -137,10 +138,11 @@ public sealed class Edge : Construct
             // The hashed bundles, which react-router-serve sends immutable for a year.
             ["/assets/*"] = Behaviour(CachePolicy.CACHING_OPTIMIZED, hostOnly),
             // The home page alone: no wildcard, so the root and nothing under it, which the distribution
-            // can match because it names no default root object. Its .data request, `/_.data`, stays on
-            // the default: a client navigation is made by a page that already knows who is signed in,
-            // and trusts that over the flag (ADR 0074).
+            // can match because it names no default root object. And its .data, which React Router 8 asks
+            // for as `/_.data` on a navigation to it: keyed on the flag too, since a navigation made before
+            // `/api/auth/me` has answered knows no more than a page load does (ADR 0074).
             ["/"] = Behaviour(home, hostOnly),
+            ["/_.data"] = Behaviour(home, hostOnly),
             ["/lists*"] = uncached,
             ["/wishlist*"] = uncached,
             ["/user*"] = uncached,

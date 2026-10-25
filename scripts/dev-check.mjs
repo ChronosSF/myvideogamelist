@@ -175,6 +175,13 @@ async function cacheBehaviour() {
     report(/^(Hit|RefreshHit)$/.test(xcache(flaggedAgain)), 'the flagged copy of / is served from the edge on the second request',
         `${xcache(flagged)}, then ${xcache(flaggedAgain)}; ${cache(flaggedAgain)}`);
 
+    // Its .data too, which a navigation to the home page asks for: on the default behaviour it would be the
+    // same answer either way, and a navigation made before auth answers would draw the welcome.
+    const visitorData = await get('/_.data', { auth: true });
+    const flaggedData = await get('/_.data', { auth: true, headers: flag });
+    report(visitorData.status === 200 && flaggedData.status === 200 && visitorData.body !== flaggedData.body,
+        '/_.data is keyed on the signed-in flag as / is', `${visitorData.status} and ${flaggedData.status}`);
+
     const page = await get(`/games/${GAME}`, { auth: true });
     const again = await get(`/games/${GAME}`, { auth: true });
     report(/^(Hit|RefreshHit)$/.test(xcache(again)), `/games/${GAME} is served from the edge on the second request`, `${xcache(page)}, then ${xcache(again)}`);

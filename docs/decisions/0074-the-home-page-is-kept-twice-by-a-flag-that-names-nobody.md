@@ -39,9 +39,10 @@ before. Faked, it gets only the signed-in copy's placeholders, which become the 
 ### 2. A behaviour for `/` alone, keyed on that cookie
 
 `infra/src/Infra/Edge.cs` gives the path `/` a cache policy of its own: the pages policy, with
-`mvgl_signed_in` the one cookie in the key and no query string. A cookie in the key travels to the origin,
-so the server render sees the flag and nothing else. The behaviour carries the basic-auth function as every
-behaviour does. Both copies keep `CACHE_HOME`: neither holds anything of anybody's.
+`mvgl_signed_in` the one cookie in the key, and React Router's `_routes` the one query string. A cookie in
+the key travels to the origin, so the loader sees the flag and nothing else. The behaviour carries the
+basic-auth function as every behaviour does. Both copies keep `CACHE_HOME`: neither holds anything of
+anybody's.
 
 A path pattern without a wildcard matches that path; CloudFront's guide says the leading slash is optional,
 and a pattern of `/` is reported to match the root alone when the distribution names no default root
@@ -49,9 +50,11 @@ object, which this one does not. `scripts/dev-check.mjs` proves it on a deployed
 flag and without it must be different pages, which the default behaviour, keyed on no cookie, would never
 give.
 
-A client navigation to the home page asks for `/_.data` (React Router 8.4), which stays on the default
-behaviour and never sees the flag. It does not need to: a page making a navigation knows who is signed in,
-and that outranks the flag.
+A client navigation to the home page asks for `/_.data` (React Router 8.4), and that path has the same
+behaviour. A navigation usually comes from a page that knows who is signed in, which outranks the flag, but
+not always: one made before `/api/auth/me` has answered — a click on Home in the first moment on another
+page — knows no more than a page load does, and on the default behaviour, which forwards no cookie, it drew
+the welcome for a signed-in reader. The dev check asks for `/_.data` with and without the flag as well.
 
 ### 3. The render: the flag until `me` answers, then the answer
 
