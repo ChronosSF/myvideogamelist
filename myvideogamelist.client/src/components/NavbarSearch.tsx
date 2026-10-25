@@ -6,7 +6,7 @@ import { MAX_SEARCH_LENGTH, type SearchAnswer, useGameSearch } from '@/hooks/use
 import { formatCount } from '@/lib/format';
 import { searchPagePath } from '@/lib/gameBrowse';
 import { releaseYear } from '@/lib/releaseDate';
-import { aggregateTitle, hasCriticScore } from '@/lib/score';
+import { criticScoreWords, hasCriticScore } from '@/lib/score';
 import { useHydrated } from '@/lib/useHydrated';
 import type { GameDto } from '@/types/game';
 import './NavbarSearch.css';
@@ -47,11 +47,7 @@ function gameCount(count: number): string {
  */
 function optionName(game: GameDto): string {
     const year = game.releaseDate === null ? '' : `, ${releaseYear(game.releaseDate)}`;
-    const count = game.criticScoreCount ?? 0;
-    const critics = hasCriticScore(game)
-        ? aggregateTitle('critics', game.criticScore!, game.criticScoreCount)
-        : count === 0 ? 'No critic reviews' : `Too few critic reviews to score: ${count}`;
-    return `${game.title}${year}. ${critics}`;
+    return `${game.title}${year}. ${criticScoreWords(game)}`;
 }
 
 /**

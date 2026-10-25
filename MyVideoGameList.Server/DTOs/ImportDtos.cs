@@ -23,10 +23,18 @@ public record ImportJobDto(
 /// <summary>
 /// Everything the review screen renders: the job, its rows, and the counts the bulk actions act on.
 /// </summary>
+/// <param name="TrackedGameIds">
+/// Every game the user already has an entry for, in a list or in none: what §S8 means by an existing
+/// entry, and what each row's <see cref="ImportReviewRowDto.AlreadyTracked"/> is read from. The
+/// screen checks a game chosen for a row against it, because a row's own search can choose any game
+/// at all, and one the user already has is left unticked as the matcher leaves its own. The lists the
+/// client holds cannot answer that: an entry in no list appears in none of them.
+/// </param>
 public record ImportReviewDto(
     ImportJobDto Job,
     ImportReviewSummaryDto Summary,
-    IReadOnlyList<ImportReviewRowDto> Rows);
+    IReadOnlyList<ImportReviewRowDto> Rows,
+    IReadOnlyList<int> TrackedGameIds);
 
 /// <summary>
 /// The groups the review screen offers to act on at once.

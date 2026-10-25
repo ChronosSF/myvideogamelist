@@ -182,3 +182,17 @@ export function aggregateTitle(
     const from = count === null ? '' : `, from ${formatCount(count)} ${noun}${count === 1 ? '' : 's'}`;
     return `${label}: ${percent} out of 100${from}`;
 }
+
+/**
+ * A game's critic score said in words, as a listed game is named or described to a screen reader:
+ * the score with its sample once it rests on `MIN_CRITIC_REVIEWS` reviews, and otherwise why there
+ * is none to show. "Too few" says what a bare "no score" would hide — that a score exists, from too
+ * few reviews to mean anything (ADR 0016). The navbar's typeahead and the import's candidates both
+ * say it, so they say it the same way.
+ */
+export function criticScoreWords(game: Pick<GameDto, 'criticScore' | 'criticScoreCount'>): string {
+    if (hasCriticScore(game)) return aggregateTitle('critics', game.criticScore!, game.criticScoreCount);
+
+    const count = game.criticScoreCount ?? 0;
+    return count === 0 ? 'No critic reviews' : `Too few critic reviews to score: ${formatCount(count)}`;
+}

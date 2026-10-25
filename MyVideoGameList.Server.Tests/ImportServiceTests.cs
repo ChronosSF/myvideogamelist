@@ -237,6 +237,35 @@ public class ImportServiceTests
     }
 
     [Fact]
+    public async Task GetReviewAsync_NamesEveryGameTheUserAlreadyHas_InAListOrInNone()
+    {
+        // The screen checks a game chosen for a row against this, and a row's own search can choose
+        // any game at all, so it is the whole library rather than the file's games. An entry in no
+        // list is one §S8 protects as much as a listed one, and the lists the client holds cannot
+        // see it.
+        using var db = NewDb();
+        db.UserGameEntries.AddRange(
+            new UserGameEntry
+            {
+                UserId = UserId,
+                GameId = 500,
+                AddedAt = Midday,
+                StatusId = db.ListStatuses.Single(s => s.Key == ListStatusKeys.Finished).Id
+            },
+            new UserGameEntry { UserId = UserId, GameId = 42, AddedAt = Midday },
+            new UserGameEntry { UserId = OtherUserId, GameId = 7, AddedAt = Midday });
+        await db.SaveChangesAsync();
+
+        var service = NewService(db, CacheReturning(Game(379)));
+        var jobId = await UploadAsync(service, Export(Entry()));
+
+        var review = await service.GetReviewAsync(UserId, jobId);
+
+        Assert.Equal([42, 500], review!.TrackedGameIds);
+        Assert.False(Assert.Single(review.Rows).AlreadyTracked);
+    }
+
+    [Fact]
     public async Task CreateJobAsync_AFileNoPresetRecognises_IsRefused()
     {
         using var db = NewDb();

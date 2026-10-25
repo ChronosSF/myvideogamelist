@@ -125,8 +125,8 @@ exists now, ahead of HowLongToBeat and Backloggery.
 |---|---|
 | M1 | Match on normalised title plus release year. Normalisation: lowercase, strip accents, punctuation and leading articles, fold roman numerals **up to thirty**, and compare the numbers in a title as a set of their own. Edition suffixes are dropped by a **second, looser key only** — see §4.1. **DONE** |
 | M2 | Confidence tiers: **matched**, **ambiguous**, **unmatched** — defined in §4.1, because "single candidate" does not survive contact with IGDB. **DONE, amended** |
-| M3 | Only matched rows are pre-checked on the review screen. Ambiguous rows show up to 5 candidates with cover art and year so the user resolves in one click. **DONE** |
-| M4 | The user can skip a row entirely **(done)**, and can search IGDB inline for one nothing was found for **(not built)** |
+| M3 | Only matched rows are pre-checked on the review screen. Ambiguous rows show up to 5 candidates with cover art, year and critic score (or the count of critic reviews under the floor) so the user resolves in one click. A game chosen that the user already has is left unticked and marked, as S8 asks — any entry, in a list or in none, so the review sends every game the user has (`trackedGameIds`) for the screen to check a choice against. **DONE** |
+| M4 | The user can skip a row entirely, and can search IGDB from a row the matcher could not place — one nothing was found for, or an ambiguous one whose candidates are all wrong — and choose its game there. **DONE**: the results read as the candidates do, and choosing one is the same decision choosing a candidate is. A search carries no floor and no order ([0032](../docs/decisions/0032-each-browse-order-carries-its-own-floor.md)) and shows IGDB's whole page of twenty. Every search on the page, the navbar's included, shares one budget: never two requests within a second, and nothing asked during a 503's wait |
 | M5 | Batch the IGDB calls. A 500-row import must not be 500 round trips — group by normalised title and cache within the job. **DONE**: one search per distinct normalised title, and the games offered are written to `CachedGames` on the way past so the review screen asks for none of them again |
 | M6 | Respect IGDB rate limits. Matching never runs inside the request that uploads the file. **DONE, amended** — it is its own endpoint called repeatedly rather than a background job; see §4.2 |
 | M7 | Persist the resolved match so re-importing the same file is idempotent and the second run is instant. **Not built.** Playthroughs are already idempotent by their own key, so a second import duplicates no data — only the matching work |
@@ -329,7 +329,7 @@ platform re-sync stay paid. Export stays paid, as the table already has it.
 
 ## 10. What is left, and in what order
 
-**Shipped:** S1–S3, S6–S9, C3–C7, M1–M3, M5 and M6.
+**Shipped:** S1–S3, S6–S9, C3–C7 and M1–M6.
 
 **Superseded rather than pending** — these will not be built as written: S5's queue, because a
 matching pass is bounded and repeated instead (§4.2); C2's column-mapping table, because there is no
@@ -346,23 +346,23 @@ per preset below.
    Grouvee's levels do
    ([0050](../docs/decisions/0050-an-imported-run-takes-its-type-from-the-source.md)), from the
    strings a real HowLongToBeat export carries.
-2. **M4's inline search** ([#158](https://github.com/ChronosSF/myvideogamelist/issues/158)) —
-   resolving a row from the row. The endpoints exist; it is a screen.
-3. **Backloggery** ([#154](https://github.com/ChronosSF/myvideogamelist/issues/154)) — no ids and no
-   release year, so 2 comes first: a preset whose failures cannot be resolved by hand loses data.
-   This is also the file that should move §4.1's similarity floor off its reasoned value.
-4. **Completionator** ([#155](https://github.com/ChronosSF/myvideogamelist/issues/155)) and
+2. **Backloggery** ([#154](https://github.com/ChronosSF/myvideogamelist/issues/154)) — no ids and no
+   release year, which is why M4's search had to come first: a preset whose failures cannot be
+   resolved by hand loses data. This is also the file that should move §4.1's similarity floor off
+   its reasoned value.
+3. **Completionator** ([#155](https://github.com/ChronosSF/myvideogamelist/issues/155)) and
    **Darkadia** ([#156](https://github.com/ChronosSF/myvideogamelist/issues/156)) — one
    `IImportSource` each, and no new server machinery. Completionator's completion percentage and
    achievements have nowhere to land; Darkadia carries review prose, which reopens §9 (1) now that
    reviews exist to store it in.
-5. **VGCollect** ([#157](https://github.com/ChronosSF/myvideogamelist/issues/157)) — ownership
+4. **VGCollect** ([#157](https://github.com/ChronosSF/myvideogamelist/issues/157)) — ownership
    rather than progression, so
    [0026](../docs/decisions/0026-a-library-import-records-ownership-not-history.md)'s shape rather
    than this spec's, and last for that reason.
-6. **M7's persisted match** ([#159](https://github.com/ChronosSF/myvideogamelist/issues/159)) —
+5. **M7's persisted match** ([#159](https://github.com/ChronosSF/myvideogamelist/issues/159)) —
    after a real re-import has shown what going without it costs. Wants a decision record before
-   code.
+   code. A game chosen through M4's search is exactly what it would keep, and nothing keeps it
+   today: a second import of the same file asks again.
 
 ## 11. Sources
 

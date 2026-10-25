@@ -6,6 +6,7 @@ import {
     MIN_PLAYTHROUGH_SAMPLES,
     STAR_COUNT,
     aggregateTitle,
+    criticScoreWords,
     hasCriticScore,
     hasMemberScore,
     ratingPercent,
@@ -171,6 +172,25 @@ describe('aggregateTitle', () => {
 
     it('does not say "1 reviews"', () => {
         expect(aggregateTitle('critics', 70, 1)).toBe('Critic score: 70 out of 100, from 1 review');
+    });
+});
+
+describe('criticScoreWords', () => {
+    it('says a score that clears the floor with its sample', () => {
+        expect(criticScoreWords({ criticScore: 91, criticScoreCount: 12 }))
+            .toBe('Critic score: 91 out of 100, from 12 reviews');
+    });
+
+    it('says why a score under the floor is not shown, rather than that there is none', () => {
+        // A lone 100 from one critic is exactly what the floor is for (ADR 0016).
+        expect(criticScoreWords({ criticScore: 100, criticScoreCount: 1 })).toBe('Too few critic reviews to score: 1');
+        expect(criticScoreWords({ criticScore: 80, criticScoreCount: 3 }))
+            .toBe('Too few critic reviews to score: 3');
+    });
+
+    it('says when there are no critic reviews at all', () => {
+        expect(criticScoreWords({ criticScore: null, criticScoreCount: null })).toBe('No critic reviews');
+        expect(criticScoreWords({ criticScore: null, criticScoreCount: 0 })).toBe('No critic reviews');
     });
 
     it('says nothing about the sample when there is no count, rather than implying zero', () => {

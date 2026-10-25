@@ -4,7 +4,7 @@ import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useImportReview } from '@/hooks/useImport';
 import { IMPORT_MATCH } from '@/types/import';
-import { importJob, importResult, importReview, importRow } from '@/test/factories';
+import { game, importJob, importResult, importReview, importRow } from '@/test/factories';
 
 /**
  * The matching loop, which is the one piece of this hook that can run away.
@@ -229,6 +229,127 @@ describe('useImportReview.match, putting a pass back', () => {
         // Both lists survive the pass's older copy. The first row's tick is the pass's own; the
         // second keeps the one chosen on screen, because the pass set none for a game already held.
         expect(screen.getByTestId('rows')).toHaveTextContent('1:finished:import:42 2:dropped:import:43');
+    });
+});
+
+/**
+ * A game chosen for a row — an offered candidate or a searched result (§M3, §M4): the row answers
+ * at once, the request carries only what the endpoint reads, and a failed save puts the question
+ * back.
+ */
+describe('useImportReview.setDecisions, choosing a game', () => {
+    const JOB = 'job-1';
+
+    const CHOSEN = game({ id: 880, title: 'Resident Evil 2', releaseDate: '1998-01-21' });
+
+    const ambiguous = () => [
+        importRow({
+            id: 1, title: 'Resident Evil 2', gameId: null, matchKind: IMPORT_MATCH.ambiguous, decision: 'skip',
+            candidates: [game({ id: 19686, title: 'Resident Evil 2', releaseDate: '2019-01-25' }), CHOSEN],
+        }),
+    ];
+
+    function stubSaving(answer: 'saved' | 'failed') {
+        const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+            const url = String(input);
+
+            if (url === `/api/import/jobs/${JOB}` && init?.method === undefined) {
+                return Promise.resolve(Response.json(importReview(ambiguous())));
+            }
+
+            if (url === `/api/import/jobs/${JOB}/rows` && init?.method === 'PATCH') {
+                return Promise.resolve(answer === 'saved'
+                    ? new Response(null, { status: 204 })
+                    : Response.json({ detail: 'That change was not saved.' }, { status: 500 }));
+            }
+
+            throw new Error(`unexpected fetch: ${init?.method ?? 'GET'} ${url}`);
+        });
+
+        vi.stubGlobal('fetch', fetchMock);
+        return fetchMock;
+    }
+
+    function Probe({ alreadyTracked }: { alreadyTracked: boolean }) {
+        const { review, actionError, setDecisions } = useImportReview('user-1', JOB);
+        const [saved, setSaved] = useState('-');
+        const row = review?.rows[0];
+
+        return (
+            <div>
+                <span data-testid="row">
+                    {row
+                        ? `${row.matchKind}:${row.decision}:${row.gameId ?? '-'}:${row.candidates.length}:`
+                            + `${row.game?.title ?? 'no game'}:${row.alreadyTracked ? 'tracked' : 'new'}`
+                        : '-'}
+                </span>
+                <span data-testid="summary">
+                    {review ? `${review.summary.selected} selected, ${review.summary.alreadyTracked} tracked` : '-'}
+                </span>
+                <span data-testid="saved">{saved}</span>
+                <span data-testid="action-error">{actionError ?? 'none'}</span>
+                <button
+                    type="button"
+                    onClick={() => void setDecisions([{
+                        rowId: 1,
+                        decision: alreadyTracked ? 'skip' : 'import',
+                        gameId: CHOSEN.id,
+                        game: CHOSEN,
+                        alreadyTracked,
+                    }]).then(ok => setSaved(String(ok)))}
+                >
+                    Choose
+                </button>
+            </div>
+        );
+    }
+
+    const rowShown = () => screen.getByTestId('row');
+
+    async function renderAndChoose(alreadyTracked = false) {
+        render(<Probe alreadyTracked={alreadyTracked} />);
+        await waitFor(() => expect(rowShown()).toHaveTextContent('ambiguous:skip:-:2:no game:new'));
+        await act(() => userEvent.click(screen.getByRole('button', { name: 'Choose' })));
+    }
+
+    afterEach(() => vi.unstubAllGlobals());
+
+    it('resolves the row on screen and sends only what the endpoint reads', async () => {
+        // Its game chosen and selected, its alternatives gone as the server drops them, and its
+        // cover the chosen game's. The game itself is for the screen, so it is not sent.
+        const fetchMock = stubSaving('saved');
+
+        await renderAndChoose();
+
+        expect(rowShown()).toHaveTextContent('matched:import:880:0:Resident Evil 2:new');
+        expect(screen.getByTestId('summary')).toHaveTextContent('1 selected, 0 tracked');
+        expect(screen.getByTestId('saved')).toHaveTextContent('true');
+
+        const [, init] = fetchMock.mock.calls.find(
+            ([, options]) => (options as RequestInit | undefined)?.method === 'PATCH')!;
+        expect(JSON.parse(String((init as RequestInit).body))).toEqual({
+            rows: [{ rowId: 1, decision: 'import', gameId: 880 }],
+        });
+    });
+
+    it('counts a chosen game the user already has as one, left unticked', async () => {
+        stubSaving('saved');
+
+        await renderAndChoose(true);
+
+        expect(rowShown()).toHaveTextContent('matched:skip:880:0:Resident Evil 2:tracked');
+        expect(screen.getByTestId('summary')).toHaveTextContent('0 selected, 1 tracked');
+    });
+
+    it('puts the question back when the save fails, and says so', async () => {
+        stubSaving('failed');
+
+        await renderAndChoose();
+
+        expect(rowShown()).toHaveTextContent('ambiguous:skip:-:2:no game:new');
+        expect(screen.getByTestId('summary')).toHaveTextContent('0 selected, 0 tracked');
+        expect(screen.getByTestId('action-error')).toHaveTextContent('That change was not saved.');
+        expect(screen.getByTestId('saved')).toHaveTextContent('false');
     });
 });
 
