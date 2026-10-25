@@ -1,6 +1,6 @@
 # Spec — Profile statistics tiers
 
-Status: **proposed — the split is decided (2026-09-24), the build is #149**
+Status: **proposed — the split is decided (2026-09-24, and the home strip on 2026-10-25), the build is #149**
 Relates to: ADR [0010](../docs/decisions/0010-monetization-model.md) (the free/paid line), ADR
 [0023](../docs/decisions/0023-profile-statistics-derived-at-read-time.md) (how every figure is
 derived), ADR [0027](../docs/decisions/0027-usernames-and-public-profiles.md) §8 (the public
@@ -15,7 +15,7 @@ showcase). #149 builds it; #142 (Stripe) supplies the real entitlement.
 0010's rule is *sell depth, convenience and quiet, not access*: the core tracking loop stays
 unlimited and free, and the paid tier is what a tracker can tell you about yourself once it has
 your data. The statistics page is exactly that depth — the completion rate, the score histogram,
-the monthly chart, the streaks, the median time to finish, the hours by platform — and 0010's
+the monthly chart, the longest streak, the median time to finish, the hours by platform — and 0010's
 table has always had it on the paid side. What the table never said is *where the line falls*,
 figure by figure, and 0010's last consequence says that line has to be drawn before launch,
 because drawing it afterwards is the retroactive tightening Trakt was punished for.
@@ -32,10 +32,18 @@ row that sold a private profile as paid is gone.
 
 One rule decides every figure, so a figure added later lands on the right side without a debate:
 
-- **Basic** — a *count* of things as they stand now: games, per status, on the wishlist,
-  favourited, reviewed. Counting is not analysis.
-- **Full** — anything derived *beyond* a count: a rate, a mean, a distribution, a median, a series
-  over time, a streak, a duration, a breakdown by platform or genre.
+- **Basic** — where the account stands now: a *count* of things as they stand — games, per status,
+  on the wishlist, favourited, reviewed — and the three running totals the home strip shows: games
+  finished this year, hours logged, and the current finishing streak. Counting is not analysis, and
+  a total so far is the figure somebody checks on the way in.
+- **Full** — anything that reads the history back: a rate, a mean, a distribution, a median, a
+  series over time, a record such as the longest streak, a duration such as the time to finish, a
+  breakdown by platform or genre.
+
+The three running totals were full until 2026-10-25, when the strip they make was kept as it is for
+every account (§3.3). They are the whole exception, and named one by one so that it does not grow:
+a total over another period — finished this month, started this year — is a slice of the monthly
+series, and full.
 
 Applied to everything the two documents carry today:
 
@@ -49,11 +57,13 @@ Applied to everything the two documents carry today:
 | Tracking here since | `ActivityStatsDto.LogStartedAt` | Basic |
 | Completion rate | `LibraryStatsDto.CompletionRate` | Full |
 | Mean score and the score distribution | `ScoreStatsDto` | Full — the scored count appears only as the mean's caption, so it goes with it |
+| Finished this year | Counted from `ActivityStatsDto.Months` today; a field of its own on a basic document (§4) | Basic — a running total, on the home strip |
+| The current finishing streak | `ActivityStatsDto.CurrentStreakMonths` | Basic — a running total, on the home strip |
+| Hours logged — total, playthroughs, how many carried hours | `PlaytimeStatsDto` | Basic — the total is on the home strip, and the other two are counts |
 | Started / finished / dropped by month | `ActivityStatsDto.Months` | Full |
-| Finishing streaks, current and longest | `ActivityStatsDto.*StreakMonths` | Full |
+| The longest finishing streak | `ActivityStatsDto.LongestStreakMonths` | Full — a record |
 | Status changes, all time | `ActivityStatsDto.Transitions` | Full |
 | Time to finish — median and longest active time | `ActivityStatsDto.TimeToFinish` | Full, **owner only** (0027 §8) |
-| Hours logged — total, playthroughs, how many carried hours | `PlaytimeStatsDto` | Full |
 | Most played on — hours by platform | `PlaytimeStatsDto.ByPlatform` | Full, **owner only** (0027 §8) |
 | Library composition by platform and by genre | Counted on the client from the lists (0023) | Full |
 | Yearly recap | Not built (#136) | Full, as 0010 already has it |
@@ -72,14 +82,16 @@ finish. It derives no figure from them, beyond two counts of what it cannot list
 
 ### 3.1 The owner's own page — `/user`
 
-**Paid.** The page as it is today: five tiles (games tracked, completion rate, mean score, hours
-logged, month streak), *Where your games sit*, *How you score*, *What you start and finish*, *How
-long games take you*, *Most played on*, *Most of your games are on*, *And they tend to be*.
+**Paid.** The page as it is today: six tiles (games tracked, completion rate, mean score, finished
+this year, hours logged, month streak), *Where your games sit*, *How you score*, *What you start and
+finish*, *How long games take you*, *Most played on*, *Most of your games are on*, *And they tend to
+be*.
 
-**Free.** The favourites showcase (already above the section), the *games tracked* tile, and
-*Where your games sit* with its wishlist caption — every one of them a count. In place of the
-full sections, one panel that says plainly what the paid tier adds, as a list of the figures by
-name. No blurred chart, no sample data, no figure the account is not entitled to: the server
+**Free.** The favourites showcase (already above the section), four tiles — *games tracked*,
+*finished this year*, *hours logged* and *month streak*, the streak's hint without the best, which
+is full — and *Where your games sit* with its wishlist caption: every one of them basic. In place
+of the full sections, one panel that says plainly what the paid tier adds, as a list of the figures
+by name. No blurred chart, no sample data, no figure the account is not entitled to: the server
 does not send them (§4), so the client could not fake them if it tried.
 
 ### 3.2 The public page — `/u/{name}`
@@ -95,17 +107,20 @@ they score*, *What they start and finish* with the streaks, and the reviews. The
 adds nothing to what may be published.
 
 **Public, owner free.** The header with *tracking here since*, the favourites showcase, the
-*games tracked* tile, *Where their games sit* with the wishlist caption, and the reviews. No
-completion rate, no mean score, no histogram, no monthly chart, no streaks, no hours. The page has
-fewer sections; it does not have empty ones, and it does not advertise the paid tier to a visitor
-— the visitor is not the customer.
+*games tracked* and *hours logged* tiles, *Where their games sit* with the wishlist caption, and the
+reviews. No completion rate, no mean score, no histogram, no monthly chart, no streaks. The current
+streak is basic, but this page states it only in the monthly chart's caption, beside the longest,
+so it goes with the chart; and the page has never shown *finished this year*, which stays the
+owner's own figure. The page has fewer sections; it does not have empty ones, and it does not
+advertise the paid tier to a visitor — the visitor is not the customer.
 
 ### 3.3 The home page strip
 
-`HomeStatsStrip` shows finished this year, hours logged and the current streak — two of the three
-are full-tier. **Paid:** as today. **Free:** three counts — playing now, finished, on the wishlist
-— so the strip still says something and never shows a figure the account cannot see on its own
-page. See open question 1.
+`HomeStatsStrip` shows finished this year, hours logged and the current streak, all three basic
+(§2), so **the strip is the same on both tiers**: it is the free tier's baseline as it stands,
+decided on 2026-10-25 (open question 1). It never shows a figure the account cannot see on its own
+page — each of the three is a tile on `/user` on both tiers, which is why *finished this year*
+became one there.
 
 ### 3.4 What this does not touch
 
@@ -123,10 +138,16 @@ anything later, asks that service and nothing else; the client renders the tier 
 states and never derives it.
 
 **Enforced on the server, in the copy.** A basic document does not *contain* the full-tier
-fields: `UserStatsDto` and `PublicProfileDto` each carry a `Tier`, and the full-tier sections are
-null on a basic one. For the public document this is a second condition on 0027 §8's field-by-field
-copy — a field reaches a visitor when somebody wrote it into the record *and* the owner is
-entitled. Hiding the sections on the client alone would leave the figures one request away.
+fields: `UserStatsDto` and `PublicProfileDto` each carry a `Tier`, and the full-tier fields are
+null on a basic one. Most go a whole section at a time — the scores, the completion rate — but two
+sections are split by §2: the activity keeps its current streak and loses its months, longest
+streak, transitions and time to finish, and the playtime keeps its total and its two counts and
+loses its breakdown by platform. *Finished this year* is counted from the months, so a basic
+document carries it as a figure of its own rather than the series it comes from, and so does a full
+one, so that the strip reads one field on both tiers: the UTC calendar year, as the strip counts it
+now. For the public document this is a second condition on 0027 §8's field-by-field copy — a field
+reaches a visitor when somebody wrote it into the record *and* the owner is entitled. Hiding the
+sections on the client alone would leave the figures one request away.
 
 **Where the answer comes from.** 0010 decided that entitlement is persisted locally and never
 inferred from Stripe per request, and #142 builds that table. Until it exists, the service reads
@@ -146,8 +167,8 @@ is not on #99's invalidation list. `/api/user/stats` is `no-store` already.
 | ID | Item |
 |---|---|
 | S1 | `IEntitlementService` and `Entitlement.Statistics`; the configuration-backed implementation; a test that Development grants all and any other environment grants only the named list |
-| S2 | `UserStatsDto.Tier`; `StatsService` (or its controller) nulls the full-tier sections for a basic account — one endpoint, tier-shaped, so `useUserStats` and the home strip need no second call |
-| S3 | `PublicProfileDto.Tier`; `PublicProfileService` copies `CompletionRate`, `Scores`, `Playtime` and the `Activity` months and streaks only when the owner is entitled; the counts, `TrackingSince`, `Reviews` and `Favourites` always |
+| S2 | `UserStatsDto.Tier` and `ActivityStatsDto.FinishedThisYear`; `StatsService` (or its controller) nulls the full-tier fields for a basic account (§4) — one endpoint, tier-shaped, so `useUserStats` and the home strip need no second call |
+| S3 | `PublicProfileDto.Tier`; `PublicProfileService` copies `CompletionRate`, `Scores` and the `Activity` months and both streaks only when the owner is entitled; the counts, `Playtime` (which has no breakdown in this document), `TrackingSince`, `Reviews` and `Favourites` always |
 | S4 | Tests: a free owner's public document carries the counts and null full-tier fields; an entitled owner's carries both; `StatsService` likewise |
 
 ## 6. Client work
@@ -155,9 +176,9 @@ is not on #99's invalidation list. `/api/user/stats` is `no-store` already.
 | ID | Item |
 |---|---|
 | C1 | `tier` on the `UserStats` and `PublicProfile` types, with the full-tier sections optional, so a render cannot assume them |
-| C2 | `ProfileStats` renders by tier: the basic tiles and status breakdown, then the panel of §3.1 |
+| C2 | `ProfileStats` renders by tier: the four basic tiles and status breakdown, then the panel of §3.1 |
 | C3 | `ProfilePage` renders by tier: fewer sections, no placeholders; `meta` and the sitemap test unchanged |
-| C4 | `HomeStatsStrip` renders by tier (§3.3) |
+| C4 | `HomeStatsStrip` and the *finished this year* tile read `FinishedThisYear` rather than counting the months, which a basic document does not carry, and the strip and the page tell an empty account from the counts rather than from `transitions`, which it does not carry either; the strip is otherwise unchanged (§3.3) |
 | C5 | Tests for each, including that a basic document never renders a full-tier section |
 
 ## 7. Blocked on
@@ -167,9 +188,13 @@ verify the split. The real entitlement is #142.
 
 ## 8. Open questions
 
-1. **The free strip.** "Finished this year" is a count, but one over a window, which needs the
-   monthly series; the rule in §2 says counts are of things as they stand. Proposed: the three
-   plain counts. Alternatively treat windowed counts as basic and keep "finished this year".
+1. **The free strip.** *Decided 2026-10-25: the strip as it is.* Finished this year, hours logged
+   and the current streak are basic, by name (§2), and the strip is the same on both tiers (§3.3).
+   The proposal had been three plain counts — playing now, finished, on the wishlist — which kept
+   §2's rule a single sentence and could have been widened later at no cost; the strip was judged
+   worth giving every account from the start, and drawn before launch it takes nothing away from
+   anybody. The owner's page gained a *finished this year* tile with it, so that the strip shows
+   nothing the account cannot find there.
 2. **The owner's panel.** Fewer sections, or the panel of §3.1? Proposed: the panel, once and
    plainly — the owner's page is the one place the paid tier is sold to somebody who already
    tracks.
