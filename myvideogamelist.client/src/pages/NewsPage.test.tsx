@@ -22,6 +22,7 @@ const auth: AuthContextValue = {
     logout: vi.fn(async () => {}),
     updateUserName: vi.fn(async () => {}),
     updateProfileVisibility: vi.fn(async () => {}),
+    updateProfileDetails: vi.fn(async () => {}),
     deleteAccount: vi.fn(async () => {}),
 };
 
@@ -100,7 +101,7 @@ describe('NewsPage signed in', () => {
         stubNews([[PATCH]]);
         renderPage();
 
-        const headline = await screen.findByRole('link', { name: 'Patch 1.1 is live' });
+        const headline = await screen.findByRole('link', { name: 'Patch 1.1 is live (opens in a new tab)' });
         expect(headline).toHaveAttribute('href', PATCH.url);
         expect(screen.getByRole('link', { name: 'Hades II' })).toBeInTheDocument();
         // The list is not everything, and says which end a busy library loses.
@@ -127,7 +128,7 @@ describe('NewsPage signed in', () => {
 
         await actor.click(screen.getByRole('button', { name: 'Try again' }));
 
-        expect(await screen.findByRole('link', { name: 'Patch 1.1 is live' })).toBeInTheDocument();
+        expect(await screen.findByRole('link', { name: 'Patch 1.1 is live (opens in a new tab)' })).toBeInTheDocument();
         await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
         expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     });

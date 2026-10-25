@@ -1,24 +1,48 @@
-import { Link, useLoaderData } from 'react-router';
+import { Link, data, isRouteErrorResponse, useLoaderData, useRevalidator, type RouterContextProvider } from 'react-router';
 import type { Route } from './+types/GamePage';
-import { apiUrl } from '@/lib/api';
 import { CACHE_GAME, CACHE_NOT_FOUND, PRIVATE_NO_STORE } from '@/lib/cache';
+import { isUpstreamFailure } from '@/lib/trace';
+import { loaderFetch, upstreamFailure } from '@/lib/trace.server';
+import type { CommunityScores } from '@/types/community';
 import type { GameDto } from '@/types/game';
+import type { CommunityTimes } from '@/types/playthrough';
 import { useAuth } from '@/hooks/useAuth';
+import { useFavourites } from '@/hooks/useFavourites';
 import { useGameCommunity } from '@/hooks/useGameCommunity';
+import { CoverImage } from '@/components/CoverImage';
+import { EmptyState } from '@/components/EmptyState';
+import { ErrorState } from '@/components/ErrorState';
 import { GameNewsPanel } from '@/components/GameNewsPanel';
 import { GameUserPanel } from '@/components/GameUserPanel';
 import { GameCommunity } from '@/components/GameCommunity';
 import { CompletionTimes } from '@/components/CompletionTimes';
+import { parseReleaseDate } from '@/lib/releaseDate';
 import { SectionHeading } from '@/components/SectionHeading';
 import { GameRefRail } from '@/components/GameRefRail';
 import { MultiplayerSummary } from '@/components/MultiplayerSummary';
+import { multiplayerSummary } from '@/lib/multiplayer';
 import { ScreenshotGallery } from '@/components/ScreenshotGallery';
+import { StoreLinks } from '@/components/StoreLinks';
 import { TrailerPlayer } from '@/components/TrailerPlayer';
 import { formatCount } from '@/lib/format';
+import { gameDescription } from '@/lib/gameDescription';
 import { pageMeta, siteConfig } from '@/lib/seo';
-import { hasCriticScore, hasMemberScore, ratingPercent } from '@/lib/score';
+import { hasCriticScore, hasMemberScore, ratingPercent, scoresWithinFloor, timesWithinFloor } from '@/lib/score';
+import { gameStructuredData } from '@/lib/structuredData';
 import { ScoreBadge } from '@/components/ScoreBadge';
 import './GamePage.css';
+
+/**
+ * The message of the 502 thrown when the API answered 502 itself, which for this endpoint means IGDB
+ * failed: the API turns a third party's failure into a 502 and nothing else into one (ADR 0034), and
+ * the detail query is the one live IGDB call on this page (ADR 0017). It goes out as every failed
+ * call's does, with the trace id (`upstreamFailure`, ADR 0059), and the boundary reads it to say whose
+ * failure it was, which decides what it can promise still works.
+ */
+const IGDB_UNAVAILABLE = 'IGDB did not answer.';
+
+/** The hero's cover is 140px wide, 180px from 640px up, inside a two-pixel border. */
+const HERO_COVER_SIZES = '(min-width: 640px) 176px, 136px';
 
 function InfoChip({ label }: { label: string }) {
     return (
@@ -29,16 +53,76 @@ function InfoChip({ label }: { label: string }) {
 }
 
 /**
- * Fetched on the server so crawlers and social unfurlers see the real game, not an
- * empty shell. A missing or malformed id throws a 404 Response, which the root
- * ErrorBoundary renders and which returns a genuine 404 status.
+ * How long the loader waits for each of the members' figures before rendering without them.
+ *
+ * They are reads of our own tables that answer in milliseconds, and before them the game page did not
+ * wait on the database at all. Without a deadline a slow database — a failover, a lock held by a
+ * migration — would hold every game page for as long as Npgsql waits, and every one of those renders
+ * is `no-store`, so the edge would absorb none of them. With one, a slow read is one more degraded
+ * render, and the abort cancels the query behind it.
  */
-export async function loader({ params }: Route.LoaderArgs) {
+const FIGURES_DEADLINE_MS = 1_000;
+
+/**
+ * A JSON body from the API as `accept` reads it, or null for a bad status, a body `accept` refuses,
+ * a deadline passed and an unreachable API alike: for the reads a game page can stand without.
+ */
+async function readOptional<T>(
+    context: Readonly<RouterContextProvider>,
+    path: string,
+    accept: (body: unknown) => T | null,
+): Promise<T | null> {
+    try {
+        const response = await loaderFetch(context, path, { signal: AbortSignal.timeout(FIGURES_DEADLINE_MS) });
+        return response.ok ? accept(await response.json()) : null;
+    } catch {
+        // `catch` as well as `ok`, because an unreachable API makes `fetch` reject rather than
+        // return a bad response — and so do a deadline passed and a body that is not JSON.
+        return null;
+    }
+}
+
+/**
+ * The members' scores, when the body has their shape, with what the floor keeps off the page taken
+ * out: this copy is stored in the shared HTML and its data, so a lone member's score must not ride
+ * along unseen (`scoresWithinFloor`). A body without `tracked` is kept — it is from an API older than
+ * this build, and its badge is still right — and the loader treats it as incomplete.
+ */
+function scoresFrom(body: unknown): CommunityScores | null {
+    const scores = body as Partial<CommunityScores> | null;
+    if (typeof scores?.scored !== 'number' || !Array.isArray(scores.distribution)) return null;
+    if (scores.mean !== null && typeof scores.mean !== 'number') return null;
+    return scoresWithinFloor(scores as CommunityScores);
+}
+
+/** The members' completion times, when the body has their shape, each median behind its floor. */
+function timesFrom(body: unknown): CommunityTimes | null {
+    const times = body as Partial<CommunityTimes> | null;
+    const buckets: unknown = times?.buckets;
+    if (!Array.isArray(buckets)) return null;
+    if (!buckets.every(bucket => typeof bucket?.type === 'string' && typeof bucket.samples === 'number')) return null;
+    return timesWithinFloor(times as CommunityTimes);
+}
+
+/**
+ * Fetched on the server so crawlers and social unfurlers see the real game, not an empty shell. A
+ * missing or malformed id throws a 404 Response and a failure a 502, which this route's own
+ * ErrorBoundary renders inside the site's frame and which reach the client as genuine statuses.
+ *
+ * Beside the game, what members have made of it: their score and how many of them track it, and how
+ * long they take to beat it. Those are the part of the page that is ours, so they are read here, where
+ * the server render — the HTML a crawler indexes — can carry them, in the hero, the description and
+ * the structured data (ADR 0069). Their reviews are not: review text is fetched after hydration, as
+ * ADR 0028 decided, because an author's withdrawal must not wait out the page's hour at the edge. An
+ * aggregate names nobody, so the same hour costs a reader no more than a figure up to an hour old,
+ * which the browser's own request replaces once the page has hydrated.
+ */
+export async function loader({ params, context }: Route.LoaderArgs) {
     const id = Number(params.id);
 
-    // A thrown Response carries its own headers and bypasses the `headers` export below, so the
-    // error paths state their own caching. A 404 gets a short shared TTL; the 502 gets none,
-    // because caching an upstream failure at the edge outlives the failure itself.
+    // A thrown Response carries its own headers, and `headers` below hands them on. A 404 gets a
+    // short shared TTL; a 502 gets none, because caching an upstream failure at the edge outlives
+    // the failure itself.
     const notFound = () => new Response('Not Found', {
         status: 404,
         statusText: 'Not Found',
@@ -47,44 +131,93 @@ export async function loader({ params }: Route.LoaderArgs) {
 
     if (!Number.isInteger(id) || id <= 0) throw notFound();
 
-    const badGateway = () => new Response('Failed to load game.', {
-        status: 502,
-        statusText: 'Bad Gateway',
-        headers: { 'Cache-Control': PRIVATE_NO_STORE },
-    });
+    const badGateway = (message = 'Failed to load game.') => upstreamFailure(context, message);
 
-    let response: Response;
-    try {
-        response = await fetch(apiUrl(`/api/games/${id}`));
-    } catch {
+    // All three at once: the members' figures do not wait on the game, and the game does not wait
+    // on them. Neither of those two can fail the page, or hold it past their deadline.
+    const [response, scores, times] = await Promise.all([
         // fetch rejects rather than returning !ok when the API is unreachable.
-        throw badGateway();
+        loaderFetch(context, `/api/games/${id}`).catch(() => null),
+        readOptional(context, `/api/games/${id}/community-scores`, scoresFrom),
+        readOptional(context, `/api/games/${id}/community-times`, timesFrom),
+    ]);
+
+    if (response === null) throw badGateway();
+    if (response.status === 404) throw notFound();
+    if (response.status === 502) throw badGateway(IGDB_UNAVAILABLE);
+
+    // Our own throttle on IGDB refusing: the API's queue of calls to it was full (ADR 0034). Passed on
+    // as itself, "busy, try shortly", which is what a 503 tells a crawler too, and never stored.
+    if (response.status === 503) {
+        throw new Response('Busy fetching game data.', {
+            status: 503,
+            statusText: 'Service Unavailable',
+            headers: { 'Cache-Control': PRIVATE_NO_STORE },
+        });
     }
 
-    if (response.status === 404) throw notFound();
     if (!response.ok) throw badGateway();
 
+    // Only a whole render is shared. Without the members' figures the page still stands — the game is
+    // what it is about, and it came — but kept at the edge it would go on leaving out our score, the
+    // description's lead and the structured data's rating for an hour after the API recovered, and a
+    // day stale after that: caching a failure outlives the failure (ADR 0013). An answer with no
+    // tracked count is from an API older than this build, in the middle of a deploy, and is missing a
+    // part all the same.
+    const whole = scores !== null && typeof scores.tracked === 'number' && times !== null;
+
     // `site` rides along because `meta` runs in the browser too, where the environment it is read
-    // from does not exist.
-    return { game: await response.json() as GameDto, site: siteConfig() };
+    // from does not exist; `today` because a day read in `meta` could differ between the render and
+    // the hydration. UTC, which is the calendar the API's release dates are written in. The policy
+    // rides along so that `headers` has one to hand on only when the loader answered.
+    return data(
+        {
+            game: await response.json() as GameDto,
+            site: siteConfig(),
+            scores,
+            times,
+            today: new Date().toISOString().slice(0, 10),
+        },
+        { headers: { 'Cache-Control': whole ? CACHE_GAME : PRIVATE_NO_STORE } },
+    );
 }
 
 /**
- * Only applies to the 200 path. A thrown Response carries its own headers, so a 404 for an
- * unknown id is not cached for an hour under this policy.
+ * Whatever the loader decided: the game's hour for a page it answered whole and nothing shared for one
+ * the members' figures did not reach, the thrown Response's own for a 404, a 502 or a 503, and nothing
+ * shared for anything else the loader throws.
+ *
+ * This route has an ErrorBoundary, so it is the boundary for its own failures and these are the
+ * headers they go out with. Answering `CACHE_GAME` here unconditionally, as this used to, cached a
+ * 502 for an hour at the edge — and already did for the `.data` request a client-side navigation
+ * makes, which reaches this function whichever route renders the error. A loader that threw something
+ * other than a Response leaves neither, and that fails closed, as the root's default does.
+ *
+ * Not covered here: a page that throws while rendering, after its loader answered, goes out with the
+ * headers worked out before the render, which is React Router's doing and every route's (issue 337).
  */
-export function headers() {
-    return { 'Cache-Control': CACHE_GAME };
+export function headers({ errorHeaders, loaderHeaders }: Route.HeadersArgs) {
+    return {
+        'Cache-Control': errorHeaders?.get('Cache-Control')
+            ?? loaderHeaders.get('Cache-Control')
+            ?? PRIVATE_NO_STORE,
+    };
 }
 
-export function meta({ loaderData }: Route.MetaArgs) {
-    if (!loaderData?.game) return [{ title: 'Game not found - MyVideoGameList' }];
+export function meta({ loaderData, error }: Route.MetaArgs) {
+    // Undefined when the loader threw, and the ErrorBoundary below supplies the page.
+    if (!loaderData?.game) {
+        const missing = isRouteErrorResponse(error) && error.status === 404;
+        return [{ title: missing ? 'Game not found - MyVideoGameList' : 'Game unavailable - MyVideoGameList' }];
+    }
 
-    const { game, site } = loaderData;
+    // The defaults are for data written by the build before this one, which had none of the three:
+    // a game page's data is shared-cached, so in a deploy's first minutes such a copy can reach this
+    // code. Each one missing leaves out what it would have added, and nothing fails.
+    const { game, site, scores = null, times = null, today = '' } = loaderData;
     const year = game.releaseDate ? ` (${new Date(game.releaseDate).getFullYear()})` : '';
     const title = `${game.title}${year} - MyVideoGameList`;
-    const description = game.description?.slice(0, 200)
-        ?? `Track ${game.title} on MyVideoGameList.`;
+    const description = gameDescription(game, scores, times);
 
     // Key art where IGDB has any, because a large card is cropped to a wide rectangle and a
     // portrait cover comes out of that as a strip across its middle. The cover still beats
@@ -97,19 +230,37 @@ export function meta({ loaderData }: Route.MetaArgs) {
 
     // The path is built from the id the API answered with, not from the URL: `/games/0012` and
     // `/games/12?ref=x` both render this page, and both should say they are `/games/12`.
-    return pageMeta({ site, title, description, path: `/games/${game.id}`, image });
+    const path = `/games/${game.id}`;
+
+    return [
+        ...pageMeta({ site, title, description, path, image }),
+        ...gameStructuredData({ site, path, game, scores, today }),
+    ];
 }
 
 export function GamePage() {
-    const { game } = useLoaderData<typeof loader>();
+    // The default is `meta`'s: data from the build before this one has no scores in it.
+    const { game, scores: renderedScores = null } = useLoaderData<typeof loader>();
 
     const { user, loading: authLoading } = useAuth();
 
-    // Fetched after hydration and never in the loader — the page is edge-cached for up to a day, and
-    // a review its author withdraws must not outlive the withdrawal there (ADR 0028). Called here
-    // rather than in the section so the hero's badge and the section share one pair of requests,
-    // and so the reader's own panel can ask for them again after it writes.
+    // The reader's own, for the rosette on the related games' covers. Empty in the server render and
+    // until the favourites arrive, so the shared-cached page is the same for everybody (ADR 0064).
+    const { isFavourite } = useFavourites();
+
+    // The reviews are fetched here, after hydration, and never in the loader — the page is
+    // edge-cached for up to a day, and a review its author withdraws must not outlive the withdrawal
+    // there (ADR 0028). The scores come with them, live, over the loader's copy. Called here rather
+    // than in the section so the hero's badge and the section share one pair of requests, and so the
+    // reader's own panel can ask for them again after it writes.
     const community = useGameCommunity(game.id);
+
+    // The members' score as the loader read it, which is what the server rendered, until the
+    // browser's own request answers — then that one, which is fresher, and which the reader's own
+    // writes ask for again. A request that fails leaves the loader's in place rather than taking the
+    // badge away. Both belong to the game on screen: the loader's data and the hook change together
+    // when a link goes from one game to another.
+    const memberScores = community.scores ?? renderedScores;
 
     // Null on the listing endpoints by design; this page is the one that asks IGDB for it.
     const details = game.details;
@@ -120,9 +271,12 @@ export function GamePage() {
         ? [...new Set([...details.collections, ...details.franchises])]
         : [];
 
-    const releaseYear = game.releaseDate ? new Date(game.releaseDate).getFullYear() : null;
-    const releaseDate = game.releaseDate
-        ? new Date(game.releaseDate).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+    // The day the API names, which `new Date` would read as UTC midnight: the day before, and a
+    // year before on 1 January, for anybody west of Greenwich, and a different day on the server.
+    const released = game.releaseDate ? parseReleaseDate(game.releaseDate) : null;
+    const releaseYear = released?.getFullYear() ?? null;
+    const releaseDate = released
+        ? released.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
         : null;
 
     const youtubeEmbedId = game.trailerUrl
@@ -144,10 +298,16 @@ export function GamePage() {
                 <div className="game-page-hero-gradient" aria-hidden="true" />
 
                 <div className="game-page-hero-content">
-                    {/* Cover */}
+                    {/* Cover. Loaded with the page, never lazily: it and the key art behind it are
+                        this page's first screen, and one of the two is its largest first paint. */}
                     <div className="game-page-cover">
                         {game.coverImageUrl ? (
-                            <img src={game.coverImageUrl} alt={`${game.title} cover`} />
+                            <CoverImage
+                                url={game.coverImageUrl}
+                                alt={`${game.title} cover`}
+                                sizes={HERO_COVER_SIZES}
+                                eager
+                            />
                         ) : (
                             <div className="game-page-cover-placeholder">
                                 <svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
@@ -215,14 +375,16 @@ export function GamePage() {
                                     count={game.ratingCount}
                                 />
                             )}
-                            {/* Ours, once enough members have scored the game. Arrives after
-                                hydration, so it goes after the two server-rendered badges rather
-                                than moving them; only the date beside it shifts along. */}
-                            {hasMemberScore(community.scores) && (
+                            {/* Ours, once enough members have scored the game, and in the server
+                                render: it is the one score on the page this site produced, so it is
+                                in the HTML a crawler reads (ADR 0069). Last of the three, so that
+                                the browser's fresher figure replacing the loader's after hydration
+                                moves nothing but the date beside it. */}
+                            {hasMemberScore(memberScores) && (
                                 <ScoreBadge
                                     kind="members"
-                                    percent={ratingPercent(community.scores.mean)}
-                                    count={community.scores.scored}
+                                    percent={ratingPercent(memberScores.mean)}
+                                    count={memberScores.scored}
                                 />
                             )}
                             {releaseDate && (
@@ -296,8 +458,14 @@ export function GamePage() {
                             </section>
                         )}
 
+                        {/* Where it is sold, next to what it runs on. Hides itself when IGDB names
+                            no store. */}
+                        <StoreLinks stores={details?.stores ?? []} />
+
                         {/* How to play: solo, together, and with how many. */}
-                        {details && (details.gameModes.length > 0 || details.multiplayerModes) && (
+                        {details && (details.gameModes.length > 0
+                            // And no heading at all when neither the modes nor the summary have anything to say.
+                            || (details.multiplayerModes !== null && multiplayerSummary(details.multiplayerModes) !== null)) && (
                             <section>
                                 <SectionHeading>How to play</SectionHeading>
                                 <div className="space-y-3">
@@ -379,6 +547,7 @@ export function GamePage() {
                                 <GameRefRail
                                     games={[...details.expansions, ...details.dlcs]}
                                     label={`Expansions and DLC for ${game.title}`}
+                                    isFavourite={isFavourite}
                                 />
                             </section>
                         )}
@@ -386,8 +555,12 @@ export function GamePage() {
                         {/* Low in the column on purpose: it arrives after hydration, and all it can
                             push down when it does is the news and the similar games. Renders nothing
                             until both of its requests have answered, and nothing at all when there
-                            is nothing to read. */}
-                        <GameCommunity community={community} viewer={user?.userName ?? null} />
+                            is nothing to read. Handed the scores the hero shows, so that a request
+                            that failed leaves the two agreeing on the loader's figure. */}
+                        <GameCommunity
+                            community={{ ...community, scores: memberScores }}
+                            viewer={user?.userName ?? null}
+                        />
 
                         {/* Hides itself when the game has no Steam presence (ROADMAP N7). */}
                         <GameNewsPanel gameId={game.id} />
@@ -400,6 +573,7 @@ export function GamePage() {
                                 <GameRefRail
                                     games={details.similarGames}
                                     label={`Games similar to ${game.title}`}
+                                    isFavourite={isFavourite}
                                 />
                             </section>
                         )}
@@ -457,7 +631,7 @@ export function GamePage() {
                                         percent={game.criticScore!}
                                         count={game.criticScoreCount}
                                     />
-                                    <span className="ml-2 text-xs text-fg-faint">
+                                    <span className="ml-2 text-xs text-fg-faint" aria-hidden="true">
                                         from {formatCount(game.criticScoreCount!)} reviews
                                     </span>
                                 </div>
@@ -472,10 +646,28 @@ export function GamePage() {
                                         count={game.ratingCount}
                                     />
                                     {game.ratingCount !== null && (
-                                        <span className="ml-2 text-xs text-fg-faint">
+                                        <span className="ml-2 text-xs text-fg-faint" aria-hidden="true">
                                             from {formatCount(game.ratingCount)} ratings
                                         </span>
                                     )}
+                                </div>
+                            )}
+
+                            {/* Ours, with its count in words beside it like the two above, and in the
+                                server render like them. Google shows a rating from structured data
+                                only when a reader can see it on the page (ADR 0069). Each count is for
+                                the eye only: the badge's accessible name already ends with it. */}
+                            {hasMemberScore(memberScores) && (
+                                <div>
+                                    <p className="text-xs text-fg-faint uppercase tracking-wider mb-1">Member Score</p>
+                                    <ScoreBadge
+                                        kind="members"
+                                        percent={ratingPercent(memberScores.mean)}
+                                        count={memberScores.scored}
+                                    />
+                                    <span className="ml-2 text-xs text-fg-faint" aria-hidden="true">
+                                        from {formatCount(memberScores.scored)} scores
+                                    </span>
                                 </div>
                             )}
 
@@ -550,7 +742,8 @@ export function GamePage() {
                                         rel="noopener noreferrer"
                                         className="inline-flex items-center gap-1 text-sm text-primary-400 hover:text-primary-300 transition-colors break-all"
                                     >
-                                        Official Site
+                                        Official Site{' '}
+                                        <span className="sr-only">(opens in a new tab)</span>
                                         <svg className="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
                                         </svg>
@@ -567,7 +760,8 @@ export function GamePage() {
                                         rel="noopener noreferrer"
                                         className="inline-flex items-center gap-1 text-sm text-primary-400 hover:text-primary-300 transition-colors"
                                     >
-                                        Watch Trailer
+                                        Watch Trailer{' '}
+                                        <span className="sr-only">(opens in a new tab)</span>
                                         <svg className="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
                                         </svg>
@@ -580,6 +774,73 @@ export function GamePage() {
             </div>
         </div>
     );
+}
+
+/** A heroicon's path: a magnifying glass, for a game that is not where the link said. */
+const SEARCH_ICON = 'M21 21l-4.35-4.35M17 11A6 6 0 115 11a6 6 0 0112 0z';
+
+/**
+ * What this page says when there is no game to show, inside the site's frame rather than in place of it,
+ * so the navbar is still there to go somewhere that works.
+ *
+ * A failure is said as the lists page says one, with the retry the pattern gives: the loader is asked
+ * again, and the game replaces this the moment it answers. Never a spinner or a blank — a reader cannot
+ * tell either from a page that is still coming. What the failure says depends on whose it was: IGDB
+ * being down costs every game page and nothing kept here, and saying so tells the reader where to go
+ * meanwhile. A 404 offers no retry, because asking again will not make the game exist.
+ */
+export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
+    const revalidator = useRevalidator();
+
+    if (isRouteErrorResponse(error) && error.status === 404) {
+        return (
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <EmptyState
+                    icon={SEARCH_ICON}
+                    message="There is no game at this address"
+                    titleAs="h1"
+                    detail="The link may be mistyped, or IGDB, where every game here comes from, may have removed the game."
+                >
+                    <Link
+                        to="/games"
+                        className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary-600 hover:bg-primary-500 text-on-primary text-sm font-semibold rounded-lg transition-colors"
+                    >
+                        Browse games
+                    </Link>
+                </EmptyState>
+            </div>
+        );
+    }
+
+    // The id of the request that failed, when the failure says, as the root's boundary shows it: this
+    // one takes the root's place for this page's failures, and the id is what a report can quote.
+    const reference = isRouteErrorResponse(error) && isUpstreamFailure(error.data) ? error.data.traceId : null;
+
+    return (
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <ErrorState
+                title="Failed to load this game"
+                titleAs="h1"
+                onRetry={() => void revalidator.revalidate()}
+                retrying={revalidator.state === 'loading'}
+                reference={reference}
+            >
+                {whoseFailure(error)}
+            </ErrorState>
+        </div>
+    );
+}
+
+/** What a failure to load the game was, as far as its status says, and so what still works. */
+function whoseFailure(error: unknown): string {
+    if (isRouteErrorResponse(error) && isUpstreamFailure(error.data) && error.data.message === IGDB_UNAVAILABLE) {
+        return 'Game details come from IGDB, which is not answering just now. Lists and profiles keep working without it.';
+    }
+    // The API's own words for its throttle, with what is unaffected put as this page puts it.
+    if (isRouteErrorResponse(error) && error.status === 503) {
+        return 'Too many people are browsing games at once. Try again in a moment; lists and profiles are unaffected.';
+    }
+    return 'Something went wrong on our side, so this game could not be loaded just now.';
 }
 
 export default GamePage;

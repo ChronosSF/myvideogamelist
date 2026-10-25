@@ -414,7 +414,7 @@ export function ImportReviewPage() {
                                             decide(row, event.target.checked ? IMPORT_DECISION.import : IMPORT_DECISION.skip)}
                                     />
 
-                                    <GameCover url={row.game?.coverImageUrl} className="w-9 h-12" />
+                                    <GameCover url={row.game?.coverImageUrl} className="w-9 h-12" sizes="2.25rem" />
 
                                     <div className="min-w-0 grow">
                                         {/* Focusable from script only: where focus goes after a game

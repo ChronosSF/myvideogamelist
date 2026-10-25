@@ -1,16 +1,21 @@
 import { Link, data } from 'react-router';
 import { useAuth } from '@/hooks/useAuth';
 import { ContinuePlayingRail } from '@/components/ContinuePlayingRail';
+import { HomeSectionHeading } from '@/components/HomeSectionHeading';
 import { HomeStatsStrip } from '@/components/HomeStatsStrip';
 import { PlayNextPicker } from '@/components/PlayNextPicker';
 import { ReleaseLine } from '@/components/ReleaseLine';
+import { ShowcasesAndSales } from '@/components/ShowcasesAndSales';
 import { TrendingRail } from '@/components/TrendingRail';
 import { NewsCard } from '@/components/NewsCard';
-import { apiUrl } from '@/lib/api';
 import { CACHE_HOME, PRIVATE_NO_STORE } from '@/lib/cache';
+import { utcDay } from '@/lib/daySpan';
 import { type SiteConfig, pageMeta, siteConfig } from '@/lib/seo';
+import { siteStructuredData } from '@/lib/structuredData';
+import { loaderFetch } from '@/lib/trace.server';
 import type { UserProfile } from '@/types/auth';
 import type { HomeResponse } from '@/types/news';
+import type { CalendarEvents } from '@/types/releases';
 import type { Route } from './+types/HomePage';
 import './HomePage.css';
 
@@ -30,26 +35,50 @@ export function headers({ loaderHeaders }: Route.HeadersArgs) {
 }
 
 export function meta({ loaderData }: Route.MetaArgs) {
-    return pageMeta({
+    // The site's name, address and search, as structured data, which Google reads for the name it
+    // shows over a result — and only from the home page (ADR 0069).
+    return [...pageMeta({
         site: loaderData.site,
         title: 'MyVideoGameList - Track every game you play',
         description: 'Track the games you have played, build a backlog and wishlist, and see when the games you are waiting for come out.',
         path: '/',
-    });
+    }), ...siteStructuredData(loaderData.site)];
 }
 
-/** The shared page's content, and the deployment's public address for `meta` to build URLs from. */
-type HomeData = HomeResponse & { site: SiteConfig };
+/**
+ * The shared page's content, the deployment's public address for `meta` to build URLs from, and the
+ * day the page was rendered for.
+ */
+type HomeData = HomeResponse & {
+    site: SiteConfig;
+    /**
+     * Today in UTC when the loader ran, `YYYY-MM-DD`. The showcases and sales count down from it until
+     * the page hydrates and can ask the reader's own clock; it travels in the loader data so that the
+     * render hydrating the page counts from the same day the server did.
+     */
+    today: string;
+};
+
+/**
+ * What `/api/home` answers. The showcases and sales are optional here, though not in the type the
+ * page is handed: an API older than this build, in the middle of a deploy, sends none.
+ */
+type HomeAnswer = Omit<HomeResponse, 'events'> & { events?: CalendarEvents };
+
+/** The showcases and sales of an answer that brought none, which is not the same as none being on. */
+const NO_EVENTS: CalendarEvents = { curated: [], showcases: [], degraded: true };
 
 /**
  * One request for the whole shared page (ROADMAP §3.5).
  *
- * A failure here degrades rather than throws: a dead IGDB should cost the rails and nothing more.
+ * A failure here degrades rather than throws: a dead IGDB should cost the rails and the showcases,
+ * and nothing more.
  * That is the opposite of the game route, where an upstream failure genuinely means there is no
  * page.
  */
-export async function loader() {
+export async function loader({ context }: Route.LoaderArgs) {
     const site = siteConfig();
+    const today = utcDay(new Date());
 
     // A degraded render must not be cached, and a 200 from the API does not mean the render is
     // whole: it answers 200 when IGDB or Steam fails too, so that the page still renders, and its
@@ -67,51 +96,32 @@ export async function loader() {
     // than merely treated as one: spread as it arrived, the page would be handed a payload whose
     // `degraded` is undefined while its type promises a boolean, and the rule — only an explicit
     // `false` is whole — would be stated here for the header and again by whoever reads it next.
-    const respond = (home: HomeResponse) => {
-        const degraded = home.degraded !== false;
+    //
+    // An answer with no showcases and sales is one from an API older than this build, which says it
+    // is whole because, as far as it knows, it is. It is missing a part all the same, and kept at the
+    // edge it would go on serving a page without the panel after the API caught up — so it is
+    // degraded too, normalized the same way, rather than trusted for what it did not know to say.
+    const respond = (home: HomeAnswer) => {
+        const events = home.events ?? null;
+        const degraded = home.degraded !== false || events === null;
 
         return data<HomeData>(
-            { ...home, degraded, site },
+            { ...home, events: events ?? NO_EVENTS, degraded, site, today },
             { headers: { 'Cache-Control': degraded ? PRIVATE_NO_STORE : CACHE_HOME } });
     };
 
     // What is left of the page when the API gave nothing to build it from.
-    const nothing = () => respond({ spotlight: null, popular: [], news: [], degraded: true });
+    const nothing = () => respond({ spotlight: null, popular: [], news: [], events: NO_EVENTS, degraded: true });
 
     try {
-        const response = await fetch(apiUrl('/api/home'));
+        const response = await loaderFetch(context, '/api/home');
         if (!response.ok) return nothing();
 
-        return respond(await response.json() as HomeResponse);
+        return respond(await response.json() as HomeAnswer);
     } catch {
         // fetch rejects outright when the API is unreachable, rather than returning !ok.
         return nothing();
     }
-}
-
-function SectionHeading({ id, title, subtitle, action }: {
-    id: string;
-    title: string;
-    subtitle: string;
-    action?: { to: string; label: string };
-}) {
-    return (
-        <div className="flex items-end justify-between gap-4 mb-5">
-            <div>
-                <h2 id={id} className="text-xl sm:text-2xl font-bold text-fg-strong">{title}</h2>
-                <p className="text-sm text-fg-muted mt-1">{subtitle}</p>
-            </div>
-
-            {action && (
-                <Link
-                    to={action.to}
-                    className="shrink-0 text-sm font-medium text-primary-400 hover:text-primary-300 transition-colors"
-                >
-                    {action.label} <span aria-hidden="true">→</span>
-                </Link>
-            )}
-        </div>
-    );
 }
 
 /**
@@ -240,25 +250,38 @@ function LandingHero({ spotlight }: { spotlight: HomeResponse['spotlight'] }) {
 }
 
 export function HomePage({ loaderData }: Route.ComponentProps) {
-    const { spotlight, popular, news } = loaderData;
+    // `events` has a default although the loader always sets it: a navigation inside the app fetches
+    // the loader's data on its own, and in a deploy's first minutes the edge can still hold one written
+    // by the build before this one, which has no showcases and sales at all. Without the default that
+    // payload would be a TypeError, and the page its error boundary.
+    const { spotlight, popular, news, events = NO_EVENTS, today } = loaderData;
     const { user, loading } = useAuth();
+    const signedIn = user !== null && !loading;
 
     return (
         <div className="min-h-screen">
             {/* The landing hero while auth is still unknown, which includes every server render.
                 The alternative — nothing until `me` answers — flashes an empty page at the one
                 visitor the pitch is written for. */}
-            {user && !loading
+            {signedIn
                 ? <SignedInHero user={user} />
                 : <LandingHero spotlight={spotlight} />}
 
-            {/* Everything below is the same for both. Trending and the news are worth seeing
-                whether or not anybody is signed in, and duplicating them into two branches is how
-                the two drift. */}
-            <div className="max-w-6xl mx-auto px-4 sm:px-6">
+            {/* Everything below is the same for both, but for the showcases and sales, which give
+                way to the line. Trending and the news are worth seeing whether or not anybody is
+                signed in, and duplicating them into two branches is how the two drift. A rule
+                between each section and the next, whichever of them are drawn: any of the three can
+                be missing. */}
+            <div className="max-w-6xl mx-auto px-4 sm:px-6 divide-y divide-line">
+                {/* Where the two-week line is for somebody signed in, directly above Trending, and
+                    giving way to it: the line shows these same events on the same days, beside the
+                    reader's own releases, and the two together would be every sale twice, one under
+                    the other (ADR 0063). It goes with the landing hero, so in the same render. */}
+                {!signedIn && <ShowcasesAndSales events={events} today={today} />}
+
                 {popular.length > 0 && (
                     <section className="py-10 sm:py-12" aria-labelledby="trending-heading">
-                        <SectionHeading
+                        <HomeSectionHeading
                             id="trending-heading"
                             title="Trending right now"
                             subtitle="The most-played games on Steam today"
@@ -269,15 +292,15 @@ export function HomePage({ loaderData }: Route.ComponentProps) {
                 )}
 
                 {news.length > 0 && (
-                    <section className="py-10 sm:py-12 border-t border-line" aria-labelledby="news-heading">
-                        <SectionHeading
+                    <section className="py-10 sm:py-12" aria-labelledby="news-heading">
+                        <HomeSectionHeading
                             id="news-heading"
                             title="Latest news"
                             subtitle="Patch notes and announcements from the games people are playing"
                             // The same rail for everybody, so the way to one's own news is a link
                             // rather than a second rail. Shown once auth has answered, as the
                             // navbar's link to the same page is.
-                            action={user && !loading ? { to: '/news', label: 'News for your games' } : undefined}
+                            action={signedIn ? { to: '/news', label: 'News for your games' } : undefined}
                         />
 
                         {/* grid-cols-1, not an implicit column: that one sizes to its content, and

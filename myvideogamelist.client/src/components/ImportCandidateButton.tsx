@@ -31,7 +31,7 @@ export function ImportCandidateButton({ game, onChoose }: { game: GameDto; onCho
             onClick={onChoose}
             className="flex items-center gap-2 pl-1 pr-2.5 py-1 bg-page/60 border border-line-strong hover:border-primary-500 rounded-lg text-left transition-colors"
         >
-            <GameCover url={game.coverImageUrl} className="w-6 h-8" />
+            <GameCover url={game.coverImageUrl} className="w-6 h-8" sizes="1.5rem" />
             <span className="flex flex-col items-start gap-0.5">
                 <span className="text-xs text-fg font-medium">
                     {game.title}

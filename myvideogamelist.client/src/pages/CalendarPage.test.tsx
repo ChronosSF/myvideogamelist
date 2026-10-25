@@ -19,6 +19,7 @@ const auth: AuthContextValue = {
     logout: vi.fn(async () => {}),
     updateUserName: vi.fn(async () => {}),
     updateProfileVisibility: vi.fn(async () => {}),
+    updateProfileDetails: vi.fn(async () => {}),
     deleteAccount: vi.fn(async () => {}),
 };
 
@@ -59,7 +60,8 @@ describe('CalendarPage', () => {
         auth.loading = true;
         renderPage();
 
-        expect(screen.getByRole('status')).toHaveTextContent('Loading');
+        expect(screen.getByRole('status')).toHaveTextContent('Loading your calendar…');
+        expect(document.querySelector('.animate-spin')).toBeNull();
         expect(screen.queryByText('Sign in to see what is coming for your games.')).not.toBeInTheDocument();
     });
 

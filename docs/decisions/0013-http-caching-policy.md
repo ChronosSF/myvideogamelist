@@ -3,6 +3,8 @@
 **Status:** Implemented. What CloudFront has to do to honour these headers — a cache policy with
 a minimum TTL of 0, explicit uncached behaviours shaped for `.data` URLs, an error caching TTL of
 0, and an invalidation after every deploy — is [0044](0044-what-the-deployment-walkthrough-settled.md).
+The Result below held for documents and not for a client-side navigation's `.data` request to a game
+page, whose error went out with the game's policy; [0070](0070-nothing-shows-as-a-blank.md) closes that.
 
 ## Context
 
@@ -55,6 +57,11 @@ exists to avoid.
   content; the unfiltered `/games` stays indexable.
 - Total home-page staleness is the CDN TTL *plus* the server's 15-minute `/api/home` cache —
   about 20 minutes. Shortening the CDN TTL alone will not make it fresher.
+
+  > **Later note.** About half an hour, not 20 minutes, in the worst case: the figure leaves out
+  > `stale-while-revalidate`, under which the edge may serve a copy for up to ten minutes past its
+  > five. [0063](0063-the-showcases-and-sales-for-everybody.md) sizes the home page's window of
+  > showcases and sales for that half hour.
 
 ### Three things only the failure path revealed
 

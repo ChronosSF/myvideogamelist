@@ -2,6 +2,7 @@ import { Link } from 'react-router';
 import { lastPage, pageSearch } from '@/lib/paging';
 import { formatDate } from '@/lib/stats';
 import { MAX_SCORE } from '@/lib/score';
+import { CoverImage } from '@/components/CoverImage';
 import { ReviewCard } from '@/components/ReviewCard';
 import type { PublicReview, PublicReviews } from '@/types/profile';
 
@@ -28,11 +29,16 @@ interface PublicReviewListProps {
  * that failed either.
  */
 export function PublicReviewList({ userName, reviews, total }: PublicReviewListProps) {
+    // What would put something here, said to whoever is reading — usually not the person whose
+    // profile it is, so it says what fills the section and never tells the reader to do anything.
     if (total === 0) {
         return (
             <section className="profile-section">
                 <h3 className="profile-section-title">Reviews</h3>
-                <p className="profile-empty">{userName} has not published any reviews yet.</p>
+                <p className="profile-empty">
+                    {`${userName} has not published any reviews yet. `}
+                    Reviews they publish will show here.
+                </p>
             </section>
         );
     }
@@ -124,7 +130,8 @@ function PublicReviewCard({ review }: { review: PublicReview }) {
                             tabIndex={-1}
                             aria-hidden="true"
                         >
-                            <img src={review.game.coverImageUrl} alt="" loading="lazy" />
+                            {/* `.review-cover` draws it 3rem wide. */}
+                            <CoverImage url={review.game.coverImageUrl} alt="" sizes="3rem" />
                         </Link>
                     )}
 

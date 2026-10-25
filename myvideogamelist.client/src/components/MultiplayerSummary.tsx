@@ -1,42 +1,19 @@
 import type { MultiplayerModesDto } from '@/types/game';
+import { multiplayerSummary } from '@/lib/multiplayer';
 
 interface MultiplayerSummaryProps {
     modes: MultiplayerModesDto;
 }
 
 /**
- * Turns the capability flags into the phrases a person actually searches for. Order matters:
- * couch co-op and online co-op are the two people care about most, so they lead.
- */
-function capabilities(modes: MultiplayerModesDto): string[] {
-    const labels: string[] = [];
-
-    if (modes.offlineCoop) labels.push('Local co-op');
-    if (modes.onlineCoop) labels.push('Online co-op');
-    if (modes.campaignCoop) labels.push('Campaign co-op');
-    if (modes.splitScreen) labels.push('Split screen');
-    if (modes.lanCoop) labels.push('LAN co-op');
-    if (modes.dropIn) labels.push('Drop-in / drop-out');
-
-    return labels;
-}
-
-/**
- * How a game can be played with other people, folded across platforms by the API.
- *
- * Renders nothing when IGDB reports no capability and no player ceiling — a heading over an
- * empty row implies the data is missing when the honest reading is that the game is
- * single-player.
+ * How a game can be played with other people, folded across platforms by the API: the phrases and
+ * the co-op ceilings `multiplayerSummary` picks out, and nothing at all when it has nothing to say.
  */
 export function MultiplayerSummary({ modes }: MultiplayerSummaryProps) {
-    const labels = capabilities(modes);
+    const summary = multiplayerSummary(modes);
+    if (summary === null) return null;
 
-    // Only the co-op ceilings are shown. `onlineMax` and `offlineMax` count competitive lobbies
-    // too, which says nothing about playing *together* and is the number people misread.
-    const online = modes.onlineCoopMax ?? modes.onlineMax;
-    const offline = modes.offlineCoopMax ?? modes.offlineMax;
-
-    if (labels.length === 0 && online === null && offline === null) return null;
+    const { labels, online, offline } = summary;
 
     return (
         <div className="flex flex-wrap items-center gap-2">

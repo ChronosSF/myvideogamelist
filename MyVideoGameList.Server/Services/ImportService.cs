@@ -323,7 +323,9 @@ public class ImportService(
 
         if (job is null || job.State != ImportJobStates.Pending) return false;
 
-        var wanted = decisions.Rows.ToDictionary(r => r.RowId);
+        // A row named twice takes the last of its decisions, as a list named twice takes the last of
+        // its names, rather than failing as a duplicate key.
+        var wanted = decisions.Rows.GroupBy(r => r.RowId).ToDictionary(group => group.Key, group => group.Last());
 
         // Scoped to the job and the user in the predicate, so a row id belonging to somebody else's
         // job simply is not found — the scoping is the authorization.
@@ -616,6 +618,10 @@ public class ImportService(
 
             if (payload.Status is { } key && statuses.TryGetValue(key, out var statusId))
             {
+                // A game the import moves to another list leaves its place in the old one's hand
+                // order behind, as a move made by hand does; one it leaves where it was keeps it.
+                if (entry.StatusId != statusId) entry.Position = null;
+
                 entry.StatusId = statusId;
 
                 // Marks the entry as one whose status may have no event behind it. Set whether the
@@ -625,8 +631,16 @@ public class ImportService(
             }
 
             // Only fills what is empty. An import is new information about a game, not a correction
-            // of what its owner already recorded by hand.
-            entry.Score ??= payload.Score;
+            // of what its owner already recorded by hand. Its `ScoredAt` stays null, as
+            // `StatusChangedAt` is never stamped here: the source says what the score is and not when
+            // it was given, so an imported score has no place in the history (ADR 0062). Written as
+            // a pair with that null, so a score given in another tab since this commit read the entry
+            // cannot leave its moment beside the imported score.
+            if (entry.Score is null && payload.Score is { } importedScore)
+            {
+                entry.Score = importedScore;
+                EntryStore.WriteScoredAtWithScore(db, entry);
+            }
 
             // Truncated to the column's length rather than left to fail. A Grouvee review can run
             // past 2,000 characters, and a note that long would abort the whole commit on the final

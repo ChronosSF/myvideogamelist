@@ -1,13 +1,19 @@
 namespace MyVideoGameList.Server.DTOs;
 
 /// <summary>
-/// Every member's score for one game, as a count, a mean and a distribution.
+/// Every member's score for one game, as a count, a mean and a distribution — and how many members
+/// track the game at all.
 /// </summary>
 /// <remarks>
 /// <para>
 /// An aggregate over everybody that names nobody, so every score counts, whatever the profile
 /// visibility of the account that gave it — the same basis <see cref="CommunityTimesDto"/> has
 /// always had. See <c>docs/decisions/0028-*</c>.
+/// </para>
+/// <para>
+/// <see cref="Tracked"/> rides along because it is the same kind of figure, a count over everybody's
+/// rows for one game, and because the game page's loader reads this beside the game so that a
+/// crawler is told what is ours. One request answers both. See <c>docs/decisions/0069-*</c>.
 /// </para>
 /// <para>
 /// Its own type rather than <see cref="ScoreStatsDto"/>, although the two are computed by the same
@@ -28,7 +34,12 @@ namespace MyVideoGameList.Server.DTOs;
 /// means in this app (ADR 0021) — the conversion is the client's, as it is for IGDB's player rating.
 /// </param>
 /// <param name="Distribution">Ten buckets, index 0 holding the count of 1s.</param>
-public record CommunityScoresDto(int Scored, double? Mean, IReadOnlyList<int> Distribution);
+/// <param name="Tracked">
+/// How many members have the game in one of their five lists right now: what a profile's statistics
+/// call tracking (<see cref="LibraryStatsDto"/>), counted over everybody. An entry that has left
+/// every list keeps its score but is not tracked, so a game can have more scores than trackers.
+/// </param>
+public record CommunityScoresDto(int Scored, double? Mean, IReadOnlyList<int> Distribution, int Tracked);
 
 /// <summary>
 /// A page of the reviews members have published about one game, newest first.
@@ -54,6 +65,12 @@ public record GameReviewsDto(
 /// The author's name can therefore always be linked: there is a profile behind it.
 /// </para>
 /// <para>
+/// The author's display name and picture travel with the handle, because ADR 0056 puts them beside
+/// it wherever it names an account. They publish nothing new: the profile behind every review listed
+/// here shows both at its top. The bio does not travel. It was written for the profile, and is read
+/// there.
+/// </para>
+/// <para>
 /// Assembled field by field, for the reason <see cref="PublicProfileDto"/> gives. The review's own
 /// id and the playthrough it points at are deliberately absent: the first says how many reviews
 /// exist site-wide, private ones included, and the second would publish hours and platforms that
@@ -61,12 +78,22 @@ public record GameReviewsDto(
 /// </para>
 /// </remarks>
 /// <param name="UserName">As its owner capitalised it.</param>
+/// <param name="DisplayName">
+/// Shown beside the handle and never instead of it, or null when the author has none. Never unique,
+/// so never a key: the handle is.
+/// </param>
+/// <param name="AvatarUrl">
+/// As the author saved it, on one of <c>AvatarUrlPolicy</c>'s hosts, or null when they have none.
+/// Each reader's browser loads it from there; the server never fetches it.
+/// </param>
 /// <param name="Score">
 /// The author's own score, from their entry, on the 1-10 scale they entered it on. Null when they
 /// wrote about the game without scoring it.
 /// </param>
 public record GameReviewDto(
     string UserName,
+    string? DisplayName,
+    string? AvatarUrl,
     string Body,
     bool HasSpoilers,
     short? Score,

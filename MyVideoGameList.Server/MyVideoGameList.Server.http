@@ -59,6 +59,44 @@ Content-Type: application/json
 # Leaves the entry, the score and the playthroughs alone.
 DELETE {{MyVideoGameList.Server_HostAddress}}/api/entries/1942/review
 
+### The signed-in user's tags, with how many games carry each
+# Needs the Identity cookie. Tags are the owner's alone: nothing public reads them (ADR 0065).
+GET {{MyVideoGameList.Server_HostAddress}}/api/tags
+Accept: application/json
+
+### Make a tag
+# 201 with a new tag, or 200 with the one you already have under that name in any letter case.
+POST {{MyVideoGameList.Server_HostAddress}}/api/tags
+Content-Type: application/json
+X-MVGL-Request: 1
+
+{
+  "name": "Couch co-op"
+}
+
+### Put exactly these tags on a game
+# The whole set: an empty list takes every tag off. Ids that are not your tags are a 400.
+PUT {{MyVideoGameList.Server_HostAddress}}/api/entries/1942/tags
+Content-Type: application/json
+X-MVGL-Request: 1
+
+{
+  "tagIds": [1]
+}
+
+### Rename a tag — every game keeps it
+PUT {{MyVideoGameList.Server_HostAddress}}/api/tags/1
+Content-Type: application/json
+X-MVGL-Request: 1
+
+{
+  "name": "Co-op"
+}
+
+### Delete a tag, taking it off every game
+DELETE {{MyVideoGameList.Server_HostAddress}}/api/tags/1
+X-MVGL-Request: 1
+
 ### How long MVGL members say a game takes
 # Public: an aggregate over everybody that names nobody. Always 200 and always three tiers,
 # each with the number of playthroughs behind it (ADR 0016).
@@ -70,6 +108,20 @@ Accept: application/json
 # and dropped games; up to 20 items, no more than 3 from any one game. Always 200, often empty.
 GET {{MyVideoGameList.Server_HostAddress}}/api/user/news
 Accept: application/json
+
+### Say who you are on your public profile
+# Needs the Identity cookie, and the header every write needs. All three at once; null or blank
+# clears one. The avatar is an https address on one of AvatarUrlPolicy.Hosts, stored as given and
+# never fetched by the server — see docs/decisions/0056-*.
+PUT {{MyVideoGameList.Server_HostAddress}}/api/user/profile
+Content-Type: application/json
+X-MVGL-Request: 1
+
+{
+  "displayName": "Stamen",
+  "avatarUrl": "https://avatars.githubusercontent.com/u/9919?v=4",
+  "bio": "Mostly RPGs.\nSlowly."
+}
 
 ### Export everything the signed-in user has entered
 # Needs the Identity cookie. Free and IGDB-free — see docs/decisions/0024-the-ownership-contract.md.

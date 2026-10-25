@@ -139,11 +139,23 @@ public record ImportMatchPassDto(ImportJobDto Job, IReadOnlyList<ImportReviewRow
 /// The user's decisions about some rows. Only the rows named are touched, so the review screen can
 /// send one row or a bulk selection through the same endpoint.
 /// </summary>
+/// <remarks>
+/// A <c>null</c> among the rows is refused here, as a 400. Model validation passes over a null element
+/// of a collection without a word, so <c>[null]</c> would otherwise reach the service and fail there as
+/// a 500.
+/// </remarks>
 public record ImportDecisionsDto(
     [Required]
     [MinLength(1, ErrorMessage = "Send at least one row.")]
     [MaxLength(5000, ErrorMessage = "Too many rows in one request.")]
-    IReadOnlyList<ImportRowDecisionDto> Rows);
+    IReadOnlyList<ImportRowDecisionDto> Rows) : IValidatableObject
+{
+    public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
+    {
+        if (Rows.Any(row => row is null))
+            yield return new ValidationResult("Every row must be a decision.", [nameof(Rows)]);
+    }
+}
 
 /// <summary>
 /// What to do with one row, and optionally what to fix about it first.

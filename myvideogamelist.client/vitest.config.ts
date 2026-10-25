@@ -28,6 +28,15 @@ export default defineConfig({
         setupFiles: ['./src/test/setup.ts'],
         include: ['src/**/*.test.{ts,tsx}'],
         restoreMocks: true,
+        // West of Greenwich, and with no daylight saving to tie a test to its date. A day the API
+        // sends as `YYYY-MM-DD`, read as UTC midnight, is the day before here, so a test of one fails
+        // as a reader in the Americas would see it fail; in UTC, where CI runs, both readings agree and
+        // such a test passes whichever the code does. In `env` rather than the shell, because Vitest
+        // assigns it as each worker starts, on every machine alike. That needs a process per worker,
+        // as the default forks pool gives: a worker thread keeps the host's zone whatever TZ says, and
+        // releaseDate.test.ts fails if that ever happens. What the pin cannot catch is the mirror
+        // slip, a parsed day read back through UTC, which is wrong only east of Greenwich.
+        env: { TZ: 'Pacific/Honolulu' },
         // Route types live in .react-router and the build output is not test input.
         exclude: ['node_modules', 'build', '.react-router'],
     },

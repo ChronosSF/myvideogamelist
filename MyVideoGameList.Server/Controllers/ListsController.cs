@@ -8,9 +8,14 @@ using MyVideoGameList.Server.Services;
 
 namespace MyVideoGameList.Server.Controllers;
 
+/// <remarks>
+/// <c>no-store</c>, like every answer about one person: the rows carry the owner's scores and tag ids,
+/// and nothing between here and the browser should keep them for the next person at it (ADR 0065).
+/// </remarks>
 [ApiController]
 [Route("api/[controller]")]
 [Authorize]
+[ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
 public class ListsController(
     IListService listService,
     UserManager<ApplicationUser> userManager) : ControllerBase
@@ -37,6 +42,42 @@ public class ListsController(
         if (user is null) return Unauthorized();
 
         await listService.SetListEntryAsync(user.Id, gameId, dto.Status, cancellationToken);
+        return NoContent();
+    }
+
+    /// <summary>
+    /// Puts some of a list's games where the user has arranged them by hand — the backlog's "what I
+    /// will play next".
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A <c>PATCH</c>, as the import's row decisions are: it writes the games it names and leaves every
+    /// other game in the list where it was, which is what keeps a move to one row (ADR 0054). The
+    /// numbers are the client's; the server checks their range and that each game is in this list.
+    /// </para>
+    /// <para>
+    /// Any of the five lists, though the client offers the order on the backlog alone. Like a sort
+    /// preference, a position means nothing to the server, and a list that is later given an order of
+    /// its own should need no change here.
+    /// </para>
+    /// </remarks>
+    [HttpPatch("{status}/positions")]
+    [RequestSizeLimit(HandOrder.MaxRequestBytes)]
+    public async Task<IActionResult> SetPositions(
+        [AllowedValues(
+            ListStatusKeys.Backlog,
+            ListStatusKeys.Playing,
+            ListStatusKeys.OnHold,
+            ListStatusKeys.Finished,
+            ListStatusKeys.Dropped)]
+        string status,
+        [FromBody] SetPositionsDto dto,
+        CancellationToken cancellationToken)
+    {
+        var user = await userManager.GetUserAsync(User);
+        if (user is null) return Unauthorized();
+
+        await listService.SetPositionsAsync(user.Id, status, dto.Positions, cancellationToken);
         return NoContent();
     }
 

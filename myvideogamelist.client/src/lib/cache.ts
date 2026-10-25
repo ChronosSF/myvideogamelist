@@ -24,6 +24,20 @@
 export const PRIVATE_NO_STORE = 'private, no-store';
 
 /**
+ * Whether a shared cache may store a response sent with this `Cache-Control`.
+ *
+ * True unless it says `private` or `no-store` in so many words, so that a missing header counts as
+ * shared: `entry.server.tsx` sends such a document whole rather than streaming it (ADR 0053), and
+ * the direction to be wrong in is the one that costs a slower first byte. `private="Set-Cookie"`
+ * names fields rather than the response, which stays storable, so it counts as shared too.
+ */
+export function mayBeShared(cacheControl: string | null): boolean {
+    return !(cacheControl ?? '')
+        .split(',')
+        .some((directive) => /^(?:private|no-store)$/i.test(directive.trim()));
+}
+
+/**
  * Cacheable by shared caches for `sMaxAge` seconds, then servable stale for `staleWhileRevalidate`
  * more while the CDN refreshes in the background.
  *
@@ -38,9 +52,10 @@ export function sharedCache(sMaxAge: number, staleWhileRevalidate: number): stri
 /**
  * The home page. Short, because the news and trending rails are the reason to visit.
  *
- * Total staleness is this plus the server's own 15-minute `/api/home` cache, so roughly 20
- * minutes worst case. Shortening this alone would not make the page fresher — the API cache is
- * the binding constraint and would have to come down with it.
+ * Total staleness is this plus the server's own 15-minute `/api/home` cache: fifteen minutes in
+ * the API, five fresh at the edge and up to ten more served stale while the edge revalidates, so
+ * roughly half an hour worst case. Shortening this alone would not make the page fresher — the API
+ * cache is the binding constraint and would have to come down with it.
  */
 export const CACHE_HOME = sharedCache(300, 600);
 
@@ -54,9 +69,11 @@ export const CACHE_GAME = sharedCache(3600, 86_400);
  * The browse and search listing.
  *
  * Shorter than a game page despite similar content, because the response varies by query
- * string. **The CloudFront cache policy must include `search`, `sort`, `platform`, `genre`, `year`
- * and `minScore` in the cache key**, or every visitor is served whichever listing happened to
- * populate the edge first. `@/lib/gameBrowse` is the list of what the page reads.
+ * string. **The CloudFront cache policy must include `search`, `sort`, `platform`, `genre`, `year`,
+ * `minScore` and `esrb` in the cache key**, or every visitor is served whichever listing happened to
+ * populate the edge first — and a parameter left out of it is not even sent to the origin, so the
+ * filter is dropped from every render rather than only from the shared copy. `@/lib/gameBrowse` is
+ * the list of what the page reads, and `infra/src/Infra/Edge.cs` is the policy.
  */
 export const CACHE_GAMES_LIST = sharedCache(600, 3600);
 
@@ -75,14 +92,22 @@ export const CACHE_GAMES_LIST = sharedCache(600, 3600);
  * the one person for whom a five-minute wait is explicable, and the acquisition case (ROADMAP D8)
  * wants crawlers hitting the edge rather than the origin.
  *
- * **Known gap:** a profile switched back to private, renamed or deleted stays servable from the
- * edge for the `stale-while-revalidate` window, because nothing invalidates it — and so does a
- * review its author makes private, edits or deletes, since the page renders review bodies and the
- * old text sits in the cached HTML and its `.data` URL. ROADMAP D14 is CloudFront invalidation
- * from the API on those four events; until it ships, this policy is the window. Shortening it
- * here would narrow the window without closing it — see ADR 0027.
+ * **A withdrawal does not wait for this window.** A profile switched back to private, renamed or
+ * deleted, and a review its author makes private, edits or deletes, would otherwise stay servable
+ * from the edge for all of it, since the page renders review bodies and the old text sits in the
+ * cached HTML and its `.data` URL. The API invalidates `/u/{name}*` after each of those writes,
+ * and the profile sitemap files on the first three (ADR 0058). This policy is the window only when
+ * that fails, and the API's retry stops at the end of it — **so lengthening this has to lengthen
+ * `CloudFrontEdgeInvalidator.Horizon` on the server too**, or a long CloudFront outage gives up while
+ * a withdrawn page is still being served. Shortening it would narrow the window without closing
+ * it — see ADR 0027.
+ *
+ * **`stale-if-error=0` is what makes it a window.** Without it, CloudFront answers a 5xx from the
+ * origin by serving the expired copy it still holds, for as long as the cache policy's maximum TTL
+ * allows — a year here — so a page whose invalidation failed could come back during any later
+ * outage, long after its owner withdrew it. With it, an outage shows the error instead.
  */
-export const CACHE_PROFILE = sharedCache(300, 3600);
+export const CACHE_PROFILE = `${sharedCache(300, 3600)}, stale-if-error=0`;
 
 /**
  * Pages whose words change only with a deploy: the terms. A game page's window, since a changed page
@@ -108,7 +133,7 @@ export const CACHE_ROBOTS = sharedCache(3600, 86_400);
  *
  * **The profile files do not use this.** They use `CACHE_PROFILE`, so that a sitemap never goes on
  * naming a profile for longer than the profile's own page could have been served — a profile
- * switched back to private is a withdrawal of consent, and ROADMAP D14 lists the file beside the
- * page for that reason.
+ * switched back to private is a withdrawal of consent, and the API invalidates the files beside the
+ * page for that reason (ADR 0058).
  */
 export const CACHE_SITEMAP = sharedCache(3600, 86_400);

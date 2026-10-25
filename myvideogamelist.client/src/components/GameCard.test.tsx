@@ -3,8 +3,10 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { GameCard } from '@/components/GameCard';
+import { FavouritesContext, type FavouritesContextValue } from '@/contexts/FavouritesContext';
 import { ListsContext, type ListsContextValue } from '@/contexts/ListsContext';
 import { WishlistContext, type WishlistContextValue } from '@/contexts/WishlistContext';
+import { GAME_GRID_COVER_SIZES } from '@/lib/gameGrid';
 import { DEFAULT_SORT } from '@/lib/listSort';
 import { game } from '@/test/factories';
 import { LIST_NAMES, type ListId } from '@/types/list';
@@ -38,8 +40,10 @@ function listsValue(overrides: Partial<ListsContextValue> = {}): ListsContextVal
         getListFor: () => null,
         scoreFor: () => null,
         setScore: vi.fn(async () => true),
+        moveInOrder: vi.fn(async () => true),
         setOwnership: vi.fn(async () => true),
         setNotes: vi.fn(async () => true),
+        setTags: vi.fn(async () => ({ ok: true as const })),
         deleteEntry: vi.fn(async () => true),
         view: 'tiles',
         setView: vi.fn(),
@@ -68,16 +72,36 @@ function wishlistValue(overrides: Partial<WishlistContextValue> = {}): WishlistC
     };
 }
 
+function favouritesValue(overrides: Partial<FavouritesContextValue> = {}): FavouritesContextValue {
+    return {
+        items: [],
+        loading: false,
+        error: null,
+        mutationError: null,
+        orderError: null,
+        isFavourite: () => false,
+        isPending: () => false,
+        add: vi.fn(async () => true),
+        remove: vi.fn(async () => true),
+        moveInOrder: vi.fn(async () => true),
+        reload: vi.fn(),
+        ...overrides,
+    };
+}
+
 function renderCard(
     wishlistOverrides: Partial<WishlistContextValue> = {},
     listsOverrides: Partial<ListsContextValue> = {},
+    favouritesOverrides: Partial<FavouritesContextValue> = {},
 ) {
     const wishlist = wishlistValue(wishlistOverrides);
     render(
         <MemoryRouter>
             <ListsContext.Provider value={listsValue(listsOverrides)}>
                 <WishlistContext.Provider value={wishlist}>
-                    <GameCard game={CELESTE} />
+                    <FavouritesContext.Provider value={favouritesValue(favouritesOverrides)}>
+                        <GameCard game={CELESTE} />
+                    </FavouritesContext.Provider>
                 </WishlistContext.Provider>
             </ListsContext.Provider>
         </MemoryRouter>,
@@ -165,7 +189,9 @@ describe('GameCard wishlist failure', () => {
             <MemoryRouter>
                 <ListsContext.Provider value={listsValue()}>
                     <WishlistContext.Provider value={wishlistValue({ add: vi.fn(async () => false) })}>
-                        <GameCard game={CELESTE} />
+                        <FavouritesContext.Provider value={favouritesValue()}>
+                            <GameCard game={CELESTE} />
+                        </FavouritesContext.Provider>
                     </WishlistContext.Provider>
                 </ListsContext.Provider>
             </MemoryRouter>,
@@ -187,11 +213,110 @@ describe('GameCard wishlist failure', () => {
     });
 });
 
+describe('GameCard cover', () => {
+    const COVERED = game({
+        id: 2,
+        title: 'Hades',
+        coverImageUrl: 'https://images.igdb.com/igdb/image/upload/t_cover_big/co39vc.jpg',
+    });
+
+    function renderCovered(eager?: boolean) {
+        render(
+            <MemoryRouter>
+                <ListsContext.Provider value={listsValue()}>
+                    <WishlistContext.Provider value={wishlistValue()}>
+                        <FavouritesContext.Provider value={favouritesValue()}>
+                            <GameCard game={COVERED} eager={eager} />
+                        </FavouritesContext.Provider>
+                    </WishlistContext.Provider>
+                </ListsContext.Provider>
+            </MemoryRouter>,
+        );
+        return screen.getByRole('img', { name: 'Hades cover' });
+    }
+
+    it("offers the smaller sizes, chosen by the width the grid's columns draw it at", () => {
+        const img = renderCovered();
+
+        expect(img.getAttribute('srcset')).toContain('/t_cover_small_2x/co39vc.jpg 180w');
+        expect(img).toHaveAttribute('sizes', `auto, ${GAME_GRID_COVER_SIZES}`);
+    });
+
+    it('waits until it is scrolled near, below the first row', () => {
+        const img = renderCovered();
+
+        expect(img).toHaveAttribute('loading', 'lazy');
+        expect(img).toHaveAttribute('decoding', 'async');
+    });
+
+    it('loads with the page in the first row, where it may be the largest first paint', () => {
+        const img = renderCovered(true);
+
+        expect(img).not.toHaveAttribute('loading', 'lazy');
+        expect(img).not.toHaveAttribute('decoding', 'async');
+        // Chosen before layout, so by the grid's own arithmetic alone.
+        expect(img).toHaveAttribute('sizes', GAME_GRID_COVER_SIZES);
+    });
+});
+
+/**
+ * The rosette drawn on a cover. By its class, the one exception to querying by role: the mark is
+ * deliberately outside the accessibility tree, and what it says is asserted through the words instead.
+ */
+const coverMarks = () => document.querySelectorAll('.favourite-mark-cover');
+
+describe('GameCard favourite mark', () => {
+    it("marks one of the reader's favourites, and says so in its heading", () => {
+        // The rosette on the cover is decoration: the cover is a button with a name of its own, so a
+        // screen reader would hear nothing inside it. The heading is where the words go (ADR 0064).
+        renderCard({}, {}, { isFavourite: id => id === CELESTE.id });
+
+        expect(screen.getByRole('heading', { name: 'Celeste, one of your favourites' })).toBeInTheDocument();
+        expect(coverMarks()).toHaveLength(1);
+    });
+
+    it('marks nothing on a game that is not a favourite', () => {
+        renderCard({}, {}, { isFavourite: () => false });
+
+        expect(screen.getByRole('heading', { name: 'Celeste' })).toBeInTheDocument();
+        expect(coverMarks()).toHaveLength(0);
+    });
+
+    it('marks a favourite and offers no way to change it', () => {
+        // A favourite is made or unmade on the game's page, and on a release card; a card in a grid
+        // carries the five statuses and the wishlist, and a mark (ADR 0029 §4).
+        renderCard({}, {}, { isFavourite: () => true });
+
+        expect(screen.queryByRole('button', { name: /favourite/i })).not.toBeInTheDocument();
+    });
+});
+
 describe('GameCard and renamed lists', () => {
     it('labels its list buttons with the names their owner gave them', () => {
         renderCard({}, { nameFor: (id: ListId) => (id === 'dropped' ? 'Nope' : LIST_NAMES[id]) });
 
         expect(screen.getByRole('button', { name: 'Nope' })).toHaveAttribute('title', 'Add to Nope');
         expect(screen.queryByRole('button', { name: 'Dropped' })).not.toBeInTheDocument();
+    });
+});
+
+describe('GameCard release year', () => {
+    it('reads a game out on 1 January as that year, wherever the reader is', () => {
+        // The suite runs in Honolulu (vitest.config.ts), where `new Date('2025-01-01')` is still 2024
+        // (issue 267).
+        render(
+            <MemoryRouter>
+                <ListsContext.Provider value={listsValue()}>
+                    <WishlistContext.Provider value={wishlistValue()}>
+                        <FavouritesContext.Provider value={favouritesValue()}>
+                            <GameCard game={game({ id: 3, title: 'Balatro', releaseDate: '2025-01-01' })} />
+                        </FavouritesContext.Provider>
+                    </WishlistContext.Provider>
+                </ListsContext.Provider>
+            </MemoryRouter>,
+        );
+
+        expect(screen.getByText('2025')).toBeInTheDocument();
+        expect(screen.queryByText('2024')).not.toBeInTheDocument();
     });
 });

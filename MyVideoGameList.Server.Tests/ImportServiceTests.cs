@@ -18,8 +18,8 @@ namespace MyVideoGameList.Server.Tests;
 /// The assertions that matter most here are the ones about what the import does <em>not</em> write.
 /// An import creating a status without an event is the exemption ADR 0026 grants and ADR 0037
 /// extends, and the event log is the one table in this schema no migration can reconstruct — so a
-/// change that starts writing events, or that stamps <c>StatusChangedAt</c>, or that gives an
-/// imported run a type, has to fail a test rather than be noticed in review.
+/// change that starts writing events, or that stamps <c>StatusChangedAt</c> or <c>ScoredAt</c>, or
+/// that gives an imported run a type, has to fail a test rather than be noticed in review.
 /// </remarks>
 public class ImportServiceTests
 {
@@ -504,13 +504,31 @@ public class ImportServiceTests
     }
 
     [Fact]
+    public async Task CommitAsync_TheScoreFromTheSource_HasNoMomentForTheHistory()
+    {
+        // The source says what the score is, not when it was given. Stamped with the import's own
+        // clock, a whole library would sit at the top of the history as though scored in one
+        // afternoon — fabricated history, for the reason StatusChangedAt stays null (ADR 0062).
+        using var db = NewDb();
+        var service = NewService(db, CacheReturning(Game(379)));
+
+        var jobId = await UploadAsync(service, Export(Entry(rating: "4")));
+        await service.CommitAsync(UserId, jobId);
+
+        var entry = Assert.Single(db.UserGameEntries);
+        Assert.Equal((short)8, entry.Score);
+        Assert.Null(entry.ScoredAt);
+    }
+
+    [Fact]
     public async Task CommitAsync_DoesNotOverwriteAScoreTheUserAlreadySet()
     {
-        // An import is new information about a game, not a correction of what its owner recorded.
+        // An import is new information about a game, not a correction of what its owner recorded —
+        // and the moment the owner gave that score stays theirs too (ADR 0062).
         using var db = NewDb();
         db.UserGameEntries.Add(new UserGameEntry
         {
-            UserId = UserId, GameId = 379, Score = 3, Notes = "Mine.", AddedAt = Midday
+            UserId = UserId, GameId = 379, Score = 3, ScoredAt = Midday.AddDays(-2), Notes = "Mine.", AddedAt = Midday
         });
         await db.SaveChangesAsync();
 
@@ -526,6 +544,7 @@ public class ImportServiceTests
 
         var entry = Assert.Single(db.UserGameEntries);
         Assert.Equal((short)3, entry.Score);
+        Assert.Equal(Midday.AddDays(-2), entry.ScoredAt);
         Assert.Equal("Mine.", entry.Notes);
     }
 
@@ -732,6 +751,25 @@ public class ImportServiceTests
             [new ImportRowDecisionDto(row.Id, ImportDecisions.Import, null, "not-a-status")]));
 
         Assert.Null(Assert.Single((await service.GetReviewAsync(UserId, jobId))!.Rows).Status);
+    }
+
+    [Fact]
+    public async Task SetDecisionsAsync_ARowNamedTwice_TakesTheLastDecision()
+    {
+        // Rather than failing on the duplicate key as a 500.
+        using var db = NewDb();
+        var service = NewService(db, CacheReturning(Game(379)));
+
+        var jobId = await UploadAsync(service, Export(Entry()));
+        var row = Assert.Single((await service.GetReviewAsync(UserId, jobId))!.Rows);
+
+        Assert.True(await service.SetDecisionsAsync(UserId, jobId, new ImportDecisionsDto(
+        [
+            new ImportRowDecisionDto(row.Id, ImportDecisions.Import, null, null),
+            new ImportRowDecisionDto(row.Id, ImportDecisions.Skip, null, null),
+        ])));
+
+        Assert.Equal(ImportDecisions.Skip, Assert.Single((await service.GetReviewAsync(UserId, jobId))!.Rows).Decision);
     }
 
     [Fact]
@@ -987,6 +1025,52 @@ public class ImportServiceTests
         // game imported over the user's own entry goes uncounted, and the result screen reports
         // rows merging that never did.
         Assert.Equal(1, result.Games);
+    }
+
+    /// <summary>
+    /// A game already in the backlog at a hand-arranged position, opted into the import, so the commit
+    /// writes over it the way a user asked it to.
+    /// </summary>
+    private static async Task<ApplicationDbContext> PlacedInTheBacklogAndReimportedAsync(string shelves)
+    {
+        var db = NewDb();
+        db.UserGameEntries.Add(new UserGameEntry
+        {
+            UserId = UserId, GameId = 379, AddedAt = Midday, Position = 1024,
+            StatusId = db.ListStatuses.Single(s => s.Key == ListStatusKeys.Backlog).Id
+        });
+        await db.SaveChangesAsync();
+
+        var service = NewService(db, CacheReturning(Game(379)));
+        var jobId = await UploadAsync(service, Export(Entry(shelves: shelves)));
+        var row = Assert.Single((await service.GetReviewAsync(UserId, jobId))!.Rows);
+        await service.SetDecisionsAsync(UserId, jobId, new ImportDecisionsDto(
+            [new ImportRowDecisionDto(row.Id, ImportDecisions.Import, null, null)]));
+
+        await service.CommitAsync(UserId, jobId);
+        return db;
+    }
+
+    [Fact]
+    public async Task CommitAsync_MovingAPlacedGameToAnotherList_ClearsItsPosition()
+    {
+        // The import changes a status without an event, but it is still a move: a place chosen among
+        // the backlog's games is no place in Playing.
+        using var db = await PlacedInTheBacklogAndReimportedAsync(
+            """{"Playing": {"date_added": "2025-11-28T00:00:00Z"}}""");
+
+        var entry = Assert.Single(db.UserGameEntries);
+        Assert.Equal(db.ListStatuses.Single(s => s.Key == ListStatusKeys.Playing).Id, entry.StatusId);
+        Assert.Null(entry.Position);
+    }
+
+    [Fact]
+    public async Task CommitAsync_LeavingAPlacedGameInItsList_KeepsItsPosition()
+    {
+        using var db = await PlacedInTheBacklogAndReimportedAsync(
+            """{"Backlog": {"date_added": "2025-11-28T00:00:00Z"}}""");
+
+        Assert.Equal(1024, Assert.Single(db.UserGameEntries).Position);
     }
 
     [Fact]

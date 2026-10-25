@@ -1,9 +1,9 @@
 # Spec — What is coming for your games: a two-week line and a release calendar
 
-Status: **accepted — built under #162: the admin page (#163), the connected releases (#164), the two-week line (#165) and the calendar (#166). §9's questions are settled but two: its second, updates, is #239, and its fifth is #128**
-Relates to: #129 (the old month view, which this replaces), #128 (the showcases and sales for signed-out
-visitors — §9's fifth question), #122 (release notifications, which need the same "what is connected to
-my games" answer), ADR [0042](../docs/decisions/0042-admins-are-named-in-configuration.md) (the admin
+Status: **accepted — built under #162: the admin page (#163), the connected releases (#164), the two-week line (#165) and the calendar (#166), and updates under #239; and, outside it, the showcases and sales for whoever has no line (#128). §9's questions are all settled**
+Relates to: #129 (the old month view, which this replaces), #128 (the showcases and sales for whoever
+has no line, §2.3, which settled §9's fifth question), #122 (release notifications, which need the same "what is
+connected to my games" answer), ADR [0042](../docs/decisions/0042-admins-are-named-in-configuration.md) (the admin
 model §7 specifies), ADR
 [0004](../docs/decisions/0004-release-dates-for-calendar.md) (releases come from `release_dates`), ADR
 [0012](../docs/decisions/0012-steam-news-without-a-database.md) (derived data lives in memory, not in
@@ -32,7 +32,8 @@ news about those games tends to land, and the store-wide sales, when they get ch
 It is free on both tiers, as [0010](../docs/decisions/0010-monetization-model.md)'s table already has
 it ("Upcoming calendar").
 
-Every IGDB value and figure below was taken from live responses on 2026-09-28; §10 has them.
+Every IGDB value and figure below was taken from a live response, on 2026-09-28 unless it names another
+day; §10 has them.
 
 ## 2. What the user sees
 
@@ -51,7 +52,7 @@ whole view.
 | L4 | Every entry says why it is there (§3.4) |
 | L5 | Entries grouped by §3.3's F6 appear as one ("Kingdom Hearts — 8 releases") |
 | L6 | A link to the calendar, always shown |
-| L7 | Signed-in users only, and rendered even when empty, with a line saying nothing is due in the next two weeks — a section that comes and goes is one nobody learns to look for |
+| L7 | Signed-in users only, and rendered even when empty, with a line saying nothing is due in the next two weeks — a section that comes and goes is one nobody learns to look for. Whoever has no line has its showcases and sales in §2.3's panel |
 
 ### 2.2 The calendar — `/calendar`
 
@@ -60,9 +61,24 @@ whole view.
 | K1 | A month grid, Monday first, opening on the current month and reaching the same month a year later — thirteen months, §9's fourth question settled at the year it leaned to. All of them are listed above the grid, each with how much is on its days and in its own band, and the month is in the address (`?month=2027-02`), so that it can be linked to and the back button steps back through the months. A month the calendar does not reach opens the first |
 | K2 | Entries known to the day in their day's cell; sales and multi-day showcases as bars across their days, a piece per week, with only an event's first piece in the month read out, with all of its dates. Below `md` the month is a list instead: its sales and showcases once each, then the days with something on them |
 | K3 | Entries known only to the month, quarter or year in a band for that period, below the grid, never on an invented day (§4). The grid comes first, directly under the month's name: its days are the certain part of the month. A quarter's band is in each of its three months and a year's in each of its twelve: "sometime in 2027" is as true of March as of June. Beyond the first few months the bands are most of what there is (§10) |
-| K4 | An "Announced, no date" list of connected games IGDB has no date for at all, below the grid and the same in every month: games with no `first_release_date`, folded first (F3) and left out when what they fold into has one, and none IGDB marks cancelled or rumoured (F4). A game of the user's own is "announced for" its platforms rather than "out on" them. With no dates to order it by, the list is in bands, as the month's periods are, for what each game is to the user's: their own games (R1); DLC and expansions — a child that is DLC, an expansion, a standalone expansion, an episode or a season; remakes, remasters and ports — every other child, the game made again; and the rest of the series (R3). A group (F6) is in its strongest release's band, whose reason it shows |
+| K4 | An "Announced, no date" list of connected games IGDB has no date for at all, below the grid and the same in every month: games with no `first_release_date`, folded first (F3) and left out when what they fold into has one, none IGDB marks cancelled or rumoured (F4), and no update (F1). A game of the user's own is "announced for" its platforms rather than "out on" them. With no dates to order it by, the list is in bands, as the month's periods are, for what each game is to the user's: their own games (R1); DLC and expansions — a child that is DLC, an expansion, a standalone expansion, an episode or a season; remakes, remasters and ports — every other child, the game made again; and the rest of the series (R3). A group (F6) is in its strongest release's band, whose reason it shows |
 | K5 | Every entry says why it is there (§3.4), as on the line |
 | K6 | Signed-in only; `NOINDEX` and `private, no-store`, like every other per-user page |
+
+### 2.3 The showcases and sales for everybody
+
+The line's events are the same for everybody, so somebody who has not signed in gets them too, on their
+own: "Summer Game Fest starts in 2 days". Settled on #128; the reasoning is
+[0063](../docs/decisions/0063-the-showcases-and-sales-for-everybody.md).
+
+| # | Requirement |
+|---|---|
+| V1 | A panel of the showcases and sales on in today and the next thirteen days — the line's days (L1) and its events (§5, §6) — on the shared home page, directly above Trending: where the line is for somebody signed in |
+| V2 | Every visitor without a line sees it — signed out, and anybody until the page has learned who they are — server-rendered from `/api/home` (B8) rather than fetched by the page. It gives way to the line: while a signed-in reader's line is on the page, the panel is not. The line shows the same events on the same days, beside the reader's own releases, and the two together would show every sale twice, one under the other |
+| V3 | Each event says what it is — sale, fest or showcase — the store where it has one, and its name, linked to where it was announced or where it streams; and when, counted from the reader's own day: "Starts in 2 days", "Starts tomorrow", "Today", "Starts today", "On now" with the day it ends, "Ends tomorrow", "Ends today". Beside the count, its days, or a showcase's day and its start on the reader's clock (E4). What is already on comes first, then each by the day it starts |
+| V4 | Not rendered when nothing is on in the two weeks. Unlike the line (L7) it is not a section anybody has learned to look for, and an empty one would only say that nothing had been entered |
+| V5 | When IGDB fails the panel shows the sales it has, and says nothing of the showcases, as the page shows its covers without a word for the missing news; when the events cannot be read at all it is not rendered. Either way the page is marked degraded, so that nothing in front of the API keeps it (ADR [0013](../docs/decisions/0013-http-caching-policy.md)) |
+| V6 | Until the page hydrates, its days are UTC's — the day the loader ran on — and a showcase gives no time: one server render serves every reader. Once hydrated, the days and the clock are the reader's own. Where the two differ, which is for hours of every day somewhere, an event at either edge of the two weeks appears or goes as the page hydrates, and the panel with it when it is the only one |
 
 ## 3. Which games, and what "connected" means
 
@@ -85,7 +101,7 @@ Three relations, all asked in the same release query (§8.1):
 | # | Relation | In IGDB | What it finds | Seen on 2026-09-28 |
 |---|---|---|---|---|
 | R1 | The game itself | the game's own `release_dates` rows | a new platform or region; an early-access game reaching its full release | Resident Evil 2 on Switch 2, 16 Oct |
-| R2 | Its children | games whose `parent_game` or `version_parent` is the game | DLC, expansions, standalone expansions, remakes, remasters and expanded games | Street Fighter 6's next character, 13 Oct; The Witcher 3 Remastered, 29 Sep |
+| R2 | Its children | games whose `parent_game` or `version_parent` is the game | DLC, expansions, standalone expansions, remakes, remasters, expanded games and updates | Street Fighter 6's next character, 13 Oct; The Witcher 3 Remastered, 29 Sep |
 | R3 | Its series | games sharing one of its IGDB series (`collections`) | sequels and prequels, spin-offs, and the series' remakes and new-console editions | Grand Theft Auto VI (from GTA V), 19 Nov; God of War Laufey, 16 Feb 2027; Persona 4 Revival, 18 Feb 2027 |
 
 Most new-platform releases are R1: IGDB adds a platform's release row to the game rather than
@@ -109,17 +125,20 @@ Deliberately not used:
 
 For the 34-game demo library, the three relations found 21 games with a release in the next six
 months. F1 to F5 removed a bundle, a shutdown and an update, and left eighteen entries a player
-would recognise (§10). Across all dates, the same library's children in IGDB include 117 mods, 26
-packs and 17 bundles, so the rules will have more to do than one six-month window suggests.
+would recognise (§10). Asked again on 2026-10-15, the update is Silksong's "Sea of Sorrow", which only
+the Hollow Knight series connects to that library, so F1 still leaves it out; and The Witcher 3
+Remastered, typed Update since, is still among the eighteen as the game's child. Across all dates, the
+same library's children in IGDB include 117 mods, 26 packs and 17 bundles, so the rules will have more
+to do than one six-month window suggests.
 
 | # | Rule | Why |
 |---|---|---|
-| F1 | Keep game types 0 Main Game, 1 DLC, 2 Expansion, 4 Standalone Expansion, 6 Episode, 7 Season, 8 Remake, 9 Remaster, 10 Expanded Game and 11 Port | What a player would call a release |
-| F2 | Drop 3 Bundle, 5 Mod, 12 Fork, 13 Pack / Addon and 14 Update | Mods alone were 117 of the demo library's 320 children. Update is to be kept for the games in the set (§9, #239): Silksong's "Sea of Sorrow" is one |
+| F1 | Keep game types 0 Main Game, 1 DLC, 2 Expansion, 4 Standalone Expansion, 6 Episode, 7 Season, 8 Remake, 9 Remaster, 10 Expanded Game and 11 Port. Keep 14 Update only as a game's own, and only with a date: when the set holds the game it updates (R2) or the update itself (R1), never when a series is all that connects it (R3), and never in "Announced, no date" (K4). The game it updates is its `parent_game`, whatever that is. An edition that F3 shows as an update is held to the same | What a player would call a release, and an update can be one: Silksong's "Sea of Sorrow" is, and IGDB typed The Witcher 3 Remastered an Update by 2026-10-15, where on 2026-09-29 it was a Remaster. A game's own only (§9, #239), because through a series every update of every member of every series in the set would come in: Minecraft: Wilderness Bound, an update to Minecraft: Java Edition, would reach everybody who played Minecraft Dungeons. An update can update an expansion, a port or another update: Grand Theft Auto Online: The Contract updates Grand Theft Auto Online, a standalone expansion of Grand Theft Auto V, so it comes in for somebody who tracks Grand Theft Auto Online, and not for somebody who tracks only Grand Theft Auto V. "Asphalt Legends Unite: Supercharged Edition" is a main game in no series, shown as the update Asphalt Legends Unite, which is in the Asphalt series. And IGDB keeps updates nobody came back to date, so for an update no date anywhere is no sign of one to come (§10) |
+| F2 | Drop 3 Bundle, 5 Mod, 12 Fork and 13 Pack / Addon, and an update F1 does not keep | Mods alone were 117 of the demo library's 320 children |
 | F3 | Fold an edition — a main game (type 0) with a `version_parent` — into the game it is an edition of, following a chain of editions to its end; the chain can pass through a bundle. A remaster, expanded game or port that carries a `version_parent` is not folded: it is a product of its own, and a child of that game (R2). It also ends a chain, so an edition of one is shown as it | "Grand Theft Auto VI: Ultimate Edition" is Grand Theft Auto VI, on the same day. Of 500 games carrying a `version_parent` on 2026-09-29, 426 were main games and 61 bundles (F2 drops those), and ten were remasters, expanded games and ports. The Witcher 3's "10th Anniversary Edition" is an edition of its "Complete Edition", a bundle, which is an edition of the game. "Rust: Console Edition - Ultimate" is an edition of Rust's console port, which carries a `version_parent` of its own, and is the port |
 | F4 | Keep release statuses 6 Full Release and 3 Early Access, and rows with no status. Drop 1 Alpha, 2 Beta, 4 Offline, 5 Cancelled, 34 Advanced Access, 35 Digital Compatibility Release and 36 Next-Gen Optimization Patch Release. Drop every row of a game IGDB marks cancelled or rumoured — `game_status` 6 or 7 — whatever its rows say | Offline is a shutdown date — Final Fantasy VII: Ever Crisis on 6 Oct — not a release. Advanced Access opens a game early to buyers of one edition, and would list the game twice. 35 and 36 are an old game sold unchanged on a newer console, or patched for one. A cancelled game's rows can outlive it: on 2026-10-08 "Metro Rivals: New York" was marked cancelled with three "2026" rows still marked Full Release, and Fallout Extreme was still "to be decided" on the Xbox and the PS2 |
 | F5 | One entry per game and period, its platforms merged. Where the same game on the same platform, in the same phase, is also known more precisely inside that period — a region's day beside another's month — only the precise one is kept. The phase is early access, or a full release with or without its status. The comparison takes in what is known outside the window too, where a band's period runs past it (§8.1) | As ADR 0004 already does, and so that "Oct 2026" does not sit beside "16 Oct 2026" as a second release. An early-access day and a full release known only to its year are two milestones, not one known twice: Starseeker: Astroneer Expeditions entered early access on 11 June 2026 with its full release "2026". And a band can be outlived just outside the window: Little Witch in the Woods was "2026" on Switch and came out on Switch on 16 September, so a calendar opening on 1 October would have shown it as due sometime in a year it was already out in |
-| F6 | Entries in the same period that belong together group into one: the same series, or — with no series between them — DLC for the same game. Where they share several series, the series is chosen across the period, not per entry: the one the most of them share takes its entries first, then the next among the rest, a tie going to the lowest id. The group is named after the series or the game, and its strongest reason (§3.4) is the one shown | Eight of the 300-game test's ten entries in two weeks were Kingdom Hearts games arriving on Switch 2, PS5 and Xbox on the same day. On 13 October 2026 Street Fighter 6 had two DLC rows for one character, "Year 4 - Arjun" and "Additional Character - Arjun & Outfit 2", and neither is in a series. On 1 February 2026 Final Fantasy VII Remake and its Episode Intermission came to Switch 2 and Xbox Series together, both in Final Fantasy, Final Fantasy VII and the Compilation of Final Fantasy VII, which IGDB lists in a different order for each |
+| F6 | Entries in the same period that belong together group into one: the same series, or — with no series between them — the same game: its DLC, its updates and its other children, and the game itself when it is out in that period too. Where they share several series, the series is chosen across the period, not per entry: the one the most of them share takes its entries first, then the next among the rest, a tie going to the lowest id. The group is named after the series or the game, and its strongest reason (§3.4) is the one shown | Eight of the 300-game test's ten entries in two weeks were Kingdom Hearts games arriving on Switch 2, PS5 and Xbox on the same day. On 13 October 2026 Street Fighter 6 had two DLC rows for one character, "Year 4 - Arjun" and "Additional Character - Arjun & Outfit 2", and neither is in a series. IGDB can hold one event twice: on 9 September 2026 Valheim left early access on seven platforms, and "Valheim: 1.0", an update, came out on the same seven. On 1 February 2026 Final Fantasy VII Remake and its Episode Intermission came to Switch 2 and Xbox Series together, both in Final Fantasy, Final Fantasy VII and the Compilation of Final Fantasy VII, which IGDB lists in a different order for each |
 
 ### 3.4 Every entry says why it is there
 
@@ -140,8 +159,9 @@ game reaching a new platform.
 
 A group (F6) says its strongest reason as the group's: "Includes Kingdom Hearts III, which you
 finished", or "Connected to Kingdom Hearts III" when that reason is one release's DLC, so that eight
-releases are not all called DLC. A run of DLC for one game is the group that can be called what it
-is: "DLC for Street Fighter 6, which you're playing".
+releases are not all called DLC. A run of one kind of child for one game — its DLC, its updates — is the
+group that can be called what it is: "DLC for Street Fighter 6, which you're playing", "Updates for
+Fallout 76, which you're playing".
 
 ## 4. Most dates are not days
 
@@ -184,7 +204,7 @@ shown.
 | E1 | An IGDB event is shown when its name starts with one of a list of showcase names kept on the admin page (§7), ignoring case: "Nintendo Direct", "State of Play", "Summer Game Fest", "The Game Awards", "Xbox Games Showcase", "Gamescom Opening Night Live" and so on. A prefix, not a substring: "Day of the Devs: Summer Game Fest Digital Showcase" is a satellite show, and does not start with "Summer Game Fest". The list starts empty and is filled on the page — no migration seeds it, so that it is kept in one place |
 | E2 | A showcase IGDB does not have yet can be added by hand on the admin page, as a curated event (§6) |
 | E3 | "Features a game you track" is left for later. An event's `games` appear to be filled in around the broadcast — the one future event had none — so it could only be said of a show that has already aired |
-| E4 | An IGDB event is an instant, not a day, and is drawn on the reader's own day at its start time. A show at three in the afternoon in Los Angeles airs after midnight in Sofia, and only the reader's clock can say which. So the server asks IGDB for a day either side of the window, in UTC, and the browser keeps what falls on the reader's days. `time_zone` is not read: it is an abbreviation, and on 2026-10-06 the June 2026 shows were "PST" while Los Angeles was on daylight time |
+| E4 | An IGDB event is an instant, not a day, and is drawn on the reader's own day at its start time. A show at three in the afternoon in Los Angeles airs after midnight in Sofia, and only the reader's clock can say which. So the server asks IGDB for a day either side of the window, in UTC, and the browser keeps what falls on the reader's days. `time_zone` is not read: it is an abbreviation, and on 2026-10-06 the June 2026 shows were "PST" while Los Angeles was on daylight time. The home page's panel is server-rendered, so until it hydrates it draws a showcase on UTC's day instead (V6) |
 
 ## 6. Store sales, entered by hand
 
@@ -277,7 +297,7 @@ Those rows are compared and never shown.
 For a 1,500-game library that release query was 26 KB, and came back as one page of 332 rows in
 0.7 s. A bigger library is split into a query per 1,500 games, and one for its series, rather than
 sent as a query longer than any IGDB has been seen to accept. The games each row names — and, for
-F3, the editions they are editions of, a generation at a time, and for F6 the games they are DLC for,
+F3, the editions they are editions of, a generation at a time, and for F6 the games they are children of,
 which name a group even when they are not in the set — are one more `games` query each, and each game
 is cached on its own for six hours, since the same games come up for everybody.
 
@@ -311,6 +331,7 @@ should be one service that both call.
 | B5 | Tests for §3.3's rules against recorded IGDB rows, and for the policy refusing a non-admin |
 | B6 | Once the line ships, retire `/api/games/upcoming` and `GetUpcomingReleasesAsync`. 0004's reasoning — `release_dates`, not `first_release_date` — carries over to B1 |
 | B7 | `GET /api/user/releases/undated` — the connected games IGDB has no date for at all (K4), grouped by F6 and each with its reason, the most connected first: the game itself before its children before its series. `no-store`, and no window, since there are no dates to put one around |
+| B8 | `GET /api/home` carries B2's answer for §2.3's panel, asked about the UTC days from yesterday to the fourteenth after today, inclusive — every reader's two weeks at once, since at any instant the readers' todays span three UTC days — and the page keeps its reader's own. It is kept with the rest of the composite, fifteen minutes or a minute when degraded, so an admin's edit reaches the home page as the composite and the edge renew it — fifteen minutes in memory, then five fresh at the edge and ten more served stale (ADR 0013), about half an hour — where B2 has it at once. IGDB's events are kept an hour for both, so a showcase IGDB adds late takes up to an hour and a half to reach the panel. Showcases missing, or the events failing to be read, mark the composite degraded; nothing on is an answer, and does not |
 
 ### 8.3 Client
 
@@ -321,22 +342,28 @@ should be one service that both call.
 | C3 | `/calendar`, the month grid of §2.2 |
 | C4 | `/admin`, the curated events and the showcase names |
 | C5 | Both routes declare `private, no-store` through `headers` and `NOINDEX` in `meta` |
+| C6 | `ShowcasesAndSales` on the home page (§2.3), from the loader's answer, above Trending, and not rendered while the line is |
 
 ## 9. Questions, and their answers
 
 1. **Dropped.** Settled on #162: out of the set (§3.1), though somebody who dropped a game might
    still want its sequel.
-2. **Updates.** Type 14 is dropped (F2), which also drops the occasional real content drop such as
-   Silksong's "Sea of Sorrow". Decided on #162 that they are to be included; #239 does it, and settles
-   whether through a series as well as for a game's own updates. Measured on #168: two in six months
-   for a 600-game library, both real content drops.
+2. **Updates.** Settled on #239: a game's own updates are shown, as its DLC is, no update comes in
+   through a series, and none is announced without a date (F1). #162 had decided that they were to be
+   included, since dropping every update dropped the occasional real content drop such as Silksong's
+   "Sea of Sorrow", and had leaned to a game's own only. Measured on #168: two in six months for a
+   600-game library, both real content drops. Across the whole of IGDB on 2026-10-15, each of the 35
+   updates with a row stored in the range a calendar from 1 October 2026 widens to had a `parent_game` to
+   be reached by, and four were in a series as well, of which only "Sea of Sorrow" falls inside that
+   calendar (§10).
 3. **Steam's themed fests.** Settled on #162: nothing to build. A fest is shown once it is entered on
    the admin page (S2), and none is entered by default.
 4. **The calendar's horizon.** Settled on #166 at a year: the month the calendar opens on and the twelve
    after it (K1), which is also what one request may ask for. Six months held eighteen entries for the demo
    library, and beyond the first few months most of what there is is known only to its year (§10).
-5. **Signed-out visitors.** Nothing, or the showcases and sales on their own? #128 wanted showcases
-   on the shared home page, and this spec puts them on the signed-in line.
+5. **Signed-out visitors.** Settled on #128: the showcases and sales on their own, for every visitor who has
+   no line, in a panel on the shared home page that gives way to the line for somebody signed in (§2.3,
+   [0063](../docs/decisions/0063-the-showcases-and-sales-for-everybody.md)).
 6. **Shutdowns.** Settled on #162: not shown. A game the user tracks going offline is dropped with
    every other Offline row (F4).
 7. **A game with a stream of DLC.** Settled on #168: no cap. F6 groups DLC for one game on one day,
@@ -350,6 +377,7 @@ should be one service that both call.
 | What | Values |
 |---|---|
 | `game_types` | 0 Main Game, 1 DLC, 2 Expansion, 3 Bundle, 4 Standalone Expansion, 5 Mod, 6 Episode, 7 Season, 8 Remake, 9 Remaster, 10 Expanded Game, 11 Port, 12 Fork, 13 Pack / Addon, 14 Update |
+| Updates, 2026-10-15 | 14 is still Update. Thirty-five updates had a row stored between 31 August 2026 and 31 October 2028, the range a calendar from 1 October 2026 widens to for a row known only to a month, quarter or year (§8.1): all 35 had a `parent_game`, none a `version_parent`, and four were in a series — "Sea of Sorrow" (Hollow Knight), Minecraft: Wilderness Bound (Minecraft), The Witcher 3: Wild Hunt Remastered (The Witcher; a Remaster on 2026-09-29) and Stones Keeper: Director's Cut. Thirteen of the 35 have a row inside that calendar, a day in its window or a period overlapping it, and of the four only "Sea of Sorrow": the other three came out in September, known to the day. No update had a row stored after 31 December 2026. Twenty-two updates had no date anywhere, and nineteen of those had been on IGDB for more than a year: two "Summer Update"s added in the summer of 2025, and Valheim's "The Bog Witch", added in October 2024, among them. All of IGDB held five editions of updates, four main games and a bundle, none of them in a series; two of the updates they are editions of are in one, Asphalt Legends Unite (Asphalt) and Virtua Fighter 5 R.E.V.O. World Stage |
 | `date_formats` | 0 YYYYMMDD, 1 YYYYMM, 2 YYYY, 3 YYYYQ1, 4 YYYYQ2, 5 YYYYQ3, 6 YYYYQ4, 7 TBD |
 | `release_date_statuses` | 1 Alpha, 2 Beta, 3 Early Access, 4 Offline, 5 Cancelled, 6 Full Release, 34 Advanced Access, 35 Digital Compatibility Release, 36 Next-Gen Optimization Patch Release |
 | `game_statuses`, 2026-10-08 | 0 Released, 2 Alpha, 3 Beta, 4 Early Access, 5 Offline, 6 Cancelled, 7 Rumored, 8 Delisted. Absent for most games |
@@ -371,6 +399,7 @@ made of IGDB's most-rated main games.
 | Measurement | Result |
 |---|---|
 | Demo library, next six months, after F1–F3 and F4's Offline, before F6 | 18 entries: 1 from R1, 6 from R2, 11 from R3 |
+| Updates the demo library reaches over the same six months, asked on 2026-10-15 | Two: "Sea of Sorrow", through the Hollow Knight series alone, which F1 leaves out; and The Witcher 3 Remastered, now typed Update, as The Witcher 3's child. Every other measurement here was taken while F2 still dropped every update |
 | Next two weeks, day-precise only, after the same rules | 34 games: 1 · 100: 2 · 300: 10, eight of them one Kingdom Hearts day · 700: 13 · 1,500: 26 |
 | One release query for a whole library | 34 games: 0.33 s · 300 games and 159 series (5 KB): 0.30 s · 700 and 322 (12 KB): 0.67 s · 1,500 and 616 (26 KB): 0.71 s, in one page |
 | Release rows dated within twelve months, by precision | 6,317: 1,661 to the day, 305 to the month, 1,516 to a quarter, 2,835 to the year |
@@ -397,7 +426,7 @@ made of IGDB's most-rated main games.
 
 ## 11. What is left, and in what order
 
-Each step is a sub-issue of #162.
+Steps 1 to 5 are sub-issues of #162; the sixth is #128.
 
 1. The admin page, its two tables and A1's policy (§7) — small, and it unblocks the sales and the
    showcases. #163, done.
@@ -405,3 +434,4 @@ Each step is a sub-issue of #162.
 3. B2, and the two-week line in place of the Releasing soon rail. #165, done.
 4. The calendar, and the line's link to it (L6). #166, done.
 5. Retiring `/api/games/upcoming` (B6), with the line. #165, done.
+6. The showcases and sales for whoever has no line (§2.3, B8, C6). #128, done.

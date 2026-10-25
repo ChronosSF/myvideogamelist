@@ -70,6 +70,16 @@ export interface LanguageSupportDto {
 }
 
 /**
+ * A store the game is sold on, by the name the page shows, and the address of the game's page there:
+ * https, on that store's own host, with nothing after the path. No price — prices come from
+ * IsThereAnyDeal (ADR 0009).
+ */
+export interface StoreLinkDto {
+    store: string;
+    url: string;
+}
+
+/**
  * The detail-only half of a game. Present only on `/api/games/{id}` — the listing endpoints
  * return `details: null`, because screenshots and language tables multiplied by a page of
  * results cost far more than a grid of covers can use.
@@ -89,6 +99,8 @@ export interface GameDetailsDto {
     collections: string[];
     franchises: string[];
     languages: LanguageSupportDto[];
+    /** One per store, in the order the page lists them; empty when IGDB names none. */
+    stores: StoreLinkDto[];
 }
 
 export interface GameDto {

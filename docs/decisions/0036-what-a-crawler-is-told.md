@@ -3,7 +3,13 @@
 **Status:** Implemented. The basic auth that keeps dev private is a CloudFront Function on every
 behaviour, with the three public community endpoints exempt because the browser withholds
 `Authorization` from a `credentials: 'omit'` request —
-[0044](0044-what-the-deployment-walkthrough-settled.md).
+[0044](0044-what-the-deployment-walkthrough-settled.md). The invalidation the consequences below
+anticipate (D14) is [0058](0058-a-withdrawal-leaves-the-edge-when-it-is-made.md), and it names the
+profile files as `/sitemaps/profiles-*`. The `/sitemaps/profiles-*.xml` in the consequences below
+describes the files; as an invalidation path it would match nothing, because CloudFront reads a `*`
+that is not the last character literally. The search console's record, and the holding page that
+answers at the domain until production does, are
+[0066](0066-a-holding-page-until-production-takes-the-domain.md).
 
 ## Context
 
@@ -72,6 +78,10 @@ If they ever become links, revisit this: every distinct filtered URL is an IGDB 
 Resource routes under `src/resources/`, not files in `public/`, because what they say depends on
 the deployment. A resource route returns its own `Response` and never passes through
 `entry.server.tsx`, so `resourceResponse` adds by hand what that file adds to a document.
+
+> **Later note.** Except the content policy, which since
+> [0053](0053-a-documents-scripts-carry-its-renders-nonce.md) names a document's own nonce. A resource
+> renders no script, so it gets the API's policy instead, one that loads nothing (0053 §4).
 
 ### 4. The sitemap lists what we have something to say about, from our own tables
 
@@ -148,5 +158,6 @@ does not.
   `Disallow`, each breaks the other's reasoning.
 - **Not done:** a default share image, so the home page, the catalogue and profiles unfurl without
   one — it needs a designed raster image the repository does not have. Structured data is not part
-  of this. Neither is registering the site with a search console, which is a DNS record and belongs
-  with the infrastructure.
+  of this; it is [0069](0069-a-crawler-is-told-what-is-ours.md), which also found that §4's rejected
+  top-up has nothing to draw on in `CachedGames`. Neither is registering the site with a search
+  console, which is a DNS record and belongs with the infrastructure.

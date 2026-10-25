@@ -12,6 +12,9 @@
 
 services:
     db:
+        # The integration tests run this image too (PostgresServer.Image in
+        # MyVideoGameList.Server.IntegrationTests), and so do the browser smoke test's and the Lighthouse
+        # audit's service containers in .github/workflows/ci.yml, so change the four together.
         image: postgres:18-alpine
         container_name: mvgl-postgres
         restart: unless-stopped
@@ -30,8 +33,10 @@ services:
         healthcheck:
             # Lets `docker compose up --wait` block until the server actually accepts
             # connections. Without it the container reports ready while PostgreSQL is still
-            # starting, and the first `dotnet ef` command races it.
-            test: ['CMD-SHELL', 'pg_isready -U mvgl -d myvideogamelist']
+            # starting, and the first `dotnet ef` command races it. Over TCP rather than the socket:
+            # on a first start, with a new volume, the image sets up through a temporary server that
+            # listens on the socket alone, which a socket check reports ready before the real one is.
+            test: ['CMD-SHELL', 'pg_isready -h 127.0.0.1 -U mvgl -d myvideogamelist']
             interval: 5s
             timeout: 5s
             retries: 12

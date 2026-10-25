@@ -1,6 +1,14 @@
 import { useId } from 'react';
 import type { GenreDto, PlatformDto } from '@/types/game';
-import { type GameBrowse, type GameSort, GAME_SORTS, MIN_SCORES, isFiltered } from '@/lib/gameBrowse';
+import {
+    type EsrbRating,
+    type GameBrowse,
+    type GameSort,
+    ESRB_RATINGS,
+    GAME_SORTS,
+    MIN_SCORES,
+    isFiltered,
+} from '@/lib/gameBrowse';
 
 interface GameBrowseFiltersProps {
     browse: GameBrowse;
@@ -17,7 +25,7 @@ interface GameBrowseFiltersProps {
 
 const selectClass =
     'w-full sm:w-auto px-3 py-2 bg-surface border border-line-strong '
-    + 'rounded-lg text-fg-strong text-sm focus:outline-none focus:ring-2 focus:ring-focus '
+    + 'rounded-lg text-fg-strong text-sm focus:outline-hidden focus:ring-2 focus:ring-focus '
     + 'focus:border-transparent disabled:opacity-60';
 
 const labelClass = 'block text-xs font-semibold uppercase tracking-wide text-fg-muted mb-1';
@@ -160,6 +168,26 @@ export function GameBrowseFilters({ browse, platforms, genres, years, onChange, 
                     </select>
                 </div>
 
+                {/* No unoffered case here: the URL can only name a rating this list offers, since
+                    `browseFrom` drops any other key and the API refuses it. */}
+                <div>
+                    <label htmlFor={`${id}-esrb`} className={labelClass}>ESRB rating</label>
+                    <select
+                        id={`${id}-esrb`}
+                        className={selectClass}
+                        value={browse.esrb ?? ''}
+                        onChange={event => onChange({
+                            esrb: event.target.value === '' ? null : event.target.value as EsrbRating,
+                        })}
+                        aria-describedby={`${id}-esrb-hint`}
+                    >
+                        <option value="">Any rating</option>
+                        {ESRB_RATINGS.map(rating => (
+                            <option key={rating.key} value={rating.key}>{rating.label}</option>
+                        ))}
+                    </select>
+                </div>
+
                 {isFiltered(browse) && (
                     <div className="col-span-2 sm:col-span-1">
                         <button
@@ -177,6 +205,12 @@ export function GameBrowseFilters({ browse, platforms, genres, years, onChange, 
                 {searching
                     ? 'Search results come in order of how well they match. The filters still apply.'
                     : sort.hint}
+            </p>
+            {/* Always there, as the order's is, so that it is read before a rating is chosen: a
+                description that appears with the choice is announced to nobody, since a screen
+                reader reads it when the select takes focus. */}
+            <p id={`${id}-esrb-hint`} className="mt-1 text-xs text-fg-muted">
+                Choosing an ESRB rating leaves out the games IGDB holds no ESRB rating for.
             </p>
         </div>
     );

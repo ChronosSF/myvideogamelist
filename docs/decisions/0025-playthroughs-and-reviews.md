@@ -1,6 +1,7 @@
 # 0025. Playthroughs and reviews: what a user records about actually playing a game
 
-**Status:** Implemented
+**Status:** Implemented. §6 holds for the row; the game page's loader also reads the community times
+for its description since [0069](0069-a-crawler-is-told-what-is-ours.md).
 
 ## Context
 

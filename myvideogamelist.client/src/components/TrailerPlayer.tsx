@@ -44,7 +44,7 @@ export function TrailerPlayer({ videoId, title, poster }: TrailerPlayerProps) {
                 <button
                     type="button"
                     onClick={() => setPlaying(true)}
-                    className="group absolute inset-0 flex flex-col items-center justify-center gap-2 bg-surface text-fg-strong cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-focus"
+                    className="group absolute inset-0 flex flex-col items-center justify-center gap-2 bg-surface text-fg-strong cursor-pointer focus-visible:outline-hidden"
                 >
                     {poster !== null && (
                         <img src={poster} alt="" loading="lazy" className="absolute inset-0 w-full h-full object-cover" />

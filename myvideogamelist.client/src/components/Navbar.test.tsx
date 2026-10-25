@@ -1,10 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMemoryRouter, RouterProvider } from 'react-router';
 import { Navbar } from '@/components/Navbar';
 import type { AuthContextValue } from '@/contexts/AuthContext';
 import type { UserProfile } from '@/types/auth';
+import { userProfile } from '@/test/factories';
 
 /**
  * Auth, mocked rather than provided: the real provider fetches, and the navbar only reads what it
@@ -22,18 +23,16 @@ const auth: AuthContextValue = {
     logout: vi.fn(async () => {}),
     updateUserName: vi.fn(async () => {}),
     updateProfileVisibility: vi.fn(async () => {}),
+    updateProfileDetails: vi.fn(async () => {}),
     deleteAccount: vi.fn(async () => {}),
 };
 
 vi.mock('@/hooks/useAuth', () => ({ useAuth: () => auth }));
 
-const ALEX: UserProfile = {
-    id: 'user-1',
-    email: 'alex@test.local',
-    userName: 'alex',
-    profileVisibility: 'private',
-    isAdmin: false,
-};
+const ALEX: UserProfile = userProfile();
+
+/** A picture on one of the avatar hosts, as `/api/auth/me` carries it. */
+const PICTURE = 'https://avatars.githubusercontent.com/u/9919?v=4';
 
 /** `/api/auth/me` has come back, with an account or with nobody. */
 function authAnswered(user: UserProfile | null) {
@@ -267,6 +266,109 @@ describe('Navbar main menu', () => {
     });
 });
 
+describe('Navbar search', () => {
+    it('is on the bar for a signed-out visitor too, as a form that searches the browse page', () => {
+        authAnswered(null);
+        renderNavbar();
+
+        const box = screen.getByRole('combobox', { name: 'Search games' });
+        expect(box.closest('form')).toHaveAttribute('action', '/games');
+        expect(screen.getByRole('search')).toContainElement(box);
+    });
+
+    it('never shares the screen with the main menu or the user menu', () => {
+        // fireEvent rather than userEvent, for the reason the user menu's test gives: Safari moves
+        // no focus on a click, so a focus-out close cannot be what closes the others.
+        authAnswered(ALEX);
+        renderNavbar();
+        const search = screen.getByRole('button', { name: 'Search' });
+        const { button: mainMenuButton } = mainMenu();
+        const userButton = screen.getByRole('button', { name: 'User menu' });
+
+        fireEvent.click(search);
+        expect(search).toHaveAttribute('aria-expanded', 'true');
+
+        fireEvent.click(mainMenuButton);
+        expect(search).toHaveAttribute('aria-expanded', 'false');
+        expect(mainMenuButton).toHaveAttribute('aria-expanded', 'true');
+
+        fireEvent.click(search);
+        expect(mainMenuButton).toHaveAttribute('aria-expanded', 'false');
+        expect(search).toHaveAttribute('aria-expanded', 'true');
+
+        fireEvent.click(userButton);
+        expect(search).toHaveAttribute('aria-expanded', 'false');
+        expect(userButton).toHaveAttribute('aria-expanded', 'true');
+
+        fireEvent.click(search);
+        expect(userButton).toHaveAttribute('aria-expanded', 'false');
+        expect(search).toHaveAttribute('aria-expanded', 'true');
+    });
+
+    it('closes when the scrim is tapped', async () => {
+        authAnswered(null);
+        const actor = userEvent.setup();
+        renderNavbar();
+        const search = screen.getByRole('button', { name: 'Search' });
+
+        await actor.click(search);
+        const scrim = document.querySelector<HTMLElement>('.navbar-scrim');
+        expect(scrim).toBeInTheDocument();
+
+        await actor.click(scrim!);
+
+        expect(search).toHaveAttribute('aria-expanded', 'false');
+        expect(document.querySelector('.navbar-scrim')).not.toBeInTheDocument();
+    });
+
+    it('closes when the page changes under it', async () => {
+        authAnswered(null);
+        const actor = userEvent.setup();
+        const router = renderNavbar();
+        const search = screen.getByRole('button', { name: 'Search' });
+
+        await actor.click(search);
+        await act(() => router.navigate('/games'));
+
+        expect(search).toHaveAttribute('aria-expanded', 'false');
+    });
+
+    it('drops the panel when the window widens to where the box sits in the bar', async () => {
+        // The setup's stand-in never matches and never changes, so this one is a query that can be
+        // made to match, and that tells whoever listens when it does.
+        let wide = false;
+        const listeners = new Set<() => void>();
+        const standIn = window.matchMedia;
+        window.matchMedia = (query: string) => ({
+            get matches() { return query === '(width >= 64rem)' && wide; },
+            media: query,
+            onchange: null,
+            addEventListener: (_type: string, listener: () => void) => listeners.add(listener),
+            removeEventListener: (_type: string, listener: () => void) => listeners.delete(listener),
+            dispatchEvent: () => false,
+            addListener: () => {},
+            removeListener: () => {},
+        }) as unknown as MediaQueryList;
+
+        try {
+            authAnswered(null);
+            const actor = userEvent.setup();
+            renderNavbar();
+            const search = screen.getByRole('button', { name: 'Search' });
+            await actor.click(search);
+            expect(search).toHaveAttribute('aria-expanded', 'true');
+
+            wide = true;
+            act(() => listeners.forEach(listener => listener()));
+
+            expect(search).toHaveAttribute('aria-expanded', 'false');
+            expect(document.querySelector('.navbar-scrim')).not.toBeInTheDocument();
+        } finally {
+            window.matchMedia = standIn;
+        }
+    });
+});
+
 describe('Navbar user menu', () => {
     it('is a popup button that reports whether it is open', async () => {
         authAnswered(ALEX);
@@ -284,6 +386,28 @@ describe('Navbar user menu', () => {
         expect(within(menu).getByText('@alex')).toBeInTheDocument();
         expect(within(menu).getByRole('menuitem', { name: 'My Profile' })).toHaveAttribute('href', '/user');
         expect(within(menu).getByRole('menuitem', { name: 'Sign Out' })).toBeInTheDocument();
+    });
+
+    it('wears the account\'s picture, asked for as the public profile asks for it', () => {
+        // Through Avatar, so with no referrer and anonymously (ADR 0056). Found inside the button
+        // rather than by a role: the picture is decorative and hidden from assistive technology,
+        // and the button's label is what is read.
+        authAnswered({ ...ALEX, avatarUrl: PICTURE });
+        renderNavbar();
+        const image = screen.getByRole('button', { name: 'User menu' }).querySelector('img');
+
+        expect(image).toHaveAttribute('src', PICTURE);
+        expect(image).toHaveAttribute('referrerpolicy', 'no-referrer');
+        expect(image).toHaveAttribute('crossorigin', 'anonymous');
+    });
+
+    it('wears the handle\'s initial for an account with no picture', () => {
+        authAnswered(ALEX);
+        renderNavbar();
+        const button = screen.getByRole('button', { name: 'User menu' });
+
+        expect(button.querySelector('img')).toBeNull();
+        expect(button).toHaveTextContent('A');
     });
 
     it('has no public page to offer for a private profile', async () => {
@@ -324,6 +448,94 @@ describe('Navbar user menu', () => {
         await actor.click(screen.getByRole('button', { name: 'User menu' }));
 
         expect(screen.queryByRole('menuitem', { name: 'Admin' })).not.toBeInTheDocument();
+    });
+
+    it('stays open on the reason when the sign-out does not happen', async () => {
+        // Still signed in: closing the menu on nothing would read as the sign-out having worked.
+        authAnswered(ALEX);
+        vi.mocked(auth.logout).mockRejectedValueOnce(new Error('Could not sign you out. Please try again.'));
+        const actor = userEvent.setup();
+        const router = renderNavbar('/games');
+
+        await actor.click(screen.getByRole('button', { name: 'User menu' }));
+        await actor.click(screen.getByRole('menuitem', { name: 'Sign Out' }));
+
+        expect(await screen.findByRole('alert')).toHaveTextContent('Could not sign you out. Please try again.');
+        expect(screen.getByRole('menu')).toBeInTheDocument();
+        expect(router.state.location.pathname).toBe('/games');
+
+        // Closed, it takes the reason with it, so the next opening does not begin on an old failure.
+        await actor.click(document.querySelector<HTMLElement>('.navbar-dropdown-overlay')!);
+        await actor.click(screen.getByRole('button', { name: 'User menu' }));
+        expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    });
+
+    it('says it is signing out, and takes no second press, while the request is out', async () => {
+        authAnswered(ALEX);
+        let finish!: () => void;
+        vi.mocked(auth.logout).mockImplementationOnce(() => new Promise<void>(resolve => { finish = resolve; }));
+        const actor = userEvent.setup();
+        renderNavbar('/games');
+
+        await actor.click(screen.getByRole('button', { name: 'User menu' }));
+        await actor.click(screen.getByRole('menuitem', { name: 'Sign Out' }));
+        const item = screen.getByRole('menuitem', { name: 'Signing out…' });
+        await actor.click(item);
+
+        expect(item).toHaveAttribute('aria-disabled', 'true');
+        expect(auth.logout).toHaveBeenCalledTimes(1);
+        await act(async () => finish());
+    });
+
+    it('opens again on the reason when the refusal lands after the menu was closed', async () => {
+        // Nothing else on screen would say the sign-out did not happen.
+        authAnswered(ALEX);
+        let refuse!: (error: Error) => void;
+        vi.mocked(auth.logout).mockImplementationOnce(() => new Promise<void>((_, reject) => { refuse = reject; }));
+        const actor = userEvent.setup();
+        renderNavbar('/games');
+
+        await actor.click(screen.getByRole('button', { name: 'User menu' }));
+        await actor.click(screen.getByRole('menuitem', { name: 'Sign Out' }));
+        await actor.click(document.querySelector<HTMLElement>('.navbar-dropdown-overlay')!);
+        expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+        await act(async () => refuse(new Error('Could not sign you out. Please try again.')));
+
+        expect(screen.getByRole('menu')).toBeInTheDocument();
+        expect(screen.getByRole('alert')).toHaveTextContent('Could not sign you out. Please try again.');
+    });
+
+    it('takes the last reason down when the sign-out is tried again', async () => {
+        // A second refusal is then a new alert, and is announced as one.
+        authAnswered(ALEX);
+        let refuse!: (error: Error) => void;
+        vi.mocked(auth.logout)
+            .mockRejectedValueOnce(new Error('Could not sign you out. Please try again.'))
+            .mockImplementationOnce(() => new Promise<void>((_, reject) => { refuse = reject; }));
+        const actor = userEvent.setup();
+        renderNavbar('/games');
+
+        await actor.click(screen.getByRole('button', { name: 'User menu' }));
+        await actor.click(screen.getByRole('menuitem', { name: 'Sign Out' }));
+        expect(await screen.findByRole('alert')).toBeInTheDocument();
+        await actor.click(screen.getByRole('menuitem', { name: 'Sign Out' }));
+
+        expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+        await act(async () => refuse(new Error('Could not sign you out. Please try again.')));
+        expect(screen.getByRole('alert')).toBeInTheDocument();
+    });
+
+    it('closes and goes home once signed out', async () => {
+        authAnswered(ALEX);
+        const actor = userEvent.setup();
+        const router = renderNavbar('/games');
+
+        await actor.click(screen.getByRole('button', { name: 'User menu' }));
+        await actor.click(screen.getByRole('menuitem', { name: 'Sign Out' }));
+
+        expect(auth.logout).toHaveBeenCalledTimes(1);
+        await waitFor(() => expect(router.state.location.pathname).toBe('/'));
+        expect(screen.queryByRole('menu')).not.toBeInTheDocument();
     });
 
     it('closes when the page behind it is clicked', async () => {

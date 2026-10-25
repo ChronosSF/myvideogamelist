@@ -7,12 +7,14 @@ import type { CommunityScores, GameReview, GameReviews } from '@/types/community
 
 /** A scores document told apart by how many members scored, which is all these tests read. */
 function scores(scored: number): CommunityScores {
-    return { scored, mean: scored === 0 ? null : 8, distribution: [0, 0, 0, 0, 0, 0, 0, scored, 0, 0] };
+    return { scored, mean: scored === 0 ? null : 8, distribution: [0, 0, 0, 0, 0, 0, 0, scored, 0, 0], tracked: scored };
 }
 
 function review(userName: string): GameReview {
     return {
         userName,
+        displayName: null,
+        avatarUrl: null,
         body: `${userName} wrote this.`,
         hasSpoilers: false,
         score: null,
@@ -288,6 +290,29 @@ describe('useGameCommunity reload', () => {
         expect(text('total')).toHaveTextContent('1');
     });
 
+    it('goes back to waiting when it asks again after both halves failed, and then shows the answer', async () => {
+        // "Try again" under a failure: nothing on screen is worth keeping, and a section that went on
+        // saying "could not be loaded" while the retry was out would look as though the button did
+        // nothing.
+        const { release } = stubApi({
+            '/api/games/1/community-scores': ['fail', 'held'],
+            '/api/games/1/reviews': ['unreachable', 'held'],
+        });
+        render(<Probe gameId={1} />);
+        await waitFor(() => expect(text('settled')).toHaveTextContent('true'));
+        expect(text('scored')).toHaveTextContent('none');
+
+        await userEvent.click(screen.getByRole('button', { name: 'reload' }));
+        expect(text('settled')).toHaveTextContent('false');
+
+        await release(scores(3));
+        await release(reviewsPage(['alex'], 1));
+
+        expect(text('settled')).toHaveTextContent('true');
+        expect(text('scored')).toHaveTextContent('3');
+        expect(text('reviews')).toHaveTextContent('alex');
+    });
+
     it('starts the list again from the first page', async () => {
         // The reader's own review may now sit anywhere in it, so the pages already open are stale.
         stubApi({
@@ -324,6 +349,7 @@ describe('gameCommunityReducer', () => {
         next: 'c1',
         loadingMore: false,
         moreFailed: false,
+        reloading: false,
     };
 
     it('drops the first answers when they are stamped with a game no longer on screen', () => {
@@ -391,6 +417,43 @@ describe('gameCommunityReducer', () => {
         expect(next.total).toBeNull();
     });
 
+    it('goes back to waiting when asked again after both halves failed', () => {
+        const failed = { ...onGameTwo, scores: null, reviews: [], total: null, next: null };
+
+        expect(gameCommunityReducer(failed, { type: 'RELOAD', gameId: 2 }).settled).toBe(false);
+    });
+
+    it('keeps what is on screen when asked again with anything to keep, marked as asking', () => {
+        // A reload after the reader's own write keeps the section up until the new answer lands, and
+        // a half that had failed says it is trying again rather than sit under a dead-looking button.
+        expect(gameCommunityReducer(onGameTwo, { type: 'RELOAD', gameId: 2 }))
+            .toEqual({ ...onGameTwo, reloading: true });
+        const scoresOnly = { ...onGameTwo, reviews: [], total: null, next: null };
+        expect(gameCommunityReducer(scoresOnly, { type: 'RELOAD', gameId: 2 }))
+            .toEqual({ ...scoresOnly, reloading: true });
+    });
+
+    it('stops saying it is asking once the answer lands, whichever half it brought', () => {
+        const asking = { ...onGameTwo, reviews: [], total: null, next: null, reloading: true };
+
+        const next = gameCommunityReducer(asking, { type: 'SETTLED', gameId: 2, scores: null, reviews: null });
+
+        expect(next.reloading).toBe(false);
+        expect(next.scores?.scored).toBe(9);
+    });
+
+    it('has nothing to mark before the first answer', () => {
+        const waiting = { ...onGameTwo, settled: false, scores: null, reviews: [], total: null, next: null };
+
+        expect(gameCommunityReducer(waiting, { type: 'RELOAD', gameId: 2 })).toBe(waiting);
+    });
+
+    it('drops a reload stamped with a game no longer on screen', () => {
+        const failed = { ...onGameTwo, scores: null, reviews: [], total: null, next: null };
+
+        expect(gameCommunityReducer(failed, { type: 'RELOAD', gameId: 1 })).toBe(failed);
+    });
+
     it('starts a new game from nothing', () => {
         const next = gameCommunityReducer({ ...onGameTwo, moreFailed: true }, { type: 'RESET', gameId: 3 });
 
@@ -403,6 +466,7 @@ describe('gameCommunityReducer', () => {
             next: null,
             loadingMore: false,
             moreFailed: false,
+            reloading: false,
         });
     });
 });
