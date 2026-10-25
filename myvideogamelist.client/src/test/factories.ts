@@ -215,6 +215,7 @@ export function importReview(rows: ImportReviewRow[], job: Partial<ImportJob> = 
             selected: rows.filter(row => row.decision === IMPORT_DECISION.import).length,
         },
         rows,
+        trackedGameIds: [],
     };
 }
 

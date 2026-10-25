@@ -201,6 +201,37 @@ describe('useGameSearch', () => {
         expect(result.current).toMatchObject({ status: 'answered', answer: { games: [RE], hasMore: true } });
     });
 
+    it('never asks for more games than the API answers', async () => {
+        // It would refuse a larger page outright, and the refusal reads as a search that cannot run.
+        const requests = stubApi();
+        renderSearch('resident evil', true, { size: SEARCH_PAGE_SIZE + 5 });
+
+        await pause(SEARCH_DEBOUNCE_MS);
+        expect(requests.map(r => r.url)).toEqual([`/api/games?search=resident+evil&offset=0&limit=${SEARCH_PAGE_SIZE}`]);
+    });
+
+    it('does not answer at one size with the games it was given at another', async () => {
+        // Six games are not an answer for somebody asking for twenty, though the term is the same.
+        const requests = stubApi();
+        const { result, rerender } = renderHook(
+            ({ size }) => useGameSearch('resident evil', true, { size }),
+            { initialProps: { size: TYPEAHEAD_SIZE } },
+        );
+
+        await pause(SEARCH_DEBOUNCE_MS);
+        await requests[0].answer([RE], true);
+        expect(result.current.status).toBe('answered');
+
+        rerender({ size: SEARCH_PAGE_SIZE });
+        expect(result.current.status).toBe('waiting');
+
+        await pause(SEARCH_SPACING_MS);
+        expect(requests.map(r => r.url)).toEqual([
+            `/api/games?search=resident+evil&offset=0&limit=${TYPEAHEAD_SIZE}`,
+            `/api/games?search=resident+evil&offset=0&limit=${SEARCH_PAGE_SIZE}`,
+        ]);
+    });
+
     it(`never starts two requests within ${SEARCH_SPACING_MS}ms, however the typing falls`, async () => {
         // A slow, steady typist whose every keystroke lands just past the debounce would otherwise
         // ask on every one.

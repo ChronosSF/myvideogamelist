@@ -164,32 +164,40 @@ interface Failure {
 }
 
 interface State {
+    /** How many games the answers below were asked for. */
+    size: number;
     /** Answers by term, oldest first. */
     answers: ReadonlyMap<string, SearchAnswer>;
     failure: Failure | null;
 }
 
 type Action =
-    | { type: 'answered'; term: string; answer: SearchAnswer }
+    | { type: 'answered'; term: string; size: number; answer: SearchAnswer }
     | { type: 'failed'; failure: Failure }
     | { type: 'forget-failure' };
 
 /** What one request came to: an action, or a 503 with the wait it asked for. */
 type Asked = Action | { type: 'busy'; term: string; message: string; hold: number };
 
-const INITIAL: State = { answers: new Map(), failure: null };
+const INITIAL: State = { size: 0, answers: new Map(), failure: null };
 
 function reducer(state: State, action: Action): State {
     switch (action.type) {
         case 'answered': {
-            const answers = new Map(state.answers);
+            // Answers asked at another size are forgotten: six games are not an answer for somebody
+            // asking for twenty.
+            const answers = new Map(action.size === state.size ? state.answers : []);
             answers.delete(action.term);
             answers.set(action.term, action.answer);
             for (const oldest of answers.keys()) {
                 if (answers.size <= REMEMBERED_TERMS) break;
                 answers.delete(oldest);
             }
-            return { answers, failure: state.failure?.term === action.term ? null : state.failure };
+            return {
+                size: action.size,
+                answers,
+                failure: state.failure?.term === action.term ? null : state.failure,
+            };
         }
         case 'failed':
             return { ...state, failure: action.failure };
@@ -280,6 +288,7 @@ async function ask(term: string, size: number, signal: AbortSignal): Promise<Ask
         return {
             type: 'answered',
             term,
+            size,
             answer: { games: items.slice(0, size), hasMore: hasMore === true || items.length > size },
         };
     } catch {
@@ -288,7 +297,10 @@ async function ask(term: string, size: number, signal: AbortSignal): Promise<Ask
 }
 
 export interface GameSearchOptions {
-    /** How many games to ask for, up to `SEARCH_PAGE_SIZE`. The dropdown's `TYPEAHEAD_SIZE` unless said. */
+    /**
+     * How many games to ask for: the dropdown's `TYPEAHEAD_SIZE` unless said, and never more than
+     * `SEARCH_PAGE_SIZE`, which is all the API answers — it would refuse a larger one outright.
+     */
     size?: number;
 }
 
@@ -316,14 +328,18 @@ export function useGameSearch(
     { size = TYPEAHEAD_SIZE }: GameSearchOptions = {},
 ): GameSearch & { retry: () => void } {
     const term = query.trim();
+    const limit = Math.min(Math.max(Math.trunc(size), 1), SEARCH_PAGE_SIZE);
     const [state, dispatch] = useReducer(reducer, INITIAL);
 
-    const [own] = useState(createSearchPacer);
-    const shared = useContext(SearchPacerContext) ?? own;
+    // The root's, which every search shares. One of its own only outside the provider, as a test
+    // renders one, so a page of row searches does not each make a pacer nothing reads.
+    const fromRoot = useContext(SearchPacerContext);
+    const [own] = useState(() => fromRoot ?? createSearchPacer());
+    const shared = fromRoot ?? own;
     const held = useSyncExternalStore(shared.subscribe, shared.held, shared.held);
 
     const active = enabled && term.length >= MIN_SEARCH_LENGTH;
-    const answer = state.answers.get(term);
+    const answer = state.size === limit ? state.answers.get(term) : undefined;
     const failure = state.failure;
     const standing = failure !== null && failure.term === term && enabled ? failure : null;
 
@@ -352,7 +368,7 @@ export function useGameSearch(
             }
 
             shared.started();
-            void ask(term, size, controller.signal).then(asked => {
+            void ask(term, limit, controller.signal).then(asked => {
                 if (controller.signal.aborted) return;
 
                 if (asked.type === 'busy') {
@@ -376,7 +392,7 @@ export function useGameSearch(
             clearTimeout(timer);
             controller.abort();
         };
-    }, [term, settled, shared, size]);
+    }, [term, settled, shared, limit]);
 
     const retry = () => dispatch({ type: 'forget-failure' });
 

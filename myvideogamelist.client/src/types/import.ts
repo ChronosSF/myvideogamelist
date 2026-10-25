@@ -115,6 +115,13 @@ export interface ImportReview {
     job: ImportJob;
     summary: ImportReviewSummary;
     rows: ImportReviewRow[];
+    /**
+     * Every game the user already has an entry for, in a list or in none — what §S8 means by an
+     * existing entry, and what each row's `alreadyTracked` is read from. A game chosen for a row is
+     * checked against it, never against the lists context: an entry in no list appears in none of
+     * the lists, and the lists may not have loaded.
+     */
+    trackedGameIds: number[];
 }
 
 /**

@@ -55,7 +55,7 @@ export function ImportReviewPage() {
     const { jobId = '' } = useParams();
     const { user, loading: authLoading } = useAuth();
     const navigate = useNavigate();
-    const { nameFor, namesStatus, getListFor, reload: reloadLists } = useLists();
+    const { nameFor, namesStatus, reload: reloadLists } = useLists();
     const { reload: reloadWishlist } = useWishlist();
     const { reload: reloadFavourites } = useFavourites();
 
@@ -149,14 +149,17 @@ export function ImportReviewPage() {
      * A game chosen for a row, whether the matcher offered it (§M3) or the row's own search found it
      * (§M4): one write, the decision endpoint's, and one way of choosing (issue 158). Choosing also
      * selects the row — somebody who has just said "that one" has said they want it — unless the
-     * game is already in one of their lists. Importing it would write the file's status over theirs,
-     * and §S8 has an existing entry overwritten only when somebody ticks it, as the matcher's own
-     * rows for such a game start unticked. A game they hold in no list has no status to lose, which
-     * is why the lists are enough to ask.
+     * user already has the game. Importing it would give their entry the file's status and mark it
+     * imported, and §S8 has an existing entry overwritten only when somebody ticks it, as the
+     * matcher's own rows for such a game start unticked.
+     *
+     * Asked of the review rather than the lists: an entry in no list — a game taken out of every
+     * list keeps its entry — is in none of them, and the lists may still be loading or have failed
+     * to. The review is on screen before any row can be chosen.
      */
     const choose = (row: ImportReviewRow, game: GameDto, index: number) => {
         const year = game.releaseDate === null ? '' : ` (${releaseYear(game.releaseDate)})`;
-        const tracked = getListFor(game.id) !== null;
+        const tracked = review?.trackedGameIds.includes(game.id) ?? false;
 
         // Consumed by the render the decision's own update makes, which is the one that has moved
         // the row: `setDecisions` applies it before its first await.

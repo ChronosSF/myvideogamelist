@@ -48,13 +48,13 @@ const review: UseImportReviewResult = {
     cancel: vi.fn(async () => true),
 };
 
-/** The games the signed-in user already has in a list, as the lists context would answer. */
-const listed = new Set<number>();
-
+/**
+ * Holds no games, and has no `getListFor` at all: whether the user already has a game is the
+ * review's to say (`trackedGameIds`), since an entry in no list is in none of the lists.
+ */
 const lists = {
     nameFor: (id: string) => (id === 'finished' ? 'Beaten' : id),
     namesStatus: 'ready' as const,
-    getListFor: (gameId: number) => (listed.has(gameId) ? 'finished' : null),
     reload: vi.fn(),
 };
 
@@ -134,7 +134,6 @@ beforeEach(() => {
     review.matching = false;
     review.saving = false;
     review.result = null;
-    listed.clear();
     vi.clearAllMocks();
 });
 
@@ -613,10 +612,11 @@ describe('ImportReviewPage', () => {
 
     it('leaves a chosen game the user already has unticked, and says why', async () => {
         // §S8: an existing entry is overwritten only when somebody ticks it, which is why the
-        // matcher's rows for such a game start unticked. Importing it would write the file's status
-        // over the one its owner gave it, and the review would not say so until it was read again.
-        listed.add(424);
-        review.review = loaded([UNMATCHED]);
+        // matcher's rows for such a game start unticked. Importing it would give the entry the
+        // file's status, and the review would not say so until it was read again. Asked of the
+        // review, so an entry in no list counts, and so does one the lists have not loaded yet:
+        // the lists here hold nothing.
+        review.review = { ...loaded([UNMATCHED]), trackedGameIds: [424] };
         renderPage();
 
         const user = await searchRow('Resedent Evil', [RESIDENT_EVIL]);
