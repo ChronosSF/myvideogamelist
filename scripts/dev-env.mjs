@@ -369,6 +369,40 @@ async function startDatabase(attempts = 20) {
 }
 
 /**
+ * Migration tasks ECS still means to run: pending, starting or running. A resume that stopped waiting
+ * for its own leaves one, and so can a Deploy dev run in flight.
+ */
+function runningMigrations() {
+    const r = aws(['ecs', 'list-tasks', '--cluster', NAMES.cluster, '--family', NAMES.migrateTask,
+        '--desired-status', 'RUNNING', '--query', 'taskArns']);
+    return Array.isArray(r.value) ? r.value : [];
+}
+
+/**
+ * Waits for a task to stop, and says how it stopped. A loop of its own rather than `aws ecs wait
+ * tasks-stopped`, whose hundred checks six seconds apart give up at ten minutes - which a cold image
+ * pull and a long migration can reach - and leave the task running behind an error that reads like
+ * a failure to retry.
+ */
+async function stoppedTask(task, minutes = 30) {
+    const deadline = Date.now() + minutes * 60_000;
+    let last = null;
+    for (;;) {
+        const now = aws(['ecs', 'describe-tasks', '--cluster', NAMES.cluster, '--tasks', task,
+            '--query', 'tasks[0].{status: lastStatus, exit: containers[0].exitCode, reason: stoppedReason}']).value;
+        if (now?.status === 'STOPPED') return now;
+        if (now?.status !== last) note(`  ${now?.status ?? 'not found yet'}…`);
+        last = now?.status;
+        if (Date.now() >= deadline) {
+            fail(`Migration task ${task} has not stopped after ${minutes} minutes, and is still running. Nothing was `
+                + `deployed and the gate stays off. Do not resume again until it has stopped - a second migration `
+                + `would race it through the same migrations. Its log is in ${NAMES.migrateLogGroup}.`);
+        }
+        await new Promise((resolve) => setTimeout(resolve, 15_000));
+    }
+}
+
+/**
  * The migrations, at the tag about to be deployed, before anything serves it - the same three steps
  * Deploy dev runs before every release. A parked environment skips that job's migrations along with
  * its deploy, while every merge still pushes images, so the newest tag can need migrations the
@@ -377,9 +411,18 @@ async function startDatabase(attempts = 20) {
  *
  * The task definition is deployed first, because it names its image by tag. The task runs where the
  * API's would, on the Data stack's subnets and security group, and its log is printed whatever it
- * answers. A failure stops the resume here: nothing is deployed, and the gate stays off.
+ * answers. A failure stops the resume here: nothing is deployed, and the gate stays off. One already
+ * running stops it before it starts, since two would race each other through the same migrations -
+ * the reason migrating is a step of its own (CLAUDE.md).
  */
-function migrate(tag) {
+async function migrate(tag) {
+    const running = runningMigrations();
+    if (running.length > 0) {
+        fail(`A migration task is already running (${running.join(', ')}): from a resume that stopped waiting `
+            + 'for it, or from Deploy dev. Two at once would race through the same migrations. Wait for it to stop, '
+            + 'then resume again.');
+    }
+
     note(`Deploying ${NAMES.migrateStack} at image tag ${tag}.`);
     // --exclusively: the Data stack is not redeployed as a dependency.
     cdk(['deploy', NAMES.migrateStack, '--exclusively', '-c', `imageTag=${tag}`, '--require-approval', 'never']);
@@ -397,9 +440,7 @@ function migrate(tag) {
     if (!started?.task) fail(`The migration task did not start: ${JSON.stringify(started?.failures ?? [])}`);
 
     note(`Migration task ${started.task}. Waiting for it to finish…`);
-    aws(['ecs', 'wait', 'tasks-stopped', '--cluster', NAMES.cluster, '--tasks', started.task]);
-    const stopped = aws(['ecs', 'describe-tasks', '--cluster', NAMES.cluster, '--tasks', started.task,
-        '--query', 'tasks[0].{exit: containers[0].exitCode, reason: stoppedReason}']).value;
+    const stopped = await stoppedTask(started.task);
 
     // Best effort, as the pipeline's is: the log says what happened, and its absence changes nothing.
     const log = aws(['logs', 'tail', NAMES.migrateLogGroup, '--since', '30m', '--format', 'short'],
@@ -437,7 +478,7 @@ async function resume() {
     if (!tag) fail(`No tag is present in both ${NAMES.apiRepository} and ${NAMES.ssrRepository}. Build and push a release first (ADR 0044, Phase 7).`);
 
     // Before the application: the database is available now, and the tag is the one about to serve.
-    migrate(tag);
+    await migrate(tag);
 
     note(`Deploying ${NAMES.appStack} at image tag ${tag}.`);
 
