@@ -5,7 +5,9 @@
  * The colours are the app's own. `src/theme.css` states them inside Tailwind's `@theme`, which a plain
  * page cannot read, so the `--color-*` declarations are lifted out of it and put on :root before the
  * page is drawn: the palette stays the one place a colour is written (ADR 0049), and a change to it
- * reaches the image at its next render.
+ * reaches the image at its next render. Only the `@theme` block's own declarations, read by a CSS
+ * parser rather than a pattern: the palettes of #208 will set the same names again under selectors of
+ * their own, and taking those too would draw the default image in whichever palette came last.
  *
  * Run it from the client, with Playwright's Chromium installed (`npx playwright install chromium`):
  *
@@ -19,10 +21,16 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { chromium } from '@playwright/test';
+import postcss from 'postcss';
 
-const theme = readFileSync(new URL('../src/theme.css', import.meta.url), 'utf8');
-const tokens = theme.match(/--color-[\w-]+\s*:[^;]+;/g);
-if (!tokens) throw new Error('No --color-* tokens found in src/theme.css.');
+const theme = postcss.parse(readFileSync(new URL('../src/theme.css', import.meta.url), 'utf8'));
+const tokens = [];
+theme.walkAtRules('theme', block => {
+    for (const node of block.nodes ?? []) {
+        if (node.type === 'decl' && node.prop.startsWith('--color-')) tokens.push(`${node.prop}: ${node.value};`);
+    }
+});
+if (tokens.length === 0) throw new Error('No --color-* tokens found in the @theme block of src/theme.css.');
 
 const template = new URL('./default.html', import.meta.url);
 const output = fileURLToPath(new URL('../src/assets/share.png', import.meta.url));

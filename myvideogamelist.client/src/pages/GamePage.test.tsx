@@ -649,7 +649,7 @@ describe('GamePage meta', () => {
     it("shares the site's default image when IGDB has neither", () => {
         const tags = tagsFor({ backgroundImageUrl: null, coverImageUrl: null });
 
-        expect(content(tags, 'og:image')).toMatch(/^https:\/\/myvideogamelist\.net\/.*share.*\.png$/);
+        expect(content(tags, 'og:image')).toMatch(/^https:\/\/myvideogamelist\.net\/.*share.*\.png(\?.*)?$/);
         expect(content(tags, 'twitter:card')).toBe('summary_large_image');
     });
 

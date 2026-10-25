@@ -1,5 +1,5 @@
 import type { MetaDescriptor } from 'react-router';
-import defaultShareImage from '@/assets/share.png';
+import defaultShareImage from '@/assets/share.png?no-inline';
 import { applySecurityHeaders, RESOURCE_POLICY } from '@/lib/securityHeaders';
 
 /**
@@ -140,8 +140,10 @@ export interface PageImage {
  * What a page is shared with when it has no image of its own: the brand, at 1200 by 630, drawn
  * from `share/default.html` by `share/render.mjs`. Imported rather than served from `public/`, so the
  * build gives it a hashed address under `/assets/`, which the edge keeps for a year and a new image
- * replaces with a new URL. Only with the deployment's own origin, because Open Graph wants an absolute
- * URL and a relative one is resolved by nobody.
+ * replaces with a new URL. `?no-inline`, because Vite turns an asset under four kilobytes into a
+ * `data:` URI, and a smaller redraw would then put the origin in front of one. Only with the
+ * deployment's own origin, because Open Graph wants an absolute URL and a relative one is resolved by
+ * nobody. Under the dev server the import is the source's own path, which no unfurler can reach anyway.
  */
 function defaultImage(site: SiteConfig): PageImage | null {
     if (site.siteUrl === null) return null;

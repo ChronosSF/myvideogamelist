@@ -138,7 +138,9 @@ describe('pageMeta', () => {
             return tag && 'content' in tag ? tag.content : undefined;
         };
 
-        expect(content('og:image')).toMatch(/^https:\/\/myvideogamelist\.net\/.*share.*\.png$/);
+        // The source's path and its query here, where Vitest resolves the import; a build's is
+        // `/assets/share-<hash>.png`.
+        expect(content('og:image')).toMatch(/^https:\/\/myvideogamelist\.net\/.*share.*\.png(\?.*)?$/);
         expect(content('og:image:alt')).toBe("MyVideoGameList: every game you've played, in one list");
         expect(content('og:image:width')).toBe('1200');
         expect(content('og:image:height')).toBe('630');
