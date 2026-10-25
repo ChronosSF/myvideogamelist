@@ -222,6 +222,16 @@ uncached by an explicit behaviour ending in `*` with no slash, because React Rou
 `/lists.data`, not `/lists/…`, and a pattern with a slash would let the `.data` request fall
 through to the cached default. **Error caching minimum TTL is 0 for 500 to 504**, because
 CloudFront otherwise keeps a `no-store` 502 for ten seconds; 404 is left alone and stays a real 404.
+
+> **Later note (2026-10-25).** React Router's lazy route discovery asks `/__manifest?paths=…&version=…`
+> before a client navigation to a route the page has not seen, and the pages policy above kept both
+> parameters from the origin. React Router answers a missing or different `version` with a 204 that
+> tells the page to reload; the page reloads once, then fails the next such navigation with "Unable to
+> discover routes due to manifest version mismatch", so on dev every second navigation to a new page was
+> the error page and F5 recovered it. `/__manifest` now has a behaviour of its own, keyed on `paths` and
+> `version`, whose answer React Router sends public and immutable for a year, and which
+> `scripts/dev-check.mjs` asks for. The home page's own behaviours are
+> [0074](0074-the-home-page-is-kept-twice-by-a-flag-that-names-nobody.md)'s.
 **Every deploy invalidates `/*`**: a cached page names hashed bundles the new container no longer
 has, because the bundles are served by the SSR container and not from S3.
 

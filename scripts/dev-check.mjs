@@ -182,6 +182,18 @@ async function cacheBehaviour() {
     report(visitorData.status === 200 && flaggedData.status === 200 && visitorData.body !== flaggedData.body,
         '/_.data is keyed on the signed-in flag as / is', `${visitorData.status} and ${flaggedData.status}`);
 
+    // React Router's lazy route discovery: a navigation to a route the page has not seen asks
+    // `/__manifest` for it, by `paths` and the build's `version`. With either kept from the origin it
+    // answers 204, and the page reloads once, then fails the next navigation with "Something went
+    // wrong". The version is the one the home page was rendered with.
+    const version = /__reactRouterManifest\s*=\s*\{[\s\S]*?"version":\s*"([^"]+)"/.exec(welcome.body)?.[1];
+    const discovered = version
+        ? await get(`/__manifest?paths=${encodeURIComponent('/games')}&version=${encodeURIComponent(version)}`, { auth: true })
+        : null;
+    report(discovered?.status === 200 && /^\{".+/.test(discovered.body),
+        'route discovery (/__manifest) answers the routes asked for, by paths and version',
+        version ? `${discovered.status}, ${discovered.body.slice(0, 40)}` : 'no manifest version in the home page');
+
     const page = await get(`/games/${GAME}`, { auth: true });
     const again = await get(`/games/${GAME}`, { auth: true });
     report(/^(Hit|RefreshHit)$/.test(xcache(again)), `/games/${GAME} is served from the edge on the second request`, `${xcache(page)}, then ${xcache(again)}`);
