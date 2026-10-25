@@ -95,7 +95,7 @@ function renderCard(
     favouritesOverrides: Partial<FavouritesContextValue> = {},
 ) {
     const wishlist = wishlistValue(wishlistOverrides);
-    render(
+    const rendered = render(
         <MemoryRouter>
             <ListsContext.Provider value={listsValue(listsOverrides)}>
                 <WishlistContext.Provider value={wishlist}>
@@ -106,7 +106,7 @@ function renderCard(
             </ListsContext.Provider>
         </MemoryRouter>,
     );
-    return wishlist;
+    return { ...rendered, wishlist };
 }
 
 const wishlistButton = () => screen.getByRole('button', { name: 'Wishlist' });
@@ -127,7 +127,7 @@ describe('GameCard wishlist control', () => {
     });
 
     it('adds the game, passing the whole DTO for the optimistic row', async () => {
-        const wishlist = renderCard();
+        const { wishlist } = renderCard();
 
         await userEvent.click(wishlistButton());
 
@@ -135,7 +135,7 @@ describe('GameCard wishlist control', () => {
     });
 
     it('removes a game that is already wishlisted', async () => {
-        const wishlist = renderCard({ isWishlisted: () => true });
+        const { wishlist } = renderCard({ isWishlisted: () => true });
 
         await userEvent.click(wishlistButton());
 
@@ -185,17 +185,7 @@ describe('GameCard wishlist failure', () => {
     it('puts the message outside the hover overlay, so it survives the pointer leaving', async () => {
         // The overlay is only visible on hover or tap. A failure message inside it would vanish
         // the moment the user moved the mouse, which is no message at all.
-        const { container } = render(
-            <MemoryRouter>
-                <ListsContext.Provider value={listsValue()}>
-                    <WishlistContext.Provider value={wishlistValue({ add: vi.fn(async () => false) })}>
-                        <FavouritesContext.Provider value={favouritesValue()}>
-                            <GameCard game={CELESTE} />
-                        </FavouritesContext.Provider>
-                    </WishlistContext.Provider>
-                </ListsContext.Provider>
-            </MemoryRouter>,
-        );
+        const { container } = renderCard({ add: vi.fn(async () => false) });
 
         await userEvent.click(wishlistButton());
 
@@ -245,26 +235,17 @@ describe('GameCard list options toggle', () => {
         expect(toggle()).toHaveAttribute('aria-expanded', 'false');
     });
 
-    it('opens when the tap lands on the overlay rather than the toggle', async () => {
-        // On a phone, a tap hovers the card before it clicks, which shows the overlay and puts it under
-        // the finger. By its class: the overlay is a presentation layer with no role to find it by.
-        const { container } = render(
-            <MemoryRouter>
-                <ListsContext.Provider value={listsValue()}>
-                    <WishlistContext.Provider value={wishlistValue()}>
-                        <FavouritesContext.Provider value={favouritesValue()}>
-                            <GameCard game={CELESTE} />
-                        </FavouritesContext.Provider>
-                    </WishlistContext.Provider>
-                </ListsContext.Provider>
-            </MemoryRouter>,
-        );
+    it('opens when the tap lands on the overlay rather than the toggle, and closes on the next', async () => {
+        // On a phone, a tap can hover the card before it clicks, which shows the overlay and puts it
+        // under the finger. The overlay is the card's one presentation layer.
+        renderCard();
+        const overlay = screen.getByRole('presentation');
 
-        await userEvent.click(container.querySelector('.game-card-overlay')!);
+        await userEvent.click(overlay);
         expect(toggle()).toHaveAttribute('aria-expanded', 'true');
 
-        await userEvent.click(container.querySelector('.game-card-overlay')!);
-        expect(toggle()).toHaveAttribute('aria-expanded', 'true');
+        await userEvent.click(overlay);
+        expect(toggle()).toHaveAttribute('aria-expanded', 'false');
     });
 
     it('leaves the overlay open when a list button inside it is pressed', async () => {

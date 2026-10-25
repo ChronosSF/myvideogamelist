@@ -41,10 +41,8 @@ export function GameCard({ game, eager = false, children }: GameCardProps) {
     const [overlayOpen, setOverlayOpen] = useState(false);
 
     // Signed in, a press on a badge is a press on the toggle beneath it. Signed out there is no toggle,
-    // and the critic score keeps the tooltip that names its count. Always put in after a space: Tailwind
-    // finds classes by reading the source, and a class written straight before `${passThrough}` is one
-    // it cannot see, so the build once left the score's right inset out and the score sat on the ESRB
-    // rating.
+    // and the critic score keeps the tooltip that names its count. Put in after a space, as
+    // `scripts/check-class-names.mjs` insists.
     const passThrough = user ? 'pointer-events-none' : '';
 
     const wishlisted = wishlist.isWishlisted(game.id);
@@ -115,7 +113,7 @@ export function GameCard({ game, eager = false, children }: GameCardProps) {
                 {user && (
                     <button
                         type="button"
-                        className="absolute inset-0 cursor-pointer focus:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-focus"
+                        className="game-card-toggle absolute inset-0 cursor-pointer focus:outline-hidden"
                         onClick={() => setOverlayOpen(o => !o)}
                         aria-label={`Open list options for ${game.title}`}
                         aria-expanded={overlayOpen}
@@ -147,13 +145,14 @@ export function GameCard({ game, eager = false, children }: GameCardProps) {
                 {favourite && <FavouriteMark variant="cover" />}
 
                 {/* List selection overlay — only shown when authenticated; visible on hover (CSS) or tap (state).
-                    A press on it opens it rather than closing it: on a phone, the tap that opens the
-                    overlay hovers the card before it clicks, so it lands on the overlay, not the toggle.
-                    It closes when the pointer leaves the card, or from the toggle. */}
+                    A press on its backdrop toggles it, as the toggle beneath does: on a phone, the tap
+                    that opens the overlay can hover the card before it clicks and land here rather than
+                    on the toggle, and the next tap on the backdrop closes it. It closes too when the
+                    pointer leaves the card. Where a phone keeps the hover, the hover keeps it shown. */}
                 {user && (
                     <div
                         className={`game-card-overlay${overlayOpen ? ' open' : ''}`}
-                        onClick={() => setOverlayOpen(true)}
+                        onClick={() => setOverlayOpen(o => !o)}
                         role="presentation"
                     >
                         <div

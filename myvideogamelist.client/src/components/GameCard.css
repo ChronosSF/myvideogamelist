@@ -7,14 +7,27 @@
     justify-content: center;
     padding-bottom: 0.75rem;
     opacity: 0;
-    transition: opacity 0.18s ease;
+    /* Hidden, not only transparent, so that its controls leave the tab order while it is closed. The
+       visibility waits out the fade on the way out and flips at once on the way in. */
+    visibility: hidden;
+    transition: opacity 0.18s ease, visibility 0.18s;
     pointer-events: none;
+    /* A press on the backdrop toggles it, as the toggle beneath does. */
+    cursor: pointer;
 }
 
 .game-card-root:hover .game-card-overlay,
 .game-card-overlay.open {
     opacity: 1;
+    visibility: visible;
     pointer-events: auto;
+}
+
+/* The toggle sits under the badges and, once open, under the overlay, so a ring of its own would be
+   drawn beneath them: the card says where focus is instead. */
+.game-card-root:has(.game-card-toggle:focus-visible) {
+    outline: 2px solid var(--color-focus);
+    outline-offset: 2px;
 }
 
 /* Six rows now — Details plus the five statuses — so the stack is tighter than it was at four,

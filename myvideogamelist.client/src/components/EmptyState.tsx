@@ -52,7 +52,7 @@ export function EmptyState({
                 </svg>
                 <Title className="text-fg-muted font-medium mb-3">{message}</Title>
                 {detail !== undefined && (
-                    <p className={`text-fg-muted text-sm max-w-md mx-auto${children === undefined ? '' : ' mb-4'}`}>
+                    <p className={`text-fg-muted text-sm max-w-md mx-auto ${children === undefined ? '' : 'mb-4'}`}>
                         {detail}
                     </p>
                 )}
