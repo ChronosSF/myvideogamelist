@@ -1,13 +1,17 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter, RouterContextProvider } from 'react-router';
 import { HomePage, headers, loader, meta } from '@/pages/HomePage';
+import { AuthDialogProvider } from '@/contexts/AuthDialogProvider';
 import type { AuthContextValue } from '@/contexts/AuthContext';
 import type { FavouritesContextValue } from '@/contexts/FavouritesContext';
+import type { ListsContextValue } from '@/contexts/ListsContext';
+import type { WishlistContextValue } from '@/contexts/WishlistContext';
 import { CACHE_HOME, PRIVATE_NO_STORE } from '@/lib/cache';
-import { calendarEvents, game, userProfile } from '@/test/factories';
+import { calendarEvents, userProfile } from '@/test/factories';
+import { LIST_NAMES, type ListId } from '@/types/list';
 import type { HomeResponse, NewsItemDto } from '@/types/news';
-import type { CalendarCuratedEvent, CalendarEvents, ComingSoonGame } from '@/types/releases';
+import type { CalendarCuratedEvent, CalendarEvents, ComingSoonGame, JustOutGame } from '@/types/releases';
 import type { Route } from './+types/HomePage';
 
 const authActions = {
@@ -51,6 +55,26 @@ const favourites = { isFavourite: () => false } as unknown as FavouritesContextV
 
 vi.mock('@/hooks/useFavourites', () => ({ useFavourites: () => favourites }));
 
+/** Which list each of the reader's games is in; a test that needs one sets it. */
+const inList = new Map<number, ListId>();
+
+const lists = {
+    getListFor: (gameId: number) => inList.get(gameId) ?? null,
+    nameFor: (listId: ListId) => LIST_NAMES[listId],
+} as unknown as ListsContextValue;
+
+vi.mock('@/hooks/useLists', () => ({ useLists: () => lists }));
+
+/** A wishlist that has loaded with nothing on it, and saves whatever it is asked to unless told otherwise. */
+const wishlist = {
+    isWishlisted: () => false,
+    isPending: () => false,
+    add: vi.fn(async () => true),
+    remove: vi.fn(async () => true),
+} as unknown as WishlistContextValue;
+
+vi.mock('@/hooks/useWishlist', () => ({ useWishlist: () => wishlist }));
+
 const SITE = { siteUrl: 'https://myvideogamelist.net', indexable: true };
 
 const NEWS: NewsItemDto = {
@@ -92,6 +116,24 @@ const COMING_SOON: ComingSoonGame[] = [
     { gameId: 347645, title: 'Out of Words', coverImageUrl: null, precision: 'quarter', starts: '2027-01-01', platforms: [] },
 ];
 
+/**
+ * Two of the Just out panel's games: Enshrouded as it was on 2026-10-25, and one out last year, which the
+ * panel's ninety days could only hold in a payload built before the new year.
+ */
+const JUST_OUT: JustOutGame[] = [
+    {
+        gameId: 248643,
+        title: 'Enshrouded',
+        coverImageUrl: null,
+        released: '2026-10-15',
+        platforms: [
+            { id: 6, name: 'PC (Microsoft Windows)', abbreviation: 'PC', logoUrl: null, manufacturer: null },
+            { id: 167, name: 'PlayStation 5', abbreviation: 'PS5', logoUrl: null, manufacturer: null },
+        ],
+    },
+    { gameId: 2, title: 'Out last year', coverImageUrl: null, released: '2025-09-24', platforms: [] },
+];
+
 /** The day the tests' loader runs on, in UTC, and the reader's own once hydrated. */
 const TODAY = '2026-10-17';
 
@@ -99,7 +141,7 @@ const TODAY = '2026-10-17';
 const NO_EVENTS: CalendarEvents = { curated: [], showcases: [], degraded: true };
 
 /** What is left of the page when the API gave the loader nothing to build it from. */
-const NOTHING: HomeResponse = { spotlight: null, popular: [], news: [], events: NO_EVENTS, comingSoon: [], degraded: true };
+const NOTHING: HomeResponse = { news: [], events: NO_EVENTS, comingSoon: [], justOut: [], degraded: true };
 
 /** `/api/home` answering with `body` — a 200 unless told otherwise, which is what it sends even with IGDB down. */
 function stubHome(body: unknown, status = 200) {
@@ -116,13 +158,15 @@ const policyOf = (result: Awaited<ReturnType<typeof loader>>) =>
 /** The page, given what the loader would have handed it. */
 function renderHome(home: HomeResponse) {
     const props = { loaderData: { ...home, site: SITE, today: TODAY } } as unknown as Route.ComponentProps;
-    return render(<MemoryRouter><HomePage {...props} /></MemoryRouter>);
+    return render(<MemoryRouter><AuthDialogProvider><HomePage {...props} /></AuthDialogProvider></MemoryRouter>);
 }
 
 beforeEach(() => {
     vi.stubEnv('SITE_URL', SITE.siteUrl);
     vi.stubEnv('SITE_INDEXABLE', 'true');
     auth.current = SIGNED_OUT;
+    inList.clear();
+    vi.mocked(wishlist.add).mockClear().mockResolvedValue(true);
 
     // Midday on the 17th in UTC, which is when the loader runs; the reader's own day is the 17th too
     // everywhere but the few timezones past +11, where it is the 18th and the panel's fest is still on.
@@ -140,7 +184,7 @@ afterEach(() => {
 describe('HomePage loader', () => {
     it('shares an answer the API says is whole', async () => {
         const home: HomeResponse = {
-            spotlight: null, popular: [game()], news: [NEWS], events: calendarEvents({ curated: [NEXT_FEST] }), comingSoon: [], degraded: false,
+            news: [NEWS], events: calendarEvents({ curated: [NEXT_FEST] }), comingSoon: [], justOut: [], degraded: false,
         };
         stubHome(home);
 
@@ -154,7 +198,7 @@ describe('HomePage loader', () => {
         // Half past eleven at night in New York is already the next day in UTC. The page counts from this
         // until it hydrates, and from the reader's own day after.
         vi.setSystemTime(new Date('2026-10-17T23:30:00-04:00'));
-        stubHome({ spotlight: null, popular: [game()], news: [NEWS], events: calendarEvents(), comingSoon: [], degraded: false });
+        stubHome({ news: [NEWS], events: calendarEvents(), comingSoon: [], justOut: [], degraded: false });
 
         const result = await loader(loaderArgs());
 
@@ -165,7 +209,7 @@ describe('HomePage loader', () => {
         // IGDB down with the API up. The status is a 200 and the body is a well-formed payload, so
         // nothing but the flag separates this from a healthy answer — and read as one, an empty
         // home page was pinned at the edge for five minutes and served stale for ten more.
-        stubHome({ spotlight: null, popular: [], news: [], events: calendarEvents(), comingSoon: [], degraded: true });
+        stubHome({ news: [], events: calendarEvents(), comingSoon: [], justOut: [], degraded: true });
 
         const result = await loader(loaderArgs());
 
@@ -173,9 +217,9 @@ describe('HomePage loader', () => {
     });
 
     it('still renders what a degraded answer has, with the site beside it', async () => {
-        // The news failed and the covers did not. The page shows the covers; it is just not kept.
+        // The news failed and the panels did not. The page shows the panels; it is just not kept.
         // `meta` reads `site` whichever way the loader went, so it rides along here too.
-        const home: HomeResponse = { spotlight: null, popular: [game()], news: [], events: calendarEvents(), comingSoon: [], degraded: true };
+        const home: HomeResponse = { news: [], events: calendarEvents(), comingSoon: [], justOut: [], degraded: true };
         stubHome(home);
 
         const result = await loader(loaderArgs());
@@ -188,7 +232,7 @@ describe('HomePage loader', () => {
         // IGDB could not be asked for the showcases. The API says so twice: in the events, for the panel,
         // and in the composite's own flag, which is the one the policy is chosen by.
         const events = calendarEvents({ curated: [NEXT_FEST], degraded: true });
-        stubHome({ spotlight: null, popular: [game()], news: [NEWS], events, comingSoon: [], degraded: true });
+        stubHome({ news: [NEWS], events, comingSoon: [], justOut: [], degraded: true });
 
         const result = await loader(loaderArgs());
 
@@ -197,14 +241,14 @@ describe('HomePage loader', () => {
     });
 
     it('fails closed on an answer that does not say, however whole it looks', async () => {
-        // An API older than this build, in the middle of a deploy. Both rails are full, which is
-        // exactly why this is not judged from the rails.
-        stubHome({ spotlight: null, popular: [game()], news: [NEWS], events: calendarEvents() });
+        // An API older than this build, in the middle of a deploy. Its news is there, which is
+        // exactly why this is not judged from what is there.
+        stubHome({ news: [NEWS], events: calendarEvents() });
 
         const result = await loader(loaderArgs());
 
         expect(policyOf(result)).toBe(PRIVATE_NO_STORE);
-        expect(result.data.popular).toHaveLength(1);
+        expect(result.data.news).toHaveLength(1);
 
         // Recorded as degraded, not merely treated as it. The flag is typed a boolean, so passing
         // the payload on as it arrived would hand the page an undefined under that name and leave
@@ -215,7 +259,7 @@ describe('HomePage loader', () => {
     it('fails closed on an answer with no showcases and sales, though it says it is whole', async () => {
         // An API from before the panel, mid-deploy, says it is whole because as far as it knows it is.
         // Kept at the edge, its page would go on lacking the panel after the API caught up.
-        stubHome({ spotlight: null, popular: [game()], news: [NEWS], degraded: false });
+        stubHome({ news: [NEWS], degraded: false });
 
         const result = await loader(loaderArgs());
 
@@ -226,13 +270,33 @@ describe('HomePage loader', () => {
 
     it('fails closed on an answer with no Coming soon panel, though it says it is whole', async () => {
         // An API from before the panel, mid-deploy, for the reason the showcases and sales give.
-        stubHome({ spotlight: null, popular: [game()], news: [NEWS], events: calendarEvents(), degraded: false });
+        stubHome({ news: [NEWS], events: calendarEvents(), degraded: false });
 
         const result = await loader(loaderArgs());
 
         expect(policyOf(result)).toBe(PRIVATE_NO_STORE);
         expect(result.data.degraded).toBe(true);
         expect(result.data.comingSoon).toEqual([]);
+    });
+
+    it('fails closed on an answer with no Just out panel, though it says it is whole', async () => {
+        // An API from before Trending made way for the panel, mid-deploy, for the same reason again.
+        stubHome({ news: [NEWS], events: calendarEvents(), comingSoon: COMING_SOON, degraded: false });
+
+        const result = await loader(loaderArgs());
+
+        expect(policyOf(result)).toBe(PRIVATE_NO_STORE);
+        expect(result.data.degraded).toBe(true);
+        expect(result.data.justOut).toEqual([]);
+    });
+
+    it('leaves out what an older API still sends, the trending games and the hero', async () => {
+        const home: HomeResponse = { news: [NEWS], events: calendarEvents(), comingSoon: [], justOut: [], degraded: false };
+        stubHome({ ...home, spotlight: null, popular: [] });
+
+        const result = await loader(loaderArgs());
+
+        expect(result.data).toEqual({ ...home, site: SITE, today: TODAY });
     });
 
     it('degrades, uncached, when the API answers with an error', async () => {
@@ -256,6 +320,27 @@ describe('HomePage loader', () => {
 });
 
 describe('HomePage for a signed-out visitor', () => {
+    it('welcomes a visitor with what the site is for and the two ways in', () => {
+        renderHome({
+            news: [NEWS], events: calendarEvents(), comingSoon: [], justOut: [], degraded: false,
+        });
+
+        expect(screen.getByRole('heading', { level: 1, name: "Every game you've played, in one list" })).toBeInTheDocument();
+
+        fireEvent.click(screen.getByRole('button', { name: 'Create an account' }));
+        expect(screen.getByRole('dialog', { name: 'Create Account' })).toBeInTheDocument();
+    });
+
+    it('opens the sign-in dialog the navbar opens, from the panel', () => {
+        renderHome({
+            news: [NEWS], events: calendarEvents(), comingSoon: [], justOut: [], degraded: false,
+        });
+
+        fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+
+        expect(screen.getByRole('dialog', { name: 'Sign In' })).toBeInTheDocument();
+    });
+
     it('asks the API for nothing from the browser', () => {
         // Everything a visitor sees arrives through the loader, cached once for everybody. What is
         // coming for somebody's games is asked for by the two-week line, which only a signed-in user
@@ -268,64 +353,78 @@ describe('HomePage for a signed-out visitor', () => {
         vi.stubGlobal('fetch', fetchMock);
 
         renderHome({
-            spotlight: null, popular: [game()], news: [NEWS], events: calendarEvents({ curated: [NEXT_FEST] }), comingSoon: [], degraded: false,
+            news: [NEWS], events: calendarEvents({ curated: [NEXT_FEST] }), comingSoon: [], justOut: [], degraded: false,
         });
 
-        expect(screen.getByRole('heading', { name: 'Trending right now' })).toBeInTheDocument();
+        expect(screen.getByRole('heading', { name: 'Latest news' })).toBeInTheDocument();
         expect(screen.getByRole('heading', { name: 'Showcases and sales' })).toBeInTheDocument();
         expect(fetchMock).not.toHaveBeenCalled();
     });
 
     it('shows the showcases and sales first among the shared sections, where the line would be', () => {
         renderHome({
-            spotlight: null, popular: [game()], news: [NEWS], events: calendarEvents({ curated: [NEXT_FEST] }), comingSoon: [], degraded: false,
+            news: [NEWS], events: calendarEvents({ curated: [NEXT_FEST] }), comingSoon: [], justOut: [], degraded: false,
         });
 
         const headings = screen.getAllByRole('heading', { level: 2 }).map(h => h.textContent);
-        expect(headings).toEqual(['Showcases and sales', 'Trending right now', 'Latest news']);
+        expect(headings).toEqual(['Showcases and sales', 'Latest news']);
         expect(screen.getByRole('link', { name: /Steam Next Fest/ })).toBeInTheDocument();
     });
 
-    it('shows what is coming soon after the showcases and before Trending, each with when and on what', () => {
+    it('shows what is coming soon, then what is just out, then the news, each game with when and on what', () => {
         renderHome({
-            spotlight: null, popular: [game()], news: [NEWS], events: calendarEvents({ curated: [NEXT_FEST] }), comingSoon: COMING_SOON, degraded: false,
+            news: [NEWS], events: calendarEvents({ curated: [NEXT_FEST] }), comingSoon: COMING_SOON, justOut: JUST_OUT, degraded: false,
         });
 
         const headings = screen.getAllByRole('heading', { level: 2 }).map(h => h.textContent);
-        expect(headings).toEqual(['Showcases and sales', 'Coming soon', 'Trending right now', 'Latest news']);
+        expect(headings).toEqual(['Showcases and sales', 'Coming soon', 'Just out', 'Latest news']);
 
-        const rail = screen.getByRole('list', { name: 'Coming soon' });
-        expect(within(rail).getByRole('link', { name: /Grand Theft Auto VI/ })).toHaveAttribute('href', '/games/52189');
-        expect(within(rail).getByText('Nov 19')).toHaveAttribute('datetime', '2026-11-19');
-        expect(within(rail).getByText('PS5, Series X|S')).toBeInTheDocument();
-        expect(within(rail).getByText('Q1 2027')).toBeInTheDocument();
+        const comingSoon = screen.getByRole('list', { name: 'Coming soon' });
+        expect(within(comingSoon).getByRole('link', { name: /Grand Theft Auto VI/ })).toHaveAttribute('href', '/games/52189');
+        expect(within(comingSoon).getByText('Nov 19')).toHaveAttribute('datetime', '2026-11-19');
+        expect(within(comingSoon).getByText('PS5, Series X|S')).toBeInTheDocument();
+        expect(within(comingSoon).getByText('Q1 2027')).toBeInTheDocument();
+
+        const justOut = screen.getByRole('list', { name: 'Just out' });
+        expect(within(justOut).getByRole('link', { name: /Enshrouded/ })).toHaveAttribute('href', '/games/248643');
+        expect(within(justOut).getByText('Oct 15')).toHaveAttribute('datetime', '2026-10-15');
+        expect(within(justOut).getByText('PC, PS5')).toBeInTheDocument();
+        // Last year's day carries its year, as Coming soon's next year's does.
+        expect(within(justOut).getByText('Sep 24, 2025')).toHaveAttribute('datetime', '2025-09-24');
+    });
+
+    it('draws no Just out section when nothing passes its rules', () => {
+        renderHome({ news: [NEWS], events: calendarEvents(), comingSoon: COMING_SOON, justOut: [], degraded: false });
+
+        expect(screen.queryByRole('heading', { name: 'Just out' })).toBeNull();
+        expect(screen.getByRole('heading', { name: 'Coming soon' })).toBeInTheDocument();
     });
 
     it('draws no Coming soon section when nothing passes its rules', () => {
-        renderHome({ spotlight: null, popular: [game()], news: [NEWS], events: calendarEvents(), comingSoon: [], degraded: false });
+        renderHome({ news: [NEWS], events: calendarEvents(), comingSoon: [], justOut: [], degraded: false });
 
         expect(screen.queryByRole('heading', { name: 'Coming soon' })).toBeNull();
-        expect(screen.getByRole('heading', { name: 'Trending right now' })).toBeInTheDocument();
+        expect(screen.getByRole('heading', { name: 'Latest news' })).toBeInTheDocument();
     });
 
     it('draws no panel when nothing is on', () => {
-        renderHome({ spotlight: null, popular: [game()], news: [NEWS], events: calendarEvents(), comingSoon: [], degraded: false });
+        renderHome({ news: [NEWS], events: calendarEvents(), comingSoon: [], justOut: [], degraded: false });
 
         expect(screen.queryByRole('heading', { name: 'Showcases and sales' })).toBeNull();
-        expect(screen.getByRole('heading', { name: 'Trending right now' })).toBeInTheDocument();
+        expect(screen.getByRole('heading', { name: 'Latest news' })).toBeInTheDocument();
     });
 
     it('renders data from the build before this one, which has no showcases and sales, without them', () => {
         // A navigation inside the app in a deploy's first minutes, answered from the edge with a payload
         // the previous build wrote. It has no `events`, and must cost the panel rather than the page.
         const { events: _missing, ...older } = {
-            spotlight: null, popular: [game()], news: [NEWS], events: calendarEvents(), comingSoon: [], degraded: false,
+            news: [NEWS], events: calendarEvents(), comingSoon: [], justOut: [], degraded: false,
         } satisfies HomeResponse;
         const props = { loaderData: { ...older, site: SITE } } as unknown as Route.ComponentProps;
 
-        render(<MemoryRouter><HomePage {...props} /></MemoryRouter>);
+        render(<MemoryRouter><AuthDialogProvider><HomePage {...props} /></AuthDialogProvider></MemoryRouter>);
 
-        expect(screen.getByRole('heading', { name: 'Trending right now' })).toBeInTheDocument();
+        expect(screen.getByRole('heading', { name: 'Latest news' })).toBeInTheDocument();
         expect(screen.queryByRole('heading', { name: 'Showcases and sales' })).toBeNull();
     });
 
@@ -333,7 +432,7 @@ describe('HomePage for a signed-out visitor', () => {
         auth.current = UNKNOWN;
 
         renderHome({
-            spotlight: null, popular: [game()], news: [NEWS], events: calendarEvents({ curated: [NEXT_FEST] }), comingSoon: [], degraded: false,
+            news: [NEWS], events: calendarEvents({ curated: [NEXT_FEST] }), comingSoon: [], justOut: [], degraded: false,
         });
 
         expect(screen.getByRole('heading', { name: 'Showcases and sales' })).toBeInTheDocument();
@@ -345,14 +444,82 @@ describe('HomePage for somebody signed in', () => {
         auth.current = SIGNED_IN;
 
         renderHome({
-            spotlight: null, popular: [game()], news: [NEWS], events: calendarEvents({ curated: [NEXT_FEST] }), comingSoon: [], degraded: false,
+            news: [NEWS], events: calendarEvents({ curated: [NEXT_FEST] }), comingSoon: [], justOut: [], degraded: false,
         });
 
         expect(screen.getByRole('heading', { name: 'Welcome back, bob' })).toBeInTheDocument();
         expect(screen.getByRole('region', { name: 'Coming up' })).toBeInTheDocument();
         expect(screen.queryByRole('heading', { name: 'Showcases and sales' })).toBeNull();
         expect(screen.queryByRole('link', { name: /Steam Next Fest/ })).toBeNull();
-        expect(screen.getByRole('heading', { name: 'Trending right now' })).toBeInTheDocument();
+        expect(screen.getByRole('heading', { name: 'Latest news' })).toBeInTheDocument();
+    });
+
+    it('says which of the panels’ games are in the reader’s lists', () => {
+        auth.current = SIGNED_IN;
+        inList.set(52189, 'backlog');
+
+        renderHome({ news: [NEWS], events: calendarEvents(), comingSoon: COMING_SOON, justOut: JUST_OUT, degraded: false });
+
+        const comingSoon = screen.getByRole('list', { name: 'Coming soon' });
+        expect(within(comingSoon).getByText('In Backlog')).toBeInTheDocument();
+        expect(within(screen.getByRole('list', { name: 'Just out' })).queryByText(/^In /)).toBeNull();
+    });
+
+    it('puts a game on the wishlist from either panel, which is how it reaches the reader’s line', async () => {
+        auth.current = SIGNED_IN;
+
+        renderHome({ news: [NEWS], events: calendarEvents(), comingSoon: COMING_SOON, justOut: JUST_OUT, degraded: false });
+
+        const toggle = screen.getByRole('button', { name: 'Wishlist Out of Words' });
+        expect(toggle).toHaveAttribute('aria-pressed', 'false');
+        fireEvent.click(toggle);
+
+        await vi.waitFor(() => expect(wishlist.add).toHaveBeenCalledWith(
+            expect.objectContaining({ id: 347645, title: 'Out of Words' })));
+        expect(screen.getByRole('button', { name: 'Wishlist Enshrouded' })).toBeInTheDocument();
+    });
+
+    it('says so on the card when the wishlist did not take the game', async () => {
+        auth.current = SIGNED_IN;
+        vi.mocked(wishlist.add).mockResolvedValue(false);
+
+        renderHome({ news: [NEWS], events: calendarEvents(), comingSoon: COMING_SOON, justOut: [], degraded: false });
+
+        fireEvent.click(screen.getByRole('button', { name: 'Wishlist Grand Theft Auto VI' }));
+
+        expect(await screen.findByRole('alert')).toHaveTextContent('Could not update your wishlist.');
+    });
+
+    it('takes the card’s failure away with the account it was for', async () => {
+        // The page outlives a sign-out, and the card with it: what failed for one account is not the
+        // visitor's to read, nor the next account's.
+        auth.current = SIGNED_IN;
+        vi.mocked(wishlist.add).mockResolvedValue(false);
+        const home: HomeResponse = { news: [NEWS], events: calendarEvents(), comingSoon: COMING_SOON, justOut: [], degraded: false };
+        const page = () => {
+            const props = { loaderData: { ...home, site: SITE, today: TODAY } } as unknown as Route.ComponentProps;
+            return <MemoryRouter><AuthDialogProvider><HomePage {...props} /></AuthDialogProvider></MemoryRouter>;
+        };
+        const { rerender } = render(page());
+
+        fireEvent.click(screen.getByRole('button', { name: 'Wishlist Grand Theft Auto VI' }));
+        expect(await screen.findByRole('alert')).toHaveTextContent('Could not update your wishlist.');
+
+        auth.current = SIGNED_OUT;
+        rerender(page());
+        expect(screen.queryByRole('alert')).toBeNull();
+
+        auth.current = { ...SIGNED_IN, user: userProfile({ id: 'user-2', userName: 'carol' }) };
+        rerender(page());
+        expect(screen.queryByRole('alert')).toBeNull();
+    });
+});
+
+describe('HomePage’s panels for a visitor', () => {
+    it('offer no wishlist, which a visitor has none of', () => {
+        renderHome({ news: [NEWS], events: calendarEvents(), comingSoon: COMING_SOON, justOut: JUST_OUT, degraded: false });
+
+        expect(screen.queryByRole('button', { name: /^Wishlist / })).toBeNull();
     });
 });
 

@@ -46,7 +46,7 @@ whole view.
 
 | # | Requirement |
 |---|---|
-| L1 | One horizontal line in the signed-in hero, from today to thirteen days ahead — above Trending and the news, which matter less to somebody who has signed in than their own games do. It replaces the Releasing soon rail, which covered wishlist and backlog releases only (§8.3) |
+| L1 | One horizontal line in the signed-in hero, from today to thirteen days ahead — above the shared panels and the news, which matter less to somebody who has signed in than their own games do. It replaces the Releasing soon rail, which covered wishlist and backlog releases only (§8.3) |
 | L2 | Only entries known to the day (§4). A release known only to its month, quarter or year never appears on the line; it waits in the calendar |
 | L3 | A release is a point on its day. A sale or a showcase that spans days is a span across them. Showcases and sales are marked as what they are and carry no cover |
 | L4 | Every entry says why it is there (§3.4) |
@@ -73,7 +73,7 @@ own: "Summer Game Fest starts in 2 days". Settled on #128; the reasoning is
 
 | # | Requirement |
 |---|---|
-| V1 | A panel of the showcases and sales on in today and the next thirteen days — the line's days (L1) and its events (§5, §6) — on the shared home page, directly above Trending: where the line is for somebody signed in |
+| V1 | A panel of the showcases and sales on in today and the next thirteen days — the line's days (L1) and its events (§5, §6) — on the shared home page, directly above Coming soon: where the line is for somebody signed in |
 | V2 | Every visitor without a line sees it — signed out, and anybody until the page has learned who they are — server-rendered from `/api/home` (B8) rather than fetched by the page. It gives way to the line: while a signed-in reader's line is on the page, the panel is not. The line shows the same events on the same days, beside the reader's own releases, and the two together would show every sale twice, one under the other |
 | V3 | Each event says what it is — sale, fest or showcase — the store where it has one, and its name, linked to where it was announced or where it streams; and when, counted from the reader's own day: "Starts in 2 days", "Starts tomorrow", "Today", "Starts today", "On now" with the day it ends, "Ends tomorrow", "Ends today". Beside the count, its days, or a showcase's day and its start on the reader's clock (E4). What is already on comes first, then each by the day it starts |
 | V4 | Not rendered when nothing is on in the two weeks. Unlike the line (L7) it is not a section anybody has learned to look for, and an empty one would only say that nothing had been entered |
@@ -342,7 +342,7 @@ should be one service that both call.
 | C3 | `/calendar`, the month grid of §2.2 |
 | C4 | `/admin`, the curated events and the showcase names |
 | C5 | Both routes declare `private, no-store` through `headers` and `NOINDEX` in `meta` |
-| C6 | `ShowcasesAndSales` on the home page (§2.3), from the loader's answer, above Trending, and not rendered while the line is |
+| C6 | `ShowcasesAndSales` on the home page (§2.3), from the loader's answer, above Coming soon, and not rendered while the line is |
 
 ## 9. Questions, and their answers
 

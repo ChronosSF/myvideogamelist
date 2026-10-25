@@ -177,6 +177,19 @@ public sealed record ComingSoonRelease(
     IReadOnlyList<PlatformDto> Platforms);
 
 /// <summary>
+/// A game the home page's Just out panel may show (ADR 0073): as IGDB described it, with how much it was
+/// watched on Twitch over IGDB's last day, and every one of its release rows.
+/// </summary>
+/// <param name="Watched">
+/// IGDB's popularity value of type 34, Twitch's hours watched over twenty-four hours. Only its order means
+/// anything: more is more watched.
+/// </param>
+public sealed record JustOutCandidate(CalendarGame Game, double Watched, IReadOnlyList<ReleaseRow> Rows);
+
+/// <summary>One game on the Just out panel: the day of its first full release, and what it is out on now.</summary>
+public sealed record JustOutRelease(CalendarGame Game, DateOnly Released, IReadOnlyList<PlatformDto> Platforms);
+
+/// <summary>
 /// One of IGDB's <c>events</c> — a showcase, a festival, a convention — as instants rather than days.
 /// </summary>
 /// <remarks>

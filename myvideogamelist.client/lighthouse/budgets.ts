@@ -80,6 +80,14 @@ interface Baseline {
  * and weighs `label-content-name-mismatch` at nothing. A phone's figure moved the same way, 0.9541 to
  * 0.9526, and rounds to 0.95 either side.
  *
+ * Another fell a point the same way: accessibility on a phone for the home page, 0.9578 to 0.9527, when
+ * the hero's picture and the Trending rail made way for the welcome panel and Just out (ADR 0073). The
+ * audited home page now has no image and no rail that scrolls — the stand-in's games have no release
+ * rows, so neither release panel is drawn — and `image-alt`, `image-redundant-alt` and `tabindex`, which
+ * it passed, stopped applying, taking eighteen of its weight out of the average. Its one failing audit is
+ * the one it failed before, the Sign Up button's contrast (#246). A desktop's figure moved the same way,
+ * 0.9634 to 0.9595, and rounds to 0.96 either side.
+ *
  * Sixteen figures rose when the session check stopped answering a visitor with a 401 (#316): best
  * practices from 0.96 to 1 and the console's errors from 1 to 0, on the home page, browse, the game page
  * and the profile, on both form factors. Chrome logs every 4xx a page's fetch receives as an error, so
@@ -88,7 +96,7 @@ interface Baseline {
  */
 const BASELINE: Record<FormFactor, Record<PageKey, Baseline>> = {
     mobile: {
-        home: { accessibility: 0.96, bestPractices: 1, seo: 1, consoleErrors: 0, kib: 807, performance: 0.87 },
+        home: { accessibility: 0.95, bestPractices: 1, seo: 1, consoleErrors: 0, kib: 807, performance: 0.87 },
         games: { accessibility: 0.95, bestPractices: 1, seo: 1, consoleErrors: 0, kib: 803, performance: 0.9 },
         game: { accessibility: 0.92, bestPractices: 1, seo: 1, consoleErrors: 0, kib: 2106, performance: 0.87 },
         profile: { accessibility: 0.94, bestPractices: 1, seo: 1, consoleErrors: 0, kib: 587, performance: 0.89 },

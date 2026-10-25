@@ -9,7 +9,7 @@ import { countFinishedIn, formatHours } from '@/lib/stats';
  * this waited on the home page forking rather than on any backend work.
  *
  * Every figure here is about the user's own rows and none of it touches IGDB, so this section
- * survives an outage that takes out the trending rail below it.
+ * survives an outage that takes out the panels below it.
  */
 export function HomeStatsStrip({ userId }: { userId: string }) {
     const { stats, loading, error } = useUserStats(userId);

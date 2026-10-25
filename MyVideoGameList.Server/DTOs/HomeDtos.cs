@@ -8,12 +8,10 @@ namespace MyVideoGameList.Server.DTOs;
 /// page is the highest-traffic route, and each part would otherwise be a separate round trip
 /// against a rate-limited upstream.
 /// </remarks>
-/// <param name="Spotlight">
-/// A single highly-rated game with artwork, used as the hero backdrop. Null when IGDB returns
-/// nothing usable, in which case the hero falls back to a plain gradient.
+/// <param name="News">
+/// The latest Steam announcements of the games most played on Steam, newest first (ADR 0073 keeps those
+/// games for this alone). Empty only when Steam or IGDB failed, which sets <paramref name="Degraded"/>.
 /// </param>
-/// <param name="Popular">Real covers, shown instead of describing the catalogue in the abstract.</param>
-/// <param name="News">Latest Steam news across <paramref name="Popular"/>, newest first. May be empty.</param>
 /// <param name="Events">
 /// The showcases and sales that overlap the next two weeks for any reader, wherever they are: the
 /// release calendar's answer (<c>specs/release-timeline-and-calendar.md</c> §2.3, B8) for the UTC
@@ -28,6 +26,11 @@ namespace MyVideoGameList.Server.DTOs;
 /// (ADR 0071). Empty when none passes the rules, which is an answer; a failure to ask IGDB, or to read the
 /// admin's picks, sets <paramref name="Degraded"/>.
 /// </param>
+/// <param name="JustOut">
+/// The new games of the last ninety days most watched on Twitch, the newest first (ADR 0073). Empty when none
+/// passes the rules, which is an answer; a failure to ask IGDB, or to read the admin's hides, sets
+/// <paramref name="Degraded"/>.
+/// </param>
 /// <param name="Degraded">
 /// True when an upstream failed and this answer is missing what it would have supplied. It is
 /// still a 200, deliberately — the page renders without the parts that failed rather than
@@ -35,9 +38,8 @@ namespace MyVideoGameList.Server.DTOs;
 /// CDN cannot tell one 200 from another, and caching a failure outlives the failure.
 /// </param>
 public record HomeResponse(
-    GameDto? Spotlight,
-    IEnumerable<GameDto> Popular,
     IEnumerable<NewsItemDto> News,
     CalendarEventsDto Events,
     IReadOnlyList<ComingSoonDto> ComingSoon,
+    IReadOnlyList<JustOutDto> JustOut,
     bool Degraded);

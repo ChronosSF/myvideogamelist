@@ -5,9 +5,10 @@ import type { ConnectedRelease } from '@/types/releases';
 
 /**
  * The release as the lists provider adds a game: what the line and the calendar know of it, and nothing
- * they do not. The Backlog's card shows the rest once the lists are next read.
+ * they do not. The Backlog's card shows the rest once the lists are next read. The home page's release
+ * panels know as much of theirs, and wishlist a game the same way.
  */
-export function releaseAsGame(release: ConnectedRelease): GameDto {
+export function releaseAsGame(release: Pick<ConnectedRelease, 'gameId' | 'title' | 'coverImageUrl' | 'platforms'>): GameDto {
     return {
         id: release.gameId,
         title: release.title,

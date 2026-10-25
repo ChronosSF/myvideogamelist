@@ -105,6 +105,17 @@ public class IgdbService(
     private const int SteamPeakPlayersPopularityType = 5;
 
     /// <summary>
+    /// IGDB <c>popularity_type</c> 34, "24hr Hours Watched", sourced from Twitch — read from
+    /// <c>popularity_types</c> live on 2026-10-25, with its rows calculated the day before.
+    /// </summary>
+    /// <remarks>
+    /// The Just out panel's ranking (ADR 0073). Twitch carries every platform, where type 5 is Steam's
+    /// alone. Its top is long-running streams — Tibia, Marbles on Stream — which is why it is only ever read
+    /// for games out in the last ninety days, where it reads as the new games people are playing.
+    /// </remarks>
+    private const int TwitchHoursWatchedPopularityType = 34;
+
+    /// <summary>
     /// Critics a game needs before its <c>aggregated_rating</c> is treated as a ranking signal for
     /// the browse listing. Eight is low enough to keep the catalogue deep and high enough to drop
     /// the single-review entries that would otherwise fill the first pages with perfect scores.
@@ -928,7 +939,9 @@ public class IgdbService(
             ? address.AbsoluteUri
             : null;
 
-    /// <summary>What the Coming soon panel asks of a game; see <see cref="IgdbComingSoonGame"/>.</summary>
+    /// <summary>
+    /// What the Coming soon and Just out panels ask of a game; see <see cref="IgdbComingSoonGame"/>.
+    /// </summary>
     private const string ComingSoonFields =
         "fields id,name,cover.image_id,game_type,parent_game,version_parent,game_status,first_release_date,hypes,"
         + "release_dates.date,release_dates.date_format,release_dates.y,release_dates.m,release_dates.status,"
@@ -1016,14 +1029,94 @@ public class IgdbService(
     }
 
     private static ComingSoonCandidate MapToComingSoonCandidate(IgdbComingSoonGame g) =>
-        new(
-            MapToCalendarGame(new IgdbCalendarGame(
-                g.Id, g.Name, g.Cover, g.GameType, g.ParentGame, g.VersionParent, null, g.FirstReleaseDate, g.GameStatus)),
-            g.Hypes ?? 0,
-            (g.ReleaseDates ?? [])
-                .Select(row => MapToReleaseRow(row with { Game = g.Id }))
-                .OfType<ReleaseRow>()
-                .ToList());
+        new(MapToPanelGame(g), g.Hypes ?? 0, MapToPanelRows(g));
+
+    /// <summary>A game as the home page's release panels judge it, without its rows.</summary>
+    private static CalendarGame MapToPanelGame(IgdbComingSoonGame g) =>
+        MapToCalendarGame(new IgdbCalendarGame(
+            g.Id, g.Name, g.Cover, g.GameType, g.ParentGame, g.VersionParent, null, g.FirstReleaseDate, g.GameStatus));
+
+    /// <summary>A game's release rows, each given the game it came nested in, which IGDB leaves out.</summary>
+    private static List<ReleaseRow> MapToPanelRows(IgdbComingSoonGame g) =>
+        (g.ReleaseDates ?? [])
+            .Select(row => MapToReleaseRow(row with { Game = g.Id }))
+            .OfType<ReleaseRow>()
+            .ToList();
+
+    /// <summary>
+    /// How long the Just out panel's candidates are kept: a day, keyed by the UTC day, as Coming soon's are.
+    /// IGDB calculates its Twitch figures once a day, so asking more often learns nothing.
+    /// </summary>
+    private static readonly TimeSpan JustOutLifetime = TimeSpan.FromHours(24);
+
+    public async Task<IReadOnlyList<JustOutCandidate>> GetJustOutCandidatesAsync(
+        DateOnly today, CancellationToken cancellationToken = default)
+    {
+        var cacheKey = $"igdb_just_out|{today:yyyy-MM-dd}";
+        if (cache.TryGetValue(cacheKey, out IReadOnlyList<JustOutCandidate>? cached) && cached is not null)
+            return cached;
+
+        // Two requests, since a popularity row cannot be filtered by its game's release dates: the most
+        // watched games first, then which of them came out in the window. Five hundred of the first held
+        // seventy that passed the rules on 2026-10-25, for a panel of ten.
+        var primitives = await QueryAsync<IgdbPopularityPrimitive>(
+            PopularityEndpoint, BuildJustOutPopularityQuery(), cancellationToken);
+
+        // Sorted most watched first, so the first row for a game is its highest.
+        var watched = new Dictionary<int, double>();
+        foreach (var p in primitives)
+        {
+            if (p is { GameId: int id, Value: double value }) watched.TryAdd(id, value);
+        }
+
+        IReadOnlyList<JustOutCandidate> result = [];
+        if (watched.Count > 0)
+        {
+            var games = await QueryAsync<IgdbComingSoonGame>(
+                GamesEndpoint, BuildJustOutQuery(today, watched.Keys), cancellationToken);
+            result = games.Select(g => new JustOutCandidate(MapToPanelGame(g), watched[g.Id], MapToPanelRows(g))).ToList();
+        }
+
+        // What a removed field or popularity type looks like: no rows and no error. Said once a day, since an
+        // empty panel is otherwise just a panel that is not drawn.
+        if (result.Count == 0)
+            logger.LogWarning("IGDB answered no games watched on Twitch that came out in the last {WindowDays} days; the Just out panel will be empty.", JustOut.WindowDays);
+
+        cache.Set(cacheKey, result, JustOutLifetime);
+        return result;
+    }
+
+    /// <summary>The Just out panel's first query: the most watched games on Twitch, most watched first.</summary>
+    internal static string BuildJustOutPopularityQuery() =>
+        new StringBuilder()
+            .AppendLine("fields game_id,value;")
+            .AppendLine($"where popularity_type = {TwitchHoursWatchedPopularityType};")
+            .AppendLine("sort value desc;")
+            .AppendLine($"limit {MaxBatchSize};")
+            .ToString();
+
+    /// <summary>
+    /// The Just out panel's second query: which of the most watched games are new games with a release row
+    /// stored in the window, with every release row and its platform.
+    /// </summary>
+    /// <remarks>
+    /// By a release row and not by <c>first_release_date</c>, for Coming soon's reason: that is an early-access
+    /// day for a game whose full release came later. Only a row known to the day counts, and a day is stored
+    /// on itself, so the range is the window's days exactly, up to yesterday. A game with a port in the window
+    /// comes back too, and <see cref="JustOut"/> drops it as out before.
+    /// </remarks>
+    internal static string BuildJustOutQuery(DateOnly today, IEnumerable<int> ids)
+    {
+        var from = today.AddDays(-JustOut.WindowDays);
+
+        return new StringBuilder()
+            .AppendLine(ComingSoonFields)
+            .AppendLine($"where id = ({string.Join(',', ids)})"
+                + $" & game_type = ({string.Join(',', ComingSoon.GameTypes)}) & version_parent = null"
+                + $" & release_dates.date >= {UnixDay(from)} & release_dates.date < {UnixDay(today)};")
+            .AppendLine($"limit {MaxBatchSize};")
+            .ToString();
+    }
 
     public Task<IEnumerable<PlatformDto>> GetActivePlatformsAsync()
     {

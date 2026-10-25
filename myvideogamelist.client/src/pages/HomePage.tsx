@@ -7,7 +7,8 @@ import { HomeStatsStrip } from '@/components/HomeStatsStrip';
 import { PlayNextPicker } from '@/components/PlayNextPicker';
 import { ReleaseLine } from '@/components/ReleaseLine';
 import { ShowcasesAndSales } from '@/components/ShowcasesAndSales';
-import { TrendingRail } from '@/components/TrendingRail';
+import { JustOutRail } from '@/components/JustOutRail';
+import { WelcomePanel } from '@/components/WelcomePanel';
 import { NewsCard } from '@/components/NewsCard';
 import { CACHE_HOME, PRIVATE_NO_STORE } from '@/lib/cache';
 import { utcDay } from '@/lib/daySpan';
@@ -16,7 +17,7 @@ import { siteStructuredData } from '@/lib/structuredData';
 import { loaderFetch } from '@/lib/trace.server';
 import type { UserProfile } from '@/types/auth';
 import type { HomeResponse } from '@/types/news';
-import type { CalendarEvents, ComingSoonGame } from '@/types/releases';
+import type { CalendarEvents, ComingSoonGame, JustOutGame } from '@/types/releases';
 import type { Route } from './+types/HomePage';
 import './HomePage.css';
 
@@ -61,10 +62,11 @@ type HomeData = HomeResponse & {
 };
 
 /**
- * What `/api/home` answers. The showcases and sales and the Coming soon panel are optional here, though
+ * What `/api/home` answers. The showcases and sales and the two release panels are optional here, though
  * not in the type the page is handed: an API older than this build, in the middle of a deploy, sends none.
  */
-type HomeAnswer = Omit<HomeResponse, 'events' | 'comingSoon'> & { events?: CalendarEvents; comingSoon?: ComingSoonGame[] };
+type HomeAnswer = Omit<HomeResponse, 'events' | 'comingSoon' | 'justOut'>
+    & { events?: CalendarEvents; comingSoon?: ComingSoonGame[]; justOut?: JustOutGame[] };
 
 /** The showcases and sales of an answer that brought none, which is not the same as none being on. */
 const NO_EVENTS: CalendarEvents = { curated: [], showcases: [], degraded: true };
@@ -102,19 +104,23 @@ export async function loader({ context }: Route.LoaderArgs) {
     // is whole because, as far as it knows, it is. It is missing a part all the same, and kept at the
     // edge it would go on serving a page without the panel after the API caught up — so it is
     // degraded too, normalized the same way, rather than trusted for what it did not know to say. So
-    // is an answer with no Coming soon panel, for the same reason.
+    // is an answer with no Coming soon or Just out panel, for the same reason.
     const respond = (home: HomeAnswer) => {
         const events = home.events ?? null;
         const comingSoon = home.comingSoon ?? null;
-        const degraded = home.degraded !== false || events === null || comingSoon === null;
+        const justOut = home.justOut ?? null;
+        const degraded = home.degraded !== false || events === null || comingSoon === null || justOut === null;
 
         return data<HomeData>(
-            { ...home, events: events ?? NO_EVENTS, comingSoon: comingSoon ?? [], degraded, site, today },
+            {
+                news: home.news, events: events ?? NO_EVENTS, comingSoon: comingSoon ?? [], justOut: justOut ?? [],
+                degraded, site, today,
+            },
             { headers: { 'Cache-Control': degraded ? PRIVATE_NO_STORE : CACHE_HOME } });
     };
 
     // What is left of the page when the API gave nothing to build it from.
-    const nothing = () => respond({ spotlight: null, popular: [], news: [], events: NO_EVENTS, comingSoon: [], degraded: true });
+    const nothing = () => respond({ news: [], events: NO_EVENTS, comingSoon: [], justOut: [], degraded: true });
 
     try {
         const response = await loaderFetch(context, '/api/home');
@@ -128,11 +134,11 @@ export async function loader({ context }: Route.LoaderArgs) {
 }
 
 /**
- * What a returning user lands on instead of the pitch (ROADMAP H1).
+ * What a returning user lands on instead of the welcome panel (ROADMAP H1).
  *
  * Rendered only after hydration, and unavoidably so: this page is shared-cached, the server render
  * has no cookie, and `AuthProvider` learns who the user is from a fetch. So a signed-in visitor
- * sees the landing hero for the length of one request and then this. Fixing that properly means a
+ * sees the welcome panel for the length of one request and then this. Fixing that properly means a
  * cookie-varying SSR render and a CloudFront behaviour to match, which is ROADMAP D12's problem
  * rather than this component's.
  */
@@ -172,7 +178,7 @@ function SignedInHero({ user }: { user: UserProfile }) {
                 </h2>
                 <PlayNextPicker />
 
-                {/* Last in the hero, so directly above Trending and the news, which matter less to
+                {/* Last in the hero, so directly above the panels everybody sees, which matter less to
                     somebody signed in than their own games do (L1). Brings its own heading, because
                     its sentence for an empty two weeks belongs inside the line it describes. */}
                 <ReleaseLine userId={user.id} />
@@ -181,111 +187,41 @@ function SignedInHero({ user }: { user: UserProfile }) {
     );
 }
 
-/** The pitch, for a visitor who has not signed in — and for the server render, which never has. */
-function LandingHero({ spotlight }: { spotlight: HomeResponse['spotlight'] }) {
-    return (
-        <>
-            {/* ── Hero ────────────────────────────────────────────────
-                Compact by design. The old full-viewport hero pushed every piece of real
-                content below the fold; this keeps the pitch but lets the trending covers
-                start showing immediately. */}
-            <section className="relative overflow-hidden border-b border-line">
-                {spotlight?.backgroundImageUrl ? (
-                    <>
-                        <img
-                            src={spotlight.backgroundImageUrl}
-                            alt=""
-                            className="absolute inset-0 w-full h-full object-cover"
-                        />
-                        {/*
-                          * Two layers: a horizontal ramp keeps the left-hand text legible, and a
-                          * vertical one lands the section on the page background instead of an edge.
-                          */}
-                        <div className="absolute inset-0 bg-gradient-to-r from-sunken via-sunken/90 to-sunken/40" />
-                        <div className="absolute inset-0 bg-gradient-to-t from-sunken via-transparent to-transparent" />
-                    </>
-                ) : (
-                    <div className="absolute inset-0 bg-gradient-to-br from-primary-950 via-page to-page" />
-                )}
-
-                <div className="relative max-w-6xl mx-auto px-4 sm:px-6 py-14 sm:py-20">
-                    <div className="max-w-2xl">
-                        <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-fg-strong mb-4 leading-tight">
-                            Every game you&apos;ve played,{' '}
-                            <span className="text-primary-400">in one list</span>
-                        </h1>
-                        <p className="text-fg-soft text-base sm:text-lg mb-8 leading-relaxed">
-                            Track what you&apos;re playing, park what you&apos;ll get to eventually, and
-                            never miss a release date again.
-                        </p>
-
-                        <div className="flex flex-wrap items-center gap-3">
-                            <Link
-                                to="/games"
-                                className="inline-flex items-center gap-2 px-5 py-2.5 bg-primary-600 hover:bg-primary-500 text-on-primary font-semibold rounded-xl transition-colors shadow-lg shadow-primary-950/50"
-                            >
-                                Browse games
-                            </Link>
-                            <Link
-                                to="/lists"
-                                className="inline-flex items-center gap-2 px-5 py-2.5 bg-white/10 hover:bg-white/20 backdrop-blur-sm text-fg-strong font-semibold rounded-xl transition-colors border border-white/15"
-                            >
-                                My lists
-                            </Link>
-                        </div>
-
-                        {spotlight && (
-                            <p className="mt-8 text-xs text-fg-muted">
-                                Pictured:{' '}
-                                <Link
-                                    to={`/games/${spotlight.id}`}
-                                    className="text-fg-soft hover:text-primary-400 underline underline-offset-2 transition-colors"
-                                >
-                                    {spotlight.title}
-                                </Link>
-                            </p>
-                        )}
-                    </div>
-                </div>
-            </section>
-        </>
-    );
-}
-
 export function HomePage({ loaderData }: Route.ComponentProps) {
     // `events` has a default although the loader always sets it: a navigation inside the app fetches
     // the loader's data on its own, and in a deploy's first minutes the edge can still hold one written
     // by the build before this one, which has no showcases and sales at all. Without the default that
-    // payload would be a TypeError, and the page its error boundary. `comingSoon` likewise, for a copy
-    // written before the panel existed.
-    const { spotlight, popular, news, events = NO_EVENTS, comingSoon = [], today } = loaderData;
+    // payload would be a TypeError, and the page its error boundary. `comingSoon` and `justOut` likewise,
+    // for a copy written before the panel existed.
+    const { news, events = NO_EVENTS, comingSoon = [], justOut = [], today } = loaderData;
     const { user, loading } = useAuth();
     const signedIn = user !== null && !loading;
 
     return (
         <div className="min-h-screen">
-            {/* The landing hero while auth is still unknown, which includes every server render.
+            {/* The welcome panel while auth is still unknown, which includes every server render.
                 The alternative — nothing until `me` answers — flashes an empty page at the one
-                visitor the pitch is written for. */}
+                visitor the panel is written for. */}
             {signedIn
                 ? <SignedInHero user={user} />
-                : <LandingHero spotlight={spotlight} />}
+                : <WelcomePanel />}
 
             {/* Everything below is the same for both, but for the showcases and sales, which give
-                way to the line. Trending and the news are worth seeing whether or not anybody is
+                way to the line. The panels and the news are worth seeing whether or not anybody is
                 signed in, and duplicating them into two branches is how the two drift. A rule
-                between each section and the next, whichever of them are drawn: any of the four can
-                be missing. */}
+                between each section and the next, whichever of them are drawn: any of them can be
+                missing. */}
             <div className="max-w-6xl mx-auto px-4 sm:px-6 divide-y divide-line">
-                {/* Where the two-week line is for somebody signed in, directly above Trending, and
+                {/* Where the two-week line is for somebody signed in, directly above Coming soon, and
                     giving way to it: the line shows these same events on the same days, beside the
                     reader's own releases, and the two together would be every sale twice, one under
-                    the other (ADR 0063). It goes with the landing hero, so in the same render. */}
+                    the other (ADR 0063). It goes with the welcome panel, so in the same render. */}
                 {!signedIn && <ShowcasesAndSales events={events} today={today} />}
 
                 {/* For everybody, after the reader's own two weeks or the showcases standing in for them:
-                    what is coming over three months, before what is being played today (ADR 0071). A game
-                    on somebody's line may be here too, which is the panel saying it is a big one. */}
+                    what is coming over three months, then what came out over the three before (ADR 0071,
+                    0073). A game on somebody's line may be here too, which is the panel saying it is a big
+                    one; the two panels meet on today and never hold the same game. */}
                 {comingSoon.length > 0 && (
                     <section className="py-10 sm:py-12" aria-labelledby="coming-soon-heading">
                         <HomeSectionHeading
@@ -297,24 +233,25 @@ export function HomePage({ loaderData }: Route.ComponentProps) {
                     </section>
                 )}
 
-                {popular.length > 0 && (
-                    <section className="py-10 sm:py-12" aria-labelledby="trending-heading">
+                {justOut.length > 0 && (
+                    <section className="py-10 sm:py-12" aria-labelledby="just-out-heading">
                         <HomeSectionHeading
-                            id="trending-heading"
-                            title="Trending right now"
-                            subtitle="The most-played games on Steam today"
+                            id="just-out-heading"
+                            title="Just out"
+                            subtitle="The new games most watched on Twitch, out in the last three months"
                             action={{ to: '/games', label: 'Browse all' }}
                         />
-                        <TrendingRail games={popular} />
+                        <JustOutRail games={justOut} today={today} />
                     </section>
                 )}
 
+                {/* Last: news is about Steam's most-played games alone, which the panels above are not. */}
                 {news.length > 0 && (
                     <section className="py-10 sm:py-12" aria-labelledby="news-heading">
                         <HomeSectionHeading
                             id="news-heading"
                             title="Latest news"
-                            subtitle="Patch notes and announcements from the games people are playing"
+                            subtitle="Patch notes and announcements from the games most played on Steam"
                             // The same rail for everybody, so the way to one's own news is a link
                             // rather than a second rail. Shown once auth has answered, as the
                             // navbar's link to the same page is.

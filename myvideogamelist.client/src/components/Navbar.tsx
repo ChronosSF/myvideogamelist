@@ -1,15 +1,12 @@
 import { useId, useRef, useState } from 'react';
 import { Link, NavLink, useLocation, useNavigate } from 'react-router';
 import { useAuth } from '@/hooks/useAuth';
+import { useAuthDialog } from '@/hooks/useAuthDialog';
 import { Avatar } from '@/components/Avatar';
-import { LoginDialog } from '@/components/LoginDialog';
-import { SignupDialog } from '@/components/SignupDialog';
 import { Logo } from '@/components/Logo';
 import { NavbarSearch } from '@/components/NavbarSearch';
 import { useMediaQuery } from '@/lib/useMediaQuery';
 import './Navbar.css';
-
-type DialogState = 'none' | 'login' | 'signup';
 
 /** Where the search box moves into the bar, matching `NavbarSearch.css`. */
 const SEARCH_IN_BAR = '(width >= 64rem)';
@@ -24,7 +21,7 @@ export function Navbar() {
     const { user, loading: authLoading, logout } = useAuth();
     const navigate = useNavigate();
     const location = useLocation();
-    const [dialog, setDialog] = useState<DialogState>('none');
+    const authDialog = useAuthDialog();
     const [menuOpen, setMenuOpen] = useState(false);
 
     // The main menu carries the nav links below md, where the row has no room for them.
@@ -337,13 +334,13 @@ export function Navbar() {
                                 <div className="flex items-center gap-2 shrink-0 sm:ml-2">
                                     <button
                                         className="navbar-btn-ghost"
-                                        onClick={() => setDialog('login')}
+                                        onClick={() => authDialog.open('login')}
                                     >
                                         Sign In
                                     </button>
                                     <button
                                         className="navbar-btn-primary"
-                                        onClick={() => setDialog('signup')}
+                                        onClick={() => authDialog.open('signup')}
                                     >
                                         Sign Up
                                     </button>
@@ -360,19 +357,6 @@ export function Navbar() {
             )}
             {searchOpen && (
                 <div className="navbar-scrim lg:hidden" onClick={() => setSearchOpen(false)} aria-hidden="true" />
-            )}
-
-            {dialog === 'login' && (
-                <LoginDialog
-                    onClose={() => setDialog('none')}
-                    onSwitchToRegister={() => setDialog('signup')}
-                />
-            )}
-            {dialog === 'signup' && (
-                <SignupDialog
-                    onClose={() => setDialog('none')}
-                    onSwitchToLogin={() => setDialog('login')}
-                />
             )}
         </>
     );

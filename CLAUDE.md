@@ -196,7 +196,7 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   `IgdbService.BuildConnectedReleasesQuery` is the worked example; see
   `specs/release-timeline-and-calendar.md` §4 and §8.1.
 
-- **Steam news and the trending rail hold no database state**, deliberately, so the pending
+- **Steam news and the home page's IGDB answers hold no database state**, deliberately, so the pending
   PostgreSQL move stays as cheap as it is today. See `docs/decisions/0012-*`. Keep derived,
   regenerable, TTL'd data in `IMemoryCache`; do not add a table for it.
 
