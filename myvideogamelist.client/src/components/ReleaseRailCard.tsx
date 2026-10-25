@@ -42,18 +42,21 @@ export function ReleaseRailCard({ game, when }: ReleaseRailCardProps) {
     const { getListFor, nameFor } = useLists();
     const wishlist = useWishlist();
 
-    // This card's last change, read off the return value rather than the provider's shared error, which
-    // belongs to whichever card was pressed last — as on the games grid's cards.
-    const [failed, setFailed] = useState(false);
+    // The account this card's last change failed for, read off the return value rather than the provider's
+    // shared error, which belongs to whichever card was pressed last — as on the games grid's cards. Held as
+    // the account rather than a flag, because the page outlives a sign-out: a flag would go on telling the
+    // visitor, or the next account, that a wishlist they never touched could not be updated.
+    const [failedFor, setFailedFor] = useState<string | null>(null);
 
     const favourite = isFavourite(game.gameId);
     const list = getListFor(game.gameId);
     const wishlisted = wishlist.isWishlisted(game.gameId);
 
     const toggleWishlist = async () => {
-        setFailed(false);
+        const account = user?.id ?? null;
+        setFailedFor(null);
         const saved = wishlisted ? await wishlist.remove(game.gameId) : await wishlist.add(releaseAsGame(game));
-        setFailed(!saved);
+        setFailedFor(saved ? null : account);
     };
 
     return (
@@ -111,7 +114,7 @@ export function ReleaseRailCard({ game, when }: ReleaseRailCardProps) {
                 </button>
             )}
 
-            {failed && (
+            {failedFor !== null && failedFor === user?.id && (
                 <p className="mt-1 text-xs font-semibold text-danger-300" role="alert">
                     Could not update your wishlist.
                 </p>

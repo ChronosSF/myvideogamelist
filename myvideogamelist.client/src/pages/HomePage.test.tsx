@@ -489,6 +489,30 @@ describe('HomePage for somebody signed in', () => {
 
         expect(await screen.findByRole('alert')).toHaveTextContent('Could not update your wishlist.');
     });
+
+    it('takes the card’s failure away with the account it was for', async () => {
+        // The page outlives a sign-out, and the card with it: what failed for one account is not the
+        // visitor's to read, nor the next account's.
+        auth.current = SIGNED_IN;
+        vi.mocked(wishlist.add).mockResolvedValue(false);
+        const home: HomeResponse = { news: [NEWS], events: calendarEvents(), comingSoon: COMING_SOON, justOut: [], degraded: false };
+        const page = () => {
+            const props = { loaderData: { ...home, site: SITE, today: TODAY } } as unknown as Route.ComponentProps;
+            return <MemoryRouter><AuthDialogProvider><HomePage {...props} /></AuthDialogProvider></MemoryRouter>;
+        };
+        const { rerender } = render(page());
+
+        fireEvent.click(screen.getByRole('button', { name: 'Wishlist Grand Theft Auto VI' }));
+        expect(await screen.findByRole('alert')).toHaveTextContent('Could not update your wishlist.');
+
+        auth.current = SIGNED_OUT;
+        rerender(page());
+        expect(screen.queryByRole('alert')).toBeNull();
+
+        auth.current = { ...SIGNED_IN, user: userProfile({ id: 'user-2', userName: 'carol' }) };
+        rerender(page());
+        expect(screen.queryByRole('alert')).toBeNull();
+    });
 });
 
 describe('HomePage’s panels for a visitor', () => {
