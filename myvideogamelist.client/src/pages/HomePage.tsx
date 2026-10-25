@@ -1,5 +1,6 @@
 import { Link, data } from 'react-router';
 import { useAuth } from '@/hooks/useAuth';
+import { ComingSoonRail } from '@/components/ComingSoonRail';
 import { ContinuePlayingRail } from '@/components/ContinuePlayingRail';
 import { HomeSectionHeading } from '@/components/HomeSectionHeading';
 import { HomeStatsStrip } from '@/components/HomeStatsStrip';
@@ -15,7 +16,7 @@ import { siteStructuredData } from '@/lib/structuredData';
 import { loaderFetch } from '@/lib/trace.server';
 import type { UserProfile } from '@/types/auth';
 import type { HomeResponse } from '@/types/news';
-import type { CalendarEvents } from '@/types/releases';
+import type { CalendarEvents, ComingSoonGame } from '@/types/releases';
 import type { Route } from './+types/HomePage';
 import './HomePage.css';
 
@@ -60,10 +61,10 @@ type HomeData = HomeResponse & {
 };
 
 /**
- * What `/api/home` answers. The showcases and sales are optional here, though not in the type the
- * page is handed: an API older than this build, in the middle of a deploy, sends none.
+ * What `/api/home` answers. The showcases and sales and the Coming soon panel are optional here, though
+ * not in the type the page is handed: an API older than this build, in the middle of a deploy, sends none.
  */
-type HomeAnswer = Omit<HomeResponse, 'events'> & { events?: CalendarEvents };
+type HomeAnswer = Omit<HomeResponse, 'events' | 'comingSoon'> & { events?: CalendarEvents; comingSoon?: ComingSoonGame[] };
 
 /** The showcases and sales of an answer that brought none, which is not the same as none being on. */
 const NO_EVENTS: CalendarEvents = { curated: [], showcases: [], degraded: true };
@@ -100,18 +101,20 @@ export async function loader({ context }: Route.LoaderArgs) {
     // An answer with no showcases and sales is one from an API older than this build, which says it
     // is whole because, as far as it knows, it is. It is missing a part all the same, and kept at the
     // edge it would go on serving a page without the panel after the API caught up — so it is
-    // degraded too, normalized the same way, rather than trusted for what it did not know to say.
+    // degraded too, normalized the same way, rather than trusted for what it did not know to say. So
+    // is an answer with no Coming soon panel, for the same reason.
     const respond = (home: HomeAnswer) => {
         const events = home.events ?? null;
-        const degraded = home.degraded !== false || events === null;
+        const comingSoon = home.comingSoon ?? null;
+        const degraded = home.degraded !== false || events === null || comingSoon === null;
 
         return data<HomeData>(
-            { ...home, events: events ?? NO_EVENTS, degraded, site, today },
+            { ...home, events: events ?? NO_EVENTS, comingSoon: comingSoon ?? [], degraded, site, today },
             { headers: { 'Cache-Control': degraded ? PRIVATE_NO_STORE : CACHE_HOME } });
     };
 
     // What is left of the page when the API gave nothing to build it from.
-    const nothing = () => respond({ spotlight: null, popular: [], news: [], events: NO_EVENTS, degraded: true });
+    const nothing = () => respond({ spotlight: null, popular: [], news: [], events: NO_EVENTS, comingSoon: [], degraded: true });
 
     try {
         const response = await loaderFetch(context, '/api/home');
@@ -253,8 +256,9 @@ export function HomePage({ loaderData }: Route.ComponentProps) {
     // `events` has a default although the loader always sets it: a navigation inside the app fetches
     // the loader's data on its own, and in a deploy's first minutes the edge can still hold one written
     // by the build before this one, which has no showcases and sales at all. Without the default that
-    // payload would be a TypeError, and the page its error boundary.
-    const { spotlight, popular, news, events = NO_EVENTS, today } = loaderData;
+    // payload would be a TypeError, and the page its error boundary. `comingSoon` likewise, for a copy
+    // written before the panel existed.
+    const { spotlight, popular, news, events = NO_EVENTS, comingSoon = [], today } = loaderData;
     const { user, loading } = useAuth();
     const signedIn = user !== null && !loading;
 
@@ -270,7 +274,7 @@ export function HomePage({ loaderData }: Route.ComponentProps) {
             {/* Everything below is the same for both, but for the showcases and sales, which give
                 way to the line. Trending and the news are worth seeing whether or not anybody is
                 signed in, and duplicating them into two branches is how the two drift. A rule
-                between each section and the next, whichever of them are drawn: any of the three can
+                between each section and the next, whichever of them are drawn: any of the four can
                 be missing. */}
             <div className="max-w-6xl mx-auto px-4 sm:px-6 divide-y divide-line">
                 {/* Where the two-week line is for somebody signed in, directly above Trending, and
@@ -278,6 +282,20 @@ export function HomePage({ loaderData }: Route.ComponentProps) {
                     reader's own releases, and the two together would be every sale twice, one under
                     the other (ADR 0063). It goes with the landing hero, so in the same render. */}
                 {!signedIn && <ShowcasesAndSales events={events} today={today} />}
+
+                {/* For everybody, after the reader's own two weeks or the showcases standing in for them:
+                    what is coming over three months, before what is being played today (ADR 0071). A game
+                    on somebody's line may be here too, which is the panel saying it is a big one. */}
+                {comingSoon.length > 0 && (
+                    <section className="py-10 sm:py-12" aria-labelledby="coming-soon-heading">
+                        <HomeSectionHeading
+                            id="coming-soon-heading"
+                            title="Coming soon"
+                            subtitle="The new games most followed on IGDB, out in the next three months"
+                        />
+                        <ComingSoonRail games={comingSoon} today={today} />
+                    </section>
+                )}
 
                 {popular.length > 0 && (
                     <section className="py-10 sm:py-12" aria-labelledby="trending-heading">

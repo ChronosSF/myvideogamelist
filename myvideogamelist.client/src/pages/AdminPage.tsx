@@ -2,6 +2,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useAdminStats } from '@/hooks/useAdminStats';
 import { useCalendarAdmin } from '@/hooks/useCalendarAdmin';
 import { AdminStatsCard } from '@/components/AdminStatsCard';
+import { ComingSoonPicksCard } from '@/components/ComingSoonPicksCard';
 import { CuratedEventsCard } from '@/components/CuratedEventsCard';
 import { LoadingState } from '@/components/LoadingState';
 import { PageHeader } from '@/components/PageHeader';
@@ -61,7 +62,8 @@ function AdminSkeleton({ label }: { label: string }) {
 
 /**
  * The admin page. It shows what members do, counted (ADR 0051), and edits the release calendar's
- * curated events and showcase names (spec §7), and nothing else.
+ * curated events and showcase names (spec §7) and the home page's Coming soon picks (ADR 0071), and
+ * nothing else.
  *
  * The page is the same for everybody who reaches it, and the navbar links to it only for an admin;
  * neither is the guard. Every request it makes is refused by the server's policy unless the account
@@ -99,6 +101,13 @@ export function AdminPage() {
                     names={curation.data.names}
                     addName={curation.addName}
                     removeName={curation.removeName}
+                />
+                <ComingSoonPicksCard
+                    picks={curation.data.picks}
+                    setPick={curation.setPick}
+                    removePick={curation.removePick}
+                    reload={curation.reload}
+                    reloading={curation.loading}
                 />
             </>
         );

@@ -24,12 +24,15 @@ namespace MyVideoGameList.Server.Data;
 /// <see cref="CuratedEvents"/> and <see cref="ShowcaseNames"/> are the last: the release calendar's
 /// reference data, entered by an admin rather than seeded, because what they hold — a store's sale
 /// dates, the names of the shows worth watching — changes too often for a migration.
+/// <see cref="ComingSoonPicks"/> is the home page's, of the same kind: the games the admin pinned to
+/// its Coming soon panel or hid from it (ADR 0071).
 /// </para>
 /// </remarks>
 public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options)
     : IdentityDbContext<ApplicationUser>(options)
 {
     public DbSet<CachedGame> CachedGames { get; set; }
+    public DbSet<ComingSoonPick> ComingSoonPicks { get; set; }
     public DbSet<CuratedEvent> CuratedEvents { get; set; }
     public DbSet<ImportJob> ImportJobs { get; set; }
     public DbSet<ImportRow> ImportRows { get; set; }
@@ -56,6 +59,7 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
         ConfigureListStatuses(modelBuilder);
         ConfigurePlaythroughTypes(modelBuilder);
         ConfigureReleaseCalendar(modelBuilder);
+        ConfigureComingSoon(modelBuilder);
 
         // UserGameEntry: surrogate PK, with (UserId, GameId) kept unique by index rather than by
         // being the key. Children — playthroughs, reviews, tag links — hang off the single column;
@@ -364,6 +368,23 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
     /// names. So there is no index beyond the key and the one uniqueness rule below — a scan of
     /// either is cheaper than keeping one.
     /// </remarks>
+    private static void ConfigureComingSoon(ModelBuilder modelBuilder)
+    {
+        var picks = modelBuilder.Entity<ComingSoonPick>();
+
+        // IGDB's id, as given: never generated here.
+        picks.HasKey(p => p.GameId);
+        picks.Property(p => p.GameId).ValueGeneratedNever();
+        picks.Property(p => p.Kind).HasMaxLength(8);
+        picks.Property(p => p.Title).HasMaxLength(ComingSoonPick.TitleMaxLength);
+
+        // The kind decides whether the panel shows a game or never shows it, so the database refuses one
+        // it does not know as well as the API does.
+        picks.ToTable(t => t.HasCheckConstraint(
+            "CK_ComingSoonPicks_Kind",
+            "\"Kind\" IN ('pin', 'hide')"));
+    }
+
     private static void ConfigureReleaseCalendar(ModelBuilder modelBuilder)
     {
         var events = modelBuilder.Entity<CuratedEvent>();

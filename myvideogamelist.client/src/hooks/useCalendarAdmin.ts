@@ -1,13 +1,18 @@
 import { useCallback } from 'react';
 import { apiFetch } from '@/lib/api';
 import { PermanentFetchError, useAccountResource } from '@/hooks/useAccountResource';
-import type { CuratedEvent, CuratedEventInput, ShowcaseName } from '@/types/calendarAdmin';
+import type { ComingSoonPick, ComingSoonPickKind, CuratedEvent, CuratedEventInput, ShowcaseName } from '@/types/calendarAdmin';
 
 export interface CalendarCuration {
     /** Every curated event, past ones included, earliest first. */
     events: CuratedEvent[];
     /** Alphabetical. */
     names: ShowcaseName[];
+    /**
+     * The home page's Coming soon picks (ADR 0071): pinned games first, then by title. Null when they could
+     * not be read, which costs their own card and not the calendar's two.
+     */
+    picks: ComingSoonPick[] | null;
 }
 
 /**
@@ -67,6 +72,11 @@ function alphabetical(a: ShowcaseName, b: ShowcaseName): number {
     return a.prefix.localeCompare(b.prefix);
 }
 
+/** As the server lists them: pinned games first, then by title. */
+function pinnedFirst(a: ComingSoonPick, b: ComingSoonPick): number {
+    return Number(a.kind !== 'pin') - Number(b.kind !== 'pin') || a.title.localeCompare(b.title);
+}
+
 async function readList<T>(path: string, signal: AbortSignal): Promise<T> {
     const response = await apiFetch(path, { signal });
 
@@ -92,11 +102,20 @@ const JSON_HEADERS = { 'Content-Type': 'application/json' };
  */
 export function useCalendarAdmin(accountId: string | null) {
     const load = useCallback(async (signal: AbortSignal): Promise<CalendarCuration> => {
-        const [events, names] = await Promise.all([
+        // The picks are the home page's, read beside the calendar's rather than as part of it: their failing
+        // leaves the events and the names as editable as ever. A refusal is still the whole page's, and an
+        // abort still ends the load.
+        const picksRead = readList<ComingSoonPick[]>('/api/admin/coming-soon', signal).catch((error: unknown) => {
+            if (error instanceof PermanentFetchError || signal.aborted) throw error;
+            return null;
+        });
+
+        const [events, names, picks] = await Promise.all([
             readList<CuratedEvent[]>('/api/admin/calendar/events', signal),
             readList<ShowcaseName[]>('/api/admin/calendar/showcase-names', signal),
+            picksRead,
         ]);
-        return { events, names };
+        return { events, names, picks };
     }, []);
 
     const resource = useAccountResource<CalendarCuration>(accountId, 'admin-calendar', load);
@@ -188,5 +207,38 @@ export function useCalendarAdmin(accountId: string | null) {
         }
     }, [patch]);
 
-    return { ...resource, addEvent, replaceEvent, removeEvent, addName, removeName };
+    /** Pins a game to the Coming soon panel or hides it, replacing whichever it was. */
+    const setPick = useCallback(async (gameId: number, kind: ComingSoonPickKind): Promise<SaveResult> => {
+        try {
+            const response = await apiFetch(`/api/admin/coming-soon/${gameId}`, {
+                method: 'PUT',
+                headers: JSON_HEADERS,
+                body: JSON.stringify({ kind }),
+            });
+            if (!response.ok) return refusal(response, 'The game could not be saved.');
+
+            const saved = (await response.json()) as ComingSoonPick;
+            patch(data => ({
+                ...data,
+                picks: data.picks === null ? null : [...data.picks.filter(p => p.gameId !== gameId), saved].sort(pinnedFirst),
+            }));
+            return { ok: true };
+        } catch {
+            return UNREACHABLE;
+        }
+    }, [patch]);
+
+    const removePick = useCallback(async (gameId: number): Promise<SaveResult> => {
+        try {
+            const response = await apiFetch(`/api/admin/coming-soon/${gameId}`, { method: 'DELETE' });
+            if (!response.ok && response.status !== 404) return refusal(response, 'The game could not be removed.');
+
+            patch(data => ({ ...data, picks: data.picks === null ? null : data.picks.filter(p => p.gameId !== gameId) }));
+            return { ok: true };
+        } catch {
+            return UNREACHABLE;
+        }
+    }, [patch]);
+
+    return { ...resource, addEvent, replaceEvent, removeEvent, addName, removeName, setPick, removePick };
 }

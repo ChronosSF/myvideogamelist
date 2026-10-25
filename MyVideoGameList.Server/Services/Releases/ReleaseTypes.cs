@@ -154,6 +154,29 @@ public sealed record ReleaseEntry(
     IReadOnlyList<ConnectedRelease> Releases);
 
 /// <summary>
+/// A game the home page's Coming soon panel may show (ADR 0071): as IGDB described it, with how many people
+/// follow it ahead of its release, and every one of its release rows.
+/// </summary>
+/// <param name="Hypes">IGDB's <c>hypes</c>: follows before release. Zero where IGDB sent none.</param>
+public sealed record ComingSoonCandidate(CalendarGame Game, int Hypes, IReadOnlyList<ReleaseRow> Rows);
+
+/// <summary>
+/// What IGDB answered for the Coming soon panel: the candidates, and whether it stopped short of them all.
+/// </summary>
+public sealed record ComingSoonCandidates(IReadOnlyList<ComingSoonCandidate> Games, bool Truncated);
+
+/// <summary>
+/// One game on the Coming soon panel: its first full release in the window, to the precision IGDB knows it,
+/// and the platforms it arrives on then.
+/// </summary>
+/// <param name="Starts">The day, or the first day of the month or quarter.</param>
+public sealed record ComingSoonRelease(
+    CalendarGame Game,
+    ReleasePrecision Precision,
+    DateOnly Starts,
+    IReadOnlyList<PlatformDto> Platforms);
+
+/// <summary>
 /// One of IGDB's <c>events</c> — a showcase, a festival, a convention — as instants rather than days.
 /// </summary>
 /// <remarks>

@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { AdminPage } from '@/pages/AdminPage';
 import type { AuthContextValue } from '@/contexts/AuthContext';
-import type { CuratedEvent, ShowcaseName } from '@/types/calendarAdmin';
+import type { ComingSoonPick, CuratedEvent, ShowcaseName } from '@/types/calendarAdmin';
 import { adminStats, userProfile } from '@/test/factories';
 
 /**
@@ -42,13 +42,26 @@ function event(overrides: Partial<CuratedEvent> = {}): CuratedEvent {
     };
 }
 
+/** The games the fake API's IGDB knows, by id: what a pick is named by. */
+const IGDB_TITLES: Record<number, string> = { 52189: 'Grand Theft Auto VI', 67195: 'Witchbrook' };
+
 /**
  * The admin API, in memory: it answers the page's reads from what it holds and applies its writes,
- * refusing a showcase name it already has in the shape the real one does.
+ * refusing a showcase name it already has, and a pick of a game IGDB does not know, in the shapes the
+ * real one does.
  */
-function fakeApi(initial: { events?: CuratedEvent[]; names?: ShowcaseName[]; refuse?: number; statsFail?: number } = {}) {
+function fakeApi(initial: {
+    events?: CuratedEvent[];
+    names?: ShowcaseName[];
+    picks?: ComingSoonPick[];
+    /** The status the picks' own read answers with, held by the test so that it can change it mid-test. */
+    picksRead?: { status: number };
+    refuse?: number;
+    statsFail?: number;
+} = {}) {
     const events = [...(initial.events ?? [])];
     const names = [...(initial.names ?? [])];
+    let picks = [...(initial.picks ?? [])];
     let nextId = 100;
 
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -61,6 +74,30 @@ function fakeApi(initial: { events?: CuratedEvent[]; names?: ShowcaseName[]; ref
         }
         if (url === '/api/admin/calendar/events' && method === 'GET') return Response.json(events);
         if (url === '/api/admin/calendar/showcase-names' && method === 'GET') return Response.json(names);
+        if (url === '/api/admin/coming-soon' && method === 'GET') {
+            const status = initial.picksRead?.status ?? 200;
+            return status === 200 ? Response.json(picks) : new Response(null, { status });
+        }
+
+        if (url.startsWith('/api/admin/coming-soon/') && method === 'PUT') {
+            const gameId = Number(url.split('/').pop());
+            const title = IGDB_TITLES[gameId];
+            if (title === undefined) {
+                return Response.json(
+                    { title: 'One or more validation errors occurred.', errors: { gameId: ['IGDB has no game with that id.'] } },
+                    { status: 400 });
+            }
+            const { kind } = JSON.parse(String(init?.body)) as Pick<ComingSoonPick, 'kind'>;
+            const saved: ComingSoonPick = { gameId, title, kind, pickedAt: '2026-10-25T12:00:00Z' };
+            picks = [...picks.filter(p => p.gameId !== gameId), saved];
+            return Response.json(saved);
+        }
+
+        if (url.startsWith('/api/admin/coming-soon/') && method === 'DELETE') {
+            const gameId = Number(url.split('/').pop());
+            picks = picks.filter(p => p.gameId !== gameId);
+            return new Response(null, { status: 204 });
+        }
 
         if (url === '/api/admin/calendar/events' && method === 'POST') {
             const added = { ...JSON.parse(String(init?.body)), id: nextId++, updatedAt: '2026-09-29T12:00:00Z' };
@@ -280,6 +317,85 @@ describe('AdminPage for an admin', () => {
 
         const [, init] = fetchMock.mock.calls.find(([, init]) => init?.method === 'POST')!;
         expect(new Headers(init?.headers).get('X-MVGL-Request')).toBe('1');
+    });
+
+    it('pins a game by the address of its page, sending the header every write needs', async () => {
+        const fetchMock = fakeApi();
+        const actor = userEvent.setup();
+        renderPage();
+
+        await actor.type(await screen.findByLabelText('Game’s IGDB id, or its page’s address'), 'https://myvideogamelist.net/games/52189');
+        await actor.click(screen.getByRole('button', { name: 'Save' }));
+
+        const listed = await screen.findByRole('list', { name: 'Pinned and hidden games' });
+        expect(within(listed).getByRole('link', { name: 'Grand Theft Auto VI' })).toHaveAttribute('href', '/games/52189');
+        expect(within(listed).getByText(/Pinned/)).toBeInTheDocument();
+
+        const [url, init] = fetchMock.mock.calls.find(([, init]) => init?.method === 'PUT')!;
+        expect(String(url)).toBe('/api/admin/coming-soon/52189');
+        expect(JSON.parse(String(init?.body))).toEqual({ kind: 'pin' });
+        expect(new Headers(init?.headers).get('X-MVGL-Request')).toBe('1');
+    });
+
+    it('hides a game, and a second pick of it replaces the first', async () => {
+        fakeApi({ picks: [{ gameId: 67195, title: 'Witchbrook', kind: 'pin', pickedAt: '2026-10-24T12:00:00Z' }] });
+        const actor = userEvent.setup();
+        renderPage();
+
+        await actor.type(await screen.findByLabelText('Game’s IGDB id, or its page’s address'), '67195');
+        await actor.selectOptions(screen.getByLabelText('Pin or hide'), 'hide');
+        await actor.click(screen.getByRole('button', { name: 'Save' }));
+
+        const listed = await screen.findByRole('list', { name: 'Pinned and hidden games' });
+        expect(await within(listed).findByText(/Hidden/)).toBeInTheDocument();
+        expect(within(listed).getAllByRole('listitem')).toHaveLength(1);
+    });
+
+    it('says beside the box when IGDB has no game by that id, and refuses what is no id without asking', async () => {
+        const fetchMock = fakeApi();
+        const actor = userEvent.setup();
+        renderPage();
+
+        const box = await screen.findByLabelText('Game’s IGDB id, or its page’s address');
+        await actor.type(box, 'Grand Theft Auto');
+        await actor.click(screen.getByRole('button', { name: 'Save' }));
+        expect(await screen.findByText('Type a game’s IGDB id, or paste the address of its page.')).toBeInTheDocument();
+        expect(fetchMock.mock.calls.some(([, init]) => init?.method === 'PUT')).toBe(false);
+
+        await actor.clear(box);
+        await actor.type(box, '1');
+        await actor.click(screen.getByRole('button', { name: 'Save' }));
+        expect(await screen.findByText('IGDB has no game with that id.')).toBeInTheDocument();
+        expect(box).toHaveAttribute('aria-invalid', 'true');
+    });
+
+    it('keeps the calendar editable when the picks cannot be read, with a retry on the picks alone', async () => {
+        const picksRead = { status: 500 };
+        fakeApi({ names: [{ id: 1, prefix: 'Nintendo Direct' }], picksRead });
+        const actor = userEvent.setup();
+        renderPage();
+
+        // The calendar's cards are there and usable; the picks' card says what failed, and offers no form.
+        expect(await screen.findByRole('list', { name: 'Showcase names' })).toBeInTheDocument();
+        expect(screen.getByLabelText('Name starts with')).toBeEnabled();
+        expect(screen.getByText('The pinned and hidden games could not be loaded.')).toBeInTheDocument();
+        expect(screen.queryByLabelText('Game’s IGDB id, or its page’s address')).toBeNull();
+
+        picksRead.status = 200;
+        await actor.click(screen.getByRole('button', { name: 'Try again' }));
+
+        expect(await screen.findByLabelText('Game’s IGDB id, or its page’s address')).toBeInTheDocument();
+        expect(screen.queryByText('The pinned and hidden games could not be loaded.')).toBeNull();
+    });
+
+    it('removes a pick', async () => {
+        fakeApi({ picks: [{ gameId: 52189, title: 'Grand Theft Auto VI', kind: 'hide', pickedAt: '2026-10-24T12:00:00Z' }] });
+        const actor = userEvent.setup();
+        renderPage();
+
+        await actor.click(await screen.findByRole('button', { name: 'Remove Grand Theft Auto VI' }));
+
+        expect(await screen.findByText('Nothing pinned or hidden: the panel is IGDB’s follows alone.')).toBeInTheDocument();
     });
 
     it('says beside the box when a name is already on the list', async () => {

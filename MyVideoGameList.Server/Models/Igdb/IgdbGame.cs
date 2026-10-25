@@ -221,6 +221,27 @@ public record IgdbCalendarGame(
     [property: JsonPropertyName("game_status")] int? GameStatus = null);
 
 /// <summary>
+/// A game as the home page's Coming soon panel asks for it (ADR 0071): the calendar's fields, how many
+/// people follow it ahead of its release, and every one of its release rows with the platform expanded.
+/// </summary>
+/// <remarks>
+/// <see cref="Hypes"/> is absent for a game nobody follows. The rows arrive without their <c>game</c>, since
+/// they are the game's own; the mapping supplies it. Both seen in a live response on 2026-10-25, where Grand
+/// Theft Auto VI had 1,111 hypes and two rows, each with its id, date, format, status and platform.
+/// </remarks>
+public record IgdbComingSoonGame(
+    int Id,
+    string Name,
+    IgdbCover? Cover,
+    [property: JsonPropertyName("game_type")] int? GameType,
+    [property: JsonPropertyName("parent_game")] int? ParentGame,
+    [property: JsonPropertyName("version_parent")] int? VersionParent,
+    [property: JsonPropertyName("game_status")] int? GameStatus,
+    [property: JsonPropertyName("first_release_date")] long? FirstReleaseDate,
+    int? Hypes,
+    [property: JsonPropertyName("release_dates")] List<IgdbConnectedReleaseDate>? ReleaseDates);
+
+/// <summary>
 /// A row from the IGDB <c>external_games</c> endpoint, which maps an IGDB game onto its
 /// identifier on another storefront. <see cref="Uid"/> is that store's own id — for Steam
 /// it is the AppID used by the Steam web API.
