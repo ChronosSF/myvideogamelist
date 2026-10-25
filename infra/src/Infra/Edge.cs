@@ -102,6 +102,28 @@ public sealed class Edge : Construct
             EnableAcceptEncodingBrotli = true,
         });
 
+        // React Router's lazy route discovery: before a client navigation to a route the page has not
+        // seen, it asks `/__manifest?paths=…&version=…` for that route's modules. The server answers a
+        // version other than its build's - or none - with a 204 telling the page to reload, and the page
+        // reloads once and then fails the next navigation with "Unable to discover routes due to manifest
+        // version mismatch". On the default behaviour neither parameter reached the origin, so every
+        // undiscovered route failed that way. Both are in the key here, and so travel to the origin; an
+        // answer is the same for everybody asking those paths of that build, which is why it is sent
+        // public and immutable for a year, and a 204 states no policy and is never kept.
+        var manifest = new CachePolicy(this, "Manifest", new CachePolicyProps
+        {
+            CachePolicyName = $"{site.Prefix}-manifest",
+            Comment = "React Router's route manifest: keyed on the paths asked about and the build's version",
+            MinTtl = Duration.Seconds(0),
+            DefaultTtl = Duration.Seconds(0),
+            MaxTtl = Duration.Days(365),
+            QueryStringBehavior = CacheQueryStringBehavior.AllowList("paths", "version"),
+            HeaderBehavior = CacheHeaderBehavior.None(),
+            CookieBehavior = CacheCookieBehavior.None(),
+            EnableAcceptEncodingGzip = true,
+            EnableAcceptEncodingBrotli = true,
+        });
+
         // The balancer's certificate is for the site's name, not for the balancer's own, and
         // CloudFront accepts an origin certificate that matches either the origin domain or the
         // forwarded Host - so every behaviour forwards Host, and one that forgot would answer 502.
@@ -144,6 +166,8 @@ public sealed class Edge : Construct
             // `/api/auth/me` has answered knows no more than a page load does (ADR 0074).
             ["/"] = Behaviour(home, hostOnly),
             ["/_.data"] = Behaviour(home, hostOnly),
+            // The route manifest, by its exact path: React Router 8's default `manifestPath`.
+            ["/__manifest"] = Behaviour(manifest, hostOnly),
             ["/lists*"] = uncached,
             ["/wishlist*"] = uncached,
             ["/user*"] = uncached,
