@@ -8,6 +8,7 @@ import { PlayNextPicker } from '@/components/PlayNextPicker';
 import { ReleaseLine } from '@/components/ReleaseLine';
 import { ShowcasesAndSales } from '@/components/ShowcasesAndSales';
 import { TrendingRail } from '@/components/TrendingRail';
+import { WelcomePanel } from '@/components/WelcomePanel';
 import { NewsCard } from '@/components/NewsCard';
 import { CACHE_HOME, PRIVATE_NO_STORE } from '@/lib/cache';
 import { utcDay } from '@/lib/daySpan';
@@ -128,11 +129,11 @@ export async function loader({ context }: Route.LoaderArgs) {
 }
 
 /**
- * What a returning user lands on instead of the pitch (ROADMAP H1).
+ * What a returning user lands on instead of the welcome panel (ROADMAP H1).
  *
  * Rendered only after hydration, and unavoidably so: this page is shared-cached, the server render
  * has no cookie, and `AuthProvider` learns who the user is from a fetch. So a signed-in visitor
- * sees the landing hero for the length of one request and then this. Fixing that properly means a
+ * sees the welcome panel for the length of one request and then this. Fixing that properly means a
  * cookie-varying SSR render and a CloudFront behaviour to match, which is ROADMAP D12's problem
  * rather than this component's.
  */
@@ -181,95 +182,24 @@ function SignedInHero({ user }: { user: UserProfile }) {
     );
 }
 
-/** The pitch, for a visitor who has not signed in — and for the server render, which never has. */
-function LandingHero({ spotlight }: { spotlight: HomeResponse['spotlight'] }) {
-    return (
-        <>
-            {/* ── Hero ────────────────────────────────────────────────
-                Compact by design. The old full-viewport hero pushed every piece of real
-                content below the fold; this keeps the pitch but lets the trending covers
-                start showing immediately. */}
-            <section className="relative overflow-hidden border-b border-line">
-                {spotlight?.backgroundImageUrl ? (
-                    <>
-                        <img
-                            src={spotlight.backgroundImageUrl}
-                            alt=""
-                            className="absolute inset-0 w-full h-full object-cover"
-                        />
-                        {/*
-                          * Two layers: a horizontal ramp keeps the left-hand text legible, and a
-                          * vertical one lands the section on the page background instead of an edge.
-                          */}
-                        <div className="absolute inset-0 bg-gradient-to-r from-sunken via-sunken/90 to-sunken/40" />
-                        <div className="absolute inset-0 bg-gradient-to-t from-sunken via-transparent to-transparent" />
-                    </>
-                ) : (
-                    <div className="absolute inset-0 bg-gradient-to-br from-primary-950 via-page to-page" />
-                )}
-
-                <div className="relative max-w-6xl mx-auto px-4 sm:px-6 py-14 sm:py-20">
-                    <div className="max-w-2xl">
-                        <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-fg-strong mb-4 leading-tight">
-                            Every game you&apos;ve played,{' '}
-                            <span className="text-primary-400">in one list</span>
-                        </h1>
-                        <p className="text-fg-soft text-base sm:text-lg mb-8 leading-relaxed">
-                            Track what you&apos;re playing, park what you&apos;ll get to eventually, and
-                            never miss a release date again.
-                        </p>
-
-                        <div className="flex flex-wrap items-center gap-3">
-                            <Link
-                                to="/games"
-                                className="inline-flex items-center gap-2 px-5 py-2.5 bg-primary-600 hover:bg-primary-500 text-on-primary font-semibold rounded-xl transition-colors shadow-lg shadow-primary-950/50"
-                            >
-                                Browse games
-                            </Link>
-                            <Link
-                                to="/lists"
-                                className="inline-flex items-center gap-2 px-5 py-2.5 bg-white/10 hover:bg-white/20 backdrop-blur-sm text-fg-strong font-semibold rounded-xl transition-colors border border-white/15"
-                            >
-                                My lists
-                            </Link>
-                        </div>
-
-                        {spotlight && (
-                            <p className="mt-8 text-xs text-fg-muted">
-                                Pictured:{' '}
-                                <Link
-                                    to={`/games/${spotlight.id}`}
-                                    className="text-fg-soft hover:text-primary-400 underline underline-offset-2 transition-colors"
-                                >
-                                    {spotlight.title}
-                                </Link>
-                            </p>
-                        )}
-                    </div>
-                </div>
-            </section>
-        </>
-    );
-}
-
 export function HomePage({ loaderData }: Route.ComponentProps) {
     // `events` has a default although the loader always sets it: a navigation inside the app fetches
     // the loader's data on its own, and in a deploy's first minutes the edge can still hold one written
     // by the build before this one, which has no showcases and sales at all. Without the default that
     // payload would be a TypeError, and the page its error boundary. `comingSoon` likewise, for a copy
     // written before the panel existed.
-    const { spotlight, popular, news, events = NO_EVENTS, comingSoon = [], today } = loaderData;
+    const { popular, news, events = NO_EVENTS, comingSoon = [], today } = loaderData;
     const { user, loading } = useAuth();
     const signedIn = user !== null && !loading;
 
     return (
         <div className="min-h-screen">
-            {/* The landing hero while auth is still unknown, which includes every server render.
+            {/* The welcome panel while auth is still unknown, which includes every server render.
                 The alternative — nothing until `me` answers — flashes an empty page at the one
-                visitor the pitch is written for. */}
+                visitor the panel is written for. */}
             {signedIn
                 ? <SignedInHero user={user} />
-                : <LandingHero spotlight={spotlight} />}
+                : <WelcomePanel />}
 
             {/* Everything below is the same for both, but for the showcases and sales, which give
                 way to the line. Trending and the news are worth seeing whether or not anybody is
@@ -280,7 +210,7 @@ export function HomePage({ loaderData }: Route.ComponentProps) {
                 {/* Where the two-week line is for somebody signed in, directly above Trending, and
                     giving way to it: the line shows these same events on the same days, beside the
                     reader's own releases, and the two together would be every sale twice, one under
-                    the other (ADR 0063). It goes with the landing hero, so in the same render. */}
+                    the other (ADR 0063). It goes with the welcome panel, so in the same render. */}
                 {!signedIn && <ShowcasesAndSales events={events} today={today} />}
 
                 {/* For everybody, after the reader's own two weeks or the showcases standing in for them:

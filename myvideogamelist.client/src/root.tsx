@@ -9,6 +9,7 @@ import {
 } from 'react-router';
 import type { Route } from './+types/root';
 import { AuthProvider } from '@/contexts/AuthProvider';
+import { AuthDialogProvider } from '@/contexts/AuthDialogProvider';
 import { ListsProvider } from '@/contexts/ListsProvider';
 import { WishlistProvider } from '@/contexts/WishlistProvider';
 import { FavouritesProvider } from '@/contexts/FavouritesProvider';
@@ -102,14 +103,17 @@ export default function Root() {
                         {/* Around the navbar and the pages both: their searches spend one budget. */}
                         <SearchPacerProvider>
                             <div className="app-root">
-                                <Navbar />
-                                <main className="flex-1">
-                                    {/* Around the pages alone: the navbar and the footer draw no tag. */}
-                                    <TagsProvider>
-                                        <Outlet />
-                                    </TagsProvider>
-                                </main>
-                                <SiteFooter />
+                                {/* Around the navbar and the pages both: either may ask somebody to sign in. */}
+                                <AuthDialogProvider>
+                                    <Navbar />
+                                    <main className="flex-1">
+                                        {/* Around the pages alone: the navbar and the footer draw no tag. */}
+                                        <TagsProvider>
+                                            <Outlet />
+                                        </TagsProvider>
+                                    </main>
+                                    <SiteFooter />
+                                </AuthDialogProvider>
                             </div>
                         </SearchPacerProvider>
                     </FavouritesProvider>

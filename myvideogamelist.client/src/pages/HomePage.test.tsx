@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter, RouterContextProvider } from 'react-router';
 import { HomePage, headers, loader, meta } from '@/pages/HomePage';
+import { AuthDialogProvider } from '@/contexts/AuthDialogProvider';
 import type { AuthContextValue } from '@/contexts/AuthContext';
 import type { FavouritesContextValue } from '@/contexts/FavouritesContext';
 import { CACHE_HOME, PRIVATE_NO_STORE } from '@/lib/cache';
@@ -116,7 +117,7 @@ const policyOf = (result: Awaited<ReturnType<typeof loader>>) =>
 /** The page, given what the loader would have handed it. */
 function renderHome(home: HomeResponse) {
     const props = { loaderData: { ...home, site: SITE, today: TODAY } } as unknown as Route.ComponentProps;
-    return render(<MemoryRouter><HomePage {...props} /></MemoryRouter>);
+    return render(<MemoryRouter><AuthDialogProvider><HomePage {...props} /></AuthDialogProvider></MemoryRouter>);
 }
 
 beforeEach(() => {
@@ -256,6 +257,27 @@ describe('HomePage loader', () => {
 });
 
 describe('HomePage for a signed-out visitor', () => {
+    it('welcomes a visitor with what the site is for and the two ways in', () => {
+        renderHome({
+            spotlight: null, popular: [game()], news: [NEWS], events: calendarEvents(), comingSoon: [], degraded: false,
+        });
+
+        expect(screen.getByRole('heading', { level: 1, name: "Every game you've played, in one list" })).toBeInTheDocument();
+
+        fireEvent.click(screen.getByRole('button', { name: 'Create an account' }));
+        expect(screen.getByRole('dialog', { name: 'Create Account' })).toBeInTheDocument();
+    });
+
+    it('opens the sign-in dialog the navbar opens, from the panel', () => {
+        renderHome({
+            spotlight: null, popular: [game()], news: [NEWS], events: calendarEvents(), comingSoon: [], degraded: false,
+        });
+
+        fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+
+        expect(screen.getByRole('dialog', { name: 'Sign In' })).toBeInTheDocument();
+    });
+
     it('asks the API for nothing from the browser', () => {
         // Everything a visitor sees arrives through the loader, cached once for everybody. What is
         // coming for somebody's games is asked for by the two-week line, which only a signed-in user
@@ -323,7 +345,7 @@ describe('HomePage for a signed-out visitor', () => {
         } satisfies HomeResponse;
         const props = { loaderData: { ...older, site: SITE } } as unknown as Route.ComponentProps;
 
-        render(<MemoryRouter><HomePage {...props} /></MemoryRouter>);
+        render(<MemoryRouter><AuthDialogProvider><HomePage {...props} /></AuthDialogProvider></MemoryRouter>);
 
         expect(screen.getByRole('heading', { name: 'Trending right now' })).toBeInTheDocument();
         expect(screen.queryByRole('heading', { name: 'Showcases and sales' })).toBeNull();

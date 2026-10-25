@@ -3,6 +3,7 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import userEvent from '@testing-library/user-event';
 import { createMemoryRouter, RouterProvider } from 'react-router';
 import { Navbar } from '@/components/Navbar';
+import { AuthDialogProvider } from '@/contexts/AuthDialogProvider';
 import type { AuthContextValue } from '@/contexts/AuthContext';
 import type { UserProfile } from '@/types/auth';
 import { userProfile } from '@/test/factories';
@@ -42,7 +43,7 @@ function authAnswered(user: UserProfile | null) {
 
 /** A data router rather than MemoryRouter, so a test can navigate without touching the navbar. */
 function renderNavbar(path = '/') {
-    const router = createMemoryRouter([{ path: '*', element: <Navbar /> }], { initialEntries: [path] });
+    const router = createMemoryRouter([{ path: '*', element: <AuthDialogProvider><Navbar /></AuthDialogProvider> }], { initialEntries: [path] });
     render(<RouterProvider router={router} />);
     return router;
 }
