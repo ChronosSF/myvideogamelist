@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, render, screen } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { RouterProvider, createMemoryRouter } from 'react-router';
 import { GamesPage, meta } from '@/pages/GamesPage';
@@ -192,13 +192,22 @@ const covered = (count: number, from = 1) => Array.from({ length: count }, (_, i
 }));
 
 describe('GamesPage results', () => {
-    /** The observer's latest callback, so a test can bring the sentinel into view. */
+    /**
+     * The callback of the observer that last began watching, and what it watches, so a test can bring
+     * the sentinel into view. Set by `observe` rather than the constructor, and cleared before each
+     * test: the page builds its observer in an effect, which can run after the render a test waits
+     * for, and until then this would be the previous test's callback, watching an element gone.
+     */
     let intersect: IntersectionObserverCallback = () => {};
+    let observed: Element | null = null;
 
     beforeEach(() => {
+        intersect = () => {};
+        observed = null;
         vi.stubGlobal('IntersectionObserver', class {
-            constructor(callback: IntersectionObserverCallback) { intersect = callback; }
-            observe() {}
+            private readonly callback: IntersectionObserverCallback;
+            constructor(callback: IntersectionObserverCallback) { this.callback = callback; }
+            observe(target: Element) { intersect = this.callback; observed = target; }
             unobserve() {}
             disconnect() {}
             takeRecords() { return []; }
@@ -250,6 +259,8 @@ describe('GamesPage results', () => {
         expect(status).toBeEmptyDOMElement();
 
         const sentinel = status.parentElement;
+        // Fired before the page's effect has built an observer for this sentinel, it would load nothing.
+        await waitFor(() => expect(observed).toBe(sentinel));
         act(() => intersect(
             [{ target: sentinel, isIntersecting: true } as unknown as IntersectionObserverEntry],
             {} as IntersectionObserver,

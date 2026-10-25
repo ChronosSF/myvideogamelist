@@ -37,7 +37,7 @@ build behind a stand-in that does route `/api` (ADR 0060).
 | Command | Notes |
 |---|---|
 | `npm run dev` | Dev server: SSR plus the `/api` proxy to ASP.NET |
-| `npm run lint` | ESLint, then `scripts/check-colours.mjs`: every colour is a token |
+| `npm run lint` | ESLint, then `scripts/check-colours.mjs`: every colour is a token, and `scripts/check-class-names.mjs`: no Tailwind class written straight before a `${…}`, which hides it from the build |
 | `npm run typecheck` | `react-router typegen && tsc -b` — use this, never bare `tsc` |
 | `npm run test` | Vitest, jsdom + Testing Library. `npm run test:watch` to iterate |
 | `npm run visual` | Before-and-after screenshots of the pages, compared pixel by pixel, for a change meant to look the same. Needs two dev servers and a local test account, whose email and password it reads from the shell or from `visual/.env` (ignored by git); `visual/playwright.config.ts` says how. Not run by CI |

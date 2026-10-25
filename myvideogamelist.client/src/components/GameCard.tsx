@@ -40,6 +40,11 @@ export function GameCard({ game, eager = false, children }: GameCardProps) {
     const { isFavourite } = useFavourites();
     const [overlayOpen, setOverlayOpen] = useState(false);
 
+    // Signed in, a press on a badge is a press on the toggle beneath it. Signed out there is no toggle,
+    // and the critic score keeps the tooltip that names its count. Put in after a space, as
+    // `scripts/check-class-names.mjs` insists.
+    const passThrough = user ? 'pointer-events-none' : '';
+
     const wishlisted = wishlist.isWishlisted(game.id);
 
     // Marked, not offered: a favourite is made on the game's page (ADR 0029 §4), and the card says
@@ -82,15 +87,7 @@ export function GameCard({ game, eager = false, children }: GameCardProps) {
             onMouseLeave={() => setOverlayOpen(false)}
         >
             {/* Cover Image */}
-            <div
-                className={`${CARD_COVER}${user ? ' cursor-pointer' : ''}`}
-                onClick={user ? () => setOverlayOpen(o => !o) : undefined}
-                role={user ? 'button' : undefined}
-                tabIndex={user ? 0 : undefined}
-                aria-label={user ? `Open list options for ${game.title}` : undefined}
-                aria-expanded={user ? overlayOpen : undefined}
-                onKeyDown={user ? (e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setOverlayOpen(o => !o); } }) : undefined}
-            >
+            <div className={CARD_COVER}>
                 {game.coverImageUrl ? (
                     <CoverImage
                         url={game.coverImageUrl}
@@ -107,10 +104,26 @@ export function GameCard({ game, eager = false, children }: GameCardProps) {
                     </div>
                 )}
 
+                {/* The overlay's toggle, over the whole cover. Empty, and beside the badges rather
+                    than around them, because a control's name has to contain the words it shows and a
+                    control may not hold other controls: the cover was once the button itself, and it
+                    showed a score and held the list buttons (issue 329). Under the badges, which let a
+                    press through to it, rather than over them: over them, it hides their colours from
+                    a contrast check. */}
+                {user && (
+                    <button
+                        type="button"
+                        className="game-card-toggle absolute inset-0 cursor-pointer focus:outline-hidden"
+                        onClick={() => setOverlayOpen(o => !o)}
+                        aria-label={`Open list options for ${game.title}`}
+                        aria-expanded={overlayOpen}
+                    />
+                )}
+
                 {/* Critic score. Suppressed below MIN_CRITIC_REVIEWS: IGDB averages with no floor,
                     so a lone perfect review would otherwise sit here as a green 100. */}
                 {hasCriticScore(game) && (
-                    <div className="absolute top-2 right-2">
+                    <div className={`absolute top-2 right-2 ${passThrough}`}>
                         <ScoreBadge
                             variant="square"
                             kind="critics"
@@ -122,20 +135,24 @@ export function GameCard({ game, eager = false, children }: GameCardProps) {
 
                 {/* ESRB badge */}
                 {game.esrbRating && (
-                    <div className="absolute top-2 left-2 px-1.5 py-0.5 bg-page/80 backdrop-blur-sm rounded text-xs font-mono text-fg-soft border border-line-strong">
+                    <div className={`absolute top-2 left-2 px-1.5 py-0.5 bg-page/80 backdrop-blur-sm rounded text-xs font-mono text-fg-soft border border-line-strong ${passThrough}`}>
                         {game.esrbRating}
                     </div>
                 )}
 
-                {/* Before the overlay, which covers it on hover. Said in words in the heading: this
-                    cover is a button whose name is its own, and a screen reader hears nothing inside it. */}
+                {/* Before the overlay, which covers it on hover. Said in words in the heading: the
+                    mark itself is decoration, and lets a press through as the badges do. */}
                 {favourite && <FavouriteMark variant="cover" />}
 
-                {/* List selection overlay — only shown when authenticated; visible on hover (CSS) or tap (state) */}
+                {/* List selection overlay — only shown when authenticated; visible on hover (CSS) or tap (state).
+                    A press on its backdrop toggles it, as the toggle beneath does: on a phone, the tap
+                    that opens the overlay can hover the card before it clicks and land here rather than
+                    on the toggle, and the next tap on the backdrop closes it. It closes too when the
+                    pointer leaves the card. Where a phone keeps the hover, the hover keeps it shown. */}
                 {user && (
                     <div
                         className={`game-card-overlay${overlayOpen ? ' open' : ''}`}
-                        onClick={() => setOverlayOpen(false)}
+                        onClick={() => setOverlayOpen(o => !o)}
                         role="presentation"
                     >
                         <div
