@@ -43,11 +43,16 @@ public class GameCommunityServiceTests
         ApplicationDbContext db, IDataProtectionProvider? keys = null) =>
         new(db, keys ?? new EphemeralDataProtectionProvider());
 
-    /// <summary>An account, public unless a test says otherwise. Its id is derived from its name.</summary>
+    /// <summary>
+    /// An account, public and with no display name or picture unless a test says otherwise. Its id
+    /// is derived from its name.
+    /// </summary>
     private static string AddAccount(
         ApplicationDbContext db,
         string userName,
-        string visibility = ProfileVisibility.Public)
+        string visibility = ProfileVisibility.Public,
+        string? displayName = null,
+        string? avatarUrl = null)
     {
         var id = $"id-{userName.ToLowerInvariant()}";
 
@@ -57,7 +62,9 @@ public class GameCommunityServiceTests
             UserName = userName,
             NormalizedUserName = userName.ToUpperInvariant(),
             Email = $"{userName}@test.local",
-            ProfileVisibility = visibility
+            ProfileVisibility = visibility,
+            DisplayName = displayName,
+            AvatarUrl = avatarUrl
         });
         db.SaveChanges();
 
@@ -328,6 +335,28 @@ public class GameCommunityServiceTests
         Assert.Equal((short)9, page.Reviews.Single(r => r.UserName == "alex").Score);
         // Null rather than zero: writing about a game without scoring it is a real state.
         Assert.Null(page.Reviews.Single(r => r.UserName == "sam").Score);
+    }
+
+    [Fact]
+    public async Task GetReviewsAsync_CarriesTheAuthorsDisplayNameAndPicture()
+    {
+        // For the card to show beside the handle, as the profile it links to does: a profile that is
+        // public, since nothing else is listed, and so already shows both.
+        using var db = NewDb();
+        AddReview(db, AddAccount(db, "alex",
+            displayName: "Alex Smith",
+            avatarUrl: "https://avatars.githubusercontent.com/u/9919?v=4"));
+        AddReview(db, AddAccount(db, "sam"), createdAt: Now.AddDays(-1));
+
+        var page = await NewService(db).GetReviewsAsync(GameId, after: null);
+
+        var alex = page.Reviews.Single(r => r.UserName == "alex");
+        Assert.Equal("Alex Smith", alex.DisplayName);
+        Assert.Equal("https://avatars.githubusercontent.com/u/9919?v=4", alex.AvatarUrl);
+        // An author with neither: the card shows the handle alone, and its initial.
+        var sam = page.Reviews.Single(r => r.UserName == "sam");
+        Assert.Null(sam.DisplayName);
+        Assert.Null(sam.AvatarUrl);
     }
 
     // ── The reviews: order ────────────────────────────────────────────────────────────

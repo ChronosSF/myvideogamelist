@@ -36,6 +36,10 @@ export interface GameReviews {
 export interface GameReview {
     /** As its owner capitalised it. There is always a public profile behind it. */
     userName: string;
+    /** Shown beside `userName`, never instead of it: the handle is what says whose review it is. */
+    displayName: string | null;
+    /** On one of `AVATAR_HOSTS`, loaded by the reader's browser; null for the handle's initial. */
+    avatarUrl: string | null;
     body: string;
     hasSpoilers: boolean;
     /** The author's own score, on the 1–10 scale. Null when they wrote without scoring. */

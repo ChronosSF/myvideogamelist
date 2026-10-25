@@ -13,6 +13,8 @@ function scores(scored: number): CommunityScores {
 function review(userName: string): GameReview {
     return {
         userName,
+        displayName: null,
+        avatarUrl: null,
         body: `${userName} wrote this.`,
         hasSpoilers: false,
         score: null,
