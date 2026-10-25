@@ -10,8 +10,10 @@
  * order is load-bearing — stop the database only once the application stack is gone, or
  * /healthz keeps both tasks running and billing while every page fails. Resuming is the reverse
  * plus two lookups done by hand otherwise: the newest image tag in ECR, and whether the database
- * is back yet. That is exactly the sequence that goes wrong at the one step skipped from memory,
- * so it lives here, with the pipeline's gate (D-6) toggled alongside: parking sets the
+ * is back yet - and the migrations. A parked environment skips the pipeline's along with its
+ * deploys, while every merge still pushes images, so the newest tag can need migrations the
+ * database has never had. That is exactly the sequence that goes wrong at the one step skipped
+ * from memory, so it lives here, with the pipeline's gate (D-6) toggled alongside: parking sets the
  * DEV_DEPLOY_ENABLED variable to false so that a merge to master cannot silently un-park the
  * environment, and resuming sets it back.
  *
@@ -20,8 +22,9 @@
  * ---------------------------------------------------------------------------------------------
  *   node scripts/dev-env.mjs status             what exists, and which cost row that is
  *   node scripts/dev-env.mjs park               destroy the App stack, stop the database, gate off
- *   node scripts/dev-env.mjs resume             start the database, deploy App at the newest tag,
- *                                               wait for both services, check the site, gate on
+ *   node scripts/dev-env.mjs resume             start the database, migrate it at the newest tag,
+ *                                               deploy App at that tag, wait for both services,
+ *                                               check the site, gate on
  *   node scripts/dev-env.mjs resume --tag <sha> the same, at a tag of your choosing
  *
  * Options on every command: --env <name> (default dev), --profile <aws profile> (default
@@ -73,6 +76,9 @@ const NAMES = {
     database: `mvgl-${ENV}-db`,
     appStack: `Mvgl-${ENV}-App`,
     dataStack: `Mvgl-${ENV}-Data`,
+    migrateStack: `Mvgl-${ENV}-Migrate`,
+    migrateTask: `mvgl-${ENV}-migrate`,
+    migrateLogGroup: `/mvgl/${ENV}/migrate`,
     host: `${ENV}.myvideogamelist.net`,
     apiRepository: 'mvgl/api',
     ssrRepository: 'mvgl/ssr',
@@ -101,7 +107,8 @@ function show(cmd, args) {
     console.error(`> ${cmd} ${args.join(' ')}`);
 }
 
-function aws(args, { allowFailure = false } = {}) {
+/** `raw` for a command whose answer is text rather than JSON, such as `logs tail`: its value is the text. */
+function aws(args, { allowFailure = false, raw = false } = {}) {
     const full = ['--profile', PROFILE, '--output', 'json', ...args];
     show('aws', full);
     const r = spawnSync('aws', full, { encoding: 'utf8' });
@@ -110,6 +117,7 @@ function aws(args, { allowFailure = false } = {}) {
         fail(`aws ${args.slice(0, 2).join(' ')} failed:\n${(r.stderr || '').trim()}`);
     }
     const text = (r.stdout || '').trim();
+    if (raw) return { ok: true, value: text };
     return { ok: true, value: text === '' ? null : JSON.parse(text) };
 }
 
@@ -360,6 +368,52 @@ async function startDatabase(attempts = 20) {
     fail('AWS had no capacity for the database for twenty minutes. Try again later, or change the instance class in DataStack.');
 }
 
+/**
+ * The migrations, at the tag about to be deployed, before anything serves it - the same three steps
+ * Deploy dev runs before every release. A parked environment skips that job's migrations along with
+ * its deploy, while every merge still pushes images, so the newest tag can need migrations the
+ * database has never had; and outside Development the application never migrates itself, so an API
+ * against the old schema passes /healthz and fails on its first query.
+ *
+ * The task definition is deployed first, because it names its image by tag. The task runs where the
+ * API's would, on the Data stack's subnets and security group, and its log is printed whatever it
+ * answers. A failure stops the resume here: nothing is deployed, and the gate stays off.
+ */
+function migrate(tag) {
+    note(`Deploying ${NAMES.migrateStack} at image tag ${tag}.`);
+    // --exclusively: the Data stack is not redeployed as a dependency.
+    cdk(['deploy', NAMES.migrateStack, '--exclusively', '-c', `imageTag=${tag}`, '--require-approval', 'never']);
+
+    const outputs = aws(['cloudformation', 'describe-stacks', '--stack-name', NAMES.dataStack,
+        '--query', 'Stacks[0].Outputs']).value ?? [];
+    const output = (key) => outputs.find((o) => o.OutputKey === key)?.OutputValue
+        ?? fail(`${NAMES.dataStack} has no ${key} output.`);
+    const network = `awsvpcConfiguration={subnets=[${output('TaskSubnetIds')}],`
+        + `securityGroups=[${output('ApiSecurityGroupId')}],assignPublicIp=ENABLED}`;
+
+    const started = aws(['ecs', 'run-task', '--cluster', NAMES.cluster, '--task-definition', NAMES.migrateTask,
+        '--launch-type', 'FARGATE', '--network-configuration', network,
+        '--query', '{task: tasks[0].taskArn, failures: failures}']).value;
+    if (!started?.task) fail(`The migration task did not start: ${JSON.stringify(started?.failures ?? [])}`);
+
+    note(`Migration task ${started.task}. Waiting for it to finish…`);
+    aws(['ecs', 'wait', 'tasks-stopped', '--cluster', NAMES.cluster, '--tasks', started.task]);
+    const stopped = aws(['ecs', 'describe-tasks', '--cluster', NAMES.cluster, '--tasks', started.task,
+        '--query', 'tasks[0].{exit: containers[0].exitCode, reason: stoppedReason}']).value;
+
+    // Best effort, as the pipeline's is: the log says what happened, and its absence changes nothing.
+    const log = aws(['logs', 'tail', NAMES.migrateLogGroup, '--since', '30m', '--format', 'short'],
+        { allowFailure: true, raw: true });
+    if (log.ok && log.value) note(log.value);
+
+    // An exit code of null is a container that never ran - an image it could not pull, say.
+    if (stopped?.exit !== 0) {
+        fail(`The migration task exited with ${stopped?.exit ?? 'no exit code'} (${stopped?.reason ?? 'no reason given'}). `
+            + `${NAMES.appStack} was not deployed and the gate stays off; fix the cause and resume again.`);
+    }
+    note('Migrated.');
+}
+
 async function resume() {
     const db = databaseStatus();
     if (db === null) fail(`Database ${NAMES.database} does not exist. Deploy ${NAMES.dataStack} first.`);
@@ -381,6 +435,10 @@ async function resume() {
     }
     const tag = chosen ?? newestCommonTag();
     if (!tag) fail(`No tag is present in both ${NAMES.apiRepository} and ${NAMES.ssrRepository}. Build and push a release first (ADR 0044, Phase 7).`);
+
+    // Before the application: the database is available now, and the tag is the one about to serve.
+    migrate(tag);
+
     note(`Deploying ${NAMES.appStack} at image tag ${tag}.`);
 
     // --exclusively: the Data stack is not redeployed as a dependency. The stack includes the
