@@ -65,7 +65,11 @@ are playing now, on every platform. So the panel is Coming soon's mirror:
 - **First released in the last ninety days, before today**: a full release on a known day. Early access
   and the paid early start are not the release — Enshrouded, in early access since January 2024, is out on
   the 15th of October 2026, its 1.0 — and a game out years ago with a new platform in the window is not
-  just out. A game out today is still Coming soon's, so the two panels meet on today and never share one.
+  just out, nor is one whose full release IGDB knows only to a month, quarter or year that ended before
+  the window: an older game dated only "2019" is out, and its port is not news for everybody. That could
+  hide a new game whose planned date IGDB never came back to on one platform; none of that day's seventy-one
+  had such a row, and an old game on the front page as new is the worse mistake. A game out today is still
+  Coming soon's, so the two panels meet on today and never share one.
 - **The ten most watched**, shown newest first, so the panel reads back from today as Coming soon reads
   forward; each with the day and the platforms it is out on.
 - **No floor beside the cap.** IGDB's follows and ratings are small for a game this new — Madden NFL 27,

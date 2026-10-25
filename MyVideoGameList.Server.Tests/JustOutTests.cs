@@ -145,6 +145,52 @@ public class JustOutRulesTests
     }
 
     [Fact]
+    public void Compose_AnOlderGameKnownOnlyToItsYear_WithAPortInTheWindow_IsNotJustOut()
+    {
+        // IGDB dates the release only to "2019", which it stores on the year's last day; the port is the
+        // only row it knows to the day.
+        var olderGame = new JustOutCandidate(Game(7, "Out in 2019"), 0.01,
+        [
+            new(70, 7, new DateOnly(2019, 12, 31), 2, 2019, 12, Pc, Full),
+            Day(71, 7, new DateOnly(2026, 10, 1), Switch2),
+        ]);
+
+        Assert.Empty(Compose([olderGame]));
+    }
+
+    [Theory]
+    [InlineData(1, 2025, 3)] // March 2025
+    [InlineData(4, 2025, 6)] // Q2 2025, stored on the quarter's last month
+    public void Compose_AMonthOrQuarterEndedBeforeTheWindow_IsOutAlready(int dateFormat, int year, int month)
+    {
+        var stored = dateFormat == 1 ? new DateOnly(year, month, 1) : new DateOnly(year, month, DateTime.DaysInMonth(year, month));
+        var olderGame = new JustOutCandidate(Game(8, "Out earlier"), 0.01,
+        [
+            new(80, 8, stored, dateFormat, year, month, Pc, Full),
+            Day(81, 8, new DateOnly(2026, 10, 1), Ps5),
+        ]);
+
+        Assert.Empty(Compose([olderGame]));
+    }
+
+    [Fact]
+    public void Compose_AMonthInsideTheWindow_LeavesTheDayItMeant()
+    {
+        // "September 2026" on one platform, the 1st of October on another: both inside the ninety days, so the
+        // month says nothing against the day.
+        var game = new JustOutCandidate(Game(9, "Known to September on PC"), 0.01,
+        [
+            new(90, 9, new DateOnly(2026, 9, 1), 1, 2026, 9, Pc, Full),
+            Day(91, 9, new DateOnly(2026, 10, 1), Ps5),
+        ]);
+
+        var shown = Assert.Single(Compose([game]));
+
+        Assert.Equal(new DateOnly(2026, 10, 1), shown.Released);
+        Assert.Equal([Ps5], shown.Platforms);
+    }
+
+    [Fact]
     public void Compose_ThePlatforms_AreWhatItIsOutOnBeforeToday()
     {
         var pcFirst = new JustOutCandidate(Game(3, "PC first"), 0.01,

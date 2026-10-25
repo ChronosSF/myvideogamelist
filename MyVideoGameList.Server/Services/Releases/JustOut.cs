@@ -63,24 +63,39 @@ internal static class JustOut
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Only a full release on a known day counts. Early access and IGDB's paid early start are not the release
-    /// — Enshrouded, in early access since January 2024, came out on the 15th of October 2026 — and a month
-    /// or a quarter already past is a date IGDB never came back to, which says nothing about whether it is out.
+    /// The release is a full release on a known day. Early access and IGDB's paid early start are not the
+    /// release — Enshrouded, in early access since January 2024, came out on the 15th of October 2026 — and a
+    /// month, a quarter or a year inside the window says too little to put a day on the card.
     /// </para>
     /// <para>
     /// The first such day decides, so a game out years ago with a new platform in the window is not just out,
-    /// as Coming soon does not count it as coming. And it has to be before today: a game out today is still
-    /// Coming soon's, so the two panels never show one game at once.
+    /// as Coming soon does not count it as coming. A full release IGDB knows only to a month, a quarter or a
+    /// year that ended before the window says the same: an older game IGDB dates only to "2019" is out, and
+    /// its port this autumn is the port's news, not the game's. That can hide a new game whose date IGDB
+    /// planned and never came back to on one platform; none of the seventy-one games that passed on
+    /// 2026-10-25 had such a row, and a game missing from the front page is a smaller wrong than an old one
+    /// on it as new.
+    /// </para>
+    /// <para>
+    /// And the day has to be before today: a game out today is still Coming soon's, so the two panels never
+    /// show one game at once.
     /// </para>
     /// </remarks>
     private static JustOutRelease? FirstRelease(
         CalendarGame game, IReadOnlyList<ReleaseRow> rows, DateOnly today, DateOnly windowStarts)
     {
-        var days = rows
+        var known = rows
             .Where(r => r.Status is null or IgdbReleaseStatuses.FullRelease)
             .Select(r => (Row: r, Period: ConnectedReleases.PeriodOf(r)))
-            .Where(r => r.Period is { Precision: ReleasePrecision.Day })
-            .Select(r => (r.Row, Day: r.Period!.Value.Starts))
+            .Where(r => r.Period is not null)
+            .Select(r => (r.Row, Period: r.Period!.Value))
+            .ToList();
+
+        if (known.Any(k => k.Period.Precision != ReleasePrecision.Day && k.Period.Ends < windowStarts)) return null;
+
+        var days = known
+            .Where(k => k.Period.Precision == ReleasePrecision.Day)
+            .Select(k => (k.Row, Day: k.Period.Starts))
             .ToList();
         if (days.Count == 0) return null;
 
