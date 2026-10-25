@@ -41,6 +41,14 @@
     object-fit: cover;
 }
 
+/* The author's picture on a game page: the size. The circle and the initial's colours are the
+   Avatar component's. */
+.review-avatar {
+    width: 2.25rem;
+    height: 2.25rem;
+    font-size: 0.875rem;
+}
+
 /* The game's title on a profile, the author's name on a game page. */
 .review-card-title {
     font-weight: 600;
@@ -51,6 +59,12 @@
 
 .review-card-title:hover {
     color: var(--color-primary-400);
+}
+
+/* The handle beside an author's display name: still in the link, a step back from the name. */
+.review-card-handle {
+    font-weight: 400;
+    color: var(--color-fg-muted);
 }
 
 .review-card-sub {

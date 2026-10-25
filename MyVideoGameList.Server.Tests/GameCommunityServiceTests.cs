@@ -43,11 +43,16 @@ public class GameCommunityServiceTests
         ApplicationDbContext db, IDataProtectionProvider? keys = null) =>
         new(db, keys ?? new EphemeralDataProtectionProvider());
 
-    /// <summary>An account, public unless a test says otherwise. Its id is derived from its name.</summary>
+    /// <summary>
+    /// An account, public and with no display name or picture unless a test says otherwise. Its id
+    /// is derived from its name.
+    /// </summary>
     private static string AddAccount(
         ApplicationDbContext db,
         string userName,
-        string visibility = ProfileVisibility.Public)
+        string visibility = ProfileVisibility.Public,
+        string? displayName = null,
+        string? avatarUrl = null)
     {
         var id = $"id-{userName.ToLowerInvariant()}";
 
@@ -57,7 +62,9 @@ public class GameCommunityServiceTests
             UserName = userName,
             NormalizedUserName = userName.ToUpperInvariant(),
             Email = $"{userName}@test.local",
-            ProfileVisibility = visibility
+            ProfileVisibility = visibility,
+            DisplayName = displayName,
+            AvatarUrl = avatarUrl
         });
         db.SaveChanges();
 
@@ -242,6 +249,63 @@ public class GameCommunityServiceTests
         Assert.Equal(1, scores.Distribution.Sum());
     }
 
+    // ── How many track it ─────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task GetScoresAsync_MembersWithTheGameInAList_AreCountedAsTracking()
+    {
+        using var db = NewDb();
+        AddEntry(db, AddAccount(db, "alex"), status: ListStatusKeys.Playing);
+        AddEntry(db, AddAccount(db, "sam"), score: 7, status: ListStatusKeys.Finished);
+        AddEntry(db, AddAccount(db, "nadia"), status: ListStatusKeys.Backlog);
+
+        var scores = await NewService(db).GetScoresAsync(GameId);
+
+        // Tracking needs no score: two of the three have none.
+        Assert.Equal(3, scores.Tracked);
+        Assert.Equal(1, scores.Scored);
+    }
+
+    [Fact]
+    public async Task GetScoresAsync_EntryInNoList_IsNotCountedAsTracking()
+    {
+        // The entry outlives leaving every list, and keeps its score (ADR 0019). Its score still
+        // counts; the game is no longer tracked, which is what a profile's statistics say too.
+        using var db = NewDb();
+        AddEntry(db, AddAccount(db, "alex"), score: 4, status: null);
+        AddEntry(db, AddAccount(db, "sam"), status: ListStatusKeys.Dropped);
+
+        var scores = await NewService(db).GetScoresAsync(GameId);
+
+        Assert.Equal(1, scores.Tracked);
+        Assert.Equal(1, scores.Scored);
+    }
+
+    [Fact]
+    public async Task GetScoresAsync_TrackingFromAPrivateProfile_CountsForThisGameAlone()
+    {
+        // A count names nobody, so a private profile's library counts as its scores do. Another
+        // game's entry is somebody else's figure.
+        using var db = NewDb();
+        var alex = AddAccount(db, "alex", ProfileVisibility.Private);
+        AddEntry(db, alex, status: ListStatusKeys.Playing);
+        AddEntry(db, alex, gameId: OtherGameId, status: ListStatusKeys.Playing);
+
+        var scores = await NewService(db).GetScoresAsync(GameId);
+
+        Assert.Equal(1, scores.Tracked);
+    }
+
+    [Fact]
+    public async Task GetScoresAsync_NobodyTracksIt_TrackedIsZero()
+    {
+        using var db = NewDb();
+
+        var scores = await NewService(db).GetScoresAsync(GameId);
+
+        Assert.Equal(0, scores.Tracked);
+    }
+
     // ── The reviews: which cross the gate ─────────────────────────────────────────────
 
     [Fact]
@@ -328,6 +392,28 @@ public class GameCommunityServiceTests
         Assert.Equal((short)9, page.Reviews.Single(r => r.UserName == "alex").Score);
         // Null rather than zero: writing about a game without scoring it is a real state.
         Assert.Null(page.Reviews.Single(r => r.UserName == "sam").Score);
+    }
+
+    [Fact]
+    public async Task GetReviewsAsync_CarriesTheAuthorsDisplayNameAndPicture()
+    {
+        // For the card to show beside the handle, as the profile it links to does: a profile that is
+        // public, since nothing else is listed, and so already shows both.
+        using var db = NewDb();
+        AddReview(db, AddAccount(db, "alex",
+            displayName: "Alex Smith",
+            avatarUrl: "https://avatars.githubusercontent.com/u/9919?v=4"));
+        AddReview(db, AddAccount(db, "sam"), createdAt: Now.AddDays(-1));
+
+        var page = await NewService(db).GetReviewsAsync(GameId, after: null);
+
+        var alex = page.Reviews.Single(r => r.UserName == "alex");
+        Assert.Equal("Alex Smith", alex.DisplayName);
+        Assert.Equal("https://avatars.githubusercontent.com/u/9919?v=4", alex.AvatarUrl);
+        // An author with neither: the card shows the handle alone, and its initial.
+        var sam = page.Reviews.Single(r => r.UserName == "sam");
+        Assert.Null(sam.DisplayName);
+        Assert.Null(sam.AvatarUrl);
     }
 
     // ── The reviews: order ────────────────────────────────────────────────────────────

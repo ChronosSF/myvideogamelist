@@ -155,7 +155,8 @@ async function getJson<T>(url: string, signal: AbortSignal): Promise<T | null> {
 
 /**
  * What MyVideoGameList members make of a game: everybody's scores, and the reviews they have
- * published. Fetched on the client, after hydration, and never in the route loader.
+ * published. Fetched on the client, after hydration. The reviews are never in the route loader; the
+ * scores are read there as well, for the server render, and this answer replaces that copy (ADR 0069).
  *
  * Three reasons, the first of which decides it (`docs/decisions/0028-*`):
  *

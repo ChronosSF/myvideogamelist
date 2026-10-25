@@ -222,7 +222,10 @@ public class ImportService(
         // reason a list does (ADR 0035). A matching pass stores what it offered on the way past,
         // so the candidates are usually already here.
         var games = (await gameCache.GetGamesAsync(gameIds, cancellationToken)).ToDictionary(g => g.Id);
-        var tracked = await TrackedGameIdsAsync(userId, gameIds, cancellationToken);
+
+        // Every game the user has, not only these rows': the screen checks a game chosen for a row
+        // against it, and a row's own search can choose any game at all (§S8).
+        var tracked = await LibraryGameIdsAsync(userId, cancellationToken);
 
         var dtos = rows.Select(row => ToReviewDto(row, games, tracked)).ToList();
 
@@ -237,7 +240,7 @@ public class ImportService(
             AlreadyTracked: dtos.Count(r => r.AlreadyTracked),
             Selected: dtos.Count(r => r.Decision == ImportDecisions.Import));
 
-        return new ImportReviewDto(ToDto(job), summary, dtos);
+        return new ImportReviewDto(ToDto(job), summary, dtos, [.. tracked.Order()]);
     }
 
     public async Task<ImportMatchPassDto?> MatchAsync(
@@ -717,6 +720,14 @@ public class ImportService(
     /// Which of these games the user already has an entry for, so the review screen can mark them
     /// and default them to skip (§S8).
     /// </summary>
+    /// <summary>Every game the user has an entry for, whatever list it is in, or none.</summary>
+    private async Task<HashSet<int>> LibraryGameIdsAsync(string userId, CancellationToken cancellationToken) =>
+        [.. await db.UserGameEntries
+            .AsNoTracking()
+            .Where(e => e.UserId == userId)
+            .Select(e => e.GameId)
+            .ToListAsync(cancellationToken)];
+
     private async Task<HashSet<int>> TrackedGameIdsAsync(
         string userId, IReadOnlyCollection<int> gameIds, CancellationToken cancellationToken) =>
         gameIds.Count == 0

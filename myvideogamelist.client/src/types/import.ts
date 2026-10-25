@@ -115,6 +115,13 @@ export interface ImportReview {
     job: ImportJob;
     summary: ImportReviewSummary;
     rows: ImportReviewRow[];
+    /**
+     * Every game the user already has an entry for, in a list or in none — what §S8 means by an
+     * existing entry, and what each row's `alreadyTracked` is read from. A game chosen for a row is
+     * checked against it, never against the lists context: an entry in no list appears in none of
+     * the lists, and the lists may not have loaded.
+     */
+    trackedGameIds: number[];
 }
 
 /**
@@ -135,6 +142,18 @@ export interface ImportRowDecision {
     decision: ImportDecision;
     gameId?: number | null;
     status?: string | null;
+}
+
+/**
+ * A decision as the review screen makes it: what is sent, plus what the screen already knows about
+ * the game a choice names, so the row reads right before the review is next read. The extra fields
+ * are never sent — the server works both out for itself.
+ */
+export interface ImportRowChoice extends ImportRowDecision {
+    /** The game chosen, so the row shows its cover. */
+    game?: GameDto;
+    /** The user already has the chosen game in one of their lists. */
+    alreadyTracked?: boolean;
 }
 
 export interface ImportSkippedRow {

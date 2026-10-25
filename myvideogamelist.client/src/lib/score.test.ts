@@ -6,14 +6,18 @@ import {
     MIN_PLAYTHROUGH_SAMPLES,
     STAR_COUNT,
     aggregateTitle,
+    criticScoreWords,
     hasCriticScore,
     hasMemberScore,
     ratingPercent,
     scoreBandSolid,
     scoreBandSubtle,
     scoreBandTint,
+    scoresWithinFloor,
     starFill,
+    timesWithinFloor,
 } from '@/lib/score';
+import { communityScores, communityTimes } from '@/test/factories';
 
 describe('the score scale', () => {
     it('is ten values over five stars, so half stars land on whole numbers', () => {
@@ -84,7 +88,7 @@ describe('ratingPercent', () => {
 
 describe('hasMemberScore', () => {
     const scores = (scored: number, mean: number | null = 8) =>
-        ({ scored, mean, distribution: Array<number>(10).fill(0) });
+        ({ scored, mean, distribution: Array<number>(10).fill(0), tracked: scored });
 
     it('accepts a mean backed by the member floor', () => {
         expect(hasMemberScore(scores(MIN_MEMBER_SCORES))).toBe(true);
@@ -169,8 +173,56 @@ describe('aggregateTitle', () => {
     it('does not say "1 reviews"', () => {
         expect(aggregateTitle('critics', 70, 1)).toBe('Critic score: 70 out of 100, from 1 review');
     });
+});
+
+describe('criticScoreWords', () => {
+    it('says a score that clears the floor with its sample', () => {
+        expect(criticScoreWords({ criticScore: 91, criticScoreCount: 12 }))
+            .toBe('Critic score: 91 out of 100, from 12 reviews');
+    });
+
+    it('says why a score under the floor is not shown, rather than that there is none', () => {
+        // A lone 100 from one critic is exactly what the floor is for (ADR 0016).
+        expect(criticScoreWords({ criticScore: 100, criticScoreCount: 1 })).toBe('Too few critic reviews to score: 1');
+        expect(criticScoreWords({ criticScore: 80, criticScoreCount: 3 }))
+            .toBe('Too few critic reviews to score: 3');
+    });
+
+    it('says when there are no critic reviews at all', () => {
+        expect(criticScoreWords({ criticScore: null, criticScoreCount: null })).toBe('No critic reviews');
+        expect(criticScoreWords({ criticScore: null, criticScoreCount: 0 })).toBe('No critic reviews');
+    });
 
     it('says nothing about the sample when there is no count, rather than implying zero', () => {
         expect(aggregateTitle('players', 61, null)).toBe('Player rating: 61 out of 100');
+    });
+});
+
+describe('scoresWithinFloor', () => {
+    it('keeps only the counts under the floor, so a copy stored beside the page publishes no score', () => {
+        // One member's 9, which the page never shows and the shared HTML must not carry either.
+        const one = communityScores({ scored: 1, mean: 9, distribution: [0, 0, 0, 0, 0, 0, 0, 0, 1, 0], tracked: 4 });
+
+        expect(scoresWithinFloor(one)).toEqual(communityScores({ scored: 1, mean: null, tracked: 4 }));
+    });
+
+    it('leaves scores that clear the floor as they are', () => {
+        const enough = communityScores({ scored: MIN_MEMBER_SCORES, mean: 8, distribution: [0, 0, 0, 0, 0, 0, 0, 5, 0, 0], tracked: 9 });
+
+        expect(scoresWithinFloor(enough)).toEqual(enough);
+    });
+});
+
+describe('timesWithinFloor', () => {
+    it('takes out each median under the floor and keeps its count', () => {
+        const times = communityTimes({
+            rushed: { samples: MIN_PLAYTHROUGH_SAMPLES - 1, medianMinutes: 300 },
+            normally: { samples: MIN_PLAYTHROUGH_SAMPLES, medianMinutes: 600 },
+        });
+
+        expect(timesWithinFloor(times)).toEqual(communityTimes({
+            rushed: { samples: MIN_PLAYTHROUGH_SAMPLES - 1, medianMinutes: null },
+            normally: { samples: MIN_PLAYTHROUGH_SAMPLES, medianMinutes: 600 },
+        }));
     });
 });

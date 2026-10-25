@@ -1,6 +1,8 @@
 # 0056. An avatar is an address on a short list of hosts, and a display name stands beside the handle
 
-**Status:** Implemented
+**Status:** Implemented. Since #370 the navbar draws the avatar rather than an initial of its own,
+and since #371 a member review shows its author's picture and display name; whether the navbar's
+menu shows the display name is still #308.
 **Amends:** [0033](0033-what-the-api-refuses.md) §5, whose document policy gains `img-src`;
 [0058](0058-a-withdrawal-leaves-the-edge-when-it-is-made.md) §1, whose table gains an eighth event
 

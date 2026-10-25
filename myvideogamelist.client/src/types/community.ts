@@ -17,6 +17,11 @@ export interface CommunityScores {
     mean: number | null;
     /** Ten buckets; index 0 is the count of 1s. */
     distribution: number[];
+    /**
+     * How many members have the game in one of their five lists. Not the same pool as `scored`: a
+     * score outlives the game leaving every list, and most tracked games are never scored.
+     */
+    tracked: number;
 }
 
 /** One page of the reviews published about a game, newest first, mirroring `GameReviewsDto`. */
@@ -36,6 +41,10 @@ export interface GameReviews {
 export interface GameReview {
     /** As its owner capitalised it. There is always a public profile behind it. */
     userName: string;
+    /** Shown beside `userName`, never instead of it: the handle is what says whose review it is. */
+    displayName: string | null;
+    /** On one of `AVATAR_HOSTS`, loaded by the reader's browser; null for the handle's initial. */
+    avatarUrl: string | null;
     body: string;
     hasSpoilers: boolean;
     /** The author's own score, on the 1–10 scale. Null when they wrote without scoring. */

@@ -314,7 +314,12 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   somebody reads, and an offset then skips a review for good — and never on a key that can change,
   such as the author's name. `GameUserPanel` calls the hook's `reload` after the reader's own
   score or review changes, or the section beside it shows the write as though it had failed. See
-  `docs/decisions/0028-*`.
+  `docs/decisions/0028-*`. **The scores are the exception, because they name nobody**: the loader
+  reads `/community-scores` and `/community-times` beside the game, so the member score is in the
+  HTML a crawler indexes, and the hook's answer replaces the loader's figure after hydration. Each
+  read has a one-second deadline, a render missing either is `no-store`, and under the floors the
+  loader keeps only the counts, since its copy sits in the shared HTML for up to a day. Review text
+  never enters the loader (ADR 0069).
 
 - **A change of list clears the entry's hand-arranged position, and every writer of a status owes
   that.** `UserGameEntries.Position` is the backlog's "My order": a sparse number, null for a game never
@@ -617,7 +622,9 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   non-empty profiles and makes no IGDB call; the empty-profile test lives in both
   `SitemapService.ListedProfiles` and `ProfilePage`'s `meta`, and they must agree. Resource routes
   bypass `entry.server.tsx`, so they go out through `resourceResponse`. See
-  `docs/decisions/0036-*`.
+  `docs/decisions/0036-*`. Structured data is a `script:ld+json` descriptor returned from `meta`,
+  which `<Meta>` escapes — never a script tag of our own — says only what the page shows, and rates
+  a game by its members' score alone, at `MIN_MEMBER_SCORES`; see `docs/decisions/0069-*`.
 
 - **A degraded or error response must never be cacheable.** Caching a failure outlives the
   failure. Note four traps: a thrown `Response`'s headers are replaced by the boundary route's

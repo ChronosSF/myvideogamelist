@@ -1,5 +1,6 @@
 import type { CommunityScores } from '@/types/community';
 import type { GameDto } from '@/types/game';
+import type { CommunityTimes } from '@/types/playthrough';
 import { formatCount } from '@/lib/format';
 
 /**
@@ -84,6 +85,33 @@ export function hasMemberScore(
 }
 
 /**
+ * The members' scores with what the floor keeps off the page taken out: under `MIN_MEMBER_SCORES`,
+ * the count alone, with no mean and an empty distribution.
+ *
+ * For a copy stored where the page is — in the HTML and the data a CDN shares for a day and a crawler
+ * archives — rather than shown on it. The API reports a lone member's score faithfully, and ADR 0028
+ * accepted that only because the floor keeps it off the page; a copy kept beside the page has to keep
+ * the same floor or it publishes that score after all. Nothing renders differently, since nothing
+ * renders the mean or the distribution under the floor.
+ */
+export function scoresWithinFloor(scores: CommunityScores): CommunityScores {
+    return hasMemberScore(scores)
+        ? scores
+        : { ...scores, mean: null, distribution: scores.distribution.map(() => 0) };
+}
+
+/**
+ * The members' completion times with each median under `MIN_PLAYTHROUGH_SAMPLES` taken out, for the
+ * reason {@link scoresWithinFloor} gives. The counts stay: they are what the page says instead.
+ */
+export function timesWithinFloor(times: CommunityTimes): CommunityTimes {
+    return {
+        buckets: times.buckets.map(bucket =>
+            bucket.samples >= MIN_PLAYTHROUGH_SAMPLES ? bucket : { ...bucket, medianMinutes: null }),
+    };
+}
+
+/**
  * An average out of ten, as a number out of 100.
  *
  * IGDB's player rating arrives on a 0-10 scale, the mean of our members' scores on the 1-10 scale
@@ -153,4 +181,18 @@ export function aggregateTitle(
     const { label, noun } = AGGREGATE_WORDS[kind];
     const from = count === null ? '' : `, from ${formatCount(count)} ${noun}${count === 1 ? '' : 's'}`;
     return `${label}: ${percent} out of 100${from}`;
+}
+
+/**
+ * A game's critic score said in words, as a listed game is named or described to a screen reader:
+ * the score with its sample once it rests on `MIN_CRITIC_REVIEWS` reviews, and otherwise why there
+ * is none to show. "Too few" says what a bare "no score" would hide — that a score exists, from too
+ * few reviews to mean anything (ADR 0016). The navbar's typeahead and the import's candidates both
+ * say it, so they say it the same way.
+ */
+export function criticScoreWords(game: Pick<GameDto, 'criticScore' | 'criticScoreCount'>): string {
+    if (hasCriticScore(game)) return aggregateTitle('critics', game.criticScore!, game.criticScoreCount);
+
+    const count = game.criticScoreCount ?? 0;
+    return count === 0 ? 'No critic reviews' : `Too few critic reviews to score: ${formatCount(count)}`;
 }
