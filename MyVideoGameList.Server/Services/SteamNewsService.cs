@@ -39,6 +39,16 @@ public partial class SteamNewsService(
 {
     private const string NewsEndpoint = "https://api.steampowered.com/ISteamNews/GetNewsForApp/v2/";
 
+    /// <summary>
+    /// The one feed asked for: what a game's own developer or publisher posts on Steam (ADR 0072).
+    /// </summary>
+    /// <remarks>
+    /// Unfiltered, Steam mixes in the press it collects, and for a game whose developer posts rarely the
+    /// press is most of it — two Russian outlets above all, which filled half of a list of single-player
+    /// games' news. A list of outlets to leave out would need adding to whenever Steam adds one.
+    /// </remarks>
+    private const string AnnouncementsFeed = "steam_community_announcements";
+
     /// <summary>How many characters of article body Steam should return.</summary>
     private const int SteamMaxLength = 600;
 
@@ -52,8 +62,9 @@ public partial class SteamNewsService(
     private const int MaxGamesPerAggregate = 12;
 
     /// <summary>
-    /// Steam is asked for more items than one game can contribute, because the feed mixes official
-    /// announcements with third-party coverage and some get dropped in de-duplication.
+    /// Steam is asked for more items than one game can contribute, because some are dropped on the way:
+    /// one with no title, link or date, and an announcement a publisher posted to several of its games,
+    /// which is kept once.
     /// </summary>
     private const int OverFetchFactor = 3;
 
@@ -312,7 +323,8 @@ public partial class SteamNewsService(
     {
         try
         {
-            var url = $"{NewsEndpoint}?appid={feed.AppId}&count={feed.Count}&maxlength={SteamMaxLength}&format=json";
+            var url = $"{NewsEndpoint}?appid={feed.AppId}&count={feed.Count}&maxlength={SteamMaxLength}"
+                + $"&feeds={AnnouncementsFeed}&format=json";
 
             var client = httpClientFactory.CreateClient("Steam");
             using var response = await client.GetAsync(url, cancellationToken);
