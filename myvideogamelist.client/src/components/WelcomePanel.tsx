@@ -19,8 +19,8 @@ const DRAWN: readonly { list: ListId; width: string }[] = [
  * anything a source could take back, and never fails. Its drawing is a list as the app draws one with
  * nothing real in it, as the default share image's is, so a shared link and the page it opens match.
  *
- * Also what the server renders for everybody, since that render has no cookie; somebody signed in sees
- * it until auth answers and the Welcome back band replaces it, until issue 389's two copies of the page.
+ * Also what the server renders for a request carrying no signed-in flag (ADR 0074). Somebody signed in
+ * whose flag is gone sees it for one page load, until auth answers and the Welcome back band replaces it.
  */
 export function WelcomePanel() {
     const authDialog = useAuthDialog();

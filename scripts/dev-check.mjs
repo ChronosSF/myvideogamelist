@@ -162,6 +162,26 @@ async function cacheBehaviour() {
     report(/<option value="m" selected=""/.test(mature.body) && xcache(teen) === 'Miss',
         '?esrb= reaches the origin and is in the cache key', `${xcache(mature)}, then ${xcache(teen)} under another rating`);
 
+    // The home page is kept twice, by the signed-in flag alone (ADR 0074). The two bodies differing is
+    // what says the behaviour for `/` matched at all: the default keys on no cookie and forwards none,
+    // so it would answer both with the welcome.
+    const flag = { cookie: 'mvgl_signed_in=1' };
+    const welcome = await get('/', { auth: true });
+    const flagged = await get('/', { auth: true, headers: flag });
+    const flaggedAgain = await get('/', { auth: true, headers: flag });
+    report(/Create an account/.test(welcome.body) && /Welcome back/.test(flagged.body) && !/Create an account/.test(flagged.body),
+        '/ draws the welcome without the signed-in flag, and the signed-in top section with it',
+        `${welcome.status} and ${flagged.status}`);
+    report(/^(Hit|RefreshHit)$/.test(xcache(flaggedAgain)), 'the flagged copy of / is served from the edge on the second request',
+        `${xcache(flagged)}, then ${xcache(flaggedAgain)}; ${cache(flaggedAgain)}`);
+
+    // Its .data too, which a navigation to the home page asks for: on the default behaviour it would be the
+    // same answer either way, and a navigation made before auth answers would draw the welcome.
+    const visitorData = await get('/_.data', { auth: true });
+    const flaggedData = await get('/_.data', { auth: true, headers: flag });
+    report(visitorData.status === 200 && flaggedData.status === 200 && visitorData.body !== flaggedData.body,
+        '/_.data is keyed on the signed-in flag as / is', `${visitorData.status} and ${flaggedData.status}`);
+
     const page = await get(`/games/${GAME}`, { auth: true });
     const again = await get(`/games/${GAME}`, { auth: true });
     report(/^(Hit|RefreshHit)$/.test(xcache(again)), `/games/${GAME} is served from the edge on the second request`, `${xcache(page)}, then ${xcache(again)}`);

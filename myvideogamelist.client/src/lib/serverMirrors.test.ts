@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { AVATAR_HOSTS, AVATAR_SERVICES } from '@/lib/avatar';
 import { IGDB_IMAGE_HOST } from '@/lib/securityHeaders';
+import { SIGNED_IN_FLAG } from '@/lib/signedInFlag';
 import { AVATAR_URL_MAX_LENGTH, BIO_MAX_LENGTH, DISPLAY_NAME_MAX_LENGTH } from '@/types/auth';
 
 /**
@@ -18,14 +19,16 @@ import { AVATAR_URL_MAX_LENGTH, BIO_MAX_LENGTH, DISPLAY_NAME_MAX_LENGTH } from '
  */
 
 /**
- * A file of the server's, resolved from this file's own path as a string, as `auth.test.ts` does:
+ * A file of the repository's, resolved from this file's own path as a string, as `auth.test.ts` does:
  * jsdom replaces the global `URL`, and Node's `fileURLToPath` refuses one of jsdom's.
  */
+function repositorySource(path: string): string {
+    return readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '../../..', path), 'utf8');
+}
+
+/** A file of the server's. */
 function serverSource(path: string): string {
-    return readFileSync(
-        resolve(dirname(fileURLToPath(import.meta.url)), '../../../MyVideoGameList.Server', path),
-        'utf8',
-    );
+    return repositorySource(`MyVideoGameList.Server/${path}`);
 }
 
 /** The value of `public const int {name} = …;` in a server source file. */
@@ -79,5 +82,27 @@ describe('what the client restates from the server', () => {
         if (base === null) throw new Error('IgdbService.ImageBaseUrl was not found');
 
         expect(new URL(base[1]).host).toBe(IGDB_IMAGE_HOST);
+    });
+
+    it('reads the signed-in flag by the name the server sets it under', () => {
+        // Apart, the API would set a cookie the home page never reads, and every signed-in reader would be
+        // drawn the welcome first again, with nothing failing (ADR 0074).
+        expect(serverSource('Security/SignedInFlag.cs')).toContain(`public const string CookieName = "${SIGNED_IN_FLAG}";`);
+    });
+});
+
+/**
+ * The signed-in flag's name, as the two other places that write it out restate it (ADR 0074). The edge
+ * keys the home page on it: a name the API no longer sets would leave both copies the welcome, the flash
+ * back for every signed-in reader and nothing failing. The dev check sends it, and with another name would
+ * pass on a distribution that keys on nothing.
+ */
+describe('what the edge and its check restate from the server', () => {
+    it('keys the home page on the cookie the server sets', () => {
+        expect(repositorySource('infra/src/Infra/Edge.cs')).toContain(`CacheCookieBehavior.AllowList("${SIGNED_IN_FLAG}")`);
+    });
+
+    it('checks the home page’s two copies with the cookie the server sets', () => {
+        expect(repositorySource('scripts/dev-check.mjs')).toContain(`cookie: '${SIGNED_IN_FLAG}=1'`);
     });
 });

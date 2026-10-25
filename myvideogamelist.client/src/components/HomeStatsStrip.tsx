@@ -1,3 +1,4 @@
+import { HomeStatsStripSkeleton } from '@/components/HomeStatsStripSkeleton';
 import { useUserStats } from '@/hooks/useUserStats';
 import { countFinishedIn, formatHours } from '@/lib/stats';
 
@@ -14,11 +15,14 @@ import { countFinishedIn, formatHours } from '@/lib/stats';
 export function HomeStatsStrip({ userId }: { userId: string }) {
     const { stats, loading, error } = useUserStats(userId);
 
-    // Silent on both. This is a strip of encouragement above a page that works perfectly well
+    // In the strip's own boxes while it loads, so that nothing below it moves when it arrives (ADR 0070).
+    if (loading) return <HomeStatsStripSkeleton />;
+
+    // Silent on a failure. This is a strip of encouragement above a page that works perfectly well
     // without it, and an error banner for it would be louder than the thing it is reporting —
     // unlike the profile page, where these figures are the entire point and a failure has to say
     // so.
-    if (loading || error !== null || stats === null) return null;
+    if (error !== null || stats === null) return null;
 
     const { activity, playtime, library } = stats;
 

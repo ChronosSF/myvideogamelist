@@ -152,13 +152,14 @@ describe('ContinuePlayingRail with nothing to continue', () => {
             .toHaveAttribute('href', '/lists');
     });
 
-    it('renders nothing at all while the lists are still loading', () => {
-        // An empty-state message that turns into six covers a moment later is worse than a moment
-        // of nothing.
+    it('draws the rail’s shapes while the lists are still loading, and no empty state', () => {
+        // An empty-state message that turns into six covers a moment later is worse than either, and
+        // the shapes hold the rail's place so nothing below it moves when the covers come (ADR 0070).
         listsValue.loading = true;
-        const { container } = renderRail();
+        renderRail();
 
-        expect(container).toBeEmptyDOMElement();
+        expect(screen.getByRole('status')).toHaveTextContent('Loading the games you are playing…');
+        expect(screen.queryByText(/nothing in your playing list/i)).not.toBeInTheDocument();
     });
 
     it('says the lists could not be loaded, rather than that nothing is being played', () => {

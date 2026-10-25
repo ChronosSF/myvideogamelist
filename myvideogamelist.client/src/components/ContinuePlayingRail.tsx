@@ -1,4 +1,5 @@
 import { Link } from 'react-router';
+import { ContinuePlayingSkeleton } from '@/components/ContinuePlayingSkeleton';
 import { CoverImage } from '@/components/CoverImage';
 import { useLists } from '@/hooks/useLists';
 import { useFavourites } from '@/hooks/useFavourites';
@@ -36,9 +37,10 @@ export function ContinuePlayingRail() {
 
     const playing = sortEntries(lists.playing, RECENTLY_STARTED);
 
-    // Nothing at all while the lists are still coming: a "you are not playing anything" message
-    // that turns into six covers a moment later is worse than a moment of nothing.
-    if (loading) return null;
+    // The rail's own shapes while the lists are still coming: a "you are not playing anything" message
+    // that turns into six covers a moment later is worse than either, and nothing at all left the page
+    // below to jump when the covers came (ADR 0070).
+    if (loading) return <ContinuePlayingSkeleton />;
 
     // Asked before the empty state, because a failed load leaves the lists empty and would otherwise
     // read as "nothing in your Playing list" — the play-next picker below has the same guard.

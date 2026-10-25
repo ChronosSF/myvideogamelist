@@ -173,6 +173,9 @@ builder.Services.ConfigureApplicationCookie(options =>
         ctx.Response.StatusCode = StatusCodes.Status403Forbidden;
         return Task.CompletedTask;
     };
+    // The cookie that says, to the edge and the home page's server render, that a browser is signed in
+    // and nothing about who (ADR 0074).
+    SignedInFlag.FollowTheSession(options.Events);
 });
 
 // The key ring that cookie above is signed with, and the review cursor sealed with. Shared through

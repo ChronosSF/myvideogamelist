@@ -107,6 +107,18 @@ describe('HomeStatsStrip', () => {
     });
 });
 
+describe('HomeStatsStrip while it loads', () => {
+    it('draws the strip’s boxes, so nothing below it moves when the figures come', async () => {
+        mockStats(stats());
+
+        render(<HomeStatsStrip userId="user-1" />);
+
+        expect(screen.getByRole('status')).toHaveTextContent('Loading your numbers…');
+        // The figures replace it once they have come.
+        await waitFor(() => expect(screen.queryByRole('status')).toBeNull());
+    });
+});
+
 describe('HomeStatsStrip when there is nothing to show', () => {
     it('renders nothing for an account that has recorded nothing', async () => {
         // Three zeroes would be a scoreboard of failure on somebody's first visit.

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router';
 import { CoverImage } from '@/components/CoverImage';
+import { PlayNextSkeleton } from '@/components/PlayNextSkeleton';
 import { useLists } from '@/hooks/useLists';
 import { useFavourites } from '@/hooks/useFavourites';
 import { formatCount } from '@/lib/format';
@@ -45,9 +46,9 @@ export function PlayNextPicker() {
         setPicked(backlog[Math.floor(seed * backlog.length)]);
     }
 
-    // Nothing while the lists load, for the rail's reason: an empty-backlog message that turns into
-    // a game a moment later is worse than a moment of nothing.
-    if (loading) return null;
+    // The card's own shapes while the lists load, for the rail's reason: an empty-backlog message that
+    // turns into a game a moment later is worse, and nothing at all moved the line below it (ADR 0070).
+    if (loading) return <PlayNextSkeleton />;
 
     // A failed load leaves every list empty, which is exactly what an empty backlog looks like — so
     // it has to be asked about before the empty state, or a failure tells somebody with a hundred

@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
-import { Link } from 'react-router';
 import { ReleaseCard } from '@/components/ReleaseCard';
+import { ReleaseLineHeading } from '@/components/ReleaseLineHeading';
 import { useReleaseLine } from '@/hooks/useReleaseLine';
 import { startTime } from '@/lib/calendarEvents';
 import { dayLabel, formatDaySpan } from '@/lib/daySpan';
@@ -101,8 +101,8 @@ function EventBar({ event }: { event: LineEvent }) {
  * the bars are each a list, laid over the same tracks with `subgrid`, so that the page reads in day
  * order to whoever cannot see it while the bars still cross the days they cover.
  *
- * Mounted only in the signed-in hero, which never server-renders — what makes reading the reader's
- * clock and locale here safe.
+ * Mounted only once `/api/auth/me` has named the reader, which no server render has — what makes reading
+ * the reader's clock and locale here safe. The server draws `ReleaseLineSkeleton` in its place (ADR 0074).
  */
 export function ReleaseLine({ userId }: { userId: string }) {
     const { today, releases, events } = useReleaseLine(userId);
@@ -130,25 +130,7 @@ export function ReleaseLine({ userId }: { userId: string }) {
 
     return (
         <section aria-labelledby="release-line-heading">
-            <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-1 mt-8 mb-4">
-                <div>
-                    <h2 id="release-line-heading" className="text-lg font-semibold text-fg-strong mb-1">
-                        Coming up
-                    </h2>
-                    <p className="text-sm text-fg-muted">
-                        The next two weeks for your games, with the showcases and sales
-                    </p>
-                </div>
-
-                {/* Always shown, empty line or not (L6): the calendar is where the months after these
-                    two weeks are, and what is known only to its month or year. */}
-                <Link
-                    to="/calendar"
-                    className="shrink-0 text-sm font-medium text-primary-400 hover:text-primary-300 transition-colors"
-                >
-                    The whole calendar <span aria-hidden="true">→</span>
-                </Link>
-            </div>
+            <ReleaseLineHeading />
 
             <div
                 className="release-line-scroll"
