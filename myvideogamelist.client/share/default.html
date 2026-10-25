@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <!--
+        The source of src/assets/share.png, the image a page is shared with when it has none of its
+        own (#139): 1200 by 630, the size Open Graph and the large card are drawn at. render.mjs beside
+        it draws this with Chromium, after putting the app's colour tokens on :root, so the image is in
+        the app's colours by construction and every colour here is a token.
+
+        Everything that matters stays inside the middle 1200 by 600, because the large card crops the
+        image to two to one. It shows the brand and nothing else: no game's art, so no credit is owed
+        to anybody, and it says nothing a page might contradict. The holding page's image
+        (holding/share, ADR 0066) is the same layout with "Coming soon" on it, and goes with that page.
+    -->
+    <style>
+        html,
+        body {
+            width: 1200px;
+            height: 630px;
+            margin: 0;
+            overflow: hidden;
+        }
+
+        body {
+            box-sizing: border-box;
+            display: grid;
+            grid-template-columns: 1fr 400px;
+            align-items: center;
+            gap: 64px;
+            padding: 72px 80px;
+            background:
+                radial-gradient(ellipse 900px 600px at 0% 0%, color-mix(in srgb, var(--color-primary-950) 90%, transparent), transparent 70%),
+                var(--color-page);
+            /* Tailwind's default, which is what the app sets its text in. */
+            font-family: ui-sans-serif, system-ui, sans-serif;
+        }
+
+        p {
+            margin: 0;
+        }
+
+        .lockup {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            color: var(--color-fg);
+            font-size: 44px;
+            font-weight: 700;
+            letter-spacing: -0.01em;
+        }
+
+        .lockup svg {
+            width: 72px;
+            height: 72px;
+        }
+
+        /* The logo's own colours, as the navbar draws it. */
+        .logo-tile { fill: var(--color-brand-navy); }
+        .logo-play { fill: var(--color-brand-light); stroke: var(--color-brand-light); }
+        .logo-badge { fill: var(--color-brand-lime); }
+        .logo-check { stroke: var(--color-brand-navy); }
+        .brand-accent { color: var(--color-brand-lime); }
+
+        .headline {
+            margin-top: 44px;
+            color: var(--color-fg-strong);
+            font-size: 60px;
+            font-weight: 700;
+            line-height: 1.12;
+            letter-spacing: -0.02em;
+        }
+
+        .accent {
+            color: var(--color-primary-400);
+        }
+
+        .domain {
+            margin-top: 36px;
+            color: var(--color-fg-muted);
+            font-size: 26px;
+        }
+
+        /* A list as the app draws one, with nothing real in it: a cover, two lines of text and the
+           status, once for each of the five. */
+        .list {
+            display: grid;
+            gap: 14px;
+            padding: 22px;
+            border: 2px solid var(--color-line);
+            border-radius: 24px;
+            background: color-mix(in srgb, var(--color-surface) 70%, transparent);
+            box-shadow: 0 30px 60px -20px rgb(0 0 0 / 0.5);
+        }
+
+        .row {
+            display: grid;
+            grid-template-columns: 52px 1fr auto;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .status-playing { --dot: var(--color-status-playing); }
+        .status-finished { --dot: var(--color-status-finished); }
+        .status-on-hold { --dot: var(--color-status-on-hold); }
+        .status-backlog { --dot: var(--color-status-backlog); }
+        .status-dropped { --dot: var(--color-status-dropped); }
+
+        .cover {
+            width: 52px;
+            height: 68px;
+            border-radius: 8px;
+            background: linear-gradient(160deg, color-mix(in srgb, var(--dot) 55%, var(--color-surface)), var(--color-sunken));
+        }
+
+        .lines {
+            display: grid;
+            gap: 10px;
+        }
+
+        .lines span {
+            display: block;
+            height: 12px;
+            border-radius: 6px;
+            background: var(--color-line-strong);
+        }
+
+        .lines span + span {
+            width: 55%;
+            height: 10px;
+            background: var(--color-line);
+        }
+
+        .chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 4px 12px;
+            border: 2px solid var(--color-line-strong);
+            border-radius: 999px;
+            color: var(--color-fg-soft);
+            font-size: 16px;
+            white-space: nowrap;
+        }
+
+        .chip::before {
+            content: "";
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: var(--dot);
+        }
+    </style>
+</head>
+<body>
+    <div>
+        <div class="lockup">
+            <svg viewBox="0 0 64 64" aria-hidden="true">
+                <!-- The mask's white and black are not colours anybody sees. -->
+                <mask id="logo-gap">
+                    <rect width="64" height="64" fill="white"/>
+                    <rect x="37" y="-3" width="30" height="30" rx="11" fill="black"/>
+                </mask>
+                <g mask="url(#logo-gap)">
+                    <rect class="logo-tile" y="8" width="56" height="56" rx="15"/>
+                    <path class="logo-play" d="M21 26 40 36 21 46Z" stroke-width="6" stroke-linejoin="round"/>
+                </g>
+                <rect class="logo-badge" x="40" width="24" height="24" rx="8"/>
+                <path class="logo-check" d="M45.5 12 49.5 16 58 7" fill="none" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            <span>MyVideoGame<span class="brand-accent">List</span></span>
+        </div>
+        <p class="headline">Every game you&rsquo;ve played, <span class="accent">in one list</span></p>
+        <p class="domain">myvideogamelist.net</p>
+    </div>
+
+    <div class="list" aria-hidden="true">
+        <div class="row status-playing"><span class="cover"></span><span class="lines"><span style="width: 88%"></span><span></span></span><span class="chip">Playing</span></div>
+        <div class="row status-finished"><span class="cover"></span><span class="lines"><span style="width: 72%"></span><span></span></span><span class="chip">Finished</span></div>
+        <div class="row status-on-hold"><span class="cover"></span><span class="lines"><span style="width: 94%"></span><span></span></span><span class="chip">On Hold</span></div>
+        <div class="row status-backlog"><span class="cover"></span><span class="lines"><span style="width: 66%"></span><span></span></span><span class="chip">Backlog</span></div>
+        <div class="row status-dropped"><span class="cover"></span><span class="lines"><span style="width: 80%"></span><span></span></span><span class="chip">Dropped</span></div>
+    </div>
+</body>
+</html>

@@ -156,8 +156,12 @@ does not.
   built from data, and a place in the sitemap.
 - The API's `X-Robots-Tag` is what makes leaving `/api/` crawlable safe. Removing it, or adding a
   `Disallow`, each breaks the other's reasoning.
-- **Not done:** a default share image, so the home page, the catalogue and profiles unfurl without
-  one — it needs a designed raster image the repository does not have. Structured data is not part
+- **The default share image came later** (#139, 2026-10-25): `pageMeta` shares the brand, at 1200 by
+  630 with its size stated, on every page that has no image of its own, the game page with no art
+  included. It is drawn from `myvideogamelist.client/share/` in the palette's own tokens, and imported,
+  so the build gives it a hashed address under `/assets/`, which the edge keeps for a year and a new
+  image replaces with a new URL. Like the canonical URL, it is stated only where `SITE_URL` is set,
+  because Open Graph wants an absolute address. Structured data is not part
   of this; it is [0069](0069-a-crawler-is-told-what-is-ours.md), which also found that §4's rejected
   top-up has nothing to draw on in `CachedGames`. Neither is registering the site with a search
   console, which is a DNS record and belongs with the infrastructure.

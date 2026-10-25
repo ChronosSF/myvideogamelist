@@ -1,4 +1,5 @@
 import type { MetaDescriptor } from 'react-router';
+import defaultShareImage from '@/assets/share.png?no-inline';
 import { applySecurityHeaders, RESOURCE_POLICY } from '@/lib/securityHeaders';
 
 /**
@@ -131,6 +132,28 @@ export interface PageImage {
      * and cuts a portrait cover down to a strip across its middle.
      */
     wide: boolean;
+    /** Its size in pixels, where it is known, so an unfurler can lay the card out before fetching it. */
+    size?: { width: number; height: number };
+}
+
+/**
+ * What a page is shared with when it has no image of its own: the brand, at 1200 by 630, drawn
+ * from `share/default.html` by `share/render.mjs`. Imported rather than served from `public/`, so the
+ * build gives it a hashed address under `/assets/`, which the edge keeps for a year and a new image
+ * replaces with a new URL. `?no-inline`, because Vite turns an asset under four kilobytes into a
+ * `data:` URI, and a smaller redraw would then put the origin in front of one. Only with the
+ * deployment's own origin, because Open Graph wants an absolute URL and a relative one is resolved by
+ * nobody. Under the dev server the import is the source's own path, which no unfurler can reach anyway.
+ */
+function defaultImage(site: SiteConfig): PageImage | null {
+    if (site.siteUrl === null) return null;
+
+    return {
+        url: `${site.siteUrl}${defaultShareImage}`,
+        alt: `${SITE_NAME}: every game you've played, in one list`,
+        wide: true,
+        size: { width: 1200, height: 630 },
+    };
 }
 
 export interface PageMeta {
@@ -147,6 +170,7 @@ export interface PageMeta {
     path?: string;
     /** Open Graph's own list, which has no type for a game: https://ogp.me/#types */
     type?: 'website' | 'profile';
+    /** The page's own image. Left out or null, the site's default stands in for it. */
     image?: PageImage | null;
 }
 
@@ -156,8 +180,9 @@ export interface PageMeta {
  * A leaf route's `meta` replaces its parents' rather than merging with them, so the site-wide
  * tags cannot live on the root and have to be returned by each page.
  */
-export function pageMeta({ site, title, description, path, type = 'website', image }: PageMeta): MetaDescriptor[] {
+export function pageMeta({ site, title, description, path, type = 'website', image: own }: PageMeta): MetaDescriptor[] {
     const url = path !== undefined && site.siteUrl !== null ? `${site.siteUrl}${path}` : null;
+    const image = own ?? defaultImage(site);
 
     return [
         { title },
@@ -172,6 +197,12 @@ export function pageMeta({ site, title, description, path, type = 'website', ima
             ? [
                 { property: 'og:image', content: image.url },
                 { property: 'og:image:alt', content: image.alt },
+                ...(image.size
+                    ? [
+                        { property: 'og:image:width', content: String(image.size.width) },
+                        { property: 'og:image:height', content: String(image.size.height) },
+                    ]
+                    : []),
             ]
             : []),
         { name: 'twitter:card', content: image?.wide ? 'summary_large_image' : 'summary' },
