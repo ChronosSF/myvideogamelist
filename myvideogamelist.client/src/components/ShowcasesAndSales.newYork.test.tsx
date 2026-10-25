@@ -68,7 +68,7 @@ describe('in New York', () => {
 
     it('hands the page UTC’s day from the loader, not the server’s own', async () => {
         vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
-            spotlight: null, popular: [], news: [], events: calendarEvents(), degraded: false,
+            news: [], events: calendarEvents(), degraded: false,
         }))));
 
         // With a context, which the loader's calls are traced through (ADR 0059).

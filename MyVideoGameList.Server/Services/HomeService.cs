@@ -4,8 +4,8 @@ using MyVideoGameList.Server.DTOs;
 namespace MyVideoGameList.Server.Services;
 
 /// <summary>
-/// Composes the home page payload from IGDB, Steam, the release calendar's showcases and sales, and the
-/// Coming soon panel.
+/// Composes the home page payload: the release calendar's showcases and sales, the Coming soon and Just out
+/// panels, and the Steam news.
 /// </summary>
 /// <remarks>
 /// Scoped rather than a singleton since it began reading the admin page's tables, through
@@ -17,6 +17,7 @@ public class HomeService(
     ISteamNewsService steamNewsService,
     ICalendarEventService calendarEvents,
     IComingSoonService comingSoon,
+    IJustOutService justOut,
     IMemoryCache cache,
     TimeProvider clock,
     ILogger<HomeService> logger) : IHomeService
@@ -24,8 +25,11 @@ public class HomeService(
     /// <summary>Internal so that a pick on the admin page can drop this process's copy (ADR 0071).</summary>
     internal const string CacheKey = "home_payload";
 
-    /// <summary>How many covers the trending rail shows.</summary>
-    private const int PopularCount = 18;
+    /// <summary>
+    /// How many of the games most played on Steam the news is about: as many feeds as the news asks Steam for
+    /// at once, which is a dozen. The games are no longer shown (ADR 0073); they only pick the news.
+    /// </summary>
+    private const int NewsGameCount = 12;
 
     /// <summary>How many news items the rail shows.</summary>
     private const int NewsCount = 8;
@@ -55,25 +59,27 @@ public class HomeService(
         if (cache.TryGetValue(CacheKey, out HomeResponse? cached) && cached is not null)
             return cached;
 
-        // The Coming soon panel's picks before anything else starts: they are in our tables, as the
-        // showcases and sales are, and the two may not use the scoped DbContext at once. One small table,
-        // so the wait is a query's, never IGDB's.
+        // The admin's pins and hides before anything else starts: they are in our tables, as the showcases
+        // and sales are, and the two may not use the scoped DbContext at once. One small table, so the wait
+        // is a query's, never IGDB's. Both release panels read them: a hidden game is off the home page.
         var picks = await GetComingSoonPicksAsync(cancellationToken);
 
-        // The showcases, the sales and the panel beside the rails rather than after them. Each can wait
-        // out IGDB's thirty-second ceiling when IGDB accepts a connection and never answers, and one after
-        // the other they would take a minute or more — as long as the edge waits for a page, which was
-        // sized for one such wait. Awaited together, so that whichever fails first, the others are still
-        // observed. Only the events touch the DbContext among them: the panel's composing asks IGDB alone.
+        // Every part beside the others rather than after them. Each can wait out IGDB's thirty-second
+        // ceiling when IGDB accepts a connection and never answers, and one after the other they would take
+        // minutes — far longer than the edge waits for a page, which was sized for one such wait. Awaited
+        // together, so that whichever fails first, the others are still observed. Only the events touch the
+        // DbContext among them: the panels' composing asks IGDB alone.
         var today = DateOnly.FromDateTime(clock.GetUtcNow().UtcDateTime);
-        var railsTask = GetRailsAsync(cancellationToken);
+        var newsTask = GetNewsAsync(cancellationToken);
         var eventsTask = GetEventsAsync(cancellationToken);
         var comingSoonTask = GetComingSoonAsync(today, picks, cancellationToken);
-        await Task.WhenAll(railsTask, eventsTask, comingSoonTask);
+        var justOutTask = GetJustOutAsync(today, picks, cancellationToken);
+        await Task.WhenAll(newsTask, eventsTask, comingSoonTask, justOutTask);
 
-        var (spotlight, popular, news) = await railsTask;
+        var news = await newsTask;
         var events = await eventsTask;
         var (upcoming, comingSoonMissing) = await comingSoonTask;
+        var (released, justOutMissing) = await justOutTask;
 
         // One judgement, for both caches: it picks how long this process keeps the answer, and it
         // travels in the answer so that nobody keeps the page built from it (ADR 0013). It is
@@ -82,25 +88,24 @@ public class HomeService(
         // would be a second copy of this line, in another project, that whoever adds the next way
         // to degrade would have to know to go and change.
         //
-        // Judged from what came back, not from the catch above, because most of the ways this goes
-        // wrong throw nothing. GetTrendingAsync answers empty, quietly, when IGDB returns no
-        // popularity rows — which is all a field IGDB has removed looks like. The news comes back
-        // empty beside a full rail of covers when IGDB fails after the trending call was answered
-        // from its hour-long cache, or when Steam is down. And neither rail is empty while its
-        // upstream is well: these are Steam's most-played games, so every one of them has a feed
-        // (ADR 0012).
+        // Judged from what came back, not from the catches below, because most of the ways the news goes
+        // wrong throw nothing. Its games come from IGDB's popularity rows, which answer empty, quietly,
+        // when a field IGDB has removed is asked for. It comes back empty when IGDB fails after those
+        // rows were answered from their hour-long cache, or when Steam is down. And it is never empty
+        // while both are well: these are Steam's most-played games, and their developers post every few
+        // days (ADR 0012, 0072).
         //
         // The showcases and sales are the other way about: nothing on in the next two weeks is an
         // ordinary answer, and their panel is simply not drawn, so they say for themselves when
         // something is missing — the calendar's service when IGDB could not be asked, and
         // GetEventsAsync's catch when our own tables could not be read.
         //
-        // The Coming soon panel is like the showcases: no game passing its rules is an answer, and the
+        // The release panels are like the showcases: no game passing a panel's rules is an answer, and the
         // panel is simply not drawn. Only a failure to ask IGDB, or to read the picks, is missing.
         //
-        // A rail that is only thinner than it should be, because some feeds failed and others did
-        // not, cannot be seen from here.
-        var degraded = popular.Count == 0 || news.Count == 0 || events.Degraded || comingSoonMissing;
+        // News that is only thinner than it should be, because some feeds failed and others did not,
+        // cannot be seen from here.
+        var degraded = news.Count == 0 || events.Degraded || comingSoonMissing || justOutMissing;
 
         if (degraded)
         {
@@ -108,53 +113,44 @@ public class HomeService(
             // not all — an AppID lookup that resolves nothing is silent — and what this costs, an
             // uncached front page, looks from outside like nothing at all.
             logger.LogWarning(
-                "Home page composed degraded, with {PopularCount} trending games, {NewsCount} news items, "
-                + "the showcases and sales {EventsState} and the Coming soon panel {ComingSoonState}. "
+                "Home page composed degraded, with {NewsCount} news items, the showcases and sales "
+                + "{EventsState}, the Coming soon panel {ComingSoonState} and the Just out panel {JustOutState}. "
                 + "Kept for {Lifetime} and marked so that the page is not cached.",
-                popular.Count, news.Count, events.Degraded ? "incomplete" : "whole",
-                comingSoonMissing ? "missing" : "whole", DegradedCacheLifetime);
+                news.Count, events.Degraded ? "incomplete" : "whole",
+                comingSoonMissing ? "missing" : "whole", justOutMissing ? "missing" : "whole", DegradedCacheLifetime);
         }
 
-        var result = new HomeResponse(spotlight, popular, news, events, upcoming, degraded);
+        var result = new HomeResponse(news, events, upcoming, released, degraded);
 
         cache.Set(CacheKey, result, degraded ? DegradedCacheLifetime : CacheLifetime);
         return result;
     }
 
     /// <summary>
-    /// The trending rail, the spotlight picked from it, and the Steam news about its games.
+    /// The Steam announcements of the games most played on Steam.
     /// </summary>
     /// <remarks>
-    /// Degrades rather than fails, deliberately: a dead IGDB costs the rails, not the page. What counts
+    /// Degrades rather than fails, deliberately: a dead IGDB costs the news, not the page. What counts
     /// as the caller leaving is the caller's token, as in <see cref="SteamNewsService"/>, and not the
     /// exception's type: a timeout of somebody else's throws an <see cref="OperationCanceledException"/>
     /// too, and is a failure to degrade from rather than a request nobody is waiting for.
     /// </remarks>
-    private async Task<(GameDto? Spotlight, List<GameDto> Popular, IReadOnlyList<NewsItemDto> News)> GetRailsAsync(
-        CancellationToken cancellationToken)
+    private async Task<IReadOnlyList<NewsItemDto>> GetNewsAsync(CancellationToken cancellationToken)
     {
-        List<GameDto> popular;
+        List<int> games;
         try
         {
-            popular = (await igdbService.GetTrendingAsync(PopularCount, cancellationToken)).ToList();
+            games = (await igdbService.GetTrendingAsync(NewsGameCount, cancellationToken)).Select(g => g.Id).ToList();
         }
         catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
         {
-            // The home page still renders, and the hero keeps its gradient.
-            logger.LogWarning(ex, "IGDB unavailable while composing the home page.");
-            popular = [];
+            logger.LogWarning(ex, "IGDB unavailable while choosing the games the home page's news is about.");
+            return [];
         }
 
-        // The hero needs a wide artwork, not a cover. Plenty of IGDB entries have no artwork at
-        // all, so pick the first that does rather than assuming the top-rated game has one.
-        var spotlight = popular.FirstOrDefault(g => !string.IsNullOrWhiteSpace(g.BackgroundImageUrl));
-
-        // Already non-throwing by contract, so no try/catch here: a Steam outage costs the rail
-        // and nothing else. Given no games to ask about, it answers empty without a request.
-        var news = await steamNewsService.GetLatestNewsAsync(
-            popular.Select(g => g.Id), NewsCount, MaxNewsPerGame, cancellationToken);
-
-        return (spotlight, popular, news);
+        // Already non-throwing by contract, so no try/catch here: a Steam outage costs the news and
+        // nothing else. Given no games to ask about, it answers empty without a request.
+        return await steamNewsService.GetLatestNewsAsync(games, NewsCount, MaxNewsPerGame, cancellationToken);
     }
 
     /// <summary>
@@ -219,6 +215,30 @@ public class HomeService(
         catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
         {
             logger.LogWarning(ex, "IGDB unavailable while composing the Coming soon panel.");
+            return ([], true);
+        }
+    }
+
+    /// <summary>
+    /// The Just out panel (ADR 0073), and whether it is missing: when the admin's hides could not be read, or
+    /// IGDB could not be asked.
+    /// </summary>
+    /// <remarks>
+    /// Without the hides it is missing rather than composed, as Coming soon is, since a game is hidden because
+    /// it should not be on the front page. Degrades rather than fails, like every part of this page.
+    /// </remarks>
+    private async Task<(IReadOnlyList<JustOutDto> Games, bool Missing)> GetJustOutAsync(
+        DateOnly today, ComingSoonPicks? picks, CancellationToken cancellationToken)
+    {
+        if (picks is null) return ([], true);
+
+        try
+        {
+            return (await justOut.ComposeAsync(today, picks.Hidden, cancellationToken), false);
+        }
+        catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
+        {
+            logger.LogWarning(ex, "IGDB unavailable while composing the Just out panel.");
             return ([], true);
         }
     }

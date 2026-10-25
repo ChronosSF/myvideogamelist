@@ -153,7 +153,7 @@ user's data.
 
 Recorded so nobody "completes" the schema by adding them:
 
-- **Steam news and the trending rail** — derived, regenerable, TTL'd. `IMemoryCache`, moving
+- **Steam news, and IGDB's answers behind the home page's panels** — derived, regenerable, TTL'd. `IMemoryCache`, moving
   to Redis ([0012](decisions/0012-steam-news-without-a-database.md)).
 - **A user's connected releases** — asked of IGDB on request and cached in memory for the same
   reason ([`specs/release-timeline-and-calendar.md`](../specs/release-timeline-and-calendar.md)

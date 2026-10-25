@@ -38,8 +38,9 @@ public interface IIgdbService
         IReadOnlyCollection<int> ids, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// The most-played games right now, most popular first. Only games with cover art are
-    /// returned, since the sole consumer is a rail of covers.
+    /// The games most played on Steam right now, most popular first: the games the home page's news is
+    /// about, which no longer shows them (ADR 0073). Only games with cover art are returned, since a news
+    /// card draws its game's cover.
     /// </summary>
     Task<IEnumerable<GameDto>> GetTrendingAsync(int limit, CancellationToken cancellationToken = default);
 
@@ -124,4 +125,12 @@ public interface IIgdbService
     /// </summary>
     Task<ComingSoonCandidates> GetComingSoonCandidatesAsync(
         DateOnly today, IReadOnlyCollection<int> pinned, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The candidates for the home page's Just out panel (ADR 0073): the new games among the five hundred most
+    /// watched on Twitch with a release row in the last ninety days, with how much each was watched. Kept for
+    /// the UTC day.
+    /// </summary>
+    Task<IReadOnlyList<JustOutCandidate>> GetJustOutCandidatesAsync(
+        DateOnly today, CancellationToken cancellationToken = default);
 }

@@ -50,7 +50,7 @@ export function sharedCache(sMaxAge: number, staleWhileRevalidate: number): stri
 }
 
 /**
- * The home page. Short, because the news and trending rails are the reason to visit.
+ * The home page. Short, because the news and the release panels are the reason to visit.
  *
  * Total staleness is this plus the server's own 15-minute `/api/home` cache: fifteen minutes in
  * the API, five fresh at the edge and up to ten more served stale while the edge revalidates, so

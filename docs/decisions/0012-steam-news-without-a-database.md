@@ -8,6 +8,11 @@
 > argument has expired. The decision stands on its other reason, which was always the stronger
 > one: this data is derived, regenerable and TTL'd — cache-shaped, not table-shaped.
 
+> **Later note.** The trending rail and the hero picked from it are gone from the home page
+> ([0073](0073-the-home-page-a-welcome-coming-soon-just-out-and-the-news.md)). Type 5 below still picks
+> the games the home page's news is about, for the reason given: each has a Steam feed. Just out took
+> Trending's place, from Twitch's type 34, which this comparison predates.
+
 ## Context
 
 ROADMAP §3.4 specified Steam news with two storage assumptions: N1 would "store the mapping on

@@ -26,9 +26,9 @@ public class HomeServiceTests
         public override DateTimeOffset GetUtcNow() => now;
     }
 
-    /// <summary>A game with a cover, and with the wide artwork the hero needs only when asked for.</summary>
-    private static GameDto Game(int id, string? artwork = null) =>
-        new(id, $"Game {id}", null, null, $"https://images.example/cover-{id}.jpg", artwork,
+    /// <summary>One of the games most played on Steam, which the news is about.</summary>
+    private static GameDto Game(int id) =>
+        new(id, $"Game {id}", null, null, $"https://images.example/cover-{id}.jpg", null,
             null, null, null, null, null, null, null,
             Platforms: [], Genres: [], Developers: [], Publishers: [], Details: null);
 
@@ -86,14 +86,28 @@ public class HomeServiceTests
         return comingSoon;
     }
 
+    private static readonly JustOutDto Enshrouded =
+        new(248643, "Enshrouded", null, new DateOnly(2026, 10, 15), []);
+
+    /// <summary>A Just out panel composing to the games given, whatever it is told is hidden.</summary>
+    private static IJustOutService JustOutReturning(params JustOutDto[] games)
+    {
+        var justOut = Substitute.For<IJustOutService>();
+        justOut.ComposeAsync(Arg.Any<DateOnly>(), Arg.Any<IReadOnlySet<int>>(), Arg.Any<CancellationToken>())
+            .Returns(games);
+        return justOut;
+    }
+
     private static HomeService NewService(
         IIgdbService igdb,
         ISteamNewsService steam,
         IMemoryCache? cache = null,
         ICalendarEventService? calendar = null,
         DateTimeOffset? now = null,
-        IComingSoonService? comingSoon = null) =>
+        IComingSoonService? comingSoon = null,
+        IJustOutService? justOut = null) =>
         new(igdb, steam, calendar ?? CalendarReturning(NothingOn), comingSoon ?? ComingSoonReturning(GtaVi),
+            justOut ?? JustOutReturning(Enshrouded),
             cache ?? new MemoryCache(new MemoryCacheOptions()), new FixedClock(now ?? Now), NullLogger<HomeService>.Instance);
 
     /// <summary>
@@ -113,7 +127,7 @@ public class HomeServiceTests
     }
 
     [Fact]
-    public async Task GetHomeAsync_TrendingThrows_AnswersEmptyAndDegraded()
+    public async Task GetHomeAsync_TheNewsGamesThrow_AnswersWithoutNewsAndDegraded()
     {
         var igdb = Substitute.For<IIgdbService>();
         igdb.GetTrendingAsync(Arg.Any<int>(), Arg.Any<CancellationToken>())
@@ -122,65 +136,53 @@ public class HomeServiceTests
 
         var home = await service.GetHomeAsync();
 
-        // Still an answer rather than an exception: the page renders without its rails.
-        Assert.Null(home.Spotlight);
-        Assert.Empty(home.Popular);
+        // Still an answer rather than an exception: the page renders without its news.
+        Assert.Empty(home.News);
+        Assert.Equal([GtaVi], home.ComingSoon);
+        Assert.True(home.Degraded);
+    }
+
+    [Fact]
+    public async Task GetHomeAsync_NoGamesForTheNews_IsDegraded()
+    {
+        // IGDB answering with no popularity rows throws nothing — GetTrendingAsync returns empty —
+        // and is the same page as the outage above. It is also all a removed field looks like.
+        var service = NewService(IgdbTrending(), SteamReturning());
+
+        var home = await service.GetHomeAsync();
+
         Assert.Empty(home.News);
         Assert.True(home.Degraded);
     }
 
     [Fact]
-    public async Task GetHomeAsync_TrendingComesBackEmpty_IsDegraded()
+    public async Task GetHomeAsync_NewsComesBackEmpty_IsDegradedAndKeepsThePanels()
     {
-        // IGDB answering with no popularity rows throws nothing — GetTrendingAsync returns empty —
-        // and is the same empty page as the outage above. It is also all a removed field looks like.
-        var service = NewService(IgdbTrending(), SteamReturning());
+        // Reachable from an IGDB outage as well as a Steam one: the games are answered from an hour-long
+        // cache, and the lookups behind the news are then the first to fail.
+        var service = NewService(IgdbTrending(Game(1), Game(2)), SteamReturning());
 
         var home = await service.GetHomeAsync();
 
-        Assert.Empty(home.Popular);
+        Assert.Equal([GtaVi], home.ComingSoon);
+        Assert.Equal([Enshrouded], home.JustOut);
         Assert.True(home.Degraded);
     }
 
     [Fact]
-    public async Task GetHomeAsync_NewsComesBackEmpty_IsDegradedAndKeepsTheCovers()
+    public async Task GetHomeAsync_EveryPartWhole_IsNotDegraded_AndTheNewsIsAboutSteamsMostPlayed()
     {
-        // Reachable from an IGDB outage as well as a Steam one: the trending rail is answered from
-        // an hour-long cache, and the lookups behind the news are then the first to fail.
-        var service = NewService(IgdbTrending(Game(1, "https://images.example/art-1.jpg"), Game(2)), SteamReturning());
+        var steam = SteamReturning(NewsFor(1));
+        var service = NewService(IgdbTrending(Game(1), Game(2)), steam);
 
         var home = await service.GetHomeAsync();
 
-        Assert.Equal([1, 2], home.Popular.Select(g => g.Id));
-        Assert.Equal(1, home.Spotlight?.Id);
-        Assert.True(home.Degraded);
-    }
-
-    [Fact]
-    public async Task GetHomeAsync_BothRailsFilled_IsNotDegraded()
-    {
-        var service = NewService(
-            IgdbTrending(Game(1), Game(2, "https://images.example/art-2.jpg")), SteamReturning(NewsFor(1)));
-
-        var home = await service.GetHomeAsync();
-
-        // The first game with artwork, not the first game: the hero needs a wide image.
-        Assert.Equal(2, home.Spotlight?.Id);
         Assert.Equal([NewsFor(1)], home.News);
+        Assert.Equal([GtaVi], home.ComingSoon);
+        Assert.Equal([Enshrouded], home.JustOut);
         Assert.False(home.Degraded);
-    }
-
-    [Fact]
-    public async Task GetHomeAsync_NoGameHasArtwork_IsNotDegraded()
-    {
-        // Plenty of IGDB entries have no artwork, so a missing spotlight is an ordinary answer: the
-        // hero falls back to its gradient, and nothing upstream failed.
-        var service = NewService(IgdbTrending(Game(1), Game(2)), SteamReturning(NewsFor(1)));
-
-        var home = await service.GetHomeAsync();
-
-        Assert.Null(home.Spotlight);
-        Assert.False(home.Degraded);
+        await steam.Received(1).GetLatestNewsAsync(
+            Arg.Is<IEnumerable<int>>(ids => ids.SequenceEqual(new[] { 1, 2 })), Arg.Any<int>(), Arg.Any<int?>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -224,7 +226,6 @@ public class HomeServiceTests
 
         Assert.Equal("Steam Next Fest", Assert.Single(home.Events.Curated).Name);
         Assert.True(home.Events.Degraded);
-        Assert.Equal([1], home.Popular.Select(g => g.Id));
         Assert.Equal([NewsFor(1)], home.News);
         Assert.True(home.Degraded);
     }
@@ -233,19 +234,18 @@ public class HomeServiceTests
     public async Task GetHomeAsync_EventsCannotBeRead_CostsThePanelAndNothingElse()
     {
         // Our own tables failing to answer. Uncaught, it would have taken down a page that read no table
-        // of ours until this panel; caught, the panel is missing and says so, and the rails are whole.
+        // of ours until this panel; caught, the panel is missing and says so, and the rest is whole.
         var calendar = Substitute.For<ICalendarEventService>();
         calendar.GetAsync(Arg.Any<DateOnly>(), Arg.Any<DateOnly>(), Arg.Any<CancellationToken>())
             .ThrowsAsync(new InvalidOperationException("The database is unreachable."));
-        var service = NewService(
-            IgdbTrending(Game(1, "https://images.example/art-1.jpg")), SteamReturning(NewsFor(1)), calendar: calendar);
+        var service = NewService(IgdbTrending(Game(1)), SteamReturning(NewsFor(1)), calendar: calendar);
 
         var home = await service.GetHomeAsync();
 
         Assert.Empty(home.Events.Curated);
         Assert.Empty(home.Events.Showcases);
         Assert.True(home.Events.Degraded);
-        Assert.Equal(1, home.Spotlight?.Id);
+        Assert.Equal([GtaVi], home.ComingSoon);
         Assert.Equal([NewsFor(1)], home.News);
         Assert.True(home.Degraded);
     }
@@ -255,7 +255,7 @@ public class HomeServiceTests
     {
         var comingSoon = ComingSoonReturning(GtaVi);
         var service = NewService(
-            IgdbTrending(Game(1, "https://images.example/art-1.jpg")), SteamReturning(NewsFor(1)), comingSoon: comingSoon);
+            IgdbTrending(Game(1)), SteamReturning(NewsFor(1)), comingSoon: comingSoon);
 
         var home = await service.GetHomeAsync();
 
@@ -268,7 +268,7 @@ public class HomeServiceTests
     public async Task GetHomeAsync_NothingComingSoonPassesTheRules_IsAnAnswerNotAFailure()
     {
         var service = NewService(
-            IgdbTrending(Game(1, "https://images.example/art-1.jpg")), SteamReturning(NewsFor(1)), comingSoon: ComingSoonReturning());
+            IgdbTrending(Game(1)), SteamReturning(NewsFor(1)), comingSoon: ComingSoonReturning());
 
         var home = await service.GetHomeAsync();
 
@@ -284,7 +284,7 @@ public class HomeServiceTests
         comingSoon.ComposeAsync(Arg.Any<DateOnly>(), Arg.Any<ComingSoonPicks>(), Arg.Any<CancellationToken>())
             .ThrowsAsync(new HttpRequestException("IGDB is down."));
         var service = NewService(
-            IgdbTrending(Game(1, "https://images.example/art-1.jpg")), SteamReturning(NewsFor(1)), comingSoon: comingSoon);
+            IgdbTrending(Game(1)), SteamReturning(NewsFor(1)), comingSoon: comingSoon);
 
         var home = await service.GetHomeAsync();
 
@@ -294,20 +294,69 @@ public class HomeServiceTests
     }
 
     [Fact]
-    public async Task GetHomeAsync_PicksCannotBeRead_LeavesThePanelOutRatherThanShowWhatWasHidden()
+    public async Task GetHomeAsync_PicksCannotBeRead_LeavesBothPanelsOutRatherThanShowWhatWasHidden()
     {
-        // Composed without the picks, a hidden game would be back on the front page.
+        // Composed without the picks, a hidden game would be back on the front page, on either panel.
         var comingSoon = Substitute.For<IComingSoonService>();
         comingSoon.GetPicksAsync(Arg.Any<CancellationToken>())
             .ThrowsAsync(new InvalidOperationException("The database is unreachable."));
+        var justOut = JustOutReturning(Enshrouded);
         var service = NewService(
-            IgdbTrending(Game(1, "https://images.example/art-1.jpg")), SteamReturning(NewsFor(1)), comingSoon: comingSoon);
+            IgdbTrending(Game(1)), SteamReturning(NewsFor(1)), comingSoon: comingSoon, justOut: justOut);
 
         var home = await service.GetHomeAsync();
 
         Assert.Empty(home.ComingSoon);
+        Assert.Empty(home.JustOut);
         Assert.True(home.Degraded);
         await comingSoon.DidNotReceiveWithAnyArgs().ComposeAsync(default, NoPicks, default);
+        await justOut.DidNotReceiveWithAnyArgs().ComposeAsync(default, new HashSet<int>(), default);
+    }
+
+    [Fact]
+    public async Task GetHomeAsync_JustOutComposes_ForUtcTodayWithoutTheHiddenGames()
+    {
+        var hidden = new HashSet<int> { 7 };
+        var comingSoon = Substitute.For<IComingSoonService>();
+        comingSoon.GetPicksAsync(Arg.Any<CancellationToken>()).Returns(new ComingSoonPicks(new HashSet<int>(), hidden));
+        comingSoon.ComposeAsync(Arg.Any<DateOnly>(), Arg.Any<ComingSoonPicks>(), Arg.Any<CancellationToken>())
+            .Returns([GtaVi]);
+        var justOut = JustOutReturning(Enshrouded);
+        var service = NewService(
+            IgdbTrending(Game(1)), SteamReturning(NewsFor(1)), comingSoon: comingSoon, justOut: justOut);
+
+        var home = await service.GetHomeAsync();
+
+        Assert.Equal([Enshrouded], home.JustOut);
+        Assert.False(home.Degraded);
+        await justOut.Received(1).ComposeAsync(new DateOnly(2026, 10, 17), hidden, Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task GetHomeAsync_NothingJustOutPassesTheRules_IsAnAnswerNotAFailure()
+    {
+        var service = NewService(IgdbTrending(Game(1)), SteamReturning(NewsFor(1)), justOut: JustOutReturning());
+
+        var home = await service.GetHomeAsync();
+
+        Assert.Empty(home.JustOut);
+        Assert.False(home.Degraded);
+    }
+
+    [Fact]
+    public async Task GetHomeAsync_IgdbFailsForJustOut_CostsThePanelAndNothingElse()
+    {
+        var justOut = Substitute.For<IJustOutService>();
+        justOut.ComposeAsync(Arg.Any<DateOnly>(), Arg.Any<IReadOnlySet<int>>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new HttpRequestException("IGDB is down."));
+        var service = NewService(IgdbTrending(Game(1)), SteamReturning(NewsFor(1)), justOut: justOut);
+
+        var home = await service.GetHomeAsync();
+
+        Assert.Empty(home.JustOut);
+        Assert.Equal([GtaVi], home.ComingSoon);
+        Assert.Equal([NewsFor(1)], home.News);
+        Assert.True(home.Degraded);
     }
 
     [Theory]
@@ -375,14 +424,14 @@ public class HomeServiceTests
 
         var healthy = await LifetimeOfAsync(IgdbTrending(Game(1)), SteamReturning(NewsFor(1)));
         var outage = await LifetimeOfAsync(igdbDown, SteamReturning());
-        var noTrending = await LifetimeOfAsync(IgdbTrending(), SteamReturning());
+        var noNewsGames = await LifetimeOfAsync(IgdbTrending(), SteamReturning());
         var noNews = await LifetimeOfAsync(IgdbTrending(Game(1)), SteamReturning());
         var noShowcases = await LifetimeOfAsync(
             IgdbTrending(Game(1)), SteamReturning(NewsFor(1)), CalendarReturning(new CalendarEventsDto([NextFest], [], Degraded: true)));
         var noEvents = await LifetimeOfAsync(IgdbTrending(Game(1)), SteamReturning(NewsFor(1)), tablesDown);
 
         Assert.NotNull(healthy);
-        Assert.All([outage, noTrending, noNews, noShowcases, noEvents], degraded =>
+        Assert.All([outage, noNewsGames, noNews, noShowcases, noEvents], degraded =>
         {
             Assert.NotNull(degraded);
             Assert.True(degraded < healthy, $"A degraded answer was kept for {degraded}, a healthy one for {healthy}.");
@@ -422,7 +471,7 @@ public class HomeServiceTests
     }
 
     [Fact]
-    public async Task GetHomeAsync_TrendingStillOut_AsksForTheEventsAlready()
+    public async Task GetHomeAsync_NewsGamesStillOut_AsksForTheEventsAlready()
     {
         // Side by side, not one after the other: when IGDB accepts a connection and never answers, each
         // waits out its thirty-second ceiling, and in series the two would reach the edge's minute.
@@ -440,15 +489,15 @@ public class HomeServiceTests
         trending.SetResult([Game(1)]);
         var home = await composing;
 
-        Assert.Equal([1], home.Popular.Select(g => g.Id));
+        Assert.Equal([NewsFor(1)], home.News);
         Assert.False(home.Degraded);
     }
 
     [Fact]
-    public async Task GetHomeAsync_TrendingTimesOut_IsDegradedRatherThanThrown()
+    public async Task GetHomeAsync_NewsGamesTimeOut_IsDegradedRatherThanThrown()
     {
         // A timeout of somebody else's throws an OperationCanceledException too. Nobody cancelled this
-        // request, so it is IGDB failing, and costs the rails rather than the page.
+        // request, so it is IGDB failing, and costs the news rather than the page.
         var igdb = Substitute.For<IIgdbService>();
         igdb.GetTrendingAsync(Arg.Any<int>(), Arg.Any<CancellationToken>())
             .ThrowsAsync(new TaskCanceledException("The request was canceled due to the configured timeout."));
@@ -456,7 +505,7 @@ public class HomeServiceTests
 
         var home = await service.GetHomeAsync();
 
-        Assert.Empty(home.Popular);
+        Assert.Empty(home.News);
         Assert.True(home.Degraded);
     }
 
@@ -472,7 +521,7 @@ public class HomeServiceTests
         var home = await service.GetHomeAsync();
 
         Assert.True(home.Events.Degraded);
-        Assert.Equal([1], home.Popular.Select(g => g.Id));
+        Assert.Equal([NewsFor(1)], home.News);
         Assert.True(home.Degraded);
     }
 

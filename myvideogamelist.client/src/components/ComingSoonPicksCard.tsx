@@ -19,8 +19,8 @@ interface ComingSoonPicksCardProps {
  * The corrections to the home page's Coming soon panel (ADR 0071).
  *
  * The panel picks itself: the new games of the next three months that the most people follow on IGDB. A
- * pin puts a game on it that too few follow, ahead of the rest; a hide keeps one off. Neither changes the
- * panel's dates. A game is named by its IGDB id, which is in its page's address, and the server names it
+ * pin puts a game on it that too few follow, ahead of the rest; a hide keeps one off, and off the Just out
+ * panel too (ADR 0073). Neither changes the panel's dates. A game is named by its IGDB id, which is in its page's address, and the server names it
  * by what IGDB calls it — so a mistyped id is refused rather than pinned as nothing.
  */
 export function ComingSoonPicksCard({ picks, setPick, removePick, reload, reloading }: ComingSoonPicksCardProps) {
@@ -62,9 +62,9 @@ export function ComingSoonPicksCard({ picks, setPick, removePick, reload, reload
             <h2 id="admin-coming-soon-heading" className="admin-card-title">Coming soon on the home page</h2>
             <p className="admin-hint">
                 The panel shows the ten new games of the next three months that the most people follow on IGDB.
-                Pin a game to put it ahead of them, however few follow it, or hide one to keep it off. Neither
-                changes the dates: a pinned game known only to its year still waits for a closer one. A change
-                shows within a few minutes.
+                Pin a game to put it ahead of them, however few follow it, or hide one to keep it off — off Just
+                out as well, once it is released. Neither changes the dates: a pinned game known only to its
+                year still waits for a closer one. A change shows within a few minutes.
             </p>
 
             {picks === null ? (
@@ -103,7 +103,7 @@ export function ComingSoonPicksCard({ picks, setPick, removePick, reload, reload
                                     aria-label="Pin or hide"
                                 >
                                     <option value="pin">Pin to the panel</option>
-                                    <option value="hide">Hide from the panel</option>
+                                    <option value="hide">Hide from the home page</option>
                                 </select>
                                 <button type="submit" className="admin-btn" disabled={saving}>
                                     {saving ? 'Saving…' : 'Save'}

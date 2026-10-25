@@ -1,5 +1,4 @@
-import type { GameDto } from '@/types/game';
-import type { CalendarEvents, ComingSoonGame } from '@/types/releases';
+import type { CalendarEvents, ComingSoonGame, JustOutGame } from '@/types/releases';
 
 export interface NewsItemDto {
     id: string;
@@ -15,8 +14,7 @@ export interface NewsItemDto {
 }
 
 export interface HomeResponse {
-    spotlight: GameDto | null;
-    popular: GameDto[];
+    /** The Steam announcements of the games most played on Steam, newest first (ADR 0072, 0073). */
     news: NewsItemDto[];
     /**
      * The showcases and sales on in the next two weeks for any reader, wherever they are: a day wider
@@ -28,6 +26,11 @@ export interface HomeResponse {
      * (ADR 0071). Empty when none passes the rules, which is an answer rather than a failure.
      */
     comingSoon: ComingSoonGame[];
+    /**
+     * The new games of the last ninety days most watched on Twitch, the newest first (ADR 0073). Empty when
+     * none passes the rules, which is an answer rather than a failure.
+     */
+    justOut: JustOutGame[];
     /**
      * True when an upstream failed and the payload is missing what it would have supplied. The
      * response is a 200 either way, so this is all that tells the loader not to let the page built

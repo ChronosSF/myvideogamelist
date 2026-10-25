@@ -2,6 +2,10 @@
 
 **Status:** Implemented — #198.
 
+> **Later note.** Trending, which §5 puts the panel before, is gone: [0073](0073-the-home-page-a-welcome-coming-soon-just-out-and-the-news.md)
+> put Just out after the panel in its place, the new games of the last ninety days most watched on Twitch.
+> The admin's hides keep a game off both panels.
+
 ## Context
 
 #198 asked for a "coming soon" panel on the home page that is the same for every visitor: the big

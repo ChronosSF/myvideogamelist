@@ -75,6 +75,20 @@ export interface ComingSoonGame {
 }
 
 /**
+ * One game on the home page's Just out panel — mirrors `JustOutDto` (ADR 0073): a new game of the last
+ * ninety days that is watched a lot on Twitch, and the day it came out.
+ */
+export interface JustOutGame {
+    gameId: number;
+    title: string;
+    coverImageUrl: string | null;
+    /** `YYYY-MM-DD`: the day of its first full release. */
+    released: string;
+    /** What it has been fully released on since. Empty when IGDB did not say. */
+    platforms: PlatformDto[];
+}
+
+/**
  * One thing the line or the calendar draws: a release, or several in the same period that belong
  * together (F6) — "Kingdom Hearts — 8 releases". A group's releases come strongest reason first.
  */
