@@ -5,8 +5,11 @@ import { HomePage, headers, loader, meta } from '@/pages/HomePage';
 import { AuthDialogProvider } from '@/contexts/AuthDialogProvider';
 import type { AuthContextValue } from '@/contexts/AuthContext';
 import type { FavouritesContextValue } from '@/contexts/FavouritesContext';
+import type { ListsContextValue } from '@/contexts/ListsContext';
+import type { WishlistContextValue } from '@/contexts/WishlistContext';
 import { CACHE_HOME, PRIVATE_NO_STORE } from '@/lib/cache';
 import { calendarEvents, userProfile } from '@/test/factories';
+import { LIST_NAMES, type ListId } from '@/types/list';
 import type { HomeResponse, NewsItemDto } from '@/types/news';
 import type { CalendarCuratedEvent, CalendarEvents, ComingSoonGame, JustOutGame } from '@/types/releases';
 import type { Route } from './+types/HomePage';
@@ -51,6 +54,26 @@ vi.mock('@/components/ReleaseLine', () => ({
 const favourites = { isFavourite: () => false } as unknown as FavouritesContextValue;
 
 vi.mock('@/hooks/useFavourites', () => ({ useFavourites: () => favourites }));
+
+/** Which list each of the reader's games is in; a test that needs one sets it. */
+const inList = new Map<number, ListId>();
+
+const lists = {
+    getListFor: (gameId: number) => inList.get(gameId) ?? null,
+    nameFor: (listId: ListId) => LIST_NAMES[listId],
+} as unknown as ListsContextValue;
+
+vi.mock('@/hooks/useLists', () => ({ useLists: () => lists }));
+
+/** A wishlist that has loaded with nothing on it, and saves whatever it is asked to unless told otherwise. */
+const wishlist = {
+    isWishlisted: () => false,
+    isPending: () => false,
+    add: vi.fn(async () => true),
+    remove: vi.fn(async () => true),
+} as unknown as WishlistContextValue;
+
+vi.mock('@/hooks/useWishlist', () => ({ useWishlist: () => wishlist }));
 
 const SITE = { siteUrl: 'https://myvideogamelist.net', indexable: true };
 
@@ -142,6 +165,8 @@ beforeEach(() => {
     vi.stubEnv('SITE_URL', SITE.siteUrl);
     vi.stubEnv('SITE_INDEXABLE', 'true');
     auth.current = SIGNED_OUT;
+    inList.clear();
+    vi.mocked(wishlist.add).mockClear().mockResolvedValue(true);
 
     // Midday on the 17th in UTC, which is when the loader runs; the reader's own day is the 17th too
     // everywhere but the few timezones past +11, where it is the 18th and the panel's fest is still on.
@@ -427,6 +452,50 @@ describe('HomePage for somebody signed in', () => {
         expect(screen.queryByRole('heading', { name: 'Showcases and sales' })).toBeNull();
         expect(screen.queryByRole('link', { name: /Steam Next Fest/ })).toBeNull();
         expect(screen.getByRole('heading', { name: 'Latest news' })).toBeInTheDocument();
+    });
+
+    it('says which of the panels’ games are in the reader’s lists', () => {
+        auth.current = SIGNED_IN;
+        inList.set(52189, 'backlog');
+
+        renderHome({ news: [NEWS], events: calendarEvents(), comingSoon: COMING_SOON, justOut: JUST_OUT, degraded: false });
+
+        const comingSoon = screen.getByRole('list', { name: 'Coming soon' });
+        expect(within(comingSoon).getByText('In Backlog')).toBeInTheDocument();
+        expect(within(screen.getByRole('list', { name: 'Just out' })).queryByText(/^In /)).toBeNull();
+    });
+
+    it('puts a game on the wishlist from either panel, which is how it reaches the reader’s line', async () => {
+        auth.current = SIGNED_IN;
+
+        renderHome({ news: [NEWS], events: calendarEvents(), comingSoon: COMING_SOON, justOut: JUST_OUT, degraded: false });
+
+        const toggle = screen.getByRole('button', { name: 'Wishlist Out of Words' });
+        expect(toggle).toHaveAttribute('aria-pressed', 'false');
+        fireEvent.click(toggle);
+
+        await vi.waitFor(() => expect(wishlist.add).toHaveBeenCalledWith(
+            expect.objectContaining({ id: 347645, title: 'Out of Words' })));
+        expect(screen.getByRole('button', { name: 'Wishlist Enshrouded' })).toBeInTheDocument();
+    });
+
+    it('says so on the card when the wishlist did not take the game', async () => {
+        auth.current = SIGNED_IN;
+        vi.mocked(wishlist.add).mockResolvedValue(false);
+
+        renderHome({ news: [NEWS], events: calendarEvents(), comingSoon: COMING_SOON, justOut: [], degraded: false });
+
+        fireEvent.click(screen.getByRole('button', { name: 'Wishlist Grand Theft Auto VI' }));
+
+        expect(await screen.findByRole('alert')).toHaveTextContent('Could not update your wishlist.');
+    });
+});
+
+describe('HomePage’s panels for a visitor', () => {
+    it('offer no wishlist, which a visitor has none of', () => {
+        renderHome({ news: [NEWS], events: calendarEvents(), comingSoon: COMING_SOON, justOut: JUST_OUT, degraded: false });
+
+        expect(screen.queryByRole('button', { name: /^Wishlist / })).toBeNull();
     });
 });
 
