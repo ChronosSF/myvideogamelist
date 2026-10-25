@@ -20,7 +20,7 @@ const DRAWN: readonly { list: ListId; width: string }[] = [
  * nothing real in it, as the default share image's is, so a shared link and the page it opens match.
  *
  * Also what the server renders for everybody, since that render has no cookie; somebody signed in sees
- * it until auth answers and the Welcome back band replaces it.
+ * it until auth answers and the Welcome back band replaces it, until issue 389's two copies of the page.
  */
 export function WelcomePanel() {
     const authDialog = useAuthDialog();

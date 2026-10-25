@@ -41,7 +41,8 @@ The sign-in and sign-up dialogs were the navbar's own state. They move into an `
 the navbar and the pages, opened through `useAuthDialog`, so the panel opens the same pair the navbar does.
 
 The server render still has no cookie, so somebody signed in sees the panel until auth answers, as they
-saw the hero. It now costs a block of text rather than an image.
+saw the hero. It now costs a block of text rather than an image, and #389 plans the fix: two cached
+copies of the page, chosen by a signed-in flag.
 
 ### 2. Just out in place of Trending: the new games most watched on Twitch
 
