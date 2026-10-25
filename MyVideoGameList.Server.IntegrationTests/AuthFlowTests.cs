@@ -41,7 +41,32 @@ public class AuthFlowTests(ApiFactory api) : IClassFixture<ApiFactory>
         await logout.ExpectAsync(HttpStatusCode.NoContent);
 
         var me = await browser.GetAsync("/api/auth/me");
-        await me.ExpectAsync(HttpStatusCode.Unauthorized);
+        await me.ExpectAsync(HttpStatusCode.NoContent);
+    }
+
+    [Fact]
+    public async Task Me_WithNoSession_AnswersNobodyRatherThanRefusing()
+    {
+        // A 401 here was a console error on every page a visitor opened (#316). Nobody is a 204,
+        // with nothing in it, and kept nowhere, as the answer naming an account is.
+        using var browser = api.CreateBrowser();
+
+        var me = await browser.GetAsync("/api/auth/me");
+
+        await me.ExpectAsync(HttpStatusCode.NoContent);
+        Assert.Empty(await me.Content.ReadAsByteArrayAsync());
+        Assert.True(me.Headers.CacheControl?.NoStore, "The answer for nobody says no-store too.");
+    }
+
+    [Fact]
+    public async Task Logout_ASignedOutBrowser_IsStillRefused()
+    {
+        // Only "who is signed in" stopped refusing a visitor; what needs a session still does.
+        using var browser = api.CreateBrowser();
+
+        var logout = await browser.SendAsync(HttpMethod.Post, "/api/auth/logout");
+
+        await logout.ExpectAsync(HttpStatusCode.Unauthorized);
     }
 
     [Theory]
@@ -82,7 +107,7 @@ public class AuthFlowTests(ApiFactory api) : IClassFixture<ApiFactory>
             await noSuchAccount.Content.ReadAsStringAsync(),
             await wrongPassword.Content.ReadAsStringAsync());
 
-        await (await browser.GetAsync("/api/auth/me")).ExpectAsync(HttpStatusCode.Unauthorized);
+        await (await browser.GetAsync("/api/auth/me")).ExpectAsync(HttpStatusCode.NoContent);
     }
 
     [Fact]

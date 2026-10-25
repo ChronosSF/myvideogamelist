@@ -96,6 +96,7 @@ public class AuthController(
     /// Who is signed in, and the one place an account is seen (ADR 0051).
     /// </summary>
     /// <remarks>
+    /// <para>
     /// The client asks this on every page it loads, so it is where <see cref="ApplicationUser.LastSeenAt"/>
     /// is kept: at most once a UTC day, and best effort. A lost race with another write to the account
     /// comes back as a failed <see cref="IdentityResult"/>, not an exception, and is left for the next
@@ -104,14 +105,21 @@ public class AuthController(
     /// from was signed in, which it was. It says <c>no-store</c>, like every answer about one person:
     /// nothing between here and the browser should keep one account for the next, and an answer kept
     /// anywhere would skip the day's write.
+    /// </para>
+    /// <para>
+    /// Nobody signed in is an answer, not a refusal, so it is a 204 rather than the 401 an
+    /// <c>[Authorize]</c> would give. A browser logs every 4xx a page's fetch receives as an error in
+    /// the console, so a 401 here put one on every page a visitor opened, and cost each of them
+    /// Lighthouse's console audit (#316). The endpoints that need a session still refuse without one.
+    /// A cookie whose account no longer exists is nobody too.
+    /// </para>
     /// </remarks>
     [HttpGet("me")]
-    [Authorize]
     [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
     public async Task<ActionResult<UserProfileDto>> Me()
     {
         var user = await userManager.GetUserAsync(User);
-        if (user == null) return Unauthorized();
+        if (user == null) return NoContent();
 
         var now = clock.GetUtcNow();
         if (AccountActivity.IsNewDay(user.LastSeenAt, now))
