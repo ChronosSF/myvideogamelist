@@ -1,15 +1,17 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { RouterContextProvider, createRoutesStub, Link, Outlet, type LoaderFunction } from 'react-router';
+import { renderToString } from 'react-dom/server';
+import { RouterContextProvider, createRoutesStub, Link, Outlet, type LoaderFunction, type MetaDescriptor } from 'react-router';
 import { ErrorBoundary, GamePage, headers, loader, meta } from '@/pages/GamePage';
 import type { AuthContextValue } from '@/contexts/AuthContext';
 import type { FavouritesContextValue } from '@/contexts/FavouritesContext';
 import type { UseGameCommunityResult } from '@/hooks/useGameCommunity';
 import { CACHE_GAME, CACHE_NOT_FOUND, PRIVATE_NO_STORE } from '@/lib/cache';
-import { MIN_MEMBER_SCORES } from '@/lib/score';
+import { MIN_MEMBER_SCORES, MIN_PLAYTHROUGH_SAMPLES } from '@/lib/score';
 import type { UserProfile } from '@/types/auth';
-import { game, gameDetails, userProfile } from '@/test/factories';
+import type { CommunityScores } from '@/types/community';
+import { communityScores, communityTimes, game, gameDetails, userProfile } from '@/test/factories';
 import type { GameDetailsDto, GameDto } from '@/types/game';
 import type { Route } from './+types/GamePage';
 
@@ -65,14 +67,38 @@ vi.mock('@/hooks/useFavourites', () => ({ useFavourites: () => favourites }));
 
 // All four fetch for themselves after hydration. What this suite is about is which of three things
 // the sidebar shows and what the hero says, so the panel — which has a suite of its own — is
-// reduced to the heading a reader knows it by, and the sections that render nothing until their
-// fetch answers are left out.
-vi.mock('@/components/GameUserPanel', () => ({ GameUserPanel: () => <h2>Your copy</h2> }));
+// reduced to the heading a reader knows it by, and a button standing in for every write it reports,
+// and the sections that render nothing until their fetch answers are left out.
+vi.mock('@/components/GameUserPanel', () => ({
+    GameUserPanel: ({ onCommunityChange }: { onCommunityChange: () => void }) => (
+        <>
+            <h2>Your copy</h2>
+            <button type="button" onClick={onCommunityChange}>Save my score</button>
+        </>
+    ),
+}));
 vi.mock('@/components/CompletionTimes', () => ({ CompletionTimes: () => null }));
 vi.mock('@/components/GameNewsPanel', () => ({ GameNewsPanel: () => null }));
-vi.mock('@/components/GameCommunity', () => ({ GameCommunity: () => null }));
+
+// The members' section has a suite of its own. Here it says only whose scores the page handed it,
+// once it would show anything at all, so that the page's choice between the loader's and the
+// browser's can be read off the section as well as off the hero.
+vi.mock('@/components/GameCommunity', () => ({
+    GameCommunity: ({ community: shown }: { community: UseGameCommunityResult }) =>
+        shown.settled && shown.scores ? <p>{`The section's ${shown.scores.scored} scores`}</p> : null,
+}));
 
 const CELESTE = game({ id: 1, title: 'Celeste' });
+
+/**
+ * The API's answer to a request for the members' figures, which the loader reads beside the game
+ * (ADR 0069): nobody has scored or timed it yet. Null for any other request, which is the game's.
+ */
+function figuresFor(url: string): Response | null {
+    if (url.endsWith('/community-scores')) return Response.json(communityScores());
+    if (url.endsWith('/community-times')) return Response.json(communityTimes());
+    return null;
+}
 
 /** `/api/auth/me` has come back, with an account or with nobody. */
 function authAnswered(user: UserProfile | null) {
@@ -146,11 +172,25 @@ describe('GamePage sidebar once auth has answered', () => {
     });
 });
 
+/** A scores document: how many members scored the game, averaging `mean` on the 1–10 scale. */
+function memberScores(members: number, mean = 8.4): CommunityScores {
+    return communityScores({ scored: members, mean, distribution: [0, 0, 0, 0, 0, 0, 0, members, 0, 0], tracked: members });
+}
+
+/** The route, with the scores the loader read beside the game already in hand. */
+function withLoaded(scores: CommunityScores | null) {
+    const Stub = createRoutesStub([{ id: 'game', path: '/games/:id', Component: GamePage }]);
+    return <Stub initialEntries={['/games/1']} hydrationData={{ loaderData: { game: { game: CELESTE, scores } } }} />;
+}
+
+/** The hero's text block: the title and the badges under it. */
+const hero = () => screen.getByRole('heading', { level: 1, name: 'Celeste' }).parentElement!;
+
 describe("GamePage hero's member score", () => {
-    /** The members' scores have come back, for a given number of members averaging 8.4. */
-    function scored(members: number) {
+    /** The browser's own request for the members' scores has come back. */
+    function scored(members: number, mean?: number) {
         community.settled = true;
-        community.scores = { scored: members, mean: 8.4, distribution: [0, 0, 0, 0, 0, 0, 0, members, 0, 0] };
+        community.scores = memberScores(members, mean);
     }
 
     it("sits beside IGDB's aggregates, out of 100 and with its count", () => {
@@ -159,21 +199,122 @@ describe("GamePage hero's member score", () => {
         scored(23);
         renderPage();
 
-        expect(screen.getByText('Member score: 84 out of 100, from 23 scores')).toBeInTheDocument();
+        expect(within(hero()).getByText('Member score: 84 out of 100, from 23 scores')).toBeInTheDocument();
+    });
+
+    it('is in the server render, from the scores the loader read', () => {
+        // Rendered to a string, as the server renders it: before the browser's own request could have
+        // answered, the one number on the page that is ours is in the HTML a crawler indexes, in the
+        // hero and with its count in words in the sidebar (ADR 0069). A badge that waited for
+        // hydration, or for an effect to copy the loader's scores, would be missing from this.
+        const html = renderToString(withLoaded(memberScores(23)));
+
+        expect(html).toContain('Celeste');
+        // The hero's badge and the sidebar's, each in its tooltip and in its accessible name.
+        expect(html.match(/Member score: 84 out of 100, from 23 scores/g)).toHaveLength(4);
+        // React marks where the count was put into the sentence with an empty comment.
+        expect(html).toMatch(/from (?:<!-- -->)?23(?:<!-- -->)? scores<\/span>/);
+    });
+
+    it("gives way to the browser's own answer, which is fresher", () => {
+        scored(30, 9);
+        render(withLoaded(memberScores(23)));
+
+        expect(within(hero()).queryByText('Member score: 84 out of 100, from 23 scores')).not.toBeInTheDocument();
+        expect(within(hero()).getByText('Member score: 90 out of 100, from 30 scores')).toBeInTheDocument();
+    });
+
+    it("keeps the loader's when the browser's own request failed", () => {
+        // Settled with nothing: the loader's figure is older, but it is what the page already showed,
+        // and taking it away would read as the score having gone.
+        community.settled = true;
+        render(withLoaded(memberScores(23)));
+
+        expect(within(hero()).getByText('Member score: 84 out of 100, from 23 scores')).toBeInTheDocument();
     });
 
     it('is absent until enough members have scored the game', () => {
         // A mean over a handful of members is a handful of opinions presented as a verdict.
         scored(MIN_MEMBER_SCORES - 1);
+        render(withLoaded(memberScores(MIN_MEMBER_SCORES - 1, 10)));
+
+        expect(hero()).toBeInTheDocument();
+        expect(screen.queryByText(/^Member score:/)).not.toBeInTheDocument();
+        expect(screen.queryByText('Member Score')).not.toBeInTheDocument();
+    });
+
+    it('is absent when neither the loader nor the browser has scores', () => {
         renderPage();
 
+        expect(hero()).toBeInTheDocument();
         expect(screen.queryByText(/^Member score:/)).not.toBeInTheDocument();
     });
 
-    it('is absent before the scores have answered, which is every server render', () => {
+    it("follows the game when a link goes to another, never keeping the last one's", async () => {
+        // The page stays mounted from one game to the next, as it does when a similar game is
+        // followed. The loader's data and the hook change together; neither may carry the last
+        // game's score onto the next one's page.
+        const hades = game({ id: 2, title: 'Hades' });
+        const Stub = createRoutesStub([{
+            Component: () => <><Link to="/games/2">Next game</Link><Outlet /></>,
+            children: [{
+                id: 'game',
+                path: '/games/:id',
+                Component: GamePage,
+                loader: () => ({ game: hades, scores: null }),
+            }],
+        }]);
+        render(<Stub initialEntries={['/games/1']} hydrationData={{ loaderData: { game: { game: CELESTE, scores: memberScores(23) } } }} />);
+        expect(within(hero()).getByText('Member score: 84 out of 100, from 23 scores')).toBeInTheDocument();
+
+        await userEvent.setup().click(screen.getByRole('link', { name: 'Next game' }));
+
+        expect(await screen.findByRole('heading', { level: 1, name: 'Hades' })).toBeInTheDocument();
+        expect(screen.queryByText(/^Member score:/)).not.toBeInTheDocument();
+    });
+});
+
+describe("GamePage sidebar's member score", () => {
+    it('says how many scores it is from, in words, like the critic score above it', () => {
+        render(withLoaded(memberScores(23)));
+
+        const sidebar = screen.getByRole('complementary');
+        expect(within(sidebar).getByText('Member Score')).toBeInTheDocument();
+        expect(within(sidebar).getByText('from 23 scores')).toBeInTheDocument();
+        expect(within(sidebar).getByText('Member score: 84 out of 100, from 23 scores')).toBeInTheDocument();
+    });
+});
+
+describe("GamePage members' section", () => {
+    it('is handed the scores the hero shows', () => {
+        // The browser's request answered for the reviews but not the scores: the section shows the
+        // loader's, as the hero does, rather than disagreeing with the badge above it.
+        community.settled = true;
+        render(withLoaded(memberScores(23)));
+
+        expect(screen.getByText("The section's 23 scores")).toBeInTheDocument();
+    });
+
+    it("is handed the browser's own answer once there is one", () => {
+        community.settled = true;
+        community.scores = memberScores(30);
+        render(withLoaded(memberScores(23)));
+
+        expect(screen.getByText("The section's 30 scores")).toBeInTheDocument();
+    });
+});
+
+describe("GamePage reader's own writes", () => {
+    it("asks for the members' figures again after the panel writes", async () => {
+        // The panel reports a saved score, review or deletion, and the page hands that to the hook's
+        // reload — so the badge and the section show the write rather than reading as though it had
+        // failed (ADR 0028 §6). Reading the score in the loader as well must not have cut that wire.
+        authAnswered(userProfile());
         renderPage();
 
-        expect(screen.queryByText(/^Member score:/)).not.toBeInTheDocument();
+        await userEvent.setup().click(screen.getByRole('button', { name: 'Save my score' }));
+
+        expect(community.reload).toHaveBeenCalledTimes(1);
     });
 });
 
@@ -310,12 +451,14 @@ describe('GamePage when there is no game to show', () => {
 
     /**
      * Answers the game request with each of these in turn, repeating the last. `'held'` is not answered
-     * until the test calls the release it returns, which keeps a retry in flight.
+     * until the test calls the release it returns, which keeps a retry in flight. The members' figures
+     * the loader asks for beside it are answered apart (`figuresFor`), so what this returns counts the
+     * game's requests alone.
      */
     function stubGameApi(...answers: Array<number | 'unreachable' | 'held'>) {
         let call = 0;
         let release: (() => void) | null = null;
-        const fetchMock = vi.fn(async () => {
+        const gameRequests = vi.fn(async () => {
             const answer = answers[Math.min(call++, answers.length - 1)];
             if (answer === 'unreachable') throw new TypeError('Failed to fetch');
             if (answer === 'held') {
@@ -326,8 +469,8 @@ describe('GamePage when there is no game to show', () => {
                 ? new Response(JSON.stringify(CELESTE), { status: 200 })
                 : new Response('nope', { status: answer });
         });
-        vi.stubGlobal('fetch', fetchMock);
-        return Object.assign(fetchMock, { release: () => release?.() });
+        vi.stubGlobal('fetch', vi.fn(async (url: string) => figuresFor(url) ?? gameRequests()));
+        return Object.assign(gameRequests, { release: () => release?.() });
     }
 
     /** The route as it runs: its own loader, and its own boundary for whatever the loader throws. */
@@ -438,7 +581,9 @@ describe('GamePage caching', () => {
     } as Route.HeadersArgs)['Cache-Control'];
 
     it("puts the game's own policy on the page it answered with", async () => {
-        vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify(CELESTE), { status: 200 })));
+        // With the members' figures beside the game, without which the page is not shared (ADR 0069).
+        vi.stubGlobal('fetch', vi.fn(async (url: string) =>
+            figuresFor(url) ?? new Response(JSON.stringify(CELESTE), { status: 200 })));
 
         const answer = await loader(args) as unknown as { init: ResponseInit };
 
@@ -516,5 +661,78 @@ describe('GamePage meta', () => {
 
         expect(titleFor(404)).toBe('Game not found - MyVideoGameList');
         expect(titleFor(502)).toBe('Game unavailable - MyVideoGameList');
+    });
+});
+
+describe('GamePage meta, from what members have recorded', () => {
+    const SITE = { siteUrl: 'https://myvideogamelist.net', indexable: true };
+    const WITCHER = game({
+        id: 1942,
+        title: 'The Witcher 3: Wild Hunt',
+        description: 'You are Geralt of Rivia, a monster slayer for hire. The war rages on.',
+        releaseDate: '2015-05-19',
+    });
+
+    type Tag = MetaDescriptor & Partial<Record<'name' | 'property' | 'content', string>>;
+
+    const tagsFor = (loaderData: Record<string, unknown>) =>
+        meta({ loaderData: { game: WITCHER, site: SITE, ...loaderData } } as unknown as Route.MetaArgs) as Tag[];
+
+    const content = (tags: Tag[], key: string) =>
+        tags.find(tag => tag.property === key || tag.name === key)?.content;
+
+    /** The page's `VideoGame` as `<Meta>` would write it, through JSON. */
+    const videoGame = (tags: Tag[]) => tags
+        .filter((tag): tag is Tag & { 'script:ld+json': Record<string, unknown> } => 'script:ld+json' in tag)
+        .map(tag => JSON.parse(JSON.stringify(tag['script:ld+json'])) as Record<string, unknown>)
+        .find(block => block['@type'] === 'VideoGame');
+
+    it('leads the description with what members have recorded, and shares the same words', () => {
+        const tags = tagsFor({ scores: memberScores(9, 8.44), times: null, today: '2026-10-17' });
+
+        const description = content(tags, 'description');
+        expect(description).toBe('Tracked by 9 members. Member score 84/100 from 9 scores. You are Geralt of Rivia, a monster slayer for hire.');
+        expect(content(tags, 'og:description')).toBe(description);
+    });
+
+    it('leads with the members’ time too, when the times came', () => {
+        const tags = tagsFor({
+            scores: null,
+            times: communityTimes({ normally: { samples: MIN_PLAYTHROUGH_SAMPLES, medianMinutes: 52 * 60 } }),
+            today: '2026-10-17',
+        });
+
+        expect(content(tags, 'description'))
+            .toBe('Members normally beat it in 52h (median of 3 playthroughs). You are Geralt of Rivia, a monster slayer for hire.');
+    });
+
+    it('rates the game in its structured data by its members only, once enough have scored it', () => {
+        const rated = videoGame(tagsFor({ scores: memberScores(MIN_MEMBER_SCORES), times: null, today: '2026-10-17' }));
+        const under = videoGame(tagsFor({ scores: memberScores(MIN_MEMBER_SCORES - 1), times: null, today: '2026-10-17' }));
+
+        expect(rated?.aggregateRating).toMatchObject({ ratingValue: 84, ratingCount: MIN_MEMBER_SCORES, bestRating: 100 });
+        expect(under).toBeDefined();
+        expect(under).not.toHaveProperty('aggregateRating');
+    });
+
+    it('names the page by its canonical address, and dates the game by the day the loader ran', () => {
+        const tags = tagsFor({ scores: null, times: null, today: '2026-10-17' });
+
+        const canonical = (tags as Array<Tag & { rel?: string; href?: string }>).find(tag => tag.rel === 'canonical')?.href;
+        expect(canonical).toBe('https://myvideogamelist.net/games/1942');
+        expect(videoGame(tags)).toMatchObject({ url: canonical, datePublished: '2015-05-19' });
+        // Before the day, there is no date to publish.
+        expect(videoGame(tagsFor({ scores: null, times: null, today: '2015-05-18' }))).not.toHaveProperty('datePublished');
+    });
+
+    it('still describes a game from data written before this build, which had no figures of ours', () => {
+        // A game page's data is shared-cached, so in a deploy's first minutes a copy without scores,
+        // times or the day can reach the browser's `meta`.
+        const tags = tagsFor({});
+
+        expect(content(tags, 'description')).toBe('You are Geralt of Rivia, a monster slayer for hire.');
+        expect(videoGame(tags)).toMatchObject({ '@type': 'VideoGame', name: 'The Witcher 3: Wild Hunt' });
+        expect(videoGame(tags)).not.toHaveProperty('aggregateRating');
+        expect(videoGame(tags)).not.toHaveProperty('datePublished');
     });
 });

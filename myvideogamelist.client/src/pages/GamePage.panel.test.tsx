@@ -40,6 +40,7 @@ function theApi(): ApiRoutes {
             scored: all.length,
             mean: all.reduce((sum, each) => sum + each, 0) / all.length,
             distribution: Array.from({ length: 10 }, (_, i) => all.filter(each => each === i + 1).length),
+            tracked: all.length,
         };
     };
 

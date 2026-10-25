@@ -1,6 +1,8 @@
 # 0028. A game's community view: every score counts, only published reviews are listed, and neither is server-rendered
 
-**Status:** Implemented; amended by [0070](0070-nothing-shows-as-a-blank.md), which keeps the section on the page when there is nothing to show (§3) and shows its skeleton again for a retry after both halves failed (§6)
+**Status:** Implemented; amended by [0070](0070-nothing-shows-as-a-blank.md), which keeps the section on the page when there is nothing to show (§3) and shows its skeleton again for a retry after both halves failed (§6).
+§4 holds for the reviews; the scores are read by the loader as well since
+[0069](0069-a-crawler-is-told-what-is-ours.md), so the member score is in the server render.
 
 ## Context
 
@@ -87,6 +89,10 @@ the two cannot come to disagree about a corrupt score. The document is not the p
 `CommunityScoresDto` is its own type, for the reason 0027 §8 gives about public documents.
 
 ### 4. Fetched after hydration and never in the loader — the reverse of the profile, on purpose
+
+> Amended by [0069](0069-a-crawler-is-told-what-is-ours.md) §1 for the scores, which name nobody and
+> so have nothing to withdraw: the loader reads them too, and the browser's request replaces its
+> figure after hydration. Everything below still governs the reviews.
 
 0027 §9's argument for the loader is sound for a profile and does not carry to a game page, for three
 reasons, the first of which decides it.

@@ -12,9 +12,10 @@ const SCORED: CommunityScores = {
     scored: 23,
     mean: 8.4,
     distribution: [0, 0, 0, 0, 1, 2, 3, 9, 5, 3],
+    tracked: 31,
 };
 
-const NOBODY: CommunityScores = { scored: 0, mean: null, distribution: Array<number>(10).fill(0) };
+const NOBODY: CommunityScores = { scored: 0, mean: null, distribution: Array<number>(10).fill(0), tracked: 0 };
 
 /** A picture on one of the avatar hosts, as the API carries it. */
 const PICTURE = 'https://avatars.githubusercontent.com/u/9919?v=4';
@@ -232,7 +233,7 @@ describe("GameCommunity members' score", () => {
     it('shows neither a number nor a distribution below the floor, only how many there are', () => {
         // The section is here for the review; the score is not ready to be one.
         renderSection(community({
-            scores: { scored: 2, mean: 9, distribution: [0, 0, 0, 0, 0, 0, 0, 0, 2, 0] },
+            scores: { scored: 2, mean: 9, distribution: [0, 0, 0, 0, 0, 0, 0, 0, 2, 0], tracked: 2 },
             reviews: [review()],
             total: 1,
         }));

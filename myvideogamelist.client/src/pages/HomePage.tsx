@@ -11,6 +11,7 @@ import { NewsCard } from '@/components/NewsCard';
 import { CACHE_HOME, PRIVATE_NO_STORE } from '@/lib/cache';
 import { utcDay } from '@/lib/daySpan';
 import { type SiteConfig, pageMeta, siteConfig } from '@/lib/seo';
+import { siteStructuredData } from '@/lib/structuredData';
 import { loaderFetch } from '@/lib/trace.server';
 import type { UserProfile } from '@/types/auth';
 import type { HomeResponse } from '@/types/news';
@@ -34,12 +35,14 @@ export function headers({ loaderHeaders }: Route.HeadersArgs) {
 }
 
 export function meta({ loaderData }: Route.MetaArgs) {
-    return pageMeta({
+    // The site's name, address and search, as structured data, which Google reads for the name it
+    // shows over a result — and only from the home page (ADR 0069).
+    return [...pageMeta({
         site: loaderData.site,
         title: 'MyVideoGameList - Track every game you play',
         description: 'Track the games you have played, build a backlog and wishlist, and see when the games you are waiting for come out.',
         path: '/',
-    });
+    }), ...siteStructuredData(loaderData.site)];
 }
 
 /**

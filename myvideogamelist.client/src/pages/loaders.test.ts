@@ -10,7 +10,7 @@ import { loader as profileLoader } from '@/pages/ProfilePage';
 import { PRIVATE_NO_STORE } from '@/lib/cache';
 import { isUpstreamFailure } from '@/lib/trace';
 import { traceOf, traceparent } from '@/lib/trace.server';
-import { game } from '@/test/factories';
+import { communityScores, communityTimes, game } from '@/test/factories';
 
 /**
  * The three loaders that call the API and fail with a page of their own: every call carries the
@@ -70,13 +70,22 @@ afterEach(() => {
 describe('the game page loader', () => {
     const args = () => argsFor('/games/7346', { id: '7346' });
 
-    it('asks the API for the game under the render’s trace', async () => {
-        const calls = stubApi(() => Response.json(game({ id: 7346 })));
+    it('asks the API for the game and the members’ figures beside it, all under the render’s trace', async () => {
+        const calls = stubApi((path) => {
+            if (path.endsWith('/community-scores')) return Response.json(communityScores());
+            if (path.endsWith('/community-times')) return Response.json(communityTimes());
+            return Response.json(game({ id: 7346 }));
+        });
         const render = args();
 
         await gameLoader(render as never);
 
-        expect(calls).toEqual([{ path: '/api/games/7346', traceparent: traceparent(traceOf(render.context)) }]);
+        expect(calls.map((call) => call.path).sort()).toEqual([
+            '/api/games/7346',
+            '/api/games/7346/community-scores',
+            '/api/games/7346/community-times',
+        ]);
+        for (const call of calls) expect(call.traceparent).toBe(traceparent(traceOf(render.context)));
     });
 
     it('fails with the trace id when the API cannot be reached', async () => {

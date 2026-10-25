@@ -1,13 +1,19 @@
 namespace MyVideoGameList.Server.DTOs;
 
 /// <summary>
-/// Every member's score for one game, as a count, a mean and a distribution.
+/// Every member's score for one game, as a count, a mean and a distribution — and how many members
+/// track the game at all.
 /// </summary>
 /// <remarks>
 /// <para>
 /// An aggregate over everybody that names nobody, so every score counts, whatever the profile
 /// visibility of the account that gave it — the same basis <see cref="CommunityTimesDto"/> has
 /// always had. See <c>docs/decisions/0028-*</c>.
+/// </para>
+/// <para>
+/// <see cref="Tracked"/> rides along because it is the same kind of figure, a count over everybody's
+/// rows for one game, and because the game page's loader reads this beside the game so that a
+/// crawler is told what is ours. One request answers both. See <c>docs/decisions/0069-*</c>.
 /// </para>
 /// <para>
 /// Its own type rather than <see cref="ScoreStatsDto"/>, although the two are computed by the same
@@ -28,7 +34,12 @@ namespace MyVideoGameList.Server.DTOs;
 /// means in this app (ADR 0021) — the conversion is the client's, as it is for IGDB's player rating.
 /// </param>
 /// <param name="Distribution">Ten buckets, index 0 holding the count of 1s.</param>
-public record CommunityScoresDto(int Scored, double? Mean, IReadOnlyList<int> Distribution);
+/// <param name="Tracked">
+/// How many members have the game in one of their five lists right now: what a profile's statistics
+/// call tracking (<see cref="LibraryStatsDto"/>), counted over everybody. An entry that has left
+/// every list keeps its score but is not tracked, so a game can have more scores than trackers.
+/// </param>
+public record CommunityScoresDto(int Scored, double? Mean, IReadOnlyList<int> Distribution, int Tracked);
 
 /// <summary>
 /// A page of the reviews members have published about one game, newest first.

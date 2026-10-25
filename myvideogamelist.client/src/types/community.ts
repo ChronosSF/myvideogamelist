@@ -17,6 +17,11 @@ export interface CommunityScores {
     mean: number | null;
     /** Ten buckets; index 0 is the count of 1s. */
     distribution: number[];
+    /**
+     * How many members have the game in one of their five lists. Not the same pool as `scored`: a
+     * score outlives the game leaving every list, and most tracked games are never scored.
+     */
+    tracked: number;
 }
 
 /** One page of the reviews published about a game, newest first, mirroring `GameReviewsDto`. */
