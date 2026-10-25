@@ -96,6 +96,7 @@ public sealed class Edge : Construct
             // request carries once a route opts out of revalidation, as on the pages policy.
             QueryStringBehavior = CacheQueryStringBehavior.AllowList("_routes"),
             HeaderBehavior = CacheHeaderBehavior.None(),
+            // SignedInFlag.CookieName on the server; the client's serverMirrors.test.ts holds this to it.
             CookieBehavior = CacheCookieBehavior.AllowList("mvgl_signed_in"),
             EnableAcceptEncodingGzip = true,
             EnableAcceptEncodingBrotli = true,
