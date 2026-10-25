@@ -443,8 +443,12 @@ async function migrate(tag) {
     const stopped = await stoppedTask(started.task);
 
     // Best effort, as the pipeline's is: the log says what happened, and its absence changes nothing.
-    const log = aws(['logs', 'tail', NAMES.migrateLogGroup, '--since', '30m', '--format', 'short'],
-        { allowFailure: true, raw: true });
+    // This task's stream alone - MigrateStack's stream prefix, its container's name, the task's id -
+    // and not the group's last half hour, which holds an earlier resume's run or the pipeline's too,
+    // printed as though they were this one's.
+    const stream = `migrate/migrate/${started.task.split('/').pop()}`;
+    const log = aws(['logs', 'tail', NAMES.migrateLogGroup, '--log-stream-names', stream,
+        '--since', '1h', '--format', 'short'], { allowFailure: true, raw: true });
     if (log.ok && log.value) note(log.value);
 
     // An exit code of null is a container that never ran - an image it could not pull, say.
