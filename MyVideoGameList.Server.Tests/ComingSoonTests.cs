@@ -191,6 +191,35 @@ public class ComingSoonRulesTests
     }
 
     [Fact]
+    public void Compose_AGameInEarlyAccess_IsComingSoonForItsFullRelease()
+    {
+        // Path of Exile 2 as IGDB held it on 2026-10-25: in early access since the 6th of December 2024, its
+        // 1.0 on the 11th of December 2026. Early access is not out; the full release is what is coming.
+        var poe2 = new ComingSoonCandidate(Game(1, "Path of Exile 2"), 45,
+        [
+            Day(10, 1, new DateOnly(2024, 12, 6), Pc, IgdbReleaseStatuses.EarlyAccess),
+            Day(11, 1, new DateOnly(2026, 12, 11), Pc),
+        ]);
+
+        var shown = Assert.Single(Compose([poe2]));
+
+        Assert.Equal(new DateOnly(2026, 12, 11), shown.Starts);
+    }
+
+    [Fact]
+    public void Compose_AReleasedGameWithAPortComing_IsOutAlready()
+    {
+        // Metaphor: ReFantazio, out since the 11th of October 2024, with a new platform's day in the window.
+        var metaphor = new ComingSoonCandidate(Game(2, "Metaphor: ReFantazio"), 37,
+        [
+            Day(20, 2, new DateOnly(2024, 10, 11), Pc),
+            Day(21, 2, new DateOnly(2026, 11, 12), Switch2),
+        ]);
+
+        Assert.Empty(Compose([metaphor]));
+    }
+
+    [Fact]
     public void Compose_UnderTheFloorOfFollows_IsLeftOut_UnlessPinned()
     {
         var quiet = new ComingSoonCandidate(Game(2, "Quiet"), ComingSoon.MinHypes - 1, [Day(20, 2, new DateOnly(2026, 11, 1), Pc)]);
@@ -257,16 +286,18 @@ public class ComingSoonQueryTests
         new DateTimeOffset(day.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero).ToUnixTimeSeconds();
 
     [Fact]
-    public void BuildComingSoonQuery_AsksFromThisMonthsFirstToAQuarterPastTheWindow_MostFollowedFirst()
+    public void BuildComingSoonQuery_AsksForARowFromThisMonthsFirstToAQuarterPastTheWindow_MostFollowedFirst()
     {
         var query = IgdbService.BuildComingSoonQuery(new DateOnly(2026, 10, 25), []);
 
-        // The first of October holds a game known only to be "October"; a quarter starting inside the ninety
-        // days is stored on a last day up to ninety-two days after them.
+        // By a release row, not by first_release_date, which is an early-access day for a game still in early
+        // access. The first of October holds a row known only to be "October"; a quarter starting inside the
+        // ninety days is stored on a last day up to ninety-two days after them.
         Assert.Contains(
             "where game_type = (0,4,8,9) & version_parent = null & hypes >= 20"
-            + $" & first_release_date >= {Unix(new DateOnly(2026, 10, 1))} & first_release_date < {Unix(new DateOnly(2027, 4, 26))};",
+            + $" & release_dates.date >= {Unix(new DateOnly(2026, 10, 1))} & release_dates.date < {Unix(new DateOnly(2027, 4, 26))};",
             query);
+        Assert.DoesNotContain("first_release_date >=", query);
         Assert.Contains("sort hypes desc;", query);
         Assert.Contains("limit 500;", query);
         Assert.Contains("release_dates.platform.abbreviation", query);

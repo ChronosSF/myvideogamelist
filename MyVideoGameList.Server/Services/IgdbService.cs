@@ -956,7 +956,7 @@ public class IgdbService(
         var result = new ComingSoonCandidates(
             games.Select(MapToComingSoonCandidate).ToList(), Truncated: games.Count == MaxBatchSize);
 
-        // Sixty-two games were candidates on 2026-10-25, so this is a bug rather than a busy season. The
+        // Ninety games were candidates on 2026-10-25, so this is a bug rather than a busy season. The
         // answer is in follows order, so the panel's ten are still at the top of it, and it is kept.
         if (result.Truncated)
             logger.LogWarning("IGDB's upcoming games filled a page of {MaxBatchSize}; the Coming soon candidates are partial.", MaxBatchSize);
@@ -971,21 +971,29 @@ public class IgdbService(
     }
 
     /// <summary>
-    /// The Coming soon panel's one query: the new games first released from this month's first day to well
-    /// past the window, with the follows to be shown, most followed first — and the pinned games by their id,
-    /// whatever they are, for <see cref="ComingSoon"/> to judge by the same rules.
+    /// The Coming soon panel's one query: the new games with a release row stored from this month's first day
+    /// to well past the window, with the follows to be shown, most followed first — and the pinned games by
+    /// their id, whatever they are, for <see cref="ComingSoon"/> to judge by the same rules.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// A game's <c>first_release_date</c> is its earliest stored date, and for a row known only to a month or
-    /// a quarter that is a stand-in (spec §4): a month's first day, a quarter's last. So the range starts on
-    /// the first of this month, where a game known only to be "October" is stored, and ends a quarter's
-    /// length after the window, where a quarter that starts inside it is. <see cref="ComingSoon"/> keeps what
-    /// really falls in the window. A game whose first full release is already past is not asked about at all.
+    /// By a release row in the range, and not by <c>first_release_date</c>, because that is the game's
+    /// earliest date of any kind and the rules are about its first full release. On 2026-10-25 it was an
+    /// early-access day for every game still in early access — Inzoi's was the 28th of March 2025, with its
+    /// full release in Q1 2027 — and it can as well be a month or quarter IGDB never came back to. Selected by
+    /// it, those games never reached the rules: four early-access games with a 1.0 in or around the window,
+    /// Path of Exile 2's on the 11th of December among them. A row in the range brings in released games that
+    /// have a port coming as well, which the rules drop as out already.
+    /// </para>
+    /// <para>
+    /// A row known only to a month or a quarter is stored on a stand-in (spec §4): the month's first day, the
+    /// quarter's last. So the range starts on the first of this month, where a row known only to be "October"
+    /// is, and ends a quarter's length after the window, where a quarter that starts inside it is.
+    /// <see cref="ComingSoon"/> keeps what really falls in the window.
     /// </para>
     /// <para>
     /// The floor of follows is in the query and not only in the rules, so that one page holds every
-    /// candidate: there were sixty-two on 2026-10-25, against a page of five hundred.
+    /// candidate: there were ninety on 2026-10-25, against a page of five hundred.
     /// </para>
     /// </remarks>
     internal static string BuildComingSoonQuery(DateOnly today, IReadOnlyCollection<int> pinned)
@@ -995,7 +1003,7 @@ public class IgdbService(
 
         var upcoming = $"game_type = ({string.Join(',', ComingSoon.GameTypes)}) & version_parent = null"
             + $" & hypes >= {ComingSoon.MinHypes}"
-            + $" & first_release_date >= {UnixDay(from)} & first_release_date < {UnixDay(to)}";
+            + $" & release_dates.date >= {UnixDay(from)} & release_dates.date < {UnixDay(to)}";
 
         var where = pinned.Count == 0 ? upcoming : $"({upcoming}) | id = ({string.Join(',', pinned)})";
 

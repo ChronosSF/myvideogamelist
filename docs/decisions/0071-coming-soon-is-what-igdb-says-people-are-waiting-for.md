@@ -35,7 +35,9 @@ and so filters and sorts in the same query as its release rows. The spec had see
 - **Not cancelled or rumoured**, by the game's `game_status`, as the release line already rules (F4).
 - **Not out yet**: a full release on a day already past means the game is out somewhere, and a later
   platform or region is not news for everybody. A month or quarter already past is a date IGDB never
-  came back to, so it is passed over rather than taken as a release.
+  came back to, so it is passed over rather than taken as a release. Early access is not out either: a
+  game in early access is coming for its full release, as Path of Exile 2's 1.0 on the 11th of December
+  2026 was.
 - **A date the panel can stand behind**: a day inside the window, or a month or quarter overlapping it.
   A game known only to its year is left out — in late October a bare "2026" is more often a delay to
   come than a promise — and so is one with no date at all. Among a game's rows in the window the finest
@@ -68,10 +70,17 @@ on the front page.
 ### 4. One query, kept for the UTC day; the rules every quarter of an hour
 
 The panel's IGDB query asks for the candidates and any pinned games in one request: `games` with
-`hypes >= 20`, the game types above, no `version_parent`, and a `first_release_date` from the first of
-this month (where a game known only to be "October" is stored) to a quarter's length past the window
-(where a quarter starting inside it is stored, on its last day), sorted by `hypes`, with every release
-row and its platform expanded — nested expansion seen to work live. The answer is kept for the UTC day.
+`hypes >= 20`, the game types above, no `version_parent`, and a release row stored from the first of
+this month (where a row known only to be "October" is) to a quarter's length past the window (where a
+quarter starting inside it is stored, on its last day), sorted by `hypes`, with every release row and its
+platform expanded — nested expansion seen to work live. The answer is kept for the UTC day.
+
+By a release row, not by `first_release_date`. That is the game's earliest date of any kind, and on
+2026-10-25 it was the early-access day of every game still in early access — Inzoi's was the 28th of March
+2025 — so selecting by it never showed the rules four games whose 1.0 fell in or near the window. It can
+as well be a quarter IGDB never came back to. A row in the range also brings in released games with a
+port coming, which the rules drop as out already: twenty-nine more candidates in all, and one more game on
+that day's panel.
 The rules run on every composition of `/api/home`, so a game leaves the panel the day it comes out
 however old IGDB's answer is, and a pick changes the next composition: the admin's write also drops the
 process's copy of the home page.
@@ -98,11 +107,12 @@ Read live on 2026-10-25, for the window from that day to the end of Q1 2027:
 | …with any `hypes` | 881 |
 | …passing the rules | 397 (437 were known only to a year) |
 | `hypes` of the 1st, 5th, 10th, 20th, 50th | 1,111, 80, 48, 20, 7 |
-| Candidates the production query returns | 62, in one page of 500 |
+| Candidates the production query returns | 90, in one page of 500 |
 
 The ten: Phantom Blade Zero, The Legend of Zelda: Ocarina of Time (the Switch 2 remake), Grand Theft
-Auto VI, Hela: Of Mice & Magic, Rayman Legends Retold, Acts of Blood, Ananta, Stranger Than Heaven, Lords
-of the Fallen II and Out of Words — PC, every PlayStation, Xbox and Switch 2, and mobile. The most
+Auto VI, Rayman Legends Retold, Acts of Blood, Ananta, Stranger Than Heaven, Inzoi (in early access on PC,
+its full release on PS5 in Q1 2027), Lords of the Fallen II and Out of Words — PC, every PlayStation, Xbox
+and Switch 2, and mobile. Hela: Of Mice & Magic, at 48 follows, was eleventh. The most
 followed of the year-only games the rules left out were Witchbrook (71), Mudang: Two Hearts (61) and The
 Duskbloods (59).
 
@@ -112,8 +122,8 @@ Duskbloods (59).
   service logs a warning when the query answers nothing, and the panel is then not drawn.
 - **"Want to Play" is the fallback** if `hypes` stops reading as anticipation: the rules stay, and the
   ranking becomes a second query.
-- **A game in early access before its 1.0 may be missed.** The query selects by `first_release_date`,
-  and whether IGDB sets that from an early-access row was not checked.
+- **A game in early access is shown for its full release**, on the platforms that full release is for:
+  Inzoi's was PS5 alone, its PC version being in early access still.
 - **The Lighthouse audit is unchanged.** Its IGDB stand-in answers any games query with long-released
   games, which the rules drop, so the audited home page has no panel.
 - **After launch, members become a second input**: how many have a game on their wishlist, as #197 plans
