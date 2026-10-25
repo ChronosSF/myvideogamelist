@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
@@ -113,13 +114,27 @@ public class AuthController(
     /// Lighthouse's console audit (#316). The endpoints that need a session still refuse without one.
     /// A cookie whose account no longer exists is nobody too.
     /// </para>
+    /// <para>
+    /// It is also what keeps <see cref="SignedInFlag"/> in step with the session (ADR 0074). Somebody signed
+    /// in gets it again, to the session's present expiry, which a sliding session moves past the one it was
+    /// set with; nobody with it left over — a session that expired, or was refused for a changed security
+    /// stamp, without a sign-out — has it cleared, so the home page draws the right top section next time.
+    /// </para>
     /// </remarks>
     [HttpGet("me")]
     [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
     public async Task<ActionResult<UserProfileDto>> Me()
     {
         var user = await userManager.GetUserAsync(User);
-        if (user == null) return NoContent();
+        if (user == null)
+        {
+            if (SignedInFlag.IsSet(Request)) SignedInFlag.Clear(Response);
+            return NoContent();
+        }
+
+        // Answered from the handler's own copy of this request's sign-in, which it keeps: no second read.
+        var session = (await HttpContext.AuthenticateAsync(IdentityConstants.ApplicationScheme)).Properties;
+        SignedInFlag.Set(Response, session?.IsPersistent == true ? session.ExpiresUtc : null);
 
         var now = clock.GetUtcNow();
         if (AccountActivity.IsNewDay(user.LastSeenAt, now))
