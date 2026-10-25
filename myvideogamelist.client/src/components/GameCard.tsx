@@ -41,8 +41,11 @@ export function GameCard({ game, eager = false, children }: GameCardProps) {
     const [overlayOpen, setOverlayOpen] = useState(false);
 
     // Signed in, a press on a badge is a press on the toggle beneath it. Signed out there is no toggle,
-    // and the critic score keeps the tooltip that names its count.
-    const passThrough = user ? ' pointer-events-none' : '';
+    // and the critic score keeps the tooltip that names its count. Always put in after a space: Tailwind
+    // finds classes by reading the source, and a class written straight before `${passThrough}` is one
+    // it cannot see, so the build once left the score's right inset out and the score sat on the ESRB
+    // rating.
+    const passThrough = user ? 'pointer-events-none' : '';
 
     const wishlisted = wishlist.isWishlisted(game.id);
 
@@ -122,7 +125,7 @@ export function GameCard({ game, eager = false, children }: GameCardProps) {
                 {/* Critic score. Suppressed below MIN_CRITIC_REVIEWS: IGDB averages with no floor,
                     so a lone perfect review would otherwise sit here as a green 100. */}
                 {hasCriticScore(game) && (
-                    <div className={`absolute top-2 right-2${passThrough}`}>
+                    <div className={`absolute top-2 right-2 ${passThrough}`}>
                         <ScoreBadge
                             variant="square"
                             kind="critics"
@@ -134,7 +137,7 @@ export function GameCard({ game, eager = false, children }: GameCardProps) {
 
                 {/* ESRB badge */}
                 {game.esrbRating && (
-                    <div className={`absolute top-2 left-2 px-1.5 py-0.5 bg-page/80 backdrop-blur-sm rounded text-xs font-mono text-fg-soft border border-line-strong${passThrough}`}>
+                    <div className={`absolute top-2 left-2 px-1.5 py-0.5 bg-page/80 backdrop-blur-sm rounded text-xs font-mono text-fg-soft border border-line-strong ${passThrough}`}>
                         {game.esrbRating}
                     </div>
                 )}
