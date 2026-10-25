@@ -3,13 +3,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ImportRowSearch } from '@/components/ImportRowSearch';
-import { SEARCH_DEBOUNCE_MS, SEARCH_REFUSED, SEARCH_SPACING_MS } from '@/hooks/useImportSearch';
+import { SEARCH_DEBOUNCE_MS, SEARCH_PAGE_SIZE, SEARCH_REFUSED, SEARCH_SPACING_MS } from '@/hooks/useGameSearch';
 import { game } from '@/test/factories';
 import type { GameDto } from '@/types/game';
 
 /** One request the search has made, held open until the test answers it. */
 interface Pending {
     term: string | null;
+    url: string;
     answer: (games: GameDto[], hasMore?: boolean) => Promise<void>;
     respond: (status: number, body: unknown, headers?: Record<string, string>) => Promise<void>;
 }
@@ -37,6 +38,7 @@ function stubApi() {
             init?.signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')));
             requests.push({
                 term: new URL(String(input), 'https://mvgl.test').searchParams.get('search'),
+                url: String(input),
                 answer: (games, hasMore = false) => settle(() => resolve(response(200, { items: games, hasMore }))),
                 respond: (status, body, headers) => settle(() => resolve(response(status, body, headers))),
             });
@@ -138,6 +140,18 @@ describe('ImportRowSearch', () => {
         expect((field as HTMLInputElement).selectionStart).toBe(0);
         expect((field as HTMLInputElement).selectionEnd).toBe('Resedent Evil'.length);
         expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    });
+
+    it('asks for the whole page the browse page shows, rather than the navbar’s few', async () => {
+        // Somebody here is choosing a game rather than glancing at suggestions, and IGDB's own order
+        // can put the one they mean thirteenth (ADR 0040).
+        const requests = stubApi();
+        const { user, toggle } = renderSearch();
+
+        await user.click(toggle);
+        await pause(SEARCH_DEBOUNCE_MS);
+
+        expect(requests.map(r => r.url)).toEqual([`/api/games?search=Resedent+Evil&offset=0&limit=${SEARCH_PAGE_SIZE}`]);
     });
 
     it('says when IGDB found nothing, and the two reasons that usually is', async () => {

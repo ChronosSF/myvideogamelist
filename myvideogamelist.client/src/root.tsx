@@ -13,6 +13,7 @@ import { ListsProvider } from '@/contexts/ListsProvider';
 import { WishlistProvider } from '@/contexts/WishlistProvider';
 import { FavouritesProvider } from '@/contexts/FavouritesProvider';
 import { TagsProvider } from '@/contexts/TagsProvider';
+import { SearchPacerProvider } from '@/contexts/SearchPacerProvider';
 import { Navbar } from '@/components/Navbar';
 import { SiteFooter } from '@/components/SiteFooter';
 import { PRIVATE_NO_STORE } from '@/lib/cache';
@@ -98,16 +99,19 @@ export default function Root() {
             <ListsProvider>
                 <WishlistProvider>
                     <FavouritesProvider>
-                        <div className="app-root">
-                            <Navbar />
-                            <main className="flex-1">
-                                {/* Around the pages alone: the navbar and the footer draw no tag. */}
-                                <TagsProvider>
-                                    <Outlet />
-                                </TagsProvider>
-                            </main>
-                            <SiteFooter />
-                        </div>
+                        {/* Around the navbar and the pages both: their searches spend one budget. */}
+                        <SearchPacerProvider>
+                            <div className="app-root">
+                                <Navbar />
+                                <main className="flex-1">
+                                    {/* Around the pages alone: the navbar and the footer draw no tag. */}
+                                    <TagsProvider>
+                                        <Outlet />
+                                    </TagsProvider>
+                                </main>
+                                <SiteFooter />
+                            </div>
+                        </SearchPacerProvider>
                     </FavouritesProvider>
                 </WishlistProvider>
             </ListsProvider>

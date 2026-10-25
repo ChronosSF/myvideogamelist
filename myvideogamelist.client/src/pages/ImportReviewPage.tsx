@@ -9,7 +9,6 @@ import { useLists } from '@/hooks/useLists';
 import { useWishlist } from '@/hooks/useWishlist';
 import { useFavourites } from '@/hooks/useFavourites';
 import { useImportReview } from '@/hooks/useImport';
-import { createSearchPacer } from '@/hooks/useImportSearch';
 import { downloadSkippedRows } from '@/lib/importReport';
 import { expiresInWords } from '@/lib/importExpiry';
 import { releaseYear } from '@/lib/releaseDate';
@@ -93,10 +92,6 @@ export function ImportReviewPage() {
     // The row whose search is open, if any. One at a time: each open search asks IGDB for its own
     // term, and a screen of open panels is no longer a list somebody can work down.
     const [searchingRow, setSearchingRow] = useState<number | null>(null);
-
-    // One budget for every row's search: the spacing between requests, and a 503's wait, are the
-    // person's rather than each field's. See `SearchPacer`.
-    const [searchPacer] = useState(createSearchPacer);
 
     // What the last choice of a game did, read out politely. The row it was made on changes under
     // the press — the candidates go with the question, the search closes — and under "Needs you"
@@ -487,7 +482,6 @@ export function ImportReviewPage() {
                                                 open={searchingRow === row.id}
                                                 onOpenChange={open => setSearchingRow(open ? row.id : null)}
                                                 onChoose={game => choose(row, game, index)}
-                                                pacer={searchPacer}
                                             />
                                         )}
 

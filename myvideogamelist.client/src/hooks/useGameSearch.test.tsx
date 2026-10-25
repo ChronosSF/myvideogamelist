@@ -1,14 +1,17 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, renderHook } from '@testing-library/react';
+import { SearchPacerProvider } from '@/contexts/SearchPacerProvider';
 import {
-    createSearchPacer,
+    type GameSearchOptions,
     MIN_SEARCH_LENGTH,
     SEARCH_DEBOUNCE_MS,
+    SEARCH_PAGE_SIZE,
     SEARCH_REFUSED,
     SEARCH_SPACING_MS,
     SEARCH_UNREACHABLE,
-    useImportSearch,
-} from '@/hooks/useImportSearch';
+    TYPEAHEAD_SIZE,
+    useGameSearch,
+} from '@/hooks/useGameSearch';
 import { game } from '@/test/factories';
 import type { GameDto } from '@/types/game';
 
@@ -72,19 +75,18 @@ function stubApi({ honourAbort = true } = {}) {
 }
 
 /** The hook as a search field holds it: a term, and whether the search is open. */
-function renderSearch(query = '', enabled = true) {
+function renderSearch(query = '', enabled = true, options?: GameSearchOptions) {
     return renderHook(
-        ({ query: q, enabled: e }) => useImportSearch(q, e),
+        ({ query: q, enabled: e }) => useGameSearch(q, e, options),
         { initialProps: { query, enabled } },
     );
 }
 
-/** Two rows' searches on one page, sharing the page's pacer as the review's rows do. */
+/** Two rows' searches on an import review, under the one pacer the root provides. */
 function renderTwoRows(first: { query: string; enabled: boolean }, second: { query: string; enabled: boolean }) {
-    const pacer = createSearchPacer();
     return renderHook(
-        ({ a, b }) => [useImportSearch(a.query, a.enabled, pacer), useImportSearch(b.query, b.enabled, pacer)] as const,
-        { initialProps: { a: first, b: second } },
+        ({ a, b }) => [useGameSearch(a.query, a.enabled), useGameSearch(b.query, b.enabled)] as const,
+        { initialProps: { a: first, b: second }, wrapper: SearchPacerProvider },
     );
 }
 
@@ -123,7 +125,7 @@ afterEach(() => {
     vi.unstubAllGlobals();
 });
 
-describe('useImportSearch', () => {
+describe('useGameSearch', () => {
     it('asks once the typing pauses, not on every keystroke', async () => {
         const requests = stubApi();
         const { result, rerender } = renderSearch();
@@ -136,8 +138,9 @@ describe('useImportSearch', () => {
         expect(result.current.status).toBe('waiting');
 
         await pause(SEARCH_DEBOUNCE_MS - 150);
-        // The browse page's own question for the same term, so the API's cached answer is shared.
-        expect(requests.map(r => r.url)).toEqual(['/api/games?search=resident&offset=0']);
+        // The browse page's own question for the same term, cut short, so the API's cached answer is
+        // shared.
+        expect(requests.map(r => r.url)).toEqual([`/api/games?search=resident&offset=0&limit=${TYPEAHEAD_SIZE}`]);
     });
 
     it(`asks nothing under ${MIN_SEARCH_LENGTH} characters, counted without the spaces around them`, async () => {
@@ -170,11 +173,14 @@ describe('useImportSearch', () => {
         expect(result.current.status).toBe('idle');
     });
 
-    it('answers with the whole page IGDB gave, and whether it has more', async () => {
+    it('asks for as many games as it is told to, and answers with them and whether there are more', async () => {
+        // An import's row asks for the browse page's whole page, where the navbar asks for its few.
         const requests = stubApi();
-        const { result } = renderSearch('resident evil');
+        const { result } = renderSearch('resident evil', true, { size: SEARCH_PAGE_SIZE });
 
         await pause(SEARCH_DEBOUNCE_MS);
+        expect(requests.map(r => r.url)).toEqual([`/api/games?search=resident+evil&offset=0&limit=${SEARCH_PAGE_SIZE}`]);
+
         await requests[0].answer([RE, RE2], true);
 
         expect(result.current).toMatchObject({
@@ -182,6 +188,17 @@ describe('useImportSearch', () => {
             term: 'resident evil',
             answer: { games: [RE, RE2], hasMore: true },
         });
+    });
+
+    it('cuts a longer answer down to its size, and says there are more', async () => {
+        // As an API older than this client answers, mid-deploy: it ignores the limit.
+        const requests = stubApi();
+        const { result } = renderSearch('resident evil', true, { size: 1 });
+
+        await pause(SEARCH_DEBOUNCE_MS);
+        await requests[0].answer([RE, RE2]);
+
+        expect(result.current).toMatchObject({ status: 'answered', answer: { games: [RE], hasMore: true } });
     });
 
     it(`never starts two requests within ${SEARCH_SPACING_MS}ms, however the typing falls`, async () => {
@@ -441,7 +458,7 @@ describe('useImportSearch', () => {
     });
 });
 
-describe('useImportSearch, two rows on one page', () => {
+describe('useGameSearch, two rows under one SearchPacerProvider', () => {
     it('never starts two requests within a second, whichever row asks', async () => {
         // With a clock each, opening one row's search after another started two requests within
         // half a second: the budget is the person's, not the field's.
@@ -460,6 +477,23 @@ describe('useImportSearch, two rows on one page', () => {
 
         await pause(1);
         expect(requests.map(r => r.term)).toEqual(['Resedent Evil', 'Doom']);
+        expect(requests[1].at - requests[0].at).toBe(SEARCH_SPACING_MS);
+    });
+
+    it('spaces two searches that are both waiting to ask', async () => {
+        // The navbar's typeahead and a row's search can both be waiting at once, which two rows never
+        // are: the review keeps one open. Found in the browser, where the two started 31ms apart.
+        const requests = stubApi();
+        renderTwoRows({ query: 'Resedent Evil', enabled: true }, { query: 'zelda', enabled: true });
+
+        await pause(SEARCH_DEBOUNCE_MS);
+        expect(requests.map(r => r.term)).toEqual(['Resedent Evil']);
+
+        await pause(SEARCH_SPACING_MS - 1);
+        expect(requests).toHaveLength(1);
+
+        await pause(1);
+        expect(requests.map(r => r.term)).toEqual(['Resedent Evil', 'zelda']);
         expect(requests[1].at - requests[0].at).toBe(SEARCH_SPACING_MS);
     });
 

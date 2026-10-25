@@ -2,13 +2,13 @@ import { useId, useRef, useState, type KeyboardEvent } from 'react';
 import { flushSync } from 'react-dom';
 import { ImportCandidateButton } from '@/components/ImportCandidateButton';
 import {
+    type GameSearch,
     MAX_SEARCH_LENGTH,
     MIN_SEARCH_LENGTH,
-    type ImportSearch,
+    SEARCH_PAGE_SIZE,
     type SearchAnswer,
-    type SearchPacer,
-    useImportSearch,
-} from '@/hooks/useImportSearch';
+    useGameSearch,
+} from '@/hooks/useGameSearch';
 import { formatCount } from '@/lib/format';
 import type { GameDto } from '@/types/game';
 
@@ -25,8 +25,6 @@ interface ImportRowSearchProps {
     onOpenChange: (open: boolean) => void;
     /** A game was chosen. The caller writes the decision, as it does for an offered candidate. */
     onChoose: (game: GameDto) => void;
-    /** The page's, so that every row's search keeps to one budget. */
-    pacer?: SearchPacer;
 }
 
 /**
@@ -37,7 +35,7 @@ interface ImportRowSearchProps {
  * selected title always is. A full page is said as the first of more, because "20 games found"
  * would name the page's size as the search's, and the way to a game past it is more of its title.
  */
-function announcement(search: ImportSearch): string {
+function announcement(search: GameSearch): string {
     switch (search.status) {
         case 'idle':
         case 'waiting':
@@ -72,11 +70,13 @@ function announcement(search: ImportSearch): string {
  *
  * Results are IGDB's own order, unfiltered (ADR 0032): a search ranks nothing itself, and the
  * matcher's floors exist to keep a guess from being made on somebody's behalf, where here the
- * person is choosing.
+ * person is choosing. And a whole page of them, where the navbar's search lists six: the person is
+ * choosing a game rather than glancing at suggestions, and IGDB's own order can put the game they
+ * mean thirteenth (ADR 0040).
  */
-export function ImportRowSearch({ title, prompt, open, onOpenChange, onChoose, pacer }: ImportRowSearchProps) {
+export function ImportRowSearch({ title, prompt, open, onOpenChange, onChoose }: ImportRowSearchProps) {
     const [query, setQuery] = useState(() => title.trim().slice(0, MAX_SEARCH_LENGTH));
-    const search = useImportSearch(query, open, pacer);
+    const search = useGameSearch(query, open, { size: SEARCH_PAGE_SIZE });
 
     // The answer on screen. Kept while the next term waits for its own, so the results do not blank
     // out at every pause, and dropped once there is nothing to ask about or the asking failed, so a

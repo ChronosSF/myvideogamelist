@@ -4,8 +4,9 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { ImportReviewPage } from '@/pages/ImportReviewPage';
 import type { AuthContextValue } from '@/contexts/AuthContext';
+import { SearchPacerProvider } from '@/contexts/SearchPacerProvider';
 import type { UseImportReviewResult } from '@/hooks/useImport';
-import { SEARCH_DEBOUNCE_MS, SEARCH_SPACING_MS } from '@/hooks/useImportSearch';
+import { SEARCH_DEBOUNCE_MS, SEARCH_SPACING_MS } from '@/hooks/useGameSearch';
 import { game, importResult, importReview, importRow, userProfile } from '@/test/factories';
 import type { GameDto } from '@/types/game';
 
@@ -69,13 +70,16 @@ vi.mock('@/hooks/useImport', () => ({ useImportReview: () => review }));
 const row = importRow;
 const loaded = importReview;
 
+/** The page as the root holds it: under the one pacer every search spends. */
 function page() {
     return (
-        <MemoryRouter initialEntries={['/import/job-1']}>
-            <Routes>
-                <Route path="/import/:jobId" element={<ImportReviewPage />} />
-            </Routes>
-        </MemoryRouter>
+        <SearchPacerProvider>
+            <MemoryRouter initialEntries={['/import/job-1']}>
+                <Routes>
+                    <Route path="/import/:jobId" element={<ImportReviewPage />} />
+                </Routes>
+            </MemoryRouter>
+        </SearchPacerProvider>
     );
 }
 
@@ -657,7 +661,8 @@ describe('ImportReviewPage', () => {
 
     it("keeps every row's search to one budget", async () => {
         // The spacing is the person's, not the field's: with a clock each, opening one row's search
-        // after another started two requests within half a second.
+        // after another started two requests within half a second. The pacer is the root's, which
+        // `page()` stands in for.
         vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
         vi.stubGlobal('jest', { advanceTimersByTime: (ms: number) => vi.advanceTimersByTime(ms) });
         const starts: { term: string | null; at: number }[] = [];
