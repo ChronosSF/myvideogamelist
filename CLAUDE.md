@@ -611,6 +611,14 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   no-store` so forgetting fails closed. Policies live together in `@/lib/cache`; see
   `docs/decisions/0013-*`.
 
+- **The home page is kept twice at the edge, by `mvgl_signed_in` and no other cookie.** The API sets
+  that flag while a browser is signed in, naming nobody, from the sign-in cookie's own events and
+  `/api/auth/me` (`Security/SignedInFlag.cs`); `/` has a CloudFront behaviour whose key holds it, and the
+  home loader draws the signed-in top section from it until auth answers. Never put another cookie,
+  least of all the session's, in a cache key. A part of the signed-in band that the server render draws
+  is a skeleton, never the reader's data, and never anything read from the reader's clock — the two-week
+  line is drawn as its heading and a sentence. See `docs/decisions/0074-*`.
+
 - **To keep something out of a search index, say `noindex` — never `Disallow` it.** A crawler
   refused by robots.txt never requests the page, so it never sees the `noindex`, and the bare URL
   can still be listed. So `robots.txt` disallows nothing, on purpose: a deployment is indexable only

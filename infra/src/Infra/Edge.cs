@@ -80,6 +80,26 @@ public sealed class Edge : Construct
             EnableAcceptEncodingBrotli = true,
         });
 
+        // The home page's policy: the pages policy, with one cookie in the key - the flag the API sets
+        // while a browser is signed in, which names nobody (ADR 0074, SignedInFlag on the server). Two
+        // copies of `/`, the visitor's and the signed-in reader's, each the same for everybody it is
+        // served to; the session cookie is in no key. A policy in the key travels to the origin too, so
+        // the server render reads the flag and nothing else.
+        var home = new CachePolicy(this, "Home", new CachePolicyProps
+        {
+            CachePolicyName = $"{site.Prefix}-home",
+            Comment = "The home page: as the pages, and a copy each for a browser with and without the signed-in flag",
+            MinTtl = Duration.Seconds(0),
+            DefaultTtl = Duration.Seconds(0),
+            MaxTtl = Duration.Days(365),
+            // The home page reads no query string; `_routes` is for a .data request, which is not this path.
+            QueryStringBehavior = CacheQueryStringBehavior.None(),
+            HeaderBehavior = CacheHeaderBehavior.None(),
+            CookieBehavior = CacheCookieBehavior.AllowList("mvgl_signed_in"),
+            EnableAcceptEncodingGzip = true,
+            EnableAcceptEncodingBrotli = true,
+        });
+
         // The balancer's certificate is for the site's name, not for the balancer's own, and
         // CloudFront accepts an origin certificate that matches either the origin domain or the
         // forwarded Host - so every behaviour forwards Host, and one that forgot would answer 502.
@@ -116,6 +136,11 @@ public sealed class Edge : Construct
             ["/api/*"] = Behaviour(CachePolicy.CACHING_DISABLED, OriginRequestPolicy.ALL_VIEWER, AllowedMethods.ALLOW_ALL),
             // The hashed bundles, which react-router-serve sends immutable for a year.
             ["/assets/*"] = Behaviour(CachePolicy.CACHING_OPTIMIZED, hostOnly),
+            // The home page alone: no wildcard, so the root and nothing under it, which the distribution
+            // can match because it names no default root object. Its .data request, `/_.data`, stays on
+            // the default: a client navigation is made by a page that already knows who is signed in,
+            // and trusts that over the flag (ADR 0074).
+            ["/"] = Behaviour(home, hostOnly),
             ["/lists*"] = uncached,
             ["/wishlist*"] = uncached,
             ["/user*"] = uncached,
@@ -133,8 +158,8 @@ public sealed class Edge : Construct
             MinimumProtocolVersion = SecurityPolicyProtocol.TLS_V1_2_2021,
             HttpVersion = HttpVersion.HTTP2_AND_3,
             PriceClass = PriceClass.PRICE_CLASS_100,
-            // `/`, `/games`, `/games/{id}`, `/u/*`, robots.txt, the sitemaps, every 404, and their
-            // .data forms: each cached for exactly what @/lib/cache says, and nothing else.
+            // `/games`, `/games/{id}`, `/u/*`, robots.txt, the sitemaps, every 404, and their .data forms,
+            // the home page's included: each cached for exactly what @/lib/cache says, and nothing else.
             DefaultBehavior = Behaviour(pages, hostOnly),
             AdditionalBehaviors = behaviours,
             // For a cached behaviour CloudFront keeps a 404, a 414 and the 500 to 504 family for at
