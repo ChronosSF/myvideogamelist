@@ -82,6 +82,8 @@ myvideogamelist.client/
   src/lib/                      apiUrl(), useHydrated(), pageMeta(); loaderFetch() in trace.server.ts
   e2e/                          The browser smoke test, and its stand-ins for the edge and for IGDB
   lighthouse/                   The Lighthouse audit on the same harness: its pages, budgets and package
+  share/                        The default share image's source, drawn into src/assets/share.png by
+                                `node share/render.mjs` in the palette's own tokens; look before committing
 holding/                        The static page at myvideogamelist.net until production takes the domain:
                                 site/ is what is served, share/ draws its share image (ADR 0066)
 docs/decisions/                 Architecture decision records

@@ -99,7 +99,8 @@ Everything 0036 says, as an indexable deployment says it:
 - The 404 is a real 404. `/404.html` itself is an object, so it answers 200, and says `noindex`.
 
 The share image is the holding page's own, rendered from `holding/share`. The app's default share
-image is still [#139](https://github.com/ChronosSF/myvideogamelist/issues/139).
+image, the same layout without "Coming soon", is drawn from `myvideogamelist.client/share/` since
+[#139](https://github.com/ChronosSF/myvideogamelist/issues/139), and stays when this page goes.
 
 ### 6. The headers
 

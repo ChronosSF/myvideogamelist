@@ -129,6 +129,38 @@ describe('pageMeta', () => {
         expect(card(false)).toEqual({ name: 'twitter:card', content: 'summary' });
     });
 
+    it("shares the site's default image, at its size, on a page that has none of its own", () => {
+        // The home page, the catalogue and a profile (#139). Absolute, because a relative og:image is
+        // resolved by nobody.
+        const tags = pageMeta({ ...page, site: PRODUCTION, path: '/' });
+        const content = (key: string) => {
+            const tag = tags.find(each => 'property' in each && each.property === key);
+            return tag && 'content' in tag ? tag.content : undefined;
+        };
+
+        expect(content('og:image')).toMatch(/^https:\/\/myvideogamelist\.net\/.*share.*\.png$/);
+        expect(content('og:image:alt')).toBe("MyVideoGameList: every game you've played, in one list");
+        expect(content('og:image:width')).toBe('1200');
+        expect(content('og:image:height')).toBe('630');
+        expect(tags).toContainEqual({ name: 'twitter:card', content: 'summary_large_image' });
+    });
+
+    it("prefers the page's own image, and states no size it does not know", () => {
+        const tags = pageMeta({
+            ...page, site: PRODUCTION, image: { url: 'https://images.example/a.jpg', alt: 'Celeste', wide: true },
+        });
+
+        expect(tags).toContainEqual({ property: 'og:image', content: 'https://images.example/a.jpg' });
+        expect(tags.some(tag => 'property' in tag && tag.property === 'og:image:width')).toBe(false);
+    });
+
+    it('shares no image at all where there is no origin to make its address absolute', () => {
+        const tags = pageMeta({ ...page, site: UNCONFIGURED, path: '/' });
+
+        expect(tags.some(tag => 'property' in tag && tag.property === 'og:image')).toBe(false);
+        expect(tags).toContainEqual({ name: 'twitter:card', content: 'summary' });
+    });
+
     it('uses a type Open Graph defines', () => {
         // `video.game` shipped here once. It is not in the list at https://ogp.me/#types.
         expect(pageMeta({ ...page, site: PRODUCTION })).toContainEqual({ property: 'og:type', content: 'website' });

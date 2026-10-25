@@ -220,8 +220,8 @@ export function meta({ loaderData, error }: Route.MetaArgs) {
     const description = gameDescription(game, scores, times);
 
     // Key art where IGDB has any, because a large card is cropped to a wide rectangle and a
-    // portrait cover comes out of that as a strip across its middle. The cover still beats
-    // nothing, as the small square card it fits.
+    // portrait cover comes out of that as a strip across its middle. The cover still beats the
+    // site's default, as the small square card it fits; with neither, `pageMeta` shares the default.
     const image = game.backgroundImageUrl
         ? { url: game.backgroundImageUrl, alt: `${game.title} key art`, wide: true }
         : game.coverImageUrl

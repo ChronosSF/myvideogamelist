@@ -646,11 +646,11 @@ describe('GamePage meta', () => {
         expect(content(tags, 'twitter:card')).toBe('summary');
     });
 
-    it('shares no image rather than a broken one when IGDB has neither', () => {
+    it("shares the site's default image when IGDB has neither", () => {
         const tags = tagsFor({ backgroundImageUrl: null, coverImageUrl: null });
 
-        expect(content(tags, 'og:image')).toBeUndefined();
-        expect(content(tags, 'twitter:card')).toBe('summary');
+        expect(content(tags, 'og:image')).toMatch(/^https:\/\/myvideogamelist\.net\/.*share.*\.png$/);
+        expect(content(tags, 'twitter:card')).toBe('summary_large_image');
     });
 
     it('does not call a game missing when it could not be loaded', () => {
