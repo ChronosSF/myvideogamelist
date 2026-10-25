@@ -1,5 +1,6 @@
 import type { GameDto } from '@/types/game';
 import type { ListEntryDto, ListId } from '@/types/list';
+import type { ActivityMonth } from '@/types/stats';
 import { LIST_IDS } from '@/types/list';
 
 /** How many rows the platform and genre breakdowns show. */
@@ -88,6 +89,22 @@ function monthIndex(month: string): number | null {
 /** True when the month is January, which is where an axis wants to repeat the year. */
 export function isYearStart(month: string): boolean {
     return month.endsWith('-01');
+}
+
+/**
+ * Finishes in one calendar year, from the months `/api/user/stats` returned: the home page strip's
+ * *finished this year*, and the profile's tile of the same name, which must agree.
+ *
+ * The window is at most twelve months, so early in a year this covers the whole of it and late in
+ * one it covers all of it too — the only case it could miss is a year longer than twelve months.
+ * Computed from `month` string prefixes rather than `new Date(month)`, which parses `2026-06` as
+ * UTC midnight and lands in May for anybody west of Greenwich.
+ */
+export function countFinishedIn(months: ActivityMonth[], year: number): number {
+    const prefix = `${year}-`;
+    return months
+        .filter(month => month.month.startsWith(prefix))
+        .reduce((total, month) => total + month.finished, 0);
 }
 
 export interface Tally {

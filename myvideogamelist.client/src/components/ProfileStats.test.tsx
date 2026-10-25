@@ -370,6 +370,28 @@ describe('ProfileStats library breakdown', () => {
     });
 });
 
+describe('ProfileStats finished this year', () => {
+    it("counts this year's finishes and no other year's, as the home page strip does", async () => {
+        // The strip's figure, on the page it has to be found on as well (spec §3.3). The current
+        // year, so the fixture does not go stale in January.
+        const year = new Date().getUTCFullYear();
+        stubFetch(stats({
+            activity: {
+                ...stats().activity,
+                months: [
+                    { month: `${year - 1}-12`, started: 1, finished: 4, dropped: 0 },
+                    { month: `${year}-01`, started: 3, finished: 2, dropped: 1 },
+                    { month: `${year}-02`, started: 1, finished: 5, dropped: 0 },
+                ],
+            },
+        }));
+        renderStats();
+
+        const tile = (await screen.findByText('finished this year')).closest('.profile-stat-tile') as HTMLElement;
+        expect(within(tile).getByText('7')).toBeInTheDocument();
+    });
+});
+
 describe('ProfileStats hours logged', () => {
     it('says so when nothing has been logged, rather than printing a zero', async () => {
         stubFetch(stats());

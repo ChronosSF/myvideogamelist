@@ -61,7 +61,7 @@ so keeping a profile private is free.
 | Upcoming calendar, game pages, browse, search | ✅ | ✅ |
 | **Ads** | Shown | **Removed** |
 | Custom lists | Up to 3 | Unlimited |
-| Profile statistics | Counts — games tracked, per status, the wishlist's size, favourites, reviews | Everything derived beyond a count: completion rate, mean score and distribution, the monthly chart, streaks, time to finish, hours, the platform and genre breakdowns. Shown to visitors too, when the profile is public — the owner's entitlement decides, never the viewer's |
+| Profile statistics | Counts — games tracked, per status, the wishlist's size, favourites, reviews — and the home page strip's three running totals: finished this year, hours logged, the current finishing streak | Everything that reads the history back: completion rate, mean score and distribution, the monthly chart, the longest streak, time to finish, hours by platform, the platform and genre breakdowns. Shown to visitors too, when the profile is public — the owner's entitlement decides, never the viewer's |
 | Private profile | ✅ — the default, for everyone (0027) | ✅ |
 | Yearly wrapped / recap | — | ✅ |
 | Price-drop alerts | 5 tracked games | Unlimited |
@@ -77,7 +77,9 @@ The statistics row was drawn on 2026-09-24, figure by figure, in `specs/profile-
 #149 builds it. It is the one row that takes something away — the full page shipped free for
 everyone ([0023](0023-profile-statistics-derived-at-read-time.md)) — and it is drawn before launch
 precisely so that it is not the retroactive tightening the last consequence warns against: nobody
-but the owner has an account yet.
+but the owner has an account yet. It moved once before launch, the free way: on 2026-10-25 the home
+page strip's three figures, which the row had drawn as two paid figures and one in question, were
+made free by name, so that the strip is the same for every account (the spec's §2 and §3.3).
 
 Two rules the plan stated beside the table, to read with the consequences above.
 

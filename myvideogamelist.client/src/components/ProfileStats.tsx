@@ -3,7 +3,7 @@ import { Link } from 'react-router';
 import { useLists } from '@/hooks/useLists';
 import { useUserStats } from '@/hooks/useUserStats';
 import { useActivePlatforms } from '@/hooks/useActivePlatforms';
-import { formatDate, formatHours, formatRate, tallyBy } from '@/lib/stats';
+import { countFinishedIn, formatDate, formatHours, formatRate, tallyBy } from '@/lib/stats';
 import { MAX_SCORE } from '@/lib/score';
 import type { ListEntryDto, ListId } from '@/types/list';
 import { LIST_IDS } from '@/types/list';
@@ -110,6 +110,13 @@ export function ProfileStats({ userId }: { userId: string }) {
                     hint={scores.mean === null
                         ? 'no scores yet'
                         : `out of ${MAX_SCORE}, over ${scores.scored} ${scores.scored === 1 ? 'game' : 'games'}`}
+                />
+                {/* The home page strip's three, in its order and as its own figures, so the strip
+                    shows nothing this page does not (specs/profile-statistics-tiers.md §3.3). */}
+                <StatTile
+                    label="finished this year"
+                    value={String(countFinishedIn(activity.months, new Date().getUTCFullYear()))}
+                    hint="games you finished since 1 January"
                 />
                 <StatTile
                     label="hours logged"
