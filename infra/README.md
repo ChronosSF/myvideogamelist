@@ -144,8 +144,11 @@ CloudFront section, and `Edge.cs` says it again beside each one. Three things ar
 The balancer, not the containers, is what an idle environment pays for, so the lever that matters
 is destroying the `App` stack; stopping the database afterwards reaches the idle floor
 (ADR 0044). `node scripts/dev-env.mjs park` does both in that order and gates the pipeline off;
-`resume` starts the database, deploys `App` at the newest pushed tag, checks the site through the
-distribution and gates it back on; `status` says which cost row the environment is on. Run them
+`resume` starts the database, migrates it at the newest pushed tag, deploys `App` at that tag,
+checks the site through the distribution and gates it back on; `status` says which cost row the
+environment is on. The migrations are `resume`'s because a parked environment skips the pipeline's
+along with its deploys, while every merge still pushes images: the newest tag can need migrations
+the database never had, and a failed one stops the resume before anything is deployed. Run them
 from the repository root with the `mvgl-dev` profile signed in. The `App` stack includes the
 distribution, so a park and a resume each take several minutes longer than the services alone
 would; a resume creates a new distribution with a new id, and nothing is cached across one.
