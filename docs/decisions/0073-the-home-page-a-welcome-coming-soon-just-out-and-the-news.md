@@ -124,6 +124,7 @@ which the cap kept off.
   #203's Twitch highlights would build on type 34.
 - **The Lighthouse audit's home page has no image to wait for.** Its IGDB stand-in answers any popularity
   query with long-released games, which Just out's rules drop as Coming soon's do, and it never had news, so
-  it audits the welcome panel and little else.
+  it audits the welcome panel and little else. The audits its images and its rail passed stopped applying,
+  so its accessibility on a phone rounds a point lower with nothing worse on it (`lighthouse/budgets.ts`).
 - **[0012](0012-steam-news-without-a-database.md)'s trending rail and [0071](0071-coming-soon-is-what-igdb-says-people-are-waiting-for.md)
   §5's "before Trending"** are superseded here; both carry a note.
