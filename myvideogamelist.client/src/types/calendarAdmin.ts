@@ -69,3 +69,16 @@ export interface ShowcaseName {
     id: number;
     prefix: string;
 }
+
+/** What a pick does to the home page's Coming soon panel — mirrors `ComingSoonPickKinds` (ADR 0071). */
+export type ComingSoonPickKind = 'pin' | 'hide';
+
+/** A game pinned to the Coming soon panel or hidden from it — mirrors `ComingSoonPickDto`. */
+export interface ComingSoonPick {
+    /** The IGDB id. */
+    gameId: number;
+    /** IGDB's name for it when it was picked. */
+    title: string;
+    kind: ComingSoonPickKind;
+    pickedAt: string;
+}

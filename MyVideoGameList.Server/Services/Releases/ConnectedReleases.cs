@@ -190,7 +190,7 @@ internal static class ConnectedReleases
     /// still say. "Metro Rivals: New York" was cancelled with three "2026" rows still marked Full Release
     /// on 2026-10-08.
     /// </summary>
-    private static bool IsAnnounced(CalendarGame game) =>
+    internal static bool IsAnnounced(CalendarGame game) =>
         game.GameStatus is not (IgdbGameStatuses.Cancelled or IgdbGameStatuses.Rumored);
 
     /// <summary>
@@ -375,7 +375,7 @@ internal static class ConnectedReleases
     }
 
     /// <summary>Every platform once, by name.</summary>
-    private static List<PlatformDto> MergedPlatforms(IEnumerable<PlatformDto?> platforms) =>
+    internal static List<PlatformDto> MergedPlatforms(IEnumerable<PlatformDto?> platforms) =>
         platforms
             .OfType<PlatformDto>()
             .DistinctBy(p => p.Id)

@@ -59,6 +59,22 @@ export interface ConnectedRelease {
 }
 
 /**
+ * One game on the home page's Coming soon panel — mirrors `ComingSoonDto` (ADR 0071): a new game of the
+ * next ninety days that many people follow on IGDB, and its first full release in them.
+ */
+export interface ComingSoonGame {
+    gameId: number;
+    title: string;
+    coverImageUrl: string | null;
+    /** Never `year`: the panel leaves out a game known only to its year. */
+    precision: Exclude<ReleasePrecision, 'year'>;
+    /** `YYYY-MM-DD`: the day, or the first day of the month or quarter. */
+    starts: string;
+    /** What it arrives on then. Empty when IGDB did not say. */
+    platforms: PlatformDto[];
+}
+
+/**
  * One thing the line or the calendar draws: a release, or several in the same period that belong
  * together (F6) — "Kingdom Hearts — 8 releases". A group's releases come strongest reason first.
  */

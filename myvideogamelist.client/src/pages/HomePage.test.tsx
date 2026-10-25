@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import { MemoryRouter, RouterContextProvider } from 'react-router';
 import { HomePage, headers, loader, meta } from '@/pages/HomePage';
 import type { AuthContextValue } from '@/contexts/AuthContext';
@@ -7,7 +7,7 @@ import type { FavouritesContextValue } from '@/contexts/FavouritesContext';
 import { CACHE_HOME, PRIVATE_NO_STORE } from '@/lib/cache';
 import { calendarEvents, game, userProfile } from '@/test/factories';
 import type { HomeResponse, NewsItemDto } from '@/types/news';
-import type { CalendarCuratedEvent, CalendarEvents } from '@/types/releases';
+import type { CalendarCuratedEvent, CalendarEvents, ComingSoonGame } from '@/types/releases';
 import type { Route } from './+types/HomePage';
 
 const authActions = {
@@ -76,6 +76,22 @@ const NEXT_FEST: CalendarCuratedEvent = {
     url: 'https://partner.steamgames.com/doc/marketing/upcoming_events',
 };
 
+/** Two of the Coming soon panel's games of 2026-10-25: one known to the day, one only to a quarter. */
+const COMING_SOON: ComingSoonGame[] = [
+    {
+        gameId: 52189,
+        title: 'Grand Theft Auto VI',
+        coverImageUrl: null,
+        precision: 'day',
+        starts: '2026-11-19',
+        platforms: [
+            { id: 167, name: 'PlayStation 5', abbreviation: 'PS5', logoUrl: null, manufacturer: null },
+            { id: 169, name: 'Xbox Series X|S', abbreviation: 'Series X|S', logoUrl: null, manufacturer: null },
+        ],
+    },
+    { gameId: 347645, title: 'Out of Words', coverImageUrl: null, precision: 'quarter', starts: '2027-01-01', platforms: [] },
+];
+
 /** The day the tests' loader runs on, in UTC, and the reader's own once hydrated. */
 const TODAY = '2026-10-17';
 
@@ -83,7 +99,7 @@ const TODAY = '2026-10-17';
 const NO_EVENTS: CalendarEvents = { curated: [], showcases: [], degraded: true };
 
 /** What is left of the page when the API gave the loader nothing to build it from. */
-const NOTHING: HomeResponse = { spotlight: null, popular: [], news: [], events: NO_EVENTS, degraded: true };
+const NOTHING: HomeResponse = { spotlight: null, popular: [], news: [], events: NO_EVENTS, comingSoon: [], degraded: true };
 
 /** `/api/home` answering with `body` — a 200 unless told otherwise, which is what it sends even with IGDB down. */
 function stubHome(body: unknown, status = 200) {
@@ -124,7 +140,7 @@ afterEach(() => {
 describe('HomePage loader', () => {
     it('shares an answer the API says is whole', async () => {
         const home: HomeResponse = {
-            spotlight: null, popular: [game()], news: [NEWS], events: calendarEvents({ curated: [NEXT_FEST] }), degraded: false,
+            spotlight: null, popular: [game()], news: [NEWS], events: calendarEvents({ curated: [NEXT_FEST] }), comingSoon: [], degraded: false,
         };
         stubHome(home);
 
@@ -138,7 +154,7 @@ describe('HomePage loader', () => {
         // Half past eleven at night in New York is already the next day in UTC. The page counts from this
         // until it hydrates, and from the reader's own day after.
         vi.setSystemTime(new Date('2026-10-17T23:30:00-04:00'));
-        stubHome({ spotlight: null, popular: [game()], news: [NEWS], events: calendarEvents(), degraded: false });
+        stubHome({ spotlight: null, popular: [game()], news: [NEWS], events: calendarEvents(), comingSoon: [], degraded: false });
 
         const result = await loader(loaderArgs());
 
@@ -149,7 +165,7 @@ describe('HomePage loader', () => {
         // IGDB down with the API up. The status is a 200 and the body is a well-formed payload, so
         // nothing but the flag separates this from a healthy answer — and read as one, an empty
         // home page was pinned at the edge for five minutes and served stale for ten more.
-        stubHome({ spotlight: null, popular: [], news: [], events: calendarEvents(), degraded: true });
+        stubHome({ spotlight: null, popular: [], news: [], events: calendarEvents(), comingSoon: [], degraded: true });
 
         const result = await loader(loaderArgs());
 
@@ -159,7 +175,7 @@ describe('HomePage loader', () => {
     it('still renders what a degraded answer has, with the site beside it', async () => {
         // The news failed and the covers did not. The page shows the covers; it is just not kept.
         // `meta` reads `site` whichever way the loader went, so it rides along here too.
-        const home: HomeResponse = { spotlight: null, popular: [game()], news: [], events: calendarEvents(), degraded: true };
+        const home: HomeResponse = { spotlight: null, popular: [game()], news: [], events: calendarEvents(), comingSoon: [], degraded: true };
         stubHome(home);
 
         const result = await loader(loaderArgs());
@@ -172,7 +188,7 @@ describe('HomePage loader', () => {
         // IGDB could not be asked for the showcases. The API says so twice: in the events, for the panel,
         // and in the composite's own flag, which is the one the policy is chosen by.
         const events = calendarEvents({ curated: [NEXT_FEST], degraded: true });
-        stubHome({ spotlight: null, popular: [game()], news: [NEWS], events, degraded: true });
+        stubHome({ spotlight: null, popular: [game()], news: [NEWS], events, comingSoon: [], degraded: true });
 
         const result = await loader(loaderArgs());
 
@@ -208,6 +224,17 @@ describe('HomePage loader', () => {
         expect(result.data.events).toEqual(NO_EVENTS);
     });
 
+    it('fails closed on an answer with no Coming soon panel, though it says it is whole', async () => {
+        // An API from before the panel, mid-deploy, for the reason the showcases and sales give.
+        stubHome({ spotlight: null, popular: [game()], news: [NEWS], events: calendarEvents(), degraded: false });
+
+        const result = await loader(loaderArgs());
+
+        expect(policyOf(result)).toBe(PRIVATE_NO_STORE);
+        expect(result.data.degraded).toBe(true);
+        expect(result.data.comingSoon).toEqual([]);
+    });
+
     it('degrades, uncached, when the API answers with an error', async () => {
         stubHome({ title: 'Bad Gateway', status: 502 }, 502);
 
@@ -241,7 +268,7 @@ describe('HomePage for a signed-out visitor', () => {
         vi.stubGlobal('fetch', fetchMock);
 
         renderHome({
-            spotlight: null, popular: [game()], news: [NEWS], events: calendarEvents({ curated: [NEXT_FEST] }), degraded: false,
+            spotlight: null, popular: [game()], news: [NEWS], events: calendarEvents({ curated: [NEXT_FEST] }), comingSoon: [], degraded: false,
         });
 
         expect(screen.getByRole('heading', { name: 'Trending right now' })).toBeInTheDocument();
@@ -251,7 +278,7 @@ describe('HomePage for a signed-out visitor', () => {
 
     it('shows the showcases and sales first among the shared sections, where the line would be', () => {
         renderHome({
-            spotlight: null, popular: [game()], news: [NEWS], events: calendarEvents({ curated: [NEXT_FEST] }), degraded: false,
+            spotlight: null, popular: [game()], news: [NEWS], events: calendarEvents({ curated: [NEXT_FEST] }), comingSoon: [], degraded: false,
         });
 
         const headings = screen.getAllByRole('heading', { level: 2 }).map(h => h.textContent);
@@ -259,8 +286,30 @@ describe('HomePage for a signed-out visitor', () => {
         expect(screen.getByRole('link', { name: /Steam Next Fest/ })).toBeInTheDocument();
     });
 
+    it('shows what is coming soon after the showcases and before Trending, each with when and on what', () => {
+        renderHome({
+            spotlight: null, popular: [game()], news: [NEWS], events: calendarEvents({ curated: [NEXT_FEST] }), comingSoon: COMING_SOON, degraded: false,
+        });
+
+        const headings = screen.getAllByRole('heading', { level: 2 }).map(h => h.textContent);
+        expect(headings).toEqual(['Showcases and sales', 'Coming soon', 'Trending right now', 'Latest news']);
+
+        const rail = screen.getByRole('list', { name: 'Coming soon' });
+        expect(within(rail).getByRole('link', { name: /Grand Theft Auto VI/ })).toHaveAttribute('href', '/games/52189');
+        expect(within(rail).getByText('Nov 19')).toHaveAttribute('datetime', '2026-11-19');
+        expect(within(rail).getByText('PS5, Series X|S')).toBeInTheDocument();
+        expect(within(rail).getByText('Q1 2027')).toBeInTheDocument();
+    });
+
+    it('draws no Coming soon section when nothing passes its rules', () => {
+        renderHome({ spotlight: null, popular: [game()], news: [NEWS], events: calendarEvents(), comingSoon: [], degraded: false });
+
+        expect(screen.queryByRole('heading', { name: 'Coming soon' })).toBeNull();
+        expect(screen.getByRole('heading', { name: 'Trending right now' })).toBeInTheDocument();
+    });
+
     it('draws no panel when nothing is on', () => {
-        renderHome({ spotlight: null, popular: [game()], news: [NEWS], events: calendarEvents(), degraded: false });
+        renderHome({ spotlight: null, popular: [game()], news: [NEWS], events: calendarEvents(), comingSoon: [], degraded: false });
 
         expect(screen.queryByRole('heading', { name: 'Showcases and sales' })).toBeNull();
         expect(screen.getByRole('heading', { name: 'Trending right now' })).toBeInTheDocument();
@@ -270,7 +319,7 @@ describe('HomePage for a signed-out visitor', () => {
         // A navigation inside the app in a deploy's first minutes, answered from the edge with a payload
         // the previous build wrote. It has no `events`, and must cost the panel rather than the page.
         const { events: _missing, ...older } = {
-            spotlight: null, popular: [game()], news: [NEWS], events: calendarEvents(), degraded: false,
+            spotlight: null, popular: [game()], news: [NEWS], events: calendarEvents(), comingSoon: [], degraded: false,
         } satisfies HomeResponse;
         const props = { loaderData: { ...older, site: SITE } } as unknown as Route.ComponentProps;
 
@@ -284,7 +333,7 @@ describe('HomePage for a signed-out visitor', () => {
         auth.current = UNKNOWN;
 
         renderHome({
-            spotlight: null, popular: [game()], news: [NEWS], events: calendarEvents({ curated: [NEXT_FEST] }), degraded: false,
+            spotlight: null, popular: [game()], news: [NEWS], events: calendarEvents({ curated: [NEXT_FEST] }), comingSoon: [], degraded: false,
         });
 
         expect(screen.getByRole('heading', { name: 'Showcases and sales' })).toBeInTheDocument();
@@ -296,7 +345,7 @@ describe('HomePage for somebody signed in', () => {
         auth.current = SIGNED_IN;
 
         renderHome({
-            spotlight: null, popular: [game()], news: [NEWS], events: calendarEvents({ curated: [NEXT_FEST] }), degraded: false,
+            spotlight: null, popular: [game()], news: [NEWS], events: calendarEvents({ curated: [NEXT_FEST] }), comingSoon: [], degraded: false,
         });
 
         expect(screen.getByRole('heading', { name: 'Welcome back, bob' })).toBeInTheDocument();

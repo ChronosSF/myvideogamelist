@@ -87,6 +87,9 @@ builder.Services.AddScoped<IImportService, ImportService>();
 builder.Services.AddScoped<IImportMatcher, ImportMatcher>();
 builder.Services.AddScoped<ICalendarCurationService, CalendarCurationService>();
 builder.Services.AddScoped<ICalendarEventService, CalendarEventService>();
+// The home page's Coming soon panel, and the admin page's pins and hides for it (ADR 0071).
+builder.Services.AddScoped<IComingSoonService, ComingSoonService>();
+builder.Services.AddScoped<IComingSoonCurationService, ComingSoonCurationService>();
 builder.Services.AddScoped<IAdminStatsService, AdminStatsService>();
 // What is coming for a user's games. Asks IGDB directly rather than through the game cache: what it
 // finds is mostly games nobody tracks yet — a sequel, a DLC — which is catalogue, not somebody's shelf.

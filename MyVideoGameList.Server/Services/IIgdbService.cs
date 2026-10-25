@@ -116,4 +116,12 @@ public interface IIgdbService
     /// Used by the readiness probe.
     /// </summary>
     Task<bool> IsReachableAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The candidates for the home page's Coming soon panel (ADR 0071): the new games coming out around the
+    /// next ninety days that enough people follow, most followed first, and the <paramref name="pinned"/> ones
+    /// whatever they are. Kept for the UTC day.
+    /// </summary>
+    Task<ComingSoonCandidates> GetComingSoonCandidatesAsync(
+        DateOnly today, IReadOnlyCollection<int> pinned, CancellationToken cancellationToken = default);
 }

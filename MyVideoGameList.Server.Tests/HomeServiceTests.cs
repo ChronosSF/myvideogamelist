@@ -71,14 +71,30 @@ public class HomeServiceTests
         return calendar;
     }
 
+    private static readonly ComingSoonPicks NoPicks = new(new HashSet<int>(), new HashSet<int>());
+
+    private static readonly ComingSoonDto GtaVi =
+        new(52189, "Grand Theft Auto VI", null, "day", new DateOnly(2026, 11, 19), []);
+
+    /// <summary>A Coming soon panel with no picks, composing to the games given.</summary>
+    private static IComingSoonService ComingSoonReturning(params ComingSoonDto[] games)
+    {
+        var comingSoon = Substitute.For<IComingSoonService>();
+        comingSoon.GetPicksAsync(Arg.Any<CancellationToken>()).Returns(NoPicks);
+        comingSoon.ComposeAsync(Arg.Any<DateOnly>(), Arg.Any<ComingSoonPicks>(), Arg.Any<CancellationToken>())
+            .Returns(games);
+        return comingSoon;
+    }
+
     private static HomeService NewService(
         IIgdbService igdb,
         ISteamNewsService steam,
         IMemoryCache? cache = null,
         ICalendarEventService? calendar = null,
-        DateTimeOffset? now = null) =>
-        new(igdb, steam, calendar ?? CalendarReturning(NothingOn), cache ?? new MemoryCache(new MemoryCacheOptions()),
-            new FixedClock(now ?? Now), NullLogger<HomeService>.Instance);
+        DateTimeOffset? now = null,
+        IComingSoonService? comingSoon = null) =>
+        new(igdb, steam, calendar ?? CalendarReturning(NothingOn), comingSoon ?? ComingSoonReturning(GtaVi),
+            cache ?? new MemoryCache(new MemoryCacheOptions()), new FixedClock(now ?? Now), NullLogger<HomeService>.Instance);
 
     /// <summary>
     /// How long the service asked for its answer to be kept. A substitute rather than a clock,
@@ -232,6 +248,66 @@ public class HomeServiceTests
         Assert.Equal(1, home.Spotlight?.Id);
         Assert.Equal([NewsFor(1)], home.News);
         Assert.True(home.Degraded);
+    }
+
+    [Fact]
+    public async Task GetHomeAsync_ComingSoonComposes_CarriesItForUtcTodayAndStaysWhole()
+    {
+        var comingSoon = ComingSoonReturning(GtaVi);
+        var service = NewService(
+            IgdbTrending(Game(1, "https://images.example/art-1.jpg")), SteamReturning(NewsFor(1)), comingSoon: comingSoon);
+
+        var home = await service.GetHomeAsync();
+
+        Assert.Equal([GtaVi], home.ComingSoon);
+        Assert.False(home.Degraded);
+        await comingSoon.Received(1).ComposeAsync(new DateOnly(2026, 10, 17), NoPicks, Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task GetHomeAsync_NothingComingSoonPassesTheRules_IsAnAnswerNotAFailure()
+    {
+        var service = NewService(
+            IgdbTrending(Game(1, "https://images.example/art-1.jpg")), SteamReturning(NewsFor(1)), comingSoon: ComingSoonReturning());
+
+        var home = await service.GetHomeAsync();
+
+        Assert.Empty(home.ComingSoon);
+        Assert.False(home.Degraded);
+    }
+
+    [Fact]
+    public async Task GetHomeAsync_IgdbFailsForComingSoon_CostsThePanelAndNothingElse()
+    {
+        var comingSoon = Substitute.For<IComingSoonService>();
+        comingSoon.GetPicksAsync(Arg.Any<CancellationToken>()).Returns(NoPicks);
+        comingSoon.ComposeAsync(Arg.Any<DateOnly>(), Arg.Any<ComingSoonPicks>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new HttpRequestException("IGDB is down."));
+        var service = NewService(
+            IgdbTrending(Game(1, "https://images.example/art-1.jpg")), SteamReturning(NewsFor(1)), comingSoon: comingSoon);
+
+        var home = await service.GetHomeAsync();
+
+        Assert.Empty(home.ComingSoon);
+        Assert.Equal([NewsFor(1)], home.News);
+        Assert.True(home.Degraded);
+    }
+
+    [Fact]
+    public async Task GetHomeAsync_PicksCannotBeRead_LeavesThePanelOutRatherThanShowWhatWasHidden()
+    {
+        // Composed without the picks, a hidden game would be back on the front page.
+        var comingSoon = Substitute.For<IComingSoonService>();
+        comingSoon.GetPicksAsync(Arg.Any<CancellationToken>())
+            .ThrowsAsync(new InvalidOperationException("The database is unreachable."));
+        var service = NewService(
+            IgdbTrending(Game(1, "https://images.example/art-1.jpg")), SteamReturning(NewsFor(1)), comingSoon: comingSoon);
+
+        var home = await service.GetHomeAsync();
+
+        Assert.Empty(home.ComingSoon);
+        Assert.True(home.Degraded);
+        await comingSoon.DidNotReceiveWithAnyArgs().ComposeAsync(default, NoPicks, default);
     }
 
     [Theory]

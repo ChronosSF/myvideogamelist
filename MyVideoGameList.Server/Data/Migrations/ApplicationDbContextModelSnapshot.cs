@@ -292,6 +292,32 @@ namespace MyVideoGameList.Server.Data.Migrations
                     b.ToTable("CachedGames");
                 });
 
+            modelBuilder.Entity("MyVideoGameList.Server.Models.ComingSoonPick", b =>
+                {
+                    b.Property<int>("GameId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(8)
+                        .HasColumnType("character varying(8)");
+
+                    b.Property<DateTimeOffset>("PickedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.HasKey("GameId");
+
+                    b.ToTable("ComingSoonPicks", t =>
+                        {
+                            t.HasCheckConstraint("CK_ComingSoonPicks_Kind", "\"Kind\" IN ('pin', 'hide')");
+                        });
+                });
+
             modelBuilder.Entity("MyVideoGameList.Server.Models.CuratedEvent", b =>
                 {
                     b.Property<int>("Id")

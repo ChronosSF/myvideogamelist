@@ -928,6 +928,95 @@ public class IgdbService(
             ? address.AbsoluteUri
             : null;
 
+    /// <summary>What the Coming soon panel asks of a game; see <see cref="IgdbComingSoonGame"/>.</summary>
+    private const string ComingSoonFields =
+        "fields id,name,cover.image_id,game_type,parent_game,version_parent,game_status,first_release_date,hypes,"
+        + "release_dates.date,release_dates.date_format,release_dates.y,release_dates.m,release_dates.status,"
+        + "release_dates.platform.name,release_dates.platform.abbreviation;";
+
+    /// <summary>
+    /// How long the Coming soon panel's candidates are kept: a day, keyed by the UTC day as well, so that a
+    /// new day asks again. Release dates move slowly, and the panel's rules run on every composition, so a
+    /// game that came out yesterday leaves it however old this is (ADR 0071).
+    /// </summary>
+    private static readonly TimeSpan ComingSoonLifetime = TimeSpan.FromHours(24);
+
+    public async Task<ComingSoonCandidates> GetComingSoonCandidatesAsync(
+        DateOnly today, IReadOnlyCollection<int> pinned, CancellationToken cancellationToken = default)
+    {
+        var pins = pinned.Distinct().Order().ToList();
+
+        // The same for everybody, so one copy a day serves every reader; a pin changes the question.
+        var cacheKey = $"igdb_coming_soon|{today:yyyy-MM-dd}|{string.Join(',', pins)}";
+        if (cache.TryGetValue(cacheKey, out ComingSoonCandidates? cached) && cached is not null)
+            return cached;
+
+        var games = await QueryAsync<IgdbComingSoonGame>(
+            GamesEndpoint, BuildComingSoonQuery(today, pins), cancellationToken);
+        var result = new ComingSoonCandidates(
+            games.Select(MapToComingSoonCandidate).ToList(), Truncated: games.Count == MaxBatchSize);
+
+        // Sixty-two games were candidates on 2026-10-25, so this is a bug rather than a busy season. The
+        // answer is in follows order, so the panel's ten are still at the top of it, and it is kept.
+        if (result.Truncated)
+            logger.LogWarning("IGDB's upcoming games filled a page of {MaxBatchSize}; the Coming soon candidates are partial.", MaxBatchSize);
+
+        // What a field IGDB has removed looks like: no rows and no error. Said once a day, since an empty
+        // panel is otherwise just a panel that is not drawn.
+        if (games.Count == 0)
+            logger.LogWarning("IGDB answered no upcoming games with {MinHypes} follows or more; the Coming soon panel will be empty.", ComingSoon.MinHypes);
+
+        cache.Set(cacheKey, result, ComingSoonLifetime);
+        return result;
+    }
+
+    /// <summary>
+    /// The Coming soon panel's one query: the new games first released from this month's first day to well
+    /// past the window, with the follows to be shown, most followed first — and the pinned games by their id,
+    /// whatever they are, for <see cref="ComingSoon"/> to judge by the same rules.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A game's <c>first_release_date</c> is its earliest stored date, and for a row known only to a month or
+    /// a quarter that is a stand-in (spec §4): a month's first day, a quarter's last. So the range starts on
+    /// the first of this month, where a game known only to be "October" is stored, and ends a quarter's
+    /// length after the window, where a quarter that starts inside it is. <see cref="ComingSoon"/> keeps what
+    /// really falls in the window. A game whose first full release is already past is not asked about at all.
+    /// </para>
+    /// <para>
+    /// The floor of follows is in the query and not only in the rules, so that one page holds every
+    /// candidate: there were sixty-two on 2026-10-25, against a page of five hundred.
+    /// </para>
+    /// </remarks>
+    internal static string BuildComingSoonQuery(DateOnly today, IReadOnlyCollection<int> pinned)
+    {
+        var from = new DateOnly(today.Year, today.Month, 1);
+        var to = today.AddDays(ComingSoon.WindowDays + 93);
+
+        var upcoming = $"game_type = ({string.Join(',', ComingSoon.GameTypes)}) & version_parent = null"
+            + $" & hypes >= {ComingSoon.MinHypes}"
+            + $" & first_release_date >= {UnixDay(from)} & first_release_date < {UnixDay(to)}";
+
+        var where = pinned.Count == 0 ? upcoming : $"({upcoming}) | id = ({string.Join(',', pinned)})";
+
+        return new StringBuilder()
+            .AppendLine(ComingSoonFields)
+            .AppendLine($"where {where};")
+            .AppendLine("sort hypes desc;")
+            .AppendLine($"limit {MaxBatchSize};")
+            .ToString();
+    }
+
+    private static ComingSoonCandidate MapToComingSoonCandidate(IgdbComingSoonGame g) =>
+        new(
+            MapToCalendarGame(new IgdbCalendarGame(
+                g.Id, g.Name, g.Cover, g.GameType, g.ParentGame, g.VersionParent, null, g.FirstReleaseDate, g.GameStatus)),
+            g.Hypes ?? 0,
+            (g.ReleaseDates ?? [])
+                .Select(row => MapToReleaseRow(row with { Game = g.Id }))
+                .OfType<ReleaseRow>()
+                .ToList());
+
     public Task<IEnumerable<PlatformDto>> GetActivePlatformsAsync()
     {
         var entries = configuration

@@ -23,6 +23,11 @@ namespace MyVideoGameList.Server.DTOs;
 /// own <c>Degraded</c> says the showcases are missing, and is set as well when the events could not
 /// be read at all.
 /// </param>
+/// <param name="ComingSoon">
+/// The new games of the next ninety days that the most people are waiting for, in the order they arrive
+/// (ADR 0071). Empty when none passes the rules, which is an answer; a failure to ask IGDB, or to read the
+/// admin's picks, sets <paramref name="Degraded"/>.
+/// </param>
 /// <param name="Degraded">
 /// True when an upstream failed and this answer is missing what it would have supplied. It is
 /// still a 200, deliberately — the page renders without the parts that failed rather than
@@ -34,4 +39,5 @@ public record HomeResponse(
     IEnumerable<GameDto> Popular,
     IEnumerable<NewsItemDto> News,
     CalendarEventsDto Events,
+    IReadOnlyList<ComingSoonDto> ComingSoon,
     bool Degraded);

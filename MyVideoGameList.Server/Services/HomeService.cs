@@ -4,7 +4,8 @@ using MyVideoGameList.Server.DTOs;
 namespace MyVideoGameList.Server.Services;
 
 /// <summary>
-/// Composes the home page payload from IGDB, Steam, and the release calendar's showcases and sales.
+/// Composes the home page payload from IGDB, Steam, the release calendar's showcases and sales, and the
+/// Coming soon panel.
 /// </summary>
 /// <remarks>
 /// Scoped rather than a singleton since it began reading the admin page's tables, through
@@ -15,11 +16,13 @@ public class HomeService(
     IIgdbService igdbService,
     ISteamNewsService steamNewsService,
     ICalendarEventService calendarEvents,
+    IComingSoonService comingSoon,
     IMemoryCache cache,
     TimeProvider clock,
     ILogger<HomeService> logger) : IHomeService
 {
-    private const string CacheKey = "home_payload";
+    /// <summary>Internal so that a pick on the admin page can drop this process's copy (ADR 0071).</summary>
+    internal const string CacheKey = "home_payload";
 
     /// <summary>How many covers the trending rail shows.</summary>
     private const int PopularCount = 18;
@@ -52,17 +55,25 @@ public class HomeService(
         if (cache.TryGetValue(CacheKey, out HomeResponse? cached) && cached is not null)
             return cached;
 
-        // The showcases and sales beside the rails rather than after them. Each can wait out IGDB's
-        // thirty-second ceiling when IGDB accepts a connection and never answers, and one after the
-        // other they would take a minute — as long as the edge waits for a page, which was sized for
-        // one such wait. Awaited together, so that whichever fails first, the other is still observed.
-        // Only the events touch the scoped DbContext, so the two never share it.
+        // The Coming soon panel's picks before anything else starts: they are in our tables, as the
+        // showcases and sales are, and the two may not use the scoped DbContext at once. One small table,
+        // so the wait is a query's, never IGDB's.
+        var picks = await GetComingSoonPicksAsync(cancellationToken);
+
+        // The showcases, the sales and the panel beside the rails rather than after them. Each can wait
+        // out IGDB's thirty-second ceiling when IGDB accepts a connection and never answers, and one after
+        // the other they would take a minute or more — as long as the edge waits for a page, which was
+        // sized for one such wait. Awaited together, so that whichever fails first, the others are still
+        // observed. Only the events touch the DbContext among them: the panel's composing asks IGDB alone.
+        var today = DateOnly.FromDateTime(clock.GetUtcNow().UtcDateTime);
         var railsTask = GetRailsAsync(cancellationToken);
         var eventsTask = GetEventsAsync(cancellationToken);
-        await Task.WhenAll(railsTask, eventsTask);
+        var comingSoonTask = GetComingSoonAsync(today, picks, cancellationToken);
+        await Task.WhenAll(railsTask, eventsTask, comingSoonTask);
 
         var (spotlight, popular, news) = await railsTask;
         var events = await eventsTask;
+        var (upcoming, comingSoonMissing) = await comingSoonTask;
 
         // One judgement, for both caches: it picks how long this process keeps the answer, and it
         // travels in the answer so that nobody keeps the page built from it (ADR 0013). It is
@@ -84,9 +95,12 @@ public class HomeService(
         // something is missing — the calendar's service when IGDB could not be asked, and
         // GetEventsAsync's catch when our own tables could not be read.
         //
+        // The Coming soon panel is like the showcases: no game passing its rules is an answer, and the
+        // panel is simply not drawn. Only a failure to ask IGDB, or to read the picks, is missing.
+        //
         // A rail that is only thinner than it should be, because some feeds failed and others did
         // not, cannot be seen from here.
-        var degraded = popular.Count == 0 || news.Count == 0 || events.Degraded;
+        var degraded = popular.Count == 0 || news.Count == 0 || events.Degraded || comingSoonMissing;
 
         if (degraded)
         {
@@ -94,12 +108,14 @@ public class HomeService(
             // not all — an AppID lookup that resolves nothing is silent — and what this costs, an
             // uncached front page, looks from outside like nothing at all.
             logger.LogWarning(
-                "Home page composed degraded, with {PopularCount} trending games, {NewsCount} news items "
-                + "and the showcases and sales {EventsState}. Kept for {Lifetime} and marked so that the page is not cached.",
-                popular.Count, news.Count, events.Degraded ? "incomplete" : "whole", DegradedCacheLifetime);
+                "Home page composed degraded, with {PopularCount} trending games, {NewsCount} news items, "
+                + "the showcases and sales {EventsState} and the Coming soon panel {ComingSoonState}. "
+                + "Kept for {Lifetime} and marked so that the page is not cached.",
+                popular.Count, news.Count, events.Degraded ? "incomplete" : "whole",
+                comingSoonMissing ? "missing" : "whole", DegradedCacheLifetime);
         }
 
-        var result = new HomeResponse(spotlight, popular, news, events, degraded);
+        var result = new HomeResponse(spotlight, popular, news, events, upcoming, degraded);
 
         cache.Set(CacheKey, result, degraded ? DegradedCacheLifetime : CacheLifetime);
         return result;
@@ -164,6 +180,46 @@ public class HomeService(
         {
             logger.LogWarning(ex, "The showcases and sales could not be read while composing the home page.");
             return new CalendarEventsDto([], [], Degraded: true);
+        }
+    }
+
+    /// <summary>The admin's pins and hides, or null when our tables could not be read.</summary>
+    /// <remarks>
+    /// Null rather than no picks: composed without them, a hidden game would come back on the front page
+    /// — and a game is hidden because it should not be there. So the panel is left out instead, and the
+    /// page says it is missing something. The caller leaving is judged by the token, as everywhere here.
+    /// </remarks>
+    private async Task<ComingSoonPicks?> GetComingSoonPicksAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await comingSoon.GetPicksAsync(cancellationToken);
+        }
+        catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
+        {
+            logger.LogWarning(ex, "The Coming soon picks could not be read while composing the home page.");
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// The Coming soon panel (ADR 0071), and whether it is missing: when its picks could not be read, or
+    /// IGDB could not be asked.
+    /// </summary>
+    /// <remarks>Degrades rather than fails, like every part of this page: it costs the panel, not the page.</remarks>
+    private async Task<(IReadOnlyList<ComingSoonDto> Games, bool Missing)> GetComingSoonAsync(
+        DateOnly today, ComingSoonPicks? picks, CancellationToken cancellationToken)
+    {
+        if (picks is null) return ([], true);
+
+        try
+        {
+            return (await comingSoon.ComposeAsync(today, picks, cancellationToken), false);
+        }
+        catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
+        {
+            logger.LogWarning(ex, "IGDB unavailable while composing the Coming soon panel.");
+            return ([], true);
         }
     }
 
