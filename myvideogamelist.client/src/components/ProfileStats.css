@@ -89,9 +89,9 @@
 /* Headline figures */
 
 /*
- * Two to a row on a phone, all on one row once they fit, and — for the owner's five — three and two
- * in between. Container queries rather than auto-fit, which steps through every column count on the
- * way: at four columns, five tiles leave one stranded under the rest.
+ * Two to a row on a phone; the public profile's four on one row once they fit, and the owner's six in
+ * two rows of three. Container queries rather than auto-fit, which steps through every column count on
+ * the way: at four columns, six tiles leave two stranded under the rest.
  */
 .profile-tiles {
     display: grid;
@@ -114,19 +114,9 @@
     }
 }
 
-/* Only for exactly five. The public profile's four in three columns would strand the fourth. */
-@container (34rem <= width < 48rem) {
-    .profile-tiles:has(> :nth-child(5):last-child) {
-        grid-template-columns: repeat(3, minmax(0, 1fr));
-    }
-
-    .profile-tiles:has(> :nth-child(5):last-child) > :first-child {
-        grid-column: auto;
-    }
-}
-
 /*
- * One row from here. Measured, not guessed: at 48rem each of five tiles has about 110px inside its
+ * One row from here, for the four, which never needed less room than this. Measured, not guessed,
+ * when the owner's page had five tiles on one row: at 48rem each of five tiles has about 110px inside its
  * padding, which holds the widest label — "completion rate", 94px — and the values formatHours
  * produces from an hour upwards ("123 days" is 106px, "23 hours" 105px) on one line. At 42rem it
  * has 90px and both wrap. The exception is "under an hour", which is what the hours tile shows
@@ -147,6 +137,20 @@
 
     .profile-tiles > :first-child:nth-last-child(odd) {
         grid-column: auto;
+    }
+}
+
+/*
+ * Exactly six, the owner's page since it gained finished this year: three a row from 34rem, and never
+ * one row of six. Measured: the block is 814px at its widest, where six in a row leave each tile about
+ * 94px inside, and "finished this year" is 100px, so it would wrap at every width this page has; three
+ * a row leave 159px at 34rem. Its second row is the home page strip's three, in the strip's order.
+ * More specific than the rule above, which it overrides for six at every width it covers.
+ */
+@container (min-width: 34rem) {
+    .profile-tiles:has(> :nth-child(6):last-child) {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        grid-auto-flow: row;
     }
 }
 

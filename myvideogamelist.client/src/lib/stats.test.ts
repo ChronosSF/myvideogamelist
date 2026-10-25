@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { formatDate, formatDay, formatHours, formatMonth, formatRate, isYearStart, tallyBy } from '@/lib/stats';
+import {
+    countFinishedIn,
+    formatDate,
+    formatDay,
+    formatHours,
+    formatMonth,
+    formatRate,
+    isYearStart,
+    tallyBy,
+} from '@/lib/stats';
 import { emptyLists, type ListEntryDto, type ListId } from '@/types/list';
 import { entry, platform } from '@/test/factories';
 
@@ -51,6 +60,20 @@ describe('formatMonth', () => {
     it('marks January so an axis can repeat the year there', () => {
         expect(isYearStart('2026-01')).toBe(true);
         expect(isYearStart('2026-11')).toBe(false);
+    });
+});
+
+describe('countFinishedIn', () => {
+    it("sums the finishes of that year's months and no other year's", () => {
+        const months = [
+            { month: '2025-12', started: 1, finished: 4, dropped: 0 },
+            { month: '2026-01', started: 3, finished: 2, dropped: 1 },
+            { month: '2026-02', started: 1, finished: 5, dropped: 0 },
+        ];
+
+        expect(countFinishedIn(months, 2026)).toBe(7);
+        expect(countFinishedIn(months, 2025)).toBe(4);
+        expect(countFinishedIn(months, 2024)).toBe(0);
     });
 });
 

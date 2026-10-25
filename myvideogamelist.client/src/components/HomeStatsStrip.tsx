@@ -1,6 +1,5 @@
 import { useUserStats } from '@/hooks/useUserStats';
-import { formatHours } from '@/lib/stats';
-import type { ActivityMonth } from '@/types/stats';
+import { countFinishedIn, formatHours } from '@/lib/stats';
 
 /**
  * Three figures across the top of the signed-in home page: finished this year, hours logged, and
@@ -47,19 +46,4 @@ export function HomeStatsStrip({ userId }: { userId: string }) {
             </div>
         </dl>
     );
-}
-
-/**
- * Finishes in one calendar year, from the months the API already returned.
- *
- * The window is at most twelve months, so early in a year this covers the whole of it and late in
- * one it covers all of it too — the only case it could miss is a year longer than twelve months.
- * Computed from `month` string prefixes rather than `new Date(month)`, which parses `2026-06` as
- * UTC midnight and lands in May for anybody west of Greenwich.
- */
-function countFinishedIn(months: ActivityMonth[], year: number): number {
-    const prefix = `${year}-`;
-    return months
-        .filter(month => month.month.startsWith(prefix))
-        .reduce((total, month) => total + month.finished, 0);
 }
