@@ -23,7 +23,10 @@ interface Baseline {
     accessibility: number;
     bestPractices: number;
     seo: number;
-    /** What Lighthouse's console audit counts: on every signed-out page, the 401 of #316. */
+    /**
+     * What Lighthouse's console audit counts. None on any page since #316: until then, every signed-out
+     * page logged the 401 the session check was answered with.
+     */
     consoleErrors: number;
     /**
      * Everything the page loads, in KiB once decoded: its covers from IGDB's image host above all. As
@@ -56,9 +59,8 @@ interface Baseline {
  * against 0.90 here. A local run warns about it and passes.
  *
  * Accessibility is short of 100 everywhere because of contrast (#234, #246, #329), and on some pages
- * heading order and a description list (#329). Best practices is 96 on every signed-out page because of
- * the 401 the session check logs (#316). SEO is 66 on the lists page because it says `noindex`, as every
- * page that is one member's own does (ADR 0036).
+ * heading order and a description list (#329). SEO is 66 on the lists page because it says `noindex`, as
+ * every page that is one member's own does (ADR 0036).
  *
  * Six figures are from a later run, 40070934403 on 2026-10-24, once master was merged in. Three rose a
  * point: accessibility on a desktop for the game page, the profile and the lists, when the navbar's search
@@ -77,20 +79,26 @@ interface Baseline {
  * out of the average. What the change fixed does not count: Lighthouse has no `nested-interactive` audit
  * and weighs `label-content-name-mismatch` at nothing. A phone's figure moved the same way, 0.9541 to
  * 0.9526, and rounds to 0.95 either side.
+ *
+ * Sixteen figures rose when the session check stopped answering a visitor with a 401 (#316): best
+ * practices from 0.96 to 1 and the console's errors from 1 to 0, on the home page, browse, the game page
+ * and the profile, on both form factors. Chrome logs every 4xx a page's fetch receives as an error, so
+ * that 401 was the one error on each of those pages, and the one best-practices audit they failed. The
+ * figures are from a developer's machine, which scores the same as the runner in both.
  */
 const BASELINE: Record<FormFactor, Record<PageKey, Baseline>> = {
     mobile: {
-        home: { accessibility: 0.96, bestPractices: 0.96, seo: 1, consoleErrors: 1, kib: 807, performance: 0.87 },
-        games: { accessibility: 0.95, bestPractices: 0.96, seo: 1, consoleErrors: 1, kib: 803, performance: 0.9 },
-        game: { accessibility: 0.92, bestPractices: 0.96, seo: 1, consoleErrors: 1, kib: 2106, performance: 0.87 },
-        profile: { accessibility: 0.94, bestPractices: 0.96, seo: 1, consoleErrors: 1, kib: 587, performance: 0.89 },
+        home: { accessibility: 0.96, bestPractices: 1, seo: 1, consoleErrors: 0, kib: 807, performance: 0.87 },
+        games: { accessibility: 0.95, bestPractices: 1, seo: 1, consoleErrors: 0, kib: 803, performance: 0.9 },
+        game: { accessibility: 0.92, bestPractices: 1, seo: 1, consoleErrors: 0, kib: 2106, performance: 0.87 },
+        profile: { accessibility: 0.94, bestPractices: 1, seo: 1, consoleErrors: 0, kib: 587, performance: 0.89 },
         lists: { accessibility: 0.95, bestPractices: 1, seo: 0.66, consoleErrors: 0, kib: 587, performance: 0.89 },
     },
     desktop: {
-        home: { accessibility: 0.96, bestPractices: 0.96, seo: 1, consoleErrors: 1, kib: 870, performance: 1 },
-        games: { accessibility: 0.95, bestPractices: 0.96, seo: 1, consoleErrors: 1, kib: 937, performance: 0.99 },
-        game: { accessibility: 0.93, bestPractices: 0.96, seo: 1, consoleErrors: 1, kib: 2106, performance: 1 },
-        profile: { accessibility: 0.95, bestPractices: 0.96, seo: 1, consoleErrors: 1, kib: 587, performance: 1 },
+        home: { accessibility: 0.96, bestPractices: 1, seo: 1, consoleErrors: 0, kib: 870, performance: 1 },
+        games: { accessibility: 0.95, bestPractices: 1, seo: 1, consoleErrors: 0, kib: 937, performance: 0.99 },
+        game: { accessibility: 0.93, bestPractices: 1, seo: 1, consoleErrors: 0, kib: 2106, performance: 1 },
+        profile: { accessibility: 0.95, bestPractices: 1, seo: 1, consoleErrors: 0, kib: 587, performance: 1 },
         lists: { accessibility: 0.95, bestPractices: 1, seo: 0.66, consoleErrors: 0, kib: 587, performance: 0.99 },
     },
 };

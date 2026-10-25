@@ -71,7 +71,7 @@ const onClose = vi.fn();
 /** The provider with nobody signed in yet, the sign-in dialog open, and `/me` answered. */
 async function openSignIn(routes: ApiRoutes = {}) {
     const api = stubApi({
-        'GET /api/auth/me': () => empty(401),
+        'GET /api/auth/me': () => empty(),
         'POST /api/auth/login': loginAsTheApiDoes(),
         ...routes,
     });
@@ -88,7 +88,7 @@ async function openSignIn(routes: ApiRoutes = {}) {
 /** The same, with the sign-up dialog. */
 async function openSignUp(routes: ApiRoutes = {}) {
     const api = stubApi({
-        'GET /api/auth/me': () => empty(401),
+        'GET /api/auth/me': () => empty(),
         'POST /api/auth/register': call => json(userProfile({
             ...ALEX,
             ...(call.body as { email: string; userName: string }),
@@ -150,6 +150,14 @@ describe('AuthProvider on load', () => {
         expect(screen.getByText('Asking who is signed in')).toBeInTheDocument();
         expect(await screen.findByText('Signed in as alex')).toBeInTheDocument();
         expect(api.callsTo('GET', '/api/auth/me')[0].credentials).toBe('include');
+    });
+
+    it("takes the API's empty answer for nobody signed in", async () => {
+        // A 204, not a 401, which the browser would log as an error on every page a visitor opens (#316).
+        stubApi({ 'GET /api/auth/me': () => empty() });
+        render(<AuthProvider><Session /></AuthProvider>);
+
+        expect(await screen.findByText('Nobody is signed in')).toBeInTheDocument();
     });
 
     it('takes a refused answer for nobody signed in', async () => {

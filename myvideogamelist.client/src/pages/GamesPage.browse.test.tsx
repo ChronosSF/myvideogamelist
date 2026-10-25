@@ -98,7 +98,7 @@ async function openBrowse(
     routes: ApiRoutes = {},
 ) {
     const api = stubApi({
-        'GET /api/auth/me': () => empty(401),
+        'GET /api/auth/me': () => empty(),
         'GET /api/genres': () => json(GENRES),
         'GET /api/platforms/active': () => json(PLATFORMS),
         ...routes,

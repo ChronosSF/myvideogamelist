@@ -123,8 +123,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     useEffect(() => {
         const controller = new AbortController();
 
+        // Only a 200 names an account. The API answers nobody with a 204, never a 401, which the
+        // browser would log as an error on every page a visitor opens; a refusal or a failure still
+        // means nobody, as before.
         fetch('/api/auth/me', { credentials: 'include', signal: controller.signal })
-            .then(res => (res.ok ? res.json() : null))
+            .then(res => (res.status === 200 ? res.json() : null))
             .then((data: UserProfile | null) => {
                 if (!controller.signal.aborted) setUser(data);
             })

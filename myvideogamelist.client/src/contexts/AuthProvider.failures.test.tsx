@@ -78,7 +78,7 @@ describe('AuthProvider with no API to reach', () => {
 
     it("says in the site's words, not the browser's, that signing in could not reach the API", async () => {
         const actor = userEvent.setup();
-        renderSession({ 'GET /api/auth/me': () => json({}, 401), 'POST /api/auth/login': UNREACHABLE });
+        renderSession({ 'GET /api/auth/me': () => new Response(null, { status: 204 }), 'POST /api/auth/login': UNREACHABLE });
 
         await actor.click(await screen.findByRole('button', { name: 'Sign in' }));
 
