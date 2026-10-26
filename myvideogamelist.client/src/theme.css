@@ -83,7 +83,7 @@
     --color-score-mixed-300: oklch(90.5% 0.182 98.111);
     --color-score-mixed-400: oklch(85.2% 0.199 91.936);
     --color-score-mixed-500: oklch(79.5% 0.184 86.047);
-    --color-on-score-mixed: oklch(20.8% 0.042 265.755); /* Text on the mixed band's yellow, the one light fill */
+    --color-on-score: oklch(17.8% 0.003 67.7);       /* Text on any band's solid fill: the page's ink, 5.5:1 or more */
     --color-score-poor-300: oklch(80.8% 0.114 19.571);
     --color-score-poor-400: oklch(70.4% 0.191 22.216);
     --color-score-poor-500: oklch(63.7% 0.237 25.331);
