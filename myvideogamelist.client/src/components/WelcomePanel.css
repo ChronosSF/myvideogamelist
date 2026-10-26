@@ -1,125 +1,16 @@
 /*
- * The home page's welcome panel. Its drawing is share/default.html's list, at the page's own scale: the
- * same five rows, the same status colours, so the image a link is shared with and the page it opens
- * are recognisably one thing.
+ * The home page's welcome panel (ADR 0075): the headline and the ways in, and the contents list beside them
+ * from a desktop's width, under them below it.
  */
 
 .welcome-panel {
-    border-bottom: 1px solid var(--color-line);
-    background:
-        radial-gradient(ellipse 60rem 36rem at 0% 0%, color-mix(in srgb, var(--color-primary-950) 90%, transparent), transparent 70%),
-        var(--color-page);
-}
-
-/* The words alone on a phone, where the drawing would push the buttons below the first screen. */
-.welcome-panel-grid {
     display: grid;
-    align-items: center;
-    gap: 3rem;
+    align-items: end;
+    gap: 3.5rem 5rem;
 }
 
 @media (width >= 64rem) {
-    .welcome-panel-grid {
-        grid-template-columns: 1fr 22rem;
+    .welcome-panel {
+        grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
     }
-}
-
-.welcome-panel-points {
-    display: grid;
-    gap: 0.5rem;
-    margin-top: 1.5rem;
-    padding: 0;
-    list-style: none;
-    color: var(--color-fg-soft);
-}
-
-.welcome-panel-points li {
-    display: flex;
-    gap: 0.625rem;
-    align-items: baseline;
-}
-
-/* A tick in the brand's lime, as the logo's badge is. */
-.welcome-panel-points li::before {
-    content: "";
-    flex: none;
-    width: 0.75rem;
-    height: 0.375rem;
-    border-bottom: 2px solid var(--color-brand-lime);
-    border-left: 2px solid var(--color-brand-lime);
-    transform: translateY(-0.2rem) rotate(-45deg);
-}
-
-.welcome-panel-list {
-    display: none;
-    gap: 0.625rem;
-    padding: 1rem;
-    border: 1px solid var(--color-line);
-    border-radius: 1.25rem;
-    background: color-mix(in srgb, var(--color-surface) 70%, transparent);
-    box-shadow: 0 1.5rem 3rem -1rem rgb(0 0 0 / 0.5);
-}
-
-@media (width >= 64rem) {
-    .welcome-panel-list {
-        display: grid;
-    }
-}
-
-.welcome-panel-row {
-    display: grid;
-    grid-template-columns: 2.5rem 1fr auto;
-    align-items: center;
-    gap: 0.875rem;
-}
-
-.welcome-status-playing { --dot: var(--color-status-playing); }
-.welcome-status-finished { --dot: var(--color-status-finished); }
-.welcome-status-on_hold { --dot: var(--color-status-on-hold); }
-.welcome-status-backlog { --dot: var(--color-status-backlog); }
-.welcome-status-dropped { --dot: var(--color-status-dropped); }
-
-.welcome-panel-cover {
-    width: 2.5rem;
-    height: 3.25rem;
-    border-radius: 0.375rem;
-    background: linear-gradient(160deg, color-mix(in srgb, var(--dot) 55%, var(--color-surface)), var(--color-sunken));
-}
-
-.welcome-panel-lines {
-    display: grid;
-    gap: 0.5rem;
-}
-
-.welcome-panel-lines span {
-    display: block;
-    height: 0.5rem;
-    border-radius: 0.25rem;
-    background: var(--color-line-strong);
-}
-
-.welcome-panel-lines span + span {
-    width: 55%;
-    height: 0.4rem;
-    background: var(--color-line);
-}
-
-.welcome-panel-chip {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.375rem;
-    padding: 0.125rem 0.625rem;
-    border: 1px solid var(--color-line-strong);
-    border-radius: 999px;
-    color: var(--color-fg-soft);
-    font-size: 0.75rem;
-    white-space: nowrap;
-}
-
-.welcome-panel-chip::before {
-    content: "";
-    width: 0.5rem;
-    height: 0.5rem;
-    border-radius: 50%;
-    background: var(--dot);
 }

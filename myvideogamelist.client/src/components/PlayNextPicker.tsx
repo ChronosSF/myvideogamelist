@@ -86,9 +86,9 @@ export function PlayNextPicker() {
                 link, and two stops for one destination is one too many. */}
             <Link to={`/games/${game.id}`} className="play-next-cover" tabIndex={-1} aria-hidden="true">
                 {/* In the first screen of the signed-in home page, so it loads with the rail above;
-                    drawn inside the 5.5rem box's border. */}
+                    drawn across the 5rem box. */}
                 {game.coverImageUrl && (
-                    <CoverImage url={game.coverImageUrl} alt="" sizes="calc(5.5rem - 2px)" eager />
+                    <CoverImage url={game.coverImageUrl} alt="" sizes="5rem" eager />
                 )}
             </Link>
 

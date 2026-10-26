@@ -1,4 +1,3 @@
-import { HomeSectionHeading } from '@/components/HomeSectionHeading';
 import { startTime, type DayEvent } from '@/lib/calendarEvents';
 import { daysBetween, localToday } from '@/lib/daySpan';
 import { eventWhen, panelEvents } from '@/lib/showcasesAndSales';
@@ -68,8 +67,11 @@ function EventCard({ event, today, hydrated }: { event: DayEvent; today: string;
  * or goes: the reader's fortnight starts a day before or after UTC's. Nothing the server renders can
  * know which, and drawing the panel only in the browser would move the page for every reader instead.
  *
- * Not drawn when nothing is on, like the rails below it, and silent about what failed: when IGDB could
+ * Not drawn when nothing is on, like the panels below it, and silent about what failed: when IGDB could
  * not be asked it shows the sales it has, as the page shows the covers it has without the news.
+ *
+ * A strip between rules rather than a section of its own (ADR 0075): two weeks of shows and sales is a line
+ * of news under the welcome, and set as large as Coming soon it read as the page's main business.
  *
  * @param today The day the loader ran on, in UTC, which stands in for the reader's until hydration.
  */
@@ -81,12 +83,11 @@ export function ShowcasesAndSales({ events, today }: { events: CalendarEvents; t
     if (shown.length === 0) return null;
 
     return (
-        <section className="py-10 sm:py-12" aria-labelledby="showcases-heading">
-            <HomeSectionHeading
-                id="showcases-heading"
-                title="Showcases and sales"
-                subtitle="The big shows and the store-wide sales in the next two weeks"
-            />
+        <section className="showcases" aria-labelledby="showcases-heading">
+            <div className="showcases-heading">
+                <h2 id="showcases-heading" className="showcases-title">Showcases and sales</h2>
+                <p className="showcases-subtitle">The big shows and the store-wide sales in the next two weeks</p>
+            </div>
 
             <ul className="showcases-list">
                 {shown.map(event => <EventCard key={event.key} event={event} today={day} hydrated={hydrated} />)}

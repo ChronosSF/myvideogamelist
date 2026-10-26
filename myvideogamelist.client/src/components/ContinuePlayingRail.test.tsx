@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { ContinuePlayingRail } from '@/components/ContinuePlayingRail';
@@ -172,17 +172,15 @@ describe('ContinuePlayingRail with nothing to continue', () => {
 });
 
 describe('ContinuePlayingRail favourites', () => {
-    it("marks one of the reader's favourites, in the name of its link", () => {
+    it("marks one of the reader's favourites beside its name", () => {
         playing([entry({ game: { id: 1, title: 'Hollow Knight' } }), entry({ game: { id: 2, title: 'Tunic' } })]);
         favoured.add(2);
         renderRail();
 
-        expect(screen.getByRole('link', { name: 'Tunic, one of your favourites' })).toBeInTheDocument();
-        expect(screen.getByRole('link', { name: 'Hollow Knight' })).toBeInTheDocument();
-
-        // The rosette itself, by its class: it is deliberately outside the accessibility tree.
-        const marks = document.querySelectorAll('.favourite-mark-cover');
-        expect(marks).toHaveLength(1);
-        expect(screen.getByRole('link', { name: /Tunic/ })).toContainElement(marks[0] as HTMLElement);
+        // The mark follows the title in its row, named itself: a 3.5rem cover is too small for the round one.
+        const row = (title: string) => screen.getByRole('link', { name: title }).closest('li')!;
+        expect(within(row('Tunic')).getByRole('img', { name: 'One of your favourites' })).toBeInTheDocument();
+        expect(within(row('Hollow Knight')).queryByRole('img', { name: 'One of your favourites' })).toBeNull();
+        expect(document.querySelectorAll('.favourite-mark-cover')).toHaveLength(0);
     });
 });

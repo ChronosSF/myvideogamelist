@@ -21,6 +21,12 @@ interface ReleaseCardProps {
     eager?: boolean;
     /** Whether IGDB has no date for it at all, which its reason says (K4). */
     undated?: boolean;
+    /**
+     * `poster`, the cover with the words under it, as the rails draw a game; or `row`, a small cover with
+     * the words beside it, as a list reads — the two-week line's and the calendar's (ADR 0075). In a row
+     * the cover is too small to carry Add to Backlog, so it is in the words instead.
+     */
+    layout?: 'poster' | 'row';
 }
 
 function Cover({ release, sizes, eager }: { release: ConnectedRelease; sizes: string; eager: boolean }) {
@@ -37,12 +43,29 @@ function Cover({ release, sizes, eager }: { release: ConnectedRelease; sizes: st
  * One release on its own: the card the lists' rails use, with the two actions that fit here — put it in
  * the Backlog, or make it a favourite.
  */
-function SingleRelease({ entry, release, sizes, eager, undated }: Required<ReleaseCardProps> & { release: ConnectedRelease }) {
+function SingleRelease({ entry, release, sizes, eager, undated, layout }: Required<ReleaseCardProps> & { release: ConnectedRelease }) {
     const backlog = useAddToBacklog(release);
     const favourite = useFavouriteToggle(release);
 
+    const addButton = backlog.canAdd && (
+        <button
+            type="button"
+            className={layout === 'row' ? 'release-card-add-row' : 'release-card-add'}
+            disabled={backlog.pending}
+            onClick={backlog.add}
+            // The visible words first, so that saying them to a voice control reaches it;
+            // the title after, so that a screen reader can tell one card's from the next.
+            aria-label={`Add to ${backlog.backlog}: ${release.title}`}
+            title={`Add to ${backlog.backlog}`}
+        >
+            {/* A + where the cover is too narrow for the words. */}
+            <span className="release-card-add-long">Add to {backlog.backlog}</span>
+            <span className="release-card-add-short">+ {backlog.backlog}</span>
+        </button>
+    );
+
     return (
-        <div className="release-card">
+        <div className="release-card" data-layout={layout}>
             <div className="release-card-art">
                 {/* Out of the tab order and hidden from screen readers: the title below is the same
                     link, and a link a screen reader meets twice is one too many. */}
@@ -64,22 +87,7 @@ function SingleRelease({ entry, release, sizes, eager, undated }: Required<Relea
                         <Rosette filled={favourite.favourite} />
                     </button>
                 )}
-                {backlog.canAdd && (
-                    <button
-                        type="button"
-                        className="release-card-add"
-                        disabled={backlog.pending}
-                        onClick={backlog.add}
-                        // The visible words first, so that saying them to a voice control reaches it;
-                        // the title after, so that a screen reader can tell one card's from the next.
-                        aria-label={`Add to ${backlog.backlog}: ${release.title}`}
-                        title={`Add to ${backlog.backlog}`}
-                    >
-                        {/* A + where the cover is too narrow for the words. */}
-                        <span className="release-card-add-long">Add to {backlog.backlog}</span>
-                        <span className="release-card-add-short">+ {backlog.backlog}</span>
-                    </button>
-                )}
+                {layout === 'poster' && addButton}
             </div>
             {/* The words in one box, under the cover or — where a layout wants — beside it. */}
             <div className="release-card-text">
@@ -92,6 +100,7 @@ function SingleRelease({ entry, release, sizes, eager, undated }: Required<Relea
                 )}
                 <p className="release-card-reason">{entryReason(entry, { undated })}</p>
                 {backlog.listedIn !== null && <p className="release-card-listed">In {backlog.listedIn}</p>}
+                {layout === 'row' && addButton}
                 {/* In the card rather than on the cover, which shows the buttons only on hover — a message
                     that disappears when the pointer moves away is no message. */}
                 {backlog.failed && (
@@ -159,15 +168,17 @@ function GroupMember({ release }: { release: ConnectedRelease }) {
  * As wide as whatever holds it. The rest of a game's actions are on its page; here there are the two that
  * fit a view of what is coming.
  */
-export function ReleaseCard({ entry, sizes, eager = false, undated = false }: ReleaseCardProps) {
+export function ReleaseCard({ entry, sizes, eager = false, undated = false, layout = 'poster' }: ReleaseCardProps) {
     const [first] = entry.releases;
     const count = entry.releases.length;
 
-    if (count === 1) return <SingleRelease entry={entry} release={first} sizes={sizes} eager={eager} undated={undated} />;
+    if (count === 1) {
+        return <SingleRelease entry={entry} release={first} sizes={sizes} eager={eager} undated={undated} layout={layout} />;
+    }
 
     const cover = entry.releases.find(r => r.coverImageUrl !== null) ?? first;
     return (
-        <div className="release-card">
+        <div className="release-card" data-layout={layout}>
             <div className="release-card-stack">
                 <Cover release={cover} sizes={sizes} eager={eager} />
             </div>

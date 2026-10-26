@@ -9,14 +9,14 @@ import { SkeletonLine } from '@/components/SkeletonLine';
  */
 export function NewsCardSkeleton() {
     return (
-        <div className="flex gap-4 p-4 rounded-xl bg-surface/60 border border-line skeleton-sheen">
-            <Skeleton className="block shrink-0 w-14 h-20 rounded-lg" />
+        <div className="flex gap-4 py-5 border-b border-line skeleton-sheen">
+            <Skeleton className="block shrink-0 w-12 h-16 rounded-sm" />
 
             <div className="min-w-0 flex-1">
-                <div className="mb-1.5 text-xs">
+                <div className="type-kicker">
                     <SkeletonLine width="w-1/3" />
                 </div>
-                <div className="font-semibold leading-snug">
+                <div className="mt-1.5 type-title text-lg leading-snug">
                     <SkeletonLine width="w-11/12" />
                     <SkeletonLine width="w-1/2" />
                 </div>

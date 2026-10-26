@@ -4,11 +4,10 @@ import { CoverImage } from '@/components/CoverImage';
 import { useLists } from '@/hooks/useLists';
 import { useFavourites } from '@/hooks/useFavourites';
 import { FavouriteMark } from './FavouriteMark';
-import { FavouriteWords } from './FavouriteWords';
 import { sortEntries, type SortState } from '@/lib/listSort';
 
-/** Each cover is drawn across its card, `w-32 sm:w-36`, less the one-pixel border on either side. */
-const COVER_SIZES = '(min-width: 40rem) calc(9rem - 2px), calc(8rem - 2px)';
+/** Each cover is drawn across its row's 3.5rem column. */
+const COVER_SIZES = '3.5rem';
 
 /**
  * Most recently moved into Playing first, rather than the lists page's "recently added".
@@ -65,63 +64,44 @@ export function ContinuePlayingRail() {
     }
 
     return (
-        <ul
-            className="relative flex gap-4 overflow-x-auto pb-4 -mx-4 px-4 sm:mx-0 sm:px-0 scroll-px-4 sm:scroll-px-0 snap-x snap-mandatory scroll-smooth"
-            // Positioned, so that the visually hidden words beside a favourite's title are placed inside
-            // it. Placed against the page instead, those of a cover scrolled out of view widened the
-            // page by the rail's overflow, and a phone could scroll it sideways — as the lists' table
-            // and the two-week line once did (ListTable.css, ReleaseLine.css).
-            // Snapped to the gutter below `sm`, where the first card sits. Snapped to the rail's own
-            // edge, that card's snap position was sixteen pixels in, so the rail scrolled itself there
-            // before the first paint — and Chrome counts that as a scroll, which ends the page's LCP
-            // measurement with nothing recorded (issue 315).
-            // The rail scrolls independently of the page, so it is a focusable region with a name
-            // rather than a silent overflow container a keyboard user cannot reach.
-            tabIndex={0}
-            aria-label="Games you are playing"
-        >
+        // Rows rather than the rail's posters (ADR 0075): what you are playing is a short list to act on, and
+        // as many across as fit at 15rem. Positioned, so that the visually hidden words beside a favourite's
+        // title are placed inside it rather than against the page.
+        <ul className="continue-list relative" aria-label="Games you are playing">
             {playing.map((entry, index) => {
                 const { game } = entry;
                 const pending = isPending(game.id);
                 const favourite = isFavourite(game.id);
 
                 return (
-                    <li key={game.id} className="shrink-0 snap-start w-32 sm:w-36">
-                        <Link
-                            to={`/games/${game.id}`}
-                            className="group block focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus rounded-xl"
-                        >
-                            <div className="relative aspect-[3/4] rounded-xl overflow-hidden bg-surface border border-line group-hover:border-primary-500/60 transition-all duration-300 shadow-lg">
-                                {game.coverImageUrl && (
-                                    <CoverImage
-                                        url={game.coverImageUrl}
-                                        alt=""
-                                        sizes={COVER_SIZES}
-                                        eager={index < 6}
-                                        className="w-full h-full object-cover"
-                                    />
-                                )}
-                                {favourite && <FavouriteMark variant="cover" />}
-                            </div>
-
-                            <p className="mt-2 text-sm font-medium text-fg leading-snug line-clamp-2 group-hover:text-primary-400 transition-colors">
-                                {game.title}
-                                {favourite && <FavouriteWords />}
-                            </p>
+                    <li key={game.id} className="continue-item">
+                        {/* Out of the tab order and hidden from screen readers: the title beside it is the
+                            same link. */}
+                        <Link to={`/games/${game.id}`} className="continue-cover" tabIndex={-1} aria-hidden="true">
+                            {game.coverImageUrl && (
+                                <CoverImage url={game.coverImageUrl} alt="" sizes={COVER_SIZES} eager={index < 6} />
+                            )}
                         </Link>
 
-                        <button
-                            type="button"
-                            className="continue-finish-btn"
-                            disabled={pending}
-                            // The provider owns the optimistic update, the per-game lock and the
-                            // rollback, and it records the event — a status must never be written
-                            // any other way (ADR 0018). Fired with `void` like every other call
-                            // site: it has already handled its own failure.
-                            onClick={() => void addToList('finished', game)}
-                        >
-                            {pending ? 'Saving…' : 'Mark finished'}
-                        </button>
+                        <div className="min-w-0">
+                            <Link to={`/games/${game.id}`} className="continue-title">{game.title}</Link>
+                            {/* After the title, on a cover too small for the round mark; named itself. */}
+                            {favourite && <FavouriteMark variant="inline" />}
+                            <div>
+                                <button
+                                    type="button"
+                                    className="continue-finish-btn"
+                                    disabled={pending}
+                                    // The provider owns the optimistic update, the per-game lock and the
+                                    // rollback, and it records the event — a status must never be written
+                                    // any other way (ADR 0018). Fired with `void` like every other call
+                                    // site: it has already handled its own failure.
+                                    onClick={() => void addToList('finished', game)}
+                                >
+                                    {pending ? 'Saving…' : 'Mark finished'}
+                                </button>
+                            </div>
+                        </div>
                     </li>
                 );
             })}

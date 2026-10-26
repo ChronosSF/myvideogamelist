@@ -1,16 +1,53 @@
 /*
- * The showcases and sales on the home page: a card per event, tinted for its kind with the colours the
- * two-week line and the calendar give the same kinds, so that a sale reads as one wherever it is.
+ * The showcases and sales on the home page (ADR 0075): a strip between two rules under the welcome, its
+ * heading in small capitals and each event on one line — its kind in the colour the two-week line and the
+ * calendar give the same kind, its name, and when.
  *
  * Every selector names a class of its own. These rules are unlayered, so a bare `span` here would
  * outrank Tailwind's `sr-only` and put the screen-reader text on screen.
  */
 
+.showcases {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.75rem 2.5rem;
+    padding: 1rem 0;
+    border-top: 1px solid var(--color-line);
+    border-bottom: 1px solid var(--color-line);
+}
+
+.showcases-heading {
+    display: flex;
+    flex-direction: column;
+    gap: 0.125rem;
+}
+
+.showcases-title,
+.showcases-kind {
+    margin: 0;
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    font-weight: 400;
+    line-height: 1.4;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+}
+
+.showcases-title {
+    color: var(--color-fg-strong);
+}
+
+.showcases-subtitle {
+    margin: 0;
+    font-size: 0.8125rem;
+    color: var(--color-fg-muted);
+}
+
 .showcases-list {
-    display: grid;
-    /* As many across as fit at a readable width, and one on a phone, never wider than the page. */
-    grid-template-columns: repeat(auto-fill, minmax(min(16rem, 100%), 1fr));
-    gap: 0.75rem;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem 2.5rem;
     margin: 0;
     padding: 0;
     list-style: none;
@@ -18,73 +55,52 @@
 
 .showcases-item {
     display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.125rem 0.75rem;
     min-width: 0;
-    padding: 0.875rem 1rem;
-    border: 1px solid;
-    border-radius: 0.75rem;
-}
-
-.showcases-kind {
-    margin: 0;
-    font-size: 0.6875rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
 }
 
 .showcases-name {
     margin: 0;
-    font-weight: 600;
-    line-height: 1.35;
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 1.125rem;
+    line-height: 1.3;
     color: var(--color-fg-strong);
-    /* A name can be one long word, and a card is narrow on a phone. */
+    /* A name can be one long word, and a phone is narrow. */
     overflow-wrap: anywhere;
 }
 
 a.showcases-name:hover {
     text-decoration: underline;
+    text-decoration-color: var(--color-line-strong);
+    text-underline-offset: 0.2em;
 }
 
 a.showcases-name:focus-visible {
     outline: 2px solid var(--color-focus);
     outline-offset: 2px;
-    border-radius: 0.25rem;
+    border-radius: var(--radius-sm);
 }
 
 .showcases-when {
     margin: 0;
-    font-size: 0.8125rem;
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
     color: var(--color-fg-muted);
 }
 
 .showcases-countdown {
-    font-weight: 600;
     color: var(--color-fg);
-}
-
-.showcases-item[data-kind='sale'] {
-    border-color: color-mix(in srgb, var(--color-sale-500) 40%, transparent);
-    background: color-mix(in srgb, var(--color-sale-500) 10%, transparent);
 }
 
 .showcases-item[data-kind='sale'] .showcases-kind {
     color: var(--color-sale-300);
 }
 
-.showcases-item[data-kind='fest'] {
-    border-color: color-mix(in srgb, var(--color-fest-500) 40%, transparent);
-    background: color-mix(in srgb, var(--color-fest-500) 10%, transparent);
-}
-
 .showcases-item[data-kind='fest'] .showcases-kind {
     color: var(--color-fest-300);
-}
-
-.showcases-item[data-kind='showcase'] {
-    border-color: color-mix(in srgb, var(--color-showcase-500) 45%, transparent);
-    background: color-mix(in srgb, var(--color-showcase-500) 12%, transparent);
 }
 
 .showcases-item[data-kind='showcase'] .showcases-kind {

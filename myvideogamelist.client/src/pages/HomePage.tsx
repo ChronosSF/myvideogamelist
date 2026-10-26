@@ -1,6 +1,6 @@
 import { Link, data } from 'react-router';
 import { useAuth } from '@/hooks/useAuth';
-import { ComingSoonRail } from '@/components/ComingSoonRail';
+import { ComingSoonSchedule } from '@/components/ComingSoonSchedule';
 import { ContinuePlayingRail } from '@/components/ContinuePlayingRail';
 import { ContinuePlayingSkeleton } from '@/components/ContinuePlayingSkeleton';
 import { HomeSectionHeading } from '@/components/HomeSectionHeading';
@@ -158,43 +158,40 @@ export async function loader({ context, request }: Route.LoaderArgs) {
  */
 function SignedInHero({ user }: { user: UserProfile | null }) {
     return (
-        <section className="signed-in-hero">
-            <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8 sm:py-10">
-                <div className="flex flex-wrap items-end justify-between gap-4 mb-6">
-                    <div>
-                        <h1 className="text-2xl sm:text-3xl font-bold text-fg-strong">
-                            Welcome back{user !== null && `, ${user.userName}`}
-                        </h1>
-                        <p className="text-sm text-fg-muted mt-1">
-                            Pick up where you left off.
-                        </p>
-                    </div>
+        <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-10 sm:pt-14">
+            <div className="flex flex-wrap items-baseline justify-between gap-x-8 gap-y-3 mb-8">
+                <h1 className="type-display text-4xl sm:text-6xl text-fg-strong text-balance">
+                    Welcome back{user !== null && <>, <span className="text-primary-400">{user.userName}</span></>}
+                </h1>
 
-                    <Link
-                        to="/lists"
-                        className="shrink-0 text-sm font-medium text-primary-400 hover:text-primary-300 transition-colors"
-                    >
-                        All your lists <span aria-hidden="true">→</span>
-                    </Link>
-                </div>
+                <Link
+                    to="/lists"
+                    className="shrink-0 text-sm font-semibold text-fg-strong underline decoration-line-strong underline-offset-4 hover:decoration-fg-strong transition-colors"
+                >
+                    All your lists <span aria-hidden="true">→</span>
+                </Link>
+            </div>
 
-                {user !== null ? <HomeStatsStrip userId={user.id} /> : <HomeStatsStripSkeleton />}
+            {user !== null ? <HomeStatsStrip userId={user.id} /> : <HomeStatsStripSkeleton />}
 
-                <h2 className="text-lg font-semibold text-fg-strong mt-8 mb-4">
-                    Continue playing
-                </h2>
-                {user !== null ? <ContinuePlayingRail /> : <ContinuePlayingSkeleton />}
+            {/* Side by side where there is room: what you are playing, and beside it what to play once
+                that is done. Starting the pick moves it into the list beside. */}
+            <div className="mt-12 flex flex-wrap items-start gap-x-14 gap-y-10">
+                <section className="flex-[999_1_34rem] min-w-0 border-t border-line pt-4" aria-labelledby="continue-playing-heading">
+                    <h2 id="continue-playing-heading" className="type-kicker text-fg-muted mb-4">Continue playing</h2>
+                    {user !== null ? <ContinuePlayingRail /> : <ContinuePlayingSkeleton />}
+                </section>
 
-                {/* After the rail rather than before it: what you are playing, then what to play
-                    once that is done. Starting the pick moves it into the rail above. */}
-                <h2 className="text-lg font-semibold text-fg-strong mt-8 mb-4">
-                    Play next
-                </h2>
-                {user !== null ? <PlayNextPicker /> : <PlayNextSkeleton />}
+                <section className="flex-[1_1_18rem] min-w-0 border-t-2 border-fg-strong pt-4" aria-labelledby="play-next-heading">
+                    <h2 id="play-next-heading" className="type-kicker text-fg-muted mb-4">Play next</h2>
+                    {user !== null ? <PlayNextPicker /> : <PlayNextSkeleton />}
+                </section>
+            </div>
 
-                {/* Last in the hero, so directly above the panels everybody sees, which matter less to
-                    somebody signed in than their own games do (L1). Brings its own heading, because
-                    its sentence for an empty two weeks belongs inside the line it describes. */}
+            {/* Last in the hero, so directly above the panels everybody sees, which matter less to
+                somebody signed in than their own games do (L1). Brings its own heading, because
+                its sentence for an empty two weeks belongs inside the line it describes. */}
+            <div className="mt-16 sm:mt-20">
                 {user !== null ? <ReleaseLine userId={user.id} /> : <ReleaseLineSkeleton />}
             </div>
         </section>
@@ -225,10 +222,10 @@ export function HomePage({ loaderData }: Route.ComponentProps) {
 
             {/* Everything below is the same for both, but for the showcases and sales, which give
                 way to the line. The panels and the news are worth seeing whether or not anybody is
-                signed in, and duplicating them into two branches is how the two drift. A rule
-                between each section and the next, whichever of them are drawn: any of them can be
-                missing. */}
-            <div className="max-w-6xl mx-auto px-4 sm:px-6 divide-y divide-line">
+                signed in, and duplicating them into two branches is how the two drift. Each section
+                opens with its heading's heavy rule, so whichever of them are drawn are set apart:
+                any of them can be missing. */}
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-8">
                 {/* Where the two-week line is for somebody signed in, directly above Coming soon, and
                     giving way to it: the line shows these same events on the same days, beside the
                     reader's own releases, and the two together would be every sale twice, one under
@@ -240,18 +237,18 @@ export function HomePage({ loaderData }: Route.ComponentProps) {
                     0073). A game on somebody's line may be here too, which is the panel saying it is a big
                     one; the two panels meet on today and never hold the same game. */}
                 {comingSoon.length > 0 && (
-                    <section className="py-10 sm:py-12" aria-labelledby="coming-soon-heading">
+                    <section className="pt-16 sm:pt-20" aria-labelledby="coming-soon-heading">
                         <HomeSectionHeading
                             id="coming-soon-heading"
                             title="Coming soon"
                             subtitle="The new games most followed on IGDB, out in the next three months"
                         />
-                        <ComingSoonRail games={comingSoon} today={today} />
+                        <ComingSoonSchedule games={comingSoon} today={today} />
                     </section>
                 )}
 
                 {justOut.length > 0 && (
-                    <section className="py-10 sm:py-12" aria-labelledby="just-out-heading">
+                    <section className="pt-16 sm:pt-20" aria-labelledby="just-out-heading">
                         <HomeSectionHeading
                             id="just-out-heading"
                             title="Just out"
@@ -264,7 +261,7 @@ export function HomePage({ loaderData }: Route.ComponentProps) {
 
                 {/* Last: news is about Steam's most-played games alone, which the panels above are not. */}
                 {news.length > 0 && (
-                    <section className="py-10 sm:py-12" aria-labelledby="news-heading">
+                    <section className="pt-16 sm:pt-20" aria-labelledby="news-heading">
                         <HomeSectionHeading
                             id="news-heading"
                             title="Latest news"
@@ -275,12 +272,19 @@ export function HomePage({ loaderData }: Route.ComponentProps) {
                             action={!loading && user !== null ? { to: '/news', label: 'News for your games' } : undefined}
                         />
 
-                        {/* grid-cols-1, not an implicit column: that one sizes to its content, and
-                            a card's truncated source line counts at full length — wider than a phone. */}
-                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                            {news.map(item => (
-                                <NewsCard key={item.id} item={item} />
-                            ))}
+                        {/* A front page: the newest item as the lead, and the rest as a column of briefs
+                            beside it, or under it on a phone. minmax(0, …) rather than an implicit
+                            column, which sizes to its content: a brief's source line counts at full
+                            length, wider than a phone. */}
+                        <div className="grid gap-x-14 gap-y-8 grid-cols-1 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
+                            <NewsCard item={news[0]} variant="lead" />
+                            {news.length > 1 && (
+                                <ul className="border-t border-line" aria-label="More news">
+                                    {news.slice(1).map(item => (
+                                        <li key={item.id}><NewsCard item={item} variant="brief" /></li>
+                                    ))}
+                                </ul>
+                            )}
                         </div>
                     </section>
                 )}

@@ -46,9 +46,9 @@ whole view.
 
 | # | Requirement |
 |---|---|
-| L1 | One horizontal line in the signed-in hero, from today to thirteen days ahead — above the shared panels and the news, which matter less to somebody who has signed in than their own games do. It replaces the Releasing soon rail, which covered wishlist and backlog releases only (§8.3) |
+| L1 | One horizontal line in the signed-in hero, from today to thirteen days ahead — above the shared panels and the news, which matter less to somebody who has signed in than their own games do. It replaces the Releasing soon rail, which covered wishlist and backlog releases only (§8.3). The line is a ruler of the fourteen days, all the same width, and under it the same things are a list in day order, which is where they are read and linked: a day with nothing on it is a column of the ruler and no line of the list ([0075](../docs/decisions/0075-the-editorial-redesign.md)) |
 | L2 | Only entries known to the day (§4). A release known only to its month, quarter or year never appears on the line; it waits in the calendar |
-| L3 | A release is a point on its day. A sale or a showcase that spans days is a span across them. Showcases and sales are marked as what they are and carry no cover |
+| L3 | A release is a point on its day: a small cover standing on it. A sale or a showcase that spans days is a span across them. Showcases and sales are marked as what they are and carry no cover. In the list a sale or a showcase is listed once, at the first of its days, a day's before its releases; one already running is "on now", until its last day |
 | L4 | Every entry says why it is there (§3.4) |
 | L5 | Entries grouped by §3.3's F6 appear as one ("Kingdom Hearts — 8 releases") |
 | L6 | A link to the calendar, always shown |

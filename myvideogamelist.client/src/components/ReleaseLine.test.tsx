@@ -96,30 +96,40 @@ beforeEach(() => {
 });
 
 describe('ReleaseLine', () => {
-    it('is a named, focusable region of fourteen days, today first', () => {
+    it('draws the two weeks as a ruler of fourteen days, today first, hidden from whoever has the list', () => {
         renderLine();
 
         expect(screen.getByRole('heading', { name: 'Coming up' })).toBeInTheDocument();
-        const region = screen.getByRole('region', { name: 'The next two weeks' });
-        expect(region).toHaveAttribute('tabindex', '0');
+        const ruler = document.querySelector('.release-ruler')!;
+        expect(ruler).toHaveAttribute('aria-hidden', 'true');
 
-        const days = within(screen.getByRole('list', { name: 'Days' })).getAllByRole('listitem');
-        expect(days).toHaveLength(14);
-        expect(days[0]).toHaveTextContent('Today, Tuesday, October 6');
-        expect(days[13]).toHaveTextContent('Monday, October 19');
+        const labels = ruler.querySelectorAll('.release-ruler-label');
+        expect(labels).toHaveLength(14);
+        expect(labels[0]).toHaveTextContent('Today6Oct');
+        expect(labels[13]).toHaveTextContent('Mon19');
     });
 
-    it('puts a release on its day, with a link to it and why it is there', () => {
+    it('lists a release under its day, with a link to it and why it is there, and no empty day', () => {
         line.releases.data = [RESIDENT_EVIL_2];
         renderLine();
 
-        const friday = within(screen.getByRole('list', { name: 'Days' })).getAllByRole('listitem')[10];
-        expect(friday).toHaveTextContent('Friday, October 16');
-        expect(within(friday).getByRole('link', { name: 'Resident Evil 2' })).toHaveAttribute('href', '/games/19686');
-        expect(friday).toHaveTextContent('On your wishlist — out on Switch 2');
+        const items = within(screen.getByRole('list', { name: 'The next two weeks' })).getAllByRole('listitem');
+        expect(items).toHaveLength(1);
+        expect(items[0]).toHaveTextContent('Fri, Oct 16');
+        expect(items[0]).toHaveTextContent('In 10 days');
+        expect(within(items[0]).getByRole('link', { name: 'Resident Evil 2' })).toHaveAttribute('href', '/games/19686');
+        expect(items[0]).toHaveTextContent('On your wishlist — out on Switch 2');
     });
 
-    it('puts an update on its day, as an update for the game it updates', () => {
+    it('marks a release on the ruler, on its day', () => {
+        line.releases.data = [RESIDENT_EVIL_2];
+        renderLine();
+
+        const mark = document.querySelector('.release-ruler-mark') as HTMLElement;
+        expect(mark.style.gridColumn).toContain('11');
+    });
+
+    it('lists an update under its day, as an update for the game it updates', () => {
         // Gran Turismo 7's Spec IV, which IGDB types an update: there because the reader plays the game.
         line.releases.data = [releaseEntry('2026-10-15', [connectedRelease({
             gameId: 416116,
@@ -130,8 +140,8 @@ describe('ReleaseLine', () => {
         })])];
         renderLine();
 
-        const thursday = within(screen.getByRole('list', { name: 'Days' })).getAllByRole('listitem')[9];
-        expect(thursday).toHaveTextContent('Thursday, October 15');
+        const [thursday] = within(screen.getByRole('list', { name: 'The next two weeks' })).getAllByRole('listitem');
+        expect(thursday).toHaveTextContent('Thu, Oct 15');
         expect(within(thursday).getByRole('link', { name: 'Gran Turismo 7: Spec IV' })).toHaveAttribute('href', '/games/416116');
         expect(within(thursday).getByText("Update for Gran Turismo 7, which you're playing")).toBeInTheDocument();
         expect(within(thursday).getByText('PS4, PS5, PSVR2')).toBeInTheDocument();
@@ -141,7 +151,8 @@ describe('ReleaseLine', () => {
         line.releases.data = [KINGDOM_HEARTS];
         renderLine();
 
-        const thursday = within(screen.getByRole('list', { name: 'Days' })).getAllByRole('listitem')[2];
+        const [thursday] = within(screen.getByRole('list', { name: 'The next two weeks' })).getAllByRole('listitem');
+        expect(thursday).toHaveTextContent('Thu, Oct 8');
         expect(thursday).toHaveTextContent('Kingdom Hearts');
         expect(thursday).toHaveTextContent('2 releases');
         expect(thursday).toHaveTextContent('Includes Kingdom Hearts III, which you finished');
@@ -172,7 +183,7 @@ describe('ReleaseLine', () => {
         expect(screen.queryByText(/Nothing connected/)).not.toBeInTheDocument();
     });
 
-    it('draws a sale across its days, marked as what it is and linked to its announcement (L3)', () => {
+    it('lists a sale that is on as on now, marked as what it is and linked to its announcement (L3)', () => {
         line.events.data = calendarEvents({
             curated: [{
                 id: 1, kind: 'sale', store: 'steam', name: 'Steam Autumn Sale',
@@ -181,17 +192,23 @@ describe('ReleaseLine', () => {
         });
         renderLine();
 
-        const bar = within(screen.getByRole('list', { name: 'Showcases and sales' })).getByRole('listitem');
-        expect(bar).toHaveTextContent('Sale');
-        expect(bar).toHaveTextContent('until Oct 15');
-        expect(bar).toHaveTextContent('Oct 1 – 15, 2026');
+        const [sale] = within(screen.getByRole('list', { name: 'The next two weeks' })).getAllByRole('listitem');
+        expect(sale).toHaveTextContent('On now');
+        expect(sale).toHaveTextContent('until Thu, Oct 15');
+        expect(sale).toHaveTextContent('Sale · Steam');
+        expect(sale).toHaveTextContent('Oct 1 – 15, 2026');
 
-        const link = within(bar).getByRole('link', { name: 'Steam Autumn Sale (opens in a new tab)' });
+        const link = within(sale).getByRole('link', { name: 'Steam Autumn Sale (opens in a new tab)' });
         expect(link).toHaveAttribute('href', 'https://partner.steamgames.com/doc/marketing/upcoming_events');
         expect(link).toHaveAttribute('rel', 'noopener noreferrer');
+
+        // And across its days on the ruler, cut off at its edge, since it began before the line does.
+        const bar = document.querySelector('.release-ruler-bar') as HTMLElement;
+        expect(bar).toHaveAttribute('data-continues-before');
+        expect(bar.style.gridColumn).toBe('1 / 11');
     });
 
-    it('draws a showcase on its day, unlinked when IGDB has no stream', () => {
+    it('lists a showcase on its day at its time, unlinked when IGDB has no stream', () => {
         line.events.data = calendarEvents({
             showcases: [{
                 id: 1050, name: 'Summer Game Fest 2026',
@@ -200,11 +217,24 @@ describe('ReleaseLine', () => {
         });
         renderLine();
 
-        const bar = within(screen.getByRole('list', { name: 'Showcases and sales' })).getByRole('listitem');
-        expect(bar).toHaveTextContent('Showcase');
-        expect(bar).toHaveTextContent('Summer Game Fest 2026');
-        expect(bar).toHaveTextContent('Friday, October 9');
-        expect(within(bar).queryByRole('link')).not.toBeInTheDocument();
+        const [showcase] = within(screen.getByRole('list', { name: 'The next two weeks' })).getAllByRole('listitem');
+        expect(showcase).toHaveTextContent('Fri, Oct 9');
+        expect(showcase).toHaveTextContent('Showcase');
+        expect(showcase).toHaveTextContent('Summer Game Fest 2026');
+        expect(showcase).toHaveTextContent('Friday, October 9');
+        expect(within(showcase).queryByRole('link')).not.toBeInTheDocument();
+    });
+
+    it('lists a day’s events before its releases', () => {
+        line.releases.data = [RESIDENT_EVIL_2];
+        line.events.data = calendarEvents({
+            curated: [{ id: 2, kind: 'fest', store: null, name: 'Autumn Game Fest', startsOn: '2026-10-16', endsOn: '2026-10-18', url: null }],
+        });
+        renderLine();
+
+        const items = within(screen.getByRole('list', { name: 'The next two weeks' })).getAllByRole('listitem');
+        expect(items[0]).toHaveTextContent('Autumn Game Fest');
+        expect(items[1]).toHaveTextContent('Resident Evil 2');
     });
 
     it('keeps the sales when the releases could not be loaded, and says what is missing', () => {
