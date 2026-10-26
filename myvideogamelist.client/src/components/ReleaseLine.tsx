@@ -41,7 +41,7 @@ function Ruler({ layout }: { layout: LineLayout }) {
                 return (
                     <span key={day.day} className="release-ruler-mark" style={{ gridColumn: day.index + 1, gridRow: -2 }}>
                         <span className="release-ruler-cover">
-                            {/* The row's size rather than the mark's own 2.25rem, so that the two fetch one file. */}
+                            {/* The row's size, which is the mark's at most, so that the two fetch one file. */}
                             {cover !== null && <CoverImage url={cover} alt="" sizes={RELEASE_COVER_SIZES} eager />}
                         </span>
                         {releases.length > 1 && <span className="release-ruler-count">{releases.length}</span>}

@@ -6,8 +6,8 @@ import { useFavourites } from '@/hooks/useFavourites';
 import { FavouriteMark } from './FavouriteMark';
 import { sortEntries, type SortState } from '@/lib/listSort';
 
-/** Each cover is drawn across its row's 3.5rem column. */
-const COVER_SIZES = '3.5rem';
+/** Each cover is drawn across its row's 5.5rem column. */
+const COVER_SIZES = '5.5rem';
 
 /**
  * Most recently moved into Playing first, rather than the lists page's "recently added".

@@ -1,0 +1,63 @@
+/*
+ * Two layers, each a token colour cut out by a mask, so the palette decides its colours: the cells'
+ * hairlines, paper with the primary glowing through them up at the right; and a few cells lit in the
+ * primary, which breathe. Each mask is the pattern intersected with a fade that is gone by half a screen.
+ * The bottom one is the same turned half a turn, so its glow is down at the left. Behind the page's
+ * content at z-index -1, over the root's background: `.app-root` draws none of its own.
+ */
+.honeycomb {
+    position: absolute;
+    inset-inline: 0;
+    top: 0;
+    height: 100svh;
+    z-index: -1;
+    pointer-events: none;
+}
+
+.honeycomb[data-at='bottom'] {
+    top: auto;
+    bottom: 0;
+    rotate: 180deg;
+}
+
+.honeycomb::before,
+.honeycomb::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    mask-composite: intersect;
+    mask-repeat: repeat, no-repeat;
+}
+
+.honeycomb::before {
+    background:
+        radial-gradient(ellipse 55% 70% at 78% 0%, color-mix(in srgb, var(--color-primary-500) 55%, transparent), transparent 75%),
+        color-mix(in srgb, var(--color-fg-strong) 10%, transparent);
+    /* Eased rather than linear: slow at first, then quickly through the last few shades. A hairline this faint
+       has a score of shades above the page, and as it fades the in-between ones that smooth its diagonals
+       round away, so the tail is kept short rather than drawn out in stairs. */
+    mask-image:
+        url('../assets/honeycomb.svg?no-inline'),
+        linear-gradient(to bottom, black 15%, rgb(0 0 0 / 0.85) 30%, rgb(0 0 0 / 0.6) 40%, rgb(0 0 0 / 0.35) 46%, transparent 50%);
+    mask-size: 78px 44px, 100% 100%;
+}
+
+.honeycomb::after {
+    background:
+        radial-gradient(ellipse 50% 65% at 78% 0%, color-mix(in srgb, var(--color-primary-500) 22%, transparent), transparent 80%),
+        color-mix(in srgb, var(--color-primary-500) 4%, transparent);
+    mask-image: url('../assets/honeycomb-lit.svg?no-inline'), linear-gradient(to bottom, black 10%, transparent 50%);
+    mask-size: 312px 220px, 100% 100%;
+    animation: honeycomb-breathe 6s ease-in-out infinite alternate;
+}
+
+@keyframes honeycomb-breathe {
+    from { opacity: 0.45; }
+    to { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .honeycomb::after {
+        animation: none;
+    }
+}

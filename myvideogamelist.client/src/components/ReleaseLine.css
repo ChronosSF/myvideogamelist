@@ -90,15 +90,15 @@
     color: var(--kind-ink);
 }
 
-/* A release: a small cover standing on its day, ringed so that it reads as a point rather than a picture. */
+/* A release: a cover standing on its day, the day's whole width up to the agenda row's. */
 .release-ruler-mark {
     position: relative;
     z-index: 1;
     align-self: end;
     justify-self: center;
     width: 100%;
-    max-width: 2.25rem;
-    margin-bottom: 0.625rem;
+    max-width: calc(3.5rem - 2px);
+    margin-bottom: 0.375rem;
 }
 
 .release-ruler-cover {
@@ -107,7 +107,6 @@
     overflow: hidden;
     border-radius: var(--radius-sm);
     background: var(--color-surface);
-    box-shadow: 0 0 0 2px var(--color-page), 0 0 0 3px var(--color-fg-strong);
 }
 
 .release-ruler-cover img {

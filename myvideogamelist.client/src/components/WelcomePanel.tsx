@@ -26,7 +26,7 @@ export function WelcomePanel() {
         // them below it.
         <section className="grid items-end gap-x-20 gap-y-14 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)] max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-14 sm:pt-24 pb-14 sm:pb-20" aria-labelledby="welcome-heading">
             <div>
-                <h1 id="welcome-heading" className="type-display text-5xl sm:text-7xl lg:text-[4.75rem] text-fg-strong text-balance">
+                <h1 id="welcome-heading" className="type-display text-4xl sm:text-[3.375rem] lg:text-[3.5rem] text-fg-strong text-balance">
                     Every game you&apos;ve played,{' '}
                     <span className="text-primary-400">in one list</span>
                 </h1>

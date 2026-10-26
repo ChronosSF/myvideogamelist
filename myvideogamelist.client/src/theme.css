@@ -27,10 +27,10 @@
 @theme static {
     /* ── Surfaces, deepest first ──────────────────────────────────────────── */
 
-    --color-sunken: oklch(15% 0.003 67.5);     /* Under the page: scrims, the deep end of a fade over an image. #0c0b0a */
-    --color-page: oklch(17.8% 0.003 67.7);     /* The page: the ink everything is printed on. #121110 */
-    --color-surface: oklch(21.8% 0.006 91.6);  /* What sits on the page: a menu, a dialog, a panel that needs a ground. #1b1a17 */
-    --color-raised: oklch(25.7% 0.008 84.6);   /* What sits on a surface, or a surface under the pointer. #25231f */
+    --color-sunken: oklch(18.7% 0.003 67.5);   /* Under the page: scrims, the deep end of a fade over an image. #141312 */
+    --color-page: oklch(21.5% 0.003 67.7);     /* The page: the ink everything is printed on. #1a1918 */
+    --color-surface: oklch(25.5% 0.006 91.6);  /* What sits on the page: a menu, a dialog, a panel that needs a ground. #242320 */
+    --color-raised: oklch(29.4% 0.008 84.6);   /* What sits on a surface, or a surface under the pointer. #2e2c28 */
 
     /* ── Lines ────────────────────────────────────────────────────────────── */
 
@@ -44,8 +44,8 @@
     --color-fg: oklch(88.3% 0.016 86.4);         /* Body text, and the page's own colour. #ddd8cd */
     --color-fg-soft: oklch(81.9% 0.018 84.6);    /* Text a step back: a menu item, a dialog's explanation. #c9c3b7 */
     --color-fg-muted: oklch(70.7% 0.018 84.6);   /* Descriptions, labels, a button that is not the main one. #a6a094 */
-    --color-fg-faint: oklch(63% 0.019 84.6);     /* Metadata, hints. 4.5:1 on a raised surface. #918b7f */
-    --color-fg-dim: oklch(52.6% 0.015 82.4);     /* Placeholders, and what is deliberately barely there. #6f6a61 */
+    --color-fg-faint: oklch(67% 0.019 84.6);     /* Metadata, hints. 4.5:1 on a raised surface. #9b9588 */
+    --color-fg-dim: oklch(54.6% 0.015 82.4);     /* Placeholders, and what is deliberately barely there. #757067 */
 
     /* ── The primary: links, what is selected, the main button ───────────── */
 

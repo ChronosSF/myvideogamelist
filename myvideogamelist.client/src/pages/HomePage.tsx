@@ -160,7 +160,7 @@ function SignedInHero({ user }: { user: UserProfile | null }) {
     return (
         <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-10 sm:pt-14">
             <div className="flex flex-wrap items-baseline justify-between gap-x-8 gap-y-3 mb-8">
-                <h1 className="type-display text-4xl sm:text-6xl text-fg-strong text-balance">
+                <h1 className="type-display text-[1.75rem] sm:text-[2.75rem] text-fg-strong text-balance">
                     Welcome back{user !== null && <>, <span className="text-primary-400">{user.userName}</span></>}
                 </h1>
 
