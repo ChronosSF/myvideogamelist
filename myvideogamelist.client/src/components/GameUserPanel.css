@@ -171,11 +171,11 @@
 /* A form's save. The red below is the confirmation's Delete's, and a save drawn in it reads as that. */
 .game-user-panel-confirm button.primary {
     color: var(--color-on-primary);
-    background: var(--color-primary-600);
+    background: var(--color-primary-500);
 }
 
 .game-user-panel-confirm button.primary:hover:not(:disabled) {
-    background: var(--color-primary-500);
+    background: var(--color-primary-600);
 }
 
 .game-user-panel-confirm button.danger {

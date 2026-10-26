@@ -270,7 +270,7 @@ export function ImportReviewPage() {
                         {gone ? (
                             <Link
                                 to="/import"
-                                className="inline-block px-4 py-2 bg-surface hover:bg-raised text-fg-strong text-sm font-semibold rounded-lg"
+                                className="inline-block px-4 py-2 border border-line-strong hover:border-fg-muted text-fg-strong text-sm font-semibold rounded-sm"
                             >
                                 Back to your imports
                             </Link>
@@ -321,7 +321,7 @@ export function ImportReviewPage() {
                                     type="button"
                                     disabled={matching || busy}
                                     onClick={() => void match()}
-                                    className="px-4 py-2 bg-primary-600 hover:bg-primary-500 disabled:opacity-50 text-on-primary text-sm font-semibold rounded-lg transition-colors"
+                                    className="px-4 py-2 bg-primary-500 hover:bg-primary-600 disabled:opacity-50 text-on-primary text-sm font-bold rounded-sm transition-colors"
                                 >
                                     {matching
                                         ? `Searching… ${formatCount(review.summary.unlooked)} left`
@@ -360,14 +360,14 @@ export function ImportReviewPage() {
 
                             <button
                                 type="button"
-                                className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-surface text-fg-soft hover:bg-raised"
+                                className="px-3 py-1.5 text-xs font-semibold rounded-sm border border-line-strong hover:border-fg-muted text-fg-strong"
                                 onClick={() => bulk(rows.filter(r => r.gameId !== null), IMPORT_DECISION.import)}
                             >
                                 Select every matched game
                             </button>
                             <button
                                 type="button"
-                                className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-surface text-fg-soft hover:bg-raised"
+                                className="px-3 py-1.5 text-xs font-semibold rounded-sm border border-line-strong hover:border-fg-muted text-fg-strong"
                                 onClick={() => bulk(rows, IMPORT_DECISION.skip)}
                             >
                                 Clear all
@@ -386,12 +386,12 @@ export function ImportReviewPage() {
 
                         <p role="status" className="sr-only">{chosen}</p>
 
-                        <ul ref={listRef} className="space-y-2">
+                        <ul ref={listRef} className="border-t border-line">
                             {visible.slice(0, shown).map((row, index) => (
                                 <li
                                     key={row.id}
                                     data-row-id={row.id}
-                                    className="flex items-start gap-3 px-3 py-3 bg-surface/50 border border-line rounded-lg"
+                                    className="flex items-start gap-3 py-4 border-b border-line"
                                 >
                                     {/* Disabled while no game is matched — ticking such a row would
                                         count it in "will import" and then have the commit skip it,
@@ -522,7 +522,7 @@ export function ImportReviewPage() {
                         {visible.length > shown && (
                             <button
                                 type="button"
-                                className="w-full py-2 text-sm font-semibold text-fg-soft bg-surface hover:bg-raised rounded-lg"
+                                className="w-full py-2 text-sm font-semibold border border-line-strong hover:border-fg-muted text-fg-strong rounded-sm"
                                 onClick={() => setShown(count => count + PAGE)}
                             >
                                 Show more ({formatCount(visible.length - shown)} left)
@@ -538,7 +538,7 @@ export function ImportReviewPage() {
                                 type="button"
                                 disabled={busy || saving || review.summary.selected === 0}
                                 onClick={() => void commitAndRefresh()}
-                                className="px-5 py-2.5 bg-primary-600 hover:bg-primary-500 disabled:opacity-50 disabled:hover:bg-primary-600 text-on-primary text-sm font-semibold rounded-lg transition-colors"
+                                className="px-5 py-2.5 bg-primary-500 hover:bg-primary-600 disabled:opacity-50 disabled:hover:bg-primary-500 text-on-primary text-sm font-bold rounded-sm transition-colors"
                             >
                                 {busy ? 'Importing…' : `Import ${formatCount(review.summary.selected)} games`}
                             </button>
@@ -636,9 +636,9 @@ function PlayedChoice({ id, count, status, disabled, label, onChoose }: {
 
 function Tile({ label, value }: { label: string; value: number }) {
     return (
-        <div className="px-4 py-3 bg-surface/50 border border-line rounded-lg">
-            <dt className="text-xs text-fg-muted">{label}</dt>
-            <dd className="text-xl font-bold text-fg-strong">{formatCount(value)}</dd>
+        <div className="pt-3 border-t border-line-strong">
+            <dt className="type-kicker text-fg-muted">{label}</dt>
+            <dd className="mt-1.5 type-display text-3xl text-fg-strong">{formatCount(value)}</dd>
         </div>
     );
 }
@@ -653,10 +653,10 @@ function FilterButton({ active, onClick, children }: {
             type="button"
             aria-pressed={active}
             onClick={onClick}
-            className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${
+            className={`px-3 py-1.5 text-xs font-semibold rounded-sm border transition-colors ${
                 active
-                    ? 'bg-primary-600 text-on-primary'
-                    : 'bg-surface text-fg-soft hover:bg-raised'
+                    ? 'bg-primary-500 border-primary-500 text-on-primary'
+                    : 'border-line-strong text-fg-strong hover:border-fg-muted'
             }`}
         >
             {children}
@@ -732,7 +732,7 @@ function ResultPanel({ rows, games, unlisted, skipped, fileName }: {
             <div className="flex flex-wrap items-center justify-center gap-3">
                 <Link
                     to="/lists"
-                    className="px-5 py-2.5 bg-primary-600 hover:bg-primary-500 text-on-primary text-sm font-semibold rounded-lg transition-colors"
+                    className="px-5 py-2.5 bg-primary-500 hover:bg-primary-600 text-on-primary text-sm font-bold rounded-sm transition-colors"
                 >
                     See your lists
                 </Link>
@@ -741,7 +741,7 @@ function ResultPanel({ rows, games, unlisted, skipped, fileName }: {
                     <button
                         type="button"
                         onClick={() => downloadSkippedRows(skipped, `${fileName}-skipped.csv`)}
-                        className="px-4 py-2.5 text-sm font-semibold text-fg-soft bg-surface hover:bg-raised rounded-lg"
+                        className="px-4 py-2.5 text-sm font-semibold border border-line-strong hover:border-fg-muted text-fg-strong rounded-sm"
                     >
                         Download what was skipped
                     </button>

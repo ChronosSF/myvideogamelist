@@ -64,6 +64,15 @@ will be the same again.
   line about it across from the title. Rows inside a section are divided by hairlines. A box with a ground
   of its own is kept for what floats or is a control: a menu, a dialog, a panel.
 - **A page's header is its title**, set large, with no band or tint behind it.
+- **One filled button a place, for what the place is for**: lime with ink on it, the 500 step and its
+  600 under the pointer — Sign In in its dialog, Start playing, a review's Import. Every other button is
+  outlined in `line-strong` with `fg-strong` words, and red ones are outlined in red; only the dialog
+  that deletes an account fills its button red. A link in running text is `fg-strong`, underlined.
+- **The settings are parts of a page, not cards**: the account page, the public profile and the admin
+  page each set their parts under rules, the tracking and each admin part under the heavy rule and each
+  setting under a hairline, with its label as a kicker. A figure is display type over a kicker, under a
+  hairline, as on the home page's strip. What floats keeps its box, as a dialog does, opened by the
+  heavy rule along its top.
 
 ### The home page
 

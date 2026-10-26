@@ -76,7 +76,7 @@ export function ImportPage() {
                 {signedIn && (
                     <>
                         <section aria-labelledby="import-source">
-                            <h2 id="import-source" className="text-lg font-semibold text-fg-strong mb-1">
+                            <h2 id="import-source" className="type-display text-2xl text-fg-strong border-t-2 border-fg-strong pt-4 mb-2">
                                 From Grouvee
                             </h2>
                             <p className="text-fg-muted text-sm mb-4">
@@ -162,18 +162,18 @@ export function ImportPage() {
 
                         {pending.length > 0 && (
                             <section aria-labelledby="import-pending">
-                                <h2 id="import-pending" className="text-lg font-semibold text-fg-strong mb-3">
+                                <h2 id="import-pending" className="type-display text-2xl text-fg-strong border-t-2 border-fg-strong pt-4 mb-4">
                                     Waiting for you
                                 </h2>
-                                <ul className="space-y-2">
+                                <ul className="border-t border-line">
                                     {pending.map(job => (
                                         <li key={job.id}>
                                             <Link
                                                 to={`/import/${job.id}`}
-                                                className="flex items-center justify-between gap-4 px-4 py-3 bg-surface/60 border border-line-strong rounded-lg hover:border-fg-faint transition-colors"
+                                                className="group flex items-center justify-between gap-4 py-3.5 border-b border-line"
                                             >
                                                 <span className="min-w-0">
-                                                    <span className="block text-fg text-sm font-medium truncate">
+                                                    <span className="block type-title text-fg-strong truncate group-hover:underline decoration-line-strong underline-offset-4">
                                                         {job.fileName}
                                                     </span>
                                                     {expiresIn(job.expiresAt) && (
@@ -194,18 +194,18 @@ export function ImportPage() {
 
                         {finished.length > 0 && (
                             <section aria-labelledby="import-done">
-                                <h2 id="import-done" className="text-lg font-semibold text-fg-strong mb-1">
+                                <h2 id="import-done" className="type-display text-2xl text-fg-strong border-t-2 border-fg-strong pt-4 mb-2">
                                     Already imported
                                 </h2>
                                 <p className="text-fg-muted text-sm mb-3">
                                     The games are in your lists. These are only the receipts, and they are
                                     tidied away a few days after the import finishes.
                                 </p>
-                                <ul className="space-y-2 text-sm">
+                                <ul className="border-t border-line text-sm">
                                     {finished.map(job => (
                                         <li
                                             key={job.id}
-                                            className="flex items-center justify-between gap-4 px-4 py-3 bg-surface/40 border border-line rounded-lg"
+                                            className="flex items-center justify-between gap-4 py-3.5 border-b border-line"
                                         >
                                             <span className="min-w-0">
                                                 <span className="block text-fg-soft truncate">

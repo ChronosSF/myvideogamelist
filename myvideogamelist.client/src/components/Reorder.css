@@ -64,7 +64,7 @@
 .reorder-handle:has(> .reorder-grip[aria-pressed='true']),
 [data-reorder-state='lifted'] .reorder-handle {
     color: var(--color-on-primary);
-    background: var(--color-primary-600);
+    background: var(--color-primary-500);
     border-color: var(--color-primary-500);
 }
 

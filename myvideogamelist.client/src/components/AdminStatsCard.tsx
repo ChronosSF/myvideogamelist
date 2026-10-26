@@ -84,12 +84,12 @@ export function AdminStatsCard({ stats, error, reload }: AdminStatsCardProps) {
             <>
                 {groups.map(group => (
                     <div key={group.title} className="mt-6">
-                        <h3 className="text-sm font-semibold text-fg-soft mb-2">{group.title}</h3>
-                        <dl className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2">
+                        <h3 className="type-kicker text-fg-muted mb-3">{group.title}</h3>
+                        <dl className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-x-5 gap-y-4">
                             {group.figures.map(([label, value]) => (
-                                <div key={label} className="rounded-lg bg-raised/40 px-3 py-2">
+                                <div key={label} className="pt-2 border-t border-line-strong">
                                     <dt className="text-xs text-fg-muted">{label}</dt>
-                                    <dd className="text-xl font-bold text-fg-strong">{formatCount(value)}</dd>
+                                    <dd className="mt-1 type-display text-2xl text-fg-strong">{formatCount(value)}</dd>
                                 </div>
                             ))}
                         </dl>

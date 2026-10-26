@@ -384,7 +384,7 @@ export function ProfilePage({ loaderData }: Route.ComponentProps) {
 export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
     const revalidator = useRevalidator();
     const { userName = '' } = useParams();
-    const button = 'inline-flex items-center gap-1.5 px-4 py-2 bg-primary-600 hover:bg-primary-500 text-on-primary text-sm font-semibold rounded-lg transition-colors';
+    const button = 'inline-flex items-center gap-1.5 px-4 py-2 bg-primary-500 hover:bg-primary-600 text-on-primary text-sm font-bold rounded-sm transition-colors';
     // The id of the request that failed, when the failure says, as the root's boundary shows it: this
     // one takes the root's place for this page's failures, and the id is what a report can quote.
     const reference = isRouteErrorResponse(error) && isUpstreamFailure(error.data) ? error.data.traceId : null;

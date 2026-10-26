@@ -8,7 +8,7 @@ import type { Route } from './+types/TermsPage';
 /** When the terms last changed. Change it with them: it is how a reader tells that they moved. */
 const UPDATED = '13 October 2026';
 
-const H2 = 'text-lg font-semibold text-fg-strong mt-10 mb-3';
+const H2 = 'type-title text-xl text-fg-strong mt-10 mb-3';
 const P = 'text-fg-soft leading-relaxed mb-3';
 const LIST = 'list-disc pl-5 space-y-1.5 text-fg-soft leading-relaxed mb-3';
 const LINK = 'text-primary-400 hover:text-primary-300 underline underline-offset-2';

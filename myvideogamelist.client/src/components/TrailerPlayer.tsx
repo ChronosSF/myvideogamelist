@@ -50,7 +50,7 @@ export function TrailerPlayer({ videoId, title, poster }: TrailerPlayerProps) {
                         <img src={poster} alt="" loading="lazy" className="absolute inset-0 w-full h-full object-cover" />
                     )}
                     <span className="absolute inset-0 bg-black/50 group-hover:bg-black/40 transition-colors" aria-hidden="true" />
-                    <span className="relative flex items-center justify-center w-16 h-16 rounded-full bg-primary-600 group-hover:bg-primary-500 text-on-primary shadow-lg transition-colors" aria-hidden="true">
+                    <span className="relative flex items-center justify-center w-16 h-16 rounded-full bg-primary-500 group-hover:bg-primary-600 text-on-primary shadow-lg transition-colors" aria-hidden="true">
                         <svg className="w-7 h-7 ml-1" viewBox="0 0 24 24" fill="currentColor">
                             <path d="M8 5.14v13.72a1 1 0 0 0 1.52.85l10.29-6.86a1 1 0 0 0 0-1.7L9.52 4.29A1 1 0 0 0 8 5.14Z" />
                         </svg>

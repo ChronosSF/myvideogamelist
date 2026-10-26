@@ -50,7 +50,7 @@ export function EmptyState({
                 >
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d={icon} />
                 </svg>
-                <Title className="text-fg-muted font-medium mb-3">{message}</Title>
+                <Title className={`${page ? 'type-title text-xl text-fg-strong' : 'text-fg-muted font-medium'} mb-3`}>{message}</Title>
                 {detail !== undefined && (
                     <p className={`text-fg-muted text-sm max-w-md mx-auto ${children === undefined ? '' : 'mb-4'}`}>
                         {detail}
