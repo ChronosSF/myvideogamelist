@@ -7,10 +7,11 @@
 }
 
 .lists-tab-btn {
-    padding: 0.5rem 1.125rem;
-    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
-    font-size: 0.875rem;
-    font-weight: 600;
+    padding: 0.625rem 1.125rem;
+    border-radius: 0;
+    font-family: var(--font-display);
+    font-size: 1.125rem;
+    font-weight: 700;
     border: none;
     cursor: pointer;
     color: var(--color-fg-muted);
@@ -22,12 +23,11 @@
 }
 
 .lists-tab-btn:hover {
-    color: var(--color-fg);
-    background: rgba(255, 255, 255, 0.05);
+    color: var(--color-fg-strong);
 }
 
 .lists-tab-btn.active {
-    color: var(--color-primary-400);
+    color: var(--color-fg-strong);
     border-bottom-color: var(--color-primary-500);
 }
 
@@ -39,11 +39,12 @@
     height: 1.25rem;
     padding: 0 0.3rem;
     border-radius: var(--radius-sm);
-    font-size: 0.7rem;
-    font-weight: 700;
-    background: color-mix(in srgb, var(--color-primary-500) 20%, transparent);
-    color: var(--color-primary-300);
-    margin-left: 0.375rem;
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    font-weight: 400;
+    background: transparent;
+    color: var(--color-fg-muted);
+    margin-left: 0.25rem;
 }
 
 /* What a hand order is and how to change it, under the toolbar while the list is in one. */
@@ -55,8 +56,7 @@
 }
 
 .lists-tab-btn.active .lists-tab-count {
-    background: color-mix(in srgb, var(--color-primary-500) 35%, transparent);
-    color: var(--color-primary-300);
+    color: var(--color-primary-400);
 }
 
 /* Five tabs do not fit a phone. Below sm the strip scrolls sideways rather than squeezing each
