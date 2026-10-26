@@ -228,7 +228,7 @@ describe('ReleaseLine', () => {
     it('lists a day’s events before its releases', () => {
         line.releases.data = [RESIDENT_EVIL_2];
         line.events.data = calendarEvents({
-            curated: [{ id: 2, kind: 'fest', store: null, name: 'Autumn Game Fest', startsOn: '2026-10-16', endsOn: '2026-10-18', url: null }],
+            curated: [{ id: 2, kind: 'fest', store: null, name: 'Autumn Game Fest', startsOn: '2026-10-16', endsOn: '2026-10-18', url: 'https://example.com/autumn-game-fest' }],
         });
         renderLine();
 

@@ -31,7 +31,7 @@ export function ScreenshotGallery({ screenshots, gameTitle }: ScreenshotGalleryP
                         href={fullSizeUrl(url)}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="group block rounded-lg overflow-hidden border border-line hover:border-primary-500/60 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus transition-colors"
+                        className="group block rounded-sm overflow-hidden hover:opacity-85 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus transition-opacity"
                     >
                         <img
                             src={url}

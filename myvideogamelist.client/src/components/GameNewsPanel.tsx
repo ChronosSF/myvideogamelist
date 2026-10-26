@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { NewsItemDto } from '@/types/news';
 import { NewsCard } from '@/components/NewsCard';
+import { SectionHeading } from '@/components/SectionHeading';
 
 interface GameNewsPanelProps {
     gameId: number;
@@ -51,18 +52,10 @@ export function GameNewsPanel({ gameId }: GameNewsPanelProps) {
     if (loading || items.length === 0) return null;
 
     return (
-        <section className="mt-10" aria-labelledby="game-news-heading">
-            <h2
-                id="game-news-heading"
-                className="text-lg font-semibold text-fg-strong mb-4 flex items-center gap-2"
-            >
-                <svg className="w-5 h-5 text-primary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m0 0h2a2 2 0 012 2v9a2 2 0 01-2 2h-2m0-13v13M9 8h4m-4 4h4m-4 4h2" />
-                </svg>
-                Latest news &amp; patch notes
-            </h2>
+        <section aria-labelledby="game-news-heading">
+            <SectionHeading id="game-news-heading">Latest news &amp; patch notes</SectionHeading>
 
-            <div className="flex flex-col gap-3">
+            <div className="flex flex-col">
                 {items.map(item => (
                     <NewsCard key={item.id} item={item} showGame={false} />
                 ))}

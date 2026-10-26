@@ -151,7 +151,7 @@ function HalfFailed({ what, retrying, onRetry }: { what: string; retrying: boole
             <span id={sentenceId}>{`${what} could not be loaded just now.`}</span>{' '}
             <button
                 type="button"
-                className="text-primary-400 font-semibold hover:underline aria-disabled:opacity-60 aria-disabled:cursor-wait"
+                className="font-semibold text-fg-strong underline decoration-line-strong underline-offset-4 hover:decoration-fg-strong aria-disabled:opacity-60 aria-disabled:cursor-wait"
                 onClick={retrying ? undefined : onRetry}
                 aria-disabled={retrying || undefined}
                 aria-describedby={sentenceId}
@@ -195,9 +195,9 @@ function MemberScore({ scores }: { scores: CommunityScores }) {
     }
 
     return (
-        <div className="grid gap-5 sm:grid-cols-[auto_minmax(0,24rem)] sm:items-end bg-surface/60 border border-line rounded-xl px-4 py-4">
+        <div className="grid gap-6 sm:grid-cols-[auto_minmax(0,24rem)] sm:items-end">
             <div>
-                <p className="text-xs text-fg-muted uppercase tracking-wider mb-1.5">
+                <p className="type-kicker text-primary-400 mb-2">
                     Member score
                 </p>
                 {/* Out of 100 and in a badge, beside the critics' and the players': it is an
@@ -292,7 +292,7 @@ function MemberReviews({ community, viewer, reviews, total }: MemberReviewsProps
                         type="button"
                         onClick={showMore}
                         aria-disabled={loadingMore}
-                        className="px-4 py-2 rounded-lg text-sm font-medium bg-surface border border-line-strong text-fg hover:border-primary-500 aria-disabled:opacity-60 aria-disabled:cursor-wait transition-colors"
+                        className="px-4 py-2 rounded-sm text-sm font-semibold border border-line-strong text-fg-strong hover:border-fg-muted aria-disabled:opacity-60 aria-disabled:cursor-wait transition-colors"
                     >
                         {loadingMore ? 'Loading…' : 'Show more reviews'}
                     </button>
@@ -337,7 +337,7 @@ function GameReviewCard({ review, isViewer }: { review: GameReview; isViewer: bo
                                 ) : review.userName}
                             </Link>
                             {isViewer && (
-                                <span className="ml-2 px-1.5 py-0.5 rounded text-xs font-medium bg-primary-500/15 text-primary-300">
+                                <span className="ml-2 px-1.5 py-0.5 rounded-sm type-kicker bg-primary-500/15 text-primary-300">
                                     You
                                 </span>
                             )}

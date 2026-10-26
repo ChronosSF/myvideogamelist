@@ -3,20 +3,29 @@
  * game's page, headed by its author.
  */
 
+/* One review after another, divided by hairlines rather than boxed (ADR 0075). */
 .review-list {
     display: flex;
     flex-direction: column;
-    gap: 1rem;
     list-style: none;
     padding: 0;
     margin: 0;
 }
 
 .review-card {
-    padding: 1rem;
-    border: 1px solid var(--color-line);
-    border-radius: var(--radius-xl);
-    background: color-mix(in srgb, var(--color-page) 50%, transparent);
+    padding: 1.25rem 0;
+    border-bottom: 1px solid var(--color-line);
+}
+
+.review-list > .review-card:first-child,
+.review-list > li:first-child > .review-card {
+    padding-top: 0.25rem;
+}
+
+/* The last one ends on the section's own space, not on a rule a section heading's would sit under. */
+.review-list > .review-card:last-child,
+.review-list > li:last-child > .review-card {
+    border-bottom: none;
 }
 
 .review-card-head {
@@ -51,14 +60,17 @@
 
 /* The game's title on a profile, the author's name on a game page. */
 .review-card-title {
-    font-weight: 600;
-    color: var(--color-fg);
+    font-family: var(--font-display);
+    font-weight: 700;
+    color: var(--color-fg-strong);
     /* An author's name is user input and may be twenty characters with no break opportunity. */
     overflow-wrap: anywhere;
 }
 
 .review-card-title:hover {
-    color: var(--color-primary-400);
+    text-decoration: underline;
+    text-decoration-color: var(--color-line-strong);
+    text-underline-offset: 0.2em;
 }
 
 /* The handle beside an author's display name: still in the link, a step back from the name. */
@@ -73,7 +85,8 @@
     align-items: center;
     gap: 0.5rem;
     margin-top: 0.25rem;
-    font-size: 0.8125rem;
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
     color: var(--color-fg-muted);
 }
 
@@ -102,7 +115,7 @@
 .review-spoiler-btn {
     width: 100%;
     padding: 0.75rem;
-    border: 1px dashed color-mix(in srgb, var(--color-fg-muted) 50%, transparent);
+    border: 1px dashed var(--color-line-strong);
     border-radius: var(--radius-lg);
     background: transparent;
     color: var(--color-fg-muted);
@@ -112,7 +125,7 @@
 }
 
 .review-spoiler-btn:hover {
-    border-color: var(--color-primary-400);
+    border-color: var(--color-fg-muted);
     color: var(--color-fg-soft);
 }
 

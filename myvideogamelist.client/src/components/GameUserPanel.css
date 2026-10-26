@@ -1,18 +1,20 @@
+/* The reader's own copy, under a heavy rule rather than in a box (ADR 0075), as the sidebar's facts are. */
 .game-user-panel {
     display: flex;
     flex-direction: column;
-    gap: 1.15rem;
-    padding: 1.25rem;
-    background: color-mix(in srgb, var(--color-surface) 60%, transparent);
-    border: 1px solid var(--color-line);
-    border-radius: var(--radius-xl);
+    gap: 1.25rem;
+    padding-top: 1rem;
+    border-top: 2px solid var(--color-fg-strong);
 }
 
 .game-user-panel-title {
     margin: 0;
-    font-size: 0.875rem;
-    font-weight: 600;
-    color: var(--color-fg-strong);
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    font-weight: 400;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--color-fg-muted);
 }
 
 .game-user-panel-section {
@@ -23,9 +25,10 @@
 
 .game-user-panel-label {
     margin: 0;
-    font-size: 0.68rem;
-    font-weight: 600;
-    letter-spacing: 0.07em;
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    font-weight: 400;
+    letter-spacing: 0.1em;
     text-transform: uppercase;
     color: var(--color-fg-faint);
 }

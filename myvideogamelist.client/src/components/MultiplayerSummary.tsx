@@ -20,7 +20,7 @@ export function MultiplayerSummary({ modes }: MultiplayerSummaryProps) {
             {labels.map(label => (
                 <span
                     key={label}
-                    className="px-2.5 py-1 bg-multiplayer-900/40 text-multiplayer-300 text-xs font-medium rounded-full border border-multiplayer-800/50"
+                    className="px-2.5 py-1 bg-multiplayer-900/40 text-multiplayer-300 type-meta rounded-sm border border-multiplayer-800/50"
                 >
                     {label}
                 </span>

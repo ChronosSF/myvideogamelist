@@ -1,6 +1,9 @@
+/* The hero (ADR 0075): the game's art across the page, dimmed rather than blurred, and its title set
+   large over the fade into the page. Dimmed, not shown at full strength, until the art is chosen for it
+   (#395): the first artwork IGDB lists is a logo or a cover for about a quarter of games. */
 .game-page-hero {
     position: relative;
-    min-height: 340px;
+    min-height: clamp(360px, 42vw, 520px);
     display: flex;
     align-items: flex-end;
     overflow: hidden;
@@ -11,9 +14,8 @@
     position: absolute;
     inset: 0;
     background-size: cover;
-    background-position: center top;
-    filter: blur(2px) brightness(0.35);
-    transform: scale(1.04);
+    background-position: center 35%;
+    filter: brightness(0.5) saturate(0.9);
     transition: opacity 0.4s ease;
 }
 
@@ -22,9 +24,10 @@
     inset: 0;
     background: linear-gradient(
         to bottom,
-        color-mix(in srgb, var(--color-page) 10%, transparent) 0%,
-        color-mix(in srgb, var(--color-page) 55%, transparent) 50%,
-        color-mix(in srgb, var(--color-page) 95%, transparent) 100%
+        color-mix(in srgb, var(--color-page) 20%, transparent) 0%,
+        color-mix(in srgb, var(--color-page) 0%, transparent) 30%,
+        color-mix(in srgb, var(--color-page) 70%, transparent) 70%,
+        var(--color-page) 100%
     );
 }
 
@@ -34,10 +37,22 @@
     width: 100%;
     max-width: 80rem;
     margin: 0 auto;
-    padding: 2rem 1.5rem 2.5rem;
+    padding: 2.5rem 1rem 2.5rem;
     display: flex;
     gap: 2rem;
     align-items: flex-end;
+}
+
+@media (min-width: 640px) {
+    .game-page-hero-content {
+        padding-inline: 1.5rem;
+    }
+}
+
+@media (min-width: 1024px) {
+    .game-page-hero-content {
+        padding-inline: 2rem;
+    }
 }
 
 @media (max-width: 640px) {
@@ -52,10 +67,9 @@
     flex-shrink: 0;
     width: 140px;
     aspect-ratio: 3/4;
-    border-radius: var(--radius-xl);
+    border-radius: var(--radius-sm);
     overflow: hidden;
     box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
-    border: 2px solid rgba(255, 255, 255, 0.08);
     background: var(--color-surface);
 }
 
@@ -105,4 +119,16 @@
 .game-page-trailer-embed:has(> button:focus-visible) {
     outline: 2px solid var(--color-focus);
     outline-offset: 2px;
+}
+
+/* The description's first letter, as a drop cap in the display type and the accent. */
+.game-page-lede::first-letter {
+    float: left;
+    margin: 0.3rem 0.5rem 0 0;
+    font-family: var(--font-display);
+    font-stretch: 125%;
+    font-weight: 800;
+    font-size: 4.25rem;
+    line-height: 0.75;
+    color: var(--color-primary-500);
 }

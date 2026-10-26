@@ -40,7 +40,7 @@ const FRAME = 'group block focus:outline-hidden focus-visible:ring-2 focus-visib
 export function GameRefTile({ game, favourite = false, sayFavourite = true, linked = true, sizes, eager = false }: GameRefTileProps) {
     const content: ReactNode = (
         <>
-            <div className="relative aspect-[3/4] rounded-xl overflow-hidden bg-surface border border-line group-hover:border-primary-500/60 transition-all duration-300 group-hover:-translate-y-1 shadow-lg">
+            <div className="relative aspect-[3/4] rounded-sm overflow-hidden bg-surface">
                 {game.coverImageUrl ? (
                     <CoverImage
                         url={game.coverImageUrl}
@@ -59,7 +59,7 @@ export function GameRefTile({ game, favourite = false, sayFavourite = true, link
                 {favourite && <FavouriteMark variant="cover" />}
             </div>
 
-            <p className="mt-2 text-xs sm:text-sm font-medium text-fg leading-snug line-clamp-2 group-hover:text-primary-400 transition-colors">
+            <p className="mt-2 type-title text-sm text-fg-strong leading-snug line-clamp-2 group-hover:underline decoration-line-strong underline-offset-4">
                 {game.name}
                 {favourite && sayFavourite && <FavouriteWords />}
             </p>
