@@ -58,9 +58,9 @@ interface Baseline {
  * decodes what the server compressed (see `kib`). One such machine scored 0.70 for browse on a phone,
  * against 0.90 here. A local run warns about it and passes.
  *
- * Accessibility is short of 100 everywhere because of contrast (#234, #246, #329), and on some pages
- * heading order and a description list (#329). SEO is 66 on the lists page because it says `noindex`, as
- * every page that is one member's own does (ADR 0036).
+ * Accessibility is short of 100 on four pages because of heading order and a description list (#329).
+ * SEO is 66 on the lists page because it says `noindex`, as every page that is one member's own does
+ * (ADR 0036).
  *
  * Six figures are from a later run, 40070934403 on 2026-10-24, once master was merged in. Three rose a
  * point: accessibility on a desktop for the game page, the profile and the lists, when the navbar's search
@@ -93,21 +93,32 @@ interface Baseline {
  * and the profile, on both form factors. Chrome logs every 4xx a page's fetch receives as an error, so
  * that 401 was the one error on each of those pages, and the one best-practices audit they failed. The
  * figures are from a developer's machine, which scores the same as the runner in both.
+ *
+ * Twenty figures moved with the editorial redesign (ADR 0075), from a developer's machine, whose decoded
+ * weights matched the runner's to a KiB. Accessibility rose on every page, to 100 on the home page: no
+ * page breaks contrast any more, now that every text tone passes 4.5:1 (#234), a filled button is the
+ * ink on lime rather than white (#246), and a score's solid fill carries the ink too (#329). The weights
+ * moved with the fonts, which a page loads from this origin — about 134 KiB for the two preloaded files
+ * and 30 for the mono — and with what each page now shows: the home page's fell, as its welcome panel
+ * draws no picture. Performance on a phone is left where it was, though the runner's fell about eight
+ * points on every page with the fonts, the largest paint now waiting on them over the throttled
+ * connection: the job warns about it, which is the record until the fonts are made cheaper or the cost
+ * is accepted here.
  */
 const BASELINE: Record<FormFactor, Record<PageKey, Baseline>> = {
     mobile: {
-        home: { accessibility: 0.95, bestPractices: 1, seo: 1, consoleErrors: 0, kib: 807, performance: 0.87 },
-        games: { accessibility: 0.95, bestPractices: 1, seo: 1, consoleErrors: 0, kib: 803, performance: 0.9 },
-        game: { accessibility: 0.92, bestPractices: 1, seo: 1, consoleErrors: 0, kib: 2106, performance: 0.87 },
-        profile: { accessibility: 0.94, bestPractices: 1, seo: 1, consoleErrors: 0, kib: 587, performance: 0.89 },
-        lists: { accessibility: 0.95, bestPractices: 1, seo: 0.66, consoleErrors: 0, kib: 587, performance: 0.89 },
+        home: { accessibility: 1, bestPractices: 1, seo: 1, consoleErrors: 0, kib: 712, performance: 0.87 },
+        games: { accessibility: 0.98, bestPractices: 1, seo: 1, consoleErrors: 0, kib: 1005, performance: 0.9 },
+        game: { accessibility: 0.96, bestPractices: 1, seo: 1, consoleErrors: 0, kib: 2164, performance: 0.87 },
+        profile: { accessibility: 0.98, bestPractices: 1, seo: 1, consoleErrors: 0, kib: 833, performance: 0.89 },
+        lists: { accessibility: 0.99, bestPractices: 1, seo: 0.66, consoleErrors: 0, kib: 858, performance: 0.89 },
     },
     desktop: {
-        home: { accessibility: 0.96, bestPractices: 1, seo: 1, consoleErrors: 0, kib: 870, performance: 1 },
-        games: { accessibility: 0.95, bestPractices: 1, seo: 1, consoleErrors: 0, kib: 937, performance: 0.99 },
-        game: { accessibility: 0.93, bestPractices: 1, seo: 1, consoleErrors: 0, kib: 2106, performance: 1 },
-        profile: { accessibility: 0.95, bestPractices: 1, seo: 1, consoleErrors: 0, kib: 587, performance: 1 },
-        lists: { accessibility: 0.95, bestPractices: 1, seo: 0.66, consoleErrors: 0, kib: 587, performance: 0.99 },
+        home: { accessibility: 1, bestPractices: 1, seo: 1, consoleErrors: 0, kib: 712, performance: 1 },
+        games: { accessibility: 0.98, bestPractices: 1, seo: 1, consoleErrors: 0, kib: 1168, performance: 0.99 },
+        game: { accessibility: 0.97, bestPractices: 1, seo: 1, consoleErrors: 0, kib: 2076, performance: 1 },
+        profile: { accessibility: 0.98, bestPractices: 1, seo: 1, consoleErrors: 0, kib: 776, performance: 1 },
+        lists: { accessibility: 0.99, bestPractices: 1, seo: 0.66, consoleErrors: 0, kib: 858, performance: 0.99 },
     },
 };
 
@@ -150,29 +161,31 @@ const PERFORMANCE_NOISE = 0.1;
 const PERFORMANCE_FLOOR: Record<FormFactor, number> = { mobile: 0.5, desktop: 0.6 };
 
 /**
- * The axe rules each page broke when the baseline was taken (`axe.lh.ts`), which are reported and do not
- * fail: contrast (#234, #246, #329) and the rest of #329. Held exactly, as the scores are: a rule the page
- * no longer breaks fails until it leaves the list, and one that is not on it fails until it is fixed.
+ * The axe rules each page breaks (`axe.lh.ts`), which are reported and do not fail: the rest of #329.
+ * Contrast left every page with the editorial redesign (ADR 0075). Held exactly, as the scores are: a rule
+ * the page no longer breaks fails until it leaves the list, and one that is not on it fails until it is
+ * fixed.
  */
 export const KNOWN_VIOLATIONS: Record<PageKey, readonly string[]> = {
-    home: ['color-contrast'],
-    games: ['color-contrast', 'heading-order'],
-    game: ['color-contrast', 'definition-list'],
-    profile: ['color-contrast', 'heading-order'],
-    lists: ['color-contrast', 'heading-order'],
+    home: [],
+    games: ['heading-order'],
+    game: ['definition-list'],
+    profile: ['heading-order'],
+    lists: ['heading-order'],
 };
 
 /**
- * The colour pairs each page's text broke contrast with when the baseline was taken, as axe names them,
- * foreground on background. With contrast known on every page, a rule alone would let a new pair in
- * unseen; a pair is a property of the theme, and stays put however much data a page shows.
+ * The colour pairs each page's text breaks contrast with, as axe names them, foreground on background:
+ * none, since the editorial redesign (ADR 0075). Kept by pair rather than by rule, so that should one come
+ * back while a page has another on record, the new pair is named; a pair is a property of the theme, and
+ * stays put however much data a page shows.
  */
 export const KNOWN_CONTRAST: Record<PageKey, readonly string[]> = {
-    home: ['#ffffff on #2b7fff'],
-    games: ['#ffffff on #2b7fff', '#ffffff on #00c950', '#62748e on #1d293d', '#90a1b9 on #314158'],
-    game: ['#ffffff on #2b7fff', '#62748e on #0f172b', '#62748e on #172236'],
-    profile: ['#ffffff on #2b7fff'],
-    lists: ['#62748e on #0f172b', '#ffffff on #00c950', '#62748e on #1d293d', '#90a1b9 on #314158'],
+    home: [],
+    games: [],
+    game: [],
+    profile: [],
+    lists: [],
 };
 
 /**

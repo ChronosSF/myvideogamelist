@@ -1,6 +1,6 @@
 # 0075. The editorial redesign: ink and paper, one accent, three typefaces, and rules for boxes
 
-**Status:** Accepted — being built on `feat/editorial-redesign`.
+**Status:** Implemented.
 
 ## Context
 
@@ -39,7 +39,10 @@ will be the same again.
   came closest, was lifted a step until it did.
 - **The colours that carry meaning are unchanged**: scores, statuses, the event kinds, the favourite, the
   wishlist and the rest. Green still means a good score, and the stars are still the reader's own score
-  and nothing else ([0021](0021-one-control-for-a-score.md)).
+  and nothing else ([0021](0021-one-control-for-a-score.md)). What changed is the figure on a score's
+  solid fill, the square badge on a cover: the ink on all three bands, `on-score`, where the good and the
+  poor bands had white at about 2:1 and 3:1, which the Lighthouse audit's axe pass had on record as known
+  failures.
 
 ### The type: three families, three roles
 
@@ -130,8 +133,12 @@ calendar share one stylesheet for the list, `ReleaseAgenda.css`. The spec's §2.
 
 - `npm run visual`, which compares the pages before and after a change meant to look the same, has no
   baseline to compare the redesign against; its screenshots are in the pull request instead.
-- The Lighthouse audit's baselines move where a page's audits do, and its page weight grows by the fonts:
-  about 140 KB for the two preloaded files, and the rest as a page uses them.
+- The Lighthouse audit's accessibility rose on every page it covers, to 100 on the home page, and no page
+  breaks contrast any more; `lighthouse/budgets.ts` holds the new figures. Its page weights grew by the
+  fonts, about 134 KiB for the two preloaded files and 30 for the mono. What they cost is performance on
+  a phone: about eight points on every page on CI's runner, the largest paint now waiting on the fonts
+  over the throttled connection, while a desktop's is unchanged. Those baselines are left as they were, so
+  the job warns about it until the fonts are made cheaper or the cost is accepted.
 - A component styles text by its role (`type-display`, `type-title`, `type-kicker`, `type-meta`) rather
   than by size and weight alone, and a new section opens with the heavy rule. `CLAUDE.md` and
   `.claude/rules/frontend.md` say so.

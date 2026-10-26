@@ -184,7 +184,9 @@ any other, so build new styling on these from the start:
 - **The primary is a scale,** the logo's lime. `text-primary-400` for the active tab or a mark of
   what is the reader's own, `bg-primary-500` for a filled button with `text-on-primary` (the page's
   ink) and `bg-primary-600` for its other state, and `ring-focus` or `outline-focus` for keyboard
-  focus. A link in running text is `text-fg-strong`, underlined in `decoration-line-strong`.
+  focus. A link in running text is `text-fg-strong`, underlined in `decoration-line-strong`. One filled
+  button to a place, for what the place is for; every other button is outlined, `border-line-strong`
+  with `text-fg-strong`, and a red one is outlined in red.
 - **Colours that carry meaning are scales named for the meaning,** such as `danger-300` for an
   error's words, and stay the same in every palette. Score colours still come from `@/lib/score`.
 - **The brand's colours** (`brand-navy`, `brand-lime`, `brand-light`) are the logo's.
