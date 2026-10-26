@@ -102,20 +102,23 @@ interface Baseline {
  * Schibsted Grotesk's 46 and DM Mono's 15 — and with what each page now shows: the home page's fell, as
  * its welcome panel draws no picture.
  *
- * Performance on a phone is left where it was. On the runner the redesign's first paint did not move,
- * but its largest came 0.6 to 1.2 seconds later on every page, with Archivo's whole variable file at 88
- * KiB: a page's largest text is set in it and waits for it, and on browse and the lists the fonts' bytes
- * went ahead of the first cover. Archivo is cut to its two faces since (`npm run fonts`), which took a
- * page's fonts from 149 KiB to 87 and, on a developer's machine, its largest paint 250 to 470 ms sooner;
- * the job warns about what is left, which is the record of it.
+ * Five more are from run 40298177982 on 2026-10-26, at the commit that cut Archivo down: performance on a
+ * phone, which the redesign lowered, rebased on what each page scores now, so that the job warns about
+ * the next fall rather than about this one for good. On the runner the redesign's first paint did not
+ * move, but its largest came 0.6 to 1.2 seconds later on every page with Archivo's whole variable file
+ * at 88 KiB: a page's largest text is set in it and waits for it, and on browse and the lists the fonts'
+ * bytes went ahead of the first cover. Cutting Archivo to its two faces (`npm run fonts`) took a page's
+ * fonts from 149 KiB to 87 and won back about half of it — the home page 82 to 85, browse 79 to 82, the
+ * game page 77 to 81, the profile 80 to 83 — and nothing on the lists, at 76. What is left is the
+ * redesign's type, accepted as its cost (ADR 0075). A desktop's are as they were, and still met.
  */
 const BASELINE: Record<FormFactor, Record<PageKey, Baseline>> = {
     mobile: {
-        home: { accessibility: 1, bestPractices: 1, seo: 1, consoleErrors: 0, kib: 651, performance: 0.87 },
-        games: { accessibility: 0.98, bestPractices: 1, seo: 1, consoleErrors: 0, kib: 943, performance: 0.9 },
-        game: { accessibility: 0.96, bestPractices: 1, seo: 1, consoleErrors: 0, kib: 2102, performance: 0.87 },
-        profile: { accessibility: 0.98, bestPractices: 1, seo: 1, consoleErrors: 0, kib: 772, performance: 0.89 },
-        lists: { accessibility: 0.99, bestPractices: 1, seo: 0.66, consoleErrors: 0, kib: 796, performance: 0.89 },
+        home: { accessibility: 1, bestPractices: 1, seo: 1, consoleErrors: 0, kib: 651, performance: 0.85 },
+        games: { accessibility: 0.98, bestPractices: 1, seo: 1, consoleErrors: 0, kib: 943, performance: 0.82 },
+        game: { accessibility: 0.96, bestPractices: 1, seo: 1, consoleErrors: 0, kib: 2102, performance: 0.81 },
+        profile: { accessibility: 0.98, bestPractices: 1, seo: 1, consoleErrors: 0, kib: 772, performance: 0.83 },
+        lists: { accessibility: 0.99, bestPractices: 1, seo: 0.66, consoleErrors: 0, kib: 796, performance: 0.76 },
     },
     desktop: {
         home: { accessibility: 1, bestPractices: 1, seo: 1, consoleErrors: 0, kib: 651, performance: 1 },

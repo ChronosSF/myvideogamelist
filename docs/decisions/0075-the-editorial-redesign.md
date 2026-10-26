@@ -154,8 +154,9 @@ calendar share one stylesheet for the list, `ReleaseAgenda.css`. The spec's §2.
   breaks contrast any more; `lighthouse/budgets.ts` holds the new figures. Its page weights grew by the
   fonts, 87 KiB on a page: Archivo's two faces at 13 KiB each, Schibsted's 46 and the mono's 15. What
   they cost is a phone's largest paint, which waits on them over the throttled connection, while a
-  desktop's is unchanged. The phone's performance baselines are left as they were, so the job warns about
-  what is left.
+  desktop's is unchanged. On CI's phone run, after Archivo was cut down, a page scores three to six
+  points below its figure before the redesign — the home page 88 to 85, the lists 80 to 76 — and those are
+  its baselines now: the cost of the type, accepted.
 - A new way of setting Archivo is a new face: a rule in `type.css` and a line in `npm run fonts`, and its
   kilobytes on every page that uses it.
 - A component styles text by its role (`type-display`, `type-title`, `type-kicker`, `type-meta`) rather
