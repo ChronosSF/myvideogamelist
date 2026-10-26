@@ -3,6 +3,8 @@
  * game's page, headed by its author.
  */
 
+@reference "../index.css";
+
 /* One review after another, divided by hairlines rather than boxed (ADR 0075). */
 .review-list {
     display: flex;
@@ -60,17 +62,14 @@
 
 /* The game's title on a profile, the author's name on a game page. */
 .review-card-title {
-    font-family: var(--font-display);
-    font-weight: 700;
+    @apply type-title;
     color: var(--color-fg-strong);
     /* An author's name is user input and may be twenty characters with no break opportunity. */
     overflow-wrap: anywhere;
 }
 
 .review-card-title:hover {
-    text-decoration: underline;
-    text-decoration-color: var(--color-line-strong);
-    text-underline-offset: 0.2em;
+    @apply underline-quiet;
 }
 
 /* The handle beside an author's display name: still in the link, a step back from the name. */
@@ -80,13 +79,12 @@
 }
 
 .review-card-sub {
+    @apply type-meta;
     display: flex;
     flex-wrap: wrap;
     align-items: center;
     gap: 0.5rem;
     margin-top: 0.25rem;
-    font-family: var(--font-mono);
-    font-size: 0.75rem;
     color: var(--color-fg-muted);
 }
 

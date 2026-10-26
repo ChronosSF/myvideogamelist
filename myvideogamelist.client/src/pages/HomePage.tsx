@@ -166,7 +166,7 @@ function SignedInHero({ user }: { user: UserProfile | null }) {
 
                 <Link
                     to="/lists"
-                    className="shrink-0 text-sm font-semibold text-fg-strong underline decoration-line-strong underline-offset-4 hover:decoration-fg-strong transition-colors"
+                    className="shrink-0 text-sm font-semibold text-link"
                 >
                     All your lists <span aria-hidden="true">→</span>
                 </Link>
@@ -182,7 +182,7 @@ function SignedInHero({ user }: { user: UserProfile | null }) {
                     {user !== null ? <ContinuePlayingRail /> : <ContinuePlayingSkeleton />}
                 </section>
 
-                <section className="flex-[1_1_18rem] min-w-0 border-t-2 border-fg-strong pt-4" aria-labelledby="play-next-heading">
+                <section className="flex-[1_1_18rem] min-w-0 rule-heavy pt-4" aria-labelledby="play-next-heading">
                     <h2 id="play-next-heading" className="type-kicker text-fg-muted mb-4">Play next</h2>
                     {user !== null ? <PlayNextPicker /> : <PlayNextSkeleton />}
                 </section>

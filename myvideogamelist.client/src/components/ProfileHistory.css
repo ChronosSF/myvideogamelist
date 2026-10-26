@@ -4,6 +4,8 @@
  * is here is the list.
  */
 
+@reference "../index.css";
+
 .profile-history {
     display: flex;
     flex-direction: column;
@@ -32,12 +34,9 @@
 
 /* The profile's section titles, a step smaller: a day is a divider in a list, not a section. */
 .history-day-title {
+    @apply type-kicker;
     margin: 0 0 0.6rem;
-    font-family: var(--font-mono);
     font-size: 0.6875rem;
-    font-weight: 400;
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
     color: var(--color-fg-muted);
 }
 
@@ -88,10 +87,9 @@
 }
 
 .history-item-game {
+    @apply type-title;
     margin: 0;
-    font-family: var(--font-display);
     font-size: 0.9375rem;
-    font-weight: 700;
     color: var(--color-fg);
 }
 
@@ -186,19 +184,12 @@
 }
 
 .history-more-btn {
+    @apply btn-outline;
     padding: 0.45rem 1rem;
     font-size: 0.875rem;
     font-weight: 500;
-    color: var(--color-fg);
     background: transparent;
-    border: 1px solid var(--color-line-strong);
-    border-radius: var(--radius-lg);
     cursor: pointer;
-    transition: border-color 150ms;
-}
-
-.history-more-btn:hover:not(:disabled) {
-    border-color: var(--color-fg-muted);
 }
 
 .history-more-btn:focus-visible {

@@ -65,9 +65,8 @@ export function ContinuePlayingRail() {
 
     return (
         // Rows rather than the rail's posters (ADR 0075): what you are playing is a short list to act on, and
-        // as many across as fit at 15rem. Positioned, so that the visually hidden words beside a favourite's
-        // title are placed inside it rather than against the page.
-        <ul className="continue-list relative" aria-label="Games you are playing">
+        // as many across as fit at 15rem.
+        <ul className="continue-list" aria-label="Games you are playing">
             {playing.map((entry, index) => {
                 const { game } = entry;
                 const pending = isPending(game.id);

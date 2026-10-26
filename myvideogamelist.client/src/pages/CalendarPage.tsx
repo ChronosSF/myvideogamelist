@@ -16,7 +16,7 @@ function CalendarSkeleton() {
     return (
         <div className="skeleton-sheen">
             <Skeleton className="block h-16 w-full rounded-sm" />
-            <div className="mt-12 pt-5 border-t-2 border-fg-strong grid gap-8 lg:grid-cols-[18rem_minmax(0,1fr)] lg:gap-14">
+            <div className="mt-12 pt-5 rule-heavy grid gap-8 lg:grid-cols-[18rem_minmax(0,1fr)] lg:gap-14">
                 <div>
                     <div className="flex items-end justify-between">
                         <Skeleton className="block h-10 w-44 rounded-sm" />

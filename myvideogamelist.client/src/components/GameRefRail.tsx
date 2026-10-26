@@ -29,7 +29,7 @@ const COVER_SIZES = '(min-width: 40rem) calc(8rem - 2px), calc(7rem - 2px)';
 /**
  * A horizontally scrolling strip of related games — similar titles, DLC, expansions.
  *
- * Deliberately not `ReleaseRail`: that one says when each game comes out, or came out, and on what,
+ * Deliberately not `JustOutRail`'s grid: that one says when each game came out, and on what,
  * none of which applies to a related-games list.
  */
 export function GameRefRail({ games, label, eager = 0, isFavourite, sayFavourites = true }: GameRefRailProps) {

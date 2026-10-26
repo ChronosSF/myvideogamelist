@@ -113,12 +113,14 @@ describe('ReleaseLine', () => {
         line.releases.data = [RESIDENT_EVIL_2];
         renderLine();
 
-        const items = within(screen.getByRole('list', { name: 'The next two weeks' })).getAllByRole('listitem');
-        expect(items).toHaveLength(1);
-        expect(items[0]).toHaveTextContent('Fri, Oct 16');
-        expect(items[0]).toHaveTextContent('In 10 days');
-        expect(within(items[0]).getByRole('link', { name: 'Resident Evil 2' })).toHaveAttribute('href', '/games/19686');
-        expect(items[0]).toHaveTextContent('On your wishlist — out on Switch 2');
+        // The day, and in its own list, named by the whole date, its one release.
+        const [day, ...rest] = within(screen.getByRole('list', { name: 'The next two weeks' })).getAllByRole('listitem');
+        expect(day).toHaveTextContent('Fri, Oct 16');
+        expect(day).toHaveTextContent('In 10 days');
+        const due = within(day).getByRole('list', { name: 'Due on Friday, October 16' });
+        expect(rest).toEqual(within(due).getAllByRole('listitem'));
+        expect(within(due).getByRole('link', { name: 'Resident Evil 2' })).toHaveAttribute('href', '/games/19686');
+        expect(due).toHaveTextContent('On your wishlist — out on Switch 2');
     });
 
     it('marks a release on the ruler, on its day', () => {
@@ -202,9 +204,8 @@ describe('ReleaseLine', () => {
         expect(link).toHaveAttribute('href', 'https://partner.steamgames.com/doc/marketing/upcoming_events');
         expect(link).toHaveAttribute('rel', 'noopener noreferrer');
 
-        // And across its days on the ruler, cut off at its edge, since it began before the line does.
+        // And across its days on the ruler, from the line's first, since it began before the line does.
         const bar = document.querySelector('.release-ruler-bar') as HTMLElement;
-        expect(bar).toHaveAttribute('data-continues-before');
         expect(bar.style.gridColumn).toBe('1 / 11');
     });
 

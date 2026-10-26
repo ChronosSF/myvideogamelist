@@ -270,7 +270,7 @@ export function ImportReviewPage() {
                         {gone ? (
                             <Link
                                 to="/import"
-                                className="inline-block px-4 py-2 border border-line-strong hover:border-fg-muted text-fg-strong text-sm font-semibold rounded-sm"
+                                className="inline-block px-4 py-2 btn-outline text-sm font-semibold"
                             >
                                 Back to your imports
                             </Link>
@@ -321,7 +321,7 @@ export function ImportReviewPage() {
                                     type="button"
                                     disabled={matching || busy}
                                     onClick={() => void match()}
-                                    className="px-4 py-2 bg-primary-500 hover:bg-primary-600 disabled:opacity-50 text-on-primary text-sm font-bold rounded-sm transition-colors"
+                                    className="px-4 py-2 btn-primary disabled:opacity-50 text-sm"
                                 >
                                     {matching
                                         ? `Searching… ${formatCount(review.summary.unlooked)} left`
@@ -360,14 +360,14 @@ export function ImportReviewPage() {
 
                             <button
                                 type="button"
-                                className="px-3 py-1.5 text-xs font-semibold rounded-sm border border-line-strong hover:border-fg-muted text-fg-strong"
+                                className="px-3 py-1.5 text-xs font-semibold btn-outline"
                                 onClick={() => bulk(rows.filter(r => r.gameId !== null), IMPORT_DECISION.import)}
                             >
                                 Select every matched game
                             </button>
                             <button
                                 type="button"
-                                className="px-3 py-1.5 text-xs font-semibold rounded-sm border border-line-strong hover:border-fg-muted text-fg-strong"
+                                className="px-3 py-1.5 text-xs font-semibold btn-outline"
                                 onClick={() => bulk(rows, IMPORT_DECISION.skip)}
                             >
                                 Clear all
@@ -522,7 +522,7 @@ export function ImportReviewPage() {
                         {visible.length > shown && (
                             <button
                                 type="button"
-                                className="w-full py-2 text-sm font-semibold border border-line-strong hover:border-fg-muted text-fg-strong rounded-sm"
+                                className="w-full py-2 text-sm font-semibold btn-outline"
                                 onClick={() => setShown(count => count + PAGE)}
                             >
                                 Show more ({formatCount(visible.length - shown)} left)
@@ -538,7 +538,7 @@ export function ImportReviewPage() {
                                 type="button"
                                 disabled={busy || saving || review.summary.selected === 0}
                                 onClick={() => void commitAndRefresh()}
-                                className="px-5 py-2.5 bg-primary-500 hover:bg-primary-600 disabled:opacity-50 disabled:hover:bg-primary-500 text-on-primary text-sm font-bold rounded-sm transition-colors"
+                                className="px-5 py-2.5 btn-primary disabled:opacity-50 text-sm"
                             >
                                 {busy ? 'Importing…' : `Import ${formatCount(review.summary.selected)} games`}
                             </button>
@@ -732,7 +732,7 @@ function ResultPanel({ rows, games, unlisted, skipped, fileName }: {
             <div className="flex flex-wrap items-center justify-center gap-3">
                 <Link
                     to="/lists"
-                    className="px-5 py-2.5 bg-primary-500 hover:bg-primary-600 text-on-primary text-sm font-bold rounded-sm transition-colors"
+                    className="px-5 py-2.5 btn-primary text-sm"
                 >
                     See your lists
                 </Link>
@@ -741,7 +741,7 @@ function ResultPanel({ rows, games, unlisted, skipped, fileName }: {
                     <button
                         type="button"
                         onClick={() => downloadSkippedRows(skipped, `${fileName}-skipped.csv`)}
-                        className="px-4 py-2.5 text-sm font-semibold border border-line-strong hover:border-fg-muted text-fg-strong rounded-sm"
+                        className="px-4 py-2.5 text-sm font-semibold btn-outline"
                     >
                         Download what was skipped
                     </button>

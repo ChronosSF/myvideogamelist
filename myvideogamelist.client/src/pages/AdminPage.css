@@ -4,11 +4,13 @@
  * the same site when they do.
  */
 
+@reference "../index.css";
+
 /* A part of the page under the heavy rule a section opens with, not a box (ADR 0075). The class keeps
    its name from when it was a card. */
 .admin-card {
     padding-top: 1.25rem;
-    border-top: 2px solid var(--color-fg-strong);
+    border-top: 2px solid var(--color-rule);
 }
 
 .admin-card + .admin-card {
@@ -16,10 +18,8 @@
 }
 
 .admin-card-title {
-    font-family: var(--font-display);
-    font-stretch: 125%;
+    @apply type-display;
     font-size: 1.5rem;
-    font-weight: 800;
     line-height: 1.15;
     color: var(--color-fg-strong);
 }
@@ -102,20 +102,13 @@
 /* ── Buttons ─────────────────────────────────────────────────────────────── */
 
 .admin-btn {
+    @apply btn-outline;
     flex-shrink: 0;
     padding: 0.4375rem 0.875rem;
     background: transparent;
-    color: var(--color-fg-strong);
-    border: 1px solid var(--color-line-strong);
-    border-radius: var(--radius-sm);
     font-size: 0.875rem;
     font-weight: 600;
     cursor: pointer;
-    transition: border-color 0.15s;
-}
-
-.admin-btn:hover:not(:disabled) {
-    border-color: var(--color-fg-muted);
 }
 
 .admin-btn:disabled {
@@ -170,10 +163,7 @@
 }
 
 .admin-row-meta a {
-    color: var(--color-fg-strong);
-    text-decoration: underline;
-    text-decoration-color: var(--color-line-strong);
-    text-underline-offset: 0.2em;
+    @apply text-link;
 }
 
 .admin-kind {

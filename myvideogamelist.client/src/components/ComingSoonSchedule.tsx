@@ -3,6 +3,7 @@ import { CoverImage } from '@/components/CoverImage';
 import { WishlistToggle } from '@/components/WishlistToggle';
 import { useReleaseGame } from '@/hooks/useReleaseGame';
 import { comingSoonWhen, scheduleGroups } from '@/lib/comingSoon';
+import { platformNames } from '@/lib/releaseReason';
 import type { ComingSoonGame } from '@/types/releases';
 import { FavouriteMark } from './FavouriteMark';
 
@@ -38,7 +39,7 @@ function ScheduleRow({ game, today }: { game: ComingSoonGame; today: string }) {
             </Link>
 
             <div className="min-w-0">
-                <Link to={`/games/${game.gameId}`} className="type-title text-[1.0625rem] leading-snug text-fg-strong hover:underline decoration-line-strong underline-offset-4">
+                <Link to={`/games/${game.gameId}`} className="type-title text-[1.0625rem] leading-snug text-fg-strong hover:underline-quiet">
                     {game.title}
                 </Link>
                 {/* After the title, on a cover too small for the round mark. */}
@@ -48,29 +49,13 @@ function ScheduleRow({ game, today }: { game: ComingSoonGame; today: string }) {
                 {day !== null && <time dateTime={game.starts} className="sr-only">{comingSoonWhen(game, today)}</time>}
 
                 {game.platforms.length > 0 && (
-                    <p className="mt-1 type-meta text-fg-muted">{game.platforms.map(p => p.abbreviation).join(', ')}</p>
+                    <p className="mt-1 type-meta text-fg-muted">{platformNames(game.platforms)}</p>
                 )}
 
                 {/* The reader's own list, by their name for it, as every label of a list is. */}
                 {state.listName !== null && <p className="mt-1 type-meta text-success-300">In {state.listName}</p>}
 
-                {state.signedIn && (
-                    <div className="mt-2">
-                        <WishlistToggle
-                            variant="inline"
-                            title={game.title}
-                            wishlisted={state.wishlisted}
-                            pending={state.pending}
-                            onToggle={() => void state.toggleWishlist()}
-                        />
-                    </div>
-                )}
-
-                {state.failed && (
-                    <p className="mt-1 text-xs font-semibold text-danger-300" role="alert">
-                        Could not update your wishlist.
-                    </p>
-                )}
+                <WishlistToggle variant="inline" title={game.title} state={state} />
             </div>
         </li>
     );

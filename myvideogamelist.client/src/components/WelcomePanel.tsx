@@ -1,6 +1,5 @@
 import { Link } from 'react-router';
 import { useAuthDialog } from '@/hooks/useAuthDialog';
-import './WelcomePanel.css';
 
 /** What the site keeps for somebody, as the panel's contents list says it. */
 const POINTS: readonly { title: string; text: string }[] = [
@@ -23,7 +22,9 @@ export function WelcomePanel() {
     const authDialog = useAuthDialog();
 
     return (
-        <section className="welcome-panel max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-14 sm:pt-24 pb-14 sm:pb-20" aria-labelledby="welcome-heading">
+        // The headline and the ways in, and the contents list beside them from a desktop's width, under
+        // them below it.
+        <section className="grid items-end gap-x-20 gap-y-14 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)] max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-14 sm:pt-24 pb-14 sm:pb-20" aria-labelledby="welcome-heading">
             <div>
                 <h1 id="welcome-heading" className="type-display text-5xl sm:text-7xl lg:text-[4.75rem] text-fg-strong text-balance">
                     Every game you&apos;ve played,{' '}
@@ -38,14 +39,14 @@ export function WelcomePanel() {
                     <button
                         type="button"
                         onClick={() => authDialog.open('signup')}
-                        className="inline-flex items-center px-6 py-3.5 bg-primary-500 hover:bg-primary-600 text-on-primary font-bold rounded-sm transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2 focus-visible:ring-offset-page"
+                        className="inline-flex items-center px-6 py-3.5 btn-primary focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2 focus-visible:ring-offset-page"
                     >
                         Create an account
                     </button>
                     <button
                         type="button"
                         onClick={() => authDialog.open('login')}
-                        className="font-semibold text-fg-strong underline decoration-line-strong underline-offset-4 hover:decoration-fg-strong transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus rounded-sm"
+                        className="font-semibold text-link focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus rounded-sm"
                     >
                         Sign in
                     </button>
@@ -60,7 +61,7 @@ export function WelcomePanel() {
                 </p>
             </div>
 
-            <div className="border-t-2 border-fg-strong">
+            <div className="rule-heavy">
                 <p className="mt-3.5 type-kicker text-fg-muted">What it keeps for you</p>
                 <ol className="mt-1">
                     {POINTS.map((point, index) => (

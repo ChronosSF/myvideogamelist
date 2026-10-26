@@ -7,6 +7,8 @@
  * outrank Tailwind's `sr-only` and put the screen-reader text on screen.
  */
 
+@reference "../index.css";
+
 .showcases {
     display: flex;
     flex-wrap: wrap;
@@ -25,13 +27,8 @@
 
 .showcases-title,
 .showcases-kind {
+    @apply type-kicker;
     margin: 0;
-    font-family: var(--font-mono);
-    font-size: 0.75rem;
-    font-weight: 400;
-    line-height: 1.4;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
 }
 
 .showcases-title {
@@ -62,9 +59,8 @@
 }
 
 .showcases-name {
+    @apply type-title;
     margin: 0;
-    font-family: var(--font-display);
-    font-weight: 700;
     font-size: 1.125rem;
     line-height: 1.3;
     color: var(--color-fg-strong);
@@ -73,9 +69,7 @@
 }
 
 a.showcases-name:hover {
-    text-decoration: underline;
-    text-decoration-color: var(--color-line-strong);
-    text-underline-offset: 0.2em;
+    @apply underline-quiet;
 }
 
 a.showcases-name:focus-visible {
@@ -85,9 +79,8 @@ a.showcases-name:focus-visible {
 }
 
 .showcases-when {
+    @apply type-meta;
     margin: 0;
-    font-family: var(--font-mono);
-    font-size: 0.75rem;
     color: var(--color-fg-muted);
 }
 
@@ -95,14 +88,6 @@ a.showcases-name:focus-visible {
     color: var(--color-fg);
 }
 
-.showcases-item[data-kind='sale'] .showcases-kind {
-    color: var(--color-sale-300);
-}
-
-.showcases-item[data-kind='fest'] .showcases-kind {
-    color: var(--color-fest-300);
-}
-
-.showcases-item[data-kind='showcase'] .showcases-kind {
-    color: var(--color-showcase-300);
+.showcases-item[data-kind] .showcases-kind {
+    color: var(--kind-ink);
 }

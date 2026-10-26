@@ -1,4 +1,4 @@
-import { eventDays, type DayEvent } from '@/lib/calendarEvents';
+import { agendaOf, eventDays, type AgendaItem, type DayEvent } from '@/lib/calendarEvents';
 import { addDays, daysBetween } from '@/lib/daySpan';
 import type { CalendarEvents, ReleaseEntry, ReleaseKind, ReleasePrecision, UndatedEntry } from '@/types/releases';
 
@@ -251,30 +251,10 @@ export function monthTotals(entries: readonly ReleaseEntry[]): Map<string, numbe
     return totals;
 }
 
-/** One line of a month's agenda: a sale or a showcase, or a day with something releasing on it. */
-export type MonthAgendaItem =
-    | { type: 'event'; key: string; date: string; event: DayEvent }
-    | { type: 'day'; key: string; date: string; day: CalendarDay };
-
-/**
- * A month as the list beside its index (ADR 0075): each sale and showcase once, at the first of its days in
- * the month, and each day with something releasing on it, in day order — a day's events before its
- * releases, since an event that starts on a day frames it. A day with nothing on it is not in the list:
- * the index shows it.
- */
-export function monthAgenda(month: string, layout: MonthLayout): MonthAgendaItem[] {
+/** A month as the list beside its index: each sale and showcase at the first of its days in the month. */
+export function monthAgenda(month: string, layout: MonthLayout): AgendaItem<DayEvent, CalendarDay>[] {
     const first = `${month}-01`;
-    const items: MonthAgendaItem[] = [
-        ...layout.events.map((event): MonthAgendaItem => ({
-            type: 'event', key: event.key, date: event.startsOn < first ? first : event.startsOn, event,
-        })),
-        ...layout.days
-            .filter(day => day.entries.length > 0)
-            .map((day): MonthAgendaItem => ({ type: 'day', key: day.day, date: day.day, day })),
-    ];
-
-    // Stable, so that the events keep `layoutMonth`'s order among themselves.
-    return items.sort((a, b) => a.date.localeCompare(b.date) || (a.type === b.type ? 0 : a.type === 'event' ? -1 : 1));
+    return agendaOf(layout.events, event => (event.startsOn < first ? first : event.startsOn), layout.days);
 }
 
 /** The kinds of event on a day, for the index's marks under it, in the order the month's events start. */

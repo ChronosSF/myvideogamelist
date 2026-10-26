@@ -1,17 +1,20 @@
 /*
- * A release, or a group of them, as the two-week line and the calendar both draw it. As a poster, the rails'
- * cover with its name and why it is there under it, and Add to Backlog and the favourite on the cover; as a
- * row, a small cover with the words beside it, and Add to Backlog among them (ADR 0075). As wide as whatever
- * holds it.
+ * A release, or a group of them, as the two-week line and the calendar both draw it: a row, a small cover
+ * with the words beside it, the favourite on the cover's corner and Add to Backlog among the words (ADR
+ * 0075). As wide as whatever holds it.
  *
  * Every selector names a class of its own. These rules are unlayered, so a bare `span` here would
  * outrank Tailwind's `sr-only` and put the screen-reader text on screen.
  */
 
-/* A container, so that Add to Backlog can say less on a cover too narrow for its words. */
+@reference "../index.css";
+
 .release-card {
+    display: grid;
+    grid-template-columns: 3.5rem minmax(0, 1fr);
+    column-gap: 0.875rem;
+    align-items: start;
     min-width: 0;
-    container-type: inline-size;
 }
 
 .release-card-link {
@@ -47,7 +50,7 @@
 /* A group: its first cover with the edges of the rest behind it. */
 .release-card-stack {
     position: relative;
-    margin: 0.25rem 0.25rem 0 0;
+    margin: 0.1875rem 0.1875rem 0 0;
 }
 
 .release-card-stack::before,
@@ -61,12 +64,12 @@
 }
 
 .release-card-stack::before {
-    transform: translate(0.375rem, -0.375rem);
+    transform: translate(0.25rem, -0.25rem);
     opacity: 0.5;
 }
 
 .release-card-stack::after {
-    transform: translate(0.1875rem, -0.1875rem);
+    transform: translate(0.125rem, -0.125rem);
     opacity: 0.8;
 }
 
@@ -76,30 +79,25 @@
 }
 
 .release-card-title {
-    margin-top: 0.5rem;
-    font-family: var(--font-display);
-    font-size: 0.9375rem;
-    font-weight: 700;
+    @apply type-title;
+    font-size: 1.0625rem;
     line-height: 1.25;
     color: var(--color-fg-strong);
     overflow-wrap: anywhere;
     display: -webkit-box;
-    -webkit-line-clamp: 2;
+    -webkit-line-clamp: 3;
     -webkit-box-orient: vertical;
     overflow: hidden;
 }
 
 .release-card-link:hover .release-card-title {
-    text-decoration: underline;
-    text-decoration-color: var(--color-line-strong);
-    text-underline-offset: 0.2em;
+    @apply underline-quiet;
 }
 
 .release-card-count,
 .release-card-platforms {
+    @apply type-meta;
     margin-top: 0.25rem;
-    font-family: var(--font-mono);
-    font-size: 0.75rem;
     color: var(--color-fg-muted);
     overflow: hidden;
     text-overflow: ellipsis;
@@ -130,12 +128,9 @@
 }
 
 .release-card-group summary {
+    @apply text-link;
     cursor: pointer;
-    color: var(--color-fg-strong);
     font-weight: 600;
-    text-decoration: underline;
-    text-decoration-color: var(--color-line-strong);
-    text-underline-offset: 0.2em;
 }
 
 .release-card-group ul {
@@ -162,68 +157,18 @@
     position: relative;
 }
 
-/* On the cover, where the lists' cards put their controls: shown on hover and on focus, and always
-   where nothing can hover, or a phone would never see it. */
-.release-card-add {
-    position: absolute;
-    left: 0.375rem;
-    right: 0.375rem;
-    bottom: 0.375rem;
-    padding: 0.3rem 0.5rem;
-    border: none;
-    border-radius: var(--radius-md);
-    background: color-mix(in srgb, var(--color-surface) 92%, transparent);
-    color: var(--color-fg);
-    font-size: 0.72rem;
-    font-weight: 600;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    cursor: pointer;
-    opacity: 0;
-    backdrop-filter: blur(4px);
-    -webkit-backdrop-filter: blur(4px);
-    transition: opacity 0.15s, background-color 0.12s, color 0.12s;
-}
-
-.release-card-art:hover .release-card-add,
-.release-card-add:focus-visible,
-.release-card-add:disabled {
-    opacity: 1;
-}
-
-@media (hover: none) {
-    .release-card-add {
-        opacity: 1;
-    }
-}
-
-.release-card-add:hover:not(:disabled) {
-    background: color-mix(in srgb, var(--color-primary-500) 90%, transparent);
-    color: var(--color-on-primary);
-}
-
-.release-card-add:focus-visible {
-    outline: 2px solid var(--color-focus);
-    outline-offset: 2px;
-}
-
-.release-card-add:disabled {
-    cursor: default;
-}
-
-/* The favourite, in the cover's top corner: shown on hover and on focus as Add to Backlog is, and for good
-   once the game is a favourite, filled in the game page's violet, since then it is the mark as well as the
-   toggle. */
+/* The favourite, in the cover's top corner: shown on hover and on focus, always where nothing can hover, or
+   a phone would never see it, and for good once the game is a favourite, filled in the game page's violet,
+   since then it is the mark as well as the toggle. */
 .release-card-favourite {
     position: absolute;
-    top: 0.375rem;
-    right: 0.375rem;
+    top: 0.1875rem;
+    right: 0.1875rem;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 1.75rem;
-    height: 1.75rem;
+    width: 1.375rem;
+    height: 1.375rem;
     padding: 0;
     border: 1px solid color-mix(in srgb, var(--color-favourite-500) 50%, transparent);
     border-radius: 9999px;
@@ -237,8 +182,8 @@
 }
 
 .release-card-favourite svg {
-    width: 1rem;
-    height: 1rem;
+    width: 0.8125rem;
+    height: 0.8125rem;
 }
 
 .release-card-art:hover .release-card-favourite,
@@ -312,9 +257,8 @@
 }
 
 .release-card-listed {
+    @apply type-meta;
     margin-top: 0.25rem;
-    font-family: var(--font-mono);
-    font-size: 0.75rem;
     color: var(--color-success-300);
 }
 
@@ -325,62 +269,8 @@
     color: var(--color-danger-300);
 }
 
-/* Add to Backlog in its words, or as a + where the cover is too narrow for them. */
-.release-card-add-short {
-    display: none;
-}
-
-@container (max-width: 7.5rem) {
-    .release-card-add-long {
-        display: none;
-    }
-
-    .release-card-add-short {
-        display: inline;
-    }
-}
-
-/* ── As a row: a small cover, the words beside it ────────────────────────── */
-
-.release-card[data-layout='row'] {
-    display: grid;
-    grid-template-columns: 3.5rem minmax(0, 1fr);
-    column-gap: 0.875rem;
-    align-items: start;
-}
-
-.release-card[data-layout='row'] .release-card-title {
-    margin-top: 0;
-    font-size: 1.0625rem;
-    -webkit-line-clamp: 3;
-}
-
-.release-card[data-layout='row'] .release-card-stack {
-    margin: 0.1875rem 0.1875rem 0 0;
-}
-
-.release-card[data-layout='row'] .release-card-stack::before {
-    transform: translate(0.25rem, -0.25rem);
-}
-
-.release-card[data-layout='row'] .release-card-stack::after {
-    transform: translate(0.125rem, -0.125rem);
-}
-
-.release-card[data-layout='row'] .release-card-favourite {
-    top: 0.1875rem;
-    right: 0.1875rem;
-    width: 1.375rem;
-    height: 1.375rem;
-}
-
-.release-card[data-layout='row'] .release-card-favourite svg {
-    width: 0.8125rem;
-    height: 0.8125rem;
-}
-
 /* Add to Backlog among the words, as a small outlined button, since a 3.5rem cover cannot hold it. */
-.release-card-add-row {
+.release-card-add {
     display: inline-block;
     margin-top: 0.5rem;
     padding: 0.25rem 0.625rem;
@@ -394,26 +284,18 @@
     transition: background-color 0.12s, border-color 0.12s, color 0.12s;
 }
 
-.release-card-add-row:hover:not(:disabled) {
+.release-card-add:hover:not(:disabled) {
     border-color: var(--color-primary-500);
     background: var(--color-primary-500);
     color: var(--color-on-primary);
 }
 
-.release-card-add-row:focus-visible {
+.release-card-add:focus-visible {
     outline: 2px solid var(--color-focus);
     outline-offset: 2px;
 }
 
-.release-card-add-row:disabled {
+.release-card-add:disabled {
     opacity: 0.6;
     cursor: default;
-}
-
-.release-card-add-row .release-card-add-short {
-    display: none;
-}
-
-.release-card-add-row .release-card-add-long {
-    display: inline;
 }

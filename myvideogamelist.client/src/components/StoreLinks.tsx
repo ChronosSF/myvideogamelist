@@ -35,7 +35,7 @@ export function StoreLinks({ stores }: StoreLinksProps) {
                             rel="noopener noreferrer"
                             // `outline-hidden`, not `outline-none`: in forced colours the ring is dropped
                             // with every other shadow, and only this keeps an outline there to show focus.
-                            className="inline-flex items-center gap-1 px-2.5 py-1 text-fg-strong text-sm font-medium rounded-sm border border-line-strong hover:border-fg-muted transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus"
+                            className="inline-flex items-center gap-1 px-2.5 py-1 text-sm font-medium btn-outline focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus"
                         >
                             {link.store} <span className="sr-only">(opens in a new tab)</span>
                             <svg className="w-3 h-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">

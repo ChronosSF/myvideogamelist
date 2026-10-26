@@ -79,16 +79,15 @@ describe('layoutLine, the sales and showcases', () => {
 
         const [bar] = layout.events;
         expect(bar).toMatchObject({ key: 'curated-1', kind: 'sale', first: 2, last: 4, lane: 0 });
-        expect(bar.continuesBefore || bar.continuesAfter).toBe(false);
     });
 
-    it('cuts a sale off at the line, and says that it goes on', () => {
+    it('cuts a sale off at the line, keeping all of its dates', () => {
         const layout = layoutLine(TODAY, [], calendarEvents({
             curated: [sale({ startsOn: '2026-10-01', endsOn: '2026-10-25' })],
         }));
 
         const [bar] = layout.events;
-        expect(bar).toMatchObject({ first: 0, last: LINE_DAYS - 1, continuesBefore: true, continuesAfter: true });
+        expect(bar).toMatchObject({ first: 0, last: LINE_DAYS - 1, startsOn: '2026-10-01', endsOn: '2026-10-25' });
     });
 
     it('puts overlapping bars on rows of their own, and reuses a row once it is free', () => {
@@ -143,10 +142,10 @@ describe('lineAgenda', () => {
             curated: [sale({ id: 1, startsOn: '2026-10-08', endsOn: '2026-10-10' })],
         }));
 
-        expect(lineAgenda(layout).map(item => [item.type, item.index])).toEqual([
-            ['event', 2],
-            ['day', 3],
-            ['day', 6],
+        expect(lineAgenda(layout).map(item => [item.type, item.date])).toEqual([
+            ['event', '2026-10-08'],
+            ['day', '2026-10-09'],
+            ['day', '2026-10-12'],
         ]);
     });
 
@@ -155,9 +154,9 @@ describe('lineAgenda', () => {
             curated: [sale({ id: 1, startsOn: '2026-10-01', endsOn: '2026-10-07' })],
         }));
 
-        expect(lineAgenda(layout).map(item => [item.type, item.index])).toEqual([
-            ['event', 0],
-            ['day', 0],
+        expect(lineAgenda(layout).map(item => [item.type, item.date])).toEqual([
+            ['event', TODAY],
+            ['day', TODAY],
         ]);
     });
 

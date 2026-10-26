@@ -1,33 +1,16 @@
 import { useMemo } from 'react';
 import { CoverImage } from '@/components/CoverImage';
-import { ReleaseCard } from '@/components/ReleaseCard';
+import { ReleaseAgendaDay } from '@/components/ReleaseAgendaDay';
+import { ReleaseAgendaEvent } from '@/components/ReleaseAgendaEvent';
 import { ReleaseLineHeading } from '@/components/ReleaseLineHeading';
 import { useReleaseLine } from '@/hooks/useReleaseLine';
 import { startTime } from '@/lib/calendarEvents';
-import { dayLabel, formatDaySpan } from '@/lib/daySpan';
+import { dayLabel, daysAway, weekdayAndDay } from '@/lib/daySpan';
+import { RELEASE_COVER_SIZES } from '@/lib/releaseCard';
 import { LINE_COLUMNS, layoutLine, lineAgenda, type LineDay, type LineEvent, type LineLayout } from '@/lib/releaseLine';
-import { CURATED_EVENT_KIND_LABELS, storeLabel } from '@/types/calendarAdmin';
+import { CURATED_EVENT_KIND_LABELS } from '@/types/calendarAdmin';
 import './ReleaseAgenda.css';
 import './ReleaseLine.css';
-
-/** A cover in the list is drawn across `ReleaseCard`'s row column, 3.5rem, less its border. */
-const ROW_COVER_SIZES = 'calc(3.5rem - 2px)';
-
-/** A mark on the ruler is at most 2.25rem wide, and a day's column on a phone is narrower than that. */
-const MARK_SIZES = '2.25rem';
-
-/** "Thu, Nov 5", from the string alone. */
-function shortDate(day: string): string {
-    const { weekday, month, date } = dayLabel(day);
-    return `${weekday}, ${month} ${date}`;
-}
-
-/** How far a day is from today, in words: "Today", "Tomorrow", "In 10 days". */
-function fromToday(index: number): string {
-    if (index === 0) return 'Today';
-    if (index === 1) return 'Tomorrow';
-    return `In ${index} days`;
-}
 
 /**
  * The two weeks as a picture: fourteen equal days, a bar across the days of each sale, fest and showcase,
@@ -46,8 +29,6 @@ function Ruler({ layout }: { layout: LineLayout }) {
                     key={event.key}
                     className="release-ruler-bar"
                     data-kind={event.kind}
-                    data-continues-before={event.continuesBefore || undefined}
-                    data-continues-after={event.continuesAfter || undefined}
                     style={{ gridColumn: `${event.first + 1} / ${event.last + 2}`, gridRow: event.lane + 2 }}
                 >
                     {CURATED_EVENT_KIND_LABELS[event.kind]} · {event.name}
@@ -60,7 +41,8 @@ function Ruler({ layout }: { layout: LineLayout }) {
                 return (
                     <span key={day.day} className="release-ruler-mark" style={{ gridColumn: day.index + 1, gridRow: -2 }}>
                         <span className="release-ruler-cover">
-                            {cover !== null && <CoverImage url={cover} alt="" sizes={MARK_SIZES} eager />}
+                            {/* The row's size rather than the mark's own 2.25rem, so that the two fetch one file. */}
+                            {cover !== null && <CoverImage url={cover} alt="" sizes={RELEASE_COVER_SIZES} eager />}
                         </span>
                         {releases.length > 1 && <span className="release-ruler-count">{releases.length}</span>}
                     </span>
@@ -95,78 +77,30 @@ function RulerDay({ day }: { day: LineDay }) {
     );
 }
 
-/** A sale, a fest or a showcase in the list: when, what it is, and its name, linked where it is announced. */
+/**
+ * A sale, a fest or a showcase in the list, said as the line says when: one running today is on now, and
+ * says until when; one to come says the day it starts and its end. A showcase is an hour rather than a run
+ * of days, so it says its day and its time on the reader's clock, today included.
+ */
 function EventItem({ event, today }: { event: LineEvent; today: string }) {
-    const kind = CURATED_EVENT_KIND_LABELS[event.kind];
     const time = event.startsAt === null ? null : startTime(event.startsAt);
-
-    // A sale or a fest running today is on now, and says until when; one to come says the day it starts and
-    // its end. A showcase is an hour rather than a run of days, so it says its day and its time on the
-    // reader's clock, today included.
     const oneDay = event.startsOn === event.endsOn;
     const on = time === null && event.first === 0;
+
     let label: string;
     let detail: string;
     if (time !== null) {
-        label = event.first === 0 ? 'Today' : shortDate(event.startsOn);
+        label = event.first === 0 ? 'Today' : weekdayAndDay(event.startsOn);
         detail = time;
     } else if (on) {
         label = 'On now';
-        detail = oneDay || event.endsOn === today ? 'Today only' : `until ${shortDate(event.endsOn)}`;
+        detail = oneDay || event.endsOn === today ? 'Today only' : `until ${weekdayAndDay(event.endsOn)}`;
     } else {
-        label = shortDate(event.startsOn);
-        detail = oneDay ? fromToday(event.first) : `until ${shortDate(event.endsOn)}`;
+        label = weekdayAndDay(event.startsOn);
+        detail = oneDay ? daysAway(event.first) : `until ${weekdayAndDay(event.endsOn)}`;
     }
 
-    const when = time === null ? formatDaySpan(event.startsOn, event.endsOn) : `${dayLabel(event.startsOn).full}, ${time}`;
-
-    return (
-        <li className="release-agenda-item" data-kind={event.kind}>
-            <p className="release-agenda-when">
-                <span className="release-agenda-day" data-on={on || undefined}>{label}</span>
-                <span className="release-agenda-detail">{detail}</span>
-            </p>
-            <div className="release-agenda-body">
-                <p className="release-agenda-kind">
-                    {kind}
-                    {event.store !== null && <> · {storeLabel(event.store)}</>}
-                </p>
-                {event.url === null ? (
-                    <p className="release-agenda-name">{event.name}</p>
-                ) : (
-                    <a className="release-agenda-name" href={event.url} target="_blank" rel="noopener noreferrer">
-                        {event.name} <span className="sr-only">(opens in a new tab)</span>
-                    </a>
-                )}
-                <span className="sr-only">, {when}</span>
-            </div>
-        </li>
-    );
-}
-
-/** A day with something releasing on it: the day, and each release as a row, saying why it is there (L4). */
-function DayItem({ day }: { day: LineDay }) {
-    return (
-        <li className="release-agenda-item">
-            <p className="release-agenda-when">
-                <time dateTime={day.day}>
-                    <span className="release-agenda-day">{shortDate(day.day)}</span>
-                </time>
-                <span className="release-agenda-detail">{fromToday(day.index)}</span>
-            </p>
-            <div className="release-agenda-body release-agenda-releases">
-                {day.entries.map(entry => (
-                    <ReleaseCard
-                        key={`${entry.groupName ?? ''}|${entry.releases.map(r => r.gameId).join(',')}`}
-                        entry={entry}
-                        layout="row"
-                        sizes={ROW_COVER_SIZES}
-                        eager
-                    />
-                ))}
-            </div>
-        </li>
-    );
+    return <ReleaseAgendaEvent event={event} label={label} detail={detail} on={on ? 'label' : undefined} />;
 }
 
 /**
@@ -213,11 +147,11 @@ export function ReleaseLine({ userId }: { userId: string }) {
                 <ol className="release-agenda" aria-label="The next two weeks">
                     {agenda.map(item => item.type === 'event'
                         ? <EventItem key={item.key} event={item.event} today={today} />
-                        : <DayItem key={item.key} day={item.day} />)}
+                        : <ReleaseAgendaDay key={item.key} day={item.day.day} entries={item.day.entries} today={today} />)}
                 </ol>
             )}
 
-            {note !== null && <p className="release-line-note">{note}</p>}
+            {note !== null && <p className="release-agenda-note">{note}</p>}
             {eventsNote !== null && <p className="release-line-events-note">{eventsNote}</p>}
         </section>
     );

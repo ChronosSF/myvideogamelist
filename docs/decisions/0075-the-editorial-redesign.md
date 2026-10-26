@@ -69,14 +69,19 @@ will be the same again.
 - **Corners are a pixel or two.** Every Tailwind radius token is redefined small in `index.css`, and every
   radius a stylesheet wrote is now one of those tokens, so the shape is set in one place as the colour is.
   A circle stays a circle: an avatar, a toggle's thumb, the favourite's mark.
-- **A section opens with a heavy rule**, two pixels of `fg-strong`, its title set large under it and the
-  line about it across from the title. Rows inside a section are divided by hairlines. A box with a ground
+- **A section opens with a heavy rule**, two pixels of `rule`, which is `fg-strong` in this palette, its
+  title set large under it and the line about it across from the title. Rows inside a section are divided by hairlines. A box with a ground
   of its own is kept for what floats or is a control: a menu, a dialog, a panel.
 - **A page's header is its title**, set large, with no band or tint behind it.
 - **One filled button a place, for what the place is for**: lime with ink on it, the 500 step and its
   600 under the pointer — Sign In in its dialog, Start playing, a review's Import. Every other button is
   outlined in `line-strong` with `fg-strong` words, and red ones are outlined in red; only the dialog
   that deletes an account fills its button red. A link in running text is `fg-strong`, underlined.
+- **Each shape is written once.** The heavy rule, the two buttons and the underline are utilities in
+  `index.css` (`rule-heavy`, `btn-primary`, `btn-outline`, `text-link`, `underline-quiet`), and the type
+  roles are `type.css`'s; a stylesheet takes them with `@apply` under `@reference "../index.css"`. A
+  sale's, a fest's and a showcase's colours are `--kind` and `--kind-ink`, set once on whatever names its
+  kind. So a palette or a type change is one place, not every component that drew the shape by hand.
 - **The settings are parts of a page, not cards**: the account page, the public profile and the admin
   page each set their parts under rules, the tracking and each admin part under the heavy rule and each
   setting under a hairline, with its label as a kicker. A figure is display type over a kicker, under a

@@ -182,11 +182,14 @@ any other, so build new styling on these from the start:
 - **Text, strongest first:** `text-fg-strong` for headings, `text-fg` for body text, then
   `text-fg-soft`, `text-fg-muted`, `text-fg-faint` and `text-fg-dim`.
 - **The primary is a scale,** the logo's lime. `text-primary-400` for the active tab or a mark of
-  what is the reader's own, `bg-primary-500` for a filled button with `text-on-primary` (the page's
-  ink) and `bg-primary-600` for its other state, and `ring-focus` or `outline-focus` for keyboard
-  focus. A link in running text is `text-fg-strong`, underlined in `decoration-line-strong`. One filled
-  button to a place, for what the place is for; every other button is outlined, `border-line-strong`
-  with `text-fg-strong`, and a red one is outlined in red.
+  what is the reader's own, `primary-500` for a filled button with `on-primary` (the page's ink) and
+  `primary-600` for its other state, and `ring-focus` or `outline-focus` for keyboard focus.
+- **The shapes every page repeats are utilities in `src/index.css`**, so write them by name, never as
+  their classes: `btn-primary` for the one filled button a place has, for what the place is for;
+  `btn-outline` for every other button (a red one is outlined in red); `text-link` for a link in
+  running text; `hover:underline-quiet` for a title that is a link; `rule-heavy` for the rule a section
+  opens with. Size and spacing stay beside them. A stylesheet takes them with `@apply`, under
+  `@reference "../index.css";` at its top.
 - **Colours that carry meaning are scales named for the meaning,** such as `danger-300` for an
   error's words, and stay the same in every palette. Score colours still come from `@/lib/score`.
 - **The brand's colours** (`brand-navy`, `brand-lime`, `brand-light`) are the logo's.
@@ -208,6 +211,9 @@ size beside it:
 - `type-meta`: DM Mono — a date, a list of platforms, a count on a line of its own.
 - Everything else is the default, Schibsted Grotesk. Don't set `font-family` any other way.
 
+In a stylesheet a role is `@apply type-kicker;` first in the rule, with the size and anything else the
+place sets differently after it, never the family and the face written out again.
+
 Archivo has those two faces and no other, 125% at 800 and 100% at 700, cut by `npm run fonts`. Don't give
 it another weight or width: it is drawn in the nearer face, so the CSS would say something the page does
 not show. A new way of setting it is a new face there and a rule in `type.css`.
@@ -216,8 +222,8 @@ not show. A new way of setting it is a new face there and a rule in `type.css`.
 stylesheet writes `var(--radius-lg)`, never a size. `rounded-full` is for what is round: an avatar, a
 toggle's thumb.
 
-**A section opens with a rule, not a box:** `border-t-2 border-fg-strong` over its title, hairlines
-(`border-line`) between the rows inside it. `PageHeader` and `HomeSectionHeading` are the two shapes;
+**A section opens with a rule, not a box:** `rule-heavy` over its title, hairlines (`border-line`)
+between the rows inside it. `PageHeader` and `HomeSectionHeading` are the two shapes;
 use them rather than a copy of their classes.
 
 ## Images

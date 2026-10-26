@@ -609,7 +609,9 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   drawn in the nearer face, and another width or weight is another face there. A new face or family is
   kilobytes on every page, which a phone pays before its largest paint, so check the Lighthouse audit.
   Every radius is a token redefined small in `index.css`. A section of a page opens with a heavy rule, not
-  a box. See `docs/decisions/0075-*`.
+  a box. The rule, the two buttons and a link's underline are utilities in `index.css` (`rule-heavy`,
+  `btn-primary`, `btn-outline`, `text-link`), and a stylesheet takes those and the type roles with
+  `@apply` under `@reference "../index.css";`, never restated. See `docs/decisions/0075-*`.
 
 - **Two game field lists, and putting a field in the wrong one fails quietly.**
   `GameListFieldList` feeds every query; `GameDetailFieldList` is concatenated onto it only by

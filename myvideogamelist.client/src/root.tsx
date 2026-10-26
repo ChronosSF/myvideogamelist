@@ -183,7 +183,7 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
                     )}
                     <a
                         href="/"
-                        className="inline-flex items-center gap-2 px-5 py-2.5 bg-primary-500 hover:bg-primary-600 text-on-primary font-bold rounded-sm transition-colors"
+                        className="inline-flex items-center gap-2 px-5 py-2.5 btn-primary"
                     >
                         Back to home
                     </a>

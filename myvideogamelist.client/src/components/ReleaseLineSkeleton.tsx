@@ -1,5 +1,5 @@
 import { ReleaseLineHeading } from '@/components/ReleaseLineHeading';
-import './ReleaseLine.css';
+import './ReleaseAgenda.css';
 
 /**
  * The two-week line as a server render can draw it, for a reader the edge's signed-in flag says is signed
@@ -11,7 +11,7 @@ export function ReleaseLineSkeleton() {
     return (
         <section aria-labelledby="release-line-heading">
             <ReleaseLineHeading />
-            <p className="release-line-note">Looking up what is coming for your games…</p>
+            <p className="release-agenda-note">Looking up what is coming for your games…</p>
         </section>
     );
 }

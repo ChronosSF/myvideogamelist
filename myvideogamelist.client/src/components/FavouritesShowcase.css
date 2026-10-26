@@ -1,6 +1,8 @@
 /* The owner's showcase on /user: its heading with the Arrange toggle, and the grid it is laid out as
    while it is arranged (ADR 0064). The grips and the lifted cover are Reorder.css's. */
 
+@reference "../index.css";
+
 .favourites-showcase-head {
     display: flex;
     align-items: center;
@@ -9,19 +11,12 @@
 }
 
 .favourites-showcase-arrange {
+    @apply btn-outline;
     padding: 0.35rem 0.75rem;
     font-size: 0.8125rem;
     font-weight: 600;
-    color: var(--color-fg-strong);
     background: transparent;
-    border: 1px solid var(--color-line-strong);
-    border-radius: var(--radius-sm);
     cursor: pointer;
-    transition: background 0.12s, color 0.12s, border-color 0.12s;
-}
-
-.favourites-showcase-arrange:hover {
-    border-color: var(--color-fg-muted);
 }
 
 .favourites-showcase-arrange[aria-pressed='true'] {

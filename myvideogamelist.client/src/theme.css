@@ -36,10 +36,11 @@
 
     --color-line: oklch(95.3% 0.013 86.8 / 0.13);         /* Hairlines: borders, dividers, the rule between rows. About #2e2c28 on the page */
     --color-line-strong: oklch(95.3% 0.013 86.8 / 0.26);  /* The edge of a control or a floating panel. About #4a463f on the page */
+    --color-rule: var(--color-fg-strong);                  /* The heavy rule a section opens with (ADR 0075) */
 
     /* ── Text, strongest first ────────────────────────────────────────────── */
 
-    --color-fg-strong: oklch(95.3% 0.013 86.8);  /* Headings, what has to stand out, and the heavy rule over a section. #f3efe6 */
+    --color-fg-strong: oklch(95.3% 0.013 86.8);  /* Headings, and what has to stand out. #f3efe6 */
     --color-fg: oklch(88.3% 0.016 86.4);         /* Body text, and the page's own colour. #ddd8cd */
     --color-fg-soft: oklch(81.9% 0.018 84.6);    /* Text a step back: a menu item, a dialog's explanation. #c9c3b7 */
     --color-fg-muted: oklch(70.7% 0.018 84.6);   /* Descriptions, labels, a button that is not the main one. #a6a094 */
@@ -57,7 +58,7 @@
     --color-primary-800: oklch(53.2% 0.157 131.589);  /* lime-700 */
     --color-primary-900: oklch(45.3% 0.124 130.933);  /* lime-800 */
     --color-primary-950: oklch(27.4% 0.072 132.109);  /* The deepest tint of the primary. lime-950 */
-    --color-on-primary: oklch(17.8% 0.003 67.7);      /* Text on a filled primary: the page's ink, 12:1 on the 500 */
+    --color-on-primary: var(--color-page);            /* Text on a filled primary: the page's ink, 12:1 on the 500 */
     --color-focus: var(--color-primary-500);          /* The keyboard focus ring and outline */
 
     /* ── Colours that carry meaning: the same in every palette ────────────── */

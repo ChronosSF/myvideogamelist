@@ -1,6 +1,8 @@
 /* The hero (ADR 0075): the game's art across the page, dimmed rather than blurred, and its title set
    large over the fade into the page. Dimmed, not shown at full strength, until the art is chosen for it
    (#395): the first artwork IGDB lists is a logo or a cover for about a quarter of games. */
+
+@reference "../index.css";
 .game-page-hero {
     position: relative;
     min-height: clamp(360px, 42vw, 520px);
@@ -123,11 +125,9 @@
 
 /* The description's first letter, as a drop cap in the display type and the accent. */
 .game-page-lede::first-letter {
+    @apply type-display;
     float: left;
     margin: 0.3rem 0.5rem 0 0;
-    font-family: var(--font-display);
-    font-stretch: 125%;
-    font-weight: 800;
     font-size: 4.25rem;
     line-height: 0.75;
     color: var(--color-primary-500);

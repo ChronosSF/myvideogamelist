@@ -4,6 +4,8 @@
  * like different pages.
  */
 
+@reference "../index.css";
+
 .public-profile {
     min-height: 100vh;
     padding: 3rem 1rem 4rem;
@@ -42,12 +44,9 @@
 
 /* The page's title, set as every page's is (ADR 0075). */
 .public-profile-name {
-    font-family: var(--font-display);
-    font-stretch: 125%;
+    @apply type-display;
     font-size: clamp(2.25rem, 5vw, 3.25rem);
-    font-weight: 800;
     line-height: 1.05;
-    letter-spacing: -0.015em;
     color: var(--color-fg-strong);
     /* The name is user input and may be twenty characters with no break opportunity in it. */
     overflow-wrap: anywhere;
@@ -55,11 +54,9 @@
 
 /* The handle beside a display name: still in the heading, a step back from the name. */
 .public-profile-handle {
-    font-family: var(--font-mono);
-    font-stretch: 100%;
+    @apply type-meta;
     font-size: 1rem;
     font-weight: 400;
-    letter-spacing: 0;
     color: var(--color-fg-muted);
 }
 
@@ -90,20 +87,7 @@
 }
 
 .public-profile-footer a {
-    color: var(--color-fg-strong);
-    text-decoration: underline;
-    text-decoration-color: var(--color-line-strong);
-    text-underline-offset: 0.2em;
-}
-
-.public-profile-footer a:hover {
-    text-decoration-color: var(--color-fg-strong);
-}
-
-/* The profile opens under the heavy rule a section does, below who it is. */
-.public-profile-header + .profile-stats {
-    padding-top: 1.5rem;
-    border-top: 2px solid var(--color-fg-strong);
+    @apply text-link;
 }
 
 /* ── Reviews ─────────────────────────────────────────────────────────────── */

@@ -59,7 +59,7 @@ export function GameRefTile({ game, favourite = false, sayFavourite = true, link
                 {favourite && <FavouriteMark variant="cover" />}
             </div>
 
-            <p className="mt-2 type-title text-sm text-fg-strong leading-snug line-clamp-2 group-hover:underline decoration-line-strong underline-offset-4">
+            <p className="mt-2 type-title text-sm text-fg-strong leading-snug line-clamp-2 group-hover:underline-quiet">
                 {game.name}
                 {favourite && sayFavourite && <FavouriteWords />}
             </p>

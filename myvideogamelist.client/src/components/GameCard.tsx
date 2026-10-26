@@ -235,7 +235,7 @@ export function GameCard({ game, eager = false, children }: GameCardProps) {
 
                 <div className="flex items-start justify-between gap-2">
                     <h3 className="type-title text-fg-strong text-[0.9375rem] leading-snug line-clamp-2">
-                        <Link to={`/games/${game.id}`} className="hover:underline decoration-line-strong underline-offset-4">
+                        <Link to={`/games/${game.id}`} className="hover:underline-quiet">
                             {game.title}
                         </Link>
                         {favourite && <FavouriteWords />}

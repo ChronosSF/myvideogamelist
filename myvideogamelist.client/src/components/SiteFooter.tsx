@@ -28,7 +28,7 @@ const HEADING = 'type-kicker text-fg-muted mb-3';
  */
 export function SiteFooter() {
     return (
-        <footer className="border-t-2 border-fg-strong">
+        <footer className="rule-heavy">
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-10 pb-8">
                 <div className="flex flex-col gap-10 md:flex-row md:justify-between">
                     <div className="max-w-sm">

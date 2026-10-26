@@ -1,4 +1,4 @@
-import { eventDays, type DayEvent } from '@/lib/calendarEvents';
+import { agendaOf, eventDays, type AgendaItem, type DayEvent } from '@/lib/calendarEvents';
 import { addDays, daysBetween } from '@/lib/daySpan';
 import type { CalendarEvents, ReleaseEntry } from '@/types/releases';
 
@@ -27,9 +27,6 @@ export interface LineDay {
 }
 
 export interface LineEvent extends DayEvent {
-    /** Whether it began before the line does, or goes on after it ends. */
-    continuesBefore: boolean;
-    continuesAfter: boolean;
     /** The days it is on the line, as indexes from today: its first, and its last. */
     first: number;
     last: number;
@@ -43,11 +40,6 @@ export interface LineLayout {
     /** How many rows the bars take. */
     lanes: number;
 }
-
-/** One line of the list under the ruler: a sale or a showcase, or a day with something releasing on it. */
-export type AgendaItem =
-    | { type: 'event'; key: string; index: number; event: LineEvent }
-    | { type: 'day'; key: string; index: number; day: LineDay };
 
 /** The line's days: today and the thirteen after it. */
 export function lineDays(today: string): string[] {
@@ -64,8 +56,6 @@ function place(today: string, events: CalendarEvents | null): Omit<LineEvent, 'l
 
         placed.push({
             ...event,
-            continuesBefore: first < 0,
-            continuesAfter: last >= LINE_DAYS,
             first: Math.max(first, 0),
             last: Math.min(last, LINE_DAYS - 1),
         });
@@ -111,19 +101,7 @@ export function layoutLine(
     };
 }
 
-/**
- * The list under the ruler: each sale and showcase once, at the first of its days on the line, and each
- * day with something releasing on it, in day order — a day's events before its releases, since an event
- * that starts on a day frames it. A day with nothing on it is not in the list: that is the ruler's to show.
- */
-export function lineAgenda(layout: LineLayout): AgendaItem[] {
-    const items: AgendaItem[] = [
-        ...layout.events.map((event): AgendaItem => ({ type: 'event', key: event.key, index: event.first, event })),
-        ...layout.days
-            .filter(day => day.entries.length > 0)
-            .map((day): AgendaItem => ({ type: 'day', key: day.day, index: day.index, day })),
-    ];
-
-    // Stable, so that the events keep `place`'s order among themselves.
-    return items.sort((a, b) => a.index - b.index || (a.type === b.type ? 0 : a.type === 'event' ? -1 : 1));
+/** The list under the ruler: each sale and showcase at the first of its days on the line (`agendaOf`). */
+export function lineAgenda(layout: LineLayout): AgendaItem<LineEvent, LineDay>[] {
+    return agendaOf(layout.events, event => layout.days[event.first].day, layout.days);
 }

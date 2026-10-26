@@ -151,7 +151,7 @@ function HalfFailed({ what, retrying, onRetry }: { what: string; retrying: boole
             <span id={sentenceId}>{`${what} could not be loaded just now.`}</span>{' '}
             <button
                 type="button"
-                className="font-semibold text-fg-strong underline decoration-line-strong underline-offset-4 hover:decoration-fg-strong aria-disabled:opacity-60 aria-disabled:cursor-wait"
+                className="font-semibold text-link aria-disabled:opacity-60 aria-disabled:cursor-wait"
                 onClick={retrying ? undefined : onRetry}
                 aria-disabled={retrying || undefined}
                 aria-describedby={sentenceId}
@@ -292,7 +292,7 @@ function MemberReviews({ community, viewer, reviews, total }: MemberReviewsProps
                         type="button"
                         onClick={showMore}
                         aria-disabled={loadingMore}
-                        className="px-4 py-2 rounded-sm text-sm font-semibold border border-line-strong text-fg-strong hover:border-fg-muted aria-disabled:opacity-60 aria-disabled:cursor-wait transition-colors"
+                        className="px-4 py-2 text-sm font-semibold btn-outline aria-disabled:opacity-60 aria-disabled:cursor-wait"
                     >
                         {loadingMore ? 'Loading…' : 'Show more reviews'}
                     </button>

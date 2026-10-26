@@ -10,6 +10,9 @@ import { useHydrated } from '@/lib/useHydrated';
 import { PRIVATE_NO_STORE } from '@/lib/cache';
 import { NOINDEX } from '@/lib/seo';
 
+/** A section's heading: the display type under the heavy rule a section opens with (ADR 0075). */
+const SECTION_HEADING = 'type-display text-2xl text-fg-strong rule-heavy pt-4';
+
 /** One person's import history, so never cacheable. Declared rather than inherited from the root. */
 export function headers() {
     return { 'Cache-Control': PRIVATE_NO_STORE };
@@ -76,7 +79,7 @@ export function ImportPage() {
                 {signedIn && (
                     <>
                         <section aria-labelledby="import-source">
-                            <h2 id="import-source" className="type-display text-2xl text-fg-strong border-t-2 border-fg-strong pt-4 mb-2">
+                            <h2 id="import-source" className={`${SECTION_HEADING} mb-2`}>
                                 From Grouvee
                             </h2>
                             <p className="text-fg-muted text-sm mb-4">
@@ -162,7 +165,7 @@ export function ImportPage() {
 
                         {pending.length > 0 && (
                             <section aria-labelledby="import-pending">
-                                <h2 id="import-pending" className="type-display text-2xl text-fg-strong border-t-2 border-fg-strong pt-4 mb-4">
+                                <h2 id="import-pending" className={`${SECTION_HEADING} mb-4`}>
                                     Waiting for you
                                 </h2>
                                 <ul className="border-t border-line">
@@ -173,7 +176,7 @@ export function ImportPage() {
                                                 className="group flex items-center justify-between gap-4 py-3.5 border-b border-line"
                                             >
                                                 <span className="min-w-0">
-                                                    <span className="block type-title text-fg-strong truncate group-hover:underline decoration-line-strong underline-offset-4">
+                                                    <span className="block type-title text-fg-strong truncate group-hover:underline-quiet">
                                                         {job.fileName}
                                                     </span>
                                                     {expiresIn(job.expiresAt) && (
@@ -194,7 +197,7 @@ export function ImportPage() {
 
                         {finished.length > 0 && (
                             <section aria-labelledby="import-done">
-                                <h2 id="import-done" className="type-display text-2xl text-fg-strong border-t-2 border-fg-strong pt-4 mb-2">
+                                <h2 id="import-done" className={`${SECTION_HEADING} mb-2`}>
                                     Already imported
                                 </h2>
                                 <p className="text-fg-muted text-sm mb-3">

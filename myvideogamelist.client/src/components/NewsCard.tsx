@@ -77,7 +77,7 @@ export function NewsCard({ item, showGame = true, variant = 'row' }: NewsCardPro
             href={item.url}
             target="_blank"
             rel="noopener noreferrer"
-            className={`block text-fg-strong hover:underline decoration-line-strong underline-offset-4 ${className}`}
+            className={`block text-fg-strong hover:underline-quiet ${className}`}
         >
             {item.title}{' '}
             <span className="sr-only">(opens in a new tab)</span>

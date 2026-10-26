@@ -7,6 +7,8 @@
  * outrank Tailwind's `sr-only` and put the screen-reader text on screen.
  */
 
+@reference "../index.css";
+
 .release-agenda,
 .release-agenda-releases {
     margin: 0;
@@ -30,8 +32,7 @@
 }
 
 .release-agenda-day {
-    font-family: var(--font-display);
-    font-weight: 700;
+    @apply type-title;
     font-size: 1.125rem;
     line-height: 1.3;
     color: var(--color-fg-strong);
@@ -49,8 +50,7 @@
 }
 
 .release-agenda-detail {
-    font-family: var(--font-mono);
-    font-size: 0.75rem;
+    @apply type-meta;
     color: var(--color-fg-muted);
 }
 
@@ -67,30 +67,19 @@
 }
 
 .release-agenda-kind {
+    @apply type-kicker;
     margin: 0;
-    font-family: var(--font-mono);
     font-size: 0.6875rem;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
 }
 
-.release-agenda-item[data-kind='sale'] .release-agenda-kind {
-    color: var(--color-sale-300);
-}
-
-.release-agenda-item[data-kind='fest'] .release-agenda-kind {
-    color: var(--color-fest-300);
-}
-
-.release-agenda-item[data-kind='showcase'] .release-agenda-kind {
-    color: var(--color-showcase-300);
+.release-agenda-item[data-kind] .release-agenda-kind {
+    color: var(--kind-ink);
 }
 
 .release-agenda-name {
+    @apply type-title;
     display: block;
     margin: 0.125rem 0 0;
-    font-family: var(--font-display);
-    font-weight: 700;
     font-size: 1.125rem;
     line-height: 1.25;
     color: var(--color-fg-strong);
@@ -98,12 +87,19 @@
 }
 
 a.release-agenda-name:hover {
-    text-decoration: underline;
-    text-decoration-color: var(--color-line-strong);
-    text-underline-offset: 0.2em;
+    @apply underline-quiet;
 }
 
 a.release-agenda-name:focus-visible {
     outline: 2px solid var(--color-focus);
     outline-offset: 2px;
+}
+
+/* What the list says in place of its lines: that it is loading, could not be loaded, or has nothing. */
+.release-agenda-note {
+    margin: 0;
+    padding: 1rem 0;
+    border-bottom: 1px solid var(--color-line);
+    font-size: 0.9375rem;
+    color: var(--color-fg-muted);
 }

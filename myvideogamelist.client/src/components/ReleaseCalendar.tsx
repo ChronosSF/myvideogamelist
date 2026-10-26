@@ -1,9 +1,12 @@
 import { useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
+import { ReleaseAgendaDay } from '@/components/ReleaseAgendaDay';
+import { ReleaseAgendaEvent } from '@/components/ReleaseAgendaEvent';
 import { ReleaseCard, type CardEntry } from '@/components/ReleaseCard';
 import { useReleaseCalendar, type CalendarRead } from '@/hooks/useReleaseCalendar';
 import { startTime, type DayEvent } from '@/lib/calendarEvents';
-import { dayLabel, daysBetween, formatDaySpan } from '@/lib/daySpan';
+import { dayLabel, daysAway, daysBetween, shortSpan, weekdayAndDay } from '@/lib/daySpan';
+import { releaseEntryKey } from '@/lib/releaseCard';
 import {
     calendarMonths,
     eventKindsOn,
@@ -16,19 +19,11 @@ import {
     type CalendarDay,
     type MonthLayout,
 } from '@/lib/releaseCalendar';
-import { CURATED_EVENT_KIND_LABELS, storeLabel } from '@/types/calendarAdmin';
 import './ReleaseAgenda.css';
 import './ReleaseCalendar.css';
 
 /** How many entries a band shows before "Show all": about four rows of them at full width. */
 const SHOWN_AT_FIRST = 12;
-
-/** Every cover on the calendar is a row's, drawn across `ReleaseCard`'s 3.5rem column less its border. */
-const ROW_COVER_SIZES = 'calc(3.5rem - 2px)';
-
-function entryKey(entry: CardEntry): string {
-    return `${entry.groupName ?? ''}|${entry.releases.map(r => r.gameId).join(',')}`;
-}
 
 /** A list of entries that shows the first few and keeps the rest one click away. */
 function EntryList({ entries, undated = false, label }: { entries: readonly CardEntry[]; undated?: boolean; label: string }) {
@@ -37,10 +32,10 @@ function EntryList({ entries, undated = false, label }: { entries: readonly Card
 
     return (
         <>
-            <ul className="calendar-entry-list" aria-label={label}>
+            <ul className="release-agenda-releases" aria-label={label}>
                 {shown.map(entry => (
-                    <li key={entryKey(entry)}>
-                        <ReleaseCard entry={entry} layout="row" sizes={ROW_COVER_SIZES} undated={undated} />
+                    <li key={releaseEntryKey(entry)}>
+                        <ReleaseCard entry={entry} undated={undated} />
                     </li>
                 ))}
             </ul>
@@ -85,27 +80,6 @@ function Band({ id, label, detail = null, entries, undated = false }: BandProps)
             <EntryList entries={entries} undated={undated} label={label} />
         </section>
     );
-}
-
-/** "Oct 15", from the string alone. */
-function shortDay(day: string): string {
-    const { month, date } = dayLabel(day);
-    return `${month} ${date}`;
-}
-
-/** "Fri, Oct 16", from the string alone. */
-function weekdayDay(day: string): string {
-    const { weekday, month, date } = dayLabel(day);
-    return `${weekday}, ${month} ${date}`;
-}
-
-/** How a day stands to today, in words: "Today", "Tomorrow", "In 10 days", or out already. */
-function fromToday(today: string, day: string): string {
-    const days = daysBetween(today, day);
-    if (days < 0) return 'Already out';
-    if (days === 0) return 'Today';
-    if (days === 1) return 'Tomorrow';
-    return `In ${days} days`;
 }
 
 const WEEKDAYS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
@@ -173,69 +147,22 @@ function IndexKey() {
 }
 
 /**
- * A sale, a fest or a showcase in the month's list, once, with all of its dates: what it is, and its name,
- * linked to where it is announced or streams (K2).
+ * A sale, a fest or a showcase in the month's list, once, with all of its dates (K2): its days, and whether
+ * it has ended, is on now or is still to come; a showcase, its time on the reader's clock.
  */
 function EventItem({ event, today }: { event: DayEvent; today: string }) {
-    const kind = CURATED_EVENT_KIND_LABELS[event.kind];
     const time = event.startsAt === null ? null : startTime(event.startsAt);
-    const oneDay = event.startsOn === event.endsOn;
+    const label = event.startsOn === event.endsOn ? weekdayAndDay(event.startsOn) : shortSpan(event.startsOn, event.endsOn);
+    const ended = time === null && event.endsOn < today;
+    const on = time === null && !ended && event.startsOn <= today;
 
-    const label = oneDay ? weekdayDay(event.startsOn) : `${shortDay(event.startsOn)} – ${shortDay(event.endsOn)}`;
     let detail: string;
     if (time !== null) detail = time;
-    else if (event.endsOn < today) detail = 'Ended';
-    else if (event.startsOn <= today) detail = 'On now';
-    else detail = fromToday(today, event.startsOn);
+    else if (ended) detail = 'Ended';
+    else if (on) detail = 'On now';
+    else detail = daysAway(daysBetween(today, event.startsOn));
 
-    const when = time === null ? formatDaySpan(event.startsOn, event.endsOn) : `${dayLabel(event.startsOn).full}, ${time}`;
-
-    return (
-        <li className="release-agenda-item" data-kind={event.kind} data-past={(time === null && event.endsOn < today) || undefined}>
-            <p className="release-agenda-when">
-                <span className="release-agenda-day">{label}</span>
-                <span className="release-agenda-detail" data-on={detail === 'On now' || undefined}>{detail}</span>
-            </p>
-            <div className="release-agenda-body">
-                <p className="release-agenda-kind">
-                    {kind}
-                    {event.store !== null && <> · {storeLabel(event.store)}</>}
-                </p>
-                {event.url === null ? (
-                    <p className="release-agenda-name">{event.name}</p>
-                ) : (
-                    <a className="release-agenda-name" href={event.url} target="_blank" rel="noopener noreferrer">
-                        {event.name} <span className="sr-only">(opens in a new tab)</span>
-                    </a>
-                )}
-                <span className="sr-only">, {when}</span>
-            </div>
-        </li>
-    );
-}
-
-/** A day with something releasing on it: the day, and what releases, each saying why it is there (K5). */
-function DayItem({ day, today }: { day: CalendarDay; today: string }) {
-    const label = dayLabel(day.day);
-
-    return (
-        <li className="release-agenda-item" data-past={day.day < today || undefined}>
-            <p className="release-agenda-when">
-                <time dateTime={day.day} className="release-agenda-day" data-on={day.day === today || undefined}>
-                    <span className="sr-only">{day.day === today ? `Today, ${label.full}` : label.full}</span>
-                    <span aria-hidden="true">{weekdayDay(day.day)}</span>
-                </time>
-                <span className="release-agenda-detail">{fromToday(today, day.day)}</span>
-            </p>
-            <ul className="release-agenda-body release-agenda-releases" aria-label={`Due on ${label.full}`}>
-                {day.entries.map(entry => (
-                    <li key={entryKey(entry)}>
-                        <ReleaseCard entry={entry} layout="row" sizes={ROW_COVER_SIZES} eager />
-                    </li>
-                ))}
-            </ul>
-        </li>
-    );
+    return <ReleaseAgendaEvent event={event} label={label} detail={detail} on={on ? 'detail' : undefined} past={ended} />;
 }
 
 /** Where a month is: the calendar's own address for the month it opens on, so that it has one. */
@@ -302,7 +229,7 @@ function Step({ months, to, direction }: { months: readonly string[]; to: string
 /** A sentence in place of what could not be shown, and a way to ask again. */
 function Failure({ read, children }: { read: CalendarRead<unknown>; children: React.ReactNode }) {
     return (
-        <p className="calendar-note" role="alert">
+        <p className="release-agenda-note" role="alert">
             {children}{' '}
             <button type="button" className="calendar-retry" onClick={read.reload}>Try again</button>
         </p>
@@ -342,11 +269,11 @@ export function ReleaseCalendar({ userId }: { userId: string }) {
 
     let note: React.ReactNode = null;
     if (releases.loading) {
-        note = <p className="calendar-note" role="status">Looking up what is coming for your games…</p>;
+        note = <p className="release-agenda-note" role="status">Looking up what is coming for your games…</p>;
     } else if (releases.error !== null) {
         note = <Failure read={releases}>What is coming for your games could not be loaded just now.</Failure>;
     } else if (onDays === 0 && bands.length === 0) {
-        note = <p className="calendar-note">Nothing connected to your games is due in {label}.</p>;
+        note = <p className="release-agenda-note">Nothing connected to your games is due in {label}.</p>;
     }
 
     // The showcases come from IGDB and the sales from us, so a degraded answer still has every sale. Asking
@@ -391,7 +318,7 @@ export function ReleaseCalendar({ userId }: { userId: string }) {
                         <ol className="release-agenda" aria-label={`What is on in ${name}`}>
                             {agenda.map(item => item.type === 'event'
                                 ? <EventItem key={item.key} event={item.event} today={today} />
-                                : <DayItem key={item.key} day={item.day} today={today} />)}
+                                : <ReleaseAgendaDay key={item.key} day={item.day.day} entries={item.day.entries} today={today} />)}
                         </ol>
                     )}
 
@@ -416,12 +343,12 @@ export function ReleaseCalendar({ userId }: { userId: string }) {
             <section className="calendar-undated" aria-labelledby="calendar-undated-heading">
                 <h2 id="calendar-undated-heading" className="calendar-section-heading">Announced, no date</h2>
                 <p className="calendar-section-lead">Connected to your games, with no date anywhere yet.</p>
-                {undated.loading && <p className="calendar-note" role="status">Looking for what is announced…</p>}
+                {undated.loading && <p className="release-agenda-note" role="status">Looking for what is announced…</p>}
                 {undated.error !== null && (
                     <Failure read={undated}>What is announced with no date could not be loaded just now.</Failure>
                 )}
                 {undated.data !== null && undated.data.length === 0 && (
-                    <p className="calendar-note">Nothing connected to your games is waiting on a date.</p>
+                    <p className="release-agenda-note">Nothing connected to your games is waiting on a date.</p>
                 )}
                 {/* In bands for what each is to the user's game, laid out as the month's are: a list with no
                     dates has nothing else to order it by. */}

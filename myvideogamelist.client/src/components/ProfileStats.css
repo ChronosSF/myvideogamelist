@@ -4,6 +4,8 @@
  * second styling system to keep in step with the theme.
  */
 
+@reference "../index.css";
+
 .profile-stats {
     display: flex;
     flex-direction: column;
@@ -15,13 +17,10 @@
 
 /* A part's title, in display type under the rule the part opens with (ADR 0075). */
 .profile-heading {
+    @apply type-display;
     margin: 0;
-    font-family: var(--font-display);
-    font-stretch: 125%;
     font-size: 1.75rem;
-    font-weight: 800;
     line-height: 1.1;
-    letter-spacing: -0.01em;
     color: var(--color-fg-strong);
 }
 
@@ -33,12 +32,9 @@
 
 /* A kicker, over a chart or a list of bars. */
 .profile-section-title {
+    @apply type-kicker;
     margin: 0;
-    font-family: var(--font-mono);
     font-size: 0.6875rem;
-    font-weight: 400;
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
     color: var(--color-fg-muted);
 }
 
@@ -51,11 +47,9 @@
 }
 
 .profile-figure {
+    @apply type-display;
     margin: 0;
-    font-family: var(--font-display);
-    font-stretch: 125%;
     font-size: 2rem;
-    font-weight: 800;
     line-height: 1.1;
     color: var(--color-fg-strong);
 }
@@ -79,21 +73,13 @@
 
 .profile-retry,
 .profile-cta {
+    @apply btn-primary;
     align-self: flex-start;
     padding: 0.4rem 0.8rem;
     font-size: 0.8125rem;
-    font-weight: 700;
-    color: var(--color-on-primary);
-    background: var(--color-primary-500);
     border: none;
-    border-radius: var(--radius-sm);
     cursor: pointer;
     text-decoration: none;
-}
-
-.profile-retry:hover,
-.profile-cta:hover {
-    background: var(--color-primary-600);
 }
 
 /* Headline figures */
@@ -171,22 +157,17 @@
 }
 
 .profile-stat-value {
+    @apply type-display;
     margin: 0;
-    font-family: var(--font-display);
-    font-stretch: 125%;
     font-size: 1.875rem;
-    font-weight: 800;
     line-height: 1.05;
     color: var(--color-fg-strong);
 }
 
 .profile-stat-label {
+    @apply type-kicker;
     margin: 0.5rem 0 0;
-    font-family: var(--font-mono);
     font-size: 0.6875rem;
-    font-weight: 400;
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
     color: var(--color-fg-soft);
 }
 
@@ -274,8 +255,8 @@
    these. */
 
 .profile-chart-tick {
+    @apply type-meta;
     margin-top: 0.3rem;
-    font-family: var(--font-mono);
     font-size: 0.6875rem;
     color: var(--color-fg-muted);
     font-variant-numeric: tabular-nums;

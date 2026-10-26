@@ -3,6 +3,8 @@
  * figures under a heavy rule, the rows of what you are playing with their button, and the play-next pick.
  */
 
+@reference "../index.css";
+
 /* ── The figures ─────────────────────────────────────────────────────────── */
 
 .home-strip {
@@ -11,7 +13,7 @@
        numbers side by side at 320px are three numbers nobody reads. */
     grid-template-columns: repeat(auto-fit, minmax(min(11rem, 100%), 1fr));
     margin: 0;
-    border-top: 2px solid var(--color-fg-strong);
+    border-top: 2px solid var(--color-rule);
 }
 
 .home-strip-item {
@@ -31,21 +33,15 @@
 }
 
 .home-strip-item dd {
+    @apply type-display;
     margin: 0;
-    font-family: var(--font-display);
-    font-stretch: 125%;
-    font-weight: 800;
     font-size: clamp(2.25rem, 4vw, 3rem);
     line-height: 1;
-    letter-spacing: -0.02em;
     color: var(--color-fg-strong);
 }
 
 .home-strip-item dt {
-    font-family: var(--font-mono);
-    font-size: 0.75rem;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
+    @apply type-kicker;
     color: var(--color-fg-muted);
 }
 
@@ -96,8 +92,7 @@
 }
 
 .continue-title {
-    font-family: var(--font-display);
-    font-weight: 700;
+    @apply type-title;
     font-size: 1.0625rem;
     line-height: 1.25;
     color: var(--color-fg-strong);
@@ -105,9 +100,7 @@
 }
 
 .continue-title:hover {
-    text-decoration: underline;
-    text-decoration-color: var(--color-line-strong);
-    text-underline-offset: 0.2em;
+    @apply underline-quiet;
 }
 
 .continue-finish-btn {
@@ -141,17 +134,10 @@
 }
 
 .continue-empty-link {
+    @apply text-link;
     display: inline-block;
     margin-top: 0.5rem;
-    color: var(--color-fg-strong);
     font-weight: 600;
-    text-decoration: underline;
-    text-decoration-color: var(--color-line-strong);
-    text-underline-offset: 0.25em;
-}
-
-.continue-empty-link:hover {
-    text-decoration-color: var(--color-fg-strong);
 }
 
 /* ── Play next ───────────────────────────────────────────────────────────── */
@@ -183,12 +169,9 @@
 }
 
 .play-next-title {
-    font-family: var(--font-display);
-    font-stretch: 125%;
-    font-weight: 800;
+    @apply type-display;
     font-size: 1.375rem;
     line-height: 1.1;
-    letter-spacing: -0.015em;
     /* A title can be one long word, and the column is narrow on a phone. */
     overflow-wrap: anywhere;
 }
@@ -198,9 +181,7 @@
 }
 
 .play-next-title a:hover {
-    text-decoration: underline;
-    text-decoration-color: var(--color-line-strong);
-    text-underline-offset: 0.15em;
+    @apply underline-quiet;
 }
 
 .play-next-meta {
@@ -217,20 +198,12 @@
 }
 
 .play-next-btn {
+    @apply btn-outline;
     padding: 0.4375rem 0.875rem;
-    border: 1px solid var(--color-line-strong);
-    border-radius: var(--radius-sm);
     background: transparent;
-    color: var(--color-fg-soft);
     font-size: 0.875rem;
     font-weight: 500;
     cursor: pointer;
-    transition: background-color 0.15s, border-color 0.15s, color 0.15s;
-}
-
-.play-next-btn:hover:not(:disabled) {
-    border-color: var(--color-fg-muted);
-    color: var(--color-fg-strong);
 }
 
 .play-next-btn:disabled {

@@ -7,6 +7,8 @@
  * outrank Tailwind's `sr-only` and put the screen-reader text on screen.
  */
 
+@reference "../index.css";
+
 /* ── The ruler ───────────────────────────────────────────────────────────── */
 
 .release-ruler {
@@ -45,21 +47,17 @@
 
 .release-ruler-weekday,
 .release-ruler-month {
+    @apply type-kicker;
     min-height: 0.875rem;
-    font-family: var(--font-mono);
     font-size: 0.625rem;
-    line-height: 1.4;
     letter-spacing: 0.08em;
-    text-transform: uppercase;
     white-space: nowrap;
     overflow: hidden;
     color: var(--color-fg-muted);
 }
 
 .release-ruler-date {
-    font-family: var(--font-display);
-    font-stretch: 125%;
-    font-weight: 800;
+    @apply type-display;
     font-size: 1.25rem;
     line-height: 1.15;
     color: var(--color-fg-soft);
@@ -72,38 +70,24 @@
 
 /* A sale, a fest, a showcase: a rule of its kind's colour over its days, with its name under the rule. */
 .release-ruler-bar {
+    @apply type-kicker;
     position: relative;
     z-index: 1;
     min-width: 0;
     margin: 0.25rem 0 0;
     padding: 0.25rem 0.5rem;
     border-top: 3px solid;
-    font-family: var(--font-mono);
     font-size: 0.6875rem;
-    line-height: 1.4;
     letter-spacing: 0.06em;
-    text-transform: uppercase;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
 }
 
-.release-ruler-bar[data-kind='sale'] {
-    border-color: var(--color-sale-500);
-    background: color-mix(in srgb, var(--color-sale-500) 12%, transparent);
-    color: var(--color-sale-300);
-}
-
-.release-ruler-bar[data-kind='fest'] {
-    border-color: var(--color-fest-500);
-    background: color-mix(in srgb, var(--color-fest-500) 12%, transparent);
-    color: var(--color-fest-300);
-}
-
-.release-ruler-bar[data-kind='showcase'] {
-    border-color: var(--color-showcase-500);
-    background: color-mix(in srgb, var(--color-showcase-500) 14%, transparent);
-    color: var(--color-showcase-300);
+.release-ruler-bar[data-kind] {
+    border-color: var(--kind);
+    background: color-mix(in srgb, var(--kind) 12%, transparent);
+    color: var(--kind-ink);
 }
 
 /* A release: a small cover standing on its day, ringed so that it reads as a point rather than a picture. */
@@ -134,6 +118,7 @@
 
 /* How many release that day, where it is more than the one cover shows. */
 .release-ruler-count {
+    @apply type-meta;
     position: absolute;
     top: -0.5rem;
     right: -0.5rem;
@@ -143,7 +128,6 @@
     border-radius: var(--radius-sm);
     background: var(--color-primary-500);
     color: var(--color-on-primary);
-    font-family: var(--font-mono);
     font-size: 0.625rem;
     font-weight: 500;
     line-height: 1.125rem;
@@ -161,9 +145,8 @@
     }
 
     .release-ruler-date {
+        @apply type-title;
         font-size: 0.875rem;
-        font-stretch: 100%;
-        font-weight: 700;
     }
 
     .release-ruler-month {
@@ -176,15 +159,7 @@
     }
 }
 
-/* ── What the line says when it has nothing to list ──────────────────────── */
-
-.release-line-note {
-    margin: 0;
-    padding: 1rem 0;
-    border-bottom: 1px solid var(--color-line);
-    font-size: 0.9375rem;
-    color: var(--color-fg-muted);
-}
+/* ── What the line says when the showcases are missing ──────────────────── */
 
 .release-line-events-note {
     margin-top: 0.5rem;

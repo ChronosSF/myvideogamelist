@@ -349,7 +349,7 @@ export function GamePage() {
                                 Add-on for{' '}
                                 <Link
                                     to={`/games/${details.parentGame.id}`}
-                                    className="font-semibold text-fg-strong underline decoration-line-strong underline-offset-4 hover:decoration-fg-strong transition-colors"
+                                    className="font-semibold text-link"
                                 >
                                     {details.parentGame.name}
                                 </Link>
@@ -607,7 +607,7 @@ export function GamePage() {
                                 onCommunityChange={community.reload}
                             />
                         ) : (
-                            <div className="border-t-2 border-fg-strong pt-4 pb-2">
+                            <div className="rule-heavy pt-4 pb-2">
                                 <p className="type-kicker text-fg-muted mb-2">Your copy</p>
                                 <p className="text-fg-muted text-sm">
                                     {authLoading ? <>&nbsp;</> : 'Sign in to track this game.'}
@@ -616,7 +616,7 @@ export function GamePage() {
                         )}
 
                         {/* The facts, as a list under a heavy rule. */}
-                        <div className="border-t-2 border-fg-strong">
+                        <div className="rule-heavy">
                             <p className="type-kicker text-fg-muted pt-4 pb-1">The details</p>
                             {releaseDate && (
                                 <div className={FACT}>
@@ -744,7 +744,7 @@ export function GamePage() {
                                         href={game.website}
                                         target="_blank"
                                         rel="noopener noreferrer"
-                                        className="inline-flex items-center gap-1 text-sm font-semibold text-fg-strong underline decoration-line-strong underline-offset-4 hover:decoration-fg-strong transition-colors break-all"
+                                        className="inline-flex items-center gap-1 text-sm font-semibold text-link break-all"
                                     >
                                         Official Site{' '}
                                         <span className="sr-only">(opens in a new tab)</span>
@@ -762,7 +762,7 @@ export function GamePage() {
                                         href={game.trailerUrl}
                                         target="_blank"
                                         rel="noopener noreferrer"
-                                        className="inline-flex items-center gap-1 text-sm font-semibold text-fg-strong underline decoration-line-strong underline-offset-4 hover:decoration-fg-strong transition-colors"
+                                        className="inline-flex items-center gap-1 text-sm font-semibold text-link"
                                     >
                                         Watch Trailer{' '}
                                         <span className="sr-only">(opens in a new tab)</span>
@@ -807,7 +807,7 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
                 >
                     <Link
                         to="/games"
-                        className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary-500 hover:bg-primary-600 text-on-primary text-sm font-bold rounded-sm transition-colors"
+                        className="inline-flex items-center gap-1.5 px-4 py-2 btn-primary text-sm"
                     >
                         Browse games
                     </Link>

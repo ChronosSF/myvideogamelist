@@ -6,6 +6,8 @@ interface HomeSectionHeadingProps {
     title: string;
     subtitle: string;
     action?: { to: string; label: string };
+    /** Less room under it, for the two-week line, whose ruler hangs from the rule. */
+    compact?: boolean;
 }
 
 /**
@@ -16,9 +18,9 @@ interface HomeSectionHeadingProps {
  * show — `ShowcasesAndSales`, which is not drawn when nothing is on in the reader's two weeks — can
  * use the same one rather than a copy of its classes, as `SectionHeading` was for the game page.
  */
-export function HomeSectionHeading({ id, title, subtitle, action }: HomeSectionHeadingProps) {
+export function HomeSectionHeading({ id, title, subtitle, action, compact = false }: HomeSectionHeadingProps) {
     return (
-        <div className="border-t-2 border-fg-strong pt-4 mb-8 flex flex-wrap items-baseline justify-between gap-x-8 gap-y-2">
+        <div className={`rule-heavy pt-4 flex flex-wrap items-baseline justify-between gap-x-8 gap-y-2 ${compact ? 'mb-4' : 'mb-8'}`}>
             <h2 id={id} className="type-display text-4xl sm:text-5xl text-fg-strong">{title}</h2>
 
             <p className="flex flex-wrap items-baseline gap-x-6 gap-y-1 text-sm text-fg-muted">
@@ -26,7 +28,7 @@ export function HomeSectionHeading({ id, title, subtitle, action }: HomeSectionH
                 {action && (
                     <Link
                         to={action.to}
-                        className="shrink-0 font-semibold text-fg-strong underline decoration-line-strong underline-offset-4 hover:decoration-fg-strong transition-colors"
+                        className="shrink-0 font-semibold text-link"
                     >
                         {action.label} <span aria-hidden="true">→</span>
                     </Link>

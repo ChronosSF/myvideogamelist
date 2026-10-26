@@ -4,6 +4,8 @@
  * parts of it, each under a rule rather than in a box (ADR 0075).
  */
 
+@reference "../index.css";
+
 /* ── Layout ──────────────────────────────────────────────────────────────── */
 
 /*
@@ -72,17 +74,14 @@
 
 .user-page-tracking > .user-card {
     padding-top: 1.25rem;
-    border-top: 2px solid var(--color-fg-strong);
+    border-top: 2px solid var(--color-rule);
 }
 
 /* In the kicker's type, the label over a figure or a heading elsewhere. */
 .user-card-label {
+    @apply type-kicker;
     margin-bottom: 0.5rem;
-    font-family: var(--font-mono);
     font-size: 0.6875rem;
-    font-weight: 400;
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
     color: var(--color-fg-muted);
 }
 
@@ -125,20 +124,13 @@
 /* Sized to its label, so it can sit in a row beside a value. .user-btn-block spans the column. Outlined,
    as a page's secondary buttons are: the lime fill is kept for the one thing a page is for. */
 .user-btn {
+    @apply btn-outline;
     flex-shrink: 0;
     padding: 0.4375rem 0.875rem;
     background: transparent;
-    color: var(--color-fg-strong);
-    border: 1px solid var(--color-line-strong);
-    border-radius: var(--radius-sm);
     font-size: 0.875rem;
     font-weight: 600;
     cursor: pointer;
-    transition: border-color 0.15s;
-}
-
-.user-btn:hover:not(:disabled):not([aria-disabled='true']) {
-    border-color: var(--color-fg-muted);
 }
 
 /* `aria-disabled` looks the same as `disabled`. It is for a button that has to keep the keyboard's
@@ -377,15 +369,8 @@ a.user-btn {
 }
 
 .username-link a {
-    color: var(--color-fg-strong);
-    text-decoration: underline;
-    text-decoration-color: var(--color-line-strong);
-    text-underline-offset: 0.2em;
+    @apply text-link;
     overflow-wrap: anywhere;
-}
-
-.username-link a:hover {
-    text-decoration-color: var(--color-fg-strong);
 }
 
 /* ── Profile details ─────────────────────────────────────────────────────── */
@@ -412,9 +397,8 @@ a.user-btn {
 }
 
 .profile-details-display-name {
-    font-family: var(--font-display);
+    @apply type-title;
     font-size: 1rem;
-    font-weight: 700;
     color: var(--color-fg);
     overflow-wrap: anywhere;
 }

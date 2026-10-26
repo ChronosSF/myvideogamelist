@@ -291,7 +291,7 @@ export function ListsPage() {
                     <EmptyState icon={LIST_ICON} message={`No games in ${nameFor(activeTab)} yet.`}>
                         <Link
                             to="/games"
-                            className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary-500 hover:bg-primary-600 text-on-primary text-sm font-bold rounded-sm transition-colors"
+                            className="inline-flex items-center gap-1.5 px-4 py-2 btn-primary text-sm"
                         >
                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />

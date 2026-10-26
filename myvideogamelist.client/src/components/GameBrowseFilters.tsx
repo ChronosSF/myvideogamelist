@@ -192,7 +192,7 @@ export function GameBrowseFilters({ browse, platforms, genres, years, onChange, 
                     <div className="col-span-2 sm:col-span-1">
                         <button
                             type="button"
-                            className="px-3 py-2 text-sm font-semibold text-fg-strong underline decoration-line-strong underline-offset-4 hover:decoration-fg-strong"
+                            className="px-3 py-2 text-sm font-semibold text-link"
                             onClick={onClear}
                         >
                             Clear filters

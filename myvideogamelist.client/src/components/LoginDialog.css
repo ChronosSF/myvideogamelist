@@ -1,3 +1,5 @@
+@reference "../index.css";
+
 .dialog-overlay {
     position: fixed;
     inset: 0;
@@ -14,7 +16,7 @@
 .dialog-panel {
     background: var(--color-surface);
     border: 1px solid var(--color-line-strong);
-    border-top: 2px solid var(--color-fg-strong);
+    border-top: 2px solid var(--color-rule);
     border-radius: var(--radius-2xl);
     padding: 2rem;
     width: 100%;
@@ -29,10 +31,8 @@
 }
 
 .dialog-title {
-    font-family: var(--font-display);
-    font-stretch: 125%;
+    @apply type-display;
     font-size: 1.75rem;
-    font-weight: 800;
     line-height: 1.1;
     color: var(--color-fg-strong);
     margin: 0 0 1.5rem;
@@ -167,7 +167,7 @@ html:has(.dialog-modal[open]) {
 .dialog-btn-secondary,
 .dialog-btn-danger {
     padding: 0.5625rem 1rem;
-    border-radius: var(--radius-lg);
+    border-radius: var(--radius-sm);
     font-size: 0.875rem;
     font-weight: 600;
     cursor: pointer;
@@ -181,13 +181,8 @@ html:has(.dialog-modal[open]) {
 }
 
 .dialog-btn-secondary {
+    @apply btn-outline;
     background: transparent;
-    color: var(--color-fg);
-    border: 1px solid var(--color-line-strong);
-}
-
-.dialog-btn-secondary:hover:not(:disabled) {
-    background: rgba(255, 255, 255, 0.06);
 }
 
 /* A solid fill, unlike every other red on the site, because this is the one that cannot be undone. */
@@ -203,21 +198,13 @@ html:has(.dialog-modal[open]) {
 }
 
 .dialog-btn-primary {
+    @apply btn-primary;
     width: 100%;
     padding: 0.6875rem 1rem;
-    background: var(--color-primary-500);
-    color: var(--color-on-primary);
     border: none;
-    border-radius: var(--radius-lg);
     font-size: 0.9375rem;
-    font-weight: 700;
     cursor: pointer;
-    transition: background 0.15s;
     margin-bottom: 1rem;
-}
-
-.dialog-btn-primary:hover:not(:disabled) {
-    background: var(--color-primary-600);
 }
 
 .dialog-btn-primary:disabled {
@@ -232,20 +219,13 @@ html:has(.dialog-modal[open]) {
 }
 
 .dialog-footer button {
+    @apply text-link;
     background: none;
     border: none;
-    color: var(--color-fg-strong);
     font-size: 0.875rem;
     font-weight: 600;
     cursor: pointer;
     padding: 0;
-    text-decoration: underline;
-    text-decoration-color: var(--color-line-strong);
-    text-underline-offset: 0.2em;
-}
-
-.dialog-footer button:hover {
-    text-decoration-color: var(--color-fg-strong);
 }
 
 .dialog-close {

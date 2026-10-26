@@ -1,19 +1,17 @@
 /* The reader's own copy, under a heavy rule rather than in a box (ADR 0075), as the sidebar's facts are. */
+
+@reference "../index.css";
 .game-user-panel {
     display: flex;
     flex-direction: column;
     gap: 1.25rem;
     padding-top: 1rem;
-    border-top: 2px solid var(--color-fg-strong);
+    border-top: 2px solid var(--color-rule);
 }
 
 .game-user-panel-title {
+    @apply type-kicker;
     margin: 0;
-    font-family: var(--font-mono);
-    font-size: 0.75rem;
-    font-weight: 400;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
     color: var(--color-fg-muted);
 }
 
@@ -24,12 +22,9 @@
 }
 
 .game-user-panel-label {
+    @apply type-kicker;
     margin: 0;
-    font-family: var(--font-mono);
     font-size: 0.6875rem;
-    font-weight: 400;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
     color: var(--color-fg-faint);
 }
 
