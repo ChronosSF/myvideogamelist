@@ -20,7 +20,8 @@ import { SiteFooter } from '@/components/SiteFooter';
 import { PRIVATE_NO_STORE } from '@/lib/cache';
 import { isUpstreamFailure } from '@/lib/trace';
 import { traceMiddleware } from '@/lib/trace.server';
-import archivoLatin from '@fontsource-variable/archivo/files/archivo-latin-wdth-normal.woff2?url';
+import archivoDisplay from '@/assets/fonts/archivo-display-latin.woff2?url';
+import archivoTitle from '@/assets/fonts/archivo-title-latin.woff2?url';
 import schibstedLatin from '@fontsource-variable/schibsted-grotesk/files/schibsted-grotesk-latin-wght-normal.woff2?url';
 import './index.css';
 import './App.css';
@@ -60,15 +61,18 @@ export function headers({ errorHeaders }: Route.HeadersArgs) {
 }
 
 /**
- * The two font files nearly every page draws in, Archivo's and Schibsted Grotesk's Latin, fetched with
- * the stylesheet rather than once the page's text asks for them, so that a first visit spends as little
- * of its load as it can in the fallback (`type.css`). The same URLs the stylesheet's `@font-face` rules
- * name, so the preload is the request they use; `crossOrigin` because fonts are always fetched in CORS
- * mode, and a preload without it would be fetched twice.
+ * The font files nearly every page draws in, Archivo's two faces and Schibsted Grotesk, in Latin, fetched
+ * with the stylesheet rather than once the page's text asks for them, so that a first visit spends as
+ * little of its load as it can in the fallback and its text does not move when they arrive (`type.css`).
+ * Leaving them to the text costs a phone more than it saves: they still start before the first paint,
+ * only later, and the swap shifts the layout. The same URLs the stylesheet's `@font-face` rules name, so
+ * the preload is the request they use; `crossOrigin` because fonts are always fetched in CORS mode, and a
+ * preload without it would be fetched twice.
  */
 export const links: LinksFunction = () => [
     { rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg' },
-    { rel: 'preload', as: 'font', type: 'font/woff2', href: archivoLatin, crossOrigin: 'anonymous' },
+    { rel: 'preload', as: 'font', type: 'font/woff2', href: archivoDisplay, crossOrigin: 'anonymous' },
+    { rel: 'preload', as: 'font', type: 'font/woff2', href: archivoTitle, crossOrigin: 'anonymous' },
     { rel: 'preload', as: 'font', type: 'font/woff2', href: schibstedLatin, crossOrigin: 'anonymous' },
 ];
 

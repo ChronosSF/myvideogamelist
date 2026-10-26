@@ -98,27 +98,31 @@ interface Baseline {
  * weights matched the runner's to a KiB. Accessibility rose on every page, to 100 on the home page: no
  * page breaks contrast any more, now that every text tone passes 4.5:1 (#234), a filled button is the
  * ink on lime rather than white (#246), and a score's solid fill carries the ink too (#329). The weights
- * moved with the fonts, which a page loads from this origin — about 134 KiB for the two preloaded files
- * and 30 for the mono — and with what each page now shows: the home page's fell, as its welcome panel
- * draws no picture. Performance on a phone is left where it was, though the runner's fell about eight
- * points on every page with the fonts, the largest paint now waiting on them over the throttled
- * connection: the job warns about it, which is the record until the fonts are made cheaper or the cost
- * is accepted here.
+ * moved with the fonts, which a page loads from this origin — Archivo's two faces at 13 KiB each,
+ * Schibsted Grotesk's 46 and DM Mono's 15 — and with what each page now shows: the home page's fell, as
+ * its welcome panel draws no picture.
+ *
+ * Performance on a phone is left where it was. On the runner the redesign's first paint did not move,
+ * but its largest came 0.6 to 1.2 seconds later on every page, with Archivo's whole variable file at 88
+ * KiB: a page's largest text is set in it and waits for it, and on browse and the lists the fonts' bytes
+ * went ahead of the first cover. Archivo is cut to its two faces since (`npm run fonts`), which took a
+ * page's fonts from 149 KiB to 87 and, on a developer's machine, its largest paint 250 to 470 ms sooner;
+ * the job warns about what is left, which is the record of it.
  */
 const BASELINE: Record<FormFactor, Record<PageKey, Baseline>> = {
     mobile: {
-        home: { accessibility: 1, bestPractices: 1, seo: 1, consoleErrors: 0, kib: 712, performance: 0.87 },
-        games: { accessibility: 0.98, bestPractices: 1, seo: 1, consoleErrors: 0, kib: 1005, performance: 0.9 },
-        game: { accessibility: 0.96, bestPractices: 1, seo: 1, consoleErrors: 0, kib: 2164, performance: 0.87 },
-        profile: { accessibility: 0.98, bestPractices: 1, seo: 1, consoleErrors: 0, kib: 833, performance: 0.89 },
-        lists: { accessibility: 0.99, bestPractices: 1, seo: 0.66, consoleErrors: 0, kib: 858, performance: 0.89 },
+        home: { accessibility: 1, bestPractices: 1, seo: 1, consoleErrors: 0, kib: 651, performance: 0.87 },
+        games: { accessibility: 0.98, bestPractices: 1, seo: 1, consoleErrors: 0, kib: 943, performance: 0.9 },
+        game: { accessibility: 0.96, bestPractices: 1, seo: 1, consoleErrors: 0, kib: 2102, performance: 0.87 },
+        profile: { accessibility: 0.98, bestPractices: 1, seo: 1, consoleErrors: 0, kib: 772, performance: 0.89 },
+        lists: { accessibility: 0.99, bestPractices: 1, seo: 0.66, consoleErrors: 0, kib: 796, performance: 0.89 },
     },
     desktop: {
-        home: { accessibility: 1, bestPractices: 1, seo: 1, consoleErrors: 0, kib: 712, performance: 1 },
-        games: { accessibility: 0.98, bestPractices: 1, seo: 1, consoleErrors: 0, kib: 1168, performance: 0.99 },
-        game: { accessibility: 0.97, bestPractices: 1, seo: 1, consoleErrors: 0, kib: 2076, performance: 1 },
-        profile: { accessibility: 0.98, bestPractices: 1, seo: 1, consoleErrors: 0, kib: 776, performance: 1 },
-        lists: { accessibility: 0.99, bestPractices: 1, seo: 0.66, consoleErrors: 0, kib: 858, performance: 0.99 },
+        home: { accessibility: 1, bestPractices: 1, seo: 1, consoleErrors: 0, kib: 651, performance: 1 },
+        games: { accessibility: 0.98, bestPractices: 1, seo: 1, consoleErrors: 0, kib: 1107, performance: 0.99 },
+        game: { accessibility: 0.97, bestPractices: 1, seo: 1, consoleErrors: 0, kib: 2014, performance: 1 },
+        profile: { accessibility: 0.98, bestPractices: 1, seo: 1, consoleErrors: 0, kib: 714, performance: 1 },
+        lists: { accessibility: 0.99, bestPractices: 1, seo: 0.66, consoleErrors: 0, kib: 796, performance: 0.99 },
     },
 };
 

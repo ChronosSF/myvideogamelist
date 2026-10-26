@@ -182,7 +182,7 @@ export function Navbar() {
                             </nav>
 
                             {/* Logo / Brand */}
-                            <Link to="/" className="shrink-0 flex items-center gap-2.5 text-fg-strong font-display font-extrabold tracking-tight text-xl hover:opacity-80 transition-opacity">
+                            <Link to="/" className="shrink-0 flex items-center gap-2.5 text-fg-strong font-display font-bold tracking-tight text-xl hover:opacity-80 transition-opacity">
                                 <Logo className="w-7 h-7" />
                                 {/* Icon-only below sm, where the bar has no room for the name
                                     beside the menu button and the account controls. Visually

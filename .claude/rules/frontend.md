@@ -208,6 +208,10 @@ size beside it:
 - `type-meta`: DM Mono — a date, a list of platforms, a count on a line of its own.
 - Everything else is the default, Schibsted Grotesk. Don't set `font-family` any other way.
 
+Archivo has those two faces and no other, 125% at 800 and 100% at 700, cut by `npm run fonts`. Don't give
+it another weight or width: it is drawn in the nearer face, so the CSS would say something the page does
+not show. A new way of setting it is a new face there and a rule in `type.css`.
+
 **Corners are tokens:** `rounded-sm` to `rounded-4xl` are a pixel or two (`src/index.css`), and a
 stylesheet writes `var(--radius-lg)`, never a size. `rounded-full` is for what is round: an avatar, a
 toggle's thumb.

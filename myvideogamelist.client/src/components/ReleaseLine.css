@@ -163,6 +163,7 @@
     .release-ruler-date {
         font-size: 0.875rem;
         font-stretch: 100%;
+        font-weight: 700;
     }
 
     .release-ruler-month {

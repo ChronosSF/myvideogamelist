@@ -154,9 +154,9 @@
     color: var(--color-fg-strong);
 }
 
+/* The name's face, as Archivo has one at this width; a step back by its colour alone. */
 .calendar-month-heading-year {
     display: block;
-    font-weight: 400;
     color: var(--color-fg-muted);
 }
 

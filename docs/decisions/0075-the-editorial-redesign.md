@@ -55,8 +55,14 @@ will be the same again.
   platforms and counts on a line of their own, `type-meta`.
 - **Self-hosted**, from the `@fontsource` packages, Latin and Latin Extended only, and no italic files:
   emphasis is the accent's colour. Nothing goes to a third party, nothing has to be admitted by the
-  document policy, and the files are hashed and cached for a year with the build. The two that draw most
-  of a page, Archivo's and Schibsted's Latin, are preloaded by the root; all of them are `swap`.
+  document policy, and the files are hashed and cached for a year with the build. All of them are `swap`.
+- **Archivo is its two faces, not its variable file.** The site sets it at 125% and 800 or at 100% and
+  700 and no other way, so `npm run fonts` cuts each of those out of the package's variable file, pinned
+  to its one width and weight, into `src/assets/fonts/`, where they are committed beside Archivo's licence
+  (the OFL, which reserves no name). Each is 13 KiB for Latin, where the variable file is 88. Anything else
+  asked of Archivo is drawn in the nearer face, the width first, so the navbar's wordmark is bold rather
+  than extra-bold and the calendar's year is the month's weight in a quieter colour. The three files that
+  draw most of a page, Archivo's two faces and Schibsted's Latin, are preloaded by the root.
 
 ### The shape: rules, not boxes
 
@@ -125,6 +131,17 @@ calendar share one stylesheet for the list, `ReleaseAgenda.css`. The spec's §2.
 - **Deriving the neutrals from a base colour with `color-mix()` now.** That is #208's custom palette, and
   it can be built when there is a second palette to test it against; until then explicit values on one hue
   are the same system written out, and every one of them is checked for contrast.
+- **Archivo's variable file, as the package ships it**, with every width from 62% to 125% and every
+  weight from 100 to 900. On CI's phone run, with it, the redesign's first paint was where it had been
+  but its largest came 0.6 to 1.2 seconds later on every page: a page's largest text is set in Archivo
+  and waits for it, and on browse and the lists 149 KiB of fonts went ahead of the first cover. The two
+  faces took a page's fonts to 87 KiB and, measured on a developer's machine, its largest paint 250 to
+  470 ms sooner. Narrowing the axes instead of pinning them kept 37 to 52 KiB.
+- **Leaving the fonts to be found by the text rather than preloading them.** Measured on the phone run,
+  every page painted later, since the fonts still started before the first paint, only after the
+  stylesheet; and the swap moved the layout past the audit's 0.02 on the home page and the game page.
+- **Cutting Schibsted Grotesk the same way.** Its text is set at four weights, and four pinned faces are
+  more than its one variable file; narrowing it to the weights used saves 5 KiB.
 - **A visible hero image on the game page**, at full strength, as the drawings had it. The art IGDB lists
   first is a logo, an icon or a cover for about a quarter of games; until #395 chooses better, the hero
   keeps the art dimmed behind its title.
@@ -135,10 +152,12 @@ calendar share one stylesheet for the list, `ReleaseAgenda.css`. The spec's §2.
   baseline to compare the redesign against; its screenshots are in the pull request instead.
 - The Lighthouse audit's accessibility rose on every page it covers, to 100 on the home page, and no page
   breaks contrast any more; `lighthouse/budgets.ts` holds the new figures. Its page weights grew by the
-  fonts, about 134 KiB for the two preloaded files and 30 for the mono. What they cost is performance on
-  a phone: about eight points on every page on CI's runner, the largest paint now waiting on the fonts
-  over the throttled connection, while a desktop's is unchanged. Those baselines are left as they were, so
-  the job warns about it until the fonts are made cheaper or the cost is accepted.
+  fonts, 87 KiB on a page: Archivo's two faces at 13 KiB each, Schibsted's 46 and the mono's 15. What
+  they cost is a phone's largest paint, which waits on them over the throttled connection, while a
+  desktop's is unchanged. The phone's performance baselines are left as they were, so the job warns about
+  what is left.
+- A new way of setting Archivo is a new face: a rule in `type.css` and a line in `npm run fonts`, and its
+  kilobytes on every page that uses it.
 - A component styles text by its role (`type-display`, `type-title`, `type-kicker`, `type-meta`) rather
   than by size and weight alone, and a new section opens with the heavy rule. `CLAUDE.md` and
   `.claude/rules/frontend.md` say so.

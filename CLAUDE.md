@@ -603,10 +603,13 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
 - **Text is set by its role, in one of three self-hosted families, and corners are tokens too.**
   `type-display` and `type-title` (Archivo), `type-kicker` and `type-meta` (DM Mono), and Schibsted
   Grotesk for everything else, as the default (`src/type.css`). The fonts are served from this origin
-  out of the `@fontsource` packages, Latin and Latin Extended only, with the two that draw most of a page
-  preloaded by `root.tsx`; a new weight or family is a file in `type.css` and kilobytes on every page, so
-  check the Lighthouse page weight. Every radius is a token redefined small in `index.css`. A section of
-  a page opens with a heavy rule, not a box. See `docs/decisions/0075-*`.
+  out of the `@fontsource` packages, Latin and Latin Extended only, with the three that draw most of a page
+  preloaded by `root.tsx`. Archivo is not the package's variable file but its two faces, 125%/800 and
+  100%/700, cut by `npm run fonts` into `src/assets/fonts/` and committed: anything else asked of it is
+  drawn in the nearer face, and another width or weight is another face there. A new face or family is
+  kilobytes on every page, which a phone pays before its largest paint, so check the Lighthouse audit.
+  Every radius is a token redefined small in `index.css`. A section of a page opens with a heavy rule, not
+  a box. See `docs/decisions/0075-*`.
 
 - **Two game field lists, and putting a field in the wrong one fails quietly.**
   `GameListFieldList` feeds every query; `GameDetailFieldList` is concatenated onto it only by
