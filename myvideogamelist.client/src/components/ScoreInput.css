@@ -101,7 +101,7 @@
 .score-stars-zone:has(input:focus-visible) {
     outline: 2px solid var(--color-focus);
     outline-offset: 0;
-    border-radius: 2px;
+    border-radius: var(--radius-sm);
 }
 
 /* Half a star is genuinely hard to read at a glance, so the number is always there too. */
@@ -131,7 +131,7 @@
     color: var(--color-fg-faint);
     background: none;
     border: none;
-    border-radius: 0.3rem;
+    border-radius: var(--radius-md);
     cursor: pointer;
     transition: color 0.12s, background 0.12s;
 }

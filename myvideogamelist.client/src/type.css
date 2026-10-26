@@ -1,0 +1,122 @@
+/*
+ * The type: three families, self-hosted, and the few roles they are used in (ADR 0075).
+ *
+ * - Archivo, at 125% width and heavy, for display: a page's title, a section's, the big figures.
+ *   At normal width and bold it is the title of a thing: a game's name in a list, a day in the agenda.
+ * - Schibsted Grotesk for everything read: body text, controls, descriptions. The default family.
+ * - DM Mono for what is metadata rather than prose: a kicker over a heading, dates, platforms, counts.
+ *
+ * Served from this origin, from the @fontsource packages, rather than from Google: no third party sees
+ * a reader's address, nothing has to be admitted by a policy, and the files are hashed and cached for a
+ * year with the rest of the build. Latin and Latin Extended only, as their unicode ranges say, so a
+ * page downloads only what its text uses; anything outside them falls back to the system font. No
+ * italic files: emphasis is the accent's colour, and nothing set in italic would justify a second
+ * Archivo at 100 KB.
+ *
+ * `font-display: swap`, with the two that draw most of a page preloaded by the root (`root.tsx`), so a
+ * first visit draws in the fallback for as long as the files take and every later page is in them
+ * from the first paint.
+ */
+
+@font-face {
+    font-family: 'Archivo Variable';
+    font-style: normal;
+    font-display: swap;
+    font-weight: 100 900;
+    font-stretch: 62% 125%;
+    src: url('@fontsource-variable/archivo/files/archivo-latin-wdth-normal.woff2') format('woff2-variations');
+    unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+    font-family: 'Archivo Variable';
+    font-style: normal;
+    font-display: swap;
+    font-weight: 100 900;
+    font-stretch: 62% 125%;
+    src: url('@fontsource-variable/archivo/files/archivo-latin-ext-wdth-normal.woff2') format('woff2-variations');
+    unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+@font-face {
+    font-family: 'Schibsted Grotesk Variable';
+    font-style: normal;
+    font-display: swap;
+    font-weight: 400 900;
+    src: url('@fontsource-variable/schibsted-grotesk/files/schibsted-grotesk-latin-wght-normal.woff2') format('woff2-variations');
+    unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+    font-family: 'Schibsted Grotesk Variable';
+    font-style: normal;
+    font-display: swap;
+    font-weight: 400 900;
+    src: url('@fontsource-variable/schibsted-grotesk/files/schibsted-grotesk-latin-ext-wght-normal.woff2') format('woff2-variations');
+    unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+@font-face {
+    font-family: 'DM Mono';
+    font-style: normal;
+    font-display: swap;
+    font-weight: 400;
+    src: url('@fontsource/dm-mono/files/dm-mono-latin-400-normal.woff2') format('woff2');
+    unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+    font-family: 'DM Mono';
+    font-style: normal;
+    font-display: swap;
+    font-weight: 500;
+    src: url('@fontsource/dm-mono/files/dm-mono-latin-500-normal.woff2') format('woff2');
+    unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+/* The families as Tailwind tokens: `font-sans` (the default), `font-display`, `font-mono`. */
+@theme {
+    --font-sans: 'Schibsted Grotesk Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+    --font-display: 'Archivo Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+    --font-mono: 'DM Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+/*
+ * The roles, as utilities, so that a component says what a piece of text is rather than how it is set.
+ * Size is left to the component (`text-5xl type-display`), except for the kicker, which is one size.
+ */
+
+/* A page's or a section's title, and the big figures: expanded and heavy, tight, and set solid. */
+@utility type-display {
+    font-family: var(--font-display);
+    font-stretch: 125%;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    line-height: 0.95;
+}
+
+/* The name of a thing: a game in a list, a day in the agenda, a card's title. */
+@utility type-title {
+    font-family: var(--font-display);
+    font-stretch: 100%;
+    font-weight: 700;
+    letter-spacing: -0.005em;
+}
+
+/* The small capitals over a heading or beside a figure: "Coming soon", "Critics", "Your copy". */
+@utility type-kicker {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    line-height: 1.4;
+    font-weight: 400;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+}
+
+/* Metadata in a line of its own: a date, a list of platforms, a count. */
+@utility type-meta {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    line-height: 1.5;
+    letter-spacing: 0;
+}

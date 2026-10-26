@@ -15,7 +15,7 @@
 .review-card {
     padding: 1rem;
     border: 1px solid var(--color-line);
-    border-radius: 0.75rem;
+    border-radius: var(--radius-xl);
     background: color-mix(in srgb, var(--color-page) 50%, transparent);
 }
 
@@ -30,7 +30,7 @@
     flex-shrink: 0;
     display: block;
     width: 3rem;
-    border-radius: 0.375rem;
+    border-radius: var(--radius-md);
     overflow: hidden;
 }
 
@@ -103,7 +103,7 @@
     width: 100%;
     padding: 0.75rem;
     border: 1px dashed color-mix(in srgb, var(--color-fg-muted) 50%, transparent);
-    border-radius: 0.5rem;
+    border-radius: var(--radius-lg);
     background: transparent;
     color: var(--color-fg-muted);
     font-size: 0.8125rem;

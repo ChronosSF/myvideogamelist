@@ -5,7 +5,7 @@
     padding: 1.25rem;
     background: color-mix(in srgb, var(--color-surface) 60%, transparent);
     border: 1px solid var(--color-line);
-    border-radius: 0.75rem;
+    border-radius: var(--radius-xl);
 }
 
 .game-user-panel-title {
@@ -58,7 +58,7 @@
     color: var(--color-fg-soft);
     background: color-mix(in srgb, var(--color-raised) 70%, transparent);
     border: 1px solid transparent;
-    border-radius: 0.4rem;
+    border-radius: var(--radius-md);
     cursor: pointer;
     transition: background 0.12s, color 0.12s;
 }
@@ -154,7 +154,7 @@
     color: var(--color-fg-soft);
     background: color-mix(in srgb, var(--color-raised) 70%, transparent);
     border: none;
-    border-radius: 0.4rem;
+    border-radius: var(--radius-md);
     cursor: pointer;
 }
 
@@ -204,7 +204,7 @@
     color: var(--color-fg-soft);
     background: color-mix(in srgb, var(--color-raised) 60%, transparent);
     border: 1px solid var(--color-line-strong);
-    border-radius: 0.45rem;
+    border-radius: var(--radius-md);
     cursor: pointer;
     transition: background 0.12s, color 0.12s, border-color 0.12s;
 }
@@ -250,7 +250,7 @@
     color: var(--color-fg-soft);
     background: color-mix(in srgb, var(--color-raised) 60%, transparent);
     border: 1px solid var(--color-line-strong);
-    border-radius: 0.45rem;
+    border-radius: var(--radius-md);
     cursor: pointer;
     transition: background 0.12s, color 0.12s, border-color 0.12s;
 }
@@ -313,7 +313,7 @@
     padding: 0.55rem 0.65rem;
     background: color-mix(in srgb, var(--color-raised) 40%, transparent);
     border: 1px solid var(--color-line);
-    border-radius: 0.45rem;
+    border-radius: var(--radius-md);
 }
 
 .game-user-panel-playthrough-head {
@@ -423,7 +423,7 @@
     color: var(--color-fg);
     background: color-mix(in srgb, var(--color-page) 60%, transparent);
     border: 1px solid var(--color-line-strong);
-    border-radius: 0.35rem;
+    border-radius: var(--radius-md);
 }
 
 .game-user-panel-field textarea {

@@ -20,6 +20,8 @@ import { SiteFooter } from '@/components/SiteFooter';
 import { PRIVATE_NO_STORE } from '@/lib/cache';
 import { isUpstreamFailure } from '@/lib/trace';
 import { traceMiddleware } from '@/lib/trace.server';
+import archivoLatin from '@fontsource-variable/archivo/files/archivo-latin-wdth-normal.woff2?url';
+import schibstedLatin from '@fontsource-variable/schibsted-grotesk/files/schibsted-grotesk-latin-wght-normal.woff2?url';
 import './index.css';
 import './App.css';
 
@@ -57,8 +59,17 @@ export function headers({ errorHeaders }: Route.HeadersArgs) {
     return { 'Cache-Control': errorHeaders?.get('Cache-Control') ?? PRIVATE_NO_STORE };
 }
 
+/**
+ * The two font files nearly every page draws in, Archivo's and Schibsted Grotesk's Latin, fetched with
+ * the stylesheet rather than once the page's text asks for them, so that a first visit spends as little
+ * of its load as it can in the fallback (`type.css`). The same URLs the stylesheet's `@font-face` rules
+ * name, so the preload is the request they use; `crossOrigin` because fonts are always fetched in CORS
+ * mode, and a preload without it would be fetched twice.
+ */
 export const links: LinksFunction = () => [
     { rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg' },
+    { rel: 'preload', as: 'font', type: 'font/woff2', href: archivoLatin, crossOrigin: 'anonymous' },
+    { rel: 'preload', as: 'font', type: 'font/woff2', href: schibstedLatin, crossOrigin: 'anonymous' },
 ];
 
 /**
@@ -156,7 +167,7 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
         <div className="app-root">
             <main className="flex-1 flex items-center justify-center py-24 px-4">
                 <div className="text-center max-w-md">
-                    <h1 className="text-3xl font-bold text-fg-strong mb-3">{title}</h1>
+                    <h1 className="type-display text-4xl text-fg-strong mb-4">{title}</h1>
                     <p className="text-fg-muted mb-8">{detail}</p>
                     {reference && (
                         // What somebody reporting this can quote: the id on the API's lines for the
@@ -168,7 +179,7 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
                     )}
                     <a
                         href="/"
-                        className="inline-flex items-center gap-2 px-5 py-2.5 bg-primary-600 hover:bg-primary-500 text-on-primary font-semibold rounded-xl transition-colors"
+                        className="inline-flex items-center gap-2 px-5 py-2.5 bg-primary-500 hover:bg-primary-600 text-on-primary font-bold rounded-sm transition-colors"
                     >
                         Back to home
                     </a>

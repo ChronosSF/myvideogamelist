@@ -27,7 +27,7 @@
     width: 100%;
     min-height: 0;
     background: var(--color-primary-500);
-    border-radius: 0.2rem 0.2rem 0 0;
+    border-radius: var(--radius-sm) var(--radius-sm) 0 0;
 }
 
 /* An unused score keeps its column and its tick, so the gap in the distribution is visible. */

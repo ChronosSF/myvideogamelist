@@ -52,20 +52,19 @@ export function Navbar() {
         setSearchOpen(false);
     }
 
-    // The main menu is painted in the bar's own colours, so the same pairs hold there.
-    const navLinkColours = (isActive: boolean) =>
-        isActive
-            ? 'bg-primary-600/20 text-primary-400'
-            : 'text-fg-muted hover:text-fg-strong hover:bg-surface';
-
+    // The current page is underlined in the accent, in the bar (ADR 0075); the others are a step back
+    // until the pointer is on them.
     // Narrower below lg, where the search button sits beside them: six links, the button and the
     // user menu only fit a 768px bar with eight pixels taken from each link.
     const navLinkClass = ({ isActive }: { isActive: boolean }) =>
-        `px-2 lg:px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${navLinkColours(isActive)}`;
+        `px-2 lg:px-3 py-1.5 text-sm font-medium transition-colors underline-offset-[0.6rem] decoration-2 ${
+            isActive ? 'text-fg-strong underline decoration-primary-500' : 'text-fg-muted hover:text-fg-strong'}`;
 
-    // Stacked full width in the main menu, and tall enough to hit with a thumb.
+    // Stacked full width in the main menu, and tall enough to hit with a thumb. The current page is
+    // marked by a bar of the accent at its start, which an underline under a full-width row is not.
     const mainMenuLinkClass = ({ isActive }: { isActive: boolean }) =>
-        `block px-3 py-2.5 rounded-lg text-base font-medium transition-colors ${navLinkColours(isActive)}`;
+        `block px-3 py-2.5 border-l-2 text-base font-medium transition-colors ${
+            isActive ? 'border-primary-500 text-fg-strong bg-surface' : 'border-transparent text-fg-muted hover:text-fg-strong hover:bg-surface'}`;
 
     // Rendered twice, by the bar and by the main menu, so the two can never drift apart.
     const navItems: NavItem[] = [
@@ -119,7 +118,7 @@ export function Navbar() {
         <>
             <header className="navbar-root">
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                    <div className="flex items-center justify-between h-14">
+                    <div className="flex items-center justify-between h-16">
                         <div className="flex items-center gap-2">
                             {/* Main menu. The panel follows its button in the DOM so that Tab
                                 reaches the links next, and focus leaving the pair closes it, so a
@@ -183,7 +182,7 @@ export function Navbar() {
                             </nav>
 
                             {/* Logo / Brand */}
-                            <Link to="/" className="shrink-0 flex items-center gap-2.5 text-fg font-bold text-lg hover:opacity-80 transition-opacity">
+                            <Link to="/" className="shrink-0 flex items-center gap-2.5 text-fg-strong font-display font-extrabold tracking-tight text-xl hover:opacity-80 transition-opacity">
                                 <Logo className="w-7 h-7" />
                                 {/* Icon-only below sm, where the bar has no room for the name
                                     beside the menu button and the account controls. Visually

@@ -11,9 +11,15 @@
  * other values; the text stays light, and the colours that carry meaning and the brand's stay as they
  * are in every palette.
  *
- * The values are Tailwind 4's, and the comments name the colour each was, which is all they are: the
- * token is the name to use. Before the tokens, the stylesheets wrote Tailwind 3's hex for the same
- * names, which is a shade or two away, so a token is the one value where there had been two.
+ * This palette is the editorial one (ADR 0075): ink and paper, and the logo's lime as the one accent.
+ * It is built so that a palette is few decisions, not forty:
+ *   - the neutrals are one warm hue at ~85° with almost no chroma, stepping only in lightness, so a
+ *     palette moves the hue and the chroma and keeps the steps;
+ *   - the lines are the paper colour at an opacity, not greys of their own, so they read the same on
+ *     the page, on a surface and on a raised surface;
+ *   - the primary is Tailwind 4's lime, one step lighter than its name at each role, because on a dark
+ *     ground a link and a filled button both want the light end; `on-primary` is the page's ink.
+ * The hex in a comment is what a value renders as, for reference: the token is the name to use.
  *
  * `static`, so that every token is on :root whether or not a class uses it: a stylesheet reads them as
  * variables, and a palette will set them there.
@@ -21,37 +27,37 @@
 @theme static {
     /* ── Surfaces, deepest first ──────────────────────────────────────────── */
 
-    --color-sunken: oklch(12.9% 0.042 264.695);   /* Under the page: scrims, the deep end of a fade over an image. slate-950 */
-    --color-page: oklch(20.8% 0.042 265.755);     /* The page. slate-900 */
-    --color-surface: oklch(27.9% 0.041 260.031);  /* What sits on the page: a card, a panel, a menu, a dialog. slate-800 */
-    --color-raised: oklch(37.2% 0.044 257.287);   /* What sits on a surface, or a surface under the pointer. slate-700 */
+    --color-sunken: oklch(15% 0.003 67.5);     /* Under the page: scrims, the deep end of a fade over an image. #0c0b0a */
+    --color-page: oklch(17.8% 0.003 67.7);     /* The page: the ink everything is printed on. #121110 */
+    --color-surface: oklch(21.8% 0.006 91.6);  /* What sits on the page: a menu, a dialog, a panel that needs a ground. #1b1a17 */
+    --color-raised: oklch(25.7% 0.008 84.6);   /* What sits on a surface, or a surface under the pointer. #25231f */
 
     /* ── Lines ────────────────────────────────────────────────────────────── */
 
-    --color-line: oklch(37.2% 0.044 257.287 / 0.6);         /* Borders and dividers. slate-700 at 60% */
-    --color-line-strong: oklch(44.6% 0.043 257.281 / 0.7);  /* The edge of a control or a floating panel. slate-600 at 70% */
+    --color-line: oklch(95.3% 0.013 86.8 / 0.13);         /* Hairlines: borders, dividers, the rule between rows. About #2e2c28 on the page */
+    --color-line-strong: oklch(95.3% 0.013 86.8 / 0.26);  /* The edge of a control or a floating panel. About #4a463f on the page */
 
     /* ── Text, strongest first ────────────────────────────────────────────── */
 
-    --color-fg-strong: #fff;                      /* Headings, and what has to stand out. white */
-    --color-fg: oklch(96.8% 0.007 247.896);       /* Body text, and the page's own colour. slate-100 */
-    --color-fg-soft: oklch(86.9% 0.022 252.894);  /* Text a step back: a menu item, a dialog's explanation. slate-300 */
-    --color-fg-muted: oklch(70.4% 0.04 256.788);  /* Descriptions, labels, a button that is not the main one. slate-400 */
-    --color-fg-faint: oklch(55.4% 0.046 257.417); /* Metadata, hints, the heading over a section. slate-500 */
-    --color-fg-dim: oklch(44.6% 0.043 257.281);   /* Placeholders, and what is deliberately barely there. slate-600 */
+    --color-fg-strong: oklch(95.3% 0.013 86.8);  /* Headings, what has to stand out, and the heavy rule over a section. #f3efe6 */
+    --color-fg: oklch(88.3% 0.016 86.4);         /* Body text, and the page's own colour. #ddd8cd */
+    --color-fg-soft: oklch(81.9% 0.018 84.6);    /* Text a step back: a menu item, a dialog's explanation. #c9c3b7 */
+    --color-fg-muted: oklch(70.7% 0.018 84.6);   /* Descriptions, labels, a button that is not the main one. #a6a094 */
+    --color-fg-faint: oklch(63% 0.019 84.6);     /* Metadata, hints. 4.5:1 on a raised surface. #918b7f */
+    --color-fg-dim: oklch(52.6% 0.015 82.4);     /* Placeholders, and what is deliberately barely there. #6f6a61 */
 
     /* ── The primary: links, what is selected, the main button ───────────── */
 
-    --color-primary-200: oklch(88.2% 0.059 254.128);
-    --color-primary-300: oklch(80.9% 0.105 251.813);  /* Text in the primary under the pointer, or on a tint of it */
-    --color-primary-400: oklch(70.7% 0.165 254.624);  /* Text and icons in the primary: a link, the active tab */
-    --color-primary-500: oklch(62.3% 0.214 259.815);  /* A filled button, with 600 for its other state; the base of the primary's tints */
-    --color-primary-600: oklch(54.6% 0.245 262.881);
-    --color-primary-700: oklch(48.8% 0.243 264.376);
-    --color-primary-800: oklch(42.4% 0.199 265.638);
-    --color-primary-900: oklch(37.9% 0.146 265.522);
-    --color-primary-950: oklch(28.2% 0.091 267.935);  /* The deep tint behind a page's header */
-    --color-on-primary: #fff;                         /* Text on a filled primary */
+    --color-primary-200: oklch(96.7% 0.067 122.328);  /* lime-100 */
+    --color-primary-300: oklch(93.8% 0.127 124.321);  /* Text in the primary under the pointer, or on a tint of it. lime-200 */
+    --color-primary-400: oklch(89.7% 0.196 126.665);  /* Text and icons in the primary: the active tab, a mark of what is ours. lime-300 */
+    --color-primary-500: oklch(84.1% 0.238 128.85);   /* A filled button, the accent, and the base of the primary's tints. lime-400, a shade off the logo's */
+    --color-primary-600: oklch(76.8% 0.233 130.85);   /* A filled button's other state. lime-500 */
+    --color-primary-700: oklch(64.8% 0.2 131.684);    /* lime-600 */
+    --color-primary-800: oklch(53.2% 0.157 131.589);  /* lime-700 */
+    --color-primary-900: oklch(45.3% 0.124 130.933);  /* lime-800 */
+    --color-primary-950: oklch(27.4% 0.072 132.109);  /* The deepest tint of the primary. lime-950 */
+    --color-on-primary: oklch(17.8% 0.003 67.7);      /* Text on a filled primary: the page's ink, 12:1 on the 500 */
     --color-focus: var(--color-primary-500);          /* The keyboard focus ring and outline */
 
     /* ── Colours that carry meaning: the same in every palette ────────────── */

@@ -15,7 +15,7 @@
     color: var(--color-fg-soft);
     background: color-mix(in srgb, var(--color-raised) 60%, transparent);
     border: 1px solid var(--color-line-strong);
-    border-radius: 0.45rem;
+    border-radius: var(--radius-md);
     cursor: pointer;
     transition: background 0.12s, color 0.12s, border-color 0.12s;
 }
@@ -67,5 +67,5 @@
     color: var(--color-danger-300);
     background: color-mix(in srgb, var(--color-danger-900) 20%, transparent);
     border: 1px solid color-mix(in srgb, var(--color-danger-700) 50%, transparent);
-    border-radius: 0.5rem;
+    border-radius: var(--radius-lg);
 }

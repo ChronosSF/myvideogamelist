@@ -7,7 +7,7 @@
     position: relative;
     overflow-x: auto;
     border: 1px solid var(--color-line);
-    border-radius: 0.75rem;
+    border-radius: var(--radius-xl);
     background: color-mix(in srgb, var(--color-surface) 40%, transparent);
 }
 
@@ -56,7 +56,7 @@
 .list-table thead th button:focus-visible {
     outline: 2px solid var(--color-focus);
     outline-offset: 3px;
-    border-radius: 2px;
+    border-radius: var(--radius-sm);
 }
 
 /* The caret is always rendered so a header does not change width when it becomes the sort. */
@@ -124,7 +124,7 @@
     max-width: none;
     height: 3rem;
     object-fit: cover;
-    border-radius: 0.25rem;
+    border-radius: var(--radius-sm);
     background: color-mix(in srgb, var(--color-page) 80%, transparent);
 }
 
@@ -184,7 +184,7 @@
     color: var(--color-fg-faint);
     background: none;
     border: none;
-    border-radius: 0.35rem;
+    border-radius: var(--radius-md);
     cursor: pointer;
     transition: color 0.12s, background 0.12s;
 }

@@ -1,5 +1,22 @@
 @import "tailwindcss";
 @import "./theme.css";
+@import "./type.css";
+
+/*
+ * Corners (ADR 0075): nearly square. The editorial layout separates things with rules and space rather
+ * than with rounded boxes, so every Tailwind radius is a pixel or two, and a stylesheet writes
+ * `var(--radius-lg)` rather than a size of its own. `rounded-full` is untouched: an avatar stays a circle.
+ */
+@theme {
+    --radius-xs: 1px;
+    --radius-sm: 2px;
+    --radius-md: 2px;
+    --radius-lg: 3px;
+    --radius-xl: 3px;
+    --radius-2xl: 4px;
+    --radius-3xl: 4px;
+    --radius-4xl: 6px;
+}
 
 /* ── Document defaults ──────────────────────────────────────── */
 /*

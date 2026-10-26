@@ -63,7 +63,7 @@
     padding: 1.5rem;
     background: var(--color-surface);
     border: 1px solid var(--color-line);
-    border-radius: 1rem;
+    border-radius: var(--radius-2xl);
 }
 
 /*
@@ -122,7 +122,7 @@
     background: color-mix(in srgb, var(--color-primary-500) 15%, transparent);
     color: var(--color-primary-300);
     border: 1px solid color-mix(in srgb, var(--color-primary-500) 35%, transparent);
-    border-radius: 0.5rem;
+    border-radius: var(--radius-lg);
     font-size: 0.875rem;
     font-weight: 600;
     cursor: pointer;
@@ -179,7 +179,7 @@ a.user-btn {
     background: color-mix(in srgb, var(--color-danger-500) 10%, transparent);
     color: var(--color-danger-300);
     border: 1px solid color-mix(in srgb, var(--color-danger-500) 25%, transparent);
-    border-radius: 0.5rem;
+    border-radius: var(--radius-lg);
     font-size: 0.9375rem;
     font-weight: 600;
     cursor: pointer;
@@ -275,7 +275,7 @@ a.user-btn {
     padding: 0.4375rem 0.75rem;
     background: var(--color-page);
     border: 1px solid var(--color-line-strong);
-    border-radius: 0.5rem;
+    border-radius: var(--radius-lg);
     color: var(--color-fg);
     font-size: 0.9375rem;
     outline: none;
@@ -334,7 +334,7 @@ a.user-btn {
     padding: 0.5rem 0.75rem;
     background: var(--color-page);
     border: 1px solid var(--color-line-strong);
-    border-radius: 0.5rem;
+    border-radius: var(--radius-lg);
     color: var(--color-fg);
     font-size: 0.9375rem;
     outline: none;
