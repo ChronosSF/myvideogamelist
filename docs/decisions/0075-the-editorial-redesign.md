@@ -87,6 +87,19 @@ is where they are read and linked. A day with nothing on it is a column of the r
 list, so two quiet weeks cost one line of words rather than fourteen tall columns. The spec's §2.1 says
 so.
 
+### The calendar: an index and a list
+
+A month is the same list, in day order (K2): each sale and showcase once, at the first of its days in the
+month, with all of its dates, and each day with something releasing on it, its releases under it as rows.
+Beside it is the month as a small paper calendar, Monday first, a dot under each day something releases on
+and a rule in its kind's colour under each day of a sale, a fest or a showcase. It is held in view while
+the list scrolls, and stands over the list on a phone. Like the ruler, it is a picture of the list and
+hidden from assistive technology. The bands of what is known only to a month, a quarter or a year follow
+the list under a dashed rule, a period rather than a day, as rows. The grid it replaces gave every day of
+the month a cell as tall as its busiest day's posters, so a month with five releases was a page of empty
+boxes; it also had to become a list below `md` anyway, which is now the only shape. The line and the
+calendar share one stylesheet for the list, `ReleaseAgenda.css`. The spec's §2.2 says so.
+
 ## Alternatives
 
 - **Google Fonts.** One `<link>`, and Archivo's widths by URL. But every reader's address goes to Google

@@ -3,14 +3,13 @@ import { addDays, daysBetween } from '@/lib/daySpan';
 import type { CalendarEvents, ReleaseEntry, ReleaseKind, ReleasePrecision, UndatedEntry } from '@/types/releases';
 
 /**
- * Where everything on the calendar goes (`specs/release-timeline-and-calendar.md` §2.2): a month as a
- * grid of weeks, Monday first, with each release in its day's cell (K2), each sale and showcase as a bar
- * across its days, a piece per week, what is known only to the month, the quarter or the year in a band
- * for that period (K3), and what is announced with no date at all in a band for what it is to the user's
- * game (K4).
+ * Where everything on the calendar goes (`specs/release-timeline-and-calendar.md` §2.2): a month as its
+ * days in their weeks, Monday first, for the index, and as a list of what is on them, each release on its
+ * day and each sale and showcase once (K2); what is known only to the month, the quarter or the year in a
+ * band for that period (K3); and what is announced with no date at all in a band for what it is to the
+ * user's game (K4).
  *
- * Pure, and reads no clock, so that the placing is tested apart from the drawing; the component turns it
- * into a CSS grid.
+ * Pure, and reads no clock, so that the placing is tested apart from the drawing.
  */
 
 /**
@@ -68,7 +67,7 @@ function weekday(day: string): number {
 export interface CalendarDay {
     /** `YYYY-MM-DD`. */
     day: string;
-    /** Its week in the grid, from 0, and its column, from 1 as CSS counts them. */
+    /** Its week in the index, from 0, and its column, from 1 as CSS counts them. */
     week: number;
     column: number;
     /** What releases that day, in the order the API sent it. */
@@ -82,59 +81,29 @@ export interface CalendarPad {
     column: number;
 }
 
-/**
- * One week's piece of a sale or a showcase. An event that runs across weeks is a piece in each, as a
- * paper calendar draws it.
- */
-export interface CalendarBar extends DayEvent {
-    /** Unique among the month's pieces. */
-    pieceKey: string;
-    week: number;
-    /** Its row among the week's bars, from 0. */
-    lane: number;
-    /** The grid columns it spans, as CSS lines: the first, and the one after its last. */
-    columnStart: number;
-    columnEnd: number;
-    /** Whether the event began before this piece does, or goes on after it ends. */
-    continuesBefore: boolean;
-    continuesAfter: boolean;
-    /**
-     * Whether this is the event's first piece this month. Only that one is read out, with the whole of
-     * the event's dates; the rest only draw it across the weeks after.
-     */
-    first: boolean;
-}
-
 export interface MonthLayout {
     days: CalendarDay[];
     pads: CalendarPad[];
-    bars: CalendarBar[];
-    /** Each week's first grid row, counting from 1, and how many rows its bars take. */
-    weeks: { row: number; lanes: number }[];
-    /** The grid's `grid-template-rows`: per week, its dates, a row per lane of bars, and its releases. */
-    rows: string;
-}
-
-/** A piece before it has a lane, with the cells it covers counted from the grid's first. */
-interface Piece {
-    bar: Omit<CalendarBar, 'lane'>;
-    firstCell: number;
-    lastCell: number;
+    /**
+     * The sales, fests and showcases on any of the month's days, each once with all of its dates, in the
+     * order they start, the longer first.
+     */
+    events: DayEvent[];
 }
 
 /**
  * Where everything in a month goes.
  *
  * @param month `YYYY-MM`.
- * @param entries What `/api/user/releases` answered. Only releases known to the day go in a day's cell
- * (K2); the rest are `monthBands`'.
+ * @param entries What `/api/user/releases` answered. Only releases known to the day go on a day (K2); the
+ * rest are `monthBands`'.
  */
 export function layoutMonth(month: string, entries: readonly ReleaseEntry[], events: CalendarEvents | null): MonthLayout {
     const first = `${month}-01`;
     const length = daysBetween(first, `${addMonths(month, 1)}-01`);
     const lastDay = addDays(first, length - 1);
 
-    // Cells are counted from the Monday the grid starts on.
+    // Cells are counted from the Monday the index starts on.
     const offset = weekday(first);
     const weekCount = Math.ceil((offset + length) / 7);
     const at = (cell: number) => ({ week: Math.floor(cell / 7), column: (cell % 7) + 1 });
@@ -153,62 +122,11 @@ export function layoutMonth(month: string, entries: readonly ReleaseEntry[], eve
         if (cell < offset || cell >= offset + length) pads.push({ day: addDays(first, cell - offset), ...at(cell) });
     }
 
-    const pieces: Piece[] = [];
-    const ordered = eventDays(events).sort((a, b) =>
-        a.startsOn.localeCompare(b.startsOn) || b.endsOn.localeCompare(a.endsOn) || a.name.localeCompare(b.name));
+    const inMonth = eventDays(events)
+        .filter(event => event.endsOn >= first && event.startsOn <= lastDay)
+        .sort((a, b) => a.startsOn.localeCompare(b.startsOn) || b.endsOn.localeCompare(a.endsOn) || a.name.localeCompare(b.name));
 
-    for (const event of ordered) {
-        if (event.endsOn < first || event.startsOn > lastDay) continue;
-
-        const startCell = offset + Math.max(0, daysBetween(first, event.startsOn));
-        const endCell = offset + Math.min(length - 1, daysBetween(first, event.endsOn));
-
-        for (let cell = startCell; cell <= endCell; cell = (Math.floor(cell / 7) + 1) * 7) {
-            const { week, column } = at(cell);
-            const pieceEnd = Math.min(endCell, week * 7 + 6);
-
-            pieces.push({
-                bar: {
-                    ...event,
-                    pieceKey: `${event.key}|${week}`,
-                    week,
-                    columnStart: column,
-                    columnEnd: at(pieceEnd).column + 1,
-                    continuesBefore: event.startsOn < addDays(first, cell - offset),
-                    continuesAfter: event.endsOn > addDays(first, pieceEnd - offset),
-                    first: cell === startCell,
-                },
-                firstCell: cell,
-                lastCell: pieceEnd,
-            });
-        }
-    }
-
-    // Rows for the bars, a week at a time, filled greedily in the order they start: each takes the first
-    // row whose last bar has ended by the day it begins.
-    const laneEnds = Array.from({ length: weekCount }, () => [] as number[]);
-    const bars = pieces
-        .sort((a, b) => a.bar.week - b.bar.week || a.firstCell - b.firstCell || b.lastCell - a.lastCell)
-        .map(({ bar, firstCell, lastCell }): CalendarBar => {
-            const ends = laneEnds[bar.week];
-            let lane = ends.findIndex(end => end < firstCell);
-            if (lane === -1) lane = ends.push(lastCell) - 1;
-            else ends[lane] = lastCell;
-            return { ...bar, lane };
-        });
-
-    let row = 1;
-    const weeks = laneEnds.map(ends => {
-        const week = { row, lanes: ends.length };
-        row += ends.length + 2;
-        return week;
-    });
-
-    const rows = weeks
-        .map(week => ['auto', ...Array.from({ length: week.lanes }, () => 'auto'), 'minmax(4.5rem, auto)'].join(' '))
-        .join(' ');
-
-    return { days, pads, bars, weeks, rows };
+    return { days, pads, events: inMonth };
 }
 
 /** A band for a period: what is known only to the month, the quarter or the year a month is in (K3). */
@@ -331,4 +249,37 @@ export function monthTotals(entries: readonly ReleaseEntry[]): Map<string, numbe
         totals.set(month, (totals.get(month) ?? 0) + 1);
     }
     return totals;
+}
+
+/** One line of a month's agenda: a sale or a showcase, or a day with something releasing on it. */
+export type MonthAgendaItem =
+    | { type: 'event'; key: string; date: string; event: DayEvent }
+    | { type: 'day'; key: string; date: string; day: CalendarDay };
+
+/**
+ * A month as the list beside its index (ADR 0075): each sale and showcase once, at the first of its days in
+ * the month, and each day with something releasing on it, in day order — a day's events before its
+ * releases, since an event that starts on a day frames it. A day with nothing on it is not in the list:
+ * the index shows it.
+ */
+export function monthAgenda(month: string, layout: MonthLayout): MonthAgendaItem[] {
+    const first = `${month}-01`;
+    const items: MonthAgendaItem[] = [
+        ...layout.events.map((event): MonthAgendaItem => ({
+            type: 'event', key: event.key, date: event.startsOn < first ? first : event.startsOn, event,
+        })),
+        ...layout.days
+            .filter(day => day.entries.length > 0)
+            .map((day): MonthAgendaItem => ({ type: 'day', key: day.day, date: day.day, day })),
+    ];
+
+    // Stable, so that the events keep `layoutMonth`'s order among themselves.
+    return items.sort((a, b) => a.date.localeCompare(b.date) || (a.type === b.type ? 0 : a.type === 'event' ? -1 : 1));
+}
+
+/** The kinds of event on a day, for the index's marks under it, in the order the month's events start. */
+export function eventKindsOn(day: string, layout: MonthLayout): DayEvent['kind'][] {
+    return layout.events
+        .filter(event => event.startsOn <= day && day <= event.endsOn)
+        .map(event => event.kind);
 }

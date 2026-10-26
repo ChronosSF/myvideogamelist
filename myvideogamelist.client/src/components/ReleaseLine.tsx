@@ -7,6 +7,7 @@ import { startTime } from '@/lib/calendarEvents';
 import { dayLabel, formatDaySpan } from '@/lib/daySpan';
 import { LINE_COLUMNS, layoutLine, lineAgenda, type LineDay, type LineEvent, type LineLayout } from '@/lib/releaseLine';
 import { CURATED_EVENT_KIND_LABELS, storeLabel } from '@/types/calendarAdmin';
+import './ReleaseAgenda.css';
 import './ReleaseLine.css';
 
 /** A cover in the list is drawn across `ReleaseCard`'s row column, 3.5rem, less its border. */

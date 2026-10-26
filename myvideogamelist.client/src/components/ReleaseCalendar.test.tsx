@@ -152,8 +152,8 @@ describe('ReleaseCalendar, a month', () => {
         calendar.releases.data = [LAUFEY];
         renderCalendar();
 
-        const days = within(screen.getByRole('list', { name: 'Days in October' }));
-        const due = days.getByRole('list', { name: 'Due on Friday, October 16' });
+        const month = within(screen.getByRole('list', { name: 'What is on in October' }));
+        const due = month.getByRole('list', { name: 'Due on Friday, October 16' });
         expect(within(due).getByRole('link', { name: 'God of War Laufey' })).toHaveAttribute('href', '/games/389000');
         expect(within(due).getByText('From the God of War series — you finished God of War')).toBeInTheDocument();
         expect(within(due).getByText('PS5')).toBeInTheDocument();
@@ -166,11 +166,11 @@ describe('ReleaseCalendar, a month', () => {
         const band = screen.getByRole('region', { name: 'Sometime in Q4 2026 · October to December' });
         expect(within(band).getByRole('link', { name: 'The Witcher 3: Wild Hunt - Songs of the Past' })).toBeInTheDocument();
         expect(within(band).getByText('Expansion for The Witcher 3: Wild Hunt, which you finished')).toBeInTheDocument();
-        expect(within(screen.getByRole('list', { name: 'Days in October' })).queryByRole('link')).not.toBeInTheDocument();
+        expect(screen.queryByRole('list', { name: 'What is on in October' })).not.toBeInTheDocument();
     });
 
-    it("fetches a day's cover for a seventh of the grid, and a band's for its column", () => {
-        // The two are drawn at different widths, so one `sizes` for both fetches one of them wrong.
+    it("fetches a day's cover and a band's at a row's width", () => {
+        // Both are `ReleaseCard` rows, whose cover is the row's fixed column whatever the list's width.
         const covered = (entry: ReleaseEntry): ReleaseEntry => ({
             ...entry,
             releases: entry.releases.map(release => ({
@@ -183,8 +183,8 @@ describe('ReleaseCalendar, a month', () => {
 
         const dayCover = screen.getByRole('list', { name: 'Due on Friday, October 16' }).querySelector('img');
         const bandCover = screen.getByRole('region', { name: 'Sometime in Q4 2026 · October to December' }).querySelector('img');
-        expect(dayCover?.getAttribute('sizes')).toContain('/ 7');
-        expect(bandCover?.getAttribute('sizes')).not.toContain('/ 7');
+        expect(dayCover?.getAttribute('sizes')).toContain('calc(3.5rem - 2px)');
+        expect(bandCover?.getAttribute('sizes')).toContain('calc(3.5rem - 2px)');
         expect(dayCover).toHaveAttribute('srcset');
         expect(bandCover).toHaveAttribute('srcset');
     });
@@ -207,14 +207,14 @@ describe('ReleaseCalendar, a month', () => {
         expect(within(band).getByRole('link', { name: 'Hollow Knight: Silksong - Sea of Sorrow' })).toHaveAttribute('href', '/games/381684');
         expect(within(band).getByText('Update for Hollow Knight: Silksong, which you plan to play')).toBeInTheDocument();
         expect(within(band).getByText('Switch 2, PC, PS5')).toBeInTheDocument();
-        expect(within(screen.getByRole('list', { name: 'Days in October' })).queryByRole('link')).not.toBeInTheDocument();
+        expect(screen.queryByRole('list', { name: 'What is on in October' })).not.toBeInTheDocument();
     });
 
     it('reads out a sale once, with its dates, however many weeks it crosses', () => {
         calendar.events.data = AUTUMN_SALE;
         renderCalendar();
 
-        const sales = within(screen.getByRole('list', { name: 'Showcases and sales in October' })).getAllByRole('listitem');
+        const sales = within(screen.getByRole('list', { name: 'What is on in October' })).getAllByRole('listitem');
         expect(sales).toHaveLength(1);
         expect(sales[0]).toHaveTextContent('Steam Autumn Sale');
         expect(sales[0]).toHaveTextContent('Oct 1 – 15, 2026');
@@ -237,7 +237,7 @@ describe('ReleaseCalendar, a month', () => {
 
         const alert = screen.getByRole('alert');
         expect(alert).toHaveTextContent('What is coming for your games could not be loaded just now.');
-        expect(screen.getByRole('list', { name: 'Showcases and sales in October' })).toBeInTheDocument();
+        expect(screen.getByRole('list', { name: 'What is on in October' })).toHaveTextContent('Steam Autumn Sale');
 
         await actor.click(within(alert).getByRole('button', { name: 'Try again' }));
         expect(calendar.releases.reload).toHaveBeenCalledTimes(1);

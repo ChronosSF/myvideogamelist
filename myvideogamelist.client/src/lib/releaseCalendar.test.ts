@@ -5,7 +5,9 @@ import {
     addMonths,
     calendarMonths,
     calendarWindow,
+    eventKindsOn,
     layoutMonth,
+    monthAgenda,
     monthBands,
     monthTotals,
     undatedBands,
@@ -57,21 +59,21 @@ describe('the months', () => {
 });
 
 describe('layoutMonth, the days', () => {
-    it('starts the grid on the Monday of the first week, filling it with the month before', () => {
+    it('starts the index on the Monday of the first week, filling it with the month before', () => {
         // 1 October 2026 is a Thursday.
         const layout = layoutMonth('2026-10', [], null);
 
         expect(layout.days).toHaveLength(31);
         expect(layout.days[0]).toMatchObject({ day: '2026-10-01', week: 0, column: 4 });
         expect(layout.days[7]).toMatchObject({ day: '2026-10-08', week: 1, column: 4 });
-        expect(layout.weeks).toHaveLength(5);
+        expect(layout.days[30]).toMatchObject({ day: '2026-10-31', week: 4, column: 6 });
         expect(layout.pads.map(p => p.day)).toEqual(['2026-09-28', '2026-09-29', '2026-09-30', '2026-11-01']);
     });
 
     it('needs no padding for a month that starts on a Monday and is four weeks long', () => {
         const layout = layoutMonth('2027-02', [], null);
 
-        expect(layout.weeks).toHaveLength(4);
+        expect(layout.days[27]).toMatchObject({ day: '2027-02-28', week: 3, column: 7 });
         expect(layout.pads).toEqual([]);
     });
 
@@ -87,21 +89,17 @@ describe('layoutMonth, the days', () => {
     });
 });
 
-describe('layoutMonth, the bars', () => {
-    it('draws a sale across weeks as a piece in each, read out once', () => {
+describe('layoutMonth, the events', () => {
+    it('has a sale across weeks once, with all of its dates', () => {
         const layout = layoutMonth('2026-10', [], calendarEvents({ curated: [sale('2026-10-01', '2026-10-15')] }));
 
-        expect(layout.bars.map(b => [b.week, b.columnStart, b.columnEnd])).toEqual([[0, 4, 8], [1, 1, 8], [2, 1, 5]]);
-        expect(layout.bars.map(b => b.first)).toEqual([true, false, false]);
-        expect(layout.bars.map(b => [b.continuesBefore, b.continuesAfter])).toEqual([[false, true], [true, true], [true, false]]);
+        expect(layout.events.map(e => [e.startsOn, e.endsOn])).toEqual([['2026-10-01', '2026-10-15']]);
     });
 
-    it('starts a sale already running on the first of the month, square where it began before', () => {
+    it('keeps the dates of a sale already running on the first of the month', () => {
         const layout = layoutMonth('2026-10', [], calendarEvents({ curated: [sale('2026-09-24', '2026-10-02')] }));
 
-        const [bar] = layout.bars;
-        expect(layout.bars).toHaveLength(1);
-        expect(bar).toMatchObject({ week: 0, columnStart: 4, columnEnd: 6, first: true, continuesBefore: true, continuesAfter: false });
+        expect(layout.events.map(e => [e.startsOn, e.endsOn])).toEqual([['2026-09-24', '2026-10-02']]);
     });
 
     it('leaves out what is over before the month starts or begins after it ends', () => {
@@ -109,19 +107,15 @@ describe('layoutMonth, the bars', () => {
             curated: [sale('2026-09-20', '2026-09-30', 1), sale('2026-11-01', '2026-11-08', 2)],
         }));
 
-        expect(layout.bars).toEqual([]);
+        expect(layout.events).toEqual([]);
     });
 
-    it('stacks overlapping bars in as few rows as they need, a week at a time', () => {
+    it('orders them by the day they start, the longer first', () => {
         const layout = layoutMonth('2026-10', [], calendarEvents({
-            curated: [sale('2026-10-05', '2026-10-07', 1), sale('2026-10-06', '2026-10-09', 2), sale('2026-10-08', '2026-10-09', 3)],
+            curated: [sale('2026-10-08', '2026-10-09', 3), sale('2026-10-05', '2026-10-07', 1), sale('2026-10-05', '2026-10-12', 2)],
         }));
 
-        // Week 1 is 5 to 11 October: the second overlaps the first, and the third fits after the first.
-        expect(layout.bars.map(b => [b.name, b.lane])).toEqual([['Sale 1', 0], ['Sale 2', 1], ['Sale 3', 0]]);
-        expect(layout.weeks.map(w => w.lanes)).toEqual([0, 2, 0, 0, 0]);
-        // Each week's rows: its dates, a row per lane, its releases.
-        expect(layout.weeks.map(w => w.row)).toEqual([1, 3, 7, 9, 11]);
+        expect(layout.events.map(e => e.name)).toEqual(['Sale 2', 'Sale 1', 'Sale 3']);
     });
 
     it("puts a showcase on the reader's own day", () => {
@@ -136,9 +130,9 @@ describe('layoutMonth, the bars', () => {
             }],
         }));
 
-        // Half an hour either side of midnight: the Tuesday and the Wednesday, in one week.
-        expect(layout.bars).toHaveLength(1);
-        expect(layout.bars[0]).toMatchObject({ startsOn: '2026-10-06', endsOn: '2026-10-07', columnStart: 2, columnEnd: 4 });
+        // Half an hour either side of midnight: the Tuesday and the Wednesday.
+        expect(layout.events).toHaveLength(1);
+        expect(layout.events[0]).toMatchObject({ startsOn: '2026-10-06', endsOn: '2026-10-07' });
     });
 });
 
@@ -243,5 +237,37 @@ describe('monthTotals', () => {
         ]);
 
         expect(Object.fromEntries(totals)).toEqual({ '2026-10': 2, '2026-11': 1 });
+    });
+});
+
+describe('a month as a list', () => {
+    it('lists each event once, at its first day in the month, and each day with a release, in day order', () => {
+        const layout = layoutMonth('2026-10', [entry('day', '2026-10-16'), entry('day', '2026-10-05', 2)], calendarEvents({
+            curated: [sale('2026-09-28', '2026-10-15'), sale('2026-10-24', '2026-11-02', 2)],
+        }));
+
+        expect(monthAgenda('2026-10', layout).map(item => [item.type, item.date])).toEqual([
+            ['event', '2026-10-01'],
+            ['day', '2026-10-05'],
+            ['day', '2026-10-16'],
+            ['event', '2026-10-24'],
+        ]);
+    });
+
+    it("puts a day's events before its releases, and leaves out the empty days", () => {
+        const layout = layoutMonth('2026-10', [entry('day', '2026-10-16')], calendarEvents({
+            curated: [sale('2026-10-16', '2026-10-18')],
+        }));
+
+        expect(monthAgenda('2026-10', layout).map(item => item.type)).toEqual(['event', 'day']);
+    });
+
+    it("says which kinds of event are on a day, for the index's marks", () => {
+        const layout = layoutMonth('2026-10', [], calendarEvents({
+            curated: [sale('2026-10-01', '2026-10-15'), { ...sale('2026-10-10', '2026-10-12', 2), kind: 'fest' }],
+        }));
+
+        expect(eventKindsOn('2026-10-11', layout)).toEqual(['sale', 'fest']);
+        expect(eventKindsOn('2026-10-20', layout)).toEqual([]);
     });
 });

@@ -2,44 +2,29 @@ import { useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import { ReleaseCard, type CardEntry } from '@/components/ReleaseCard';
 import { useReleaseCalendar, type CalendarRead } from '@/hooks/useReleaseCalendar';
-import { startTime } from '@/lib/calendarEvents';
-import { dayLabel, formatDaySpan } from '@/lib/daySpan';
+import { startTime, type DayEvent } from '@/lib/calendarEvents';
+import { dayLabel, daysBetween, formatDaySpan } from '@/lib/daySpan';
 import {
     calendarMonths,
+    eventKindsOn,
     layoutMonth,
+    monthAgenda,
     monthBands,
     monthName,
     monthTotals,
     undatedBands,
-    type CalendarBar,
     type CalendarDay,
     type MonthLayout,
 } from '@/lib/releaseCalendar';
-import { CURATED_EVENT_KIND_LABELS } from '@/types/calendarAdmin';
+import { CURATED_EVENT_KIND_LABELS, storeLabel } from '@/types/calendarAdmin';
+import './ReleaseAgenda.css';
 import './ReleaseCalendar.css';
 
-/** How many entries a band shows before "Show all": about two rows at full width. */
+/** How many entries a band shows before "Show all": about four rows of them at full width. */
 const SHOWN_AT_FIRST = 12;
 
-/*
- * How wide a cover is drawn, for the sizes it is fetched at. Below 768px the calendar is a list, and every
- * cover is the list's 7.5rem art less its border.
- *
- * In a band or the undated list, a column of `calendar-entry-list` is at least `--calendar-card` (8.5rem)
- * and stretches to share what is left of the row, which comes to about 9.5rem in practice.
- *
- * In the grid, a day is a seventh of the page container, less the grid's border and its six one-pixel
- * gaps, less the day's own padding and the cover's border. The container is `max-w-7xl` with
- * `px-4 sm:px-6 lg:px-8`, so its width is 76rem from 80rem up and the viewport less its padding below.
- */
-const PHONE = '(max-width: 767.98px) calc(7.5rem - 2px)';
-const ENTRY_COVER_SIZES = `${PHONE}, calc(9.5rem - 2px)`;
-const DAY_COVER_SIZES = [
-    PHONE,
-    '(min-width: 80rem) calc((76rem - 8px) / 7 - 1rem - 2px)',
-    '(min-width: 64rem) calc((100vw - 4rem - 8px) / 7 - 1rem - 2px)',
-    'calc((100vw - 3rem - 8px) / 7 - 1rem - 2px)',
-].join(', ');
+/** Every cover on the calendar is a row's, drawn across `ReleaseCard`'s 3.5rem column less its border. */
+const ROW_COVER_SIZES = 'calc(3.5rem - 2px)';
 
 function entryKey(entry: CardEntry): string {
     return `${entry.groupName ?? ''}|${entry.releases.map(r => r.gameId).join(',')}`;
@@ -55,7 +40,7 @@ function EntryList({ entries, undated = false, label }: { entries: readonly Card
             <ul className="calendar-entry-list" aria-label={label}>
                 {shown.map(entry => (
                     <li key={entryKey(entry)}>
-                        <ReleaseCard entry={entry} sizes={ENTRY_COVER_SIZES} undated={undated} />
+                        <ReleaseCard entry={entry} layout="row" sizes={ROW_COVER_SIZES} undated={undated} />
                     </li>
                 ))}
             </ul>
@@ -80,25 +65,18 @@ interface BandProps {
     /** After the label, quieter: the months a quarter is. */
     detail?: string | null;
     entries: readonly CardEntry[];
-    /** Whether IGDB has no date for any of it, which its cards' reasons say (K4). */
+    /** Whether IGDB has no date for any of it, which its rows' reasons say (K4). */
     undated?: boolean;
 }
 
 /**
  * Entries under a name: in a month, what is known only to its month, quarter or year (K3), never put on a
  * day IGDB has not named; in the undated list, what is announced with no date and is one kind of thing to
- * the user's games — their DLC, say (K4).
- *
- * How many posters it has is how wide it asks to be, which decides whether it shares a row with the band
- * beside it — a sum only the stylesheet can do, since it is about the width of the screen.
+ * the user's games — their DLC, say (K4). As rows, as many across as fit (ADR 0075).
  */
 function Band({ id, label, detail = null, entries, undated = false }: BandProps) {
     return (
-        <section
-            className="calendar-band"
-            aria-labelledby={id}
-            style={{ '--band-entries': entries.length } as React.CSSProperties}
-        >
+        <section className="calendar-band" aria-labelledby={id}>
             <h3 id={id} className="calendar-band-label">
                 {label}
                 {/* The space outside the span: inside it, it is lost from the region's name. */}
@@ -109,140 +87,154 @@ function Band({ id, label, detail = null, entries, undated = false }: BandProps)
     );
 }
 
-function DayCell({ day, layout, today }: { day: CalendarDay; layout: MonthLayout; today: string }) {
-    const label = dayLabel(day.day);
-    const week = layout.weeks[day.week];
-    const isToday = day.day === today;
-
-    return (
-        <li
-            className="calendar-day"
-            data-today={isToday || undefined}
-            data-past={day.day < today || undefined}
-            data-has-entries={day.entries.length > 0 || undefined}
-            style={{ gridColumn: day.column, gridRow: `${week.row} / span ${week.lanes + 2}` }}
-        >
-            <p className="calendar-date">
-                <time dateTime={day.day}>
-                    <span className="sr-only">{isToday ? `Today, ${label.full}` : label.full}</span>
-                    {/* A paper calendar's number in the grid. Where the month is a list, a diary's: the
-                        number large, with its weekday and month beside it. */}
-                    <span aria-hidden="true" className="calendar-date-number">{label.date}</span>
-                    <span aria-hidden="true" className="calendar-date-words">
-                        <span className="calendar-date-weekday">{isToday ? 'Today' : label.longWeekday}</span>
-                        <span className="calendar-date-month">{label.longMonth}</span>
-                    </span>
-                </time>
-            </p>
-            {day.entries.length > 0 && (
-                <ul className="calendar-day-entries" aria-label={`Due on ${label.full}`}>
-                    {day.entries.map(entry => (
-                        <li key={entryKey(entry)}>
-                            <ReleaseCard entry={entry} sizes={DAY_COVER_SIZES} />
-                        </li>
-                    ))}
-                </ul>
-            )}
-        </li>
-    );
-}
-
 /** "Oct 15", from the string alone. */
 function shortDay(day: string): string {
     const { month, date } = dayLabel(day);
     return `${month} ${date}`;
 }
 
-/**
- * One week's piece of a sale, a fest or a showcase, as a bar across its days: marked as what it is,
- * with no cover (K2). Only an event's first piece this month is read out, with all of its dates; the
- * rest are drawing, and carry no link, since a link nobody can be told about is one a keyboard should
- * not stop on.
- */
-function Bar({ bar, layout }: { bar: CalendarBar; layout: MonthLayout }) {
-    const kind = CURATED_EVENT_KIND_LABELS[bar.kind];
-    const time = bar.startsAt === null ? null : startTime(bar.startsAt);
+/** "Fri, Oct 16", from the string alone. */
+function weekdayDay(day: string): string {
+    const { weekday, month, date } = dayLabel(day);
+    return `${weekday}, ${month} ${date}`;
+}
 
-    // A showcase says when it starts; a run of days says when it ends, since where the bar starts is
-    // either its first day or the edge of the week.
-    const detail = time ?? (bar.startsOn === bar.endsOn ? null : `until ${shortDay(bar.endsOn)}`);
-    const when = time === null
-        ? formatDaySpan(bar.startsOn, bar.endsOn)
-        : `${dayLabel(bar.startsOn).full}, ${time}`;
+/** How a day stands to today, in words: "Today", "Tomorrow", "In 10 days", or out already. */
+function fromToday(today: string, day: string): string {
+    const days = daysBetween(today, day);
+    if (days < 0) return 'Already out';
+    if (days === 0) return 'Today';
+    if (days === 1) return 'Tomorrow';
+    return `In ${days} days`;
+}
+
+const WEEKDAYS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+
+/**
+ * The month as a small paper calendar beside its list (ADR 0075): the days in their weeks, Monday first,
+ * with a dot under a day something releases on and a rule of its kind's colour under each day of a sale,
+ * a fest or a showcase. A picture of the list beside it, which says all of it in words, so hidden from
+ * assistive technology.
+ */
+function MonthIndex({ layout, today }: { layout: MonthLayout; today: string }) {
+    return (
+        <div className="calendar-index" aria-hidden="true">
+            <div className="calendar-index-weekdays">
+                {WEEKDAYS.map((day, index) => <span key={index}>{day}</span>)}
+            </div>
+            <div className="calendar-index-days">
+                {layout.pads.map(pad => (
+                    <span
+                        key={pad.day}
+                        className="calendar-index-day"
+                        data-pad
+                        style={{ gridColumn: pad.column, gridRow: pad.week + 1 }}
+                    >
+                        {dayLabel(pad.day).date}
+                    </span>
+                ))}
+                {layout.days.map(day => <IndexDay key={day.day} day={day} layout={layout} today={today} />)}
+            </div>
+        </div>
+    );
+}
+
+function IndexDay({ day, layout, today }: { day: CalendarDay; layout: MonthLayout; today: string }) {
+    const kinds = eventKindsOn(day.day, layout);
 
     return (
-        <li
-            className="calendar-bar"
-            data-kind={bar.kind}
-            data-first={bar.first || undefined}
-            data-continues-before={bar.continuesBefore || undefined}
-            data-continues-after={bar.continuesAfter || undefined}
-            aria-hidden={bar.first ? undefined : true}
-            style={{
-                gridColumn: `${bar.columnStart} / ${bar.columnEnd}`,
-                gridRow: layout.weeks[bar.week].row + 1 + bar.lane,
-            }}
-            title={`${kind}: ${bar.name} · ${when}`}
+        <span
+            className="calendar-index-day"
+            data-today={day.day === today || undefined}
+            data-past={day.day < today || undefined}
+            style={{ gridColumn: day.column, gridRow: day.week + 1 }}
         >
-            <span className="calendar-bar-kind">{kind}</span>
-            {bar.url !== null && bar.first ? (
-                <a className="calendar-bar-name" href={bar.url} target="_blank" rel="noopener noreferrer">
-                    {bar.name} <span className="sr-only">(opens in a new tab)</span>
-                </a>
-            ) : (
-                <span className="calendar-bar-name">{bar.name}</span>
+            {dayLabel(day.day).date}
+            {day.entries.length > 0 && <span className="calendar-index-dot" />}
+            {kinds.length > 0 && (
+                <span className="calendar-index-marks">
+                    {kinds.map((kind, index) => <span key={index} className="calendar-index-mark" data-kind={kind} />)}
+                </span>
             )}
-            {detail !== null && <span aria-hidden="true" className="calendar-bar-detail">{detail}</span>}
-            <span className="sr-only">, {when}</span>
+        </span>
+    );
+}
+
+/** The index's key: what its marks are. */
+function IndexKey() {
+    return (
+        <p className="calendar-key" aria-hidden="true">
+            <span><span className="calendar-key-mark" data-kind="sale" />Sale</span>
+            <span><span className="calendar-key-mark" data-kind="fest" />Fest</span>
+            <span><span className="calendar-key-mark" data-kind="showcase" />Showcase</span>
+            <span><span className="calendar-key-dot" />Release</span>
+        </p>
+    );
+}
+
+/**
+ * A sale, a fest or a showcase in the month's list, once, with all of its dates: what it is, and its name,
+ * linked to where it is announced or streams (K2).
+ */
+function EventItem({ event, today }: { event: DayEvent; today: string }) {
+    const kind = CURATED_EVENT_KIND_LABELS[event.kind];
+    const time = event.startsAt === null ? null : startTime(event.startsAt);
+    const oneDay = event.startsOn === event.endsOn;
+
+    const label = oneDay ? weekdayDay(event.startsOn) : `${shortDay(event.startsOn)} – ${shortDay(event.endsOn)}`;
+    let detail: string;
+    if (time !== null) detail = time;
+    else if (event.endsOn < today) detail = 'Ended';
+    else if (event.startsOn <= today) detail = 'On now';
+    else detail = fromToday(today, event.startsOn);
+
+    const when = time === null ? formatDaySpan(event.startsOn, event.endsOn) : `${dayLabel(event.startsOn).full}, ${time}`;
+
+    return (
+        <li className="release-agenda-item" data-kind={event.kind} data-past={(time === null && event.endsOn < today) || undefined}>
+            <p className="release-agenda-when">
+                <span className="release-agenda-day">{label}</span>
+                <span className="release-agenda-detail" data-on={detail === 'On now' || undefined}>{detail}</span>
+            </p>
+            <div className="release-agenda-body">
+                <p className="release-agenda-kind">
+                    {kind}
+                    {event.store !== null && <> · {storeLabel(event.store)}</>}
+                </p>
+                {event.url === null ? (
+                    <p className="release-agenda-name">{event.name}</p>
+                ) : (
+                    <a className="release-agenda-name" href={event.url} target="_blank" rel="noopener noreferrer">
+                        {event.name} <span className="sr-only">(opens in a new tab)</span>
+                    </a>
+                )}
+                <span className="sr-only">, {when}</span>
+            </div>
         </li>
     );
 }
 
-const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-
-/**
- * The month as a grid of weeks, Monday first: a cell per day with what releases on it (K2), and the
- * sales and showcases as bars across their days, a piece per week. The days and the bars are two lists
- * laid over the same tracks with `subgrid`, as on the two-week line, so the month reads in day order to
- * whoever cannot see it while the bars still cross the days they cover. Below `md` the same lists are a
- * list of the days that have something on them, under the month's sales and showcases.
- */
-function MonthGrid({ month, layout, today }: { month: string; layout: MonthLayout; today: string }) {
-    const { name } = monthName(month);
+/** A day with something releasing on it: the day, and what releases, each saying why it is there (K5). */
+function DayItem({ day, today }: { day: CalendarDay; today: string }) {
+    const label = dayLabel(day.day);
 
     return (
-        <>
-            <div className="calendar-weekdays" aria-hidden="true">
-                {WEEKDAYS.map(day => <span key={day}>{day}</span>)}
-            </div>
-            <div className="calendar-grid" style={{ gridTemplateRows: layout.rows }}>
-                {/* The days of the months either side, so that every week is whole. */}
-                <div className="calendar-pads" aria-hidden="true">
-                    {layout.pads.map(pad => (
-                        <div
-                            key={pad.day}
-                            className="calendar-pad"
-                            style={{
-                                gridColumn: pad.column,
-                                gridRow: `${layout.weeks[pad.week].row} / span ${layout.weeks[pad.week].lanes + 2}`,
-                            }}
-                        >
-                            {dayLabel(pad.day).date}
-                        </div>
-                    ))}
-                </div>
-
-                <ol className="calendar-days" aria-label={`Days in ${name}`}>
-                    {layout.days.map(day => <DayCell key={day.day} day={day} layout={layout} today={today} />)}
-                </ol>
-
-                {layout.bars.length > 0 && (
-                    <ul className="calendar-bars" aria-label={`Showcases and sales in ${name}`}>
-                        {layout.bars.map(bar => <Bar key={bar.pieceKey} bar={bar} layout={layout} />)}
-                    </ul>
-                )}
-            </div>
-        </>
+        <li className="release-agenda-item" data-past={day.day < today || undefined}>
+            <p className="release-agenda-when">
+                <time dateTime={day.day} className="release-agenda-day" data-on={day.day === today || undefined}>
+                    <span className="sr-only">{day.day === today ? `Today, ${label.full}` : label.full}</span>
+                    <span aria-hidden="true">{weekdayDay(day.day)}</span>
+                </time>
+                <span className="release-agenda-detail">{fromToday(today, day.day)}</span>
+            </p>
+            <ul className="release-agenda-body release-agenda-releases" aria-label={`Due on ${label.full}`}>
+                {day.entries.map(entry => (
+                    <li key={entryKey(entry)}>
+                        <ReleaseCard entry={entry} layout="row" sizes={ROW_COVER_SIZES} eager />
+                    </li>
+                ))}
+            </ul>
+        </li>
     );
 }
 
@@ -319,9 +311,9 @@ function Failure({ read, children }: { read: CalendarRead<unknown>; children: Re
 
 /**
  * The release calendar (`specs/release-timeline-and-calendar.md` §2.2): a month at a time from this one
- * to a year ahead, with what is coming for the user's games on its day, what is known only to the month,
- * the quarter or the year in a band for it, the showcases and sales across their days, and the games
- * announced with no date at all.
+ * to a year ahead, as a small index of its days beside the list of what is on them — the showcases and
+ * sales once each, and the releases under their day — then what is known only to the month, the quarter or
+ * the year in a band for it, and the games announced with no date at all (ADR 0075).
  *
  * The month is in the address, `?month=2026-11`, so that a month can be linked to and the back button
  * steps back through them. A month the calendar does not reach opens the first.
@@ -340,11 +332,12 @@ export function ReleaseCalendar({ userId }: { userId: string }) {
 
     const entries = releases.data;
     const layout = useMemo(() => layoutMonth(month, entries ?? [], events.data), [month, entries, events.data]);
+    const agenda = useMemo(() => monthAgenda(month, layout), [month, layout]);
     const bands = useMemo(() => monthBands(month, entries ?? []), [month, entries]);
     const totals = useMemo(() => monthTotals(entries ?? []), [entries]);
     const undatedGroups = useMemo(() => undatedBands(undated.data ?? []), [undated.data]);
 
-    const { label } = monthName(month);
+    const { label, name, year } = monthName(month);
     const onDays = layout.days.reduce((total, day) => total + day.entries.length, 0);
 
     let note: React.ReactNode = null;
@@ -372,37 +365,52 @@ export function ReleaseCalendar({ userId }: { userId: string }) {
         <div className="calendar">
             <Months months={months} month={month} totals={totals} />
 
-            <section aria-labelledby="calendar-month-heading">
-                <div className="calendar-head">
-                    <h2 id="calendar-month-heading" className="calendar-month-heading">{label}</h2>
-                    <div className="calendar-steps">
-                        <Step months={months} to={previous} direction="previous" />
-                        <Step months={months} to={next} direction="next" />
+            <section className="calendar-sheet" aria-labelledby="calendar-month-heading">
+                {/* The month at a glance, and beside it the month in words: the index is the paper
+                    calendar's grid, the list is where each thing is read and linked (ADR 0075). */}
+                <div className="calendar-month-glance">
+                    <div className="calendar-head">
+                        <h2 id="calendar-month-heading" className="calendar-month-heading">
+                            {/* The space outside the span: inside it, it is lost from the heading's name. */}
+                            {name} <span className="calendar-month-heading-year">{year}</span>
+                        </h2>
+                        <div className="calendar-steps">
+                            <Step months={months} to={previous} direction="previous" />
+                            <Step months={months} to={next} direction="next" />
+                        </div>
                     </div>
+                    <MonthIndex layout={layout} today={today} />
+                    <IndexKey />
                 </div>
 
-                {note}
-                {eventsNote}
+                <div className="calendar-month-words">
+                    {note}
+                    {eventsNote}
 
-                {/* The grid first, under the month's name: the days are what the calendar is for, and what
-                    is known only to a period is the less certain part of the month. */}
-                <MonthGrid month={month} layout={layout} today={today} />
+                    {agenda.length > 0 && (
+                        <ol className="release-agenda" aria-label={`What is on in ${name}`}>
+                            {agenda.map(item => item.type === 'event'
+                                ? <EventItem key={item.key} event={item.event} today={today} />
+                                : <DayItem key={item.key} day={item.day} today={today} />)}
+                        </ol>
+                    )}
 
-                {bands.length > 0 && (
-                    <div className="calendar-bands">
-                        {/* Keyed by its period, so that a band opened in one month is still open in the next
-                            month it is in. */}
-                        {bands.map(band => (
-                            <Band
-                                key={`${band.precision}|${band.starts}`}
-                                id={`calendar-band-${band.precision}`}
-                                label={band.label}
-                                detail={band.months}
-                                entries={band.entries}
-                            />
-                        ))}
-                    </div>
-                )}
+                    {bands.length > 0 && (
+                        <div className="calendar-bands">
+                            {/* Keyed by its period, so that a band opened in one month is still open in the next
+                                month it is in. */}
+                            {bands.map(band => (
+                                <Band
+                                    key={`${band.precision}|${band.starts}`}
+                                    id={`calendar-band-${band.precision}`}
+                                    label={band.label}
+                                    detail={band.months}
+                                    entries={band.entries}
+                                />
+                            ))}
+                        </div>
+                    )}
+                </div>
             </section>
 
             <section className="calendar-undated" aria-labelledby="calendar-undated-heading">
