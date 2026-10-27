@@ -2,7 +2,7 @@ import { Link } from 'react-router';
 import { CoverImage } from '@/components/CoverImage';
 import { WishlistToggle } from '@/components/WishlistToggle';
 import { useReleaseGame } from '@/hooks/useReleaseGame';
-import { comingSoonWhen, scheduleGroups } from '@/lib/comingSoon';
+import { comingSoonWhen, scheduleGroups, type ScheduleGroup } from '@/lib/comingSoon';
 import { platformNames } from '@/lib/releaseReason';
 import type { ComingSoonGame } from '@/types/releases';
 import { FavouriteMark } from './FavouriteMark';
@@ -61,10 +61,46 @@ function ScheduleRow({ game, today }: { game: ComingSoonGame; today: string }) {
     );
 }
 
+/** One game on a quarter's line: its title, and the reader's rosette where it is a favourite of theirs. */
+function QuarterGame({ game }: { game: ComingSoonGame }) {
+    const state = useReleaseGame(game);
+
+    return (
+        <>
+            <Link to={`/games/${game.gameId}`} className="type-title text-[1.0625rem] text-fg-strong hover:underline-quiet">
+                {game.title}
+            </Link>
+            {state.favourite && <FavouriteMark variant="inline" />}
+        </>
+    );
+}
+
+/**
+ * What is known only to a quarter, as a line of titles under the month columns rather than a column of its
+ * own: beside four months a fifth column wrapped onto a row by itself, under the first.
+ */
+function QuarterLine({ group }: { group: ScheduleGroup }) {
+    return (
+        <div className="mt-8 pt-4 border-t border-line flex flex-wrap items-baseline gap-x-5 gap-y-2">
+            <h3 className="type-kicker text-fg-muted">Also due in {group.label}</h3>
+            <ul className="flex flex-wrap items-baseline gap-y-1" aria-label={`Due in ${group.label}`}>
+                {/* The dot after a title rather than before the next, so a line that wraps starts on a title. */}
+                {group.games.map((game, index) => (
+                    <li key={game.gameId} className="inline-flex items-baseline">
+                        <QuarterGame game={game} />
+                        {index < group.games.length - 1 && <span aria-hidden="true" className="px-2.5 text-fg-faint">·</span>}
+                    </li>
+                ))}
+            </ul>
+        </div>
+    );
+}
+
 /**
  * The new games of the next three months that the most people follow on IGDB, in the order they arrive
  * (ADR 0071), as a schedule: a column for each month, the games under it with their day as a figure, and
- * what is known only to a quarter under the quarter (ADR 0075). As many columns as fit, and one on a phone.
+ * what is known only to a quarter on a line under the columns (ADR 0075). As many columns as fit, and one on
+ * a phone.
  *
  * The same for everybody, so it is in the shared home payload and the first HTML; lazy covers, since it sits
  * below whatever the page opens with.
@@ -72,16 +108,24 @@ function ScheduleRow({ game, today }: { game: ComingSoonGame; today: string }) {
 export function ComingSoonSchedule({ games, today }: ComingSoonScheduleProps) {
     if (games.length === 0) return null;
 
+    const groups = scheduleGroups(games, today);
+    const months = groups.filter(group => group.period === 'month');
+
     return (
-        <ul className="grid gap-x-8 gap-y-8 grid-cols-[repeat(auto-fit,minmax(min(17rem,100%),1fr))]" aria-label="Coming soon">
-            {scheduleGroups(games, today).map(group => (
-                <li key={group.key} className="min-w-0">
-                    <h3 className="type-title text-xl text-fg-strong pb-2 border-b border-line">{group.label}</h3>
-                    <ul>
-                        {group.games.map(game => <ScheduleRow key={game.gameId} game={game} today={today} />)}
-                    </ul>
-                </li>
-            ))}
-        </ul>
+        <>
+            {months.length > 0 && (
+                <ul className="grid gap-x-8 gap-y-8 grid-cols-[repeat(auto-fit,minmax(min(17rem,100%),1fr))]" aria-label="Coming soon">
+                    {months.map(group => (
+                        <li key={group.key} className="min-w-0">
+                            <h3 className="type-title text-xl text-fg-strong pb-2 border-b border-line">{group.label}</h3>
+                            <ul>
+                                {group.games.map(game => <ScheduleRow key={game.gameId} game={game} today={today} />)}
+                            </ul>
+                        </li>
+                    ))}
+                </ul>
+            )}
+            {groups.filter(group => group.period === 'quarter').map(group => <QuarterLine key={group.key} group={group} />)}
+        </>
     );
 }

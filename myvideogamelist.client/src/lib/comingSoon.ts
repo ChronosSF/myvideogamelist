@@ -32,6 +32,8 @@ export function comingSoonWhen(
 /** A period of the Coming soon schedule: a month, or a quarter for what is known only to one. */
 export interface ScheduleGroup {
     key: string;
+    /** A month is a column of the schedule; a quarter is a line under the columns. */
+    period: 'month' | 'quarter';
     /** "November", "January 2027", "Q1 2027": the year where it is not this one, and always on a quarter. */
     label: string;
     games: ComingSoonGame[];
@@ -55,7 +57,7 @@ export function scheduleGroups(games: readonly ComingSoonGame[], today: string):
             const label = game.precision === 'quarter'
                 ? key
                 : comingSoonWhen({ precision: 'month', starts: game.starts }, today);
-            group = { key, label, games: [] };
+            group = { key, period: game.precision === 'quarter' ? 'quarter' : 'month', label, games: [] };
             groups.set(key, group);
         }
         group.games.push(game);

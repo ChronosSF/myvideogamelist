@@ -95,7 +95,8 @@ will be the same again.
 - **Showcases and sales** is a strip between two rules under the welcome, not a section as large as the
   panels.
 - **Coming soon** is a schedule: a column for each month, its games under it with their day as a figure,
-  and what is known only to a quarter under the quarter.
+  and what is known only to a quarter on a line of titles under the columns. A column of its own wrapped
+  onto a row by itself beside four months, under the first.
 - **Just out** is a grid of covers led by its newest game at twice the size, since it is already newest
   first.
 - **The news** is a front page: the newest item as a lead, the rest as a column of briefs beside it.

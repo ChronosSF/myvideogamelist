@@ -64,6 +64,6 @@ describe('scheduleGroups', () => {
     it('keeps what is known only to a quarter under the quarter', () => {
         const groups = scheduleGroups([game(1, 'day', '2026-12-03'), game(2, 'quarter', '2027-01-01')], TODAY);
 
-        expect(groups.map(g => g.label)).toEqual(['December', 'Q1 2027']);
+        expect(groups.map(g => [g.label, g.period])).toEqual([['December', 'month'], ['Q1 2027', 'quarter']]);
     });
 });
