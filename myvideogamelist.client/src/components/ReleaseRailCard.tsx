@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { Link } from 'react-router';
 import { CoverImage } from '@/components/CoverImage';
-import { WishlistToggle } from '@/components/WishlistToggle';
+import { ReleaseActions } from '@/components/ReleaseActions';
 import { useReleaseGame, type ReleaseGame } from '@/hooks/useReleaseGame';
 import { platformNames } from '@/lib/releaseReason';
 import { FavouriteMark } from './FavouriteMark';
@@ -24,11 +24,11 @@ const LEAD_SIZES = '(min-width: 80rem) 29rem, (min-width: 40rem) 45vw, 92vw';
 
 /**
  * One game in Just out's grid: its cover, when, its title and what it is on — and, once somebody is signed
- * in, which of their lists it is in and a button that puts it on their wishlist or takes it off.
+ * in, which of their lists it is in, and the wishlist and the Backlog, as on every view of what is coming.
  *
  * The grid is the same for everybody and in the first HTML; what is the reader's own arrives after
- * hydration, as their favourites' rosettes do (ADR 0064). The wishlist button is how a game seen here
- * reaches the reader's own two weeks when its day comes (ADR 0073).
+ * hydration, as their favourites' rosettes do (ADR 0064). The wishlist is how a game seen here reaches the
+ * reader's own two weeks when its day comes (ADR 0073).
  */
 export function ReleaseRailCard({ game, when, lead = false }: ReleaseRailCardProps) {
     const state = useReleaseGame(game);
@@ -69,9 +69,8 @@ export function ReleaseRailCard({ game, when, lead = false }: ReleaseRailCardPro
                 {state.listName !== null && <p className="mt-1 type-meta text-success-300">In {state.listName}</p>}
             </Link>
 
-            {/* Beside the link rather than in it, since a button inside a link is a control inside a
-                control; drawn over the cover's top corner, where the rosette, at the bottom, is not. */}
-            <WishlistToggle variant="cover" title={game.title} state={state} />
+            {/* After the link rather than in it, since a button inside a link is a control inside a control. */}
+            <ReleaseActions title={game.title} state={state} />
         </li>
     );
 }

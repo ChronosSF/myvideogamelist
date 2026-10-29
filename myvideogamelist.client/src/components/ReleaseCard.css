@@ -1,7 +1,7 @@
 /*
  * A release, or a group of them, as the two-week line and the calendar both draw it: a row, a small cover
- * with the words beside it, the favourite on the cover's corner and Add to Backlog among the words (ADR
- * 0075). As wide as whatever holds it.
+ * with the words beside it and the wishlist and the Backlog under them (`ReleaseActions`, ADR 0075). As
+ * wide as whatever holds it.
  *
  * Every selector names a class of its own. These rules are unlayered, so a bare `span` here would
  * outrank Tailwind's `sr-only` and put the screen-reader text on screen.
@@ -151,151 +151,10 @@
     text-decoration: underline;
 }
 
-/* ── Adding a release to the Backlog ─────────────────────────────────────── */
-
-.release-card-art {
-    position: relative;
-}
-
-/* The favourite, in the cover's top corner: shown on hover and on focus, always where nothing can hover, or
-   a phone would never see it, and for good once the game is a favourite, filled in the game page's violet,
-   since then it is the mark as well as the toggle. */
-.release-card-favourite {
-    position: absolute;
-    top: 0.1875rem;
-    right: 0.1875rem;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 1.375rem;
-    height: 1.375rem;
-    padding: 0;
-    border: 1px solid color-mix(in srgb, var(--color-favourite-500) 50%, transparent);
-    border-radius: 9999px;
-    background: color-mix(in srgb, var(--color-surface) 92%, transparent);
-    color: var(--color-favourite-300);
-    cursor: pointer;
-    opacity: 0;
-    backdrop-filter: blur(4px);
-    -webkit-backdrop-filter: blur(4px);
-    transition: opacity 0.15s, background-color 0.12s, color 0.12s;
-}
-
-.release-card-favourite svg {
-    width: 0.8125rem;
-    height: 0.8125rem;
-}
-
-.release-card-art:hover .release-card-favourite,
-.release-card-favourite:focus-visible,
-.release-card-favourite:disabled,
-.release-card-favourite[aria-pressed='true'] {
-    opacity: 1;
-}
-
-@media (hover: none) {
-    .release-card-favourite {
-        opacity: 1;
-    }
-}
-
-.release-card-favourite:hover:not(:disabled) {
-    background: color-mix(in srgb, var(--color-favourite-600) 85%, transparent);
-    color: var(--color-fg-strong);
-}
-
-.release-card-favourite[aria-pressed='true'] {
-    border-color: color-mix(in srgb, var(--color-favourite-400) 80%, transparent);
-    background: color-mix(in srgb, var(--color-favourite-700) 90%, transparent);
-    color: var(--color-fg-strong);
-}
-
-.release-card-favourite:focus-visible {
-    outline: 2px solid var(--color-focus);
-    outline-offset: 2px;
-}
-
-.release-card-favourite:disabled {
-    cursor: default;
-}
-
-/* The same two, beside a release in a group's list, where there is no cover to put them on. */
-.release-card-add-inline {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-width: 1.375rem;
-    height: 1.25rem;
-    margin-left: 0.25rem;
-    padding: 0 0.375rem;
-    border: 1px solid color-mix(in srgb, var(--color-primary-400) 50%, transparent);
-    border-radius: var(--radius-md);
-    background: transparent;
-    color: var(--color-primary-300);
-    font-weight: 700;
-    line-height: 1;
-    vertical-align: middle;
-    cursor: pointer;
-}
-
-.release-card-add-inline:hover:not(:disabled) {
-    background: color-mix(in srgb, var(--color-primary-500) 20%, transparent);
-}
-
-.release-card-add-inline[data-kind='favourite'] {
-    border-color: color-mix(in srgb, var(--color-favourite-500) 55%, transparent);
-    color: var(--color-favourite-300);
-}
-
-.release-card-add-inline[data-kind='favourite']:hover:not(:disabled) {
-    background: color-mix(in srgb, var(--color-favourite-600) 25%, transparent);
-}
-
-.release-card-add-inline svg {
-    width: 0.8125rem;
-    height: 0.8125rem;
-}
+/* ── Where the reader has it ──────────────────────────────────────────────── */
 
 .release-card-listed {
     @apply type-meta;
     margin-top: 0.25rem;
     color: var(--color-success-300);
-}
-
-.release-card-add-error {
-    margin-top: 0.25rem;
-    font-size: 0.6875rem;
-    font-weight: 600;
-    color: var(--color-danger-300);
-}
-
-/* Add to Backlog among the words, as a small outlined button, since a 3.5rem cover cannot hold it. */
-.release-card-add {
-    display: inline-block;
-    margin-top: 0.5rem;
-    padding: 0.25rem 0.625rem;
-    border: 1px solid var(--color-line-strong);
-    border-radius: var(--radius-sm);
-    background: transparent;
-    color: var(--color-fg);
-    font-size: 0.75rem;
-    font-weight: 600;
-    cursor: pointer;
-    transition: background-color 0.12s, border-color 0.12s, color 0.12s;
-}
-
-.release-card-add:hover:not(:disabled) {
-    border-color: var(--color-primary-500);
-    background: var(--color-primary-500);
-    color: var(--color-on-primary);
-}
-
-.release-card-add:focus-visible {
-    outline: 2px solid var(--color-focus);
-    outline-offset: 2px;
-}
-
-.release-card-add:disabled {
-    opacity: 0.6;
-    cursor: default;
 }

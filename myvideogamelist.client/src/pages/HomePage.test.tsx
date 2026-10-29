@@ -59,8 +59,12 @@ vi.mock('@/hooks/useFavourites', () => ({ useFavourites: () => favourites }));
 const inList = new Map<number, ListId>();
 
 const lists = {
+    loading: false,
+    error: null,
     getListFor: (gameId: number) => inList.get(gameId) ?? null,
+    isPending: () => false,
     nameFor: (listId: ListId) => LIST_NAMES[listId],
+    addToList: vi.fn(async () => {}),
 } as unknown as ListsContextValue;
 
 vi.mock('@/hooks/useLists', () => ({ useLists: () => lists }));
@@ -533,6 +537,21 @@ describe('HomePage for somebody signed in', () => {
         await vi.waitFor(() => expect(wishlist.add).toHaveBeenCalledWith(
             expect.objectContaining({ id: 52189, title: 'Grand Theft Auto VI' })));
         expect(screen.getByRole('button', { name: 'Wishlist Enshrouded' })).toBeInTheDocument();
+    });
+
+    it('puts a game in no list in the Backlog from either panel, and offers it on none in a list', async () => {
+        auth.current = SIGNED_IN;
+        inList.set(248643, 'playing');
+        vi.mocked(lists.addToList).mockClear();
+
+        renderHome({ news: [NEWS], events: calendarEvents(), comingSoon: COMING_SOON, justOut: JUST_OUT, degraded: false });
+
+        fireEvent.click(screen.getByRole('button', { name: 'Add to Backlog: Grand Theft Auto VI' }));
+
+        await vi.waitFor(() => expect(lists.addToList).toHaveBeenCalledWith('backlog',
+            expect.objectContaining({ id: 52189, title: 'Grand Theft Auto VI' })));
+        // Enshrouded is in Playing, where a press would move it.
+        expect(screen.queryByRole('button', { name: 'Add to Backlog: Enshrouded' })).not.toBeInTheDocument();
     });
 
     it('says so on the card when the wishlist did not take the game', async () => {

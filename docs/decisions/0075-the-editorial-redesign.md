@@ -124,6 +124,33 @@ the month a cell as tall as its busiest day's posters, so a month with five rele
 boxes; it also had to become a list below `md` anyway, which is now the only shape. The line and the
 calendar share one stylesheet for the list, `ReleaseAgenda.css`. The spec's §2.2 says so.
 
+### The same two actions wherever something is coming or just out
+
+The two-week line, the calendar, Coming soon and Just out each offered a game something different. The
+line and the calendar shared the lists' rail card, with Add to Backlog among its words and the favourite's
+rosette as a toggle on its cover; Coming soon and Just out had only the wishlist's heart, on a row and on a
+cover's corner. All four now offer the same two, drawn the same way under the game's words by one
+component, `ReleaseActions`, from one hook, `useReleaseGame`, so that none of them can drift from the
+others again: the heart, and Add to Backlog for a game in none of the reader's lists, as two square
+buttons of one size, the Backlog's a list with a plus. Its words, in the reader's own name for the list,
+are its tooltip and its accessible name: in Coming soon's columns two worded buttons wrap onto two lines.
+
+- **The wishlist** is how a game seen on the home page reaches the reader's own two weeks when its day
+  comes ([0073](0073-the-home-page-a-welcome-coming-soon-just-out-and-the-news.md)), and on the line and
+  the calendar it is how one stops following a release, which then leaves them.
+- **The Backlog** is the one status that fits a view of what is coming, "I want to play that". It is
+  offered only for a game in no list, since on one in a list it would move it, and not before the lists
+  have loaded, when every game looks as though it were in none.
+- **The favourite is not offered on any of them.** A favourite is a game somebody loves, which a release
+  not out yet seldom is, and it is made on the game's page ([0029](0029-favourites-are-an-axis-and-a-showcase.md)
+  §4). A favourite is still marked, as [0064](0064-the-showcase-is-arranged-by-hand-and-shown-in-that-order.md)
+  §6 has it.
+- **Coming soon's line of what is known only to a quarter offers neither**: it is titles, and each game's
+  page has the rest.
+- **Each failure is held as the account it happened to**, the Backlog's now as the wishlist's was, so a
+  message about a change that did not stick is never shown to the next account on a page that outlived a
+  sign-out.
+
 ## Alternatives
 
 - **Google Fonts.** One `<link>`, and Archivo's widths by URL. But every reader's address goes to Google

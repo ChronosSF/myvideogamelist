@@ -3,10 +3,12 @@ import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { ReleaseCalendar } from '@/components/ReleaseCalendar';
+import type { AuthContextValue } from '@/contexts/AuthContext';
 import type { FavouritesContextValue } from '@/contexts/FavouritesContext';
 import type { ListsContextValue } from '@/contexts/ListsContext';
+import type { WishlistContextValue } from '@/contexts/WishlistContext';
 import type { UseReleaseCalendarResult } from '@/hooks/useReleaseCalendar';
-import { calendarEvents, connectedRelease, platform, releaseEntry } from '@/test/factories';
+import { calendarEvents, connectedRelease, platform, releaseEntry, userProfile } from '@/test/factories';
 import { LIST_NAMES, type ListId } from '@/types/list';
 import type { ReleaseEntry, UndatedEntry } from '@/types/releases';
 
@@ -37,18 +39,29 @@ const lists = {
 
 vi.mock('@/hooks/useLists', () => ({ useLists: () => lists }));
 
-/** The favourites, as far as the toggle reads them. Hoisted and handed back whole, as above. */
+/** The favourites, as far as the mark reads them. Hoisted and handed back whole, as above. */
 const favoured = new Set<number>();
 const favourites = {
-    loading: false,
-    error: null as string | null,
     isFavourite: (gameId: number) => favoured.has(gameId),
-    isPending: () => false,
-    add: vi.fn(async () => true),
-    remove: vi.fn(async () => true),
 } as unknown as FavouritesContextValue;
 
 vi.mock('@/hooks/useFavourites', () => ({ useFavourites: () => favourites }));
+
+/** Somebody signed in, which is when a card offers anything at all. Handed back whole, as above. */
+const auth = { user: userProfile({ id: 'user-1' }), loading: false } as unknown as AuthContextValue;
+
+vi.mock('@/hooks/useAuth', () => ({ useAuth: () => auth }));
+
+/** The wishlist, as far as the heart reads it. Hoisted and handed back whole, as above. */
+const wishlisted = new Set<number>();
+const wishlist = {
+    isWishlisted: (gameId: number) => wishlisted.has(gameId),
+    isPending: () => false,
+    add: vi.fn(async () => true),
+    remove: vi.fn(async () => true),
+} as unknown as WishlistContextValue;
+
+vi.mock('@/hooks/useWishlist', () => ({ useWishlist: () => wishlist }));
 
 const PS5 = platform(167, 'PlayStation 5', 'PS5');
 
@@ -103,7 +116,9 @@ beforeEach(() => {
     Object.assign(lists, { loading: false, error: null, addToList: vi.fn(async () => {}) });
 
     favoured.clear();
-    Object.assign(favourites, { loading: false, error: null, add: vi.fn(async () => true), remove: vi.fn(async () => true) });
+    wishlisted.clear();
+    Object.assign(wishlist, { add: vi.fn(async () => true), remove: vi.fn(async () => true) });
+    Object.assign(auth, { user: userProfile({ id: 'user-1' }) });
 });
 
 describe('ReleaseCalendar, the months', () => {
@@ -279,53 +294,53 @@ describe('ReleaseCalendar, Add to Backlog', () => {
     });
 });
 
-describe('ReleaseCalendar, favourites', () => {
-    it('makes a release a favourite, whatever list it is in', async () => {
+describe('ReleaseCalendar, the wishlist', () => {
+    it('puts a release on the wishlist, whatever list it is in', async () => {
         calendar.releases.data = [LAUFEY];
         listed.set(389000, 'finished');
         const actor = userEvent.setup();
         renderCalendar();
 
-        const toggle = screen.getByRole('button', { name: 'Favourite: God of War Laufey' });
+        const toggle = screen.getByRole('button', { name: 'Wishlist God of War Laufey' });
         expect(toggle).toHaveAttribute('aria-pressed', 'false');
         await actor.click(toggle);
 
-        expect(favourites.add).toHaveBeenCalledWith(expect.objectContaining({ id: 389000, title: 'God of War Laufey' }));
+        expect(wishlist.add).toHaveBeenCalledWith(expect.objectContaining({ id: 389000, title: 'God of War Laufey' }));
     });
 
-    it('shows a favourite as one, and takes it back off', async () => {
+    it('shows a wishlisted release as one, and takes it back off', async () => {
         calendar.releases.data = [LAUFEY];
-        favoured.add(389000);
+        wishlisted.add(389000);
         const actor = userEvent.setup();
         renderCalendar();
 
-        const toggle = screen.getByRole('button', { name: 'Favourite: God of War Laufey' });
+        const toggle = screen.getByRole('button', { name: 'Wishlist God of War Laufey' });
         expect(toggle).toHaveAttribute('aria-pressed', 'true');
         await actor.click(toggle);
 
-        expect(favourites.remove).toHaveBeenCalledWith(389000);
-    });
-
-    it('offers nothing until the favourites have loaded, when every game looks as though it were none', () => {
-        calendar.releases.data = [LAUFEY];
-        Object.assign(favourites, { loading: true });
-        renderCalendar();
-
-        expect(screen.queryByRole('button', { name: /^Favourite:/ })).not.toBeInTheDocument();
+        expect(wishlist.remove).toHaveBeenCalledWith(389000);
     });
 
     it('says so in the card when the change did not stick', async () => {
         calendar.releases.data = [LAUFEY];
-        Object.assign(favourites, { add: vi.fn(async () => false) });
+        Object.assign(wishlist, { add: vi.fn(async () => false) });
         const actor = userEvent.setup();
         renderCalendar();
 
-        await actor.click(screen.getByRole('button', { name: 'Favourite: God of War Laufey' }));
+        await actor.click(screen.getByRole('button', { name: 'Wishlist God of War Laufey' }));
 
-        expect(await screen.findByRole('alert')).toHaveTextContent('Could not change your favourites.');
+        expect(await screen.findByRole('alert')).toHaveTextContent('Could not update your wishlist.');
     });
 
-    it('offers both beside each release in a group', async () => {
+    it('offers nothing to whoever is not signed in', () => {
+        calendar.releases.data = [LAUFEY];
+        Object.assign(auth, { user: null });
+        renderCalendar();
+
+        expect(screen.queryByRole('button', { name: /^(Wishlist|Add to) / })).not.toBeInTheDocument();
+    });
+
+    it('offers it and the Backlog beside each release in a group', async () => {
         calendar.releases.data = [releaseEntry('2026-10-08', [
             connectedRelease({ gameId: 1, title: 'Kingdom Hearts III' }),
             connectedRelease({ gameId: 2, title: 'Kingdom Hearts 0.2' }),
@@ -334,10 +349,10 @@ describe('ReleaseCalendar, favourites', () => {
         renderCalendar();
 
         await actor.click(screen.getByText('Show all 2'));
-        await actor.click(screen.getByRole('button', { name: 'Favourite: Kingdom Hearts 0.2' }));
+        await actor.click(screen.getByRole('button', { name: 'Wishlist Kingdom Hearts 0.2' }));
 
         expect(screen.getByRole('button', { name: 'Add to Backlog: Kingdom Hearts 0.2' })).toBeInTheDocument();
-        expect(favourites.add).toHaveBeenCalledWith(expect.objectContaining({ id: 2 }));
+        expect(wishlist.add).toHaveBeenCalledWith(expect.objectContaining({ id: 2 }));
     });
 });
 

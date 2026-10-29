@@ -3,10 +3,12 @@ import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { ReleaseLine } from '@/components/ReleaseLine';
+import type { AuthContextValue } from '@/contexts/AuthContext';
 import type { FavouritesContextValue } from '@/contexts/FavouritesContext';
 import type { ListsContextValue } from '@/contexts/ListsContext';
+import type { WishlistContextValue } from '@/contexts/WishlistContext';
 import type { UseReleaseLineResult } from '@/hooks/useReleaseLine';
-import { calendarEvents, connectedRelease, platform, releaseEntry } from '@/test/factories';
+import { calendarEvents, connectedRelease, platform, releaseEntry, userProfile } from '@/test/factories';
 import { LIST_NAMES, type ListId } from '@/types/list';
 
 /**
@@ -38,18 +40,29 @@ const lists = {
 
 vi.mock('@/hooks/useLists', () => ({ useLists: () => lists }));
 
-/** The favourites, as far as the toggle reads them. Hoisted and handed back whole, as above. */
+/** The favourites, as far as the mark reads them. Hoisted and handed back whole, as above. */
 const favoured = new Set<number>();
 const favourites = {
-    loading: false,
-    error: null as string | null,
     isFavourite: (gameId: number) => favoured.has(gameId),
-    isPending: () => false,
-    add: vi.fn(async () => true),
-    remove: vi.fn(async () => true),
 } as unknown as FavouritesContextValue;
 
 vi.mock('@/hooks/useFavourites', () => ({ useFavourites: () => favourites }));
+
+/** Somebody signed in, which is when a card offers anything at all. Handed back whole, as above. */
+const auth = { user: userProfile({ id: 'user-1' }), loading: false } as unknown as AuthContextValue;
+
+vi.mock('@/hooks/useAuth', () => ({ useAuth: () => auth }));
+
+/** The wishlist, as far as the heart reads it. Hoisted and handed back whole, as above. */
+const wishlisted = new Set<number>();
+const wishlist = {
+    isWishlisted: (gameId: number) => wishlisted.has(gameId),
+    isPending: () => false,
+    add: vi.fn(async () => true),
+    remove: vi.fn(async () => true),
+} as unknown as WishlistContextValue;
+
+vi.mock('@/hooks/useWishlist', () => ({ useWishlist: () => wishlist }));
 
 const SWITCH_2 = platform(508, 'Nintendo Switch 2', 'Switch 2');
 
@@ -92,7 +105,9 @@ beforeEach(() => {
     });
 
     favoured.clear();
-    Object.assign(favourites, { loading: false, error: null, add: vi.fn(async () => true), remove: vi.fn(async () => true) });
+    wishlisted.clear();
+    Object.assign(wishlist, { add: vi.fn(async () => true), remove: vi.fn(async () => true) });
+    Object.assign(auth, { user: userProfile({ id: 'user-1' }) });
 });
 
 describe('ReleaseLine', () => {
@@ -325,7 +340,7 @@ describe('ReleaseLine, adding a release to the Backlog', () => {
         renderLine();
 
         expect(screen.getByRole('button', { name: 'Add to Up Next: Resident Evil 4: Separate Ways' }))
-            .toHaveTextContent('Add to Up Next');
+            .toHaveAttribute('title', 'Add to Up Next');
     });
 
     it('says so where the message stays put when the add did not stick', async () => {
@@ -351,56 +366,62 @@ describe('ReleaseLine, adding a release to the Backlog', () => {
     });
 });
 
-describe('ReleaseLine, favourites', () => {
-    it('makes a release a favourite from its cover, whatever list it is in', async () => {
+describe('ReleaseLine, the wishlist', () => {
+    it('puts a release on the wishlist from the line, whatever list it is in', async () => {
         line.releases.data = [RESIDENT_EVIL_2];
         listed.set(19686, 'finished');
         renderLine();
 
-        const toggle = screen.getByRole('button', { name: 'Favourite: Resident Evil 2' });
+        const toggle = screen.getByRole('button', { name: 'Wishlist Resident Evil 2' });
         expect(toggle).toHaveAttribute('aria-pressed', 'false');
         await userEvent.click(toggle);
 
-        expect(favourites.add).toHaveBeenCalledWith(expect.objectContaining({ id: 19686, title: 'Resident Evil 2' }));
+        expect(wishlist.add).toHaveBeenCalledWith(expect.objectContaining({ id: 19686, title: 'Resident Evil 2' }));
     });
 
-    it('shows a favourite as one, and takes it back off', async () => {
+    it('shows a wishlisted release as one, and takes it back off', async () => {
         line.releases.data = [RESIDENT_EVIL_2];
-        favoured.add(19686);
+        wishlisted.add(19686);
         renderLine();
 
-        const toggle = screen.getByRole('button', { name: 'Favourite: Resident Evil 2' });
+        const toggle = screen.getByRole('button', { name: 'Wishlist Resident Evil 2' });
         expect(toggle).toHaveAttribute('aria-pressed', 'true');
         await userEvent.click(toggle);
 
-        expect(favourites.remove).toHaveBeenCalledWith(19686);
-    });
-
-    it('offers nothing until the favourites have loaded, when every game looks as though it were none', () => {
-        line.releases.data = [RESIDENT_EVIL_2];
-        Object.assign(favourites, { loading: true });
-        renderLine();
-
-        expect(screen.queryByRole('button', { name: /^Favourite:/ })).not.toBeInTheDocument();
+        expect(wishlist.remove).toHaveBeenCalledWith(19686);
     });
 
     it('says so in the card when the change did not stick', async () => {
         line.releases.data = [RESIDENT_EVIL_2];
-        Object.assign(favourites, { add: vi.fn(async () => false) });
+        Object.assign(wishlist, { add: vi.fn(async () => false) });
         renderLine();
 
-        await userEvent.click(screen.getByRole('button', { name: 'Favourite: Resident Evil 2' }));
+        await userEvent.click(screen.getByRole('button', { name: 'Wishlist Resident Evil 2' }));
 
-        expect(await screen.findByRole('alert')).toHaveTextContent('Could not change your favourites.');
+        expect(await screen.findByRole('alert')).toHaveTextContent('Could not update your wishlist.');
     });
 
-    it('offers it beside each release in a group', async () => {
+    it('offers it and the Backlog beside each release in a group', async () => {
         line.releases.data = [KINGDOM_HEARTS];
+        listed.set(19560, 'finished');
         renderLine();
 
         await userEvent.click(screen.getByText('Show all 2'));
-        await userEvent.click(screen.getByRole('button', { name: 'Favourite: Kingdom Hearts HD 1.5 + 2.5 ReMIX' }));
+        expect(screen.getByRole('button', { name: 'Add to Backlog: Kingdom Hearts HD 1.5 + 2.5 ReMIX' })).toBeInTheDocument();
+        await userEvent.click(screen.getByRole('button', { name: 'Wishlist Kingdom Hearts HD 1.5 + 2.5 ReMIX' }));
 
-        expect(favourites.add).toHaveBeenCalledWith(expect.objectContaining({ id: 2350 }));
+        expect(wishlist.add).toHaveBeenCalledWith(expect.objectContaining({ id: 2350 }));
+    });
+});
+
+describe('ReleaseLine, favourites', () => {
+    it('marks a favourite after its name, and offers no way to change it there', () => {
+        // A favourite is made on the game's page (ADR 0029 §4); a view of what is coming shows it.
+        line.releases.data = [RESIDENT_EVIL_2];
+        favoured.add(19686);
+        renderLine();
+
+        expect(screen.getByRole('img', { name: 'One of your favourites' })).toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: /favourite/i })).not.toBeInTheDocument();
     });
 });

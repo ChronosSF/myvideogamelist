@@ -1,6 +1,6 @@
 import { Link } from 'react-router';
 import { CoverImage } from '@/components/CoverImage';
-import { WishlistToggle } from '@/components/WishlistToggle';
+import { ReleaseActions } from '@/components/ReleaseActions';
 import { useReleaseGame } from '@/hooks/useReleaseGame';
 import { comingSoonWhen, scheduleGroups, type ScheduleGroup } from '@/lib/comingSoon';
 import { platformNames } from '@/lib/releaseReason';
@@ -18,7 +18,8 @@ interface ComingSoonScheduleProps {
 
 /**
  * One game on the schedule: the day as a figure, its cover and its title, what it arrives on, which of the
- * reader's lists it is in, and the wishlist toggle — the rows the cards of the rail were (ADR 0073, 0075).
+ * reader's lists it is in, and the wishlist and the Backlog — the rows the cards of the rail were (ADR 0073,
+ * 0075).
  *
  * The month or the quarter it arrives in is its group's heading, so a row says only its day; a game known
  * to no closer than its month or quarter has a dash where the day would be.
@@ -55,7 +56,7 @@ function ScheduleRow({ game, today }: { game: ComingSoonGame; today: string }) {
                 {/* The reader's own list, by their name for it, as every label of a list is. */}
                 {state.listName !== null && <p className="mt-1 type-meta text-success-300">In {state.listName}</p>}
 
-                <WishlistToggle variant="inline" title={game.title} state={state} />
+                <ReleaseActions title={game.title} state={state} />
             </div>
         </li>
     );
