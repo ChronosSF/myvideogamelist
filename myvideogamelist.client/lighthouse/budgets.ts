@@ -58,9 +58,9 @@ interface Baseline {
  * decodes what the server compressed (see `kib`). One such machine scored 0.70 for browse on a phone,
  * against 0.90 here. A local run warns about it and passes.
  *
- * Accessibility is short of 100 everywhere because of contrast (#234, #246, #329), and on some pages
- * heading order and a description list (#329). SEO is 66 on the lists page because it says `noindex`, as
- * every page that is one member's own does (ADR 0036).
+ * Accessibility is short of 100 on four pages because of heading order and a description list (#329).
+ * SEO is 66 on the lists page because it says `noindex`, as every page that is one member's own does
+ * (ADR 0036).
  *
  * Six figures are from a later run, 40070934403 on 2026-10-24, once master was merged in. Three rose a
  * point: accessibility on a desktop for the game page, the profile and the lists, when the navbar's search
@@ -93,21 +93,39 @@ interface Baseline {
  * and the profile, on both form factors. Chrome logs every 4xx a page's fetch receives as an error, so
  * that 401 was the one error on each of those pages, and the one best-practices audit they failed. The
  * figures are from a developer's machine, which scores the same as the runner in both.
+ *
+ * Twenty figures moved with the editorial redesign (ADR 0075), from a developer's machine, whose decoded
+ * weights matched the runner's to a KiB. Accessibility rose on every page, to 100 on the home page: no
+ * page breaks contrast any more, now that every text tone passes 4.5:1 (#234), a filled button is the
+ * ink on lime rather than white (#246), and a score's solid fill carries the ink too (#329). The weights
+ * moved with the fonts, which a page loads from this origin — Archivo's two faces at 13 KiB each,
+ * Schibsted Grotesk's 46 and DM Mono's 15 — and with what each page now shows: the home page's fell, as
+ * its welcome panel draws no picture.
+ *
+ * Five more are from run 40298177982 on 2026-10-26, at the commit that cut Archivo down: performance on a
+ * phone, which the redesign lowered, rebased on what each page scores now, so that the job warns about
+ * the next fall rather than about this one for good. On the runner the redesign's first paint did not
+ * move, but its largest came 0.6 to 1.2 seconds later on every page with Archivo's whole variable file
+ * at 88 KiB: a page's largest text is set in it and waits for it, and on browse and the lists the fonts'
+ * bytes went ahead of the first cover. Cutting Archivo to its two faces (`npm run fonts`) took a page's
+ * fonts from 149 KiB to 87 and won back about half of it — the home page 82 to 85, browse 79 to 82, the
+ * game page 77 to 81, the profile 80 to 83 — and nothing on the lists, at 76. What is left is the
+ * redesign's type, accepted as its cost (ADR 0075). A desktop's are as they were, and still met.
  */
 const BASELINE: Record<FormFactor, Record<PageKey, Baseline>> = {
     mobile: {
-        home: { accessibility: 0.95, bestPractices: 1, seo: 1, consoleErrors: 0, kib: 807, performance: 0.87 },
-        games: { accessibility: 0.95, bestPractices: 1, seo: 1, consoleErrors: 0, kib: 803, performance: 0.9 },
-        game: { accessibility: 0.92, bestPractices: 1, seo: 1, consoleErrors: 0, kib: 2106, performance: 0.87 },
-        profile: { accessibility: 0.94, bestPractices: 1, seo: 1, consoleErrors: 0, kib: 587, performance: 0.89 },
-        lists: { accessibility: 0.95, bestPractices: 1, seo: 0.66, consoleErrors: 0, kib: 587, performance: 0.89 },
+        home: { accessibility: 1, bestPractices: 1, seo: 1, consoleErrors: 0, kib: 651, performance: 0.85 },
+        games: { accessibility: 0.98, bestPractices: 1, seo: 1, consoleErrors: 0, kib: 943, performance: 0.82 },
+        game: { accessibility: 0.96, bestPractices: 1, seo: 1, consoleErrors: 0, kib: 2102, performance: 0.81 },
+        profile: { accessibility: 0.98, bestPractices: 1, seo: 1, consoleErrors: 0, kib: 772, performance: 0.83 },
+        lists: { accessibility: 0.99, bestPractices: 1, seo: 0.66, consoleErrors: 0, kib: 796, performance: 0.76 },
     },
     desktop: {
-        home: { accessibility: 0.96, bestPractices: 1, seo: 1, consoleErrors: 0, kib: 870, performance: 1 },
-        games: { accessibility: 0.95, bestPractices: 1, seo: 1, consoleErrors: 0, kib: 937, performance: 0.99 },
-        game: { accessibility: 0.93, bestPractices: 1, seo: 1, consoleErrors: 0, kib: 2106, performance: 1 },
-        profile: { accessibility: 0.95, bestPractices: 1, seo: 1, consoleErrors: 0, kib: 587, performance: 1 },
-        lists: { accessibility: 0.95, bestPractices: 1, seo: 0.66, consoleErrors: 0, kib: 587, performance: 0.99 },
+        home: { accessibility: 1, bestPractices: 1, seo: 1, consoleErrors: 0, kib: 651, performance: 1 },
+        games: { accessibility: 0.98, bestPractices: 1, seo: 1, consoleErrors: 0, kib: 1107, performance: 0.99 },
+        game: { accessibility: 0.97, bestPractices: 1, seo: 1, consoleErrors: 0, kib: 2014, performance: 1 },
+        profile: { accessibility: 0.98, bestPractices: 1, seo: 1, consoleErrors: 0, kib: 714, performance: 1 },
+        lists: { accessibility: 0.99, bestPractices: 1, seo: 0.66, consoleErrors: 0, kib: 796, performance: 0.99 },
     },
 };
 
@@ -150,29 +168,31 @@ const PERFORMANCE_NOISE = 0.1;
 const PERFORMANCE_FLOOR: Record<FormFactor, number> = { mobile: 0.5, desktop: 0.6 };
 
 /**
- * The axe rules each page broke when the baseline was taken (`axe.lh.ts`), which are reported and do not
- * fail: contrast (#234, #246, #329) and the rest of #329. Held exactly, as the scores are: a rule the page
- * no longer breaks fails until it leaves the list, and one that is not on it fails until it is fixed.
+ * The axe rules each page breaks (`axe.lh.ts`), which are reported and do not fail: the rest of #329.
+ * Contrast left every page with the editorial redesign (ADR 0075). Held exactly, as the scores are: a rule
+ * the page no longer breaks fails until it leaves the list, and one that is not on it fails until it is
+ * fixed.
  */
 export const KNOWN_VIOLATIONS: Record<PageKey, readonly string[]> = {
-    home: ['color-contrast'],
-    games: ['color-contrast', 'heading-order'],
-    game: ['color-contrast', 'definition-list'],
-    profile: ['color-contrast', 'heading-order'],
-    lists: ['color-contrast', 'heading-order'],
+    home: [],
+    games: ['heading-order'],
+    game: ['definition-list'],
+    profile: ['heading-order'],
+    lists: ['heading-order'],
 };
 
 /**
- * The colour pairs each page's text broke contrast with when the baseline was taken, as axe names them,
- * foreground on background. With contrast known on every page, a rule alone would let a new pair in
- * unseen; a pair is a property of the theme, and stays put however much data a page shows.
+ * The colour pairs each page's text breaks contrast with, as axe names them, foreground on background:
+ * none, since the editorial redesign (ADR 0075). Kept by pair rather than by rule, so that should one come
+ * back while a page has another on record, the new pair is named; a pair is a property of the theme, and
+ * stays put however much data a page shows.
  */
 export const KNOWN_CONTRAST: Record<PageKey, readonly string[]> = {
-    home: ['#ffffff on #2b7fff'],
-    games: ['#ffffff on #2b7fff', '#ffffff on #00c950', '#62748e on #1d293d', '#90a1b9 on #314158'],
-    game: ['#ffffff on #2b7fff', '#62748e on #0f172b', '#62748e on #172236'],
-    profile: ['#ffffff on #2b7fff'],
-    lists: ['#62748e on #0f172b', '#ffffff on #00c950', '#62748e on #1d293d', '#90a1b9 on #314158'],
+    home: [],
+    games: [],
+    game: [],
+    profile: [],
+    lists: [],
 };
 
 /**

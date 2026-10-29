@@ -25,10 +25,10 @@ interface GameBrowseFiltersProps {
 
 const selectClass =
     'w-full sm:w-auto px-3 py-2 bg-surface border border-line-strong '
-    + 'rounded-lg text-fg-strong text-sm focus:outline-hidden focus:ring-2 focus:ring-focus '
+    + 'rounded-sm text-fg-strong text-sm focus:outline-hidden focus:ring-2 focus:ring-focus '
     + 'focus:border-transparent disabled:opacity-60';
 
-const labelClass = 'block text-xs font-semibold uppercase tracking-wide text-fg-muted mb-1';
+const labelClass = 'block type-kicker text-fg-muted mb-1.5';
 
 /** An empty option value means "any", which is how a select says null. */
 function toNumber(value: string): number | null {
@@ -192,7 +192,7 @@ export function GameBrowseFilters({ browse, platforms, genres, years, onChange, 
                     <div className="col-span-2 sm:col-span-1">
                         <button
                             type="button"
-                            className="px-3 py-2 text-sm font-semibold text-primary-400 hover:underline"
+                            className="px-3 py-2 text-sm font-semibold text-link"
                             onClick={onClear}
                         >
                             Clear filters

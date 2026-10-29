@@ -126,7 +126,7 @@ export function WishlistPage() {
                             </p>
                             <Link
                                 to="/games"
-                                className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary-600 hover:bg-primary-500 text-on-primary text-sm font-semibold rounded-lg transition-colors"
+                                className="inline-flex items-center gap-1.5 px-4 py-2 btn-primary text-sm"
                             >
                                 Browse games
                             </Link>

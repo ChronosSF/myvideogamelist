@@ -41,16 +41,21 @@ import './GamePage.css';
  */
 const IGDB_UNAVAILABLE = 'IGDB did not answer.';
 
-/** The hero's cover is 140px wide, 180px from 640px up, inside a two-pixel border. */
-const HERO_COVER_SIZES = '(min-width: 640px) 176px, 136px';
+/** The hero's cover is 140px wide, 180px from 640px up, with no border inside it. */
+const HERO_COVER_SIZES = '(min-width: 640px) 180px, 140px';
 
+/** A term from IGDB's vocabulary — a platform, a theme, a mode — as an outlined chip in the metadata type. */
 function InfoChip({ label }: { label: string }) {
     return (
-        <span className="px-2.5 py-1 bg-raised/60 text-fg-soft text-xs font-medium rounded-lg border border-line">
+        <span className="px-2.5 py-1 type-meta text-fg-soft rounded-sm border border-line-strong">
             {label}
         </span>
     );
 }
+
+/** One fact in the sidebar's list of them: its label in small capitals, and what it is. */
+const FACT = 'py-3 border-b border-line';
+const FACT_LABEL = 'type-kicker text-fg-faint mb-1';
 
 /**
  * How long the loader waits for each of the members' figures before rendering without them.
@@ -322,7 +327,7 @@ export function GamePage() {
                         {/* Breadcrumb */}
                         <Link
                             to="/games"
-                            className="inline-flex items-center gap-1 text-xs text-fg-muted hover:text-primary-400 transition-colors mb-2"
+                            className="inline-flex items-center gap-1 type-kicker text-fg-soft hover:text-fg-strong transition-colors mb-3"
                         >
                             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -330,21 +335,21 @@ export function GamePage() {
                             Games
                         </Link>
 
-                        <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-fg-strong leading-tight mb-2">
+                        <h1 className="type-display text-4xl sm:text-5xl lg:text-7xl text-fg-strong text-balance mb-3 [text-shadow:0_2px_24px_rgb(0_0_0/0.5)]">
                             {game.title}
                             {releaseYear && (
-                                <span className="text-fg-muted font-normal text-xl ml-2">({releaseYear})</span>
+                                <span className="ml-3 font-mono text-lg sm:text-xl font-normal tracking-normal text-fg-soft align-middle">({releaseYear})</span>
                             )}
                         </h1>
 
                         {/* A DLC or expansion page that does not say what it belongs to reads as a
                             standalone game with a strangely narrow scope. */}
                         {details?.parentGame && (
-                            <p className="text-sm text-fg-muted mb-2">
+                            <p className="text-sm text-fg-soft mb-3">
                                 Add-on for{' '}
                                 <Link
                                     to={`/games/${details.parentGame.id}`}
-                                    className="text-primary-400 hover:text-primary-300 font-medium transition-colors"
+                                    className="font-semibold text-link"
                                 >
                                     {details.parentGame.name}
                                 </Link>
@@ -354,7 +359,7 @@ export function GamePage() {
                         {/* Badges row */}
                         <div className="flex flex-wrap items-center gap-2 mb-3">
                             {game.esrbRating && (
-                                <span className="px-2 py-0.5 bg-surface/80 border border-line-strong text-fg-soft text-xs font-mono rounded">
+                                <span className="px-2 py-0.5 bg-sunken/70 border border-line-strong text-fg-soft type-meta rounded-sm">
                                     {game.esrbRating}
                                 </span>
                             )}
@@ -388,7 +393,7 @@ export function GamePage() {
                                 />
                             )}
                             {releaseDate && (
-                                <span className="text-fg-muted text-xs">{releaseDate}</span>
+                                <span className="type-meta text-fg-soft">{releaseDate}</span>
                             )}
                         </div>
                     </div>
@@ -401,10 +406,12 @@ export function GamePage() {
                     {/* Main content */}
                     <div className="flex-1 min-w-0 space-y-10">
                         {/* Description */}
+                        {/* The page's lede, with a drop cap: the one passage on it that is read rather than
+                            scanned. */}
                         {game.description && (
                             <section>
                                 <SectionHeading>About</SectionHeading>
-                                <p className="text-fg-soft text-sm leading-relaxed whitespace-pre-line">
+                                <p className="game-page-lede max-w-prose text-fg text-[1.0625rem] leading-relaxed whitespace-pre-line">
                                     {game.description}
                                 </p>
                             </section>
@@ -422,12 +429,7 @@ export function GamePage() {
                                 <SectionHeading>Genres</SectionHeading>
                                 <div className="flex flex-wrap gap-2">
                                     {game.genres.map(genre => (
-                                        <span
-                                            key={genre.id}
-                                            className="px-3 py-1 bg-primary-900/40 text-primary-300 text-xs font-medium rounded-full border border-primary-800/50"
-                                        >
-                                            {genre.name}
-                                        </span>
+                                        <InfoChip key={genre.id} label={genre.name} />
                                     ))}
                                 </div>
                             </section>
@@ -492,7 +494,7 @@ export function GamePage() {
                                             <SectionHeading>Developer{game.developers.length > 1 ? 's' : ''}</SectionHeading>
                                             <div className="flex flex-col gap-1.5">
                                                 {game.developers.map(dev => (
-                                                    <span key={dev.id} className="text-fg-soft text-sm font-medium">
+                                                    <span key={dev.id} className="type-title text-lg text-fg-strong">
                                                         {dev.name}
                                                     </span>
                                                 ))}
@@ -504,7 +506,7 @@ export function GamePage() {
                                             <SectionHeading>Publisher{game.publishers.length > 1 ? 's' : ''}</SectionHeading>
                                             <div className="flex flex-col gap-1.5">
                                                 {game.publishers.map(pub => (
-                                                    <span key={pub.id} className="text-fg-soft text-sm font-medium">
+                                                    <span key={pub.id} className="type-title text-lg text-fg-strong">
                                                         {pub.name}
                                                     </span>
                                                 ))}
@@ -580,7 +582,7 @@ export function GamePage() {
                     </div>
 
                     {/* Sidebar */}
-                    <aside className="lg:w-64 xl:w-72 space-y-6">
+                    <aside className="lg:w-72 xl:w-80 space-y-10">
                         {/* Lists, score and the one control that erases both. Keyed on the account
                             and the game, so that either changing remounts it: the panel holds that
                             person's score, ownership, notes, playthroughs and review for that one
@@ -605,27 +607,29 @@ export function GamePage() {
                                 onCommunityChange={community.reload}
                             />
                         ) : (
-                            <div className="bg-surface/60 border border-line rounded-xl p-5 text-center">
-                                <p className="text-fg-muted text-xs mb-3">
+                            <div className="rule-heavy pt-4 pb-2">
+                                <p className="type-kicker text-fg-muted mb-2">Your copy</p>
+                                <p className="text-fg-muted text-sm">
                                     {authLoading ? <>&nbsp;</> : 'Sign in to track this game.'}
                                 </p>
                             </div>
                         )}
 
-                        {/* Info card */}
-                        <div className="bg-surface/60 border border-line rounded-xl p-5 space-y-4">
+                        {/* The facts, as a list under a heavy rule. */}
+                        <div className="rule-heavy">
+                            <p className="type-kicker text-fg-muted pt-4 pb-1">The details</p>
                             {releaseDate && (
-                                <div>
-                                    <p className="text-xs text-fg-faint uppercase tracking-wider mb-1">Release Date</p>
-                                    <p className="text-sm text-fg font-medium">{releaseDate}</p>
+                                <div className={FACT}>
+                                    <p className={FACT_LABEL}>Release Date</p>
+                                    <p className="text-sm text-fg-strong font-medium">{releaseDate}</p>
                                 </div>
                             )}
 
                             {/* The one place the sample size is on the page rather than in a
                                 tooltip. ADR 0016: a score without its count is not shippable. */}
                             {hasCriticScore(game) && (
-                                <div>
-                                    <p className="text-xs text-fg-faint uppercase tracking-wider mb-1">Critic Score</p>
+                                <div className={FACT}>
+                                    <p className={FACT_LABEL}>Critic Score</p>
                                     <ScoreBadge
                                         kind="critics"
                                         percent={game.criticScore!}
@@ -638,8 +642,8 @@ export function GamePage() {
                             )}
 
                             {game.rating !== null && (
-                                <div>
-                                    <p className="text-xs text-fg-faint uppercase tracking-wider mb-1">Player Rating</p>
+                                <div className={FACT}>
+                                    <p className={FACT_LABEL}>Player Rating</p>
                                     <ScoreBadge
                                         kind="players"
                                         percent={ratingPercent(game.rating)}
@@ -658,8 +662,8 @@ export function GamePage() {
                                 only when a reader can see it on the page (ADR 0069). Each count is for
                                 the eye only: the badge's accessible name already ends with it. */}
                             {hasMemberScore(memberScores) && (
-                                <div>
-                                    <p className="text-xs text-fg-faint uppercase tracking-wider mb-1">Member Score</p>
+                                <div className={FACT}>
+                                    <p className={FACT_LABEL}>Member Score</p>
                                     <ScoreBadge
                                         kind="members"
                                         percent={ratingPercent(memberScores.mean)}
@@ -672,8 +676,8 @@ export function GamePage() {
                             )}
 
                             {game.esrbRating && (
-                                <div>
-                                    <p className="text-xs text-fg-faint uppercase tracking-wider mb-1">ESRB Rating</p>
+                                <div className={FACT}>
+                                    <p className={FACT_LABEL}>ESRB Rating</p>
                                     <span className="px-2 py-0.5 bg-raised border border-line-strong text-fg text-sm font-mono rounded">
                                         {game.esrbRating}
                                     </span>
@@ -681,8 +685,8 @@ export function GamePage() {
                             )}
 
                             {series.length > 0 && (
-                                <div>
-                                    <p className="text-xs text-fg-faint uppercase tracking-wider mb-1">Series</p>
+                                <div className={FACT}>
+                                    <p className={FACT_LABEL}>Series</p>
                                     <p className="text-sm text-fg font-medium">
                                         {series.join(', ')}
                                     </p>
@@ -690,8 +694,8 @@ export function GamePage() {
                             )}
 
                             {details && details.playerPerspectives.length > 0 && (
-                                <div>
-                                    <p className="text-xs text-fg-faint uppercase tracking-wider mb-1">Perspective</p>
+                                <div className={FACT}>
+                                    <p className={FACT_LABEL}>Perspective</p>
                                     <p className="text-sm text-fg font-medium">
                                         {details.playerPerspectives.join(', ')}
                                     </p>
@@ -699,8 +703,8 @@ export function GamePage() {
                             )}
 
                             {details && details.gameEngines.length > 0 && (
-                                <div>
-                                    <p className="text-xs text-fg-faint uppercase tracking-wider mb-1">
+                                <div className={FACT}>
+                                    <p className={FACT_LABEL}>
                                         Engine{details.gameEngines.length > 1 ? 's' : ''}
                                     </p>
                                     <p className="text-sm text-fg font-medium">
@@ -712,8 +716,8 @@ export function GamePage() {
                             {/* A dozen-plus languages would dominate the sidebar, so they collapse.
                                 A native <details> needs no JavaScript and so survives SSR intact. */}
                             {details && details.languages.length > 0 && (
-                                <details className="group">
-                                    <summary className="text-xs text-fg-faint uppercase tracking-wider cursor-pointer hover:text-fg-soft transition-colors">
+                                <details className={`group ${FACT}`}>
+                                    <summary className="type-kicker text-fg-faint cursor-pointer hover:text-fg-soft transition-colors">
                                         Languages ({details.languages.length})
                                     </summary>
                                     <ul className="mt-2 space-y-1.5">
@@ -734,13 +738,13 @@ export function GamePage() {
                             )}
 
                             {game.website && (
-                                <div>
-                                    <p className="text-xs text-fg-faint uppercase tracking-wider mb-1">Website</p>
+                                <div className={FACT}>
+                                    <p className={FACT_LABEL}>Website</p>
                                     <a
                                         href={game.website}
                                         target="_blank"
                                         rel="noopener noreferrer"
-                                        className="inline-flex items-center gap-1 text-sm text-primary-400 hover:text-primary-300 transition-colors break-all"
+                                        className="inline-flex items-center gap-1 text-sm font-semibold text-link break-all"
                                     >
                                         Official Site{' '}
                                         <span className="sr-only">(opens in a new tab)</span>
@@ -752,13 +756,13 @@ export function GamePage() {
                             )}
 
                             {game.trailerUrl && !youtubeEmbedId && (
-                                <div>
-                                    <p className="text-xs text-fg-faint uppercase tracking-wider mb-1">Trailer</p>
+                                <div className={FACT}>
+                                    <p className={FACT_LABEL}>Trailer</p>
                                     <a
                                         href={game.trailerUrl}
                                         target="_blank"
                                         rel="noopener noreferrer"
-                                        className="inline-flex items-center gap-1 text-sm text-primary-400 hover:text-primary-300 transition-colors"
+                                        className="inline-flex items-center gap-1 text-sm font-semibold text-link"
                                     >
                                         Watch Trailer{' '}
                                         <span className="sr-only">(opens in a new tab)</span>
@@ -803,7 +807,7 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
                 >
                     <Link
                         to="/games"
-                        className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary-600 hover:bg-primary-500 text-on-primary text-sm font-semibold rounded-lg transition-colors"
+                        className="inline-flex items-center gap-1.5 px-4 py-2 btn-primary text-sm"
                     >
                         Browse games
                     </Link>

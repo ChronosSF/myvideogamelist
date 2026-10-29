@@ -59,8 +59,12 @@ vi.mock('@/hooks/useFavourites', () => ({ useFavourites: () => favourites }));
 const inList = new Map<number, ListId>();
 
 const lists = {
+    loading: false,
+    error: null,
     getListFor: (gameId: number) => inList.get(gameId) ?? null,
+    isPending: () => false,
     nameFor: (listId: ListId) => LIST_NAMES[listId],
+    addToList: vi.fn(async () => {}),
 } as unknown as ListsContextValue;
 
 vi.mock('@/hooks/useLists', () => ({ useLists: () => lists }));
@@ -400,7 +404,11 @@ describe('HomePage for a signed-out visitor', () => {
         expect(within(comingSoon).getByRole('link', { name: /Grand Theft Auto VI/ })).toHaveAttribute('href', '/games/52189');
         expect(within(comingSoon).getByText('Nov 19')).toHaveAttribute('datetime', '2026-11-19');
         expect(within(comingSoon).getByText('PS5, Series X|S')).toBeInTheDocument();
-        expect(within(comingSoon).getByText('Q1 2027')).toBeInTheDocument();
+        // What is known only to a quarter is a line of titles under the month columns, not a column of its own.
+        expect(within(comingSoon).queryByText('Q1 2027')).toBeNull();
+        expect(screen.getByRole('heading', { name: 'Also due in Q1 2027' })).toBeInTheDocument();
+        expect(within(screen.getByRole('list', { name: 'Due in Q1 2027' })).getByRole('link', { name: 'Out of Words' }))
+            .toHaveAttribute('href', '/games/347645');
 
         const justOut = screen.getByRole('list', { name: 'Just out' });
         expect(within(justOut).getByRole('link', { name: /Enshrouded/ })).toHaveAttribute('href', '/games/248643');
@@ -522,13 +530,28 @@ describe('HomePage for somebody signed in', () => {
 
         renderHome({ news: [NEWS], events: calendarEvents(), comingSoon: COMING_SOON, justOut: JUST_OUT, degraded: false });
 
-        const toggle = screen.getByRole('button', { name: 'Wishlist Out of Words' });
+        const toggle = screen.getByRole('button', { name: 'Wishlist Grand Theft Auto VI' });
         expect(toggle).toHaveAttribute('aria-pressed', 'false');
         fireEvent.click(toggle);
 
         await vi.waitFor(() => expect(wishlist.add).toHaveBeenCalledWith(
-            expect.objectContaining({ id: 347645, title: 'Out of Words' })));
+            expect.objectContaining({ id: 52189, title: 'Grand Theft Auto VI' })));
         expect(screen.getByRole('button', { name: 'Wishlist Enshrouded' })).toBeInTheDocument();
+    });
+
+    it('puts a game in no list in the Backlog from either panel, and offers it on none in a list', async () => {
+        auth.current = SIGNED_IN;
+        inList.set(248643, 'playing');
+        vi.mocked(lists.addToList).mockClear();
+
+        renderHome({ news: [NEWS], events: calendarEvents(), comingSoon: COMING_SOON, justOut: JUST_OUT, degraded: false });
+
+        fireEvent.click(screen.getByRole('button', { name: 'Add to Backlog: Grand Theft Auto VI' }));
+
+        await vi.waitFor(() => expect(lists.addToList).toHaveBeenCalledWith('backlog',
+            expect.objectContaining({ id: 52189, title: 'Grand Theft Auto VI' })));
+        // Enshrouded is in Playing, where a press would move it.
+        expect(screen.queryByRole('button', { name: 'Add to Backlog: Enshrouded' })).not.toBeInTheDocument();
     });
 
     it('says so on the card when the wishlist did not take the game', async () => {

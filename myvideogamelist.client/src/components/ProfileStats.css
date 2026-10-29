@@ -4,19 +4,23 @@
  * second styling system to keep in step with the theme.
  */
 
+@reference "../index.css";
+
 .profile-stats {
     display: flex;
     flex-direction: column;
-    gap: 1.5rem;
+    gap: 2.25rem;
     /* The tiles and the paired sections lay themselves out by the width this block has, not the
        viewport's: the owner's profile sits beside a sidebar and the public one does not. */
     container-type: inline-size;
 }
 
+/* A part's title, in display type under the rule the part opens with (ADR 0075). */
 .profile-heading {
+    @apply type-display;
     margin: 0;
-    font-size: 1.125rem;
-    font-weight: 700;
+    font-size: 1.75rem;
+    line-height: 1.1;
     color: var(--color-fg-strong);
 }
 
@@ -26,12 +30,11 @@
     gap: 0.65rem;
 }
 
+/* A kicker, over a chart or a list of bars. */
 .profile-section-title {
+    @apply type-kicker;
     margin: 0;
-    font-size: 0.8125rem;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
+    font-size: 0.6875rem;
     color: var(--color-fg-muted);
 }
 
@@ -44,9 +47,10 @@
 }
 
 .profile-figure {
+    @apply type-display;
     margin: 0;
-    font-size: 1.75rem;
-    font-weight: 700;
+    font-size: 2rem;
+    line-height: 1.1;
     color: var(--color-fg-strong);
 }
 
@@ -60,7 +64,7 @@
     color: var(--color-danger-300);
     background: color-mix(in srgb, var(--color-danger-900) 20%, transparent);
     border: 1px solid color-mix(in srgb, var(--color-danger-700) 50%, transparent);
-    border-radius: 0.5rem;
+    border-radius: var(--radius-lg);
 }
 
 .profile-error p {
@@ -69,21 +73,13 @@
 
 .profile-retry,
 .profile-cta {
+    @apply btn-primary;
     align-self: flex-start;
     padding: 0.4rem 0.8rem;
     font-size: 0.8125rem;
-    font-weight: 600;
-    color: var(--color-on-primary);
-    background: var(--color-primary-600);
     border: none;
-    border-radius: 0.375rem;
     cursor: pointer;
     text-decoration: none;
-}
-
-.profile-retry:hover,
-.profile-cta:hover {
-    background: var(--color-primary-500);
 }
 
 /* Headline figures */
@@ -96,7 +92,7 @@
 .profile-tiles {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 0.75rem;
+    gap: 1.25rem;
 }
 
 /* With an odd number of tiles one is left over, and it is the first — the headline count — that
@@ -105,9 +101,9 @@
     grid-column: 1 / -1;
 }
 
-/* One a row on the narrowest phones. Two columns of a block this size leave about 79px inside a
-   tile, where the label wraps and the hint under it runs to five lines; a 320px screen reads
-   better with one tile a row than with two nobody can take in. */
+/* One a row on the narrowest phones. Two columns of a block this size leave 134px a tile, where a
+   figure such as "20 days", 145px, and the label "finished this year", 139px, both wrap; a 320px
+   screen reads better with one tile a row than with two nobody can take in. */
 @container (max-width: 18rem) {
     .profile-tiles {
         grid-template-columns: minmax(0, 1fr);
@@ -115,13 +111,12 @@
 }
 
 /*
- * One row from here, for the four, which never needed less room than this. Measured, not guessed,
- * when the owner's page had five tiles on one row: at 48rem each of five tiles has about 110px inside its
- * padding, which holds the widest label — "completion rate", 94px — and the values formatHours
- * produces from an hour upwards ("123 days" is 106px, "23 hours" 105px) on one line. At 42rem it
- * has 90px and both wrap. The exception is "under an hour", which is what the hours tile shows
- * until a full hour has been logged: at 171px it takes two lines, and the row grows to fit rather
- * than overflow.
+ * One row from here, for the four. Measured, not guessed, in ADR 0075's type: at 48rem each of four
+ * tiles is 177px, with no padding of its own, which holds the widest label — "completion rate", 116px —
+ * and the values formatHours produces from an hour upwards ("123 days" is 166px, "23 hours" 160px) on
+ * one line. At 42rem it has 153px and the figure wraps. The exception is "under an hour", which is
+ * what the hours tile shows until a full hour has been logged: at 253px it takes two lines, and the row
+ * grows to fit rather than overflow.
  *
  * The figures are px at the browser's default 16px root, which is what the app uses now that
  * index.css no longer forces one of its own. Everything here is in rem, so the tiles and the text
@@ -142,10 +137,11 @@
 
 /*
  * Exactly six, the owner's page since it gained finished this year: three a row from 34rem, and never
- * one row of six. Measured: the block is 814px at its widest, where six in a row leave each tile about
- * 94px inside, and "finished this year" is 100px, so it would wrap at every width this page has; three
- * a row leave 159px at 34rem. Its second row is the home page strip's three, in the strip's order.
- * More specific than the rule above, which it overrides for six at every width it covers.
+ * one row of six. Measured: the block is 832px at its widest, where six in a row leave each tile 122px,
+ * and "finished this year" is 139px, so it would wrap at every width this page has; three a row leave
+ * 168px at 34rem, which holds it and "123 days". Its second row is the home page strip's three, in
+ * the strip's order. More specific than the rule above, which it overrides for six at every width it
+ * covers.
  */
 @container (min-width: 34rem) {
     .profile-tiles:has(> :nth-child(6):last-child) {
@@ -154,25 +150,24 @@
     }
 }
 
+/* A figure under a hairline, as the home page's strip sets them: no box. */
 .profile-stat-tile {
-    padding: 0.9rem 1rem;
-    background: color-mix(in srgb, var(--color-surface) 60%, transparent);
-    border: 1px solid var(--color-line);
-    border-radius: 0.65rem;
+    padding-top: 0.875rem;
+    border-top: 1px solid var(--color-line-strong);
 }
 
 .profile-stat-value {
+    @apply type-display;
     margin: 0;
-    font-size: 1.6rem;
-    font-weight: 700;
-    line-height: 1.1;
+    font-size: 1.875rem;
+    line-height: 1.05;
     color: var(--color-fg-strong);
 }
 
 .profile-stat-label {
-    margin: 0.15rem 0 0;
-    font-size: 0.8125rem;
-    font-weight: 600;
+    @apply type-kicker;
+    margin: 0.5rem 0 0;
+    font-size: 0.6875rem;
     color: var(--color-fg-soft);
 }
 
@@ -219,7 +214,7 @@
 .profile-ranked-track {
     height: 0.55rem;
     background: color-mix(in srgb, var(--color-raised) 60%, transparent);
-    border-radius: 999px;
+    border-radius: var(--radius-xs);
     overflow: hidden;
 }
 
@@ -227,7 +222,7 @@
     display: block;
     height: 100%;
     background: var(--color-primary-500);
-    border-radius: 999px;
+    border-radius: var(--radius-xs);
 }
 
 /* The five statuses read as a pipeline, so they get the lifecycle's own colours rather than one
@@ -260,6 +255,7 @@
    these. */
 
 .profile-chart-tick {
+    @apply type-meta;
     margin-top: 0.3rem;
     font-size: 0.6875rem;
     color: var(--color-fg-muted);
@@ -288,7 +284,7 @@
 .profile-swatch {
     width: 0.6rem;
     height: 0.6rem;
-    border-radius: 0.15rem;
+    border-radius: var(--radius-sm);
 }
 
 .profile-swatch.started,
@@ -342,7 +338,7 @@
 
 .profile-chart-bar {
     width: 0.3rem;
-    border-radius: 0.15rem 0.15rem 0 0;
+    border-radius: var(--radius-sm) var(--radius-sm) 0 0;
 }
 
 .profile-chart-tick {

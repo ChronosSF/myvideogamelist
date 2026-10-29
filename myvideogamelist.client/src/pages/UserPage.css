@@ -1,8 +1,10 @@
 /*
- * The signed-in user's own profile. The header band and the page container are Tailwind inline,
- * copied from Lists and Wishlist so the three stay one site; what is here is the grid below them
- * and the cards in it.
+ * The signed-in user's own profile. The header and the page container are Tailwind inline, copied
+ * from Lists and Wishlist so the three stay one site; what is here is the grid below them and the
+ * parts of it, each under a rule rather than in a box (ADR 0075).
  */
+
+@reference "../index.css";
 
 /* ── Layout ──────────────────────────────────────────────────────────────── */
 
@@ -19,7 +21,7 @@
         'account'
         'tracking'
         'prefs';
-    gap: 1.25rem;
+    gap: 3rem;
 }
 
 @media (min-width: 64rem) {
@@ -32,7 +34,7 @@
         grid-template-areas:
             'tracking account'
             'tracking prefs';
-        column-gap: 2rem;
+        column-gap: 4rem;
         align-items: start;
     }
 }
@@ -54,28 +56,32 @@
 .user-page-prefs {
     display: flex;
     flex-direction: column;
-    gap: 1.25rem;
+    gap: 2.25rem;
 }
 
-/* ── Cards ───────────────────────────────────────────────────────────────── */
+.user-page-tracking {
+    gap: 4rem;
+}
 
+/* ── The parts ───────────────────────────────────────────────────────────── */
+
+/* Each setting under a hairline, and each part of the tracking under the heavy rule a section opens
+   with. The class keeps its name from when they were cards. */
 .user-card {
-    padding: 1.5rem;
-    background: var(--color-surface);
-    border: 1px solid var(--color-line);
-    border-radius: 1rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--color-line-strong);
 }
 
-/*
- * The label and the hint share ProfileStats' secondary text colours. The slate-500 and slate-400
- * they used before measured under 3:1 against the card.
- */
+.user-page-tracking > .user-card {
+    padding-top: 1.25rem;
+    border-top: 2px solid var(--color-rule);
+}
+
+/* In the kicker's type, the label over a figure or a heading elsewhere. */
 .user-card-label {
-    margin-bottom: 0.375rem;
-    font-size: 0.75rem;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
+    @apply type-kicker;
+    margin-bottom: 0.5rem;
+    font-size: 0.6875rem;
     color: var(--color-fg-muted);
 }
 
@@ -115,23 +121,16 @@
 
 /* ── Buttons ─────────────────────────────────────────────────────────────── */
 
-/* Sized to its label, so it can sit in a row beside a value. .user-btn-block spans the card. */
+/* Sized to its label, so it can sit in a row beside a value. .user-btn-block spans the column. Outlined,
+   as a page's secondary buttons are: the lime fill is kept for the one thing a page is for. */
 .user-btn {
+    @apply btn-outline;
     flex-shrink: 0;
     padding: 0.4375rem 0.875rem;
-    background: color-mix(in srgb, var(--color-primary-500) 15%, transparent);
-    color: var(--color-primary-300);
-    border: 1px solid color-mix(in srgb, var(--color-primary-500) 35%, transparent);
-    border-radius: 0.5rem;
+    background: transparent;
     font-size: 0.875rem;
     font-weight: 600;
     cursor: pointer;
-    transition: background 0.15s, border-color 0.15s;
-}
-
-.user-btn:hover:not(:disabled):not([aria-disabled='true']) {
-    background: color-mix(in srgb, var(--color-primary-500) 25%, transparent);
-    border-color: color-mix(in srgb, var(--color-primary-500) 55%, transparent);
 }
 
 /* `aria-disabled` looks the same as `disabled`. It is for a button that has to keep the keyboard's
@@ -160,35 +159,32 @@ a.user-btn {
     margin-top: 0.875rem;
 }
 
-/* The outline treatment every other button in these cards has, in red. The solid red is kept for
-   the dialog's own button, which is the one that actually deletes. */
+/* The outline every other button here has, in red. The solid red is kept for the dialog's own button,
+   which is the one that actually deletes. */
 .user-btn-danger {
-    background: color-mix(in srgb, var(--color-danger-500) 10%, transparent);
     color: var(--color-danger-300);
-    border-color: color-mix(in srgb, var(--color-danger-500) 35%, transparent);
+    border-color: color-mix(in srgb, var(--color-danger-500) 50%, transparent);
 }
 
-.user-btn-danger:hover:not(:disabled) {
-    background: color-mix(in srgb, var(--color-danger-500) 20%, transparent);
-    border-color: color-mix(in srgb, var(--color-danger-500) 55%, transparent);
+.user-btn-danger:hover:not(:disabled):not([aria-disabled='true']) {
+    border-color: var(--color-danger-400);
 }
 
 .user-logout-btn {
     width: 100%;
     padding: 0.6875rem 1rem;
-    background: color-mix(in srgb, var(--color-danger-500) 10%, transparent);
+    background: transparent;
     color: var(--color-danger-300);
-    border: 1px solid color-mix(in srgb, var(--color-danger-500) 25%, transparent);
-    border-radius: 0.5rem;
+    border: 1px solid color-mix(in srgb, var(--color-danger-500) 50%, transparent);
+    border-radius: var(--radius-sm);
     font-size: 0.9375rem;
     font-weight: 600;
     cursor: pointer;
-    transition: background 0.15s, border-color 0.15s;
+    transition: border-color 0.15s;
 }
 
 .user-logout-btn:hover {
-    background: color-mix(in srgb, var(--color-danger-500) 20%, transparent);
-    border-color: color-mix(in srgb, var(--color-danger-500) 40%, transparent);
+    border-color: var(--color-danger-400);
 }
 
 /* ── Toggle switch ───────────────────────────────────────────────────────── */
@@ -275,7 +271,7 @@ a.user-btn {
     padding: 0.4375rem 0.75rem;
     background: var(--color-page);
     border: 1px solid var(--color-line-strong);
-    border-radius: 0.5rem;
+    border-radius: var(--radius-sm);
     color: var(--color-fg);
     font-size: 0.9375rem;
     outline: none;
@@ -303,8 +299,8 @@ a.user-btn {
 /* ── Username and public profile ─────────────────────────────────────────── */
 
 /*
- * A rule inside a card, separating the name from the decision about publishing it. The two are one
- * card because they are one decision — see AccountIdentityCard — but they are still two questions.
+ * A rule inside a part, separating the name from the decision about publishing it. The two are one
+ * part because they are one decision — see AccountIdentityCard — but they are still two questions.
  */
 .user-card-rule {
     border: 0;
@@ -334,7 +330,7 @@ a.user-btn {
     padding: 0.5rem 0.75rem;
     background: var(--color-page);
     border: 1px solid var(--color-line-strong);
-    border-radius: 0.5rem;
+    border-radius: var(--radius-sm);
     color: var(--color-fg);
     font-size: 0.9375rem;
     outline: none;
@@ -373,12 +369,8 @@ a.user-btn {
 }
 
 .username-link a {
-    color: var(--color-primary-400);
+    @apply text-link;
     overflow-wrap: anywhere;
-}
-
-.username-link a:hover {
-    text-decoration: underline;
 }
 
 /* ── Profile details ─────────────────────────────────────────────────────── */
@@ -405,8 +397,8 @@ a.user-btn {
 }
 
 .profile-details-display-name {
+    @apply type-title;
     font-size: 1rem;
-    font-weight: 600;
     color: var(--color-fg);
     overflow-wrap: anywhere;
 }

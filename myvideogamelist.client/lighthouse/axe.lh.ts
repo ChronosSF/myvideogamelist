@@ -30,9 +30,9 @@ interface ContrastData {
  * which axe leaves off and Lighthouse turns on. It names each element that breaks one.
  *
  * Held to the baseline exactly, as the scores are: a rule a page breaks that is not in its
- * `KNOWN_VIOLATIONS` fails, and so does one in it that the page no longer breaks. Contrast, which every
- * page breaks today, is held by colour pair (`KNOWN_CONTRAST`), so that a new pair does not hide behind
- * the old ones.
+ * `KNOWN_VIOLATIONS` fails, and so does one in it that the page no longer breaks. Contrast, which no page
+ * breaks since ADR 0075 and every page did before it, is held by colour pair as well (`KNOWN_CONTRAST`), so
+ * that a new pair does not hide behind old ones.
  *
  * One test rather than one a page, so that every page is scanned and the summary written whichever
  * fails: Playwright starts a new worker after a failed test, and what the old one had collected would

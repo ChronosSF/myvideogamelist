@@ -1,18 +1,18 @@
+/* The reader's own copy, under a heavy rule rather than in a box (ADR 0075), as the sidebar's facts are. */
+
+@reference "../index.css";
 .game-user-panel {
     display: flex;
     flex-direction: column;
-    gap: 1.15rem;
-    padding: 1.25rem;
-    background: color-mix(in srgb, var(--color-surface) 60%, transparent);
-    border: 1px solid var(--color-line);
-    border-radius: 0.75rem;
+    gap: 1.25rem;
+    padding-top: 1rem;
+    border-top: 2px solid var(--color-rule);
 }
 
 .game-user-panel-title {
+    @apply type-kicker;
     margin: 0;
-    font-size: 0.875rem;
-    font-weight: 600;
-    color: var(--color-fg-strong);
+    color: var(--color-fg-muted);
 }
 
 .game-user-panel-section {
@@ -22,11 +22,9 @@
 }
 
 .game-user-panel-label {
+    @apply type-kicker;
     margin: 0;
-    font-size: 0.68rem;
-    font-weight: 600;
-    letter-spacing: 0.07em;
-    text-transform: uppercase;
+    font-size: 0.6875rem;
     color: var(--color-fg-faint);
 }
 
@@ -58,7 +56,7 @@
     color: var(--color-fg-soft);
     background: color-mix(in srgb, var(--color-raised) 70%, transparent);
     border: 1px solid transparent;
-    border-radius: 0.4rem;
+    border-radius: var(--radius-md);
     cursor: pointer;
     transition: background 0.12s, color 0.12s;
 }
@@ -154,7 +152,7 @@
     color: var(--color-fg-soft);
     background: color-mix(in srgb, var(--color-raised) 70%, transparent);
     border: none;
-    border-radius: 0.4rem;
+    border-radius: var(--radius-md);
     cursor: pointer;
 }
 
@@ -168,11 +166,11 @@
 /* A form's save. The red below is the confirmation's Delete's, and a save drawn in it reads as that. */
 .game-user-panel-confirm button.primary {
     color: var(--color-on-primary);
-    background: var(--color-primary-600);
+    background: var(--color-primary-500);
 }
 
 .game-user-panel-confirm button.primary:hover:not(:disabled) {
-    background: var(--color-primary-500);
+    background: var(--color-primary-600);
 }
 
 .game-user-panel-confirm button.danger {
@@ -204,7 +202,7 @@
     color: var(--color-fg-soft);
     background: color-mix(in srgb, var(--color-raised) 60%, transparent);
     border: 1px solid var(--color-line-strong);
-    border-radius: 0.45rem;
+    border-radius: var(--radius-md);
     cursor: pointer;
     transition: background 0.12s, color 0.12s, border-color 0.12s;
 }
@@ -250,7 +248,7 @@
     color: var(--color-fg-soft);
     background: color-mix(in srgb, var(--color-raised) 60%, transparent);
     border: 1px solid var(--color-line-strong);
-    border-radius: 0.45rem;
+    border-radius: var(--radius-md);
     cursor: pointer;
     transition: background 0.12s, color 0.12s, border-color 0.12s;
 }
@@ -313,7 +311,7 @@
     padding: 0.55rem 0.65rem;
     background: color-mix(in srgb, var(--color-raised) 40%, transparent);
     border: 1px solid var(--color-line);
-    border-radius: 0.45rem;
+    border-radius: var(--radius-md);
 }
 
 .game-user-panel-playthrough-head {
@@ -423,7 +421,7 @@
     color: var(--color-fg);
     background: color-mix(in srgb, var(--color-page) 60%, transparent);
     border: 1px solid var(--color-line-strong);
-    border-radius: 0.35rem;
+    border-radius: var(--radius-md);
 }
 
 .game-user-panel-field textarea {

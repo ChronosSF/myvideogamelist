@@ -14,7 +14,7 @@ const NEW_TAB = <span className="sr-only"> (opens in a new tab)</span>;
 
 const LINK = 'text-fg-soft hover:text-fg-strong transition-colors';
 const CREDIT = 'text-fg-soft hover:text-fg-strong underline underline-offset-2 transition-colors';
-const HEADING = 'text-xs font-semibold uppercase tracking-wider text-fg-muted mb-3';
+const HEADING = 'type-kicker text-fg-muted mb-3';
 
 /**
  * The foot of every page (issue 237): the site's own links, and the credits its sources ask for.
@@ -28,15 +28,15 @@ const HEADING = 'text-xs font-semibold uppercase tracking-wider text-fg-muted mb
  */
 export function SiteFooter() {
     return (
-        <footer className="border-t border-line bg-sunken/40">
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
-                <div className="flex flex-col gap-8 md:flex-row md:justify-between">
-                    <div className="max-w-xs">
-                        <Link to="/" className="inline-flex items-center gap-2 font-bold text-fg-strong">
-                            <Logo className="w-6 h-6" />
-                            MyVideoGameList
+        <footer className="rule-heavy">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-10 pb-8">
+                <div className="flex flex-col gap-10 md:flex-row md:justify-between">
+                    <div className="max-w-sm">
+                        <Link to="/" className="inline-flex items-center gap-3 type-display text-2xl sm:text-3xl text-fg-strong">
+                            <Logo className="w-8 h-8 shrink-0" />
+                            <span>MyVideoGame<span className="text-brand-lime">List</span></span>
                         </Link>
-                        <p className="mt-3 text-sm text-fg-muted">
+                        <p className="mt-4 text-sm text-fg-muted">
                             Track every game you play, and see what is coming for the ones you are waiting for.
                         </p>
                     </div>
@@ -65,7 +65,7 @@ export function SiteFooter() {
                     </nav>
                 </div>
 
-                <div className="mt-10 pt-6 border-t border-line flex flex-col gap-2 text-xs text-fg-muted md:flex-row md:justify-between">
+                <div className="mt-10 pt-5 border-t border-line flex flex-col gap-2 type-meta text-fg-muted md:flex-row md:justify-between">
                     <p>© 2026 MyVideoGameList</p>
                     <p>
                         Game data from <a href="https://www.igdb.com" {...OUTSIDE} className={CREDIT}>IGDB.com{NEW_TAB}</a>.

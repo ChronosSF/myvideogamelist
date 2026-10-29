@@ -19,21 +19,20 @@ interface PageHeaderProps {
 }
 
 /**
- * The band across the top of a page: its name and a line about it, over a tint of the primary that
- * fades into the page. One component in place of the nine copies of its classes there were.
+ * The top of a page: its name set large in the display type, a line about it, and whatever the page
+ * puts under them. No band or tint behind it (ADR 0075): the title is the masthead, and what follows
+ * opens with a rule of its own. One component in place of the nine copies of its classes there were.
  */
 export function PageHeader({ title, description, width = '7xl', compact = false, children }: PageHeaderProps) {
     return (
-        <div className="bg-gradient-to-b from-primary-950/60 to-page border-b border-line">
-            <div className={`${WIDTHS[width]} mx-auto px-4 sm:px-6 lg:px-8 ${compact ? 'py-8' : 'py-10'}`}>
-                <h1 className={`${compact ? 'text-2xl sm:text-3xl' : 'text-3xl sm:text-4xl'} font-bold text-fg-strong mb-1`}>
-                    {title}
-                </h1>
-                {description !== undefined && (
-                    <p className={`text-fg-muted ${compact ? 'text-sm' : 'text-sm sm:text-base'}`}>{description}</p>
-                )}
-                {children}
-            </div>
+        <div className={`${WIDTHS[width]} mx-auto px-4 sm:px-6 lg:px-8 ${compact ? 'pt-8 pb-6' : 'pt-10 sm:pt-14 pb-8'}`}>
+            <h1 className={`type-display text-fg-strong text-balance ${compact ? 'text-3xl sm:text-4xl' : 'text-4xl sm:text-6xl'}`}>
+                {title}
+            </h1>
+            {description !== undefined && (
+                <p className={`mt-3 max-w-2xl text-fg-muted ${compact ? 'text-sm' : 'text-base'}`}>{description}</p>
+            )}
+            {children}
         </div>
     );
 }

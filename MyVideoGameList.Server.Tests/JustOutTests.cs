@@ -213,7 +213,7 @@ public class JustOutRulesTests
     }
 
     [Fact]
-    public void Compose_AtMostTen_TheMostWatched()
+    public void Compose_AtMostNine_TheMostWatched()
     {
         var many = Enumerable.Range(1, 12)
             .Select(i => new JustOutCandidate(Game(i, $"Game {i}"), i, [Day(i, i, new DateOnly(2026, 10, i), Pc)]))
@@ -222,7 +222,7 @@ public class JustOutRulesTests
         var panel = Compose(many);
 
         Assert.Equal(JustOut.MaxShown, panel.Count);
-        Assert.DoesNotContain(panel, r => r.Game.Id is 1 or 2);
+        Assert.DoesNotContain(panel, r => r.Game.Id is 1 or 2 or 3);
     }
 
     [Fact]

@@ -29,6 +29,42 @@ export function comingSoonWhen(
     return thisYear ? `${month} ${date}` : `${month} ${date}, ${year}`;
 }
 
+/** A period of the Coming soon schedule: a month, or a quarter for what is known only to one. */
+export interface ScheduleGroup {
+    key: string;
+    /** A month is a column of the schedule; a quarter is a line under the columns. */
+    period: 'month' | 'quarter';
+    /** "November", "January 2027", "Q1 2027": the year where it is not this one, and always on a quarter. */
+    label: string;
+    games: ComingSoonGame[];
+}
+
+/**
+ * The Coming soon panel as a schedule (ADR 0075): its games under the month they arrive in, and those known
+ * only to a quarter under the quarter, each period once and in the order its first game arrives. The games
+ * keep the order they came in, which is the order they arrive.
+ *
+ * @param today `YYYY-MM-DD`: the day the page was rendered for, which decides when a month needs its year.
+ */
+export function scheduleGroups(games: readonly ComingSoonGame[], today: string): ScheduleGroup[] {
+    const groups = new Map<string, ScheduleGroup>();
+    for (const game of games) {
+        const key = game.precision === 'quarter'
+            ? comingSoonWhen(game, today)
+            : game.starts.slice(0, 7);
+        let group = groups.get(key);
+        if (group === undefined) {
+            const label = game.precision === 'quarter'
+                ? key
+                : comingSoonWhen({ precision: 'month', starts: game.starts }, today);
+            group = { key, period: game.precision === 'quarter' ? 'quarter' : 'month', label, games: [] };
+            groups.set(key, group);
+        }
+        group.games.push(game);
+    }
+    return [...groups.values()];
+}
+
 /**
  * The game a typed id or a pasted address names, for the admin page's picks: `52189`, or a game page's
  * address ending in `/games/52189`. Null for anything else.

@@ -3,12 +3,13 @@
    positioned, and without a positioned ancestor here their containing block is the viewport,
    which puts them outside this box's clip: one of them, a pixel wide, sat at the far end of
    the table and widened the whole page to match. */
+
+@reference "../index.css";
+/* A ledger under a heavy rule rather than a table in a box (ADR 0075). */
 .list-table-scroll {
     position: relative;
     overflow-x: auto;
-    border: 1px solid var(--color-line);
-    border-radius: 0.75rem;
-    background: color-mix(in srgb, var(--color-surface) 40%, transparent);
+    border-top: 2px solid var(--color-rule);
 }
 
 .list-table {
@@ -23,16 +24,13 @@
 }
 
 .list-table thead th {
-    padding: 0.55rem 0.75rem;
+    @apply type-kicker;
+    padding: 0.625rem 0.75rem;
     text-align: left;
-    font-size: 0.66rem;
-    font-weight: 600;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    color: var(--color-fg-faint);
+    font-size: 0.6875rem;
+    color: var(--color-fg-muted);
     white-space: nowrap;
     border-bottom: 1px solid var(--color-line-strong);
-    background: color-mix(in srgb, var(--color-page) 50%, transparent);
 }
 
 .list-table thead th button {
@@ -50,13 +48,13 @@
 }
 
 .list-table thead th button:hover {
-    color: var(--color-primary-300);
+    color: var(--color-fg-strong);
 }
 
 .list-table thead th button:focus-visible {
     outline: 2px solid var(--color-focus);
     outline-offset: 3px;
-    border-radius: 2px;
+    border-radius: var(--radius-sm);
 }
 
 /* The caret is always rendered so a header does not change width when it becomes the sort. */
@@ -124,7 +122,7 @@
     max-width: none;
     height: 3rem;
     object-fit: cover;
-    border-radius: 0.25rem;
+    border-radius: var(--radius-sm);
     background: color-mix(in srgb, var(--color-page) 80%, transparent);
 }
 
@@ -133,13 +131,14 @@
 }
 
 .col-title a {
-    font-weight: 600;
-    color: var(--color-fg);
+    @apply type-title;
+    font-size: 0.9375rem;
+    color: var(--color-fg-strong);
     text-decoration: none;
 }
 
 .col-title a:hover {
-    color: var(--color-primary-400);
+    @apply underline-quiet;
 }
 
 .list-table-tags:has(.tag-chips) {
@@ -165,8 +164,8 @@
 }
 
 .list-table-platforms {
+    @apply type-meta;
     display: block;
-    font-size: 0.75rem;
     color: var(--color-fg-faint);
     overflow: hidden;
     text-overflow: ellipsis;
@@ -184,7 +183,7 @@
     color: var(--color-fg-faint);
     background: none;
     border: none;
-    border-radius: 0.35rem;
+    border-radius: var(--radius-md);
     cursor: pointer;
     transition: color 0.12s, background 0.12s;
 }

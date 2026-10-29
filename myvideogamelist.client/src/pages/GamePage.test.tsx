@@ -442,7 +442,7 @@ describe("GamePage hero's cover", () => {
         expect(cover).not.toHaveAttribute('loading', 'lazy');
         expect(cover).not.toHaveAttribute('decoding', 'async');
         expect(cover.getAttribute('srcset')).toContain('/t_cover_small_2x/co3byy.jpg 180w');
-        expect(cover).toHaveAttribute('sizes', '(min-width: 640px) 176px, 136px');
+        expect(cover).toHaveAttribute('sizes', '(min-width: 640px) 180px, 140px');
     });
 });
 

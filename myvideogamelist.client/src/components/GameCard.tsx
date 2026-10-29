@@ -83,7 +83,7 @@ export function GameCard({ game, eager = false, children }: GameCardProps) {
 
     return (
         <article
-            className={`game-card-root ${CARD_FRAME} hover:shadow-primary-900/40 hover:shadow-xl transition-all duration-300 hover:-translate-y-1 hover:border-primary-600/50`}
+            className={`game-card-root ${CARD_FRAME}`}
             onMouseLeave={() => setOverlayOpen(false)}
         >
             {/* Cover Image */}
@@ -135,7 +135,7 @@ export function GameCard({ game, eager = false, children }: GameCardProps) {
 
                 {/* ESRB badge */}
                 {game.esrbRating && (
-                    <div className={`absolute top-2 left-2 px-1.5 py-0.5 bg-page/80 backdrop-blur-sm rounded text-xs font-mono text-fg-soft border border-line-strong ${passThrough}`}>
+                    <div className={`absolute top-2 left-2 px-1.5 py-0.5 bg-page/80 backdrop-blur-sm rounded-sm type-meta text-fg-soft border border-line-strong ${passThrough}`}>
                         {game.esrbRating}
                     </div>
                 )}
@@ -234,14 +234,14 @@ export function GameCard({ game, eager = false, children }: GameCardProps) {
                 )}
 
                 <div className="flex items-start justify-between gap-2">
-                    <h3 className="text-fg-strong font-semibold text-sm leading-snug line-clamp-2">
-                        <Link to={`/games/${game.id}`} className="hover:text-primary-400 transition-colors">
+                    <h3 className="type-title text-fg-strong text-[0.9375rem] leading-snug line-clamp-2">
+                        <Link to={`/games/${game.id}`} className="hover:underline-quiet">
                             {game.title}
                         </Link>
                         {favourite && <FavouriteWords />}
                     </h3>
                     {releaseYear && (
-                        <span className="text-fg-faint text-xs shrink-0 mt-0.5">{releaseYear}</span>
+                        <span className="type-meta text-fg-faint shrink-0 mt-0.5">{releaseYear}</span>
                     )}
                 </div>
 
@@ -265,7 +265,7 @@ export function GameCard({ game, eager = false, children }: GameCardProps) {
                         {game.genres.slice(0, 3).map(genre => (
                             <span
                                 key={genre.id}
-                                className="px-2 py-0.5 bg-primary-900/50 text-primary-300 border-primary-800/50 text-xs rounded-full border"
+                                className="px-1.5 py-0.5 type-meta text-fg-soft border border-line-strong rounded-sm"
                             >
                                 {genre.name}
                             </span>
@@ -287,7 +287,7 @@ export function GameCard({ game, eager = false, children }: GameCardProps) {
                         {game.platforms.slice(0, 4).map(platform => (
                             <span
                                 key={platform.id}
-                                className="px-1.5 py-0.5 bg-raised text-fg-muted text-xs rounded"
+                                className="px-1.5 py-0.5 type-meta text-fg-muted bg-raised rounded-sm"
                                 title={platform.name}
                             >
                                 {platform.abbreviation || platform.name}

@@ -12,7 +12,7 @@
     line-height: 1;
     color: var(--color-fg-soft);
     border: 1px solid var(--color-line-strong);
-    border-radius: 0.45rem;
+    border-radius: var(--radius-md);
     user-select: none;
     -webkit-user-select: none;
     transition: background 0.12s, border-color 0.12s, color 0.12s;
@@ -38,7 +38,7 @@
     color: inherit;
     background: none;
     border: none;
-    border-radius: 0.4rem;
+    border-radius: var(--radius-md);
     cursor: grab;
     /* The grip's own drag is the gesture: without this a touch on it scrolls the page instead. */
     touch-action: none;
@@ -64,7 +64,7 @@
 .reorder-handle:has(> .reorder-grip[aria-pressed='true']),
 [data-reorder-state='lifted'] .reorder-handle {
     color: var(--color-on-primary);
-    background: var(--color-primary-600);
+    background: var(--color-primary-500);
     border-color: var(--color-primary-500);
 }
 
@@ -109,7 +109,7 @@
 /* The game being moved, drawn where it would land. */
 .reorder-tile[data-reorder-state='lifted'] {
     z-index: 3;
-    border-radius: 0.75rem;
+    border-radius: var(--radius-xl);
     outline: 2px solid var(--color-primary-500);
     outline-offset: 3px;
     box-shadow: 0 18px 40px rgba(0, 0, 0, 0.5);

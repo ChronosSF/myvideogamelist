@@ -24,7 +24,7 @@
     color: var(--color-tag-300);
     background: color-mix(in srgb, var(--color-tag-900) 45%, transparent);
     border: 1px solid color-mix(in srgb, var(--color-tag-800) 70%, transparent);
-    border-radius: 9999px;
+    border-radius: var(--radius-sm);
 }
 
 .entry-tag-name {
@@ -82,7 +82,7 @@
     color: var(--color-fg);
     background: color-mix(in srgb, var(--color-page) 60%, transparent);
     border: 1px solid var(--color-line-strong);
-    border-radius: 0.35rem;
+    border-radius: var(--radius-md);
 }
 
 .entry-tags-input::placeholder {
@@ -107,7 +107,7 @@
     list-style: none;
     background: var(--color-page);
     border: 1px solid var(--color-line-strong);
-    border-radius: 0.5rem;
+    border-radius: var(--radius-lg);
     box-shadow: 0 12px 30px rgba(0, 0, 0, 0.45);
 }
 
@@ -119,7 +119,7 @@
     padding: 0.35rem 0.45rem;
     font-size: 0.78rem;
     color: var(--color-fg-soft);
-    border-radius: 0.35rem;
+    border-radius: var(--radius-md);
     cursor: pointer;
 }
 

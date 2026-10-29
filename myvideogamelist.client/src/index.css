@@ -1,5 +1,109 @@
 @import "tailwindcss";
 @import "./theme.css";
+@import "./type.css";
+
+/*
+ * Corners (ADR 0075): nearly square. The editorial layout separates things with rules and space rather
+ * than with rounded boxes, so every Tailwind radius is a pixel or two, and a stylesheet writes
+ * `var(--radius-lg)` rather than a size of its own. `rounded-full` is untouched: an avatar stays a circle.
+ */
+@theme {
+    --radius-xs: 1px;
+    --radius-sm: 2px;
+    --radius-md: 2px;
+    --radius-lg: 3px;
+    --radius-xl: 3px;
+    --radius-2xl: 4px;
+    --radius-3xl: 4px;
+    --radius-4xl: 6px;
+}
+
+/*
+ * The colours of a sale, a fest and a showcase, set once on whatever names its kind with `data-kind`:
+ * `--kind` for a rule or a mark, `--kind-ink` for words. The two-week line's bars, the lists of what is on,
+ * the calendar's index and the home page's strip all read these, so a kind's colour is decided here.
+ */
+@layer base {
+    [data-kind='sale'] {
+        --kind: var(--color-sale-500);
+        --kind-ink: var(--color-sale-300);
+    }
+
+    [data-kind='fest'] {
+        --kind: var(--color-fest-500);
+        --kind-ink: var(--color-fest-300);
+    }
+
+    [data-kind='showcase'] {
+        --kind: var(--color-showcase-500);
+        --kind-ink: var(--color-showcase-300);
+    }
+}
+
+/*
+ * The shapes every page repeats, written once (ADR 0075): the heavy rule a section opens with, a link in
+ * running text, and the two kinds of button — one filled in the lime for what a place is for, every other
+ * one outlined. Size and spacing stay with whoever uses them. The transitions and the pointer-only hover
+ * are Tailwind's own, as `transition-colors` and `hover:` would have them.
+ */
+@utility rule-heavy {
+    border-top: 2px solid var(--color-rule);
+}
+
+/* The underline itself: a hairline of the strong line colour, 4px under the words. A title that is a link
+   takes it on hover, as `hover:underline-quiet`; a link in running text has it always, as `text-link`. */
+@utility underline-quiet {
+    text-decoration-line: underline;
+    text-decoration-color: var(--color-line-strong);
+    text-underline-offset: 4px;
+}
+
+@utility text-link {
+    color: var(--color-fg-strong);
+    text-decoration-line: underline;
+    text-decoration-color: var(--color-line-strong);
+    text-underline-offset: 4px;
+    transition-property: color, text-decoration-color;
+    transition-timing-function: var(--default-transition-timing-function);
+    transition-duration: var(--default-transition-duration);
+
+    @variant hover {
+        text-decoration-color: var(--color-fg-strong);
+    }
+}
+
+/* A button's hover is for one that can be pressed: a disabled one keeps its colours. Where nothing can hover,
+   none, as Tailwind's `hover:` has it. */
+@utility btn-primary {
+    border-radius: var(--radius-sm);
+    background-color: var(--color-primary-500);
+    color: var(--color-on-primary);
+    font-weight: 700;
+    transition-property: background-color;
+    transition-timing-function: var(--default-transition-timing-function);
+    transition-duration: var(--default-transition-duration);
+
+    @media (hover: hover) {
+        &:hover:not(:disabled) {
+            background-color: var(--color-primary-600);
+        }
+    }
+}
+
+@utility btn-outline {
+    border: 1px solid var(--color-line-strong);
+    border-radius: var(--radius-sm);
+    color: var(--color-fg-strong);
+    transition-property: border-color;
+    transition-timing-function: var(--default-transition-timing-function);
+    transition-duration: var(--default-transition-duration);
+
+    @media (hover: hover) {
+        &:hover:not(:disabled) {
+            border-color: var(--color-fg-muted);
+        }
+    }
+}
 
 /* ── Document defaults ──────────────────────────────────────── */
 /*

@@ -1,6 +1,8 @@
 /* The owner's showcase on /user: its heading with the Arrange toggle, and the grid it is laid out as
    while it is arranged (ADR 0064). The grips and the lifted cover are Reorder.css's. */
 
+@reference "../index.css";
+
 .favourites-showcase-head {
     display: flex;
     align-items: center;
@@ -9,30 +11,22 @@
 }
 
 .favourites-showcase-arrange {
+    @apply btn-outline;
     padding: 0.35rem 0.75rem;
     font-size: 0.8125rem;
     font-weight: 600;
-    color: var(--color-fg-soft);
-    background: color-mix(in srgb, var(--color-raised) 60%, transparent);
-    border: 1px solid var(--color-line-strong);
-    border-radius: 0.45rem;
+    background: transparent;
     cursor: pointer;
-    transition: background 0.12s, color 0.12s, border-color 0.12s;
-}
-
-.favourites-showcase-arrange:hover {
-    color: var(--color-fg-strong);
-    border-color: color-mix(in srgb, var(--color-primary-500) 60%, transparent);
 }
 
 .favourites-showcase-arrange[aria-pressed='true'] {
     color: var(--color-on-primary);
-    background: var(--color-primary-600);
+    background: var(--color-primary-500);
     border-color: var(--color-primary-500);
 }
 
 .favourites-showcase-arrange[aria-pressed='true']:hover {
-    background: var(--color-primary-500);
+    background: var(--color-primary-600);
 }
 
 .favourites-showcase-arrange:focus-visible {
@@ -67,5 +61,5 @@
     color: var(--color-danger-300);
     background: color-mix(in srgb, var(--color-danger-900) 20%, transparent);
     border: 1px solid color-mix(in srgb, var(--color-danger-700) 50%, transparent);
-    border-radius: 0.5rem;
+    border-radius: var(--radius-lg);
 }

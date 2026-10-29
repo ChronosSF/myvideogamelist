@@ -275,7 +275,8 @@ export function ProfilePage({ loaderData }: Route.ComponentProps) {
                         detail="Once they add games to their lists, this page will show what they play and finish, how they score games, and the reviews they publish."
                     />
                 ) : (
-                    <section className="profile-stats">
+                    // Under the heavy rule a section opens with, below who it is.
+                    <section className="profile-stats rule-heavy pt-6">
                         {/* First, before any figure: the favourites are the one part of a profile its
                             owner chose in order to be looked at. */}
                         <ProfileFavourites
@@ -384,7 +385,7 @@ export function ProfilePage({ loaderData }: Route.ComponentProps) {
 export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
     const revalidator = useRevalidator();
     const { userName = '' } = useParams();
-    const button = 'inline-flex items-center gap-1.5 px-4 py-2 bg-primary-600 hover:bg-primary-500 text-on-primary text-sm font-semibold rounded-lg transition-colors';
+    const button = 'inline-flex items-center gap-1.5 px-4 py-2 btn-primary text-sm';
     // The id of the request that failed, when the failure says, as the root's boundary shows it: this
     // one takes the root's place for this page's failures, and the id is what a report can quote.
     const reference = isRouteErrorResponse(error) && isUpstreamFailure(error.data) ? error.data.traceId : null;

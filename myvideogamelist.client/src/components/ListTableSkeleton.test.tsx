@@ -78,12 +78,12 @@ describe('NewsCardSkeleton', () => {
         ).container.firstElementChild!;
         const skeleton = render(<NewsCardSkeleton />).container.firstElementChild!;
 
-        for (const name of ['flex', 'gap-4', 'p-4', 'rounded-xl', 'border', 'border-line']) {
+        for (const name of ['flex', 'gap-4', 'py-5', 'border-b', 'border-line']) {
             expect(card).toHaveClass(name);
             expect(skeleton).toHaveClass(name);
         }
-        // The cover is 3.5rem by 5rem in both.
-        expect(card.querySelector('img')).toHaveClass('w-14', 'h-20');
-        expect(skeleton.firstElementChild).toHaveClass('w-14', 'h-20');
+        // The cover is 3rem by 4rem in both.
+        expect(card.querySelector('img')).toHaveClass('w-12', 'h-16');
+        expect(skeleton.firstElementChild).toHaveClass('w-12', 'h-16');
     });
 });

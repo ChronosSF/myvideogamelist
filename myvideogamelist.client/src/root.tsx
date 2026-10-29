@@ -15,11 +15,15 @@ import { WishlistProvider } from '@/contexts/WishlistProvider';
 import { FavouritesProvider } from '@/contexts/FavouritesProvider';
 import { TagsProvider } from '@/contexts/TagsProvider';
 import { SearchPacerProvider } from '@/contexts/SearchPacerProvider';
+import { Honeycomb } from '@/components/Honeycomb';
 import { Navbar } from '@/components/Navbar';
 import { SiteFooter } from '@/components/SiteFooter';
 import { PRIVATE_NO_STORE } from '@/lib/cache';
 import { isUpstreamFailure } from '@/lib/trace';
 import { traceMiddleware } from '@/lib/trace.server';
+import archivoDisplay from '@/assets/fonts/archivo-display-latin.woff2?url';
+import archivoTitle from '@/assets/fonts/archivo-title-latin.woff2?url';
+import schibstedLatin from '@fontsource-variable/schibsted-grotesk/files/schibsted-grotesk-latin-wght-normal.woff2?url';
 import './index.css';
 import './App.css';
 
@@ -57,8 +61,20 @@ export function headers({ errorHeaders }: Route.HeadersArgs) {
     return { 'Cache-Control': errorHeaders?.get('Cache-Control') ?? PRIVATE_NO_STORE };
 }
 
+/**
+ * The font files nearly every page draws in, Archivo's two faces and Schibsted Grotesk, in Latin, fetched
+ * with the stylesheet rather than once the page's text asks for them, so that a first visit spends as
+ * little of its load as it can in the fallback and its text does not move when they arrive (`type.css`).
+ * Leaving them to the text costs a phone more than it saves: they still start before the first paint,
+ * only later, and the swap shifts the layout. The same URLs the stylesheet's `@font-face` rules name, so
+ * the preload is the request they use; `crossOrigin` because fonts are always fetched in CORS mode, and a
+ * preload without it would be fetched twice.
+ */
 export const links: LinksFunction = () => [
     { rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg' },
+    { rel: 'preload', as: 'font', type: 'font/woff2', href: archivoDisplay, crossOrigin: 'anonymous' },
+    { rel: 'preload', as: 'font', type: 'font/woff2', href: archivoTitle, crossOrigin: 'anonymous' },
+    { rel: 'preload', as: 'font', type: 'font/woff2', href: schibstedLatin, crossOrigin: 'anonymous' },
 ];
 
 /**
@@ -103,6 +119,8 @@ export default function Root() {
                         {/* Around the navbar and the pages both: their searches spend one budget. */}
                         <SearchPacerProvider>
                             <div className="app-root">
+                                <Honeycomb at="top" />
+                                <Honeycomb at="bottom" />
                                 {/* Around the navbar and the pages both: either may ask somebody to sign in. */}
                                 <AuthDialogProvider>
                                     <Navbar />
@@ -154,9 +172,11 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
     // uses none: only the router's links, and the router is what renders this.
     return (
         <div className="app-root">
+            <Honeycomb at="top" />
+            <Honeycomb at="bottom" />
             <main className="flex-1 flex items-center justify-center py-24 px-4">
                 <div className="text-center max-w-md">
-                    <h1 className="text-3xl font-bold text-fg-strong mb-3">{title}</h1>
+                    <h1 className="type-display text-4xl text-fg-strong mb-4">{title}</h1>
                     <p className="text-fg-muted mb-8">{detail}</p>
                     {reference && (
                         // What somebody reporting this can quote: the id on the API's lines for the
@@ -168,7 +188,7 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
                     )}
                     <a
                         href="/"
-                        className="inline-flex items-center gap-2 px-5 py-2.5 bg-primary-600 hover:bg-primary-500 text-on-primary font-semibold rounded-xl transition-colors"
+                        className="inline-flex items-center gap-2 px-5 py-2.5 btn-primary"
                     >
                         Back to home
                     </a>

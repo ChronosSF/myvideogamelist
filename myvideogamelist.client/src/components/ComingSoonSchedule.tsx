@@ -1,0 +1,132 @@
+import { Link } from 'react-router';
+import { CoverImage } from '@/components/CoverImage';
+import { ReleaseActions } from '@/components/ReleaseActions';
+import { useReleaseGame } from '@/hooks/useReleaseGame';
+import { comingSoonWhen, scheduleGroups, type ScheduleGroup } from '@/lib/comingSoon';
+import { platformNames } from '@/lib/releaseReason';
+import type { ComingSoonGame } from '@/types/releases';
+import { FavouriteMark } from './FavouriteMark';
+
+/** A row's cover is drawn 3.5rem wide. */
+const COVER_SIZES = '3.5rem';
+
+interface ComingSoonScheduleProps {
+    games: ComingSoonGame[];
+    /** `YYYY-MM-DD`: the day the page was rendered for, which decides when a date needs its year. */
+    today: string;
+}
+
+/**
+ * One game on the schedule: the day as a figure, its cover and its title, what it arrives on, which of the
+ * reader's lists it is in, and the wishlist and the Backlog — the rows the cards of the rail were (ADR 0073,
+ * 0075).
+ *
+ * The month or the quarter it arrives in is its group's heading, so a row says only its day; a game known
+ * to no closer than its month or quarter has a dash where the day would be.
+ */
+function ScheduleRow({ game, today }: { game: ComingSoonGame; today: string }) {
+    const state = useReleaseGame(game);
+    const day = game.precision === 'day' ? Number(game.starts.slice(8, 10)) : null;
+
+    return (
+        <li className="grid grid-cols-[2.5rem_3.5rem_minmax(0,1fr)] gap-x-3.5 items-start py-4 border-b border-line">
+            <span aria-hidden="true" className="type-display text-3xl text-fg-strong leading-none tabular-nums">
+                {day ?? '–'}
+            </span>
+
+            {/* Out of the tab order and hidden from screen readers: the title beside it is the same link. */}
+            <Link to={`/games/${game.gameId}`} tabIndex={-1} aria-hidden="true" className="block aspect-[3/4] rounded-sm overflow-hidden bg-surface">
+                {game.coverImageUrl && <CoverImage url={game.coverImageUrl} alt="" sizes={COVER_SIZES} className="w-full h-full object-cover" />}
+            </Link>
+
+            <div className="min-w-0">
+                <Link to={`/games/${game.gameId}`} className="type-title text-[1.0625rem] leading-snug text-fg-strong hover:underline-quiet">
+                    {game.title}
+                </Link>
+                {/* After the title, on a cover too small for the round mark. */}
+                {state.favourite && <FavouriteMark variant="inline" />}
+
+                {/* The day for whoever cannot see the figure, which is the group heading's month made whole. */}
+                {day !== null && <time dateTime={game.starts} className="sr-only">{comingSoonWhen(game, today)}</time>}
+
+                {game.platforms.length > 0 && (
+                    <p className="mt-1 type-meta text-fg-muted">{platformNames(game.platforms)}</p>
+                )}
+
+                {/* The reader's own list, by their name for it, as every label of a list is. */}
+                {state.listName !== null && <p className="mt-1 type-meta text-success-300">In {state.listName}</p>}
+
+                <ReleaseActions title={game.title} state={state} />
+            </div>
+        </li>
+    );
+}
+
+/** One game on a quarter's line: its title, and the reader's rosette where it is a favourite of theirs. */
+function QuarterGame({ game }: { game: ComingSoonGame }) {
+    const state = useReleaseGame(game);
+
+    return (
+        <>
+            <Link to={`/games/${game.gameId}`} className="type-title text-[1.0625rem] text-fg-strong hover:underline-quiet">
+                {game.title}
+            </Link>
+            {state.favourite && <FavouriteMark variant="inline" />}
+        </>
+    );
+}
+
+/**
+ * What is known only to a quarter, as a line of titles under the month columns rather than a column of its
+ * own: beside four months a fifth column wrapped onto a row by itself, under the first.
+ */
+function QuarterLine({ group }: { group: ScheduleGroup }) {
+    return (
+        <div className="mt-8 pt-4 border-t border-line flex flex-wrap items-baseline gap-x-5 gap-y-2">
+            <h3 className="type-kicker text-fg-muted">Also due in {group.label}</h3>
+            <ul className="flex flex-wrap items-baseline gap-y-1" aria-label={`Due in ${group.label}`}>
+                {/* The dot after a title rather than before the next, so a line that wraps starts on a title. */}
+                {group.games.map((game, index) => (
+                    <li key={game.gameId} className="inline-flex items-baseline">
+                        <QuarterGame game={game} />
+                        {index < group.games.length - 1 && <span aria-hidden="true" className="px-2.5 text-fg-faint">·</span>}
+                    </li>
+                ))}
+            </ul>
+        </div>
+    );
+}
+
+/**
+ * The new games of the next three months that the most people follow on IGDB, in the order they arrive
+ * (ADR 0071), as a schedule: a column for each month, the games under it with their day as a figure, and
+ * what is known only to a quarter on a line under the columns (ADR 0075). As many columns as fit, and one on
+ * a phone.
+ *
+ * The same for everybody, so it is in the shared home payload and the first HTML; lazy covers, since it sits
+ * below whatever the page opens with.
+ */
+export function ComingSoonSchedule({ games, today }: ComingSoonScheduleProps) {
+    if (games.length === 0) return null;
+
+    const groups = scheduleGroups(games, today);
+    const months = groups.filter(group => group.period === 'month');
+
+    return (
+        <>
+            {months.length > 0 && (
+                <ul className="grid gap-x-8 gap-y-8 grid-cols-[repeat(auto-fit,minmax(min(17rem,100%),1fr))]" aria-label="Coming soon">
+                    {months.map(group => (
+                        <li key={group.key} className="min-w-0">
+                            <h3 className="type-title text-xl text-fg-strong pb-2 border-b border-line">{group.label}</h3>
+                            <ul>
+                                {group.games.map(game => <ScheduleRow key={game.gameId} game={game} today={today} />)}
+                            </ul>
+                        </li>
+                    ))}
+                </ul>
+            )}
+            {groups.filter(group => group.period === 'quarter').map(group => <QuarterLine key={group.key} group={group} />)}
+        </>
+    );
+}

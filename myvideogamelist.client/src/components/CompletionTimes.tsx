@@ -137,40 +137,37 @@ function TierRow({ title, cells, footnote }: TierRowProps) {
 
     return (
         <div>
-            <h3 className="text-xs font-medium text-fg-muted mb-2">{title}</h3>
+            <h3 className="type-kicker text-fg-muted mb-3">{title}</h3>
 
-            <dl className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <dl className="grid grid-cols-1 sm:grid-cols-3 gap-x-8 gap-y-6">
                 {cells.map(cell => (
-                    <div
-                        key={cell.key}
-                        className="bg-surface/60 border border-line rounded-xl px-4 py-3"
-                    >
-                        <dt className="text-xs text-fg-faint uppercase tracking-wider">
+                    <div key={cell.key}>
+                        <dt className="type-kicker text-fg-faint">
                             {cell.label}
                         </dt>
-                        <dd className="mt-1 text-2xl font-semibold text-fg-strong leading-none">
+                        <dd className="mt-2 type-display text-4xl text-fg-strong">
                             {cell.value ?? '—'}
                         </dd>
 
                         {/* Decorative: the figure above already states the value. */}
                         <div
-                            className="mt-2.5 h-1 rounded-full bg-raised/60 overflow-hidden"
+                            className="mt-3 h-1 bg-line overflow-hidden"
                             aria-hidden="true"
                         >
                             <div
-                                className={`h-full rounded-full ${cell.fill}`}
+                                className={`h-full ${cell.fill}`}
                                 style={{ width: `${longest > 0 ? (cell.magnitude / longest) * 100 : 0}%` }}
                             />
                         </div>
 
-                        <p className="mt-2 text-xs text-fg-faint leading-snug">
+                        <p className="mt-2 text-xs text-fg-muted leading-snug">
                             {cell.caption}
                         </p>
                     </div>
                 ))}
             </dl>
 
-            <p className="mt-3 text-xs text-fg-faint">{footnote}</p>
+            <p className="mt-4 text-xs text-fg-faint">{footnote}</p>
         </div>
     );
 }
