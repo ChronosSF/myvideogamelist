@@ -15,7 +15,7 @@ import { WishlistProvider } from '@/contexts/WishlistProvider';
 import { FavouritesProvider } from '@/contexts/FavouritesProvider';
 import { TagsProvider } from '@/contexts/TagsProvider';
 import { SearchPacerProvider } from '@/contexts/SearchPacerProvider';
-import { Honeycomb } from '@/components/Honeycomb';
+import { DotMatrix } from '@/components/DotMatrix';
 import { Navbar } from '@/components/Navbar';
 import { SiteFooter } from '@/components/SiteFooter';
 import { PRIVATE_NO_STORE } from '@/lib/cache';
@@ -119,8 +119,8 @@ export default function Root() {
                         {/* Around the navbar and the pages both: their searches spend one budget. */}
                         <SearchPacerProvider>
                             <div className="app-root">
-                                <Honeycomb at="top" />
-                                <Honeycomb at="bottom" />
+                                <DotMatrix at="top" />
+                                <DotMatrix at="bottom" />
                                 {/* Around the navbar and the pages both: either may ask somebody to sign in. */}
                                 <AuthDialogProvider>
                                     <Navbar />
@@ -172,8 +172,8 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
     // uses none: only the router's links, and the router is what renders this.
     return (
         <div className="app-root">
-            <Honeycomb at="top" />
-            <Honeycomb at="bottom" />
+            <DotMatrix at="top" />
+            <DotMatrix at="bottom" />
             <main className="flex-1 flex items-center justify-center py-24 px-4">
                 <div className="text-center max-w-md">
                     <h1 className="type-display text-4xl text-fg-strong mb-4">{title}</h1>
