@@ -1,0 +1,88 @@
+/*
+ * A dot-matrix panel, as an LED scoreboard or a screen seen close up shows one: square pixels two wide on a
+ * pitch of eight, most of them dark, a few lit. Two layers, each a token colour cut out by a mask, so the
+ * palette decides its colours: every pixel of the panel, faint paper, brighter at one corner as though lit
+ * from there; and a few pixels lit in small clusters, each with a stepped bloom as pixel art draws a light,
+ * which breathe. Grey rather than the primary: a vivid green glowing on black is another brand's look,
+ * whatever the shape. Each mask is the pattern intersected with a fade that is gone by half a screen.
+ * Behind the page's content at z-index -1, over the root's background: `.app-root` draws none of its own.
+ *
+ * The pitch is a whole number of device pixels at 1, 1.25, 1.5 and 2 times, the zooms a desktop is most
+ * often set to, and the masks are drawn with crisp edges, so at those every pixel comes out the same size
+ * wherever it falls, rather than two device pixels wide in one column and three in the next.
+ *
+ * The top one is a screen tall, its glow up at the right. The bottom one spans the whole page and draws at
+ * its foot, its glow down at the left: a box anchored to the page's bottom would move down whenever the
+ * page grew under it, as the lists do when they arrive after the first paint, and a screen-tall box moving
+ * is a layout shift of most of the screen. Spanning from the top, it only grows. Both tile their pattern
+ * from the page's top, so where a short page has the two meet, the pixels line up.
+ */
+.dot-matrix {
+    --dot-matrix-end: top;
+    --dot-matrix-fade: to bottom;
+    --dot-matrix-glow-at: 78% 0%;
+    position: absolute;
+    inset: 0 0 auto;
+    height: 100svh;
+    z-index: -1;
+    pointer-events: none;
+}
+
+.dot-matrix[data-at='bottom'] {
+    --dot-matrix-end: bottom;
+    --dot-matrix-fade: to top;
+    --dot-matrix-glow-at: 22% 100%;
+    height: auto;
+    bottom: 0;
+}
+
+.dot-matrix::before,
+.dot-matrix::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-repeat: no-repeat;
+    background-position: var(--dot-matrix-end);
+    background-size: 100% 100svh;
+    mask-repeat: repeat, no-repeat;
+    mask-position: 0 0, var(--dot-matrix-end);
+    mask-composite: intersect;
+}
+
+/* Every pixel of the panel. At the bright corner they come out about the grey of `fg-dim` and no brighter,
+   so they stay darker than any text meant to be read over them: a point of light the brightness of the
+   words around it reads as a speck on the letters. */
+.dot-matrix::before {
+    background-color: color-mix(in srgb, var(--color-fg-strong) 9%, transparent);
+    background-image: radial-gradient(ellipse 55% 70% at var(--dot-matrix-glow-at), color-mix(in srgb, var(--color-fg-strong) 42%, transparent), transparent 75%);
+    /* Eased rather than linear: slow at first, then quickly through the last few shades. A pixel this faint
+       is only a score of shades above the page, so a linear fade would leave the lower half of it too faint
+       to see, and the panel would end well short of where it is meant to; eased, it holds, and then goes. */
+    mask-image:
+        url('../assets/dot-matrix.svg?no-inline'),
+        linear-gradient(var(--dot-matrix-fade), black 15%, rgb(0 0 0 / 0.85) 30%, rgb(0 0 0 / 0.6) 40%, rgb(0 0 0 / 0.35) 46%, transparent 50%);
+    mask-size: 8px 8px, 100% 100svh;
+}
+
+/* A lit pixel is a pixel bigger on every side than a dark one, as a lit LED looks, and paper at 40% where
+   the panel is at 9%: a pixel is a small thing, and a lit one has to be bright to be seen as lit at all. */
+.dot-matrix::after {
+    background-color: color-mix(in srgb, var(--color-fg-strong) 40%, transparent);
+    background-image: radial-gradient(ellipse 50% 65% at var(--dot-matrix-glow-at), color-mix(in srgb, var(--color-fg-strong) 55%, transparent), transparent 80%);
+    mask-image: url('../assets/dot-matrix-lit.svg?no-inline'), linear-gradient(var(--dot-matrix-fade), black 10%, transparent 50%);
+    mask-size: 640px 480px, 100% 100svh;
+    /* In five steps rather than a smooth ease, as an eight-bit console faded a screen: a few levels of
+       brightness, each held a moment. */
+    animation: dot-matrix-breathe 6s steps(5, jump-none) infinite alternate;
+}
+
+@keyframes dot-matrix-breathe {
+    from { opacity: 0.45; }
+    to { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .dot-matrix::after {
+        animation: none;
+    }
+}
