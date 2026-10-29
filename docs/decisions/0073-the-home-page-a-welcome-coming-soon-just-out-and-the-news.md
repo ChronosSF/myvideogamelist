@@ -70,8 +70,10 @@ are playing now, on every platform. So the panel is Coming soon's mirror:
   hide a new game whose planned date IGDB never came back to on one platform; none of that day's seventy-one
   had such a row, and an old game on the front page as new is the worse mistake. A game out today is still
   Coming soon's, so the two panels meet on today and never share one.
-- **The ten most watched**, shown newest first, so the panel reads back from today as Coming soon reads
-  forward; each with the day and the platforms it is out on.
+- **The nine most watched**, shown newest first, so the panel reads back from today as Coming soon reads
+  forward; each with the day and the platforms it is out on. Ten until 2026-10-29, when nine was found to
+  be what fills the redesign's grid at every width it is drawn at
+  ([0075](0075-the-editorial-redesign.md)); ten left a hole in its last row.
 - **No floor beside the cap.** IGDB's follows and ratings are small for a game this new — Madden NFL 27,
   eighth most watched, had two follows and one rating, and Enshrouded, first, had no follows at all — so a
   floor on either would cut what people are playing. The admin's hides are the correction, and are

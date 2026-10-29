@@ -16,11 +16,12 @@ interface ReleaseRailCardProps {
 }
 
 /**
- * How wide a cover is drawn: a fifth of the 80rem page or two of them for the lead, from `sm` a column of
- * however many fit at 12.5rem, and half a phone's width or all of it for the lead (`JustOutRail`).
+ * How wide a cover is drawn, in `JustOutRail`'s columns: a sixth of the page's 76rem from `xl`, a quarter of
+ * the window from `lg`, a third from `sm` and a half below, less the gutters; the lead is two of them and
+ * the gap between, or a phone's whole width.
  */
-const COVER_SIZES = '(min-width: 80rem) 14rem, (min-width: 40rem) 22vw, 46vw';
-const LEAD_SIZES = '(min-width: 80rem) 29rem, (min-width: 40rem) 45vw, 92vw';
+const COVER_SIZES = '(min-width: 80rem) 11.5rem, (min-width: 64rem) 23vw, (min-width: 40rem) 30vw, 46vw';
+const LEAD_SIZES = '(min-width: 80rem) 24.5rem, (min-width: 64rem) 47vw, (min-width: 40rem) 62vw, 92vw';
 
 /**
  * One game in Just out's grid: its cover, when, its title and what it is on — and, once somebody is signed

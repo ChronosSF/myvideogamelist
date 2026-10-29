@@ -98,7 +98,10 @@ will be the same again.
   and what is known only to a quarter on a line of titles under the columns. A column of its own wrapped
   onto a row by itself beside four months, under the first.
 - **Just out** is a grid of covers led by its newest game at twice the size, since it is already newest
-  first.
+  first. It is two, three, four or six columns wide and never five, and shows nine games: the lead's four
+  cells and the other eight's are twelve, which fill each of those widths to the last cell, where ten in
+  as many columns as fit left holes. At six the lead is a third of the page, not two fifths, so a dull
+  cover does not darken the whole panel.
 - **The news** is a front page: the newest item as a lead, the rest as a column of briefs beside it.
 - **Signed in**: the figures as one strip under a heavy rule; Continue playing as rows beside Play next.
 
