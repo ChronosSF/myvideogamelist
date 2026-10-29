@@ -1,0 +1,92 @@
+/*
+ * Two layers, each a token colour cut out by a mask, so the palette decides its colours: the grid's
+ * hairlines, faint paper, brighter where a glow comes through them at one corner; and a few of its cells lit
+ * in paper, panels in the ceiling and tiles in the floor, which breathe. Each mask is the drawing intersected
+ * with a fade that is gone by half a screen. Behind the page's content at z-index -1, over the root's
+ * background: `.app-root` draws none of its own.
+ *
+ * The drawing is one room a screen tall (`perspective-grid.svg`): a ceiling in its top half, receding towards
+ * a vanishing point below the middle, and a floor in its bottom half, receding towards one above it. Both
+ * ends mask with the same drawing, and each one's fade leaves it only its own half: the top one shows the
+ * ceiling, the bottom one the floor. A perspective is not a tiling, so it is drawn once and sized to the
+ * screen's height rather than repeated, its width following, and centred: the vanishing point is the
+ * screen's middle on a phone as on a desktop, and a narrower screen sees less of the sides rather than a
+ * squeezed grid. The drawing is four times as wide as it is tall, wider than any screen.
+ *
+ * Its geometry, should it need redrawing, in the drawing's units, a screen being 1000 tall: each vanishing
+ * point is 600 from its edge; the columns are 160 apart at the edge and run towards that point; the rows
+ * stand at depths 1, 1.25, 1.5 … of the edge's, so that a row is drawn 600 / depth from the vanishing point;
+ * and the grid stops at depth 6, the half-screen line, where the fade finishes, rather than running on into
+ * the vanishing point as lines a pixel apart. The lit cells are cells of the same grid, inset a little. The
+ * rows are drawn at half the columns' strength: the page's own rules are horizontal hairlines, and rows as
+ * bright as the columns read as more of them. The lines keep a pixel's width whatever the screen's height
+ * (`vector-effect`), as a hairline should.
+ *
+ * The top one is a screen tall, its glow up at the right. The bottom one spans the whole page and draws at
+ * its foot, its glow down at the left: a box anchored to the page's bottom would move down whenever the
+ * page grew under it, as the lists do when they arrive after the first paint, and a screen-tall box moving
+ * is a layout shift of most of the screen. Spanning from the top, it only grows. Where a page is a screen
+ * tall, the two are the same room, its ceiling and its floor.
+ */
+.perspective-grid {
+    --perspective-grid-end: top;
+    --perspective-grid-fade: to bottom;
+    --perspective-grid-glow-at: 78% 0%;
+    position: absolute;
+    inset: 0 0 auto;
+    height: 100svh;
+    z-index: -1;
+    pointer-events: none;
+}
+
+.perspective-grid[data-at='bottom'] {
+    --perspective-grid-end: bottom;
+    --perspective-grid-fade: to top;
+    --perspective-grid-glow-at: 22% 100%;
+    height: auto;
+    bottom: 0;
+}
+
+.perspective-grid::before,
+.perspective-grid::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-repeat: no-repeat;
+    background-position: var(--perspective-grid-end);
+    background-size: 100% 100svh;
+    mask-repeat: no-repeat;
+    mask-position: var(--perspective-grid-end);
+    mask-composite: intersect;
+}
+
+.perspective-grid::before {
+    background-color: color-mix(in srgb, var(--color-fg-strong) 10%, transparent);
+    background-image: radial-gradient(ellipse 55% 70% at var(--perspective-grid-glow-at), color-mix(in srgb, var(--color-fg-strong) 47%, transparent), transparent 75%);
+    /* Eased rather than linear: slow at first, then quickly through the last few shades. A hairline this faint
+       has a score of shades above the page, and as it fades the in-between ones that smooth its diagonals
+       round away, so the tail is kept short rather than drawn out in stairs. */
+    mask-image:
+        url('../assets/perspective-grid.svg?no-inline'),
+        linear-gradient(var(--perspective-grid-fade), black 15%, rgb(0 0 0 / 0.85) 30%, rgb(0 0 0 / 0.6) 40%, rgb(0 0 0 / 0.35) 46%, transparent 50%);
+    mask-size: auto 100svh, 100% 100svh;
+}
+
+.perspective-grid::after {
+    background-color: color-mix(in srgb, var(--color-fg-strong) 3.5%, transparent);
+    background-image: radial-gradient(ellipse 50% 65% at var(--perspective-grid-glow-at), color-mix(in srgb, var(--color-fg-strong) 19%, transparent), transparent 80%);
+    mask-image: url('../assets/perspective-grid-lit.svg?no-inline'), linear-gradient(var(--perspective-grid-fade), black 10%, transparent 50%);
+    mask-size: auto 100svh, 100% 100svh;
+    animation: perspective-grid-breathe 6s ease-in-out infinite alternate;
+}
+
+@keyframes perspective-grid-breathe {
+    from { opacity: 0.45; }
+    to { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .perspective-grid::after {
+        animation: none;
+    }
+}
