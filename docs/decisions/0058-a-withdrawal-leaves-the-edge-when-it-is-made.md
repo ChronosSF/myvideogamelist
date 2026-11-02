@@ -6,7 +6,10 @@
 sitemap file [0036](0036-what-a-crawler-is-told.md) §5 gave the same window. Corrects the sitemap
 path 0036 named. §1's table gains an eighth event in
 [0056](0056-an-avatar-is-an-address-on-a-short-list-of-hosts.md) §8: a public profile's display
-name, avatar or bio rewritten or cleared.
+name, avatar or bio rewritten or cleared. §6's open question, who spends the ceiling, is settled by
+[0081](0081-a-withdrawal-is-never-refused-and-one-accounts-are-paced.md): an account's withdrawals
+are paced on their way to the queue, so §4's request now carries one account's over a minute rather
+than one event's, and the privacy switch, a rename and a deletion still go at once.
 
 ## Context
 

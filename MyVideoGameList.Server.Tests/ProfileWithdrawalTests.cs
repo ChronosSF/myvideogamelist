@@ -83,6 +83,7 @@ public class ProfileWithdrawalTests
             services.AddScoped<IUserNameClaimService, UserNameClaimService>();
             services.Configure<AdminOptions>(_ => { });
             services.AddSingleton<AdminAccounts>();
+            services.AddSingleton<RepublishLimits>();
             services.AddScoped(_ => Substitute.For<IGameCacheService>());
             services.AddScoped<ReviewService>();
             services.AddScoped<ListService>();
@@ -150,6 +151,7 @@ public class ProfileWithdrawalTests
                 Substitute.For<IListNameService>(),
                 Get<AdminAccounts>(),
                 Get<ProfileWithdrawals>(),
+                Get<RepublishLimits>(),
                 Get<TimeProvider>())
             {
                 ControllerContext = new ControllerContext
@@ -178,6 +180,11 @@ public class ProfileWithdrawalTests
         var sent = Assert.Single(edge.Sent);
         Assert.Equal(reason, sent.Reason);
         Assert.Equal(paths, sent.Paths);
+
+        // Every one is an account's, and only the three that cannot be repeated without something
+        // limited in between skip that account's pace (ADR 0081 §3).
+        Assert.NotNull(sent.Account);
+        Assert.Equal(reason is "profile made private" or "profile renamed" or "account deleted", sent.AtOnce);
     }
 
     // ---------------------------------------------------------------------------------------
@@ -790,7 +797,7 @@ public class ProfileWithdrawalTests
             new DbContextOptionsBuilder<ApplicationDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
         var withdrawals = new ProfileWithdrawals(db, new ThrowingEdgeInvalidator(), logger);
 
-        withdrawals.ProfileMadePrivate("alice");
+        withdrawals.ProfileMadePrivate("user-1", "alice");
 
         var error = Assert.Single(logger.At(LogLevel.Error));
         Assert.Contains("/u/alice*, /sitemaps/profiles-*", error.Message);
@@ -811,6 +818,127 @@ public class ProfileWithdrawalTests
 
         Assert.Empty(edge.Sent);
         Assert.Single(logger.At(LogLevel.Error));
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // How often one account can withdraw (ADR 0081)
+    // ---------------------------------------------------------------------------------------
+
+    [Fact]
+    public async Task Withdrawals_EachEvent_IsTheWithdrawingAccounts()
+    {
+        // The pace is kept per account, so every event has to say whose it is, and by id: a rename
+        // would otherwise hand the account a fresh allowance under its new name.
+        var edge = new RecordingEdgeInvalidator();
+        using var site = new Site(edge);
+        var alice = await site.AccountAsync("alice", ProfileVisibility.Public);
+        await site.Get<ReviewService>().UpsertAsync(alice.Id, GameId, Review(ReviewVisibility.Public));
+
+        await site.Get<ReviewService>().DeleteAsync(alice.Id, GameId);
+        await site.Get<ListService>().DeleteEntryAsync(alice.Id, GameId);
+        await site.Controller(alice).UpdatePrivacy(new UpdateProfileVisibilityDto(ProfileVisibility.Private));
+
+        Assert.Equal(3, edge.Sent.Count);
+        Assert.All(edge.Sent, sent => Assert.Equal(alice.Id, sent.Account));
+        Assert.Equal([false, false, true], edge.Sent.Select(sent => sent.AtOnce));
+    }
+
+    [Fact]
+    public async Task UpdatePrivacy_MadePublicPastTheDaysAllowance_IsRefusedWithA429AndStoresNothing()
+    {
+        var edge = new RecordingEdgeInvalidator();
+        using var site = new Site(edge);
+        var alice = await site.AccountAsync("alice", ProfileVisibility.Private);
+        var allowance = RepublishLimits.Allowance(Republish.ProfilePublic);
+
+        for (var i = 0; i < allowance; i++)
+        {
+            Assert.IsType<OkObjectResult>((await site.Controller(alice)
+                .UpdatePrivacy(new UpdateProfileVisibilityDto(ProfileVisibility.Public))).Result);
+            Assert.IsType<OkObjectResult>((await site.Controller(alice)
+                .UpdatePrivacy(new UpdateProfileVisibilityDto(ProfileVisibility.Private))).Result);
+        }
+
+        var controller = site.Controller(alice);
+        var result = await controller.UpdatePrivacy(new UpdateProfileVisibilityDto(ProfileVisibility.Public));
+
+        var refused = Assert.IsType<ObjectResult>(result.Result);
+        Assert.Equal(StatusCodes.Status429TooManyRequests, refused.StatusCode);
+        var problem = Assert.IsType<ProblemDetails>(refused.Value);
+        Assert.Contains("Making it private is never limited", problem.Detail);
+        // The clock stands still here, so the first of the day's ten comes back a whole day on.
+        Assert.Equal("86400", controller.Response.Headers.RetryAfter.ToString());
+        Assert.Equal(ProfileVisibility.Private, site.StoredUser(alice.Id)?.ProfileVisibility);
+        Assert.Equal(allowance, edge.Sent.Count);
+    }
+
+    [Fact]
+    public async Task UpdatePrivacy_MadePrivateWithTheAllowanceSpent_IsNeverRefused()
+    {
+        // Taking a profile back is the act the limit exists to protect, so spending the allowance on
+        // publishing it never stops it being made private.
+        var edge = new RecordingEdgeInvalidator();
+        using var site = new Site(edge);
+        var alice = await site.AccountAsync("alice", ProfileVisibility.Public);
+        var limits = site.Get<RepublishLimits>();
+        while (limits.TryTake(Republish.ProfilePublic, alice.Id, out _)) { }
+
+        var result = await site.Controller(alice)
+            .UpdatePrivacy(new UpdateProfileVisibilityDto(ProfileVisibility.Private));
+
+        Assert.IsType<OkObjectResult>(result.Result);
+        Assert.Equal(ProfileVisibility.Private, site.StoredUser(alice.Id)?.ProfileVisibility);
+        AssertSent(edge, "profile made private", "/u/alice*", Sitemaps);
+    }
+
+    [Fact]
+    public async Task UpdatePrivacy_AnotherAccountsAllowanceSpent_DoesNotTouchThisOnes()
+    {
+        using var site = new Site(new RecordingEdgeInvalidator());
+        var bob = await site.AccountAsync("bob", ProfileVisibility.Private);
+        var alice = await site.AccountAsync("alice", ProfileVisibility.Private);
+        var limits = site.Get<RepublishLimits>();
+        while (limits.TryTake(Republish.ProfilePublic, bob.Id, out _)) { }
+
+        var result = await site.Controller(alice)
+            .UpdatePrivacy(new UpdateProfileVisibilityDto(ProfileVisibility.Public));
+
+        Assert.IsType<OkObjectResult>(result.Result);
+    }
+
+    [Fact]
+    public async Task UpdateUserName_ChangeOfCasePastTheDaysAllowanceOnAPublicProfile_IsRefusedWithA429()
+    {
+        // Each one sends a spelling the last one did not name, three paths at once.
+        var edge = new RecordingEdgeInvalidator();
+        using var site = new Site(edge);
+        var alice = await site.AccountAsync("alice", ProfileVisibility.Public);
+        string[] spellings = ["Alice", "ALICE", "aLice"];
+        Assert.Equal(spellings.Length, RepublishLimits.Allowance(Republish.NameCase));
+
+        foreach (var spelling in spellings)
+            Assert.IsType<OkObjectResult>((await site.Controller(alice).UpdateUserName(new UpdateUserNameDto(spelling))).Result);
+
+        var result = await site.Controller(alice).UpdateUserName(new UpdateUserNameDto("alIce"));
+
+        var refused = Assert.IsType<ObjectResult>(result.Result);
+        Assert.Equal(StatusCodes.Status429TooManyRequests, refused.StatusCode);
+        Assert.Contains("letter case", Assert.IsType<ProblemDetails>(refused.Value).Detail);
+        Assert.Equal("aLice", site.StoredUser(alice.Id)?.UserName);
+        Assert.Equal(spellings.Length, edge.Sent.Count);
+    }
+
+    [Fact]
+    public async Task UpdateUserName_ChangeOfCaseOnAPrivateProfile_IsNotCounted()
+    {
+        // It sends nothing, so there is nothing to limit.
+        using var site = new Site(new RecordingEdgeInvalidator());
+        var alice = await site.AccountAsync("alice", ProfileVisibility.Private);
+
+        foreach (var spelling in new[] { "Alice", "ALICE", "aLice", "alIce", "aliCe" })
+            Assert.IsType<OkObjectResult>((await site.Controller(alice).UpdateUserName(new UpdateUserNameDto(spelling))).Result);
+
+        Assert.True(site.Get<RepublishLimits>().TryTake(Republish.NameCase, alice.Id, out _));
     }
 
     // ---------------------------------------------------------------------------------------

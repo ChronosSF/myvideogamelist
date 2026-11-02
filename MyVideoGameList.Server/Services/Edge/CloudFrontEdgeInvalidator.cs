@@ -182,23 +182,26 @@ internal sealed class CloudFrontEdgeInvalidator : BackgroundService, IEdgeInvali
 
         lock (gate)
         {
+            // The write's time, which is now unless the withdrawal waited for its account's pace
+            // first (ADR 0081): the window this has to be sent within opened at the write.
             var now = clock.GetUtcNow();
+            var writtenAt = invalidation.WrittenAt is { } at && at < now ? at : now;
 
             // Waiting and not yet sent: it goes out after this write committed, so it covers this
             // withdrawal as well, and sending both would pay twice for one effect. It takes this
-            // write's time as its own, so it goes on trying for as long as this write's window is
-            // open, not only its first one's.
-            if (!stopping && waiting.ContainsKey(key))
+            // write's time as its own if that is the later, so it goes on trying for as long as this
+            // write's window is open, not only its first one's.
+            if (!stopping && waiting.TryGetValue(key, out var waitingSince))
             {
-                waiting[key] = now;
+                if (writtenAt > waitingSince) waiting[key] = writtenAt;
                 alreadyWaiting = true;
             }
             else
             {
-                var candidate = new Queued(invalidation, Guid.NewGuid().ToString("N"), now, key);
+                var candidate = new Queued(invalidation, Guid.NewGuid().ToString("N"), writtenAt, key);
                 if (queue.Writer.TryWrite(candidate))
                 {
-                    waiting[key] = now;
+                    waiting[key] = writtenAt;
                     queued = candidate;
                 }
             }

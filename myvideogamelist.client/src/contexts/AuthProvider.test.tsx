@@ -542,6 +542,46 @@ describe('AuthProvider account writes', () => {
         expect(screen.getByText('Signed in as alex')).toBeInTheDocument();
     });
 
+    it('reads a refused publication by the sentence the limit wrote, which says when and that private is never refused', async () => {
+        // Making a profile public is limited per account (ADR 0081); the 429 is a ProblemDetails
+        // whose detail is written for the person at the switch.
+        const actor = quickActor();
+        const sentence = 'A profile can be made public 10 times a day, and yours has been. You can make it '
+            + 'public again in about 3 hours. Making it private is never limited.';
+        await renderSignedIn({
+            'PUT /api/user/privacy': () => json({
+                type: 'https://tools.ietf.org/html/rfc6585#section-4',
+                title: 'Too many requests',
+                status: 429,
+                detail: sentence,
+                traceId: '00-abc-def-00',
+            }, 429),
+        });
+
+        await actor.click(screen.getByRole('button', { name: 'Publish profile' }));
+
+        expect(await screen.findByRole('alert')).toHaveTextContent(sentence);
+    });
+
+    it('reads a refused change of letter case by the sentence the limit wrote, and keeps the name it had', async () => {
+        const actor = quickActor();
+        const sentence = "The letter case of a public profile's username can be changed 3 times a day, and yours "
+            + 'has been. You can change it again in 40 minutes.';
+        await renderSignedIn({
+            'PUT /api/user/username': () => json({
+                title: 'Too many requests',
+                status: 429,
+                detail: sentence,
+                traceId: '00-abc-def-00',
+            }, 429),
+        });
+
+        await actor.click(screen.getByRole('button', { name: 'Rename' }));
+
+        expect(await screen.findByRole('alert')).toHaveTextContent(sentence);
+        expect(screen.getByText('Signed in as alex')).toBeInTheDocument();
+    });
+
     it('leaves nobody signed in after deleting the account, without a sign-out the API would refuse', async () => {
         const actor = quickActor();
         const api = await renderSignedIn({ 'DELETE /api/user': () => empty() });

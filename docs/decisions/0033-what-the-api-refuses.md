@@ -5,7 +5,10 @@
 but stays 1 with the balancer preserving the header, and `UseHttpsRedirection` cannot redirect
 in a container that exposes no HTTPS port — the hazard is configuring one. §5's document policy
 gains an `img-src` in [0056](0056-an-avatar-is-an-address-on-a-short-list-of-hosts.md), and the
-`script-src` it left out in [0053](0053-a-documents-scripts-carry-its-renders-nonce.md).
+`script-src` it left out in [0053](0053-a-documents-scripts-carry-its-renders-nonce.md). §2's limit
+is no longer the only one: [0081](0081-a-withdrawal-is-never-refused-and-one-accounts-are-paced.md)
+§4 limits two writes per account, making a profile public and changing a public name's letter case,
+partitioned by the account rather than the address and on nothing a loader calls.
 
 ## Context
 
