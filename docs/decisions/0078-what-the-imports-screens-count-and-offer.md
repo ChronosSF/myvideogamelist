@@ -1,6 +1,6 @@
 # 0078. What the import's screens count, and what they offer
 
-**Status:** Implemented — #300.
+**Status:** Implemented — #300, #301.
 
 ## Context
 
@@ -14,6 +14,10 @@ they said several things that were not true.
   file", "Will import" and "Import N games" (which read "Import 1 games" for one row), `/import`'s
   "N games — review" for a waiting job, its receipts' "14 imported, 3 skipped" under "The games are in
   your lists", and the upload's refusal "That export has N games".
+- **A wishlisted game was "in no list" (#301).** A game on Grouvee's Wish List shelf and no other is
+  imported as an entry with no status and a wishlist item. The commit counted it in `Unlisted`, and the
+  result panel said it was "on its own game page rather than in your lists", while `/wishlist` showed
+  it. Every export with a wish list did this.
 
 ## Decision
 
@@ -43,9 +47,33 @@ A row with no game cannot be selected by giving its unrecognised shelf a list ei
 already disabled for such a row, but the shelf's list select still set it to import, which listed it
 under "Importing" and then had the commit skip it.
 
+### 2. A game on the wishlist has a home, and the panel says it is there
+
+The commit counts a game that is in no list but on the wishlist apart from the others, as
+`ImportResultDto.WishlistOnly`. `Unlisted` now means in no list and not on the wishlist, which are the
+games that only their own pages show. It counts the wishlist as it stands after the commit, so a game
+the user had already wanted, imported with no list, counts as on the wishlist too. The panel says "40 of
+them are on your wishlist." before any sentence about games in no list, and offers "See your wishlist"
+beside "See your lists".
+
+**Named rather than left out.** The issue offered leaving these games out of `Unlisted` and saying
+nothing about them. Then a file of 600 listed games and 40 wanted ones would read "640 games are now in
+your lists", which is false of the 40, because the wishlist is an axis and not a list
+([0022](0022-entry-surrogate-key-and-the-wishlist-axis.md)).
+
+**Not favourites.** A favourite in no list stays counted as in no list, although the profile's showcase
+shows it. The wishlist is where somebody puts a game instead of a list, and the favourites are not. A
+favourite in no list is a game somebody loves that the import could not place in a list, such as one the
+file says was played without saying how that ended
+([0045](0045-an-import-asks-once-about-what-it-will-not-guess.md)). That is a gap its owner may want to
+fill, so the sentence that sends them to the game's page is still the right one.
+
 ## Consequences
 
 - **Every Grouvee export reads as it did,** apart from the nouns: Grouvee lists a game once, so its
   rows and games are the same number. The two figures differ only when two rows name one game.
+- **The result's three counts of games add up.** Games in a list, `WishlistOnly` and `Unlisted` are
+  together `Games`. A new place a game can land without a list has to choose which of the last two it
+  is counted in.
 - **A new count on these screens has to say which it is.** Rows are what the job, the limit and the
   filters count. Games are what the library gains.

@@ -243,6 +243,7 @@ export function ImportReviewPage() {
                 rows={result.job.importedCount ?? 0}
                 games={result.games}
                 unlisted={result.unlisted}
+                wishlistOnly={result.wishlistOnly}
                 skipped={result.skipped}
                 fileName={result.job.fileName}
             />
@@ -715,18 +716,24 @@ function Badge({ children, tone = 'neutral' }: { children: React.ReactNode; tone
  * list are said out loud for the same reason — "now in your lists" was once the whole sentence, and
  * it was false of three-quarters of a real library.
  *
+ * A game in no list but on the wishlist is named apart from those (issue 301). It is where its
+ * owner put it — a game shelved only as wanted — and `/wishlist` shows it, so "on its own game page"
+ * would send somebody looking for a problem that is not there.
+ *
  * What it counts is games, because games are what is now in somebody's library. The rows they came
  * from are a different number only when two of the rows it imported named one game — as a source
  * that lists a game once per platform does — and only then does the panel speak of rows. Then it
  * has to: after a review that said it would import 14, a bare "11 games" reads as three lost.
  */
-function ResultPanel({ rows, games, unlisted, skipped, fileName }: {
+function ResultPanel({ rows, games, unlisted, wishlistOnly, skipped, fileName }: {
     /** The rows imported — the job's `importedCount`, which with the skipped ones is every row. */
     rows: number;
     /** The games those rows went into: fewer than `rows` when two of them named one game. */
     games: number;
-    /** How many of those games are in no list. */
+    /** How many of those games are in no list, and not on the wishlist either. */
     unlisted: number;
+    /** How many of those games are in no list but on the wishlist. */
+    wishlistOnly: number;
     skipped: { title: string; sourceStatus: string | null; reason: string }[];
     fileName: string;
 }) {
@@ -739,15 +746,21 @@ function ResultPanel({ rows, games, unlisted, skipped, fileName }: {
     // Straight after "rows of your file" a bare "them" could be the rows, and a row is in no list.
     const ofThem = merged ? 'of the games' : 'of them';
 
-    const inNoList = games === 1
-        ? 'It is in no list, so it is on its own game page rather than in your lists.'
-        : unlisted === 1
-            ? `1 ${ofThem} is in no list, so it is on its own game page rather than in your lists.`
-            : `${formatCount(unlisted)} ${ofThem} are in no list, so they are on their own game pages rather than in your lists.`;
+    // "It" rather than "1 of them" when there is one game, and nothing when none is so.
+    const howMany = (count: number) =>
+        games === 1 ? 'It is' : `${formatCount(count)} ${ofThem} ${count === 1 ? 'is' : 'are'}`;
 
-    const outcome = unlisted === 0
+    const onWishlist = wishlistOnly === 0 ? '' : `${howMany(wishlistOnly)} on your wishlist.`;
+
+    const inNoList = unlisted === 0
+        ? ''
+        : `${howMany(unlisted)} in no list, so ${unlisted === 1 ? 'it is on its own game page' : 'they are on their own game pages'} rather than in your lists.`;
+
+    const outcome = unlisted === 0 && wishlistOnly === 0
         ? `${counted(games, 'game is', 'games are')} now in your lists${from}.`
-        : `${counted(games, 'game was', 'games were')} imported${from}. ${inNoList}`;
+        : [`${counted(games, 'game was', 'games were')} imported${from}.`, onWishlist, inNoList]
+            .filter(Boolean)
+            .join(' ');
 
     // A skipped row is a row, and can be one whose game another row imported. Until the panel has
     // spoken of rows, the file's rows are its games and need no noun of their own.
@@ -770,6 +783,15 @@ function ResultPanel({ rows, games, unlisted, skipped, fileName }: {
                 >
                     See your lists
                 </Link>
+
+                {wishlistOnly > 0 && (
+                    <Link
+                        to="/wishlist"
+                        className="px-4 py-2.5 text-sm font-semibold btn-outline"
+                    >
+                        See your wishlist
+                    </Link>
+                )}
 
                 {skipped.length > 0 && (
                     <button

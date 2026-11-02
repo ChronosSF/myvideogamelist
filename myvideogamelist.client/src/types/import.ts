@@ -177,8 +177,14 @@ export interface ImportResult {
      */
     games: number;
     /**
-     * How many of those games are in no list afterwards. An entry with no status shows in no list,
-     * only on its game's own page, so "now in your lists" is false of these (ADR 0019).
+     * How many of those games are in no list afterwards, and not on the wishlist either. An entry
+     * with no status shows in no list, only on its game's own page, so "now in your lists" is false
+     * of these (ADR 0019).
      */
     unlisted: number;
+    /**
+     * How many of those games are in no list afterwards but on the wishlist, which `/wishlist` shows.
+     * Never counted in `unlisted`: a game shelved only as wanted is where its owner put it (issue 301).
+     */
+    wishlistOnly: number;
 }

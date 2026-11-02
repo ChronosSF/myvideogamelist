@@ -229,11 +229,21 @@ public record ImportPlayedStatusDto(
 /// keeps.
 /// </param>
 /// <param name="Unlisted">
-/// How many of those <paramref name="Games"/> are in no list afterwards. The result screen says so,
-/// because "now in your lists" is false of them: an entry with no status appears in no list
-/// (ADR 0019), and only the game's own page shows it.
+/// How many of those <paramref name="Games"/> are in no list afterwards, and not on the wishlist
+/// either. The result screen says so, because "now in your lists" is false of them: an entry with no
+/// status appears in no list (ADR 0019), and only the game's own page shows it.
+/// </param>
+/// <param name="WishlistOnly">
+/// How many of those <paramref name="Games"/> are in no list afterwards but on the wishlist, which is
+/// where somebody who shelved a game only as wanted put it. Counted apart from
+/// <paramref name="Unlisted"/>, since <c>/wishlist</c> shows these, and the result screen says where
+/// they are rather than that only their own pages show them (issue 301).
 /// </param>
 public record ImportResultDto(
-    ImportJobDto Job, IReadOnlyList<ImportSkippedRowDto> Skipped, int Games, int Unlisted);
+    ImportJobDto Job,
+    IReadOnlyList<ImportSkippedRowDto> Skipped,
+    int Games,
+    int Unlisted,
+    int WishlistOnly);
 
 public record ImportSkippedRowDto(string Title, string? SourceStatus, string Reason);

@@ -363,6 +363,18 @@ describe('ImportReviewPage', () => {
         expect(screen.queryByText(/now in your lists/)).not.toBeInTheDocument();
     });
 
+    it('offers the wishlist when some of the games are only on it, and not otherwise', () => {
+        review.result = importResult({ imported: 640, wishlistOnly: 40 });
+        const { unmount } = renderPage();
+
+        expect(screen.getByRole('link', { name: 'See your wishlist' })).toHaveAttribute('href', '/wishlist');
+        unmount();
+
+        review.result = importResult({ imported: 640, unlisted: 9 });
+        renderPage();
+        expect(screen.queryByRole('link', { name: 'See your wishlist' })).not.toBeInTheDocument();
+    });
+
     it('counts the games, and says how many rows they came from, when rows named one game', () => {
         // #152. A source that lists a game once per platform gives it a row per platform, and those
         // rows land on one entry — so the 14 the review said it would import are 11 games. "14 games
@@ -414,6 +426,28 @@ describe('ImportReviewPage', () => {
                 skipped: [skippedRow('One'), skippedRow('Two'), skippedRow('Three')],
             }),
             says: '11 games were imported, from 14 rows of your file. 2 of the games are in no list, so they are on their own game pages rather than in your lists. 3 rows were skipped.',
+        },
+        {
+            // Issue 301: a game shelved only as wanted is on the wishlist, which is where it belongs,
+            // not on "its own game page".
+            what: 'some only on the wishlist',
+            result: importResult({ imported: 640, wishlistOnly: 40 }),
+            says: '640 games were imported. 40 of them are on your wishlist.',
+        },
+        {
+            what: 'one only on the wishlist, one in no list',
+            result: importResult({ imported: 600, wishlistOnly: 1, unlisted: 1 }),
+            says: '600 games were imported. 1 of them is on your wishlist. 1 of them is in no list, so it is on its own game page rather than in your lists.',
+        },
+        {
+            what: 'one game, only on the wishlist',
+            result: importResult({ imported: 1, wishlistOnly: 1 }),
+            says: '1 game was imported. It is on your wishlist.',
+        },
+        {
+            what: 'games from more rows, on the wishlist and in no list',
+            result: importResult({ imported: 14, games: 11, wishlistOnly: 3, unlisted: 2 }),
+            says: '11 games were imported, from 14 rows of your file. 3 of the games are on your wishlist. 2 of the games are in no list, so they are on their own game pages rather than in your lists.',
         },
     ])('says it in the right number: $what', ({ result, says }) => {
         review.result = result;

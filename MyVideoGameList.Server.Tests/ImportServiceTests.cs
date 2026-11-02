@@ -1043,6 +1043,32 @@ public class ImportServiceTests
         Assert.Equal(4, result!.Job.ImportedCount);
         Assert.Equal(3, result.Games);
         Assert.Equal(2, result.Unlisted);
+        Assert.Equal(0, result.WishlistOnly);
+    }
+
+    [Fact]
+    public async Task CommitAsync_AGameInNoListButOnTheWishlist_IsCountedApartFromTheUnlisted()
+    {
+        // Issue 301. A game on Grouvee's Wish List shelf and no other has no status, and was counted
+        // with the games only their own page shows, while /wishlist showed it. Counted apart: one
+        // from the shelf, one the user had wanted before this import, and one that is in no list at
+        // all — the one "only on its own game page" is true of.
+        using var db = NewDb();
+        db.UserWishlistItems.Add(new UserWishlistItem { UserId = UserId, GameId = 2, AddedAt = Midday });
+        await db.SaveChangesAsync();
+
+        var service = NewService(db, CacheReturning(Game(1), Game(2), Game(3), Game(4)));
+        var jobId = await UploadAsync(service, Export(
+            Entry(igdbId: "1", name: "Only Wanted", shelves: """{"Wish List": {"date_added": "2025-11-28T00:00:00Z"}}"""),
+            Entry(igdbId: "2", name: "Wanted Before, Played Since"),
+            Entry(igdbId: "3", name: "Played, Unresolved"),
+            Entry(igdbId: "4", name: "Finished", dates: FinishedRun)));
+
+        var result = await service.CommitAsync(UserId, jobId);
+
+        Assert.Equal(4, result!.Games);
+        Assert.Equal(2, result.WishlistOnly);
+        Assert.Equal(1, result.Unlisted);
     }
 
     [Fact]
