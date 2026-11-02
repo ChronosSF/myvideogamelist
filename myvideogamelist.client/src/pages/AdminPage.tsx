@@ -1,10 +1,12 @@
 import { useAuth } from '@/hooks/useAuth';
 import { useAdminStats } from '@/hooks/useAdminStats';
 import { useCalendarAdmin } from '@/hooks/useCalendarAdmin';
+import { useModerationAdmin } from '@/hooks/useModerationAdmin';
 import { AdminStatsCard } from '@/components/AdminStatsCard';
 import { ComingSoonPicksCard } from '@/components/ComingSoonPicksCard';
 import { CuratedEventsCard } from '@/components/CuratedEventsCard';
 import { LoadingState } from '@/components/LoadingState';
+import { ModerationCard } from '@/components/ModerationCard';
 import { PageHeader } from '@/components/PageHeader';
 import { ShowcaseNamesCard } from '@/components/ShowcaseNamesCard';
 import { Skeleton } from '@/components/Skeleton';
@@ -62,21 +64,24 @@ function AdminSkeleton({ label }: { label: string }) {
 
 /**
  * The admin page. It shows what members do, counted (ADR 0051), and edits the release calendar's
- * curated events and showcase names (spec §7) and the home page's Coming soon picks (ADR 0071), and
- * nothing else.
+ * curated events and showcase names (spec §7) and the home page's Coming soon picks (ADR 0071). The one
+ * part that touches a member's own words is the reports: on a reader's report it hides a review or clears a
+ * name, picture or bio, and nothing else of a member's (ADR 0076).
  *
  * The page is the same for everybody who reaches it, and the navbar links to it only for an admin;
  * neither is the guard. Every request it makes is refused by the server's policy unless the account
  * is named in configuration, so somebody who types the address in gets a sentence, not the data.
- * The two halves load apart, so a count that fails leaves the calendar usable; a refusal from either
- * is the whole page's answer, said once.
+ * The parts load apart, so a count that fails leaves the reports and the calendar usable; a refusal from
+ * any is the whole page's answer, said once.
  */
 export function AdminPage() {
     const { user, loading } = useAuth();
     const admin = user?.isAdmin ? user : null;
     const stats = useAdminStats(admin?.id ?? null);
     const curation = useCalendarAdmin(admin?.id ?? null);
-    const refusal = [curation, stats].find(resource => resource.error !== null && resource.errorIsPermanent)?.error ?? null;
+    const moderation = useModerationAdmin(admin?.id ?? null);
+    const refusal = [curation, stats, moderation]
+        .find(resource => resource.error !== null && resource.errorIsPermanent)?.error ?? null;
 
     let calendar: React.ReactNode;
     if (curation.error !== null) {
@@ -131,6 +136,10 @@ export function AdminPage() {
         body = (
             <>
                 <AdminStatsCard stats={stats.data} error={stats.error} reload={stats.reload} />
+                {/* Ahead of the calendar: it is the part that waits on somebody, and the calendar does not. */}
+                <div className="mt-6">
+                    <ModerationCard moderation={moderation} />
+                </div>
                 <div className="mt-6">{calendar}</div>
             </>
         );
@@ -142,7 +151,7 @@ export function AdminPage() {
             <PageHeader
                 title="Admin"
                 width="4xl"
-                description="What members do, counted; and the release calendar's hand-kept dates and the showcases it shows from IGDB."
+                description="What members do, counted; what readers reported; and the release calendar's hand-kept dates and the showcases it shows from IGDB."
             />
             <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">{body}</div>
         </div>

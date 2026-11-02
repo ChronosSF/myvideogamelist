@@ -84,6 +84,16 @@ export function ReviewForm({
 
     return (
         <form className="game-user-panel-review-form" onSubmit={handleSubmit}>
+            {review?.hiddenAt && (
+                // Above everything, because it makes the visibility hint below untrue for now: whatever
+                // "Who can see it" says, nobody but its author does (ADR 0076). Said once, as it stands.
+                <p className="game-user-panel-hidden">
+                    An admin has hidden this review from other readers, because it was reported as breaking
+                    the site&rsquo;s rules. It is still yours to edit or delete, and only you can see it;
+                    editing it does not show it again.
+                </p>
+            )}
+
             <div className="game-user-panel-field">
                 <label htmlFor={`${fieldId}-body`}>What you thought</label>
                 <textarea

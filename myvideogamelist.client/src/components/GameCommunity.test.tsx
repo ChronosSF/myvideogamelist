@@ -58,7 +58,7 @@ function community(overrides: Partial<UseGameCommunityResult> = {}): UseGameComm
 function renderSection(value: UseGameCommunityResult, viewer: string | null = null) {
     return render(
         <MemoryRouter>
-            <GameCommunity community={value} viewer={viewer} />
+            <GameCommunity gameId={1942} community={value} viewer={viewer} />
         </MemoryRouter>,
     );
 }
@@ -392,7 +392,7 @@ describe('GameCommunity more reviews', () => {
         const TWELVE = [...TEN, review({ userName: 'member10' }), review({ userName: 'member11' })];
         const view = renderSection(community({ reviews: TEN, total: 12, hasMore: true }));
         const rerender = (value: UseGameCommunityResult) =>
-            view.rerender(<MemoryRouter><GameCommunity community={value} viewer={null} /></MemoryRouter>);
+            view.rerender(<MemoryRouter><GameCommunity gameId={1942} community={value} viewer={null} /></MemoryRouter>);
 
         await userEvent.click(screen.getByRole('button', { name: 'Show more reviews' }));
         rerender(community({ reviews: TEN, total: 12, hasMore: true, loadingMore: true }));
@@ -413,7 +413,7 @@ describe('GameCommunity more reviews', () => {
         // review takes the focus rather than the body.
         const view = renderSection(community({ reviews: TEN, total: 12, hasMore: true }));
         const rerender = (value: UseGameCommunityResult) =>
-            view.rerender(<MemoryRouter><GameCommunity community={value} viewer={null} /></MemoryRouter>);
+            view.rerender(<MemoryRouter><GameCommunity gameId={1942} community={value} viewer={null} /></MemoryRouter>);
 
         await userEvent.click(screen.getByRole('button', { name: 'Show more reviews' }));
         rerender(community({ reviews: TEN, total: 12, hasMore: true, loadingMore: true }));
@@ -427,11 +427,13 @@ describe('GameCommunity more reviews', () => {
         const TWELVE = [...TEN, review({ userName: 'member10' }), review({ userName: 'member11' })];
         const view = renderSection(community({ reviews: TEN, total: 12, hasMore: true }));
         const rerender = (value: UseGameCommunityResult) =>
-            view.rerender(<MemoryRouter><GameCommunity community={value} viewer={null} /></MemoryRouter>);
+            view.rerender(<MemoryRouter><GameCommunity gameId={1942} community={value} viewer={null} /></MemoryRouter>);
 
         await userEvent.click(screen.getByRole('button', { name: 'Show more reviews' }));
         rerender(community({ reviews: TEN, total: 12, hasMore: true, loadingMore: true }));
-        // Back to the last review's author, as a reader might while waiting; anywhere else would do.
+        // Back past the last review's report control to its author, as a reader might while waiting;
+        // anywhere else would do.
+        await userEvent.tab({ shift: true });
         await userEvent.tab({ shift: true });
         expect(screen.getByRole('link', { name: 'member9' })).toHaveFocus();
         rerender(community({ reviews: TWELVE, total: 12, hasMore: false }));
@@ -450,7 +452,7 @@ describe('GameCommunity more reviews', () => {
         // The page added nothing, and the button is still there to try again.
         const view = renderSection(community({ reviews: TEN, total: 12, hasMore: true }));
         const rerender = (value: UseGameCommunityResult) =>
-            view.rerender(<MemoryRouter><GameCommunity community={value} viewer={null} /></MemoryRouter>);
+            view.rerender(<MemoryRouter><GameCommunity gameId={1942} community={value} viewer={null} /></MemoryRouter>);
 
         await userEvent.click(screen.getByRole('button', { name: 'Show more reviews' }));
         rerender(community({ reviews: TEN, total: 12, hasMore: true, loadingMore: true }));
