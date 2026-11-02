@@ -23,6 +23,12 @@ public enum ReviewWithdrawal
     /// requests can publish it between that read and the delete (ADR 0058 §1).
     /// </summary>
     Deleted,
+
+    /// <summary>
+    /// Hidden by an admin, on a report, whether or not it was public when the hide read it, for the
+    /// reason a delete gives (ADR 0076 §5).
+    /// </summary>
+    Hidden,
 }
 
 /// <summary>
@@ -38,7 +44,8 @@ public enum ReviewWithdrawal
 /// edited or deleted, should stop being served when its owner says so. Those six are the events,
 /// with a seventh that can be one of them: everything recorded about a game deleted, which takes
 /// its review with it. ADR 0056 adds an eighth on the same argument as an edited review: a display
-/// name, an avatar or a bio rewritten or cleared. Nothing else is. A favourite removed, a score
+/// name, an avatar or a bio rewritten or cleared, by its owner or, since ADR 0076, by an admin. And
+/// 0076 adds a ninth, a review an admin hid. Nothing else is. A favourite removed, a score
 /// changed, a statistic that moved: those are a profile's content changing, and they keep the
 /// window (ADR 0029).
 /// </para>
@@ -126,21 +133,23 @@ public sealed class ProfileWithdrawals(
 
     /// <summary>
     /// A public profile's display name, avatar or bio rewritten or cleared: what its owner wrote
-    /// about themselves for the page, taken back as an edited review's words are (ADR 0056). The
-    /// sitemap lists names, not what the page says, so it is left alone.
+    /// about themselves for the page, taken back as an edited review's words are (ADR 0056), by
+    /// its owner or by an admin (ADR 0076). The sitemap lists names, not what the page says, so it
+    /// is left alone.
     /// </summary>
     public void ProfileDetailsChanged(string userName) =>
         Send("profile details changed", Profile(userName));
 
     /// <summary>
-    /// A review made private or edited while it was public, or deleted whatever it was.
-    /// Invalidates the author's profile if that profile is public now.
+    /// A review made private or edited while it was public, or deleted or hidden by an admin
+    /// whatever it was. Invalidates the author's profile if that profile is public now.
     /// </summary>
     public Task ReviewWithdrawnAsync(string userId, ReviewWithdrawal withdrawal) =>
         ProfileChangedAsync(userId, withdrawal switch
         {
             ReviewWithdrawal.MadePrivate => "review made private",
             ReviewWithdrawal.Edited => "review edited",
+            ReviewWithdrawal.Hidden => "review hidden by an admin",
             _ => "review deleted",
         });
 

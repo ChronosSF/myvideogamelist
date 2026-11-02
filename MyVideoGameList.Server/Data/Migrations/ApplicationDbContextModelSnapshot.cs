@@ -318,6 +318,58 @@ namespace MyVideoGameList.Server.Data.Migrations
                         });
                 });
 
+            modelBuilder.Entity("MyVideoGameList.Server.Models.ContentReport", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<string>("ProfileUserId")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<int?>("ReviewId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProfileUserId");
+
+                    b.HasIndex("ReviewId");
+
+                    b.HasIndex("UserId", "ProfileUserId")
+                        .IsUnique()
+                        .HasFilter("\"ProfileUserId\" IS NOT NULL");
+
+                    b.HasIndex("UserId", "ReviewId")
+                        .IsUnique()
+                        .HasFilter("\"ReviewId\" IS NOT NULL");
+
+                    b.ToTable("ContentReports", t =>
+                        {
+                            t.HasCheckConstraint("CK_ContentReports_OneSubject", "(\"ReviewId\" IS NULL) <> (\"ProfileUserId\" IS NULL)");
+
+                            t.HasCheckConstraint("CK_ContentReports_Reason", "\"Reason\" IN ('spam', 'abuse', 'impersonation', 'illegal', 'rights', 'other')");
+                        });
+                });
+
             modelBuilder.Entity("MyVideoGameList.Server.Models.CuratedEvent", b =>
                 {
                     b.Property<int>("Id")
@@ -633,6 +685,9 @@ namespace MyVideoGameList.Server.Data.Migrations
                     b.Property<bool>("HasSpoilers")
                         .HasColumnType("boolean");
 
+                    b.Property<DateTimeOffset?>("HiddenAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<int?>("PlaythroughId")
                         .HasColumnType("integer");
 
@@ -652,6 +707,9 @@ namespace MyVideoGameList.Server.Data.Migrations
                         .HasColumnType("character varying(16)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("HiddenAt")
+                        .HasFilter("\"HiddenAt\" IS NOT NULL");
 
                     b.HasIndex("PlaythroughId");
 
@@ -1053,6 +1111,31 @@ namespace MyVideoGameList.Server.Data.Migrations
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("MyVideoGameList.Server.Models.ContentReport", b =>
+                {
+                    b.HasOne("MyVideoGameList.Server.Models.ApplicationUser", "ProfileUser")
+                        .WithMany()
+                        .HasForeignKey("ProfileUserId")
+                        .OnDelete(DeleteBehavior.Cascade);
+
+                    b.HasOne("MyVideoGameList.Server.Models.Review", "Review")
+                        .WithMany()
+                        .HasForeignKey("ReviewId")
+                        .OnDelete(DeleteBehavior.Cascade);
+
+                    b.HasOne("MyVideoGameList.Server.Models.ApplicationUser", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("ProfileUser");
+
+                    b.Navigation("Review");
+
+                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("MyVideoGameList.Server.Models.ImportJob", b =>

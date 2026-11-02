@@ -105,6 +105,7 @@ public class UserDataExporter(ApplicationDbContext db, TimeProvider clock) : IUs
             { typeof(UserListSetting), new("listNames", ReadListNamesAsync) },
             { typeof(ImportJob), new("importJobs", ReadImportJobsAsync) },
             { typeof(ImportRow), new("importRows", ReadImportRowsAsync) },
+            { typeof(ContentReport), new("reports", ReadReportsAsync) },
         };
 
     /// <summary>
@@ -145,10 +146,11 @@ public class UserDataExporter(ApplicationDbContext db, TimeProvider clock) : IUs
         public IReadOnlyList<ListNameExportDto> ListNames { get; set; } = [];
         public IReadOnlyList<ImportJobExportDto> ImportJobs { get; set; } = [];
         public IReadOnlyList<ImportRowExportDto> ImportRows { get; set; } = [];
+        public IReadOnlyList<ContentReportExportDto> Reports { get; set; } = [];
 
         public UserDataExportDto ToDocument(DateTimeOffset exportedAt, AccountExportDto account) =>
             new(exportedAt, account, Entries, Events, Playthroughs, Reviews, Tags, EntryTags, Wishlist,
-                Favourites, ListSortPreferences, ListNames, ImportJobs, ImportRows);
+                Favourites, ListSortPreferences, ListNames, ImportJobs, ImportRows, Reports);
     }
 
     public async Task<UserDataExportDto> ExportAsync(string userId, CancellationToken cancellationToken)
@@ -329,7 +331,32 @@ public class UserDataExporter(ApplicationDbContext db, TimeProvider clock) : IUs
             .OrderBy(r => r.CreatedAt)
             .ThenBy(r => r.Id)
             .Select(r => new ReviewExportDto(
-                r.Entry.GameId, r.Body, r.HasSpoilers, r.Visibility, r.CreatedAt, r.UpdatedAt))
+                r.Entry.GameId, r.Body, r.HasSpoilers, r.Visibility, r.CreatedAt, r.UpdatedAt, r.HiddenAt))
+            .ToListAsync(cancellationToken);
+    }
+
+    /// <remarks>
+    /// The reports the user made that no admin has answered yet; an answered one is deleted (ADR 0076).
+    /// Whose it was is the name the profile has now, and only while it is public, for the reason
+    /// <see cref="ContentReportExportDto.UserName"/> gives. Oldest first, then by the key, so two exports
+    /// of unchanged data are byte-identical.
+    /// </remarks>
+    private static async Task ReadReportsAsync(
+        ApplicationDbContext db, ExportDraft draft, CancellationToken cancellationToken)
+    {
+        draft.Reports = await db.ContentReports
+            .AsNoTracking()
+            .Where(r => r.UserId == draft.UserId)
+            .OrderBy(r => r.CreatedAt)
+            .ThenBy(r => r.Id)
+            .Select(r => new ContentReportExportDto(
+                r.Review != null
+                    ? r.Review.User.ProfileVisibility == ProfileVisibility.Public ? r.Review.User.UserName : null
+                    : r.ProfileUser!.ProfileVisibility == ProfileVisibility.Public ? r.ProfileUser.UserName : null,
+                r.Review != null ? r.Review.Entry.GameId : null,
+                r.Reason,
+                r.Note,
+                r.CreatedAt))
             .ToListAsync(cancellationToken);
     }
 

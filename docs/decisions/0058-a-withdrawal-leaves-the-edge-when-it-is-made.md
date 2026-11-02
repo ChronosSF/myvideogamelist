@@ -6,7 +6,9 @@
 sitemap file [0036](0036-what-a-crawler-is-told.md) §5 gave the same window. Corrects the sitemap
 path 0036 named. §1's table gains an eighth event in
 [0056](0056-an-avatar-is-an-address-on-a-short-list-of-hosts.md) §8: a public profile's display
-name, avatar or bio rewritten or cleared.
+name, avatar or bio rewritten or cleared; and a ninth in
+[0076](0076-a-reader-reports-and-an-admin-withdraws.md) §5, a review an admin hid, which also makes
+the eighth from a second place, an admin's clear.
 
 ## Context
 

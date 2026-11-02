@@ -100,7 +100,8 @@ public class GameCommunityServiceTests
         string visibility = ReviewVisibility.Public,
         short? score = null,
         bool hasSpoilers = false,
-        DateTimeOffset? createdAt = null)
+        DateTimeOffset? createdAt = null,
+        DateTimeOffset? hiddenAt = null)
     {
         db.Reviews.Add(new Review
         {
@@ -110,7 +111,8 @@ public class GameCommunityServiceTests
             HasSpoilers = hasSpoilers,
             Visibility = visibility,
             CreatedAt = createdAt ?? Now,
-            UpdatedAt = createdAt ?? Now
+            UpdatedAt = createdAt ?? Now,
+            HiddenAt = hiddenAt
         });
 
         db.SaveChanges();
@@ -349,6 +351,32 @@ public class GameCommunityServiceTests
 
         Assert.Empty(page.Reviews);
         Assert.Equal(0, page.Total);
+    }
+
+    [Fact]
+    public async Task GetReviewsAsync_AReviewAnAdminHid_IsNeitherListedNorCounted()
+    {
+        // Public, on a public profile, and hidden: the third gate is the narrowest (ADR 0076).
+        using var db = NewDb();
+        AddReview(db, AddAccount(db, "alex"), body: "Shown.");
+        AddReview(db, AddAccount(db, "sam"), body: "Hidden.", hiddenAt: Now);
+
+        var page = await NewService(db).GetReviewsAsync(GameId, after: null);
+
+        Assert.Equal(["Shown."], page.Reviews.Select(r => r.Body));
+        Assert.Equal(1, page.Total);
+    }
+
+    [Fact]
+    public async Task GetScoresAsync_TheScoreBesideAHiddenReview_StillCounts()
+    {
+        // Hiding withdraws the words, not the score, which names nobody and was never the review's.
+        using var db = NewDb();
+        AddReview(db, AddAccount(db, "alex"), score: 8, hiddenAt: Now);
+
+        var scores = await NewService(db).GetScoresAsync(GameId);
+
+        Assert.Equal(1, scores.Scored);
     }
 
     [Fact]

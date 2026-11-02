@@ -244,6 +244,9 @@ way to spend paths. The sitemap is left alone, because it lists names and no nam
   name, avatar and bio can be anything their owner writes, as a public review already can. Nothing
   reports one and no admin tool clears one: [0042](0042-admins-are-named-in-configuration.md) keeps
   the admin page to reference data. Moderating what members publish is #307.
+
+  > **Later note.** [0076](0076-a-reader-reports-and-an-admin-withdraws.md) is #307's v1: a reader
+  > reports a profile, and an admin clears its display name, picture or bio.
 - **A detail set for the first time waits out the edge's window**, like any new content on a public
   profile: five minutes, and up to an hour stale (0027 §10). The form says a change can take up to
   about an hour, which stays true of an addition and is the worst case for a withdrawal while §8's
