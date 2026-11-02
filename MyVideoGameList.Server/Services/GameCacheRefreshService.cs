@@ -70,9 +70,12 @@ internal sealed class GameCacheRefreshService(
     /// of the table queued behind the migration. The resilience pipeline bounds a call at thirty
     /// seconds, and a process's first batch makes two, the token and the query, so a slow IGDB could
     /// otherwise hold that lock for a minute. Fifteen seconds is five times the slowest batch
-    /// measured (five hundred ids, 2.9 seconds) and leaves room for one retry.
+    /// measured (five hundred ids, 2.9 seconds) and leaves room for one retry. The wait is the one
+    /// stretch any transaction of ours spends idle by design, so it has to stay well inside
+    /// <see cref="SessionLimits.IdleInTransaction"/>, past which PostgreSQL ends the session;
+    /// internal so that <c>SessionLimitsTests</c> can hold the two apart (ADR 0079).
     /// </remarks>
-    private static readonly TimeSpan IgdbWaitLimit = TimeSpan.FromSeconds(15);
+    internal static readonly TimeSpan IgdbWaitLimit = TimeSpan.FromSeconds(15);
 
     /// <summary>
     /// How long a batch is kept out of the queue when IGDB answered it in a shape this code cannot

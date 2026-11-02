@@ -63,7 +63,7 @@ grow a forward pointer when a later record or an issue closes something it left 
 | [0041](0041-what-the-roadmap-decided-on-its-own.md) | The plan moves to GitHub issues, and what the roadmap decided on its own | Implemented |
 | [0042](0042-admins-are-named-in-configuration.md) | Admins are account ids in configuration, behind one server-side policy | Implemented |
 | [0043](0043-where-the-key-ring-lives.md) | The key ring lives in Parameter Store, under a name that does not move, and never nowhere by accident | Implemented; proved only by a deploy; `AllowEphemeralKeys` also set by the integration suite, 0057 |
-| [0044](0044-what-the-deployment-walkthrough-settled.md) | What the deployment walkthrough settled, and where it found the records wrong | Accepted; built by #97; the client-image job it left to #106 is 0061 |
+| [0044](0044-what-the-deployment-walkthrough-settled.md) | What the deployment walkthrough settled, and where it found the records wrong | Accepted; built by #97; the client-image job it left to #106 is 0061; the migration task's lock wait is 0079 |
 | [0045](0045-an-import-asks-once-about-what-it-will-not-guess.md) | An import asks once about what it will not guess: one list for every game played without an outcome | Implemented |
 | [0046](0046-the-balancer-answers-its-own-distribution.md) | The balancer answers its own distribution, and what else the CloudFront phase settled | Implemented |
 | [0047](0047-a-playthroughs-dates-count-and-a-status-change-comes-first.md) | A playthrough's dates count in the activity figures, and a status change comes first | Implemented; a rule for what is counted, which the history's list does not apply (0062) |
@@ -71,7 +71,7 @@ grow a forward pointer when a later record or an issue closes something it left 
 | [0049](0049-every-colour-is-a-token.md) | Every colour is a token, named for its job, in one file | Implemented |
 | [0050](0050-an-imported-run-takes-its-type-from-the-source.md) | An imported run takes its type from the source's completion level | Implemented |
 | [0051](0051-admin-statistics-are-counted-never-listed.md) | Admin statistics are counted, never listed | Implemented |
-| [0052](0052-a-background-refresh-ahead-of-the-reader.md) | A background refresh: cached games an hour before a reader would, Steam feeds before they expire | Implemented |
+| [0052](0052-a-background-refresh-ahead-of-the-reader.md) | A background refresh: cached games an hour before a reader would, Steam feeds before they expire | Implemented; its wait across IGDB sizes 0079's idle limit |
 | [0053](0053-a-documents-scripts-carry-its-renders-nonce.md) | A document's scripts carry its render's nonce, and a shared cache keeps the pair whole | Implemented |
 | [0054](0054-a-hand-arranged-order-is-a-sparse-position.md) | A hand-arranged order is a sparse position the client computes, and a change of list clears it | Implemented; §9 answered for the favourites by 0064 |
 | [0056](0056-an-avatar-is-an-address-on-a-short-list-of-hosts.md) | An avatar is an address on a short list of hosts, which the document policy's `img-src` names too; a display name stands beside the handle; a bio is plain text | Implemented; the navbar's avatar is #370, the member reviews' #371 |
@@ -94,6 +94,7 @@ grow a forward pointer when a later record or an issue closes something it left 
 | [0073](0073-the-home-page-a-welcome-coming-soon-just-out-and-the-news.md) | The home page: a welcome, Coming soon and Just out, and the news last | Implemented |
 | [0074](0074-the-home-page-is-kept-twice-by-a-flag-that-names-nobody.md) | The home page is kept twice, by a flag that names nobody | Implemented |
 | [0075](0075-the-editorial-redesign.md) | The editorial redesign: ink and paper, one accent, three typefaces, and rules for boxes | Implemented |
+| [0079](0079-a-migration-waits-five-seconds-for-a-lock-and-no-transaction-idles-past-a-minute.md) | A migration waits five seconds for a lock, and no transaction of the API's idles past a minute | Implemented |
 
 **Status** — *Accepted*: decided, not yet built. *Implemented*: decided and in the code.
 *Superseded*: replaced by a later record.

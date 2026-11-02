@@ -110,8 +110,10 @@ builder.Services.AddEdgeInvalidation(builder.Configuration);
 // The clock, injected so the event log's timestamps are controllable in tests.
 builder.Services.AddSingleton(TimeProvider.System);
 
+// Every session the API opens ends if it sits idle in a transaction for a minute, so a transaction
+// nobody finishes cannot hold its locks for as long as the process lives. See docs/decisions/0079-*.
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
-    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
+    options.UseNpgsql(SessionLimits.ForApi(builder.Configuration.GetConnectionString("DefaultConnection"))));
 
 // Readiness checks. Liveness (/healthz) deliberately runs no checks - it answers
 // "is the process up", not "are its dependencies well".

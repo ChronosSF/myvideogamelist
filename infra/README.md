@@ -164,6 +164,14 @@ not answer directly.
 
 ## Things that will bite you
 
+- **A migration that fails with `55P03`, "canceling statement due to lock timeout", is re-run.** The
+  migration task waits five seconds for any lock and then gives up, because while its DDL waits every
+  reader of that table waits behind it, and the old revision is still serving (ADR 0079). An export or
+  a cache refresh in flight can cost one release that way. Failing twice means something holds a
+  transaction open on the table it names: `pg_stat_activity` shows which session, and an API session
+  idle in a transaction is ended within a minute anyway. The limit comes from
+  `MyVideoGameList.Server/Data/SessionLimits.cs`, which `Infra.csproj` compiles from the API's source.
+
 - **A stopped database may refuse to start, for a while.** A Single-AZ instance is pinned to its
   availability zone, and the small classes run out of capacity there now and then: the first
   resume of this environment was refused with `InsufficientDBInstanceCapacity`, and the same
