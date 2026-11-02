@@ -94,6 +94,7 @@ grow a forward pointer when a later record or an issue closes something it left 
 | [0073](0073-the-home-page-a-welcome-coming-soon-just-out-and-the-news.md) | The home page: a welcome, Coming soon and Just out, and the news last | Implemented |
 | [0074](0074-the-home-page-is-kept-twice-by-a-flag-that-names-nobody.md) | The home page is kept twice, by a flag that names nobody | Implemented |
 | [0075](0075-the-editorial-redesign.md) | The editorial redesign: ink and paper, one accent, three typefaces, and rules for boxes | Implemented |
+| [0080](0080-an-alarm-watches-what-a-reader-sees-and-mails-an-address-nobody-commits.md) | An alarm watches what a reader sees, and mails an address the repository never holds | Implemented; proved only by a deploy |
 
 **Status** — *Accepted*: decided, not yet built. *Implemented*: decided and in the code.
 *Superseded*: replaced by a later record.
