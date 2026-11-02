@@ -346,6 +346,20 @@ describe('ImportReviewPage', () => {
         expect(screen.getByRole('button', { name: 'Download what was skipped' })).toBeInTheDocument();
     });
 
+    it('moves focus to the result once it replaces the review', async () => {
+        // Issue 302. The Import button that had focus goes with the review, and focus left alone
+        // falls to the document, where a screen reader says nothing about what happened.
+        review.review = loaded([row()]);
+        const { rerenderPage } = renderPage();
+        const commit = screen.getByRole('button', { name: 'Import 1 game' });
+        commit.focus();
+
+        review.result = importResult({ imported: 1 });
+        rerenderPage();
+
+        expect(screen.getByRole('heading', { name: 'Import finished' })).toHaveFocus();
+    });
+
     it('offers no download when every row imported', () => {
         review.result = importResult({ imported: 3 });
         renderPage();

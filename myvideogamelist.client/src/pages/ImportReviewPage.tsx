@@ -724,6 +724,11 @@ function Badge({ children, tone = 'neutral' }: { children: React.ReactNode; tone
  * from are a different number only when two of the rows it imported named one game — as a source
  * that lists a game once per platform does — and only then does the panel speak of rows. Then it
  * has to: after a review that said it would import 14, a bare "11 games" reads as three lost.
+ *
+ * It takes focus to its heading as it mounts (issue 302). It replaces the review, and the Import
+ * button that had focus goes with it, so focus would fall to the document and a screen reader would
+ * say nothing at all. A `role="status"` region would not do instead: one that mounts with its words
+ * already in it is not reliably announced.
  */
 function ResultPanel({ rows, games, unlisted, wishlistOnly, skipped, fileName }: {
     /** The rows imported — the job's `importedCount`, which with the skipped ones is every row. */
@@ -762,6 +767,12 @@ function ResultPanel({ rows, games, unlisted, wishlistOnly, skipped, fileName }:
             .filter(Boolean)
             .join(' ');
 
+    // Once, as it mounts. A second run, as StrictMode makes in development, focuses it again.
+    const heading = useRef<HTMLHeadingElement>(null);
+    useEffect(() => {
+        heading.current?.focus();
+    }, []);
+
     // A skipped row is a row, and can be one whose game another row imported. Until the panel has
     // spoken of rows, the file's rows are its games and need no noun of their own.
     const passedOver = skipped.length === 0
@@ -770,7 +781,14 @@ function ResultPanel({ rows, games, unlisted, wishlistOnly, skipped, fileName }:
 
     return (
         <div className="max-w-2xl mx-auto px-4 py-16 text-center">
-            <h1 className="text-2xl font-bold text-fg-strong mb-2">Import finished</h1>
+            {/* Focusable from script only: it is where focus goes, and pressing it does nothing. */}
+            <h1
+                ref={heading}
+                tabIndex={-1}
+                className="type-display text-3xl text-fg-strong mb-3 rounded-sm focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus"
+            >
+                Import finished
+            </h1>
             <p className="text-fg-muted mb-8">
                 {outcome}
                 {passedOver}
