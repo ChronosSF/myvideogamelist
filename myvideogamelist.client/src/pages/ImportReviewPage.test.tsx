@@ -101,9 +101,10 @@ function tile(label: string): string[] {
 
 /**
  * A row's search, opened and answered. The API is stubbed to answer every search with `games` at
- * once, and the clock is faked so the debounce can be run out rather than waited for.
+ * once, and the clock is faked so the debounce can be run out rather than waited for. Opened by the
+ * button `toggle` names: the search's own, unless the row's game is being changed.
  */
-async function searchRow(title: string, games: GameDto[]) {
+async function searchRow(title: string, games: GameDto[], toggle = `Search IGDB for ${title}`) {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
     // Testing Library waits out a zero-length timeout after every userEvent call, and only moves a
     // faked clock past it when it finds Jest's timers. This is the one method it reaches for.
@@ -116,7 +117,7 @@ async function searchRow(title: string, games: GameDto[]) {
     }) as unknown as Response));
 
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-    await user.click(screen.getByRole('button', { name: `Search IGDB for ${title}` }));
+    await user.click(screen.getByRole('button', { name: toggle }));
     await act(async () => {
         vi.advanceTimersByTime(SEARCH_DEBOUNCE_MS);
         await new Promise(resolve => setImmediate(resolve));
@@ -715,6 +716,52 @@ describe('ImportReviewPage', () => {
         ]);
         // The search goes with the question it answered.
         expect(screen.queryByRole('searchbox')).not.toBeInTheDocument();
+    });
+
+    it('offers to change a game that was found by its title or chosen here, and names it', async () => {
+        // Issue 324. A mis-click — the 2019 Resident Evil 2 for the 1998 one — could be unticked and
+        // not put right, and the row said only the file's title, so the wrong game was a cover away
+        // from being noticed. The search is the one a row nobody could place has.
+        review.review = loaded([row({
+            id: 1, title: 'Resident Evil 2', releaseYear: 1998, gameId: 19686, gameFromFile: false,
+            game: game({ id: 19686, title: 'Resident Evil 2', releaseDate: '2019-01-25' }),
+        })]);
+        renderPage();
+
+        await userEvent.click(screen.getByRole('button', { name: /^All / }));
+
+        expect(screen.getByText(/Matched to/)).toHaveTextContent('Matched to Resident Evil 2 (2019).');
+        expect(screen.getByRole('button', { name: 'Change the game for Resident Evil 2' })).toHaveTextContent('Change');
+    });
+
+    it('offers no change on a row whose game its file named', async () => {
+        // The file's id is its owner's own record of what they played, and on a Grouvee export it is
+        // nearly every row: a Change on each would be six hundred controls nobody needs.
+        review.review = loaded([row({ id: 1, gameFromFile: true })]);
+        renderPage();
+
+        await userEvent.click(screen.getByRole('button', { name: /^All / }));
+
+        expect(screen.queryByRole('button', { name: /^Change the game/ })).not.toBeInTheDocument();
+        expect(screen.queryByText(/Matched to/)).not.toBeInTheDocument();
+    });
+
+    it('writes a changed game through the same decision choosing one takes', async () => {
+        const original = game({ id: 880, title: 'Resident Evil 2', releaseDate: '1998-01-21' });
+        review.review = loaded([row({
+            id: 1, title: 'Resident Evil 2', releaseYear: 1998, gameId: 19686, gameFromFile: false,
+            game: game({ id: 19686, title: 'Resident Evil 2', releaseDate: '2019-01-25' }),
+        })]);
+        renderPage();
+        await userEvent.click(screen.getByRole('button', { name: /^All / }));
+
+        const user = await searchRow('Resident Evil 2', [original], 'Change the game for Resident Evil 2');
+        await user.click(screen.getByRole('button', { name: 'Use Resident Evil 2 (1998)' }));
+
+        expect(review.setDecisions).toHaveBeenCalledWith([
+            { rowId: 1, decision: 'import', gameId: 880, game: original, alreadyTracked: false },
+        ]);
+        expect(screen.getByRole('status')).toHaveTextContent('Resident Evil 2 (1998) chosen for “Resident Evil 2”.');
     });
 
     it('leaves a chosen game the user already has unticked, and says why', async () => {

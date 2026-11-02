@@ -439,6 +439,8 @@ function applyDecisions(review: ImportReview, decisions: ImportRowChoice[]): Imp
                     gameId: decision.gameId,
                     matchKind: IMPORT_MATCH.matched,
                     candidates: [],
+                    // Chosen here, so changeable here: the file's own game is never offered for one.
+                    gameFromFile: false,
                     // What the screen knows of the game chosen, until the next read says it again.
                     ...(decision.game ? { game: decision.game } : {}),
                     ...(decision.alreadyTracked !== undefined ? { alreadyTracked: decision.alreadyTracked } : {}),
@@ -482,6 +484,7 @@ function merge(review: ImportReview, pass: ImportMatchPass): ImportReview {
             candidates: answer.candidates,
             matchKind: answer.matchKind,
             alreadyTracked: answer.alreadyTracked,
+            gameFromFile: answer.gameFromFile,
             decision: preChecked ? answer.decision : row.decision,
         };
     });

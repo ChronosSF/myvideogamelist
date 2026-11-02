@@ -165,7 +165,7 @@ export function importJob(overrides: Partial<ImportJob> = {}): ImportJob {
     };
 }
 
-/** One row of a review. Nineteen fields, of which a test usually cares about two. */
+/** One row of a review. Twenty fields, of which a test usually cares about two. */
 export function importRow(overrides: Partial<ImportReviewRow> = {}): ImportReviewRow {
     return {
         id: 1,
@@ -187,6 +187,7 @@ export function importRow(overrides: Partial<ImportReviewRow> = {}): ImportRevie
         playthroughCount: 0,
         minutesPlayed: null,
         alreadyTracked: false,
+        gameFromFile: true,
         ...overrides,
     };
 }

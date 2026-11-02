@@ -885,7 +885,10 @@ public class ImportService(
             HasNotes: payload.Notes is not null,
             PlaythroughCount: payload.Playthroughs.Count,
             MinutesPlayed: payload.Playthroughs.Sum(p => p.MinutesPlayed ?? 0) is var minutes and > 0 ? minutes : null,
-            AlreadyTracked: row.GameId is { } gameId && tracked.Contains(gameId));
+            AlreadyTracked: row.GameId is { } gameId && tracked.Contains(gameId),
+
+            // The payload keeps the id the file named, whatever has been chosen since.
+            GameFromFile: row.GameId is { } current && payload.GameId == current);
     }
 
     private static ImportJobDto ToDto(ImportJob job) =>

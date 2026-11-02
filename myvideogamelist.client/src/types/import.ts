@@ -112,6 +112,12 @@ export interface ImportReviewRow {
     minutesPlayed: number | null;
     /** The user already has an entry for this game, so importing it overwrites what is there. */
     alreadyTracked: boolean;
+    /**
+     * The game is the one the file named, rather than one the matcher found or its owner chose here.
+     * Only a game that is not can be changed on the review (issue 324): what the file named is its
+     * owner's own record, and a game found by its title is a guess or a click that can be wrong.
+     */
+    gameFromFile: boolean;
 }
 
 export interface ImportReview {

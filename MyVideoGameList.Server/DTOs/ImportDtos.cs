@@ -98,6 +98,12 @@ public record ImportReviewSummaryDto(
 /// The user already has an entry for this game. Such a row defaults to <c>skip</c>, and importing
 /// it overwrites what is there — which is why it is opt-in per row.
 /// </param>
+/// <param name="GameFromFile">
+/// The row's game is the one its file named, rather than one the matcher found or its owner chose on
+/// the review. The screen offers to change a row's game only when this is false (issue 324): a game
+/// the file named is the owner's own record, where a game found by title is a guess or a click that
+/// can be wrong.
+/// </param>
 public record ImportReviewRowDto(
     int Id,
     string Title,
@@ -117,7 +123,8 @@ public record ImportReviewRowDto(
     bool HasNotes,
     int PlaythroughCount,
     int? MinutesPlayed,
-    bool AlreadyTracked);
+    bool AlreadyTracked,
+    bool GameFromFile);
 
 /// <summary>
 /// What one matching pass did.

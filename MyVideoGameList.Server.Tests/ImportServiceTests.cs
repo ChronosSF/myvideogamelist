@@ -1428,6 +1428,41 @@ public class ImportServiceTests
         Assert.Empty(resolved.Candidates);
     }
 
+    [Fact]
+    public async Task GetReviewAsync_SaysWhichRowsHaveTheGameTheirFileNamed()
+    {
+        // Issue 324. The screen offers to change a row's game only where the game is one we found or
+        // somebody chose here: a game the file named is its owner's own record of what they played.
+        // One row of each: the file's id, the matcher's answer, and a game chosen for a row the
+        // matcher could not place, then changed to another.
+        using var db = NewDb();
+        var service = NewService(
+            db,
+            CacheReturning(Game(379), Game(42), Game(7), Game(8)),
+            MatcherAnswering(query => query.Title == "Found By Title"
+                ? new ImportMatchResult(ImportMatchKinds.Matched, 42, [])
+                : new ImportMatchResult(ImportMatchKinds.Unmatched, null, [])));
+
+        var jobId = await UploadAsync(service, Export(
+            Entry(),
+            Entry(name: "Found By Title", igdbId: "null"),
+            Entry(name: "Chosen By Hand", igdbId: "null")));
+        await service.MatchAsync(UserId, jobId);
+
+        var chosen = (await service.GetReviewAsync(UserId, jobId))!.Rows.Single(r => r.Title == "Chosen By Hand");
+        await service.SetDecisionsAsync(UserId, jobId, new ImportDecisionsDto(
+            [new ImportRowDecisionDto(chosen.Id, ImportDecisions.Import, 7, null)]));
+        await service.SetDecisionsAsync(UserId, jobId, new ImportDecisionsDto(
+            [new ImportRowDecisionDto(chosen.Id, ImportDecisions.Import, 8, null)]));
+
+        var rows = (await service.GetReviewAsync(UserId, jobId))!.Rows.ToDictionary(r => r.Title);
+
+        Assert.True(rows["Metal Gear Solid 3"].GameFromFile);
+        Assert.False(rows["Found By Title"].GameFromFile);
+        Assert.Equal(8, rows["Chosen By Hand"].GameId);
+        Assert.False(rows["Chosen By Hand"].GameFromFile);
+    }
+
     // ---------------------------------------------------------- the retention clock
 
     [Fact]

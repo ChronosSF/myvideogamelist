@@ -169,7 +169,6 @@ export function ImportReviewPage() {
      * to. The review is on screen before any row can be chosen.
      */
     const choose = (row: ImportReviewRow, game: GameDto, index: number) => {
-        const year = game.releaseDate === null ? '' : ` (${releaseYear(game.releaseDate)})`;
         const tracked = review?.trackedGameIds.includes(game.id) ?? false;
 
         // Consumed by the render the decision's own update makes, which is the one that has moved
@@ -177,8 +176,8 @@ export function ImportReviewPage() {
         refocus.current = { rowId: row.id, index };
         setSearchingRow(null);
         setChosen(tracked
-            ? `${game.title}${year} chosen for “${row.title}”. It is already in your lists, so it is left unticked.`
-            : `${game.title}${year} chosen for “${row.title}”.`);
+            ? `${titleAndYear(game)} chosen for “${row.title}”. It is already in your lists, so it is left unticked.`
+            : `${titleAndYear(game)} chosen for “${row.title}”.`);
 
         void setDecisions([{
             rowId: row.id,
@@ -510,6 +509,26 @@ export function ImportReviewPage() {
                                             />
                                         )}
 
+                                        {/* Issue 324: the same search, to change a game we found
+                                            or somebody chose here — a mis-click on Resident Evil 2
+                                            (2019) for the 1998 one could be unticked and not put
+                                            right. It names the game the row has now, which the
+                                            file's title above does not, so a wrong one can be seen
+                                            before it is imported. */}
+                                        {changeable(row) && (
+                                            <ImportRowSearch
+                                                title={row.title}
+                                                prompt={row.game
+                                                    ? <>Matched to <span className="text-fg-soft">{titleAndYear(row.game)}</span>.</>
+                                                    : 'Not the right game?'}
+                                                label="Change"
+                                                name={`Change the game for ${row.title}`}
+                                                open={searchingRow === row.id}
+                                                onOpenChange={open => setSearchingRow(open ? row.id : null)}
+                                                onChoose={game => choose(row, game, index)}
+                                            />
+                                        )}
+
                                         {/* An unrecognised shelf is asked about rather than
                                             defaulted — the rule from the spec §3.2. */}
                                         {row.statusUnrecognised && (
@@ -605,6 +624,21 @@ function needsAttention(row: ImportReviewRow): boolean {
  */
 function searchable(row: ImportReviewRow): boolean {
     return row.matchKind === IMPORT_MATCH.unmatched || row.matchKind === IMPORT_MATCH.ambiguous;
+}
+
+/**
+ * A row whose game can be changed, through the same search (issue 324): one with a game the matcher
+ * found by its title, or that somebody chose here. Not one whose game the file named, which is its
+ * owner's own record of what they played, and which on a Grouvee export is nearly every row — so the
+ * screen most people see gains nothing it does not need.
+ */
+function changeable(row: ImportReviewRow): boolean {
+    return row.matchKind === IMPORT_MATCH.matched && row.gameId !== null && !row.gameFromFile;
+}
+
+/** A game as a person recognises it: "Resident Evil 2 (1998)". */
+function titleAndYear(game: GameDto): string {
+    return game.releaseDate === null ? game.title : `${game.title} (${releaseYear(game.releaseDate)})`;
 }
 
 /**
