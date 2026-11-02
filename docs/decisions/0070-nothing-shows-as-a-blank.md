@@ -1,6 +1,8 @@
 # 0070. Nothing shows as a blank: empty and error states that teach, skeletons, and covers at their size
 
-**Status:** Implemented — #127, its first and third points.
+**Status:** Implemented — #127, its first and third points. The render failure it leaves to #337 is
+closed: `entry.server.tsx` makes any 5xx document `private, no-store`, a route that is its own boundary
+included ([0053](0053-a-documents-scripts-carry-its-renders-nonce.md) §4 says where).
 **Amends:** [0028](0028-a-games-community-view.md) §3, its sentence that a game with scores under the
 floor and no reviews shows no section at all; and §6, that a reload keeps what is on screen
 

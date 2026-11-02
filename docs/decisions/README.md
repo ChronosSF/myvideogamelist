@@ -88,7 +88,7 @@ grow a forward pointer when a later record or an issue closes something it left 
 | [0067](0067-the-esrb-filter-lists-a-game-under-its-badge.md) | The ESRB filter lists a game under the rating its badge shows | Implemented |
 | [0068](0068-lighthouse-on-the-production-shape.md) | Lighthouse on the production shape: five pages, a phone and a desktop, and only what the runner cannot move fails the build | Implemented; its credentials are allowed, and its lockfile audited, by 0061 |
 | [0069](0069-a-crawler-is-told-what-is-ours.md) | A crawler is told what is ours: the member score in the server render, a description that leads with it, and structured data | Implemented |
-| [0070](0070-nothing-shows-as-a-blank.md) | Nothing shows as a blank: empty and error states that teach, skeletons, and covers at their size | Implemented |
+| [0070](0070-nothing-shows-as-a-blank.md) | Nothing shows as a blank: empty and error states that teach, skeletons, and covers at their size | Implemented; the render failure it left to #337 closed by the entry's 5xx rule |
 | [0071](0071-coming-soon-is-what-igdb-says-people-are-waiting-for.md) | Coming soon is what IGDB says people are waiting for, cut to ten and corrected by hand | Implemented |
 | [0072](0072-steam-news-is-a-games-own-announcements.md) | Steam news is a game's own announcements, not the press Steam collects | Implemented |
 | [0073](0073-the-home-page-a-welcome-coming-soon-just-out-and-the-news.md) | The home page: a welcome, Coming soon and Just out, and the news last | Implemented |
