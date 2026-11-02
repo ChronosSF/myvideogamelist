@@ -68,7 +68,10 @@ export interface ImportReviewSummary {
      */
     playedUnresolved: number;
     alreadyTracked: number;
-    /** How many rows are set to import — what the commit button counts. */
+    /**
+     * How many rows are set to import, which the "Importing" filter counts. The commit button counts
+     * the games those rows name, which can be fewer: two rows can name one game.
+     */
     selected: number;
 }
 

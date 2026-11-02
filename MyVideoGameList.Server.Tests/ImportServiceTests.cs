@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using System.Globalization;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using Microsoft.EntityFrameworkCore;
@@ -293,6 +294,23 @@ public class ImportServiceTests
 
         await Assert.ThrowsAsync<ImportRejectedException>(
             () => NewService(db).CreateJobAsync(UserId, "grouvee_export.json", Export()));
+    }
+
+    [Fact]
+    public async Task CreateJobAsync_PastTheLimitOfRows_IsRefusedInRowsAndStoresNothing()
+    {
+        // Rows, as the limit is, and as the file has: a source listing a game once per platform
+        // has more of them than games (issue 300). Grouped, as the client groups every count.
+        using var db = NewDb();
+        var entries = Enumerable.Range(1, ImportService.MaxRows + 1)
+            .Select(id => Entry(igdbId: id.ToString(CultureInfo.InvariantCulture)))
+            .ToArray();
+
+        var error = await Assert.ThrowsAsync<ImportRejectedException>(
+            () => NewService(db).CreateJobAsync(UserId, "grouvee_export.json", Export(entries)));
+
+        Assert.Equal("That export has 5,001 rows, and the limit is 5,000.", error.Message);
+        Assert.Empty(db.ImportJobs);
     }
 
     [Fact]

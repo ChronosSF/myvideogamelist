@@ -1,3 +1,4 @@
+using System.Globalization;
 using Microsoft.EntityFrameworkCore;
 using MyVideoGameList.Server.Data;
 using MyVideoGameList.Server.DTOs;
@@ -110,9 +111,13 @@ public class ImportService(
         if (payloads.Count == 0)
             throw new ImportRejectedException("That export has no games in it.");
 
+        // Rows, as the limit is: a source listing a game once per platform has more rows than games
+        // (issue 300). Grouped by the invariant culture rather than the server's, which is the same
+        // on every deployment only by accident.
         if (payloads.Count > MaxRows)
-            throw new ImportRejectedException(
-                $"That export has {payloads.Count} games, and the limit is {MaxRows}.");
+            throw new ImportRejectedException(string.Create(
+                CultureInfo.InvariantCulture,
+                $"That export has {payloads.Count:N0} rows, and the limit is {MaxRows:N0}."));
 
         var now = clock.GetUtcNow();
 

@@ -17,7 +17,7 @@ import {
  *
  * The API answers `ProblemDetails`, and its `detail` is written for a person — the upload's
  * rejections say exactly what is wrong with the file. Reading the status alone turns "that export
- * has 8,000 games and the limit is 5,000" into "Something went wrong", which is the mistake the
+ * has 8,000 rows, and the limit is 5,000" into "Something went wrong", which is the mistake the
  * frontend conventions record as having been made once already.
  */
 async function problem(response: Response, fallback: string): Promise<string> {

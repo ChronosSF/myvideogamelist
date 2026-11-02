@@ -125,6 +125,17 @@ export function ImportReviewPage() {
     // filter's own label, and the list itself — over up to five thousand rows.
     const attention = useMemo(() => rows.filter(needsAttention), [rows]);
 
+    // Games rather than rows wherever a row's game is known, because a game is what lands in
+    // somebody's library and two rows can name one — a source listing a game once per platform, or
+    // the same game chosen for two rows (issue 300). The commit makes one entry of them, and its
+    // result panel counts the games it wrote, so a button that counted rows promised more than that.
+    // Counted off the rows, as `attention` is, rather than kept in the summary beside them.
+    const importing = useMemo(() => {
+        const selected = rows.filter(row => row.decision === IMPORT_DECISION.import);
+        return { rows: selected.length, games: gamesNamed(selected) };
+    }, [rows]);
+    const trackedGames = useMemo(() => gamesNamed(rows.filter(row => row.alreadyTracked)), [rows]);
+
     // The played-but-unresolved group's list, read back off its rows rather than held beside them,
     // so the choice can never say one thing while the rows say another.
     const playedStatus = useMemo(() => {
@@ -297,9 +308,19 @@ export function ImportReviewPage() {
                 {review && !loading && !error && (
                     <>
                         <dl className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                            <Tile label="Games in file" value={review.summary.total} />
-                            <Tile label="Will import" value={review.summary.selected} />
-                            <Tile label="Already in your lists" value={review.summary.alreadyTracked} />
+                            {/* The file's rows, under no noun: what is in a file is rows, and no
+                                count of games can be made of the ones nothing has matched yet. */}
+                            <Tile label="In your file" value={review.summary.total} />
+                            {/* Named rows only when they differ, as the result panel does, so that
+                                "11" beside a file of 14 does not read as three left out. */}
+                            <Tile
+                                label="Games to import"
+                                value={importing.games}
+                                note={importing.games < importing.rows
+                                    ? `from ${formatCount(importing.rows)} rows`
+                                    : undefined}
+                            />
+                            <Tile label="Already in your lists" value={trackedGames} />
                             {/* Counted off the rows rather than added up out of the summary, which
                                 would count a row twice when its game is unknown *and* its shelf
                                 is — and which is the same set the "Needs you" filter shows. */}
@@ -313,9 +334,9 @@ export function ImportReviewPage() {
                             <div className="flex flex-wrap items-center gap-3 px-4 py-3 bg-primary-950/40 border border-primary-800/50 rounded-lg">
                                 <p className="text-sm text-fg-soft grow">
                                     {formatCount(review.summary.unlooked)}{' '}
-                                    {review.summary.unlooked === 1 ? 'game was' : 'games were'} exported
-                                    without an id. We can search for {review.summary.unlooked === 1 ? 'it' : 'them'} by
-                                    name — you still choose anything we are not sure about.
+                                    {review.summary.unlooked === 1 ? 'row of your file names' : 'rows of your file name'} a
+                                    game without its id. We can look {review.summary.unlooked === 1 ? 'it' : 'them'} up
+                                    by name — you still choose anything we are not sure about.
                                 </p>
                                 <button
                                     type="button"
@@ -380,7 +401,7 @@ export function ImportReviewPage() {
                             <p ref={nothingLeftRef} tabIndex={-1} className="text-fg-muted text-sm py-12 text-center rounded-lg focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus">
                                 {filter === 'attention'
                                     ? 'Nothing needs a decision — every game was matched and understood.'
-                                    : 'No games here.'}
+                                    : 'Nothing here.'}
                             </p>
                         )}
 
@@ -500,9 +521,14 @@ export function ImportReviewPage() {
                                                     defaultValue=""
                                                     onChange={event => {
                                                         if (!event.target.value) return;
+                                                        // Selected only once it has a game, as the
+                                                        // checkbox is: a row with none would be
+                                                        // listed as importing and then skipped.
                                                         void setDecisions([{
                                                             rowId: row.id,
-                                                            decision: IMPORT_DECISION.import,
+                                                            decision: row.gameId === null
+                                                                ? IMPORT_DECISION.skip
+                                                                : IMPORT_DECISION.import,
                                                             status: event.target.value,
                                                         }]);
                                                     }}
@@ -536,11 +562,13 @@ export function ImportReviewPage() {
                                 shown and then quietly not applied. */}
                             <button
                                 type="button"
-                                disabled={busy || saving || review.summary.selected === 0}
+                                disabled={busy || saving || importing.games === 0}
                                 onClick={() => void commitAndRefresh()}
                                 className="px-5 py-2.5 btn-primary disabled:opacity-50 text-sm"
                             >
-                                {busy ? 'Importing…' : `Import ${formatCount(review.summary.selected)} games`}
+                                {busy
+                                    ? 'Importing…'
+                                    : `Import ${formatCount(importing.games)} ${importing.games === 1 ? 'game' : 'games'}`}
                             </button>
                             <button
                                 type="button"
@@ -634,11 +662,17 @@ function PlayedChoice({ id, count, status, disabled, label, onChoose }: {
     );
 }
 
-function Tile({ label, value }: { label: string; value: number }) {
+/** How many games these rows name. A row with no game yet names none. */
+function gamesNamed(rows: ImportReviewRow[]): number {
+    return new Set(rows.flatMap(row => (row.gameId === null ? [] : [row.gameId]))).size;
+}
+
+function Tile({ label, value, note }: { label: string; value: number; note?: string }) {
     return (
         <div className="pt-3 border-t border-line-strong">
             <dt className="type-kicker text-fg-muted">{label}</dt>
             <dd className="mt-1.5 type-display text-3xl text-fg-strong">{formatCount(value)}</dd>
+            {note && <dd className="mt-1 type-meta text-xs text-fg-muted">{note}</dd>}
         </div>
     );
 }

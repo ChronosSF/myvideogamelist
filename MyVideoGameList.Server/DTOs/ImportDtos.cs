@@ -44,7 +44,10 @@ public record ImportReviewDto(
 /// stored, because the answer is about their library and can change between the upload and the
 /// commit.
 /// </param>
-/// <param name="Selected">How many rows are currently set to import — what the commit button says.</param>
+/// <param name="Selected">
+/// How many rows are currently set to import. Rows, like every count here: the screen counts the games
+/// those rows name for itself, since two rows can name one game and the commit makes one entry of them.
+/// </param>
 /// <param name="Ambiguous">
 /// Rows the matcher found candidates for but would not choose between. What the review screen
 /// counts to say how much is left to resolve by hand.

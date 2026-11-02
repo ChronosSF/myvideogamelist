@@ -92,6 +92,13 @@ function renderPage() {
     return { ...rendered, rerenderPage: () => rendered.rerender(page()) };
 }
 
+/** What a tile of the summary says: its figure, then the note under it if there is one. */
+function tile(label: string): string[] {
+    const term = screen.getAllByRole('term').find(element => element.textContent === label);
+    if (!term?.parentElement) throw new Error(`No tile reads “${label}”.`);
+    return within(term.parentElement).getAllByRole('definition').map(definition => definition.textContent ?? '');
+}
+
 /**
  * A row's search, opened and answered. The API is stubbed to answer every search with `games` at
  * once, and the clock is faked so the debounce can be run out rather than waited for.
@@ -139,20 +146,58 @@ beforeEach(() => {
 
 describe('ImportReviewPage', () => {
     it('says how many games will be imported', () => {
-        review.review = loaded([row(), row({ id: 2, decision: 'skip' })]);
+        review.review = loaded([row(), row({ id: 2, gameId: 380, decision: 'skip' })]);
         renderPage();
 
-        expect(screen.getByRole('button', { name: 'Import 1 games' })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Import 1 game' })).toBeInTheDocument();
     });
 
     it('groups the digits of a large count', () => {
         // A real export runs to hundreds and the cap is 5,000, so four-digit counts are ordinary
         // here. They go through formatCount like every other count on the site — which also fixes
         // the locale to one, so the server render and the hydration cannot disagree.
-        review.review = loaded(Array.from({ length: 1200 }, (_, i) => row({ id: i + 1 })));
+        review.review = loaded(Array.from({ length: 1200 }, (_, i) => row({ id: i + 1, gameId: 1000 + i })));
         renderPage();
 
         expect(screen.getByRole('button', { name: 'Import 1,200 games' })).toBeInTheDocument();
+    });
+
+    it('counts the games the rows name, and the rows only where they differ', () => {
+        // Issue 300. Two rows naming one game make one entry, and the result panel counts the games
+        // it wrote, so a button that counted rows said "Import 3 games" and imported 2. The file's
+        // own count is rows, under no noun, since a game nothing has matched cannot be counted.
+        review.review = loaded([
+            row({ id: 1, title: 'Hollow Knight (Switch)', gameId: 14593 }),
+            row({ id: 2, title: 'Hollow Knight (PC)', gameId: 14593 }),
+            row({ id: 3, title: 'Celeste', gameId: 26226 }),
+            row({ id: 4, title: 'Nothing Matched', gameId: null, matchKind: 'unmatched', decision: 'skip' }),
+        ]);
+        renderPage();
+
+        expect(screen.getByRole('button', { name: 'Import 2 games' })).toBeInTheDocument();
+        expect(tile('In your file')).toEqual(['4']);
+        expect(tile('Games to import')).toEqual(['2', 'from 3 rows']);
+    });
+
+    it('names no rows beside the games when every row names a game of its own', () => {
+        review.review = loaded([row({ id: 1, gameId: 1 }), row({ id: 2, gameId: 2 })]);
+        renderPage();
+
+        expect(tile('Games to import')).toEqual(['2']);
+    });
+
+    it('counts a game already in the lists once, however many rows name it', () => {
+        review.review = {
+            ...loaded([
+                row({ id: 1, gameId: 14593, alreadyTracked: true, decision: 'skip' }),
+                row({ id: 2, gameId: 14593, alreadyTracked: true, decision: 'skip' }),
+            ]),
+            trackedGameIds: [14593],
+        };
+        renderPage();
+
+        expect(tile('Already in your lists')).toEqual(['1']);
+        expect(screen.getByRole('button', { name: 'Import 0 games' })).toBeDisabled();
     });
 
     it('will not commit when nothing is selected', () => {
@@ -169,7 +214,7 @@ describe('ImportReviewPage', () => {
         vi.mocked(review.commit).mockResolvedValueOnce(true);
         renderPage();
 
-        await userEvent.click(screen.getByRole('button', { name: 'Import 1 games' }));
+        await userEvent.click(screen.getByRole('button', { name: 'Import 1 game' }));
 
         await waitFor(() => expect(lists.reload).toHaveBeenCalledOnce());
         expect(wishlist.reload).toHaveBeenCalledOnce();
@@ -181,7 +226,7 @@ describe('ImportReviewPage', () => {
         vi.mocked(review.commit).mockResolvedValueOnce(false);
         renderPage();
 
-        await userEvent.click(screen.getByRole('button', { name: 'Import 1 games' }));
+        await userEvent.click(screen.getByRole('button', { name: 'Import 1 game' }));
         await waitFor(() => expect(review.commit).toHaveBeenCalledOnce());
         // A macrotask, so every continuation of the commit has run before the assertions.
         await new Promise(resolve => setTimeout(resolve, 0));
@@ -249,6 +294,20 @@ describe('ImportReviewPage', () => {
         await userEvent.selectOptions(screen.getByRole('combobox'), 'dropped');
         expect(review.setDecisions).toHaveBeenCalledWith(
             [{ rowId: 1, decision: 'import', status: 'dropped' }]);
+    });
+
+    it('gives an unrecognised shelf its list but leaves the row unselected while it has no game', async () => {
+        // Selected, it would be listed under Importing and then skipped by the commit, which imports
+        // nothing a row did not name a game for — the promise the disabled checkbox keeps.
+        review.review = loaded([row({
+            gameId: null, matchKind: 'unmatched', decision: 'skip',
+            statusUnrecognised: true, status: null, sourceStatus: 'Gave Up On',
+        })]);
+        renderPage();
+
+        await userEvent.selectOptions(screen.getByRole('combobox'), 'dropped');
+        expect(review.setDecisions).toHaveBeenCalledWith(
+            [{ rowId: 1, decision: 'skip', status: 'dropped' }]);
     });
 
     it('labels a status by the name its owner gave the list', async () => {
