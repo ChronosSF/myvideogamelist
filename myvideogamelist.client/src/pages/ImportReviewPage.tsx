@@ -178,7 +178,7 @@ export function ImportReviewPage() {
         refocus.current = { rowId: row.id, index };
         setSearchingRow(null);
         setChosen(tracked
-            ? `${titleAndYear(game)} chosen for “${row.title}”. It is already in your lists, so it is left unticked.`
+            ? `${titleAndYear(game)} chosen for “${row.title}”. It is already in your library, so it is left unticked.`
             : `${titleAndYear(game)} chosen for “${row.title}”.`);
 
         void setDecisions([{
@@ -322,7 +322,9 @@ export function ImportReviewPage() {
                                     ? `from ${formatCount(importing.rows)} rows`
                                     : undefined}
                             />
-                            <Tile label="Already in your lists" value={trackedGames} />
+                            {/* "Library", not "lists": an entry the user has in no list is one
+                                of these, and the games in no list are in none of their lists. */}
+                            <Tile label="Already in your library" value={trackedGames} />
                             {/* Counted off the rows rather than added up out of the summary, which
                                 would count a row twice when its game is unknown *and* its shelf
                                 is — and which is the same set the "Needs you" filter shows. */}
@@ -464,7 +466,7 @@ export function ImportReviewPage() {
                                             {row.wishlist && <Badge>Wishlist</Badge>}
                                             {row.favourite && <Badge>Favourite</Badge>}
                                             {row.hasNotes && <Badge>Notes</Badge>}
-                                            {row.alreadyTracked && <Badge tone="warning">Already in your lists</Badge>}
+                                            {row.alreadyTracked && <Badge tone="warning">Already in your library</Badge>}
                                             {row.matchKind === IMPORT_MATCH.ambiguous && (
                                                 <Badge tone="warning">Which one is it?</Badge>
                                             )}

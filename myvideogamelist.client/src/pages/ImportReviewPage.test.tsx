@@ -201,7 +201,7 @@ describe('ImportReviewPage', () => {
         expect(screen.getByRole('button', { name: 'Import 2 games' })).toBeInTheDocument();
     });
 
-    it('counts a game already in the lists once, however many rows name it', () => {
+    it('counts a game already in the library once, however many rows name it', () => {
         review.review = {
             ...loaded([
                 row({ id: 1, gameId: 14593, alreadyTracked: true, decision: 'skip' }),
@@ -211,7 +211,7 @@ describe('ImportReviewPage', () => {
         };
         renderPage();
 
-        expect(tile('Already in your lists')).toEqual(['1']);
+        expect(tile('Already in your library')).toEqual(['1']);
         expect(screen.getByRole('button', { name: 'Import 0 games' })).toBeDisabled();
     });
 
@@ -794,7 +794,7 @@ describe('ImportReviewPage', () => {
             { rowId: 2, decision: 'skip', gameId: 424, game: RESIDENT_EVIL, alreadyTracked: true },
         ]);
         expect(screen.getByText(
-            'Resident Evil (1996) chosen for “Resedent Evil”. It is already in your lists, so it is left unticked.',
+            'Resident Evil (1996) chosen for “Resedent Evil”. It is already in your library, so it is left unticked.',
         )).toBeInTheDocument();
     });
 
