@@ -4,6 +4,7 @@
 
 import {
     createRequestHandler,
+    data,
     type LoaderFunctionArgs,
     type ServerBuild,
     UNSAFE_withComponentProps,
@@ -15,6 +16,7 @@ import * as entry from '@/entry.server';
 import { CACHE_GAME, CACHE_NOT_FOUND, PRIVATE_NO_STORE } from '@/lib/cache';
 import { RESOURCE_POLICY } from '@/lib/securityHeaders';
 import { loaderFetch, TRACE_HEADER, upstreamFailure } from '@/lib/trace.server';
+import { headers as gamePageHeaders } from '@/pages/GamePage';
 import * as notFound from '@/pages/NotFoundPage';
 import * as version from '@/resources/version';
 import * as root from '@/root';
@@ -225,6 +227,17 @@ const build: ServerBuild = {
         }),
         // A boundary that fails after the shell, on a page the edge shares.
         'faltering-shared': leaf('faltering-shared', 'faltering-shared', { default: faltering, headers: shared }),
+        // A page that is its own error boundary, with the game page's own `headers`, whose loader
+        // states the game's hour through `data()`, as the game page's does — and which then fails
+        // to render. The case issue 337 names.
+        'crashing-game': leaf('crashing-game', 'crashing-game', {
+            default: () => {
+                throw new Error('The page failed to render.');
+            },
+            loader: () => data({ game: 'A game' }, { headers: { 'Cache-Control': CACHE_GAME } }),
+            headers: gamePageHeaders,
+            ErrorBoundary: UNSAFE_withErrorBoundaryProps(() => <p>This game could not be shown</p>),
+        }),
         'not-found': leaf('not-found', '*', notFound),
     },
     assets: {
@@ -244,6 +257,7 @@ const build: ServerBuild = {
             crashing: asset('crashing', 'crashing', 'root', false),
             'crashing-shared': asset('crashing-shared', 'crashing-shared', 'root', false),
             'faltering-shared': asset('faltering-shared', 'faltering-shared', 'root', false),
+            'crashing-game': { ...asset('crashing-game', 'crashing-game', 'root', true), hasErrorBoundary: true },
             'not-found': asset('not-found', '*', 'root', true),
         },
         url: '/assets/manifest.js',
@@ -462,6 +476,9 @@ describe('an error document', () => {
         ['/crashing-shared', 'Something went wrong'],
         // A boundary failed after the shell, and the entry made the status a 500 itself.
         ['/faltering-shared', 'A page'],
+        // A route that is its own boundary, as the game page is: its own boundary renders the
+        // failure, over the headers its `headers` export worked out for the page that worked.
+        ['/crashing-game', 'This game could not be shown'],
     ])('is never stored by a shared cache, even from a page that is (%s)', async (path, text) => {
         vi.spyOn(console, 'error').mockImplementation(() => {});
 

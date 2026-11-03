@@ -92,11 +92,19 @@ function renderPage() {
     return { ...rendered, rerenderPage: () => rendered.rerender(page()) };
 }
 
+/** What a tile of the summary says: its figure, then the note under it if there is one. */
+function tile(label: string): string[] {
+    const term = screen.getAllByRole('term').find(element => element.textContent === label);
+    if (!term?.parentElement) throw new Error(`No tile reads “${label}”.`);
+    return within(term.parentElement).getAllByRole('definition').map(definition => definition.textContent ?? '');
+}
+
 /**
  * A row's search, opened and answered. The API is stubbed to answer every search with `games` at
- * once, and the clock is faked so the debounce can be run out rather than waited for.
+ * once, and the clock is faked so the debounce can be run out rather than waited for. Opened by the
+ * button `toggle` names: the search's own, unless the row's game is being changed.
  */
-async function searchRow(title: string, games: GameDto[]) {
+async function searchRow(title: string, games: GameDto[], toggle = `Search IGDB for ${title}`) {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
     // Testing Library waits out a zero-length timeout after every userEvent call, and only moves a
     // faked clock past it when it finds Jest's timers. This is the one method it reaches for.
@@ -109,7 +117,7 @@ async function searchRow(title: string, games: GameDto[]) {
     }) as unknown as Response));
 
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-    await user.click(screen.getByRole('button', { name: `Search IGDB for ${title}` }));
+    await user.click(screen.getByRole('button', { name: toggle }));
     await act(async () => {
         vi.advanceTimersByTime(SEARCH_DEBOUNCE_MS);
         await new Promise(resolve => setImmediate(resolve));
@@ -139,20 +147,58 @@ beforeEach(() => {
 
 describe('ImportReviewPage', () => {
     it('says how many games will be imported', () => {
-        review.review = loaded([row(), row({ id: 2, decision: 'skip' })]);
+        review.review = loaded([row(), row({ id: 2, gameId: 380, decision: 'skip' })]);
         renderPage();
 
-        expect(screen.getByRole('button', { name: 'Import 1 games' })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Import 1 game' })).toBeInTheDocument();
     });
 
     it('groups the digits of a large count', () => {
         // A real export runs to hundreds and the cap is 5,000, so four-digit counts are ordinary
         // here. They go through formatCount like every other count on the site — which also fixes
         // the locale to one, so the server render and the hydration cannot disagree.
-        review.review = loaded(Array.from({ length: 1200 }, (_, i) => row({ id: i + 1 })));
+        review.review = loaded(Array.from({ length: 1200 }, (_, i) => row({ id: i + 1, gameId: 1000 + i })));
         renderPage();
 
         expect(screen.getByRole('button', { name: 'Import 1,200 games' })).toBeInTheDocument();
+    });
+
+    it('counts the games the rows name, and the rows only where they differ', () => {
+        // Issue 300. Two rows naming one game make one entry, and the result panel counts the games
+        // it wrote, so a button that counted rows said "Import 3 games" and imported 2. The file's
+        // own count is rows, under no noun, since a game nothing has matched cannot be counted.
+        review.review = loaded([
+            row({ id: 1, title: 'Hollow Knight (Switch)', gameId: 14593 }),
+            row({ id: 2, title: 'Hollow Knight (PC)', gameId: 14593 }),
+            row({ id: 3, title: 'Celeste', gameId: 26226 }),
+            row({ id: 4, title: 'Nothing Matched', gameId: null, matchKind: 'unmatched', decision: 'skip' }),
+        ]);
+        renderPage();
+
+        expect(screen.getByRole('button', { name: 'Import 2 games' })).toBeInTheDocument();
+        expect(tile('In your file')).toEqual(['4']);
+        expect(tile('Games to import')).toEqual(['2', 'from 3 rows']);
+    });
+
+    it('names no rows beside the games when every row names a game of its own', () => {
+        review.review = loaded([row({ id: 1, gameId: 1 }), row({ id: 2, gameId: 2 })]);
+        renderPage();
+
+        expect(tile('Games to import')).toEqual(['2']);
+    });
+
+    it('counts a game already in the lists once, however many rows name it', () => {
+        review.review = {
+            ...loaded([
+                row({ id: 1, gameId: 14593, alreadyTracked: true, decision: 'skip' }),
+                row({ id: 2, gameId: 14593, alreadyTracked: true, decision: 'skip' }),
+            ]),
+            trackedGameIds: [14593],
+        };
+        renderPage();
+
+        expect(tile('Already in your lists')).toEqual(['1']);
+        expect(screen.getByRole('button', { name: 'Import 0 games' })).toBeDisabled();
     });
 
     it('will not commit when nothing is selected', () => {
@@ -169,7 +215,7 @@ describe('ImportReviewPage', () => {
         vi.mocked(review.commit).mockResolvedValueOnce(true);
         renderPage();
 
-        await userEvent.click(screen.getByRole('button', { name: 'Import 1 games' }));
+        await userEvent.click(screen.getByRole('button', { name: 'Import 1 game' }));
 
         await waitFor(() => expect(lists.reload).toHaveBeenCalledOnce());
         expect(wishlist.reload).toHaveBeenCalledOnce();
@@ -181,7 +227,7 @@ describe('ImportReviewPage', () => {
         vi.mocked(review.commit).mockResolvedValueOnce(false);
         renderPage();
 
-        await userEvent.click(screen.getByRole('button', { name: 'Import 1 games' }));
+        await userEvent.click(screen.getByRole('button', { name: 'Import 1 game' }));
         await waitFor(() => expect(review.commit).toHaveBeenCalledOnce());
         // A macrotask, so every continuation of the commit has run before the assertions.
         await new Promise(resolve => setTimeout(resolve, 0));
@@ -251,6 +297,20 @@ describe('ImportReviewPage', () => {
             [{ rowId: 1, decision: 'import', status: 'dropped' }]);
     });
 
+    it('gives an unrecognised shelf its list but leaves the row unselected while it has no game', async () => {
+        // Selected, it would be listed under Importing and then skipped by the commit, which imports
+        // nothing a row did not name a game for — the promise the disabled checkbox keeps.
+        review.review = loaded([row({
+            gameId: null, matchKind: 'unmatched', decision: 'skip',
+            statusUnrecognised: true, status: null, sourceStatus: 'Gave Up On',
+        })]);
+        renderPage();
+
+        await userEvent.selectOptions(screen.getByRole('combobox'), 'dropped');
+        expect(review.setDecisions).toHaveBeenCalledWith(
+            [{ rowId: 1, decision: 'skip', status: 'dropped' }]);
+    });
+
     it('labels a status by the name its owner gave the list', async () => {
         // A rename is the user's own label and is what every label reads (ADR 0031).
         review.review = loaded([row()]);
@@ -287,6 +347,20 @@ describe('ImportReviewPage', () => {
         expect(screen.getByRole('button', { name: 'Download what was skipped' })).toBeInTheDocument();
     });
 
+    it('moves focus to the result once it replaces the review', async () => {
+        // Issue 302. The Import button that had focus goes with the review, and focus left alone
+        // falls to the document, where a screen reader says nothing about what happened.
+        review.review = loaded([row()]);
+        const { rerenderPage } = renderPage();
+        const commit = screen.getByRole('button', { name: 'Import 1 game' });
+        commit.focus();
+
+        review.result = importResult({ imported: 1 });
+        rerenderPage();
+
+        expect(screen.getByRole('heading', { name: 'Import finished' })).toHaveFocus();
+    });
+
     it('offers no download when every row imported', () => {
         review.result = importResult({ imported: 3 });
         renderPage();
@@ -302,6 +376,18 @@ describe('ImportReviewPage', () => {
 
         expect(screen.getByText(/617 games were imported\. 9 of them are in no list/)).toBeInTheDocument();
         expect(screen.queryByText(/now in your lists/)).not.toBeInTheDocument();
+    });
+
+    it('offers the wishlist when some of the games are only on it, and not otherwise', () => {
+        review.result = importResult({ imported: 640, wishlistOnly: 40 });
+        const { unmount } = renderPage();
+
+        expect(screen.getByRole('link', { name: 'See your wishlist' })).toHaveAttribute('href', '/wishlist');
+        unmount();
+
+        review.result = importResult({ imported: 640, unlisted: 9 });
+        renderPage();
+        expect(screen.queryByRole('link', { name: 'See your wishlist' })).not.toBeInTheDocument();
     });
 
     it('counts the games, and says how many rows they came from, when rows named one game', () => {
@@ -355,6 +441,28 @@ describe('ImportReviewPage', () => {
                 skipped: [skippedRow('One'), skippedRow('Two'), skippedRow('Three')],
             }),
             says: '11 games were imported, from 14 rows of your file. 2 of the games are in no list, so they are on their own game pages rather than in your lists. 3 rows were skipped.',
+        },
+        {
+            // Issue 301: a game shelved only as wanted is on the wishlist, which is where it belongs,
+            // not on "its own game page".
+            what: 'some only on the wishlist',
+            result: importResult({ imported: 640, wishlistOnly: 40 }),
+            says: '640 games were imported. 40 of them are on your wishlist.',
+        },
+        {
+            what: 'one only on the wishlist, one in no list',
+            result: importResult({ imported: 600, wishlistOnly: 1, unlisted: 1 }),
+            says: '600 games were imported. 1 of them is on your wishlist. 1 of them is in no list, so it is on its own game page rather than in your lists.',
+        },
+        {
+            what: 'one game, only on the wishlist',
+            result: importResult({ imported: 1, wishlistOnly: 1 }),
+            says: '1 game was imported. It is on your wishlist.',
+        },
+        {
+            what: 'games from more rows, on the wishlist and in no list',
+            result: importResult({ imported: 14, games: 11, wishlistOnly: 3, unlisted: 2 }),
+            says: '11 games were imported, from 14 rows of your file. 3 of the games are on your wishlist. 2 of the games are in no list, so they are on their own game pages rather than in your lists.',
         },
     ])('says it in the right number: $what', ({ result, says }) => {
         review.result = result;
@@ -608,6 +716,52 @@ describe('ImportReviewPage', () => {
         ]);
         // The search goes with the question it answered.
         expect(screen.queryByRole('searchbox')).not.toBeInTheDocument();
+    });
+
+    it('offers to change a game that was found by its title or chosen here, and names it', async () => {
+        // Issue 324. A mis-click — the 2019 Resident Evil 2 for the 1998 one — could be unticked and
+        // not put right, and the row said only the file's title, so the wrong game was a cover away
+        // from being noticed. The search is the one a row nobody could place has.
+        review.review = loaded([row({
+            id: 1, title: 'Resident Evil 2', releaseYear: 1998, gameId: 19686, gameFromFile: false,
+            game: game({ id: 19686, title: 'Resident Evil 2', releaseDate: '2019-01-25' }),
+        })]);
+        renderPage();
+
+        await userEvent.click(screen.getByRole('button', { name: /^All / }));
+
+        expect(screen.getByText(/Matched to/)).toHaveTextContent('Matched to Resident Evil 2 (2019).');
+        expect(screen.getByRole('button', { name: 'Change the game for Resident Evil 2' })).toHaveTextContent('Change');
+    });
+
+    it('offers no change on a row whose game its file named', async () => {
+        // The file's id is its owner's own record of what they played, and on a Grouvee export it is
+        // nearly every row: a Change on each would be six hundred controls nobody needs.
+        review.review = loaded([row({ id: 1, gameFromFile: true })]);
+        renderPage();
+
+        await userEvent.click(screen.getByRole('button', { name: /^All / }));
+
+        expect(screen.queryByRole('button', { name: /^Change the game/ })).not.toBeInTheDocument();
+        expect(screen.queryByText(/Matched to/)).not.toBeInTheDocument();
+    });
+
+    it('writes a changed game through the same decision choosing one takes', async () => {
+        const original = game({ id: 880, title: 'Resident Evil 2', releaseDate: '1998-01-21' });
+        review.review = loaded([row({
+            id: 1, title: 'Resident Evil 2', releaseYear: 1998, gameId: 19686, gameFromFile: false,
+            game: game({ id: 19686, title: 'Resident Evil 2', releaseDate: '2019-01-25' }),
+        })]);
+        renderPage();
+        await userEvent.click(screen.getByRole('button', { name: /^All / }));
+
+        const user = await searchRow('Resident Evil 2', [original], 'Change the game for Resident Evil 2');
+        await user.click(screen.getByRole('button', { name: 'Use Resident Evil 2 (1998)' }));
+
+        expect(review.setDecisions).toHaveBeenCalledWith([
+            { rowId: 1, decision: 'import', gameId: 880, game: original, alreadyTracked: false },
+        ]);
+        expect(screen.getByRole('status')).toHaveTextContent('Resident Evil 2 (1998) chosen for “Resident Evil 2”.');
     });
 
     it('leaves a chosen game the user already has unticked, and says why', async () => {

@@ -64,8 +64,12 @@ public class OwnershipCascadeTests(ApiFactory api) : IClassFixture<ApiFactory>
         // Not somebody's data, so not deleted with anybody: the games stay cached for everyone else.
         Assert.Equal(2, await db.CachedGames.CountAsync(game => game.GameId == Played || game.GameId == Wanted));
 
-        // And the browser is signed out. Asked of an endpoint that reads only the cookie's claim:
-        // /me would answer 401 for an account that has gone whether or not the cookie had.
+        // And the browser is signed out by the deletion itself. Asked of the deletion's own response,
+        // since any later request would now be refused whether or not it had been: a session whose
+        // account has gone is refused on every request it makes (ADR 0077).
+        Assert.Contains(
+            delete.Headers.GetValues("Set-Cookie"),
+            cookie => cookie.StartsWith($".AspNetCore.{IdentityConstants.ApplicationScheme}=;", StringComparison.Ordinal));
         await (await leaving.GetAsync("/api/user/stats")).ExpectAsync(HttpStatusCode.Unauthorized);
     }
 
