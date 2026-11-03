@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using System.Globalization;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using Microsoft.EntityFrameworkCore;
@@ -293,6 +294,23 @@ public class ImportServiceTests
 
         await Assert.ThrowsAsync<ImportRejectedException>(
             () => NewService(db).CreateJobAsync(UserId, "grouvee_export.json", Export()));
+    }
+
+    [Fact]
+    public async Task CreateJobAsync_PastTheLimitOfRows_IsRefusedInRowsAndStoresNothing()
+    {
+        // Rows, as the limit is, and as the file has: a source listing a game once per platform
+        // has more of them than games (issue 300). Grouped, as the client groups every count.
+        using var db = NewDb();
+        var entries = Enumerable.Range(1, ImportService.MaxRows + 1)
+            .Select(id => Entry(igdbId: id.ToString(CultureInfo.InvariantCulture)))
+            .ToArray();
+
+        var error = await Assert.ThrowsAsync<ImportRejectedException>(
+            () => NewService(db).CreateJobAsync(UserId, "grouvee_export.json", Export(entries)));
+
+        Assert.Equal("That export has 5,001 rows, and the limit is 5,000.", error.Message);
+        Assert.Empty(db.ImportJobs);
     }
 
     [Fact]
@@ -1025,6 +1043,32 @@ public class ImportServiceTests
         Assert.Equal(4, result!.Job.ImportedCount);
         Assert.Equal(3, result.Games);
         Assert.Equal(2, result.Unlisted);
+        Assert.Equal(0, result.WishlistOnly);
+    }
+
+    [Fact]
+    public async Task CommitAsync_AGameInNoListButOnTheWishlist_IsCountedApartFromTheUnlisted()
+    {
+        // Issue 301. A game on Grouvee's Wish List shelf and no other has no status, and was counted
+        // with the games only their own page shows, while /wishlist showed it. Counted apart: one
+        // from the shelf, one the user had wanted before this import, and one that is in no list at
+        // all — the one "only on its own game page" is true of.
+        using var db = NewDb();
+        db.UserWishlistItems.Add(new UserWishlistItem { UserId = UserId, GameId = 2, AddedAt = Midday });
+        await db.SaveChangesAsync();
+
+        var service = NewService(db, CacheReturning(Game(1), Game(2), Game(3), Game(4)));
+        var jobId = await UploadAsync(service, Export(
+            Entry(igdbId: "1", name: "Only Wanted", shelves: """{"Wish List": {"date_added": "2025-11-28T00:00:00Z"}}"""),
+            Entry(igdbId: "2", name: "Wanted Before, Played Since"),
+            Entry(igdbId: "3", name: "Played, Unresolved"),
+            Entry(igdbId: "4", name: "Finished", dates: FinishedRun)));
+
+        var result = await service.CommitAsync(UserId, jobId);
+
+        Assert.Equal(4, result!.Games);
+        Assert.Equal(2, result.WishlistOnly);
+        Assert.Equal(1, result.Unlisted);
     }
 
     [Fact]
@@ -1382,6 +1426,41 @@ public class ImportServiceTests
         Assert.Equal(ImportMatchKinds.Matched, resolved.MatchKind);
         Assert.Equal(8, resolved.GameId);
         Assert.Empty(resolved.Candidates);
+    }
+
+    [Fact]
+    public async Task GetReviewAsync_SaysWhichRowsHaveTheGameTheirFileNamed()
+    {
+        // Issue 324. The screen offers to change a row's game only where the game is one we found or
+        // somebody chose here: a game the file named is its owner's own record of what they played.
+        // One row of each: the file's id, the matcher's answer, and a game chosen for a row the
+        // matcher could not place, then changed to another.
+        using var db = NewDb();
+        var service = NewService(
+            db,
+            CacheReturning(Game(379), Game(42), Game(7), Game(8)),
+            MatcherAnswering(query => query.Title == "Found By Title"
+                ? new ImportMatchResult(ImportMatchKinds.Matched, 42, [])
+                : new ImportMatchResult(ImportMatchKinds.Unmatched, null, [])));
+
+        var jobId = await UploadAsync(service, Export(
+            Entry(),
+            Entry(name: "Found By Title", igdbId: "null"),
+            Entry(name: "Chosen By Hand", igdbId: "null")));
+        await service.MatchAsync(UserId, jobId);
+
+        var chosen = (await service.GetReviewAsync(UserId, jobId))!.Rows.Single(r => r.Title == "Chosen By Hand");
+        await service.SetDecisionsAsync(UserId, jobId, new ImportDecisionsDto(
+            [new ImportRowDecisionDto(chosen.Id, ImportDecisions.Import, 7, null)]));
+        await service.SetDecisionsAsync(UserId, jobId, new ImportDecisionsDto(
+            [new ImportRowDecisionDto(chosen.Id, ImportDecisions.Import, 8, null)]));
+
+        var rows = (await service.GetReviewAsync(UserId, jobId))!.Rows.ToDictionary(r => r.Title);
+
+        Assert.True(rows["Metal Gear Solid 3"].GameFromFile);
+        Assert.False(rows["Found By Title"].GameFromFile);
+        Assert.Equal(8, rows["Chosen By Hand"].GameId);
+        Assert.False(rows["Chosen By Hand"].GameFromFile);
     }
 
     // ---------------------------------------------------------- the retention clock

@@ -17,7 +17,7 @@ import {
  *
  * The API answers `ProblemDetails`, and its `detail` is written for a person — the upload's
  * rejections say exactly what is wrong with the file. Reading the status alone turns "that export
- * has 8,000 games and the limit is 5,000" into "Something went wrong", which is the mistake the
+ * has 8,000 rows, and the limit is 5,000" into "Something went wrong", which is the mistake the
  * frontend conventions record as having been made once already.
  */
 async function problem(response: Response, fallback: string): Promise<string> {
@@ -439,6 +439,8 @@ function applyDecisions(review: ImportReview, decisions: ImportRowChoice[]): Imp
                     gameId: decision.gameId,
                     matchKind: IMPORT_MATCH.matched,
                     candidates: [],
+                    // Chosen here, so changeable here: the file's own game is never offered for one.
+                    gameFromFile: false,
                     // What the screen knows of the game chosen, until the next read says it again.
                     ...(decision.game ? { game: decision.game } : {}),
                     ...(decision.alreadyTracked !== undefined ? { alreadyTracked: decision.alreadyTracked } : {}),
@@ -482,6 +484,7 @@ function merge(review: ImportReview, pass: ImportMatchPass): ImportReview {
             candidates: answer.candidates,
             matchKind: answer.matchKind,
             alreadyTracked: answer.alreadyTracked,
+            gameFromFile: answer.gameFromFile,
             decision: preChecked ? answer.decision : row.decision,
         };
     });

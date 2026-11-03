@@ -1,8 +1,10 @@
 using System.Net;
 using System.Net.Http.Json;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using MyVideoGameList.Server.DTOs;
 using MyVideoGameList.Server.Models;
+using MyVideoGameList.Server.Security;
 
 namespace MyVideoGameList.Server.IntegrationTests;
 
@@ -108,6 +110,43 @@ public class AuthFlowTests(ApiFactory api) : IClassFixture<ApiFactory>
             await wrongPassword.Content.ReadAsStringAsync());
 
         await (await browser.GetAsync("/api/auth/me")).ExpectAsync(HttpStatusCode.NoContent);
+    }
+
+    [Theory]
+    [InlineData("GET", "/api/user/stats", HttpStatusCode.Unauthorized)]
+    [InlineData("GET", "/api/user/export", HttpStatusCode.Unauthorized)]
+    [InlineData("PUT", "/api/lists/1942", HttpStatusCode.Unauthorized)]
+    [InlineData("GET", "/api/auth/me", HttpStatusCode.NoContent)]
+    public async Task DeleteAccount_FromOneBrowser_EndsTheSessionInEveryOther(
+        string method, string path, HttpStatusCode expected)
+    {
+        // Issue 295. The deletion signs out the browser it was made in and nothing else, and Identity
+        // asks whether a cookie's account is still there only every thirty minutes. Until then these
+        // read only the cookie's claim: the statistics answered 200 with every figure zero, the export
+        // threw, and a write ran into the foreign key to the account that had gone (ADR 0077).
+        var userName = Browsers.NewUserName("everywhere");
+        using var deleting = api.CreateBrowser();
+        using var elsewhere = api.CreateBrowser();
+        await deleting.RegisterAsync(userName);
+
+        var login = await elsewhere.PostAsJsonAsync("/api/auth/login", new LoginDto(userName, Browsers.Password));
+        await login.ExpectAsync(HttpStatusCode.OK);
+        await (await elsewhere.GetAsync("/api/user/stats")).ExpectAsync(HttpStatusCode.OK);
+
+        var delete = await deleting.SendAsync(
+            HttpMethod.Delete, "/api/user", new DeleteAccountDto(Browsers.Password));
+        await delete.ExpectAsync(HttpStatusCode.NoContent);
+
+        var body = method == "PUT" ? new SetListEntryDto(ListStatusKeys.Backlog) : null;
+        var response = await elsewhere.SendAsync(new HttpMethod(method), path, body);
+
+        await response.ExpectAsync(expected);
+
+        // Signed out as a refused stamp signs a session out: the cookie and the signed-in flag both go,
+        // on the first request that is refused, so the browser holds nothing for an account that has gone.
+        var cleared = response.Headers.TryGetValues("Set-Cookie", out var cookies) ? cookies.ToList() : [];
+        Assert.Contains(cleared, cookie => cookie.StartsWith($".AspNetCore.{IdentityConstants.ApplicationScheme}=;", StringComparison.Ordinal));
+        Assert.Contains(cleared, cookie => cookie.StartsWith($"{SignedInFlag.CookieName}=;", StringComparison.Ordinal));
     }
 
     [Fact]

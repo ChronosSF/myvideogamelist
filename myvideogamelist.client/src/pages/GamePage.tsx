@@ -198,8 +198,10 @@ export async function loader({ params, context }: Route.LoaderArgs) {
  * makes, which reaches this function whichever route renders the error. A loader that threw something
  * other than a Response leaves neither, and that fails closed, as the root's default does.
  *
- * Not covered here: a page that throws while rendering, after its loader answered, goes out with the
- * headers worked out before the render, which is React Router's doing and every route's (issue 337).
+ * Not covered here: a page that throws while rendering, after its loader answered, is rendered as this
+ * route's boundary over what this answered for the page that worked — the game's hour included, since
+ * React Router works headers out before it renders. `entry.server.tsx` makes that 500 `private,
+ * no-store` itself, for every route (issue 337).
  */
 export function headers({ errorHeaders, loaderHeaders }: Route.HeadersArgs) {
     return {

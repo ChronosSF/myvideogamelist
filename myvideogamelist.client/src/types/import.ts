@@ -68,7 +68,10 @@ export interface ImportReviewSummary {
      */
     playedUnresolved: number;
     alreadyTracked: number;
-    /** How many rows are set to import — what the commit button counts. */
+    /**
+     * How many rows are set to import, which the "Importing" filter counts. The commit button counts
+     * the games those rows name, which can be fewer: two rows can name one game.
+     */
     selected: number;
 }
 
@@ -109,6 +112,12 @@ export interface ImportReviewRow {
     minutesPlayed: number | null;
     /** The user already has an entry for this game, so importing it overwrites what is there. */
     alreadyTracked: boolean;
+    /**
+     * The game is the one the file named, rather than one the matcher found or its owner chose here.
+     * Only a game that is not can be changed on the review (issue 324): what the file named is its
+     * owner's own record, and a game found by its title is a guess or a click that can be wrong.
+     */
+    gameFromFile: boolean;
 }
 
 export interface ImportReview {
@@ -174,8 +183,14 @@ export interface ImportResult {
      */
     games: number;
     /**
-     * How many of those games are in no list afterwards. An entry with no status shows in no list,
-     * only on its game's own page, so "now in your lists" is false of these (ADR 0019).
+     * How many of those games are in no list afterwards, and not on the wishlist either. An entry
+     * with no status shows in no list, only on its game's own page, so "now in your lists" is false
+     * of these (ADR 0019).
      */
     unlisted: number;
+    /**
+     * How many of those games are in no list afterwards but on the wishlist, which `/wishlist` shows.
+     * Never counted in `unlisted`: a game shelved only as wanted is where its owner put it (issue 301).
+     */
+    wishlistOnly: number;
 }

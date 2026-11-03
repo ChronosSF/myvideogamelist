@@ -1,3 +1,4 @@
+using System.Globalization;
 using Microsoft.EntityFrameworkCore;
 using MyVideoGameList.Server.Data;
 using MyVideoGameList.Server.DTOs;
@@ -110,9 +111,13 @@ public class ImportService(
         if (payloads.Count == 0)
             throw new ImportRejectedException("That export has no games in it.");
 
+        // Rows, as the limit is: a source listing a game once per platform has more rows than games
+        // (issue 300). Grouped by the invariant culture rather than the server's, which is the same
+        // on every deployment only by accident.
         if (payloads.Count > MaxRows)
-            throw new ImportRejectedException(
-                $"That export has {payloads.Count} games, and the limit is {MaxRows}.");
+            throw new ImportRejectedException(string.Create(
+                CultureInfo.InvariantCulture,
+                $"That export has {payloads.Count:N0} rows, and the limit is {MaxRows:N0}."));
 
         var now = clock.GetUtcNow();
 
@@ -435,7 +440,7 @@ public class ImportService(
             wanted.Add((row, payload));
         }
 
-        var (imported, games, unlisted) = await WriteAsync(userId, job.Source, wanted, cancellationToken);
+        var (imported, games, unlisted, wishlistOnly) = await WriteAsync(userId, job.Source, wanted, cancellationToken);
 
         var now = clock.GetUtcNow();
 
@@ -466,7 +471,7 @@ public class ImportService(
         // its window — which is the race SaveTouchingAsync turns into this method's own 404.
         if (!await SaveTouchingAsync(job, now, cancellationToken)) return null;
 
-        return new ImportResultDto(ToDto(job), skipped, games, unlisted);
+        return new ImportResultDto(ToDto(job), skipped, games, unlisted, wishlistOnly);
     }
 
     public async Task<bool> CancelAsync(
@@ -577,15 +582,16 @@ public class ImportService(
     /// </remarks>
     /// <returns>
     /// How many rows were written, how many games those rows went into — fewer whenever two of
-    /// them name one game — and how many of those games are in no list afterwards.
+    /// them name one game — and, of those games, how many are in no list afterwards and on no
+    /// wishlist either, and how many are in no list but on the wishlist.
     /// </returns>
-    private async Task<(int Imported, int Games, int Unlisted)> WriteAsync(
+    private async Task<(int Imported, int Games, int Unlisted, int WishlistOnly)> WriteAsync(
         string userId,
         string source,
         IReadOnlyList<(ImportRow Row, ImportRowPayload Payload)> wanted,
         CancellationToken cancellationToken)
     {
-        if (wanted.Count == 0) return (0, 0, 0);
+        if (wanted.Count == 0) return (0, 0, 0, 0);
 
         var gameIds = wanted.Select(w => w.Row.GameId!.Value).Distinct().ToList();
 
@@ -691,9 +697,16 @@ public class ImportService(
         // Read off the entries once every row is applied, rather than counted from the rows: two
         // rows can name one game, and an entry the user already had keeps a status the row did not
         // carry, so neither "rows without a status" nor "rows written" is how many are in no list.
-        var unlisted = gameIds.Count(id => entries[id].StatusId is null);
+        //
+        // A game in no list that is on the wishlist is counted apart (issue 301). It is where its
+        // owner put it — Grouvee's Wish List shelf is the wishlist, not a list — and /wishlist shows
+        // it, so the "only on its own game page" the other count is said with is false of it. The
+        // set holds the wishlist as it is after this commit, the items it added and the ones that
+        // were already there alike.
+        var inNoList = gameIds.Where(id => entries[id].StatusId is null).ToList();
+        var wishlistOnly = inNoList.Count(wishlisted.Contains);
 
-        return (imported, gameIds.Count, unlisted);
+        return (imported, gameIds.Count, inNoList.Count - wishlistOnly, wishlistOnly);
     }
 
     /// <summary>
@@ -872,7 +885,10 @@ public class ImportService(
             HasNotes: payload.Notes is not null,
             PlaythroughCount: payload.Playthroughs.Count,
             MinutesPlayed: payload.Playthroughs.Sum(p => p.MinutesPlayed ?? 0) is var minutes and > 0 ? minutes : null,
-            AlreadyTracked: row.GameId is { } gameId && tracked.Contains(gameId));
+            AlreadyTracked: row.GameId is { } gameId && tracked.Contains(gameId),
+
+            // The payload keeps the id the file named, whatever has been chosen since.
+            GameFromFile: row.GameId is { } current && payload.GameId == current);
     }
 
     private static ImportJobDto ToDto(ImportJob job) =>

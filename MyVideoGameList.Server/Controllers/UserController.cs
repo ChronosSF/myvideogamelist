@@ -487,7 +487,8 @@ public class UserController(
         if (publicName is not null) withdrawals.AccountDeleted(publicName);
 
         // The account is gone, so the cookie now authenticates nothing. Clearing it here saves the
-        // client from holding a credential for a user that cannot be looked up.
+        // client from holding a credential for a user that cannot be looked up. A cookie for it held
+        // anywhere else is refused, and cleared, on the next request it makes (ADR 0077).
         await signInManager.SignOutAsync();
 
         return NoContent();

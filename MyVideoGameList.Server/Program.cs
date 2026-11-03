@@ -178,6 +178,9 @@ builder.Services.ConfigureApplicationCookie(options =>
     // The cookie that says, to the edge and the home page's server render, that a browser is signed in
     // and nothing about who (ADR 0074).
     SignedInFlag.FollowTheSession(options.Events);
+    // A deleted account's other sessions end on their next request, not at the next stamp check
+    // half an hour later (ADR 0077).
+    DeletedAccountSessions.EndAtOnce(options.Events);
 });
 
 // The key ring that cookie above is signed with, and the review cursor sealed with. Shared through

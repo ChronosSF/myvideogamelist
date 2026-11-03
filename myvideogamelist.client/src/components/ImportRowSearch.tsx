@@ -1,4 +1,4 @@
-import { useId, useRef, useState, type KeyboardEvent } from 'react';
+import { useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { flushSync } from 'react-dom';
 import { ImportCandidateButton } from '@/components/ImportCandidateButton';
 import {
@@ -18,8 +18,15 @@ const NO_GAMES: GameDto[] = [];
 interface ImportRowSearchProps {
     /** The row's title as its file spelled it: what the field starts with, and what the button names. */
     title: string;
-    /** Said before the button, for a row that already offers games — "None of these?". */
-    prompt?: string;
+    /**
+     * Said before the button: "None of these?" for a row that already offers games, or the game a
+     * row has now, for a row whose game can be changed.
+     */
+    prompt?: ReactNode;
+    /** The button's words: "Search IGDB", or "Change" for a row that already has its game. */
+    label?: string;
+    /** The button's name, which says which row it is for: "Search IGDB for Resident Evil 2". */
+    name?: string;
     /** Whether this row's search is the open one. The review keeps one open at a time. */
     open: boolean;
     onOpenChange: (open: boolean) => void;
@@ -60,7 +67,9 @@ function announcement(search: GameSearch): string {
 }
 
 /**
- * Searching IGDB from a row nobody could place, and choosing its game there (§M4, issue 158).
+ * Searching IGDB from a row nobody could place, and choosing its game there (§M4, issue 158) — or,
+ * named "Change", from a row whose game was found by its title or chosen here, to choose another
+ * (issue 324).
  *
  * A row the matcher found nothing for, or offered only wrong games for, used to be resolved by
  * leaving the page to find an id. Here a plain action opens a field holding the row's title as the
@@ -74,7 +83,15 @@ function announcement(search: GameSearch): string {
  * choosing a game rather than glancing at suggestions, and IGDB's own order can put the game they
  * mean thirteenth (ADR 0040).
  */
-export function ImportRowSearch({ title, prompt, open, onOpenChange, onChoose }: ImportRowSearchProps) {
+export function ImportRowSearch({
+    title,
+    prompt,
+    label = 'Search IGDB',
+    name = `Search IGDB for ${title}`,
+    open,
+    onOpenChange,
+    onChoose,
+}: ImportRowSearchProps) {
     const [query, setQuery] = useState(() => title.trim().slice(0, MAX_SEARCH_LENGTH));
     const search = useGameSearch(query, open, { size: SEARCH_PAGE_SIZE });
 
@@ -126,13 +143,13 @@ export function ImportRowSearch({ title, prompt, open, onOpenChange, onChoose }:
                 <button
                     ref={toggleRef}
                     type="button"
-                    aria-label={`Search IGDB for ${title}`}
+                    aria-label={name}
                     aria-expanded={open}
                     aria-controls={open ? panelId : undefined}
                     onClick={() => (open ? onOpenChange(false) : openSearch())}
                     className="font-semibold text-primary-400 hover:text-primary-300"
                 >
-                    Search IGDB
+                    {label}
                 </button>
             </p>
 

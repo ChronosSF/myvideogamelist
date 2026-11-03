@@ -15,7 +15,8 @@ namespace MyVideoGameList.Server.Security;
 /// <para>
 /// It follows the session rather than leading it: written by the sign-in cookie's own events, so every
 /// way in and out — a registration, a sign-in, a rename's refreshed sign-in, a sign-out, an account
-/// deleted, a session refused for a changed security stamp — moves it with the session; and kept in
+/// deleted, a session refused for a changed security stamp or for an account deleted elsewhere
+/// (<see cref="DeletedAccountSessions"/>) — moves it with the session; and kept in
 /// step by <c>/api/auth/me</c>, which every page load asks, for a session that slides past the flag's
 /// expiry or ends without a sign-out. Wrong, it costs one page load: the wrong top section, replaced
 /// when auth answers, as every page load was before.
