@@ -227,8 +227,10 @@ describe('useImportReview.match, putting a pass back', () => {
         await act(() => userEvent.click(screen.getByRole('button', { name: 'Find these games' })));
 
         // Both lists survive the pass's older copy. The first row's tick is the pass's own; the
-        // second keeps the one chosen on screen, because the pass set none for a game already held.
-        expect(screen.getByTestId('rows')).toHaveTextContent('1:finished:import:42 2:dropped:import:43');
+        // second keeps what the screen had, because the pass sets none for a game already held. That
+        // is no tick: given its list with no game, the row stayed unselected, as the server keeps
+        // it, so a game the user already has is not then imported over their entry unasked (§S8).
+        expect(screen.getByTestId('rows')).toHaveTextContent('1:finished:import:42 2:dropped:skip:43');
     });
 });
 
@@ -357,6 +359,55 @@ describe('useImportReview.setDecisions, choosing a game', () => {
  * One list for the played-but-unresolved group: one request that names only the list, and an undo
  * that puts back what that request changed and nothing beside it.
  */
+describe('useImportReview.setDecisions, a row with no game', () => {
+    const JOB = 'job-1';
+
+    function Probe() {
+        const { review, setDecisions } = useImportReview('user-1', JOB);
+        const row = review?.rows[0];
+
+        return (
+            <div>
+                <span data-testid="row">
+                    {row ? `${row.decision}:${row.status ?? 'no list'}:${review.summary.selected} selected` : '-'}
+                </span>
+                <button
+                    type="button"
+                    onClick={() => void setDecisions([{ rowId: 1, decision: 'import', status: 'dropped' }])}
+                >
+                    Select
+                </button>
+            </div>
+        );
+    }
+
+    afterEach(() => vi.unstubAllGlobals());
+
+    it('keeps it unselected on screen, as the server stores it, and takes its list', async () => {
+        // The server keeps a row with no game on skip whatever it is sent, so a screen that showed
+        // it selected would count it as importing until the next read said otherwise.
+        vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+            const url = String(input);
+            if (url === `/api/import/jobs/${JOB}` && init?.method === undefined) {
+                return Promise.resolve(Response.json(importReview([importRow({
+                    id: 1, gameId: null, matchKind: IMPORT_MATCH.unmatched, decision: 'skip',
+                    status: null, statusUnrecognised: true,
+                })])));
+            }
+            if (url === `/api/import/jobs/${JOB}/rows` && init?.method === 'PATCH') {
+                return Promise.resolve(new Response(null, { status: 204 }));
+            }
+            throw new Error(`unexpected fetch: ${init?.method ?? 'GET'} ${url}`);
+        }));
+
+        render(<Probe />);
+        await waitFor(() => expect(screen.getByTestId('row')).toHaveTextContent('skip:no list:0 selected'));
+        await act(() => userEvent.click(screen.getByRole('button', { name: 'Select' })));
+
+        expect(screen.getByTestId('row')).toHaveTextContent('skip:dropped:0 selected');
+    });
+});
+
 describe('useImportReview.setPlayedStatus', () => {
     const JOB = 'job-1';
 

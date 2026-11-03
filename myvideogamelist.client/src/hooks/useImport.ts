@@ -429,7 +429,11 @@ function applyDecisions(review: ImportReview, decisions: ImportRowChoice[]): Imp
 
         return {
             ...row,
-            decision: decision.decision,
+            // As the server stores it: a row with no game, which this decision does not give it,
+            // stays unselected however it was asked, or the screen would count it as importing.
+            decision: decision.decision === IMPORT_DECISION.import && (decision.gameId ?? row.gameId) === null
+                ? IMPORT_DECISION.skip
+                : decision.decision,
             ...(decision.status ? { status: decision.status, statusUnrecognised: false } : {}),
 
             // The alternatives go with the question, exactly as the server drops them: a row whose
