@@ -600,6 +600,19 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   There is one theme, dark, and no `light:` variant (ADR 0048). A change meant to look the same is
   checked with `npm run visual`. See `docs/decisions/0049-*`.
 
+- **Text is set by its role, in one of three self-hosted families, and corners are tokens too.**
+  `type-display` and `type-title` (Archivo), `type-kicker` and `type-meta` (DM Mono), and Schibsted
+  Grotesk for everything else, as the default (`src/type.css`). The fonts are served from this origin
+  out of the `@fontsource` packages, Latin and Latin Extended only, with the three that draw most of a page
+  preloaded by `root.tsx`. Archivo is not the package's variable file but its two faces, 125%/800 and
+  100%/700, cut by `npm run fonts` into `src/assets/fonts/` and committed: anything else asked of it is
+  drawn in the nearer face, and another width or weight is another face there. A new face or family is
+  kilobytes on every page, which a phone pays before its largest paint, so check the Lighthouse audit.
+  Every radius is a token redefined small in `index.css`. A section of a page opens with a heavy rule, not
+  a box. The rule, the two buttons and a link's underline are utilities in `index.css` (`rule-heavy`,
+  `btn-primary`, `btn-outline`, `text-link`), and a stylesheet takes those and the type roles with
+  `@apply` under `@reference "../index.css";`, never restated. See `docs/decisions/0075-*`.
+
 - **Two game field lists, and putting a field in the wrong one fails quietly.**
   `GameListFieldList` feeds every query; `GameDetailFieldList` is concatenated onto it only by
   `GetGameByIdAsync`, which is why `GameDto.Details` is null everywhere else. A field a *listing*
@@ -650,7 +663,9 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   success policy stated by the loader through `data()`. A client-side navigation's `.data` request
   reaches the throwing route's `headers` whether or not it has a boundary, so a route that answers
   one policy unconditionally, or falls back to a shared one, caches its failures there. A page that
-  throws while rendering is not covered by any of this yet (#337). See `docs/decisions/0070-*`.
+  throws while rendering, after its loader answered, gets none of this: its `headers` answered for
+  a page that worked, and only the entry's 5xx rule above keeps its 500 off the edge (#337). See
+  `docs/decisions/0070-*`.
 
 - **`fetch` rejects when the API is unreachable** — it does not return `!response.ok`. A loader
   that only checks `response.ok` turns a dead upstream into an unhandled 500. Wrap it and throw

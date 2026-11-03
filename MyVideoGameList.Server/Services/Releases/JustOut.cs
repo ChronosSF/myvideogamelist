@@ -15,8 +15,12 @@ internal static class JustOut
     /// <summary>How far back the panel looks, from today.</summary>
     public const int WindowDays = 90;
 
-    /// <summary>The most games the panel shows.</summary>
-    public const int MaxShown = 10;
+    /// <summary>
+    /// The most games the panel shows. Nine, because the client's grid leads with one at two columns by two
+    /// rows and gives the other eight a cell each: twelve cells, which fill two, three, four or six columns
+    /// with no gap left over, and those are the grid's only widths (ADR 0075).
+    /// </summary>
+    public const int MaxShown = 9;
 
     /// <param name="candidates">What IGDB answered: the most watched games with a release row in the window.</param>
     /// <param name="hidden">The games the admin keeps off the home page's panels.</param>

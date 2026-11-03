@@ -7,25 +7,35 @@ import { PRIVATE_NO_STORE } from '@/lib/cache';
 import { NOINDEX } from '@/lib/seo';
 
 /**
- * The calendar before it can be drawn, in the shape it opens in: the strip of months, the month's name
- * with its two steps, the weekdays and the month's grid. Measured from the calendar itself at a
- * desktop's width — 44, 36 and 23 pixels, with the gaps between them — and the grid as five weeks of
- * empty days, the least a month takes. The calendar comes in as soon as auth answers and fills in as
- * its data arrives, so this stands in for its frame, not for its releases.
+ * The calendar before it can be drawn, in the shape it opens in (ADR 0075): the strip of months, then
+ * under its rule the month's name with its two steps and the index of its days, and beside them at a
+ * desktop's width the first lines of its list. The calendar comes in as soon as auth answers and fills
+ * in as its data arrives, so this stands in for its frame, not for its releases.
  */
 function CalendarSkeleton() {
     return (
         <div className="skeleton-sheen">
-            <Skeleton className="block h-11 w-full rounded-lg" />
-            <div className="flex items-center justify-between mt-8">
-                <Skeleton className="block h-7 w-44 rounded" />
-                <div className="flex gap-2">
-                    <Skeleton className="block h-9 w-9 rounded-lg" />
-                    <Skeleton className="block h-9 w-9 rounded-lg" />
+            <Skeleton className="block h-16 w-full rounded-sm" />
+            <div className="mt-12 pt-5 rule-heavy grid gap-8 lg:grid-cols-[18rem_minmax(0,1fr)] lg:gap-14">
+                <div>
+                    <div className="flex items-end justify-between">
+                        <Skeleton className="block h-10 w-44 rounded-sm" />
+                        <div className="flex gap-1.5">
+                            <Skeleton className="block h-9 w-9 rounded-sm" />
+                            <Skeleton className="block h-9 w-9 rounded-sm" />
+                        </div>
+                    </div>
+                    <Skeleton className="block h-60 w-full mt-5 rounded-sm" />
+                </div>
+                <div className="hidden lg:block">
+                    {[0, 1, 2].map(line => (
+                        <div key={line} className="flex gap-6 py-4 border-b border-line">
+                            <Skeleton className="block h-5 w-36 rounded-sm" />
+                            <Skeleton className="block h-16 flex-1 rounded-sm" />
+                        </div>
+                    ))}
                 </div>
             </div>
-            <Skeleton className="block h-3 w-full mt-3 mb-2.5 rounded-sm" />
-            <Skeleton className="block h-[31.25rem] w-full rounded-xl" />
         </div>
     );
 }

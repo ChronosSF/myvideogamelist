@@ -43,7 +43,7 @@ grow a forward pointer when a later record or an issue closes something it left 
 | [0021](0021-one-control-for-a-score.md) | Stars are the user's own score; every aggregate is a number out of 100 | Implemented |
 | [0022](0022-entry-surrogate-key-and-the-wishlist-axis.md) | The entry gets a surrogate key, and the wishlist is an axis rather than a status | Implemented |
 | [0023](0023-profile-statistics-derived-at-read-time.md) | Profile statistics are derived at read time, and split by what they depend on | Implemented; §4's chart amended by 0047 |
-| [0024](0024-the-ownership-contract.md) | One export manifest for every user-owned table, guarded in both directions | Implemented; one snapshot since #95; its cascades and its snapshot tested against PostgreSQL by 0057 |
+| [0024](0024-the-ownership-contract.md) | One export manifest for every user-owned table, guarded in both directions | Implemented; one snapshot since #95; its cascades and its snapshot tested against PostgreSQL by 0057; every session ended with the account by 0077 |
 | [0025](0025-playthroughs-and-reviews.md) | Playthroughs and reviews: what a user records about actually playing a game | Implemented; §6 amended for the description by 0069 |
 | [0026](0026-a-library-import-records-ownership-not-history.md) | A library import records ownership, not history | Accepted; its framework shipped in 0037, the Steam source is an open issue; §3 amended by 0047 |
 | [0027](0027-usernames-and-public-profiles.md) | Usernames are a namespace, and a profile is published only when asked | Implemented; the sitemap is 0036, D14 is 0058 |
@@ -88,11 +88,14 @@ grow a forward pointer when a later record or an issue closes something it left 
 | [0067](0067-the-esrb-filter-lists-a-game-under-its-badge.md) | The ESRB filter lists a game under the rating its badge shows | Implemented |
 | [0068](0068-lighthouse-on-the-production-shape.md) | Lighthouse on the production shape: five pages, a phone and a desktop, and only what the runner cannot move fails the build | Implemented; its credentials are allowed, and its lockfile audited, by 0061 |
 | [0069](0069-a-crawler-is-told-what-is-ours.md) | A crawler is told what is ours: the member score in the server render, a description that leads with it, and structured data | Implemented |
-| [0070](0070-nothing-shows-as-a-blank.md) | Nothing shows as a blank: empty and error states that teach, skeletons, and covers at their size | Implemented |
+| [0070](0070-nothing-shows-as-a-blank.md) | Nothing shows as a blank: empty and error states that teach, skeletons, and covers at their size | Implemented; the render failure it left to #337 closed by the entry's 5xx rule |
 | [0071](0071-coming-soon-is-what-igdb-says-people-are-waiting-for.md) | Coming soon is what IGDB says people are waiting for, cut to ten and corrected by hand | Implemented |
 | [0072](0072-steam-news-is-a-games-own-announcements.md) | Steam news is a game's own announcements, not the press Steam collects | Implemented |
 | [0073](0073-the-home-page-a-welcome-coming-soon-just-out-and-the-news.md) | The home page: a welcome, Coming soon and Just out, and the news last | Implemented |
 | [0074](0074-the-home-page-is-kept-twice-by-a-flag-that-names-nobody.md) | The home page is kept twice, by a flag that names nobody | Implemented |
+| [0075](0075-the-editorial-redesign.md) | The editorial redesign: ink and paper, one accent, three typefaces, and rules for boxes | Implemented |
+| [0077](0077-a-deleted-accounts-sessions-end-with-it.md) | A deleted account's sessions end with it, on the next request each makes | Implemented |
+| [0078](0078-what-the-imports-screens-count-and-offer.md) | What the import's screens count and offer: games where a row's game is known, rows where it is not, a wishlisted game as on the wishlist, and a change of any game the file did not name | Implemented |
 
 **Status** — *Accepted*: decided, not yet built. *Implemented*: decided and in the code.
 *Superseded*: replaced by a later record.

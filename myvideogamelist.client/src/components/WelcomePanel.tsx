@@ -1,23 +1,19 @@
 import { Link } from 'react-router';
 import { useAuthDialog } from '@/hooks/useAuthDialog';
-import { LIST_NAMES, type ListId } from '@/types/list';
-import './WelcomePanel.css';
 
-/** The lists the drawing shows, in the share image's order, each with how long its first line runs. */
-const DRAWN: readonly { list: ListId; width: string }[] = [
-    { list: 'playing', width: '88%' },
-    { list: 'finished', width: '72%' },
-    { list: 'on_hold', width: '94%' },
-    { list: 'backlog', width: '66%' },
-    { list: 'dropped', width: '80%' },
+/** What the site keeps for somebody, as the panel's contents list says it. */
+const POINTS: readonly { title: string; text: string }[] = [
+    { title: 'Your lists', text: 'From Playing to Finished, and a backlog in the order you’ll play it.' },
+    { title: 'A wishlist that keeps the dates', text: 'It tells you when each game comes out.' },
+    { title: 'Your year in numbers', text: 'What you’ve finished, and the hours it took.' },
 ];
 
 /**
  * What a visitor who has not signed in sees first: what the site is for, and the two ways in.
  *
- * Drawn from the palette and nothing else — no game's art and no other service's data, so it never says
- * anything a source could take back, and never fails. Its drawing is a list as the app draws one with
- * nothing real in it, as the default share image's is, so a shared link and the page it opens match.
+ * Set as a front page (ADR 0075): the promise as the headline, the three things it keeps as a numbered
+ * contents list beside it. Words and the palette alone — no game's art and no other service's data, so it
+ * never says anything a source could take back, and never fails.
  *
  * Also what the server renders for a request carrying no signed-in flag (ADR 0074). Somebody signed in
  * whose flag is gone sees it for one page load, until auth answers and the Welcome back band replaces it.
@@ -26,63 +22,60 @@ export function WelcomePanel() {
     const authDialog = useAuthDialog();
 
     return (
-        <section className="welcome-panel" aria-labelledby="welcome-heading">
-            <div className="welcome-panel-grid max-w-6xl mx-auto px-4 sm:px-6 py-12 sm:py-16">
-                <div>
-                    <h1 id="welcome-heading" className="text-3xl sm:text-4xl lg:text-5xl font-bold text-fg-strong leading-tight">
-                        Every game you&apos;ve played,{' '}
-                        <span className="text-primary-400">in one list</span>
-                    </h1>
-                    <p className="mt-4 max-w-xl text-base sm:text-lg leading-relaxed text-fg-soft">
-                        Keep track of what you&apos;re playing, what you&apos;ll get to next, and when the
-                        games you&apos;re waiting for come out.
-                    </p>
+        // The headline and the ways in, and the contents list beside them from a desktop's width, under
+        // them below it.
+        <section className="grid items-end gap-x-20 gap-y-14 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)] max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-14 sm:pt-24 pb-14 sm:pb-20" aria-labelledby="welcome-heading">
+            <div>
+                <h1 id="welcome-heading" className="type-display text-4xl sm:text-[3.375rem] lg:text-[3.5rem] text-fg-strong text-balance">
+                    Every game you&apos;ve played,{' '}
+                    <span className="text-primary-400">in one list</span>
+                </h1>
+                <p className="mt-8 max-w-xl text-lg sm:text-xl leading-relaxed text-fg-soft">
+                    Keep track of what you&apos;re playing, what you&apos;ll get to next, and when the
+                    games you&apos;re waiting for come out.
+                </p>
 
-                    <ul className="welcome-panel-points">
-                        <li>Lists from Playing to Finished, and a backlog in the order you&apos;ll play it</li>
-                        <li>A wishlist that tells you when each game comes out</li>
-                        <li>Your year in numbers: what you&apos;ve finished, and the hours it took</li>
-                    </ul>
-
-                    <div className="mt-8 flex flex-wrap items-center gap-3">
-                        <button
-                            type="button"
-                            onClick={() => authDialog.open('signup')}
-                            className="inline-flex items-center px-5 py-2.5 bg-primary-600 hover:bg-primary-500 text-on-primary font-semibold rounded-xl transition-colors shadow-lg shadow-primary-950/50 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus"
-                        >
-                            Create an account
-                        </button>
-                        <button
-                            type="button"
-                            onClick={() => authDialog.open('login')}
-                            className="inline-flex items-center px-5 py-2.5 bg-white/10 hover:bg-white/20 text-fg-strong font-semibold rounded-xl transition-colors border border-white/15 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus"
-                        >
-                            Sign in
-                        </button>
-                    </div>
-
-                    <p className="mt-4 text-sm text-fg-muted">
-                        Free to join. Or{' '}
-                        <Link to="/games" className="text-fg-soft underline underline-offset-2 hover:text-primary-400 transition-colors">
-                            browse the games
-                        </Link>{' '}
-                        first.
-                    </p>
+                <div className="mt-9 flex flex-wrap items-center gap-x-7 gap-y-4">
+                    <button
+                        type="button"
+                        onClick={() => authDialog.open('signup')}
+                        className="inline-flex items-center px-6 py-3.5 btn-primary focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2 focus-visible:ring-offset-page"
+                    >
+                        Create an account
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => authDialog.open('login')}
+                        className="font-semibold text-link focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus rounded-sm"
+                    >
+                        Sign in
+                    </button>
                 </div>
 
-                {/* Decoration: the sentences above say everything it does. */}
-                <div className="welcome-panel-list" aria-hidden="true">
-                    {DRAWN.map(({ list, width }) => (
-                        <div key={list} className={`welcome-panel-row welcome-status-${list}`}>
-                            <span className="welcome-panel-cover" />
-                            <span className="welcome-panel-lines">
-                                <span style={{ width }} />
-                                <span />
+                <p className="mt-5 text-sm text-fg-muted">
+                    Free to join. Or{' '}
+                    <Link to="/games" className="text-fg-soft underline underline-offset-2 hover:text-fg-strong transition-colors">
+                        browse the games
+                    </Link>{' '}
+                    first.
+                </p>
+            </div>
+
+            <div className="rule-heavy">
+                <p className="mt-3.5 type-kicker text-fg-muted">What it keeps for you</p>
+                <ol className="mt-1">
+                    {POINTS.map((point, index) => (
+                        <li key={point.title} className="grid grid-cols-[3.5rem_minmax(0,1fr)] gap-4 py-5 border-b border-line">
+                            <span aria-hidden="true" className="type-display text-4xl text-primary-500 leading-none">
+                                {String(index + 1).padStart(2, '0')}
                             </span>
-                            <span className="welcome-panel-chip">{LIST_NAMES[list]}</span>
-                        </div>
+                            <span>
+                                <span className="block type-title text-xl text-fg-strong">{point.title}</span>
+                                <span className="block mt-1 text-sm text-fg-muted">{point.text}</span>
+                            </span>
+                        </li>
                     ))}
-                </div>
+                </ol>
             </div>
         </section>
     );

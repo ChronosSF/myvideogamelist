@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CARD_TRACK, LINE_DAYS, NARROW_TRACK, layoutLine, lineDays } from '@/lib/releaseLine';
+import { LINE_DAYS, layoutLine, lineAgenda, lineDays } from '@/lib/releaseLine';
 import { calendarEvents, connectedRelease, releaseEntry } from '@/test/factories';
 import type { CalendarCuratedEvent, CalendarShowcase } from '@/types/releases';
 
@@ -43,25 +43,22 @@ describe('lineDays', () => {
 });
 
 describe('layoutLine, the releases', () => {
-    it('gives a release a card-wide column on its day and an empty day a narrow one', () => {
+    it('puts a release on its day, counted from today', () => {
         const layout = layoutLine(TODAY, [releaseEntry('2026-10-08')], null);
 
-        const tracks = layout.columns.split(/ (?=var|minmax)/);
-        expect(tracks).toHaveLength(LINE_DAYS);
-        expect(tracks[2]).toBe(CARD_TRACK);
-        expect(tracks[0]).toBe(NARROW_TRACK);
+        expect(layout.days).toHaveLength(LINE_DAYS);
+        expect(layout.days[2]).toMatchObject({ day: '2026-10-08', index: 2 });
         expect(layout.days[2].entries).toHaveLength(1);
+        expect(layout.days[0].entries).toHaveLength(0);
     });
 
-    it('puts the releases of one day side by side, a column each', () => {
+    it('keeps the releases of one day together, in the order they came', () => {
         const layout = layoutLine(TODAY, [
             releaseEntry('2026-10-08', [connectedRelease({ gameId: 1 })]),
             releaseEntry('2026-10-08', [connectedRelease({ gameId: 2 })]),
         ], null);
 
-        const [, , thursday, friday] = layout.days;
-        expect(thursday).toMatchObject({ column: 3, span: 2 });
-        expect(friday.column).toBe(5);
+        expect(layout.days[2].entries.map(e => e.releases[0].gameId)).toEqual([1, 2]);
     });
 
     it('draws only what is known to the day and inside the two weeks (L2)', () => {
@@ -77,29 +74,20 @@ describe('layoutLine, the releases', () => {
 });
 
 describe('layoutLine, the sales and showcases', () => {
-    it('spans a sale across its days, from the column its first day starts at', () => {
+    it('spans a sale across its days, from its first to its last', () => {
         const layout = layoutLine(TODAY, [], calendarEvents({ curated: [sale()] }));
 
         const [bar] = layout.events;
-        expect(bar).toMatchObject({ key: 'curated-1', kind: 'sale', columnStart: 3, columnEnd: 6, lane: 0 });
-        expect(bar.continuesBefore || bar.continuesAfter).toBe(false);
+        expect(bar).toMatchObject({ key: 'curated-1', kind: 'sale', first: 2, last: 4, lane: 0 });
     });
 
-    it('cuts a sale off at the line, and says that it goes on', () => {
+    it('cuts a sale off at the line, keeping all of its dates', () => {
         const layout = layoutLine(TODAY, [], calendarEvents({
             curated: [sale({ startsOn: '2026-10-01', endsOn: '2026-10-25' })],
         }));
 
         const [bar] = layout.events;
-        expect(bar).toMatchObject({ columnStart: 1, columnEnd: LINE_DAYS + 1, continuesBefore: true, continuesAfter: true });
-    });
-
-    it('widens the day a bar starts on, so that its name can be read', () => {
-        const layout = layoutLine(TODAY, [], calendarEvents({ curated: [sale()] }));
-
-        const tracks = layout.columns.split(/ (?=var|minmax)/);
-        expect(tracks[2]).toBe(CARD_TRACK);
-        expect(tracks[3]).toBe(NARROW_TRACK);
+        expect(bar).toMatchObject({ first: 0, last: LINE_DAYS - 1, startsOn: '2026-10-01', endsOn: '2026-10-25' });
     });
 
     it('puts overlapping bars on rows of their own, and reuses a row once it is free', () => {
@@ -145,5 +133,34 @@ describe('layoutLine, the sales and showcases', () => {
 
         expect(layout.events).toEqual([]);
         expect(layout.lanes).toBe(0);
+    });
+});
+
+describe('lineAgenda', () => {
+    it('lists each event once and each day with a release, in day order, leaving out the empty days', () => {
+        const layout = layoutLine(TODAY, [releaseEntry('2026-10-09'), releaseEntry('2026-10-12')], calendarEvents({
+            curated: [sale({ id: 1, startsOn: '2026-10-08', endsOn: '2026-10-10' })],
+        }));
+
+        expect(lineAgenda(layout).map(item => [item.type, item.date])).toEqual([
+            ['event', '2026-10-08'],
+            ['day', '2026-10-09'],
+            ['day', '2026-10-12'],
+        ]);
+    });
+
+    it('puts an event already on at today, and a day’s events before its releases', () => {
+        const layout = layoutLine(TODAY, [releaseEntry('2026-10-06')], calendarEvents({
+            curated: [sale({ id: 1, startsOn: '2026-10-01', endsOn: '2026-10-07' })],
+        }));
+
+        expect(lineAgenda(layout).map(item => [item.type, item.date])).toEqual([
+            ['event', TODAY],
+            ['day', TODAY],
+        ]);
+    });
+
+    it('is empty when nothing is on', () => {
+        expect(lineAgenda(layoutLine(TODAY, [], null))).toEqual([]);
     });
 });

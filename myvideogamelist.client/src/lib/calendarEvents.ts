@@ -87,3 +87,30 @@ export function eventDays(events: CalendarEvents | null, zone: DayZone = 'local'
 export function startTime(startsAt: string): string {
     return new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' }).format(new Date(startsAt));
 }
+
+/** One line of a list of what is on: a sale, a fest or a showcase, or a day with something releasing on it. */
+export type AgendaItem<E, D> =
+    | { type: 'event'; key: string; date: string; event: E }
+    | { type: 'day'; key: string; date: string; day: D };
+
+/**
+ * A list of what is on, in day order (ADR 0075): each event once, at `dateOf` — the first of its days the
+ * list covers — and each day with something releasing on it; a day's events before its releases, since an
+ * event that starts on a day frames it. A day with nothing on it is not in the list: the picture above it,
+ * the two-week line's ruler or the calendar's index, shows it. The line's list and the calendar's.
+ */
+export function agendaOf<E extends { key: string }, D extends { day: string; entries: readonly unknown[] }>(
+    events: readonly E[],
+    dateOf: (event: E) => string,
+    days: readonly D[],
+): AgendaItem<E, D>[] {
+    const items: AgendaItem<E, D>[] = [
+        ...events.map((event): AgendaItem<E, D> => ({ type: 'event', key: event.key, date: dateOf(event), event })),
+        ...days
+            .filter(day => day.entries.length > 0)
+            .map((day): AgendaItem<E, D> => ({ type: 'day', key: day.day, date: day.day, day })),
+    ];
+
+    // Stable, so that the events keep the order they were handed in among themselves.
+    return items.sort((a, b) => a.date.localeCompare(b.date) || (a.type === b.type ? 0 : a.type === 'event' ? -1 : 1));
+}

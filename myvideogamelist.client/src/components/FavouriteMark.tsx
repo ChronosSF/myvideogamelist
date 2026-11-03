@@ -16,10 +16,10 @@ interface FavouriteMarkProps {
  * games and the site's: browse, search, their lists, their wishlist, the home page, a game's page and
  * their own showcase. Never on somebody else's profile, whose favourites are theirs (ADR 0064).
  *
- * The rosette, filled, as the release card draws it once a game is a favourite — never a star, which is
+ * The rosette, filled, in the favourite's violet — never a star, which is
  * the user's own score and nothing else (ADR 0021). It marks and does nothing: a favourite is made or
- * unmade on the game's page (ADR 0029 §4) and on a release card, which has offered the same toggle since
- * the release calendar's review asked for it, and nowhere else.
+ * unmade on the game's page (ADR 0029 §4) and nowhere else. The release cards offered the toggle too until
+ * every view of what is coming took one pair of actions, the wishlist and the Backlog (ADR 0064).
  */
 export function FavouriteMark({ variant }: FavouriteMarkProps) {
     if (variant === 'inline') {

@@ -1,5 +1,5 @@
 import { eventDays, type DayEvent, type DayZone } from '@/lib/calendarEvents';
-import { addDays, dayLabel, daysBetween } from '@/lib/daySpan';
+import { addDays, daysBetween, shortDay, shortSpan, weekdayAndDay } from '@/lib/daySpan';
 import { LINE_DAYS } from '@/lib/releaseLine';
 import type { CalendarEvents } from '@/types/releases';
 
@@ -41,32 +41,6 @@ export function panelEvents(today: string, events: CalendarEvents, zone: DayZone
             || startInstant(a) - startInstant(b)
             || a.name.localeCompare(b.name, 'en')
             || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
-}
-
-/** "Oct 19", from the string alone. */
-function shortDay(day: string): string {
-    const { month, date } = dayLabel(day);
-    return `${month} ${date}`;
-}
-
-/** "Tue, Oct 20". */
-function weekdayAndDay(day: string): string {
-    const { weekday, month, date } = dayLabel(day);
-    return `${weekday}, ${month} ${date}`;
-}
-
-/**
- * "Oct 19 – 26", "Oct 28 – Nov 2", "Dec 17 – Jan 4". No year: something on in the next two weeks is
- * never far enough off for its year to be in doubt.
- */
-function shortSpan(startsOn: string, endsOn: string): string {
-    const first = dayLabel(startsOn);
-    const last = dayLabel(endsOn);
-    const sameMonth = startsOn.slice(0, 7) === endsOn.slice(0, 7);
-
-    return sameMonth
-        ? `${first.month} ${first.date} – ${last.date}`
-        : `${first.month} ${first.date} – ${last.month} ${last.date}`;
 }
 
 /** When an event is, as the panel says it. */

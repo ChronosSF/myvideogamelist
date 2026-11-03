@@ -52,7 +52,8 @@ test.describe('signed out', () => {
     test('sign-in dialog', async ({ page }) => {
         await page.goto('/');
         await settle(page);
-        await page.getByRole('button', { name: 'Sign In' }).click();
+        // Exact: the welcome panel's "Sign in" is the same name to a case-blind match.
+        await page.getByRole('button', { name: 'Sign In', exact: true }).click();
         await expect(page).toHaveScreenshot('out-sign-in.png');
     });
 

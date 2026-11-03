@@ -174,15 +174,22 @@ Global styles in `src/index.css`, app shell in `src/App.css` — both imported f
 **Every colour is a token from `src/theme.css`** (`docs/decisions/0049-*`). `npm run lint` fails on
 any other, so build new styling on these from the start:
 
-- **Surfaces:** `bg-page` for the page, `bg-surface` for a card, panel, menu or dialog, `bg-raised`
-  for what sits on a surface or is hovered, and `bg-sunken` for scrims.
+- **Surfaces:** `bg-page` for the page, `bg-surface` for what floats or needs a ground of its own — a
+  menu, a dialog, a panel — `bg-raised` for what sits on a surface or is hovered, and `bg-sunken` for
+  scrims. Not for a section of a page, which opens with a rule instead (below).
 - **Lines:** `border-line` for borders and dividers, `border-line-strong` for the edge of an input or
   a floating panel.
 - **Text, strongest first:** `text-fg-strong` for headings, `text-fg` for body text, then
   `text-fg-soft`, `text-fg-muted`, `text-fg-faint` and `text-fg-dim`.
-- **The primary is a scale.** `text-primary-400` for a link or the active tab, `bg-primary-600` or
-  `bg-primary-500` for a filled button with `text-on-primary`, and `ring-focus` or `outline-focus` for
-  keyboard focus.
+- **The primary is a scale,** the logo's lime. `text-primary-400` for the active tab or a mark of
+  what is the reader's own, `primary-500` for a filled button with `on-primary` (the page's ink) and
+  `primary-600` for its other state, and `ring-focus` or `outline-focus` for keyboard focus.
+- **The shapes every page repeats are utilities in `src/index.css`**, so write them by name, never as
+  their classes: `btn-primary` for the one filled button a place has, for what the place is for;
+  `btn-outline` for every other button (a red one is outlined in red); `text-link` for a link in
+  running text; `hover:underline-quiet` for a title that is a link; `rule-heavy` for the rule a section
+  opens with. Size and spacing stay beside them. A stylesheet takes them with `@apply`, under
+  `@reference "../index.css";` at its top.
 - **Colours that carry meaning are scales named for the meaning,** such as `danger-300` for an
   error's words, and stay the same in every palette. Score colours still come from `@/lib/score`.
 - **The brand's colours** (`brand-navy`, `brand-lime`, `brand-light`) are the logo's.
@@ -194,6 +201,30 @@ When nothing fits, add a token, named for its job rather than its look. Don't wr
 Translucent black and white, for shadows and scrims, are the one exception.
 
 There is one theme, dark: no `light:` variant and no `[data-theme='light']` rules (ADR 0048).
+
+**Text is set by its role** (`docs/decisions/0075-*`), with the utilities in `src/type.css`, and the
+size beside it:
+
+- `type-display`: Archivo, wide and heavy — a page's title, a section's, a big figure.
+- `type-title`: Archivo, normal width and bold — the name of a thing, a game in a list.
+- `type-kicker`: DM Mono small capitals — the label over a heading or beside a figure.
+- `type-meta`: DM Mono — a date, a list of platforms, a count on a line of its own.
+- Everything else is the default, Schibsted Grotesk. Don't set `font-family` any other way.
+
+In a stylesheet a role is `@apply type-kicker;` first in the rule, with the size and anything else the
+place sets differently after it, never the family and the face written out again.
+
+Archivo has those two faces and no other, 125% at 800 and 100% at 700, cut by `npm run fonts`. Don't give
+it another weight or width: it is drawn in the nearer face, so the CSS would say something the page does
+not show. A new way of setting it is a new face there and a rule in `type.css`.
+
+**Corners are tokens:** `rounded-sm` to `rounded-4xl` are a pixel or two (`src/index.css`), and a
+stylesheet writes `var(--radius-lg)`, never a size. `rounded-full` is for what is round: an avatar, a
+toggle's thumb.
+
+**A section opens with a rule, not a box:** `rule-heavy` over its title, hairlines (`border-line`)
+between the rows inside it. `PageHeader` and `HomeSectionHeading` are the two shapes;
+use them rather than a copy of their classes.
 
 ## Images
 

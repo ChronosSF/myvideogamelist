@@ -13,10 +13,10 @@
  *
  *     node share/render.mjs
  *
- * The text is set in the machine's own interface font, as the app's is, so a render on another system
- * differs from the committed image in its letterforms. Look at the result before committing it. The
- * file's name never changes: the build gives it a hashed address, so a new image is a new URL to every
- * crawler that cached the old one.
+ * The text is set in the app's own fonts, which the page loads from the @fontsource packages in
+ * node_modules, so a render on any machine has the same letterforms. Look at the result before committing
+ * it. The file's name never changes: the build gives it a hashed address, so a new image is a new URL to
+ * every crawler that cached the old one.
  */
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';

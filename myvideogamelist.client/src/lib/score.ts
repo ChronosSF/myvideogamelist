@@ -135,9 +135,9 @@ function band(percent: number): 'good' | 'mixed' | 'poor' {
  */
 export function scoreBandSolid(percent: number): string {
     switch (band(percent)) {
-        case 'good': return 'bg-score-good-500 text-fg-strong';
-        case 'mixed': return 'bg-score-mixed-500 text-on-score-mixed';
-        case 'poor': return 'bg-score-poor-500 text-fg-strong';
+        case 'good': return 'bg-score-good-500 text-on-score';
+        case 'mixed': return 'bg-score-mixed-500 text-on-score';
+        case 'poor': return 'bg-score-poor-500 text-on-score';
     }
 }
 

@@ -106,3 +106,36 @@ export function dayLabel(day: string): {
         full: `${weekday}, ${MONTH_NAMES[month - 1]} ${date}`,
     };
 }
+
+/** "Oct 19", from the string alone. */
+export function shortDay(day: string): string {
+    const { month, date } = dayLabel(day);
+    return `${month} ${date}`;
+}
+
+/** "Tue, Oct 20", from the string alone. */
+export function weekdayAndDay(day: string): string {
+    const { weekday, month, date } = dayLabel(day);
+    return `${weekday}, ${month} ${date}`;
+}
+
+/**
+ * "Oct 19 – 26", "Oct 28 – Nov 2", "Dec 17 – Jan 4". No year: for a run of days near enough, or set under
+ * its month, that its year is not in doubt.
+ */
+export function shortSpan(startsOn: string, endsOn: string): string {
+    const first = dayLabel(startsOn);
+    const last = dayLabel(endsOn);
+    const sameMonth = startsOn.slice(0, 7) === endsOn.slice(0, 7);
+
+    return sameMonth
+        ? `${first.month} ${first.date} – ${last.date}`
+        : `${first.month} ${first.date} – ${last.month} ${last.date}`;
+}
+
+/** How far off a day is that has not passed, in words: "Today", "Tomorrow", "In 10 days". */
+export function daysAway(days: number): string {
+    if (days === 0) return 'Today';
+    if (days === 1) return 'Tomorrow';
+    return `In ${days} days`;
+}

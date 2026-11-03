@@ -165,7 +165,7 @@ export function importJob(overrides: Partial<ImportJob> = {}): ImportJob {
     };
 }
 
-/** One row of a review. Nineteen fields, of which a test usually cares about two. */
+/** One row of a review. Twenty fields, of which a test usually cares about two. */
 export function importRow(overrides: Partial<ImportReviewRow> = {}): ImportReviewRow {
     return {
         id: 1,
@@ -187,6 +187,7 @@ export function importRow(overrides: Partial<ImportReviewRow> = {}): ImportRevie
         playthroughCount: 0,
         minutesPlayed: null,
         alreadyTracked: false,
+        gameFromFile: true,
         ...overrides,
     };
 }
@@ -224,10 +225,11 @@ export function importReview(rows: ImportReviewRow[], job: Partial<ImportJob> = 
  * than restated — for `importReview`'s reason, and because the two add up to every row in the file.
  * Each imported row names a game of its own unless `games` says otherwise.
  */
-export function importResult({ imported = 1, games = imported, unlisted = 0, skipped = [] }: {
+export function importResult({ imported = 1, games = imported, unlisted = 0, wishlistOnly = 0, skipped = [] }: {
     imported?: number;
     games?: number;
     unlisted?: number;
+    wishlistOnly?: number;
     skipped?: ImportSkippedRow[];
 } = {}): ImportResult {
     return {
@@ -242,6 +244,7 @@ export function importResult({ imported = 1, games = imported, unlisted = 0, ski
         skipped,
         games,
         unlisted,
+        wishlistOnly,
     };
 }
 

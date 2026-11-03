@@ -37,7 +37,7 @@
     color: var(--color-tag-300);
     background: color-mix(in srgb, var(--color-tag-900) 45%, transparent);
     border: 1px solid color-mix(in srgb, var(--color-tag-800) 70%, transparent);
-    border-radius: 9999px;
+    border-radius: var(--radius-sm);
 }
 
 .tags-card-count {
@@ -58,7 +58,7 @@
     color: var(--color-primary-400);
     background: none;
     border: 0;
-    border-radius: 0.25rem;
+    border-radius: var(--radius-sm);
     cursor: pointer;
 }
 
@@ -103,7 +103,7 @@
     color: var(--color-fg);
     background: var(--color-page);
     border: 1px solid var(--color-line-strong);
-    border-radius: 0.5rem;
+    border-radius: var(--radius-lg);
     outline: none;
 }
 

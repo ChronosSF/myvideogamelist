@@ -6,14 +6,35 @@
         The source of src/assets/share.png, the image a page is shared with when it has none of its
         own (#139): 1200 by 630, the size Open Graph and the large card are drawn at. render.mjs beside
         it draws this with Chromium, after putting the app's colour tokens on :root, so the image is in
-        the app's colours by construction and every colour here is a token.
+        the app's colours by construction and every colour here is a token. The type is the app's own,
+        from the same @fontsource files `src/type.css` serves (ADR 0075).
 
         Everything that matters stays inside the middle 1200 by 600, because the large card crops the
         image to two to one. It shows the brand and nothing else: no game's art, so no credit is owed
-        to anybody, and it says nothing a page might contradict. The holding page's image
-        (holding/share, ADR 0066) is the same layout with "Coming soon" on it, and goes with that page.
+        to anybody, and it says nothing a page might contradict. It is the home page's welcome in
+        small: the headline, and the contents list of what the site keeps. The holding page's image
+        (holding/share, ADR 0066) goes with that page, and keeps the look it went up with.
     -->
     <style>
+        @font-face {
+            font-family: 'Archivo Variable';
+            font-weight: 100 900;
+            font-stretch: 62% 125%;
+            src: url('../node_modules/@fontsource-variable/archivo/files/archivo-latin-wdth-normal.woff2') format('woff2-variations');
+        }
+
+        @font-face {
+            font-family: 'Schibsted Grotesk Variable';
+            font-weight: 400 900;
+            src: url('../node_modules/@fontsource-variable/schibsted-grotesk/files/schibsted-grotesk-latin-wght-normal.woff2') format('woff2-variations');
+        }
+
+        @font-face {
+            font-family: 'DM Mono';
+            font-weight: 400;
+            src: url('../node_modules/@fontsource/dm-mono/files/dm-mono-latin-400-normal.woff2') format('woff2');
+        }
+
         html,
         body {
             width: 1200px;
@@ -25,15 +46,12 @@
         body {
             box-sizing: border-box;
             display: grid;
-            grid-template-columns: 1fr 400px;
+            grid-template-columns: 1fr 380px;
             align-items: center;
-            gap: 64px;
-            padding: 72px 80px;
-            background:
-                radial-gradient(ellipse 900px 600px at 0% 0%, color-mix(in srgb, var(--color-primary-950) 90%, transparent), transparent 70%),
-                var(--color-page);
-            /* Tailwind's default, which is what the app sets its text in. */
-            font-family: ui-sans-serif, system-ui, sans-serif;
+            gap: 72px;
+            padding: 64px 80px;
+            background: var(--color-page);
+            font-family: 'Schibsted Grotesk Variable', sans-serif;
         }
 
         p {
@@ -43,16 +61,17 @@
         .lockup {
             display: flex;
             align-items: center;
-            gap: 20px;
-            color: var(--color-fg);
-            font-size: 44px;
-            font-weight: 700;
+            gap: 18px;
+            color: var(--color-fg-strong);
+            font-family: 'Archivo Variable', sans-serif;
+            font-size: 34px;
+            font-weight: 800;
             letter-spacing: -0.01em;
         }
 
         .lockup svg {
-            width: 72px;
-            height: 72px;
+            width: 56px;
+            height: 56px;
         }
 
         /* The logo's own colours, as the navbar draws it. */
@@ -62,12 +81,15 @@
         .logo-check { stroke: var(--color-brand-navy); }
         .brand-accent { color: var(--color-brand-lime); }
 
+        /* The welcome's headline, set as the home page sets it: Archivo, wide and heavy. */
         .headline {
-            margin-top: 44px;
+            margin-top: 40px;
             color: var(--color-fg-strong);
-            font-size: 60px;
-            font-weight: 700;
-            line-height: 1.12;
+            font-family: 'Archivo Variable', sans-serif;
+            font-stretch: 125%;
+            font-size: 64px;
+            font-weight: 800;
+            line-height: 0.98;
             letter-spacing: -0.02em;
         }
 
@@ -78,77 +100,49 @@
         .domain {
             margin-top: 36px;
             color: var(--color-fg-muted);
+            font-family: 'DM Mono', monospace;
+            font-size: 22px;
+            letter-spacing: 0.04em;
+        }
+
+        /* The contents list beside it, under a heavy rule, as the welcome has it. */
+        .contents {
+            border-top: 3px solid var(--color-fg-strong);
+        }
+
+        .kicker {
+            margin-top: 16px;
+            color: var(--color-fg-muted);
+            font-family: 'DM Mono', monospace;
+            font-size: 15px;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+        }
+
+        .point {
+            display: grid;
+            grid-template-columns: 64px 1fr;
+            align-items: baseline;
+            gap: 12px;
+            padding: 22px 0;
+            border-bottom: 1px solid var(--color-line);
+        }
+
+        .number {
+            color: var(--color-primary-500);
+            font-family: 'Archivo Variable', sans-serif;
+            font-stretch: 125%;
+            font-size: 40px;
+            font-weight: 800;
+            line-height: 1;
+        }
+
+        .title {
+            color: var(--color-fg-strong);
+            font-family: 'Archivo Variable', sans-serif;
             font-size: 26px;
-        }
-
-        /* A list as the app draws one, with nothing real in it: a cover, two lines of text and the
-           status, once for each of the five. */
-        .list {
-            display: grid;
-            gap: 14px;
-            padding: 22px;
-            border: 2px solid var(--color-line);
-            border-radius: 24px;
-            background: color-mix(in srgb, var(--color-surface) 70%, transparent);
-            box-shadow: 0 30px 60px -20px rgb(0 0 0 / 0.5);
-        }
-
-        .row {
-            display: grid;
-            grid-template-columns: 52px 1fr auto;
-            align-items: center;
-            gap: 16px;
-        }
-
-        .status-playing { --dot: var(--color-status-playing); }
-        .status-finished { --dot: var(--color-status-finished); }
-        .status-on-hold { --dot: var(--color-status-on-hold); }
-        .status-backlog { --dot: var(--color-status-backlog); }
-        .status-dropped { --dot: var(--color-status-dropped); }
-
-        .cover {
-            width: 52px;
-            height: 68px;
-            border-radius: 8px;
-            background: linear-gradient(160deg, color-mix(in srgb, var(--dot) 55%, var(--color-surface)), var(--color-sunken));
-        }
-
-        .lines {
-            display: grid;
-            gap: 10px;
-        }
-
-        .lines span {
-            display: block;
-            height: 12px;
-            border-radius: 6px;
-            background: var(--color-line-strong);
-        }
-
-        .lines span + span {
-            width: 55%;
-            height: 10px;
-            background: var(--color-line);
-        }
-
-        .chip {
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            padding: 4px 12px;
-            border: 2px solid var(--color-line-strong);
-            border-radius: 999px;
-            color: var(--color-fg-soft);
-            font-size: 16px;
-            white-space: nowrap;
-        }
-
-        .chip::before {
-            content: "";
-            width: 10px;
-            height: 10px;
-            border-radius: 50%;
-            background: var(--dot);
+            font-weight: 700;
+            line-height: 1.15;
         }
     </style>
 </head>
@@ -174,12 +168,11 @@
         <p class="domain">myvideogamelist.net</p>
     </div>
 
-    <div class="list" aria-hidden="true">
-        <div class="row status-playing"><span class="cover"></span><span class="lines"><span style="width: 88%"></span><span></span></span><span class="chip">Playing</span></div>
-        <div class="row status-finished"><span class="cover"></span><span class="lines"><span style="width: 72%"></span><span></span></span><span class="chip">Finished</span></div>
-        <div class="row status-on-hold"><span class="cover"></span><span class="lines"><span style="width: 94%"></span><span></span></span><span class="chip">On Hold</span></div>
-        <div class="row status-backlog"><span class="cover"></span><span class="lines"><span style="width: 66%"></span><span></span></span><span class="chip">Backlog</span></div>
-        <div class="row status-dropped"><span class="cover"></span><span class="lines"><span style="width: 80%"></span><span></span></span><span class="chip">Dropped</span></div>
+    <div class="contents" aria-hidden="true">
+        <p class="kicker">What it keeps for you</p>
+        <div class="point"><span class="number">01</span><span class="title">Your lists</span></div>
+        <div class="point"><span class="number">02</span><span class="title">A wishlist that keeps the dates</span></div>
+        <div class="point"><span class="number">03</span><span class="title">Your year in numbers</span></div>
     </div>
 </body>
 </html>

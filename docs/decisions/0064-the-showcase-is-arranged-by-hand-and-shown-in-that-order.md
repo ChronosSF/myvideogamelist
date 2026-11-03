@@ -151,15 +151,19 @@ forgets the gesture whenever its list stops taking moves.
 | The home page's play-next picker | After the title, the cover being too small |
 | A game page's similar games, expansions and DLC | On the cover |
 | The owner's own showcase on `/user` | On the cover, on every one |
+| The two-week line's and the calendar's release cards, Coming soon's rows | After the title, the cover being too small |
 
-The release card already shows its favourite toggle filled for a favourite, and keeps it.
+The release card showed its favourite toggle filled for a favourite, and kept it, until 2026-10-27 (below).
 
 - **The mark is the release card's filled rosette without the button**: white on the favourite's violet,
   in the bottom corner of a cover. Nothing else uses that corner; the ESRB rating, the critic score, a
   rank and a hand order's grip all sit along the top.
 - **It is never a star** ([0021](0021-one-control-for-a-score.md)).
-- **It changes nothing.** A favourite is still made or unmade on the game's page (0029 §4) and on a
-  release card, which has offered the same toggle since the release calendar's review asked for it.
+- **It changes nothing.** A favourite is made or unmade on the game's page (0029 §4). The release card
+  offered the same toggle from the release calendar's review until 2026-10-27, when every view of what is
+  coming took one pair of actions, the wishlist and the Backlog, drawn the same on all four
+  ([0075](0075-the-editorial-redesign.md)). A favourite is a game somebody loves, which a release not out
+  yet seldom is; the card marks one after its title, as the row beside it on Coming soon does.
 - **The owner's showcase carries it on every cover** because the mark is a property of the game, shown
   wherever the game is shown. There the heading is its legend, and the list's name says it in words for
   every cover at once, so the covers there do not say it again each.

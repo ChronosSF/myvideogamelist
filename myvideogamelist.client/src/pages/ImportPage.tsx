@@ -10,6 +10,12 @@ import { useHydrated } from '@/lib/useHydrated';
 import { PRIVATE_NO_STORE } from '@/lib/cache';
 import { NOINDEX } from '@/lib/seo';
 
+/** A section's heading: the display type under the heavy rule a section opens with (ADR 0075). */
+const SECTION_HEADING = 'type-display text-2xl text-fg-strong rule-heavy pt-4';
+
+/** A count of a file's rows, with its noun. */
+const rows = (count: number) => `${formatCount(count)} ${count === 1 ? 'row' : 'rows'}`;
+
 /** One person's import history, so never cacheable. Declared rather than inherited from the root. */
 export function headers() {
     return { 'Cache-Control': PRIVATE_NO_STORE };
@@ -76,7 +82,7 @@ export function ImportPage() {
                 {signedIn && (
                     <>
                         <section aria-labelledby="import-source">
-                            <h2 id="import-source" className="text-lg font-semibold text-fg-strong mb-1">
+                            <h2 id="import-source" className={`${SECTION_HEADING} mb-2`}>
                                 From Grouvee
                             </h2>
                             <p className="text-fg-muted text-sm mb-4">
@@ -162,18 +168,18 @@ export function ImportPage() {
 
                         {pending.length > 0 && (
                             <section aria-labelledby="import-pending">
-                                <h2 id="import-pending" className="text-lg font-semibold text-fg-strong mb-3">
+                                <h2 id="import-pending" className={`${SECTION_HEADING} mb-4`}>
                                     Waiting for you
                                 </h2>
-                                <ul className="space-y-2">
+                                <ul className="border-t border-line">
                                     {pending.map(job => (
                                         <li key={job.id}>
                                             <Link
                                                 to={`/import/${job.id}`}
-                                                className="flex items-center justify-between gap-4 px-4 py-3 bg-surface/60 border border-line-strong rounded-lg hover:border-fg-faint transition-colors"
+                                                className="group flex items-center justify-between gap-4 py-3.5 border-b border-line"
                                             >
                                                 <span className="min-w-0">
-                                                    <span className="block text-fg text-sm font-medium truncate">
+                                                    <span className="block type-title text-fg-strong truncate group-hover:underline-quiet">
                                                         {job.fileName}
                                                     </span>
                                                     {expiresIn(job.expiresAt) && (
@@ -182,8 +188,11 @@ export function ImportPage() {
                                                         </span>
                                                     )}
                                                 </span>
+                                                {/* Rows, because a job waiting for review has
+                                                    games for only the rows it could match, and two
+                                                    rows can name one game (issue 300). */}
                                                 <span className="text-fg-muted text-xs shrink-0">
-                                                    {formatCount(job.rowCount)} games — review
+                                                    {rows(job.rowCount)} — review
                                                 </span>
                                             </Link>
                                         </li>
@@ -194,18 +203,20 @@ export function ImportPage() {
 
                         {finished.length > 0 && (
                             <section aria-labelledby="import-done">
-                                <h2 id="import-done" className="text-lg font-semibold text-fg-strong mb-1">
+                                <h2 id="import-done" className={`${SECTION_HEADING} mb-2`}>
                                     Already imported
                                 </h2>
+                                {/* Not "the games are in your lists", which an import that put some
+                                    in no list, or only on the wishlist, made untrue. */}
                                 <p className="text-fg-muted text-sm mb-3">
-                                    The games are in your lists. These are only the receipts, and they are
-                                    tidied away a few days after the import finishes.
+                                    These imports are finished. Only their receipts are kept here, and
+                                    they are tidied away a few days after each import.
                                 </p>
-                                <ul className="space-y-2 text-sm">
+                                <ul className="border-t border-line text-sm">
                                     {finished.map(job => (
                                         <li
                                             key={job.id}
-                                            className="flex items-center justify-between gap-4 px-4 py-3 bg-surface/40 border border-line rounded-lg"
+                                            className="flex items-center justify-between gap-4 py-3.5 border-b border-line"
                                         >
                                             <span className="min-w-0">
                                                 <span className="block text-fg-soft truncate">
@@ -217,8 +228,12 @@ export function ImportPage() {
                                                     </span>
                                                 )}
                                             </span>
+                                            {/* The job's two counts, which are rows so that they
+                                                add up to the file. How many games those rows
+                                                made is said once, by the commit, and kept
+                                                nowhere (issue 300). */}
                                             <span className="text-fg-faint text-xs shrink-0">
-                                                {formatCount(job.importedCount ?? 0)} imported,{' '}
+                                                {rows(job.importedCount ?? 0)} imported,{' '}
                                                 {formatCount(job.skippedCount ?? 0)} skipped
                                             </span>
                                         </li>

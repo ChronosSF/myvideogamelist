@@ -64,7 +64,7 @@ export function NewsPage() {
                     the list's own grid, three rows of it. */}
                 {(authLoading || (signedIn && loading)) && (
                     <LoadingState label="Loading news for your games…">
-                        <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+                        <div className="grid grid-cols-1 gap-x-12 lg:grid-cols-2 rule-heavy">
                             {Array.from({ length: 6 }, (_, index) => <NewsCardSkeleton key={index} />)}
                         </div>
                     </LoadingState>
@@ -102,7 +102,7 @@ export function NewsPage() {
                             </p>
                             <Link
                                 to="/games"
-                                className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary-600 hover:bg-primary-500 text-on-primary text-sm font-semibold rounded-lg transition-colors"
+                                className="inline-flex items-center gap-1.5 px-4 py-2 btn-primary text-sm"
                             >
                                 Browse games
                             </Link>
@@ -115,7 +115,7 @@ export function NewsPage() {
                         {/* grid-cols-1 rather than an implicit column, for the home rail's reason: an
                             implicit one sizes to its content, and a card's truncated source line counts
                             at full length — wider than a phone. */}
-                        <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+                        <div className="grid grid-cols-1 gap-x-12 lg:grid-cols-2 rule-heavy">
                             {news.map(item => (
                                 <NewsCard key={item.id} item={item} />
                             ))}
