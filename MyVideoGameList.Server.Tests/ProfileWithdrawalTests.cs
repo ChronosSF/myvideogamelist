@@ -86,6 +86,7 @@ public class ProfileWithdrawalTests
             services.AddScoped(_ => Substitute.For<IGameCacheService>());
             services.AddScoped<ReviewService>();
             services.AddScoped<ListService>();
+            services.AddScoped<ModerationService>();
 
             root = services.BuildServiceProvider();
             scope = root.CreateScope();
@@ -432,6 +433,182 @@ public class ProfileWithdrawalTests
 
         Assert.Null(site.StoredUser(alice.Id)?.Bio);
         Assert.Empty(edge.Sent);
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // An admin's withdrawals (ADR 0076 §5)
+    // ---------------------------------------------------------------------------------------
+
+    private static async Task<int> PublishedReviewAsync(Site site, ApplicationUser author, string visibility = ReviewVisibility.Public) =>
+        (await site.Get<ReviewService>().UpsertAsync(author.Id, GameId, Review(visibility))).Id;
+
+    [Fact]
+    public async Task HideReviewAsync_PublicReview_InvalidatesTheProfileOnlyOnceStored()
+    {
+        var edge = new RecordingEdgeInvalidator();
+        using var site = new Site(edge);
+        var alice = await site.AccountAsync("alice", ProfileVisibility.Public);
+        var reviewId = await PublishedReviewAsync(site, alice);
+        DateTimeOffset? storedWhenSent = null;
+        edge.OnInvalidate = _ => storedWhenSent = site.StoredReview()?.HiddenAt;
+
+        Assert.True(await site.Get<ModerationService>().HideReviewAsync(reviewId));
+
+        AssertSent(edge, "review hidden by an admin", "/u/alice*");
+        Assert.Equal(Midday, storedWhenSent);
+    }
+
+    [Fact]
+    public async Task HideReviewAsync_PrivateReview_InvalidatesTheProfileAnyway()
+    {
+        // Decided by nothing else it read, as a delete is: its author can publish it between the hide's
+        // read and its save, and a review has no stamp to refuse the save on (ADR 0076 §5).
+        var edge = new RecordingEdgeInvalidator();
+        using var site = new Site(edge);
+        var alice = await site.AccountAsync("alice", ProfileVisibility.Public);
+        var reviewId = await PublishedReviewAsync(site, alice, ReviewVisibility.Private);
+
+        await site.Get<ModerationService>().HideReviewAsync(reviewId);
+
+        AssertSent(edge, "review hidden by an admin", "/u/alice*");
+    }
+
+    [Fact]
+    public async Task HideReviewAsync_OnAPrivateProfile_InvalidatesNothing()
+    {
+        var edge = new RecordingEdgeInvalidator();
+        using var site = new Site(edge);
+        var alice = await site.AccountAsync("alice", ProfileVisibility.Private);
+        var reviewId = await PublishedReviewAsync(site, alice);
+
+        await site.Get<ModerationService>().HideReviewAsync(reviewId);
+
+        Assert.NotNull(site.StoredReview()?.HiddenAt);
+        Assert.Empty(edge.Sent);
+    }
+
+    [Fact]
+    public async Task HideReviewAsync_AlreadyHidden_InvalidatesNothing()
+    {
+        var edge = new RecordingEdgeInvalidator();
+        using var site = new Site(edge);
+        var alice = await site.AccountAsync("alice", ProfileVisibility.Public);
+        var reviewId = await PublishedReviewAsync(site, alice);
+        await site.Get<ModerationService>().HideReviewAsync(reviewId);
+        edge.Sent.Clear();
+
+        await site.Get<ModerationService>().HideReviewAsync(reviewId);
+
+        Assert.Empty(edge.Sent);
+    }
+
+    [Fact]
+    public async Task ShowReviewAsync_InvalidatesNothing()
+    {
+        // Shown again publishes, and waits out the window like a new review.
+        var edge = new RecordingEdgeInvalidator();
+        using var site = new Site(edge);
+        var alice = await site.AccountAsync("alice", ProfileVisibility.Public);
+        var reviewId = await PublishedReviewAsync(site, alice);
+        await site.Get<ModerationService>().HideReviewAsync(reviewId);
+        edge.Sent.Clear();
+
+        Assert.True(await site.Get<ModerationService>().ShowReviewAsync(reviewId));
+
+        Assert.Empty(edge.Sent);
+    }
+
+    [Fact]
+    public async Task UpsertAsync_AHiddenReviewRewritten_InvalidatesNothingAndStaysHidden()
+    {
+        // Hidden was published nowhere, so rewriting it takes nothing back; and an edit is not the way
+        // back, an admin is (ADR 0076 §3).
+        var edge = new RecordingEdgeInvalidator();
+        using var site = new Site(edge);
+        var alice = await site.AccountAsync("alice", ProfileVisibility.Public);
+        var reviewId = await PublishedReviewAsync(site, alice);
+        await site.Get<ModerationService>().HideReviewAsync(reviewId);
+        edge.Sent.Clear();
+
+        var saved = await site.Get<ReviewService>().UpsertAsync(alice.Id, GameId, Review(ReviewVisibility.Public, "Toned down."));
+
+        Assert.Empty(edge.Sent);
+        Assert.Equal(Midday, saved.HiddenAt);
+        Assert.Equal(("Toned down.", Midday), (site.StoredReview()?.Body, site.StoredReview()?.HiddenAt));
+    }
+
+    [Fact]
+    public async Task HideReviewAsync_EdgeThrows_TheReviewIsHidden()
+    {
+        var edge = new ThrowingEdgeInvalidator();
+        using var site = new Site(edge);
+        var alice = await site.AccountAsync("alice", ProfileVisibility.Public);
+        var reviewId = await PublishedReviewAsync(site, alice);
+
+        Assert.True(await site.Get<ModerationService>().HideReviewAsync(reviewId));
+
+        Assert.Equal(1, edge.Calls);
+        Assert.NotNull(site.StoredReview()?.HiddenAt);
+    }
+
+    [Fact]
+    public async Task ClearProfileAsync_AShownValueCleared_InvalidatesTheProfileOnlyOnceStored()
+    {
+        // The owner's eighth event, made by an admin: the page only, since no name changed.
+        var edge = new RecordingEdgeInvalidator();
+        using var site = new Site(edge);
+        var alice = await site.AccountAsync("alice", ProfileVisibility.Public);
+        await site.Controller(alice).UpdateProfileDetails(Shown);
+        edge.Sent.Clear();
+        string? bioWhenSent = "unread";
+        edge.OnInvalidate = _ => bioWhenSent = site.StoredUser(alice.Id)?.Bio;
+
+        var result = await site.Get<ModerationService>().ClearProfileAsync(alice.Id, new ClearProfileDto(false, false, Bio: true));
+
+        Assert.Equal(ProfileClear.Cleared, result);
+        AssertSent(edge, "profile details changed", "/u/alice*");
+        Assert.Null(bioWhenSent);
+    }
+
+    [Fact]
+    public async Task ClearProfileAsync_NothingThereToClear_InvalidatesNothing()
+    {
+        var edge = new RecordingEdgeInvalidator();
+        using var site = new Site(edge);
+        var alice = await site.AccountAsync("alice", ProfileVisibility.Public);
+
+        await site.Get<ModerationService>().ClearProfileAsync(alice.Id, new ClearProfileDto(true, true, true));
+
+        Assert.Empty(edge.Sent);
+    }
+
+    [Fact]
+    public async Task ClearProfileAsync_PrivateProfile_InvalidatesNothing()
+    {
+        var edge = new RecordingEdgeInvalidator();
+        using var site = new Site(edge);
+        var alice = await site.AccountAsync("alice", ProfileVisibility.Private);
+        await site.Controller(alice).UpdateProfileDetails(Shown);
+
+        await site.Get<ModerationService>().ClearProfileAsync(alice.Id, new ClearProfileDto(true, true, true));
+
+        Assert.Null(site.StoredUser(alice.Id)?.DisplayName);
+        Assert.Empty(edge.Sent);
+    }
+
+    [Fact]
+    public async Task ClearProfileAsync_EdgeThrows_TheFieldsAreCleared()
+    {
+        var edge = new ThrowingEdgeInvalidator();
+        using var site = new Site(edge);
+        var alice = await site.AccountAsync("alice", ProfileVisibility.Public);
+        await site.Controller(alice).UpdateProfileDetails(Shown);
+
+        var result = await site.Get<ModerationService>().ClearProfileAsync(alice.Id, new ClearProfileDto(true, false, false));
+
+        Assert.Equal(ProfileClear.Cleared, result);
+        Assert.Equal(1, edge.Calls);
+        Assert.Null(site.StoredUser(alice.Id)?.DisplayName);
     }
 
     // ---------------------------------------------------------------------------------------

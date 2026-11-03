@@ -14,6 +14,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Options;
 using MyVideoGameList.Server.Data;
 using MyVideoGameList.Server.DTOs;
 using MyVideoGameList.Server.Security;
@@ -161,6 +162,22 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
             new Uri("https://localhost"),
             new CookieContainerHandler(),
             new BrowserHeaders(new IPAddress([10, 0, (byte)(address >> 8), (byte)address])));
+    }
+
+    /// <summary>
+    /// Names these accounts, and only these, as the admins (ADR 0042), from now until it is called again.
+    /// </summary>
+    /// <remarks>
+    /// An account's id is Identity's to choose when it registers, so it cannot be in the configuration the
+    /// host starts with. What <see cref="AdminAccounts"/> reads is the options monitor's current value, and
+    /// that is the monitor's cache, so the cache is what is replaced; the policy, its handler and every
+    /// admin controller stay the application's own.
+    /// </remarks>
+    public void NameAdmins(params string[] accountIds)
+    {
+        var cache = Services.GetRequiredService<IOptionsMonitorCache<AdminOptions>>();
+        cache.TryRemove(Options.DefaultName);
+        cache.TryAdd(Options.DefaultName, new AdminOptions { AccountIds = accountIds });
     }
 
     /// <summary>

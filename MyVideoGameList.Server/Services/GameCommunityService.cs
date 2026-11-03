@@ -87,14 +87,15 @@ public class GameCommunityService(
         if (after is not null && !ReviewCursor.TryParse(cursors, after, out afterCreatedAt, out afterId))
             throw new ArgumentException("Not a cursor this list issued.", nameof(after));
 
-        // Both gates in the predicate rather than filtered afterwards: this is the authorization
+        // Every gate in the predicate rather than filtered afterwards: this is the authorization
         // boundary, and it belongs where it can be read. A public review on a private profile is
         // published nowhere, which is the only reading of the two settings that does not surprise
-        // whoever set them.
+        // whoever set them, and neither is one an admin hid, whatever its author set (ADR 0076).
         var published = db.Reviews
             .AsNoTracking()
             .Where(r => r.Entry.GameId == gameId
                 && r.Visibility == ReviewVisibility.Public
+                && r.HiddenAt == null
                 && r.User.ProfileVisibility == ProfileVisibility.Public);
 
         var total = await published.CountAsync(cancellationToken);

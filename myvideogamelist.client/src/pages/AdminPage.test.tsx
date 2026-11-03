@@ -5,6 +5,7 @@ import { MemoryRouter } from 'react-router';
 import { AdminPage } from '@/pages/AdminPage';
 import type { AuthContextValue } from '@/contexts/AuthContext';
 import type { ComingSoonPick, CuratedEvent, ShowcaseName } from '@/types/calendarAdmin';
+import type { ModerationQueue } from '@/types/moderation';
 import { adminStats, userProfile } from '@/test/factories';
 
 /**
@@ -58,6 +59,8 @@ function fakeApi(initial: {
     picksRead?: { status: number };
     refuse?: number;
     statsFail?: number;
+    /** What the moderation card reads; nothing reported and nothing hidden unless a test says otherwise. */
+    queue?: ModerationQueue;
 } = {}) {
     const events = [...(initial.events ?? [])];
     const names = [...(initial.names ?? [])];
@@ -71,6 +74,11 @@ function fakeApi(initial: {
 
         if (url === '/api/admin/stats' && method === 'GET') {
             return initial.statsFail ? new Response(null, { status: initial.statsFail }) : Response.json(adminStats());
+        }
+        if (url === '/api/admin/moderation' && method === 'GET') {
+            return Response.json(initial.queue ?? {
+                reviews: [], reviewsTotal: 0, profiles: [], profilesTotal: 0, hidden: [], hiddenTotal: 0,
+            });
         }
         if (url === '/api/admin/calendar/events' && method === 'GET') return Response.json(events);
         if (url === '/api/admin/calendar/showcase-names' && method === 'GET') return Response.json(names);

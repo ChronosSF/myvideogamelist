@@ -26,6 +26,10 @@ namespace MyVideoGameList.Server.DTOs;
 /// The playthrough the review is about, when the user said which. Optional: most reviews are
 /// about the game rather than about one specific run through it.
 /// </param>
+/// <param name="HiddenAt">
+/// When an admin hid it from every reader but its author, on a report, or null. Sent to its author
+/// alone, so the form can say why nobody else sees it (ADR 0076).
+/// </param>
 public record ReviewDto(
     int Id,
     string Body,
@@ -33,7 +37,8 @@ public record ReviewDto(
     string Visibility,
     int? PlaythroughId,
     DateTimeOffset CreatedAt,
-    DateTimeOffset UpdatedAt);
+    DateTimeOffset UpdatedAt,
+    DateTimeOffset? HiddenAt);
 
 /// <summary>
 /// A review being written or rewritten. One per game, so there is no create/update distinction —

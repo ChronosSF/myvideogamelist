@@ -65,10 +65,12 @@ public class ReviewService(
 
         if (existing is not null)
         {
-            // Read before the fields change: what the edge can hold is what was public until now.
-            // A save of this review by another of its author's requests, landing between this read
-            // and the write below, is not seen; ADR 0058 §3 says why that race is left open.
-            var published = existing.Visibility == ReviewVisibility.Public
+            // Read before the fields change: what the edge can hold is what was published until now,
+            // and a review an admin hid was published nowhere, so rewriting one takes nothing back.
+            // An edit leaves it hidden (ADR 0076). A save of this review by another of its author's
+            // requests, landing between this read and the write below, is not seen; ADR 0058 §3 says
+            // why that race is left open.
+            var published = existing.Visibility == ReviewVisibility.Public && existing.HiddenAt is null
                 ? (existing.Body, existing.HasSpoilers)
                 : ((string, bool)?)null;
 
@@ -170,5 +172,6 @@ public class ReviewService(
             review.Visibility,
             review.PlaythroughId,
             review.CreatedAt,
-            review.UpdatedAt);
+            review.UpdatedAt,
+            review.HiddenAt);
 }

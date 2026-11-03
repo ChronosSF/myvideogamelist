@@ -224,6 +224,14 @@ public class OwnershipCascadeTests(ApiFactory api) : IClassFixture<ApiFactory>
         // ImportJobs, ImportRows: a pending job, whose rows are kept until it closes (ADR 0039).
         await browser.UploadGrouveeAsync(Played, Wanted);
 
+        // ContentReports: somebody else's published review, and their profile (ADR 0076). Somebody of
+        // their own for each account recorded, so that deleting one recorded account takes no report
+        // another recorded account made.
+        var reported = await PublishedReviewerAsync();
+        await Write(HttpMethod.Post, "/api/reports", new ReportInputDto(reported, Played, ReportReason.Spam, null));
+        await Write(HttpMethod.Post, "/api/reports",
+            new ReportInputDto(reported, null, ReportReason.Impersonation, "Not who they say."));
+
         // AspNetUserClaims, AspNetUserLogins, AspNetUserTokens, AspNetUserRoles: Identity's, but
         // somebody's all the same, and deleted with the account by the same means.
         await using var scope = api.Services.CreateAsyncScope();
@@ -240,6 +248,23 @@ public class OwnershipCascadeTests(ApiFactory api) : IClassFixture<ApiFactory>
         Succeeded(await users.AddToRoleAsync(user, "tester"));
 
         return new Recorded(profile.Id, playthrough.Id);
+    }
+
+    /// <summary>
+    /// An account of its own with a public profile and a public review of the played game, for an account
+    /// being recorded to report. Its handle.
+    /// </summary>
+    private async Task<string> PublishedReviewerAsync()
+    {
+        using var browser = api.CreateBrowser();
+        var account = await browser.RegisterAsync(Browsers.NewUserName("reported"));
+
+        await (await browser.SendAsync(HttpMethod.Put, "/api/user/privacy",
+            new UpdateProfileVisibilityDto(ProfileVisibility.Public))).ExpectAsync(HttpStatusCode.OK);
+        await (await browser.SendAsync(HttpMethod.Put, $"/api/entries/{Played}/review",
+            new ReviewInputDto("Published.", false, ReviewVisibility.Public, null))).ExpectAsync(HttpStatusCode.OK);
+
+        return account.UserName;
     }
 
     private static void Succeeded(IdentityResult result) =>

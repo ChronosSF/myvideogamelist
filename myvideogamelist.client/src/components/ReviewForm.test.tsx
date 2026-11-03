@@ -101,6 +101,21 @@ describe('ReviewForm', () => {
         expect(screen.getByRole('button', { name: 'Save review' })).toBeInTheDocument();
     });
 
+    it('tells its author when an admin has hidden it, and that an edit does not show it again', () => {
+        // Above the fields, because it makes the visibility hint untrue for now (ADR 0076).
+        renderForm(review({ visibility: 'public', hiddenAt: '2026-11-02T12:00:00Z' }));
+
+        expect(screen.getByText(/an admin has hidden this review from other readers/i))
+            .toHaveTextContent(/editing it does not show it again/i);
+        expect(screen.getByRole('button', { name: 'Update review' })).toBeEnabled();
+    });
+
+    it('says nothing of hiding a review nobody hid', () => {
+        renderForm(review({ visibility: 'public' }));
+
+        expect(screen.queryByText(/an admin has hidden/i)).not.toBeInTheDocument();
+    });
+
     it('offers to delete a review only once there is one', () => {
         const { reviewIs } = renderForm();
         expect(screen.queryByRole('button', { name: 'Delete review' })).not.toBeInTheDocument();

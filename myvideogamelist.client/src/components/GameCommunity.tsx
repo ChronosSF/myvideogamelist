@@ -10,6 +10,7 @@ import { Avatar } from '@/components/Avatar';
 import { EmptyState } from '@/components/EmptyState';
 import { ErrorState } from '@/components/ErrorState';
 import { LoadingState } from '@/components/LoadingState';
+import { ReportButton } from '@/components/ReportButton';
 import { ReviewCard } from '@/components/ReviewCard';
 import { ScoreBadge } from '@/components/ScoreBadge';
 import { ScoreColumns } from '@/components/ScoreColumns';
@@ -17,6 +18,8 @@ import { SectionHeading } from '@/components/SectionHeading';
 import { Skeleton } from '@/components/Skeleton';
 
 interface GameCommunityProps {
+    /** The game the reviews are about, which is half of what names one to report (ADR 0076). */
+    gameId: number;
     /** From `useGameCommunity`, which the page calls so the hero's badge and this share one fetch. */
     community: UseGameCommunityResult;
     /**
@@ -54,18 +57,18 @@ const BODY_HEIGHT = 'min-h-[13rem]';
  * again. It used to render nothing in those last cases, which a reader cannot tell from a section
  * that never loaded. See `docs/decisions/0070-*`, which amends ADR 0028 §3 to say so.
  */
-export function GameCommunity({ community, viewer }: GameCommunityProps) {
+export function GameCommunity({ gameId, community, viewer }: GameCommunityProps) {
     return (
         <section aria-labelledby={HEADING_ID} className="space-y-5">
             <SectionHeading id={HEADING_ID} focusable>Member scores &amp; reviews</SectionHeading>
-            <CommunityBody community={community} viewer={viewer} />
+            <CommunityBody gameId={gameId} community={community} viewer={viewer} />
         </section>
     );
 }
 
 const HEADING_ID = 'member-reviews-heading';
 
-function CommunityBody({ community, viewer }: GameCommunityProps) {
+function CommunityBody({ gameId, community, viewer }: GameCommunityProps) {
     const { settled, scores, reviews, total, reloading, reload } = community;
 
     // Every "Try again" here gives way to something else — the skeleton, or what loaded — and focus
@@ -128,7 +131,7 @@ function CommunityBody({ community, viewer }: GameCommunityProps) {
             {total === null ? (
                 <HalfFailed what="Reviews" retrying={reloading} onRetry={retry} />
             ) : total > 0 ? (
-                <MemberReviews community={community} viewer={viewer} total={total} reviews={reviews} />
+                <MemberReviews gameId={gameId} community={community} viewer={viewer} total={total} reviews={reviews} />
             ) : (
                 <p className="text-sm text-fg-muted">
                     No reviews yet. They show here as members publish them.
@@ -232,7 +235,7 @@ interface MemberReviewsProps extends GameCommunityProps {
  * rendered by nobody's server, on purpose, so a URL per page would name nothing a crawler could
  * read.
  */
-function MemberReviews({ community, viewer, reviews, total }: MemberReviewsProps) {
+function MemberReviews({ gameId, community, viewer, reviews, total }: MemberReviewsProps) {
     const { hasMore, loadingMore, moreFailed, loadMore } = community;
     const list = useRef<HTMLOListElement>(null);
     const more = useRef<HTMLButtonElement>(null);
@@ -277,6 +280,7 @@ function MemberReviews({ community, viewer, reviews, total }: MemberReviewsProps
                     // state — a spoiler already revealed — to the other.
                     <GameReviewCard
                         key={`${review.userName}@${review.createdAt}`}
+                        gameId={gameId}
                         review={review}
                         isViewer={review.userName === viewer}
                     />
@@ -312,7 +316,7 @@ function MemberReviews({ community, viewer, reviews, total }: MemberReviewsProps
 }
 
 /** One review, headed by its author. */
-function GameReviewCard({ review, isViewer }: { review: GameReview; isViewer: boolean }) {
+function GameReviewCard({ gameId, review, isViewer }: { gameId: number; review: GameReview; isViewer: boolean }) {
     return (
         <ReviewCard
             head={
@@ -359,6 +363,13 @@ function GameReviewCard({ review, isViewer }: { review: GameReview; isViewer: bo
             // The handle, not the display name: it is what says whose review this is, and a
             // display name is anybody's to choose.
             revealLabel={`Show ${review.userName}'s review — they marked it as containing spoilers`}
+            actions={
+                <ReportButton
+                    target={{ userName: review.userName, gameId }}
+                    subject={`${review.userName}'s review`}
+                    label={`Report ${review.userName}'s review`}
+                />
+            }
         />
     );
 }
