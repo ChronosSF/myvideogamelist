@@ -611,6 +611,25 @@ describe('ImportReviewPage', () => {
         expect(review.match).toHaveBeenCalled();
     });
 
+    it.each([
+        {
+            count: 1,
+            says: '1 row of your file names a game without its id. We can look it up by name — you still choose anything we are not sure about.',
+        },
+        {
+            count: 3,
+            says: '3 rows of your file name a game without its id. We can look them up by name — you still choose anything we are not sure about.',
+        },
+    ])('says how many rows the lookup is for, in the right number: $count', ({ count, says }) => {
+        // Rows, because two rows with no id can name one game (issue 300), and the verb agrees.
+        review.review = loaded(Array.from({ length: count }, (_, i) => row({
+            id: i + 1, title: `No Id ${i + 1}`, gameId: null, matchKind: 'unlooked', decision: 'skip',
+        })));
+        renderPage();
+
+        expect(screen.getByText(says)).toBeInTheDocument();
+    });
+
     it('stops offering a lookup once every row has been looked at', () => {
         // A row a pass has already been over is `unmatched` rather than `unlooked` and will not
         // move by asking again. A button that stayed would invite somebody to spend a minute on a
