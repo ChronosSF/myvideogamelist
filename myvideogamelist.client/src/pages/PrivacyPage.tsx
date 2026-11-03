@@ -77,10 +77,6 @@ export default function PrivacyPage() {
                         data described here. In data protection law, that makes us its controller.
                     </p>
                     <p className={P}>
-                        <mark className={TO_FILL}>[To fill, or remove: our representative in the EU or the UK, with
-                        their address, if the law asks us to have one]</mark>
-                    </p>
-                    <p className={P}>
                         To ask about your data, or to use any of the rights below, write to {CONTACT}.
                     </p>
 
