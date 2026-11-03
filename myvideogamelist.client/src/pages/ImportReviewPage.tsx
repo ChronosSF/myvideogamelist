@@ -129,9 +129,11 @@ export function ImportReviewPage() {
     // somebody's library and two rows can name one — a source listing a game once per platform, or
     // the same game chosen for two rows (issue 300). The commit makes one entry of them, and its
     // result panel counts the games it wrote, so a button that counted rows promised more than that.
-    // Counted off the rows, as `attention` is, rather than kept in the summary beside them.
+    // Counted off the rows, as `attention` is, rather than kept in the summary beside them, and only
+    // the rows with a game: the commit skips one with none, and counted here it would have the tile
+    // say "from 3 rows" over two games that no two rows share.
     const importing = useMemo(() => {
-        const selected = rows.filter(row => row.decision === IMPORT_DECISION.import);
+        const selected = rows.filter(row => row.decision === IMPORT_DECISION.import && row.gameId !== null);
         return { rows: selected.length, games: gamesNamed(selected) };
     }, [rows]);
     const trackedGames = useMemo(() => gamesNamed(rows.filter(row => row.alreadyTracked)), [rows]);

@@ -187,6 +187,20 @@ describe('ImportReviewPage', () => {
         expect(tile('Games to import')).toEqual(['2']);
     });
 
+    it('counts no row with no game among the rows the games came from', () => {
+        // Selected with no game, as a job saved before the server refused it can hold, it is skipped
+        // by the commit. Counted, it would make two games read as coming "from 3 rows".
+        review.review = loaded([
+            row({ id: 1, gameId: 1 }),
+            row({ id: 2, gameId: 2 }),
+            row({ id: 3, gameId: null, matchKind: 'unmatched', decision: 'import' }),
+        ]);
+        renderPage();
+
+        expect(tile('Games to import')).toEqual(['2']);
+        expect(screen.getByRole('button', { name: 'Import 2 games' })).toBeInTheDocument();
+    });
+
     it('counts a game already in the lists once, however many rows name it', () => {
         review.review = {
             ...loaded([
