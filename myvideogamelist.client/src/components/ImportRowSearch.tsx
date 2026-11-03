@@ -9,7 +9,7 @@ import {
     type SearchAnswer,
     useGameSearch,
 } from '@/hooks/useGameSearch';
-import { formatCount } from '@/lib/format';
+import { formatCount, formatCountOf } from '@/lib/format';
 import type { GameDto } from '@/types/game';
 
 /** One array for "nothing listed", so a render that lists nothing does not look like a new list. */
@@ -61,7 +61,7 @@ function announcement(search: GameSearch): string {
                 return `No games found for ${term}. IGDB matches whole words and does not correct spelling, so check the spelling, or try fewer words.`;
             }
             if (hasMore) return `The first ${formatCount(games.length)} games for ${term}. Not among them? More of the title narrows the search.`;
-            return `${formatCount(games.length)} ${games.length === 1 ? 'game' : 'games'} found for ${term}.`;
+            return `${formatCountOf(games.length, 'game', 'games')} found for ${term}.`;
         }
     }
 }

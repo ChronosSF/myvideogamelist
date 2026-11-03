@@ -16,7 +16,7 @@ import { GameNewsPanel } from '@/components/GameNewsPanel';
 import { GameUserPanel } from '@/components/GameUserPanel';
 import { GameCommunity } from '@/components/GameCommunity';
 import { CompletionTimes } from '@/components/CompletionTimes';
-import { parseReleaseDate } from '@/lib/releaseDate';
+import { parseReleaseDate, titleAndYear } from '@/lib/releaseDate';
 import { SectionHeading } from '@/components/SectionHeading';
 import { GameRefRail } from '@/components/GameRefRail';
 import { MultiplayerSummary } from '@/components/MultiplayerSummary';
@@ -222,8 +222,9 @@ export function meta({ loaderData, error }: Route.MetaArgs) {
     // a game page's data is shared-cached, so in a deploy's first minutes such a copy can reach this
     // code. Each one missing leaves out what it would have added, and nothing fails.
     const { game, site, scores = null, times = null, today = '' } = loaderData;
-    const year = game.releaseDate ? ` (${new Date(game.releaseDate).getFullYear()})` : '';
-    const title = `${game.title}${year} - MyVideoGameList`;
+    // The year of the day the API names, which `new Date` would make the year before on 1 January
+    // west of Greenwich: in the browser, where this runs too, so the title changed on hydration.
+    const title = `${titleAndYear(game)} - MyVideoGameList`;
     const description = gameDescription(game, scores, times);
 
     // Key art where IGDB has any, because a large card is cropped to a wide rectangle and a

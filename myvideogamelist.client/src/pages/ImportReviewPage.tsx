@@ -11,9 +11,9 @@ import { useFavourites } from '@/hooks/useFavourites';
 import { useImportReview } from '@/hooks/useImport';
 import { downloadSkippedRows } from '@/lib/importReport';
 import { expiresInWords } from '@/lib/importExpiry';
-import { releaseYear } from '@/lib/releaseDate';
+import { titleAndYear } from '@/lib/releaseDate';
 import { useHydrated } from '@/lib/useHydrated';
-import { formatCount } from '@/lib/format';
+import { formatCount, formatCountOf } from '@/lib/format';
 import { PRIVATE_NO_STORE } from '@/lib/cache';
 import { NOINDEX } from '@/lib/seo';
 import type { GameDto } from '@/types/game';
@@ -459,7 +459,7 @@ export function ImportReviewPage() {
                                             {row.score !== null && <span>· {row.score}/10</span>}
                                             {row.playthroughCount > 0 && (
                                                 <span>
-                                                    · {row.playthroughCount} {row.playthroughCount === 1 ? 'playthrough' : 'playthroughs'}
+                                                    · {formatCountOf(row.playthroughCount, 'playthrough', 'playthroughs')}
                                                     {row.minutesPlayed !== null && ` (${Math.round(row.minutesPlayed / 60)}h)`}
                                                 </span>
                                             )}
@@ -640,11 +640,6 @@ function changeable(row: ImportReviewRow): boolean {
     return row.matchKind === IMPORT_MATCH.matched && row.gameId !== null && !row.gameFromFile;
 }
 
-/** A game as a person recognises it: "Resident Evil 2 (1998)". */
-function titleAndYear(game: GameDto): string {
-    return game.releaseDate === null ? game.title : `${game.title} (${releaseYear(game.releaseDate)})`;
-}
-
 /**
  * The one question about the games the file says were played and not how that ended: which list
  * they all go into, if any.
@@ -780,11 +775,8 @@ function ResultPanel({ rows, games, unlisted, wishlistOnly, skipped, fileName }:
     skipped: { title: string; sourceStatus: string | null; reason: string }[];
     fileName: string;
 }) {
-    const counted = (count: number, one: string, many: string) =>
-        `${formatCount(count)} ${count === 1 ? one : many}`;
-
     const merged = games < rows;
-    const from = merged ? `, from ${counted(rows, 'row', 'rows')} of your file` : '';
+    const from = merged ? `, from ${formatCountOf(rows, 'row', 'rows')} of your file` : '';
 
     // Straight after "rows of your file" a bare "them" could be the rows, and a row is in no list.
     const ofThem = merged ? 'of the games' : 'of them';
@@ -808,8 +800,8 @@ function ResultPanel({ rows, games, unlisted, wishlistOnly, skipped, fileName }:
             : `${howMany(unlisted)} in no list, so ${unlisted === 1 ? 'it is on its own game page' : 'they are on their own game pages'} rather than in your lists.`;
 
     const outcome = unlisted === 0 && wishlistOnly === 0
-        ? `${counted(games, 'game is', 'games are')} now in your lists${from}.`
-        : [`${counted(games, 'game was', 'games were')} imported${from}.`, onWishlist, inNoList]
+        ? `${formatCountOf(games, 'game is', 'games are')} now in your lists${from}.`
+        : [`${formatCountOf(games, 'game was', 'games were')} imported${from}.`, onWishlist, inNoList]
             .filter(Boolean)
             .join(' ');
 
@@ -826,7 +818,7 @@ function ResultPanel({ rows, games, unlisted, wishlistOnly, skipped, fileName }:
     // spoken of rows, the file's rows are its games and need no noun of their own.
     const passedOver = skipped.length === 0
         ? ''
-        : ` ${merged ? counted(skipped.length, 'row was', 'rows were') : counted(skipped.length, 'was', 'were')} skipped.`;
+        : ` ${merged ? formatCountOf(skipped.length, 'row was', 'rows were') : formatCountOf(skipped.length, 'was', 'were')} skipped.`;
 
     return (
         <div className="max-w-2xl mx-auto px-4 py-16 text-center">
