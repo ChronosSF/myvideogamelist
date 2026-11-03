@@ -27,7 +27,8 @@ public class MigrationLockTests(ApiFactory api) : IClassFixture<ApiFactory>
     /// </summary>
     /// <remarks>
     /// Migrations are only ever added, so a past one stays put. If they are ever squashed, this and
-    /// <see cref="Blocked"/> need a new pair: one that alters a table, and the one before it.
+    /// <see cref="Blocked"/> need a new pair: one that alters a table, and the one before it, which
+    /// the test checks are adjacent before it relies on them.
     /// </remarks>
     private const string Before = "20261017145040_AddEntryTags";
 
@@ -45,6 +46,10 @@ public class MigrationLockTests(ApiFactory api) : IClassFixture<ApiFactory>
         await using (var db = Context(connectionString))
         {
             await db.GetService<IMigrator>().MigrateAsync(Before);
+
+            // The run below migrates to the latest, as the bundle does, so the migration it meets
+            // first has to be the one whose lock this test is about.
+            Assert.Equal(Blocked, (await db.Database.GetPendingMigrationsAsync()).First());
         }
 
         // A transaction open on the table, as a request or an export is while it runs, and which

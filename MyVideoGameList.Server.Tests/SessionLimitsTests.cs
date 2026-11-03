@@ -12,7 +12,7 @@ namespace MyVideoGameList.Server.Tests;
 public class SessionLimitsTests
 {
     [Fact]
-    public void IdleInTransaction_AgainstTheRefreshsIgdbWait_LeavesItRoomTwiceOver()
+    public void IdleInTransaction_AgainstTheRefreshWaitForIgdb_LeavesItRoomTwiceOver()
     {
         // The refresh is idle in its transaction for as long as IGDB takes, up to its own limit, and
         // then still has to notice, roll back and let go. Raise that limit past half of this one and
