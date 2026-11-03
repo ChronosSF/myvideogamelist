@@ -4,7 +4,7 @@ import { PageHeader } from '@/components/PageHeader';
 import { useAuth } from '@/hooks/useAuth';
 import { useImportJobs, useImportUpload } from '@/hooks/useImport';
 import { IMPORT_STATE } from '@/types/import';
-import { formatCount } from '@/lib/format';
+import { formatCount, formatCountOf } from '@/lib/format';
 import { expiresInWords } from '@/lib/importExpiry';
 import { useHydrated } from '@/lib/useHydrated';
 import { PRIVATE_NO_STORE } from '@/lib/cache';
@@ -12,9 +12,6 @@ import { NOINDEX } from '@/lib/seo';
 
 /** A section's heading: the display type under the heavy rule a section opens with (ADR 0075). */
 const SECTION_HEADING = 'type-display text-2xl text-fg-strong rule-heavy pt-4';
-
-/** A count of a file's rows, with its noun. */
-const rows = (count: number) => `${formatCount(count)} ${count === 1 ? 'row' : 'rows'}`;
 
 /** One person's import history, so never cacheable. Declared rather than inherited from the root. */
 export function headers() {
@@ -192,7 +189,7 @@ export function ImportPage() {
                                                     games for only the rows it could match, and two
                                                     rows can name one game (issue 300). */}
                                                 <span className="text-fg-muted text-xs shrink-0">
-                                                    {rows(job.rowCount)} — review
+                                                    {formatCountOf(job.rowCount, 'row', 'rows')} — review
                                                 </span>
                                             </Link>
                                         </li>
@@ -233,7 +230,7 @@ export function ImportPage() {
                                                 made is said once, by the commit, and kept
                                                 nowhere (issue 300). */}
                                             <span className="text-fg-faint text-xs shrink-0">
-                                                {rows(job.importedCount ?? 0)} imported,{' '}
+                                                {formatCountOf(job.importedCount ?? 0, 'row', 'rows')} imported,{' '}
                                                 {formatCount(job.skippedCount ?? 0)} skipped
                                             </span>
                                         </li>

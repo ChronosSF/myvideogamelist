@@ -786,6 +786,47 @@ public class ImportServiceTests
     }
 
     [Fact]
+    public async Task SetDecisionsAsync_ImportForARowWithNoGame_KeepsItSkippedButTakesItsStatus()
+    {
+        // A row with no game cannot be imported, so selecting it would count it as importing and
+        // then have the commit skip it. The review's checkbox is disabled for such a row; this is
+        // the same rule for any other caller, a shelf's list sent with it included.
+        using var db = NewDb();
+        var service = NewService(db);
+
+        var jobId = await UploadAsync(service, Export(Entry(
+            name: "Unknown Game", igdbId: "null",
+            shelves: """{"Gave Up On": {"date_added": "2025-11-28T00:00:00Z"}}""")));
+        var row = Assert.Single((await service.GetReviewAsync(UserId, jobId))!.Rows);
+
+        await service.SetDecisionsAsync(UserId, jobId, new ImportDecisionsDto(
+            [new ImportRowDecisionDto(row.Id, ImportDecisions.Import, null, ListStatusKeys.Dropped)]));
+
+        var review = (await service.GetReviewAsync(UserId, jobId))!;
+        var stored = Assert.Single(review.Rows);
+        Assert.Equal(ImportDecisions.Skip, stored.Decision);
+        Assert.Equal(ListStatusKeys.Dropped, stored.Status);
+        Assert.Equal(0, review.Summary.Selected);
+    }
+
+    [Fact]
+    public async Task SetDecisionsAsync_ImportWithTheGameItNames_SelectsARowThatHadNone()
+    {
+        // The game and the tick in one decision, as choosing a game does: the game is applied first,
+        // so the row has one by the time its decision is read.
+        using var db = NewDb();
+        var service = NewService(db, CacheReturning(Game(42)));
+
+        var jobId = await UploadAsync(service, Unidentified("Unknown Game"));
+        var row = Assert.Single((await service.GetReviewAsync(UserId, jobId))!.Rows);
+
+        await service.SetDecisionsAsync(UserId, jobId, new ImportDecisionsDto(
+            [new ImportRowDecisionDto(row.Id, ImportDecisions.Import, 42, null)]));
+
+        Assert.Equal(ImportDecisions.Import, Assert.Single((await service.GetReviewAsync(UserId, jobId))!.Rows).Decision);
+    }
+
+    [Fact]
     public async Task SetDecisionsAsync_AnUnknownStatusKey_IsIgnoredRatherThanStored()
     {
         using var db = NewDb();
