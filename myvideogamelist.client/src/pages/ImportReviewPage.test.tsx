@@ -375,6 +375,16 @@ describe('ImportReviewPage', () => {
         expect(screen.getByRole('heading', { name: 'Import finished' })).toHaveFocus();
     });
 
+    it('describes the heading with what happened, so the focus says it too', () => {
+        // Focused alone, the heading is announced as "Import finished" and nothing more; the counts
+        // §C5 says out loud would wait for somebody to read on.
+        review.result = importResult({ imported: 640, wishlistOnly: 40 });
+        renderPage();
+
+        expect(screen.getByRole('heading', { name: 'Import finished' }))
+            .toHaveAccessibleDescription('640 games were imported. 40 of them are on your wishlist.');
+    });
+
     it('offers no download when every row imported', () => {
         review.result = importResult({ imported: 3 });
         renderPage();
@@ -467,6 +477,17 @@ describe('ImportReviewPage', () => {
             what: 'one only on the wishlist, one in no list',
             result: importResult({ imported: 600, wishlistOnly: 1, unlisted: 1 }),
             says: '600 games were imported. 1 of them is on your wishlist. 1 of them is in no list, so it is on its own game page rather than in your lists.',
+        },
+        {
+            // "They are all" rather than "40 of them", which repeats the total it has just given.
+            what: 'every game only on the wishlist',
+            result: importResult({ imported: 40, wishlistOnly: 40 }),
+            says: '40 games were imported. They are all on your wishlist.',
+        },
+        {
+            what: 'every game in no list',
+            result: importResult({ imported: 617, unlisted: 617 }),
+            says: '617 games were imported. None of them is in a list, so they are on their own game pages.',
         },
         {
             what: 'one game, only on the wishlist',

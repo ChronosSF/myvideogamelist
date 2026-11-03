@@ -789,15 +789,23 @@ function ResultPanel({ rows, games, unlisted, wishlistOnly, skipped, fileName }:
     // Straight after "rows of your file" a bare "them" could be the rows, and a row is in no list.
     const ofThem = merged ? 'of the games' : 'of them';
 
-    // "It" rather than "1 of them" when there is one game, and nothing when none is so.
+    // "It" rather than "1 of them" when there is one game, "They are all" rather than "40 of them"
+    // when every game is so, and nothing when none is.
     const howMany = (count: number) =>
-        games === 1 ? 'It is' : `${formatCount(count)} ${ofThem} ${count === 1 ? 'is' : 'are'}`;
+        games === 1
+            ? 'It is'
+            : count === games
+                ? 'They are all'
+                : `${formatCount(count)} ${ofThem} ${count === 1 ? 'is' : 'are'}`;
 
     const onWishlist = wishlistOnly === 0 ? '' : `${howMany(wishlistOnly)} on your wishlist.`;
 
+    // Every one of several in no list reads better said the other way round.
     const inNoList = unlisted === 0
         ? ''
-        : `${howMany(unlisted)} in no list, so ${unlisted === 1 ? 'it is on its own game page' : 'they are on their own game pages'} rather than in your lists.`;
+        : unlisted === games && games > 1
+            ? `None ${ofThem} is in a list, so they are on their own game pages.`
+            : `${howMany(unlisted)} in no list, so ${unlisted === 1 ? 'it is on its own game page' : 'they are on their own game pages'} rather than in your lists.`;
 
     const outcome = unlisted === 0 && wishlistOnly === 0
         ? `${counted(games, 'game is', 'games are')} now in your lists${from}.`
@@ -805,8 +813,11 @@ function ResultPanel({ rows, games, unlisted, wishlistOnly, skipped, fileName }:
             .filter(Boolean)
             .join(' ');
 
-    // Once, as it mounts. A second run, as StrictMode makes in development, focuses it again.
+    // Once, as it mounts. A second run, as StrictMode makes in development, focuses it again. The
+    // outcome is the heading's description, so a screen reader says what happened along with
+    // "Import finished" rather than only if its user reads on.
     const heading = useRef<HTMLHeadingElement>(null);
+    const outcomeId = useId();
     useEffect(() => {
         heading.current?.focus();
     }, []);
@@ -823,11 +834,12 @@ function ResultPanel({ rows, games, unlisted, wishlistOnly, skipped, fileName }:
             <h1
                 ref={heading}
                 tabIndex={-1}
+                aria-describedby={outcomeId}
                 className="type-display text-3xl text-fg-strong mb-3 rounded-sm focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus"
             >
                 Import finished
             </h1>
-            <p className="text-fg-muted mb-8">
+            <p id={outcomeId} className="text-fg-muted mb-8">
                 {outcome}
                 {passedOver}
             </p>
