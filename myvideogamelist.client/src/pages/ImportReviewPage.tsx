@@ -11,9 +11,9 @@ import { useFavourites } from '@/hooks/useFavourites';
 import { useImportReview } from '@/hooks/useImport';
 import { downloadSkippedRows } from '@/lib/importReport';
 import { expiresInWords } from '@/lib/importExpiry';
-import { releaseYear } from '@/lib/releaseDate';
+import { titleAndYear } from '@/lib/releaseDate';
 import { useHydrated } from '@/lib/useHydrated';
-import { formatCount } from '@/lib/format';
+import { formatCount, formatCountOf } from '@/lib/format';
 import { PRIVATE_NO_STORE } from '@/lib/cache';
 import { NOINDEX } from '@/lib/seo';
 import type { GameDto } from '@/types/game';
@@ -129,9 +129,11 @@ export function ImportReviewPage() {
     // somebody's library and two rows can name one — a source listing a game once per platform, or
     // the same game chosen for two rows (issue 300). The commit makes one entry of them, and its
     // result panel counts the games it wrote, so a button that counted rows promised more than that.
-    // Counted off the rows, as `attention` is, rather than kept in the summary beside them.
+    // Counted off the rows, as `attention` is, rather than kept in the summary beside them, and only
+    // the rows with a game: the commit skips one with none, and counted here it would have the tile
+    // say "from 3 rows" over two games that no two rows share.
     const importing = useMemo(() => {
-        const selected = rows.filter(row => row.decision === IMPORT_DECISION.import);
+        const selected = rows.filter(row => row.decision === IMPORT_DECISION.import && row.gameId !== null);
         return { rows: selected.length, games: gamesNamed(selected) };
     }, [rows]);
     const trackedGames = useMemo(() => gamesNamed(rows.filter(row => row.alreadyTracked)), [rows]);
@@ -176,7 +178,7 @@ export function ImportReviewPage() {
         refocus.current = { rowId: row.id, index };
         setSearchingRow(null);
         setChosen(tracked
-            ? `${titleAndYear(game)} chosen for “${row.title}”. It is already in your lists, so it is left unticked.`
+            ? `${titleAndYear(game)} chosen for “${row.title}”. It is already in your library, so it is left unticked.`
             : `${titleAndYear(game)} chosen for “${row.title}”.`);
 
         void setDecisions([{
@@ -320,7 +322,9 @@ export function ImportReviewPage() {
                                     ? `from ${formatCount(importing.rows)} rows`
                                     : undefined}
                             />
-                            <Tile label="Already in your lists" value={trackedGames} />
+                            {/* "Library", not "lists": an entry the user has in no list is one
+                                of these, and the games in no list are in none of their lists. */}
+                            <Tile label="Already in your library" value={trackedGames} />
                             {/* Counted off the rows rather than added up out of the summary, which
                                 would count a row twice when its game is unknown *and* its shelf
                                 is — and which is the same set the "Needs you" filter shows. */}
@@ -455,14 +459,14 @@ export function ImportReviewPage() {
                                             {row.score !== null && <span>· {row.score}/10</span>}
                                             {row.playthroughCount > 0 && (
                                                 <span>
-                                                    · {row.playthroughCount} {row.playthroughCount === 1 ? 'playthrough' : 'playthroughs'}
+                                                    · {formatCountOf(row.playthroughCount, 'playthrough', 'playthroughs')}
                                                     {row.minutesPlayed !== null && ` (${Math.round(row.minutesPlayed / 60)}h)`}
                                                 </span>
                                             )}
                                             {row.wishlist && <Badge>Wishlist</Badge>}
                                             {row.favourite && <Badge>Favourite</Badge>}
                                             {row.hasNotes && <Badge>Notes</Badge>}
-                                            {row.alreadyTracked && <Badge tone="warning">Already in your lists</Badge>}
+                                            {row.alreadyTracked && <Badge tone="warning">Already in your library</Badge>}
                                             {row.matchKind === IMPORT_MATCH.ambiguous && (
                                                 <Badge tone="warning">Which one is it?</Badge>
                                             )}
@@ -636,11 +640,6 @@ function changeable(row: ImportReviewRow): boolean {
     return row.matchKind === IMPORT_MATCH.matched && row.gameId !== null && !row.gameFromFile;
 }
 
-/** A game as a person recognises it: "Resident Evil 2 (1998)". */
-function titleAndYear(game: GameDto): string {
-    return game.releaseDate === null ? game.title : `${game.title} (${releaseYear(game.releaseDate)})`;
-}
-
 /**
  * The one question about the games the file says were played and not how that ended: which list
  * they all go into, if any.
@@ -776,33 +775,41 @@ function ResultPanel({ rows, games, unlisted, wishlistOnly, skipped, fileName }:
     skipped: { title: string; sourceStatus: string | null; reason: string }[];
     fileName: string;
 }) {
-    const counted = (count: number, one: string, many: string) =>
-        `${formatCount(count)} ${count === 1 ? one : many}`;
-
     const merged = games < rows;
-    const from = merged ? `, from ${counted(rows, 'row', 'rows')} of your file` : '';
+    const from = merged ? `, from ${formatCountOf(rows, 'row', 'rows')} of your file` : '';
 
     // Straight after "rows of your file" a bare "them" could be the rows, and a row is in no list.
     const ofThem = merged ? 'of the games' : 'of them';
 
-    // "It" rather than "1 of them" when there is one game, and nothing when none is so.
+    // "It" rather than "1 of them" when there is one game, "They are all" rather than "40 of them"
+    // when every game is so, and nothing when none is.
     const howMany = (count: number) =>
-        games === 1 ? 'It is' : `${formatCount(count)} ${ofThem} ${count === 1 ? 'is' : 'are'}`;
+        games === 1
+            ? 'It is'
+            : count === games
+                ? 'They are all'
+                : `${formatCount(count)} ${ofThem} ${count === 1 ? 'is' : 'are'}`;
 
     const onWishlist = wishlistOnly === 0 ? '' : `${howMany(wishlistOnly)} on your wishlist.`;
 
+    // Every one of several in no list reads better said the other way round.
     const inNoList = unlisted === 0
         ? ''
-        : `${howMany(unlisted)} in no list, so ${unlisted === 1 ? 'it is on its own game page' : 'they are on their own game pages'} rather than in your lists.`;
+        : unlisted === games && games > 1
+            ? `None ${ofThem} is in a list, so they are on their own game pages.`
+            : `${howMany(unlisted)} in no list, so ${unlisted === 1 ? 'it is on its own game page' : 'they are on their own game pages'} rather than in your lists.`;
 
     const outcome = unlisted === 0 && wishlistOnly === 0
-        ? `${counted(games, 'game is', 'games are')} now in your lists${from}.`
-        : [`${counted(games, 'game was', 'games were')} imported${from}.`, onWishlist, inNoList]
+        ? `${formatCountOf(games, 'game is', 'games are')} now in your lists${from}.`
+        : [`${formatCountOf(games, 'game was', 'games were')} imported${from}.`, onWishlist, inNoList]
             .filter(Boolean)
             .join(' ');
 
-    // Once, as it mounts. A second run, as StrictMode makes in development, focuses it again.
+    // Once, as it mounts. A second run, as StrictMode makes in development, focuses it again. The
+    // outcome is the heading's description, so a screen reader says what happened along with
+    // "Import finished" rather than only if its user reads on.
     const heading = useRef<HTMLHeadingElement>(null);
+    const outcomeId = useId();
     useEffect(() => {
         heading.current?.focus();
     }, []);
@@ -811,7 +818,7 @@ function ResultPanel({ rows, games, unlisted, wishlistOnly, skipped, fileName }:
     // spoken of rows, the file's rows are its games and need no noun of their own.
     const passedOver = skipped.length === 0
         ? ''
-        : ` ${merged ? counted(skipped.length, 'row was', 'rows were') : counted(skipped.length, 'was', 'were')} skipped.`;
+        : ` ${merged ? formatCountOf(skipped.length, 'row was', 'rows were') : formatCountOf(skipped.length, 'was', 'were')} skipped.`;
 
     return (
         <div className="max-w-2xl mx-auto px-4 py-16 text-center">
@@ -819,11 +826,12 @@ function ResultPanel({ rows, games, unlisted, wishlistOnly, skipped, fileName }:
             <h1
                 ref={heading}
                 tabIndex={-1}
+                aria-describedby={outcomeId}
                 className="type-display text-3xl text-fg-strong mb-3 rounded-sm focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus"
             >
                 Import finished
             </h1>
-            <p className="text-fg-muted mb-8">
+            <p id={outcomeId} className="text-fg-muted mb-8">
                 {outcome}
                 {passedOver}
             </p>

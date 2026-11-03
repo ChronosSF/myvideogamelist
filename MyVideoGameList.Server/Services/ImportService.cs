@@ -347,10 +347,6 @@ public class ImportService(
         {
             var decision = wanted[row.Id];
 
-            row.Decision = decision.Decision == ImportDecisions.Import
-                ? ImportDecisions.Import
-                : ImportDecisions.Skip;
-
             // Picking a game for an unmatched or ambiguous row is what makes it importable (§M4).
             if (decision.GameId is { } gameId)
             {
@@ -361,6 +357,14 @@ public class ImportService(
                 // resolved row offering the user a list of games that are not the one they chose.
                 row.Candidates = [];
             }
+
+            // Selected only with a game to import, the game this decision names included. A row
+            // with none would be counted as importing and then skipped by the commit, which is the
+            // promise the review's disabled checkbox keeps; kept here as well, so it holds for any
+            // caller — a tab still running an older screen, or a request sent by hand.
+            row.Decision = decision.Decision == ImportDecisions.Import && row.GameId is not null
+                ? ImportDecisions.Import
+                : ImportDecisions.Skip;
 
             if (decision.Status is { } status && statuses.Contains(status))
                 row.Payload = ImportPayloadJson.Write(

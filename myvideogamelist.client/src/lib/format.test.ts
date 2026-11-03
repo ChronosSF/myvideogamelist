@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatCount } from '@/lib/format';
+import { formatCount, formatCountOf } from '@/lib/format';
 
 // Every assertion is a literal. The point of the formatter is that its output does not depend on
 // the machine, so a test that computed its expectation from the machine's locale would prove nothing.
@@ -19,5 +19,13 @@ describe('formatCount', () => {
         expect(formatCount(0)).toBe('0');
         expect(formatCount(1)).toBe('1');
         expect(formatCount(999)).toBe('999');
+    });
+});
+
+describe('formatCountOf', () => {
+    it('takes the first words for one and the second for any other count, nought included', () => {
+        expect(formatCountOf(1, 'row', 'rows')).toBe('1 row');
+        expect(formatCountOf(0, 'row', 'rows')).toBe('0 rows');
+        expect(formatCountOf(5001, 'game was', 'games were')).toBe('5,001 games were');
     });
 });

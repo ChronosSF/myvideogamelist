@@ -187,7 +187,21 @@ describe('ImportReviewPage', () => {
         expect(tile('Games to import')).toEqual(['2']);
     });
 
-    it('counts a game already in the lists once, however many rows name it', () => {
+    it('counts no row with no game among the rows the games came from', () => {
+        // Selected with no game, as a job saved before the server refused it can hold, it is skipped
+        // by the commit. Counted, it would make two games read as coming "from 3 rows".
+        review.review = loaded([
+            row({ id: 1, gameId: 1 }),
+            row({ id: 2, gameId: 2 }),
+            row({ id: 3, gameId: null, matchKind: 'unmatched', decision: 'import' }),
+        ]);
+        renderPage();
+
+        expect(tile('Games to import')).toEqual(['2']);
+        expect(screen.getByRole('button', { name: 'Import 2 games' })).toBeInTheDocument();
+    });
+
+    it('counts a game already in the library once, however many rows name it', () => {
         review.review = {
             ...loaded([
                 row({ id: 1, gameId: 14593, alreadyTracked: true, decision: 'skip' }),
@@ -197,7 +211,7 @@ describe('ImportReviewPage', () => {
         };
         renderPage();
 
-        expect(tile('Already in your lists')).toEqual(['1']);
+        expect(tile('Already in your library')).toEqual(['1']);
         expect(screen.getByRole('button', { name: 'Import 0 games' })).toBeDisabled();
     });
 
@@ -361,6 +375,16 @@ describe('ImportReviewPage', () => {
         expect(screen.getByRole('heading', { name: 'Import finished' })).toHaveFocus();
     });
 
+    it('describes the heading with what happened, so the focus says it too', () => {
+        // Focused alone, the heading is announced as "Import finished" and nothing more; the counts
+        // §C5 says out loud would wait for somebody to read on.
+        review.result = importResult({ imported: 640, wishlistOnly: 40 });
+        renderPage();
+
+        expect(screen.getByRole('heading', { name: 'Import finished' }))
+            .toHaveAccessibleDescription('640 games were imported. 40 of them are on your wishlist.');
+    });
+
     it('offers no download when every row imported', () => {
         review.result = importResult({ imported: 3 });
         renderPage();
@@ -453,6 +477,17 @@ describe('ImportReviewPage', () => {
             what: 'one only on the wishlist, one in no list',
             result: importResult({ imported: 600, wishlistOnly: 1, unlisted: 1 }),
             says: '600 games were imported. 1 of them is on your wishlist. 1 of them is in no list, so it is on its own game page rather than in your lists.',
+        },
+        {
+            // "They are all" rather than "40 of them", which repeats the total it has just given.
+            what: 'every game only on the wishlist',
+            result: importResult({ imported: 40, wishlistOnly: 40 }),
+            says: '40 games were imported. They are all on your wishlist.',
+        },
+        {
+            what: 'every game in no list',
+            result: importResult({ imported: 617, unlisted: 617 }),
+            says: '617 games were imported. None of them is in a list, so they are on their own game pages.',
         },
         {
             what: 'one game, only on the wishlist',
@@ -574,6 +609,25 @@ describe('ImportReviewPage', () => {
 
         await userEvent.click(screen.getByRole('button', { name: 'Find these games' }));
         expect(review.match).toHaveBeenCalled();
+    });
+
+    it.each([
+        {
+            count: 1,
+            says: '1 row of your file names a game without its id. We can look it up by name — you still choose anything we are not sure about.',
+        },
+        {
+            count: 3,
+            says: '3 rows of your file name a game without its id. We can look them up by name — you still choose anything we are not sure about.',
+        },
+    ])('says how many rows the lookup is for, in the right number: $count', ({ count, says }) => {
+        // Rows, because two rows with no id can name one game (issue 300), and the verb agrees.
+        review.review = loaded(Array.from({ length: count }, (_, i) => row({
+            id: i + 1, title: `No Id ${i + 1}`, gameId: null, matchKind: 'unlooked', decision: 'skip',
+        })));
+        renderPage();
+
+        expect(screen.getByText(says)).toBeInTheDocument();
     });
 
     it('stops offering a lookup once every row has been looked at', () => {
@@ -780,7 +834,7 @@ describe('ImportReviewPage', () => {
             { rowId: 2, decision: 'skip', gameId: 424, game: RESIDENT_EVIL, alreadyTracked: true },
         ]);
         expect(screen.getByText(
-            'Resident Evil (1996) chosen for “Resedent Evil”. It is already in your lists, so it is left unticked.',
+            'Resident Evil (1996) chosen for “Resedent Evil”. It is already in your library, so it is left unticked.',
         )).toBeInTheDocument();
     });
 

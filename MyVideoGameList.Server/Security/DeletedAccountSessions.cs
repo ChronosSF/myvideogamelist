@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
@@ -28,9 +29,14 @@ namespace MyVideoGameList.Server.Security;
 /// which no stamp can say.
 /// </para>
 /// <para>
-/// A refused session is signed out as Identity's own refusal signs one out, so the browser loses the
-/// cookie and the signed-in flag with it (<see cref="SignedInFlag"/>), and the request carries on as a
-/// visitor's: a 401 wherever a session is needed, nobody from <c>/api/auth/me</c>.
+/// A refused session is signed out as Identity's own refusal signs one out, the two-factor remembrance
+/// included, so the browser loses the cookie and the signed-in flag with it (<see cref="SignedInFlag"/>),
+/// and the request carries on as a visitor's: a 401 wherever a session is needed, nobody from
+/// <c>/api/auth/me</c>.
+/// </para>
+/// <para>
+/// Identity's check is the one thing this leans on, so <c>AuthFlowTests</c> shows it still runs after
+/// the wrap: an aged session for an account whose stamp has changed is refused, by it alone.
 /// </para>
 /// </remarks>
 public static class DeletedAccountSessions
@@ -39,13 +45,14 @@ public static class DeletedAccountSessions
     public static void EndAtOnce(CookieAuthenticationEvents events)
     {
         // Identity's security-stamp validator, which AddIdentity put here before this runs. Kept, and run
-        // first: a session it refuses needs nothing more asked of it.
+        // first: a session it refuses needs nothing more asked of it, and one it renews has just had its
+        // account read, and found.
         var validateStamp = events.OnValidatePrincipal;
 
         events.OnValidatePrincipal = async context =>
         {
             await validateStamp(context);
-            if (context.Principal is not { } principal) return;
+            if (context.Principal is not { } principal || context.ShouldRenew) return;
 
             var services = context.HttpContext.RequestServices;
             var userId = services.GetRequiredService<UserManager<ApplicationUser>>().GetUserId(principal);
@@ -54,8 +61,11 @@ public static class DeletedAccountSessions
             var db = services.GetRequiredService<ApplicationDbContext>();
             if (await db.Users.AnyAsync(user => user.Id == userId, context.HttpContext.RequestAborted)) return;
 
+            // Identity's own refusal, call for call (SecurityStampValidator.ValidateAsync). The two-factor
+            // remembrance is a cookie nothing sets yet, and the account's must not outlive it once one does.
             context.RejectPrincipal();
             await services.GetRequiredService<SignInManager<ApplicationUser>>().SignOutAsync();
+            await context.HttpContext.SignOutAsync(IdentityConstants.TwoFactorRememberMeScheme);
         };
     }
 }
