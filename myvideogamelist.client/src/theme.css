@@ -58,7 +58,7 @@
     --color-primary-800: oklch(53.2% 0.157 131.589);  /* lime-700 */
     --color-primary-900: oklch(45.3% 0.124 130.933);  /* lime-800 */
     --color-primary-950: oklch(27.4% 0.072 132.109);  /* The deepest tint of the primary. lime-950 */
-    --color-on-primary: var(--color-page);            /* Text on a filled primary: the page's ink, 12:1 on the 500 */
+    --color-on-primary: var(--color-page);            /* Text on a filled primary: the page's ink, 11:1 on the 500 */
     --color-focus: var(--color-primary-500);          /* The keyboard focus ring and outline */
 
     /* ── Colours that carry meaning: the same in every palette ────────────── */
@@ -84,7 +84,7 @@
     --color-score-mixed-300: oklch(90.5% 0.182 98.111);
     --color-score-mixed-400: oklch(85.2% 0.199 91.936);
     --color-score-mixed-500: oklch(79.5% 0.184 86.047);
-    --color-on-score: oklch(17.8% 0.003 67.7);       /* Text on any band's solid fill: the page's ink, 5.5:1 or more */
+    --color-on-score: oklch(17.8% 0.003 67.7);       /* Text on any band's solid fill: a near-black of its own, 5.5:1 or more on each. Not the page's, which a palette moves: the bands stay as they are in every palette, and so does their ink. #121110 */
     --color-score-poor-300: oklch(80.8% 0.114 19.571);
     --color-score-poor-400: oklch(70.4% 0.191 22.216);
     --color-score-poor-500: oklch(63.7% 0.237 25.331);

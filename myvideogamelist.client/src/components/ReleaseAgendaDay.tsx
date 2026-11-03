@@ -31,7 +31,11 @@ export function ReleaseAgendaDay({ day, entries, today }: ReleaseAgendaDayProps)
                 </time>
                 <span className="release-agenda-detail">{away < 0 ? 'Already out' : daysAway(away)}</span>
             </p>
-            <ul className="release-agenda-body release-agenda-releases" aria-label={`Due on ${label.full}`}>
+            {/* "Out on" for a day gone, as the line beside it says "Already out". */}
+            <ul
+                className="release-agenda-body release-agenda-releases"
+                aria-label={`${away < 0 ? 'Out on' : 'Due on'} ${label.full}`}
+            >
                 {entries.map(entry => (
                     <li key={releaseEntryKey(entry)}>
                         <ReleaseCard entry={entry} />

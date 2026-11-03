@@ -174,6 +174,15 @@ describe('ReleaseCalendar, a month', () => {
         expect(within(due).getByText('PS5')).toBeInTheDocument();
     });
 
+    it('lists a day gone as out on it, not due', () => {
+        // Today is the 8th: the 5th's release is already out, as the line beside it says.
+        calendar.releases.data = [releaseEntry('2026-10-05', [connectedRelease({ gameId: 7, title: 'Earlier' })])];
+        renderCalendar();
+
+        expect(screen.getByRole('list', { name: 'Out on Monday, October 5' })).toBeInTheDocument();
+        expect(screen.queryByRole('list', { name: /^Due on Monday, October 5/ })).not.toBeInTheDocument();
+    });
+
     it("puts what is known only to its quarter in the quarter's band, on no day", () => {
         calendar.releases.data = [SONGS_OF_THE_PAST];
         renderCalendar();

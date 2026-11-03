@@ -270,4 +270,12 @@ describe('a month as a list', () => {
         expect(eventKindsOn('2026-10-11', layout)).toEqual(['sale', 'fest']);
         expect(eventKindsOn('2026-10-20', layout)).toEqual([]);
     });
+
+    it('says a kind once on a day that two events of it cover', () => {
+        const layout = layoutMonth('2026-10', [], calendarEvents({
+            curated: [sale('2026-10-01', '2026-10-15'), sale('2026-10-10', '2026-10-12', 2)],
+        }));
+
+        expect(eventKindsOn('2026-10-11', layout)).toEqual(['sale']);
+    });
 });

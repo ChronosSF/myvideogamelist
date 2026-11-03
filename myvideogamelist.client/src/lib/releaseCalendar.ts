@@ -257,9 +257,13 @@ export function monthAgenda(month: string, layout: MonthLayout): AgendaItem<DayE
     return agendaOf(layout.events, event => (event.startsOn < first ? first : event.startsOn), layout.days);
 }
 
-/** The kinds of event on a day, for the index's marks under it, in the order the month's events start. */
+/**
+ * The kinds of event on a day, for the index's marks under it, each once and in the order the month's
+ * events start. A mark says a kind, as the index's key has it, so two sales over one day are one mark:
+ * a mark per event stacked identical rules in a small cell, and overflowed it once three or four met.
+ */
 export function eventKindsOn(day: string, layout: MonthLayout): DayEvent['kind'][] {
-    return layout.events
+    return [...new Set(layout.events
         .filter(event => event.startsOn <= day && day <= event.endsOn)
-        .map(event => event.kind);
+        .map(event => event.kind))];
 }
