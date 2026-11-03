@@ -500,16 +500,16 @@ function merge(review: ImportReview, pass: ImportMatchPass): ImportReview {
  * The counts the screen reads, recomputed from the rows rather than adjusted by a delta — a delta
  * has to be right about what changed, and this cannot be.
  *
- * Only the ones the screen actually reads and local changes actually move — a game chosen for a row
- * can be one the user already has, which the tile beside the commit button counts. The rest of the
- * summary is the server's own count from the last read: recomputing figures nobody renders would be
- * more counting rules to keep in step with the ones that produced them.
+ * Only the ones the screen actually reads and local changes actually move: the rows selected, which
+ * the "Importing" filter counts, and the rows not looked up yet, which decide whether "Find these
+ * games" is offered. The rest of the summary is the server's own count from the last read:
+ * recomputing figures nobody renders would be more counting rules to keep in step with the ones that
+ * produced them. The tiles count games, which they take from the rows themselves (issue 300).
  */
 function recount(review: ImportReview, rows: ImportReview['rows']): ImportReview['summary'] {
     return {
         ...review.summary,
         selected: rows.filter(row => row.decision === IMPORT_DECISION.import).length,
         unlooked: rows.filter(row => row.matchKind === IMPORT_MATCH.unlooked).length,
-        alreadyTracked: rows.filter(row => row.alreadyTracked).length,
     };
 }

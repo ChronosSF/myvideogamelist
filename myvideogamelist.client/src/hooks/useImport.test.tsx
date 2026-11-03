@@ -286,7 +286,7 @@ describe('useImportReview.setDecisions, choosing a game', () => {
                         : '-'}
                 </span>
                 <span data-testid="summary">
-                    {review ? `${review.summary.selected} selected, ${review.summary.alreadyTracked} tracked` : '-'}
+                    {review ? `${review.summary.selected} selected` : '-'}
                 </span>
                 <span data-testid="saved">{saved}</span>
                 <span data-testid="action-error">{actionError ?? 'none'}</span>
@@ -324,7 +324,7 @@ describe('useImportReview.setDecisions, choosing a game', () => {
         await renderAndChoose();
 
         expect(rowShown()).toHaveTextContent('matched:import:880:0:Resident Evil 2:new');
-        expect(screen.getByTestId('summary')).toHaveTextContent('1 selected, 0 tracked');
+        expect(screen.getByTestId('summary')).toHaveTextContent('1 selected');
         expect(screen.getByTestId('saved')).toHaveTextContent('true');
 
         const [, init] = fetchMock.mock.calls.find(
@@ -334,13 +334,13 @@ describe('useImportReview.setDecisions, choosing a game', () => {
         });
     });
 
-    it('counts a chosen game the user already has as one, left unticked', async () => {
+    it('marks a chosen game the user already has, and leaves it unticked', async () => {
         stubSaving('saved');
 
         await renderAndChoose(true);
 
         expect(rowShown()).toHaveTextContent('matched:skip:880:0:Resident Evil 2:tracked');
-        expect(screen.getByTestId('summary')).toHaveTextContent('0 selected, 1 tracked');
+        expect(screen.getByTestId('summary')).toHaveTextContent('0 selected');
     });
 
     it('puts the question back when the save fails, and says so', async () => {
@@ -349,7 +349,7 @@ describe('useImportReview.setDecisions, choosing a game', () => {
         await renderAndChoose();
 
         expect(rowShown()).toHaveTextContent('ambiguous:skip:-:2:no game:new');
-        expect(screen.getByTestId('summary')).toHaveTextContent('0 selected, 0 tracked');
+        expect(screen.getByTestId('summary')).toHaveTextContent('0 selected');
         expect(screen.getByTestId('action-error')).toHaveTextContent('That change was not saved.');
         expect(screen.getByTestId('saved')).toHaveTextContent('false');
     });
