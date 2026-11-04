@@ -51,6 +51,7 @@ export function ReviewForm({
 }: ReviewFormProps) {
     const fieldId = useId();
     const [draft, setDraft] = useState<Draft>(review === null ? EMPTY : toDraft(review));
+    const [confirmingDelete, setConfirmingDelete] = useState(false);
 
     // Load a review that arrived after the first render, and clear the fields when it is deleted.
     // Adjusted during render rather than in an effect, which would show the wrong text for a
@@ -152,16 +153,37 @@ export function ReviewForm({
                 <p className="game-user-panel-hint" role="alert">{error}</p>
             )}
 
-            <div className="game-user-panel-confirm">
-                <button type="submit" className="primary" disabled={pending}>
-                    {review === null ? 'Save review' : 'Update review'}
-                </button>
-                {review !== null && (
-                    <button type="button" onClick={onDelete} disabled={pending}>
+            {confirmingDelete && review !== null ? (
+                // Asked first, in red, because nothing brings a review back (issue 245).
+                <div className="game-user-panel-confirm" role="group" aria-label="Delete your review?">
+                    <span className="game-user-panel-hint">Delete your review? It cannot be brought back.</span>
+                    <button
+                        type="button"
+                        className="danger"
+                        onClick={() => {
+                            setConfirmingDelete(false);
+                            onDelete();
+                        }}
+                        disabled={pending}
+                    >
                         Delete review
                     </button>
-                )}
-            </div>
+                    <button type="button" onClick={() => setConfirmingDelete(false)}>
+                        Keep it
+                    </button>
+                </div>
+            ) : (
+                <div className="game-user-panel-confirm">
+                    <button type="submit" className="primary" disabled={pending}>
+                        {review === null ? 'Save review' : 'Update review'}
+                    </button>
+                    {review !== null && (
+                        <button type="button" onClick={() => setConfirmingDelete(true)} disabled={pending}>
+                            Delete review…
+                        </button>
+                    )}
+                </div>
+            )}
         </form>
     );
 }

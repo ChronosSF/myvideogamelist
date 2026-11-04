@@ -1,4 +1,7 @@
-/* The reader's own copy, under a heavy rule rather than in a box (ADR 0075), as the sidebar's facts are. */
+/* The reader's own controls for a game, which the game page's Your game tab draws (ADR 0084): the forms
+   for a review, a playthrough, notes and tags, and the toggles for how they have it. The names keep the
+   panel's prefix from when all of it sat in the page's sidebar; a section opens with a heavy rule rather
+   than a box (ADR 0075). */
 
 @reference "../index.css";
 .game-user-panel {
@@ -445,6 +448,20 @@
     display: flex;
     flex-direction: column;
     gap: 0.6rem;
+}
+
+/* At the reading column's width on the Your game tab, the review is written in a box sized for prose:
+   the body's own type, a reading measure, and room for a few paragraphs before it scrolls. */
+.game-yours-review .game-user-panel-review-form {
+    max-width: 48rem;
+    gap: 1rem;
+}
+
+.game-yours-review .game-user-panel-review-form textarea {
+    min-height: 16rem;
+    font-size: 1rem;
+    line-height: 1.6;
+    padding: 0.875rem 1rem;
 }
 
 .game-user-panel-check {

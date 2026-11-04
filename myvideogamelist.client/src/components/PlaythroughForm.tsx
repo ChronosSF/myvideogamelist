@@ -9,6 +9,7 @@ interface PlaythroughFormProps {
     /** The playthrough being edited, or null when logging a new one. */
     editing: PlaythroughDto | null;
     onSubmit: (input: PlaythroughInputDto) => void;
+    /** Closes the form, which the page opens only to log or edit a run (issue 222). */
     onCancelEdit: () => void;
     pending: boolean;
     /** What the server said, shown beside the form rather than as a page-level banner. */
@@ -56,7 +57,9 @@ export function PlaythroughForm({
     error,
 }: PlaythroughFormProps) {
     const fieldId = useId();
-    const [draft, setDraft] = useState<Draft>(EMPTY);
+    // Seeded from the run when the form opens already editing one, as it does when a run's Edit opens
+    // it: started empty, it showed blank fields and saved them over the run (issue 222).
+    const [draft, setDraft] = useState<Draft>(() => (editing === null ? EMPTY : toDraft(editing)));
 
     // Load the playthrough being edited into the fields, and clear them again when the edit is
     // finished or abandoned. Adjusted during render rather than in an effect: from an effect this
@@ -90,6 +93,12 @@ export function PlaythroughForm({
                     {platforms.map(platform => (
                         <option key={platform.id} value={platform.id}>{platform.name}</option>
                     ))}
+                    {/* A run on a platform the game no longer lists keeps it, and says so, rather than
+                        showing "Not recorded" while still sending the old id — as the browse filters'
+                        "Unlisted platform" does (ADR 0032 §3). */}
+                    {draft.platformId !== '' && !platforms.some(platform => String(platform.id) === draft.platformId) && (
+                        <option value={draft.platformId}>Unlisted platform</option>
+                    )}
                 </select>
             </div>
 
@@ -182,11 +191,9 @@ export function PlaythroughForm({
                 <button type="submit" className="primary" disabled={pending}>
                     {editing === null ? 'Log playthrough' : 'Save playthrough'}
                 </button>
-                {editing !== null && (
-                    <button type="button" onClick={onCancelEdit} disabled={pending}>
-                        Cancel
-                    </button>
-                )}
+                <button type="button" onClick={onCancelEdit} disabled={pending}>
+                    Cancel
+                </button>
             </div>
         </form>
     );

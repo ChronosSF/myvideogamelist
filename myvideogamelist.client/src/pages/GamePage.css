@@ -1,11 +1,13 @@
 /* The hero (ADR 0075): the game's art across the page, dimmed rather than blurred, and its title set
    large over the fade into the page. Dimmed, not shown at full strength, until the art is chosen for it
-   (#395): the first artwork IGDB lists is a logo or a cover for about a quarter of games. */
+   (#395): the first artwork IGDB lists is a logo or a cover for about a quarter of games. Shorter than it
+   was, with the reader's own controls in it, so that the series under the tabs is in view before any
+   scrolling (ADR 0084). */
 
 @reference "../index.css";
 .game-page-hero {
     position: relative;
-    min-height: clamp(360px, 42vw, 520px);
+    min-height: clamp(320px, 30vw, 420px);
     display: flex;
     align-items: flex-end;
     overflow: hidden;
@@ -39,7 +41,7 @@
     width: 100%;
     max-width: 80rem;
     margin: 0 auto;
-    padding: 2.5rem 1rem 2.5rem;
+    padding: 2.5rem 1rem 1.75rem;
     display: flex;
     gap: 2rem;
     align-items: flex-end;

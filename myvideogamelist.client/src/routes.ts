@@ -3,11 +3,20 @@ import { type RouteConfig, index, route } from '@react-router/dev/routes';
 export default [
     index('pages/HomePage.tsx'),
     route('games', 'pages/GamesPage.tsx'),
-    route('games/:id', 'pages/GamePage.tsx'),
+    // The game, and the reader's own record of it, as two tabs under one hero (ADR 0084). The second is
+    // an address of its own so that the lists, and a hint anywhere, can link straight to it.
+    route('games/:id', 'pages/GamePage.tsx', [
+        index('pages/GameOverviewPage.tsx'),
+        route('yours', 'pages/GameYoursPage.tsx'),
+    ]),
     route('lists', 'pages/ListsPage.tsx'),
     route('wishlist', 'pages/WishlistPage.tsx'),
     route('news', 'pages/NewsPage.tsx'),
-    route('user', 'pages/UserPage.tsx'),
+    // The reader's tracking and their settings, as two tabs (ADR 0084).
+    route('user', 'pages/UserPage.tsx', [
+        index('pages/UserTrackingPage.tsx'),
+        route('settings', 'pages/UserSettingsPage.tsx'),
+    ]),
 
     // The rules for using the site, linked from the footer on every page (issue 141).
     route('terms', 'pages/TermsPage.tsx'),

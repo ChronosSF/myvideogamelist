@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import type { PlatformDto } from '@/types/game';
 import type { PlaythroughDto } from '@/types/playthrough';
 import { playthroughLabel } from '@/types/playthrough';
@@ -30,6 +31,10 @@ export function PlaythroughList({
     busyId,
     disabled,
 }: PlaythroughListProps) {
+    // The run whose Delete was pressed, which asks before it deletes: a run is a record of something
+    // that happened, with nothing to undo its loss (issue 245).
+    const [confirmingId, setConfirmingId] = useState<number | null>(null);
+
     if (playthroughs.length === 0) {
         return (
             <p className="game-user-panel-hint">
@@ -69,24 +74,44 @@ export function PlaythroughList({
                     {/* Named by position rather than by content: two runs of the same game on the
                         same platform are a perfectly ordinary thing to log, and identical
                         accessible names on two buttons help nobody. */}
-                    <div className="game-user-panel-playthrough-actions">
-                        <button
-                            type="button"
-                            onClick={() => onEdit(playthrough)}
-                            disabled={disabled || busyId === playthrough.id}
-                        >
-                            {`Edit playthrough ${index + 1}`}
-                        </button>
-                        <button
-                            type="button"
-                            onClick={() => onDelete(playthrough)}
-                            disabled={disabled || busyId === playthrough.id}
-                        >
-                            {busyId === playthrough.id
-                                ? `Deleting playthrough ${index + 1}`
-                                : `Delete playthrough ${index + 1}`}
-                        </button>
-                    </div>
+                    {confirmingId === playthrough.id ? (
+                        <div className="game-user-panel-playthrough-actions" role="group" aria-label={`Delete playthrough ${index + 1}?`}>
+                            <span className="game-user-panel-hint">Delete this playthrough?</span>
+                            <button
+                                type="button"
+                                className="danger"
+                                onClick={() => {
+                                    setConfirmingId(null);
+                                    onDelete(playthrough);
+                                }}
+                                disabled={disabled}
+                            >
+                                {`Delete playthrough ${index + 1}`}
+                            </button>
+                            <button type="button" onClick={() => setConfirmingId(null)}>
+                                Keep it
+                            </button>
+                        </div>
+                    ) : (
+                        <div className="game-user-panel-playthrough-actions">
+                            <button
+                                type="button"
+                                onClick={() => onEdit(playthrough)}
+                                disabled={disabled || busyId === playthrough.id}
+                            >
+                                {`Edit playthrough ${index + 1}`}
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setConfirmingId(playthrough.id)}
+                                disabled={disabled || busyId === playthrough.id}
+                            >
+                                {busyId === playthrough.id
+                                    ? `Deleting playthrough ${index + 1}`
+                                    : `Delete playthrough ${index + 1}…`}
+                            </button>
+                        </div>
+                    )}
                 </li>
             ))}
         </ul>
