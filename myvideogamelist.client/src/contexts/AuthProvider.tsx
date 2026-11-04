@@ -5,6 +5,7 @@ import {
     type ProfileVisibility,
     type UserProfile,
 } from '@/types/auth';
+import type { Look } from '@/types/look';
 import { apiFetch } from '@/lib/api';
 import { AuthContext } from './AuthContext';
 
@@ -233,6 +234,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
 
     /**
+     * Sends exactly the five fields, and takes the profile back as stored: a custom palette's colours in
+     * lower case, a preset's none (ADR 0082).
+     */
+    const updateLook = async ({ palette, background, accent, pattern, tint }: Look) => {
+        const res = await send('/api/user/look', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ palette, background, accent, pattern, tint }),
+        });
+        if (!res.ok) throw new Error(await problem(res, 'Failed to save your look'));
+
+        acceptProfile(await res.json() as UserProfile);
+    };
+
+    /**
      * Signed out by the server as part of the same request, so the only thing left to do here is
      * forget the user — calling `logout` as well would spend a request on a guaranteed 401. Clearing
      * `user` is also what empties the list and wishlist providers, which reset on the transition.
@@ -259,6 +275,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 updateUserName,
                 updateProfileVisibility,
                 updateProfileDetails,
+                updateLook,
                 deleteAccount,
             }}
         >

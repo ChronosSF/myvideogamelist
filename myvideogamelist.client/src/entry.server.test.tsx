@@ -14,6 +14,7 @@ import { Suspense, use } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as entry from '@/entry.server';
 import { CACHE_GAME, CACHE_NOT_FOUND, PRIVATE_NO_STORE } from '@/lib/cache';
+import { LOOK_SCRIPT, LOOK_SCRIPT_HASH } from '@/lib/look';
 import { RESOURCE_POLICY } from '@/lib/securityHeaders';
 import { loaderFetch, TRACE_HEADER, upstreamFailure } from '@/lib/trace.server';
 import { headers as gamePageHeaders } from '@/pages/GamePage';
@@ -282,6 +283,11 @@ function isScript(tag: string): boolean {
     return type === undefined || ['', 'module', 'text/javascript', 'importmap'].includes(type);
 }
 
+/** Every script element, its opening tag and its text. */
+function scriptsIn(body: string) {
+    return [...body.matchAll(/(<script\b[^>]*>)([\s\S]*?)<\/script>/gi)].map(([, tag, text]) => ({ tag, text }));
+}
+
 async function read(response: Response) {
     const body = await response.text();
     const policy = response.headers.get('Content-Security-Policy') ?? '';
@@ -291,8 +297,10 @@ async function read(response: Response) {
         body,
         policy,
         nonce: /'nonce-([^']+)'/.exec(policy)?.[1],
-        // Case-insensitive, as HTML is, although React writes every tag in lower case.
-        scripts: [...body.matchAll(/<script\b[^>]*>/gi)].map(([tag]) => tag).filter(isScript),
+        // Case-insensitive, as HTML is, although React writes every tag in lower case. The look script
+        // is apart: the policy admits it by its text's hash, not the nonce (ADR 0082).
+        scripts: scriptsIn(body).filter(({ text }) => text !== LOOK_SCRIPT).map(({ tag }) => tag).filter(isScript),
+        lookScripts: scriptsIn(body).filter(({ tag, text }) => text === LOOK_SCRIPT && !/\bnonce=/.test(tag)).length,
         links: [...body.matchAll(/<link\b[^>]*>/gi)].map(([tag]) => tag),
         nonces: new Set([...body.matchAll(/\bnonce="([^"]*)"/g)].map(([, value]) => value)),
     };
@@ -306,6 +314,10 @@ function expectEveryScriptToCarryTheNonce(document: Document) {
     expect(document.nonce).toBeDefined();
     expect(document.scripts.length).toBeGreaterThan(0);
     for (const script of document.scripts) expect(script).toContain(`nonce="${document.nonce}"`);
+
+    // The one script that carries none, once, admitted by its hash.
+    expect(document.lookScripts).toBe(1);
+    expect(document.policy).toContain(`'${LOOK_SCRIPT_HASH}'`);
 
     // And no other value anywhere: a stale nonce on a preload is as wrong as one on a script. The
     // empty one is `<Links nonce="">` in the root, on purpose.

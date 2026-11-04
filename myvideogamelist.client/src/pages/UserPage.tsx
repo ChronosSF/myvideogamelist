@@ -8,6 +8,7 @@ import { AccountIdentityCard } from '@/components/AccountIdentityCard';
 import { AccountDataCard } from '@/components/AccountDataCard';
 import { ProfileDetailsCard } from '@/components/ProfileDetailsCard';
 import { ListNamesCard } from '@/components/ListNamesCard';
+import { LookCard } from '@/components/LookCard';
 import { LoadingState } from '@/components/LoadingState';
 import { TagsCard } from '@/components/TagsCard';
 import { PageHeader } from '@/components/PageHeader';
@@ -222,8 +223,12 @@ export function UserPage() {
                     </div>
 
                     <section className="user-page-prefs" aria-label="Preferences">
-                        {/* First, because it changes how the site reads to this person and to
-                            nobody else. */}
+                        {/* First, because it changes how the whole site looks to this person and to
+                            nobody else, and the page around it is its preview. */}
+                        <LookCard key={user.id} look={user.look} />
+
+                        {/* Next, because it changes how the site reads to this person and to nobody
+                            else. */}
                         <ListNamesCard />
 
                         {/* Beside the list names: both are words the owner chose that only the owner

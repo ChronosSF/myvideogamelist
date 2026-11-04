@@ -1,5 +1,6 @@
 import { createContext } from 'react';
 import type { ProfileDetails, ProfileVisibility, UserProfile } from '@/types/auth';
+import type { Look } from '@/types/look';
 
 export interface AuthContextValue {
     user: UserProfile | null;
@@ -20,6 +21,11 @@ export interface AuthContextValue {
      * field it refused, so the form can show each beside its input.
      */
     updateProfileDetails: (details: ProfileDetails) => Promise<void>;
+    /**
+     * Replaces the account's look, all of it at once, and takes the account back with it as stored.
+     * Rejects with the server's message.
+     */
+    updateLook: (look: Look) => Promise<void>;
     /**
      * Deletes the account and everything in it, confirmed by its password, and leaves nobody signed
      * in. Rejects with the server's message — a wrong password is a sentence for the user — and

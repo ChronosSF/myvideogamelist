@@ -1,0 +1,175 @@
+/*
+ * The four patterns a page can be drawn over, and none (ADR 0082). Each is two layers, a token colour cut
+ * out by a mask, so the palette decides its colours: the pattern's hairlines, faint, brighter where a glow
+ * comes through them at one corner; and a few of its cells lit, which breathe. Each mask is the drawing
+ * intersected with a fade that is gone by half a screen. Behind the page's content at z-index -1, over the
+ * root's background: `.app-root` draws none of its own.
+ *
+ * Which one is `<html data-pattern>`'s, set by the look script before the first paint: the honeycomb by
+ * default, and below, what each of the others changes. Only the drawing a page shows is fetched, since a
+ * mask image is requested only once something is drawn with it.
+ *
+ * What it is drawn in is `<html data-pattern-tint>`'s: the palette's paper by default, a grey rather than
+ * the accent, since a vivid green glowing in hexagons over black is another brand's look; or the accent,
+ * for whoever wants it.
+ *
+ * The top one is a screen tall, its glow up at the right. The bottom one spans the whole page and draws at
+ * its foot, its glow down at the left: a box anchored to the page's bottom would move down whenever the
+ * page grew under it, as the lists do when they arrive after the first paint, and a screen-tall box moving
+ * is a layout shift of most of the screen. Spanning from the top, it only grows. A tiled pattern tiles from
+ * the page's top, so where a short page has the two meet, its cells line up.
+ */
+
+:root {
+    --page-pattern-ink: var(--color-fg-strong);
+}
+
+:root[data-pattern-tint='accent'] {
+    --page-pattern-ink: var(--color-primary-500);
+}
+
+.page-pattern {
+    --page-pattern-end: top;
+    --page-pattern-fade: to bottom;
+    --page-pattern-glow-at: 78% 0%;
+
+    /* The honeycomb: cells 78 by 44, and a period of the lit ones four cells by five. */
+    --page-pattern-lines-image: url('../assets/honeycomb.svg?no-inline');
+    --page-pattern-lines-size: 78px 44px;
+    --page-pattern-lit-image: url('../assets/honeycomb-lit.svg?no-inline');
+    --page-pattern-lit-size: 312px 220px;
+    --page-pattern-repeat: repeat;
+    --page-pattern-origin: 0 0;
+    /* How much of the ink each layer is, flat and at the glow. */
+    --page-pattern-lines: 10%;
+    --page-pattern-lines-glow: 47%;
+    --page-pattern-lit: 3.5%;
+    --page-pattern-lit-glow: 19%;
+    --page-pattern-breathe: ease-in-out;
+
+    position: absolute;
+    inset: 0 0 auto;
+    height: 100svh;
+    z-index: -1;
+    pointer-events: none;
+}
+
+.page-pattern[data-at='bottom'] {
+    --page-pattern-end: bottom;
+    --page-pattern-fade: to top;
+    --page-pattern-glow-at: 22% 100%;
+    height: auto;
+    bottom: 0;
+}
+
+:root[data-pattern='none'] .page-pattern {
+    display: none;
+}
+
+/*
+ * A map's isometric grid: 2:1 tiles, 64 by 32 as city-builders and level editors draw them, a few raised a
+ * step or two and lit — the square seen at an angle that every isometric game draws, rather than a shape of
+ * anybody's own. One period of the map, nine tiles across and seven down, 576 by 224: wide enough that a
+ * desktop shows a raised tile twice across rather than three times in a row. The lit drawing is the raised
+ * tiles' faces, the top at the tile's strength and the sides at 60% and 35% of it, lit from above and to
+ * the left. Everything sits half a pixel to the right, so the upright edges fall on a pixel column.
+ */
+:root[data-pattern='isometric'] .page-pattern {
+    --page-pattern-lines-image: url('../assets/isometric-grid.svg?no-inline');
+    --page-pattern-lines-size: 576px 224px;
+    --page-pattern-lit-image: url('../assets/isometric-grid-lit.svg?no-inline');
+    --page-pattern-lit-size: 576px 224px;
+    --page-pattern-lines: 8%;
+    --page-pattern-lines-glow: 40%;
+    --page-pattern-lit: 5%;
+    --page-pattern-lit-glow: 24%;
+}
+
+/*
+ * One room a screen tall: a ceiling in the drawing's top half, receding towards a vanishing point below the
+ * middle, and a floor in its bottom half, receding towards one above it. Both ends mask with the same
+ * drawing, and each one's fade leaves it only its own half. A perspective is not a tiling, so it is drawn
+ * once, sized to the screen's height and centred: the vanishing point is the screen's middle on a phone as
+ * on a desktop, and a narrower screen sees less of the sides rather than a squeezed grid. The drawing is
+ * four times as wide as it is tall, wider than any screen.
+ *
+ * Its geometry, should it need redrawing, in the drawing's units, a screen being 1000 tall: each vanishing
+ * point is 600 from its edge; the columns are 160 apart at the edge and run towards that point; the rows
+ * stand at depths 1, 1.25, 1.5 … of the edge's, so a row is drawn 600 / depth from the vanishing point; and
+ * the grid stops at depth 6, the half-screen line, where the fade finishes. The rows are at half the
+ * columns' strength, since the page's own rules are horizontal hairlines. The lines keep a pixel's width
+ * whatever the screen's height (`vector-effect`).
+ */
+:root[data-pattern='perspective'] .page-pattern {
+    --page-pattern-lines-image: url('../assets/perspective-grid.svg?no-inline');
+    --page-pattern-lines-size: auto 100svh;
+    --page-pattern-lit-image: url('../assets/perspective-grid-lit.svg?no-inline');
+    --page-pattern-lit-size: auto 100svh;
+    --page-pattern-repeat: no-repeat;
+    --page-pattern-origin: var(--page-pattern-end);
+}
+
+/*
+ * A dot-matrix panel, as an LED scoreboard or a screen seen close up shows one: square pixels two wide on a
+ * pitch of eight, a few lit in small clusters, each with a stepped bloom as pixel art draws a light. The
+ * pitch is a whole number of device pixels at 1, 1.25, 1.5 and 2 times, and the masks are drawn with crisp
+ * edges, so at those zooms every pixel comes out the same size wherever it falls. At the bright corner the
+ * panel's pixels come out about `fg-dim` and no brighter, darker than any text meant to be read over them;
+ * a lit one is a pixel bigger on every side and far brighter, since a lit pixel has to be bright to be seen
+ * as lit at all. It breathes in five steps rather than a smooth ease, as an eight-bit console faded.
+ */
+:root[data-pattern='pixels'] .page-pattern {
+    --page-pattern-lines-image: url('../assets/dot-matrix.svg?no-inline');
+    --page-pattern-lines-size: 8px 8px;
+    --page-pattern-lit-image: url('../assets/dot-matrix-lit.svg?no-inline');
+    --page-pattern-lit-size: 640px 480px;
+    --page-pattern-lines: 9%;
+    --page-pattern-lines-glow: 42%;
+    --page-pattern-lit: 40%;
+    --page-pattern-lit-glow: 55%;
+    --page-pattern-breathe: steps(5, jump-none);
+}
+
+.page-pattern::before,
+.page-pattern::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-repeat: no-repeat;
+    background-position: var(--page-pattern-end);
+    background-size: 100% 100svh;
+    mask-repeat: var(--page-pattern-repeat), no-repeat;
+    mask-position: var(--page-pattern-origin), var(--page-pattern-end);
+    mask-composite: intersect;
+}
+
+.page-pattern::before {
+    background-color: color-mix(in srgb, var(--page-pattern-ink) var(--page-pattern-lines), transparent);
+    background-image: radial-gradient(ellipse 55% 70% at var(--page-pattern-glow-at), color-mix(in srgb, var(--page-pattern-ink) var(--page-pattern-lines-glow), transparent), transparent 75%);
+    /* Eased rather than linear: slow at first, then quickly through the last few shades. A hairline this faint
+       has a score of shades above the page, and as it fades the in-between ones that smooth its diagonals
+       round away, so the tail is kept short rather than drawn out in stairs. */
+    mask-image:
+        var(--page-pattern-lines-image),
+        linear-gradient(var(--page-pattern-fade), black 15%, rgb(0 0 0 / 0.85) 30%, rgb(0 0 0 / 0.6) 40%, rgb(0 0 0 / 0.35) 46%, transparent 50%);
+    mask-size: var(--page-pattern-lines-size), 100% 100svh;
+}
+
+.page-pattern::after {
+    background-color: color-mix(in srgb, var(--page-pattern-ink) var(--page-pattern-lit), transparent);
+    background-image: radial-gradient(ellipse 50% 65% at var(--page-pattern-glow-at), color-mix(in srgb, var(--page-pattern-ink) var(--page-pattern-lit-glow), transparent), transparent 80%);
+    mask-image: var(--page-pattern-lit-image), linear-gradient(var(--page-pattern-fade), black 10%, transparent 50%);
+    mask-size: var(--page-pattern-lit-size), 100% 100svh;
+    animation: page-pattern-breathe 6s var(--page-pattern-breathe) infinite alternate;
+}
+
+@keyframes page-pattern-breathe {
+    from { opacity: 0.45; }
+    to { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .page-pattern::after {
+        animation: none;
+    }
+}
