@@ -97,6 +97,7 @@ grow a forward pointer when a later record or an issue closes something it left 
 | [0077](0077-a-deleted-accounts-sessions-end-with-it.md) | A deleted account's sessions end with it, on the next request each makes | Implemented |
 | [0078](0078-what-the-imports-screens-count-and-offer.md) | What the import's screens count and offer: games where a row's game is known, rows where it is not, a wishlisted game as on the wishlist, and a change of any game the file did not name | Implemented |
 | [0079](0079-a-migration-waits-five-seconds-for-a-lock-and-no-transaction-idles-past-a-minute.md) | A migration waits five seconds for a lock, and no transaction of the API's idles past a minute | Implemented |
+| [0083](0083-our-own-export-is-imported-as-any-trackers-is.md) | Our own export is imported as any tracker's is: every import rule applies, no history comes from a file, and it is free | Implemented |
 
 **Status** — *Accepted*: decided, not yet built. *Implemented*: decided and in the code.
 *Superseded*: replaced by a later record.

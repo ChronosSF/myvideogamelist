@@ -324,12 +324,18 @@ platform re-sync stay paid. Export stays paid, as the table already has it.
    guesses, so no "best effort" disclaimer is needed: the screen shows exactly where it is unsure.
 3. Should a failed match create a placeholder entry so the user does not lose the row, or is the
    downloadable failure CSV (C5) enough? Suggested: the CSV — placeholders pollute lists.
-4. Do we want to be an import target for someone else — that is, should our own export (Tier 2)
-   round-trip through this importer? Cheap to guarantee, worth doing.
+4. ~~Do we want to be an import target for someone else — that is, should our own export (Tier 2)
+   round-trip through this importer? Cheap to guarantee, worth doing.~~ **Answered: yes, free, and
+   lossy by design.** Our export is an `IImportSource` like Grouvee's, under every rule here: the
+   lists, scores, notes, dates added, wishlist, favourites and each run's dates, minutes and type
+   come back; the event log, `ScoredAt`, `StatusChangedAt`, reviews (as reviews), tags, ownership,
+   the hand orders, a run's platform and notes, and the account's settings do not. The rows carry
+   no titles and are named from `CachedGames` at upload, with no network call
+   ([0083](../docs/decisions/0083-our-own-export-is-imported-as-any-trackers-is.md)).
 
 ## 10. What is left, and in what order
 
-**Shipped:** S1–S3, S6–S9, C3–C7 and M1–M6.
+**Shipped:** S1–S3, S6–S9, C3–C7 and M1–M6, and our own export as a second preset (§9, question 4).
 
 **Superseded rather than pending** — these will not be built as written: S5's queue, because a
 matching pass is bounded and repeated instead (§4.2); C2's column-mapping table, because there is no
