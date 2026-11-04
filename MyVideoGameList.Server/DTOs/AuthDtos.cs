@@ -52,7 +52,7 @@ public record UserProfileDto(
     string? DisplayName,
     string? AvatarUrl,
     string? Bio,
-    string Theme,
+    LookDto Look,
     string ProfileVisibility,
     bool IsAdmin)
 {
@@ -69,9 +69,62 @@ public record UserProfileDto(
             user.DisplayName,
             user.AvatarUrl,
             user.Bio,
-            user.Theme,
+            LookDto.For(user),
             user.ProfileVisibility,
             isAdmin);
+}
+
+/// <summary>
+/// How the site looks to its owner (ADR 0082): a palette by name, a custom palette's two colours, the
+/// background pattern and its tint. On the profile, so that every page knows it from the request it
+/// already makes, and the browser keeps a copy of it to apply before the first paint.
+/// </summary>
+/// <param name="Background">A custom palette's background, <c>#rrggbb</c>; null for a preset.</param>
+/// <param name="Accent">A custom palette's accent, <c>#rrggbb</c>; null for a preset.</param>
+public record LookDto(string Palette, string? Background, string? Accent, string Pattern, string Tint)
+{
+    /// <summary>The look an account has, its palette read through <see cref="LookPolicy.PaletteOf"/>.</summary>
+    public static LookDto For(ApplicationUser user)
+    {
+        var palette = LookPolicy.PaletteOf(user.Theme);
+        var custom = palette == LookPolicy.CustomPalette;
+        return new(
+            palette,
+            custom ? user.ThemeBackground : null,
+            custom ? user.ThemeAccent : null,
+            LookPolicy.Patterns.Contains(user.BackgroundPattern) ? user.BackgroundPattern : LookPolicy.DefaultPattern,
+            LookPolicy.Tints.Contains(user.PatternTint) ? user.PatternTint : LookPolicy.DefaultTint);
+    }
+}
+
+/// <summary>
+/// A new look, all of it at once, as the settings page sends it with every change.
+/// </summary>
+/// <remarks>
+/// The names are checked against <see cref="LookPolicy"/>'s lists rather than restated in
+/// <see cref="AllowedValuesAttribute"/>s, which take only constants: a palette added later is one entry
+/// there and one check constraint. A preset's colours are the stylesheet's and are not sent; a custom
+/// palette must send both of its own. Whether a custom palette reads is the page's to check (see
+/// <see cref="LookPolicy"/>).
+/// </remarks>
+public record UpdateLookDto(
+    [Required] string Palette,
+    [RegularExpression(LookPolicy.ColourPattern)] string? Background,
+    [RegularExpression(LookPolicy.ColourPattern)] string? Accent,
+    [Required] string Pattern,
+    [Required] string Tint) : IValidatableObject
+{
+    public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
+    {
+        if (!LookPolicy.Palettes.Contains(Palette))
+            yield return new($"The palette must be one of {string.Join(", ", LookPolicy.Palettes)}.", [nameof(Palette)]);
+        if (!LookPolicy.Patterns.Contains(Pattern))
+            yield return new($"The pattern must be one of {string.Join(", ", LookPolicy.Patterns)}.", [nameof(Pattern)]);
+        if (!LookPolicy.Tints.Contains(Tint))
+            yield return new($"The pattern's colour must be one of {string.Join(", ", LookPolicy.Tints)}.", [nameof(Tint)]);
+        if (Palette == LookPolicy.CustomPalette && (Background is null || Accent is null))
+            yield return new("A custom palette needs a background and an accent.", [nameof(Background), nameof(Accent)]);
+    }
 }
 
 /// <summary>A rename. The one field, validated the same way registration validates it.</summary>

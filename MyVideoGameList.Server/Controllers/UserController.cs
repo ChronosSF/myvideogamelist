@@ -184,6 +184,34 @@ public class UserController(
     }
 
     /// <summary>
+    /// Replaces the account's look: its palette, a custom palette's two colours, the background pattern
+    /// and its tint, all at once (ADR 0082).
+    /// </summary>
+    /// <remarks>
+    /// The colours are kept only for a custom palette, and in lower case, as the table's check has them; a
+    /// preset sends none, and choosing one clears the last custom palette's. Nothing about the look reaches
+    /// anybody else, so nothing is taken off the edge.
+    /// </remarks>
+    [HttpPut("look")]
+    public async Task<ActionResult<UserProfileDto>> UpdateLook([FromBody] UpdateLookDto dto)
+    {
+        var user = await userManager.GetUserAsync(User);
+        if (user is null) return Unauthorized();
+
+        var custom = dto.Palette == LookPolicy.CustomPalette;
+        user.Theme = dto.Palette;
+        user.ThemeBackground = custom ? dto.Background?.ToLowerInvariant() : null;
+        user.ThemeAccent = custom ? dto.Accent?.ToLowerInvariant() : null;
+        user.BackgroundPattern = dto.Pattern;
+        user.PatternTint = dto.Tint;
+
+        var saved = await userManager.UpdateAsync(user);
+        if (!saved.Succeeded) return NotSaved(saved);
+
+        return Ok(Profile(user));
+    }
+
+    /// <summary>
     /// Replaces the display name, the avatar and the bio, all three at once.
     /// </summary>
     /// <remarks>
