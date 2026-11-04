@@ -9,7 +9,8 @@
  *
  * One theme, dark (ADR 0048), in one of several palettes (ADR 0082). The tokens below are the default's;
  * the others, at the end of this file, give the surfaces, the lines, the text and the primary other values.
- * The text stays light, and the colours that carry meaning and the brand's stay as they are in every palette.
+ * The text stays light, and the colours that carry meaning and the brand's stay as they are in every palette;
+ * the logo's badge and wordmark are tokens of their own, which follow the palette's accent.
  *
  * This palette is the editorial one (ADR 0075): ink and paper, and the logo's lime as the one accent.
  * It is built so that a palette is few decisions, not forty:
@@ -142,6 +143,13 @@
     --color-brand-navy: #182b4d;
     --color-brand-lime: #a3e635;
     --color-brand-light: #f8fafc;
+
+    /* The logo's parts that follow the palette (ADR 0082): the brand's lime and navy in the default, and in
+       any other palette its accent and the words on it. A file the browser fetches on its own, the favicon
+       and the share image, never sees a palette and keeps the brand's. */
+    --color-logo-badge: var(--color-brand-lime);  /* The mark's "done" badge */
+    --color-logo-tick: var(--color-brand-navy);   /* The tick on the badge */
+    --color-logo-word: var(--color-brand-lime);   /* "List" in the wordmark */
 }
 
 /*
@@ -196,6 +204,8 @@
  *     what is the reader's own — so each also has a floor, light enough to read on a dark page however dark
  *     the accent: a dark red is dark red on a button and a readable red as text. The keyboard focus is
  *     drawn in the text shade for the same reason.
+ *   - The logo's badge is the accent, its tick the words on a button, and the wordmark's "List" the text
+ *     shade.
  *   - The words on a filled button are dark on a light accent and light on a dark one, the change at a
  *     lightness of 0.6, where the two are about as readable as each other.
  */
@@ -227,5 +237,9 @@
         --color-primary-950: oklch(from var(--look-accent) calc(l - 0.567) calc(c * 0.3) h);
         --color-on-primary: oklch(from var(--look-accent) clamp(0.2, calc((0.6 - l) * 1000), 0.953) 0 0);
         --color-focus: var(--color-primary-400);
+
+        --color-logo-badge: var(--look-accent);
+        --color-logo-tick: var(--color-on-primary);
+        --color-logo-word: var(--color-primary-400);
     }
 }

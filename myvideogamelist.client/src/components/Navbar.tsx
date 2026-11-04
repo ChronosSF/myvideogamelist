@@ -191,7 +191,7 @@ export function Navbar() {
                                     that says nothing at all. Not `sr-only sm:not-sr-only`:
                                     ListTable.css defines an unlayered .sr-only that would outrank
                                     the sm: utility once the lists page had loaded. */}
-                                <span className="max-sm:sr-only">MyVideoGame<span className="text-brand-lime">List</span></span>
+                                <span className="max-sm:sr-only">MyVideoGame<span className="text-logo-word">List</span></span>
                             </Link>
                         </div>
 
