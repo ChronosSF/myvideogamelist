@@ -39,6 +39,10 @@ at once and answers the profile. It checks the shape only — names it knows, a 
 custom palette with both — and keeps the colours only for a custom palette, so choosing a preset clears the
 last custom one's. Nothing about a look reaches anybody else, so nothing is taken off the edge.
 
+What the profile carries is the look the account is drawn in, which is not always the one it chose:
+`LookDto.For` answers the default for an account that may not choose one (§8), and `CanChooseLook` says
+which it is. The choice stays stored either way.
+
 ### 3. Before the first paint, from the browser's copy
 
 `LOOK_SCRIPT` (`@/lib/look`) is rendered at the top of `<head>`, before the stylesheets, because a script
@@ -54,11 +58,16 @@ a nonce attribute once read, which the hydrating client would then disagree with
 until the hash is the text's, and the document tests check every page has the script once, with no nonce,
 under a policy naming its hash. The pages shared at the edge stay byte-identical, since the script is.
 
-`LookProvider`, under `AuthProvider`, keeps the page and the copy in step once auth answers: the account's
-look, written to the copy; the default for nobody, with the copy removed, so a shared computer signed out
-does not keep the last reader's colours; and until auth answers, nothing, which leaves the head script's
-drawing alone. A device's first page before its first sign-in is the default; every page after is right
-from its first paint.
+`LookProvider`, under `AuthProvider`, keeps the page and the copy in step once auth answers: the look the
+account is drawn in, written to the copy. For nobody, and until auth answers, it does nothing, which leaves
+the head script's drawing alone. So the copy outlives a sign-out, and a browser stays in its last reader's
+look until somebody signs in; only deleting the account forgets it (`forgetLook`). A visitor who has never
+signed in on a browser has no copy there and is drawn in the default; every page after a sign-in is right
+from its first paint. On a shared computer the next visitor sees the last reader's look, which says
+nothing about them but their taste, and the next account to sign in replaces it with its own.
+
+The copy is a cache of the server's answer, never a grant: what an account may choose is decided by the
+answer, and the copy follows it on the account's next page.
 
 ### 4. A palette is two colours, and the rest is worked out in CSS
 
@@ -111,7 +120,24 @@ tint as two segments, disabled with no pattern; a status line; and Reset to defa
 radio button, so arrow keys and names come with them. Each is drawn at once and saved at once — a colour
 picker after it rests for half a second, since it reports every colour it passes — and saves go one at a
 time, the latest after the one in flight, so the account ends on the last choice. A failed save puts the
-account's look back and says why.
+account's look back and says why. For an account that may not choose (§8) the card says Coming soon, its
+choices disabled, with no status and no reset.
+
+### 8. Admins only, for now
+
+Whether a look is free or paid is still open on #208, and the default is still to be chosen by trying the
+looks on the site itself. So only an admin may choose one (`LookPolicy.CanChoose`), and `PUT
+/api/user/look` sits behind the admin policy, which guards the admin's own preference here rather than
+anybody else's data. Everybody else is answered with the default and shown the card as **Coming soon**, its
+choices drawn and disabled: it promises the choices, and nothing about their price, so it stays true
+whichever way #208 goes.
+
+The rule is one function and one policy, and a paywall replaces both: the function asks for the
+entitlement, and the endpoint's policy requires it. Because the profile carries the look the account is
+drawn in, an account that stops being entitled is drawn in the default on its next page on every device,
+and its copy with it, while its choice stays stored for the day it is entitled again. A browser it is
+signed out on keeps the copy until somebody signs in there; nothing could stop that anyway, since every
+palette's styles reach every visitor, and the copy is only a name in storage.
 
 ## Consequences
 
@@ -119,10 +145,11 @@ account's look back and says why.
   constraint, whose migration carries it; a pattern is a rule in `PagePattern.css` and the same three.
   `serverMirrors.test.ts` fails while the client's lists differ from the server's, and the hash test while
   the script's text and its hash differ, which a new name changes.
-- A signed-out visitor sees the default and cannot choose. Choosing in the browser only is still open on
-  #208, as are whether the custom palette is a paid feature ([0010](0010-monetization-model.md) has no row
-  for it yet) and the logo's lime following the palette: the logo is `brand-lime`, the same in every
-  palette for now, and the favicon, the share image and the holding page never see a palette at all.
+- Only admins choose for now (§8). A visitor who has never signed in sees the default; one who has keeps
+  the last look on that browser after signing out. Whether looks are free or paid is open on #208
+  ([0010](0010-monetization-model.md) has no row for them yet), as is the logo's lime following the
+  palette: the logo is `brand-lime`, the same in every palette for now, and the favicon, the share image
+  and the holding page never see a palette at all.
 - The look is per account, so two devices signed in to one account share it, and a change on one reaches
   the other on its next page.
 - The default pattern stays the honeycomb, as #208 left it, until somebody chooses otherwise.
