@@ -283,9 +283,12 @@ function isScript(tag: string): boolean {
     return type === undefined || ['', 'module', 'text/javascript', 'importmap'].includes(type);
 }
 
-/** Every script element, its opening tag and its text. */
+/**
+ * Every script element, its opening tag and its text. The end tag is matched as a browser ends a script,
+ * `</script` and anything up to the next `>`, so that `</script >` ends one here as it does there.
+ */
 function scriptsIn(body: string) {
-    return [...body.matchAll(/(<script\b[^>]*>)([\s\S]*?)<\/script>/gi)].map(([, tag, text]) => ({ tag, text }));
+    return [...body.matchAll(/(<script\b[^>]*>)([\s\S]*?)<\/script\b[^>]*>/gi)].map(([, tag, text]) => ({ tag, text }));
 }
 
 async function read(response: Response) {
