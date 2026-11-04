@@ -209,11 +209,16 @@
     line-height: 1.7;
 }
 
-.look-check[data-ok='true'] {
+.look-check[data-state='ok'] {
     color: var(--color-success-300);
 }
 
-.look-check[data-ok='false'] {
+/* Failed, and saved all the same: advice, so a warning's colour rather than an error's. */
+.look-check[data-state='advised'] {
+    color: var(--color-warning-300);
+}
+
+.look-check[data-state='required'] {
     color: var(--color-danger-300);
 }
 

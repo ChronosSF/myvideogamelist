@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { contrast, hueDistance, hueOf, parseColour, toHex } from './colour';
+import { colourDistance, contrast, parseColour, toHex, toOklab } from './colour';
 
 function parsed(text: string) {
     const rgb = parseColour(text);
@@ -42,21 +42,34 @@ describe('contrast', () => {
     });
 });
 
-describe('hueOf', () => {
-    it("is HSL's hue, with the chroma", () => {
-        expect(hueOf(parsed('#ff0000'))).toEqual({ hue: 0, chroma: 1 });
-        expect(hueOf(parsed('#00ff00')).hue).toBe(120);
-        expect(hueOf(parsed('#db2777')).hue).toBeCloseTo(333, 0);
-        expect(hueOf(parsed('#808080'))).toEqual({ hue: 0, chroma: 0 });
-        // Paper has a trace of warmth, and next to no hue to see.
-        expect(hueOf(parsed('#f3efe6')).chroma).toBeCloseTo(0.05, 2);
+describe('toOklab', () => {
+    it('is the inverse of reading OKLCH', () => {
+        // The default palette's primary, written in the tokens as oklch(84.1% 0.238 128.85).
+        const { l, a, b } = toOklab(parsed('oklch(0.841 0.238 128.85)'));
+
+        expect(l).toBeCloseTo(0.841, 2);
+        expect(Math.hypot(a, b)).toBeCloseTo(0.238, 1);
+    });
+
+    it('puts a grey on neither axis', () => {
+        const { a, b } = toOklab(parsed('#808080'));
+
+        expect(Math.abs(a)).toBeLessThan(1e-4);
+        expect(Math.abs(b)).toBeLessThan(1e-4);
     });
 });
 
-describe('hueDistance', () => {
-    it('goes the short way round the wheel', () => {
-        expect(hueDistance(350, 10)).toBe(20);
-        expect(hueDistance(10, 350)).toBe(20);
-        expect(hueDistance(0, 180)).toBe(180);
+describe('colourDistance', () => {
+    it('is nothing between a colour and itself, and the same either way round', () => {
+        expect(colourDistance(parsed('#db2777'), parsed('#db2777'))).toBe(0);
+        expect(colourDistance(parsed('#db2777'), parsed('#e0368a')))
+            .toBeCloseTo(colourDistance(parsed('#e0368a'), parsed('#db2777')), 10);
+    });
+
+    it('counts lightness: a pale periwinkle is far from a saturated blue of nearly its hue', () => {
+        // indigo-300 against Playing's blue, blue-500, which a hue alone puts 13 degrees apart.
+        expect(colourDistance(parsed('#a5b4fc'), parsed('#3b82f6'))).toBeGreaterThan(0.15);
+        // A pink a shade off the wishlist's is close.
+        expect(colourDistance(parsed('#e0368a'), parsed('#db2777'))).toBeLessThan(0.06);
     });
 });

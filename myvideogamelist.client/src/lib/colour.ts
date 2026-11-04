@@ -93,28 +93,30 @@ export function contrast(first: Rgb, second: Rgb): number {
     return (light + 0.05) / (dark + 0.05);
 }
 
-/**
- * A colour's hue in degrees as HSL reckons it, and its chroma, 0 to 1: how far its brightest channel is
- * from its darkest, which is how much hue there is to see. HSL's saturation would not do for that, since
- * it calls a near-white with a trace of warmth half saturated.
- */
-export function hueOf({ r, g, b }: Rgb): { hue: number; chroma: number } {
-    const max = Math.max(r, g, b);
-    const min = Math.min(r, g, b);
-    const range = max - min;
-    if (range === 0) return { hue: 0, chroma: 0 };
+/** A colour in OKLab: its lightness, 0 to 1, and where it sits on the two opponent axes. */
+export function toOklab({ r, g, b }: Rgb): { l: number; a: number; b: number } {
+    const [lr, lg, lb] = [decode(r), decode(g), decode(b)];
 
-    let hue = max === r ? ((g - b) / range) % 6 : max === g ? (b - r) / range + 2 : (r - g) / range + 4;
-    hue *= 60;
-    if (hue < 0) hue += 360;
+    const l = Math.cbrt(0.4122214708 * lr + 0.5363325363 * lg + 0.0514459929 * lb);
+    const m = Math.cbrt(0.2119034982 * lr + 0.6806995451 * lg + 0.1073969566 * lb);
+    const s = Math.cbrt(0.0883024619 * lr + 0.2817188376 * lg + 0.6299787005 * lb);
 
-    return { hue, chroma: range };
+    return {
+        l: 0.2104542553 * l + 0.793617785 * m - 0.0040720468 * s,
+        a: 1.9779984951 * l - 2.428592205 * m + 0.4505937099 * s,
+        b: 0.0259040371 * l + 0.7827717662 * m - 0.808675766 * s,
+    };
 }
 
-/** How far apart two hues are around the wheel, 0 to 180. */
-export function hueDistance(first: number, second: number): number {
-    const apart = Math.abs(first - second) % 360;
-    return Math.min(apart, 360 - apart);
+/**
+ * How different two colours look, as the straight distance between them in OKLab: lightness counts as
+ * much as hue and chroma, so a pale periwinkle and a saturated blue of the same hue are far apart, and a
+ * near-copy of a pink is close. A just noticeable difference is about 0.02.
+ */
+export function colourDistance(first: Rgb, second: Rgb): number {
+    const x = toOklab(first);
+    const y = toOklab(second);
+    return Math.hypot(x.l - y.l, x.a - y.a, x.b - y.b);
 }
 
 /** A colour as `#rrggbb`, as a colour picker takes one. */

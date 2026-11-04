@@ -1,40 +1,56 @@
-import { contrast, hueDistance, hueOf, parseColour, toHex, type Rgb } from '@/lib/colour';
+import { colourDistance, contrast, parseColour, toHex, type Rgb } from '@/lib/colour';
 
 /**
- * Whether a custom palette reads, measured on the page while it is drawn in it (ADR 0082).
+ * Whether a custom palette reads, measured on the page while it is drawn in it (ADR 0082 §5).
  *
  * The palette's surfaces, text and accent steps are `theme.css`'s, worked out from its two colours by the
  * browser, so the checks read the tokens back off the document rather than restating those formulas here:
- * a formula retuned there is a formula checked here. The server checks only that the colours are colours,
- * so these are what keep a custom palette readable; one that fails them is shown and not saved.
+ * a formula retuned there is a formula checked here.
+ *
+ * One check is required: the body text on the background. The text is not the reader's to choose — every
+ * palette is dark and its text light (ADR 0048) — so a background it cannot be read on makes the whole site
+ * unreadable, this page with it, and a palette failing it is drawn and not saved. The rest are advice: a
+ * look is its owner's alone and shown to nobody else, so somebody who can read faint text, or wants an
+ * accent near a colour that means something, is told and then given it.
  */
 export interface LookCheck {
     id: 'body' | 'faint' | 'accent' | 'button' | 'meaning';
     label: string;
     ok: boolean;
+    /** Whether a palette failing it is not saved. */
+    required: boolean;
 }
 
 /**
- * The colours that mean something and stay the same in every palette, each with what it means, as a
- * sentence ends: an accent near one of them would make a mark of the reader's own read as one of these.
- * The success green is not among them, since the default accent is the lime beside it, and neither are the
- * statuses but Playing, whose blue is the one drawn as a fill wherever a game is.
+ * The colours that mean something and stay the same in every palette, each with every shade the site
+ * draws it in and what it means, as a sentence ends: an accent near any of them would make a mark of the
+ * reader's own read as one of these. The success green is not among them, since the default accent is the
+ * lime beside it, and neither are the statuses but Playing, whose blue is the one drawn as a fill wherever
+ * a game is.
  */
 const MEANINGS = [
-    ['wishlist-600', 'the wishlist’s pink'],
-    ['favourite-500', 'the favourite’s violet'],
-    ['ownership-500', 'how you own a game, in teal'],
-    ['tag-300', 'your tags’ orange'],
-    ['star', 'your score’s stars'],
-    ['danger-500', 'an error’s red'],
-    ['status-playing', 'Playing’s blue'],
+    { tokens: ['wishlist-600', 'wishlist-700'], meaning: 'the wishlist’s pink' },
+    { tokens: ['favourite-300', 'favourite-400', 'favourite-500', 'favourite-600', 'favourite-700'], meaning: 'the favourite’s violet' },
+    { tokens: ['ownership-500', 'ownership-700'], meaning: 'how you own a game, in teal' },
+    { tokens: ['tag-300', 'tag-800', 'tag-900'], meaning: 'your tags’ orange' },
+    { tokens: ['star'], meaning: 'your score’s stars' },
+    { tokens: ['danger-300', 'danger-400', 'danger-500', 'danger-600', 'danger-700', 'danger-900'], meaning: 'an error’s red' },
+    { tokens: ['status-playing'], meaning: 'Playing’s blue' },
 ] as const;
 
-/** How near in hue, in degrees, an accent may come to one of them, once it has enough colour to have a hue. */
-const MEANING_HUE_DISTANCE = 14;
-const MEANING_CHROMA = 0.2;
+/**
+ * How near, as `colourDistance` measures, the accent or its text shade may come to a shade with a meaning.
+ * Several just noticeable differences: a near-copy is caught, a colour merely of the same family is not.
+ */
+const MEANING_DISTANCE = 0.06;
 
-const TOKENS = ['page', 'fg', 'fg-faint', 'primary-500', 'on-primary', ...MEANINGS.map(([token]) => token)] as const;
+/** The accent as it is drawn: filled, and as text. */
+const ACCENT_SHADES = ['primary-500', 'primary-400'] as const;
+
+const TOKENS = [
+    'page', 'fg', 'fg-faint', 'on-primary', ...ACCENT_SHADES,
+    ...MEANINGS.flatMap(({ tokens }) => tokens),
+] as const;
 
 export type TokenReader = (tokens: readonly string[]) => Partial<Record<string, Rgb | null>>;
 
@@ -66,6 +82,31 @@ function ratioText(value: number): string {
     return `${value.toFixed(1)}:1`;
 }
 
+/**
+ * The meaning an accent shade comes nearest, if it comes too near any; undefined when every one is clear,
+ * or cannot be read. The nearest rather than the first, since a dark red is near both the tags' deep orange
+ * and an error's deep red, and is the second.
+ */
+function nearMeaning(colours: Partial<Record<string, Rgb | null>>): string | undefined {
+    const shades = ACCENT_SHADES.map(token => colours[token]).filter((colour): colour is Rgb => !!colour);
+    let nearest: { meaning: string; distance: number } | undefined;
+
+    for (const { tokens, meaning } of MEANINGS) {
+        for (const token of tokens) {
+            const meant = colours[token];
+            if (!meant) continue;
+            for (const shade of shades) {
+                const distance = colourDistance(shade, meant);
+                if (distance < MEANING_DISTANCE && (nearest === undefined || distance < nearest.distance)) {
+                    nearest = { meaning, distance };
+                }
+            }
+        }
+    }
+
+    return nearest?.meaning;
+}
+
 /** The five checks, in the order the settings page lists them. */
 export function lookChecks(read: TokenReader = readTokens): LookCheck[] {
     const colours = read(TOKENS);
@@ -73,27 +114,24 @@ export function lookChecks(read: TokenReader = readTokens): LookCheck[] {
 
     const body = ratio(colours.fg, colours.page);
     const faint = ratio(colours['fg-faint'], colours.page);
-    const against = ratio(accent, colours.page);
+    const accentText = ratio(colours['primary-400'], colours.page);
     const button = ratio(colours['on-primary'], accent);
-
-    const tone = accent ? hueOf(accent) : null;
-    const near = tone && tone.chroma > MEANING_CHROMA
-        ? MEANINGS.find(([token]) => {
-            const colour = colours[token];
-            return colour ? hueDistance(tone.hue, hueOf(colour).hue) < MEANING_HUE_DISTANCE : false;
-        })
-        : undefined;
+    const near = nearMeaning(colours);
 
     return [
-        { id: 'body', label: `Body text on background ${ratioText(body)}`, ok: body >= 4.5 },
-        { id: 'faint', label: `Faint text on background ${ratioText(faint)}`, ok: faint >= 4.5 },
-        // A part of the page, not text, so WCAG's three to one for a control (1.4.11).
-        { id: 'accent', label: `Accent against background ${ratioText(against)}`, ok: against >= 3 },
-        { id: 'button', label: `Button words on accent ${ratioText(button)}`, ok: button >= 4.5 },
+        { id: 'body', label: `Body text on background ${ratioText(body)}`, ok: body >= 4.5, required: true },
+        { id: 'faint', label: `Faint text on background ${ratioText(faint)}`, ok: faint >= 4.5, required: false },
+        { id: 'accent', label: `Accent text on background ${ratioText(accentText)}`, ok: accentText >= 4.5, required: false },
+        { id: 'button', label: `Button words on accent ${ratioText(button)}`, ok: button >= 4.5, required: false },
         near
-            ? { id: 'meaning', label: `Too close to ${near[1]}`, ok: false }
-            : { id: 'meaning', label: 'Clear of the colours with a meaning', ok: tone !== null },
+            ? { id: 'meaning', label: `Close to ${near}`, ok: false, required: false }
+            : { id: 'meaning', label: 'Clear of the colours with a meaning', ok: accent != null, required: false },
     ];
+}
+
+/** Whether a palette may be saved: every required check passes. */
+export function savable(checks: readonly LookCheck[]): boolean {
+    return checks.every(check => check.ok || !check.required);
 }
 
 /** The page's background and accent as the document draws them, for a custom palette to start from. */
