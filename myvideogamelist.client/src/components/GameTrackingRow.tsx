@@ -1,4 +1,4 @@
-import { useId } from 'react';
+import { useId, useState } from 'react';
 import { Link } from 'react-router';
 import type { GameDto } from '@/types/game';
 import { useAuthDialog } from '@/hooks/useAuthDialog';
@@ -37,6 +37,10 @@ export function GameTrackingRow({ game, authLoading, linkToYours }: GameTracking
     const signIn = () => authDialog.open('login');
     const signedOut = entry === null && !authLoading;
 
+    // Bumped by a star pressed signed out, which remounts the stars: the browser checks the radio pressed,
+    // and with no score to give, nothing else would take that back — a screen reader would hear one.
+    const [starPrompts, setStarPrompts] = useState(0);
+
     return (
         <div className="mt-5">
             <div className="flex flex-wrap items-center gap-x-3.5 gap-y-3">
@@ -54,12 +58,22 @@ export function GameTrackingRow({ game, authLoading, linkToYours }: GameTracking
                 {/* Last on a phone, on a line of its own, so that the list, the heart and the rosette share
                     the first; between them from `sm` up, as one row. */}
                 <div className="flex items-center gap-2 order-last sm:order-none w-full sm:w-auto">
+                    {/* Signed out, a star asks the reader to sign in, as the other controls do; the score
+                        itself stays empty, since there is nobody to give it. */}
                     <ScoreInput
+                        key={starPrompts}
                         size="md"
                         score={entry?.score ?? null}
                         gameTitle={game.title}
-                        disabled={entry === null || !entry.ready || entry.pending}
-                        onChange={next => void entry?.changeScore(next)}
+                        disabled={authLoading || (entry !== null && (!entry.ready || entry.pending))}
+                        onChange={next => {
+                            if (entry !== null) {
+                                void entry.changeScore(next);
+                                return;
+                            }
+                            setStarPrompts(prompts => prompts + 1);
+                            signIn();
+                        }}
                     />
                     <span className="type-kicker text-fg-faint" aria-hidden="true">Your score</span>
                 </div>
@@ -124,20 +138,23 @@ function EntrySummary({ linkToYours, gameId }: { linkToYours: boolean; gameId: n
     const entry = useGameEntry();
     if (entry === null) return null;
 
+    // Nothing is said of the entry until it has been read: "no playthroughs yet" over a read still out, or
+    // one that failed, would be untrue, and the failure says so itself under the row.
     const parts: string[] = [];
     if (entry.ready) {
         const runs = entry.playthroughs.length;
         if (runs > 0) parts.push(`${runs} playthrough${runs === 1 ? '' : 's'}`);
         if (entry.review !== null) parts.push(entry.review.visibility === 'public' ? 'Reviewed, for anyone' : 'Reviewed, for you only');
         if (entry.notes !== null) parts.push('Notes');
+        if (parts.length === 0) parts.push('No playthroughs or review yet');
     }
 
     return (
         <>
-            {parts.length > 0 ? parts.join(' · ') : 'No playthroughs or review yet'}
+            {parts.length > 0 ? parts.join(' · ') : <>&nbsp;</>}
             {linkToYours && (
                 <>
-                    {' · '}
+                    {parts.length > 0 && ' · '}
                     <Link to={`/games/${gameId}/yours`} className="text-link">Your game</Link>
                 </>
             )}

@@ -436,6 +436,12 @@ export function GameEntryProvider({ game, profileVisibility, onCommunityChange, 
         }
     };
 
+    /** Opening or closing a run's form takes down what the last save of it said, which was about that form. */
+    const editPlaythrough = (playthrough: PlaythroughDto | null) => {
+        setPlaythroughError(null);
+        setEditing(playthrough);
+    };
+
     const toggleWishlist = async () => {
         if (wishlisted) await wishlist.remove(game.id);
         else await wishlist.add(game);
@@ -521,7 +527,7 @@ export function GameEntryProvider({ game, profileVisibility, onCommunityChange, 
 
         playthroughs,
         editing,
-        setEditing,
+        setEditing: editPlaythrough,
         savePlaythrough,
         savingPlaythrough,
         deletePlaythrough,

@@ -155,6 +155,7 @@ export function RelatedGamesRail({ related, gameId, seriesNames, isFavourite }: 
                         <button
                             type="button"
                             onClick={() => setShowEarlier(true)}
+                            aria-label={`${firstShown} earlier game${firstShown === 1 ? '' : 's'}`}
                             className="flex aspect-[3/4] w-full flex-col items-center justify-center gap-1 rounded-sm btn-outline text-sm font-semibold"
                         >
                             <span className="type-display text-2xl">{firstShown}</span>

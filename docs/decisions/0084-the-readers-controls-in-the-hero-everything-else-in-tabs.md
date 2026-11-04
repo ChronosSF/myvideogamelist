@@ -29,7 +29,8 @@ and one row of them fits a phone's first screen, where the panel did not. The he
 The row is drawn the same size in all three of its states. The page is shared at the edge
 ([0013](0013-http-caching-policy.md)), so its server render, and the first render in the browser, cannot
 know who is reading: they draw the controls disabled with a blank line under them. A reader signed out gets
-the same controls, live, each opening the sign-in dialog. A signed-in reader gets theirs. Only words change,
+the same controls, live, each opening the sign-in dialog — the Backlog, the stars, the heart and the rosette;
+only the select of the other lists waits. A signed-in reader gets theirs. Only words change,
 and the line under the row is one line in each state, so nothing moves when auth answers. On a phone the list,
 the heart and the rosette share the first line and the stars take the second.
 

@@ -35,14 +35,16 @@ export function ListPicker({ current, nameFor, disabled, onMove, onTakeOut, onSi
     if (current === null) {
         return (
             <div className="flex h-10">
+                {/* Named in full, the visible word inside it, so that saying it to a voice control reaches it. */}
                 <button
                     type="button"
                     onClick={() => (onSignIn ? onSignIn() : onMove('backlog'))}
                     disabled={disabled && !onSignIn}
+                    aria-label={`Add to ${nameFor('backlog')}`}
                     className="inline-flex h-10 items-center gap-2 pl-3.5 pr-3 btn-primary rounded-r-none text-sm focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2 focus-visible:ring-offset-page disabled:opacity-60"
                 >
                     <Icon path={PLUS} />
-                    <span><span className="sr-only">Add to </span>{nameFor('backlog')}</span>
+                    <span>{nameFor('backlog')}</span>
                 </button>
                 <div className="relative">
                     <label htmlFor={id} className="sr-only">Add to another list</label>
