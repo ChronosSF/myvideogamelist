@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { afterEach, describe, expect, it } from 'vitest';
 import { DEFAULT_LOOK, type Look } from '@/types/look';
-import { applyLook, LOOK_SCRIPT, LOOK_SCRIPT_HASH, LOOK_STORAGE_KEY, storeLook } from './look';
+import { applyLook, forgetLook, LOOK_SCRIPT, LOOK_SCRIPT_HASH, LOOK_STORAGE_KEY, storeLook } from './look';
 
 const root = document.documentElement;
 
@@ -92,6 +92,18 @@ describe('applyLook', () => {
         applyLook({ ...DEFAULT_LOOK, palette: 'plum' });
 
         expect(attributes()).toEqual({ palette: 'plum', pattern: 'honeycomb', tint: 'grey', page: '', accent: '' });
+    });
+});
+
+describe('forgetLook', () => {
+    it('removes the copy and draws the default', () => {
+        storeLook(CUSTOM);
+        applyLook(CUSTOM);
+
+        forgetLook();
+
+        expect(localStorage.getItem(LOOK_STORAGE_KEY)).toBeNull();
+        expect(attributes()).toEqual({ palette: 'ink', pattern: 'honeycomb', tint: 'grey', page: '', accent: '' });
     });
 });
 

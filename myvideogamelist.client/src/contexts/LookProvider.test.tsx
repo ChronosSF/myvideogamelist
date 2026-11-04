@@ -62,15 +62,36 @@ describe('LookProvider', () => {
         expect(stored()).toEqual(SLATE);
     });
 
-    it('draws the default for nobody, and forgets the last reader', () => {
+    it("keeps the last reader's look for nobody, as the head script drew it, and its copy", () => {
+        root.setAttribute('data-palette', 'slate');
         localStorage.setItem(LOOK_STORAGE_KEY, JSON.stringify(SLATE));
         auth.value = { user: null, loading: false };
 
         renderProvider();
 
+        expect(root.getAttribute('data-palette')).toBe('slate');
+        expect(stored()).toEqual(SLATE);
+    });
+
+    it('keeps the look on the page when its reader signs out', () => {
+        auth.value = { user: userProfile({ look: SLATE }), loading: false };
+        const { rerender } = renderProvider();
+
+        auth.value = { user: null, loading: false };
+        rerender(<LookProvider><Previewer /></LookProvider>);
+
+        expect(root.getAttribute('data-palette')).toBe('slate');
+        expect(stored()).toEqual(SLATE);
+    });
+
+    it("draws the server's answer for an account that may not choose, and keeps that as the copy", () => {
+        localStorage.setItem(LOOK_STORAGE_KEY, JSON.stringify(SLATE));
+        auth.value = { user: userProfile({ look: DEFAULT_LOOK, canChooseLook: false }), loading: false };
+
+        renderProvider();
+
         expect(root.getAttribute('data-palette')).toBe('ink');
-        expect(root.getAttribute('data-pattern')).toBe('honeycomb');
-        expect(localStorage.getItem(LOOK_STORAGE_KEY)).toBeNull();
+        expect(stored()).toEqual(DEFAULT_LOOK);
     });
 
     it("draws a preview over the account's look without keeping it, and the account's again after", () => {

@@ -47,6 +47,15 @@ export function storeLook(look: Look | null): void {
 }
 
 /**
+ * Forgets the look on this browser and draws the default, for an account that is gone. Signing out keeps
+ * the copy, so the browser stays in its last reader's look; a deleted account has no look to keep.
+ */
+export function forgetLook(): void {
+    storeLook(null);
+    applyLook(DEFAULT_LOOK);
+}
+
+/**
  * The script the document runs in its `<head>`, before the stylesheets and the first paint: the stored
  * look, put on `<html>` as `applyLook` would, with anything it does not know read as the default. Plain ES5
  * in a `try`, because nothing it can meet — no storage, a value written by an older release, somebody's

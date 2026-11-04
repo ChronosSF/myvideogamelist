@@ -7,6 +7,7 @@ import {
 } from '@/types/auth';
 import type { Look } from '@/types/look';
 import { apiFetch } from '@/lib/api';
+import { forgetLook } from '@/lib/look';
 import { AuthContext } from './AuthContext';
 
 /**
@@ -261,6 +262,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         });
         if (!res.ok) throw new Error(await problem(res, 'Failed to delete your account'));
 
+        // Signing out keeps the browser's copy of the look; an account that is gone has none to keep.
+        forgetLook();
         setUser(null);
     };
 
