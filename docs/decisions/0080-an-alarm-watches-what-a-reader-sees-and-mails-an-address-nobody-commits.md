@@ -148,9 +148,21 @@ because it is a count and the failure is described by Polly's own lines and by t
 | Outcome | When | Counted |
 |---|---|---|
 | `succeeded` | a success status | yes, in the denominator |
-| `failed` | an error status, any 4xx included, or no answer: unreachable, timed out, or an open circuit | yes |
+| `failed` | an error status, any 4xx included, or no answer: unreachable, timed out, an open circuit, or past a deadline the caller set itself | yes |
 | `cancelled` | the caller's own token: a reader who left, or the host stopping a job | no |
 | `refused` | our own limiter's queue was full, the 503 of 0034 | no |
+
+**A caller's own deadline is a failure, and the caller says that it is one.** The cache refresh bounds
+each IGDB request at fifteen seconds of its own (0052, 0079), by cancelling the token it hands the call, and a
+hanging IGDB ends there: each attempt times out at ten seconds, and the retry is cut off by the
+refresh. The handler is handed one token and cannot tell that deadline from the host stopping, so a
+hanging IGDB was logged as cancelled on every call, and on a quiet site, where the refresh is the only
+caller, the alarm counted nothing through the whole outage. So a caller with a deadline of its own makes
+its call inside `IgdbCallLog.UnderDeadline`, passing the token it was itself handed: a cancellation while
+that token is still live is the deadline, `failed`; one after it is the caller stopping, `cancelled`. The
+refresh is the one such caller today. `GameCacheRefreshTests` fails if it calls IGDB outside the mark,
+and `IgdbCallLogTests` holds the two cases apart. A reader's request has no deadline of the API's, so
+its cancellation is the reader leaving.
 
 Measured with the scratch harness above, each of the seven ways a call ended wrote exactly one line,
 with the right outcome. The token request goes through the same client and is counted, since a refused

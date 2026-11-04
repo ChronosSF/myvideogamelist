@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using MyVideoGameList.Server.Data;
 using MyVideoGameList.Server.DTOs;
+using MyVideoGameList.Server.Observability;
 using Npgsql;
 using Polly.CircuitBreaker;
 using Polly.RateLimiting;
@@ -312,6 +313,10 @@ internal sealed class GameCacheRefreshService(
             // Bounded on its own as well as by the stopping token: see IgdbWaitLimit.
             using var limit = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             limit.CancelAfter(IgdbWaitLimit);
+
+            // The limit is this job's, so IGDB running past it is IGDB not answering, and the call
+            // line counts it failed rather than as a caller that left (ADR 0080 §4).
+            using var deadline = IgdbCallLog.UnderDeadline(cancellationToken);
 
             games = await igdb.GetGamesByIdsUncachedAsync(ids, limit.Token);
         }

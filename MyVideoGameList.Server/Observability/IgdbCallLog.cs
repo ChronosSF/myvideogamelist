@@ -52,7 +52,8 @@ internal sealed class IgdbCallLogHandler(ILoggerFactory loggers) : DelegatingHan
 
     /// <summary>
     /// The caller gave up first: a reader who left, or the host stopping a background job. Not
-    /// IGDB's failure.
+    /// IGDB's failure. A deadline the caller set itself, and said so with
+    /// <see cref="IgdbCallLog.UnderDeadline"/>, is: running past it is <see cref="Failed"/>.
     /// </summary>
     public const string Cancelled = "cancelled";
 
@@ -81,21 +82,32 @@ internal sealed class IgdbCallLogHandler(ILoggerFactory loggers) : DelegatingHan
         }
         catch (Exception exception)
         {
-            Write(request, OutcomeOf(exception, cancellationToken), exception.GetType().Name, started);
+            Write(
+                request,
+                OutcomeOf(exception, cancellationToken, IgdbCallLog.CallersOwnToken),
+                exception.GetType().Name,
+                started);
             throw;
         }
     }
 
     /// <summary>
-    /// How a call that threw ended. A timeout is <see cref="Polly.Timeout.TimeoutRejectedException"/>,
-    /// which is no cancellation, so only the caller's own token makes one.
+    /// How a call that threw ended. A timeout of the pipeline's is
+    /// <see cref="Polly.Timeout.TimeoutRejectedException"/>, which is no cancellation, so only the
+    /// caller's token makes one: the caller leaving, unless the call was made under a deadline of
+    /// the caller's own and <paramref name="callersOwnToken"/>, the token the caller was itself
+    /// handed, is still live, in which case it was the deadline that ran out.
     /// </summary>
-    internal static string OutcomeOf(Exception exception, CancellationToken cancellationToken) => exception switch
-    {
-        OperationCanceledException when cancellationToken.IsCancellationRequested => Cancelled,
-        RateLimiterRejectedException => Refused,
-        _ => Failed,
-    };
+    internal static string OutcomeOf(
+        Exception exception,
+        CancellationToken cancellationToken,
+        CancellationToken? callersOwnToken) => exception switch
+        {
+            OperationCanceledException when cancellationToken.IsCancellationRequested =>
+                callersOwnToken is { IsCancellationRequested: false } ? Failed : Cancelled,
+            RateLimiterRejectedException => Refused,
+            _ => Failed,
+        };
 
     private void Write(HttpRequestMessage request, string outcome, string result, long started)
     {
@@ -112,6 +124,38 @@ internal sealed class IgdbCallLogHandler(ILoggerFactory loggers) : DelegatingHan
 
 public static class IgdbCallLog
 {
+    private static readonly AsyncLocal<CancellationToken?> Deadline = new();
+
+    /// <summary>
+    /// The token the caller of the IGDB call now being made was itself handed, while it calls under
+    /// a deadline of its own; null otherwise.
+    /// </summary>
+    internal static CancellationToken? CallersOwnToken => Deadline.Value;
+
+    /// <summary>
+    /// Marks the IGDB calls made inside it as bounded by a deadline the caller set itself, so that
+    /// their line can tell IGDB not answering in time from the caller going away.
+    /// </summary>
+    /// <remarks>
+    /// The handler is handed one token, the caller's own linked with its deadline, and cannot tell
+    /// which of the two cancelled it. The caller can, so it passes <paramref name="callersOwnToken"/>,
+    /// the token it was itself handed: a cancellation while that one is still live is the deadline
+    /// running out, which a hanging IGDB causes and the alarm has to count, and one after it is the
+    /// caller stopping. Without this the refresh, whose fifteen seconds is such a deadline and which is
+    /// on a quiet site the only caller there is, would log a hanging IGDB as cancelled throughout.
+    /// </remarks>
+    public static IDisposable UnderDeadline(CancellationToken callersOwnToken)
+    {
+        var previous = Deadline.Value;
+        Deadline.Value = callersOwnToken;
+        return new Restore(previous);
+    }
+
+    private sealed class Restore(CancellationToken? previous) : IDisposable
+    {
+        public void Dispose() => Deadline.Value = previous;
+    }
+
     /// <summary>
     /// Adds the call line to a client. Before <c>AddIgdbResilience</c>, because the client factory
     /// runs its handlers in the order they were added, and the line has to be outside the retries.

@@ -118,6 +118,50 @@ public class IgdbCallLogTests
     }
 
     [Fact]
+    public async Task SendAsync_ACallersOwnDeadlineRunningOut_IsFailedRatherThanCancelled()
+    {
+        // The refresh's fifteen seconds: what a hanging IGDB ends in, on a site where the refresh is
+        // the only caller there is. Counted cancelled, it would leave the alarm at OK throughout.
+        using var job = new CancellationTokenSource();
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(job.Token);
+        await deadline.CancelAsync();
+
+        RecordingLoggerProvider.Entry line;
+        using (IgdbCallLog.UnderDeadline(job.Token))
+        {
+            (line, _) = await Call(token =>
+            {
+                token.ThrowIfCancellationRequested();
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK));
+            }, deadline.Token);
+        }
+
+        Assert.Equal(IgdbCallLogHandler.Failed, line.Value("Outcome"));
+        Assert.Null(IgdbCallLog.CallersOwnToken);
+    }
+
+    [Fact]
+    public async Task SendAsync_ACallerUnderADeadlineStoppingItself_IsCancelled()
+    {
+        // The host stopping the job: its own token is what cancelled the call, not the deadline.
+        using var job = new CancellationTokenSource();
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(job.Token);
+        await job.CancelAsync();
+
+        RecordingLoggerProvider.Entry line;
+        using (IgdbCallLog.UnderDeadline(job.Token))
+        {
+            (line, _) = await Call(token =>
+            {
+                token.ThrowIfCancellationRequested();
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK));
+            }, deadline.Token);
+        }
+
+        Assert.Equal(IgdbCallLogHandler.Cancelled, line.Value("Outcome"));
+    }
+
+    [Fact]
     public async Task SendAsync_OurOwnLimiterRefusing_IsRefusedRatherThanFailed()
     {
         var (line, _) = await Call(Throw(new RateLimiterRejectedException()));
