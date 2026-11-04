@@ -14,9 +14,9 @@ namespace MyVideoGameList.Server.Services.Import;
 /// import, so every rule it applies to Grouvee applies here, and the round trip is not perfect and
 /// is not meant to be (ADR 0083). What comes back is what the canonical row carries: the list, the
 /// score, the notes, the date the game was added, the wishlist and favourite marks, and each run's
-/// dates, minutes and type. What does not is everything the row has no field for — the event log,
-/// when a score was given or a status changed, ownership, the hand-arranged orders, tags, list names,
-/// settings, and a run's platform and notes. A review comes back appended to the notes and never as
+/// dates, minutes, type and platform. What does not is everything the row has no field for — the
+/// event log, when a score was given or a status changed, ownership, the hand-arranged orders, tags,
+/// list names, settings, and a run's notes. A review comes back appended to the notes and never as
 /// a review, because putting somebody's prose in front of other people is not an import's decision
 /// (ADR 0037).
 /// </para>
@@ -223,8 +223,9 @@ internal sealed class MyVideoGameListImportSource : IImportSource
 
     /// <summary>
     /// One run, held to the database's checks: a duration outside them is dropped, and a finish
-    /// before the start drops the start, as a Grouvee run's does. Its platform and its notes have no
-    /// field in the canonical row and stay behind.
+    /// before the start drops the start, as a Grouvee run's does. Its platform travels as the id the
+    /// export holds, kept when positive as a run logged by hand is; its notes have no field in the
+    /// canonical row and stay behind.
     /// </summary>
     private static ImportPlaythroughPayload MapRun(PlaythroughExportDto run)
     {
@@ -236,7 +237,8 @@ internal sealed class MyVideoGameListImportSource : IImportSource
             FinishedOn: run.FinishedOn,
             MinutesPlayed: run.MinutesPlayed is >= 1 and <= MaxMinutes ? run.MinutesPlayed : null,
             PlatformName: null,
-            Type: Clean(run.Type) is { } type && TypeKeys.Contains(type) ? type : null);
+            Type: Clean(run.Type) is { } type && TypeKeys.Contains(type) ? type : null,
+            PlatformId: run.PlatformId is > 0 ? run.PlatformId : null);
     }
 
     private static string? Clean(string? value) =>

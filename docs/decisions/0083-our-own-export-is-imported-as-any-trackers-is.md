@@ -31,7 +31,8 @@ version should keep.
 
 `MyVideoGameListImportSource` reads the export into the same canonical rows Grouvee's reader produces
 ([0037](0037-a-tracker-import-carries-history.md)), and nothing after the seam knows the difference.
-The canonical row is not widened for it: what it can carry comes back, and what it cannot stays behind.
+The canonical row is widened by one optional field, a run's platform id, and by nothing else: what it
+can carry comes back, and what it cannot stays behind.
 
 | Comes back | Stays behind |
 |---|---|
@@ -40,7 +41,7 @@ The canonical row is not widened for it: what it can carry comes back, and what 
 | The notes, and a review's text after them | The review itself, its spoiler mark and its visibility |
 | The date the game was added | Ownership |
 | Wishlist and favourite marks | Their own dates (both take the row's one date) and the showcase's order |
-| Each run's dates, minutes and type | A run's platform and its notes |
+| Each run's dates, minutes, type and platform | A run's notes |
 | | The backlog's hand order, tags, list names, sort orders, the account's settings, past imports |
 
 The source key, and so the entries' `Origin`, is `myvideogamelist`: not `manual`, although every one of
@@ -108,9 +109,12 @@ a scheduled export. #126 keeps those.
 
 - **The round trip is lossy, and the page says so before the upload.** `/import`, the import card and
   the data card each name what comes back and what does not.
-- **A run's platform is lost although both ends know it.** The export holds the platform's IGDB id; the
-  canonical row holds a name, which the commit finds in the game's own platform list. An optional id on
-  the run would keep it, and was left out to keep the row the shape it is.
+- **A run's platform travels by id, beside the name a tracker gives.** The canonical row held only a
+  name, which the commit looks for in the game's own platforms, and our export holds only the id, so
+  without a field for it the platform was lost although both ends knew it. `PlatformId` is optional on
+  the run and wins over the name when present. It is stored as given, as a run logged by hand is:
+  `PlaythroughInputDto` checks only that it is positive, and so does the reader. Grouvee's rows, and any
+  payload stored before the field, carry none and resolve by name as they did.
 - **Two runs of one game with the same dates and minutes become one**, by the commit's own key for "the
   same run" — two undated runs of one game, for instance.
 - **Importing your own export into the same account is not a restore.** Every game already there

@@ -105,8 +105,8 @@ public class ExportRoundTripTests
 
     /// <summary>
     /// A library with something in every section the export has, and some of each thing the import
-    /// cannot carry: a scored and dated move, a hand-placed game, a review, a tag, a run's platform
-    /// and notes, a favourite's place in the showcase.
+    /// cannot carry: a scored and dated move, a hand-placed game, a review, a tag, a run's notes, a
+    /// favourite's place in the showcase.
     /// </summary>
     private static void RecordAliceEverything(ApplicationDbContext db)
     {
@@ -248,7 +248,7 @@ public class ExportRoundTripTests
     }
 
     [Fact]
-    public async Task RoundTrip_ARun_ComesBackWithItsDatesMinutesAndTypeOnly()
+    public async Task RoundTrip_ARun_ComesBackWithEverythingButItsNotes()
     {
         using var db = NewDb();
 
@@ -260,10 +260,9 @@ public class ExportRoundTripTests
         Assert.Equal(1200, run.MinutesPlayed);
         Assert.Equal(new DateOnly(2024, 1, 5), run.StartedOn);
         Assert.Equal(new DateOnly(2024, 2, 1), run.FinishedOn);
+        Assert.Equal(48, run.PlatformId);
 
-        // The export holds the platform's id and the canonical row a name, so it stays behind with
-        // the run's notes.
-        Assert.Null(run.PlatformId);
+        // The canonical row has no field for a run's own notes.
         Assert.Null(run.Notes);
     }
 

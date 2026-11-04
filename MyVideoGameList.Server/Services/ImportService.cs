@@ -682,7 +682,9 @@ public class ImportService(
                     // run carrying minutes feeds the community medians, so this is the one field
                     // here that other members read.
                     TypeId = run.Type is { } typeKey && types.TryGetValue(typeKey, out var typeId) ? typeId : null,
-                    PlatformId = ResolvePlatform(run.PlatformName, games.GetValueOrDefault(gameId)),
+                    // An id the source already holds wins; otherwise the name is looked for in the
+                    // game's own platforms (ADR 0083).
+                    PlatformId = run.PlatformId ?? ResolvePlatform(run.PlatformName, games.GetValueOrDefault(gameId)),
                     MinutesPlayed = run.MinutesPlayed,
                     StartedOn = run.StartedOn,
                     FinishedOn = run.FinishedOn,

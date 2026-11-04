@@ -60,10 +60,11 @@ public class MyVideoGameListImportSourceTests
         string type = "\"completionist\"",
         string minutes = "1200",
         string startedOn = "\"2024-01-05\"",
-        string finishedOn = "\"2024-02-01\"") =>
+        string finishedOn = "\"2024-02-01\"",
+        string platformId = "48") =>
         $$"""
           {
-            "gameId": {{gameId}}, "type": {{type}}, "platformId": 48, "minutesPlayed": {{minutes}},
+            "gameId": {{gameId}}, "type": {{type}}, "platformId": {{platformId}}, "minutesPlayed": {{minutes}},
             "startedOn": {{startedOn}}, "finishedOn": {{finishedOn}}, "notes": "Every trophy",
             "createdAt": "2024-02-01T00:00:00+00:00", "updatedAt": "2024-02-01T00:00:00+00:00"
           }
@@ -177,7 +178,7 @@ public class MyVideoGameListImportSourceTests
     }
 
     [Fact]
-    public void Read_ARun_CarriesItsDatesMinutesAndTypeButNotItsPlatformOrNotes()
+    public void Read_ARun_CarriesItsDatesMinutesTypeAndPlatformId()
     {
         var row = Assert.Single(Source.Read(Export(entries: Entry(), playthroughs: Run())));
 
@@ -187,9 +188,25 @@ public class MyVideoGameListImportSourceTests
         Assert.Equal(1200, run.MinutesPlayed);
         Assert.Equal(PlaythroughTypeKeys.Completionist, run.Type);
 
-        // The canonical row names a platform for the commit to find in the game's own list, and the
-        // export holds only its id.
+        // By the id the export holds, which the commit prefers to finding a name in the game's
+        // platforms — there is no name to find.
+        Assert.Equal(48, run.PlatformId);
         Assert.Null(run.PlatformName);
+    }
+
+    [Theory]
+    [InlineData("0")]
+    [InlineData("-3")]
+    [InlineData("null")]
+    public void Read_APlatformIdThatNamesNothing_LeavesTheRunWithoutOne(string platformId)
+    {
+        // A run logged by hand is held to a positive id and nothing more (PlaythroughInputDto), and
+        // so is one read from a file.
+        var run = Assert.Single(Assert.Single(Source.Read(Export(
+            entries: Entry(), playthroughs: Run(platformId: platformId)))).Playthroughs);
+
+        Assert.Null(run.PlatformId);
+        Assert.Equal(1200, run.MinutesPlayed);
     }
 
     [Fact]
