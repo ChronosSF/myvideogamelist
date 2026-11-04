@@ -2,7 +2,9 @@
 
 **Status:** Implemented. Since #95 the export reads every section in one snapshot. The deletion test
 the first consequence below declines to write, and a test that the snapshot holds, run against
-PostgreSQL in [0057](0057-the-api-is-tested-over-a-real-postgresql.md)'s integration suite.
+PostgreSQL in [0057](0057-the-api-is-tested-over-a-real-postgresql.md)'s integration suite. A
+deletion ends the account's sessions in every browser at once, not only in the one it was made in, since
+[0077](0077-a-deleted-accounts-sessions-end-with-it.md).
 
 > **Later note.** The "No UI yet" consequence below is closed. `/user` has a "Your data" card:
 > *Download my data* fetches the export and saves it under the name the API's `Content-Disposition`

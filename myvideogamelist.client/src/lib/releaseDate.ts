@@ -17,3 +17,12 @@ export function parseReleaseDate(date: string): Date {
 export function releaseYear(date: string): number {
     return parseReleaseDate(date).getFullYear();
 }
+
+/**
+ * A game as a person recognises it, "Resident Evil 2 (1998)", or its title alone when it has no date.
+ * One way of writing it, because the import's screens name a game this way in what they show, what a
+ * button is called and what they announce, and a test matches each word for word.
+ */
+export function titleAndYear(game: { title: string; releaseDate: string | null }): string {
+    return game.releaseDate ? `${game.title} (${releaseYear(game.releaseDate)})` : game.title;
+}

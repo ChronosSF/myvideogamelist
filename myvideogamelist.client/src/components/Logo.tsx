@@ -7,8 +7,10 @@ import { useId } from 'react';
  * The mask id has to be unique per instance — two copies on one page (navbar and
  * footer, say) would otherwise share an id and the second would render un-masked.
  *
- * In the brand's colours, which are tokens of their own and the same in every palette. The mask's
- * white and black are not colours anybody sees: white keeps what is under it, black cuts it out.
+ * The tile and the triangle in the brand's colours, the same in every palette; the badge and its tick in
+ * the logo's own tokens, the brand's lime and navy in the default and the palette's accent, and the words
+ * drawn on it, in any other (ADR 0082). The mask's white and black are not colours anybody sees: white
+ * keeps what is under it, black cuts it out.
  */
 export function Logo({ className = 'w-7 h-7' }: { className?: string }) {
     const maskId = useId();
@@ -28,11 +30,11 @@ export function Logo({ className = 'w-7 h-7' }: { className?: string }) {
                     strokeLinejoin="round"
                 />
             </g>
-            <rect x="40" width="24" height="24" rx="8" className="fill-brand-lime" />
+            <rect x="40" width="24" height="24" rx="8" className="fill-logo-badge" />
             <path
                 d="M45.5 12 49.5 16 58 7"
                 fill="none"
-                className="stroke-brand-navy"
+                className="stroke-logo-tick"
                 strokeWidth="4"
                 strokeLinecap="round"
                 strokeLinejoin="round"

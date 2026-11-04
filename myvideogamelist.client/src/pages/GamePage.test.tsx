@@ -32,6 +32,7 @@ const auth: AuthContextValue = {
     updateUserName: vi.fn(async () => {}),
     updateProfileVisibility: vi.fn(async () => {}),
     updateProfileDetails: vi.fn(async () => {}),
+    updateLook: vi.fn(async () => {}),
     deleteAccount: vi.fn(async () => {}),
 };
 
@@ -630,6 +631,15 @@ describe('GamePage meta', () => {
 
         expect(tags.find(tag => tag.rel === 'canonical')?.href).toBe('https://myvideogamelist.net/games/26226');
         expect(content(tags, 'og:url')).toBe('https://myvideogamelist.net/games/26226');
+    });
+
+    it("names the year it came out in its title, a game out on New Year's Day included", () => {
+        // `meta` runs in the browser as well as on the server, and `new Date('2017-01-01')` is the
+        // last day of 2016 west of Greenwich: the title changed when the page hydrated. The suite
+        // runs west of Greenwich, so the slip would show here.
+        expect(tagsFor({ releaseDate: '2017-01-01' }).find(tag => tag.title)?.title)
+            .toBe('Celeste (2017) - MyVideoGameList');
+        expect(tagsFor({ releaseDate: null }).find(tag => tag.title)?.title).toBe('Celeste - MyVideoGameList');
     });
 
     it('shares key art on a large card when IGDB has any', () => {

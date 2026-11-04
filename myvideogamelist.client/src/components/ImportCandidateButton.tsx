@@ -1,8 +1,8 @@
 import { useId } from 'react';
 import { GameCover } from '@/components/GameCover';
 import { ScoreBadge } from '@/components/ScoreBadge';
-import { formatCount } from '@/lib/format';
-import { releaseYear } from '@/lib/releaseDate';
+import { formatCountOf } from '@/lib/format';
+import { releaseYear, titleAndYear } from '@/lib/releaseDate';
 import { criticScoreWords, hasCriticScore } from '@/lib/score';
 import type { GameDto } from '@/types/game';
 
@@ -35,7 +35,7 @@ export function ImportCandidateButton({ game, onChoose }: { game: GameDto; onCho
     return (
         <button
             type="button"
-            aria-label={`Use ${game.title}${year === null ? '' : ` (${year})`}`}
+            aria-label={`Use ${titleAndYear(game)}`}
             aria-describedby={criticsId}
             onClick={onChoose}
             className="flex items-center gap-2 pl-1 pr-2.5 py-1 bg-page/60 border border-line-strong hover:border-primary-500 rounded-lg text-left transition-colors"
@@ -57,7 +57,7 @@ export function ImportCandidateButton({ game, onChoose }: { game: GameDto; onCho
                         <span aria-hidden="true">
                             — {count === 0
                                 ? 'no critic reviews'
-                                : `${formatCount(count)} critic ${count === 1 ? 'review' : 'reviews'}`}
+                                : formatCountOf(count, 'critic review', 'critic reviews')}
                         </span>
                         <span className="sr-only">{criticScoreWords(game)}</span>
                     </span>

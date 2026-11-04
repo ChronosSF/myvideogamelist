@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { AVATAR_HOSTS } from '@/lib/avatar';
+import { LOOK_SCRIPT_HASH } from '@/lib/look';
 import {
     applySecurityHeaders,
     createNonce,
@@ -51,7 +52,7 @@ describe('documentPolicy', () => {
     it('is exactly this, so that a change to it is a change to this test', () => {
         // Written out whole, so a host added or lost anywhere in the chain that builds it shows here.
         expect(documentPolicy('abc')).toBe(
-            "script-src 'self' 'nonce-abc'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; "
+            `script-src 'self' 'nonce-abc' '${LOOK_SCRIPT_HASH}'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; `
             + "img-src 'self' https://images.igdb.com https://gravatar.com "
             + 'https://www.gravatar.com https://secure.gravatar.com https://0.gravatar.com '
             + 'https://1.gravatar.com https://2.gravatar.com https://avatars.githubusercontent.com '
@@ -60,13 +61,14 @@ describe('documentPolicy', () => {
         );
     });
 
-    it('runs scripts from this origin and inline scripts carrying the nonce, and nothing else', () => {
+    it('runs scripts from this origin, inline scripts carrying the nonce and the look script, and nothing else', () => {
         const scriptSrc = directives(documentPolicy('abc')).get('script-src');
 
         // 'unsafe-inline' would admit an injected script outright; 'unsafe-eval' and a scheme or a
         // wildcard would each widen what an injection can load. 'strict-dynamic' is a different
         // policy, to be chosen on purpose when a third party's loader needs it (ADR 0053).
-        expect(scriptSrc).toEqual(["'self'", "'nonce-abc'"]);
+        // The look script is admitted by its own text's hash, which nothing injected can share (ADR 0082).
+        expect(scriptSrc).toEqual(["'self'", "'nonce-abc'", `'${LOOK_SCRIPT_HASH}'`]);
     });
 
     it('closes the two ways around script-src', () => {

@@ -1,8 +1,13 @@
 using System.Net;
 using System.Net.Http.Json;
+using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using MyVideoGameList.Server.DTOs;
 using MyVideoGameList.Server.Models;
+using MyVideoGameList.Server.Security;
 
 namespace MyVideoGameList.Server.IntegrationTests;
 
@@ -108,6 +113,104 @@ public class AuthFlowTests(ApiFactory api) : IClassFixture<ApiFactory>
             await wrongPassword.Content.ReadAsStringAsync());
 
         await (await browser.GetAsync("/api/auth/me")).ExpectAsync(HttpStatusCode.NoContent);
+    }
+
+    [Theory]
+    [InlineData("GET", "/api/user/stats", HttpStatusCode.Unauthorized)]
+    [InlineData("GET", "/api/user/export", HttpStatusCode.Unauthorized)]
+    [InlineData("PUT", "/api/lists/1942", HttpStatusCode.Unauthorized)]
+    [InlineData("GET", "/api/auth/me", HttpStatusCode.NoContent)]
+    public async Task DeleteAccount_FromOneBrowser_EndsTheSessionInEveryOther(
+        string method, string path, HttpStatusCode expected)
+    {
+        // Issue 295. The deletion signs out the browser it was made in and nothing else, and Identity
+        // asks whether a cookie's account is still there only every thirty minutes. Until then these
+        // read only the cookie's claim: the statistics answered 200 with every figure zero, the export
+        // threw, and a write ran into the foreign key to the account that had gone (ADR 0077).
+        var userName = Browsers.NewUserName("everywhere");
+        using var deleting = api.CreateBrowser();
+        using var elsewhere = api.CreateBrowser();
+        await deleting.RegisterAsync(userName);
+
+        var login = await elsewhere.PostAsJsonAsync("/api/auth/login", new LoginDto(userName, Browsers.Password));
+        await login.ExpectAsync(HttpStatusCode.OK);
+        await (await elsewhere.GetAsync("/api/user/stats")).ExpectAsync(HttpStatusCode.OK);
+
+        var delete = await deleting.SendAsync(
+            HttpMethod.Delete, "/api/user", new DeleteAccountDto(Browsers.Password));
+        await delete.ExpectAsync(HttpStatusCode.NoContent);
+
+        var body = method == "PUT" ? new SetListEntryDto(ListStatusKeys.Backlog) : null;
+        var response = await elsewhere.SendAsync(new HttpMethod(method), path, body);
+
+        await response.ExpectAsync(expected);
+
+        // Signed out as a refused stamp signs a session out: the cookie, the two-factor remembrance and
+        // the signed-in flag all go, on the first request that is refused, so the browser holds nothing
+        // for an account that has gone.
+        var cleared = response.Headers.TryGetValues("Set-Cookie", out var cookies) ? cookies.ToList() : [];
+        Assert.Contains(cleared, cookie => cookie.StartsWith($".AspNetCore.{IdentityConstants.ApplicationScheme}=;", StringComparison.Ordinal));
+        Assert.Contains(cleared, cookie => cookie.StartsWith($"{IdentityConstants.TwoFactorRememberMeScheme}=;", StringComparison.Ordinal));
+        Assert.Contains(cleared, cookie => cookie.StartsWith($"{SignedInFlag.CookieName}=;", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task ValidatePrincipal_AStampChangedSinceSignIn_IsStillRefusedPastTheInterval()
+    {
+        // ADR 0077's check wraps Identity's own, which ends a session whose security stamp has
+        // changed once its thirty-minute interval has passed: what signs a renamed account out of its
+        // other browsers. The deletion test cannot see that check, because the new one catches a
+        // deleted account by itself. So this ages a real session past the interval, in the ticket
+        // format the cookie handler reads, and changes the stamp of an account that still exists:
+        // only Identity's check can refuse that.
+        using var browser = api.CreateBrowser();
+        var userName = Browsers.NewUserName("stamped");
+        var registered = await browser.PostAsJsonAsync(
+            "/api/auth/register", new RegisterDto($"{userName}@test.local", Browsers.Password, userName));
+        var account = await registered.ReadAsync<UserProfileDto>(HttpStatusCode.OK);
+
+        var cookieName = $".AspNetCore.{IdentityConstants.ApplicationScheme}";
+        var issued = registered.Headers.GetValues("Set-Cookie")
+            .Single(cookie => cookie.StartsWith($"{cookieName}=", StringComparison.Ordinal));
+        var session = issued[(cookieName.Length + 1)..issued.IndexOf(';')];
+
+        var format = api.Services.GetRequiredService<IOptionsMonitor<CookieAuthenticationOptions>>()
+            .Get(IdentityConstants.ApplicationScheme).TicketDataFormat;
+
+        string Aged()
+        {
+            var ticket = format.Unprotect(session) ?? throw new InvalidOperationException("The session did not unprotect.");
+            ticket.Properties.IssuedUtc = DateTimeOffset.UtcNow.AddHours(-1);
+            return format.Protect(ticket);
+        }
+
+        Task<HttpResponseMessage> StatsWith(string cookie)
+        {
+            var request = new HttpRequestMessage(HttpMethod.Get, "/api/user/stats");
+            request.Headers.Add("Cookie", $"{cookieName}={cookie}");
+            return api.CreateDefaultClient(new Uri("https://localhost")).SendAsync(request);
+        }
+
+        // Aged alone it is checked, and passes: the stamp has not changed.
+        await (await StatsWith(Aged())).ExpectAsync(HttpStatusCode.OK);
+
+        using (var scope = api.Services.CreateScope())
+        {
+            var users = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+            var user = await users.FindByIdAsync(account.Id) ?? throw new InvalidOperationException("No account.");
+            Assert.True((await users.UpdateSecurityStampAsync(user)).Succeeded);
+        }
+
+        // Inside the interval the old stamp is not asked about, as before ADR 0077.
+        await (await StatsWith(session)).ExpectAsync(HttpStatusCode.OK);
+
+        // Past it, Identity's check refuses the stamp of an account that is still there.
+        var refused = await StatsWith(Aged());
+        await refused.ExpectAsync(HttpStatusCode.Unauthorized);
+        Assert.Contains(refused.Headers.GetValues("Set-Cookie"), cookie => cookie.StartsWith($"{cookieName}=;", StringComparison.Ordinal));
+
+        await using var db = api.Database();
+        Assert.True(await db.Users.AnyAsync(user => user.Id == account.Id));
     }
 
     [Fact]

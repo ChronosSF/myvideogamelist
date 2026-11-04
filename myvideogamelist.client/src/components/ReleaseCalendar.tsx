@@ -127,7 +127,7 @@ function IndexDay({ day, layout, today }: { day: CalendarDay; layout: MonthLayou
             {day.entries.length > 0 && <span className="calendar-index-dot" />}
             {kinds.length > 0 && (
                 <span className="calendar-index-marks">
-                    {kinds.map((kind, index) => <span key={index} className="calendar-index-mark" data-kind={kind} />)}
+                    {kinds.map(kind => <span key={kind} className="calendar-index-mark" data-kind={kind} />)}
                 </span>
             )}
         </span>

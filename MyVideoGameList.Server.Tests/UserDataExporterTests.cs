@@ -76,7 +76,11 @@ public class UserDataExporterTests
         ApplicationDbContext db,
         string userId,
         string email,
-        string theme = "dark",
+        string theme = LookPolicy.DefaultPalette,
+        string? themeBackground = null,
+        string? themeAccent = null,
+        string backgroundPattern = LookPolicy.DefaultPattern,
+        string patternTint = LookPolicy.DefaultTint,
         string listView = ListViewModes.Tiles,
         string userName = "someone",
         string profileVisibility = ProfileVisibility.Private,
@@ -92,6 +96,10 @@ public class UserDataExporterTests
             UserName = userName,
             Email = email,
             Theme = theme,
+            ThemeBackground = themeBackground,
+            ThemeAccent = themeAccent,
+            BackgroundPattern = backgroundPattern,
+            PatternTint = patternTint,
             ListView = listView,
             ProfileVisibility = profileVisibility,
             DisplayName = displayName,
@@ -273,10 +281,11 @@ public class UserDataExporterTests
         // as somebody else's game id rather than as a subtly wrong count.
         using var db = NewDb();
 
-        AddAccount(db, UserId, "mine@test.local", theme: "light", listView: ListViewModes.Table,
+        AddAccount(db, UserId, "mine@test.local", theme: LookPolicy.CustomPalette, themeBackground: "#101820",
+            themeAccent: "#c8f560", backgroundPattern: "pixels", patternTint: "accent", listView: ListViewModes.Table,
             userName: "mine", profileVisibility: ProfileVisibility.Public,
             displayName: "Mine Truly", avatarUrl: "https://i.imgur.com/mine.png", bio: "My bio.");
-        AddAccount(db, OtherUserId, "theirs@test.local", theme: "dark", listView: ListViewModes.Tiles,
+        AddAccount(db, OtherUserId, "theirs@test.local", theme: "slate", listView: ListViewModes.Tiles,
             userName: "theirs",
             displayName: "Theirs", avatarUrl: "https://i.imgur.com/theirs.png", bio: "Their bio.");
 
@@ -302,7 +311,11 @@ public class UserDataExporterTests
 
         Assert.Equal("mine@test.local", export.Account.Email);
         Assert.Equal("mine", export.Account.UserName);
-        Assert.Equal("light", export.Account.Theme);
+        // The look as stored, by name and with a custom palette's two colours (ADR 0082).
+        Assert.Equal(
+            (LookPolicy.CustomPalette, "#101820", "#c8f560", "pixels", "accent"),
+            (export.Account.Theme, export.Account.ThemeBackground, export.Account.ThemeAccent,
+                export.Account.BackgroundPattern, export.Account.PatternTint));
         Assert.Equal(ListViewModes.Table, export.Account.ListView);
 
         // The name the user chose and the answer they gave about publishing are both data they

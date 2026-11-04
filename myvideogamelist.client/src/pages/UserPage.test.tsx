@@ -24,6 +24,7 @@ const auth: AuthContextValue = {
     updateUserName: vi.fn(async () => {}),
     updateProfileVisibility: vi.fn(async () => {}),
     updateProfileDetails: vi.fn(async () => {}),
+    updateLook: vi.fn(async () => {}),
     deleteAccount: vi.fn(async () => {}),
 };
 
@@ -45,6 +46,10 @@ vi.mock('@/components/ProfileHistory', () => ({
 /** Likewise the favourites and the list names, which read providers this page does not mount. */
 vi.mock('@/components/FavouritesShowcase', () => ({
     FavouritesShowcase: () => <div>favourites</div>,
+}));
+
+vi.mock('@/components/LookCard', () => ({
+    LookCard: () => <div>look</div>,
 }));
 
 vi.mock('@/components/ListNamesCard', () => ({

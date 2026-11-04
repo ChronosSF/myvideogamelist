@@ -14,6 +14,8 @@ import {
 } from '@/types/auth';
 import { type Actor, quickActor } from '@/test/actor';
 import { userProfile } from '@/test/factories';
+import { LOOK_STORAGE_KEY } from '@/lib/look';
+import { DEFAULT_LOOK } from '@/types/look';
 import {
     type ApiCall,
     type ApiRoutes,
@@ -585,10 +587,13 @@ describe('AuthProvider account writes', () => {
     it('leaves nobody signed in after deleting the account, without a sign-out the API would refuse', async () => {
         const actor = quickActor();
         const api = await renderSignedIn({ 'DELETE /api/user': () => empty() });
+        localStorage.setItem(LOOK_STORAGE_KEY, JSON.stringify({ ...DEFAULT_LOOK, palette: 'plum' }));
 
         await actor.click(screen.getByRole('button', { name: 'Delete account' }));
 
         expect(await screen.findByText('Nobody is signed in')).toBeInTheDocument();
+        // Signing out keeps the browser's copy of the look; an account that is gone has none (ADR 0082).
+        expect(localStorage.getItem(LOOK_STORAGE_KEY)).toBeNull();
         const [deletion] = api.callsTo('DELETE', '/api/user');
         expect(deletion.body).toEqual({ password: PASSWORD });
         expectSentThroughApiFetch(deletion);
@@ -598,11 +603,13 @@ describe('AuthProvider account writes', () => {
     it('keeps the session when the password does not confirm the deletion', async () => {
         const actor = quickActor();
         await renderSignedIn({ 'DELETE /api/user': () => json({ message: 'Password is incorrect.' }, 401) });
+        localStorage.setItem(LOOK_STORAGE_KEY, JSON.stringify({ ...DEFAULT_LOOK, palette: 'plum' }));
 
         await actor.click(screen.getByRole('button', { name: 'Delete account' }));
 
         expect(await screen.findByRole('alert')).toHaveTextContent('Password is incorrect.');
         expect(screen.getByText('Signed in as alex')).toBeInTheDocument();
+        expect(localStorage.getItem(LOOK_STORAGE_KEY)).not.toBeNull();
     });
 
     it('saves exactly the three profile details, and shows them as the API stored them', async () => {

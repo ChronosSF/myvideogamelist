@@ -61,7 +61,11 @@ build behind a stand-in that does route `/api` (ADR 0060).
 Health endpoints: `/healthz` (liveness, no dependency checks) and `/readyz` (database and
 IGDB reachability). A degraded IGDB returns 200, not 503 — browsing breaks but stored lists
 still work, so the instance should stay in rotation. Which commit is running: `/api/version` on the
-API and `/version` on the SSR server, each `{ sha, builtAt }`, `unknown` locally (ADR 0059).
+API and `/version` on the SSR server, each `{ sha, builtAt }`, `unknown` locally (ADR 0059). What
+says a deployed site is failing: five alarms and a rule in the `App` stack, emailed through the
+hand-deployed `Alerts` stack to the address in the `/mvgl/<env>/alarm-email` parameter, which the
+repository never holds; the IGDB one counts the API's Information line per IGDB call
+(`Observability/IgdbCallLog.cs`, ADR 0080, `infra/README.md`).
 
 ## Layout
 
@@ -70,7 +74,7 @@ MyVideoGameList.Server/         ASP.NET Core 10 API
   Controllers/  Services/  Models/  DTOs/  Data/  HealthChecks/
   Security/                     Rate limits, forwarded headers, security headers, the write guard, the admin policy
   Errors/                       What each kind of failure leaves as
-  Observability/                The trace id, the request log, the JSON console, /api/version
+  Observability/                The trace id, the request log, the IGDB call line, the JSON console, /api/version
 MyVideoGameList.Server.Tests/   xUnit tests
 MyVideoGameList.Server.IntegrationTests/  The API over PostgreSQL in a container, for what InMemory cannot do
 myvideogamelist.client/
@@ -104,7 +108,14 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   same migration. A deployed instance will start against an un-migrated database and fail on
   first query rather than silently migrating. Deployed, that step is the migration task the
   `Deploy dev` workflow runs before the application stack, from the bundle baked into the API
-  image; a non-zero exit stops the release.
+  image; a non-zero exit stops the release. **It waits five seconds for a lock and then gives up**
+  (`lock_timeout` on its connection string), because the old revision is still serving and every
+  reader of a table queues behind a DDL waiting for that table. So a release failed with `55P03` is
+  re-run, not debugged. And **no API session may sit idle in a transaction for a minute**:
+  PostgreSQL ends it (`idle_in_transaction_session_timeout`, set in `Program.cs`, so locally too).
+  The cache refresh's fifteen seconds across IGDB is the one idle stretch designed in. Never await
+  anything unbounded inside a transaction. Both limits are `Data/SessionLimits.cs`, which the CDK
+  app compiles too, so it may use nothing past the base class library. See `docs/decisions/0079-*`.
 
 - **A merge to master builds and pushes dev's images, and deploys only when the environment is
   awake.** `DEV_DEPLOY_ENABLED` on the `dev` GitHub environment is the gate, set by
@@ -371,7 +382,7 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
 - **A document runs only the scripts its own render wrote.** Its `script-src` names a nonce drawn
   once per render in `entry.server.tsx` and handed to `<ServerRouter>` and to the stream; an inline
   script without it never runs, and a page whose hydration scripts never run is dead. A new inline
-  script of ours, such as the palette script #208 plans, goes in by its hash in `documentPolicy`, and
+  script of ours goes in by its hash in `documentPolicy`, as the look script does, and
   a script from another host is refused until a record decides its hosts or `'strict-dynamic'`
   (Google's tag, #242, is the first). A shared cache keeps the nonce whole only because header and
   body are stored together, so **nothing at the edge may set, rewrite or remove
@@ -605,6 +616,25 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   There is one theme, dark, and no `light:` variant (ADR 0048). A change meant to look the same is
   checked with `npm run visual`. See `docs/decisions/0049-*`.
 
+- **The site is drawn in the reader's look, and every palette but the default is worked out.** A look is a
+  palette, a background pattern and its tint, stored on the account by name (`LookPolicy`) and carried on
+  the profile as `look`. A palette is two colours in `theme.css`, a page and an accent, and the surfaces,
+  lines, text and primary are worked out from them in its `@supports` block, so **a new token of those kinds
+  needs its line there too**, or every palette but the default keeps the default's value; a colour that
+  carries meaning, or the brand's, stays out of it. `LOOK_SCRIPT` puts the browser's copy of the look on
+  `<html>` before the first paint and is admitted by its hash, `LOOK_SCRIPT_HASH`: change the script, or a
+  list it is built from, and the hash with it (`look.test.ts` says what it should be). A palette or pattern
+  added is a name in `LookPolicy`, in `@/types/look` (`serverMirrors.test.ts` compares them) and in a
+  migration's check constraint. The server checks only the shape; whether a custom palette reads is the
+  settings page's check, measured off the page (`@/lib/lookChecks`): **only a background the body text
+  cannot be read on is held back**, drawn and not saved, and the other checks are advice shown beside a
+  palette that is saved. The logo's badge and wordmark read `logo-badge`, `logo-tick` and `logo-word`,
+  which follow the accent; the `brand-*` tokens stay the brand's. The patterns are `PagePattern`, one element at each end whatever the drawing. **Only admins may
+  choose a look for now** (`LookPolicy.CanChoose`, and the admin policy on `PUT /api/user/look`); the
+  profile carries the look an account is *drawn* in, the default for everybody else, and the card shows
+  them Coming soon. A paywall replaces that function and that policy and nothing else. The browser's copy
+  outlives a sign-out and is forgotten only with the account. See `docs/decisions/0082-*`.
+
 - **Text is set by its role, in one of three self-hosted families, and corners are tokens too.**
   `type-display` and `type-title` (Archivo), `type-kicker` and `type-meta` (DM Mono), and Schibsted
   Grotesk for everything else, as the default (`src/type.css`). The fonts are served from this origin
@@ -668,7 +698,9 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   success policy stated by the loader through `data()`. A client-side navigation's `.data` request
   reaches the throwing route's `headers` whether or not it has a boundary, so a route that answers
   one policy unconditionally, or falls back to a shared one, caches its failures there. A page that
-  throws while rendering is not covered by any of this yet (#337). See `docs/decisions/0070-*`.
+  throws while rendering, after its loader answered, gets none of this: its `headers` answered for
+  a page that worked, and only the entry's 5xx rule above keeps its 500 off the edge (#337). See
+  `docs/decisions/0070-*`.
 
 - **`fetch` rejects when the API is unreachable** — it does not return `!response.ok`. A loader
   that only checks `response.ok` turns a dead upstream into an unhandled 500. Wrap it and throw

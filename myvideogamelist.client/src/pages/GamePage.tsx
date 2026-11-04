@@ -16,7 +16,7 @@ import { GameNewsPanel } from '@/components/GameNewsPanel';
 import { GameUserPanel } from '@/components/GameUserPanel';
 import { GameCommunity } from '@/components/GameCommunity';
 import { CompletionTimes } from '@/components/CompletionTimes';
-import { parseReleaseDate } from '@/lib/releaseDate';
+import { parseReleaseDate, titleAndYear } from '@/lib/releaseDate';
 import { SectionHeading } from '@/components/SectionHeading';
 import { GameRefRail } from '@/components/GameRefRail';
 import { MultiplayerSummary } from '@/components/MultiplayerSummary';
@@ -198,8 +198,10 @@ export async function loader({ params, context }: Route.LoaderArgs) {
  * makes, which reaches this function whichever route renders the error. A loader that threw something
  * other than a Response leaves neither, and that fails closed, as the root's default does.
  *
- * Not covered here: a page that throws while rendering, after its loader answered, goes out with the
- * headers worked out before the render, which is React Router's doing and every route's (issue 337).
+ * Not covered here: a page that throws while rendering, after its loader answered, is rendered as this
+ * route's boundary over what this answered for the page that worked — the game's hour included, since
+ * React Router works headers out before it renders. `entry.server.tsx` makes that 500 `private,
+ * no-store` itself, for every route (issue 337).
  */
 export function headers({ errorHeaders, loaderHeaders }: Route.HeadersArgs) {
     return {
@@ -220,8 +222,9 @@ export function meta({ loaderData, error }: Route.MetaArgs) {
     // a game page's data is shared-cached, so in a deploy's first minutes such a copy can reach this
     // code. Each one missing leaves out what it would have added, and nothing fails.
     const { game, site, scores = null, times = null, today = '' } = loaderData;
-    const year = game.releaseDate ? ` (${new Date(game.releaseDate).getFullYear()})` : '';
-    const title = `${game.title}${year} - MyVideoGameList`;
+    // The year of the day the API names, which `new Date` would make the year before on 1 January
+    // west of Greenwich: in the browser, where this runs too, so the title changed on hydration.
+    const title = `${titleAndYear(game)} - MyVideoGameList`;
     const description = gameDescription(game, scores, times);
 
     // Key art where IGDB has any, because a large card is cropped to a wide rectangle and a

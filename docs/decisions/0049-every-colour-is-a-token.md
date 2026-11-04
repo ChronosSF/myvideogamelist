@@ -1,6 +1,6 @@
 # 0049. Every colour is a token, named for its job, in one file
 
-**Status:** Implemented — every area of the client is on the tokens (#209). With nothing left in the ratchet's baseline, the baseline is gone and the lint refuses any raw colour outright
+**Status:** Implemented — every area of the client is on the tokens (#209). With nothing left in the ratchet's baseline, the baseline is gone and the lint refuses any raw colour outright. The logo's badge and wordmark now follow the palette through tokens of their own, while the brand's stay fixed: [0082](0082-a-look-is-a-palette-a-pattern-and-a-tint-kept-on-the-account.md)
 
 ## Context
 
