@@ -89,9 +89,15 @@
  * One room a screen tall: a ceiling in the drawing's top half, receding towards a vanishing point below the
  * middle, and a floor in its bottom half, receding towards one above it. Both ends mask with the same
  * drawing, and each one's fade leaves it only its own half. A perspective is not a tiling, so it is drawn
- * once, sized to the screen's height and centred: the vanishing point is the screen's middle on a phone as
- * on a desktop, and a narrower screen sees less of the sides rather than a squeezed grid. The drawing is
- * four times as wide as it is tall, wider than any screen.
+ * once across, sized to the screen's height and centred: the vanishing point is the screen's middle on a
+ * phone as on a desktop, and a narrower screen sees less of the sides rather than a squeezed grid. The
+ * drawing is four times as wide as it is tall, wider than any screen.
+ *
+ * Down the page it repeats, though only one copy is ever seen, since the fade is a screen tall and there
+ * is nothing outside it. Drawn just once, it came out blurred at the foot of a long page in Chromium, every
+ * line two or three pixels wide on a page 8,000 tall, while the ceiling's stayed sharp: the bottom box is
+ * as tall as the page, and the browser blurs a single drawing in a box many times taller than it. Repeated
+ * down the box it is as sharp as the ceiling; repeated across instead, it stays blurred.
  *
  * Its geometry, should it need redrawing, in the drawing's units, a screen being 1000 tall: each vanishing
  * point is 600 from its edge; the columns are 160 apart at the edge and run towards that point; the rows
@@ -105,7 +111,7 @@
     --page-pattern-lines-size: auto 100svh;
     --page-pattern-lit-image: url('../assets/perspective-grid-lit.svg?no-inline');
     --page-pattern-lit-size: auto 100svh;
-    --page-pattern-repeat: no-repeat;
+    --page-pattern-repeat: repeat-y;
     --page-pattern-origin: var(--page-pattern-end);
 }
 
