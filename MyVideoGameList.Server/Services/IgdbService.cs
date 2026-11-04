@@ -338,8 +338,20 @@ public class IgdbService(
 
     public async Task<GameDto?> GetGameByIdAsync(int id, CancellationToken cancellationToken = default)
     {
+        var detail = await GetGameDetailAsync(id, cancellationToken);
+        if (detail is null) return null;
+
+        var related = await GetRelatedGamesAsync(id, detail.SeriesIds, cancellationToken);
+        return detail.Game with { Details = detail.Details with { Related = related } };
+    }
+
+    /// <summary>A game as the detail query reads it, with the ids of its series, which the related games are asked by.</summary>
+    private sealed record GameDetail(GameDto Game, GameDetailsDto Details, IReadOnlyList<int> SeriesIds);
+
+    private async Task<GameDetail?> GetGameDetailAsync(int id, CancellationToken cancellationToken)
+    {
         var cacheKey = $"igdb_game|{id}";
-        if (cache.TryGetValue(cacheKey, out GameDto? cached))
+        if (cache.TryGetValue(cacheKey, out GameDetail? cached))
             return cached;
 
         var query = new StringBuilder()
@@ -351,11 +363,15 @@ public class IgdbService(
         var igdbGames = await QueryAsync<IgdbGame>(GamesEndpoint, query, cancellationToken);
         var igdbGame = igdbGames.FirstOrDefault();
 
-        GameDto? result = null;
+        GameDetail? result = null;
         if (igdbGame is not null)
         {
             var timeToBeat = await FetchTimeToBeatAsync(id, cancellationToken);
-            result = MapToGameDto(igdbGame) with { Details = MapToDetailsDto(igdbGame, timeToBeat) };
+            var details = MapToDetailsDto(igdbGame, timeToBeat);
+            result = new GameDetail(
+                MapToGameDto(igdbGame) with { Details = details },
+                details,
+                (igdbGame.Collections ?? []).Select(c => c.Id).ToList());
         }
 
         // Cache misses briefly too, so a bad ID cannot hammer IGDB on repeat requests
@@ -363,6 +379,50 @@ public class IgdbService(
         cache.Set(cacheKey, result, ttl);
 
         return result;
+    }
+
+    /// <summary>How long a game's related games are kept. A series and a game's children change seldom.</summary>
+    private static readonly TimeSpan RelatedGamesLifetime = TimeSpan.FromHours(6);
+
+    /// <summary>
+    /// The rest of a game's series, and its remakes, remasters and editions (#450, ADR 0084). Supplementary to
+    /// the page, so a failure degrades to null rather than taking the game down with it, and is deliberately
+    /// caught here: the page renders without them, and reads the null as a render to keep off the edge.
+    /// </summary>
+    /// <remarks>
+    /// Kept apart from the game's own entry, and only when it was read: the game is kept for half an hour, and
+    /// a failure kept with it would degrade every render of the page for that long — the completion times'
+    /// way, which #352 records.
+    /// </remarks>
+    private async Task<RelatedGamesDto?> GetRelatedGamesAsync(
+        int id, IReadOnlyCollection<int> seriesIds, CancellationToken cancellationToken)
+    {
+        var cacheKey = $"igdb_related|{id}";
+        if (cache.TryGetValue(cacheKey, out RelatedGamesDto? cached) && cached is not null)
+            return cached;
+
+        try
+        {
+            var rows = await QueryAsync<IgdbCalendarGame>(
+                GamesEndpoint, RelatedGames.BuildQuery(id, seriesIds), cancellationToken);
+
+            if (rows.Count >= RelatedGames.QueryLimit)
+            {
+                logger.LogWarning(
+                    "Related games for game {GameId} reached the {Limit}-row ceiling; the series is cut short.",
+                    id, RelatedGames.QueryLimit);
+            }
+
+            var related = RelatedGames.Fold(
+                id, rows.Select(row => new RelatedCandidate(MapToCalendarGame(row), row.FirstReleaseDate)).ToList());
+            cache.Set(cacheKey, related, RelatedGamesLifetime);
+            return related;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogWarning(ex, "Related games unavailable for game {GameId}.", id);
+            return null;
+        }
     }
 
     public async Task<IEnumerable<GameDto>> GetGamesByIdsAsync(
