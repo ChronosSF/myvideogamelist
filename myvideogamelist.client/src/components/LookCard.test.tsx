@@ -136,7 +136,7 @@ describe('LookCard', () => {
         await userEvent.click(screen.getByRole('radio', { name: 'Custom' }));
 
         expect(screen.getByRole('list', { name: 'Readability' }))
-            .toHaveTextContent('Hard to see, saved anyway: Faint text on background 5.9:1');
+            .toHaveTextContent('Warning, saved anyway: Faint text on background 5.9:1');
         expect(saveLook).toHaveBeenCalledWith({ ...DEFAULT_LOOK, palette: 'custom', background: '#1a1918', accent: '#9ae600' });
         expect(await screen.findByText('Saved to your account')).toBeInTheDocument();
     });

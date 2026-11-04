@@ -26,7 +26,7 @@ const COLOUR_SAVE_DELAY_MS = 500;
 type Status = 'saved' | 'saving' | 'unreadable' | 'failed';
 
 /**
- * How the site looks to its owner, at the top of their settings (ADR 0082): a palette, five presets or a
+ * How the site looks to its owner, at the top of their settings (ADR 0082): a palette, six presets or a
  * custom one of two colours; a background pattern, or none; and whether the pattern is drawn in grey or
  * the accent.
  *
@@ -35,8 +35,9 @@ type Status = 'saved' | 'saving' | 'unreadable' | 'failed';
  * background the text cannot be read on stops it being saved, since the text is not the reader's to choose
  * and the whole site would be unreadable, this page with it: such a palette stays on this page, unsaved,
  * until it reads or the page is left, and then the account's look comes back. Every other check is advice,
- * shown beside the palette and saved with it, because the look is its owner's alone. Saves go one at a time, the latest choice after the one in
- * flight, so the account ends on the last thing chosen whatever order the answers would have come in.
+ * shown beside the palette and saved with it, because the look is its owner's alone. Saves go one at a
+ * time, the latest choice after the one in flight, so the account ends on the last thing chosen whatever
+ * order the answers would have come in.
  *
  * Only an account that may choose a look can use it: an admin, for now (ADR 0082 §8). Everybody else is
  * shown the same choices, disabled, as coming soon, and is drawn in the default, which the server already
@@ -240,13 +241,16 @@ export function LookCard({ look: saved, canChoose }: { look: Look; canChoose: bo
                         </label>
                         {checks && (
                             <ul className="look-checks" aria-label="Readability">
-                                {checks.map(check => (
-                                    <li key={check.id} className="look-check" data-state={checkState(check)}>
-                                        <span aria-hidden="true">{CHECK_MARKS[checkState(check)]}</span>{' '}
-                                        <span className="sr-only">{CHECK_WORDS[checkState(check)]}</span>
-                                        {check.label}
-                                    </li>
-                                ))}
+                                {checks.map(check => {
+                                    const state = checkState(check);
+                                    return (
+                                        <li key={check.id} className="look-check" data-state={state}>
+                                            <span aria-hidden="true">{CHECK_MARKS[state]}</span>{' '}
+                                            <span className="sr-only">{CHECK_WORDS[state]}</span>
+                                            {check.label}
+                                        </li>
+                                    );
+                                })}
                             </ul>
                         )}
                     </div>
@@ -330,10 +334,13 @@ function checkState(check: LookCheck): CheckState {
 /** The mark beside each, drawn as text: the warning sign with its text presentation, never the emoji. */
 const CHECK_MARKS: Readonly<Record<CheckState, string>> = { ok: '✓', advised: '\u26A0\uFE0E', required: '✗' };
 
-/** What a screen reader hears before each check's own words. */
+/**
+ * What a screen reader hears before each check's own words, which say what is wrong: hard to read, or
+ * close to a colour that means something.
+ */
 const CHECK_WORDS: Readonly<Record<CheckState, string>> = {
     ok: 'Passes: ',
-    advised: 'Hard to see, saved anyway: ',
+    advised: 'Warning, saved anyway: ',
     required: 'Not saved: ',
 };
 

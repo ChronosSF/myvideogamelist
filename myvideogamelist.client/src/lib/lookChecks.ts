@@ -14,7 +14,7 @@ import { colourDistance, contrast, parseColour, toHex, type Rgb } from '@/lib/co
  * accent near a colour that means something, is told and then given it.
  */
 export interface LookCheck {
-    id: 'body' | 'faint' | 'accent' | 'button' | 'meaning';
+    id: 'body' | 'faint' | 'accent' | 'fill' | 'button' | 'meaning';
     label: string;
     ok: boolean;
     /** Whether a palette failing it is not saved. */
@@ -107,7 +107,7 @@ function nearMeaning(colours: Partial<Record<string, Rgb | null>>): string | und
     return nearest?.meaning;
 }
 
-/** The five checks, in the order the settings page lists them. */
+/** The six checks, in the order the settings page lists them. */
 export function lookChecks(read: TokenReader = readTokens): LookCheck[] {
     const colours = read(TOKENS);
     const accent = colours['primary-500'];
@@ -115,6 +115,7 @@ export function lookChecks(read: TokenReader = readTokens): LookCheck[] {
     const body = ratio(colours.fg, colours.page);
     const faint = ratio(colours['fg-faint'], colours.page);
     const accentText = ratio(colours['primary-400'], colours.page);
+    const fill = ratio(accent, colours.page);
     const button = ratio(colours['on-primary'], accent);
     const near = nearMeaning(colours);
 
@@ -122,6 +123,9 @@ export function lookChecks(read: TokenReader = readTokens): LookCheck[] {
         { id: 'body', label: `Body text on background ${ratioText(body)}`, ok: body >= 4.5, required: true },
         { id: 'faint', label: `Faint text on background ${ratioText(faint)}`, ok: faint >= 4.5, required: false },
         { id: 'accent', label: `Accent text on background ${ratioText(accentText)}`, ok: accentText >= 4.5, required: false },
+        // The filled accent, which the text shade's floor does not reach: a part of the page, not text, so
+        // WCAG's three to one for a control (1.4.11).
+        { id: 'fill', label: `Accent against background ${ratioText(fill)}`, ok: fill >= 3, required: false },
         { id: 'button', label: `Button words on accent ${ratioText(button)}`, ok: button >= 4.5, required: false },
         near
             ? { id: 'meaning', label: `Close to ${near}`, ok: false, required: false }

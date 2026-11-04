@@ -86,6 +86,13 @@ describe('applyLook', () => {
         expect(attributes()).toEqual(applied);
     });
 
+    it('reads a name it does not know as the default, as the head script does', () => {
+        // A server a release apart: a palette since renamed, and names never made.
+        applyLook({ palette: 'oxblood', pattern: 'hexes', tint: 'lime' } as unknown as Look);
+
+        expect(attributes()).toEqual({ palette: 'ink', pattern: 'honeycomb', tint: 'grey', page: '', accent: '' });
+    });
+
     it("takes a custom palette's colours away when a preset replaces it", () => {
         applyLook(CUSTOM);
 

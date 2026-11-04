@@ -46,11 +46,12 @@ describe('lookChecks', () => {
     it('passes the default palette on every count', () => {
         const checks = lookChecks(reader());
 
-        expect(checks.map(check => check.ok)).toEqual([true, true, true, true, true]);
+        expect(checks.map(check => check.ok)).toEqual([true, true, true, true, true, true]);
         expect(checks.map(check => check.label)).toEqual([
             'Body text on background 12.3:1',
             'Faint text on background 5.9:1',
             'Accent text on background 13.4:1',
+            'Accent against background 11.4:1',
             'Button words on accent 11.4:1',
             'Clear of the colours with a meaning',
         ]);
@@ -58,7 +59,7 @@ describe('lookChecks', () => {
 
     it('requires the body text to read and advises on the rest', () => {
         expect(lookChecks(reader()).map(check => [check.id, check.required])).toEqual([
-            ['body', true], ['faint', false], ['accent', false], ['button', false], ['meaning', false],
+            ['body', true], ['faint', false], ['accent', false], ['fill', false], ['button', false], ['meaning', false],
         ]);
     });
 
@@ -78,6 +79,25 @@ describe('lookChecks', () => {
         expect(savable(Object.values(checks))).toBe(true);
     });
 
+    it('warns of a filled accent the background hides, though its text shade reads', () => {
+        // The accent as near as can be to the page; the text shade, floored light, is the default's.
+        const checks = lookChecks(reader({ 'primary-500': '#1d1c1b', 'on-primary': '#efefef' }));
+
+        expect(byId(checks).fill).toMatchObject({ label: 'Accent against background 1.0:1', ok: false });
+        expect(byId(checks).accent.ok).toBe(true);
+        expect(byId(checks).button.ok).toBe(true);
+        expect(savable(checks)).toBe(true);
+    });
+
+    it('warns of an accent the button words cannot be read on', () => {
+        // A mid grey: the default's dark words on it fall short of 4.5 to 1.
+        const checks = lookChecks(reader({ 'primary-500': '#6b6b6b' }));
+
+        expect(byId(checks).button).toMatchObject({ ok: false, required: false });
+        expect(byId(checks).button.label).toMatch(/^Button words on accent [0-4]\.\d:1$/);
+        expect(savable(checks)).toBe(true);
+    });
+
     it('names the meaning an accent is near', () => {
         expect(byId(lookChecks(reader(accent('#e0368a')))).meaning.label).toBe('Close to the wishlist’s pink');
     });
@@ -92,7 +112,7 @@ describe('lookChecks', () => {
     it('fails every check whose colours it cannot read, and so will not save', () => {
         const checks = lookChecks(() => ({}));
 
-        expect(checks.map(check => check.ok)).toEqual([false, false, false, false, false]);
+        expect(checks.map(check => check.ok)).toEqual([false, false, false, false, false, false]);
         expect(savable(checks)).toBe(false);
     });
 });

@@ -1,4 +1,4 @@
-import { DEFAULT_LOOK, LOOK_COLOUR, PALETTE_IDS, PATTERN_IDS, type Look } from '@/types/look';
+import { DEFAULT_LOOK, LOOK_COLOUR, PALETTE_IDS, PATTERN_IDS, TINT_IDS, type Look } from '@/types/look';
 
 /**
  * Where the browser keeps a copy of the account's look, so that the next page applies it before its first
@@ -10,18 +10,19 @@ export const LOOK_STORAGE_KEY = 'mvgl-look';
 /**
  * Puts a look on the document: the palette, the pattern and its tint as attributes of `<html>`, which
  * `theme.css` and `PagePattern.css` select on, and a custom palette's two colours as the variables the
- * palette is worked out from. A custom palette missing a colour is drawn as the default, as the head script
- * draws it.
+ * palette is worked out from. A name it does not know, from a server a release apart, and a custom palette
+ * missing a colour are drawn as the default, as the head script draws them.
  */
 export function applyLook(look: Look, root: HTMLElement = document.documentElement): void {
-    const custom = look.palette === 'custom'
+    const known = oneOf(PALETTE_IDS, look.palette, DEFAULT_LOOK.palette);
+    const custom = known === 'custom'
         && LOOK_COLOUR.test(look.background ?? '')
         && LOOK_COLOUR.test(look.accent ?? '');
-    const palette = look.palette === 'custom' && !custom ? DEFAULT_LOOK.palette : look.palette;
+    const palette = known === 'custom' && !custom ? DEFAULT_LOOK.palette : known;
 
     root.setAttribute('data-palette', palette);
-    root.setAttribute('data-pattern', look.pattern);
-    root.setAttribute('data-pattern-tint', look.tint);
+    root.setAttribute('data-pattern', oneOf(PATTERN_IDS, look.pattern, DEFAULT_LOOK.pattern));
+    root.setAttribute('data-pattern-tint', oneOf(TINT_IDS, look.tint, DEFAULT_LOOK.tint));
 
     if (custom) {
         root.style.setProperty('--look-page', look.background);
@@ -30,6 +31,11 @@ export function applyLook(look: Look, root: HTMLElement = document.documentEleme
         root.style.removeProperty('--look-page');
         root.style.removeProperty('--look-accent');
     }
+}
+
+/** The value if the list names it, and otherwise the fallback. */
+function oneOf<T extends string>(list: readonly T[], value: string, fallback: T): T {
+    return (list as readonly string[]).includes(value) ? value as T : fallback;
 }
 
 /**

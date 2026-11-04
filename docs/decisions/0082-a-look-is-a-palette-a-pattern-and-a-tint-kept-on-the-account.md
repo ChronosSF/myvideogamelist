@@ -79,6 +79,9 @@ chroma; the text and the lines at the default's lightnesses in the page's own hu
 drawn as text — the active tab, a link, a mark of the reader's own — so each has a floor of lightness as
 well, 0.74 for the 400, and reads on a dark page however dark the accent: a dark red is dark red on a
 button and a readable red as text. The keyboard focus is drawn in that text shade for the same reason. The
+four darkest steps have floors too, in step, so that a dark accent's tints and borders stay lighter than
+the page instead of going to black, and the 600, a filled button's hover and a chosen button's fill, steps
+away from the page: darker than a light accent, lighter than a dark one, though never past 0.55. The
 words on a filled button are dark on an accent lighter than 0.6 and light on a darker one. So a preset is
 two decisions, and a custom palette is drawn by exactly the rules the presets are.
 
@@ -108,7 +111,7 @@ line and word worked out from that page came out red with it.
 
 The server cannot judge readability without a second copy of the formulas, so the settings page does,
 measuring the palette as the browser draws it (`@/lib/lookChecks`): the computed colours of the tokens
-are read back off a probe and compared. Five checks:
+are read back off a probe and compared. Six checks:
 
 - **Body text on the background at 4.5:1, required.** The text is not the reader's to choose: every
   palette is dark and its text light (ADR 0048), so a background the text cannot be read on makes the whole
@@ -117,6 +120,9 @@ are read back off a probe and compared. Five checks:
 - **Faint text on the background at 4.5:1, advice.**
 - **The accent's text shade on the background at 4.5:1, advice.** The 400, which the floor of §4 keeps
   readable for nearly any accent.
+- **The accent against the background at 3:1, advice.** The filled accent, a part of the page rather than
+  text (WCAG 1.4.11), which that floor does not reach: an accent the page hides takes its buttons' edges,
+  the logo's badge and every filled mark with it. Onyx's wine is 2.3:1, so a custom copy of it is warned.
 - **The button's words on the accent at 4.5:1, advice.**
 - **Clear of the colours with a meaning, advice.** The accent and its text shade each at least 0.06 from
   every shade the site draws a meaning in — the wishlist's pink, the favourite's violet, ownership's teal,
@@ -127,7 +133,7 @@ are read back off a probe and compared. Five checks:
 
 Advice, because a look is its owner's alone and drawn for nobody else: somebody who can read faint text, or
 wants an accent near a colour that means something, is told beside the palette, in a warning's colour, and
-the palette is saved. The first pass blocked on all five, and measured nearness by hue alone, under which
+the palette is saved. The first pass blocked on all of them, and measured nearness by hue alone, under which
 no red accent could pass; now a custom red near an error's saves with its one warning, and a wine like the
 Onyx preset's raises none. The presets are not run through the checks: they are chosen by hand.
 By this measure Dusk's periwinkle is near the favourite's light violet, the 300 its words are drawn in, and
