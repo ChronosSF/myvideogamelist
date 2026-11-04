@@ -225,7 +225,7 @@ export function UserPage() {
                     <section className="user-page-prefs" aria-label="Preferences">
                         {/* First, because it changes how the whole site looks to this person and to
                             nobody else, and the page around it is its preview. */}
-                        <LookCard key={user.id} look={user.look} />
+                        <LookCard key={user.id} look={user.look} canChoose={user.canChooseLook} />
 
                         {/* Next, because it changes how the site reads to this person and to nobody
                             else. */}

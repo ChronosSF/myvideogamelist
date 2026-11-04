@@ -53,6 +53,7 @@ public record UserProfileDto(
     string? AvatarUrl,
     string? Bio,
     LookDto Look,
+    bool CanChooseLook,
     string ProfileVisibility,
     bool IsAdmin)
 {
@@ -69,7 +70,8 @@ public record UserProfileDto(
             user.DisplayName,
             user.AvatarUrl,
             user.Bio,
-            LookDto.For(user),
+            LookDto.For(user, LookPolicy.CanChoose(isAdmin)),
+            LookPolicy.CanChoose(isAdmin),
             user.ProfileVisibility,
             isAdmin);
 }
@@ -83,9 +85,23 @@ public record UserProfileDto(
 /// <param name="Accent">A custom palette's accent, <c>#rrggbb</c>; null for a preset.</param>
 public record LookDto(string Palette, string? Background, string? Accent, string Pattern, string Tint)
 {
-    /// <summary>The look an account has, its palette read through <see cref="LookPolicy.PaletteOf"/>.</summary>
-    public static LookDto For(ApplicationUser user)
+    /// <summary>The look of an account that may choose none: the default, whatever it last chose.</summary>
+    public static readonly LookDto Default = new(
+        LookPolicy.DefaultPalette, null, null, LookPolicy.DefaultPattern, LookPolicy.DefaultTint);
+
+    /// <summary>
+    /// The look an account is drawn in: the one it chose, its palette read through
+    /// <see cref="LookPolicy.PaletteOf"/>, if it may choose one, and otherwise the default.
+    /// </summary>
+    /// <remarks>
+    /// What it chose stays stored either way, so an account that may choose again is drawn in it again.
+    /// The browser's copy of the look follows this answer on the next page, which is how an account that
+    /// may no longer choose loses its look on every device without anything reaching into a browser.
+    /// </remarks>
+    public static LookDto For(ApplicationUser user, bool canChoose)
     {
+        if (!canChoose) return Default;
+
         var palette = LookPolicy.PaletteOf(user.Theme);
         var custom = palette == LookPolicy.CustomPalette;
         return new(

@@ -9,6 +9,24 @@
 
 @reference "../index.css";
 
+/* The card's label, and beside it, for an account that cannot choose yet, that the choices are coming. */
+.look-heading {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 1rem;
+}
+
+.look-soon {
+    @apply type-kicker;
+    flex-shrink: 0;
+    padding: 0.125rem 0.375rem;
+    border: 1px solid var(--color-line-strong);
+    border-radius: var(--radius-sm);
+    font-size: 0.625rem;
+    color: var(--color-fg-muted);
+}
+
 .look-group {
     margin: 1rem 0 0;
     padding: 0;
@@ -57,6 +75,16 @@
 .look-segment:has(input:focus-visible) {
     outline: 2px solid var(--color-focus);
     outline-offset: 2px;
+}
+
+/* Shown and not yet open: the choices are there to be seen, and say by their look that they cannot be made. */
+.look-group:disabled .look-option {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
+.look-group:disabled .look-option:hover {
+    border-color: var(--color-line);
 }
 
 .look-option-name {

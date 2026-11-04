@@ -261,6 +261,7 @@ export function userProfile(overrides: Partial<UserProfile> = {}): UserProfile {
         profileVisibility: 'private',
         isAdmin: false,
         look: { ...DEFAULT_LOOK },
+        canChooseLook: false,
         ...overrides,
     };
 }

@@ -188,11 +188,19 @@ public class UserController(
     /// and its tint, all at once (ADR 0082).
     /// </summary>
     /// <remarks>
+    /// <para>
     /// The colours are kept only for a custom palette, and in lower case, as the table's check has them; a
     /// preset sends none, and choosing one clears the last custom palette's. Nothing about the look reaches
     /// anybody else, so nothing is taken off the edge.
+    /// </para>
+    /// <para>
+    /// Admins only, for now (<see cref="LookPolicy.CanChoose"/>), behind the admin policy: what is guarded
+    /// is the admin's own preference, not anybody else's data. Everybody else is refused with a 403, and
+    /// the profile's <c>CanChooseLook</c> tells the settings page so beforehand.
+    /// </para>
     /// </remarks>
     [HttpPut("look")]
+    [Authorize(Policy = AdminPolicy.Name)]
     public async Task<ActionResult<UserProfileDto>> UpdateLook([FromBody] UpdateLookDto dto)
     {
         var user = await userManager.GetUserAsync(User);

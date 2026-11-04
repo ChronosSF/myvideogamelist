@@ -28,6 +28,11 @@ export interface UserProfile extends ProfileDetails {
      * rather than a request of its own because every page needs it as soon as it knows who is reading.
      */
     look: Look;
+    /**
+     * Whether the account may choose a look: an admin, for now (ADR 0082). Everybody else is answered
+     * with the default look and shown the choices as coming soon; the server refuses their saves.
+     */
+    canChooseLook: boolean;
 }
 
 /**

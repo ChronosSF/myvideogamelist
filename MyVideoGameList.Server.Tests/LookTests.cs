@@ -17,7 +17,7 @@ public class LookTests
     [InlineData("retired")]
     public void LookDtoFor_ANameNoPaletteHas_IsTheDefaultPalette(string stored)
     {
-        var look = LookDto.For(new ApplicationUser { Theme = stored });
+        var look = LookDto.For(new ApplicationUser { Theme = stored }, canChoose: true);
 
         Assert.Equal(LookPolicy.DefaultPalette, look.Palette);
     }
@@ -27,7 +27,7 @@ public class LookTests
     {
         // A row the check constraint would refuse, as InMemory lets it be: the colours of a custom
         // palette chosen before a preset are not the preset's.
-        var look = LookDto.For(new ApplicationUser { Theme = "slate", ThemeBackground = "#101820", ThemeAccent = "#c8f560" });
+        var look = LookDto.For(new ApplicationUser { Theme = "slate", ThemeBackground = "#101820", ThemeAccent = "#c8f560" }, canChoose: true);
 
         Assert.Equal(new LookDto("slate", null, null, LookPolicy.DefaultPattern, LookPolicy.DefaultTint), look);
     }
@@ -42,7 +42,7 @@ public class LookTests
             ThemeAccent = "#c8f560",
             BackgroundPattern = "pixels",
             PatternTint = "accent",
-        });
+        }, canChoose: true);
 
         Assert.Equal(new LookDto(LookPolicy.CustomPalette, "#101820", "#c8f560", "pixels", "accent"), look);
     }
@@ -50,7 +50,7 @@ public class LookTests
     [Fact]
     public void LookDtoFor_APatternOrTintNoLongerKnown_IsTheDefault()
     {
-        var look = LookDto.For(new ApplicationUser { BackgroundPattern = "hexes", PatternTint = "lime" });
+        var look = LookDto.For(new ApplicationUser { BackgroundPattern = "hexes", PatternTint = "lime" }, canChoose: true);
 
         Assert.Equal((LookPolicy.DefaultPattern, LookPolicy.DefaultTint), (look.Pattern, look.Tint));
     }
@@ -60,7 +60,42 @@ public class LookTests
     {
         Assert.Equal(
             new LookDto(LookPolicy.DefaultPalette, null, null, LookPolicy.DefaultPattern, LookPolicy.DefaultTint),
-            LookDto.For(new ApplicationUser()));
+            LookDto.For(new ApplicationUser(), canChoose: true));
+    }
+
+    [Fact]
+    public void LookDtoFor_AnAccountThatMayNotChoose_IsTheDefaultWhateverItChose()
+    {
+        var chose = new ApplicationUser
+        {
+            Theme = LookPolicy.CustomPalette,
+            ThemeBackground = "#101820",
+            ThemeAccent = "#c8f560",
+            BackgroundPattern = "pixels",
+            PatternTint = "accent",
+        };
+
+        Assert.Equal(LookDto.Default, LookDto.For(chose, canChoose: false));
+    }
+
+    [Theory]
+    [InlineData(true, true)]
+    [InlineData(false, false)]
+    public void CanChoose_AdminsOnlyForNow(bool isAdmin, bool expected)
+    {
+        Assert.Equal(expected, LookPolicy.CanChoose(isAdmin));
+    }
+
+    [Fact]
+    public void UserProfileDtoFor_SaysWhetherTheAccountMayChoose_AndDrawsItAccordingly()
+    {
+        var user = new ApplicationUser { Email = "a@test.local", UserName = "a", Theme = "plum" };
+
+        var admin = UserProfileDto.For(user, isAdmin: true);
+        var member = UserProfileDto.For(user, isAdmin: false);
+
+        Assert.Equal((true, "plum"), (admin.CanChooseLook, admin.Look.Palette));
+        Assert.Equal((false, LookPolicy.DefaultPalette), (member.CanChooseLook, member.Look.Palette));
     }
 
     [Fact]

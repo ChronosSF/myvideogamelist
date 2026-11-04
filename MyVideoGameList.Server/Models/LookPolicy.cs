@@ -47,6 +47,14 @@ public static class LookPolicy
     public const int NameMaxLength = 16;
 
     /// <summary>
+    /// Whether an account may choose a look: an admin, for now, so that the defaults can be chosen by
+    /// trying every look on the site itself, while everybody else is shown the choices as coming soon and
+    /// drawn in the default (ADR 0082). Issue 208 decides whether a look is free or paid; that answer goes
+    /// here, and in the policy on <c>PUT /api/user/look</c>, and nowhere else.
+    /// </summary>
+    public static bool CanChoose(bool isAdmin) => isAdmin;
+
+    /// <summary>
     /// The palette an account's stored <see cref="ApplicationUser.Theme"/> names, or the default for
     /// anything else: the <c>dark</c> every account had before palettes, an old <c>light</c>, or a name a
     /// later release retired.

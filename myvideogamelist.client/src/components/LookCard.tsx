@@ -35,8 +35,12 @@ type Status = 'saved' | 'saving' | 'unreadable' | 'failed';
  * while every check passes; one that fails stays on this page, unsaved, until it passes or the page is left,
  * and then the account's look comes back. Saves go one at a time, the latest choice after the one in
  * flight, so the account ends on the last thing chosen whatever order the answers would have come in.
+ *
+ * Only an account that may choose a look can use it: an admin, for now (ADR 0082 §8). Everybody else is
+ * shown the same choices, disabled, as coming soon, and is drawn in the default, which the server already
+ * answers with. "Coming soon" promises the choices and nothing about their price, which is still open.
  */
-export function LookCard({ look: saved }: { look: Look }) {
+export function LookCard({ look: saved, canChoose }: { look: Look; canChoose: boolean }) {
     const { updateLook } = useAuth();
     const { preview } = useLook();
     const hydrated = useHydrated();
@@ -170,12 +174,17 @@ export function LookCard({ look: saved }: { look: Look }) {
 
     return (
         <div className="user-card look-card">
-            <div className="user-card-label">Look</div>
+            <div className="look-heading">
+                <div className="user-card-label">Look</div>
+                {!canChoose && <span className="look-soon">Coming soon</span>}
+            </div>
             <p className="user-card-hint">
-                How the site looks to you, on every device you sign in on. Changes show at once.
+                {canChoose
+                    ? 'How the site looks to you, on every device you sign in on. Changes show at once.'
+                    : 'A palette and a background pattern for the whole site, kept with your account on every device you sign in on.'}
             </p>
 
-            <fieldset className="look-group">
+            <fieldset className="look-group" disabled={!canChoose}>
                 <legend className="look-legend">Palette</legend>
                 <div className="look-options">
                     {PALETTE_IDS.map(id => (
@@ -242,7 +251,7 @@ export function LookCard({ look: saved }: { look: Look }) {
                 )}
             </fieldset>
 
-            <fieldset className="look-group">
+            <fieldset className="look-group" disabled={!canChoose}>
                 <legend className="look-legend">Background pattern</legend>
                 <div className="look-options">
                     {PATTERN_IDS.map((id: PatternId) => (
@@ -264,7 +273,7 @@ export function LookCard({ look: saved }: { look: Look }) {
                 </div>
             </fieldset>
 
-            <fieldset className="look-group" disabled={current.pattern === 'none'}>
+            <fieldset className="look-group" disabled={!canChoose || current.pattern === 'none'}>
                 <legend className="look-legend">Pattern colour</legend>
                 <div className="look-segments">
                     {TINT_IDS.map((id: TintId) => (
@@ -283,25 +292,27 @@ export function LookCard({ look: saved }: { look: Look }) {
                 </div>
             </fieldset>
 
-            <div className="look-footer">
-                {status === 'failed' ? (
-                    <p className="user-pref-error" role="alert">{error}</p>
-                ) : (
-                    <p className="look-status" aria-live="polite">
-                        {status === 'saving' && 'Saving…'}
-                        {status === 'saved' && 'Saved to your account'}
-                        {status === 'unreadable' && 'Not saved until every check passes'}
-                    </p>
-                )}
-                <button
-                    type="button"
-                    className="look-reset"
-                    disabled={sameLook(current, DEFAULT_LOOK)}
-                    onClick={() => choose({ ...DEFAULT_LOOK })}
-                >
-                    Reset to default
-                </button>
-            </div>
+            {canChoose && (
+                <div className="look-footer">
+                    {status === 'failed' ? (
+                        <p className="user-pref-error" role="alert">{error}</p>
+                    ) : (
+                        <p className="look-status" aria-live="polite">
+                            {status === 'saving' && 'Saving…'}
+                            {status === 'saved' && 'Saved to your account'}
+                            {status === 'unreadable' && 'Not saved until every check passes'}
+                        </p>
+                    )}
+                    <button
+                        type="button"
+                        className="look-reset"
+                        disabled={sameLook(current, DEFAULT_LOOK)}
+                        onClick={() => choose({ ...DEFAULT_LOOK })}
+                    >
+                        Reset to default
+                    </button>
+                </div>
+            )}
         </div>
     );
 }

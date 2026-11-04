@@ -41,8 +41,8 @@ vi.mock('@/lib/lookChecks', () => ({
 const saveLook = vi.mocked(auth.updateLook);
 const root = document.documentElement;
 
-function renderCard(saved: Look = DEFAULT_LOOK) {
-    return render(<LookCard look={saved} />);
+function renderCard(saved: Look = DEFAULT_LOOK, canChoose = true) {
+    return render(<LookCard look={saved} canChoose={canChoose} />);
 }
 
 beforeEach(() => {
@@ -176,6 +176,30 @@ describe('LookCard', () => {
         await userEvent.click(screen.getByRole('button', { name: 'Reset to default' }));
 
         expect(saveLook).toHaveBeenCalledWith(DEFAULT_LOOK);
+    });
+
+    it('shows an account that may not choose the choices as coming soon, and lets it make none', async () => {
+        renderCard(DEFAULT_LOOK, false);
+
+        expect(screen.getByText('Coming soon')).toBeInTheDocument();
+        for (const name of ['Ink and lime', 'Slate and ice', 'Custom', 'Isometric', 'None', 'Grey', 'Accent']) {
+            expect(screen.getByRole('radio', { name })).toBeDisabled();
+        }
+        expect(screen.getByRole('radio', { name: 'Ink and lime' })).toBeChecked();
+        expect(screen.queryByRole('button', { name: 'Reset to default' })).not.toBeInTheDocument();
+        expect(screen.queryByText('Saved to your account')).not.toBeInTheDocument();
+
+        await userEvent.click(screen.getByText('Slate and ice'));
+
+        expect(saveLook).not.toHaveBeenCalled();
+        expect(root.getAttribute('data-palette')).toBeNull();
+    });
+
+    it('says nothing is coming to an account that may choose', () => {
+        renderCard();
+
+        expect(screen.queryByText('Coming soon')).not.toBeInTheDocument();
+        expect(screen.getByRole('radio', { name: 'Slate and ice' })).toBeEnabled();
     });
 
     it("ends its preview when the page is left, so the account's look comes back", () => {
