@@ -3,15 +3,16 @@
 The AWS environment, as one CDK app in C#. What it builds and why is ADR 0044; the records it
 rests on are 0007, 0014, 0015 and 0043.
 
-Five stacks, split by lifetime, named `Mvgl-<env>-<part>`:
+Six stacks, split by lifetime, named `Mvgl-<env>-<part>`:
 
 | Stack | Lifetime | Holds |
 |---|---|---|
 | `Dns` | permanent | the environment's public hosted zone |
 | `Data` | long-lived | VPC, security groups, RDS, secrets, ECR, the cluster, the regional certificate, the GitHub deploy role, the basic-auth store, the origin-verify secret |
 | `EdgeCert` | long-lived, `us-east-1` | the certificate CloudFront uses |
+| `Alerts` | long-lived | the topic the alarms send to, and the owner's email subscription to it (ADR 0080) |
 | `Migrate` | each release | the task that runs the migration bundle |
-| `App` | disposable | the balancer, both services, the distribution in front of the balancer, the DNS alias |
+| `App` | disposable | the balancer, both services, the distribution in front of the balancer, the DNS alias, the alarms |
 
 Context: `env` (required) and `imageTag` (the git SHA; without it `Migrate` and `App` synthesise
 with an error the CLI refuses to deploy over, so nothing falls back to `latest`).
@@ -139,6 +140,81 @@ CloudFront section, and `Edge.cs` says it again beside each one. Three things ar
   aws cloudfront create-invalidation --profile mvgl-dev --distribution-id <DistributionId output> --paths "/u/<name>*" "/sitemaps/profiles-*"
   ```
 
+## Alarms
+
+Five alarms and a rule, emailed to the owner; what each watches and why its threshold is what it is
+is ADR 0080. The alarms are in `App`, beside the balancer and the log group they read, so a parked
+environment has none and a resume makes them again. What they send to is the `Alerts` stack: one
+topic, `mvgl-<env>-alerts`, and one email subscription, kept apart because a person has to confirm
+the subscription. The alarms name the topic rather than refer to it, so no `App` deploy waits on
+`Alerts`, and nothing else does either.
+
+| Name | Fires when |
+|---|---|
+| `mvgl-<env>-5xx-rate` | 5% of requests through the balancer, five at least, answered 5xx, in 2 of 3 five-minute windows |
+| `mvgl-<env>-p99-latency` | the slowest 1% took 3 s or more to start answering, with 20 requests or more, for 3 windows running |
+| `mvgl-<env>-unhealthy-target` | a target of either service failed its health checks, in any minute |
+| `mvgl-<env>-db-connections` | 40 or more connections open on the database, for 3 windows running |
+| `mvgl-<env>-igdb-failure-rate` | 10% of the API's calls to IGDB, three at least, failed, in 2 of 3 windows |
+| `mvgl-<env>-task-stopped` (a rule) | a task of either service stopped on its own: its container exited, or it never started |
+
+Every alarm also says when it is back to OK. **The address is never in the repository**, which is
+public: it is a Parameter Store value the owner sets in the environment's account, which the stack
+reads on every deploy.
+
+**Once, before the first deploy that carries alarms**, in this order, from the repository root with
+the `mvgl-dev` profile signed in. In Git Bash put `MSYS_NO_PATHCONV=1` in front of every command
+naming a path that starts with `/`, or it is rewritten into a Windows path:
+
+```bash
+aws ssm put-parameter --profile mvgl-dev --name /mvgl/dev/alarm-email --type String --value "<address>"
+```
+
+```bash
+cdk deploy Mvgl-dev-Alerts --profile mvgl-dev -c env=dev
+```
+
+Then click the link in the "AWS Notification - Subscription Confirmation" email, within two days.
+The next `App` deploy - the pipeline's, or a resume - brings the alarms. Deployed before `Alerts`,
+they would alarm into a topic that does not exist, and nobody would be told.
+
+A new address is the same two commands, with `--overwrite` on the first, and a new confirmation.
+
+**Proving it, after that `App` deploy.** Five alarms, each `OK` or `INSUFFICIENT_DATA`:
+
+```bash
+aws cloudwatch describe-alarms --profile mvgl-dev --alarm-name-prefix mvgl-dev- --query "MetricAlarms[].[AlarmName,StateValue]" --output table
+```
+
+An alarm's email, and the topic's policy for every alarm, since they publish alike: this sends
+"ALARM: mvgl-dev-5xx-rate", and the next evaluation, within five minutes, sends it back to OK.
+
+```bash
+aws cloudwatch set-alarm-state --profile mvgl-dev --alarm-name mvgl-dev-5xx-rate --state-value ALARM --state-reason "Testing the alarm email"
+```
+
+The rule's path from ECS to the inbox: a stop whose reason begins `Alarm test` is the one stop by
+hand it matches. The API is away for the minute its replacement takes.
+
+```bash
+aws ecs list-tasks --profile mvgl-dev --cluster mvgl-dev --service-name api --query "taskArns[0]" --output text
+```
+
+```bash
+aws ecs stop-task --profile mvgl-dev --cluster mvgl-dev --task <task arn> --reason "Alarm test"
+```
+
+The IGDB alarm's two filters: their pattern, run over the API's log, finds its lines. Browse a page
+or two first, so there is a call to find; `failed` in place of `succeeded` finds failures, if any.
+
+```bash
+aws logs filter-log-events --profile mvgl-dev --log-group-name /mvgl/dev/api --filter-pattern '{ ($.Category = "MyVideoGameList.Server.Observability.IgdbCalls") && ($.State.Outcome = "succeeded") }' --max-items 3 --query "events[].message"
+```
+
+And on the next release deployed after these: no task-stopped email and no `unhealthy-target`. A
+deploy stops the old tasks by the scheduler's hand and starts the new targets as "initial", neither
+of which should match, but AWS documents neither, so that release is the check.
+
 ## Parking and resuming
 
 The balancer, not the containers, is what an idle environment pays for, so the lever that matters
@@ -200,6 +276,18 @@ not answer directly.
   why the deployed Migrate stack kept working throughout: a weak reference is resolved only when
   its own stack deploys. If the error ever returns, `cdk diff Mvgl-dev-Data` with any tag shows
   the outputs it would add back, and deploying it is the whole fix.
+
+- **The subscription can go away without the stack knowing.** SNS deletes a subscription nobody
+  confirmed within two days, and the unsubscribe link at the foot of every alarm's email removes it
+  with one click. Either way CloudFormation still believes in it, so no deploy brings it back. The
+  mend is to destroy `Alerts` and deploy it again - the alarms find the new topic by its name - and
+  confirm again.
+
+- **The IGDB alarm counts an Information line.** The API writes one line per IGDB call under the
+  category `MyVideoGameList.Server.Observability.IgdbCalls` (ADR 0080), and the two metric filters in
+  `Alarms.cs` match that category and the outcomes `succeeded` and `failed`. A log level above
+  Information for that category, or a rename on either side, stops the count with a clean log and an
+  alarm at OK through an outage. `IgdbCallLogTests` reads `Alarms.cs` and fails on the rename.
 
 - **Every ingress rule on the balancer is owned by `DataStack`, and the listener is
   `Open = false`.** CDK otherwise "opens" an internet-facing balancer by writing `0.0.0.0/0`
