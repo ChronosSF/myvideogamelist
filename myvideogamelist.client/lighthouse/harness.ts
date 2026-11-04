@@ -72,11 +72,14 @@ function page<T>(query: string, rows: readonly T[]): T[] {
  * A lookup by id gets the rows it names. Any other query for games — the browse page's, a search — gets
  * a page of all of them, whatever it filtered or sorted by: this is not a model of IGDB. The trending
  * rail's popularity is the same order. A query for anything else gets nothing, as in the smoke test, so
- * no Steam id is found and the API never asks Steam for news: the home page's news rail is empty.
+ * no Steam id is found and the API never asks Steam for news: the home page's news rail is empty. The game
+ * page's related games (ADR 0084) get nothing too, as a game in no series with no children would: a page of
+ * unrelated games there would audit a rail no real game page draws.
  */
 const answer: IgdbAnswer = (endpoint, query) => {
     switch (endpoint) {
         case 'games': {
+            if (/\| parent_game = \d+/.test(query)) return [];
             const ids = idsIn(query);
             return ids.length > 0 ? ids.flatMap(id => byId.get(id) ?? []) : page(query, RECORDED.games);
         }
