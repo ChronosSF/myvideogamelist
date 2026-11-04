@@ -17,7 +17,7 @@ export interface Look {
 }
 
 /** The palettes, the default first; `custom` is the one with colours of its own. */
-export const PALETTE_IDS = ['ink', 'slate', 'dusk', 'plum', 'graphite', 'custom'] as const;
+export const PALETTE_IDS = ['ink', 'slate', 'dusk', 'plum', 'graphite', 'oxblood', 'custom'] as const;
 export type PaletteId = (typeof PALETTE_IDS)[number];
 
 /** The background patterns, the default first, and `none`. */
@@ -35,6 +35,7 @@ export const PALETTE_NAMES: Readonly<Record<PaletteId, string>> = {
     dusk: 'Dusk and periwinkle',
     plum: 'Plum and orchid',
     graphite: 'Graphite and chalk',
+    oxblood: 'Oxblood and cream',
     custom: 'Custom',
 };
 

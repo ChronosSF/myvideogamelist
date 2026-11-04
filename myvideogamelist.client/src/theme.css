@@ -193,6 +193,12 @@
     --look-accent: oklch(95.3% 0.013 86.8);     /* Chalk: the paper, fg-strong, as the only accent. #f3efe6 */
 }
 
+:root[data-palette='oxblood'],
+[data-palette-preview='oxblood'] {
+    --look-page: oklch(22% 0.045 22);           /* Oxblood, a deep red-brown: the red in the page, where it cannot be taken for an error. #2c1111 */
+    --look-accent: oklch(91% 0.035 85);         /* Cream, a warm paper. #ece0c8 */
+}
+
 /*
  * The working out, where the browser can do it; a browser that cannot draws every palette as the default.
  *   - The surfaces step from the page by the default's steps in lightness, with a little more of its chroma
