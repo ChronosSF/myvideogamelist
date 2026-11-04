@@ -378,7 +378,7 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
 - **A document runs only the scripts its own render wrote.** Its `script-src` names a nonce drawn
   once per render in `entry.server.tsx` and handed to `<ServerRouter>` and to the stream; an inline
   script without it never runs, and a page whose hydration scripts never run is dead. A new inline
-  script of ours, such as the palette script #208 plans, goes in by its hash in `documentPolicy`, and
+  script of ours goes in by its hash in `documentPolicy`, as the look script does, and
   a script from another host is refused until a record decides its hosts or `'strict-dynamic'`
   (Google's tag, #242, is the first). A shared cache keeps the nonce whole only because header and
   body are stored together, so **nothing at the edge may set, rewrite or remove
@@ -606,6 +606,20 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
 
   There is one theme, dark, and no `light:` variant (ADR 0048). A change meant to look the same is
   checked with `npm run visual`. See `docs/decisions/0049-*`.
+
+- **The site is drawn in the reader's look, and every palette but the default is worked out.** A look is a
+  palette, a background pattern and its tint, stored on the account by name (`LookPolicy`) and carried on
+  the profile as `look`. A palette is two colours in `theme.css`, a page and an accent, and the surfaces,
+  lines, text and primary are worked out from them in its `@supports` block, so **a new token of those kinds
+  needs its line there too**, or every palette but the default keeps the default's value; a colour that
+  carries meaning, or the brand's, stays out of it. `LOOK_SCRIPT` puts the browser's copy of the look on
+  `<html>` before the first paint and is admitted by its hash, `LOOK_SCRIPT_HASH`: change the script, or a
+  list it is built from, and the hash with it (`look.test.ts` says what it should be). A palette or pattern
+  added is a name in `LookPolicy`, in `@/types/look` (`serverMirrors.test.ts` compares them) and in a
+  migration's check constraint. The server checks only the shape; whether a custom palette reads is the
+  settings page's check, measured off the page (`@/lib/lookChecks`), and one that fails is drawn but never
+  saved. The patterns are `PagePattern`, one element at each end whatever the drawing. See
+  `docs/decisions/0082-*`.
 
 - **Text is set by its role, in one of three self-hosted families, and corners are tokens too.**
   `type-display` and `type-title` (Archivo), `type-kicker` and `type-meta` (DM Mono), and Schibsted

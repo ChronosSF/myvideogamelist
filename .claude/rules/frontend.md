@@ -200,7 +200,12 @@ When nothing fits, add a token, named for its job rather than its look. Don't wr
 `rgb()`, a palette class like `text-slate-400`, or `var(--color-slate-400)` in its place.
 Translucent black and white, for shadows and scrims, are the one exception.
 
-There is one theme, dark: no `light:` variant and no `[data-theme='light']` rules (ADR 0048).
+There is one theme, dark: no `light:` variant and no `[data-theme='light']` rules (ADR 0048). It is drawn
+in the reader's palette (ADR 0082): the tokens in the `@theme` block are the default's, and every other
+palette works the surfaces, lines, text and primary out from two colours in the block at the end of
+`theme.css`. A new token of those kinds gets its line there as well; one that carries meaning stays out of it.
+Style with the tokens and it follows the palette: never read `--look-page` or `--look-accent` outside
+`theme.css`, except for a swatch of a palette, as the Look card's are.
 
 **Text is set by its role** (`docs/decisions/0075-*`), with the utilities in `src/type.css`, and the
 size beside it:
