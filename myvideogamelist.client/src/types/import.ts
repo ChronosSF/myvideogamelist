@@ -33,7 +33,7 @@ export type ImportDecision = (typeof IMPORT_DECISION)[keyof typeof IMPORT_DECISI
 
 export interface ImportJob {
     id: string;
-    /** Which service's export this was — `grouvee` today. */
+    /** Which service's export this was — `grouvee`, or `myvideogamelist` for our own (ADR 0083). */
     source: string;
     fileName: string;
     state: string;

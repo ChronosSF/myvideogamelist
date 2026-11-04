@@ -15,7 +15,11 @@ namespace MyVideoGameList.Server.Services.Import;
 /// turning that into rows is the commit's job.
 /// </para>
 /// </remarks>
-/// <param name="Title">As the source spelled it. Shown on the review screen and in the failure report.</param>
+/// <param name="Title">
+/// As the source spelled it. Shown on the review screen and in the failure report. Empty only from a
+/// source that names the game by <paramref name="GameId"/> alone, as our own export does, and named
+/// from the local cache at upload (ADR 0083).
+/// </param>
 /// <param name="ReleaseYear">
 /// Disambiguates remakes and reboots. Unused by a source that carries ids, and the second most
 /// valuable matching signal for one that does not.
