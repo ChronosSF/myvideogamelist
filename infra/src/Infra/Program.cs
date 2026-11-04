@@ -49,7 +49,7 @@ internal static class Program
             return;
         }
 
-        // The three long-lived stacks refuse deletion: a mistake in one of them is a zone whose
+        // Three of the long-lived stacks refuse deletion: a mistake in one of them is a zone whose
         // name servers are delegated to, or a database. The two per-release stacks stay disposable.
         // The zone is referenced from the certificate stack in another Region, which CDK carries
         // over with a parameter rather than a CloudFormation export; both sides must opt in.
@@ -59,6 +59,11 @@ internal static class Program
             new StackProps { Env = edge, CrossRegionReferences = true, TerminationProtection = true }, site, dns.Zone);
         var data = new DataStack(app, site.StackName("Data"),
             new StackProps { Env = regional, TerminationProtection = true }, site, dns.Zone);
+        // Where the alarms send, long-lived because an email subscription is confirmed by a person.
+        // The fourth long-lived stack, and not protected: destroying it loses that confirmation and
+        // nothing else, and destroying and redeploying it is how a lost subscription is made again.
+        // Nothing refers to it; the alarms in App name its topic (ADR 0080).
+        _ = new AlertsStack(app, site.StackName("Alerts"), new StackProps { Env = regional }, site);
 
         // The two per-release stacks exist in every synthesis, tag or no tag, because the Data
         // stack's cross-stack outputs are derived from what consumes them. Cross-stack references
