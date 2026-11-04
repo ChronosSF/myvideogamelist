@@ -617,8 +617,10 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   list it is built from, and the hash with it (`look.test.ts` says what it should be). A palette or pattern
   added is a name in `LookPolicy`, in `@/types/look` (`serverMirrors.test.ts` compares them) and in a
   migration's check constraint. The server checks only the shape; whether a custom palette reads is the
-  settings page's check, measured off the page (`@/lib/lookChecks`), and one that fails is drawn but never
-  saved. The patterns are `PagePattern`, one element at each end whatever the drawing. **Only admins may
+  settings page's check, measured off the page (`@/lib/lookChecks`): **only a background the body text
+  cannot be read on is held back**, drawn and not saved, and the other checks are advice shown beside a
+  palette that is saved. The logo's badge and wordmark read `logo-badge`, `logo-tick` and `logo-word`,
+  which follow the accent; the `brand-*` tokens stay the brand's. The patterns are `PagePattern`, one element at each end whatever the drawing. **Only admins may
   choose a look for now** (`LookPolicy.CanChoose`, and the admin policy on `PUT /api/user/look`); the
   profile carries the look an account is *drawn* in, the default for everybody else, and the card shows
   them Coming soon. A paywall replaces that function and that policy and nothing else. The browser's copy

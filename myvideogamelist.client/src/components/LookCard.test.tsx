@@ -26,14 +26,16 @@ vi.mock('@/hooks/useLook', () => ({ useLook: () => look }));
 
 // The checks read the page's computed colours, which jsdom does not compute; what they decide is
 // `lookChecks.test.ts`'s, and here they pass or fail as a test says.
-const checks = vi.hoisted(() => ({ ok: true }));
-vi.mock('@/lib/lookChecks', () => ({
+const checks = vi.hoisted(() => ({ body: true, faint: true }));
+vi.mock('@/lib/lookChecks', async importOriginal => ({
+    // `savable` is the module's own: which checks hold a palette back is what is under test.
+    ...await importOriginal<typeof import('@/lib/lookChecks')>(),
     lookChecks: (): LookCheck[] => [
-        { id: 'body', label: 'Body text on background 12.3:1', ok: true },
-        { id: 'faint', label: 'Faint text on background 5.9:1', ok: checks.ok },
-        { id: 'accent', label: 'Accent against background 11.4:1', ok: true },
-        { id: 'button', label: 'Button words on accent 11.4:1', ok: true },
-        { id: 'meaning', label: 'Clear of the colours with a meaning', ok: true },
+        { id: 'body', label: 'Body text on background 12.3:1', ok: checks.body, required: true },
+        { id: 'faint', label: 'Faint text on background 5.9:1', ok: checks.faint, required: false },
+        { id: 'accent', label: 'Accent text on background 13.4:1', ok: true, required: false },
+        { id: 'button', label: 'Button words on accent 11.4:1', ok: true, required: false },
+        { id: 'meaning', label: 'Clear of the colours with a meaning', ok: true, required: false },
     ],
     currentColours: () => ({ background: '#1a1918', accent: '#9ae600' }),
 }));
@@ -46,7 +48,8 @@ function renderCard(saved: Look = DEFAULT_LOOK, canChoose = true) {
 }
 
 beforeEach(() => {
-    checks.ok = true;
+    checks.body = true;
+    checks.faint = true;
     saveLook.mockReset();
     saveLook.mockResolvedValue(undefined);
     look.preview.mockReset();
@@ -126,15 +129,27 @@ describe('LookCard', () => {
         expect(saveLook).toHaveBeenCalledWith({ ...DEFAULT_LOOK, palette: 'custom', background: '#101820', accent: '#9ae600' });
     });
 
-    it('draws a custom palette that fails a check, and does not save it', async () => {
-        checks.ok = false;
+    it('saves a custom palette that fails only the advice, and says what is hard to see', async () => {
+        checks.faint = false;
+        renderCard();
+
+        await userEvent.click(screen.getByRole('radio', { name: 'Custom' }));
+
+        expect(screen.getByRole('list', { name: 'Readability' }))
+            .toHaveTextContent('Warning, saved anyway: Faint text on background 5.9:1');
+        expect(saveLook).toHaveBeenCalledWith({ ...DEFAULT_LOOK, palette: 'custom', background: '#1a1918', accent: '#9ae600' });
+        expect(await screen.findByText('Saved to your account')).toBeInTheDocument();
+    });
+
+    it('draws a background the text cannot be read on, and does not save it', async () => {
+        checks.body = false;
         renderCard();
 
         await userEvent.click(screen.getByRole('radio', { name: 'Custom' }));
 
         expect(root.getAttribute('data-palette')).toBe('custom');
-        expect(screen.getByRole('list', { name: 'Readability' })).toHaveTextContent('Fails: Faint text on background 5.9:1');
-        expect(screen.getByText('Not saved until every check passes')).toBeInTheDocument();
+        expect(screen.getByRole('list', { name: 'Readability' })).toHaveTextContent('Not saved: Body text on background 12.3:1');
+        expect(screen.getByText('Not saved: the text would be hard to read on this background')).toBeInTheDocument();
         expect(saveLook).not.toHaveBeenCalled();
     });
 

@@ -75,32 +75,70 @@ Every palette, the presets included, is a page colour and an accent (`theme.css`
 lines, the six text tokens and the primary's nine steps are worked out from those two with relative colour
 syntax, by the default's own steps: the surfaces in lightness from the page, with a little more of its
 chroma; the text and the lines at the default's lightnesses in the page's own hue, at a chroma of at most
-0.02; the primary in lightness and chroma from the accent. The words on a filled button are dark on an
-accent lighter than 0.6 and light on a darker one. So a preset is two decisions, and a custom palette is
-drawn by exactly the rules the presets are.
+0.02; the primary in lightness and chroma from the accent. The primary's three lightest steps are the ones
+drawn as text — the active tab, a link, a mark of the reader's own — so each has a floor of lightness as
+well, 0.74 for the 400, and reads on a dark page however dark the accent: a dark red is dark red on a
+button and a readable red as text. The keyboard focus is drawn in that text shade for the same reason. The
+four darkest steps have floors too, in step, so that a dark accent's tints and borders stay lighter than
+the page instead of going to black, and the 600, a filled button's hover and a chosen button's fill, steps
+away from the page: darker than a light accent, lighter than a dark one, though never past 0.55. The
+words on a filled button are dark on an accent lighter than 0.6 and light on a darker one. So a preset is
+two decisions, and a custom palette is drawn by exactly the rules the presets are.
+
+The logo follows the accent too: its badge is the accent, the tick on it the words on a button, and the
+wordmark's "List" the text shade, through `logo-badge`, `logo-tick` and `logo-word`, which are the brand's
+lime and navy in the default. The tile and the triangle stay the brand's. A file the browser fetches on its
+own — the favicon, the share image, the holding page — never sees a palette and keeps the brand's colours.
+A near-white accent leaves "List" hardly apart from the rest of the wordmark; that is the accent's
+choosing.
 
 The default keeps the tokens written in the `@theme` block rather than their working out, so nothing about
 the site as it was moves, and a browser without relative colour syntax draws every palette as the default.
 The colours that carry meaning, the score bands, the statuses, the kinds of event, the favourite, the
-wishlist, the tags, and the brand's, are not touched by any palette.
+wishlist, the tags, and the brand's own tokens, are not touched by any palette.
 
 The presets are the mockup's: **Ink and lime**, the default; **Slate and ice**, a cool grey and sky-300;
 **Dusk and periwinkle**, a violet-grey and indigo-300; **Plum and orchid**, a red-violet grey and
-fuchsia-300; and **Graphite and chalk**, a grey with no hue and the paper itself as the accent.
+fuchsia-300; **Graphite and chalk**, a grey with no hue and the paper itself as the accent; and **Onyx and
+wine**, a black with no hue, darker than Graphite, and a dark wine red. Wine is the one dark accent, so its
+buttons are wine with light words on them, and its text shade is a readable rose by the floor above. It is a
+red nearer burgundy than an error's, and by §5's measure clears every shade an error is drawn in: the 700 of
+an error's button by nearly twice the margin, an error's words only just. A first draft put the red in the
+page instead, a red-brown under a cream accent, to keep the accent away from an error's red; every surface,
+line and word worked out from that page came out red with it.
 
-### 5. A custom palette is checked on the page, and saved only once it reads
+### 5. A custom palette is checked on the page; one check holds it back, the rest advise
 
 The server cannot judge readability without a second copy of the formulas, so the settings page does,
 measuring the palette as the browser draws it (`@/lib/lookChecks`): the computed colours of the tokens
-are read back off a probe and compared. Five checks, the mockup's: body text and faint text on the
-background at 4.5:1, the accent against the background at 3:1 (a part of the page, not text, WCAG 1.4.11),
-the button's words on the accent at 4.5:1, and the accent's hue at least 14° from each colour with a
-meaning — the wishlist's pink, the favourite's violet, ownership's teal, the tags' orange, the stars, an
-error's red and Playing's blue — once it has enough colour to have a hue. The success green is not on that
-list, because the default's lime sits beside it.
+are read back off a probe and compared. Six checks:
 
-A custom palette that fails a check is still drawn, so its owner can see why, and is not saved; leaving the
-page brings the account's look back. A request that skips the checks spoils only its sender's screen.
+- **Body text on the background at 4.5:1, required.** The text is not the reader's to choose: every
+  palette is dark and its text light (ADR 0048), so a background the text cannot be read on makes the whole
+  site unreadable, the settings page with it, and the reader could not find the way back. A palette failing
+  it is drawn, so its owner can see why, and not saved; leaving the page brings the account's look back.
+- **Faint text on the background at 4.5:1, advice.**
+- **The accent's text shade on the background at 4.5:1, advice.** The 400, which the floor of §4 keeps
+  readable for nearly any accent.
+- **The accent against the background at 3:1, advice.** The filled accent, a part of the page rather than
+  text (WCAG 1.4.11), which that floor does not reach: an accent the page hides takes its buttons' edges,
+  the logo's badge and every filled mark with it. Onyx's wine is 2.3:1, so a custom copy of it is warned.
+- **The button's words on the accent at 4.5:1, advice.**
+- **Clear of the colours with a meaning, advice.** The accent and its text shade each at least 0.06 from
+  every shade the site draws a meaning in — the wishlist's pink, the favourite's violet, ownership's teal,
+  the tags' orange, the stars, an error's red and Playing's blue — measured as the distance between them in
+  OKLab, in which lightness counts as much as hue: a pale periwinkle is far from Playing's saturated blue
+  though their hues are 13° apart, and a near-copy of the wishlist's pink is close. The nearest is named.
+  The success green is not on the list, because the default's lime sits beside it.
+
+Advice, because a look is its owner's alone and drawn for nobody else: somebody who can read faint text, or
+wants an accent near a colour that means something, is told beside the palette, in a warning's colour, and
+the palette is saved. The first pass blocked on all of them, and measured nearness by hue alone, under which
+no red accent could pass; now a custom red near an error's saves with its one warning, and a wine like the
+Onyx preset's raises none. The presets are not run through the checks: they are chosen by hand.
+By this measure Dusk's periwinkle is near the favourite's light violet, the 300 its words are drawn in, and
+a custom palette of it would be warned; whether the preset moves is the default's question (#208). A
+request that skips the checks spoils only its sender's screen.
 
 ### 6. One pattern element, four drawings
 
@@ -150,6 +188,8 @@ palette's styles reach every visitor, and the copy is only a name in storage.
   ([0010](0010-monetization-model.md) has no row for them yet), as is the logo's lime following the
   palette: the logo is `brand-lime`, the same in every palette for now, and the favicon, the share image
   and the holding page never see a palette at all.
+- The logo's badge and wordmark follow the palette; the favicon and the share image are drawn once, in the
+  brand's colours, and are redrawn from the default once #208 settles it.
 - The look is per account, so two devices signed in to one account share it, and a change on one reaches
   the other on its next page.
 - The default pattern stays the honeycomb, as #208 left it, until somebody chooses otherwise.

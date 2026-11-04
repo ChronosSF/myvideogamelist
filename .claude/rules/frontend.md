@@ -192,7 +192,9 @@ any other, so build new styling on these from the start:
   `@reference "../index.css";` at its top.
 - **Colours that carry meaning are scales named for the meaning,** such as `danger-300` for an
   error's words, and stay the same in every palette. Score colours still come from `@/lib/score`.
-- **The brand's colours** (`brand-navy`, `brand-lime`, `brand-light`) are the logo's.
+- **The brand's colours** (`brand-navy`, `brand-lime`, `brand-light`) are the logo's, and the same in every
+  palette. The logo's badge, its tick and the wordmark's "List" are `logo-badge`, `logo-tick` and
+  `logo-word`, the brand's in the default and the palette's accent in any other (ADR 0082).
 
 In a stylesheet the same tokens are `var(--color-surface)`. For a translucent colour, use the token
 with an opacity: `bg-surface/60`, or `color-mix(in srgb, var(--color-surface) 60%, transparent)`.

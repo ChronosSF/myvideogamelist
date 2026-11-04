@@ -2,7 +2,7 @@ import { useEffect, useId, useMemo, useRef, useState, type CSSProperties } from 
 import { useAuth } from '@/hooks/useAuth';
 import { useLook } from '@/hooks/useLook';
 import { applyLook } from '@/lib/look';
-import { currentColours, lookChecks } from '@/lib/lookChecks';
+import { currentColours, lookChecks, savable, type LookCheck } from '@/lib/lookChecks';
 import { useHydrated } from '@/lib/useHydrated';
 import {
     DEFAULT_LOOK,
@@ -26,15 +26,18 @@ const COLOUR_SAVE_DELAY_MS = 500;
 type Status = 'saved' | 'saving' | 'unreadable' | 'failed';
 
 /**
- * How the site looks to its owner, at the top of their settings (ADR 0082): a palette, five presets or a
+ * How the site looks to its owner, at the top of their settings (ADR 0082): a palette, six presets or a
  * custom one of two colours; a background pattern, or none; and whether the pattern is drawn in grey or
  * the accent.
  *
  * The page itself is the preview: every choice is drawn at once, and saved at once to the account, so it
- * follows them to every device they sign in on. A custom palette is checked as it is drawn, and saved only
- * while every check passes; one that fails stays on this page, unsaved, until it passes or the page is left,
- * and then the account's look comes back. Saves go one at a time, the latest choice after the one in
- * flight, so the account ends on the last thing chosen whatever order the answers would have come in.
+ * follows them to every device they sign in on. A custom palette is checked as it is drawn. Only a
+ * background the text cannot be read on stops it being saved, since the text is not the reader's to choose
+ * and the whole site would be unreadable, this page with it: such a palette stays on this page, unsaved,
+ * until it reads or the page is left, and then the account's look comes back. Every other check is advice,
+ * shown beside the palette and saved with it, because the look is its owner's alone. Saves go one at a
+ * time, the latest choice after the one in flight, so the account ends on the last thing chosen whatever
+ * order the answers would have come in.
  *
  * Only an account that may choose a look can use it: an admin, for now (ADR 0082 §8). Everybody else is
  * shown the same choices, disabled, as coming soon, and is drawn in the default, which the server already
@@ -125,7 +128,7 @@ export function LookCard({ look: saved, canChoose }: { look: Look; canChoose: bo
         timer.current = undefined;
         pending.current = null;
 
-        if (next.palette === 'custom' && !lookChecks().every(check => check.ok)) {
+        if (next.palette === 'custom' && !savable(lookChecks())) {
             setStatus('unreadable');
             return;
         }
@@ -238,13 +241,16 @@ export function LookCard({ look: saved, canChoose }: { look: Look; canChoose: bo
                         </label>
                         {checks && (
                             <ul className="look-checks" aria-label="Readability">
-                                {checks.map(check => (
-                                    <li key={check.id} className="look-check" data-ok={check.ok}>
-                                        <span aria-hidden="true">{check.ok ? '✓' : '✗'}</span>{' '}
-                                        <span className="sr-only">{check.ok ? 'Passes: ' : 'Fails: '}</span>
-                                        {check.label}
-                                    </li>
-                                ))}
+                                {checks.map(check => {
+                                    const state = checkState(check);
+                                    return (
+                                        <li key={check.id} className="look-check" data-state={state}>
+                                            <span aria-hidden="true">{CHECK_MARKS[state]}</span>{' '}
+                                            <span className="sr-only">{CHECK_WORDS[state]}</span>
+                                            {check.label}
+                                        </li>
+                                    );
+                                })}
                             </ul>
                         )}
                     </div>
@@ -300,7 +306,7 @@ export function LookCard({ look: saved, canChoose }: { look: Look; canChoose: bo
                         <p className="look-status" aria-live="polite">
                             {status === 'saving' && 'Saving…'}
                             {status === 'saved' && 'Saved to your account'}
-                            {status === 'unreadable' && 'Not saved until every check passes'}
+                            {status === 'unreadable' && 'Not saved: the text would be hard to read on this background'}
                         </p>
                     )}
                     <button
@@ -316,6 +322,27 @@ export function LookCard({ look: saved, canChoose }: { look: Look; canChoose: bo
         </div>
     );
 }
+
+type CheckState = 'ok' | 'advised' | 'required';
+
+/** A check passed; failed, and saved all the same; or failed, and so not saved. */
+function checkState(check: LookCheck): CheckState {
+    if (check.ok) return 'ok';
+    return check.required ? 'required' : 'advised';
+}
+
+/** The mark beside each, drawn as text: the warning sign with its text presentation, never the emoji. */
+const CHECK_MARKS: Readonly<Record<CheckState, string>> = { ok: '✓', advised: '\u26A0\uFE0E', required: '✗' };
+
+/**
+ * What a screen reader hears before each check's own words, which say what is wrong: hard to read, or
+ * close to a colour that means something.
+ */
+const CHECK_WORDS: Readonly<Record<CheckState, string>> = {
+    ok: 'Passes: ',
+    advised: 'Warning, saved anyway: ',
+    required: 'Not saved: ',
+};
 
 /** A painter's palette, for the custom one before it has colours of its own. */
 function PaletteGlyph() {
