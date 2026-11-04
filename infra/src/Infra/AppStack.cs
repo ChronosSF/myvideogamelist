@@ -14,7 +14,7 @@ namespace Infra;
 
 /// <summary>
 /// The disposable stack: the balancer, both services, their log groups, the distribution in front of
-/// the balancer, and the DNS alias. Destroying it is the pause lever that matters, because the
+/// the balancer, the DNS alias, and the alarms on all of it (ADR 0080). Destroying it is the pause lever that matters, because the
 /// balancer, not the containers, is what an idle environment pays for (ADR 0044). The distribution
 /// lives here because its origin is the balancer this stack creates and destroys, which is also why
 /// a park and a resume take several minutes longer than they did before it (ADR 0046).
@@ -30,7 +30,9 @@ public sealed class AppStack : Stack
         var albSubnets = data.Vpc.SelectSubnets(new SubnetSelection { SubnetGroupName = "alb" });
         var taskSubnets = new SubnetSelection { SubnetGroupName = "tasks" };
 
-        var (apiTask, apiContainer) = ApiTask(site, data, albSubnets, imageTag);
+        // Kept, because the alarms count lines in it.
+        var apiLogs = LogGroup(site, "api");
+        var (apiTask, apiContainer) = ApiTask(site, data, albSubnets, imageTag, apiLogs);
         var apiService = Service(site, data, "api", apiTask, data.ApiSecurityGroup, taskSubnets, registerInNamespace: true);
         var ssrService = Service(site, data, "ssr", SsrTask(site, data, imageTag), data.SsrSecurityGroup, taskSubnets, registerInNamespace: false);
 
@@ -127,6 +129,10 @@ public sealed class AppStack : Stack
         _ = new ARecord(this, "Alias", new ARecordProps { Zone = zone, Target = target });
         _ = new AaaaRecord(this, "AliasV6", new AaaaRecordProps { Zone = zone, Target = target });
 
+        // Here rather than in a stack of their own, because what they watch is named by this stack's
+        // balancer and log group, which a resume makes anew (ADR 0080).
+        _ = new Alarms(this, "Alarms", site, alb, [apiTargets, ssrTargets], apiLogs);
+
         _ = new CfnOutput(this, "LoadBalancerDnsName", new CfnOutputProps { Value = alb.LoadBalancerDnsName });
         _ = new CfnOutput(this, "ApiTargetGroupArn", new CfnOutputProps { Value = apiTargets.TargetGroupArn });
         _ = new CfnOutput(this, "SsrTargetGroupArn", new CfnOutputProps { Value = ssrTargets.TargetGroupArn });
@@ -140,7 +146,7 @@ public sealed class AppStack : Stack
     /// id can join its environment once the distribution exists.
     /// </summary>
     private (FargateTaskDefinition Task, ContainerDefinition Container) ApiTask(
-        Site site, DataStack data, ISelectedSubnets albSubnets, string imageTag)
+        Site site, DataStack data, ISelectedSubnets albSubnets, string imageTag, LogGroup logs)
     {
         var task = Task(site, "api");
 
@@ -182,7 +188,7 @@ public sealed class AppStack : Stack
                 ["Igdb__ClientId"] = Amazon.CDK.AWS.ECS.Secret.FromSecretsManager(data.IgdbSecret, "ClientId"),
                 ["Igdb__ClientSecret"] = Amazon.CDK.AWS.ECS.Secret.FromSecretsManager(data.IgdbSecret, "ClientSecret"),
             },
-            Logging = Logging(site, "api"),
+            Logging = Logging(logs, "api"),
         });
 
         return (task, container);
@@ -205,7 +211,7 @@ public sealed class AppStack : Stack
                 // SITE_INDEXABLE stays unset: every response then says noindex (ADR 0036). HOST
                 // stays unset so the server listens on every interface, which the balancer needs.
             },
-            Logging = Logging(site, "ssr"),
+            Logging = Logging(LogGroup(site, "ssr"), "ssr"),
         });
 
         return task;
@@ -234,17 +240,16 @@ public sealed class AppStack : Stack
             MemoryLimitMiB = 512,
         });
 
-    private LogDriver Logging(Site site, string name) =>
-        LogDrivers.AwsLogs(new AwsLogDriverProps
+    private LogGroup LogGroup(Site site, string name) =>
+        new(this, $"{name}Logs", new LogGroupProps
         {
-            LogGroup = new LogGroup(this, $"{name}Logs", new LogGroupProps
-            {
-                LogGroupName = site.LogGroup(name),
-                Retention = RetentionDays.TWO_WEEKS,
-                RemovalPolicy = RemovalPolicy.DESTROY,
-            }),
-            StreamPrefix = name,
+            LogGroupName = site.LogGroup(name),
+            Retention = RetentionDays.TWO_WEEKS,
+            RemovalPolicy = RemovalPolicy.DESTROY,
         });
+
+    private static LogDriver Logging(ILogGroup logs, string name) =>
+        LogDrivers.AwsLogs(new AwsLogDriverProps { LogGroup = logs, StreamPrefix = name });
 
     private FargateService Service(Site site, DataStack data, string name, FargateTaskDefinition task,
         ISecurityGroup securityGroup, SubnetSelection subnets, bool registerInNamespace) =>

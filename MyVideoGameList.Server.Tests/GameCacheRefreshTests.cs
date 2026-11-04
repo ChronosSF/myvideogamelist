@@ -8,6 +8,7 @@ using Microsoft.Extensions.Options;
 using MyVideoGameList.Server.Data;
 using MyVideoGameList.Server.DTOs;
 using MyVideoGameList.Server.Models;
+using MyVideoGameList.Server.Observability;
 using MyVideoGameList.Server.Services;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
@@ -382,6 +383,29 @@ public class GameCacheRefreshTests
         Assert.Equal(Now - TimeSpan.FromDays(2), row.RefreshedAt);
         Assert.False(batch.Answered);
         Assert.Single(logger.At(LogLevel.Warning));
+    }
+
+    [Fact]
+    public async Task RefreshDueAsync_AsksIgdbUnderItsOwnDeadline_SoTheCallLineCountsRunningPastItFailed()
+    {
+        // Its fifteen seconds is the job's own deadline, and on a quiet site the job is the only
+        // caller IGDB has: without the mark, a hanging IGDB would end every call cancelled, and the
+        // alarm on IGDB's failure rate would count none of them (ADR 0080 §4).
+        using var db = WithRows(Row(1, TimeSpan.FromDays(2)));
+        using var job = new CancellationTokenSource();
+        CancellationToken? marked = null;
+        var igdb = Substitute.For<IIgdbService>();
+        igdb.GetGamesByIdsUncachedAsync(Arg.Any<IReadOnlyCollection<int>>(), Arg.Any<CancellationToken>())
+            .Returns(_ =>
+            {
+                marked = IgdbCallLog.CallersOwnToken;
+                return Task.FromResult<IReadOnlyList<GameDto>>([]);
+            });
+
+        await NewService(igdb).RefreshDueAsync(db, Now, job.Token);
+
+        Assert.Equal(job.Token, marked);
+        Assert.Null(IgdbCallLog.CallersOwnToken);
     }
 
     [Fact]

@@ -15,10 +15,12 @@ import { WishlistProvider } from '@/contexts/WishlistProvider';
 import { FavouritesProvider } from '@/contexts/FavouritesProvider';
 import { TagsProvider } from '@/contexts/TagsProvider';
 import { SearchPacerProvider } from '@/contexts/SearchPacerProvider';
-import { Honeycomb } from '@/components/Honeycomb';
+import { LookProvider } from '@/contexts/LookProvider';
+import { PagePattern } from '@/components/PagePattern';
 import { Navbar } from '@/components/Navbar';
 import { SiteFooter } from '@/components/SiteFooter';
 import { PRIVATE_NO_STORE } from '@/lib/cache';
+import { LOOK_SCRIPT } from '@/lib/look';
 import { isUpstreamFailure } from '@/lib/trace';
 import { traceMiddleware } from '@/lib/trace.server';
 import archivoDisplay from '@/assets/fonts/archivo-display-latin.woff2?url';
@@ -84,10 +86,20 @@ export const links: LinksFunction = () => [
  */
 export function Layout({ children }: { children: React.ReactNode }) {
     return (
-        <html lang="en">
+        // The look script below puts the reader's palette and pattern on this element before React
+        // hydrates it, as attributes the server cannot know, so their difference is expected here and
+        // only here: the warning is suppressed for this element's own attributes, not its children's.
+        <html lang="en" suppressHydrationWarning>
             <head>
                 <meta charSet="UTF-8" />
                 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+                {/*
+                  The reader's look, from the browser's copy of it, before the stylesheets and so before
+                  the first paint (ADR 0082). Before them, too, because a script after a stylesheet waits
+                  for it. A constant, admitted by its hash (`documentPolicy`); the one inline markup
+                  string the document renders, and it is ours.
+                */}
+                <script dangerouslySetInnerHTML={{ __html: LOOK_SCRIPT }} />
                 <Meta />
                 {/*
                   An explicit empty nonce, so that the links render the same on both sides.
@@ -113,30 +125,32 @@ export function Layout({ children }: { children: React.ReactNode }) {
 export default function Root() {
     return (
         <AuthProvider>
-            <ListsProvider>
-                <WishlistProvider>
-                    <FavouritesProvider>
-                        {/* Around the navbar and the pages both: their searches spend one budget. */}
-                        <SearchPacerProvider>
-                            <div className="app-root">
-                                <Honeycomb at="top" />
-                                <Honeycomb at="bottom" />
-                                {/* Around the navbar and the pages both: either may ask somebody to sign in. */}
-                                <AuthDialogProvider>
-                                    <Navbar />
-                                    <main className="flex-1">
-                                        {/* Around the pages alone: the navbar and the footer draw no tag. */}
-                                        <TagsProvider>
-                                            <Outlet />
-                                        </TagsProvider>
-                                    </main>
-                                    <SiteFooter />
-                                </AuthDialogProvider>
-                            </div>
-                        </SearchPacerProvider>
-                    </FavouritesProvider>
-                </WishlistProvider>
-            </ListsProvider>
+            <LookProvider>
+                <ListsProvider>
+                    <WishlistProvider>
+                        <FavouritesProvider>
+                            {/* Around the navbar and the pages both: their searches spend one budget. */}
+                            <SearchPacerProvider>
+                                <div className="app-root">
+                                    <PagePattern at="top" />
+                                    <PagePattern at="bottom" />
+                                    {/* Around the navbar and the pages both: either may ask somebody to sign in. */}
+                                    <AuthDialogProvider>
+                                        <Navbar />
+                                        <main className="flex-1">
+                                            {/* Around the pages alone: the navbar and the footer draw no tag. */}
+                                            <TagsProvider>
+                                                <Outlet />
+                                            </TagsProvider>
+                                        </main>
+                                        <SiteFooter />
+                                    </AuthDialogProvider>
+                                </div>
+                            </SearchPacerProvider>
+                        </FavouritesProvider>
+                    </WishlistProvider>
+                </ListsProvider>
+            </LookProvider>
         </AuthProvider>
     );
 }
@@ -172,8 +186,8 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
     // uses none: only the router's links, and the router is what renders this.
     return (
         <div className="app-root">
-            <Honeycomb at="top" />
-            <Honeycomb at="bottom" />
+            <PagePattern at="top" />
+            <PagePattern at="bottom" />
             <main className="flex-1 flex items-center justify-center py-24 px-4">
                 <div className="text-center max-w-md">
                     <h1 className="type-display text-4xl text-fg-strong mb-4">{title}</h1>

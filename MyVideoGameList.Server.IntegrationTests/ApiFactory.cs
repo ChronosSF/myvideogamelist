@@ -14,6 +14,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Options;
 using MyVideoGameList.Server.Data;
 using MyVideoGameList.Server.DTOs;
 using MyVideoGameList.Server.Security;
@@ -63,6 +64,9 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
 
     /// <summary>The CDN, for asserting what the API asked it to forget.</summary>
     public RecordingEdge Edge { get; } = new();
+
+    /// <summary>Who is an admin, named by a test once the account has an id.</summary>
+    public NamedAdmins Admins { get; } = new();
 
     /// <summary>This class's own database, for seeding and reading behind the API's back.</summary>
     public string ConnectionString { get; private set; } = "";
@@ -118,6 +122,9 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
 
             services.RemoveAll<IEdgeInvalidator>();
             services.AddSingleton<IEdgeInvalidator>(Edge);
+
+            // A closed registration, which the container prefers to the open one Options makes.
+            services.AddSingleton<IOptionsMonitor<AdminOptions>>(Admins);
 
             // Where the keys are kept, which is all that changes: the provider, the application name
             // and the key manager stay the application's own. Data Protection falls back to the

@@ -1,5 +1,6 @@
 import type { AdminStats } from '@/types/adminStats';
 import type { UserProfile } from '@/types/auth';
+import { DEFAULT_LOOK } from '@/types/look';
 import type { GameDetailsDto, GameDto, PlatformDto } from '@/types/game';
 import {
     IMPORT_DECISION,
@@ -259,6 +260,8 @@ export function userProfile(overrides: Partial<UserProfile> = {}): UserProfile {
         bio: null,
         profileVisibility: 'private',
         isAdmin: false,
+        look: { ...DEFAULT_LOOK },
+        canChooseLook: false,
         ...overrides,
     };
 }

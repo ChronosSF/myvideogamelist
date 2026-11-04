@@ -34,7 +34,7 @@ export function SiteFooter() {
                     <div className="max-w-sm">
                         <Link to="/" className="inline-flex items-center gap-3 type-display text-2xl sm:text-3xl text-fg-strong">
                             <Logo className="w-8 h-8 shrink-0" />
-                            <span>MyVideoGame<span className="text-brand-lime">List</span></span>
+                            <span>MyVideoGame<span className="text-logo-word">List</span></span>
                         </Link>
                         <p className="mt-4 text-sm text-fg-muted">
                             Track every game you play, and see what is coming for the ones you are waiting for.

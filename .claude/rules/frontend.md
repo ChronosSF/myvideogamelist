@@ -192,7 +192,9 @@ any other, so build new styling on these from the start:
   `@reference "../index.css";` at its top.
 - **Colours that carry meaning are scales named for the meaning,** such as `danger-300` for an
   error's words, and stay the same in every palette. Score colours still come from `@/lib/score`.
-- **The brand's colours** (`brand-navy`, `brand-lime`, `brand-light`) are the logo's.
+- **The brand's colours** (`brand-navy`, `brand-lime`, `brand-light`) are the logo's, and the same in every
+  palette. The logo's badge, its tick and the wordmark's "List" are `logo-badge`, `logo-tick` and
+  `logo-word`, the brand's in the default and the palette's accent in any other (ADR 0082).
 
 In a stylesheet the same tokens are `var(--color-surface)`. For a translucent colour, use the token
 with an opacity: `bg-surface/60`, or `color-mix(in srgb, var(--color-surface) 60%, transparent)`.
@@ -200,7 +202,12 @@ When nothing fits, add a token, named for its job rather than its look. Don't wr
 `rgb()`, a palette class like `text-slate-400`, or `var(--color-slate-400)` in its place.
 Translucent black and white, for shadows and scrims, are the one exception.
 
-There is one theme, dark: no `light:` variant and no `[data-theme='light']` rules (ADR 0048).
+There is one theme, dark: no `light:` variant and no `[data-theme='light']` rules (ADR 0048). It is drawn
+in the reader's palette (ADR 0082): the tokens in the `@theme` block are the default's, and every other
+palette works the surfaces, lines, text and primary out from two colours in the block at the end of
+`theme.css`. A new token of those kinds gets its line there as well; one that carries meaning stays out of it.
+Style with the tokens and it follows the palette: never read `--look-page` or `--look-accent` outside
+`theme.css`, except for a swatch of a palette, as the Look card's are.
 
 **Text is set by its role** (`docs/decisions/0075-*`), with the utilities in `src/type.css`, and the
 size beside it:

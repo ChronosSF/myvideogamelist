@@ -93,7 +93,7 @@ public sealed class DataStack : Stack
         {
             Engine = DatabaseInstanceEngine.Postgres(new PostgresInstanceEngineProps { Version = PostgresEngineVersion.VER_18 }),
             InstanceType = Amazon.CDK.AWS.EC2.InstanceType.Of(InstanceClass.BURSTABLE4_GRAVITON, InstanceSize.MICRO),
-            InstanceIdentifier = $"{site.Prefix}-db",
+            InstanceIdentifier = site.DatabaseIdentifier,
             DatabaseName = "myvideogamelist",
             Credentials = Credentials.FromSecret(DbSecret),
             Vpc = Vpc,
@@ -146,7 +146,7 @@ public sealed class DataStack : Stack
         // unless deleted within twelve hours, which is why it lives here and not with the services.
         Cluster = new Amazon.CDK.AWS.ECS.Cluster(this, "Cluster", new Amazon.CDK.AWS.ECS.ClusterProps
         {
-            ClusterName = site.Prefix,
+            ClusterName = site.ClusterName,
             Vpc = Vpc,
             EnableFargateCapacityProviders = true,
             DefaultCloudMapNamespace = new Amazon.CDK.AWS.ECS.CloudMapNamespaceOptions

@@ -34,6 +34,12 @@ public sealed record Site(string Env)
     /// <summary>The Parameter Store path the Data Protection key ring lives under (ADR 0043).</summary>
     public string DataProtectionPath => $"/mvgl/{Env}/data-protection";
 
+    /// <summary>The ECS cluster both services run in.</summary>
+    public string ClusterName => Prefix;
+
+    /// <summary>The database instance's identifier, which is also what its metrics are named by.</summary>
+    public string DatabaseIdentifier => $"{Prefix}-db";
+
     public string DbSecretName => $"mvgl/{Env}/db";
 
     public string IgdbSecretName => $"mvgl/{Env}/igdb";
@@ -54,4 +60,19 @@ public sealed record Site(string Env)
     public string OriginVerifyHeader => "X-Origin-Verify";
 
     public string OriginVerifySecretName => $"mvgl/{Env}/origin-verify";
+
+    /// <summary>
+    /// The topic every alarm of the environment is sent to, which the Alerts stack keeps and the
+    /// alarms name rather than reference, so that no App deploy waits on it (ADR 0080).
+    /// </summary>
+    public string AlertsTopicName => $"{Prefix}-alerts";
+
+    /// <summary>
+    /// The Parameter Store parameter holding the address the alarms are emailed to. Set by hand in
+    /// the environment's account and read at deploy time: the repository is public (ADR 0080).
+    /// </summary>
+    public string AlarmEmailParameter => $"/mvgl/{Env}/alarm-email";
+
+    /// <summary>The namespace of the metrics the API's log feeds.</summary>
+    public string MetricNamespace => $"MVGL/{Env}";
 }

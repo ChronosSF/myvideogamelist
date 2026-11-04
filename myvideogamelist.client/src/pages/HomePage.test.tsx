@@ -21,6 +21,7 @@ const authActions = {
     updateUserName: vi.fn(async () => {}),
     updateProfileVisibility: vi.fn(async () => {}),
     updateProfileDetails: vi.fn(async () => {}),
+    updateLook: vi.fn(async () => {}),
     deleteAccount: vi.fn(async () => {}),
 };
 

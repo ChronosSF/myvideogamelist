@@ -19,15 +19,36 @@ public static class ProfileVisibility
 public class ApplicationUser : IdentityUser
 {
     /// <summary>
-    /// The account's palette. There is one, dark, and nothing sets this any more (ADR 0048).
+    /// The account's palette, by name: one of <see cref="LookPolicy.Palettes"/> (ADR 0082). Every palette
+    /// is dark (ADR 0048).
     /// </summary>
     /// <remarks>
-    /// Kept rather than dropped because the palettes in #208 store the choice here, and kept in the
-    /// export with the rest of the account. An account that chose the light theme before it was
-    /// removed still says <c>light</c>; whatever reads this again must treat a value it does not know
-    /// as dark.
+    /// The column the dark theme left, kept for this (issue 208), and in the export with the rest of the
+    /// account. The migration that brought the palettes rewrote the <c>dark</c> and <c>light</c> it held
+    /// to the default; a reader still goes through <see cref="LookPolicy.PaletteOf"/>, so a name a later
+    /// release retires reads as the default rather than as nothing.
     /// </remarks>
-    public string Theme { get; set; } = "dark";
+    public string Theme { get; set; } = LookPolicy.DefaultPalette;
+
+    /// <summary>
+    /// A custom palette's background and accent, as <c>#rrggbb</c> in lower case; both set when
+    /// <see cref="Theme"/> is <c>custom</c>, and neither otherwise, as the table's check says. The rest of a
+    /// custom palette, its surfaces and the accent's lighter and darker steps, is the stylesheet's to work
+    /// out from these two, as it does for every preset.
+    /// </summary>
+    public string? ThemeBackground { get; set; }
+
+    /// <inheritdoc cref="ThemeBackground"/>
+    public string? ThemeAccent { get; set; }
+
+    /// <summary>
+    /// The pattern drawn behind the top and the foot of every page, by name: one of
+    /// <see cref="LookPolicy.Patterns"/>, <c>none</c> among them (ADR 0082).
+    /// </summary>
+    public string BackgroundPattern { get; set; } = LookPolicy.DefaultPattern;
+
+    /// <summary>Whether that pattern is drawn in the page's grey or in the palette's accent.</summary>
+    public string PatternTint { get; set; } = LookPolicy.DefaultTint;
 
     /// <summary>
     /// Tiles or table, for the list views. Global rather than per list: the layout is a habit,
