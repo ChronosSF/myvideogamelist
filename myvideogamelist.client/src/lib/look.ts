@@ -79,4 +79,4 @@ export const LOOK_SCRIPT = '(function(){try{'
     + '}catch(e){}})()';
 
 /** `LOOK_SCRIPT`'s SHA-256, base64, as a `script-src` source names it. */
-export const LOOK_SCRIPT_HASH = 'sha256-EtoP6a3oN6T3yDWHN2q9CRwrAjp1LAdmSKH3oWr7yic=';
+export const LOOK_SCRIPT_HASH = 'sha256-VhPeW3QeoWbT9VjJWfNZjtUYpWz+enQ+T36zgDI20R0=';

@@ -13,8 +13,8 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace MyVideoGameList.Server.Data.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    [Migration("20261104114601_AddOxbloodPalette")]
-    partial class AddOxbloodPalette
+    [Migration("20261104114601_AddOnyxPalette")]
+    partial class AddOnyxPalette
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -290,7 +290,7 @@ namespace MyVideoGameList.Server.Data.Migrations
 
                             t.HasCheckConstraint("CK_AspNetUsers_ProfileVisibility", "\"ProfileVisibility\" IN ('public', 'private')");
 
-                            t.HasCheckConstraint("CK_AspNetUsers_Theme", "\"Theme\" IN ('ink', 'slate', 'dusk', 'plum', 'graphite', 'oxblood', 'custom')");
+                            t.HasCheckConstraint("CK_AspNetUsers_Theme", "\"Theme\" IN ('ink', 'slate', 'dusk', 'plum', 'graphite', 'onyx', 'custom')");
 
                             t.HasCheckConstraint("CK_AspNetUsers_ThemeColours", "(\"Theme\" = 'custom') = (\"ThemeBackground\" IS NOT NULL AND \"ThemeAccent\" IS NOT NULL) AND (\"ThemeBackground\" IS NULL OR \"ThemeBackground\" ~ '^#[0-9a-f]{6}$') AND (\"ThemeAccent\" IS NULL OR \"ThemeAccent\" ~ '^#[0-9a-f]{6}$')");
                         });

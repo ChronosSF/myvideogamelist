@@ -96,9 +96,13 @@ wishlist, the tags, and the brand's own tokens, are not touched by any palette.
 
 The presets are the mockup's: **Ink and lime**, the default; **Slate and ice**, a cool grey and sky-300;
 **Dusk and periwinkle**, a violet-grey and indigo-300; **Plum and orchid**, a red-violet grey and
-fuchsia-300; **Graphite and chalk**, a grey with no hue and the paper itself as the accent; and **Oxblood
-and cream**, a deep red-brown and a warm paper. Oxblood is the red put where a red can be had: an accent
-red enough to read as red is near an error's red, as §5 says, but a page that is red is taken for nothing.
+fuchsia-300; **Graphite and chalk**, a grey with no hue and the paper itself as the accent; and **Onyx and
+wine**, a black with no hue, darker than Graphite, and a dark wine red. Wine is the one dark accent, so its
+buttons are wine with light words on them, and its text shade is a readable rose by the floor above. It is a
+red nearer burgundy than an error's, and by §5's measure clears every shade an error is drawn in: the 700 of
+an error's button by nearly twice the margin, an error's words only just. A first draft put the red in the
+page instead, a red-brown under a cream accent, to keep the accent away from an error's red; every surface,
+line and word worked out from that page came out red with it.
 
 ### 5. A custom palette is checked on the page; one check holds it back, the rest advise
 
@@ -123,9 +127,9 @@ are read back off a probe and compared. Five checks:
 
 Advice, because a look is its owner's alone and drawn for nobody else: somebody who can read faint text, or
 wants an accent near a colour that means something, is told beside the palette, in a warning's colour, and
-the palette is saved. The first pass blocked on all five, and no dark red accent could pass, since a red
-enough to read as red is near an error's red; that is what a preset like Oxblood is for, and a custom dark
-red now saves with its one warning. The presets are not run through the checks: they are chosen by hand.
+the palette is saved. The first pass blocked on all five, and measured nearness by hue alone, under which
+no red accent could pass; now a custom red near an error's saves with its one warning, and a wine like the
+Onyx preset's raises none. The presets are not run through the checks: they are chosen by hand.
 By this measure Dusk's periwinkle is near the favourite's light violet, the 300 its words are drawn in, and
 a custom palette of it would be warned; whether the preset moves is the default's question (#208). A
 request that skips the checks spoils only its sender's screen.

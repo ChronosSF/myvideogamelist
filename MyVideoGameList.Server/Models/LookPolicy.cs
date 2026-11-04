@@ -25,7 +25,7 @@ public static class LookPolicy
     public const string CustomPalette = "custom";
 
     /// <summary>The palettes, the default first. <c>custom</c> is the one that carries colours of its own.</summary>
-    public static readonly IReadOnlyList<string> Palettes = [DefaultPalette, "slate", "dusk", "plum", "graphite", "oxblood", CustomPalette];
+    public static readonly IReadOnlyList<string> Palettes = [DefaultPalette, "slate", "dusk", "plum", "graphite", "onyx", CustomPalette];
 
     public const string DefaultPattern = "honeycomb";
 

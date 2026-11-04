@@ -193,10 +193,10 @@
     --look-accent: oklch(95.3% 0.013 86.8);     /* Chalk: the paper, fg-strong, as the only accent. #f3efe6 */
 }
 
-:root[data-palette='oxblood'],
-[data-palette-preview='oxblood'] {
-    --look-page: oklch(22% 0.045 22);           /* Oxblood, a deep red-brown: the red in the page, where it cannot be taken for an error. #2c1111 */
-    --look-accent: oklch(91% 0.035 85);         /* Cream, a warm paper. #ece0c8 */
+:root[data-palette='onyx'],
+[data-palette-preview='onyx'] {
+    --look-page: oklch(19% 0 0);                /* Onyx, a black with no hue, darker than Graphite: a trace of the wine would tint all the text. #141414 */
+    --look-accent: oklch(45% 0.13 8);           /* Wine, nearer burgundy than an error's red: the one dark accent, so its buttons carry light words. #8e2e47 */
 }
 
 /*
