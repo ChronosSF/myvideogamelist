@@ -1,0 +1,85 @@
+/*
+ * A map's isometric grid: 2:1 tiles, 64 by 32 as city-builders and level editors draw them, a few of them
+ * raised a step or two and lit. Two layers, each a token colour cut out by a mask, so the palette decides
+ * its colours: the grid's hairlines, faint paper, brighter where a glow comes through them at one corner;
+ * and the raised tiles' faces, lit in paper, which breathe. Grey rather than the primary, and the square
+ * seen at an angle that every isometric game draws rather than a shape of anybody's own, so it says games
+ * without saying whose. Each mask is the pattern intersected with a fade that is gone by half a screen.
+ * Behind the page's content at z-index -1, over the root's background: `.app-root` draws none of its own.
+ *
+ * Both masks are one period of the map, nine tiles across and seven down, drawn at their own size, 576 by
+ * 224: wide enough that a desktop shows a raised tile twice across rather than three times in a row. The
+ * grid's is the two families of 2:1 lines, cut away under each raised tile, and the raised tiles' own
+ * edges; the lit one is the same tiles' faces, the top at the tile's strength and the sides at 60% and 35%
+ * of it, so each reads as lit from above and to the left. A raised tile at the period's edge is drawn again
+ * at the far edge, so it wraps. Everything sits half a pixel to the right, so the upright edges fall on a
+ * pixel column rather than smearing across two.
+ *
+ * The top one is a screen tall, its glow up at the right. The bottom one spans the whole page and draws at
+ * its foot, its glow down at the left: a box anchored to the page's bottom would move down whenever the
+ * page grew under it, as the lists do when they arrive after the first paint, and a screen-tall box moving
+ * is a layout shift of most of the screen. Spanning from the top, it only grows. Both tile their pattern
+ * from the page's top, so where a short page has the two meet, the tiles line up.
+ */
+.isometric-grid {
+    --isometric-grid-end: top;
+    --isometric-grid-fade: to bottom;
+    --isometric-grid-glow-at: 78% 0%;
+    position: absolute;
+    inset: 0 0 auto;
+    height: 100svh;
+    z-index: -1;
+    pointer-events: none;
+}
+
+.isometric-grid[data-at='bottom'] {
+    --isometric-grid-end: bottom;
+    --isometric-grid-fade: to top;
+    --isometric-grid-glow-at: 22% 100%;
+    height: auto;
+    bottom: 0;
+}
+
+.isometric-grid::before,
+.isometric-grid::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-repeat: no-repeat;
+    background-position: var(--isometric-grid-end);
+    background-size: 100% 100svh;
+    mask-repeat: repeat, no-repeat;
+    mask-position: 0 0, var(--isometric-grid-end);
+    mask-composite: intersect;
+}
+
+.isometric-grid::before {
+    background-color: color-mix(in srgb, var(--color-fg-strong) 8%, transparent);
+    background-image: radial-gradient(ellipse 55% 70% at var(--isometric-grid-glow-at), color-mix(in srgb, var(--color-fg-strong) 40%, transparent), transparent 75%);
+    /* Eased rather than linear: slow at first, then quickly through the last few shades. A hairline this faint
+       has a score of shades above the page, and as it fades the in-between ones that smooth its diagonals
+       round away, so the tail is kept short rather than drawn out in stairs. */
+    mask-image:
+        url('../assets/isometric-grid.svg?no-inline'),
+        linear-gradient(var(--isometric-grid-fade), black 15%, rgb(0 0 0 / 0.85) 30%, rgb(0 0 0 / 0.6) 40%, rgb(0 0 0 / 0.35) 46%, transparent 50%);
+    mask-size: 576px 224px, 100% 100svh;
+}
+
+.isometric-grid::after {
+    background-color: color-mix(in srgb, var(--color-fg-strong) 5%, transparent);
+    background-image: radial-gradient(ellipse 50% 65% at var(--isometric-grid-glow-at), color-mix(in srgb, var(--color-fg-strong) 24%, transparent), transparent 80%);
+    mask-image: url('../assets/isometric-grid-lit.svg?no-inline'), linear-gradient(var(--isometric-grid-fade), black 10%, transparent 50%);
+    mask-size: 576px 224px, 100% 100svh;
+    animation: isometric-grid-breathe 6s ease-in-out infinite alternate;
+}
+
+@keyframes isometric-grid-breathe {
+    from { opacity: 0.45; }
+    to { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .isometric-grid::after {
+        animation: none;
+    }
+}
