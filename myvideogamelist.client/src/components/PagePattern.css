@@ -110,24 +110,6 @@
 }
 
 /*
- * At the foot of the page the floor fades the other way along its depth, so that what it shows is its
- * recession rather than its nearest cells: faint at the edge, under the footer, where the floor is a few big
- * cells; at full strength from depth 3 to depth 4, where its rows close up; and gone by depth 6, the
- * half-screen line, in a short tail as before. A stop a fraction s of the screen from the edge is at depth
- * 0.6 / (0.6 - s): 20% is depth 1.5, 30% is 2, 40% is 3, 45% is 4 and 48% is 5. Its glow is up at depth 4
- * too, at the left. The ceiling keeps the common fade, its nearest cells under the bar and the page's title.
- */
-:root[data-pattern='perspective'] .page-pattern[data-at='bottom'] {
-    --page-pattern-glow-at: 22% 55%;
-}
-
-:root[data-pattern='perspective'] .page-pattern[data-at='bottom']::before {
-    mask-image:
-        var(--page-pattern-lines-image),
-        linear-gradient(to top, rgb(0 0 0 / 0.35), rgb(0 0 0 / 0.55) 20%, rgb(0 0 0 / 0.8) 30%, black 40%, black 45%, rgb(0 0 0 / 0.5) 48%, transparent 50%);
-}
-
-/*
  * A dot-matrix panel, as an LED scoreboard or a screen seen close up shows one: square pixels two wide on a
  * pitch of eight, a few lit in small clusters, each with a stepped bloom as pixel art draws a light. The
  * pitch is a whole number of device pixels at 1, 1.25, 1.5 and 2 times, and the masks are drawn with crisp
