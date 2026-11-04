@@ -26,7 +26,12 @@ public class ImportService(
     /// a new service is a new <see cref="IImportSource"/> and this line, with nothing downstream
     /// of it changing.
     /// </summary>
-    private static readonly IImportSource[] Sources = [new GrouveeImportSource()];
+    /// <remarks>
+    /// Asked in this order, and ours first because its fingerprint is exact where Grouvee's is a
+    /// word anywhere in the head: an export of ours whose bio says "moved here from Grouvee" would
+    /// otherwise be handed to Grouvee's reader and refused as a bad Grouvee file.
+    /// </remarks>
+    private static readonly IImportSource[] Sources = [new MyVideoGameListImportSource(), new GrouveeImportSource()];
 
     /// <summary>
     /// Five thousand rows (§S7). Generous against a real export — the one this was built from has
@@ -94,7 +99,7 @@ public class ImportService(
         var name = SafeFileName(fileName);
         var source = Detect(name, content)
             ?? throw new ImportRejectedException(
-                "That file is not an export MyVideoGameList recognises. Grouvee's JSON or CSV export is supported.");
+                "That file is not an export MyVideoGameList recognises. Grouvee's JSON or CSV export and MyVideoGameList's own are supported.");
 
         // Parsing is the only thing that can reject the file on its contents, and it happens before
         // a row is written: a file that fails here leaves no job behind to clean up.
@@ -118,6 +123,8 @@ public class ImportService(
             throw new ImportRejectedException(string.Create(
                 CultureInfo.InvariantCulture,
                 $"That export has {payloads.Count:N0} rows, and the limit is {MaxRows:N0}."));
+
+        payloads = await NameUntitledAsync(payloads, cancellationToken);
 
         var now = clock.GetUtcNow();
 
@@ -675,7 +682,9 @@ public class ImportService(
                     // run carrying minutes feeds the community medians, so this is the one field
                     // here that other members read.
                     TypeId = run.Type is { } typeKey && types.TryGetValue(typeKey, out var typeId) ? typeId : null,
-                    PlatformId = ResolvePlatform(run.PlatformName, games.GetValueOrDefault(gameId)),
+                    // An id the source already holds wins; otherwise the name is looked for in the
+                    // game's own platforms (ADR 0083).
+                    PlatformId = run.PlatformId ?? ResolvePlatform(run.PlatformName, games.GetValueOrDefault(gameId)),
                     MinutesPlayed = run.MinutesPlayed,
                     StartedOn = run.StartedOn,
                     FinishedOn = run.FinishedOn,
@@ -731,6 +740,49 @@ public class ImportService(
         return game.Platforms
             .FirstOrDefault(p => string.Equals(p.Name, name, StringComparison.OrdinalIgnoreCase))
             ?.Id;
+    }
+
+    /// <summary>
+    /// A title for each row its source named by id alone, read from <c>CachedGames</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Our own export names a game by its IGDB id and nothing else (ADR 0024), so its rows arrive
+    /// with an empty title, and the title is what the review screen, a row's own search and the
+    /// failure report all show. The release year comes with it, as the review prints it beside one.
+    /// </para>
+    /// <para>
+    /// From the table directly rather than through <see cref="IGameCacheService"/>, which refreshes
+    /// what is stale from IGDB: read this way the upload still makes no network call (ADR 0037), and
+    /// a game the cache has never held, or holds as a tombstone, is named by its id. The review's
+    /// own read fetches what is missing for its covers, so it costs that row its name and nothing
+    /// else (ADR 0083).
+    /// </para>
+    /// </remarks>
+    private async Task<IReadOnlyList<ImportRowPayload>> NameUntitledAsync(
+        IReadOnlyList<ImportRowPayload> payloads, CancellationToken cancellationToken)
+    {
+        var untitled = payloads
+            .Where(p => p.Title.Length == 0 && p.GameId is not null)
+            .Select(p => p.GameId!.Value)
+            .Distinct()
+            .ToList();
+
+        if (untitled.Count == 0) return payloads;
+
+        var cached = await db.CachedGames
+            .AsNoTracking()
+            .Where(c => untitled.Contains(c.GameId) && c.Title != null)
+            .Select(c => new { c.GameId, c.Title, c.ReleaseDate })
+            .ToDictionaryAsync(c => c.GameId, cancellationToken);
+
+        return payloads
+            .Select(p => p.Title.Length > 0 || p.GameId is not { } id
+                ? p
+                : cached.TryGetValue(id, out var game)
+                    ? p with { Title = game.Title!, ReleaseYear = p.ReleaseYear ?? game.ReleaseDate?.Year }
+                    : p with { Title = string.Create(CultureInfo.InvariantCulture, $"IGDB game {id}") })
+            .ToList();
     }
 
     /// <summary>

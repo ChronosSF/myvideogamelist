@@ -99,6 +99,7 @@ grow a forward pointer when a later record or an issue closes something it left 
 | [0079](0079-a-migration-waits-five-seconds-for-a-lock-and-no-transaction-idles-past-a-minute.md) | A migration waits five seconds for a lock, and no transaction of the API's idles past a minute | Implemented |
 | [0080](0080-an-alarm-watches-what-a-reader-sees-and-mails-an-address-nobody-commits.md) | An alarm watches what a reader sees, and mails an address the repository never holds | Implemented; proved only by a deploy |
 | [0082](0082-a-look-is-a-palette-a-pattern-and-a-tint-kept-on-the-account.md) | A look is a palette, a pattern and a tint, kept on the account by name, drawn before the first paint and worked out from two colours; admins choose, until #208 decides the price | Implemented |
+| [0083](0083-our-own-export-is-imported-as-any-trackers-is.md) | Our own export is imported as any tracker's is: every import rule applies, no history comes from a file, and it is free | Implemented |
 
 **Status** — *Accepted*: decided, not yet built. *Implemented*: decided and in the code.
 *Superseded*: replaced by a later record.

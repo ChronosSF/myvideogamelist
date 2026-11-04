@@ -56,6 +56,13 @@ public static class EntryOrigins
 
     /// <summary>Imported from a Grouvee export (ADR 0037).</summary>
     public const string Grouvee = "grouvee";
+
+    /// <summary>
+    /// Imported from a MyVideoGameList export (ADR 0083). Not <see cref="Manual"/>, although the
+    /// statuses were once set by hand here: the import brings none of their events, so the entry's
+    /// status has none behind it in this account, which is exactly what this column is for.
+    /// </summary>
+    public const string MyVideoGameList = "myvideogamelist";
 }
 
 /// <summary>

@@ -18,6 +18,12 @@ public static class ImportSources
 {
     /// <summary>Grouvee's account export, in either the JSON or the CSV form.</summary>
     public const string Grouvee = "grouvee";
+
+    /// <summary>
+    /// This site's own data export, <c>GET /api/user/export</c>, read back in under the same rules
+    /// as any tracker's (ADR 0083).
+    /// </summary>
+    public const string MyVideoGameList = "myvideogamelist";
 }
 
 /// <summary>

@@ -241,8 +241,9 @@ export function UserPage() {
                         <div className="user-card">
                             <div className="user-card-label">Import from another tracker</div>
                             <p className="user-card-hint">
-                                Bring your games across from Grouvee. You see every game, and what we
-                                made of it, before anything is saved.
+                                Bring your games across from Grouvee, or back from a MyVideoGameList
+                                export. You see every game, and what we made of it, before anything is
+                                saved.
                             </p>
                             <Link to="/import" className="user-btn user-card-action">Start an import</Link>
                         </div>

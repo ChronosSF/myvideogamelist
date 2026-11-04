@@ -298,7 +298,10 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   `REPEATABLE READ` transaction, so a new section must read through the context it is handed — a
   service or scope with its own context reads outside the snapshot. InMemory has no isolation and
   cannot see it; the integration suite's `ExportSnapshotTests` shows it holding against PostgreSQL,
-  over the import's two sections only. See `docs/decisions/0024-*` and `0057-*`.
+  over the import's two sections only. **And the import reads it back**: `MyVideoGameListImportSource`
+  reads the exporter's own records under every import rule, so a renamed property is renamed for both,
+  but a file saved before the rename loses that field silently. `ExportRoundTripTests` asserts what
+  comes back and what is meant to stay behind. See `docs/decisions/0024-*`, `0057-*` and `0083-*`.
 
 - **A child table of the entry carries its own `UserId`, because the ownership guard keys on it.**
   `UserOwnedDataTests` selects user-owned entities by the *presence of a `UserId` property* and then

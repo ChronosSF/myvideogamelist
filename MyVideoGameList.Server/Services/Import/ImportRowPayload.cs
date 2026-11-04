@@ -15,7 +15,11 @@ namespace MyVideoGameList.Server.Services.Import;
 /// turning that into rows is the commit's job.
 /// </para>
 /// </remarks>
-/// <param name="Title">As the source spelled it. Shown on the review screen and in the failure report.</param>
+/// <param name="Title">
+/// As the source spelled it. Shown on the review screen and in the failure report. Empty only from a
+/// source that names the game by <paramref name="GameId"/> alone, as our own export does, and named
+/// from the local cache at upload (ADR 0083).
+/// </param>
 /// <param name="ReleaseYear">
 /// Disambiguates remakes and reboots. Unused by a source that carries ids, and the second most
 /// valuable matching signal for one that does not.
@@ -107,6 +111,17 @@ internal sealed record ImportRowPayload(
 /// Free text, resolved to an IGDB platform id at commit time if it resolves at all. A name we
 /// cannot place leaves the platform null rather than failing the run.
 /// </param>
+/// <param name="PlatformId">
+/// <para>
+/// The IGDB platform id, from a source that already holds ours — our own export does (ADR 0083).
+/// Preferred over <paramref name="PlatformName"/> at commit, and stored as given, as a run logged by
+/// hand is: <c>PlaythroughInputDto</c> checks only that it is positive, and so does the source.
+/// </para>
+/// <para>
+/// Absent from a payload stored before the field existed, and from every Grouvee row, which reads
+/// back as null and leaves the name to resolve as it always did.
+/// </para>
+/// </param>
 /// <param name="Type">
 /// <para>
 /// One of <c>PlaythroughTypeKeys</c>, never the source's own wording, so that everything after the
@@ -124,4 +139,5 @@ internal sealed record ImportPlaythroughPayload(
     DateOnly? FinishedOn,
     int? MinutesPlayed,
     string? PlatformName,
-    string? Type);
+    string? Type,
+    int? PlatformId = null);
