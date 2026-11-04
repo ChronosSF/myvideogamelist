@@ -7,9 +7,10 @@
  * as a class, `color-mix(in srgb, var(--color-page) 95%, transparent)` in a stylesheet.
  * `npm run lint` refuses a colour written anywhere else (`scripts/check-colours.mjs`).
  *
- * One theme, dark (ADR 0048). The palettes of #208 will give the surfaces, the lines and the primary
- * other values; the text stays light, and the colours that carry meaning and the brand's stay as they
- * are in every palette.
+ * One theme, dark (ADR 0048), in one of several palettes (ADR 0082). The tokens below are the default's;
+ * the others, at the end of this file, give the surfaces, the lines, the text and the primary other values.
+ * The text stays light, and the colours that carry meaning and the brand's stay as they are in every palette;
+ * the logo's badge and wordmark are tokens of their own, which follow the palette's accent.
  *
  * This palette is the editorial one (ADR 0075): ink and paper, and the logo's lime as the one accent.
  * It is built so that a palette is few decisions, not forty:
@@ -142,4 +143,112 @@
     --color-brand-navy: #182b4d;
     --color-brand-lime: #a3e635;
     --color-brand-light: #f8fafc;
+
+    /* The logo's parts that follow the palette (ADR 0082): the brand's lime and navy in the default, and in
+       any other palette its accent and the words on it. A file the browser fetches on its own, the favicon
+       and the share image, never sees a palette and keeps the brand's. */
+    --color-logo-badge: var(--color-brand-lime);  /* The mark's "done" badge */
+    --color-logo-tick: var(--color-brand-navy);   /* The tick on the badge */
+    --color-logo-word: var(--color-brand-lime);   /* "List" in the wordmark */
+}
+
+/*
+ * The other palettes (ADR 0082), chosen by `<html data-palette>`, which the look script sets before the first
+ * paint. Each is two colours, its page and its accent, as the custom one is, and the rest is worked out from
+ * them below in the default's own steps: so a preset is two decisions, and a custom palette is drawn by the
+ * same rules as the presets and checked against what they produce (`@/lib/lookChecks`). The default keeps
+ * its tokens as written above, which the steps were taken from, rather than their working out.
+ *
+ * `--look-page` and `--look-accent` are the two colours, here for the presets and on the element itself for
+ * a custom palette. `[data-palette-preview]` gives the same two to the settings page's swatch of each, which
+ * draws only them. The hex beside each is what it renders as.
+ */
+:root,
+[data-palette-preview='ink'] {
+    --look-page: oklch(21.5% 0.003 67.7);       /* The default's page and primary-500, as above. #1a1918 */
+    --look-accent: oklch(84.1% 0.238 128.85);   /* #9ae600 */
+}
+
+:root[data-palette='slate'],
+[data-palette-preview='slate'] {
+    --look-page: oklch(21.6% 0.013 258.4);      /* Slate, a cool blue-grey. #161a20 */
+    --look-accent: oklch(82.8% 0.101 230.3);    /* Ice: sky-300, nearer cyan than Playing's blue. #7dd3fc */
+}
+
+:root[data-palette='dusk'],
+[data-palette-preview='dusk'] {
+    --look-page: oklch(21.9% 0.018 290);        /* Dusk, a grey with violet in it. #1a1922 */
+    --look-accent: oklch(78.5% 0.104 274.7);    /* Periwinkle: indigo-300, lighter than both the blue and the violet that mean something. #a5b4fc */
+}
+
+:root[data-palette='plum'],
+[data-palette-preview='plum'] {
+    --look-page: oklch(21.4% 0.015 326.1);      /* Plum, a grey with red-violet in it. #1d171d */
+    --look-accent: oklch(83.3% 0.132 321.4);    /* Orchid: fuchsia-300, between the favourite's violet and the wishlist's pink. #f0abfc */
+}
+
+:root[data-palette='graphite'],
+[data-palette-preview='graphite'] {
+    --look-page: oklch(22.2% 0 0);              /* Graphite, a grey with no hue. #1b1b1b */
+    --look-accent: oklch(95.3% 0.013 86.8);     /* Chalk: the paper, fg-strong, as the only accent. #f3efe6 */
+}
+
+:root[data-palette='onyx'],
+[data-palette-preview='onyx'] {
+    --look-page: oklch(19% 0 0);                /* Onyx, a black with no hue, darker than Graphite: a trace of the wine would tint all the text. #141414 */
+    --look-accent: oklch(45% 0.13 8);           /* Wine, nearer burgundy than an error's red: the one dark accent, so its buttons carry light words. #8e2e47 */
+}
+
+/*
+ * The working out, where the browser can do it; a browser that cannot draws every palette as the default.
+ *   - The surfaces step from the page by the default's steps in lightness, with a little more of its chroma
+ *     at each, as the default has.
+ *   - The text and the lines are the default's lightnesses in the page's own hue, at a chroma five times the
+ *     page's and never more than 0.02, so a grey page has grey text and a tinted one text with a trace of it.
+ *   - The primary steps from the accent by the default's steps in lightness and chroma, the lighter ones
+ *     capped short of white. Those three are the ones drawn as text — the active tab, a link, a mark of
+ *     what is the reader's own — so each also has a floor, light enough to read on a dark page however dark
+ *     the accent: a dark red is dark red on a button and a readable red as text. The keyboard focus is
+ *     drawn in the text shade for the same reason. The darker four have a floor too, in step, so that a
+ *     dark accent's tints and borders stay lighter than the page rather than going to black. And the 600,
+ *     the hover of a filled button and the fill of a chosen chip, steps away from the page: darker than a
+ *     light accent, lighter than a dark one, though never past 0.55, where light words still read on it.
+ *   - The logo's badge is the accent, its tick the words on a button, and the wordmark's "List" the text
+ *     shade.
+ *   - The words on a filled button are dark on a light accent and light on a dark one, the change at a
+ *     lightness of 0.6, where the two are about as readable as each other.
+ */
+@supports (color: oklch(from red l c h)) {
+    :root[data-palette]:not([data-palette='ink']) {
+        --color-sunken: oklch(from var(--look-page) calc(l - 0.028) c h);
+        --color-page: var(--look-page);
+        --color-surface: oklch(from var(--look-page) calc(l + 0.04) calc(c * 1.3) h);
+        --color-raised: oklch(from var(--look-page) calc(l + 0.079) calc(c * 1.5) h);
+
+        --color-line: oklch(from var(--look-page) 0.953 min(calc(c * 5), 0.02) h / 0.13);
+        --color-line-strong: oklch(from var(--look-page) 0.953 min(calc(c * 5), 0.02) h / 0.26);
+
+        --color-fg-strong: oklch(from var(--look-page) 0.953 min(calc(c * 5), 0.02) h);
+        --color-fg: oklch(from var(--look-page) 0.883 min(calc(c * 5), 0.02) h);
+        --color-fg-soft: oklch(from var(--look-page) 0.819 min(calc(c * 5), 0.02) h);
+        --color-fg-muted: oklch(from var(--look-page) 0.707 min(calc(c * 5), 0.02) h);
+        --color-fg-faint: oklch(from var(--look-page) 0.67 min(calc(c * 5), 0.02) h);
+        --color-fg-dim: oklch(from var(--look-page) 0.546 min(calc(c * 5), 0.02) h);
+
+        --color-primary-200: oklch(from var(--look-accent) clamp(0.86, calc(l + 0.126), 0.98) calc(c * 0.28) h);
+        --color-primary-300: oklch(from var(--look-accent) clamp(0.8, calc(l + 0.097), 0.97) calc(c * 0.53) h);
+        --color-primary-400: oklch(from var(--look-accent) clamp(0.74, calc(l + 0.056), 0.96) calc(c * 0.82) h);
+        --color-primary-500: var(--look-accent);
+        --color-primary-600: oklch(from var(--look-accent) max(calc(l - 0.073), min(calc(l + 0.073), 0.55)) calc(c * 0.98) h);
+        --color-primary-700: oklch(from var(--look-accent) max(calc(l - 0.193), 0.42) calc(c * 0.84) h);
+        --color-primary-800: oklch(from var(--look-accent) max(calc(l - 0.309), 0.36) calc(c * 0.66) h);
+        --color-primary-900: oklch(from var(--look-accent) max(calc(l - 0.388), 0.31) calc(c * 0.52) h);
+        --color-primary-950: oklch(from var(--look-accent) max(calc(l - 0.567), 0.26) calc(c * 0.3) h);
+        --color-on-primary: oklch(from var(--look-accent) clamp(0.2, calc((0.6 - l) * 1000), 0.953) 0 0);
+        --color-focus: var(--color-primary-400);
+
+        --color-logo-badge: var(--look-accent);
+        --color-logo-tick: var(--color-on-primary);
+        --color-logo-word: var(--color-primary-400);
+    }
 }
