@@ -61,7 +61,11 @@ build behind a stand-in that does route `/api` (ADR 0060).
 Health endpoints: `/healthz` (liveness, no dependency checks) and `/readyz` (database and
 IGDB reachability). A degraded IGDB returns 200, not 503 — browsing breaks but stored lists
 still work, so the instance should stay in rotation. Which commit is running: `/api/version` on the
-API and `/version` on the SSR server, each `{ sha, builtAt }`, `unknown` locally (ADR 0059).
+API and `/version` on the SSR server, each `{ sha, builtAt }`, `unknown` locally (ADR 0059). What
+says a deployed site is failing: five alarms and a rule in the `App` stack, emailed through the
+hand-deployed `Alerts` stack to the address in the `/mvgl/<env>/alarm-email` parameter, which the
+repository never holds; the IGDB one counts the API's Information line per IGDB call
+(`Observability/IgdbCallLog.cs`, ADR 0080, `infra/README.md`).
 
 ## Layout
 
@@ -70,7 +74,7 @@ MyVideoGameList.Server/         ASP.NET Core 10 API
   Controllers/  Services/  Models/  DTOs/  Data/  HealthChecks/
   Security/                     Rate limits, forwarded headers, security headers, the write guard, the admin policy
   Errors/                       What each kind of failure leaves as
-  Observability/                The trace id, the request log, the JSON console, /api/version
+  Observability/                The trace id, the request log, the IGDB call line, the JSON console, /api/version
 MyVideoGameList.Server.Tests/   xUnit tests
 MyVideoGameList.Server.IntegrationTests/  The API over PostgreSQL in a container, for what InMemory cannot do
 myvideogamelist.client/
