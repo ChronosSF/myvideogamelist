@@ -111,8 +111,10 @@ builder.Services.AddEdgeInvalidation(builder.Configuration);
 // The clock, injected so the event log's timestamps are controllable in tests.
 builder.Services.AddSingleton(TimeProvider.System);
 
+// Every session the API opens ends if it sits idle in a transaction for a minute, so a transaction
+// nobody finishes cannot hold its locks for as long as the process lives. See docs/decisions/0079-*.
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
-    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
+    options.UseNpgsql(SessionLimits.ForApi(builder.Configuration.GetConnectionString("DefaultConnection"))));
 
 // Readiness checks. Liveness (/healthz) deliberately runs no checks - it answers
 // "is the process up", not "are its dependencies well".
@@ -177,6 +179,9 @@ builder.Services.ConfigureApplicationCookie(options =>
     // The cookie that says, to the edge and the home page's server render, that a browser is signed in
     // and nothing about who (ADR 0074).
     SignedInFlag.FollowTheSession(options.Events);
+    // A deleted account's other sessions end on their next request, not at the next stamp check
+    // half an hour later (ADR 0077).
+    DeletedAccountSessions.EndAtOnce(options.Events);
 });
 
 // The key ring that cookie above is signed with, and the review cursor sealed with. Shared through

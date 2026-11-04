@@ -1,6 +1,6 @@
 # 0044. What the deployment walkthrough settled, and where it found the records wrong
 
-**Status:** Accepted — decided, not yet built; the CloudFront section is amended by [0046](0046-the-balancer-answers-its-own-distribution.md); the job that builds the client image, left to #106, is [0061](0061-ci-gates-every-pull-request.md); and what answers at the domain until production does is [0066](0066-a-holding-page-until-production-takes-the-domain.md); the alarms the deferred list holds are [0080](0080-an-alarm-watches-what-a-reader-sees-and-mails-an-address-nobody-commits.md). Amends [0005](0005-secrets-handling.md),
+**Status:** Accepted — decided, not yet built; the CloudFront section is amended by [0046](0046-the-balancer-answers-its-own-distribution.md); the job that builds the client image, left to #106, is [0061](0061-ci-gates-every-pull-request.md); what answers at the domain until production does is [0066](0066-a-holding-page-until-production-takes-the-domain.md); how long the migration task waits for a lock is [0079](0079-a-migration-waits-five-seconds-for-a-lock-and-no-transaction-idles-past-a-minute.md); and the alarms the deferred list holds are [0080](0080-an-alarm-watches-what-a-reader-sees-and-mails-an-address-nobody-commits.md). Amends [0005](0005-secrets-handling.md),
 [0007](0007-aws-target-architecture.md), [0013](0013-http-caching-policy.md),
 [0014](0014-rds-postgresql-over-aurora.md), [0015](0015-fargate-confirmed-and-nat-less-networking.md),
 [0033](0033-what-the-api-refuses.md) and [0036](0036-what-a-crawler-is-told.md), each of which

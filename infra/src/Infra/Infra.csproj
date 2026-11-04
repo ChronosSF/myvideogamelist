@@ -29,4 +29,11 @@
     <None Include="..\..\..\holding\site\**" LinkBase="holding" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- What the migration task's sessions are told to wait for (ADR 0079), compiled from the API's
+         own source rather than copied, so that the integration suite proves the string this app
+         deploys. Only that file: its other half needs Npgsql, which this app does not have. -->
+    <Compile Include="..\..\..\MyVideoGameList.Server\Data\SessionLimits.cs" Link="SessionLimits.cs" />
+  </ItemGroup>
+
 </Project>

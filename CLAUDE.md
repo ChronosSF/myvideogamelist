@@ -108,7 +108,14 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   same migration. A deployed instance will start against an un-migrated database and fail on
   first query rather than silently migrating. Deployed, that step is the migration task the
   `Deploy dev` workflow runs before the application stack, from the bundle baked into the API
-  image; a non-zero exit stops the release.
+  image; a non-zero exit stops the release. **It waits five seconds for a lock and then gives up**
+  (`lock_timeout` on its connection string), because the old revision is still serving and every
+  reader of a table queues behind a DDL waiting for that table. So a release failed with `55P03` is
+  re-run, not debugged. And **no API session may sit idle in a transaction for a minute**:
+  PostgreSQL ends it (`idle_in_transaction_session_timeout`, set in `Program.cs`, so locally too).
+  The cache refresh's fifteen seconds across IGDB is the one idle stretch designed in. Never await
+  anything unbounded inside a transaction. Both limits are `Data/SessionLimits.cs`, which the CDK
+  app compiles too, so it may use nothing past the base class library. See `docs/decisions/0079-*`.
 
 - **A merge to master builds and pushes dev's images, and deploys only when the environment is
   awake.** `DEV_DEPLOY_ENABLED` on the `dev` GitHub environment is the gate, set by
@@ -667,7 +674,9 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   success policy stated by the loader through `data()`. A client-side navigation's `.data` request
   reaches the throwing route's `headers` whether or not it has a boundary, so a route that answers
   one policy unconditionally, or falls back to a shared one, caches its failures there. A page that
-  throws while rendering is not covered by any of this yet (#337). See `docs/decisions/0070-*`.
+  throws while rendering, after its loader answered, gets none of this: its `headers` answered for
+  a page that worked, and only the entry's 5xx rule above keeps its 500 off the edge (#337). See
+  `docs/decisions/0070-*`.
 
 - **`fetch` rejects when the API is unreachable** — it does not return `!response.ok`. A loader
   that only checks `response.ok` turns a dead upstream into an unhandled 500. Wrap it and throw

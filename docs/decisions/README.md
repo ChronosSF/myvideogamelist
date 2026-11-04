@@ -43,7 +43,7 @@ grow a forward pointer when a later record or an issue closes something it left 
 | [0021](0021-one-control-for-a-score.md) | Stars are the user's own score; every aggregate is a number out of 100 | Implemented |
 | [0022](0022-entry-surrogate-key-and-the-wishlist-axis.md) | The entry gets a surrogate key, and the wishlist is an axis rather than a status | Implemented |
 | [0023](0023-profile-statistics-derived-at-read-time.md) | Profile statistics are derived at read time, and split by what they depend on | Implemented; §4's chart amended by 0047 |
-| [0024](0024-the-ownership-contract.md) | One export manifest for every user-owned table, guarded in both directions | Implemented; one snapshot since #95; its cascades and its snapshot tested against PostgreSQL by 0057 |
+| [0024](0024-the-ownership-contract.md) | One export manifest for every user-owned table, guarded in both directions | Implemented; one snapshot since #95; its cascades and its snapshot tested against PostgreSQL by 0057; every session ended with the account by 0077 |
 | [0025](0025-playthroughs-and-reviews.md) | Playthroughs and reviews: what a user records about actually playing a game | Implemented; §6 amended for the description by 0069 |
 | [0026](0026-a-library-import-records-ownership-not-history.md) | A library import records ownership, not history | Accepted; its framework shipped in 0037, the Steam source is an open issue; §3 amended by 0047 |
 | [0027](0027-usernames-and-public-profiles.md) | Usernames are a namespace, and a profile is published only when asked | Implemented; the sitemap is 0036, D14 is 0058 |
@@ -63,7 +63,7 @@ grow a forward pointer when a later record or an issue closes something it left 
 | [0041](0041-what-the-roadmap-decided-on-its-own.md) | The plan moves to GitHub issues, and what the roadmap decided on its own | Implemented |
 | [0042](0042-admins-are-named-in-configuration.md) | Admins are account ids in configuration, behind one server-side policy | Implemented |
 | [0043](0043-where-the-key-ring-lives.md) | The key ring lives in Parameter Store, under a name that does not move, and never nowhere by accident | Implemented; proved only by a deploy; `AllowEphemeralKeys` also set by the integration suite, 0057 |
-| [0044](0044-what-the-deployment-walkthrough-settled.md) | What the deployment walkthrough settled, and where it found the records wrong | Accepted; built by #97; the client-image job it left to #106 is 0061 |
+| [0044](0044-what-the-deployment-walkthrough-settled.md) | What the deployment walkthrough settled, and where it found the records wrong | Accepted; built by #97; the client-image job it left to #106 is 0061; the migration task's lock wait is 0079 |
 | [0045](0045-an-import-asks-once-about-what-it-will-not-guess.md) | An import asks once about what it will not guess: one list for every game played without an outcome | Implemented |
 | [0046](0046-the-balancer-answers-its-own-distribution.md) | The balancer answers its own distribution, and what else the CloudFront phase settled | Implemented |
 | [0047](0047-a-playthroughs-dates-count-and-a-status-change-comes-first.md) | A playthrough's dates count in the activity figures, and a status change comes first | Implemented; a rule for what is counted, which the history's list does not apply (0062) |
@@ -71,7 +71,7 @@ grow a forward pointer when a later record or an issue closes something it left 
 | [0049](0049-every-colour-is-a-token.md) | Every colour is a token, named for its job, in one file | Implemented |
 | [0050](0050-an-imported-run-takes-its-type-from-the-source.md) | An imported run takes its type from the source's completion level | Implemented |
 | [0051](0051-admin-statistics-are-counted-never-listed.md) | Admin statistics are counted, never listed | Implemented |
-| [0052](0052-a-background-refresh-ahead-of-the-reader.md) | A background refresh: cached games an hour before a reader would, Steam feeds before they expire | Implemented |
+| [0052](0052-a-background-refresh-ahead-of-the-reader.md) | A background refresh: cached games an hour before a reader would, Steam feeds before they expire | Implemented; its wait across IGDB sizes 0079's idle limit |
 | [0053](0053-a-documents-scripts-carry-its-renders-nonce.md) | A document's scripts carry its render's nonce, and a shared cache keeps the pair whole | Implemented |
 | [0054](0054-a-hand-arranged-order-is-a-sparse-position.md) | A hand-arranged order is a sparse position the client computes, and a change of list clears it | Implemented; §9 answered for the favourites by 0064 |
 | [0056](0056-an-avatar-is-an-address-on-a-short-list-of-hosts.md) | An avatar is an address on a short list of hosts, which the document policy's `img-src` names too; a display name stands beside the handle; a bio is plain text | Implemented; the navbar's avatar is #370, the member reviews' #371 |
@@ -88,12 +88,15 @@ grow a forward pointer when a later record or an issue closes something it left 
 | [0067](0067-the-esrb-filter-lists-a-game-under-its-badge.md) | The ESRB filter lists a game under the rating its badge shows | Implemented |
 | [0068](0068-lighthouse-on-the-production-shape.md) | Lighthouse on the production shape: five pages, a phone and a desktop, and only what the runner cannot move fails the build | Implemented; its credentials are allowed, and its lockfile audited, by 0061 |
 | [0069](0069-a-crawler-is-told-what-is-ours.md) | A crawler is told what is ours: the member score in the server render, a description that leads with it, and structured data | Implemented |
-| [0070](0070-nothing-shows-as-a-blank.md) | Nothing shows as a blank: empty and error states that teach, skeletons, and covers at their size | Implemented |
+| [0070](0070-nothing-shows-as-a-blank.md) | Nothing shows as a blank: empty and error states that teach, skeletons, and covers at their size | Implemented; the render failure it left to #337 closed by the entry's 5xx rule |
 | [0071](0071-coming-soon-is-what-igdb-says-people-are-waiting-for.md) | Coming soon is what IGDB says people are waiting for, cut to ten and corrected by hand | Implemented |
 | [0072](0072-steam-news-is-a-games-own-announcements.md) | Steam news is a game's own announcements, not the press Steam collects | Implemented |
 | [0073](0073-the-home-page-a-welcome-coming-soon-just-out-and-the-news.md) | The home page: a welcome, Coming soon and Just out, and the news last | Implemented |
 | [0074](0074-the-home-page-is-kept-twice-by-a-flag-that-names-nobody.md) | The home page is kept twice, by a flag that names nobody | Implemented |
 | [0075](0075-the-editorial-redesign.md) | The editorial redesign: ink and paper, one accent, three typefaces, and rules for boxes | Implemented |
+| [0077](0077-a-deleted-accounts-sessions-end-with-it.md) | A deleted account's sessions end with it, on the next request each makes | Implemented |
+| [0078](0078-what-the-imports-screens-count-and-offer.md) | What the import's screens count and offer: games where a row's game is known, rows where it is not, a wishlisted game as on the wishlist, and a change of any game the file did not name | Implemented |
+| [0079](0079-a-migration-waits-five-seconds-for-a-lock-and-no-transaction-idles-past-a-minute.md) | A migration waits five seconds for a lock, and no transaction of the API's idles past a minute | Implemented |
 | [0080](0080-an-alarm-watches-what-a-reader-sees-and-mails-an-address-nobody-commits.md) | An alarm watches what a reader sees, and mails an address the repository never holds | Implemented; proved only by a deploy |
 
 **Status** — *Accepted*: decided, not yet built. *Implemented*: decided and in the code.
