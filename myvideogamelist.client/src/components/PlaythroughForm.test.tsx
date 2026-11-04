@@ -15,14 +15,14 @@ import { platform, playthrough } from '@/test/factories';
 const PLATFORMS = [platform(6, 'PC (Microsoft Windows)'), platform(48, 'PlayStation 4')];
 
 /**
- * The form as the panel mounts it, for logging a new run, and `edit` for the panel handing it one to
- * edit — which it only ever does once the form is on screen, from a row's Edit button.
+ * The form as the page mounts it: for logging a new run, or already editing one, as a row's Edit opens
+ * it (issue 222). `edit` is the page handing a form already on screen another run to edit, or none.
  */
-function renderForm(state: { pending?: boolean; error?: string | null } = {}) {
+function renderForm(state: { pending?: boolean; error?: string | null; editing?: PlaythroughDto | null } = {}) {
     const onSubmit = vi.fn();
     const onCancelEdit = vi.fn();
     const props = { platforms: PLATFORMS, onSubmit, onCancelEdit, pending: state.pending ?? false, error: state.error ?? null };
-    const { rerender } = render(<PlaythroughForm {...props} editing={null} />);
+    const { rerender } = render(<PlaythroughForm {...props} editing={state.editing ?? null} />);
     return {
         onSubmit,
         onCancelEdit,
@@ -147,18 +147,81 @@ describe('PlaythroughForm', () => {
         expect(field('Notes')).toHaveValue('');
         expect(field('Hours')).toHaveValue(null);
         expect(screen.getByRole('button', { name: 'Log playthrough' })).toBeInTheDocument();
-        expect(screen.queryByRole('button', { name: 'Cancel' })).not.toBeInTheDocument();
     });
 
-    it('offers to back out of an edit, and only of an edit', async () => {
+    it('fills in the run it opens already editing, rather than blank fields that would save over it', async () => {
+        // A row's Edit opens the form with the run in hand (issue 222): seeded only on a change of run,
+        // it showed blank fields, and saving sent them over the run.
+        const actor = quickActor();
+        const { onSubmit } = renderForm({
+            editing: playthrough({
+                id: 5,
+                type: 'completionist',
+                platformId: 48,
+                minutesPlayed: 135,
+                startedOn: '2026-03-01',
+                finishedOn: '2026-03-20',
+                notes: 'All the B-sides.',
+            }),
+        });
+
+        expect(field('Platform')).toHaveValue('48');
+        expect(field('How you played it')).toHaveValue('completionist');
+        expect(field('Hours')).toHaveValue(2);
+        expect(field('Minutes')).toHaveValue(15);
+        expect(field('Started')).toHaveValue('2026-03-01');
+        expect(field('Finished')).toHaveValue('2026-03-20');
+        expect(field('Notes')).toHaveValue('All the B-sides.');
+
+        await actor.click(screen.getByRole('button', { name: 'Save playthrough' }));
+
+        expect(onSubmit).toHaveBeenCalledWith({
+            type: 'completionist',
+            platformId: 48,
+            minutesPlayed: 135,
+            startedOn: '2026-03-01',
+            finishedOn: '2026-03-20',
+            notes: 'All the B-sides.',
+        });
+    });
+
+    it('keeps a platform the game no longer lists, and says it is unlisted rather than not recorded', async () => {
+        // The select would otherwise show "Not recorded" while the draft still sent the old id.
+        const actor = quickActor();
+        const { onSubmit } = renderForm({ editing: playthrough({ id: 5, platformId: 130 }) });
+
+        const select = field('Platform');
+        expect(select).toHaveValue('130');
+        expect(screen.getByRole('option', { name: 'Unlisted platform', selected: true })).toHaveValue('130');
+
+        await actor.click(screen.getByRole('button', { name: 'Save playthrough' }));
+        expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ platformId: 130 }));
+
+        // Once another is chosen there is nothing unlisted to offer any more.
+        await actor.selectOptions(select, 'PC (Microsoft Windows)');
+        expect(screen.queryByRole('option', { name: 'Unlisted platform' })).not.toBeInTheDocument();
+    });
+
+    it('offers no unlisted platform for a run on one the game lists, or on none', () => {
+        const { edit } = renderForm({ editing: playthrough({ id: 5, platformId: 6 }) });
+        expect(screen.queryByRole('option', { name: 'Unlisted platform' })).not.toBeInTheDocument();
+
+        edit(playthrough({ id: 6, platformId: null }));
+        expect(field('Platform')).toHaveValue('');
+        expect(screen.queryByRole('option', { name: 'Unlisted platform' })).not.toBeInTheDocument();
+    });
+
+    it('offers to close the form whether it logs a new run or edits one', async () => {
+        // The page opens the form only to log or edit a run, so either way it needs a way back out.
         const actor = quickActor();
         const { onCancelEdit, edit } = renderForm();
-        expect(screen.queryByRole('button', { name: 'Cancel' })).not.toBeInTheDocument();
+
+        await actor.click(screen.getByRole('button', { name: 'Cancel' }));
+        expect(onCancelEdit).toHaveBeenCalledTimes(1);
 
         edit(playthrough({ id: 5 }));
         await actor.click(screen.getByRole('button', { name: 'Cancel' }));
-
-        expect(onCancelEdit).toHaveBeenCalledTimes(1);
+        expect(onCancelEdit).toHaveBeenCalledTimes(2);
     });
 
     it('holds every field while it saves, and shows next to them what the API refused', () => {
@@ -168,6 +231,7 @@ describe('PlaythroughForm', () => {
             expect(field(label), label).toBeDisabled();
         }
         expect(screen.getByRole('button', { name: 'Log playthrough' })).toBeDisabled();
+        expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled();
         expect(screen.getByRole('alert')).toHaveTextContent('The finish date cannot be before the start date.');
     });
 });
