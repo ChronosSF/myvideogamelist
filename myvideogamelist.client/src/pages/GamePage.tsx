@@ -319,12 +319,11 @@ function GameHero({ game, memberScores, children }: GameHeroProps) {
 
     return (
         <div className="game-page-hero">
+            {/* An image rather than a CSS background, which the browser asks for only once the page is laid
+                out, after the scripts, the fonts and the rail's covers. As an image in the HTML it is found as
+                the document is read, and asked for first: it is the page's largest first paint. */}
             {game.backgroundImageUrl && (
-                <div
-                    className="game-page-hero-bg"
-                    style={{ backgroundImage: `url(${game.backgroundImageUrl})` }}
-                    aria-hidden="true"
-                />
+                <img className="game-page-hero-bg" src={game.backgroundImageUrl} alt="" fetchPriority="high" />
             )}
             <div className="game-page-hero-gradient" aria-hidden="true" />
 

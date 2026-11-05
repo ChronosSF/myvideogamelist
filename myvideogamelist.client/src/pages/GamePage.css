@@ -24,8 +24,10 @@
 .game-page-hero-bg {
     position: absolute;
     inset: 0;
-    background-size: cover;
-    background-position: center 35%;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: center 35%;
     filter: brightness(0.5) saturate(0.9);
     transition: opacity 0.4s ease;
 }
