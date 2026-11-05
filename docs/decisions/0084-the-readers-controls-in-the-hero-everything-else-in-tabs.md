@@ -131,7 +131,9 @@ everybody else: their picture, handle, and whether anybody can read their profil
 - Anything that shows the reader's own record of a game reads `useGameEntry()`; it is null outside the
   provider — signed out, and before auth answers — and a consumer draws its signed-out form on null.
 - The game page's related games cost one IGDB query per cold page, under the same limiter as the rest.
-- The browser smoke test chooses a list in the select; the Lighthouse harness answers the related query with
-  nothing, as IGDB would for a game in no series.
+- The browser smoke test chooses a list in the select. The Lighthouse harness answers The Witcher 3's related
+  query with IGDB's own answer, recorded on 2026-11-05 into `lighthouse/igdb.json`, so the audited game page
+  draws the series rail it draws deployed, fourteen covers and the editions; any other game's gets nothing,
+  as IGDB would answer for a game in no series.
 - Moving a game to Finished still does nothing to an open playthrough. That automation, and a prompt after a
   list move that offers the matching change to a run, are #222's.
