@@ -24,7 +24,10 @@ The owner chose tabs, with the controls a reader uses on most visits kept out of
 
 `GameTrackingRow`, under the title and the aggregate scores. Those four are what a reader does on most visits,
 and one row of them fits a phone's first screen, where the panel did not. The hero is shorter to make room:
-`clamp(320px, 30vw, 420px)`, the title a step smaller at `lg`.
+`clamp(320px, 30vw, 420px)`, the title a step smaller at `lg`. It is opaque, and stands where the top of the
+reader's pattern ([0082](0082-a-look-is-a-palette-a-pattern-and-a-tint-kept-on-the-account.md)) is drawn, so
+that end is not drawn on the game page: all of it that showed was its faint tail under the tabs, beside a
+poster it was never drawn to go with. The foot's is.
 
 The row is drawn the same size in all three of its states. The page is shared at the edge
 ([0013](0013-http-caching-policy.md)), so its server render, and the first render in the browser, cannot
