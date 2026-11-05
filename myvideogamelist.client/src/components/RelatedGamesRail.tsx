@@ -145,9 +145,11 @@ export function RelatedGamesRail({ related, gameId, seriesNames }: RelatedGamesR
             )}
 
             <ol
-                className="relative flex gap-5 overflow-x-auto pb-4 -mx-4 px-4 sm:mx-0 sm:px-0 scroll-px-4 sm:scroll-px-0 snap-x"
+                className="relative flex gap-5 overflow-x-auto -mt-1 pt-1 pb-4 -mx-4 px-4 sm:-mx-1 sm:px-1 scroll-px-4 sm:scroll-px-1 snap-x"
                 // A region of its own that scrolls apart from the page, so named and reachable by keyboard,
-                // as the other rails are (GameRefRail).
+                // as the other rails are (GameRefRail). It reaches a ring's width past the column on every
+                // side, and pads it back, because it clips what it holds: the ring round this game's cover
+                // and a focused cover's are drawn outside the cover.
                 tabIndex={0}
                 aria-label={title}
             >
