@@ -43,13 +43,6 @@ public static class RelatedGames
     /// </summary>
     internal const int QueryLimit = 500;
 
-    /// <summary>
-    /// How far up a chain of editions the anchor is looked for, as the calendar looks (F3). The spec found one
-    /// two deep on 2026-09-29: an edition of The Witcher 3's "Complete Edition", a bundle, which is an edition
-    /// of the game.
-    /// </summary>
-    private const int MaxEditionDepth = 4;
-
     /// <summary>The game types shown as a card, and what each is to the page.</summary>
     private static readonly IReadOnlyDictionary<int, string> CardKinds = new Dictionary<int, string>
     {
@@ -87,9 +80,8 @@ public static class RelatedGames
         // as that game's.
         var anchor = games.TryGetValue(gameId, out var self) && IsEdition(self) ? EditionRoot(self, games) : gameId;
 
-        var alive = byId.Values
-            .Where(row => row.Game.GameStatus is not (IgdbGameStatuses.Cancelled or IgdbGameStatuses.Rumored))
-            .ToList();
+        // F4: a game IGDB marks cancelled or rumoured is not coming, so it is no card either.
+        var alive = byId.Values.Where(row => ConnectedReleases.IsAnnounced(row.Game)).ToList();
 
         var standing = alive.Where(row => StandsAlone(row.Game)).Select(row => row.Game.Id).ToHashSet();
 
@@ -135,7 +127,7 @@ public static class RelatedGames
         if (!IsRerelease(game)) return false;
 
         var node = game;
-        for (var depth = 0; depth < MaxEditionDepth; depth++)
+        for (var depth = 0; depth < ConnectedReleases.MaxEditionDepth; depth++)
         {
             if ((node.ParentGameId ?? node.VersionParentId) is not int parentId || parentId == anchor) return true;
             if (standing.Contains(parentId)) return false;
@@ -158,7 +150,7 @@ public static class RelatedGames
     private static int EditionRoot(CalendarGame game, IReadOnlyDictionary<int, CalendarGame> games)
     {
         var node = game;
-        for (var depth = 0; depth < MaxEditionDepth; depth++)
+        for (var depth = 0; depth < ConnectedReleases.MaxEditionDepth; depth++)
         {
             if (node.VersionParentId is not int parentId) return node.Id;
             if (!games.TryGetValue(parentId, out var parent)) return parentId;

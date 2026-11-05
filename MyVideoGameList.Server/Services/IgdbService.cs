@@ -385,20 +385,26 @@ public class IgdbService(
     private static readonly TimeSpan RelatedGamesLifetime = TimeSpan.FromHours(6);
 
     /// <summary>
+    /// How long a failed read of them is kept: long enough that a page nobody may cache, read over and over,
+    /// does not ask IGDB again on every render, and short enough that the rail is soon back.
+    /// </summary>
+    private static readonly TimeSpan RelatedGamesFailureLifetime = TimeSpan.FromMinutes(1);
+
+    /// <summary>
     /// The rest of a game's series, and its remakes, remasters and editions (#450, ADR 0084). Supplementary to
     /// the page, so a failure degrades to null rather than taking the game down with it, and is deliberately
     /// caught here: the page renders without them, and reads the null as a render to keep off the edge.
     /// </summary>
     /// <remarks>
-    /// Kept apart from the game's own entry, and only when it was read: the game is kept for half an hour, and
-    /// a failure kept with it would degrade every render of the page for that long — the completion times'
+    /// Kept apart from the game's own entry, and a failure for a minute only: the game is kept for half an hour,
+    /// and a failure kept with it would degrade every render of the page for that long — the completion times'
     /// way, which #352 records.
     /// </remarks>
     private async Task<RelatedGamesDto?> GetRelatedGamesAsync(
         int id, IReadOnlyCollection<int> seriesIds, CancellationToken cancellationToken)
     {
         var cacheKey = $"igdb_related|{id}";
-        if (cache.TryGetValue(cacheKey, out RelatedGamesDto? cached) && cached is not null)
+        if (cache.TryGetValue(cacheKey, out RelatedGamesDto? cached))
             return cached;
 
         try
@@ -421,6 +427,7 @@ public class IgdbService(
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             logger.LogWarning(ex, "Related games unavailable for game {GameId}.", id);
+            cache.Set<RelatedGamesDto?>(cacheKey, null, RelatedGamesFailureLifetime);
             return null;
         }
     }

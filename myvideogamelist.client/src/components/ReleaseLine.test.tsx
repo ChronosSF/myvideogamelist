@@ -297,6 +297,7 @@ describe('ReleaseLine, adding a release to the Backlog', () => {
         line.releases.data = [SEPARATE_WAYS];
         lists.addToList = vi.fn(async (_list: ListId, game: { id: number }) => {
             listed.set(game.id, 'backlog');
+            return true;
         });
         renderLine();
 

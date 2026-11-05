@@ -1,14 +1,19 @@
-import { useId, useState } from 'react';
+import { type ReactNode, useId, useState } from 'react';
 import { Link } from 'react-router';
+import type { GameEntryContextValue } from '@/contexts/GameEntryContext';
 import type { GameDto } from '@/types/game';
 import { useAuthDialog } from '@/hooks/useAuthDialog';
 import { useGameEntry } from '@/hooks/useGameEntry';
 import { useLists } from '@/hooks/useLists';
+import { formatCountOf } from '@/lib/format';
 import { ListPicker } from '@/components/ListPicker';
+import { Rosette } from '@/components/Rosette';
 import { ScoreInput } from '@/components/ScoreInput';
 
 const HEART = 'M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z';
-const ROSETTE = 'M12 15a6 6 0 100-12 6 6 0 000 12zM8.2 13.7L7 21l5-3 5 3-1.2-7.3';
+
+/** The heart's and the rosette's size inside their squares. */
+const ICON = 'w-[18px] h-[18px]';
 
 interface GameTrackingRowProps {
     game: GameDto;
@@ -40,6 +45,9 @@ export function GameTrackingRow({ game, authLoading, linkToYours }: GameTracking
     // Bumped by a star pressed signed out, which remounts the stars: the browser checks the radio pressed,
     // and with no score to give, nothing else would take that back — a screen reader would hear one.
     const [starPrompts, setStarPrompts] = useState(0);
+
+    const wishlisted = entry?.wishlisted ?? false;
+    const favourite = entry?.favourite ?? false;
 
     return (
         <div className="mt-5">
@@ -82,27 +90,31 @@ export function GameTrackingRow({ game, authLoading, linkToYours }: GameTracking
 
                 <div className="flex items-center gap-2">
                     <SquareToggle
-                        path={HEART}
-                        pressed={entry?.wishlisted ?? false}
-                        label={entry?.wishlisted ? 'On your wishlist' : 'Add to wishlist'}
+                        pressed={wishlisted}
+                        label={wishlisted ? 'On your wishlist' : 'Add to wishlist'}
                         disabled={authLoading || (entry !== null && entry.wishlistPending)}
                         onPress={() => (entry === null ? signIn() : void entry.toggleWishlist())}
                         pressedClass="bg-wishlist-700 border-wishlist-700 text-fg-strong"
                         hoverClass="hover:border-wishlist-600"
-                    />
+                    >
+                        <svg className={ICON} fill={wishlisted ? 'currentColor' : 'none'} stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={HEART} />
+                        </svg>
+                    </SquareToggle>
                     {/* A third axis, beside the wishlist rather than folded into it: loving a game is not
                         wanting one, and a game can be both. A rosette, never a star — stars are the score
                         beside it and nothing else (ADR 0021). */}
                     <SquareToggle
-                        path={ROSETTE}
-                        pressed={entry?.favourite ?? false}
-                        label={entry?.favourite ? 'One of your favourites' : 'Add to favourites'}
+                        pressed={favourite}
+                        label={favourite ? 'One of your favourites' : 'Add to favourites'}
                         disabled={authLoading || (entry !== null && (entry.favouritePending || entry.favouritesFailed))}
                         onPress={() => (entry === null ? signIn() : void entry.toggleFavourite())}
                         pressedClass="bg-favourite-700 border-favourite-700 text-fg-strong"
                         hoverClass="hover:border-favourite-500"
                         describedBy={entry !== null ? favouriteHintId : undefined}
-                    />
+                    >
+                        <Rosette filled={favourite} className={ICON} />
+                    </SquareToggle>
                     {/* Where a favourite shows is the question worth answering, and the answer depends on
                         the one setting that decides it — as the review form's does. */}
                     {entry !== null && (
@@ -124,26 +136,23 @@ export function GameTrackingRow({ game, authLoading, linkToYours }: GameTracking
                         {' '}to keep this game in your lists, score it and wish for it.
                     </>
                 ) : (
-                    <EntrySummary linkToYours={linkToYours} gameId={game.id} />
+                    <EntrySummary entry={entry} linkToYours={linkToYours} />
                 )}
             </p>
 
-            {entry !== null && <TrackingErrors />}
+            {entry !== null && <TrackingErrors entry={entry} />}
         </div>
     );
 }
 
 /** What else the reader has recorded, which lives on the Your game tab, and the way there. */
-function EntrySummary({ linkToYours, gameId }: { linkToYours: boolean; gameId: number }) {
-    const entry = useGameEntry();
-    if (entry === null) return null;
-
+function EntrySummary({ entry, linkToYours }: { entry: GameEntryContextValue; linkToYours: boolean }) {
     // Nothing is said of the entry until it has been read: "no playthroughs yet" over a read still out, or
     // one that failed, would be untrue, and the failure says so itself under the row.
     const parts: string[] = [];
     if (entry.ready) {
         const runs = entry.playthroughs.length;
-        if (runs > 0) parts.push(`${runs} playthrough${runs === 1 ? '' : 's'}`);
+        if (runs > 0) parts.push(formatCountOf(runs, 'playthrough', 'playthroughs'));
         if (entry.review !== null) parts.push(entry.review.visibility === 'public' ? 'Reviewed, for anyone' : 'Reviewed, for you only');
         if (entry.notes !== null) parts.push('Notes');
         if (parts.length === 0) parts.push('No playthroughs or review yet');
@@ -155,7 +164,7 @@ function EntrySummary({ linkToYours, gameId }: { linkToYours: boolean; gameId: n
             {linkToYours && (
                 <>
                     {parts.length > 0 && ' · '}
-                    <Link to={`/games/${gameId}/yours`} className="text-link">Your game</Link>
+                    <Link to={`/games/${entry.game.id}/yours`} className="text-link">Your game</Link>
                 </>
             )}
         </>
@@ -163,41 +172,50 @@ function EntrySummary({ linkToYours, gameId }: { linkToYours: boolean; gameId: n
 }
 
 /** The row's refusals, each where the reader is looking, in the colour an error's words take. */
-function TrackingErrors() {
-    const entry = useGameEntry();
-    if (entry === null) return null;
-
+function TrackingErrors({ entry }: { entry: GameEntryContextValue }) {
     const messages = [entry.listError, entry.scoreError, entry.wishlistError, entry.favouriteError]
         .filter((message): message is string => message !== null);
 
     return (
         <>
-            {messages.map(message => (
-                <p key={message} className="mt-2 text-sm text-danger-300" role="alert">{message}</p>
-            ))}
+            {messages.map(message => <Alert key={message}>{message}</Alert>)}
             {/* Unlike the wishlist, favourites have no page of their own to report a failed load and
                 offer a retry, so the one control that is stuck says why. */}
             {entry.favouritesFailed && (
-                <p className="mt-2 text-sm text-danger-300" role="alert">
-                    Your favourites could not be loaded, so this cannot be changed just now.{' '}
-                    <button type="button" onClick={entry.reloadFavourites} className="text-link">Try again</button>
-                </p>
+                <Alert onRetry={entry.reloadFavourites}>
+                    Your favourites could not be loaded, so this cannot be changed just now.
+                </Alert>
             )}
             {/* Not instead of the controls: shown empty, the score would invite a save over a score that
                 only failed to arrive. */}
             {entry.entryStatus === 'failed' && (
-                <p className="mt-2 text-sm text-danger-300" role="alert">
+                <Alert onRetry={entry.retryEntry}>
                     Your score, ownership, tags, notes, playthroughs and review for this game could not be
-                    loaded, so they cannot be changed just now.{' '}
-                    <button type="button" onClick={entry.retryEntry} className="text-link">Try again</button>
-                </p>
+                    loaded, so they cannot be changed just now.
+                </Alert>
             )}
         </>
     );
 }
 
+/** One of them, with a way to ask again where asking again could help. */
+function Alert({ children, onRetry }: { children: ReactNode; onRetry?: () => void }) {
+    return (
+        <p className="mt-2 text-sm text-danger-300" role="alert">
+            {children}
+            {onRetry && (
+                <>
+                    {' '}
+                    <button type="button" onClick={onRetry} className="text-link">Try again</button>
+                </>
+            )}
+        </p>
+    );
+}
+
 interface SquareToggleProps {
-    path: string;
+    /** The icon, drawn filled once pressed. */
+    children: ReactNode;
     pressed: boolean;
     label: string;
     disabled: boolean;
@@ -208,7 +226,7 @@ interface SquareToggleProps {
 }
 
 /** The heart and the rosette: square, the list button's height, filled in their own colour once pressed. */
-function SquareToggle({ path, pressed, label, disabled, onPress, pressedClass, hoverClass, describedBy }: SquareToggleProps) {
+function SquareToggle({ children, pressed, label, disabled, onPress, pressedClass, hoverClass, describedBy }: SquareToggleProps) {
     return (
         <button
             type="button"
@@ -222,9 +240,7 @@ function SquareToggle({ path, pressed, label, disabled, onPress, pressedClass, h
                 pressed ? pressedClass : `border-line-strong bg-sunken/60 text-fg-soft hover:text-fg-strong ${hoverClass}`
             }`}
         >
-            <svg className="w-[18px] h-[18px]" fill={pressed ? 'currentColor' : 'none'} stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={path} />
-            </svg>
+            {children}
         </button>
     );
 }

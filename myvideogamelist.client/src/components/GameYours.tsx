@@ -122,7 +122,7 @@ export function GameYours({ authLoading }: GameYoursProps) {
                                     if (saved) setAdding(false);
                                 });
                             }}
-                            onCancelEdit={closeForm}
+                            onCancel={closeForm}
                             pending={!entry.ready || entry.savingPlaythrough}
                             error={entry.playthroughError}
                         />
@@ -186,7 +186,7 @@ export function GameYours({ authLoading }: GameYoursProps) {
                         {entry.tagsStatus === 'failed' && (
                             <p className="game-user-panel-hint" role="alert">
                                 Your tags could not be loaded, so they cannot be changed just now.{' '}
-                                <button type="button" className="game-user-panel-retry" onClick={entry.reloadTags}>
+                                <button type="button" className="text-link" onClick={entry.reloadTags}>
                                     Try again
                                 </button>
                             </p>

@@ -102,10 +102,11 @@ game would be past a desktop's first seven opens three games before it, with the
 rather than scrolling itself there, because a rail that scrolls itself as the page loads ends the largest-paint
 measurement (issue 315). Super Mario held 123 games on 2026-11-04.
 
-The answer is cached for six hours apart from the game's half hour, and only when it was read. A failure is a
-null `Related`, which the loader reads, like a missing one from an older API, as a render to keep off the edge
-([0070](0070-nothing-shows-as-a-blank.md)): kept with the game, it would degrade every render for half an
-hour, the completion times' way that #352 records.
+The answer is cached for six hours apart from the game's half hour. A failure is a null `Related`, which the
+loader reads, like a missing one from an older API, as a render to keep off the edge
+([0070](0070-nothing-shows-as-a-blank.md)), and it is kept for a minute: kept with the game, it would degrade
+every render for half an hour, the completion times' way that #352 records, and kept not at all, every render
+of a page nobody may cache would ask IGDB again while it fails.
 
 ### 7. Your game: the review at the reading column's width
 

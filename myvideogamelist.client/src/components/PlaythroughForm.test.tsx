@@ -20,12 +20,12 @@ const PLATFORMS = [platform(6, 'PC (Microsoft Windows)'), platform(48, 'PlayStat
  */
 function renderForm(state: { pending?: boolean; error?: string | null; editing?: PlaythroughDto | null } = {}) {
     const onSubmit = vi.fn();
-    const onCancelEdit = vi.fn();
-    const props = { platforms: PLATFORMS, onSubmit, onCancelEdit, pending: state.pending ?? false, error: state.error ?? null };
+    const onCancel = vi.fn();
+    const props = { platforms: PLATFORMS, onSubmit, onCancel, pending: state.pending ?? false, error: state.error ?? null };
     const { rerender } = render(<PlaythroughForm {...props} editing={state.editing ?? null} />);
     return {
         onSubmit,
-        onCancelEdit,
+        onCancel,
         edit: (next: PlaythroughDto | null) => rerender(<PlaythroughForm {...props} editing={next} />),
     };
 }
@@ -214,14 +214,14 @@ describe('PlaythroughForm', () => {
     it('offers to close the form whether it logs a new run or edits one', async () => {
         // The page opens the form only to log or edit a run, so either way it needs a way back out.
         const actor = quickActor();
-        const { onCancelEdit, edit } = renderForm();
+        const { onCancel, edit } = renderForm();
 
         await actor.click(screen.getByRole('button', { name: 'Cancel' }));
-        expect(onCancelEdit).toHaveBeenCalledTimes(1);
+        expect(onCancel).toHaveBeenCalledTimes(1);
 
         edit(playthrough({ id: 5 }));
         await actor.click(screen.getByRole('button', { name: 'Cancel' }));
-        expect(onCancelEdit).toHaveBeenCalledTimes(2);
+        expect(onCancel).toHaveBeenCalledTimes(2);
     });
 
     it('holds every field while it saves, and shows next to them what the API refused', () => {

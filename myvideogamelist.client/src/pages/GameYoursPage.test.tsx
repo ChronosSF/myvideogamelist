@@ -3,6 +3,7 @@ import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createRoutesStub, Outlet } from 'react-router';
 import GameYoursPage, { headers, meta } from '@/pages/GameYoursPage';
+import type { AuthContextValue } from '@/contexts/AuthContext';
 import type { AuthDialogContextValue } from '@/contexts/AuthDialogContext';
 import type { UseGameCommunityResult } from '@/hooks/useGameCommunity';
 import { CACHE_GAME, CACHE_NOT_FOUND, PRIVATE_NO_STORE } from '@/lib/cache';
@@ -21,6 +22,11 @@ import type { Route } from './+types/GameYoursPage';
 const authDialog: AuthDialogContextValue = { open: vi.fn() };
 
 vi.mock('@/hooks/useAuthDialog', () => ({ useAuthDialog: () => authDialog }));
+
+/** Nobody signed in: the tab reads whether auth has answered from the site's provider. One object, as above. */
+const auth = { user: null, loading: false } as unknown as AuthContextValue;
+
+vi.mock('@/hooks/useAuth', () => ({ useAuth: () => auth }));
 
 const CELESTE = game({ id: 1, title: 'Celeste', releaseDate: '2018-01-25' });
 
@@ -114,14 +120,8 @@ describe('GameYoursPage', () => {
      * entry, as the page renders it before auth answers and for a reader who is signed out.
      */
     function renderTab(authLoading: boolean) {
-        const outlet: GamePageOutlet = {
-            game: CELESTE,
-            memberScores: null,
-            community,
-            viewer: null,
-            authLoading,
-            isFavourite: () => false,
-        };
+        auth.loading = authLoading;
+        const outlet: GamePageOutlet = { game: CELESTE, memberScores: null, community };
         const Stub = createRoutesStub([{
             id: 'pages/GamePage',
             path: '/games/:id',

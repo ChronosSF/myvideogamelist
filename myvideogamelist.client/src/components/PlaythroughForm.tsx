@@ -10,7 +10,7 @@ interface PlaythroughFormProps {
     editing: PlaythroughDto | null;
     onSubmit: (input: PlaythroughInputDto) => void;
     /** Closes the form, which the page opens only to log or edit a run (issue 222). */
-    onCancelEdit: () => void;
+    onCancel: () => void;
     pending: boolean;
     /** What the server said, shown beside the form rather than as a page-level banner. */
     error: string | null;
@@ -52,7 +52,7 @@ export function PlaythroughForm({
     platforms,
     editing,
     onSubmit,
-    onCancelEdit,
+    onCancel,
     pending,
     error,
 }: PlaythroughFormProps) {
@@ -191,7 +191,7 @@ export function PlaythroughForm({
                 <button type="submit" className="primary" disabled={pending}>
                     {editing === null ? 'Log playthrough' : 'Save playthrough'}
                 </button>
-                <button type="button" onClick={onCancelEdit} disabled={pending}>
+                <button type="button" onClick={onCancel} disabled={pending}>
                     Cancel
                 </button>
             </div>

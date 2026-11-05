@@ -28,7 +28,11 @@ export interface ListsContextValue {
     reload: () => void;
     isPending: (gameId: number) => boolean;
 
-    addToList: (listId: ListId, game: GameDto) => Promise<void>;
+    /**
+     * Puts the game in a list, or moves it there. False when it is not there afterwards: the save failed and
+     * was put back, or another write to the game was still out.
+     */
+    addToList: (listId: ListId, game: GameDto) => Promise<boolean>;
     /** Takes the game out of every list. The score and everything else on the entry survive. */
     removeFromList: (listId: ListId, gameId: number) => Promise<void>;
     isInList: (listId: ListId, gameId: number) => boolean;

@@ -9,10 +9,12 @@ import { ScreenshotGallery } from '@/components/ScreenshotGallery';
 import { SectionHeading } from '@/components/SectionHeading';
 import { StoreLinks } from '@/components/StoreLinks';
 import { TrailerPlayer } from '@/components/TrailerPlayer';
+import { useAuth } from '@/hooks/useAuth';
+import { useFavourites } from '@/hooks/useFavourites';
 import { formatCount } from '@/lib/format';
 import { useGamePage } from '@/lib/gamePage';
 import { multiplayerSummary } from '@/lib/multiplayer';
-import { parseReleaseDate } from '@/lib/releaseDate';
+import { releaseDay } from '@/lib/releaseDate';
 import { hasCriticScore, hasMemberScore, ratingPercent } from '@/lib/score';
 
 /** A term from IGDB's vocabulary — a platform, a theme, a mode — as an outlined chip in the metadata type. */
@@ -40,7 +42,12 @@ const EXTERNAL_LINK = 'M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 
  * does not remount it: nothing here is theirs but the marks the site's own providers draw.
  */
 export default function GameOverviewPage() {
-    const { game, memberScores, community, viewer, isFavourite } = useGamePage();
+    const { game, memberScores, community } = useGamePage();
+    const { user } = useAuth();
+
+    // The reader's own, for the rosette on the rails' covers. Empty in the server render and until the
+    // favourites arrive, so the shared-cached page is the same for everybody (ADR 0064).
+    const { isFavourite } = useFavourites();
 
     // Null on the listing endpoints by design; this page is the one that asks IGDB for it.
     const details = game.details;
@@ -51,10 +58,7 @@ export default function GameOverviewPage() {
         ? [...new Set([...details.collections, ...details.franchises])]
         : [];
 
-    const released = game.releaseDate ? parseReleaseDate(game.releaseDate) : null;
-    const releaseDate = released
-        ? released.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
-        : null;
+    const releaseDate = releaseDay(game.releaseDate);
 
     const youtubeEmbedId = game.trailerUrl
         ? new URLSearchParams(new URL(game.trailerUrl).search).get('v')
@@ -70,7 +74,6 @@ export default function GameOverviewPage() {
                     related={details.related}
                     gameId={game.id}
                     seriesNames={details.collections}
-                    isFavourite={isFavourite}
                 />
             )}
 
@@ -99,7 +102,7 @@ export default function GameOverviewPage() {
                         leaves the two agreeing on the loader's figure. */}
                     <GameCommunity
                         community={{ ...community, scores: memberScores }}
-                        viewer={viewer}
+                        viewer={user?.userName ?? null}
                     />
 
                     {/* Where it is sold. Hides itself when IGDB names no store. */}

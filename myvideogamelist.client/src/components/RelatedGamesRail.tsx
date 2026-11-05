@@ -4,6 +4,8 @@ import type { RelatedGameDto, RelatedGamesDto } from '@/types/game';
 import { useAuth } from '@/hooks/useAuth';
 import { useLists } from '@/hooks/useLists';
 import { releaseAsGame } from '@/hooks/useReleaseGame';
+import { formatCountOf } from '@/lib/format';
+import { theSeries } from '@/lib/releaseReason';
 import { RelatedGameCard } from '@/components/RelatedGameCard';
 
 /**
@@ -25,7 +27,6 @@ interface RelatedGamesRailProps {
     gameId: number;
     /** The names of the game's series, which name the rail. */
     seriesNames: string[];
-    isFavourite: (gameId: number) => boolean;
 }
 
 type BulkAdd =
@@ -42,7 +43,7 @@ type BulkAdd =
  * scrolling itself there: a rail that scrolls itself as the page loads ends the page's largest-paint
  * measurement (issue 315). Super Mario held 123 games on 2026-11-04.
  */
-export function RelatedGamesRail({ related, gameId, seriesNames, isFavourite }: RelatedGamesRailProps) {
+export function RelatedGamesRail({ related, gameId, seriesNames }: RelatedGamesRailProps) {
     const { user } = useAuth();
     const lists = useLists();
     const [showEarlier, setShowEarlier] = useState(false);
@@ -50,8 +51,8 @@ export function RelatedGamesRail({ related, gameId, seriesNames, isFavourite }: 
 
     // The newest lists and account, for the bulk add's later steps: the provider's functions close over
     // the render they came from, and a step taken after the reader signed out, or in as somebody else,
-    // must not happen at all. Written after each commit; every step awaits a request first, so by the
-    // time one reads it the commit that request caused has landed.
+    // must not happen at all. Written after each commit. Whether a step's add held is what the add itself
+    // answers, never this: the commit of a rollback can land after the step reads it.
     const latest = useRef({ lists, account: user?.id ?? null });
     useEffect(() => {
         latest.current = { lists, account: user?.id ?? null };
@@ -78,10 +79,9 @@ export function RelatedGamesRail({ related, gameId, seriesNames, isFavourite }: 
             if (latest.current.account !== account) return;
             const current = latest.current.lists;
             // Added elsewhere meanwhile: adding it again would move it.
-            if (current.getListFor(game.id) === null) {
-                await current.addToList('backlog', releaseAsGame({ gameId: game.id, title: game.name, coverImageUrl: game.coverImageUrl, platforms: [] }));
-            }
-            if (latest.current.lists.getListFor(game.id) !== null) added++;
+            const held = current.getListFor(game.id) !== null
+                || await current.addToList('backlog', releaseAsGame({ gameId: game.id, title: game.name, coverImageUrl: game.coverImageUrl, platforms: [] }));
+            if (held) added++;
             setBulk({ phase: 'adding', account, done: index + 1, total: games.length });
         }
 
@@ -90,7 +90,8 @@ export function RelatedGamesRail({ related, gameId, seriesNames, isFavourite }: 
 
     const backlog = lists.nameFor('backlog');
     const anchorName = related.games[anchorIndex]?.name ?? null;
-    const title = seriesNames.length === 1 ? `The ${stripThe(seriesNames[0])} series` : 'Related games';
+    const series = seriesNames.length === 1 ? theSeries(seriesNames[0]) : null;
+    const title = series === null ? 'Related games' : series.charAt(0).toUpperCase() + series.slice(1);
 
     return (
         <section aria-labelledby="related-games" className="rule-heavy pt-4">
@@ -98,7 +99,7 @@ export function RelatedGamesRail({ related, gameId, seriesNames, isFavourite }: 
                 <h2 id="related-games" className="type-display text-3xl text-fg-strong">{title}</h2>
                 <div className="flex flex-wrap items-center gap-4">
                     <span className="type-meta text-fg-faint">
-                        {related.games.length} game{related.games.length === 1 ? '' : 's'}, in release order
+                        {formatCountOf(related.games.length, 'game', 'games')}, in release order
                     </span>
                     {bulkNow?.phase === 'adding' ? (
                         <span className="type-meta text-fg-soft" role="status">
@@ -144,7 +145,7 @@ export function RelatedGamesRail({ related, gameId, seriesNames, isFavourite }: 
             )}
 
             <ol
-                className="related-games-rail relative flex gap-5 overflow-x-auto pb-4 -mx-4 px-4 sm:mx-0 sm:px-0 scroll-px-4 sm:scroll-px-0 snap-x"
+                className="relative flex gap-5 overflow-x-auto pb-4 -mx-4 px-4 sm:mx-0 sm:px-0 scroll-px-4 sm:scroll-px-0 snap-x"
                 // A region of its own that scrolls apart from the page, so named and reachable by keyboard,
                 // as the other rails are (GameRefRail).
                 tabIndex={0}
@@ -155,11 +156,11 @@ export function RelatedGamesRail({ related, gameId, seriesNames, isFavourite }: 
                         <button
                             type="button"
                             onClick={() => setShowEarlier(true)}
-                            aria-label={`${firstShown} earlier game${firstShown === 1 ? '' : 's'}`}
+                            aria-label={formatCountOf(firstShown, 'earlier game', 'earlier games')}
                             className="flex aspect-[3/4] w-full flex-col items-center justify-center gap-1 rounded-sm btn-outline text-sm font-semibold"
                         >
                             <span className="type-display text-2xl">{firstShown}</span>
-                            earlier game{firstShown === 1 ? '' : 's'}
+                            {firstShown === 1 ? 'earlier game' : 'earlier games'}
                         </button>
                     </li>
                 )}
@@ -169,7 +170,6 @@ export function RelatedGamesRail({ related, gameId, seriesNames, isFavourite }: 
                             game={game}
                             anchor={game.id === related.anchorId}
                             self={game.id === gameId}
-                            favourite={isFavourite(game.id)}
                             eager={index < EAGER_COVERS}
                         />
                     </li>
@@ -203,9 +203,4 @@ function editionName(name: string, anchorName: string | null): string {
         if (name.startsWith(prefix) && name.length > prefix.length) return name.slice(prefix.length);
     }
     return name;
-}
-
-/** "The Witcher" names a series as "The Witcher series", not "The The Witcher series". */
-function stripThe(name: string): string {
-    return name.replace(/^the\s+/i, '');
 }

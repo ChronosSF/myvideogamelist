@@ -34,7 +34,7 @@
 }
 
 .user-settings-index {
-    border-top: 2px solid var(--color-rule);
+    @apply rule-heavy;
     padding-top: 0.5rem;
 }
 
@@ -93,7 +93,7 @@
 
 /* Each section under the heavy rule a section opens with, and a jump to it stops below the sticky navbar. */
 .user-settings-section {
-    border-top: 2px solid var(--color-rule);
+    @apply rule-heavy;
     padding-top: 1rem;
     scroll-margin-top: 5.5rem;
 }

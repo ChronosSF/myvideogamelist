@@ -853,20 +853,22 @@ public class GetGameByIdAsyncTests
     }
 
     [Fact]
-    public async Task WhenTheRelatedQueryFails_ServesTheGameWithoutThemAndAsksAgainNextTime()
+    public async Task WhenTheRelatedQueryFails_ServesTheGameWithoutThemAndDoesNotAskAgainAtOnce()
     {
         var igdb = new StubIgdb(AnswerWithItsSeries) { Fails = query => query.Contains("version_parent = 1942") };
         var service = igdb.NewService();
 
         var first = await service.GetGameByIdAsync(1942);
-        await service.GetGameByIdAsync(1942);
+        var second = await service.GetGameByIdAsync(1942);
 
         Assert.Equal("The Witcher 3: Wild Hunt", first?.Title);
         Assert.Null(first?.Details?.Related);
+        Assert.Null(second?.Details?.Related);
 
-        // The game is kept for its half hour; the failure is not, so the second render asks again.
+        // The failure is kept, for a minute rather than the game's half hour, so a page nobody may cache
+        // does not ask IGDB again on every render while it fails.
         Assert.Equal(1, igdb.Asked.Count(q => q.Contains("where id = 1942;")));
-        Assert.Equal(2, igdb.Asked.Count(q => q.Contains("version_parent = 1942")));
+        Assert.Equal(1, igdb.Asked.Count(q => q.Contains("version_parent = 1942")));
     }
 
     [Fact]

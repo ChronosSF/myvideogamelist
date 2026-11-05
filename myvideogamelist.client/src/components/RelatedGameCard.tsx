@@ -23,7 +23,6 @@ interface RelatedGameCardProps {
     anchor: boolean;
     /** Whether the page is about this game itself, rather than an edition of it. */
     self: boolean;
-    favourite: boolean;
     /** In view before any scrolling, on a desktop: the rail is the first thing under the tabs. */
     eager: boolean;
 }
@@ -33,15 +32,15 @@ interface RelatedGameCardProps {
  * side of it — the list it is in, or the two things every card on the site offers a game (ADR 0075): the
  * wishlist, and the Backlog for a game in none of the reader's lists.
  */
-export function RelatedGameCard({ game, anchor, self, favourite, eager }: RelatedGameCardProps) {
+export function RelatedGameCard({ game, anchor, self, eager }: RelatedGameCardProps) {
     const state = useReleaseGame({ gameId: game.id, title: game.name, coverImageUrl: game.coverImageUrl, platforms: [] });
     const kind = KIND_WORDS[game.kind];
 
     return (
         <div>
             <GameRefTile
-                game={{ id: game.id, name: game.name, coverImageUrl: game.coverImageUrl }}
-                favourite={favourite}
+                game={game}
+                favourite={state.favourite}
                 linked={!self}
                 sizes={COVER_SIZES}
                 eager={eager}

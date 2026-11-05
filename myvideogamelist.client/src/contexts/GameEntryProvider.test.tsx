@@ -53,7 +53,7 @@ function contextValue(overrides: Partial<ListsContextValue> = {}): ListsContextV
         mutationError: null,
         reload: vi.fn(),
         isPending: () => false,
-        addToList: vi.fn(async () => {}),
+        addToList: vi.fn(async () => true),
         removeFromList: vi.fn(async () => {}),
         isInList: () => false,
         getListFor: () => null,
@@ -347,7 +347,7 @@ describe('GameEntryProvider list placement', () => {
                 isPending: () => held.pending,
                 getListFor: () => held.list,
                 isInList: (listId: ListId) => held.list === listId,
-                addToList: (listId: ListId) => move(listId),
+                addToList: async (listId: ListId) => { await move(listId); return true; },
                 removeFromList: () => move(null),
             });
             return <ListsContext.Provider value={value}>{children}</ListsContext.Provider>;

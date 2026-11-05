@@ -34,7 +34,7 @@ function listsValue(overrides: Partial<ListsContextValue> = {}): ListsContextVal
         mutationError: null,
         reload: vi.fn(),
         isPending: () => false,
-        addToList: vi.fn(async () => {}),
+        addToList: vi.fn(async () => true),
         removeFromList: vi.fn(async () => {}),
         isInList: () => false,
         getListFor: () => null,

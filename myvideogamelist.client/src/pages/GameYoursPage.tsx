@@ -1,8 +1,7 @@
 import type { Route } from './+types/GameYoursPage';
-import type { GameDto } from '@/types/game';
+import { useAuth } from '@/hooks/useAuth';
 import { PRIVATE_NO_STORE } from '@/lib/cache';
 import { titleAndYear } from '@/lib/releaseDate';
-import { useGamePage } from '@/lib/gamePage';
 import { NOINDEX } from '@/lib/seo';
 import { GameYours } from '@/components/GameYours';
 
@@ -12,7 +11,8 @@ import { GameYours } from '@/components/GameYours';
  * (`docs/decisions/0036-*`).
  */
 export function meta({ matches }: Route.MetaArgs) {
-    const game = (matches.find(match => match?.id === 'pages/GamePage')?.loaderData as { game?: GameDto } | undefined)?.game;
+    // The game page's match, typed from the route table: the root's comes first.
+    const game = matches[1]?.loaderData?.game;
     return [
         { title: game ? `Your game: ${titleAndYear(game)} - MyVideoGameList` : 'Your game - MyVideoGameList' },
         NOINDEX,
@@ -30,6 +30,6 @@ export function headers({ errorHeaders }: Route.HeadersArgs) {
 
 /** The game page's Your game tab (ADR 0084), inside the reader's entry the page provides. */
 export default function GameYoursPage() {
-    const { authLoading } = useGamePage();
-    return <GameYours authLoading={authLoading} />;
+    const { loading } = useAuth();
+    return <GameYours authLoading={loading} />;
 }

@@ -51,6 +51,7 @@ vi.mock('@/hooks/useWishlist', () => ({ useWishlist: () => wishlist }));
 /** An add the provider keeps, as nearly every add is. */
 const keepsEveryAdd = async (listId: ListId, game: GameDto) => {
     listed.set(game.id, listId);
+    return true;
 };
 
 beforeEach(() => {
@@ -62,6 +63,7 @@ beforeEach(() => {
         addToList: vi.fn(keepsEveryAdd),
     });
     Object.assign(auth, { user: userProfile({ id: 'user-1' }) });
+    favourites.isFavourite = () => false;
 });
 
 function related(id: number, name: string, releaseYear: number | null, kind: RelatedGameKind = 'game'): RelatedGameDto {
@@ -96,7 +98,6 @@ function renderRail(props: {
     related?: RelatedGamesDto;
     gameId?: number;
     seriesNames?: string[];
-    isFavourite?: (gameId: number) => boolean;
 } = {}) {
     const rail = props.related ?? WITCHER;
     return render(
@@ -105,7 +106,6 @@ function renderRail(props: {
                 related={rail}
                 gameId={props.gameId ?? rail.anchorId}
                 seriesNames={props.seriesNames ?? ['The Witcher']}
-                isFavourite={props.isFavourite ?? (() => false)}
             />
         </MemoryRouter>,
     );
@@ -243,7 +243,8 @@ describe('RelatedGamesRail', () => {
     });
 
     it('marks the reader\'s favourites, in the card\'s name too', () => {
-        renderRail({ isFavourite: gameId => gameId === 20 });
+        favourites.isFavourite = gameId => gameId === 20;
+        renderRail();
 
         expect(within(rail()).getByRole('link', { name: 'The Witcher 2: Assassins of Kings, one of your favourites' }))
             .toHaveAttribute('href', '/games/20');
@@ -364,9 +365,13 @@ describe('RelatedGamesRail, adding the rest to the Backlog', () => {
 
     it('says how many could not be added, when the provider took any back', async () => {
         const actor = quickActor();
-        // The add for one game is rolled back, leaving it in no list.
+        // The add for one game is rolled back, and says so. As in the provider, the game is placed at once
+        // and taken back later, so the lists still show it placed when the rail reads the add's answer.
         lists.addToList = vi.fn(async (listId: ListId, game: GameDto) => {
-            if (game.id !== 40) listed.set(game.id, listId);
+            listed.set(game.id, listId);
+            if (game.id !== 40) return true;
+            setTimeout(() => listed.delete(game.id));
+            return false;
         });
         renderRail();
 

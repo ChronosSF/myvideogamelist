@@ -4,25 +4,6 @@
    than a box (ADR 0075). */
 
 @reference "../index.css";
-.game-user-panel {
-    display: flex;
-    flex-direction: column;
-    gap: 1.25rem;
-    padding-top: 1rem;
-    border-top: 2px solid var(--color-rule);
-}
-
-.game-user-panel-title {
-    @apply type-kicker;
-    margin: 0;
-    color: var(--color-fg-muted);
-}
-
-.game-user-panel-section {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-}
 
 .game-user-panel-label {
     @apply type-kicker;
@@ -44,8 +25,7 @@
     color: var(--color-danger-300);
 }
 
-/* Five statuses wrap as chips rather than stacking as full-width rows — the sidebar is narrow
-   and a five-high stack of buttons dominates it. */
+/* A row of chips that wrap, for how the reader has the game. */
 .game-user-panel-lists {
     display: flex;
     flex-wrap: wrap;
@@ -104,13 +84,6 @@
 
 .game-user-panel-ownership-btn.active:hover:not(:disabled) {
     background: color-mix(in srgb, var(--color-danger-600) 80%, transparent);
-}
-
-.game-user-panel-score {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 0.5rem;
 }
 
 /* ---- the one destructive control ---- */
@@ -191,111 +164,6 @@
     opacity: 0.55;
 }
 
-/*
- * Pink rather than the statuses' blue, and a heart rather than a word, so the wishlist reads as a
- * different kind of thing from the five exclusive statuses above it.
- */
-.game-user-panel-wishlist {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.4rem;
-    padding: 0.35rem 0.7rem;
-    font-size: 0.78rem;
-    font-weight: 600;
-    color: var(--color-fg-soft);
-    background: color-mix(in srgb, var(--color-raised) 60%, transparent);
-    border: 1px solid var(--color-line-strong);
-    border-radius: var(--radius-md);
-    cursor: pointer;
-    transition: background 0.12s, color 0.12s, border-color 0.12s;
-}
-
-.game-user-panel-wishlist svg {
-    width: 0.95rem;
-    height: 0.95rem;
-}
-
-.game-user-panel-wishlist:hover:not(:disabled) {
-    color: var(--color-fg-strong);
-    background: color-mix(in srgb, var(--color-wishlist-600) 75%, transparent);
-    border-color: color-mix(in srgb, var(--color-wishlist-600) 90%, transparent);
-}
-
-.game-user-panel-wishlist.active {
-    color: var(--color-fg-strong);
-    background: color-mix(in srgb, var(--color-wishlist-700) 90%, transparent);
-    border-color: color-mix(in srgb, var(--color-wishlist-700) 90%, transparent);
-}
-
-.game-user-panel-wishlist:focus-visible {
-    outline: 2px solid var(--color-focus);
-    outline-offset: 2px;
-}
-
-.game-user-panel-wishlist:disabled {
-    cursor: default;
-    opacity: 0.55;
-}
-
-/*
- * The wishlist's shape in violet: a third colour for a third kind of thing, and deliberately not the
- * stars' yellow, because a favourite is not a score (ADR 0021).
- */
-.game-user-panel-favourite {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.4rem;
-    padding: 0.35rem 0.7rem;
-    font-size: 0.78rem;
-    font-weight: 600;
-    color: var(--color-fg-soft);
-    background: color-mix(in srgb, var(--color-raised) 60%, transparent);
-    border: 1px solid var(--color-line-strong);
-    border-radius: var(--radius-md);
-    cursor: pointer;
-    transition: background 0.12s, color 0.12s, border-color 0.12s;
-}
-
-.game-user-panel-favourite svg {
-    width: 0.95rem;
-    height: 0.95rem;
-}
-
-.game-user-panel-favourite:hover:not(:disabled) {
-    color: var(--color-fg-strong);
-    background: color-mix(in srgb, var(--color-favourite-600) 75%, transparent);
-    border-color: color-mix(in srgb, var(--color-favourite-600) 90%, transparent);
-}
-
-.game-user-panel-favourite.active {
-    color: var(--color-fg-strong);
-    background: color-mix(in srgb, var(--color-favourite-700) 90%, transparent);
-    border-color: color-mix(in srgb, var(--color-favourite-700) 90%, transparent);
-}
-
-.game-user-panel-favourite:focus-visible,
-.game-user-panel-retry:focus-visible {
-    outline: 2px solid var(--color-focus);
-    outline-offset: 2px;
-}
-
-.game-user-panel-favourite:disabled {
-    cursor: default;
-    opacity: 0.55;
-}
-
-.game-user-panel-retry {
-    padding: 0;
-    font: inherit;
-    font-weight: 600;
-    color: var(--color-primary-400);
-    background: none;
-    border: none;
-    cursor: pointer;
-    text-decoration: underline;
-    text-underline-offset: 3px;
-}
-
 /* ---- playthroughs ---- */
 
 .game-user-panel-playthroughs {
@@ -374,7 +242,12 @@
     color: var(--color-primary-400);
 }
 
-.game-user-panel-playthrough-actions button:last-child:hover:not(:disabled) {
+/* The question's Delete, and nothing before it is asked: the red is the confirmation's alone (issue 245). */
+.game-user-panel-playthrough-actions button.danger {
+    color: var(--color-danger-300);
+}
+
+.game-user-panel-playthrough-actions button.danger:hover:not(:disabled) {
     color: var(--color-danger-400);
 }
 

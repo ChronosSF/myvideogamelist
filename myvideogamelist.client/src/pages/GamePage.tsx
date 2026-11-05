@@ -1,4 +1,4 @@
-import { Fragment, type ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import { Link, Outlet, data, isRouteErrorResponse, useLoaderData, useMatch, useRevalidator, type RouterContextProvider } from 'react-router';
 import type { Route } from './+types/GamePage';
 import { CACHE_GAME, CACHE_NOT_FOUND, PRIVATE_NO_STORE } from '@/lib/cache';
@@ -8,7 +8,6 @@ import type { CommunityScores } from '@/types/community';
 import type { GameDto } from '@/types/game';
 import type { CommunityTimes } from '@/types/playthrough';
 import { useAuth } from '@/hooks/useAuth';
-import { useFavourites } from '@/hooks/useFavourites';
 import { useGameCommunity } from '@/hooks/useGameCommunity';
 import { GameEntryProvider } from '@/contexts/GameEntryProvider';
 import { CoverImage } from '@/components/CoverImage';
@@ -16,7 +15,7 @@ import { EmptyState } from '@/components/EmptyState';
 import { ErrorState } from '@/components/ErrorState';
 import { GameTrackingRow } from '@/components/GameTrackingRow';
 import { PageTabs } from '@/components/PageTabs';
-import { parseReleaseDate, titleAndYear } from '@/lib/releaseDate';
+import { releaseDay, releaseYear, titleAndYear } from '@/lib/releaseDate';
 import type { GamePageOutlet } from '@/lib/gamePage';
 import { gameDescription } from '@/lib/gameDescription';
 import { pageMeta, siteConfig } from '@/lib/seo';
@@ -233,10 +232,6 @@ export function GamePage() {
 
     const { user, loading: authLoading } = useAuth();
 
-    // The reader's own, for the rosette on the related games' covers. Empty in the server render and
-    // until the favourites arrive, so the shared-cached page is the same for everybody (ADR 0064).
-    const { isFavourite } = useFavourites();
-
     // The reviews are fetched here, after hydration, and never in the loader — the page is
     // edge-cached for up to a day, and a review its author withdraws must not outlive the withdrawal
     // there (ADR 0028). The scores come with them, live, over the loader's copy. Called here rather
@@ -253,14 +248,7 @@ export function GamePage() {
 
     const yours = useMatch('/games/:id/yours') !== null;
 
-    const outlet: GamePageOutlet = {
-        game,
-        memberScores,
-        community,
-        viewer: user?.userName ?? null,
-        authLoading,
-        isFavourite,
-    };
+    const outlet: GamePageOutlet = { game, memberScores, community };
 
     const body = (
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
@@ -300,10 +288,8 @@ export function GamePage() {
                 >
                     {top}
                 </GameEntryProvider>
-            ) : (
-                <Fragment key="anonymous">{top}</Fragment>
-            )}
-            {!yours && <Fragment key="overview">{body}</Fragment>}
+            ) : top}
+            {!yours && body}
         </div>
     );
 }
@@ -328,11 +314,8 @@ function GameHero({ game, memberScores, children }: GameHeroProps) {
 
     // The day the API names, which `new Date` would read as UTC midnight: the day before, and a
     // year before on 1 January, for anybody west of Greenwich, and a different day on the server.
-    const released = game.releaseDate ? parseReleaseDate(game.releaseDate) : null;
-    const releaseYear = released?.getFullYear() ?? null;
-    const releaseDate = released
-        ? released.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
-        : null;
+    const year = game.releaseDate ? releaseYear(game.releaseDate) : null;
+    const releaseDate = releaseDay(game.releaseDate);
 
     return (
         <div className="game-page-hero">
@@ -378,8 +361,8 @@ function GameHero({ game, memberScores, children }: GameHeroProps) {
 
                     <h1 className="type-display text-4xl sm:text-5xl lg:text-6xl text-fg-strong text-balance mb-3 [text-shadow:0_2px_24px_rgb(0_0_0/0.5)]">
                         {game.title}
-                        {releaseYear && (
-                            <span className="ml-3 font-mono text-lg sm:text-xl font-normal tracking-normal text-fg-soft align-middle">({releaseYear})</span>
+                        {year && (
+                            <span className="ml-3 font-mono text-lg sm:text-xl font-normal tracking-normal text-fg-soft align-middle">({year})</span>
                         )}
                     </h1>
 

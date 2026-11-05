@@ -4,6 +4,9 @@ import { type ListId, LIST_IDS } from '@/types/list';
 /** The option that takes the game out of the list it is in, where every other option is a list's id. */
 const TAKE_OUT = 'take-out';
 
+/** Keyboard focus, on each of the picker's controls. */
+const FOCUS_RING = 'focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2 focus-visible:ring-offset-page';
+
 const CHEVRON = 'M6 9l6 6 6-6';
 const PLUS = 'M12 5v14M5 12h14';
 const CHECK = 'M5 13l4 4L19 7';
@@ -41,7 +44,7 @@ export function ListPicker({ current, nameFor, disabled, onMove, onTakeOut, onSi
                     onClick={() => (onSignIn ? onSignIn() : onMove('backlog'))}
                     disabled={disabled && !onSignIn}
                     aria-label={`Add to ${nameFor('backlog')}`}
-                    className="inline-flex h-10 items-center gap-2 pl-3.5 pr-3 btn-primary rounded-r-none text-sm focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2 focus-visible:ring-offset-page disabled:opacity-60"
+                    className={`inline-flex h-10 items-center gap-2 pl-3.5 pr-3 btn-primary rounded-r-none text-sm ${FOCUS_RING} disabled:opacity-60`}
                 >
                     <Icon path={PLUS} />
                     <span>{nameFor('backlog')}</span>
@@ -55,7 +58,7 @@ export function ListPicker({ current, nameFor, disabled, onMove, onTakeOut, onSi
                             if (event.target.value !== '') onMove(event.target.value as ListId);
                         }}
                         disabled={disabled}
-                        className="peer h-10 w-9 cursor-pointer appearance-none rounded-sm rounded-l-none border-l border-on-primary/30 bg-primary-500 text-transparent focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2 focus-visible:ring-offset-page disabled:cursor-default disabled:opacity-60"
+                        className={`peer h-10 w-9 cursor-pointer appearance-none rounded-sm rounded-l-none border-l border-on-primary/30 bg-primary-500 text-transparent ${FOCUS_RING} disabled:cursor-default disabled:opacity-60`}
                     >
                         <option value="" disabled hidden>Add to another list</option>
                         {LIST_IDS.filter(listId => listId !== 'backlog').map(listId => (
@@ -81,7 +84,7 @@ export function ListPicker({ current, nameFor, disabled, onMove, onTakeOut, onSi
                     else onMove(event.target.value as ListId);
                 }}
                 disabled={disabled}
-                className="peer h-10 min-w-36 cursor-pointer appearance-none rounded-sm bg-primary-500 pl-9 pr-9 text-sm font-bold text-on-primary focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2 focus-visible:ring-offset-page disabled:cursor-default disabled:opacity-60"
+                className={`peer h-10 min-w-36 cursor-pointer appearance-none rounded-sm bg-primary-500 pl-9 pr-9 text-sm font-bold text-on-primary ${FOCUS_RING} disabled:cursor-default disabled:opacity-60`}
             >
                 {LIST_IDS.map(listId => (
                     <option key={listId} value={listId} className="bg-surface text-fg">{nameFor(listId)}</option>

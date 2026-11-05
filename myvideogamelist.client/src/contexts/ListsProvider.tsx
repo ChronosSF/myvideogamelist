@@ -557,8 +557,8 @@ export function ListsProvider({ children }: { children: ReactNode }) {
         }
     };
 
-    const addToList = async (listId: ListId, game: GameDto): Promise<void> => {
-        if (state.pending.has(game.id)) return;
+    const addToList = async (listId: ListId, game: GameDto): Promise<boolean> => {
+        if (state.pending.has(game.id)) return false;
         startPending(game.id);
 
         // Only this game's own row is remembered, never the whole set of lists — see
@@ -587,10 +587,15 @@ export function ListsProvider({ children }: { children: ReactNode }) {
                 body: JSON.stringify({ status: listId }),
             });
 
-            if (res.ok) dispatch({ type: 'CLEAR_MUTATION_ERROR', session });
-            else rollBack(undo, 'Failed to update list. Please try again.');
+            if (res.ok) {
+                dispatch({ type: 'CLEAR_MUTATION_ERROR', session });
+                return true;
+            }
+            rollBack(undo, 'Failed to update list. Please try again.');
+            return false;
         } catch {
             rollBack(undo, 'Failed to update list. Please try again.');
+            return false;
         } finally {
             endPending(game.id);
         }
