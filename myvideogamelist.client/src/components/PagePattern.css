@@ -42,9 +42,9 @@
     --page-pattern-origin: 0 0;
     /* How much of the ink each layer is, flat and at the glow. */
     --page-pattern-lines: 10%;
-    --page-pattern-lines-glow: 47%;
+    --page-pattern-lines-glow: 35%;
     --page-pattern-lit: 3.5%;
-    --page-pattern-lit-glow: 19%;
+    --page-pattern-lit-glow: 14.5%;
     --page-pattern-breathe: ease-in-out;
 
     position: absolute;
@@ -80,9 +80,9 @@
     --page-pattern-lit-image: url('../assets/isometric-grid-lit.svg?no-inline');
     --page-pattern-lit-size: 576px 224px;
     --page-pattern-lines: 8%;
-    --page-pattern-lines-glow: 40%;
+    --page-pattern-lines-glow: 30%;
     --page-pattern-lit: 5%;
-    --page-pattern-lit-glow: 24%;
+    --page-pattern-lit-glow: 18%;
 }
 
 /*
@@ -130,9 +130,9 @@
     --page-pattern-lit-image: url('../assets/dot-matrix-lit.svg?no-inline');
     --page-pattern-lit-size: 640px 480px;
     --page-pattern-lines: 9%;
-    --page-pattern-lines-glow: 42%;
+    --page-pattern-lines-glow: 32%;
     --page-pattern-lit: 40%;
-    --page-pattern-lit-glow: 55%;
+    --page-pattern-lit-glow: 31%;
     --page-pattern-breathe: steps(5, jump-none);
 }
 
