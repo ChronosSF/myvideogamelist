@@ -7,7 +7,6 @@ import { ListsContext, type ListsContextValue } from '@/contexts/ListsContext';
 import { WishlistContext, type WishlistContextValue } from '@/contexts/WishlistContext';
 import { FavouritesContext, type FavouritesContextValue } from '@/contexts/FavouritesContext';
 import { TagsContext, type TagsContextValue } from '@/contexts/TagsContext';
-import { DEFAULT_SORT } from '@/lib/listSort';
 import type { ProfileVisibility } from '@/types/auth';
 import { LIST_NAMES, type ListId } from '@/types/list';
 import type { PlaythroughDto, ReviewDto } from '@/types/playthrough';
@@ -40,10 +39,6 @@ function contextValue(overrides: Partial<ListsContextValue> = {}): ListsContextV
         setNotes: vi.fn(async () => true),
         setTags: vi.fn(async () => ({ ok: true as const })),
         deleteEntry: vi.fn(async () => true),
-        view: 'tiles',
-        setView: vi.fn(),
-        sortFor: () => DEFAULT_SORT,
-        setSort: vi.fn(),
         names: {},
         nameFor: (id: ListId) => LIST_NAMES[id],
         namesStatus: 'ready',

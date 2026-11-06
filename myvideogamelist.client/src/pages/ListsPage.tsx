@@ -16,6 +16,7 @@ import { ReorderHandle } from '@/components/ReorderHandle';
 import { ShowMoreGames } from '@/components/ShowMoreGames';
 import { Skeleton } from '@/components/Skeleton';
 import { useLists } from '@/hooks/useLists';
+import { useListView } from '@/hooks/useListView';
 import { useAuth } from '@/hooks/useAuth';
 import { useDrawLimit } from '@/hooks/useDrawLimit';
 import { useFavourites } from '@/hooks/useFavourites';
@@ -90,8 +91,11 @@ export function ListsPage() {
     const { user, loading: authLoading } = useAuth();
     const {
         lists, loading, error, mutationError, isPending, reload,
-        view, setView, sortFor, setSort, setScore, removeFromList, moveInOrder, nameFor,
+        setScore, removeFromList, moveInOrder, nameFor,
     } = useLists();
+    // In a context of its own, which nothing but this page reads: a new order redraws this page and the
+    // games it draws in a new place, and no card anywhere for the order alone (ADR 0086).
+    const { view, setView, sortFor, setSort } = useListView();
     const { isFavourite } = useFavourites();
 
     // Nobody is signed in or out until auth has answered: the server render never knows, and the
@@ -188,8 +192,9 @@ export function ListsPage() {
         if (element && element.getBoundingClientRect().top < 0) element.scrollIntoView({ block: 'start' });
     }, [drawKey]);
 
-    // Steady while the provider's functions are, so that the rows already drawn are not drawn again
-    // when another chunk joins them (`ListTableRow`).
+    // Steady as the provider's functions are, for as long as it is mounted, so that a row is drawn again
+    // only when its own game changes: not when another chunk joins it, and not when another game is saved
+    // (`ListTableRow`).
     const changeScore = useCallback(
         (gameId: number, score: number | null) => void setScore(gameId, score),
         [setScore],

@@ -7,7 +7,6 @@ import { FavouritesContext, type FavouritesContextValue } from '@/contexts/Favou
 import { ListsContext, type ListsContextValue } from '@/contexts/ListsContext';
 import { WishlistContext, type WishlistContextValue } from '@/contexts/WishlistContext';
 import { GAME_GRID_COVER_SIZES } from '@/lib/gameGrid';
-import { DEFAULT_SORT } from '@/lib/listSort';
 import { game } from '@/test/factories';
 import { LIST_NAMES, type ListId } from '@/types/list';
 
@@ -45,10 +44,6 @@ function listsValue(overrides: Partial<ListsContextValue> = {}): ListsContextVal
         setNotes: vi.fn(async () => true),
         setTags: vi.fn(async () => ({ ok: true as const })),
         deleteEntry: vi.fn(async () => true),
-        view: 'tiles',
-        setView: vi.fn(),
-        sortFor: () => DEFAULT_SORT,
-        setSort: vi.fn(),
         names: {},
         nameFor: (id: ListId) => LIST_NAMES[id],
         namesStatus: 'ready',
