@@ -99,6 +99,7 @@ grow a forward pointer when a later record or an issue closes something it left 
 | [0079](0079-a-migration-waits-five-seconds-for-a-lock-and-no-transaction-idles-past-a-minute.md) | A migration waits five seconds for a lock, and no transaction of the API's idles past a minute | Implemented |
 | [0080](0080-an-alarm-watches-what-a-reader-sees-and-mails-an-address-nobody-commits.md) | An alarm watches what a reader sees, and mails an address the repository never holds | Implemented; proved only by a deploy |
 | [0082](0082-a-look-is-a-palette-a-pattern-and-a-tint-kept-on-the-account.md) | A look is a palette, a pattern and a tint, kept on the account by name, drawn before the first paint and worked out from two colours; admins choose, until #208 decides the price | Implemented |
+| [0086](0086-the-lists-context-is-held-steady-and-its-writes-read-the-last-commit.md) | The lists context is held steady: the layout and the sorts in a context of their own, and every write one function that reads the render last committed, so a sort or a save draws only what changed | Implemented |
 
 **Status** — *Accepted*: decided, not yet built. *Implemented*: decided and in the code.
 *Superseded*: replaced by a later record.
