@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router';
 import { EmptyState } from '@/components/EmptyState';
 import { ErrorState } from '@/components/ErrorState';
@@ -174,6 +174,20 @@ export function ListsPage() {
     const { limit, showMore } = useDrawLimit(drawKey, movingRank);
     const drawn = shown.length > limit ? shown.slice(0, limit) : shown;
 
+    // A list that starts again starts at its top, and so does the reader if they were below it. Mostly
+    // they are at the top already, since that is where the sort and the filters are; this is for the
+    // change they did not make there — a ticked tag no longer offered, a saved sort arriving late —
+    // which would otherwise drop them at the foot of a page sixty games long, where the next chunk is
+    // drawn and drawn again until it fills the screen, somewhere in a list that changed under them.
+    const panel = useRef<HTMLDivElement>(null);
+    const drewKey = useRef(drawKey);
+    useEffect(() => {
+        if (drewKey.current === drawKey) return;
+        drewKey.current = drawKey;
+        const element = panel.current;
+        if (element && element.getBoundingClientRect().top < 0) element.scrollIntoView({ block: 'start' });
+    }, [drawKey]);
+
     // Steady while the provider's functions are, so that the rows already drawn are not drawn again
     // when another chunk joins them (`ListTableRow`).
     const changeScore = useCallback(
@@ -220,6 +234,7 @@ export function ListsPage() {
 
             {/* Content */}
             <div
+                ref={panel}
                 id="lists-tabpanel"
                 className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8"
                 role="tabpanel"
@@ -388,7 +403,7 @@ export function ListsPage() {
                 )}
 
                 {signedIn && !loading && !error && drawn.length < shown.length && (
-                    <ShowMoreGames left={shown.length - drawn.length} onShowMore={showMore} />
+                    <ShowMoreGames shown={drawn.length} left={shown.length - drawn.length} onShowMore={showMore} />
                 )}
             </div>
         </div>

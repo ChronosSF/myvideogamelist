@@ -30,9 +30,16 @@ function year(date: string | null): string {
     return date === null ? '—' : String(releaseYear(date));
 }
 
+/**
+ * The day a game joined the list. One formatter for every row rather than one each, and in English, as
+ * the copy around it is and as `formatCount` is (`@/lib/format`), never in the runtime's default locale.
+ * No `timeZone`, so it is the reader's day: the table is drawn only for a signed-in reader, after
+ * hydration, so it is only ever formatted in the browser.
+ */
+const ADDED_FORMAT = new Intl.DateTimeFormat('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+
 function shortDate(date: string | null): string {
-    if (date === null) return '—';
-    return new Date(date).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+    return date === null ? '—' : ADDED_FORMAT.format(new Date(date));
 }
 
 /**

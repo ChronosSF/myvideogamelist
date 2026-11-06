@@ -42,10 +42,11 @@ describe('ShowMoreGames', () => {
         vi.unstubAllGlobals();
     });
 
-    it('says how many are left, and draws more when pressed', async () => {
+    it('says how much of the list is drawn and how many are left, and draws more when pressed', async () => {
         const onShowMore = vi.fn();
-        render(<ShowMoreGames left={1580} onShowMore={onShowMore} />);
+        render(<ShowMoreGames shown={60} left={1580} onShowMore={onShowMore} />);
 
+        expect(screen.getByRole('status')).toHaveTextContent('Showing 60 of 1,640');
         await userEvent.click(screen.getByRole('button', { name: 'Show more (1,580 left)' }));
 
         expect(onShowMore).toHaveBeenCalledOnce();
@@ -54,7 +55,7 @@ describe('ShowMoreGames', () => {
     it('is pressed for the reader once it is within a screen of being scrolled to', () => {
         vi.stubGlobal('IntersectionObserver', FakeObserver);
         const onShowMore = vi.fn();
-        render(<ShowMoreGames left={70} onShowMore={onShowMore} />);
+        render(<ShowMoreGames shown={60} left={70} onShowMore={onShowMore} />);
 
         const [observer] = live();
         expect(observer.watched).toEqual([screen.getByRole('button', { name: /^Show more/ })]);
@@ -70,10 +71,10 @@ describe('ShowMoreGames', () => {
     it('watches again after each chunk, so a button still in reach is pressed again', () => {
         vi.stubGlobal('IntersectionObserver', FakeObserver);
         const onShowMore = vi.fn();
-        const { rerender } = render(<ShowMoreGames left={130} onShowMore={onShowMore} />);
+        const { rerender } = render(<ShowMoreGames shown={60} left={130} onShowMore={onShowMore} />);
         const first = live()[0];
 
-        rerender(<ShowMoreGames left={70} onShowMore={onShowMore} />);
+        rerender(<ShowMoreGames shown={120} left={70} onShowMore={onShowMore} />);
 
         expect(first.disconnected).toBe(true);
         expect(live()).toHaveLength(1);

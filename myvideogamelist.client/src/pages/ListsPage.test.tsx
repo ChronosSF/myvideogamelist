@@ -90,7 +90,14 @@ const tags: TagsContextValue = {
 
 vi.mock('@/hooks/useAuth', () => ({ useAuth: () => auth }));
 vi.mock('@/hooks/useLists', () => ({ useLists: () => lists }));
-vi.mock('@/hooks/useWishlist', () => ({ useWishlist: () => wishlist }));
+/** How many times a card read the wishlist: once a render, and nothing else on the page reads it. */
+let wishlistReads = 0;
+vi.mock('@/hooks/useWishlist', () => ({
+    useWishlist: () => {
+        wishlistReads += 1;
+        return wishlist;
+    },
+}));
 vi.mock('@/hooks/useTags', () => ({ useTags: () => tags }));
 
 /** The reader's favourites, as far as the rosette reads them. Hoisted and handed back whole, as above. */
@@ -102,14 +109,15 @@ const favourites = {
 vi.mock('@/hooks/useFavourites', () => ({ useFavourites: () => favourites }));
 
 /**
- * The table's score control, as a count of the times each game's was drawn: what shows whether a row
- * already on the page was drawn again. Nothing here presses a star; `ScoreInput` has tests of its own.
+ * The table's score control, as a count of the times each game's was drawn — what shows whether a row
+ * already on the page was drawn again — and one button that gives an 8, which is all the page's wiring
+ * needs. The stars themselves are `ScoreInput`'s own tests.
  */
 const scoreRenders = new Map<string, number>();
 vi.mock('@/components/ScoreInput', () => ({
-    ScoreInput: ({ gameTitle }: { gameTitle: string }) => {
+    ScoreInput: ({ gameTitle, onChange }: { gameTitle: string; onChange: (score: number | null) => void }) => {
         scoreRenders.set(gameTitle, (scoreRenders.get(gameTitle) ?? 0) + 1);
-        return null;
+        return <button type="button" onClick={() => onChange(8)}>{`Score ${gameTitle} 8`}</button>;
     },
 }));
 
@@ -346,6 +354,51 @@ describe('ListsPage and a long list', () => {
         };
         rerender(<MemoryRouter><ListsPage /></MemoryRouter>);
         expect([...scoreRenders.keys()]).toEqual([title(5)]);
+    });
+
+    it('draws only the cards it adds when another chunk joins them', () => {
+        renderPage();
+
+        wishlistReads = 0;
+        showMore(5);
+
+        expect(wishlistReads).toBe(5);
+    });
+
+    it('scores a game from the table through the provider', async () => {
+        lists.view = 'table';
+        lists.setScore = vi.fn(async () => true);
+        renderPage();
+
+        await userEvent.click(screen.getByRole('button', { name: `Score ${title(7)} 8` }));
+
+        expect(lists.setScore).toHaveBeenCalledExactlyOnceWith(7, 8);
+    });
+
+    it('says how much of the list is drawn', () => {
+        renderPage();
+
+        expect(screen.getByRole('status')).toHaveTextContent('Showing 60 of 65');
+    });
+
+    it('takes a reader below the top back to it when the list starts again under them', () => {
+        // jsdom lays nothing out and scrolls nothing: the list's top is put a long way above the window.
+        const scrolled = vi.spyOn(HTMLElement.prototype, 'scrollIntoView');
+        vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+            return this.id === 'lists-tabpanel' ? new DOMRect(0, -4000, 800, 6000) : new DOMRect(0, 0, 0, 0);
+        });
+        try {
+            const { rerender } = renderPage();
+            expect(scrolled).not.toHaveBeenCalled();
+
+            lists.sortFor = () => ({ key: 'title', descending: true });
+            rerender(<MemoryRouter><ListsPage /></MemoryRouter>);
+
+            expect(scrolled).toHaveBeenCalledExactlyOnceWith({ block: 'start' });
+            expect(scrolled.mock.contexts[0]).toBe(screen.getByRole('tabpanel'));
+        } finally {
+            vi.restoreAllMocks();
+        }
     });
 
     it('offers no more than there is on a list that fits in one chunk', () => {

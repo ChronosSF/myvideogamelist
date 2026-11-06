@@ -109,7 +109,9 @@ export function ListTable({
                             onScoreChange={onScoreChange}
                             onRemove={onRemove}
                             reorder={reorder}
-                            rank={index + 1}
+                            // Drawn only beside a handle. Elsewhere a constant, or a row taken out above
+                            // would renumber, and so redraw, every row below it.
+                            rank={reorder ? index + 1 : 0}
                             tagsFor={tagsFor}
                         />
                     ))}
