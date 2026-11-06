@@ -40,7 +40,8 @@
     --page-pattern-lit-size: 312px 220px;
     --page-pattern-repeat: repeat;
     --page-pattern-origin: 0 0;
-    /* How much of the ink each layer is, flat and at the glow. */
+    /* How much of the ink each layer is, flat and at the glow. The glow is drawn over the flat colour, so at
+       its brightest the two add up. */
     --page-pattern-lines: 10%;
     --page-pattern-lines-glow: 35%;
     --page-pattern-lit: 3.5%;
@@ -120,9 +121,9 @@
  * pitch of eight, a few lit in small clusters, each with a stepped bloom as pixel art draws a light. The
  * pitch is a whole number of device pixels at 1, 1.25, 1.5 and 2 times, and the masks are drawn with crisp
  * edges, so at those zooms every pixel comes out the same size wherever it falls. At the bright corner the
- * panel's pixels come out about `fg-dim` and no brighter, darker than any text meant to be read over them;
- * a lit one is a pixel bigger on every side and far brighter, since a lit pixel has to be bright to be seen
- * as lit at all. It breathes in five steps rather than a smooth ease, as an eight-bit console faded.
+ * panel's pixels are under two fifths of the ink; a lit one is a pixel bigger on every side and far
+ * brighter, about three fifths there, since a lit pixel has to be bright to be seen as lit at all. It
+ * breathes in five steps rather than a smooth ease, as an eight-bit console faded.
  */
 :root[data-pattern='pixels'] .page-pattern {
     --page-pattern-lines-image: url('../assets/dot-matrix.svg?no-inline');

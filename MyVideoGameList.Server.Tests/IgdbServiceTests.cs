@@ -369,6 +369,12 @@ internal sealed class StubIgdb(Func<string, string> answerGames) : HttpMessageHa
     /// <summary>The games queries to answer with a 500, as IGDB failing would.</summary>
     public Func<string, bool> Fails { get; init; } = _ => false;
 
+    /// <summary>
+    /// Awaited before any endpoint but the token's answers, given its path and its query: how a test holds one
+    /// request until another has arrived.
+    /// </summary>
+    public Func<string, string, Task> Hold { get; init; } = (_, _) => Task.CompletedTask;
+
     /// <summary>A service that asks this stub, with a cache of its own.</summary>
     public IgdbService NewService()
     {
@@ -390,7 +396,8 @@ internal sealed class StubIgdb(Func<string, string> answerGames) : HttpMessageHa
         if (request.RequestUri?.Host == "id.twitch.tv") return Json(TokenPayload);
 
         var query = await request.Content!.ReadAsStringAsync(cancellationToken);
-        if (request.RequestUri?.AbsolutePath != "/v4/games") return Json("[]");
+        await Hold(request.RequestUri!.AbsolutePath, query);
+        if (request.RequestUri.AbsolutePath != "/v4/games") return Json("[]");
 
         Query = query;
         Queries++;
@@ -850,6 +857,29 @@ public class GetGameByIdAsyncTests
 
         // Asked by the series the detail query named.
         Assert.Contains("collections = (62)", igdb.Asked[1]);
+    }
+
+    [Fact]
+    public async Task AsksForTheCompletionTimesAndTheRelatedGamesTogether()
+    {
+        // The completion times are held until the related query arrives. Sent together, it arrives at once;
+        // sent one after the other, it waits for the completion times, which wait out the five seconds.
+        var relatedAsked = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var together = false;
+        var igdb = new StubIgdb(AnswerWithItsSeries)
+        {
+            Hold = async (path, query) =>
+            {
+                if (query.Contains("version_parent = 1942")) relatedAsked.TrySetResult();
+                if (path == "/v4/game_time_to_beats")
+                    together = await Task.WhenAny(relatedAsked.Task, Task.Delay(TimeSpan.FromSeconds(5))) == relatedAsked.Task;
+            },
+        };
+
+        var game = await igdb.NewService().GetGameByIdAsync(1942);
+
+        Assert.True(together);
+        Assert.NotNull(game?.Details?.Related);
     }
 
     [Fact]

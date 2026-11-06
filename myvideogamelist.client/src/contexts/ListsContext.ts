@@ -30,11 +30,16 @@ export interface ListsContextValue {
 
     /**
      * Puts the game in a list, or moves it there. False when it is not there afterwards: the save failed and
-     * was put back, or another write to the game was still out.
+     * was put back, another write to the game was still out, or the lists are loading or failed to load.
+     * A move needs the list the game is in now, and while that is unknown a game in Finished reads as in
+     * none, so a press meant to add it would take it out of Finished.
      */
     addToList: (listId: ListId, game: GameDto) => Promise<boolean>;
-    /** Takes the game out of every list. The score and everything else on the entry survive. */
-    removeFromList: (listId: ListId, gameId: number) => Promise<void>;
+    /**
+     * Takes the game out of every list. The score and everything else on the entry survive. False when it
+     * is still in one afterwards, for the same reasons as `addToList`.
+     */
+    removeFromList: (listId: ListId, gameId: number) => Promise<boolean>;
     isInList: (listId: ListId, gameId: number) => boolean;
     getListFor: (gameId: number) => ListId | null;
 

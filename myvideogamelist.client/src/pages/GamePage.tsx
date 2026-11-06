@@ -17,6 +17,7 @@ import { GameTrackingRow } from '@/components/GameTrackingRow';
 import { PageTabs } from '@/components/PageTabs';
 import { releaseDay, releaseYear, titleAndYear } from '@/lib/releaseDate';
 import type { GamePageOutlet } from '@/lib/gamePage';
+import type { PagePatternHandle } from '@/lib/pagePattern';
 import { gameDescription } from '@/lib/gameDescription';
 import { pageMeta, siteConfig } from '@/lib/seo';
 import { hasCriticScore, hasMemberScore, ratingPercent, scoresWithinFloor, timesWithinFloor } from '@/lib/score';
@@ -84,6 +85,13 @@ function timesFrom(body: unknown): CommunityTimes | null {
     if (!buckets.every(bucket => typeof bucket?.type === 'string' && typeof bucket.samples === 'number')) return null;
     return timesWithinFloor(times as CommunityTimes);
 }
+
+/**
+ * The hero is opaque and stands where the top of the page's pattern is drawn, so that end is not drawn on
+ * this page, either tab: all that showed of it was its faint tail under the tabs, beside whatever art the
+ * game has (ADR 0084). The foot's is.
+ */
+export const handle: PagePatternHandle = { pagePattern: 'foot' };
 
 /**
  * Fetched on the server so crawlers and social unfurlers see the real game, not an empty shell. A

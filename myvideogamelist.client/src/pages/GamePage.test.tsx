@@ -5,7 +5,7 @@ import type { ReactNode } from 'react';
 import { renderToString } from 'react-dom/server';
 import { RouterContextProvider, createRoutesStub, Link, Outlet, type LoaderFunction, type MetaDescriptor } from 'react-router';
 import { ErrorBoundary, GamePage, headers, loader, meta } from '@/pages/GamePage';
-import GameOverviewPage from '@/pages/GameOverviewPage';
+import GameOverviewPage, { headers as overviewHeaders } from '@/pages/GameOverviewPage';
 import GameYoursPage from '@/pages/GameYoursPage';
 import type { AuthContextValue } from '@/contexts/AuthContext';
 import type { AuthDialogContextValue } from '@/contexts/AuthDialogContext';
@@ -634,6 +634,27 @@ describe("GamePage related games", () => {
         expect(rail.compareDocumentPosition(facts()) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     });
 
+    it("opens the next game's series where its own opens, whatever was pressed on the last one", async () => {
+        // The Overview stays mounted from one game to the next, so a rail that outlived its game would
+        // carry what was pressed on it — the earlier games shown, or an "Add these to Backlog?" — onto
+        // the next game's series.
+        const longSeries = (anchorId: number, title: string): GameDto => {
+            const games = Array.from({ length: 12 }, (_, index) =>
+                related({ id: anchorId - 9 + index, name: `${title} ${index + 1}`, releaseYear: 2000 + index }));
+            return game({ id: anchorId, title, details: gameDetails({ collections: [title], related: { anchorId, games, editions: [] } }) });
+        };
+        renderWithNextGame({ game: longSeries(1, 'Celeste') }, { game: longSeries(2, 'Hades') });
+
+        // Nine games before this one, so the rail opens three before it, with six a press away.
+        await userEvent.click(screen.getByRole('button', { name: '6 earlier games' }));
+        expect(screen.queryByRole('button', { name: '6 earlier games' })).not.toBeInTheDocument();
+
+        await userEvent.click(screen.getByRole('link', { name: 'Next game' }));
+
+        expect(await screen.findByRole('heading', { level: 1, name: 'Hades' })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: '6 earlier games' })).toBeInTheDocument();
+    });
+
     it('has no rail, and does not fail, when IGDB was not asked or the API is older than the rail', () => {
         // A null is IGDB failing, which the loader keeps off the edge; a missing one is a copy made by
         // the build before this one, which a client can still be handed for up to a day.
@@ -869,6 +890,21 @@ describe('GamePage caching', () => {
 
     it('lets nothing store a failure that was not a Response at all', () => {
         expect(policyOf({})).toBe(PRIVATE_NO_STORE);
+    });
+
+    it("goes out under the Overview with the game page's own policy, and fails closed without one", () => {
+        // The Overview states its own, which is the game page's handed on (ADR 0013, ADR 0084).
+        const overviewPolicyOf = (init: { parentHeaders?: HeadersInit; errorHeaders?: HeadersInit }) => overviewHeaders({
+            loaderHeaders: new Headers(),
+            parentHeaders: new Headers(init.parentHeaders),
+            actionHeaders: new Headers(),
+            errorHeaders: init.errorHeaders === undefined ? undefined : new Headers(init.errorHeaders),
+        } as unknown as Parameters<typeof overviewHeaders>[0])['Cache-Control'];
+
+        expect(overviewPolicyOf({ parentHeaders: { 'Cache-Control': CACHE_GAME } })).toBe(CACHE_GAME);
+        expect(overviewPolicyOf({ parentHeaders: { 'Cache-Control': PRIVATE_NO_STORE } })).toBe(PRIVATE_NO_STORE);
+        expect(overviewPolicyOf({ errorHeaders: { 'Cache-Control': CACHE_NOT_FOUND } })).toBe(CACHE_NOT_FOUND);
+        expect(overviewPolicyOf({})).toBe(PRIVATE_NO_STORE);
     });
 });
 

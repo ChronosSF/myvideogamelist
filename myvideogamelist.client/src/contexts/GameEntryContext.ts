@@ -32,6 +32,11 @@ export interface GameEntryContextValue {
     hasData: boolean;
 
     currentList: ListId | null;
+    /**
+     * Whether the reader's lists have loaded, so that `currentList` is the truth: while they load, or after
+     * they failed to, a game in Finished reads as in none, and a move or a removal is refused.
+     */
+    listsKnown: boolean;
     moveTo: (listId: ListId) => Promise<void>;
     /** Takes the game out of the list it is in. Its score and everything else stay. */
     takeOut: () => Promise<void>;

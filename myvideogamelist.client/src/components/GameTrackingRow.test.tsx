@@ -19,8 +19,14 @@ const GAME = game({ id: 1942, title: 'The Witcher 3: Wild Hunt' });
 
 const dialog: AuthDialogContextValue = { open: vi.fn() };
 
-/** The lists, as far as the row reads them: the reader's names for each. */
-const lists = { nameFor: (id: ListId) => LIST_NAMES[id] } as unknown as ListsContextValue;
+/** The lists, as far as the row reads them: the reader's names for each, and whether they loaded. */
+const listsValue = (overrides: Partial<ListsContextValue> = {}) => ({
+    nameFor: (id: ListId) => LIST_NAMES[id],
+    error: null,
+    reload: vi.fn(),
+    ...overrides,
+}) as unknown as ListsContextValue;
+const lists = listsValue();
 
 /**
  * The provider's value with nothing recorded and nothing out, every write a mock. Built afresh per test;
@@ -36,6 +42,7 @@ function entryValue(overrides: Partial<GameEntryContextValue> = {}): GameEntryCo
         pending: false,
         hasData: false,
         currentList: null,
+        listsKnown: true,
         moveTo: vi.fn(async () => {}),
         takeOut: vi.fn(async () => {}),
         listError: null,
@@ -86,15 +93,16 @@ function entryValue(overrides: Partial<GameEntryContextValue> = {}): GameEntryCo
     };
 }
 
-function renderRow({ authLoading = false, linkToYours = true, entry = null }: {
+function renderRow({ authLoading = false, linkToYours = true, entry = null, listsContext = lists }: {
     authLoading?: boolean;
     linkToYours?: boolean;
     entry?: GameEntryContextValue | null;
+    listsContext?: ListsContextValue;
 } = {}) {
     return render(
         <MemoryRouter>
             <AuthDialogContext.Provider value={dialog}>
-                <ListsContext.Provider value={lists}>
+                <ListsContext.Provider value={listsContext}>
                     <GameEntryContext.Provider value={entry}>
                         <GameTrackingRow game={GAME} authLoading={authLoading} linkToYours={linkToYours} />
                     </GameEntryContext.Provider>
@@ -311,6 +319,24 @@ describe('GameTrackingRow, signed in', () => {
             'Could not update your wishlist.',
             'Could not update your favourites.',
         ]);
+    });
+
+    it('offers no list while the lists are unknown, since a game in one reads as in none until they come', () => {
+        renderRow({ entry: entryValue({ listsKnown: false }) });
+
+        expect(addTo('Backlog')).toBeDisabled();
+        expect(screen.getByLabelText('Add to another list')).toBeDisabled();
+    });
+
+    it('says the lists could not be loaded, with a way to try again', async () => {
+        const actor = quickActor();
+        const listsContext = listsValue({ error: 'Failed to load lists.' });
+        renderRow({ entry: entryValue({ listsKnown: false }), listsContext });
+
+        expect(screen.getByRole('alert')).toHaveTextContent('Your lists could not be loaded, so this game cannot be moved between them just now.');
+
+        await actor.click(screen.getByRole('button', { name: 'Try again' }));
+        expect(listsContext.reload).toHaveBeenCalledTimes(1);
     });
 
     it('says why the rosette is stuck when the favourites could not be loaded, with a way to try again', async () => {

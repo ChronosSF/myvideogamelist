@@ -1,7 +1,13 @@
 import { FavouritesShowcase } from '@/components/FavouritesShowcase';
 import { ProfileHistory } from '@/components/ProfileHistory';
 import { ProfileStats } from '@/components/ProfileStats';
+import { PRIVATE_NO_STORE } from '@/lib/cache';
 import { useUserPage } from '@/lib/userPage';
+
+/** The reader's own tracking: nothing shared, as the profile page says for both its tabs. */
+export function headers() {
+    return { 'Cache-Control': PRIVATE_NO_STORE };
+}
 
 /**
  * The profile's Your tracking tab (ADR 0084): what the reader has done, which is the reason they came, at

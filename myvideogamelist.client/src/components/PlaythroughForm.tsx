@@ -80,8 +80,8 @@ export function PlaythroughForm({
     };
 
     return (
-        <form className="game-user-panel-playthrough-form" onSubmit={handleSubmit}>
-            <div className="game-user-panel-field">
+        <form className="game-yours-playthrough-form" onSubmit={handleSubmit}>
+            <div className="game-yours-field">
                 <label htmlFor={`${fieldId}-platform`}>Platform</label>
                 <select
                     id={`${fieldId}-platform`}
@@ -102,7 +102,7 @@ export function PlaythroughForm({
                 </select>
             </div>
 
-            <div className="game-user-panel-field">
+            <div className="game-yours-field">
                 <label htmlFor={`${fieldId}-type`}>How you played it</label>
                 <select
                     id={`${fieldId}-type`}
@@ -116,14 +116,14 @@ export function PlaythroughForm({
                         <option key={tier.key} value={tier.key}>{tier.label}</option>
                     ))}
                 </select>
-                <p id={`${fieldId}-type-hint`} className="game-user-panel-hint">
+                <p id={`${fieldId}-type-hint`} className="game-yours-hint">
                     Leave this blank while you are still playing. Only playthroughs with both a
                     type and a time count towards the community figures.
                 </p>
             </div>
 
-            <div className="game-user-panel-field-pair">
-                <div className="game-user-panel-field">
+            <div className="game-yours-field-pair">
+                <div className="game-yours-field">
                     <label htmlFor={`${fieldId}-hours`}>Hours</label>
                     <input
                         id={`${fieldId}-hours`}
@@ -134,7 +134,7 @@ export function PlaythroughForm({
                         disabled={pending}
                     />
                 </div>
-                <div className="game-user-panel-field">
+                <div className="game-yours-field">
                     <label htmlFor={`${fieldId}-minutes`}>Minutes</label>
                     <input
                         id={`${fieldId}-minutes`}
@@ -148,8 +148,8 @@ export function PlaythroughForm({
                 </div>
             </div>
 
-            <div className="game-user-panel-field-pair">
-                <div className="game-user-panel-field">
+            <div className="game-yours-field-pair">
+                <div className="game-yours-field">
                     <label htmlFor={`${fieldId}-started`}>Started</label>
                     <input
                         id={`${fieldId}-started`}
@@ -159,7 +159,7 @@ export function PlaythroughForm({
                         disabled={pending}
                     />
                 </div>
-                <div className="game-user-panel-field">
+                <div className="game-yours-field">
                     <label htmlFor={`${fieldId}-finished`}>Finished</label>
                     <input
                         id={`${fieldId}-finished`}
@@ -171,7 +171,7 @@ export function PlaythroughForm({
                 </div>
             </div>
 
-            <div className="game-user-panel-field">
+            <div className="game-yours-field">
                 <label htmlFor={`${fieldId}-notes`}>Notes</label>
                 <textarea
                     id={`${fieldId}-notes`}
@@ -184,10 +184,10 @@ export function PlaythroughForm({
             </div>
 
             {error !== null && (
-                <p className="game-user-panel-hint" role="alert">{error}</p>
+                <p className="game-yours-hint" role="alert">{error}</p>
             )}
 
-            <div className="game-user-panel-confirm">
+            <div className="game-yours-confirm">
                 <button type="submit" className="primary" disabled={pending}>
                     {editing === null ? 'Log playthrough' : 'Save playthrough'}
                 </button>

@@ -54,7 +54,7 @@ function contextValue(overrides: Partial<ListsContextValue> = {}): ListsContextV
         reload: vi.fn(),
         isPending: () => false,
         addToList: vi.fn(async () => true),
-        removeFromList: vi.fn(async () => {}),
+        removeFromList: vi.fn(async () => true),
         isInList: () => false,
         getListFor: () => null,
         scoreFor: () => null,
@@ -337,17 +337,18 @@ describe('GameEntryProvider list placement', () => {
 
         function Lists({ children }: { children: ReactNode }) {
             const [held, setHeld] = useState({ list: from, pending: false });
-            const move = async (to: ListId | null) => {
+            const move = async (to: ListId | null): Promise<boolean> => {
                 const before = held.list;
                 setHeld({ list: to, pending: true });
                 const saved = await new Promise<boolean>(resolve => { settle = resolve; });
                 setHeld({ list: saved ? to : before, pending: false });
+                return saved;
             };
             const value = contextValue({
                 isPending: () => held.pending,
                 getListFor: () => held.list,
                 isInList: (listId: ListId) => held.list === listId,
-                addToList: async (listId: ListId) => { await move(listId); return true; },
+                addToList: (listId: ListId) => move(listId),
                 removeFromList: () => move(null),
             });
             return <ListsContext.Provider value={value}>{children}</ListsContext.Provider>;

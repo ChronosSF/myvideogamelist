@@ -36,7 +36,7 @@ interface GameTrackingRowProps {
 export function GameTrackingRow({ game, authLoading, linkToYours }: GameTrackingRowProps) {
     const entry = useGameEntry();
     const authDialog = useAuthDialog();
-    const { nameFor } = useLists();
+    const { nameFor, error: listsError, reload: reloadLists } = useLists();
     const favouriteHintId = useId();
 
     const signIn = () => authDialog.open('login');
@@ -55,7 +55,7 @@ export function GameTrackingRow({ game, authLoading, linkToYours }: GameTracking
                 <ListPicker
                     current={entry?.currentList ?? null}
                     nameFor={nameFor}
-                    disabled={entry === null || entry.pending}
+                    disabled={entry === null || !entry.listsKnown || entry.pending}
                     onMove={listId => void entry?.moveTo(listId)}
                     onTakeOut={() => void entry?.takeOut()}
                     onSignIn={signedOut ? signIn : undefined}
@@ -140,7 +140,7 @@ export function GameTrackingRow({ game, authLoading, linkToYours }: GameTracking
                 )}
             </p>
 
-            {entry !== null && <TrackingErrors entry={entry} />}
+            {entry !== null && <TrackingErrors entry={entry} listsFailed={listsError !== null} onReloadLists={reloadLists} />}
         </div>
     );
 }
@@ -172,13 +172,24 @@ function EntrySummary({ entry, linkToYours }: { entry: GameEntryContextValue; li
 }
 
 /** The row's refusals, each where the reader is looking, in the colour an error's words take. */
-function TrackingErrors({ entry }: { entry: GameEntryContextValue }) {
+function TrackingErrors({ entry, listsFailed, onReloadLists }: {
+    entry: GameEntryContextValue;
+    listsFailed: boolean;
+    onReloadLists: () => void;
+}) {
     const messages = [entry.listError, entry.scoreError, entry.wishlistError, entry.favouriteError]
         .filter((message): message is string => message !== null);
 
     return (
         <>
             {messages.map(message => <Alert key={message}>{message}</Alert>)}
+            {/* The list picker waits for the lists, since a game in one reads as in none until they come
+                (`addToList`); after a read that failed it would wait for ever without saying why. */}
+            {listsFailed && (
+                <Alert onRetry={onReloadLists}>
+                    Your lists could not be loaded, so this game cannot be moved between them just now.
+                </Alert>
+            )}
             {/* Unlike the wishlist, favourites have no page of their own to report a failed load and
                 offer a retry, so the one control that is stuck says why. */}
             {entry.favouritesFailed && (

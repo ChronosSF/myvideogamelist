@@ -27,7 +27,9 @@ and one row of them fits a phone's first screen, where the panel did not. The he
 `clamp(320px, 30vw, 420px)`, the title a step smaller at `lg`. It is opaque, and stands where the top of the
 reader's pattern ([0082](0082-a-look-is-a-palette-a-pattern-and-a-tint-kept-on-the-account.md)) is drawn, so
 that end is not drawn on the game page: all of it that showed was its faint tail under the tabs, beside a
-poster it was never drawn to go with. The foot's is.
+poster it was never drawn to go with. The foot's is. The page says so in its route's `handle`, which the root
+reads (`@/lib/pagePattern`), rather than in a stylesheet reaching into the pattern from outside; a game whose
+loader threw renders its boundary, with no hero, and gets the top back.
 
 The row is drawn the same size in all three of its states. The page is shared at the edge
 ([0013](0013-http-caching-policy.md)), so its server render, and the first render in the browser, cannot
@@ -56,8 +58,10 @@ game's review. Moving between them keeps the reader's place (`preventScrollReset
 
 Your game is the reader's own: `noindex`, so it names no canonical URL ([0036](0036-what-a-crawler-is-told.md)),
 and `private, no-store`. Its server render is the same for everybody — the entry is read after hydration, as
-the panel's was — but nothing about its address is worth a shared copy. The Overview child declares no
-`headers` and inherits the game's: React Router uses the parent's when a child has none.
+the panel's was — but nothing about its address is worth a shared copy. The Overview child hands on the
+game's policy in a `headers` of its own, as every route states one ([0013](0013-http-caching-policy.md)):
+React Router would pass the parent's on to a child with none, but a route that says nothing is one nobody
+decided for. The profile's two tabs say `private, no-store`, as the profile does.
 
 ### 4. The reader's entry is one provider, read by the row and the tab
 
@@ -67,8 +71,14 @@ relied on: every write settles after the click, and the page stays mounted from 
 ([0022](0022-entry-surrogate-key-and-the-wishlist-axis.md)). Keyed at page level it would remount the whole page when a
 signed-in reader's auth answered after hydration, refetching the completion times and the news; so it wraps
 the hero, the tabs and the Your game tab, and the Overview tab sits beside it, outside. A signed-in reader's
-arrival remounts the hero and nothing that fetches. Its stylesheet keeps the panel's name and class prefix,
-`GameUserPanel.css` and `game-user-panel-*`, which the forms it styles share.
+arrival remounts the hero and nothing that fetches. Its stylesheet is the tab's, `GameYours.css` and
+`game-yours-*`, which the forms it styles share.
+
+The list control waits for the lists. Until they have loaded, or after they failed to, a game in Finished
+reads as in none, so a press meant to put it in the Backlog would take it out of Finished: `addToList` and
+`removeFromList` refuse while the lists are unknown, the picker is disabled, and a failed read says so under
+the row with a way to try again. A move's failure is the provider's own answer, which `addToList` and
+`removeFromList` return, rather than worked out from where the game ended up.
 
 ### 5. Overview: the series first, then a reading column beside the facts
 

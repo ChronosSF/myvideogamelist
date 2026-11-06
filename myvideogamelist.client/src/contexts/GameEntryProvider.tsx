@@ -60,7 +60,7 @@ interface GameEntryProviderProps {
 export function GameEntryProvider({ game, profileVisibility, onCommunityChange, children }: GameEntryProviderProps) {
     const {
         getListFor, addToList, removeFromList, setScore, setOwnership, setNotes, setTags, deleteEntry,
-        isPending, nameFor,
+        isPending, nameFor, loading: listsLoading, error: listsError,
     } = useLists();
     const wishlist = useWishlist();
     const favourites = useFavourites();
@@ -115,27 +115,18 @@ export function GameEntryProvider({ game, profileVisibility, onCommunityChange, 
     }, []);
 
     const currentList = getListFor(game.id);
+    // Until the lists have loaded, a game in Finished reads as in none, so the list it is in is not known
+    // and nothing may be decided from it (`addToList`).
+    const listsKnown = !listsLoading && listsError === null;
     const pending = isPending(game.id) || creatingTag;
     const wishlisted = wishlist.isWishlisted(game.id);
     const favourite = favourites.isFavourite(game.id);
     const ready = entryStatus === 'ready';
 
     // A list move or a score the API refused. The provider puts either back itself, which on its own
-    // reads as a choice that did not register, and says why only on the lists page. A move answers
-    // with nothing, so it is checked once the game's lock is released: the game anywhere but where it
-    // was sent means the provider put it back, which it does only when the request failed. Adjusted
-    // during render, as the other reconciliations here are.
-    const [move, setMove] = useState<{ to: ListId } | { outOf: ListId } | null>(null);
+    // reads as a choice that did not register, and says why only on the lists page.
     const [listError, setListError] = useState<string | null>(null);
     const [scoreError, setScoreError] = useState<string | null>(null);
-    if (move !== null && !pending) {
-        setMove(null);
-        if ('to' in move && currentList !== move.to) {
-            setListError(`Could not move this game to ${nameFor(move.to)}. Please try again.`);
-        } else if ('outOf' in move && currentList === move.outOf) {
-            setListError(`Could not take this game out of ${nameFor(move.outOf)}. Please try again.`);
-        }
-    }
 
     useEffect(() => {
         const controller = new AbortController();
@@ -453,18 +444,21 @@ export function GameEntryProvider({ game, profileVisibility, onCommunityChange, 
     };
 
     const moveTo = async (listId: ListId) => {
-        if (pending || currentList === listId) return;
+        if (!listsKnown || pending || currentList === listId) return;
         // The last refusal comes down as this one goes out, so a second is a new alert.
         setListError(null);
-        setMove({ to: listId });
-        await addToList(listId, game);
+        if (!await addToList(listId, game)) {
+            setListError(`Could not move this game to ${nameFor(listId)}. Please try again.`);
+        }
     };
 
     const takeOut = async () => {
-        if (pending || currentList === null) return;
+        if (!listsKnown || pending || currentList === null) return;
+        const from = currentList;
         setListError(null);
-        setMove({ outOf: currentList });
-        await removeFromList(currentList, game.id);
+        if (!await removeFromList(from, game.id)) {
+            setListError(`Could not take this game out of ${nameFor(from)}. Please try again.`);
+        }
     };
 
     const hasData = currentList !== null
@@ -485,6 +479,7 @@ export function GameEntryProvider({ game, profileVisibility, onCommunityChange, 
         hasData,
 
         currentList,
+        listsKnown,
         moveTo,
         takeOut,
         listError,

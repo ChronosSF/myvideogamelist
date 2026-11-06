@@ -338,21 +338,13 @@ public class IgdbService(
 
     public async Task<GameDto?> GetGameByIdAsync(int id, CancellationToken cancellationToken = default)
     {
-        var detail = await GetGameDetailAsync(id, cancellationToken);
-        if (detail is null) return null;
-
-        var related = await GetRelatedGamesAsync(id, detail.SeriesIds, cancellationToken);
-        return detail.Game with { Details = detail.Details with { Related = related } };
-    }
-
-    /// <summary>A game as the detail query reads it, with the ids of its series, which the related games are asked by.</summary>
-    private sealed record GameDetail(GameDto Game, GameDetailsDto Details, IReadOnlyList<int> SeriesIds);
-
-    private async Task<GameDetail?> GetGameDetailAsync(int id, CancellationToken cancellationToken)
-    {
         var cacheKey = $"igdb_game|{id}";
         if (cache.TryGetValue(cacheKey, out GameDetail? cached))
-            return cached;
+        {
+            return cached is null
+                ? null
+                : WithRelated(cached, await GetRelatedGamesAsync(id, cached.SeriesIds, cancellationToken));
+        }
 
         var query = new StringBuilder()
             .AppendLine(GameDetailFields)
@@ -363,23 +355,33 @@ public class IgdbService(
         var igdbGames = await QueryAsync<IgdbGame>(GamesEndpoint, query, cancellationToken);
         var igdbGame = igdbGames.FirstOrDefault();
 
-        GameDetail? result = null;
-        if (igdbGame is not null)
+        if (igdbGame is null)
         {
-            var timeToBeat = await FetchTimeToBeatAsync(id, cancellationToken);
-            var details = MapToDetailsDto(igdbGame, timeToBeat);
-            result = new GameDetail(
-                MapToGameDto(igdbGame) with { Details = details },
-                details,
-                (igdbGame.Collections ?? []).Select(c => c.Id).ToList());
+            // Cache misses briefly too, so a bad ID cannot hammer IGDB on repeat requests
+            cache.Set<GameDetail?>(cacheKey, null, TimeSpan.FromMinutes(5));
+            return null;
         }
 
-        // Cache misses briefly too, so a bad ID cannot hammer IGDB on repeat requests
-        var ttl = result is not null ? TimeSpan.FromMinutes(30) : TimeSpan.FromMinutes(5);
-        cache.Set(cacheKey, result, ttl);
+        // The completion times and the related games each need only what the detail query answered, so
+        // they go out together: a page nobody has asked for lately waits on one more request, not two.
+        // Neither throws for IGDB's failure, each answering null for its part of the page.
+        var seriesIds = (igdbGame.Collections ?? []).Select(c => c.Id).ToList();
+        var timeToBeat = FetchTimeToBeatAsync(id, cancellationToken);
+        var related = GetRelatedGamesAsync(id, seriesIds, cancellationToken);
+        await Task.WhenAll(timeToBeat, related);
 
-        return result;
+        var details = MapToDetailsDto(igdbGame, await timeToBeat);
+        var detail = new GameDetail(MapToGameDto(igdbGame) with { Details = details }, details, seriesIds);
+        cache.Set(cacheKey, detail, TimeSpan.FromMinutes(30));
+
+        return WithRelated(detail, await related);
     }
+
+    /// <summary>A game as the detail query reads it, with the ids of its series, which the related games are asked by.</summary>
+    private sealed record GameDetail(GameDto Game, GameDetailsDto Details, IReadOnlyList<int> SeriesIds);
+
+    private static GameDto WithRelated(GameDetail detail, RelatedGamesDto? related) =>
+        detail.Game with { Details = detail.Details with { Related = related } };
 
     /// <summary>How long a game's related games are kept. A series and a game's children change seldom.</summary>
     private static readonly TimeSpan RelatedGamesLifetime = TimeSpan.FromHours(6);

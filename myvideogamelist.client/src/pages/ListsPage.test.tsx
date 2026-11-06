@@ -43,7 +43,7 @@ const lists: ListsContextValue = {
     reload: vi.fn(),
     isPending: () => false,
     addToList: vi.fn(async () => true),
-    removeFromList: vi.fn(async () => {}),
+    removeFromList: vi.fn(async () => true),
     isInList: () => false,
     getListFor: () => null,
     scoreFor: () => null,

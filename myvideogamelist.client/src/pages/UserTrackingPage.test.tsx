@@ -2,8 +2,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { createRoutesStub } from 'react-router';
 import { UserPage } from '@/pages/UserPage';
-import UserSettingsPage from '@/pages/UserSettingsPage';
-import UserTrackingPage from '@/pages/UserTrackingPage';
+import UserSettingsPage, { headers as settingsHeaders } from '@/pages/UserSettingsPage';
+import UserTrackingPage, { headers as trackingHeaders } from '@/pages/UserTrackingPage';
+import { PRIVATE_NO_STORE } from '@/lib/cache';
 import { AuthContext, type AuthContextValue } from '@/contexts/AuthContext';
 import type { ProfileVisibility, UserProfile } from '@/types/auth';
 import { userProfile } from '@/test/factories';
@@ -108,5 +109,13 @@ describe('UserTrackingPage', () => {
         expect(screen.queryByRole('button', { name: 'Sign Out' })).not.toBeInTheDocument();
         expect(screen.queryByLabelText('Display name')).not.toBeInTheDocument();
         expect(screen.queryByText('alex@test.local')).not.toBeInTheDocument();
+    });
+});
+
+describe("the profile tabs' headers", () => {
+    it("share neither tab: each is the account's own, and says so itself", () => {
+        // Every route states its policy (ADR 0013); these would get the profile page's anyway.
+        expect(trackingHeaders()).toEqual({ 'Cache-Control': PRIVATE_NO_STORE });
+        expect(settingsHeaders()).toEqual({ 'Cache-Control': PRIVATE_NO_STORE });
     });
 });

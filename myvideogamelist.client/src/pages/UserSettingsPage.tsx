@@ -6,8 +6,14 @@ import { ListNamesCard } from '@/components/ListNamesCard';
 import { LookCard } from '@/components/LookCard';
 import { ProfileDetailsCard } from '@/components/ProfileDetailsCard';
 import { TagsCard } from '@/components/TagsCard';
+import { PRIVATE_NO_STORE } from '@/lib/cache';
 import { NOINDEX } from '@/lib/seo';
 import { useUserPage } from '@/lib/userPage';
+
+/** The account's own settings: nothing shared, as the profile page says for both its tabs. */
+export function headers() {
+    return { 'Cache-Control': PRIVATE_NO_STORE };
+}
 
 export function meta() {
     return [

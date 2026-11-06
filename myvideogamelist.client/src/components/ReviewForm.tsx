@@ -84,8 +84,8 @@ export function ReviewForm({
     };
 
     return (
-        <form className="game-user-panel-review-form" onSubmit={handleSubmit}>
-            <div className="game-user-panel-field">
+        <form className="game-yours-review-form" onSubmit={handleSubmit}>
+            <div className="game-yours-field">
                 <label htmlFor={`${fieldId}-body`}>What you thought</label>
                 <textarea
                     id={`${fieldId}-body`}
@@ -97,7 +97,7 @@ export function ReviewForm({
                 />
             </div>
 
-            <div className="game-user-panel-check">
+            <div className="game-yours-check">
                 <input
                     id={`${fieldId}-spoilers`}
                     type="checkbox"
@@ -108,7 +108,7 @@ export function ReviewForm({
                 <label htmlFor={`${fieldId}-spoilers`}>This review contains spoilers</label>
             </div>
 
-            <div className="game-user-panel-field">
+            <div className="game-yours-field">
                 <label htmlFor={`${fieldId}-visibility`}>Who can see it</label>
                 <select
                     id={`${fieldId}-visibility`}
@@ -120,7 +120,7 @@ export function ReviewForm({
                     <option value="private">Only me</option>
                     <option value="public">Anyone</option>
                 </select>
-                <p id={`${fieldId}-visibility-hint`} className="game-user-panel-hint">
+                <p id={`${fieldId}-visibility-hint`} className="game-yours-hint">
                     {/* Both gates, in the author's own terms: the narrower one wins, and it is the
                         one that is easy to forget is there. */}
                     {profileVisibility === 'public'
@@ -131,7 +131,7 @@ export function ReviewForm({
             </div>
 
             {playthroughs.length > 0 && (
-                <div className="game-user-panel-field">
+                <div className="game-yours-field">
                     <label htmlFor={`${fieldId}-playthrough`}>About which playthrough</label>
                     <select
                         id={`${fieldId}-playthrough`}
@@ -150,13 +150,13 @@ export function ReviewForm({
             )}
 
             {error !== null && (
-                <p className="game-user-panel-hint" role="alert">{error}</p>
+                <p className="game-yours-hint" role="alert">{error}</p>
             )}
 
             {confirmingDelete && review !== null ? (
                 // Asked first, in red, because nothing brings a review back (issue 245).
-                <div className="game-user-panel-confirm" role="group" aria-label="Delete your review?">
-                    <span className="game-user-panel-hint">Delete your review? It cannot be brought back.</span>
+                <div className="game-yours-confirm" role="group" aria-label="Delete your review?">
+                    <span className="game-yours-hint">Delete your review? It cannot be brought back.</span>
                     <button
                         type="button"
                         className="danger"
@@ -173,7 +173,7 @@ export function ReviewForm({
                     </button>
                 </div>
             ) : (
-                <div className="game-user-panel-confirm">
+                <div className="game-yours-confirm">
                     <button type="submit" className="primary" disabled={pending}>
                         {review === null ? 'Save review' : 'Update review'}
                     </button>

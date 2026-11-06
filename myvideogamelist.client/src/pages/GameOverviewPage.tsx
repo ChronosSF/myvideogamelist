@@ -1,3 +1,4 @@
+import type { Route } from './+types/GameOverviewPage';
 import { CompletionTimes } from '@/components/CompletionTimes';
 import { GameCommunity } from '@/components/GameCommunity';
 import { GameNewsPanel } from '@/components/GameNewsPanel';
@@ -11,11 +12,26 @@ import { StoreLinks } from '@/components/StoreLinks';
 import { TrailerPlayer } from '@/components/TrailerPlayer';
 import { useAuth } from '@/hooks/useAuth';
 import { useFavourites } from '@/hooks/useFavourites';
+import { PRIVATE_NO_STORE } from '@/lib/cache';
 import { formatCount } from '@/lib/format';
 import { useGamePage } from '@/lib/gamePage';
 import { multiplayerSummary } from '@/lib/multiplayer';
 import { releaseDay } from '@/lib/releaseDate';
 import { hasCriticScore, hasMemberScore, ratingPercent } from '@/lib/score';
+
+/**
+ * The game page's own policy, handed on: the game's hour at the edge for a render its loader answered whole,
+ * nothing shared for one it did not, and a thrown Response's own (`GamePage`'s `headers`). Stated here rather
+ * than left to React Router's passing on a parent's to a child with none, so that this route says what it
+ * goes out with, as every route does (ADR 0013).
+ */
+export function headers({ parentHeaders, errorHeaders }: Route.HeadersArgs) {
+    return {
+        'Cache-Control': errorHeaders?.get('Cache-Control')
+            ?? parentHeaders.get('Cache-Control')
+            ?? PRIVATE_NO_STORE,
+    };
+}
 
 /** A term from IGDB's vocabulary — a platform, a theme, a mode — as an outlined chip in the metadata type. */
 function InfoChip({ label }: { label: string }) {
@@ -69,8 +85,12 @@ export default function GameOverviewPage() {
 
     return (
         <div className="space-y-14">
+            {/* Keyed on the game, as the trailer is: this tab stays mounted from one game to the next, and a
+                rail that outlived its game would carry an "Add these to Backlog?" asked about one series onto
+                the next, and open a long series where the last one opened. */}
             {details?.related && (
                 <RelatedGamesRail
+                    key={game.id}
                     related={details.related}
                     gameId={game.id}
                     seriesNames={details.collections}

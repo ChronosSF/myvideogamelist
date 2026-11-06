@@ -9,7 +9,7 @@ import { PlaythroughForm } from '@/components/PlaythroughForm';
 import { PlaythroughList } from '@/components/PlaythroughList';
 import { ReviewForm } from '@/components/ReviewForm';
 import { SkeletonLine } from '@/components/SkeletonLine';
-import './GameUserPanel.css';
+import './GameYours.css';
 
 const PLUS = 'M12 5v14M5 12h14';
 
@@ -128,7 +128,7 @@ export function GameYours({ authLoading }: GameYoursProps) {
                         />
                     )}
                     {!formOpen && entry.playthroughError !== null && (
-                        <p className="game-user-panel-hint" role="alert">{entry.playthroughError}</p>
+                        <p className="game-yours-hint" role="alert">{entry.playthroughError}</p>
                     )}
                 </section>
             </div>
@@ -140,15 +140,15 @@ export function GameYours({ authLoading }: GameYoursProps) {
                     {/* Toggles, so pressing the one that is on clears it — in a colour of their own, because
                         this is about the copy and not about the playing. */}
                     <div className="border-t border-line pt-3">
-                        <p className="game-user-panel-label" id={ownershipLabelId}>How you have it</p>
-                        <div className="game-user-panel-lists" role="group" aria-labelledby={ownershipLabelId}>
+                        <p className="game-yours-label" id={ownershipLabelId}>How you have it</p>
+                        <div className="game-yours-lists" role="group" aria-labelledby={ownershipLabelId}>
                             {OWNERSHIPS.map(kind => {
                                 const active = entry.ownership === kind;
                                 return (
                                     <button
                                         key={kind}
                                         type="button"
-                                        className={`game-user-panel-list-btn game-user-panel-ownership-btn${active ? ' active' : ''}`}
+                                        className={`game-yours-list-btn game-yours-ownership-btn${active ? ' active' : ''}`}
                                         onClick={() => void entry.changeOwnership(active ? null : kind)}
                                         disabled={!entry.ready || entry.pending}
                                         aria-pressed={active}
@@ -159,13 +159,13 @@ export function GameYours({ authLoading }: GameYoursProps) {
                                 );
                             })}
                         </div>
-                        <p className="game-user-panel-hint">
+                        <p className="game-yours-hint">
                             {entry.ownership === null
                                 ? 'Not recorded. Whether the copy is yours to keep; where you play it goes on a playthrough.'
                                 : 'Press it again to clear it.'}
                         </p>
                         {entry.ownershipError !== null && (
-                            <p className="game-user-panel-hint" role="alert">{entry.ownershipError}</p>
+                            <p className="game-yours-hint" role="alert">{entry.ownershipError}</p>
                         )}
                     </div>
 
@@ -184,7 +184,7 @@ export function GameYours({ authLoading }: GameYoursProps) {
                             gameTitle={entry.game.title}
                         />
                         {entry.tagsStatus === 'failed' && (
-                            <p className="game-user-panel-hint" role="alert">
+                            <p className="game-yours-hint" role="alert">
                                 Your tags could not be loaded, so they cannot be changed just now.{' '}
                                 <button type="button" className="text-link" onClick={entry.reloadTags}>
                                     Try again
@@ -205,15 +205,15 @@ export function GameYours({ authLoading }: GameYoursProps) {
             </section>
 
             {entry.hasData && (
-                <div className="game-user-panel-danger">
+                <div className="game-yours-danger">
                     {confirmingDelete ? (
                         <>
-                            <p className="game-user-panel-hint">
+                            <p className="game-yours-hint">
                                 Delete your score, list placement, ownership, tags, notes,
                                 playthroughs and review for this game? Your history of moving it
                                 between lists is kept, and so are the tags themselves.
                             </p>
-                            <div className="game-user-panel-confirm">
+                            <div className="game-yours-confirm">
                                 <button
                                     type="button"
                                     className="danger"
@@ -235,7 +235,7 @@ export function GameYours({ authLoading }: GameYoursProps) {
                     ) : (
                         <button
                             type="button"
-                            className="game-user-panel-delete"
+                            className="game-yours-delete"
                             onClick={() => setConfirmingDelete(true)}
                             disabled={entry.pending}
                         >
@@ -243,7 +243,7 @@ export function GameYours({ authLoading }: GameYoursProps) {
                         </button>
                     )}
                     {entry.deleteError !== null && (
-                        <p className="game-user-panel-hint" role="alert">{entry.deleteError}</p>
+                        <p className="game-yours-hint" role="alert">{entry.deleteError}</p>
                     )}
                 </div>
             )}

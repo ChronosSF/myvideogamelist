@@ -14,13 +14,6 @@
     background: var(--color-page);
 }
 
-/* The hero is opaque and stands where the top of the page's pattern is drawn (PagePattern), so all a reader
-   saw of it was its faintest part, under the tabs, beside whatever art the game has. A page with the hero
-   draws only the pattern at its foot (ADR 0084). */
-:root:has(.game-page-hero) .page-pattern[data-at='top'] {
-    display: none;
-}
-
 .game-page-hero-bg {
     position: absolute;
     inset: 0;
