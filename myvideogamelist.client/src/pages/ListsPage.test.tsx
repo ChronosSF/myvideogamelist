@@ -101,6 +101,18 @@ const favourites = {
 
 vi.mock('@/hooks/useFavourites', () => ({ useFavourites: () => favourites }));
 
+/**
+ * The table's score control, as a count of the times each game's was drawn: what shows whether a row
+ * already on the page was drawn again. Nothing here presses a star; `ScoreInput` has tests of its own.
+ */
+const scoreRenders = new Map<string, number>();
+vi.mock('@/components/ScoreInput', () => ({
+    ScoreInput: ({ gameTitle }: { gameTitle: string }) => {
+        scoreRenders.set(gameTitle, (scoreRenders.get(gameTitle) ?? 0) + 1);
+        return null;
+    },
+}));
+
 /** `/api/auth/me` has come back, with an account or with nobody. */
 function authAnswered(user: UserProfile | null) {
     auth.user = user;
@@ -316,6 +328,24 @@ describe('ListsPage and a long list', () => {
 
         showMore(1);
         expect(screen.getAllByRole('row')).toHaveLength(62);
+    });
+
+    it('draws only the rows it adds when another chunk joins them, and again a row whose game changed', () => {
+        lists.view = 'table';
+        lists.lists = { ...emptyLists(), playing: games(61) };
+        const { rerender } = renderPage();
+
+        scoreRenders.clear();
+        showMore(1);
+        expect([...scoreRenders.keys()]).toEqual([title(61)]);
+
+        scoreRenders.clear();
+        lists.lists = {
+            ...emptyLists(),
+            playing: lists.lists.playing.map(row => (row.game.id === 5 ? { ...row, score: 8 } : row)),
+        };
+        rerender(<MemoryRouter><ListsPage /></MemoryRouter>);
+        expect([...scoreRenders.keys()]).toEqual([title(5)]);
     });
 
     it('offers no more than there is on a list that fits in one chunk', () => {

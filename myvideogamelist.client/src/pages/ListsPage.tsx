@@ -1,15 +1,14 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { Link } from 'react-router';
 import { EmptyState } from '@/components/EmptyState';
 import { ErrorState } from '@/components/ErrorState';
-import { GameCard } from '@/components/GameCard';
 import { GameGridSkeleton } from '@/components/GameGridSkeleton';
 import { ListTable } from '@/components/ListTable';
 import { ListTableSkeleton } from '@/components/ListTableSkeleton';
 import { ListToolbar } from '@/components/ListToolbar';
 import { LoadingState } from '@/components/LoadingState';
 import { ListTagFilter } from '@/components/ListTagFilter';
-import { TagChips } from '@/components/TagChips';
+import { ListTile } from '@/components/ListTile';
 import { useListTagFilter } from '@/hooks/useListTagFilter';
 import { PageHeader } from '@/components/PageHeader';
 import { ReorderAnnouncer } from '@/components/ReorderAnnouncer';
@@ -174,6 +173,17 @@ export function ListsPage() {
     const movingRank = arranging && reorder.movingId !== null ? reorder.order.indexOf(reorder.movingId) + 1 : 0;
     const { limit, showMore } = useDrawLimit(drawKey, movingRank);
     const drawn = shown.length > limit ? shown.slice(0, limit) : shown;
+
+    // Steady while the provider's functions are, so that the rows already drawn are not drawn again
+    // when another chunk joins them (`ListTableRow`).
+    const changeScore = useCallback(
+        (gameId: number, score: number | null) => void setScore(gameId, score),
+        [setScore],
+    );
+    const remove = useCallback(
+        (gameId: number) => void removeFromList(activeTab, gameId),
+        [removeFromList, activeTab],
+    );
 
     return (
         <div className="min-h-screen">
@@ -349,14 +359,15 @@ export function ListsPage() {
                                     rank={index + 1}
                                     variant="overlay"
                                 />
-                                <GameCard game={entry.game} eager={index < GAME_GRID_FIRST_ROW}>
-                                    <TagChips tags={tagFilter.tagsOf(entry)} max={3} />
-                                </GameCard>
+                                <ListTile entry={entry} eager={index < GAME_GRID_FIRST_ROW} tagsOf={tagFilter.tagsOf} />
                             </div>
                         ) : (
-                            <GameCard key={entry.game.id} game={entry.game} eager={index < GAME_GRID_FIRST_ROW}>
-                                <TagChips tags={tagFilter.tagsOf(entry)} max={3} />
-                            </GameCard>
+                            <ListTile
+                                key={entry.game.id}
+                                entry={entry}
+                                eager={index < GAME_GRID_FIRST_ROW}
+                                tagsOf={tagFilter.tagsOf}
+                            />
                         ))}
                     </div>
                 )}
@@ -369,8 +380,8 @@ export function ListsPage() {
                         isPending={isPending}
                         isFavourite={isFavourite}
                         onSortChange={next => setSort(activeTab, next)}
-                        onScoreChange={(gameId, score) => void setScore(gameId, score)}
-                        onRemove={gameId => void removeFromList(activeTab, gameId)}
+                        onScoreChange={changeScore}
+                        onRemove={remove}
                         reorder={arranging ? reorder : undefined}
                         tagsFor={tagFilter.tagsOf}
                     />
