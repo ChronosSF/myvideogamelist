@@ -14,9 +14,11 @@ import { useListTagFilter } from '@/hooks/useListTagFilter';
 import { PageHeader } from '@/components/PageHeader';
 import { ReorderAnnouncer } from '@/components/ReorderAnnouncer';
 import { ReorderHandle } from '@/components/ReorderHandle';
+import { ShowMoreGames } from '@/components/ShowMoreGames';
 import { Skeleton } from '@/components/Skeleton';
 import { useLists } from '@/hooks/useLists';
 import { useAuth } from '@/hooks/useAuth';
+import { useDrawLimit } from '@/hooks/useDrawLimit';
 import { useFavourites } from '@/hooks/useFavourites';
 import { useReorder } from '@/hooks/useReorder';
 import { type ListEntryDto, type ListId, HAND_ORDERED_LISTS, LIST_IDS } from '@/types/list';
@@ -163,6 +165,15 @@ export function ListsPage() {
     const shown: ListEntryDto[] = arranging
         ? reorder.order.flatMap(id => byId.get(id) ?? [])
         : visible;
+
+    // Drawn a chunk at a time from the top, the next one as the reader scrolls near the end of what is
+    // drawn, so that a change of order redraws one chunk rather than every game on the list. A new tab,
+    // order or filter starts again at one chunk. The order is still the whole list's, and a hand order is
+    // still rearranged across all of it: the game being moved is always drawn.
+    const drawKey = [activeTab, sort.key, sort.descending, platformIds.join(','), tagFilter.selected.join(',')].join('|');
+    const movingRank = arranging && reorder.movingId !== null ? reorder.order.indexOf(reorder.movingId) + 1 : 0;
+    const { limit, showMore } = useDrawLimit(drawKey, movingRank);
+    const drawn = shown.length > limit ? shown.slice(0, limit) : shown;
 
     return (
         <div className="min-h-screen">
@@ -326,7 +337,7 @@ export function ListsPage() {
                         // A list while it is an order, so assistive technology hears each game's place.
                         {...(arranging ? { ...reorder.listProps(), role: 'list' } : {})}
                     >
-                        {shown.map((entry, index) => arranging ? (
+                        {drawn.map((entry, index) => arranging ? (
                             <div
                                 key={entry.game.id}
                                 className="reorder-tile"
@@ -352,7 +363,7 @@ export function ListsPage() {
 
                 {signedIn && !loading && !error && visible.length > 0 && view === 'table' && (
                     <ListTable
-                        entries={shown}
+                        entries={drawn}
                         sort={sort}
                         listName={nameFor(activeTab)}
                         isPending={isPending}
@@ -363,6 +374,10 @@ export function ListsPage() {
                         reorder={arranging ? reorder : undefined}
                         tagsFor={tagFilter.tagsOf}
                     />
+                )}
+
+                {signedIn && !loading && !error && drawn.length < shown.length && (
+                    <ShowMoreGames left={shown.length - drawn.length} onShowMore={showMore} />
                 )}
             </div>
         </div>

@@ -271,6 +271,111 @@ describe('ListsPage covers', () => {
     });
 });
 
+describe('ListsPage and a long list', () => {
+    // Named so that the title order is the number order, and held in the reverse of it, so that only the
+    // page sorting them puts them right. Just past one chunk, since each game drawn costs a test here: what
+    // the chunks add up to is `useDrawLimit`'s own test.
+    const title = (n: number) => `Game ${String(n).padStart(3, '0')}`;
+    const games = (count: number, extra: (n: number) => Parameters<typeof entry>[0] = () => ({})) =>
+        Array.from({ length: count }, (_, index) => count - index)
+            .map(n => entry({ ...extra(n), game: { id: n, title: title(n) } }));
+    const BY_TITLE = { key: 'title', descending: false } as const;
+
+    const titles = () => screen.getAllByRole('heading', { level: 3 }).map(heading => heading.textContent);
+    const numbered = (from: number, to: number) => Array.from({ length: to - from + 1 }, (_, index) => title(from + index));
+    const showMore = (left: number) => fireEvent.click(screen.getByRole('button', { name: `Show more (${left} left)` }));
+
+    beforeEach(() => {
+        authAnswered(userProfile());
+        lists.lists = { ...emptyLists(), playing: games(65) };
+        lists.sortFor = () => BY_TITLE;
+    });
+
+    afterEach(() => {
+        lists.sortFor = () => DEFAULT_SORT;
+        lists.view = 'tiles';
+    });
+
+    it('draws the first sixty games in the list’s order, and the rest when asked', () => {
+        renderPage();
+
+        expect(titles()).toEqual(numbered(1, 60));
+
+        showMore(5);
+        expect(titles()).toEqual(numbered(1, 65));
+        expect(screen.queryByRole('button', { name: /^Show more/ })).not.toBeInTheDocument();
+    });
+
+    it('draws the table a chunk at a time as well', () => {
+        lists.view = 'table';
+        lists.lists = { ...emptyLists(), playing: games(61) };
+        renderPage();
+
+        // A header row and sixty games.
+        expect(screen.getAllByRole('row')).toHaveLength(61);
+
+        showMore(1);
+        expect(screen.getAllByRole('row')).toHaveLength(62);
+    });
+
+    it('offers no more than there is on a list that fits in one chunk', () => {
+        lists.lists = { ...emptyLists(), playing: games(60) };
+        renderPage();
+
+        expect(titles()).toHaveLength(60);
+        expect(screen.queryByRole('button', { name: /^Show more/ })).not.toBeInTheDocument();
+    });
+
+    it('starts again at one chunk in a new order, wherever the reader had got to', () => {
+        const { rerender } = renderPage();
+        showMore(5);
+
+        lists.sortFor = () => ({ key: 'title', descending: true });
+        rerender(<MemoryRouter><ListsPage /></MemoryRouter>);
+
+        expect(titles()).toEqual(numbered(6, 65).reverse());
+    });
+
+    it('starts again at one chunk on another tab', async () => {
+        lists.lists = { ...emptyLists(), playing: games(65), backlog: [entry({ game: { id: 99, title: 'Tunic' } })] };
+        renderPage();
+        showMore(5);
+
+        await userEvent.click(screen.getByRole('tab', { name: /Backlog/ }));
+        await userEvent.click(screen.getByRole('tab', { name: /Playing/ }));
+
+        expect(titles()).toHaveLength(60);
+    });
+
+    it('keeps what it has drawn when a game on the list changes', () => {
+        const { rerender } = renderPage();
+        showMore(5);
+
+        lists.lists = {
+            ...emptyLists(),
+            playing: lists.lists.playing.map(row => (row.game.id === 63 ? { ...row, score: 8 } : row)),
+        };
+        rerender(<MemoryRouter><ListsPage /></MemoryRouter>);
+
+        expect(titles()).toHaveLength(65);
+    });
+
+    it('draws a game moved by hand past the last one drawn where it lands, under its own handle', async () => {
+        lists.lists = { ...emptyLists(), backlog: games(61, n => ({ position: n * 10 })) };
+        lists.sortFor = (id: ListId) => (id === 'backlog' ? MANUAL_SORT : DEFAULT_SORT);
+        renderPage();
+        await userEvent.click(screen.getByRole('tab', { name: /Backlog/ }));
+
+        const grip = screen.getByRole('button', { name: `Move ${title(60)}` });
+        grip.focus();
+        await userEvent.keyboard(' {ArrowRight}');
+
+        const grips = screen.getAllByRole('button', { name: /^Move / }).map(handle => handle.getAttribute('aria-label'));
+        expect(grips[60]).toBe(`Move ${title(60)}`);
+        expect(grip).toHaveFocus();
+    });
+});
+
 describe('ListsPage and renamed lists', () => {
     it('names each tab as its owner renamed it', () => {
         authAnswered(userProfile());
