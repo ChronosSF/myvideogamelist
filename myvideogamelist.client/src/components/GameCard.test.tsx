@@ -330,6 +330,31 @@ describe('GameCard favourite mark', () => {
     });
 });
 
+describe('GameCard list buttons', () => {
+    it('marks the list its game is in, takes it off that one, and moves it to any other', async () => {
+        const addToList = vi.fn(async () => {});
+        const removeFromList = vi.fn(async () => {});
+        renderCard({}, { getListFor: id => (id === CELESTE.id ? 'playing' : null), addToList, removeFromList });
+
+        expect(screen.getByRole('button', { name: 'Playing' })).toHaveAttribute('aria-pressed', 'true');
+        expect(screen.getByRole('button', { name: 'Finished' })).toHaveAttribute('aria-pressed', 'false');
+
+        await userEvent.click(screen.getByRole('button', { name: 'Playing' }));
+        expect(removeFromList).toHaveBeenCalledExactlyOnceWith('playing', CELESTE.id);
+
+        await userEvent.click(screen.getByRole('button', { name: 'Finished' }));
+        expect(addToList).toHaveBeenCalledExactlyOnceWith('finished', CELESTE);
+    });
+
+    it('holds every list button while a save of its game is out', () => {
+        renderCard({}, { isPending: id => id === CELESTE.id });
+
+        for (const name of ['Backlog', 'Playing', 'On Hold', 'Finished', 'Dropped']) {
+            expect(screen.getByRole('button', { name })).toBeDisabled();
+        }
+    });
+});
+
 describe('GameCard and renamed lists', () => {
     it('labels its list buttons with the names their owner gave them', () => {
         renderCard({}, { nameFor: (id: ListId) => (id === 'dropped' ? 'Nope' : LIST_NAMES[id]) });

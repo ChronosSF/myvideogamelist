@@ -20,7 +20,7 @@ const signedOut = { user: null, loading: false };
 const noLists = {
     addToList: vi.fn(async () => {}),
     removeFromList: vi.fn(async () => {}),
-    isInList: () => false,
+    getListFor: () => null,
     isPending: () => false,
     nameFor: (id: ListId) => LIST_NAMES[id],
 };

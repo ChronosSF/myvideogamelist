@@ -45,7 +45,7 @@ const wishlist: WishlistContextValue = {
 const lists = {
     addToList: vi.fn(async () => {}),
     removeFromList: vi.fn(async () => {}),
-    isInList: () => false,
+    getListFor: () => null,
     isPending: () => false,
     nameFor: (id: ListId) => LIST_NAMES[id],
 };
