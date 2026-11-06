@@ -4,7 +4,6 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { PlayNextPicker } from '@/components/PlayNextPicker';
 import type { FavouritesContextValue } from '@/contexts/FavouritesContext';
-import { DEFAULT_SORT } from '@/lib/listSort';
 import { emptyLists, LIST_NAMES, type ListEntryDto, type ListId } from '@/types/list';
 import { entry } from '@/test/factories';
 
@@ -32,10 +31,6 @@ const listsValue = {
     setNotes: vi.fn(async () => true),
     setTags: vi.fn(async () => ({ ok: true as const })),
     deleteEntry: vi.fn(async () => true),
-    view: 'tiles' as const,
-    setView: vi.fn(),
-    sortFor: () => DEFAULT_SORT,
-    setSort: vi.fn(),
     names: {},
     nameFor: (id: ListId) => LIST_NAMES[id],
     namesStatus: 'ready',

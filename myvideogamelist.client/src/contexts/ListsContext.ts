@@ -1,6 +1,5 @@
 import { createContext } from 'react';
-import type { ListId, ListEntryDto, ListNames, Ownership, ViewMode } from '@/types/list';
-import type { SortState } from '@/lib/listSort';
+import type { ListId, ListEntryDto, ListNames, Ownership } from '@/types/list';
 import type { GameDto } from '@/types/game';
 
 /**
@@ -14,6 +13,15 @@ export type SaveListNamesResult =
 /** How a write ended: saved, or not, with the sentence to show — the server's own where it gave one. */
 export type SaveResult = { ok: true } | { ok: false; error: string };
 
+/**
+ * The lists, and everything that reads or writes them.
+ *
+ * Held steady (`docs/decisions/0086-*`): the value is the same object until something in it changes, and
+ * every function in it that writes is the same function for as long as the provider is mounted, so that a
+ * memoised row given one is not drawn again for it. The readers — `isPending`, `isInList`, `getListFor`,
+ * `scoreFor`, `nameFor` — change with what they read. How the lists page draws the lists is in
+ * `ListViewContext`, so that a change of sort or layout reaches that page and nothing else.
+ */
 export interface ListsContextValue {
     /** Every status list, keyed by status. Entries with no status appear in none of them. */
     lists: Record<ListId, ListEntryDto[]>;
@@ -67,11 +75,6 @@ export interface ListsContextValue {
      * caller showing its own copy of the entry knows to keep showing it.
      */
     deleteEntry: (gameId: number) => Promise<boolean>;
-
-    view: ViewMode;
-    setView: (view: ViewMode) => void;
-    sortFor: (listId: ListId) => SortState;
-    setSort: (listId: ListId, sort: SortState) => void;
 
     /** What the user calls the lists they have renamed. Every label should go through `nameFor`. */
     names: ListNames;

@@ -7,7 +7,6 @@ import { FavouritesContext, type FavouritesContextValue } from '@/contexts/Favou
 import { ListsContext, type ListsContextValue } from '@/contexts/ListsContext';
 import { WishlistContext, type WishlistContextValue } from '@/contexts/WishlistContext';
 import { GAME_GRID_COVER_SIZES } from '@/lib/gameGrid';
-import { DEFAULT_SORT } from '@/lib/listSort';
 import { game } from '@/test/factories';
 import { LIST_NAMES, type ListId } from '@/types/list';
 
@@ -45,10 +44,6 @@ function listsValue(overrides: Partial<ListsContextValue> = {}): ListsContextVal
         setNotes: vi.fn(async () => true),
         setTags: vi.fn(async () => ({ ok: true as const })),
         deleteEntry: vi.fn(async () => true),
-        view: 'tiles',
-        setView: vi.fn(),
-        sortFor: () => DEFAULT_SORT,
-        setSort: vi.fn(),
         names: {},
         nameFor: (id: ListId) => LIST_NAMES[id],
         namesStatus: 'ready',
@@ -332,6 +327,31 @@ describe('GameCard favourite mark', () => {
         renderCard({}, {}, { isFavourite: () => true });
 
         expect(screen.queryByRole('button', { name: /favourite/i })).not.toBeInTheDocument();
+    });
+});
+
+describe('GameCard list buttons', () => {
+    it('marks the list its game is in, takes it off that one, and moves it to any other', async () => {
+        const addToList = vi.fn(async () => {});
+        const removeFromList = vi.fn(async () => {});
+        renderCard({}, { getListFor: id => (id === CELESTE.id ? 'playing' : null), addToList, removeFromList });
+
+        expect(screen.getByRole('button', { name: 'Playing' })).toHaveAttribute('aria-pressed', 'true');
+        expect(screen.getByRole('button', { name: 'Finished' })).toHaveAttribute('aria-pressed', 'false');
+
+        await userEvent.click(screen.getByRole('button', { name: 'Playing' }));
+        expect(removeFromList).toHaveBeenCalledExactlyOnceWith('playing', CELESTE.id);
+
+        await userEvent.click(screen.getByRole('button', { name: 'Finished' }));
+        expect(addToList).toHaveBeenCalledExactlyOnceWith('finished', CELESTE);
+    });
+
+    it('holds every list button while a save of its game is out', () => {
+        renderCard({}, { isPending: id => id === CELESTE.id });
+
+        for (const name of ['Backlog', 'Playing', 'On Hold', 'Finished', 'Dropped']) {
+            expect(screen.getByRole('button', { name })).toBeDisabled();
+        }
     });
 });
 

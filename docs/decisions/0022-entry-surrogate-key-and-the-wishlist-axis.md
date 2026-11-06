@@ -1,6 +1,6 @@
 # 0022. The entry gets a surrogate key, and the wishlist is an axis rather than a status
 
-**Status:** Implemented
+**Status:** Implemented; how the lists provider's writes read the session, now that they are steady, is 0086 §3
 
 ## Context
 

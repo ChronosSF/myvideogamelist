@@ -13,7 +13,7 @@ vi.mock('@/hooks/useAuth', () => {
     return { useAuth: () => value };
 });
 vi.mock('@/hooks/useLists', () => {
-    const value = { addToList: vi.fn(), removeFromList: vi.fn(), isInList: () => false, isPending: () => false, nameFor: () => '' };
+    const value = { addToList: vi.fn(), removeFromList: vi.fn(), getListFor: () => null, isPending: () => false, nameFor: () => '' };
     return { useLists: () => value };
 });
 vi.mock('@/hooks/useWishlist', () => {

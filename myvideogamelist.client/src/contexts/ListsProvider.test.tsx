@@ -4,6 +4,8 @@ import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ListsProvider } from '@/contexts/ListsProvider';
 import { useLists } from '@/hooks/useLists';
+import { useListView } from '@/hooks/useListView';
+import type { ListsContextValue } from '@/contexts/ListsContext';
 import type { ListId, ListEntryDto } from '@/types/list';
 import { MANUAL_SORT, sortEntries } from '@/lib/listSort';
 import { entry, game } from '@/test/factories';
@@ -73,12 +75,13 @@ function stubFetch(routes: Routes) {
 /** Surfaces the parts of the context the assertions need, as plain text and buttons. */
 function Probe({ listId = 'playing' as ListId }: { listId?: ListId }) {
     const lists = useLists();
+    const listView = useListView();
     const [deleted, setDeleted] = useState('');
 
     return (
         <div>
-            <span data-testid="view">{lists.view}</span>
-            <span data-testid="sort">{`${lists.sortFor(listId).key}:${lists.sortFor(listId).descending}`}</span>
+            <span data-testid="view">{listView.view}</span>
+            <span data-testid="sort">{`${listView.sortFor(listId).key}:${listView.sortFor(listId).descending}`}</span>
             <span data-testid="loading">{String(lists.loading)}</span>
             <span data-testid="error">{lists.mutationError ?? ''}</span>
             <span data-testid="score">{String(lists.scoreFor(1))}</span>
@@ -96,8 +99,8 @@ function Probe({ listId = 'playing' as ListId }: { listId?: ListId }) {
             <button onClick={() => void lists.removeFromList('playing', 1)}>remove</button>
             <button onClick={() => void lists.setScore(1, 9)}>score 9</button>
             <button onClick={() => void lists.deleteEntry(1).then(ok => setDeleted(String(ok)))}>delete entry</button>
-            <button onClick={() => lists.setView('table')}>use table</button>
-            <button onClick={() => lists.setSort(listId, { key: 'score', descending: true })}>sort by score</button>
+            <button onClick={() => listView.setView('table')}>use table</button>
+            <button onClick={() => listView.setSort(listId, { key: 'score', descending: true })}>sort by score</button>
             <button onClick={() => lists.reload()}>reload</button>
         </div>
     );
@@ -1487,6 +1490,7 @@ describe('the hand order', () => {
     /** The backlog in its hand order, each game with its position, and a button per move tried. */
     function OrderProbe() {
         const lists = useLists();
+        const listView = useListView();
         const [result, setResult] = useState('');
         const backlog = sortEntries(lists.lists.backlog, MANUAL_SORT);
         const move = (gameId: number, afterId: number | null) =>
@@ -1499,8 +1503,8 @@ describe('the hand order', () => {
                 <span data-testid="result">{result}</span>
                 <span data-testid="order">{backlog.map(e => `${e.game.title}@${e.position ?? '-'}`).join(',')}</span>
                 <span data-testid="pending">{[1, 2, 3, 4].filter(id => lists.isPending(id)).join(',')}</span>
-                <span data-testid="sort-backlog">{lists.sortFor('backlog').key}</span>
-                <span data-testid="sort-finished">{lists.sortFor('finished').key}</span>
+                <span data-testid="sort-backlog">{listView.sortFor('backlog').key}</span>
+                <span data-testid="sort-finished">{listView.sortFor('finished').key}</span>
                 <button onClick={() => move(4, null)}>outer wilds first</button>
                 <button onClick={() => move(2, 3)}>hades after cuphead</button>
                 <button onClick={() => move(4, 2)}>outer wilds after hades</button>
@@ -1960,5 +1964,74 @@ describe("an entry's tags", () => {
 
         expect(celeste()).toHaveTextContent(/^9$/);
         expect(screen.getByTestId('error')).toBeEmptyDOMElement();
+    });
+});
+
+describe('a steady context', () => {
+    // What a page memoises against: the lists context is the same object until something in it changes,
+    // and a write is the same function for as long as the provider is mounted (ADR 0086).
+
+    /** Every lists context a consumer of nothing else was handed, one for each time it was drawn. */
+    function recorded() {
+        const seen: ListsContextValue[] = [];
+        function Recorder() {
+            seen.push(useLists());
+            return null;
+        }
+        return { seen, Recorder };
+    }
+
+    const WRITES = [
+        'reload', 'addToList', 'removeFromList', 'setScore', 'moveInOrder', 'setOwnership', 'setNotes',
+        'setTags', 'deleteEntry', 'saveListNames',
+    ] as const;
+
+    it('draws none of its readers again for a change of sort or of layout', async () => {
+        stubFetch({ lists: { playing: [CELESTE] } });
+        const { seen, Recorder } = recorded();
+        render(<ListsProvider><Recorder /><Probe /></ListsProvider>);
+        await waitFor(() => expect(screen.getByTestId('loading')).toHaveTextContent('false'));
+        const drawn = seen.length;
+
+        await userEvent.click(screen.getByRole('button', { name: 'sort by score' }));
+        await userEvent.click(screen.getByRole('button', { name: 'use table' }));
+
+        expect(screen.getByTestId('sort')).toHaveTextContent('score:true');
+        expect(screen.getByTestId('view')).toHaveTextContent('table');
+        expect(seen).toHaveLength(drawn);
+    });
+
+    it('hands out the same writes after a save as before it, beside the lists it changed', async () => {
+        stubFetch({ lists: { playing: [CELESTE] } });
+        const { seen, Recorder } = recorded();
+        render(<ListsProvider><Recorder /><Probe /></ListsProvider>);
+        await waitFor(() => expect(screen.getByTestId('loading')).toHaveTextContent('false'));
+        const before = seen.at(-1)!;
+
+        await userEvent.click(screen.getByRole('button', { name: 'score 9' }));
+        await waitFor(() => expect(screen.getByTestId('pending')).toHaveTextContent('false'));
+
+        const after = seen.at(-1)!;
+        expect(after.lists.playing[0].score).toBe(9);
+        for (const write of WRITES) expect(after[write], write).toBe(before[write]);
+    });
+
+    it('reads the lists as they stand when a write is called, not as they stood when it was handed out', async () => {
+        // A write kept from the render before the lists arrived. Had it read that render, it would know of
+        // no Celeste to put back, and a failed score would stay on screen as though it had been saved.
+        stubFetch({ lists: { playing: [CELESTE] }, failing: ['/score'] });
+        const { seen, Recorder } = recorded();
+        render(<ListsProvider><Recorder /><Probe /></ListsProvider>);
+        const kept = seen[0].setScore;
+        await waitFor(() => expect(screen.getByTestId('score')).toHaveTextContent('7'));
+
+        let saved: boolean | undefined;
+        await act(async () => {
+            saved = await kept(1, 9);
+        });
+
+        expect(saved).toBe(false);
+        expect(screen.getByTestId('score')).toHaveTextContent('7');
+        expect(screen.getByTestId('error')).toHaveTextContent('Failed to save your score. Please try again.');
     });
 });
