@@ -48,6 +48,10 @@ function shortDate(date: string | null): string {
  * eighty-odd elements, two thirds of them the score control, and redrawing six hundred of them for every
  * sixty more is what made the foot of a long table slow to reach. A row whose game changed — its score,
  * its tags, a save going out — is a new `entry` or a new flag, and is drawn again.
+ *
+ * What the memo saves is the chunks, and nothing more. A save redraws every row drawn, because the
+ * provider hands out a new `setScore` and `removeFromList` with every change of its state; so does every
+ * render of a hand order, whose `reorder` is new each time.
  */
 export const ListTableRow = memo(function ListTableRow({
     entry,
