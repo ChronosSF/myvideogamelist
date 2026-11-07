@@ -38,7 +38,7 @@ internal static class ConnectedReleases
     /// How far up a chain of editions F3 follows. The Witcher 3's "10th Anniversary Edition" is an
     /// edition of its "Complete Edition", which is an edition of the game: two steps, seen live.
     /// </summary>
-    private const int MaxEditionDepth = 4;
+    internal const int MaxEditionDepth = 4;
 
     /// <summary>A row's period: the day, or the whole month, quarter or year it is known to.</summary>
     internal readonly record struct Period(ReleasePrecision Precision, DateOnly Starts, DateOnly Ends);
