@@ -5,6 +5,7 @@ import {
     Scripts,
     ScrollRestoration,
     isRouteErrorResponse,
+    useMatches,
     type LinksFunction,
 } from 'react-router';
 import type { Route } from './+types/root';
@@ -21,6 +22,7 @@ import { Navbar } from '@/components/Navbar';
 import { SiteFooter } from '@/components/SiteFooter';
 import { PRIVATE_NO_STORE } from '@/lib/cache';
 import { LOOK_SCRIPT } from '@/lib/look';
+import { drawsTopPattern } from '@/lib/pagePattern';
 import { isUpstreamFailure } from '@/lib/trace';
 import { traceMiddleware } from '@/lib/trace.server';
 import archivoDisplay from '@/assets/fonts/archivo-display-latin.woff2?url';
@@ -123,6 +125,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
 }
 
 export default function Root() {
+    // A page whose own opaque top covers the pattern's says so in its route's handle (`@/lib/pagePattern`).
+    const topPattern = drawsTopPattern(useMatches());
+
     return (
         <AuthProvider>
             <LookProvider>
@@ -132,7 +137,7 @@ export default function Root() {
                             {/* Around the navbar and the pages both: their searches spend one budget. */}
                             <SearchPacerProvider>
                                 <div className="app-root">
-                                    <PagePattern at="top" />
+                                    {topPattern && <PagePattern at="top" />}
                                     <PagePattern at="bottom" />
                                     {/* Around the navbar and the pages both: either may ask somebody to sign in. */}
                                     <AuthDialogProvider>

@@ -1,0 +1,354 @@
+/* The reader's own controls for a game, which the game page's Your game tab draws (ADR 0084): the forms
+   for a review, a playthrough, notes and tags, and the toggles for how they have it. The forms it draws
+   share these classes; a section opens with a heavy rule rather than a box (ADR 0075). */
+
+@reference "../index.css";
+
+.game-yours-label {
+    @apply type-kicker;
+    margin: 0;
+    font-size: 0.6875rem;
+    color: var(--color-fg-faint);
+}
+
+.game-yours-hint {
+    margin: 0;
+    font-size: 0.72rem;
+    line-height: 1.45;
+    color: var(--color-fg-faint);
+}
+
+/* The panel's failures, in the colour an error's words take. A hint's own colour is too faint for a
+   sentence somebody has to read, and in it a refusal read as one more hint beside the others. */
+.game-yours-hint[role='alert'] {
+    color: var(--color-danger-300);
+}
+
+/* A row of chips that wrap, for how the reader has the game. */
+.game-yours-lists {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+}
+
+.game-yours-list-btn {
+    padding: 0.3rem 0.6rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--color-fg-soft);
+    background: color-mix(in srgb, var(--color-raised) 70%, transparent);
+    border: 1px solid transparent;
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    transition: background 0.12s, color 0.12s;
+}
+
+.game-yours-list-btn:hover:not(:disabled) {
+    color: var(--color-on-primary);
+    background: color-mix(in srgb, var(--color-primary-500) 80%, transparent);
+}
+
+.game-yours-list-btn.active {
+    color: var(--color-on-primary);
+    background: color-mix(in srgb, var(--color-primary-600) 90%, transparent);
+}
+
+.game-yours-list-btn.active:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--color-danger-600) 80%, transparent);
+}
+
+.game-yours-list-btn:focus-visible,
+.game-yours-delete:focus-visible,
+.game-yours-confirm button:focus-visible {
+    outline: 2px solid var(--color-focus);
+    outline-offset: 2px;
+}
+
+.game-yours-list-btn:disabled {
+    cursor: default;
+    opacity: 0.5;
+}
+
+/*
+ * The same chips as the statuses, in teal: the shape says "pick one, press it again to clear", and
+ * the colour says this is about the copy rather than a sixth kind of list.
+ */
+.game-yours-ownership-btn:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--color-ownership-500) 75%, transparent);
+}
+
+.game-yours-ownership-btn.active {
+    background: color-mix(in srgb, var(--color-ownership-700) 95%, transparent);
+}
+
+.game-yours-ownership-btn.active:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--color-danger-600) 80%, transparent);
+}
+
+/* ---- the one destructive control ---- */
+
+.game-yours-danger {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    padding-top: 0.9rem;
+    border-top: 1px solid var(--color-line);
+}
+
+.game-yours-delete {
+    align-self: flex-start;
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--color-fg-muted);
+    background: none;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+}
+
+.game-yours-delete:hover:not(:disabled) {
+    color: var(--color-danger-400);
+}
+
+/* ---- a row of buttons: under each form, and under the confirmation ---- */
+
+.game-yours-confirm {
+    display: flex;
+    gap: 0.4rem;
+}
+
+/* With neither class below, the neutral fill: Cancel, Delete review, Clear notes. */
+.game-yours-confirm button {
+    padding: 0.3rem 0.7rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--color-fg-soft);
+    background: color-mix(in srgb, var(--color-raised) 70%, transparent);
+    border: none;
+    border-radius: var(--radius-md);
+    cursor: pointer;
+}
+
+/* The fills are set outright, so without this a disabled button in the row looks pressable: Save notes
+   at rest, and a form's buttons while the entry loads or the form saves. */
+.game-yours-confirm button:disabled {
+    cursor: default;
+    opacity: 0.5;
+}
+
+/* A form's save. The red below is the confirmation's Delete's, and a save drawn in it reads as that. */
+.game-yours-confirm button.primary {
+    color: var(--color-on-primary);
+    background: var(--color-primary-500);
+}
+
+.game-yours-confirm button.primary:hover:not(:disabled) {
+    background: var(--color-primary-600);
+}
+
+.game-yours-confirm button.danger {
+    color: var(--color-fg-strong);
+    background: var(--color-danger-600);
+}
+
+.game-yours-confirm button.danger:hover {
+    background: var(--color-danger-700);
+}
+
+/* The delete's own question, held while another write to the game — a tag being made — is out. */
+.game-yours-danger .game-yours-confirm button:disabled {
+    cursor: default;
+    opacity: 0.55;
+}
+
+/* ---- playthroughs ---- */
+
+.game-yours-playthroughs {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.game-yours-playthrough {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    padding: 0.55rem 0.65rem;
+    background: color-mix(in srgb, var(--color-raised) 40%, transparent);
+    border: 1px solid var(--color-line);
+    border-radius: var(--radius-md);
+}
+
+.game-yours-playthrough-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.4rem;
+    margin: 0;
+}
+
+.game-yours-playthrough-type {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--color-fg);
+}
+
+.game-yours-playthrough-meta {
+    font-size: 0.7rem;
+    color: var(--color-fg-muted);
+}
+
+.game-yours-playthrough-hours {
+    margin: 0;
+    font-size: 1.05rem;
+    font-weight: 600;
+    line-height: 1.1;
+    color: var(--color-fg-strong);
+}
+
+.game-yours-playthrough-notes {
+    margin: 0;
+    font-size: 0.74rem;
+    line-height: 1.45;
+    color: var(--color-fg-soft);
+    white-space: pre-line;
+}
+
+.game-yours-playthrough-actions {
+    display: flex;
+    gap: 0.6rem;
+    margin-top: 0.15rem;
+}
+
+.game-yours-playthrough-actions button {
+    padding: 0;
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: var(--color-fg-muted);
+    background: none;
+    border: none;
+    cursor: pointer;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+}
+
+.game-yours-playthrough-actions button:hover:not(:disabled) {
+    color: var(--color-primary-400);
+}
+
+/* The question's Delete, and nothing before it is asked: the red is the confirmation's alone (issue 245). */
+.game-yours-playthrough-actions button.danger {
+    color: var(--color-danger-300);
+}
+
+.game-yours-playthrough-actions button.danger:hover:not(:disabled) {
+    color: var(--color-danger-400);
+}
+
+.game-yours-playthrough-actions button:disabled {
+    cursor: default;
+    opacity: 0.5;
+}
+
+.game-yours-playthrough-actions button:focus-visible,
+.game-yours-playthrough-form :focus-visible {
+    outline: 2px solid var(--color-focus);
+    outline-offset: 2px;
+}
+
+/* ---- the log / edit form ---- */
+
+.game-yours-playthrough-form {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    padding-top: 0.65rem;
+    border-top: 1px dashed var(--color-line);
+}
+
+.game-yours-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    min-width: 0;
+}
+
+.game-yours-field label {
+    font-size: 0.68rem;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--color-fg-faint);
+}
+
+.game-yours-field select,
+.game-yours-field input,
+.game-yours-field textarea {
+    width: 100%;
+    padding: 0.3rem 0.45rem;
+    font: inherit;
+    font-size: 0.78rem;
+    color: var(--color-fg);
+    background: color-mix(in srgb, var(--color-page) 60%, transparent);
+    border: 1px solid var(--color-line-strong);
+    border-radius: var(--radius-md);
+}
+
+.game-yours-field textarea {
+    resize: vertical;
+}
+
+.game-yours-field :disabled {
+    opacity: 0.55;
+}
+
+/* Two short fields side by side: hours and minutes, then the two dates. */
+.game-yours-field-pair {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.5rem;
+}
+
+/* ---- the review ---- */
+
+.game-yours-review-form {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+}
+
+/* At the reading column's width on the Your game tab, the review is written in a box sized for prose:
+   the body's own type, a reading measure, and room for a few paragraphs before it scrolls. */
+.game-yours-review .game-yours-review-form {
+    max-width: 48rem;
+    gap: 1rem;
+}
+
+.game-yours-review .game-yours-review-form textarea {
+    min-height: 16rem;
+    font-size: 1rem;
+    line-height: 1.6;
+    padding: 0.875rem 1rem;
+}
+
+.game-yours-check {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+.game-yours-check label {
+    font-size: 0.72rem;
+    color: var(--color-fg-muted);
+}
+
+.game-yours-check input:focus-visible,
+.game-yours-review-form :focus-visible {
+    outline: 2px solid var(--color-focus);
+    outline-offset: 2px;
+}
