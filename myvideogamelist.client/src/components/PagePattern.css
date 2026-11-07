@@ -5,13 +5,14 @@
  * intersected with a fade that is gone by half a screen. Behind the page's content at z-index -1, over the
  * root's background: `.app-root` draws none of its own.
  *
- * Which one is `<html data-pattern>`'s, set by the look script before the first paint: the honeycomb by
- * default, and below, what each of the others changes. Only the drawing a page shows is fetched, since a
- * mask image is requested only once something is drawn with it.
+ * Which one is `<html data-pattern>`'s, set by the look script before the first paint. The variables on
+ * `.page-pattern` itself are the honeycomb's, which the perspective shares, and below is what each of the
+ * others changes. The pixel matrix is the default (ADR 0085), so its rule is also the one drawn while
+ * `<html>` names no pattern, as it names none for a visitor with no look stored. Only the drawing a page
+ * shows is fetched, since a mask image is requested only once something is drawn with it.
  *
- * What it is drawn in is `<html data-pattern-tint>`'s: the palette's paper by default, a grey rather than
- * the accent, since a vivid green glowing in hexagons over black is another brand's look; or the accent,
- * for whoever wants it.
+ * What it is drawn in is `<html data-pattern-tint>`'s: the palette's accent by default, and while nothing
+ * names a tint, which in the default palette is the logo's lime; or its paper, a grey, for whoever wants it.
  *
  * The top one is a screen tall, its glow up at the right. The bottom one spans the whole page and draws at
  * its foot, its glow down at the left: a box anchored to the page's bottom would move down whenever the
@@ -21,11 +22,11 @@
  */
 
 :root {
-    --page-pattern-ink: var(--color-fg-strong);
+    --page-pattern-ink: var(--color-primary-500);
 }
 
-:root[data-pattern-tint='accent'] {
-    --page-pattern-ink: var(--color-primary-500);
+:root[data-pattern-tint='grey'] {
+    --page-pattern-ink: var(--color-fg-strong);
 }
 
 .page-pattern {
@@ -40,11 +41,12 @@
     --page-pattern-lit-size: 312px 220px;
     --page-pattern-repeat: repeat;
     --page-pattern-origin: 0 0;
-    /* How much of the ink each layer is, flat and at the glow. */
+    /* How much of the ink each layer is, flat and at the glow. The glow is drawn over the flat colour, so at
+       its brightest the two add up. */
     --page-pattern-lines: 10%;
-    --page-pattern-lines-glow: 47%;
+    --page-pattern-lines-glow: 35%;
     --page-pattern-lit: 3.5%;
-    --page-pattern-lit-glow: 19%;
+    --page-pattern-lit-glow: 14.5%;
     --page-pattern-breathe: ease-in-out;
 
     position: absolute;
@@ -80,9 +82,9 @@
     --page-pattern-lit-image: url('../assets/isometric-grid-lit.svg?no-inline');
     --page-pattern-lit-size: 576px 224px;
     --page-pattern-lines: 8%;
-    --page-pattern-lines-glow: 40%;
+    --page-pattern-lines-glow: 30%;
     --page-pattern-lit: 5%;
-    --page-pattern-lit-glow: 24%;
+    --page-pattern-lit-glow: 18%;
 }
 
 /*
@@ -120,19 +122,22 @@
  * pitch of eight, a few lit in small clusters, each with a stepped bloom as pixel art draws a light. The
  * pitch is a whole number of device pixels at 1, 1.25, 1.5 and 2 times, and the masks are drawn with crisp
  * edges, so at those zooms every pixel comes out the same size wherever it falls. At the bright corner the
- * panel's pixels come out about `fg-dim` and no brighter, darker than any text meant to be read over them;
- * a lit one is a pixel bigger on every side and far brighter, since a lit pixel has to be bright to be seen
- * as lit at all. It breathes in five steps rather than a smooth ease, as an eight-bit console faded.
+ * panel's pixels are under two fifths of the ink; a lit one is a pixel bigger on every side and far
+ * brighter, about three fifths there, since a lit pixel has to be bright to be seen as lit at all. It breathes in five steps rather than a smooth ease, as an eight-bit console
+ * faded.
+ *
+ * It is the default (ADR 0085), so it is also what a page with no pattern named on `<html>` draws.
  */
+:root:not([data-pattern]) .page-pattern,
 :root[data-pattern='pixels'] .page-pattern {
     --page-pattern-lines-image: url('../assets/dot-matrix.svg?no-inline');
     --page-pattern-lines-size: 8px 8px;
     --page-pattern-lit-image: url('../assets/dot-matrix-lit.svg?no-inline');
     --page-pattern-lit-size: 640px 480px;
     --page-pattern-lines: 9%;
-    --page-pattern-lines-glow: 42%;
+    --page-pattern-lines-glow: 32%;
     --page-pattern-lit: 40%;
-    --page-pattern-lit-glow: 55%;
+    --page-pattern-lit-glow: 31%;
     --page-pattern-breathe: steps(5, jump-none);
 }
 

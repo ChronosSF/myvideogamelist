@@ -1,6 +1,7 @@
 # 0082. A look is a palette, a pattern and a tint, kept on the account
 
-**Status:** Implemented — part of #208.
+**Status:** Implemented — part of #208. Its default, left open here, is chosen by
+[0085](0085-the-pixel-matrix-in-the-accent-is-the-default-look.md).
 
 ## Context
 
