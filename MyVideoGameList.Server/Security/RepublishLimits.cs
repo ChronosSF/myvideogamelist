@@ -56,18 +56,21 @@ public sealed class RepublishLimits(TimeProvider clock)
         _ => throw new ArgumentOutOfRangeException(nameof(act)),
     };
 
-    private readonly Dictionary<(Republish, string), Queue<DateTimeOffset>> taken = [];
+    private readonly Dictionary<(Republish, string), List<DateTimeOffset>> taken = [];
     private readonly Lock gate = new();
     private DateTimeOffset nextSweep;
 
     /// <summary>
-    /// Counts one, if the account has any left in the last day; otherwise says how long until it has.
+    /// Counts one, if the account has any left in the last day, and says otherwise how long until it
+    /// has. Dispose the permit, and call <see cref="RepublishPermit.Keep"/> once the write it allowed
+    /// is saved.
     /// </summary>
     /// <remarks>
-    /// Counted before the write it allows, so two requests at once cannot both take the last one. A
-    /// write that then fails has spent it, as an attempt spends the auth limiter's.
+    /// Counted before the write it allows, so two requests at once cannot both take the last one, and
+    /// handed back if that write is not saved: a lost race answered with a 409, or a failure, is not a
+    /// publication, and must not cost the account one of its day's allowance.
     /// </remarks>
-    public bool TryTake(Republish act, string userId, out TimeSpan retryAfter)
+    public RepublishPermit Take(Republish act, string userId)
     {
         lock (gate)
         {
@@ -75,18 +78,26 @@ public sealed class RepublishLimits(TimeProvider clock)
             Sweep(now);
 
             var key = (act, userId);
-            if (!taken.TryGetValue(key, out var times)) taken[key] = times = new Queue<DateTimeOffset>();
-            while (times.TryPeek(out var oldest) && oldest + Window <= now) times.Dequeue();
+            if (!taken.TryGetValue(key, out var times)) taken[key] = times = [];
+            times.RemoveAll(at => at + Window <= now);
 
             if (times.Count < Allowance(act))
             {
-                times.Enqueue(now);
-                retryAfter = TimeSpan.Zero;
-                return true;
+                times.Add(now);
+                return RepublishPermit.Granted(this, act, userId, now);
             }
 
-            retryAfter = times.Peek() + Window - now;
-            return false;
+            // The earliest, not the first: a clock stepped back can leave the list out of order.
+            return RepublishPermit.Refused(times.Min() + Window - now);
+        }
+    }
+
+    /// <summary>Hands back one counted use, the one taken at <paramref name="takenAt"/>.</summary>
+    internal void GiveBack(Republish act, string userId, DateTimeOffset takenAt)
+    {
+        lock (gate)
+        {
+            if (taken.TryGetValue((act, userId), out var times)) times.Remove(takenAt);
         }
     }
 
@@ -128,7 +139,52 @@ public sealed class RepublishLimits(TimeProvider clock)
 
         foreach (var (key, times) in taken)
         {
-            if (times.Count == 0 || times.Last() + Window <= now) taken.Remove(key);
+            if (times.Count == 0 || times.Max() + Window <= now) taken.Remove(key);
         }
+    }
+}
+
+/// <summary>
+/// One use of an account's daily allowance: counted as soon as it is taken, and handed back when it is
+/// disposed unless <see cref="Keep"/> says the write it allowed was saved.
+/// </summary>
+public sealed class RepublishPermit : IDisposable
+{
+    private readonly RepublishLimits? limits;
+    private readonly Republish act;
+    private readonly string userId;
+    private readonly DateTimeOffset takenAt;
+    private bool settled;
+
+    private RepublishPermit(
+        RepublishLimits? limits, Republish act, string userId, DateTimeOffset takenAt, TimeSpan retryAfter)
+    {
+        this.limits = limits;
+        this.act = act;
+        this.userId = userId;
+        this.takenAt = takenAt;
+        RetryAfter = retryAfter;
+    }
+
+    internal static RepublishPermit Granted(RepublishLimits limits, Republish act, string userId, DateTimeOffset at) =>
+        new(limits, act, userId, at, TimeSpan.Zero);
+
+    internal static RepublishPermit Refused(TimeSpan retryAfter) =>
+        new(null, default, "", default, retryAfter);
+
+    /// <summary>Whether the account had one left; when not, nothing was counted.</summary>
+    public bool IsGranted => limits is not null;
+
+    /// <summary>For a refusal, how long until the account has one again.</summary>
+    public TimeSpan RetryAfter { get; }
+
+    /// <summary>The write this allowed was saved, so the use stays counted.</summary>
+    public void Keep() => settled = true;
+
+    public void Dispose()
+    {
+        if (settled || limits is null) return;
+        settled = true;
+        limits.GiveBack(act, userId, takenAt);
     }
 }

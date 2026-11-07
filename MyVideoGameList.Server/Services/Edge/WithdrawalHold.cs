@@ -30,7 +30,9 @@ namespace MyVideoGameList.Server.Services.Edge;
 /// <b>Per task and in memory</b>, like the queue in front of CloudFront: each task paces what its
 /// own requests withdrew, so two tasks give an account twice the pace, as they give the auth limiter
 /// twice its budget. What is waiting when the host stops is sent before the queue drains, through
-/// <see cref="Flush"/>; a task that dies outright loses it, as it loses its queue.
+/// <see cref="Flush"/>; a task that dies outright loses it, as it loses its queue, and the task that
+/// replaces it covers both by invalidating every profile as it starts
+/// (<c>CloudFrontEdgeInvalidator.OnStart</c>).
 /// </para>
 /// <para>
 /// See <c>docs/decisions/0081-*</c>.

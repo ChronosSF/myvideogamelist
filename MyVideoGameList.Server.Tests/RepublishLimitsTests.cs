@@ -18,55 +18,91 @@ public class RepublishLimitsTests
         public void Advance(TimeSpan by) => _now = _now.Add(by);
     }
 
+    /// <summary>Takes one and keeps it, as a write that was saved does.</summary>
+    private static bool Spend(RepublishLimits limits, Republish act, string userId)
+    {
+        using var permit = limits.Take(act, userId);
+        permit.Keep();
+        return permit.IsGranted;
+    }
+
     [Theory]
     [InlineData(Republish.ProfilePublic, 10)]
     [InlineData(Republish.NameCase, 3)]
-    public void TryTake_PastTheAllowance_IsRefusedUntilTheFirstIsADayOld(Republish act, int allowance)
+    public void Take_PastTheAllowance_IsRefusedUntilTheFirstIsADayOld(Republish act, int allowance)
     {
         var clock = new ManualClock(Midday);
         var limits = new RepublishLimits(clock);
 
         for (var i = 0; i < allowance; i++)
         {
-            Assert.True(limits.TryTake(act, "alice-id", out _));
+            Assert.True(Spend(limits, act, "alice-id"));
             clock.Advance(TimeSpan.FromMinutes(10));
         }
 
-        Assert.False(limits.TryTake(act, "alice-id", out var wait));
+        using var refused = limits.Take(act, "alice-id");
+        Assert.False(refused.IsGranted);
         // The first was taken at midday, and comes back a day after it.
-        Assert.Equal(Midday.AddDays(1) - clock.GetUtcNow(), wait);
+        Assert.Equal(Midday.AddDays(1) - clock.GetUtcNow(), refused.RetryAfter);
 
-        clock.Advance(wait - TimeSpan.FromSeconds(1));
-        Assert.False(limits.TryTake(act, "alice-id", out _));
+        clock.Advance(refused.RetryAfter - TimeSpan.FromSeconds(1));
+        Assert.False(Spend(limits, act, "alice-id"));
 
         clock.Advance(TimeSpan.FromSeconds(1));
-        Assert.True(limits.TryTake(act, "alice-id", out _));
-        Assert.False(limits.TryTake(act, "alice-id", out _));
+        Assert.True(Spend(limits, act, "alice-id"));
+        Assert.False(Spend(limits, act, "alice-id"));
     }
 
     [Fact]
-    public void TryTake_EachAccountAndEachAct_CountsApart()
+    public void Take_PermitDisposedWithoutKeep_HandsItBack()
+    {
+        // The write it allowed was not saved — a lost race, a failure — so it was no publication.
+        var limits = new RepublishLimits(new ManualClock(Midday));
+        for (var i = 0; i < RepublishLimits.Allowance(Republish.NameCase) - 1; i++)
+            Assert.True(Spend(limits, Republish.NameCase, "alice-id"));
+
+        using (var unsaved = limits.Take(Republish.NameCase, "alice-id"))
+            Assert.True(unsaved.IsGranted);
+
+        Assert.True(Spend(limits, Republish.NameCase, "alice-id"));
+        Assert.False(Spend(limits, Republish.NameCase, "alice-id"));
+    }
+
+    [Fact]
+    public void Take_RefusedPermitDisposed_HandsNothingBack()
     {
         var limits = new RepublishLimits(new ManualClock(Midday));
-        while (limits.TryTake(Republish.ProfilePublic, "alice-id", out _)) { }
+        while (Spend(limits, Republish.NameCase, "alice-id")) { }
 
-        Assert.True(limits.TryTake(Republish.ProfilePublic, "bob-id", out _));
-        Assert.True(limits.TryTake(Republish.NameCase, "alice-id", out _));
+        using (var refused = limits.Take(Republish.NameCase, "alice-id"))
+            Assert.False(refused.IsGranted);
+
+        Assert.False(Spend(limits, Republish.NameCase, "alice-id"));
     }
 
     [Fact]
-    public void TryTake_AfterADayOfNothing_IsAFullAllowanceAgain()
+    public void Take_EachAccountAndEachAct_CountsApart()
+    {
+        var limits = new RepublishLimits(new ManualClock(Midday));
+        while (Spend(limits, Republish.ProfilePublic, "alice-id")) { }
+
+        Assert.True(Spend(limits, Republish.ProfilePublic, "bob-id"));
+        Assert.True(Spend(limits, Republish.NameCase, "alice-id"));
+    }
+
+    [Fact]
+    public void Take_AfterADayOfNothing_IsAFullAllowanceAgain()
     {
         // The sweep forgets an account whose allowance has all come back; nothing about it changes.
         var clock = new ManualClock(Midday);
         var limits = new RepublishLimits(clock);
-        while (limits.TryTake(Republish.NameCase, "alice-id", out _)) { }
+        while (Spend(limits, Republish.NameCase, "alice-id")) { }
 
         clock.Advance(TimeSpan.FromDays(2));
 
         for (var i = 0; i < RepublishLimits.Allowance(Republish.NameCase); i++)
-            Assert.True(limits.TryTake(Republish.NameCase, "alice-id", out _));
-        Assert.False(limits.TryTake(Republish.NameCase, "alice-id", out _));
+            Assert.True(Spend(limits, Republish.NameCase, "alice-id"));
+        Assert.False(Spend(limits, Republish.NameCase, "alice-id"));
     }
 
     [Theory]

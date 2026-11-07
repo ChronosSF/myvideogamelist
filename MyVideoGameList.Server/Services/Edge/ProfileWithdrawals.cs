@@ -79,6 +79,12 @@ public sealed class ProfileWithdrawals(
     internal const string ProfileSitemaps = "/sitemaps/profiles-*";
 
     /// <summary>
+    /// Every profile at once, for the one invalidation that is nobody's: the one a task sends as it
+    /// starts, to cover whatever a task that died was still holding (ADR 0081 §2).
+    /// </summary>
+    internal const string EveryProfile = "/u/*";
+
+    /// <summary>
     /// Everything the edge can hold for one profile: <c>/u/{name}</c>, <c>/u/{name}.data</c>, and
     /// both again with any query string.
     /// </summary>

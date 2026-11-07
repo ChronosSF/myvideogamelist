@@ -9,7 +9,9 @@ path 0036 named. §1's table gains an eighth event in
 name, avatar or bio rewritten or cleared. §6's open question, who spends the ceiling, is settled by
 [0081](0081-a-withdrawal-is-never-refused-and-one-accounts-are-paced.md): an account's withdrawals
 are paced on their way to the queue, so §4's request now carries one account's over a minute rather
-than one event's, and the privacy switch, a rename and a deletion still go at once.
+than one event's, and the privacy switch, a rename and a deletion still go at once. §5's task that
+dies outright and loses its queue is covered there too: every task starts by invalidating `/u/*` and
+the profile sitemap files.
 
 ## Context
 

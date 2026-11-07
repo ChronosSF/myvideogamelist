@@ -81,17 +81,18 @@ public class UserController(
             {
                 // On a public profile each change of case sends both spellings to the edge at once,
                 // and the next names one this did not, so it is the one rename limited per account
-                // (ADR 0081 §4). A private profile sends nothing and is not counted.
-                if (user.ProfileVisibility == ProfileVisibility.Public
-                    && !republish.TryTake(Republish.NameCase, user.Id, out var wait))
-                {
-                    return TooOften(Republish.NameCase, wait);
-                }
+                // (ADR 0081 §4). A private profile sends nothing and is not counted. Handed back
+                // unless the change is saved.
+                using var permit = user.ProfileVisibility == ProfileVisibility.Public
+                    ? republish.Take(Republish.NameCase, user.Id)
+                    : null;
+                if (permit is { IsGranted: false }) return TooOften(Republish.NameCase, permit.RetryAfter);
 
                 var previousCase = user.UserName;
                 user.UserName = dto.UserName;
                 var saved = await userManager.UpdateAsync(user);
                 if (!saved.Succeeded) return NotSaved(saved);
+                permit?.Keep();
 
                 // It still invalidates, both spellings, though it releases no name. Invalidation
                 // paths are case-sensitive and every later withdrawal names the new spelling, so the
@@ -189,16 +190,17 @@ public class UserController(
 
         var wasPublic = user.ProfileVisibility == ProfileVisibility.Public;
 
-        if (!wasPublic
-            && dto.ProfileVisibility == ProfileVisibility.Public
-            && !republish.TryTake(Republish.ProfilePublic, user.Id, out var wait))
-        {
-            return TooOften(Republish.ProfilePublic, wait);
-        }
+        // Counted before the save and handed back unless it is saved: a lost race is not a
+        // publication, and must not cost one of the day's allowance.
+        using var permit = !wasPublic && dto.ProfileVisibility == ProfileVisibility.Public
+            ? republish.Take(Republish.ProfilePublic, user.Id)
+            : null;
+        if (permit is { IsGranted: false }) return TooOften(Republish.ProfilePublic, permit.RetryAfter);
 
         user.ProfileVisibility = dto.ProfileVisibility;
         var saved = await userManager.UpdateAsync(user);
         if (!saved.Succeeded) return NotSaved(saved);
+        permit?.Keep();
 
         if (wasPublic && user.ProfileVisibility != ProfileVisibility.Public && user.UserName is { } name)
             withdrawals.ProfileMadePrivate(user.Id, name);

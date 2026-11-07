@@ -459,7 +459,7 @@ public class CloudFrontEdgeInvalidatorTests
     // ---------------------------------------------------------------------------------------
 
     [Fact]
-    public async Task ExecuteAsync_TwoWithdrawalsQueued_SendsThemInOrderOneRequestEach()
+    public async Task ExecuteAsync_TwoWithdrawalsQueued_SendsThemInOrderOneRequestEachAfterTheStart()
     {
         var cloudFront = Substitute.For<IAmazonCloudFront>();
         var sent = new List<IReadOnlyList<string>>();
@@ -470,7 +470,7 @@ public class CloudFrontEdgeInvalidatorTests
                 lock (sent)
                 {
                     sent.Add(call.Arg<CreateInvalidationRequest>().InvalidationBatch.Paths.Items);
-                    if (sent.Count == 2) both.TrySetResult();
+                    if (sent.Count == 3) both.TrySetResult();
                 }
                 return Accepted();
             });
@@ -482,9 +482,34 @@ public class CloudFrontEdgeInvalidatorTests
         await both.Task.WaitAsync(TimeSpan.FromSeconds(10));
         await invalidator.StopAsync(CancellationToken.None);
 
-        Assert.Equal(2, sent.Count);
-        Assert.Equal(new[] { "/u/alice*" }, sent[0]);
-        Assert.Equal(new[] { "/u/bob*" }, sent[1]);
+        Assert.Equal(3, sent.Count);
+        Assert.Equal(new[] { "/u/*", "/sitemaps/profiles-*" }, sent[0]);
+        Assert.Equal(new[] { "/u/alice*" }, sent[1]);
+        Assert.Equal(new[] { "/u/bob*" }, sent[2]);
+    }
+
+    [Fact]
+    public async Task StartAsync_ATaskStarting_InvalidatesEveryProfileAndTheSitemapsFirst()
+    {
+        // A task that died outright held its queue and its accounts' paced withdrawals in memory,
+        // all of them written before it died: every profile, sent by the next one to start, covers
+        // them, at two paths a start (ADR 0081 §2).
+        var cloudFront = Substitute.For<IAmazonCloudFront>();
+        var first = new TaskCompletionSource<CreateInvalidationRequest>();
+        cloudFront.CreateInvalidationAsync(Arg.Any<CreateInvalidationRequest>(), Arg.Any<CancellationToken>())
+            .Returns(call =>
+            {
+                first.TrySetResult(call.Arg<CreateInvalidationRequest>());
+                return Accepted();
+            });
+        using var invalidator = Invalidator(cloudFront);
+
+        await invalidator.StartAsync(CancellationToken.None);
+        var request = await first.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        await invalidator.StopAsync(CancellationToken.None);
+
+        Assert.Equal(["/u/*", "/sitemaps/profiles-*"], request.InvalidationBatch.Paths.Items);
+        Assert.Equal(2, request.InvalidationBatch.Paths.Quantity);
     }
 
     [Fact]
@@ -524,15 +549,16 @@ public class CloudFrontEdgeInvalidatorTests
         invalidator.Invalidate(Another);
         await invalidator.StopAsync(CancellationToken.None);
 
-        Assert.Equal(2, Requests(cloudFront).Count);
+        // The start's, then both of these.
+        Assert.Equal(3, Requests(cloudFront).Count);
         Assert.Empty(logger.At(LogLevel.Error));
     }
 
     [Fact]
     public async Task StopAsync_WorkStillUnsentAfterTheDrain_LogsEachOnesPathsAsAnError()
     {
-        // CloudFront hangs, so nothing is sent in the drain: the one in flight and the one behind it
-        // are each named, so they can be sent by hand.
+        // CloudFront hangs, so nothing is sent in the drain: the one in flight, the start's, and the
+        // two behind it are each named, so they can be sent by hand.
         var cloudFront = Substitute.For<IAmazonCloudFront>();
         var started = new TaskCompletionSource();
         cloudFront.CreateInvalidationAsync(Arg.Any<CreateInvalidationRequest>(), Arg.Any<CancellationToken>())
@@ -552,7 +578,8 @@ public class CloudFrontEdgeInvalidatorTests
         await invalidator.StopAsync(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(10));
 
         var unsent = logger.At(LogLevel.Error).Where(e => e.Message.StartsWith("Stopping with")).ToList();
-        Assert.Equal(2, unsent.Count);
+        Assert.Equal(3, unsent.Count);
+        Assert.Contains(unsent, e => e.Message.Contains("/u/*"));
         Assert.Contains(unsent, e => e.Message.Contains("/u/alice*"));
         Assert.Contains(unsent, e => e.Message.Contains("/u/bob*"));
     }

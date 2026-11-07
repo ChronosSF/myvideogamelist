@@ -72,6 +72,15 @@ when no distribution is configured), and keys on the account's id:
   any hosted service stops, so before the queue's own five-second drain (0058 §5). An invalidation
   that waited carries the time of the latest write it covers, and the sender retries it until
   sixty-five minutes after that write, as 0058 §5 retries any other.
+- **Not even by a task that dies outright.** A process killed without a stop (out of memory, a
+  crash) never raises `ApplicationStopping`, and its held withdrawals, like its queue (0058 §5), die
+  with it, up to fifteen minutes of an account's instead of the second or so a queued one waited. So
+  **every task starts by invalidating `/u/*` and the sitemap files**, queued ahead of anything else.
+  Whatever a dead task held was written before it died, so the start of the task that replaces it
+  covers all of it: the withdrawal reaches the edge when the task is replaced, not when its TTL runs
+  out. It costs two paths a start, against the ceiling like any other, and every profile's cached
+  copy, which a deploy's `/*` (0046 §5) takes anyway; 0058 §2 rejected `/u/*` for every review edit,
+  not for a task's start. It closes 0058 §5's own gap for a dead task's queue as well.
 
 This paces the five that can be repeated with nothing limited in between: a review made private, a
 public review edited, a review deleted, everything recorded about a game deleted, and a profile
@@ -115,7 +124,9 @@ Two writes are limited, over a sliding day, per account:
 | A public profile's username changed in letter case only | three a day | three, at once |
 
 A private profile's case change sends nothing and is not counted. Making a profile private is never
-counted and never refused. Ten is far above somebody trying both settings to see how the page looks,
+counted and never refused. A use is counted before the save, so two requests at once cannot both take
+the last one, and handed back if the save does not happen: a lost race answered with a 409, or a
+failure, publishes nothing and costs nothing (`RepublishPermit`). Ten is far above somebody trying both settings to see how the page looks,
 and three covers putting right a name capitalised wrongly.
 
 - **Per account, not per address.** No loader calls either write, and the server render is never one
@@ -142,6 +153,8 @@ shows, beside the switch or under the name, through the reader it already has fo
 | Changes of case, three | 9 |
 | A full rename, at most monthly | 3 |
 | The account deleted, once | 2 |
+
+A task's start adds two paths of its own, once per task rather than per account.
 
 **About 150 in all, under a third of the ceiling**, and only by withdrawing without a pause for the
 whole day. Before this, the cheapest loop took eight minutes. One account can no longer spend the
@@ -174,8 +187,9 @@ ceiling's own error says when it is met.
   is made, or with its account's next send".
 - **Per task, in memory.** The pace and the allowances are per process, as the auth limiter's
   partitions are (0033) and the queue is (0058 §4). Two tasks during a deploy give an account twice of
-  each, as the ceiling is per task too. A task that dies outright loses what was waiting, as it loses
-  its queue. A shared store is [#101](https://github.com/ChronosSF/myvideogamelist/issues/101)'s.
+  each, as the ceiling is per task too. A task that dies outright loses what was waiting and its
+  queue, and the task that replaces it invalidates every profile as it starts (§2). A shared store is
+  [#101](https://github.com/ChronosSF/myvideogamelist/issues/101)'s.
 - **0033's "only login and register" is no longer the whole story.** `CLAUDE.md` and the backend
   conventions say so. The new limit is partitioned by account, sits in two actions, and touches
   nothing a loader calls.
@@ -188,9 +202,11 @@ ceiling's own error says when it is met.
   - a day of withdrawals every thirty seconds, which reaches the edge at most 116 times, with nothing
     waiting past fifteen minutes;
   - the hand-off on stop, through the registration, before the queue drains;
+  - the every-profile invalidation a task sends before anything else when it starts;
   - an edge that throws from the timer;
   - both allowances, their windows, per account and per act, and the refusal's status, header and
-    sentence, with the profile still private and nothing sent.
+    sentence, with the profile still private and nothing sent;
+  - a use handed back when the save it allowed is refused as a lost race, for both writes.
 
   Not tested: the pace against a real CloudFront, which 0058's
   [#319](https://github.com/ChronosSF/myvideogamelist/issues/319) covers.

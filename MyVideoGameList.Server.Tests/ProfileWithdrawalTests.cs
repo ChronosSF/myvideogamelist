@@ -103,6 +103,18 @@ public class ProfileWithdrawalTests
 
         public int StoredEntries() => Stored(db => db.UserGameEntries.Count());
 
+        /// <summary>
+        /// Saves the account from somewhere else, as a second tab would: its concurrency stamp moves,
+        /// so a save from the copy this request holds is refused as a lost race.
+        /// </summary>
+        public void ChangeStoredStamp(string id)
+        {
+            using var fresh = root.CreateScope();
+            var db = fresh.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            db.Users.Single(u => u.Id == id).ConcurrencyStamp = Guid.NewGuid().ToString();
+            db.SaveChanges();
+        }
+
         private TResult Stored<TResult>(Func<ApplicationDbContext, TResult> read)
         {
             using var fresh = root.CreateScope();
@@ -872,6 +884,48 @@ public class ProfileWithdrawalTests
         Assert.Equal(allowance, edge.Sent.Count);
     }
 
+    /// <summary>Uses up an account's allowance, every one kept as a saved write keeps it.</summary>
+    private static void SpendAll(RepublishLimits limits, Republish act, string userId)
+    {
+        while (true)
+        {
+            using var permit = limits.Take(act, userId);
+            if (!permit.IsGranted) return;
+            permit.Keep();
+        }
+    }
+
+    [Fact]
+    public async Task UpdatePrivacy_MadePublicButNotSaved_HandsTheAllowanceBack()
+    {
+        // A lost race with another save of the account is a 409, not a publication.
+        using var site = new Site(new RecordingEdgeInvalidator());
+        var alice = await site.AccountAsync("alice", ProfileVisibility.Private);
+        site.ChangeStoredStamp(alice.Id);
+
+        var result = await site.Controller(alice).UpdatePrivacy(new UpdateProfileVisibilityDto(ProfileVisibility.Public));
+
+        Assert.Equal(StatusCodes.Status409Conflict, Assert.IsType<ObjectResult>(result.Result).StatusCode);
+        var limits = site.Get<RepublishLimits>();
+        for (var i = 0; i < RepublishLimits.Allowance(Republish.ProfilePublic); i++)
+            Assert.True(limits.Take(Republish.ProfilePublic, alice.Id).IsGranted);
+    }
+
+    [Fact]
+    public async Task UpdateUserName_ChangeOfCaseNotSaved_HandsTheAllowanceBack()
+    {
+        using var site = new Site(new RecordingEdgeInvalidator());
+        var alice = await site.AccountAsync("alice", ProfileVisibility.Public);
+        site.ChangeStoredStamp(alice.Id);
+
+        var result = await site.Controller(alice).UpdateUserName(new UpdateUserNameDto("Alice"));
+
+        Assert.Equal(StatusCodes.Status409Conflict, Assert.IsType<ObjectResult>(result.Result).StatusCode);
+        var limits = site.Get<RepublishLimits>();
+        for (var i = 0; i < RepublishLimits.Allowance(Republish.NameCase); i++)
+            Assert.True(limits.Take(Republish.NameCase, alice.Id).IsGranted);
+    }
+
     [Fact]
     public async Task UpdatePrivacy_MadePrivateWithTheAllowanceSpent_IsNeverRefused()
     {
@@ -881,7 +935,7 @@ public class ProfileWithdrawalTests
         using var site = new Site(edge);
         var alice = await site.AccountAsync("alice", ProfileVisibility.Public);
         var limits = site.Get<RepublishLimits>();
-        while (limits.TryTake(Republish.ProfilePublic, alice.Id, out _)) { }
+        SpendAll(limits, Republish.ProfilePublic, alice.Id);
 
         var result = await site.Controller(alice)
             .UpdatePrivacy(new UpdateProfileVisibilityDto(ProfileVisibility.Private));
@@ -898,7 +952,7 @@ public class ProfileWithdrawalTests
         var bob = await site.AccountAsync("bob", ProfileVisibility.Private);
         var alice = await site.AccountAsync("alice", ProfileVisibility.Private);
         var limits = site.Get<RepublishLimits>();
-        while (limits.TryTake(Republish.ProfilePublic, bob.Id, out _)) { }
+        SpendAll(limits, Republish.ProfilePublic, bob.Id);
 
         var result = await site.Controller(alice)
             .UpdatePrivacy(new UpdateProfileVisibilityDto(ProfileVisibility.Public));
@@ -938,7 +992,7 @@ public class ProfileWithdrawalTests
         foreach (var spelling in new[] { "Alice", "ALICE", "aLice", "alIce", "aliCe" })
             Assert.IsType<OkObjectResult>((await site.Controller(alice).UpdateUserName(new UpdateUserNameDto(spelling))).Result);
 
-        Assert.True(site.Get<RepublishLimits>().TryTake(Republish.NameCase, alice.Id, out _));
+        Assert.True(site.Get<RepublishLimits>().Take(Republish.NameCase, alice.Id).IsGranted);
     }
 
     // ---------------------------------------------------------------------------------------
