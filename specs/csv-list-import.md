@@ -94,6 +94,11 @@ Everything maps into this shape before anything touches the database:
 | `playthroughType` | | A run's completion level, mapped through the preset's own vocabulary onto `rushed` / `normally` / `completionist`. Only values seen in a real export are mapped — anything else is no type, because a typed run with hours feeds the community medians. A level on its own is not a run ([0050](../docs/decisions/0050-an-imported-run-takes-its-type-from-the-source.md)) |
 | `notes` / `review` | | Long text, may contain newlines and commas — the parser must handle quoted multi-line fields |
 | `isFavourite` / `isWishlist` | | Some services model these as a shelf, some as a flag |
+| `addedAt` | | When the user first recorded the game, to the second wherever the source knows the second: a day alone ties every game entered that day, and the lists break a tie by title ([0087](../docs/decisions/0087-an-imported-game-arrives-when-its-source-says-it-did.md)) |
+| `statusSince` | | When the game reached the place in the source its status is read from — a Grouvee shelf's `date_added`. It becomes the date "Recently moved" sorts by. Never the import's own clock: a source that does not say leaves it empty ([0087](../docs/decisions/0087-an-imported-game-arrives-when-its-source-says-it-did.md)) |
+
+A source's own hand ranking of a shelf is not imported: it may say when, or how good, and only its
+owner knows which ([0087](../docs/decisions/0087-an-imported-game-arrives-when-its-source-says-it-did.md) §3).
 
 ### 3.2 Status vocabulary
 

@@ -64,15 +64,33 @@ namespace MyVideoGameList.Server.Services.Import;
 /// <c>Review</c> — publishing somebody's prose is not a default worth having (ADR 0037).
 /// </param>
 /// <param name="AddedAt">
-/// When the source says the user first recorded this game, if it says. Using the import's own
-/// timestamp instead would put an entire imported library at the top of "recently added" and bury
-/// everything the user actually touched — the harm ADR 0026 §5 describes for <c>StatusChangedAt</c>,
-/// and avoidable here because this is a real date rather than a guessed one.
+/// When the source says the user first recorded this game, if it says, and to the second where it
+/// knows the second. Using the import's own timestamp instead would put an entire imported library
+/// at the top of "recently added" and bury everything the user actually touched — the harm ADR 0026
+/// §5 describes for <c>StatusChangedAt</c>, and avoidable here because this is a real date rather
+/// than a guessed one. A day with no time is midnight on it, and every game recorded that day then
+/// ties and sorts by title, which is most of a library somebody entered in a few long sittings
+/// (ADR 0087).
 /// </param>
 /// <param name="Playthroughs">Zero or more runs. A source with no notion of one produces none.</param>
 /// <param name="SourceRef">
 /// The source's own identifier for this row, when it has one. Kept only so a row can be traced
 /// back to the line of the file it came from while diagnosing a bad import; nothing keys on it.
+/// </param>
+/// <param name="StatusSince">
+/// <para>
+/// When the source says the game reached the place in it that <paramref name="Status"/> is read
+/// from — for Grouvee, when it went onto that shelf — or null when the source does not say. The
+/// commit stamps it as the entry's <c>StatusChangedAt</c> when it writes a status, so "recently
+/// moved" orders an imported list by when its games really arrived (ADR 0087, amending ADR 0026 §5).
+/// </para>
+/// <para>
+/// It belongs to the source's shelf rather than to our status, which is what lets it outlive the
+/// review screen: every status a row can commit with is a reading of that one shelf, whether the
+/// preset read it, its owner answered for the played group, or its owner named a list for a shelf
+/// the preset did not know. Absent from a payload stored before the field existed, which reads back
+/// as null and commits as it would have when it was uploaded.
+/// </para>
 /// </param>
 internal sealed record ImportRowPayload(
     string Title,
@@ -88,7 +106,8 @@ internal sealed record ImportRowPayload(
     bool Favourite,
     string? Notes,
     DateTimeOffset? AddedAt,
-    IReadOnlyList<ImportPlaythroughPayload> Playthroughs);
+    IReadOnlyList<ImportPlaythroughPayload> Playthroughs,
+    DateTimeOffset? StatusSince = null);
 
 /// <summary>
 /// One run through a game, as the source recorded it.

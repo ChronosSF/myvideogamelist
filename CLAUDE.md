@@ -443,8 +443,10 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   than a transition and an event would carry the import's own timestamp as permanent fabricated
   history. So `UserGameEntry.Origin` names the source — `manual` means every status that entry has
   held has an event behind it, anything else means it may not — and it is set whenever the import
-  writes a status, over an existing entry as well as a new one. The import never stamps
-  `StatusChangedAt` or `ScoredAt`, for the same reason. **An imported playthrough's type is the source's completion level, translated
+  writes a status, over an existing entry as well as a new one. The import never stamps `ScoredAt`,
+  and never stamps `StatusChangedAt` from its own clock, for the same reason: an imported status takes
+  the moment its source gives for the game reaching its shelf, or none (`docs/decisions/0087-*`), and a
+  date added is the source's to the second where it knows the second. **An imported playthrough's type is the source's completion level, translated
   by the source**: Grouvee's "Main Story" and "Main Story + Extras" are `normally`, "100% Completion"
   is `completionist`, and nothing imported is `rushed`. A typed run with a duration feeds the
   community medians, so only strings seen in a real export are mapped and anything else stays
