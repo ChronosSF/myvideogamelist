@@ -11,7 +11,7 @@ const UPDATED = '13 October 2026';
 const H2 = 'type-title text-xl text-fg-strong mt-10 mb-3';
 const P = 'text-fg-soft leading-relaxed mb-3';
 const LIST = 'list-disc pl-5 space-y-1.5 text-fg-soft leading-relaxed mb-3';
-const LINK = 'text-primary-400 hover:text-primary-300 underline underline-offset-2';
+const LINK = 'text-link';
 
 export function loader() {
     return { site: siteConfig() };
@@ -97,6 +97,10 @@ export default function TermsPage() {
                         We look after your data, but we cannot promise that it will never be lost, damaged or out of
                         reach for a while: servers fail, and so do the people who run them. MyVideoGameList is not a
                         backup service.
+                    </p>
+                    <p className={P}>
+                        What we keep about you, why, and for how long is in our{' '}
+                        <Link to="/privacy" className={LINK}>privacy policy</Link>.
                     </p>
                     <p className={P}>
                         You can download everything you have entered, at any time and for free, with

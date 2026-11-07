@@ -40,7 +40,7 @@ describe('SiteFooter', () => {
         expect(discord).toHaveAttribute('rel', 'noopener noreferrer');
     });
 
-    it('links the pages of the site, the terms among them', () => {
+    it('links the pages of the site, the terms and the privacy policy among them', () => {
         renderFooter();
 
         const footer = screen.getByRole('navigation', { name: 'Footer' });
@@ -49,5 +49,6 @@ describe('SiteFooter', () => {
         expect(screen.getByRole('link', { name: 'Release calendar' })).toHaveAttribute('href', '/calendar');
         expect(screen.getByRole('link', { name: 'Game news' })).toHaveAttribute('href', '/news');
         expect(screen.getByRole('link', { name: 'Terms of use' })).toHaveAttribute('href', '/terms');
+        expect(screen.getByRole('link', { name: 'Privacy policy' })).toHaveAttribute('href', '/privacy');
     });
 });
