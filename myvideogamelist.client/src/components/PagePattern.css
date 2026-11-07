@@ -123,8 +123,8 @@
  * pitch is a whole number of device pixels at 1, 1.25, 1.5 and 2 times, and the masks are drawn with crisp
  * edges, so at those zooms every pixel comes out the same size wherever it falls. At the bright corner the
  * panel's pixels are under two fifths of the ink; a lit one is a pixel bigger on every side and far
- * brighter, about three fifths there, since a lit pixel has to be bright to be seen as lit at all. It breathes in five steps rather than a smooth ease, as an eight-bit console
- * faded.
+ * brighter, about three fifths there, since a lit pixel has to be bright to be seen as lit at all. It
+ * breathes in five steps rather than a smooth ease, as an eight-bit console faded.
  *
  * It is the default (ADR 0085), so it is also what a page with no pattern named on `<html>` draws.
  */

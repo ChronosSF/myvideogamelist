@@ -72,10 +72,35 @@ public record GameDetailsDto(
     IEnumerable<string> Collections,
     IEnumerable<string> Franchises,
     IEnumerable<LanguageSupportDto> Languages,
-    IEnumerable<StoreLinkDto> Stores);
+    IEnumerable<StoreLinkDto> Stores,
+    RelatedGamesDto? Related = null);
 
 /// <summary>A game referenced from another game, carrying just enough to render a cover card.</summary>
 public record GameRefDto(int Id, string Name, string? CoverImageUrl);
+
+/// <summary>
+/// The rest of a game's series, and its remakes, remasters and editions (#450, ADR 0084). Null on
+/// <see cref="GameDetailsDto.Related"/> when IGDB could not be asked, which the page reads as a render
+/// to keep off the edge; empty lists when it was asked and there is nothing.
+/// </summary>
+/// <param name="AnchorId">
+/// The game the page is about, or, when that game is an edition, the game it is an edition of: the card
+/// the page marks as this one, wherever it falls in <paramref name="Games"/>.
+/// </param>
+/// <param name="Games">Every other game in the series, and this one's remakes, remasters and ports, in release order.</param>
+/// <param name="Editions">The editions and bundles of the anchor, in release order: the same game, so a line of links rather than cards.</param>
+public record RelatedGamesDto(int AnchorId, IEnumerable<RelatedGameDto> Games, IEnumerable<RelatedGameDto> Editions);
+
+/// <summary>One game of <see cref="RelatedGamesDto"/>.</summary>
+/// <param name="ReleaseYear">
+/// The year of IGDB's <c>first_release_date</c>, in UTC. Only the year, because a date known to a month,
+/// a quarter or a year is stored as a day inside it, so the year is always right where the day may not be.
+/// </param>
+/// <param name="Kind">
+/// What it is to the page: <c>game</c>, <c>standalone</c>, <c>remake</c>, <c>remaster</c>, <c>expanded</c>
+/// or <c>port</c> for a card, <c>edition</c> or <c>bundle</c> for an edition.
+/// </param>
+public record RelatedGameDto(int Id, string Name, string? CoverImageUrl, int? ReleaseYear, string Kind);
 
 /// <summary>
 /// Average completion times <b>in seconds</b>, left unconverted so the client owns the

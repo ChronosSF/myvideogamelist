@@ -4,9 +4,9 @@
  *
  * Decorative: the button around it carries the name and `aria-pressed`.
  */
-export function Rosette({ filled }: { filled: boolean }) {
+export function Rosette({ filled, className }: { filled: boolean; className?: string }) {
     return (
-        <svg fill={filled ? 'currentColor' : 'none'} stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+        <svg className={className} fill={filled ? 'currentColor' : 'none'} stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
             <path
                 strokeLinecap="round"
                 strokeLinejoin="round"

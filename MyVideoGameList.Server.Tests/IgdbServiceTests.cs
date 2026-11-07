@@ -363,6 +363,18 @@ internal sealed class StubIgdb(Func<string, string> answerGames) : HttpMessageHa
     /// <summary>How many queries reached the games endpoint, which is how a test sees a cache answer.</summary>
     public int Queries { get; private set; }
 
+    /// <summary>Every query that reached the games endpoint, in order.</summary>
+    public List<string> Asked { get; } = [];
+
+    /// <summary>The games queries to answer with a 500, as IGDB failing would.</summary>
+    public Func<string, bool> Fails { get; init; } = _ => false;
+
+    /// <summary>
+    /// Awaited before any endpoint but the token's answers, given its path and its query: how a test holds one
+    /// request until another has arrived.
+    /// </summary>
+    public Func<string, string, Task> Hold { get; init; } = (_, _) => Task.CompletedTask;
+
     /// <summary>A service that asks this stub, with a cache of its own.</summary>
     public IgdbService NewService()
     {
@@ -384,11 +396,15 @@ internal sealed class StubIgdb(Func<string, string> answerGames) : HttpMessageHa
         if (request.RequestUri?.Host == "id.twitch.tv") return Json(TokenPayload);
 
         var query = await request.Content!.ReadAsStringAsync(cancellationToken);
-        if (request.RequestUri?.AbsolutePath != "/v4/games") return Json("[]");
+        await Hold(request.RequestUri!.AbsolutePath, query);
+        if (request.RequestUri.AbsolutePath != "/v4/games") return Json("[]");
 
         Query = query;
         Queries++;
-        return Json(answerGames(query));
+        Asked.Add(query);
+        return Fails(query)
+            ? new HttpResponseMessage(HttpStatusCode.InternalServerError)
+            : Json(answerGames(query));
     }
 
     private static HttpResponseMessage Json(string body) =>
@@ -748,8 +764,9 @@ public class GetGameByIdAsyncTests
 
         await igdb.NewService().GetGameByIdAsync(1942);
 
-        Assert.Contains("websites.url,websites.type", igdb.Query);
-        Assert.Contains("external_games.url,external_games.external_game_source", igdb.Query);
+        // The first query is the game's own; the related games are asked after it.
+        Assert.Contains("websites.url,websites.type", igdb.Asked[0]);
+        Assert.Contains("external_games.url,external_games.external_game_source", igdb.Asked[0]);
     }
 
     [Fact]
@@ -798,6 +815,130 @@ public class GetGameByIdAsyncTests
         var game = await new StubIgdb(WitcherPayload).NewService().GetGameByIdAsync(1942);
 
         Assert.Equal("http://www.thewitcher.com/", game?.Website);
+    }
+
+    /// <summary>The Witcher 3 with its series, as the detail query reads it.</summary>
+    private const string WitcherInItsSeriesPayload = """
+        [ { "id": 1942, "name": "The Witcher 3: Wild Hunt", "collections": [ { "id": 62, "name": "The Witcher" } ] } ]
+        """;
+
+    /// <summary>
+    /// Three rows of the related query as live IGDB returned them on 2026-11-04, in its own order: a sequel, the
+    /// game itself and its Game of the Year Edition, a bundle naming it as its <c>version_parent</c>.
+    /// </summary>
+    private const string RelatedPayload = """
+        [
+          { "id": 194662, "cover": { "id": 427032, "image_id": "co95i0" }, "first_release_date": 1861833600, "game_type": 0, "name": "The Witcher IV" },
+          { "id": 1942, "cover": { "id": 480513, "image_id": "coaarl" }, "first_release_date": 1431993600, "game_type": 0, "name": "The Witcher 3: Wild Hunt" },
+          { "id": 22439, "first_release_date": 1472428800, "game_type": 3, "name": "The Witcher 3: Wild Hunt - Game of the Year Edition", "version_parent": 1942 }
+        ]
+        """;
+
+    private static string AnswerWithItsSeries(string query) =>
+        query.Contains("version_parent = 1942") ? RelatedPayload : WitcherInItsSeriesPayload;
+
+    [Fact]
+    public async Task WithIgdbsOwnJson_BindsTheRelatedGamesThroughToTheSeriesAndTheEditions()
+    {
+        var igdb = new StubIgdb(AnswerWithItsSeries);
+
+        var game = await igdb.NewService().GetGameByIdAsync(1942);
+
+        var related = game?.Details?.Related;
+        Assert.NotNull(related);
+        Assert.Equal(1942, related.AnchorId);
+        Assert.Equal(
+            [
+                new RelatedGameDto(1942, "The Witcher 3: Wild Hunt", "https://images.igdb.com/igdb/image/upload/t_cover_big/coaarl.jpg", 2015, "game"),
+                new RelatedGameDto(194662, "The Witcher IV", "https://images.igdb.com/igdb/image/upload/t_cover_big/co95i0.jpg", 2028, "game"),
+            ],
+            related.Games);
+        Assert.Equal("The Witcher 3: Wild Hunt - Game of the Year Edition", Assert.Single(related.Editions).Name);
+
+        // Asked by the series the detail query named.
+        Assert.Contains("collections = (62)", igdb.Asked[1]);
+    }
+
+    /// <summary>
+    /// The Witcher 3's Game of the Year Edition as live IGDB returned it on 2026-11-07, under the fields the
+    /// related games read: a bundle naming no series, whose <c>version_parent</c> is The Witcher 3 with its.
+    /// </summary>
+    private const string GameOfTheYearPayload = """
+        [ { "id": 22439, "name": "The Witcher 3: Wild Hunt - Game of the Year Edition", "version_parent": { "id": 1942, "collections": [ 62 ] }, "game_type": 3 } ]
+        """;
+
+    [Fact]
+    public async Task OnAnEditionsPage_AsksForTheRelatedGamesOfTheGameItIsAnEditionOf()
+    {
+        // Asked for alone, as it was, the edition names no series and IGDB answers with the edition only, so
+        // the page drew no rail.
+        var igdb = new StubIgdb(query =>
+            query.Contains("version_parent = (22439,1942)") ? RelatedPayload : GameOfTheYearPayload);
+
+        var game = await igdb.NewService().GetGameByIdAsync(22439);
+
+        Assert.Contains(
+            "where id = (22439,1942) | parent_game = (22439,1942) | version_parent = (22439,1942) | collections = (62);",
+            igdb.Asked[1]);
+        var related = game?.Details?.Related;
+        Assert.NotNull(related);
+        Assert.Equal(1942, related.AnchorId);
+        Assert.Equal([1942, 194662], related.Games.Select(g => g.Id));
+    }
+
+    [Fact]
+    public async Task AsksForTheCompletionTimesAndTheRelatedGamesTogether()
+    {
+        // The completion times are held until the related query arrives. Sent together, it arrives at once;
+        // sent one after the other, it waits for the completion times, which wait out the five seconds.
+        var relatedAsked = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var together = false;
+        var igdb = new StubIgdb(AnswerWithItsSeries)
+        {
+            Hold = async (path, query) =>
+            {
+                if (query.Contains("version_parent = 1942")) relatedAsked.TrySetResult();
+                if (path == "/v4/game_time_to_beats")
+                    together = await Task.WhenAny(relatedAsked.Task, Task.Delay(TimeSpan.FromSeconds(5))) == relatedAsked.Task;
+            },
+        };
+
+        var game = await igdb.NewService().GetGameByIdAsync(1942);
+
+        Assert.True(together);
+        Assert.NotNull(game?.Details?.Related);
+    }
+
+    [Fact]
+    public async Task WhenTheRelatedQueryFails_ServesTheGameWithoutThemAndDoesNotAskAgainAtOnce()
+    {
+        var igdb = new StubIgdb(AnswerWithItsSeries) { Fails = query => query.Contains("version_parent = 1942") };
+        var service = igdb.NewService();
+
+        var first = await service.GetGameByIdAsync(1942);
+        var second = await service.GetGameByIdAsync(1942);
+
+        Assert.Equal("The Witcher 3: Wild Hunt", first?.Title);
+        Assert.Null(first?.Details?.Related);
+        Assert.Null(second?.Details?.Related);
+
+        // The failure is kept, for a minute rather than the game's half hour, so a page nobody may cache
+        // does not ask IGDB again on every render while it fails.
+        Assert.Equal(1, igdb.Asked.Count(q => q.Contains("where id = 1942;")));
+        Assert.Equal(1, igdb.Asked.Count(q => q.Contains("version_parent = 1942")));
+    }
+
+    [Fact]
+    public async Task WhenTheRelatedQueryAnswers_KeepsItBesideTheGame()
+    {
+        var igdb = new StubIgdb(AnswerWithItsSeries);
+        var service = igdb.NewService();
+
+        await service.GetGameByIdAsync(1942);
+        var again = await service.GetGameByIdAsync(1942);
+
+        Assert.NotNull(again?.Details?.Related);
+        Assert.Equal(2, igdb.Queries);
     }
 }
 
