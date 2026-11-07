@@ -19,6 +19,12 @@ namespace MyVideoGameList.Server.Security;
 /// else yet. Volume control for the rest belongs at the edge, with the CDN in front of it.
 /// </para>
 /// <para>
+/// Two acts are also limited per account, by <see cref="RepublishLimits"/>, and those are partitioned
+/// by the account rather than the address: making a profile public, and changing the letter case of
+/// a public profile's name. They are what let a withdrawal that goes to the edge at once be repeated,
+/// so they are what stops one account spending the day's invalidations (ADR 0081).
+/// </para>
+/// <para>
 /// This is also the half of the brute-force defence that is allowed to speak. Identity's lockout
 /// counts failures per account and answers a locked account with the same 401 as a wrong password,
 /// because a distinct answer would reveal that the account exists. A limit keyed on the caller's
@@ -42,6 +48,8 @@ public static class RateLimiting
 
     public static IServiceCollection AddApiRateLimiting(this IServiceCollection services)
     {
+        services.AddSingleton<RepublishLimits>();
+
         services.AddRateLimiter(options =>
         {
             options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;

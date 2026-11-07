@@ -43,7 +43,8 @@ public static class EdgeInvalidationRegistration
 
     /// <summary>
     /// Registers <see cref="ProfileWithdrawals"/> and the <see cref="IEdgeInvalidator"/> it sends
-    /// through: CloudFront when a distribution is configured, a logger otherwise.
+    /// through: CloudFront when a distribution is configured, a logger otherwise, either one behind
+    /// <see cref="WithdrawalHold"/>'s pace for each account.
     /// </summary>
     /// <remarks>
     /// Nothing AWS is registered without a distribution id, so Development and the tests cannot
@@ -62,7 +63,9 @@ public static class EdgeInvalidationRegistration
 
         if (string.IsNullOrEmpty(distributionId))
         {
-            services.AddSingleton<IEdgeInvalidator, LoggingEdgeInvalidator>();
+            services.AddSingleton<LoggingEdgeInvalidator>();
+            services.AddSingleton<IEdgeInvalidator>(provider =>
+                Paced(provider, provider.GetRequiredService<LoggingEdgeInvalidator>()));
             return services;
         }
 
@@ -81,18 +84,38 @@ public static class EdgeInvalidationRegistration
             Timeout = RequestTimeout,
         }));
 
-        // One instance, registered three ways: as itself, as what the services queue on, and as the
-        // hosted service that drains the queue. By factory each time rather than by type, or the
-        // host would build a second instance whose queue nothing ever writes to.
+        // One instance, registered three ways: as itself, behind the pace the services queue through,
+        // and as the hosted service that drains the queue. By factory each time rather than by type,
+        // or the host would build a second instance whose queue nothing ever writes to.
         services.AddSingleton(provider => new CloudFrontEdgeInvalidator(
             provider.GetRequiredService<IAmazonCloudFront>(),
             distributionId,
             dailyPathLimit,
             provider.GetRequiredService<TimeProvider>(),
             provider.GetRequiredService<ILogger<CloudFrontEdgeInvalidator>>()));
-        services.AddSingleton<IEdgeInvalidator>(provider => provider.GetRequiredService<CloudFrontEdgeInvalidator>());
+        services.AddSingleton<IEdgeInvalidator>(provider =>
+            Paced(provider, provider.GetRequiredService<CloudFrontEdgeInvalidator>()));
         services.AddHostedService(provider => provider.GetRequiredService<CloudFrontEdgeInvalidator>());
 
         return services;
+    }
+
+    /// <summary>
+    /// The invalidator the services see: <paramref name="inner"/>, behind each account's pace (ADR
+    /// 0081). In front of the logger too, so that Development shows a withdrawal waiting as a
+    /// deployment would wait it.
+    /// </summary>
+    private static WithdrawalHold Paced(IServiceProvider provider, IEdgeInvalidator inner)
+    {
+        var hold = new WithdrawalHold(
+            inner,
+            provider.GetRequiredService<TimeProvider>(),
+            provider.GetRequiredService<ILogger<WithdrawalHold>>());
+
+        // Raised before any hosted service stops, so what is waiting reaches the queue in front of
+        // CloudFront before that queue's own drain. Optional because a bare service collection, as a
+        // test builds, has no host to stop.
+        provider.GetService<IHostApplicationLifetime>()?.ApplicationStopping.Register(hold.Flush);
+        return hold;
     }
 }

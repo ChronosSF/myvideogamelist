@@ -60,6 +60,14 @@ namespace MyVideoGameList.Server.Services.Edge;
 /// is the usual reason a task stops, and the deploy pipeline invalidates <c>/*</c> once the new task
 /// is serving (ADR 0046), which covers the rest.
 /// </para>
+/// <para>
+/// <b>And a starting task invalidates every profile</b>, because a task that died outright held its
+/// queue and its accounts' paced withdrawals in memory, with no drain to send them. Whatever it held
+/// was committed before it died, so <c>/u/*</c> and the sitemap files, sent as the next task starts,
+/// cover all of it: the withdrawal reaches the edge when the task is replaced rather than when its TTL
+/// runs out. Two paths a start, and each profile's cached copy, which a deploy's <c>/*</c> takes
+/// anyway (ADR 0081 §2).
+/// </para>
 /// </remarks>
 internal sealed class CloudFrontEdgeInvalidator : BackgroundService, IEdgeInvalidator
 {
@@ -182,23 +190,26 @@ internal sealed class CloudFrontEdgeInvalidator : BackgroundService, IEdgeInvali
 
         lock (gate)
         {
+            // The write's time, which is now unless the withdrawal waited for its account's pace
+            // first (ADR 0081): the window this has to be sent within opened at the write.
             var now = clock.GetUtcNow();
+            var writtenAt = invalidation.WrittenAt is { } at && at < now ? at : now;
 
             // Waiting and not yet sent: it goes out after this write committed, so it covers this
             // withdrawal as well, and sending both would pay twice for one effect. It takes this
-            // write's time as its own, so it goes on trying for as long as this write's window is
-            // open, not only its first one's.
-            if (!stopping && waiting.ContainsKey(key))
+            // write's time as its own if that is the later, so it goes on trying for as long as this
+            // write's window is open, not only its first one's.
+            if (!stopping && waiting.TryGetValue(key, out var waitingSince))
             {
-                waiting[key] = now;
+                if (writtenAt > waitingSince) waiting[key] = writtenAt;
                 alreadyWaiting = true;
             }
             else
             {
-                var candidate = new Queued(invalidation, Guid.NewGuid().ToString("N"), now, key);
+                var candidate = new Queued(invalidation, Guid.NewGuid().ToString("N"), writtenAt, key);
                 if (queue.Writer.TryWrite(candidate))
                 {
-                    waiting[key] = now;
+                    waiting[key] = writtenAt;
                     queued = candidate;
                 }
             }
@@ -257,6 +268,25 @@ internal sealed class CloudFrontEdgeInvalidator : BackgroundService, IEdgeInvali
                 ? queued with { QueuedAt = latest }
                 : queued;
         }
+    }
+
+    /// <summary>The invalidation a task starts with: everything a task that died could have held.</summary>
+    internal static readonly EdgeInvalidation OnStart = new(
+        "task started: whatever a task that stopped without its drain still held",
+        [ProfileWithdrawals.EveryProfile, ProfileWithdrawals.ProfileSitemaps]);
+
+    /// <summary>
+    /// Queues <see cref="OnStart"/> ahead of anything else, then starts the loop.
+    /// </summary>
+    /// <remarks>
+    /// Here rather than in <see cref="ExecuteAsync"/>, which a stop arriving straight after the start
+    /// can cancel before it has run at all (see <see cref="StopAsync"/>). Queued, it is sent and retried
+    /// as any withdrawal is, and drained or named in the log if the task stops before it goes.
+    /// </remarks>
+    public override Task StartAsync(CancellationToken cancellationToken)
+    {
+        Invalidate(OnStart);
+        return base.StartAsync(cancellationToken);
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
