@@ -23,7 +23,7 @@ public class LookFlowTests(ApiFactory api) : IClassFixture<ApiFactory>
     {
         using var browser = api.CreateBrowser();
         var account = await browser.RegisterAsync(Browsers.NewUserName("looker"));
-        Assert.Equal(new LookDto("ink", null, null, "honeycomb", "grey"), account.Look);
+        Assert.Equal(new LookDto("ink", null, null, "pixels", "accent"), account.Look);
         api.Admins.Name(account.Id);
 
         var saved = await (await browser.SendAsync(HttpMethod.Put, "/api/user/look",
