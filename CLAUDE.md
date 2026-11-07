@@ -425,7 +425,12 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   middleware checks each hop against the trust list, and the CDN's address is never in the
   balancer's subnets, so raising it to 2 quietly leaves the limiter partitioned by edge server. The
   balancer preserves the header instead, which is safe only while nothing but CloudFront can reach
-  it. See `docs/decisions/0044-*`.
+  it. See `docs/decisions/0044-*`. **The one other limit is per account, and never on a withdrawal**:
+  making a profile public and changing a public name's letter case, ten and three a day, because each
+  lets a withdrawal that goes to the edge at once be repeated; the rest of an account's withdrawals are
+  paced by `WithdrawalHold` instead, a minute apart and twenty before one every fifteen minutes, so one
+  account cannot spend the day's invalidations. A moderator's withdrawal goes at once. See
+  `docs/decisions/0081-*`.
 
 - **Never change a game's status without recording an event.** `UserGameEvents` is append-only
   and is the only record that a transition happened — `UserGameLists` holds current state and is
