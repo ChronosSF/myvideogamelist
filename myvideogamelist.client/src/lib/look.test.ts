@@ -5,7 +5,7 @@ import { applyLook, forgetLook, LOOK_SCRIPT, LOOK_SCRIPT_HASH, LOOK_STORAGE_KEY,
 
 const root = document.documentElement;
 
-const CUSTOM: Look = { palette: 'custom', background: '#10182a', accent: '#c8f560', pattern: 'pixels', tint: 'accent' };
+const CUSTOM: Look = { palette: 'custom', background: '#10182a', accent: '#c8f560', pattern: 'honeycomb', tint: 'grey' };
 
 function runScript() {
     // The text the document renders, run as the browser runs it.
@@ -41,7 +41,7 @@ describe('the head script', () => {
 
         runScript();
 
-        expect(attributes()).toEqual({ palette: 'custom', pattern: 'pixels', tint: 'accent', page: '#10182a', accent: '#c8f560' });
+        expect(attributes()).toEqual({ palette: 'custom', pattern: 'honeycomb', tint: 'grey', page: '#10182a', accent: '#c8f560' });
     });
 
     it('does nothing when nothing is stored, so the page is the default', () => {
@@ -55,7 +55,7 @@ describe('the head script', () => {
 
         runScript();
 
-        expect(attributes()).toMatchObject({ palette: 'ink', pattern: 'honeycomb', tint: 'grey' });
+        expect(attributes()).toMatchObject({ palette: 'ink', pattern: 'pixels', tint: 'accent' });
     });
 
     it('draws a custom palette whose colours are not colours as the default, and sets neither', () => {
@@ -90,7 +90,7 @@ describe('applyLook', () => {
         // A server a release apart: a palette since renamed, and names never made.
         applyLook({ palette: 'oxblood', pattern: 'hexes', tint: 'lime' } as unknown as Look);
 
-        expect(attributes()).toEqual({ palette: 'ink', pattern: 'honeycomb', tint: 'grey', page: '', accent: '' });
+        expect(attributes()).toEqual({ palette: 'ink', pattern: 'pixels', tint: 'accent', page: '', accent: '' });
     });
 
     it("takes a custom palette's colours away when a preset replaces it", () => {
@@ -98,7 +98,7 @@ describe('applyLook', () => {
 
         applyLook({ ...DEFAULT_LOOK, palette: 'plum' });
 
-        expect(attributes()).toEqual({ palette: 'plum', pattern: 'honeycomb', tint: 'grey', page: '', accent: '' });
+        expect(attributes()).toEqual({ palette: 'plum', pattern: 'pixels', tint: 'accent', page: '', accent: '' });
     });
 });
 
@@ -110,7 +110,7 @@ describe('forgetLook', () => {
         forgetLook();
 
         expect(localStorage.getItem(LOOK_STORAGE_KEY)).toBeNull();
-        expect(attributes()).toEqual({ palette: 'ink', pattern: 'honeycomb', tint: 'grey', page: '', accent: '' });
+        expect(attributes()).toEqual({ palette: 'ink', pattern: 'pixels', tint: 'accent', page: '', accent: '' });
     });
 });
 

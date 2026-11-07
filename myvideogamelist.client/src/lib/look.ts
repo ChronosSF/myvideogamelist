@@ -80,9 +80,9 @@ export const LOOK_SCRIPT = '(function(){try{'
     + `if(p==="custom"&&!(h.test(l.background)&&h.test(l.accent)))p=${JSON.stringify(DEFAULT_LOOK.palette)};`
     + 'd.setAttribute("data-palette",p);'
     + `d.setAttribute("data-pattern",${JSON.stringify(PATTERN_IDS)}.indexOf(l.pattern)<0?${JSON.stringify(DEFAULT_LOOK.pattern)}:l.pattern);`
-    + 'd.setAttribute("data-pattern-tint",l.tint==="accent"?"accent":"grey");'
+    + `d.setAttribute("data-pattern-tint",${JSON.stringify(TINT_IDS)}.indexOf(l.tint)<0?${JSON.stringify(DEFAULT_LOOK.tint)}:l.tint);`
     + 'if(p==="custom"){d.style.setProperty("--look-page",l.background);d.style.setProperty("--look-accent",l.accent)}'
     + '}catch(e){}})()';
 
 /** `LOOK_SCRIPT`'s SHA-256, base64, as a `script-src` source names it. */
-export const LOOK_SCRIPT_HASH = 'sha256-VhPeW3QeoWbT9VjJWfNZjtUYpWz+enQ+T36zgDI20R0=';
+export const LOOK_SCRIPT_HASH = 'sha256-tQzetkVeuBmy1lfofzWOxQ7Q8K712D9oyWGRQuroNHE=';
