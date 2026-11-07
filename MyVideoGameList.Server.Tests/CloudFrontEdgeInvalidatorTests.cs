@@ -198,6 +198,34 @@ public class CloudFrontEdgeInvalidatorTests
     }
 
     [Fact]
+    public void Invalidate_WaitedForItsAccountsPace_IsDatedByItsWrite()
+    {
+        // Its window opened at the write, not when its account's pace let it go: retried past
+        // sixty-five minutes after the write, it would be a path paid for to remove nothing.
+        var clock = new ManualClock(Midday);
+        var invalidator = Invalidator(Substitute.For<IAmazonCloudFront>(), clock);
+        var writtenAt = Midday - TimeSpan.FromMinutes(14);
+
+        invalidator.Invalidate(Withdrawal with { WrittenAt = writtenAt });
+
+        Assert.True(invalidator.TryTakeQueued(out var queued));
+        Assert.Equal(writtenAt, queued.QueuedAt);
+    }
+
+    [Fact]
+    public void Invalidate_SamePathsWaitingFromALaterWrite_KeepsTheLaterTime()
+    {
+        var clock = new ManualClock(Midday);
+        var invalidator = Invalidator(Substitute.For<IAmazonCloudFront>(), clock);
+
+        invalidator.Invalidate(Withdrawal);
+        invalidator.Invalidate(Withdrawal with { WrittenAt = Midday - TimeSpan.FromMinutes(5) });
+
+        Assert.True(invalidator.TryTakeQueued(out var queued));
+        Assert.Equal(Midday, queued.QueuedAt);
+    }
+
+    [Fact]
     public void Invalidate_SamePathsOnceTheFirstIsBeingSent_IsQueuedAgain()
     {
         // Once taken off the queue the first may reach CloudFront before the second write commits,
@@ -586,7 +614,9 @@ public class CloudFrontEdgeInvalidatorTests
         Assert.DoesNotContain(services, d => d.ServiceType == typeof(IAmazonCloudFront));
         Assert.DoesNotContain(services, d => d.ServiceType == typeof(IHostedService));
         using var provider = services.BuildServiceProvider();
-        Assert.IsType<LoggingEdgeInvalidator>(provider.GetRequiredService<IEdgeInvalidator>());
+        // Behind each account's pace, so Development waits a withdrawal as a deployment would.
+        var paced = Assert.IsType<WithdrawalHold>(provider.GetRequiredService<IEdgeInvalidator>());
+        Assert.IsType<LoggingEdgeInvalidator>(paced.Inner);
     }
 
     [Fact]
@@ -598,10 +628,44 @@ public class CloudFrontEdgeInvalidatorTests
         services.AddSingleton(Substitute.For<IAmazonCloudFront>());
         using var provider = services.BuildServiceProvider();
 
-        var invalidator = provider.GetRequiredService<IEdgeInvalidator>();
+        var paced = Assert.IsType<WithdrawalHold>(provider.GetRequiredService<IEdgeInvalidator>());
         var hosted = Assert.Single(provider.GetServices<IHostedService>());
 
-        Assert.IsType<CloudFrontEdgeInvalidator>(invalidator);
-        Assert.Same(invalidator, hosted);
+        Assert.IsType<CloudFrontEdgeInvalidator>(paced.Inner);
+        Assert.Same(paced.Inner, hosted);
+    }
+
+    [Fact]
+    public void AddEdgeInvalidation_HostStopping_SendsWhatWasWaitingForItsPaceBeforeTheQueueDrains()
+    {
+        // ApplicationStopping is raised before any hosted service stops, so what an account had
+        // waiting is in the queue before the queue spends its few seconds sending what it holds.
+        var services = Registered(DistributionId);
+        services.AddSingleton(Substitute.For<IAmazonCloudFront>());
+        var lifetime = new StoppingLifetime();
+        services.AddSingleton<IHostApplicationLifetime>(lifetime);
+        using var provider = services.BuildServiceProvider();
+        var paced = provider.GetRequiredService<IEdgeInvalidator>();
+        var queue = provider.GetRequiredService<CloudFrontEdgeInvalidator>();
+
+        paced.Invalidate(new EdgeInvalidation("review deleted", ["/u/alice*"]) { Account = "alice-id" });
+        paced.Invalidate(new EdgeInvalidation("entry deleted", ["/u/alice*"]) { Account = "alice-id" });
+        Assert.True(queue.TryTakeQueued(out _));
+        Assert.False(queue.TryTakeQueued(out _));
+
+        lifetime.Stop();
+
+        Assert.True(queue.TryTakeQueued(out var flushed));
+        Assert.Equal("entry deleted", flushed.Invalidation.Reason);
+    }
+
+    private sealed class StoppingLifetime : IHostApplicationLifetime
+    {
+        private readonly CancellationTokenSource stopping = new();
+        public CancellationToken ApplicationStarted => CancellationToken.None;
+        public CancellationToken ApplicationStopping => stopping.Token;
+        public CancellationToken ApplicationStopped => CancellationToken.None;
+        public void StopApplication() => Stop();
+        public void Stop() => stopping.Cancel();
     }
 }

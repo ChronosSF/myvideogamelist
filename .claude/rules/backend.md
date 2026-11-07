@@ -72,8 +72,10 @@ paths:
 - **A new endpoint that changes state needs no new guard**, but it does have to use a method that
   says so. The write guard exempts `GET`, `HEAD` and `OPTIONS`, so a state change behind a `GET` is
   both forgeable and cacheable.
-- Only `/api/auth/login` and `/api/auth/register` are rate-limited, and adding a policy to anything
-  a loader calls would throttle every visitor at once — see `docs/decisions/0033-*`.
+- Only `/api/auth/login` and `/api/auth/register` are rate-limited by address, and adding a policy to
+  anything a loader calls would throttle every visitor at once — see `docs/decisions/0033-*`. The one
+  other limit is per account, in two actions: `RepublishLimits`, on making a profile public and on a
+  public name's change of case. A withdrawal is never refused; it is paced (`docs/decisions/0081-*`).
 
 ## Configuration & secrets
 

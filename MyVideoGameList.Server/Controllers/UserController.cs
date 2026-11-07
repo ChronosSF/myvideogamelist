@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using System.Globalization;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
@@ -27,6 +28,7 @@ public class UserController(
     IListNameService listNames,
     AdminAccounts admins,
     ProfileWithdrawals withdrawals,
+    RepublishLimits republish,
     TimeProvider clock) : ControllerBase
 {
     /// <summary>
@@ -77,6 +79,15 @@ public class UserController(
             // cooldown as well.
             if (user.UserName != dto.UserName)
             {
+                // On a public profile each change of case sends both spellings to the edge at once,
+                // and the next names one this did not, so it is the one rename limited per account
+                // (ADR 0081 §4). A private profile sends nothing and is not counted.
+                if (user.ProfileVisibility == ProfileVisibility.Public
+                    && !republish.TryTake(Republish.NameCase, user.Id, out var wait))
+                {
+                    return TooOften(Republish.NameCase, wait);
+                }
+
                 var previousCase = user.UserName;
                 user.UserName = dto.UserName;
                 var saved = await userManager.UpdateAsync(user);
@@ -87,7 +98,7 @@ public class UserController(
                 // copies the edge holds under the old one — the spelling the site itself linked to
                 // and the sitemap listed until now — would be out of reach of all of them (ADR 0058).
                 if (user.ProfileVisibility == ProfileVisibility.Public && previousCase is not null)
-                    withdrawals.ProfileRenamed(previousCase, dto.UserName);
+                    withdrawals.ProfileRenamed(user.Id, previousCase, dto.UserName);
             }
 
             return Ok(Profile(user));
@@ -136,7 +147,7 @@ public class UserController(
             && previous is not null
             && user.UserName is { } renamed)
         {
-            withdrawals.ProfileRenamed(previous, renamed);
+            withdrawals.ProfileRenamed(user.Id, previous, renamed);
         }
 
         // SetUserNameAsync rotates the security stamp, and the cookie this request arrived with
@@ -163,6 +174,11 @@ public class UserController(
     /// taken off the edge once the change is saved, rather than served from there until their TTL
     /// runs out (ADR 0058). Turning it on publishes, and invalidates nothing.
     /// </para>
+    /// <para>
+    /// Turning it on is limited per account, and turning it off never is. Making it private goes to
+    /// the edge at once and costs two paths, and it can be repeated only by making the profile public
+    /// again, so that is what stops one account spending the day's invalidations in a loop (ADR 0081).
+    /// </para>
     /// </remarks>
     [HttpPut("privacy")]
     public async Task<ActionResult<UserProfileDto>> UpdatePrivacy(
@@ -173,12 +189,19 @@ public class UserController(
 
         var wasPublic = user.ProfileVisibility == ProfileVisibility.Public;
 
+        if (!wasPublic
+            && dto.ProfileVisibility == ProfileVisibility.Public
+            && !republish.TryTake(Republish.ProfilePublic, user.Id, out var wait))
+        {
+            return TooOften(Republish.ProfilePublic, wait);
+        }
+
         user.ProfileVisibility = dto.ProfileVisibility;
         var saved = await userManager.UpdateAsync(user);
         if (!saved.Succeeded) return NotSaved(saved);
 
         if (wasPublic && user.ProfileVisibility != ProfileVisibility.Public && user.UserName is { } name)
-            withdrawals.ProfileMadePrivate(name);
+            withdrawals.ProfileMadePrivate(user.Id, name);
 
         return Ok(Profile(user));
     }
@@ -266,7 +289,7 @@ public class UserController(
         if (!saved.Succeeded) return NotSaved(saved);
 
         if (takesBack && user.ProfileVisibility == ProfileVisibility.Public && user.UserName is { } name)
-            withdrawals.ProfileDetailsChanged(name);
+            withdrawals.ProfileDetailsChanged(user.Id, name);
 
         return Ok(Profile(user));
 
@@ -520,7 +543,7 @@ public class UserController(
         if (!result.Succeeded)
             return Problem(string.Join(" ", result.Errors.Select(e => e.Description)));
 
-        if (publicName is not null) withdrawals.AccountDeleted(publicName);
+        if (publicName is not null) withdrawals.AccountDeleted(user.Id, publicName);
 
         // The account is gone, so the cookie now authenticates nothing. Clearing it here saves the
         // client from holding a credential for a user that cannot be looked up. A cookie for it held
@@ -546,6 +569,25 @@ public class UserController(
         Problem(
             detail: string.Join(" ", result.Errors.Select(e => e.Description)),
             statusCode: StatusCodes.Status409Conflict);
+
+    /// <summary>
+    /// The refusal of a write that would let the account repeat a withdrawal sent at once, once it
+    /// has done so as often as a day allows (ADR 0081 §4).
+    /// </summary>
+    /// <remarks>
+    /// A 429 with the wait in <c>Retry-After</c>, as the auth limiter's has, and a sentence the
+    /// settings page shows as it arrives: what was refused, when it can be done again, and that
+    /// making the profile private is never what is refused. Built by MVC's problem details factory,
+    /// so it carries the trace id every error does.
+    /// </remarks>
+    private ObjectResult TooOften(Republish act, TimeSpan wait)
+    {
+        Response.Headers.RetryAfter = ((int)Math.Ceiling(wait.TotalSeconds)).ToString(CultureInfo.InvariantCulture);
+        return Problem(
+            detail: RepublishLimits.Refusal(act, wait),
+            statusCode: StatusCodes.Status429TooManyRequests,
+            title: "Too many requests");
+    }
 
     /// <summary>
     /// The same projection <c>AuthController</c> returns, so an endpoint that changes part of the
