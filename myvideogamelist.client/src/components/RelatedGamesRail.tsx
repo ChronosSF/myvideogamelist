@@ -58,8 +58,11 @@ export function RelatedGamesRail({ related, gameId, seriesNames }: RelatedGamesR
         latest.current = { lists, account: user?.id ?? null };
     });
 
+    // The anchor is never in the bulk add, though on an edition's page its card offers it: it is the game this
+    // page is about, the edition being that game (F3), so a reader who tracks the edition tracks it already.
     const others = related.games.filter(game => game.id !== related.anchorId);
-    if (others.length === 0 && related.editions.length === 0) return null;
+    // Nothing to show but the page's own game. An edition's page shows its original, even alone.
+    if (related.editions.length === 0 && related.games.every(game => game.id === gameId)) return null;
 
     const account = user?.id ?? null;
     const listsKnown = account !== null && !lists.loading && lists.error === null;

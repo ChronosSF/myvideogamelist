@@ -18,6 +18,13 @@ public sealed record RelatedCandidate(CalendarGame Game, long? FirstReleaseDate)
 /// what it is, a recommendation.
 /// </para>
 /// <para>
+/// On an edition's page they are asked for the game it is an edition of as well, and by that game's series
+/// too, since the rail is that game's. An edition seldom names a series of its own: of the forty main games
+/// and bundles naming a <c>version_parent</c> that most people had rated on 2026-11-07, twenty-nine named
+/// none, The Witcher 3's Game of the Year Edition among them, so asked for alone it found only itself and
+/// its page drew no rail.
+/// </para>
+/// <para>
 /// Its rules (§3.3) as they apply to a page about one game rather than to a calendar of releases. A
 /// cancelled or rumoured game is dropped (F4). DLC, expansions, episodes, seasons, mods, forks, packs and
 /// updates are not cards: the page lists the game's own DLC and expansions in a rail of their own, and the
@@ -55,12 +62,25 @@ public static class RelatedGames
     };
 
     /// <summary>
-    /// One query for all three relations. The game itself comes back too, for its type and its
-    /// <c>version_parent</c>, which say whether the page is about an edition.
+    /// The game a page's game is an edition of, read off the detail query, or null when it is not an edition
+    /// (F3): a main game or a bundle naming another as its <c>version_parent</c>. A port or an expanded game
+    /// names its <c>parent_game</c> instead, and is a game of its own.
     /// </summary>
-    internal static string BuildQuery(int gameId, IReadOnlyCollection<int> seriesIds)
+    internal static int? EditionOf(int? gameType, int? versionParentId) =>
+        versionParentId is int parent
+        && (gameType ?? IgdbGameTypes.MainGame) is IgdbGameTypes.MainGame or IgdbGameTypes.Bundle
+            ? parent
+            : null;
+
+    /// <summary>
+    /// One query for all three relations, of the game and of the game it is an edition of, if it is one. The
+    /// games themselves come back too, for their types and their <c>version_parent</c>s, which say whether the
+    /// page is about an edition and which game it marks.
+    /// </summary>
+    internal static string BuildQuery(int gameId, int? editionOf, IReadOnlyCollection<int> seriesIds)
     {
-        var relations = $"id = {gameId} | parent_game = {gameId} | version_parent = {gameId}";
+        var games = editionOf is int original ? $"({gameId},{original})" : $"{gameId}";
+        var relations = $"id = {games} | parent_game = {games} | version_parent = {games}";
         if (seriesIds.Count > 0)
             relations += $" | collections = ({string.Join(',', seriesIds.Distinct().Order())})";
 
@@ -105,8 +125,7 @@ public static class RelatedGames
     private static int TypeOf(CalendarGame game) => game.GameType ?? IgdbGameTypes.MainGame;
 
     /// <summary>A main game or a bundle that names another game as the game it is a version of.</summary>
-    private static bool IsEdition(CalendarGame game) =>
-        game.VersionParentId is not null && TypeOf(game) is IgdbGameTypes.MainGame or IgdbGameTypes.Bundle;
+    private static bool IsEdition(CalendarGame game) => EditionOf(game.GameType, game.VersionParentId) is not null;
 
     /// <summary>A card on its own account: a game that is not an edition, a standalone expansion, a remake, a remaster.</summary>
     private static bool StandsAlone(CalendarGame game) => TypeOf(game) switch

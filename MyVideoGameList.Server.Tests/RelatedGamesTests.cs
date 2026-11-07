@@ -200,7 +200,7 @@ public class RelatedGamesTests
     [Fact]
     public void BuildQuery_WithSeries_AsksForTheGameItsChildrenAndItsSeries()
     {
-        var query = RelatedGames.BuildQuery(TheWitcher3, [62]);
+        var query = RelatedGames.BuildQuery(TheWitcher3, editionOf: null, [62]);
 
         Assert.Contains("where id = 1942 | parent_game = 1942 | version_parent = 1942 | collections = (62);", query);
         Assert.Contains("fields id,name,cover.image_id,game_type,parent_game,version_parent,game_status,first_release_date;", query);
@@ -210,9 +210,33 @@ public class RelatedGamesTests
     [Fact]
     public void BuildQuery_WithNoSeries_AsksForTheGameAndItsChildrenOnly()
     {
-        var query = RelatedGames.BuildQuery(TheWitcher3, []);
+        var query = RelatedGames.BuildQuery(TheWitcher3, editionOf: null, []);
 
         Assert.Contains("where id = 1942 | parent_game = 1942 | version_parent = 1942;", query);
         Assert.DoesNotContain("collections", query);
+    }
+
+    [Fact]
+    public void BuildQuery_OnAnEditionsPage_AsksForTheGameItIsAnEditionOfToo()
+    {
+        // The Game of the Year Edition names no series, so the series is The Witcher 3's.
+        var query = RelatedGames.BuildQuery(GameOfTheYear, editionOf: TheWitcher3, [62]);
+
+        Assert.Contains(
+            "where id = (22439,1942) | parent_game = (22439,1942) | version_parent = (22439,1942) | collections = (62);",
+            query);
+    }
+
+    [Theory]
+    [InlineData(IgdbGameTypes.Bundle, TheWitcher3, TheWitcher3)]
+    [InlineData(IgdbGameTypes.MainGame, TheWitcher3, TheWitcher3)]
+    [InlineData(null, TheWitcher3, TheWitcher3)]
+    [InlineData(IgdbGameTypes.MainGame, null, null)]
+    // A port or an expanded game that names a version_parent is still a game of its own.
+    [InlineData(IgdbGameTypes.Port, TheWitcher3, null)]
+    [InlineData(IgdbGameTypes.ExpandedGame, TheWitcher3, null)]
+    public void EditionOf_IsTheVersionParentOfAMainGameOrABundleOnly(int? type, int? versionParent, int? expected)
+    {
+        Assert.Equal(expected, RelatedGames.EditionOf(type, versionParent));
     }
 }

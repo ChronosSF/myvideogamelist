@@ -106,7 +106,14 @@ dates. `RelatedGames.Fold` applies the spec's rules (§3.3) as they suit a page 
   or The Witcher's series would show "The Witcher: Enhanced Edition" and its "Director's Cut" beside The Witcher.
   One of the anchor's own is a card. A remake or a remaster is always a card: "The Witcher Remake", "The Witcher
   3: Wild Hunt Remastered".
-- On an edition's page the anchor is the game it is an edition of, marked "Its original".
+- On an edition's page the anchor is the game it is an edition of, marked "Its original", and the relations are
+  asked for that game as well, by its series too: an edition seldom names a series of its own. Of the forty
+  main games and bundles naming a `version_parent` that most people had rated on 2026-11-07, twenty-nine named
+  none, The Witcher 3's Game of the Year Edition among them, whose page asked for it alone, found only itself
+  and drew no rail. The detail query reads the type and `version_parent.collections` for this, so the rail is
+  still one request. The hero there offers the edition, so the original's card says the list it is in or offers
+  what any card does, and the rail is drawn for the original alone; it stays out of "Add the N", being the game
+  the edition is.
 
 Each card carries the wishlist and the Backlog ([0075](0075-the-editorial-redesign.md)), or the list the game
 is in. "Add the N you don't track to Backlog" adds every game in no list, one after another, never moving one

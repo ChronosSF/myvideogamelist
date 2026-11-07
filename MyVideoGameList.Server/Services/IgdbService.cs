@@ -177,8 +177,11 @@ public class IgdbService(
     /// The store links read the websites the listing already asks for, and add the game's
     /// <c>external_games</c> here. Those carry a row per regional retail listing as well — Elden Ring
     /// has 49 from Amazon alone — which a page of twenty games would multiply for nothing.
+    /// The game's type and the series of the game it is a version of are for the related games alone: an
+    /// edition seldom names a series of its own, so its rail is asked by its original's (ADR 0084).
     /// </remarks>
     private const string GameDetailFieldList =
+        "game_type,version_parent.collections," +
         "external_games.url,external_games.external_game_source," +
         "screenshots.image_id," +
         "themes.name,player_perspectives.name,game_modes.name,game_engines.name," +
@@ -343,7 +346,7 @@ public class IgdbService(
         {
             return cached is null
                 ? null
-                : WithRelated(cached, await GetRelatedGamesAsync(id, cached.SeriesIds, cancellationToken));
+                : WithRelated(cached, await GetRelatedGamesAsync(id, cached.EditionOf, cached.SeriesIds, cancellationToken));
         }
 
         var query = new StringBuilder()
@@ -365,20 +368,26 @@ public class IgdbService(
         // The completion times and the related games each need only what the detail query answered, so
         // they go out together: a page nobody has asked for lately waits on one more request, not two.
         // Neither throws for IGDB's failure, each answering null for its part of the page.
-        var seriesIds = (igdbGame.Collections ?? []).Select(c => c.Id).ToList();
+        var editionOf = RelatedGames.EditionOf(igdbGame.GameType, igdbGame.VersionParent?.Id);
+        var seriesIds = (igdbGame.Collections ?? []).Select(c => c.Id)
+            .Concat(editionOf is null ? [] : igdbGame.VersionParent?.Collections ?? [])
+            .ToList();
         var timeToBeat = FetchTimeToBeatAsync(id, cancellationToken);
-        var related = GetRelatedGamesAsync(id, seriesIds, cancellationToken);
+        var related = GetRelatedGamesAsync(id, editionOf, seriesIds, cancellationToken);
         await Task.WhenAll(timeToBeat, related);
 
         var details = MapToDetailsDto(igdbGame, await timeToBeat);
-        var detail = new GameDetail(MapToGameDto(igdbGame) with { Details = details }, details, seriesIds);
+        var detail = new GameDetail(MapToGameDto(igdbGame) with { Details = details }, details, editionOf, seriesIds);
         cache.Set(cacheKey, detail, TimeSpan.FromMinutes(30));
 
         return WithRelated(detail, await related);
     }
 
-    /// <summary>A game as the detail query reads it, with the ids of its series, which the related games are asked by.</summary>
-    private sealed record GameDetail(GameDto Game, GameDetailsDto Details, IReadOnlyList<int> SeriesIds);
+    /// <summary>
+    /// A game as the detail query reads it, with what its related games are asked by: the game it is an edition
+    /// of, if it is one, and the ids of its series and of that game's.
+    /// </summary>
+    private sealed record GameDetail(GameDto Game, GameDetailsDto Details, int? EditionOf, IReadOnlyList<int> SeriesIds);
 
     private static GameDto WithRelated(GameDetail detail, RelatedGamesDto? related) =>
         detail.Game with { Details = detail.Details with { Related = related } };
@@ -403,7 +412,7 @@ public class IgdbService(
     /// way, which #352 records.
     /// </remarks>
     private async Task<RelatedGamesDto?> GetRelatedGamesAsync(
-        int id, IReadOnlyCollection<int> seriesIds, CancellationToken cancellationToken)
+        int id, int? editionOf, IReadOnlyCollection<int> seriesIds, CancellationToken cancellationToken)
     {
         var cacheKey = $"igdb_related|{id}";
         if (cache.TryGetValue(cacheKey, out RelatedGamesDto? cached))
@@ -412,7 +421,7 @@ public class IgdbService(
         try
         {
             var rows = await QueryAsync<IgdbCalendarGame>(
-                GamesEndpoint, RelatedGames.BuildQuery(id, seriesIds), cancellationToken);
+                GamesEndpoint, RelatedGames.BuildQuery(id, editionOf, seriesIds), cancellationToken);
 
             if (rows.Count >= RelatedGames.QueryLimit)
             {

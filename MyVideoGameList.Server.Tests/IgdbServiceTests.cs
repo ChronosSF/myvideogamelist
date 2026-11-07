@@ -859,6 +859,33 @@ public class GetGameByIdAsyncTests
         Assert.Contains("collections = (62)", igdb.Asked[1]);
     }
 
+    /// <summary>
+    /// The Witcher 3's Game of the Year Edition as live IGDB returned it on 2026-11-07, under the fields the
+    /// related games read: a bundle naming no series, whose <c>version_parent</c> is The Witcher 3 with its.
+    /// </summary>
+    private const string GameOfTheYearPayload = """
+        [ { "id": 22439, "name": "The Witcher 3: Wild Hunt - Game of the Year Edition", "version_parent": { "id": 1942, "collections": [ 62 ] }, "game_type": 3 } ]
+        """;
+
+    [Fact]
+    public async Task OnAnEditionsPage_AsksForTheRelatedGamesOfTheGameItIsAnEditionOf()
+    {
+        // Asked for alone, as it was, the edition names no series and IGDB answers with the edition only, so
+        // the page drew no rail.
+        var igdb = new StubIgdb(query =>
+            query.Contains("version_parent = (22439,1942)") ? RelatedPayload : GameOfTheYearPayload);
+
+        var game = await igdb.NewService().GetGameByIdAsync(22439);
+
+        Assert.Contains(
+            "where id = (22439,1942) | parent_game = (22439,1942) | version_parent = (22439,1942) | collections = (62);",
+            igdb.Asked[1]);
+        var related = game?.Details?.Related;
+        Assert.NotNull(related);
+        Assert.Equal(1942, related.AnchorId);
+        Assert.Equal([1942, 194662], related.Games.Select(g => g.Id));
+    }
+
     [Fact]
     public async Task AsksForTheCompletionTimesAndTheRelatedGamesTogether()
     {

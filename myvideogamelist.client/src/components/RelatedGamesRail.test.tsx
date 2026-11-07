@@ -184,6 +184,41 @@ describe('RelatedGamesRail', () => {
         expect(within(original).getByRole('link', { name: 'The Witcher 3: Wild Hunt' })).toHaveAttribute('href', '/games/30');
     });
 
+    it("says which list the original is in on an edition's page, where the hero above offers the edition", () => {
+        listed.set(30, 'playing');
+        renderRail({ gameId: 31 });
+
+        const original = cards()[2];
+        expect(original).toHaveTextContent('Its original');
+        expect(original).toHaveTextContent(LIST_NAMES.playing);
+    });
+
+    it("offers the original what any card offers on an edition's page", async () => {
+        const actor = quickActor();
+        renderRail({ gameId: 31 });
+
+        await actor.click(within(cards()[2]).getByRole('button', { name: 'Add to Backlog: The Witcher 3: Wild Hunt' }));
+
+        expect(lists.addToList).toHaveBeenCalledWith('backlog', expect.objectContaining({ id: 30 }));
+    });
+
+    it("leaves the original out of the bulk add on an edition's page, being the game the edition is", async () => {
+        const actor = quickActor();
+        renderRail({ gameId: 31 });
+
+        await actor.click(screen.getByRole('button', { name: "Add the 3 you don't track to Backlog" }));
+
+        expect(vi.mocked(lists.addToList).mock.calls.map(([, game]) => game.id)).toEqual([10, 20, 40]);
+    });
+
+    it("draws an edition's original even when it stands alone, since it is the way there", () => {
+        renderRail({ related: { anchorId: 30, games: [WITCHER_3], editions: [] }, gameId: 31, seriesNames: [] });
+
+        const original = cards('Related games')[0];
+        expect(original).toHaveTextContent('Its original');
+        expect(within(original).getByRole('link', { name: 'The Witcher 3: Wild Hunt' })).toHaveAttribute('href', '/games/30');
+    });
+
     it('gives each card its year, or says there is none yet, and what it is when it is not a game in its own right', () => {
         renderRail();
 
