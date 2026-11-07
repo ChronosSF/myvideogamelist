@@ -27,6 +27,8 @@ interface GameRefTileProps {
     sizes: string;
     /** Load the cover with the page, for a tile in view before any scrolling (`CoverImage`). */
     eager?: boolean;
+    /** Ringed in the primary: the game a rail of related games is about (issue 450). */
+    marked?: boolean;
 }
 
 // `outline-hidden`, not `outline-none`: in forced colours the ring is dropped with every other shadow,
@@ -37,10 +39,10 @@ const FRAME = 'group block focus:outline-hidden focus-visible:ring-2 focus-visib
  * One game as its cover and its name, linking to its page: an item of a `GameRefRail`, or of the
  * favourites showcase while it is being arranged. As wide as whatever holds it.
  */
-export function GameRefTile({ game, favourite = false, sayFavourite = true, linked = true, sizes, eager = false }: GameRefTileProps) {
+export function GameRefTile({ game, favourite = false, sayFavourite = true, linked = true, sizes, eager = false, marked = false }: GameRefTileProps) {
     const content: ReactNode = (
         <>
-            <div className="relative aspect-[3/4] rounded-sm overflow-hidden bg-surface">
+            <div className={`relative aspect-[3/4] rounded-sm overflow-hidden bg-surface ${marked ? 'ring-2 ring-primary-500 ring-offset-2 ring-offset-page' : ''}`}>
                 {game.coverImageUrl ? (
                     <CoverImage
                         url={game.coverImageUrl}

@@ -46,11 +46,16 @@ interface IgdbRow {
  *
  * Every cover and artwork is a real image id, so the browser loads real images from IGDB's image host
  * and the largest contentful paint is measured on them rather than on an empty box.
+ *
+ * `related` is IGDB's whole answer, recorded on 2026-11-05, to the query `RelatedGames.BuildQuery` sends
+ * for The Witcher 3 (ADR 0084): the game, its children, its editions and The Witcher series, which the
+ * page folds into a rail of fourteen games and a line of editions.
  */
 const RECORDED = JSON.parse(readFileSync(new URL('./igdb.json', import.meta.url), 'utf8')) as {
     games: IgdbRow[];
     timeToBeat: (IgdbRow & { game_id: number })[];
     genres: IgdbRow[];
+    related: IgdbRow[];
 };
 
 /** The game page under audit, the one game recorded with its detail fields. */
@@ -72,11 +77,15 @@ function page<T>(query: string, rows: readonly T[]): T[] {
  * A lookup by id gets the rows it names. Any other query for games — the browse page's, a search — gets
  * a page of all of them, whatever it filtered or sorted by: this is not a model of IGDB. The trending
  * rail's popularity is the same order. A query for anything else gets nothing, as in the smoke test, so
- * no Steam id is found and the API never asks Steam for news: the home page's news rail is empty.
+ * no Steam id is found and the API never asks Steam for news: the home page's news rail is empty. The game
+ * page's related games (ADR 0084) are the recorded answer, and any other game's are nothing, as a game in no
+ * series with no children would have: a page of unrelated games there would audit a rail no real page draws.
  */
 const answer: IgdbAnswer = (endpoint, query) => {
     switch (endpoint) {
         case 'games': {
+            const related = /where id = (\d+) \| parent_game = /.exec(query);
+            if (related !== null) return Number(related[1]) === GAME_ID ? RECORDED.related : [];
             const ids = idsIn(query);
             return ids.length > 0 ? ids.flatMap(id => byId.get(id) ?? []) : page(query, RECORDED.games);
         }

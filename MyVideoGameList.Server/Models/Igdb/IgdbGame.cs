@@ -33,7 +33,19 @@ public record IgdbGame(
     List<IgdbRelatedGame>? Dlcs,
     List<IgdbRelatedGame>? Expansions,
     [property: JsonPropertyName("parent_game")] IgdbRelatedGame? ParentGame,
-    [property: JsonPropertyName("external_games")] List<IgdbExternalGame>? ExternalGames = null);
+    [property: JsonPropertyName("external_games")] List<IgdbExternalGame>? ExternalGames = null,
+    [property: JsonPropertyName("game_type")] int? GameType = null,
+    [property: JsonPropertyName("version_parent")] IgdbVersionParent? VersionParent = null);
+
+/// <summary>
+/// The game a game is a version of, as the detail query reads it: its id and the ids of its series, which the
+/// related games of an edition's page are asked by (ADR 0084). Seen in live IGDB on 2026-11-07: The Witcher 3's
+/// Game of the Year Edition names no series, and its <c>version_parent</c> came back as
+/// <c>{ "id": 1942, "collections": [62] }</c>.
+/// </summary>
+public record IgdbVersionParent(
+    int Id,
+    List<int>? Collections);
 
 public record IgdbCover(
     int Id,

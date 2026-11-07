@@ -2,7 +2,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { headers, loader } from '@/pages/GamePage';
 import { CACHE_GAME, CACHE_NOT_FOUND, PRIVATE_NO_STORE } from '@/lib/cache';
 import { MIN_PLAYTHROUGH_SAMPLES } from '@/lib/score';
-import { communityScores, communityTimes, game } from '@/test/factories';
+import { communityScores, communityTimes, game, gameDetails } from '@/test/factories';
+import type { GameDetailsDto } from '@/types/game';
 import { cachePolicyOf, loaderArgs, onTheServer, thrownBy } from '@/test/loader';
 import { empty, held, json, stubApi, tearDownApi, unreachable, type ApiRoutes } from '@/test/api';
 import type { Route } from './+types/GamePage';
@@ -10,15 +11,23 @@ import type { Route } from './+types/GamePage';
 /**
  * The game page's loader, as the server runs it for a document request: which ids reach the API at
  * all, what it asks the API for, and how long each answer may be kept — a failure never, a missing
- * game briefly, a page missing the members' figures never, and a whole page at the edge (ADR 0013,
- * ADR 0069). What a failure's body says is left out, because the page promises its status and its
- * caching and not its wording, which #274 changes.
+ * game briefly, a page missing the members' figures or the related games never, and a whole page at
+ * the edge (ADR 0013, ADR 0069, ADR 0084). What a failure's body says is left out, because the page
+ * promises its status and its caching and not its wording, which issue 274 changes.
  */
 
 /** The loader for `/games/{id}`, run as the server runs it. */
 const load = (id: string) => onTheServer(() => loader(loaderArgs(`/games/${id}`, { id }) as unknown as Route.LoaderArgs));
 
-const WITCHER = game({ id: 1942, title: 'The Witcher 3: Wild Hunt' });
+/**
+ * The Witcher 3 as the API answers for its page: with the details, and in them the related games IGDB
+ * answered for — here none, which is an answer all the same (ADR 0084).
+ */
+const WITCHER = game({
+    id: 1942,
+    title: 'The Witcher 3: Wild Hunt',
+    details: gameDetails({ related: { anchorId: 1942, games: [], editions: [] } }),
+});
 const SCORES = communityScores({ scored: 23, mean: 8.4, distribution: [0, 0, 0, 0, 0, 0, 0, 23, 0, 0], tracked: 31 });
 const TIMES = communityTimes({ normally: { samples: MIN_PLAYTHROUGH_SAMPLES, medianMinutes: 3120 } });
 
@@ -158,6 +167,48 @@ describe('GamePage loader', () => {
         stubApi(routes({ 'GET /api/games/1942/community-scores': () => json(older) }));
 
         expect(cachePolicyOf(await load('1942'))).toBe(PRIVATE_NO_STORE);
+    });
+
+    it('lets nothing keep a page whose related games IGDB did not answer for', async () => {
+        // The API says so with a null, and the page renders without the rail. Kept at the edge it would go
+        // on leaving the series out for an hour after IGDB recovered, and a day stale after that.
+        stubApi(routes({
+            'GET /api/games/1942': () => json({ ...WITCHER, details: gameDetails({ related: null }) }),
+        }));
+
+        const result = await load('1942');
+
+        expect(result.data.game).toMatchObject({ id: 1942 });
+        expect(cachePolicyOf(result)).toBe(PRIVATE_NO_STORE);
+    });
+
+    it('lets nothing keep a page from an API older than the related games, which sends none', async () => {
+        // Mid-deploy, the old API's details have no `related` at all: whole as far as it knows, and
+        // missing the rail all the same. A game with no details is missing it too.
+        const { related: _, ...older } = WITCHER.details!;
+        const answers: [string, unknown][] = [
+            ['details without related', { ...WITCHER, details: older as GameDetailsDto }],
+            ['no details', { ...WITCHER, details: null }],
+        ];
+
+        for (const [what, body] of answers) {
+            stubApi(routes({ 'GET /api/games/1942': () => json(body) }));
+
+            const result = await load('1942');
+
+            expect(result.data.game, what).toMatchObject({ id: 1942 });
+            expect(cachePolicyOf(result), what).toBe(PRIVATE_NO_STORE);
+        }
+    });
+
+    it('lets a page be cached at the edge when IGDB answered that the game has no related games', async () => {
+        // An empty answer is not a failed one: a game in no series, with no remakes or editions, is whole.
+        stubApi(routes());
+
+        const result = await load('1942');
+
+        expect(result.data.game.details?.related).toEqual({ anchorId: 1942, games: [], editions: [] });
+        expect(cachePolicyOf(result)).toBe(CACHE_GAME);
     });
 
     it("renders without the members' figures, and lets nothing keep it, rather than wait past their deadline", async () => {
