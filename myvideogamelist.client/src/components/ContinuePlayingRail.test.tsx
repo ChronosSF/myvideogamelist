@@ -5,7 +5,7 @@ import { MemoryRouter } from 'react-router';
 import { ContinuePlayingRail } from '@/components/ContinuePlayingRail';
 import type { FavouritesContextValue } from '@/contexts/FavouritesContext';
 import { emptyLists, LIST_NAMES, type ListEntryDto, type ListId } from '@/types/list';
-import { entry } from '@/test/factories';
+import { entry, listPending } from '@/test/factories';
 
 /**
  * The lists context, mocked rather than provided: the real one fetches, and this component only
@@ -19,8 +19,7 @@ const listsValue = {
     loading: false,
     error: null as string | null,
     mutationError: null as string | null,
-    pending: new Set<number>(),
-    isPending: (gameId: number) => listsValue.pending.has(gameId),
+    pending: listPending(),
     addToList: vi.fn(async () => {}),
     removeFromList: vi.fn(async () => {}),
     isInList: () => false,
@@ -59,7 +58,7 @@ beforeEach(() => {
     listsValue.lists = emptyLists();
     listsValue.loading = false;
     listsValue.error = null;
-    listsValue.pending = new Set();
+    listsValue.pending = listPending();
     listsValue.addToList.mockReset();
     listsValue.addToList.mockResolvedValue(undefined);
     favoured.clear();
@@ -131,7 +130,7 @@ describe('ContinuePlayingRail marking a game finished', () => {
         // The per-game lock, which is what stops two overlapping writes to one entry rolling back
         // over each other.
         playing([entry({ game: { id: 7 } })]);
-        listsValue.pending = new Set([7]);
+        listsValue.pending = listPending([7]);
         renderRail();
 
         expect(screen.getByRole('button', { name: /saving/i })).toBeDisabled();

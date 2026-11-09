@@ -12,7 +12,7 @@ import { ListTile } from '@/components/ListTile';
 import { useListTagFilter } from '@/hooks/useListTagFilter';
 import { PageHeader } from '@/components/PageHeader';
 import { ReorderAnnouncer } from '@/components/ReorderAnnouncer';
-import { ReorderHandle } from '@/components/ReorderHandle';
+import { ListOrderTile } from '@/components/ListOrderTile';
 import { ShowMoreGames } from '@/components/ShowMoreGames';
 import { Skeleton } from '@/components/Skeleton';
 import { useLists } from '@/hooks/useLists';
@@ -90,8 +90,8 @@ export function meta() {
 export function ListsPage() {
     const { user, loading: authLoading } = useAuth();
     const {
-        lists, loading, error, mutationError, isPending, reload,
-        setScore, removeFromList, moveInOrder, nameFor,
+        lists, loading, error, mutationError, reload,
+        setScore, removeFromList, moveInOrder, nameFor, pending,
     } = useLists();
     // In a context of its own, which nothing but this page reads: a new order redraws this page and the
     // games it draws in a new place, and no card anywhere for the order alone (ADR 0086).
@@ -154,12 +154,14 @@ export function ListsPage() {
     const manual = sort.key === MANUAL_SORT.key;
     const arranging = manual && platformIds.length === 0 && !tagFilter.active;
 
+    // A game whose save is out cannot be picked up, which its row or tile shows and its handle then
+    // honours: each reads its own game's lock, and this page reads none, so that a lock taken or released
+    // draws again only the row or tile that shows it (ADR 0086).
     const byId = useMemo(() => new Map(visible.map(entry => [entry.game.id, entry])), [visible]);
     const reorder = useReorder({
         ids: visible.map(entry => entry.game.id),
         nameOf: id => byId.get(id)?.game.title ?? 'This game',
         onMove: (id, afterId) => moveInOrder(activeTab, id, afterId),
-        canMove: id => !isPending(id),
         disabled: !arranging,
     });
 
@@ -368,19 +370,16 @@ export function ListsPage() {
                         {...(arranging ? { ...reorder.listProps(), role: 'list' } : {})}
                     >
                         {drawn.map((entry, index) => arranging ? (
-                            <div
+                            <ListOrderTile
                                 key={entry.game.id}
-                                className="reorder-tile"
-                                role="listitem"
-                                {...reorder.itemProps(entry.game.id)}
-                            >
-                                <ReorderHandle
-                                    handle={reorder.handleProps(entry.game.id)}
-                                    rank={index + 1}
-                                    variant="overlay"
-                                />
-                                <ListTile entry={entry} eager={index < GAME_GRID_FIRST_ROW} tagsOf={tagFilter.tagsOf} />
-                            </div>
+                                entry={entry}
+                                eager={index < GAME_GRID_FIRST_ROW}
+                                tagsOf={tagFilter.tagsOf}
+                                locks={pending}
+                                handles={reorder.handles}
+                                lifted={reorder.movingId === entry.game.id}
+                                rank={index + 1}
+                            />
                         ) : (
                             <ListTile
                                 key={entry.game.id}
@@ -397,7 +396,7 @@ export function ListsPage() {
                         entries={drawn}
                         sort={sort}
                         listName={nameFor(activeTab)}
-                        isPending={isPending}
+                        locks={pending}
                         isFavourite={isFavourite}
                         onSortChange={next => setSort(activeTab, next)}
                         onScoreChange={changeScore}

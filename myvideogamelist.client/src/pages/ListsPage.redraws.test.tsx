@@ -8,7 +8,8 @@ import type { AuthContextValue } from '@/contexts/AuthContext';
 import type { FavouritesContextValue } from '@/contexts/FavouritesContext';
 import type { TagsContextValue } from '@/contexts/TagsContext';
 import type { WishlistContextValue } from '@/contexts/WishlistContext';
-import type { ViewMode } from '@/types/list';
+import type { ListId, ViewMode } from '@/types/list';
+import { GAME_GRID_FIRST_ROW } from '@/lib/gameGrid';
 import { entry, userProfile } from '@/test/factories';
 
 /**
@@ -17,8 +18,9 @@ import { entry, userProfile } from '@/test/factories';
  * whatever happens, so it cannot see the provider handing out new ones (`docs/decisions/0086-*`).
  *
  * A card is counted by the wishlist it reads, once a render and by its own game; a table row by its score
- * control, stubbed. Everything else the page reads is mocked, as `ListsPage.test.tsx` mocks it, and every
- * object handed back is hoisted, never a fresh literal per call.
+ * control, stubbed; a hand order's handle by its name; and the page by its toolbar. Everything else the
+ * page reads is mocked, as `ListsPage.test.tsx` mocks it, and every object handed back is hoisted, never a
+ * fresh literal per call.
  */
 const auth: AuthContextValue = {
     user: userProfile(),
@@ -77,6 +79,31 @@ vi.mock('@/components/ScoreInput', () => ({
     },
 }));
 
+/** How often the page was drawn, counted by its toolbar, which it draws every time. */
+let pageDrawn = 0;
+vi.mock('@/components/ListToolbar', async importOriginal => {
+    const real = await importOriginal<typeof import('@/components/ListToolbar')>();
+    return {
+        ListToolbar: (props: Parameters<typeof real.ListToolbar>[0]) => {
+            pageDrawn += 1;
+            return <real.ListToolbar {...props} />;
+        },
+    };
+});
+
+/** The name of every hand order's handle drawn, as often as each was. */
+const handlesDrawn = new Map<string, number>();
+vi.mock('@/components/ReorderHandle', async importOriginal => {
+    const real = await importOriginal<typeof import('@/components/ReorderHandle')>();
+    return {
+        ReorderHandle: (props: Parameters<typeof real.ReorderHandle>[0]) => {
+            const name = props.handle['aria-label'];
+            handlesDrawn.set(name, (handlesDrawn.get(name) ?? 0) + 1);
+            return <real.ReorderHandle {...props} />;
+        },
+    };
+});
+
 // Named so that the title order is the number order, and each joined the list a day after the one before.
 const title = (n: number) => `Game ${String(n).padStart(2, '0')}`;
 const games = (count: number) => Array.from({ length: count }, (_, index) => index + 1).map(n => entry({
@@ -87,32 +114,45 @@ const games = (count: number) => Array.from({ length: count }, (_, index) => ind
 /** Every request the page made, as `METHOD path`. */
 let requests: string[] = [];
 
+interface Shown {
+    view: ViewMode;
+    count: number;
+    /** The list the games are in, and the tab opened. Playing unless said. */
+    list?: ListId;
+    /** Its saved order, ascending. By title unless said. */
+    sortKey?: 'title' | 'manual';
+}
+
 /**
- * The API: the playing list and the reader's preferences — this layout, by title — and every write saved.
+ * The API: one list and the reader's preferences — this layout, in this order — and every write saved.
  */
-function serve(view: ViewMode, count: number) {
+function serve({ view, count, list = 'playing', sortKey = 'title' }: Shown) {
     requests = [];
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
         const url = String(input);
         const method = init?.method ?? 'GET';
         requests.push(`${method} ${url}`);
         if (method === 'GET' && url === '/api/lists') {
-            return new Response(JSON.stringify({ lists: { playing: games(count) } }), { status: 200 });
+            return new Response(JSON.stringify({ lists: { [list]: games(count) } }), { status: 200 });
         }
         if (method === 'GET' && url === '/api/user/list-preferences') {
-            const sorts = { playing: { sortKey: 'title', descending: false } };
+            const sorts = { [list]: { sortKey, descending: false } };
             return new Response(JSON.stringify({ view, sorts, names: {} }), { status: 200 });
         }
         return new Response(null, { status: 204 });
     }));
 }
 
-async function renderPage(view: ViewMode, count: number) {
-    serve(view, count);
+async function renderPage(shown: Shown) {
+    serve(shown);
     render(<MemoryRouter><ListsProvider><ListsPage /></ListsProvider></MemoryRouter>);
-    await screen.findByRole('button', { name: 'Sorted ascending. Switch to descending' });
+    if (shown.list === 'backlog') await userEvent.click(await screen.findByRole('tab', { name: /Backlog/ }));
+    if (shown.sortKey === 'manual') await screen.findByRole('button', { name: `Move ${title(1)}` });
+    else await screen.findByRole('button', { name: 'Sorted ascending. Switch to descending' });
     cardsDrawn.length = 0;
     rowsDrawn.clear();
+    handlesDrawn.clear();
+    pageDrawn = 0;
 }
 
 /** Every answer the save is waiting on, and every render they cause. */
@@ -127,7 +167,7 @@ beforeEach(() => {
 
 describe('ListsPage, with the real provider, after a change of order', () => {
     it('draws no row of the table again: each is in a new place, and nothing in it changed', async () => {
-        await renderPage('table', 30);
+        await renderPage({ view: 'table', count: 30 });
 
         await userEvent.click(screen.getByRole('button', { name: 'Sorted ascending. Switch to descending' }));
 
@@ -136,19 +176,23 @@ describe('ListsPage, with the real provider, after a change of order', () => {
     });
 
     it('draws again only the cards whose cover joins or leaves the first row, which loads with the page', async () => {
-        await renderPage('tiles', 8);
+        // Two more than the first row holds, so that reversing them moves two into it and two out.
+        const row = GAME_GRID_FIRST_ROW;
+        const count = row + 2;
+        await renderPage({ view: 'tiles', count });
 
         await userEvent.click(screen.getByRole('button', { name: 'Sorted ascending. Switch to descending' }));
 
-        // Six to a row at the widest: 1 to 6 were the first row, and 8 to 3 are.
-        expect(titles()).toEqual([8, 7, 6, 5, 4, 3, 2, 1].map(title));
-        expect([...cardsDrawn].sort((a, b) => a - b)).toEqual([1, 2, 7, 8]);
+        // 1 to `row` were the first row; `count` down to 3 are.
+        const numbers = Array.from({ length: count }, (_, index) => index + 1);
+        expect(titles()).toEqual([...numbers].reverse().map(title));
+        expect([...cardsDrawn].sort((a, b) => a - b)).toEqual([1, 2, row + 1, row + 2]);
     });
 });
 
 describe('ListsPage, with the real provider, through a save', () => {
     it('draws only the row of the game scored, as the score is given and as it is saved', async () => {
-        await renderPage('table', 30);
+        await renderPage({ view: 'table', count: 30 });
 
         await userEvent.click(screen.getByRole('button', { name: `Score ${title(5)} 8` }));
         await settle();
@@ -156,10 +200,12 @@ describe('ListsPage, with the real provider, through a save', () => {
         expect(requests).toContain('PUT /api/entries/5/score');
         expect(screen.getByRole('link', { name: title(5) }).closest('tr')).not.toHaveClass('pending');
         expect([...rowsDrawn.keys()]).toEqual([title(5)]);
+        // Once, for the score; the lock taken and released reach the row and nothing else.
+        expect(pageDrawn).toBe(1);
     });
 
     it('draws only the row of the game taken off the list: none, since it is gone', async () => {
-        await renderPage('table', 30);
+        await renderPage({ view: 'table', count: 30 });
 
         await userEvent.click(screen.getByRole('button', { name: `Take ${title(5)} out of this list` }));
         await settle();
@@ -173,14 +219,41 @@ describe('ListsPage, with the real provider, through a save', () => {
         ['taken off the list', 'Playing', 'DELETE /api/lists/8'],
         ['moved to another list', 'Finished', 'PUT /api/lists/8'],
     ])('draws no other card when a game is %s from its card', async (_, button, request) => {
-        // The last of eight, so that no other card moves into or out of the first row.
-        await renderPage('tiles', 8);
+        // The last of the list, past the first row, so that no other card moves into or out of it.
+        const count = GAME_GRID_FIRST_ROW + 2;
+        await renderPage({ view: 'tiles', count });
 
-        await userEvent.click(within(card(8)).getByRole('button', { name: button }));
+        await userEvent.click(within(card(count)).getByRole('button', { name: button }));
         await settle();
 
-        expect(requests).toContain(request);
-        expect(titles()).toEqual([1, 2, 3, 4, 5, 6, 7].map(title));
+        expect(requests).toContain(request.replace('8', String(count)));
+        expect(titles()).toEqual(Array.from({ length: count - 1 }, (_, index) => title(index + 1)));
         expect(cardsDrawn).toEqual([]);
+        expect(pageDrawn).toBe(1);
+    });
+});
+
+describe('ListsPage, with the real provider, in a hand order', () => {
+    it('draws only the row of the game scored, its handle included', async () => {
+        await renderPage({ view: 'table', count: 30, list: 'backlog', sortKey: 'manual' });
+
+        await userEvent.click(screen.getByRole('button', { name: `Score ${title(5)} 8` }));
+        await settle();
+
+        expect(requests).toContain('PUT /api/entries/5/score');
+        expect([...rowsDrawn.keys()]).toEqual([title(5)]);
+        expect([...handlesDrawn.keys()]).toEqual([`Move ${title(5)}`]);
+    });
+
+    it('draws no other tile, nor its handle, when a game is taken off the list from its card', async () => {
+        const count = GAME_GRID_FIRST_ROW + 2;
+        await renderPage({ view: 'tiles', count, list: 'backlog', sortKey: 'manual' });
+
+        await userEvent.click(within(card(count)).getByRole('button', { name: 'Backlog' }));
+        await settle();
+
+        expect(requests).toContain(`DELETE /api/lists/${count}`);
+        expect(cardsDrawn).toEqual([]);
+        expect([...handlesDrawn.keys()]).toEqual([]);
     });
 });

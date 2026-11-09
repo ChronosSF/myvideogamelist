@@ -3,6 +3,7 @@ import type { TagDto } from '@/types/tag';
 import { type SortKey, type SortState, SORT_OPTIONS, sortOption } from '@/lib/listSort';
 import { ListTableRow } from '@/components/ListTableRow';
 import type { Reorder } from '@/hooks/useReorder';
+import type { ListsPending } from '@/contexts/ListsContext';
 import './ListTable.css';
 
 interface ListTableProps {
@@ -11,7 +12,8 @@ interface ListTableProps {
     onSortChange: (sort: SortState) => void;
     onScoreChange: (gameId: number, score: number | null) => void;
     onRemove: (gameId: number) => void;
-    isPending: (gameId: number) => boolean;
+    /** The lists' per-game locks, which each row reads for its own game (`ListsContextValue.pending`). */
+    locks: ListsPending;
     /** Which games are the reader's favourites, marked after their titles (`docs/decisions/0064-*`). */
     isFavourite: (gameId: number) => boolean;
     /** Names the table for screen readers — "Playing", "Backlog" and so on. */
@@ -49,7 +51,7 @@ export function ListTable({
     onSortChange,
     onScoreChange,
     onRemove,
-    isPending,
+    locks,
     isFavourite,
     listName,
     reorder,
@@ -104,11 +106,12 @@ export function ListTable({
                         <ListTableRow
                             key={entry.game.id}
                             entry={entry}
-                            pending={isPending(entry.game.id)}
+                            locks={locks}
                             favourite={isFavourite(entry.game.id)}
                             onScoreChange={onScoreChange}
                             onRemove={onRemove}
-                            reorder={reorder}
+                            handles={reorder?.handles}
+                            lifted={reorder?.movingId === entry.game.id}
                             // Drawn only beside a handle. Elsewhere a constant, or a row taken out above
                             // would renumber, and so redraw, every row below it.
                             rank={reorder ? index + 1 : 0}

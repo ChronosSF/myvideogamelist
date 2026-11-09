@@ -10,6 +10,7 @@ import { FavouriteMark } from '@/components/FavouriteMark';
 import { FavouriteWords } from '@/components/FavouriteWords';
 import { type ListId, LIST_IDS } from '@/types/list';
 import { useLists } from '@/hooks/useLists';
+import { useListPending } from '@/hooks/useListPending';
 import type { ListsContextValue } from '@/contexts/ListsContext';
 import { useWishlist } from '@/hooks/useWishlist';
 import { useFavourites } from '@/hooks/useFavourites';
@@ -34,16 +35,18 @@ interface GameCardProps {
  * What it reads of the lists is its own game's: the list the game is in, and whether a save of it is
  * out. It reads them here and hands them to the card, which is memoised, so that a save of some other
  * game draws no card but that game's (`docs/decisions/0086-*`). This part is still called for every card
- * on every change of the lists, and does nothing but look its game up.
+ * on every change of the lists, and does nothing but look its game up; a lock taken or released calls it
+ * for its own game alone.
  */
 export function GameCard({ game, eager = false, children }: GameCardProps) {
-    const { addToList, removeFromList, getListFor, isPending, nameFor } = useLists();
+    const { addToList, removeFromList, getListFor, nameFor } = useLists();
+    const pending = useListPending(game.id);
     return (
         <GameCardView
             game={game}
             eager={eager}
             inList={getListFor(game.id)}
-            pending={isPending(game.id)}
+            pending={pending}
             nameFor={nameFor}
             addToList={addToList}
             removeFromList={removeFromList}

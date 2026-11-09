@@ -7,7 +7,7 @@ import { FavouritesContext, type FavouritesContextValue } from '@/contexts/Favou
 import { ListsContext, type ListsContextValue } from '@/contexts/ListsContext';
 import { WishlistContext, type WishlistContextValue } from '@/contexts/WishlistContext';
 import { GAME_GRID_COVER_SIZES } from '@/lib/gameGrid';
-import { game } from '@/test/factories';
+import { game, listPending } from '@/test/factories';
 import { LIST_NAMES, type ListId } from '@/types/list';
 
 // Stable object: the card only reads `user`, and going through the real provider would mean
@@ -32,7 +32,7 @@ function listsValue(overrides: Partial<ListsContextValue> = {}): ListsContextVal
         error: null,
         mutationError: null,
         reload: vi.fn(),
-        isPending: () => false,
+        pending: listPending(),
         addToList: vi.fn(async () => true),
         removeFromList: vi.fn(async () => true),
         isInList: () => false,
@@ -347,7 +347,7 @@ describe('GameCard list buttons', () => {
     });
 
     it('holds every list button while a save of its game is out', () => {
-        renderCard({}, { isPending: id => id === CELESTE.id });
+        renderCard({}, { pending: listPending([CELESTE.id]) });
 
         for (const name of ['Backlog', 'Playing', 'On Hold', 'Finished', 'Dropped']) {
             expect(screen.getByRole('button', { name })).toBeDisabled();

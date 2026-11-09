@@ -8,7 +8,7 @@ import type { FavouritesContextValue } from '@/contexts/FavouritesContext';
 import type { ListsContextValue } from '@/contexts/ListsContext';
 import type { WishlistContextValue } from '@/contexts/WishlistContext';
 import { CACHE_HOME, PRIVATE_NO_STORE } from '@/lib/cache';
-import { calendarEvents, userProfile } from '@/test/factories';
+import { calendarEvents, listPending, userProfile } from '@/test/factories';
 import { LIST_NAMES, type ListId } from '@/types/list';
 import type { HomeResponse, NewsItemDto } from '@/types/news';
 import type { CalendarCuratedEvent, CalendarEvents, ComingSoonGame, JustOutGame } from '@/types/releases';
@@ -63,7 +63,7 @@ const lists = {
     loading: false,
     error: null,
     getListFor: (gameId: number) => inList.get(gameId) ?? null,
-    isPending: () => false,
+    pending: listPending(),
     nameFor: (listId: ListId) => LIST_NAMES[listId],
     addToList: vi.fn(async () => {}),
 } as unknown as ListsContextValue;

@@ -12,7 +12,7 @@ import type { WishlistContextValue } from '@/contexts/WishlistContext';
 import { DEFAULT_SORT, MANUAL_SORT } from '@/lib/listSort';
 import type { UserProfile } from '@/types/auth';
 import { emptyLists, LIST_NAMES, type ListId } from '@/types/list';
-import { entry, platform, tag, userProfile } from '@/test/factories';
+import { entry, listPending, platform, tag, userProfile } from '@/test/factories';
 
 /**
  * Auth and the lists, mocked rather than provided: both real providers fetch, and the page only
@@ -42,7 +42,7 @@ const lists: ListsContextValue = {
     error: null,
     mutationError: null,
     reload: vi.fn(),
-    isPending: () => false,
+    pending: listPending(),
     addToList: vi.fn(async () => true),
     removeFromList: vi.fn(async () => true),
     isInList: () => false,
@@ -519,7 +519,7 @@ describe('ListsPage and the hand order', () => {
     afterEach(() => {
         listView.sortFor = () => DEFAULT_SORT;
         listView.view = 'tiles';
-        lists.isPending = () => false;
+        lists.pending = listPending();
         vi.restoreAllMocks();
     });
 
@@ -586,7 +586,7 @@ describe('ListsPage and the hand order', () => {
     });
 
     it('leaves the grip of a game whose save is out unable to move it', async () => {
-        lists.isPending = id => id === 2;
+        lists.pending = listPending([2]);
         renderPage();
         await openBacklog();
 

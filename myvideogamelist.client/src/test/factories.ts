@@ -13,11 +13,24 @@ import {
     type ImportSkippedRow,
 } from '@/types/import';
 import type { ListEntryDto } from '@/types/list';
+import type { ListsPending } from '@/contexts/ListsContext';
 import type { CommunityScores } from '@/types/community';
 import type { TagDto } from '@/types/tag';
 import type { CommunityTimes, EntryDetailDto, PlaythroughDto, PlaythroughTypeKey, ReviewDto } from '@/types/playthrough';
 import type { CalendarEvents, ConnectedRelease, ReleaseEntry, ReleaseReason } from '@/types/releases';
 import type { HistoryPage, PlaythroughDateItem, ScoreItem, StatusItem } from '@/types/history';
+
+/**
+ * The lists provider's per-game locks, for a hand-built lists context: these games have a write out, or
+ * every game the function names. Fixed, as the rest of a hand-built value is: a test that changes them
+ * hands the context a new one.
+ */
+export function listPending(locked: Iterable<number> | ((gameId: number) => boolean) = []): ListsPending {
+    const set: ReadonlySet<number> = typeof locked === 'function'
+        ? { has: locked } as unknown as ReadonlySet<number>
+        : new Set(locked);
+    return { subscribe: () => () => {}, current: () => set };
+}
 
 /**
  * Fixture builders for the two DTOs the list views are built on.

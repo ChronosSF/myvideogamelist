@@ -14,13 +14,32 @@ export type SaveListNamesResult =
 export type SaveResult = { ok: true } | { ok: false; error: string };
 
 /**
+ * Which games have a write out, each held by the provider's per-game lock — as a store, which a component
+ * reads through `useListPending` for one game, `usePendingIn` for one game without reading the lists
+ * context, or `useListsPending` for any.
+ *
+ * A store, not a reader in the value, because the lock is taken and released by every save: a reader that
+ * changed with it would draw every consumer of the lists again twice a save, the lists page and every card
+ * on it included. Subscribed to for one game, it draws again only what shows that game's lock
+ * (`docs/decisions/0086-*`). The same object for as long as the provider is mounted. It holds the set the
+ * provider last committed, published as the commit is laid out, so it can lag the lists by one render that
+ * is never painted.
+ */
+export interface ListsPending {
+    subscribe: (onChange: () => void) => () => void;
+    /** The games with a write out: the same set until a lock is taken or released. */
+    current: () => ReadonlySet<number>;
+}
+
+/**
  * The lists, and everything that reads or writes them.
  *
  * Held steady (`docs/decisions/0086-*`): the value is the same object until something in it changes, and
  * every function in it that writes is the same function for as long as the provider is mounted, so that a
- * memoised row given one is not drawn again for it. The readers — `isPending`, `isInList`, `getListFor`,
- * `scoreFor`, `nameFor` — change with what they read. How the lists page draws the lists is in
- * `ListViewContext`, so that a change of sort or layout reaches that page and nothing else.
+ * memoised row given one is not drawn again for it. The readers — `isInList`, `getListFor`, `scoreFor`,
+ * `nameFor` — change with what they read. The locks are a store, `pending`, so that a save changes nothing
+ * in the value but the lists themselves. How the lists page draws the lists is in `ListViewContext`, so
+ * that a change of sort or layout reaches that page and nothing else.
  */
 export interface ListsContextValue {
     /** Every status list, keyed by status. Entries with no status appear in none of them. */
@@ -34,7 +53,8 @@ export interface ListsContextValue {
      * date: it loads once per account, and would show the old lists until the next page load.
      */
     reload: () => void;
-    isPending: (gameId: number) => boolean;
+    /** The per-game locks. Read through the hooks in `@/hooks/useListPending`, never `current` while drawing. */
+    pending: ListsPending;
 
     /**
      * Puts the game in a list, or moves it there. False when it is not there afterwards: the save failed and

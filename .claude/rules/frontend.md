@@ -123,10 +123,13 @@ that are easy to get wrong and were got wrong once (`docs/decisions/0022-*`):
 - **`ListsProvider` holds its context steady, and its writes read the render last committed.** Every
   write is a `useCallback` with no dependencies, the same function for as long as the provider is
   mounted, so a memoised row or card handed one is not drawn again for another game's save. As it
-  starts, it reads `state` and `session` from `committed.current`, which an insertion effect writes,
-  and stamps what it raises with that session through `stamped`. Never write that ref during render,
-  and never read it while drawing: a reader called during render is a `useCallback` over what it reads.
-  The layout and the sorts are `useListView`, read only by the lists page, so a change of order
+  starts, it reads `state`, `session` and `located` from `committed.current`, which an insertion effect
+  writes, and stamps what it raises with that session through `stamped`; once its request has answered
+  (`answer`), everything it raises goes through `settle`, so it is committed before the write resolves.
+  Never write that ref during render, and never read it while drawing: a reader called during render is
+  a `useCallback` over what it reads. The locks are not a reader but a store, `pending`: read one game's
+  with `useListPending`, or `usePendingIn` in a memoised row or tile that must not read the lists
+  context. The layout and the sorts are `useListView`, read only by the lists page, so a change of order
   reaches no card. See `docs/decisions/0086-*`.
 
 ## State & effects

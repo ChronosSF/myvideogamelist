@@ -3,6 +3,7 @@ import { Link } from 'react-router';
 import { CoverImage } from '@/components/CoverImage';
 import { PlayNextSkeleton } from '@/components/PlayNextSkeleton';
 import { useLists } from '@/hooks/useLists';
+import { useListsPending } from '@/hooks/useListPending';
 import { useFavourites } from '@/hooks/useFavourites';
 import { formatCount } from '@/lib/format';
 import { FavouriteMark } from './FavouriteMark';
@@ -17,7 +18,8 @@ import type { ListEntryDto } from '@/types/list';
  * (ADR 0018). The started game then leads the rail above, which is the whole loop in one screen.
  */
 export function PlayNextPicker() {
-    const { lists, loading, error, isPending, addToList } = useLists();
+    const { lists, loading, error, addToList } = useLists();
+    const isPending = useListsPending();
     const { isFavourite } = useFavourites();
     const backlog = lists.backlog;
 

@@ -6,7 +6,7 @@ import { GamesPage, meta } from '@/pages/GamesPage';
 import { EMPTY_BROWSE, type GameBrowse } from '@/lib/gameBrowse';
 import type { GameDto, GenreDto, PlatformDto } from '@/types/game';
 import { LIST_NAMES, type ListId } from '@/types/list';
-import { game, platform } from '@/test/factories';
+import { game, listPending, platform } from '@/test/factories';
 import type { Route } from './+types/GamesPage';
 
 type Tag = Partial<Record<'title' | 'name' | 'content' | 'rel' | 'href', string>>;
@@ -21,7 +21,7 @@ const noLists = {
     addToList: vi.fn(async () => {}),
     removeFromList: vi.fn(async () => {}),
     getListFor: () => null,
-    isPending: () => false,
+    pending: listPending(),
     nameFor: (id: ListId) => LIST_NAMES[id],
 };
 const noWishlist = {

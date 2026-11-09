@@ -6,7 +6,7 @@ import type { AuthContextValue } from '@/contexts/AuthContext';
 import type { WishlistContextValue } from '@/contexts/WishlistContext';
 import type { UserProfile } from '@/types/auth';
 import { LIST_NAMES, type ListId } from '@/types/list';
-import { game, userProfile } from '@/test/factories';
+import { game, listPending, userProfile } from '@/test/factories';
 
 /**
  * Auth and the wishlist, mocked rather than provided: both real providers fetch, and the page only
@@ -46,7 +46,7 @@ const lists = {
     addToList: vi.fn(async () => {}),
     removeFromList: vi.fn(async () => {}),
     getListFor: () => null,
-    isPending: () => false,
+    pending: listPending(),
     nameFor: (id: ListId) => LIST_NAMES[id],
 };
 

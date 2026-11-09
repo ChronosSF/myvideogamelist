@@ -6,7 +6,7 @@ import { ProfileStats } from '@/components/ProfileStats';
 import { emptyLists, LIST_NAMES, type ListEntryDto, type ListId } from '@/types/list';
 import type { PlatformDto } from '@/types/game';
 import type { UserStats } from '@/types/stats';
-import { entry, platform } from '@/test/factories';
+import { entry, listPending, platform } from '@/test/factories';
 
 /**
  * The lists context, mocked rather than provided: the real provider would fetch, and this component
@@ -20,7 +20,7 @@ const listsValue = {
     loading: false,
     error: null as string | null,
     mutationError: null,
-    isPending: () => false,
+    pending: listPending(),
     addToList: vi.fn(async () => {}),
     removeFromList: vi.fn(async () => {}),
     isInList: () => false,

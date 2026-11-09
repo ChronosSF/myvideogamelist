@@ -13,7 +13,7 @@ import { TagsContext, type TagsContextValue } from '@/contexts/TagsContext';
 import type { ProfileVisibility } from '@/types/auth';
 import { LIST_NAMES, type ListId } from '@/types/list';
 import type { PlaythroughDto, ReviewDto } from '@/types/playthrough';
-import { entryDetail, game, platform, playthrough, review, tag } from '@/test/factories';
+import { entryDetail, game, listPending, platform, playthrough, review, tag } from '@/test/factories';
 import type { TagDto } from '@/types/tag';
 
 // The row's sign-in prompts open the dialog through this. One object for every call: a mock handing back
@@ -51,7 +51,7 @@ function contextValue(overrides: Partial<ListsContextValue> = {}): ListsContextV
         error: null,
         mutationError: null,
         reload: vi.fn(),
-        isPending: () => false,
+        pending: listPending(),
         addToList: vi.fn(async () => true),
         removeFromList: vi.fn(async () => true),
         isInList: () => false,
@@ -340,7 +340,7 @@ describe('GameEntryProvider list placement', () => {
                 return saved;
             };
             const value = contextValue({
-                isPending: () => held.pending,
+                pending: listPending(() => held.pending),
                 getListFor: () => held.list,
                 isInList: (listId: ListId) => held.list === listId,
                 addToList: (listId: ListId) => move(listId),
@@ -907,7 +907,7 @@ describe('GameEntryProvider wishlist', () => {
         // Two independent axes with two pending sets. Sharing one would block a wishlist click
         // because an unrelated status change happened to be in flight.
         stubEntryFetch(null, 404);
-        renderPanel({ isPending: () => true });
+        renderPanel({ pending: listPending(() => true) });
         // Not `settled()`: the score control stays disabled for as long as a list mutation is
         // pending, so there is nothing here that becomes enabled to wait for. The provider's own
         // entry fetch still has to land before the test ends, or React reports its state update
@@ -1685,7 +1685,7 @@ describe('GameEntryProvider ownership and notes', () => {
 
     it('offers no ownership change while another write to the entry is out', async () => {
         stubEntryFetch(null, 404);
-        renderPanel({ isPending: () => true });
+        renderPanel({ pending: listPending(() => true) });
         await act(async () => {});
 
         expect(screen.getByRole('button', { name: 'Owned' })).toBeDisabled();
