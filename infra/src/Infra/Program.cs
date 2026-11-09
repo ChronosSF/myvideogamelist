@@ -7,7 +7,8 @@ namespace Infra;
 /// <c>imageTag</c> is the git SHA the two images were pushed under, and without it the application
 /// and migration stacks carry an error the CLI refuses to deploy over, so the long-lived stacks
 /// deploy without one and nothing ever falls back to <c>latest</c>. The Region comes from the
-/// profile; nothing here names one except <c>us-east-1</c>, for CloudFront's certificates. See ADR
+/// profile; nothing here names one except <c>us-east-1</c>, for CloudFront's certificates, and
+/// <see cref="Site.EmailRegion"/>, where the domain is verified with SES (ADR 0088). See ADR
 /// 0044. <c>env=prod</c> is, for now, the holding page and nothing else (ADR 0066).
 /// </summary>
 internal static class Program
@@ -44,11 +45,13 @@ internal static class Program
         //
         // Beside it, in the Region where the domain is verified with SES, the role the dev
         // environment's API sends email as, through this account's production access (ADR 0088).
-        // Long-lived, and kept at #98. Each is deployed by hand, by name.
+        // Pinned to that Region, never the profile's: a role granting the identity in another Region
+        // would refuse every send. Long-lived, and kept at #98. Each is deployed by hand, by name.
         if (site.IsProduction)
         {
+            var email = new Amazon.CDK.Environment { Account = account, Region = Site.EmailRegion };
             _ = new HoldingStack(app, site.StackName("Holding"), new StackProps { Env = edge }, site);
-            _ = new EmailStack(app, site.StackName("Email"), new StackProps { Env = regional }, new Site("dev"));
+            _ = new EmailStack(app, site.StackName("Email"), new StackProps { Env = email }, new Site("dev"));
             app.Synth();
             return;
         }

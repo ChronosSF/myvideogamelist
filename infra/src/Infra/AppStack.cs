@@ -198,11 +198,11 @@ public sealed class AppStack : Stack
             Logging = Logging(logs, "api"),
         });
 
-        // Email goes through the production account's SES, which has production access (ADR 0088).
-        // The domain is verified there in the same Region as this stack's, which ADR 0044 put both
-        // accounts in. The API sends from EmailIdentity.FromAddress by default, the constant the
-        // grant below and the production account's email role are both conditioned on.
-        container.AddEnvironment("Email__Ses__Region", Region);
+        // Email goes through the production account's SES, which has production access (ADR 0088),
+        // in the one Region the domain is verified in, whichever this stack is deployed to. The API
+        // sends from EmailIdentity.FromAddress by default, the constant the grant below and the
+        // production account's email role are both conditioned on.
+        container.AddEnvironment("Email__Ses__Region", Site.EmailRegion);
         if (site.IsProduction)
         {
             // Production sends as its own task role, on the same terms the dev role is held to.
@@ -210,7 +210,7 @@ public sealed class AppStack : Stack
             {
                 Sid = "SendFromNoReply",
                 Actions = ["ses:SendEmail"],
-                Resources = [$"arn:{Aws.PARTITION}:ses:{Region}:{Account}:identity/{Site.Domain}"],
+                Resources = [$"arn:{Aws.PARTITION}:ses:{Site.EmailRegion}:{Account}:identity/{Site.Domain}"],
                 Conditions = new Dictionary<string, object>
                 {
                     ["StringEquals"] = new Dictionary<string, object> { ["ses:FromAddress"] = Site.EmailFromAddress },
