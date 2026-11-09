@@ -34,12 +34,18 @@ describe('PrivacyPage', () => {
         expect(screen.getByText('mvgl_signed_in')).toBeInTheDocument();
     });
 
-    it('links the terms, the page that exports and deletes an account, and where to ask', () => {
+    it('links the terms, the page that exports and deletes an account, where to write and where to complain', () => {
         renderPage();
 
         expect(screen.getByRole('link', { name: 'terms of use' })).toHaveAttribute('href', '/terms');
         expect(screen.getByRole('heading', { name: 'Your rights' })).toBeInTheDocument();
         expect(screen.getByRole('link', { name: 'your profile page' })).toHaveAttribute('href', '/user');
+        // Every place that says where to write about your data says the same address.
+        const contacts = screen.getAllByRole('link', { name: 'support@myvideogamelist.net' });
+        expect(contacts).toHaveLength(4);
+        for (const contact of contacts) expect(contact).toHaveAttribute('href', 'mailto:support@myvideogamelist.net');
+        expect(screen.getByRole('link', { name: /^Commission for Personal Data Protection ?\(opens in a new tab\)$/ }))
+            .toHaveAttribute('href', 'https://cpdp.bg/en/');
         // The words that say it opens a new tab keep their space inside the hidden text, ahead of the
         // full stop, as on the terms page.
         expect(screen.getByRole('link', { name: /^our Discord server ?\(opens in a new tab\)$/ }))
