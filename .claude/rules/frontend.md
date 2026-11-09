@@ -129,7 +129,9 @@ that are easy to get wrong and were got wrong once (`docs/decisions/0022-*`):
   Never write that ref during render, and never read it while drawing: a reader called during render is
   a `useCallback` over what it reads. The locks are not a reader but a store, `pending`: read one game's
   with `useListPending`, or `usePendingIn` in a memoised row or tile that must not read the lists
-  context. The layout and the sorts are `useListView`, read only by the lists page, so a change of order
+  context. It reaches a component one render after the lists, so draw a lock and refuse a press by it,
+  but never set state from it: a component that keeps a game on screen while its own write is out keeps
+  its own record of that write, as the play-next picker does. The layout and the sorts are `useListView`, read only by the lists page, so a change of order
   reaches no card. See `docs/decisions/0086-*`.
 
 ## State & effects

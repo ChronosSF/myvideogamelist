@@ -24,6 +24,8 @@ export function useListPending(gameId: number): boolean {
  * Whether a write of a game is out, for a component that shows more than one game's lock. Draws it again
  * whenever any lock is taken or released, so a component that draws one game reads `useListPending`, and a
  * list of games gives each game a component of its own that reads `usePendingIn`.
+ *
+ * Like the others, one render behind the lists: never decide from it which game to keep on screen.
  */
 export function useListsPending(): (gameId: number) => boolean {
     const { pending } = useLists();

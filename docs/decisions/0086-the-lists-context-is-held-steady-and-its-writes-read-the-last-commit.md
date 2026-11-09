@@ -50,6 +50,15 @@ for no other. A component that shows several games' locks reads `useListsPending
 for any. The store lags the reducer by one render, never painted: the layout effect's update is drawn
 before the browser draws anything.
 
+What is drawn in that render is replaced, but what is decided in it is kept. A save's first render moves
+the game and takes its lock, and a component reading both sees the game moved and unlocked. So nothing
+may decide anything from a game's place and its lock together. The play-next picker did: it kept its
+pick while the pick was locked and drew another once it had left the backlog unlocked, so starting it
+drew another game in that render, and kept it after the start had failed. It now keeps its pick by the
+start it sent itself, which it lets go once the write has resolved (§3 commits the answer first), and only
+draws the lock. The home page mounts it anew for each account, so a start one account left out holds
+nothing on the next one's card.
+
 ### 3. Every write is the same function for as long as the provider is mounted
 
 A write reads `committed.current` as it starts. That ref holds the state and the account of the render
@@ -130,7 +139,10 @@ now builds too.
   write of the same game, made as this one resolves, finds it still saving.
 - A new reader of a lock reads the store: `useListPending` in anything that reads the lists anyway,
   `usePendingIn` in a memoised row or tile that must not, `useListsPending` for several games at once. A
-  hand-built lists context in a test gives `pending: listPending(…)` (`@/test/factories`).
+  hand-built lists context in a test gives `pending: listPending(…)` (`@/test/factories`). A lock is for
+  drawing, and for refusing a press: a component that must hold on to a game while its own write is out
+  holds its own record of the write (§2), and a test of that has the real provider behind it, since a
+  mock hands the lists and the lock over in the same render.
 - What this leaves. The wishlist and the favourites (`useGameAxis`) still hand out a new value on every
   change, so a wishlist toggle still draws every card. The same treatment would apply, and it is not done
   here.

@@ -23,7 +23,9 @@ export type SaveResult = { ok: true } | { ok: false; error: string };
  * on it included. Subscribed to for one game, it draws again only what shows that game's lock
  * (`docs/decisions/0086-*`). The same object for as long as the provider is mounted. It holds the set the
  * provider last committed, published as the commit is laid out, so it can lag the lists by one render that
- * is never painted.
+ * is never painted, but in which a game can read as moved and unlocked. Draw a lock, and refuse a press by
+ * it, but never set state from it beside the lists: a component that keeps a game while its write is out
+ * keeps its own record of the write, as the play-next picker does.
  */
 export interface ListsPending {
     subscribe: (onChange: () => void) => () => void;

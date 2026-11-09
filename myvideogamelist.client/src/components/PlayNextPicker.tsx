@@ -29,17 +29,23 @@ export function PlayNextPicker() {
      */
     const [seed] = useState(() => Math.random());
     const [picked, setPicked] = useState<ListEntryDto | null>(null);
+    /** The game whose start this card sent, until the provider has answered it. */
+    const [starting, setStarting] = useState<number | null>(null);
 
     /*
      * What is on screen: the backlog's own row for the pick while it is still there, and the row
-     * that was picked while a start for it is in flight. Starting a game takes it out of the backlog
-     * optimistically, and without the second case the card would jump to another game before the
-     * request had answered — then jump back if it failed.
+     * that was picked while this card's start for it is out. Starting a game takes it out of the
+     * backlog optimistically, and without the second case the card would jump to another game before
+     * the request had answered, and stay there if it failed.
+     *
+     * The card's own start, never the provider's lock: the lock reaches a component one render after
+     * the backlog it goes with (`docs/decisions/0086-*`), and in that render the pick has left the
+     * backlog unlocked, so the draw below would already have replaced it.
      */
     const current = picked === null
         ? null
         : backlog.find(entry => entry.game.id === picked.game.id)
-            ?? (isPending(picked.game.id) ? picked : null);
+            ?? (starting === picked.game.id ? picked : null);
 
     // Nothing picked yet, or the pick has left the backlog for good — started, moved or removed —
     // so draw again. Adjusted during render rather than in an effect, so no frame shows the card
@@ -76,11 +82,20 @@ export function PlayNextPicker() {
     }
 
     const { game } = current;
-    const pending = isPending(game.id);
+    // Its own start as well as the lock, for the same render: the lock arrives one later.
+    const pending = starting === game.id || isPending(game.id);
     const others = backlog.filter(entry => entry.game.id !== game.id);
 
     // Never the game already showing: a reroll that lands where it started looks broken.
     const reroll = () => setPicked(others[Math.floor(Math.random() * others.length)]);
+
+    // The provider has committed its answer before this resolves, the game moved or put back, so the
+    // pick is let go only once the backlog says where it went.
+    const start = async () => {
+        setStarting(game.id);
+        await addToList('playing', game);
+        setStarting(null);
+    };
 
     return (
         <div className="play-next">
@@ -116,7 +131,7 @@ export function PlayNextPicker() {
                         type="button"
                         className="play-next-btn play-next-btn-primary"
                         disabled={pending}
-                        onClick={() => void addToList('playing', game)}
+                        onClick={() => void start()}
                     >
                         {pending ? 'Starting…' : 'Start playing'}
                     </button>

@@ -142,19 +142,32 @@ describe('PlayNextPicker starting the pick', () => {
         await waitFor(() => expect(listsValue.addToList).toHaveBeenCalledWith('playing', HADES.game));
     });
 
-    it('stays on the game while its start is in flight', () => {
+    it('stays on the game while its start is in flight', async () => {
         // The provider takes the game out of the backlog before the request answers. The card must
-        // not jump to another game in the meantime, and jump back if the request fails.
+        // not jump to another game in the meantime, and jump back if the request fails — and it
+        // knows by its own start, not the lock, which reaches it a render late
+        // (`PlayNextPicker.start.test.tsx` has the provider).
+        const actor = userEvent.setup();
+        listsValue.addToList.mockReturnValue(new Promise(() => {}));
         backlog([HADES, CELESTE]);
         const view = render(picker());
 
+        await actor.click(screen.getByRole('button', { name: 'Start playing' }));
         backlog([CELESTE]);
-        listsValue.pending = listPending([HADES.game.id]);
         view.rerender(picker());
 
         expect(pickedTitle()).toBe('Hades');
         expect(screen.getByRole('button', { name: 'Starting…' })).toBeDisabled();
         expect(screen.getByRole('button', { name: 'Pick another' })).toBeDisabled();
+    });
+
+    it('cannot be started while another write of the game is out', () => {
+        // Sent from another control: the card shows its lock, and holds no pick for it.
+        backlog([HADES, CELESTE]);
+        listsValue.pending = listPending([HADES.game.id]);
+        render(picker());
+
+        expect(screen.getByRole('button', { name: 'Starting…' })).toBeDisabled();
     });
 
     it('moves on to another game once the pick has left the backlog', () => {
