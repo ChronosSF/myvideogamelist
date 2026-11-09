@@ -40,7 +40,7 @@ export function ResendConfirmation({ emailOrUserName }: Props) {
             >
                 {state === 'sending' ? 'Sending…' : 'Send the link again'}
             </button>
-            <p role="status" className="dialog-hint mt-2">
+            <p role="status" className="dialog-hint mt-2 empty:mt-0">
                 {state === 'sent'
                     ? 'If the account is waiting for its confirmation, a new link is on its way. We send one every few minutes at most.'
                     : ''}

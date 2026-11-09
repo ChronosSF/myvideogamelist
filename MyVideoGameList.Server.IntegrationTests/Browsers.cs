@@ -42,7 +42,7 @@ internal static class Browsers
         var result = await registered.ReadAsync<RegisterResultDto>(HttpStatusCode.OK);
         if (!result.EmailSent) throw new InvalidOperationException($"No confirmation went to {email}.");
 
-        var link = RecordingEmail.LatestConfirmationTo(email);
+        var link = RecordingEmail.Of(browser).LatestConfirmationTo(email);
         var confirmed = await browser.SendAsync(
             HttpMethod.Post, "/api/auth/confirm-email", new ConfirmEmailDto(link.UserId, link.Token));
         await confirmed.ExpectAsync(HttpStatusCode.NoContent);

@@ -42,7 +42,8 @@ public enum ConfirmationSend
 public sealed class AccountConfirmation(
     UserManager<ApplicationUser> users,
     AccountEmails emails,
-    IMemoryCache cache)
+    IMemoryCache cache,
+    ILogger<AccountConfirmation> logger)
 {
     /// <summary>The least time between two confirmations to one account.</summary>
     public static readonly TimeSpan Pace = TimeSpan.FromMinutes(5);
@@ -63,7 +64,21 @@ public sealed class AccountConfirmation(
         });
         if (!claimed) return ConfirmationSend.Paced;
 
-        var token = await users.GenerateEmailConfirmationTokenAsync(user);
+        string token;
+        try
+        {
+            token = await users.GenerateEmailConfirmationTokenAsync(user);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            // The token is protected with the key ring, which a deployment that cannot read its store
+            // fails on at first use (ADR 0043). The account is written by now, so this is an email that
+            // did not go, not a failed registration, and the pace is lifted so a later try can send.
+            logger.LogError(exception, "The account confirmation's token could not be made.");
+            cache.Remove(key);
+            return ConfirmationSend.Failed;
+        }
+
         try
         {
             await emails.SendConfirmationAsync(user, token, CancellationToken.None);

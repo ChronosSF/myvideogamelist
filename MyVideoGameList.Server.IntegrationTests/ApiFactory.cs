@@ -176,10 +176,14 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
 
         // HTTPS because the sign-in cookie is Secure, and a cookie jar sends a Secure cookie over
         // HTTPS only. No redirects followed, so a test sees exactly what the API answered.
-        return CreateDefaultClient(
+        var browser = CreateDefaultClient(
             new Uri("https://localhost"),
             new CookieContainerHandler(),
             new BrowserHeaders(new IPAddress([10, 0, (byte)(address >> 8), (byte)address])));
+
+        // So that a sign-up through it reads its link from this host's emails (Browsers.RegisterAsync).
+        Mail.Serves(browser);
+        return browser;
     }
 
     /// <summary>

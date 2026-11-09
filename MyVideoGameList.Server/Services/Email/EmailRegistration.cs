@@ -66,6 +66,8 @@ public static class EmailRegistration
                 $"{SectionName}:SiteUrl must name the site an email's links lead to wherever SES sends.");
         services.AddSingleton(new EmailLinks(Origin(site)));
         services.AddScoped<AccountEmails>();
+        // Its one consumer, beside it: an account's confirmation, paced (ADR 0089).
+        services.AddScoped<AccountConfirmation>();
 
         if (region is not null)
         {

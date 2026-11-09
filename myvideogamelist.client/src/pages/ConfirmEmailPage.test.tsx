@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import ConfirmEmailPage, { headers, meta } from '@/pages/ConfirmEmailPage';
 import { linkIn } from '@/lib/confirmationLink';
@@ -78,6 +78,21 @@ describe('ConfirmEmailPage', () => {
         expect(await screen.findByText('This link has expired or is not complete.')).toBeInTheDocument();
         expect(screen.getByText('That link did not work')).toBeInTheDocument();
         await waitFor(() => expect(window.location.hash).toBe(''));
+    });
+
+    it('confirms a second link opened in the same tab, which changes only the fragment', async () => {
+        // A browser follows a link that differs only after the `#` without loading the page again.
+        vi.mocked(auth.confirmEmail).mockRejectedValueOnce(new Error('This link has expired or is not complete.'));
+        openAt('#user=0f8a-id&token=old');
+        await screen.findByText('That link did not work');
+
+        act(() => {
+            window.location.hash = '#user=0f8a-id&token=new';
+        });
+
+        expect(await screen.findByText(/your email address is confirmed/i)).toBeInTheDocument();
+        expect(auth.confirmEmail).toHaveBeenLastCalledWith('0f8a-id', 'new');
+        expect(screen.queryByText('That link did not work')).toBeNull();
     });
 
     it('says a link with a half missing is not complete, and asks the API nothing', async () => {

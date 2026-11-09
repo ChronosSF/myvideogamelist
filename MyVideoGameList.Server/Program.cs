@@ -84,8 +84,6 @@ builder.Services.AddScoped<IGameCommunityService, GameCommunityService>();
 builder.Services.AddScoped<ISitemapService, SitemapService>();
 builder.Services.AddScoped<IUserDataExporter, UserDataExporter>();
 builder.Services.AddScoped<IUserNameClaimService, UserNameClaimService>();
-// The link that confirms an account's address, at most once every few minutes per account (ADR 0089).
-builder.Services.AddScoped<AccountConfirmation>();
 builder.Services.AddScoped<ITrackedNewsService, TrackedNewsService>();
 builder.Services.AddScoped<IImportService, ImportService>();
 builder.Services.AddScoped<IImportMatcher, ImportMatcher>();

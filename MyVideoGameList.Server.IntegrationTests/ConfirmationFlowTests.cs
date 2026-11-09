@@ -138,6 +138,23 @@ public class ConfirmationFlowTests(ApiFactory api) : IClassFixture<ApiFactory>
     }
 
     [Fact]
+    public async Task Login_Unconfirmed_WithThePassword_SendsTheLinkItNeverHad()
+    {
+        // Somebody whose first email never went, as one registered on the revision before confirmation
+        // would be: the sign-in that proves the password sends it, at the account's pace.
+        using var browser = api.CreateBrowser();
+        var (email, userName) = NewAccount("unsent");
+        api.Mail.RefuseNext();
+        await (await RegisterAsync(browser, email, userName)).ExpectAsync(HttpStatusCode.OK);
+        Assert.Empty(api.Mail.SentTo(email));
+
+        await (await LoginAsync(browser, email, Browsers.Password)).ExpectAsync(HttpStatusCode.Forbidden);
+        await (await LoginAsync(browser, email, Browsers.Password)).ExpectAsync(HttpStatusCode.Forbidden);
+
+        Assert.Single(api.Mail.SentTo(email));
+    }
+
+    [Fact]
     public async Task Register_TheEmailRefused_SaysSoAndAResendSendsIt()
     {
         using var browser = api.CreateBrowser();

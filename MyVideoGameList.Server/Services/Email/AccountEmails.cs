@@ -1,3 +1,5 @@
+using Microsoft.AspNetCore.Identity;
+using Microsoft.Extensions.Options;
 using MyVideoGameList.Server.Models;
 
 namespace MyVideoGameList.Server.Services.Email;
@@ -32,10 +34,22 @@ public sealed record EmailLinks(Uri Site)
 /// and there is no markup to build from a username. It says what the email is, why it came, and that
 /// ignoring it is safe, as the request to AWS for production access described it (#418).
 /// </remarks>
-public sealed class AccountEmails(IEmailTransport transport, EmailLinks links)
+public sealed class AccountEmails(
+    IEmailTransport transport,
+    EmailLinks links,
+    IOptions<DataProtectionTokenProviderOptions> tokens)
 {
-    /// <summary>How long a confirmation link works: Identity's default token lifespan.</summary>
-    public const string ConfirmationLifetime = "24 hours";
+    /// <summary>
+    /// How long a link works, in words: the token provider's lifespan, which is what decides it, so
+    /// that the email cannot promise longer than the link lasts.
+    /// </summary>
+    private string ConfirmationLifetime => InWords(tokens.Value.TokenLifespan);
+
+    /// <summary>A lifespan as the email says it: in whole hours, or in minutes when it is not.</summary>
+    internal static string InWords(TimeSpan lifespan) =>
+        lifespan.TotalHours >= 1 && lifespan.Ticks % TimeSpan.TicksPerHour == 0
+            ? $"{(long)lifespan.TotalHours} {((long)lifespan.TotalHours == 1 ? "hour" : "hours")}"
+            : $"{(long)Math.Ceiling(lifespan.TotalMinutes)} minutes";
 
     public Task SendConfirmationAsync(ApplicationUser user, string token, CancellationToken cancellationToken) =>
         transport.SendAsync(new EmailMessage(

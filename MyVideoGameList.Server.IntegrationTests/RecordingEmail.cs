@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Runtime.CompilerServices;
 using MyVideoGameList.Server.Services.Email;
 
 namespace MyVideoGameList.Server.IntegrationTests;
@@ -13,16 +14,25 @@ namespace MyVideoGameList.Server.IntegrationTests;
 /// would refuse it.
 /// </para>
 /// <para>
-/// Every recording also goes into one list shared by the whole run, keyed by nothing but the address,
-/// because <see cref="Browsers.RegisterAsync"/> is called on a browser, which knows no factory. Each
-/// test's addresses are its own, so a recipient's latest email is that test's.
+/// <see cref="Browsers.RegisterAsync"/> is called on a browser, which knows no factory, so each
+/// browser <see cref="ApiFactory.CreateBrowser"/> makes is tied to its own factory's recording here,
+/// and a sign-up reads its link from the host it signed up on and from nothing else.
 /// </para>
 /// </remarks>
 public sealed class RecordingEmail : IEmailTransport
 {
-    private static readonly ConcurrentQueue<EmailMessage> everything = new();
+    private static readonly ConditionalWeakTable<HttpClient, RecordingEmail> browsers = new();
 
     private readonly ConcurrentQueue<EmailMessage> sent = new();
+
+    /// <summary>Ties a browser to the recording of the host it talks to.</summary>
+    internal void Serves(HttpClient browser) => browsers.AddOrUpdate(browser, this);
+
+    /// <summary>The recording of the host <paramref name="browser"/> talks to.</summary>
+    internal static RecordingEmail Of(HttpClient browser) =>
+        browsers.TryGetValue(browser, out var recording)
+            ? recording
+            : throw new InvalidOperationException("This browser was not made by ApiFactory.CreateBrowser.");
 
     private int refuseNext;
 
@@ -40,17 +50,13 @@ public sealed class RecordingEmail : IEmailTransport
             throw new EmailNotSentException(message.Purpose, "MessageRejected (400): refused by the test");
 
         sent.Enqueue(message);
-        everything.Enqueue(message);
         return Task.CompletedTask;
     }
 
-    /// <summary>
-    /// The account and token in the latest confirmation link sent to <paramref name="address"/>, by any
-    /// test host in this run.
-    /// </summary>
-    public static ConfirmEmailLink LatestConfirmationTo(string address)
+    /// <summary>The account and token in the latest confirmation link this host sent to <paramref name="address"/>.</summary>
+    public ConfirmEmailLink LatestConfirmationTo(string address)
     {
-        var message = everything.LastOrDefault(message =>
+        var message = sent.LastOrDefault(message =>
                 string.Equals(message.To, address, StringComparison.OrdinalIgnoreCase)
                 && message.Purpose == "account confirmation")
             ?? throw new InvalidOperationException($"No confirmation was sent to {address}.");

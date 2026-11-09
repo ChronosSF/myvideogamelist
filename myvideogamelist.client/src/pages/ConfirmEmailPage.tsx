@@ -22,18 +22,25 @@ export function meta() {
     ];
 }
 
-/** Never fires: the fragment is read once, and this page removes it itself. */
-const noopSubscribe = () => () => {};
+/**
+ * A new fragment on this same page: a second link opened in the tab, which a browser follows without
+ * loading the page again. The page's own removal of the fragment raises no such event.
+ */
+function subscribeToFragment(onChange: () => void) {
+    window.addEventListener('hashchange', onChange);
+    return () => window.removeEventListener('hashchange', onChange);
+}
 
 /**
  * The fragment as the browser has it, and null during the server render and hydration, which never
  * see it: a browser does not send what follows the `#`.
  */
 function useFragment(): string | null {
-    return useSyncExternalStore(noopSubscribe, () => window.location.hash, () => null);
+    return useSyncExternalStore(subscribeToFragment, () => window.location.hash, () => null);
 }
 
-type Outcome = { kind: 'confirmed' } | { kind: 'failed'; message: string };
+/** What became of one link, by its token, so that a newer link is never shown an older one's answer. */
+type Outcome = { token: string } & ({ kind: 'confirmed' } | { kind: 'failed'; message: string });
 
 /**
  * Where the link in a confirmation email leads (ADR 0089).
@@ -70,11 +77,12 @@ export default function ConfirmEmailPage() {
         let wanted = true;
         confirm(userId, token)
             .then(() => {
-                if (wanted) setOutcome({ kind: 'confirmed' });
+                if (wanted) setOutcome({ token, kind: 'confirmed' });
             })
             .catch((err: unknown) => {
                 if (!wanted) return;
                 setOutcome({
+                    token,
                     kind: 'failed',
                     message: err instanceof Error ? err.message : 'Could not confirm your address. Please try again.',
                 });
@@ -96,8 +104,11 @@ export default function ConfirmEmailPage() {
         </button>
     );
 
+    // The answer for the link in the address bar, or for the last one once the page has taken it out.
+    const settled = outcome !== null && (link === null || link.token === outcome.token) ? outcome : null;
+
     let body: ReactNode;
-    if (outcome?.kind === 'confirmed') {
+    if (settled?.kind === 'confirmed') {
         body = (
             <div className="space-y-5">
                 <p className="text-fg-soft leading-relaxed">
@@ -106,10 +117,10 @@ export default function ConfirmEmailPage() {
                 {signIn}
             </div>
         );
-    } else if (outcome?.kind === 'failed') {
+    } else if (settled?.kind === 'failed') {
         body = (
             <ErrorState title="That link did not work" size="section">
-                <p>{outcome.message}</p>
+                <p>{settled.message}</p>
                 <div className="mt-4">{signIn}</div>
             </ErrorState>
         );

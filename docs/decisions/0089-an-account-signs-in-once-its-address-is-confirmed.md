@@ -63,8 +63,10 @@ When sign-in comes back `NotAllowed` for an unconfirmed address, the controller 
 - **Locked out:** the same 401 as any wrong combination.
 - **Wrong password:** counted with `AccessFailedAsync`, so five lock the account as they would a confirmed
   one, and the same 401.
-- **Right password:** the failure count is reset, and the answer is a 403 with `unconfirmed: true` and a
-  sentence. The dialog shows it and offers to send the link again.
+- **Right password:** the failure count is reset, the link is sent again at the account's pace (§5), and the
+  answer is a 403 with `unconfirmed: true` and a sentence. The dialog shows it and offers another. So
+  somebody whose first email was lost, or who signed up on the revision before this one and was sent none,
+  has a link waiting without having to ask.
 
 Said as Identity leaves it, the refusal would tell anybody who typed an address that it has an account
 waiting, and would let them guess its password with no lockout at all.
@@ -95,8 +97,8 @@ nothing: which accounts were unconfirmed is recorded nowhere.
 
 ### 7. The email is plain text
 
-It is plain text, from 0088's sender. It says what the email is, gives the link, says it works for 24 hours,
-and says it is safe to ignore. Every mail program shows plain text, and a link in it is clickable in all of
+It is plain text, from 0088's sender. It says what the email is, gives the link, says how long the link
+works, read from Identity's token lifespan so that it cannot promise longer, and says it is safe to ignore. Every mail program shows plain text, and a link in it is clickable in all of
 them. There is no markup to build from a username.
 
 ## Consequences

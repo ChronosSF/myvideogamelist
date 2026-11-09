@@ -82,8 +82,7 @@ public class AuthController(
     [EnableRateLimiting(RateLimiting.AuthWrites)]
     public async Task<ActionResult<UserProfileDto>> Login([FromBody] LoginDto dto)
     {
-        var user = await userManager.FindByEmailAsync(dto.Email)
-            ?? await userManager.FindByNameAsync(dto.Email);
+        var user = await FindByEmailOrNameAsync(dto.Email);
 
         if (user is null)
             return Unauthorized(WrongCredentials);
@@ -111,7 +110,7 @@ public class AuthController(
     /// for confirmation, and would let them guess its password with no lockout at all. So the password
     /// is checked here, a wrong one counts towards the lockout as it would on a confirmed account, and
     /// both a wrong one and a lockout answer as any wrong combination does. Only the owner, with the
-    /// password, learns that the address waits, and is offered the link again.
+    /// password, learns that the address waits, and is sent the link again, at the account's pace.
     /// </remarks>
     private async Task<ActionResult<UserProfileDto>> UnconfirmedAsync(ApplicationUser user, string password)
     {
@@ -125,12 +124,27 @@ public class AuthController(
         }
 
         await userManager.ResetAccessFailedCountAsync(user);
+
+        // The owner is here, with the password, and has not confirmed: send the link, at the account's
+        // pace. Somebody whose first email was lost, or who registered on the revision before
+        // confirmation existed and was sent none, has one waiting without having to ask.
+        var sent = await confirmation.SendAsync(user);
         return StatusCode(StatusCodes.Status403Forbidden, new
         {
-            message = "Confirm your email address first, with the link we sent you. If you cannot find it, we can send another.",
+            message = sent == ConfirmationSend.Failed
+                ? "Confirm your email address first. We could not send you a new link just now, so ask for one again in a moment."
+                : "Confirm your email address first, with the link we have sent you. If it does not arrive, we can send another.",
             unconfirmed = true,
         });
     }
+
+    /// <summary>
+    /// The account an identifier names: an address first, the unique-by-configuration column, then a
+    /// username. Signing in and asking for the confirmation again resolve it the same way, here.
+    /// </summary>
+    private async Task<ApplicationUser?> FindByEmailOrNameAsync(string emailOrUserName) =>
+        await userManager.FindByEmailAsync(emailOrUserName)
+            ?? await userManager.FindByNameAsync(emailOrUserName);
 
     /// <summary>
     /// Confirms an address from the two halves of the link in its email. Signs nobody in.
@@ -152,9 +166,13 @@ public class AuthController(
     /// </para>
     /// </remarks>
     [HttpPost("confirm-email")]
-    public async Task<ActionResult<AuthMessageDto>> ConfirmEmail([FromBody] ConfirmEmailDto dto)
+    public async Task<ActionResult<AuthMessageDto>> ConfirmEmail(
+        [FromBody] ConfirmEmailDto dto, CancellationToken cancellationToken)
     {
+        // UserManager takes no token of its own, so the request's is checked between its steps: a reader
+        // who has gone is not confirmed on their behalf.
         var user = await userManager.FindByIdAsync(dto.UserId);
+        cancellationToken.ThrowIfCancellationRequested();
         var result = user is null ? null : await userManager.ConfirmEmailAsync(user, dto.Token);
 
         if (result?.Succeeded != true)
@@ -179,10 +197,14 @@ public class AuthController(
     /// </remarks>
     [HttpPost("resend-confirmation")]
     [EnableRateLimiting(RateLimiting.AuthWrites)]
-    public async Task<ActionResult<AuthMessageDto>> ResendConfirmation([FromBody] ResendConfirmationDto dto)
+    public async Task<ActionResult<AuthMessageDto>> ResendConfirmation(
+        [FromBody] ResendConfirmationDto dto, CancellationToken cancellationToken)
     {
-        var user = await userManager.FindByEmailAsync(dto.Email)
-            ?? await userManager.FindByNameAsync(dto.Email);
+        var user = await FindByEmailOrNameAsync(dto.Email);
+
+        // As in ConfirmEmail: checked before the send, which ignores it once begun, so nobody who has
+        // gone is sent an email.
+        cancellationToken.ThrowIfCancellationRequested();
 
         if (user is not null && !await userManager.IsEmailConfirmedAsync(user))
             await confirmation.SendAsync(user);
