@@ -20,6 +20,7 @@ using MyVideoGameList.Server.DTOs;
 using MyVideoGameList.Server.Security;
 using MyVideoGameList.Server.Services;
 using MyVideoGameList.Server.Services.Edge;
+using MyVideoGameList.Server.Services.Email;
 
 namespace MyVideoGameList.Server.IntegrationTests;
 
@@ -41,7 +42,8 @@ namespace MyVideoGameList.Server.IntegrationTests;
 /// is kept, in memory; our own scheduled work, which a test runs by hand when it wants it, so that
 /// no sweep deletes rows from under a test that did not ask for one; and the edge, by
 /// <see cref="RecordingEdge"/>, since with no distribution the application's own only logs what it
-/// would have invalidated (ADR 0058). And one thing is added ahead of
+/// would have invalidated (ADR 0058); and the email transport, by <see cref="RecordingEmail"/>, so that
+/// a test can read the link it would have sent (ADR 0089). And one thing is added ahead of
 /// the pipeline: <see cref="ClientAddress"/>, which gives each test browser the address a
 /// connection would have given it. Every other middleware, every service and every policy is the
 /// application's own. See <c>docs/decisions/0057-*</c>.
@@ -64,6 +66,9 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
 
     /// <summary>The CDN, for asserting what the API asked it to forget.</summary>
     public RecordingEdge Edge { get; } = new();
+
+    /// <summary>Every email the API composed, in place of the outbox, which only writes files.</summary>
+    public RecordingEmail Mail { get; } = new();
 
     /// <summary>Who is an admin, named by a test once the account has an id.</summary>
     public NamedAdmins Admins { get; } = new();
@@ -115,7 +120,8 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
         // profile, so where the keys are kept is replaced below.
         builder.UseSetting("DataProtection:AllowEphemeralKeys", "true");
 
-        // And without an email sender (ADR 0088). The outbox writes to a folder and reaches no AWS.
+        // And without an email sender (ADR 0088). Named so that the host starts; replaced below by
+        // RecordingEmail, so nothing is ever written there.
         builder.UseSetting("Email:OutboxPath", Path.Combine(Path.GetTempPath(), "mvgl-integration-outbox"));
 
         builder.ConfigureTestServices(services =>
@@ -125,6 +131,9 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
 
             services.RemoveAll<IEdgeInvalidator>();
             services.AddSingleton<IEdgeInvalidator>(Edge);
+
+            services.RemoveAll<IEmailTransport>();
+            services.AddSingleton<IEmailTransport>(Mail);
 
             // A closed registration, which the container prefers to the open one Options makes.
             services.AddSingleton<IOptionsMonitor<AdminOptions>>(Admins);

@@ -56,6 +56,15 @@ public static class EmailRegistration
         services.AddSingleton(sender);
 
         var region = Value(section, "Ses:Region");
+
+        // Where an email's links lead. Required where mail really leaves, because a link to the wrong
+        // host is a confirmation nobody can finish; on a developer machine it is the dev server.
+        var site = Value(section, "SiteUrl") ?? (region is null ? DevelopmentSite : null)
+            ?? throw new InvalidOperationException(
+                $"{SectionName}:SiteUrl must name the site an email's links lead to wherever SES sends.");
+        services.AddSingleton(new EmailLinks(Origin(site)));
+        services.AddScoped<AccountEmails>();
+
         if (region is not null)
         {
             var roleArn = Value(section, "Ses:RoleArn");
@@ -111,6 +120,21 @@ public static class EmailRegistration
             RoleSessionName);
         return new AmazonSimpleEmailServiceV2Client(credentials, config);
     }
+
+    /// <summary>The dev server's origin, which <c>npm run dev</c> serves the site from.</summary>
+    private const string DevelopmentSite = "https://localhost:58546";
+
+    /// <summary>
+    /// An origin and nothing else: a link is built by appending a path, so a path, a query or a
+    /// fragment here would land in the middle of every link.
+    /// </summary>
+    private static Uri Origin(string value) =>
+        Uri.TryCreate(value, UriKind.Absolute, out var uri)
+            && uri.Scheme is "https" or "http"
+            && uri.AbsolutePath == "/" && uri.Query.Length == 0 && uri.Fragment.Length == 0
+                ? uri
+                : throw new InvalidOperationException(
+                    $"{SectionName}:SiteUrl must be an origin, such as https://dev.myvideogamelist.net.");
 
     private static MailAddress Address(IConfigurationSection section, string key) =>
         MailAddress.TryCreate(Value(section, key), out var address)

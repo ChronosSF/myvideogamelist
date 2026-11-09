@@ -1,0 +1,184 @@
+using System.Net;
+using System.Net.Http.Json;
+using MyVideoGameList.Server.DTOs;
+
+namespace MyVideoGameList.Server.IntegrationTests;
+
+/// <summary>
+/// An account signs in only once its address is confirmed (ADR 0089): registered, sent a link, refused
+/// until the link is used, and told why only by somebody who knows the password.
+/// </summary>
+public class ConfirmationFlowTests(ApiFactory api) : IClassFixture<ApiFactory>
+{
+    private static Task<HttpResponseMessage> RegisterAsync(HttpClient browser, string email, string userName) =>
+        browser.PostAsJsonAsync("/api/auth/register", new RegisterDto(email, Browsers.Password, userName));
+
+    private static Task<HttpResponseMessage> LoginAsync(HttpClient browser, string email, string password) =>
+        browser.PostAsJsonAsync("/api/auth/login", new LoginDto(email, password));
+
+    private static Task<HttpResponseMessage> ConfirmAsync(HttpClient browser, ConfirmEmailLink link) =>
+        browser.SendAsync(HttpMethod.Post, "/api/auth/confirm-email", new ConfirmEmailDto(link.UserId, link.Token));
+
+    private static Task<HttpResponseMessage> ResendAsync(HttpClient browser, string email) =>
+        browser.SendAsync(HttpMethod.Post, "/api/auth/resend-confirmation", new ResendConfirmationDto(email));
+
+    private static (string Email, string UserName) NewAccount(string prefix)
+    {
+        var userName = Browsers.NewUserName(prefix);
+        return ($"{userName}@test.local", userName);
+    }
+
+    [Fact]
+    public async Task Register_SendsTheLinkAndSignsNobodyIn()
+    {
+        using var browser = api.CreateBrowser();
+        var (email, userName) = NewAccount("fresh");
+
+        var registered = await RegisterAsync(browser, email, userName);
+
+        Assert.True((await registered.ReadAsync<RegisterResultDto>(HttpStatusCode.OK)).EmailSent);
+        Assert.False(registered.Headers.TryGetValues("Set-Cookie", out _));
+        Assert.Equal(HttpStatusCode.NoContent, (await browser.GetAsync("/api/auth/me")).StatusCode);
+
+        var sent = Assert.Single(api.Mail.SentTo(email));
+        Assert.Equal("account confirmation", sent.Purpose);
+        var link = ConfirmEmailLink.In(sent.Text);
+        Assert.StartsWith("https://localhost:58546/confirm-email#user=", link.Url);
+    }
+
+    [Fact]
+    public async Task Login_Unconfirmed_WithThePassword_IsToldToConfirm()
+    {
+        using var browser = api.CreateBrowser();
+        var (email, userName) = NewAccount("waiting");
+        await (await RegisterAsync(browser, email, userName)).ExpectAsync(HttpStatusCode.OK);
+
+        var login = await LoginAsync(browser, userName, Browsers.Password);
+
+        await login.ExpectAsync(HttpStatusCode.Forbidden);
+        var body = await login.Content.ReadAsStringAsync();
+        Assert.Contains("\"unconfirmed\":true", body);
+        Assert.False(login.Headers.TryGetValues("Set-Cookie", out _));
+    }
+
+    [Fact]
+    public async Task Login_Unconfirmed_WithAWrongPassword_AnswersAsAnyWrongCombination()
+    {
+        // Without the password, nobody learns that the address has an account waiting.
+        using var browser = api.CreateBrowser();
+        var (email, userName) = NewAccount("guessed");
+        await (await RegisterAsync(browser, email, userName)).ExpectAsync(HttpStatusCode.OK);
+
+        var login = await LoginAsync(browser, email, "wrong-password-1");
+
+        await login.ExpectAsync(HttpStatusCode.Unauthorized);
+        Assert.DoesNotContain("unconfirmed", await login.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
+    public async Task Login_Unconfirmed_FiveWrongPasswords_LockTheAccountAsAConfirmedOneWould()
+    {
+        // Identity refuses an unconfirmed account before it counts anything, so the controller counts.
+        using var browser = api.CreateBrowser();
+        var (email, userName) = NewAccount("locked");
+        await (await RegisterAsync(browser, email, userName)).ExpectAsync(HttpStatusCode.OK);
+
+        for (var attempt = 0; attempt < 5; attempt++)
+            await (await LoginAsync(browser, email, "wrong-password-1")).ExpectAsync(HttpStatusCode.Unauthorized);
+
+        var right = await LoginAsync(browser, email, Browsers.Password);
+
+        await right.ExpectAsync(HttpStatusCode.Unauthorized);
+    }
+
+    [Fact]
+    public async Task ConfirmEmail_ThenLogin_SignsIn()
+    {
+        using var browser = api.CreateBrowser();
+        var (email, userName) = NewAccount("confirmed");
+        await (await RegisterAsync(browser, email, userName)).ExpectAsync(HttpStatusCode.OK);
+        var link = ConfirmEmailLink.In(Assert.Single(api.Mail.SentTo(email)).Text);
+
+        await (await ConfirmAsync(browser, link)).ExpectAsync(HttpStatusCode.NoContent);
+
+        // Confirming signs nobody in: the link outlives its use.
+        Assert.Equal(HttpStatusCode.NoContent, (await browser.GetAsync("/api/auth/me")).StatusCode);
+
+        var login = await LoginAsync(browser, email, Browsers.Password);
+        Assert.Equal(userName, (await login.ReadAsync<UserProfileDto>(HttpStatusCode.OK)).UserName);
+    }
+
+    [Fact]
+    public async Task ConfirmEmail_PressedTwice_ConfirmsTwice()
+    {
+        using var browser = api.CreateBrowser();
+        var (email, userName) = NewAccount("twice");
+        await (await RegisterAsync(browser, email, userName)).ExpectAsync(HttpStatusCode.OK);
+        var link = ConfirmEmailLink.In(Assert.Single(api.Mail.SentTo(email)).Text);
+
+        await (await ConfirmAsync(browser, link)).ExpectAsync(HttpStatusCode.NoContent);
+        await (await ConfirmAsync(browser, link)).ExpectAsync(HttpStatusCode.NoContent);
+    }
+
+    [Fact]
+    public async Task ConfirmEmail_AWrongTokenOrAccount_IsOneRefusal()
+    {
+        using var browser = api.CreateBrowser();
+        var (email, userName) = NewAccount("wrongtoken");
+        await (await RegisterAsync(browser, email, userName)).ExpectAsync(HttpStatusCode.OK);
+        var link = ConfirmEmailLink.In(Assert.Single(api.Mail.SentTo(email)).Text);
+
+        var wrongToken = await ConfirmAsync(browser, link with { Token = "not-the-token" });
+        var wrongAccount = await ConfirmAsync(browser, link with { UserId = Guid.NewGuid().ToString() });
+
+        await wrongToken.ExpectAsync(HttpStatusCode.BadRequest);
+        await wrongAccount.ExpectAsync(HttpStatusCode.BadRequest);
+        Assert.Equal(await wrongToken.Content.ReadAsStringAsync(), await wrongAccount.Content.ReadAsStringAsync());
+        await (await LoginAsync(browser, email, Browsers.Password)).ExpectAsync(HttpStatusCode.Forbidden);
+    }
+
+    [Fact]
+    public async Task Register_TheEmailRefused_SaysSoAndAResendSendsIt()
+    {
+        using var browser = api.CreateBrowser();
+        var (email, userName) = NewAccount("refused");
+        api.Mail.RefuseNext();
+
+        var registered = await RegisterAsync(browser, email, userName);
+
+        Assert.False((await registered.ReadAsync<RegisterResultDto>(HttpStatusCode.OK)).EmailSent);
+        Assert.Empty(api.Mail.SentTo(email));
+
+        // A send that failed lifts the pace, so asking again sends at once.
+        await (await ResendAsync(browser, userName)).ExpectAsync(HttpStatusCode.Accepted);
+        Assert.Single(api.Mail.SentTo(email));
+    }
+
+    [Fact]
+    public async Task Resend_WithinTheFirstFewMinutes_SendsNothingMore()
+    {
+        using var browser = api.CreateBrowser();
+        var (email, userName) = NewAccount("paced");
+        await (await RegisterAsync(browser, email, userName)).ExpectAsync(HttpStatusCode.OK);
+
+        await (await ResendAsync(browser, email)).ExpectAsync(HttpStatusCode.Accepted);
+        await (await ResendAsync(browser, email)).ExpectAsync(HttpStatusCode.Accepted);
+
+        Assert.Single(api.Mail.SentTo(email));
+    }
+
+    [Fact]
+    public async Task Resend_NoSuchAccountOrAConfirmedOne_AnswersTheSameAndSendsNothing()
+    {
+        using var browser = api.CreateBrowser();
+        var userName = Browsers.NewUserName("done");
+        var nobody = $"{Browsers.NewUserName("nobody")}@test.local";
+        await browser.RegisterAsync(userName);
+        var before = api.Mail.Sent.Count;
+
+        await (await ResendAsync(browser, nobody)).ExpectAsync(HttpStatusCode.Accepted);
+        await (await ResendAsync(browser, $"{userName}@test.local")).ExpectAsync(HttpStatusCode.Accepted);
+
+        Assert.Equal(before, api.Mail.Sent.Count);
+    }
+}

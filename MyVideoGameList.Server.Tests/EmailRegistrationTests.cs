@@ -50,7 +50,7 @@ public class EmailRegistrationTests
     public void AddEmail_DeployedWithARegion_SendsThroughSes()
     {
         var services = new ServiceCollection().AddEmail(
-            Configuration([.. Addresses, ("Email:Ses:Region", "eu-central-1")]),
+            Configuration([.. Addresses, ("Email:Ses:Region", "eu-central-1"), ("Email:SiteUrl", "https://dev.myvideogamelist.net")]),
             Environment(Environments.Production));
 
         Assert.Equal(typeof(SesEmailTransport), Transport(services));
@@ -61,7 +61,7 @@ public class EmailRegistrationTests
     public void AddEmail_SesClient_IsInTheConfiguredRegion()
     {
         using var provider = new ServiceCollection()
-            .AddEmail(Configuration([.. Addresses, ("Email:Ses:Region", "eu-central-1")]), Environment(Environments.Production))
+            .AddEmail(Configuration([.. Addresses, ("Email:Ses:Region", "eu-central-1"), ("Email:SiteUrl", "https://dev.myvideogamelist.net")]), Environment(Environments.Production))
             .BuildServiceProvider();
 
         var client = provider.GetRequiredService<IAmazonSimpleEmailServiceV2>();
@@ -99,7 +99,7 @@ public class EmailRegistrationTests
     {
         // A deployment's setting is never quietly outranked by a folder somebody left configured.
         var services = new ServiceCollection().AddEmail(
-            Configuration([.. Addresses, ("Email:Ses:Region", "eu-central-1"), ("Email:OutboxPath", "/tmp/outbox")]),
+            Configuration([.. Addresses, ("Email:Ses:Region", "eu-central-1"), ("Email:SiteUrl", "https://dev.myvideogamelist.net"), ("Email:OutboxPath", "/tmp/outbox")]),
             Environment(Environments.Production));
 
         Assert.Equal(typeof(SesEmailTransport), Transport(services));
@@ -129,5 +129,51 @@ public class EmailRegistrationTests
         Assert.Equal("noreply@myvideogamelist.net", sender.From.Address);
         Assert.Equal("MyVideoGameList", sender.From.DisplayName);
         Assert.Equal("support@myvideogamelist.net", sender.ReplyTo.Address);
+    }
+
+    [Fact]
+    public void AddEmail_SesWithNoSiteUrl_RefusesToStart()
+    {
+        // A link to the wrong host is a confirmation nobody can finish.
+        var act = () => new ServiceCollection().AddEmail(
+            Configuration([.. Addresses, ("Email:Ses:Region", "eu-central-1")]),
+            Environment(Environments.Production));
+
+        var exception = Assert.Throws<InvalidOperationException>(act);
+        Assert.Contains("Email:SiteUrl", exception.Message);
+    }
+
+    [Fact]
+    public void AddEmail_TheOutboxWithNoSiteUrl_LinksToTheDevServer()
+    {
+        using var provider = new ServiceCollection()
+            .AddEmail(Configuration(Addresses), Environment(Environments.Development))
+            .BuildServiceProvider();
+
+        Assert.Equal(new Uri("https://localhost:58546"), provider.GetRequiredService<EmailLinks>().Site);
+    }
+
+    [Theory]
+    [InlineData("dev.myvideogamelist.net")]
+    [InlineData("ftp://dev.myvideogamelist.net")]
+    [InlineData("https://dev.myvideogamelist.net/app")]
+    [InlineData("https://dev.myvideogamelist.net/?a=1")]
+    public void AddEmail_ASiteUrlThatIsNotAnOrigin_RefusesToStart(string site)
+    {
+        var act = () => new ServiceCollection().AddEmail(
+            Configuration([.. Addresses, ("Email:SiteUrl", site)]),
+            Environment(Environments.Development));
+
+        Assert.Contains("Email:SiteUrl", Assert.Throws<InvalidOperationException>(act).Message);
+    }
+
+    [Fact]
+    public void ConfirmEmail_PutsTheAccountAndTokenInTheFragment_Escaped()
+    {
+        var links = new EmailLinks(new Uri("https://dev.myvideogamelist.net/"));
+
+        var link = links.ConfirmEmail("0f8a-id", "CfDJ8+a/b=");
+
+        Assert.Equal("https://dev.myvideogamelist.net/confirm-email#user=0f8a-id&token=CfDJ8%2Ba%2Fb%3D", link);
     }
 }

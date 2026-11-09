@@ -204,6 +204,8 @@ public sealed class AppStack : Stack
         // the two cannot drift. Production will send as its own task role, with no role to assume.
         container.AddEnvironment("Email__From", $"MyVideoGameList <{Site.EmailFromAddress}>");
         container.AddEnvironment("Email__Ses__Region", Region);
+        // Where an email's links lead: the host the distribution answers, never the request's (ADR 0089).
+        container.AddEnvironment("Email__SiteUrl", $"https://{site.Host}");
         if (!site.IsProduction)
         {
             container.AddEnvironment("Email__Ses__RoleArn", site.EmailRoleArn);

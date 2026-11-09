@@ -36,17 +36,30 @@ public class SignedInFlagTests(ApiFactory api) : IClassFixture<ApiFactory>
     }
 
     [Fact]
-    public async Task Register_SetsTheFlag_ForAsLongAsTheSession()
+    public async Task Register_SetsNoFlag_BecauseItSignsNobodyIn()
     {
-        // A registration signs in persistently, so the flag outlives the browser as the session does.
+        // An account signs in once its address is confirmed (ADR 0089), so a registration sets
+        // neither the session nor the flag that says there is one.
         using var browser = api.CreateBrowser();
-        var userName = Browsers.NewUserName("flagged");
+        var userName = Browsers.NewUserName("unflagged");
 
         var registered = await browser.PostAsJsonAsync(
             "/api/auth/register", new RegisterDto($"{userName}@test.local", Browsers.Password, userName));
 
         await registered.ExpectAsync(HttpStatusCode.OK);
-        var flag = Flag(registered);
+        Assert.Null(Flag(registered));
+    }
+
+    [Fact]
+    public async Task Login_WithRememberMe_SetsTheFlag_ForAsLongAsTheSession()
+    {
+        // A persistent session, so the flag outlives the browser as the session does.
+        using var browser = api.CreateBrowser();
+
+        var (_, login) = await browser.RegisterAndSignInAsync(Browsers.NewUserName("flagged"));
+
+        await login.ExpectAsync(HttpStatusCode.OK);
+        var flag = Flag(login);
         AssertSet(flag);
         Assert.Contains("expires=", flag, StringComparison.OrdinalIgnoreCase);
     }

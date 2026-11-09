@@ -1,12 +1,27 @@
 import { createContext } from 'react';
-import type { ProfileDetails, ProfileVisibility, UserProfile } from '@/types/auth';
+import type { ProfileDetails, ProfileVisibility, RegisterResult, UserProfile } from '@/types/auth';
 import type { Look } from '@/types/look';
 
 export interface AuthContextValue {
     user: UserProfile | null;
     loading: boolean;
+    /**
+     * Signs in. Rejects with an `UnconfirmedEmailError` when the password is right and the address is
+     * not confirmed yet, and with the server's message otherwise.
+     */
     login: (email: string, password: string, rememberMe: boolean) => Promise<void>;
-    register: (email: string, password: string, userName: string) => Promise<void>;
+    /**
+     * Makes an account and asks for its confirmation to be sent. Signs nobody in: an account signs in
+     * once its address is confirmed (ADR 0089).
+     */
+    register: (email: string, password: string, userName: string) => Promise<RegisterResult>;
+    /**
+     * Asks for the confirmation to be sent again to an account waiting for it, by its address or its
+     * username. Resolves the same whether or not anything was sent: the API says nothing more.
+     */
+    resendConfirmation: (emailOrUserName: string) => Promise<void>;
+    /** Confirms an address from the two halves of its link. Signs nobody in. */
+    confirmEmail: (userId: string, token: string) => Promise<void>;
     logout: () => Promise<void>;
     /**
      * Claims a different username. Rejects with the server's message — taken, reserved, or too

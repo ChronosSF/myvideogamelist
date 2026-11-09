@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { useAuth } from '@/hooks/useAuth';
-import { USERNAME_MAX_LENGTH, USERNAME_MIN_LENGTH, userNameProblem } from '@/types/auth';
+import { USERNAME_MAX_LENGTH, USERNAME_MIN_LENGTH, userNameProblem, type RegisterResult } from '@/types/auth';
 import { useDismissOnOutsidePress } from '@/lib/useDismissOnOutsidePress';
+import { CheckYourInbox } from './CheckYourInbox';
 import './LoginDialog.css';
 
 interface Props {
@@ -17,6 +18,9 @@ export function SignupDialog({ onClose, onSwitchToLogin }: Props) {
     const [confirm, setConfirm] = useState('');
     const [error, setError] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
+    // Set once the account is made: whether its confirmation went. The dialog then says where to
+    // look, rather than closing on somebody who is not signed in (ADR 0089).
+    const [registered, setRegistered] = useState<RegisterResult | null>(null);
 
     // The same guard as the sign-in dialog, from the same place: this overlay is that one copied,
     // and a fix applied to one of them by hand is the drift ADR 0022 records.
@@ -41,8 +45,7 @@ export function SignupDialog({ onClose, onSwitchToLogin }: Props) {
         }
         setLoading(true);
         try {
-            await register(email, password, userName);
-            onClose();
+            setRegistered(await register(email, password, userName));
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Registration failed');
         } finally {
@@ -50,14 +53,34 @@ export function SignupDialog({ onClose, onSwitchToLogin }: Props) {
         }
     };
 
+    const close = (
+        <button className="dialog-close" onClick={onClose} aria-label="Close">
+            <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+        </button>
+    );
+
+    if (registered !== null) {
+        return (
+            <div className="dialog-overlay" {...dismiss} role="dialog" aria-modal="true" aria-labelledby="signup-title">
+                <div className="dialog-panel dialog-panel-rel">
+                    {close}
+                    <CheckYourInbox
+                        email={email}
+                        emailSent={registered.emailSent}
+                        titleId="signup-title"
+                        onSwitchToLogin={onSwitchToLogin}
+                    />
+                </div>
+            </div>
+        );
+    }
+
     return (
         <div className="dialog-overlay" {...dismiss} role="dialog" aria-modal="true" aria-labelledby="signup-title">
             <div className="dialog-panel dialog-panel-rel">
-                <button className="dialog-close" onClick={onClose} aria-label="Close">
-                    <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                </button>
+                {close}
 
                 <h2 id="signup-title" className="dialog-title">Create Account</h2>
 

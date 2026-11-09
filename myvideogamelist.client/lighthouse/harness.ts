@@ -1,5 +1,6 @@
 import { readFileSync, rmSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { outboxFor } from '../e2e/outbox';
 import { idsIn, startStandIns, type HarnessPorts, type IgdbAnswer } from '../e2e/stand-ins';
 import { deleteAccount, seedAccount, shareAccount } from './seed';
 
@@ -118,7 +119,7 @@ export default async function setUp(): Promise<() => Promise<void>> {
     }
     const stop = await startStandIns(PORTS, answer);
     try {
-        const account = await seedAccount(SITE);
+        const account = await seedAccount(SITE, outboxFor(PORTS));
         shareAccount(account);
         return async () => {
             try {
