@@ -210,6 +210,47 @@ describe('moving between lists', () => {
     });
 });
 
+describe('while the lists are unknown', () => {
+    /** The lists' read answered as `answer` says, and every write recorded, answering 204. */
+    function stubLists(answer: () => Promise<Response>) {
+        const writes: string[] = [];
+        vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+            const url = String(input);
+            const method = init?.method ?? 'GET';
+            if (method === 'GET' && url === '/api/lists') return answer();
+            if (method === 'GET') return new Response(JSON.stringify({ view: 'tiles', sorts: {} }), { status: 200 });
+            writes.push(`${method} ${url}`);
+            return new Response(null, { status: 204 });
+        }));
+        return writes;
+    }
+
+    it('moves nothing while they load, since a game in one reads as in none until they come', async () => {
+        // A game in Finished would otherwise be moved to Backlog by a press meant to add it there.
+        const writes = stubLists(() => new Promise<Response>(() => {}));
+        render(<ListsProvider><Probe /></ListsProvider>);
+        expect(screen.getByTestId('loading')).toHaveTextContent('true');
+
+        await userEvent.click(screen.getByRole('button', { name: 'move to finished' }));
+        await userEvent.click(screen.getByRole('button', { name: 'remove' }));
+
+        expect(writes).toEqual([]);
+        expect(screen.getByTestId('list-finished')).toBeEmptyDOMElement();
+    });
+
+    it('moves nothing after they failed to load', async () => {
+        const writes = stubLists(async () => new Response('nope', { status: 500 }));
+        render(<ListsProvider><Probe /></ListsProvider>);
+        await waitFor(() => expect(screen.getByTestId('loading')).toHaveTextContent('false'));
+
+        await userEvent.click(screen.getByRole('button', { name: 'move to finished' }));
+        await userEvent.click(screen.getByRole('button', { name: 'remove' }));
+
+        expect(writes).toEqual([]);
+        expect(screen.getByTestId('list-finished')).toBeEmptyDOMElement();
+    });
+});
+
 describe('leaving every list', () => {
     it('takes the game out of the list it was in', async () => {
         await renderProvider({ lists: { playing: [CELESTE] } });

@@ -43,7 +43,8 @@
 
 .look-options {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    /* Three across in a narrow column, and as many as fit the settings tab's width (ADR 0084). */
+    grid-template-columns: repeat(auto-fill, minmax(8.5rem, 1fr));
     gap: 0.5rem;
     margin-top: 0.5rem;
 }

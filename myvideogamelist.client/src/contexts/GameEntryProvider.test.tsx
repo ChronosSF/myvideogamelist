@@ -2,7 +2,10 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState, type ReactNode } from 'react';
-import { GameUserPanel } from '@/components/GameUserPanel';
+import { MemoryRouter } from 'react-router';
+import { GameEntryProvider } from '@/contexts/GameEntryProvider';
+import { GameTrackingRow } from '@/components/GameTrackingRow';
+import { GameYours } from '@/components/GameYours';
 import { ListsContext, type ListsContextValue } from '@/contexts/ListsContext';
 import { WishlistContext, type WishlistContextValue } from '@/contexts/WishlistContext';
 import { FavouritesContext, type FavouritesContextValue } from '@/contexts/FavouritesContext';
@@ -13,11 +16,32 @@ import type { PlaythroughDto, ReviewDto } from '@/types/playthrough';
 import { entryDetail, game, platform, playthrough, review, tag } from '@/test/factories';
 import type { TagDto } from '@/types/tag';
 
+// The row's sign-in prompts open the dialog through this. One object for every call: a mock handing back
+// a fresh one per render re-runs every effect that depends on it, for ever.
+const authDialog = vi.hoisted(() => ({ open: vi.fn() }));
+vi.mock('@/hooks/useAuthDialog', () => ({ useAuthDialog: () => authDialog }));
+
 const CELESTE = game({
     id: 1,
     title: 'Celeste',
     platforms: [platform(6, 'PC (Microsoft Windows)'), platform(48, 'PlayStation 4')],
 });
+
+/**
+ * Everything the game page draws from one reader's entry: the hero's tracking row and the Your game
+ * tab, under one provider, as the page mounts them. The row renders a `Link`, so it needs a router.
+ */
+function Controls({ profileVisibility, onCommunityChange }: {
+    profileVisibility: ProfileVisibility;
+    onCommunityChange: () => void;
+}) {
+    return (
+        <GameEntryProvider game={CELESTE} profileVisibility={profileVisibility} onCommunityChange={onCommunityChange}>
+            <GameTrackingRow game={CELESTE} authLoading={false} linkToYours={false} />
+            <GameYours authLoading={false} />
+        </GameEntryProvider>
+    );
+}
 
 /** A context whose behaviour each test can steer, without the provider's fetches in the way. */
 function contextValue(overrides: Partial<ListsContextValue> = {}): ListsContextValue {
@@ -28,8 +52,8 @@ function contextValue(overrides: Partial<ListsContextValue> = {}): ListsContextV
         mutationError: null,
         reload: vi.fn(),
         isPending: () => false,
-        addToList: vi.fn(async () => {}),
-        removeFromList: vi.fn(async () => {}),
+        addToList: vi.fn(async () => true),
+        removeFromList: vi.fn(async () => true),
         isInList: () => false,
         getListFor: () => null,
         scoreFor: () => null,
@@ -47,7 +71,7 @@ function contextValue(overrides: Partial<ListsContextValue> = {}): ListsContextV
     };
 }
 
-/** The wishlist is a second axis with its own context, so the panel needs both. */
+/** The wishlist is a second axis with its own context, so the provider needs both. */
 function wishlistValue(overrides: Partial<WishlistContextValue> = {}): WishlistContextValue {
     return {
         items: [],
@@ -99,6 +123,32 @@ function tagsValue(overrides: Partial<TagsContextValue> = {}): TagsContextValue 
     };
 }
 
+/** The controls inside the four contexts they read, as one tree, so a test can render it again with one changed. */
+function tree(
+    contexts: {
+        lists: ListsContextValue;
+        wishlist: WishlistContextValue;
+        favourites: FavouritesContextValue;
+        tags: TagsContextValue;
+    },
+    profileVisibility: ProfileVisibility,
+    onCommunityChange: () => void,
+) {
+    return (
+        <MemoryRouter>
+            <ListsContext.Provider value={contexts.lists}>
+                <WishlistContext.Provider value={contexts.wishlist}>
+                    <FavouritesContext.Provider value={contexts.favourites}>
+                        <TagsContext.Provider value={contexts.tags}>
+                            <Controls profileVisibility={profileVisibility} onCommunityChange={onCommunityChange} />
+                        </TagsContext.Provider>
+                    </FavouritesContext.Provider>
+                </WishlistContext.Provider>
+            </ListsContext.Provider>
+        </MemoryRouter>
+    );
+}
+
 function renderPanel(
     overrides: Partial<ListsContextValue> = {},
     wishlistOverrides: Partial<WishlistContextValue> = {},
@@ -111,30 +161,16 @@ function renderPanel(
     const favourites = favouritesValue(favouritesOverrides);
     const tags = tagsValue(tagsOverrides);
     const onCommunityChange = vi.fn();
-    const rendered = render(
-        <ListsContext.Provider value={value}>
-            <WishlistContext.Provider value={wishlist}>
-                <FavouritesContext.Provider value={favourites}>
-                    <TagsContext.Provider value={tags}>
-                        <GameUserPanel
-                            game={CELESTE}
-                            profileVisibility={profileVisibility}
-                            onCommunityChange={onCommunityChange}
-                        />
-                    </TagsContext.Provider>
-                </FavouritesContext.Provider>
-            </WishlistContext.Provider>
-        </ListsContext.Provider>,
-    );
+    const rendered = render(tree({ lists: value, wishlist, favourites, tags }, profileVisibility, onCommunityChange));
     // `rendered` and `listsValue` rather than `view` and `lists`, which are fields of the lists context.
     return { ...value, wishlist, favourites, tags, onCommunityChange, rendered, listsValue: value };
 }
 
 /**
- * The API the panel talks to: one read for the entry and its playthroughs, and the playthrough
+ * The API the provider talks to: one read for the entry and its playthroughs, and the playthrough
  * writes.
  *
- * One stub rather than two, because the panel holds a single `fetch` and a second `stubGlobal`
+ * One stub rather than two, because the provider holds a single `fetch` and a second `stubGlobal`
  * would silently replace the first — the symptom being an entry read answered with a playthrough
  * response.
  */
@@ -166,13 +202,13 @@ function stubEntryFetch(
     return fetchMock;
 }
 
-/** The body of the nth request the panel made, parsed. */
+/** The body of the nth request the provider made, parsed. */
 function bodyOf(fetchMock: ReturnType<typeof stubEntryFetch>, call: number): unknown {
     return JSON.parse(String(fetchMock.mock.calls[call][1]?.body));
 }
 
 /**
- * Waits for the panel's own entry fetch to land.
+ * Waits for the provider's own entry fetch to land.
  *
  * Without this, a synchronous assertion races the fetch and React reports a state update outside
  * `act(...)` — a warning that would go on to mask real ones. The score control is disabled until
@@ -187,6 +223,13 @@ function shownScore(): number | null {
     const checked = screen.getAllByRole('radio').find(radio => (radio as HTMLInputElement).checked);
     return checked === undefined ? null : Number((checked as HTMLInputElement).value);
 }
+
+/** The list control of a game in a list: a select showing that list, with the others and a way out. */
+const yourList = () => screen.getByLabelText('Your list');
+/** And of a game in none: the Backlog in one press, by the name its owner gave it... */
+const addToBacklog = (name = 'Backlog') => screen.getByRole('button', { name: `Add to ${name}` });
+/** ...and the other four lists in a select beside it. */
+const addToAnother = () => screen.getByLabelText('Add to another list');
 
 /**
  * That a button is drawn as a save: in the primary, and not in the red, which is the confirmation's
@@ -209,15 +252,25 @@ beforeEach(() => {
     vi.unstubAllGlobals();
 });
 
-describe('GameUserPanel list placement', () => {
+describe('GameEntryProvider list placement', () => {
     it('offers all five statuses', async () => {
+        // To a game in no list: the Backlog in one press, and the other four beside it.
         stubEntryFetch(null, 404);
         renderPanel();
         await settled();
 
-        for (const name of ['Backlog', 'Playing', 'On Hold', 'Finished', 'Dropped']) {
-            expect(screen.getByRole('button', { name }), name).toBeInTheDocument();
-        }
+        expect(addToBacklog()).toBeInTheDocument();
+        expect(within(addToAnother()).getAllByRole('option').map(option => option.textContent))
+            .toEqual(['Playing', 'On Hold', 'Finished', 'Dropped']);
+    });
+
+    it('offers all five statuses to a game in one, and a way out of it', async () => {
+        stubEntryFetch(null, 404);
+        renderPanel({ isInList: (listId: ListId) => listId === 'playing', getListFor: () => 'playing' });
+        await settled();
+
+        expect(within(yourList()).getAllByRole('option').map(option => option.textContent))
+            .toEqual(['Backlog', 'Playing', 'On Hold', 'Finished', 'Dropped', 'Take out of Playing']);
     });
 
     it('marks the status the game is in', async () => {
@@ -225,34 +278,47 @@ describe('GameUserPanel list placement', () => {
         renderPanel({ isInList: (listId: ListId) => listId === 'on_hold', getListFor: () => 'on_hold' });
         await settled();
 
-        expect(screen.getByRole('button', { name: 'On Hold' })).toHaveAttribute('aria-pressed', 'true');
-        expect(screen.getByRole('button', { name: 'Playing' })).toHaveAttribute('aria-pressed', 'false');
+        expect(yourList()).toHaveDisplayValue('On Hold');
     });
 
     it('says so when the game is in no list', async () => {
+        // Not by naming a list: a game in none is drawn as the offer to add it, and nothing shows it in one.
         stubEntryFetch(null, 404);
         renderPanel();
         await settled();
 
-        expect(screen.getByText('Not in any of your lists.')).toBeInTheDocument();
+        expect(addToBacklog()).toBeEnabled();
+        expect(addToAnother()).toBeEnabled();
+        expect(screen.queryByLabelText('Your list')).not.toBeInTheDocument();
     });
 
-    it('moves the game when an inactive status is clicked', async () => {
+    it('moves the game when another list is chosen', async () => {
         stubEntryFetch(null, 404);
         const ctx = renderPanel();
         await settled();
 
-        await userEvent.click(screen.getByRole('button', { name: 'Finished' }));
+        await userEvent.selectOptions(addToAnother(), 'Finished');
 
         expect(ctx.addToList).toHaveBeenCalledWith('finished', CELESTE);
     });
 
-    it('takes the game out when the active status is clicked again', async () => {
+    it('moves a game from the list it is in when another is chosen', async () => {
         stubEntryFetch(null, 404);
         const ctx = renderPanel({ isInList: (listId: ListId) => listId === 'playing', getListFor: () => 'playing' });
         await settled();
 
-        await userEvent.click(screen.getByRole('button', { name: 'Playing' }));
+        await userEvent.selectOptions(yourList(), 'Finished');
+
+        expect(ctx.addToList).toHaveBeenCalledWith('finished', CELESTE);
+        expect(ctx.removeFromList).not.toHaveBeenCalled();
+    });
+
+    it('takes the game out when the way out of its list is chosen', async () => {
+        stubEntryFetch(null, 404);
+        const ctx = renderPanel({ isInList: (listId: ListId) => listId === 'playing', getListFor: () => 'playing' });
+        await settled();
+
+        await userEvent.selectOptions(yourList(), 'Take out of Playing');
 
         expect(ctx.removeFromList).toHaveBeenCalledWith('playing', 1);
     });
@@ -266,11 +332,12 @@ describe('GameUserPanel list placement', () => {
 
         function Lists({ children }: { children: ReactNode }) {
             const [held, setHeld] = useState({ list: from, pending: false });
-            const move = async (to: ListId | null) => {
+            const move = async (to: ListId | null): Promise<boolean> => {
                 const before = held.list;
                 setHeld({ list: to, pending: true });
                 const saved = await new Promise<boolean>(resolve => { settle = resolve; });
                 setHeld({ list: saved ? to : before, pending: false });
+                return saved;
             };
             const value = contextValue({
                 isPending: () => held.pending,
@@ -283,15 +350,17 @@ describe('GameUserPanel list placement', () => {
         }
 
         render(
-            <Lists>
-                <WishlistContext.Provider value={wishlistValue()}>
-                    <FavouritesContext.Provider value={favouritesValue()}>
-                        <TagsContext.Provider value={tagsValue()}>
-                            <GameUserPanel game={CELESTE} profileVisibility="private" onCommunityChange={vi.fn()} />
-                        </TagsContext.Provider>
-                    </FavouritesContext.Provider>
-                </WishlistContext.Provider>
-            </Lists>,
+            <MemoryRouter>
+                <Lists>
+                    <WishlistContext.Provider value={wishlistValue()}>
+                        <FavouritesContext.Provider value={favouritesValue()}>
+                            <TagsContext.Provider value={tagsValue()}>
+                                <Controls profileVisibility="private" onCommunityChange={vi.fn()} />
+                            </TagsContext.Provider>
+                        </FavouritesContext.Provider>
+                    </WishlistContext.Provider>
+                </Lists>
+            </MemoryRouter>,
         );
         return { finish: (saved: boolean) => act(async () => { settle(saved); }) };
     }
@@ -302,12 +371,12 @@ describe('GameUserPanel list placement', () => {
         const { finish } = renderMovingPanel('playing');
         await settled();
 
-        await userEvent.click(screen.getByRole('button', { name: 'Finished' }));
-        expect(screen.getByRole('button', { name: 'Finished' })).toHaveAttribute('aria-pressed', 'true');
+        await userEvent.selectOptions(yourList(), 'Finished');
+        expect(yourList()).toHaveDisplayValue('Finished');
         expect(screen.queryByRole('alert')).not.toBeInTheDocument();
         await finish(false);
 
-        expect(screen.getByRole('button', { name: 'Playing' })).toHaveAttribute('aria-pressed', 'true');
+        expect(yourList()).toHaveDisplayValue('Playing');
         expect(screen.getByRole('alert')).toHaveTextContent('Could not move this game to Finished. Please try again.');
     });
 
@@ -316,10 +385,10 @@ describe('GameUserPanel list placement', () => {
         const { finish } = renderMovingPanel('playing');
         await settled();
 
-        await userEvent.click(screen.getByRole('button', { name: 'Playing' }));
+        await userEvent.selectOptions(yourList(), 'Take out of Playing');
         await finish(false);
 
-        expect(screen.getByRole('button', { name: 'Playing' })).toHaveAttribute('aria-pressed', 'true');
+        expect(yourList()).toHaveDisplayValue('Playing');
         expect(screen.getByRole('alert')).toHaveTextContent('Could not take this game out of Playing. Please try again.');
     });
 
@@ -328,22 +397,22 @@ describe('GameUserPanel list placement', () => {
         const { finish } = renderMovingPanel(null);
         await settled();
 
-        await userEvent.click(screen.getByRole('button', { name: 'Backlog' }));
+        await userEvent.click(addToBacklog());
         await finish(false);
         expect(screen.getByRole('alert')).toHaveTextContent('Could not move this game to Backlog. Please try again.');
 
-        await userEvent.click(screen.getByRole('button', { name: 'Backlog' }));
+        await userEvent.click(addToBacklog());
         expect(screen.queryByRole('alert')).not.toBeInTheDocument();
         await finish(true);
 
-        expect(screen.getByRole('button', { name: 'Backlog' })).toHaveAttribute('aria-pressed', 'true');
+        expect(yourList()).toHaveDisplayValue('Backlog');
         expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     });
 });
 
-describe('GameUserPanel scoring', () => {
+describe('GameEntryProvider scoring', () => {
     it('loads the score for a game that is in no list', async () => {
-        // The whole reason the panel fetches its own entry: the provider only carries listed games.
+        // The whole reason this fetches its own entry: the lists provider only carries listed games.
         stubEntryFetch(8);
         renderPanel();
 
@@ -363,15 +432,6 @@ describe('GameUserPanel scoring', () => {
         renderPanel();
 
         await settled();
-    });
-
-    it('says that the score outlives list membership', async () => {
-        // The opposite of what most trackers do, so the panel states it rather than assuming.
-        stubEntryFetch(null, 404);
-        renderPanel();
-        await settled();
-
-        expect(screen.getByText(/kept whatever list this is in, or none/i)).toBeInTheDocument();
     });
 
     it('saves a chosen score', async () => {
@@ -455,7 +515,7 @@ describe('GameUserPanel scoring', () => {
     });
 });
 
-describe('GameUserPanel when the entry cannot be read', () => {
+describe('GameEntryProvider when the entry cannot be read', () => {
     /*
      * Only a 404 means "nothing recorded". Any other failure leaves the score, ownership, notes,
      * playthroughs and review unknown — and shown as empty, the notes box and the review form would
@@ -470,7 +530,8 @@ describe('GameUserPanel when the entry cannot be read', () => {
         expect(screen.getByLabelText('Your score for Celeste')).toBeDisabled();
         expect(screen.getByRole('button', { name: 'Owned' })).toBeDisabled();
         expect(screen.getByLabelText('Your notes')).toBeDisabled();
-        expect(screen.getByRole('button', { name: 'Log playthrough' })).toBeDisabled();
+        expect(screen.getByRole('combobox', { name: 'Add a tag to Celeste' })).toBeDisabled();
+        expect(screen.getByRole('button', { name: 'Add a playthrough' })).toBeDisabled();
         expect(screen.getByLabelText('What you thought')).toBeDisabled();
     });
 
@@ -488,7 +549,8 @@ describe('GameUserPanel when the entry cannot be read', () => {
         renderPanel();
         await screen.findByRole('alert');
 
-        expect(screen.getByRole('button', { name: 'Playing' })).toBeEnabled();
+        expect(addToBacklog()).toBeEnabled();
+        expect(addToAnother()).toBeEnabled();
         expect(screen.getByRole('button', { name: 'Add to wishlist' })).toBeEnabled();
         expect(screen.getByRole('button', { name: 'Add to favourites' })).toBeEnabled();
     });
@@ -515,7 +577,7 @@ describe('GameUserPanel when the entry cannot be read', () => {
     });
 });
 
-describe('GameUserPanel deleting everything', () => {
+describe('GameEntryProvider deleting everything', () => {
     it('offers no delete for a game with nothing recorded', async () => {
         stubEntryFetch(null, 404);
         renderPanel();
@@ -610,21 +672,31 @@ describe('GameUserPanel deleting everything', () => {
         await waitFor(() => expect(shownScore()).toBeNull());
     });
 
-    it('draws only its Delete in red, and only the saves in the primary', async () => {
-        // A save in the red reads as this Delete, and a Cancel or a Delete in the primary reads as a
-        // save. Mid-edit, so that the playthrough form's Cancel is on screen as well.
+    it('draws only a confirmation’s Delete in red, and only the saves in the primary', async () => {
+        // A save in the red reads as a delete, and a Cancel, a Keep it or a delete in the primary reads
+        // as a save (issue 233). The red is the confirmations' alone: nothing is drawn in it until a
+        // delete has been asked for, and then only the button that carries it out (issue 245). Mid-edit,
+        // so that the playthrough form's Cancel is on screen as well.
         stubEntryFetch(7, 200, [playthrough({ id: 5 })], undefined, review({ id: 3 }));
         renderPanel();
 
         await userEvent.click(await screen.findByRole('button', { name: 'Edit playthrough 1' }));
-        await userEvent.click(screen.getByRole('button', { name: /delete my data/i }));
 
         // Every button, found by role and asked for its class: "no other" has no query of its own.
         const drawnIn = (fill: string) => screen.getAllByRole('button')
             .filter(button => button.classList.contains(fill))
             .map(button => button.textContent);
-        expect(drawnIn('danger')).toEqual(['Delete']);
-        expect(drawnIn('primary')).toEqual(['Save notes', 'Save playthrough', 'Update review']);
+        expect(drawnIn('danger')).toEqual([]);
+        expect(drawnIn('primary')).toEqual(['Update review', 'Save playthrough', 'Save notes']);
+
+        // Every delete asked for at once, so that the three confirmations are on screen together.
+        await userEvent.click(screen.getByRole('button', { name: 'Delete review…' }));
+        await userEvent.click(screen.getByRole('button', { name: 'Delete playthrough 1…' }));
+        await userEvent.click(screen.getByRole('button', { name: /delete my data/i }));
+
+        expect(drawnIn('danger')).toEqual(['Delete review', 'Delete playthrough 1', 'Delete']);
+        // The review's confirmation stands where its save was, so that save is off screen meanwhile.
+        expect(drawnIn('primary')).toEqual(['Save playthrough', 'Save notes']);
     });
 
     it('backs out on cancel without deleting', async () => {
@@ -639,7 +711,7 @@ describe('GameUserPanel deleting everything', () => {
     });
 
     it('keeps everything on screen, and says so, when the delete fails', async () => {
-        // The provider puts the lists back; the panel's own copy has to stay too, or the game reads
+        // The lists provider puts the lists back; this provider's own copy has to stay too, or the game reads
         // as empty until the next page load while everything is still recorded.
         stubEntryFetch(7, 200, [playthrough({ id: 5, minutesPlayed: 260 })]);
         const ctx = renderPanel({ deleteEntry: vi.fn(async () => false) });
@@ -667,7 +739,7 @@ describe('GameUserPanel deleting everything', () => {
     });
 });
 
-describe("GameUserPanel and the members' view of the game", () => {
+describe("GameEntryProvider and the members' view of the game", () => {
     /*
      * The member score and the review list on the same page are fetched once, so a write here has to
      * say so or they go on showing the game as it was — the look of a write that failed.
@@ -736,7 +808,10 @@ describe("GameUserPanel and the members' view of the game", () => {
             review({ id: 3, body: 'On reflection, no.' }));
         const ctx = renderPanel();
 
-        await userEvent.click(await screen.findByRole('button', { name: 'Delete review' }));
+        await userEvent.click(await screen.findByRole('button', { name: 'Delete review…' }));
+        // Asked first, and nothing is gone until it is answered.
+        expect(ctx.onCommunityChange).not.toHaveBeenCalled();
+        await userEvent.click(screen.getByRole('button', { name: 'Delete review' }));
 
         await waitFor(() => expect(ctx.onCommunityChange).toHaveBeenCalledTimes(1));
     });
@@ -758,14 +833,14 @@ describe("GameUserPanel and the members' view of the game", () => {
         const ctx = renderPanel();
         await settled();
 
-        await userEvent.click(screen.getByRole('button', { name: 'Playing' }));
+        await userEvent.selectOptions(addToAnother(), 'Playing');
 
         expect(ctx.addToList).toHaveBeenCalled();
         expect(ctx.onCommunityChange).not.toHaveBeenCalled();
     });
 });
 
-describe('GameUserPanel wishlist', () => {
+describe('GameEntryProvider wishlist', () => {
     it('offers to wishlist a game that is not on it', async () => {
         stubEntryFetch(null, 404);
         renderPanel();
@@ -815,7 +890,7 @@ describe('GameUserPanel wishlist', () => {
         );
         await settled();
 
-        expect(screen.getByRole('button', { name: 'Playing' })).toHaveAttribute('aria-pressed', 'true');
+        expect(yourList()).toHaveDisplayValue('Playing');
         expect(screen.getByRole('button', { name: 'On your wishlist' })).toHaveAttribute('aria-pressed', 'true');
         expect(ctx.wishlist.remove).not.toHaveBeenCalled();
     });
@@ -834,13 +909,14 @@ describe('GameUserPanel wishlist', () => {
         stubEntryFetch(null, 404);
         renderPanel({ isPending: () => true });
         // Not `settled()`: the score control stays disabled for as long as a list mutation is
-        // pending, so there is nothing here that becomes enabled to wait for. The panel's own
+        // pending, so there is nothing here that becomes enabled to wait for. The provider's own
         // entry fetch still has to land before the test ends, or React reports its state update
         // outside `act(...)` — a warning that goes on to mask real ones.
         await act(async () => {});
 
         expect(screen.getByRole('button', { name: 'Add to wishlist' })).toBeEnabled();
-        expect(screen.getByRole('button', { name: 'Playing' })).toBeDisabled();
+        expect(addToBacklog()).toBeDisabled();
+        expect(addToAnother()).toBeDisabled();
     });
 
     it('surfaces a failed toggle', async () => {
@@ -851,8 +927,8 @@ describe('GameUserPanel wishlist', () => {
         expect(screen.getByRole('alert')).toHaveTextContent(/failed to update your wishlist/i);
     });
 
-    it('leaves a wishlist that failed to load to the page, not to this panel', async () => {
-        // A load failure is a whole-page condition. This panel is about one game, and repeating
+    it('leaves a wishlist that failed to load to the page, not to these controls', async () => {
+        // A load failure is a whole-page condition. These controls are about one game, and repeating
         // it here would put the same message in two places on the game page.
         stubEntryFetch(null, 404);
         renderPanel({}, { error: 'Failed to load your wishlist (500)' });
@@ -862,7 +938,7 @@ describe('GameUserPanel wishlist', () => {
     });
 });
 
-describe('GameUserPanel favourite', () => {
+describe('GameEntryProvider favourite', () => {
     it('offers to make a favourite of a game that is not one', async () => {
         stubEntryFetch(null, 404);
         renderPanel();
@@ -911,7 +987,7 @@ describe('GameUserPanel favourite', () => {
         );
         await settled();
 
-        expect(screen.getByRole('button', { name: 'Finished' })).toHaveAttribute('aria-pressed', 'true');
+        expect(yourList()).toHaveDisplayValue('Finished');
         expect(screen.getByRole('button', { name: 'On your wishlist' })).toHaveAttribute('aria-pressed', 'true');
         expect(screen.getByRole('button', { name: 'One of your favourites' })).toHaveAttribute('aria-pressed', 'true');
         expect(ctx.wishlist.remove).not.toHaveBeenCalled();
@@ -936,11 +1012,14 @@ describe('GameUserPanel favourite', () => {
     });
 
     it('says the public profile shows favourites when it is public', async () => {
+        // Said to a screen reader as the toggle's description, which is where the question arises.
         stubEntryFetch(null, 404);
         renderPanel({}, {}, 'public');
         await settled();
 
         expect(screen.getByText(/favourites are shown on your public profile/i)).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Add to favourites' }))
+            .toHaveAccessibleDescription('Favourites are shown on your public profile.');
     });
 
     it('says nobody else sees them while the profile is private', async () => {
@@ -949,16 +1028,16 @@ describe('GameUserPanel favourite', () => {
         await settled();
 
         expect(screen.getByText(/your profile is private, so nobody else sees them/i)).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Add to favourites' }))
+            .toHaveAccessibleDescription('Shown on your own profile page. Your profile is private, so nobody else sees them.');
     });
 
     it('explains a control stuck by a failed load, and offers a retry', async () => {
-        // Favourites have no page of their own to report this on, unlike the wishlist.
+        // Favourites have no page of their own to report this on, unlike the wishlist. Nothing is
+        // pending: the failed load alone is what holds the toggle.
         const actor = userEvent.setup();
         stubEntryFetch(null, 404);
-        const ctx = renderPanel({}, {}, 'private', {
-            error: 'Failed to load your favourites (500)',
-            isPending: () => true,
-        });
+        const ctx = renderPanel({}, {}, 'private', { error: 'Failed to load your favourites (500)' });
         await settled();
 
         expect(screen.getByRole('alert')).toHaveTextContent(/favourites could not be loaded/i);
@@ -977,7 +1056,10 @@ describe('GameUserPanel favourite', () => {
     });
 });
 
-describe('GameUserPanel playthroughs', () => {
+describe('GameEntryProvider playthroughs', () => {
+    /** Opens the form for a new run, which is closed until it is asked for (issue 222). */
+    const openForm = () => userEvent.click(screen.getByRole('button', { name: 'Add a playthrough' }));
+
     it('lists what the entry read returned', async () => {
         stubEntryFetch(null, 200, [
             playthrough({
@@ -1053,10 +1135,28 @@ describe('GameUserPanel playthroughs', () => {
         expect(screen.getByText(/nothing logged yet/i)).toBeInTheDocument();
     });
 
+    it('opens the form only when asked, and offers no second Add while it is open', async () => {
+        stubEntryFetch(null, 404);
+        renderPanel();
+        await settled();
+
+        expect(screen.queryByLabelText('Hours')).not.toBeInTheDocument();
+        await openForm();
+
+        expect(screen.getByLabelText('Hours')).toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'Add a playthrough' })).not.toBeInTheDocument();
+
+        await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+
+        expect(screen.queryByLabelText('Hours')).not.toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Add a playthrough' })).toBeInTheDocument();
+    });
+
     it('says to leave the type blank while still playing', async () => {
         stubEntryFetch(null, 404);
         renderPanel();
         await settled();
+        await openForm();
 
         expect(screen.getByText(/leave this blank while you are still playing/i))
             .toBeInTheDocument();
@@ -1066,6 +1166,7 @@ describe('GameUserPanel playthroughs', () => {
         stubEntryFetch(null, 404);
         renderPanel();
         await settled();
+        await openForm();
 
         const select = screen.getByLabelText('Platform');
         expect(within(select).getByRole('option', { name: 'PlayStation 4' })).toBeInTheDocument();
@@ -1078,6 +1179,7 @@ describe('GameUserPanel playthroughs', () => {
             new Response(JSON.stringify(saved), { status: 201 }));
         renderPanel();
         await settled();
+        await openForm();
 
         await userEvent.selectOptions(screen.getByLabelText('Platform'), '6');
         await userEvent.selectOptions(screen.getByLabelText('How you played it'), 'rushed');
@@ -1086,8 +1188,11 @@ describe('GameUserPanel playthroughs', () => {
         await userEvent.click(screen.getByRole('button', { name: 'Log playthrough' }));
 
         expect(await screen.findByText('3h 15m')).toBeInTheDocument();
-        // Scoped to the list: 'Rushed' is also an option in the type select above it.
+        // Scoped to the list: the review's select names the run too.
         expect(within(screen.getByRole('list')).getByText('Rushed')).toBeInTheDocument();
+        // Saved, so the form has closed and a further run is one Add away.
+        expect(screen.queryByLabelText('Hours')).not.toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Add a playthrough' })).toBeInTheDocument();
 
         // Hours and minutes are two fields on screen and one number in the API.
         expect(bodyOf(fetchMock, 1)).toMatchObject({
@@ -1104,6 +1209,7 @@ describe('GameUserPanel playthroughs', () => {
             new Response(JSON.stringify(playthrough({ id: 9 })), { status: 201 }));
         renderPanel();
         await settled();
+        await openForm();
 
         await userEvent.click(screen.getByRole('button', { name: 'Log playthrough' }));
 
@@ -1127,11 +1233,14 @@ describe('GameUserPanel playthroughs', () => {
             { status: 400 }));
         renderPanel();
         await settled();
+        await openForm();
 
         await userEvent.click(screen.getByRole('button', { name: 'Log playthrough' }));
 
         expect(await screen.findByRole('alert'))
             .toHaveTextContent(/finish date cannot be before the start date/i);
+        // Still open, with what was entered, to put right and send again.
+        expect(screen.getByRole('button', { name: 'Log playthrough' })).toBeInTheDocument();
     });
 
     it('reports a dead API rather than clearing the form as though it saved', async () => {
@@ -1143,11 +1252,13 @@ describe('GameUserPanel playthroughs', () => {
         vi.stubGlobal('fetch', fetchMock);
         renderPanel();
         await settled();
+        await openForm();
 
         await userEvent.click(screen.getByRole('button', { name: 'Log playthrough' }));
 
         expect(await screen.findByRole('alert'))
             .toHaveTextContent(/could not save your playthrough/i);
+        expect(screen.getByRole('button', { name: 'Log playthrough' })).toBeInTheDocument();
     });
 
     it('loads a playthrough into the form to edit it', async () => {
@@ -1195,6 +1306,7 @@ describe('GameUserPanel playthroughs', () => {
         expectDrawnAsSave('Save playthrough');
 
         await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+        await openForm();
         expectDrawnAsSave('Log playthrough');
     });
 
@@ -1205,8 +1317,27 @@ describe('GameUserPanel playthroughs', () => {
         await userEvent.click(await screen.findByRole('button', { name: 'Edit playthrough 1' }));
         await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
 
+        // Closed, and opened again it is a new run's form, with nothing of the run it was editing.
+        expect(screen.queryByLabelText('Hours')).not.toBeInTheDocument();
+        await openForm();
         expect(screen.getByRole('button', { name: 'Log playthrough' })).toBeInTheDocument();
         expect(screen.getByLabelText('Hours')).toHaveValue(null);
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('asks before deleting a run, and keeps it when told to', async () => {
+        // A run records something that happened, and nothing brings it back (issue 245).
+        const fetchMock = stubEntryFetch(null, 200, [playthrough({ id: 5, minutesPlayed: 260 })]);
+        renderPanel();
+
+        await userEvent.click(await screen.findByRole('button', { name: 'Delete playthrough 1…' }));
+
+        const question = screen.getByRole('group', { name: 'Delete playthrough 1?' });
+        expect(within(question).getByRole('button', { name: 'Delete playthrough 1' })).toBeInTheDocument();
+        await userEvent.click(within(question).getByRole('button', { name: 'Keep it' }));
+
+        expect(screen.queryByRole('group', { name: 'Delete playthrough 1?' })).not.toBeInTheDocument();
+        expect(screen.getByText('4h 20m')).toBeInTheDocument();
         expect(fetchMock).toHaveBeenCalledTimes(1);
     });
 
@@ -1218,7 +1349,8 @@ describe('GameUserPanel playthroughs', () => {
             () => new Response(null, { status: 204 }));
         renderPanel();
 
-        await userEvent.click(await screen.findByRole('button', { name: 'Delete playthrough 1' }));
+        await userEvent.click(await screen.findByRole('button', { name: 'Delete playthrough 1…' }));
+        await userEvent.click(screen.getByRole('button', { name: 'Delete playthrough 1' }));
 
         await waitFor(() => expect(screen.queryByText('4h 20m')).not.toBeInTheDocument());
         expect(fetchMock.mock.calls[1][1]?.method).toBe('DELETE');
@@ -1233,7 +1365,8 @@ describe('GameUserPanel playthroughs', () => {
             () => new Response('nope', { status: 500 }));
         renderPanel();
 
-        await userEvent.click(await screen.findByRole('button', { name: 'Delete playthrough 1' }));
+        await userEvent.click(await screen.findByRole('button', { name: 'Delete playthrough 1…' }));
+        await userEvent.click(screen.getByRole('button', { name: 'Delete playthrough 1' }));
 
         expect(await screen.findByRole('alert'))
             .toHaveTextContent(/could not delete that playthrough/i);
@@ -1241,7 +1374,7 @@ describe('GameUserPanel playthroughs', () => {
     });
 });
 
-describe('GameUserPanel review', () => {
+describe('GameEntryProvider review', () => {
     it('starts empty for a game with nothing written', async () => {
         stubEntryFetch(null, 404);
         renderPanel();
@@ -1249,7 +1382,7 @@ describe('GameUserPanel review', () => {
 
         expect(screen.getByLabelText('What you thought')).toHaveValue('');
         expect(screen.getByRole('button', { name: 'Save review' })).toBeInTheDocument();
-        expect(screen.queryByRole('button', { name: 'Delete review' })).not.toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: /^Delete review/ })).not.toBeInTheDocument();
     });
 
     it('loads a review that was already written', async () => {
@@ -1408,11 +1541,29 @@ describe('GameUserPanel review', () => {
             review({ id: 3, body: 'On reflection, no.' }));
         renderPanel();
 
-        await userEvent.click(await screen.findByRole('button', { name: 'Delete review' }));
+        await userEvent.click(await screen.findByRole('button', { name: 'Delete review…' }));
+        await userEvent.click(screen.getByRole('button', { name: 'Delete review' }));
 
         await waitFor(() => expect(screen.getByLabelText('What you thought')).toHaveValue(''));
         expect(screen.getByRole('button', { name: 'Save review' })).toBeInTheDocument();
         expect(fetchMock.mock.calls[1][1]?.method).toBe('DELETE');
+    });
+
+    it('asks before deleting it, and keeps it when told to', async () => {
+        // Nothing brings a review back (issue 245).
+        const fetchMock = stubEntryFetch(null, 200, [], undefined, review({ id: 3, body: 'On reflection, no.' }));
+        renderPanel();
+
+        await userEvent.click(await screen.findByRole('button', { name: 'Delete review…' }));
+
+        const question = screen.getByRole('group', { name: 'Delete your review?' });
+        expect(within(question).getByRole('button', { name: 'Delete review' })).toBeInTheDocument();
+        await userEvent.click(within(question).getByRole('button', { name: 'Keep it' }));
+
+        expect(screen.queryByRole('group', { name: 'Delete your review?' })).not.toBeInTheDocument();
+        expect(screen.getByLabelText('What you thought')).toHaveValue('On reflection, no.');
+        expect(screen.getByRole('button', { name: 'Update review' })).toBeInTheDocument();
+        expect(fetchMock).toHaveBeenCalledTimes(1);
     });
 
     it('offers the whole-game delete for a game that only has a review', async () => {
@@ -1439,9 +1590,11 @@ describe('GameUserPanel review', () => {
         const sent = (method: string) => fetchMock.mock.calls.find(([, init]) => init?.method === method);
         renderPanel();
 
-        await userEvent.click(await screen.findByRole('button', { name: 'Delete playthrough 1' }));
-        // The run gone from the panel, not only the request sent: the form reads the runs the panel holds.
-        await waitFor(() => expect(screen.queryAllByRole('button', { name: /^Delete playthrough/ })).toHaveLength(runs.length - 1));
+        await userEvent.click(await screen.findByRole('button', { name: 'Delete playthrough 1…' }));
+        await userEvent.click(screen.getByRole('button', { name: 'Delete playthrough 1' }));
+        // The run gone from the list, not only the request sent: the form reads the runs the provider
+        // holds. Counted by their Edits, which a run being deleted keeps until it is gone.
+        await waitFor(() => expect(screen.queryAllByRole('button', { name: /^Edit playthrough/ })).toHaveLength(runs.length - 1));
         await userEvent.click(await screen.findByRole('button', { name: 'Update review' }));
 
         await waitFor(() => expect(sent('PUT')).toBeDefined());
@@ -1449,7 +1602,7 @@ describe('GameUserPanel review', () => {
     });
 });
 
-describe('GameUserPanel ownership and notes', () => {
+describe('GameEntryProvider ownership and notes', () => {
     /** The entry read, carrying whatever ownership and notes a test gives it. */
     function stubDetail(detail: { ownership?: 'owned' | 'subscription' | 'borrowed' | null; notes?: string | null } = {}) {
         const fetchMock = vi.fn(async () => new Response(
@@ -1500,7 +1653,7 @@ describe('GameUserPanel ownership and notes', () => {
 
     it('puts the previous kind back when the save fails, and says why', async () => {
         // A toggle that goes back on its own is indistinguishable from a click that never
-        // registered, and nothing on this panel renders the provider's own mutation error.
+        // registered, and nothing on the page renders the lists provider's own mutation error.
         stubDetail({ ownership: 'owned' });
         renderPanel({ setOwnership: vi.fn(async () => false) });
         await settled();
@@ -1628,20 +1781,31 @@ describe('GameUserPanel ownership and notes', () => {
     });
 });
 
-describe('GameUserPanel and renamed lists', () => {
+describe('GameEntryProvider and renamed lists', () => {
+    const renamed = (id: ListId) => (id === 'backlog' ? 'Pile of Shame' : LIST_NAMES[id]);
+
     it('labels the list buttons with the names their owner gave them', async () => {
         stubEntryFetch(null, 404);
-        const ctx = renderPanel({ nameFor: (id: ListId) => (id === 'backlog' ? 'Pile of Shame' : LIST_NAMES[id]) });
+        const ctx = renderPanel({ nameFor: renamed });
         await settled();
 
-        await userEvent.click(screen.getByRole('button', { name: 'Pile of Shame' }));
+        await userEvent.click(addToBacklog('Pile of Shame'));
 
         // The label is the user's; what is sent is still the permanent key.
         expect(ctx.addToList).toHaveBeenCalledWith('backlog', CELESTE);
     });
+
+    it('names the list the game is in, and the way out of it, as their owner did', async () => {
+        stubEntryFetch(null, 404);
+        renderPanel({ nameFor: renamed, isInList: (id: ListId) => id === 'backlog', getListFor: () => 'backlog' });
+        await settled();
+
+        expect(yourList()).toHaveDisplayValue('Pile of Shame');
+        expect(within(yourList()).getByRole('option', { name: 'Take out of Pile of Shame' })).toBeInTheDocument();
+    });
 });
 
-describe('GameUserPanel tags', () => {
+describe('GameEntryProvider tags', () => {
     const COOP = tag({ id: 1, name: 'Co-op', count: 4 });
     const SHORT = tag({ id: 2, name: 'short', count: 1 });
 
@@ -1708,7 +1872,7 @@ describe('GameUserPanel tags', () => {
         await waitFor(() => expect(ctx.setTags).toHaveBeenCalledWith(1, [1, 7]));
     });
 
-    it('holds the panel’s other writes to this game while the tag is being made', async () => {
+    it('holds the other writes to this game while the tag is being made', async () => {
         // Two requests — the tag, then the game's set — and nothing else may write the entry between.
         let finish!: (result: { ok: true; tag: TagDto }) => void;
         const createTag = vi.fn(() => new Promise<{ ok: true; tag: TagDto }>(resolve => { finish = resolve; }));
@@ -1717,7 +1881,8 @@ describe('GameUserPanel tags', () => {
 
         await userEvent.type(box(), 'replay{Enter}');
 
-        expect(screen.getByRole('button', { name: 'Playing' })).toBeDisabled();
+        expect(addToBacklog()).toBeDisabled();
+        expect(addToAnother()).toBeDisabled();
         expect(screen.getByLabelText('Your score for Celeste')).toBeDisabled();
         expect(screen.getByRole('button', { name: 'Owned' })).toBeDisabled();
         expect(ctx.setTags).not.toHaveBeenCalled();
@@ -1725,7 +1890,8 @@ describe('GameUserPanel tags', () => {
         await act(async () => { finish({ ok: true, tag: tag({ id: 7, name: 'replay' }) }); });
 
         expect(ctx.setTags).toHaveBeenCalledWith(1, [7]);
-        expect(screen.getByRole('button', { name: 'Playing' })).toBeEnabled();
+        expect(addToBacklog()).toBeEnabled();
+        expect(addToAnother()).toBeEnabled();
     });
 
     it('holds a delete asked for before the tag was made, which would otherwise race its set', async () => {
@@ -1750,7 +1916,7 @@ describe('GameUserPanel tags', () => {
         expect(screen.getByRole('button', { name: 'Delete' })).toBeEnabled();
     });
 
-    it('writes no set when the tag is made after the panel has gone', async () => {
+    it('writes no set when the tag is made after the provider has gone', async () => {
         // The reader followed a link to another game, or signed out: nothing may be written for a game
         // nobody is looking at, under whatever cookie is current by then.
         let finish!: (result: { ok: true; tag: TagDto }) => void;
@@ -1821,7 +1987,7 @@ describe('GameUserPanel tags', () => {
     });
 
     it('asks for the account’s tags again only once, even when the fresh read still lacks the tag', async () => {
-        // Deleted between this panel's read of the game and the fresh read of the tags: asking again
+        // Deleted between this provider's read of the game and the fresh read of the tags: asking again
         // would ask for ever.
         const ctx = renderTagged([1, 42]);
         await settled();
@@ -1830,17 +1996,11 @@ describe('GameUserPanel tags', () => {
         // The read goes out and comes back, still without 42.
         for (const status of ['loading', 'ready'] as const) {
             const next = tagsValue({ tags: [COOP, SHORT], status, reload: ctx.tags.reload });
-            ctx.rendered.rerender(
-                <ListsContext.Provider value={ctx.listsValue}>
-                    <WishlistContext.Provider value={ctx.wishlist}>
-                        <FavouritesContext.Provider value={ctx.favourites}>
-                            <TagsContext.Provider value={next}>
-                                <GameUserPanel game={CELESTE} profileVisibility="private" onCommunityChange={ctx.onCommunityChange} />
-                            </TagsContext.Provider>
-                        </FavouritesContext.Provider>
-                    </WishlistContext.Provider>
-                </ListsContext.Provider>,
-            );
+            ctx.rendered.rerender(tree(
+                { lists: ctx.listsValue, wishlist: ctx.wishlist, favourites: ctx.favourites, tags: next },
+                'private',
+                ctx.onCommunityChange,
+            ));
         }
 
         await waitFor(() => expect(chips()).toEqual(['Co-op']));

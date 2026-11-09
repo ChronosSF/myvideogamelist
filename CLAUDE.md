@@ -325,7 +325,7 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   an aggregate names nobody; the reviews list only those public on a public profile. The reviews page
   by an encrypted cursor over `CreatedAt` then the review id, **never by offset** — rows move while
   somebody reads, and an offset then skips a review for good — and never on a key that can change,
-  such as the author's name. `GameUserPanel` calls the hook's `reload` after the reader's own
+  such as the author's name. `GameEntryProvider` calls the hook's `reload` after the reader's own
   score or review changes, or the section beside it shows the write as though it had failed. See
   `docs/decisions/0028-*`. **The scores are the exception, because they name nobody**: the loader
   reads `/community-scores` and `/community-times` beside the game, so the member score is in the
@@ -333,6 +333,16 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   read has a one-second deadline, a render missing either is `no-store`, and under the floors the
   loader keeps only the counts, since its copy sits in the shared HTML for up to a day. Review text
   never enters the loader (ADR 0069).
+
+- **The game page and the profile are each two tabs, and the reader's own record of a game is one provider.**
+  `/games/:id` (Overview) and `/games/:id/yours` (Your game) are child routes of `GamePage`, which keeps the
+  loader, the headers, the meta and the boundary; `/user` and `/user/settings` are `UserPage`'s. The list, the
+  score, the wishlist and the favourite are `GameTrackingRow` in the hero, drawn the same size in the server
+  render, signed out and signed in, so keep any change to it the same height in all three. Both it and the Your
+  game tab read `useGameEntry()`, from `GameEntryProvider`, keyed on the account and the game; the Overview
+  tab sits outside it on purpose, so a signed-in reader's arrival remounts only the hero. Your game is
+  `noindex` and `no-store`. A game's related games are `GameDetailsDto.Related`, one more IGDB query cached
+  apart, and a null there makes the render `no-store`. See `docs/decisions/0084-*`.
 
 - **A change of list clears the entry's hand-arranged position, and every writer of a status owes
   that.** `UserGameEntries.Position` is the backlog's "My order": a sparse number, null for a game never
@@ -415,7 +425,12 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   middleware checks each hop against the trust list, and the CDN's address is never in the
   balancer's subnets, so raising it to 2 quietly leaves the limiter partitioned by edge server. The
   balancer preserves the header instead, which is safe only while nothing but CloudFront can reach
-  it. See `docs/decisions/0044-*`.
+  it. See `docs/decisions/0044-*`. **The one other limit is per account, and never on a withdrawal**:
+  making a profile public and changing a public name's letter case, ten and three a day, because each
+  lets a withdrawal that goes to the edge at once be repeated; the rest of an account's withdrawals are
+  paced by `WithdrawalHold` instead, a minute apart and twenty before one every fifteen minutes, so one
+  account cannot spend the day's invalidations. A moderator's withdrawal goes at once. See
+  `docs/decisions/0081-*`.
 
 - **Never change a game's status without recording an event.** `UserGameEvents` is append-only
   and is the only record that a transition happened — `UserGameLists` holds current state and is

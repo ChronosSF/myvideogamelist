@@ -177,8 +177,11 @@ public class IgdbService(
     /// The store links read the websites the listing already asks for, and add the game's
     /// <c>external_games</c> here. Those carry a row per regional retail listing as well — Elden Ring
     /// has 49 from Amazon alone — which a page of twenty games would multiply for nothing.
+    /// The game's type and the series of the game it is a version of are for the related games alone: an
+    /// edition seldom names a series of its own, so its rail is asked by its original's (ADR 0084).
     /// </remarks>
     private const string GameDetailFieldList =
+        "game_type,version_parent.collections," +
         "external_games.url,external_games.external_game_source," +
         "screenshots.image_id," +
         "themes.name,player_perspectives.name,game_modes.name,game_engines.name," +
@@ -339,8 +342,12 @@ public class IgdbService(
     public async Task<GameDto?> GetGameByIdAsync(int id, CancellationToken cancellationToken = default)
     {
         var cacheKey = $"igdb_game|{id}";
-        if (cache.TryGetValue(cacheKey, out GameDto? cached))
-            return cached;
+        if (cache.TryGetValue(cacheKey, out GameDetail? cached))
+        {
+            return cached is null
+                ? null
+                : WithRelated(cached, await GetRelatedGamesAsync(id, cached.EditionOf, cached.SeriesIds, cancellationToken));
+        }
 
         var query = new StringBuilder()
             .AppendLine(GameDetailFields)
@@ -351,18 +358,89 @@ public class IgdbService(
         var igdbGames = await QueryAsync<IgdbGame>(GamesEndpoint, query, cancellationToken);
         var igdbGame = igdbGames.FirstOrDefault();
 
-        GameDto? result = null;
-        if (igdbGame is not null)
+        if (igdbGame is null)
         {
-            var timeToBeat = await FetchTimeToBeatAsync(id, cancellationToken);
-            result = MapToGameDto(igdbGame) with { Details = MapToDetailsDto(igdbGame, timeToBeat) };
+            // Cache misses briefly too, so a bad ID cannot hammer IGDB on repeat requests
+            cache.Set<GameDetail?>(cacheKey, null, TimeSpan.FromMinutes(5));
+            return null;
         }
 
-        // Cache misses briefly too, so a bad ID cannot hammer IGDB on repeat requests
-        var ttl = result is not null ? TimeSpan.FromMinutes(30) : TimeSpan.FromMinutes(5);
-        cache.Set(cacheKey, result, ttl);
+        // The completion times and the related games each need only what the detail query answered, so
+        // they go out together: a page nobody has asked for lately waits on one more request, not two.
+        // Neither throws for IGDB's failure, each answering null for its part of the page.
+        var editionOf = RelatedGames.EditionOf(igdbGame.GameType, igdbGame.VersionParent?.Id);
+        var seriesIds = (igdbGame.Collections ?? []).Select(c => c.Id)
+            .Concat(editionOf is null ? [] : igdbGame.VersionParent?.Collections ?? [])
+            .ToList();
+        var timeToBeat = FetchTimeToBeatAsync(id, cancellationToken);
+        var related = GetRelatedGamesAsync(id, editionOf, seriesIds, cancellationToken);
+        await Task.WhenAll(timeToBeat, related);
 
-        return result;
+        var details = MapToDetailsDto(igdbGame, await timeToBeat);
+        var detail = new GameDetail(MapToGameDto(igdbGame) with { Details = details }, details, editionOf, seriesIds);
+        cache.Set(cacheKey, detail, TimeSpan.FromMinutes(30));
+
+        return WithRelated(detail, await related);
+    }
+
+    /// <summary>
+    /// A game as the detail query reads it, with what its related games are asked by: the game it is an edition
+    /// of, if it is one, and the ids of its series and of that game's.
+    /// </summary>
+    private sealed record GameDetail(GameDto Game, GameDetailsDto Details, int? EditionOf, IReadOnlyList<int> SeriesIds);
+
+    private static GameDto WithRelated(GameDetail detail, RelatedGamesDto? related) =>
+        detail.Game with { Details = detail.Details with { Related = related } };
+
+    /// <summary>How long a game's related games are kept. A series and a game's children change seldom.</summary>
+    private static readonly TimeSpan RelatedGamesLifetime = TimeSpan.FromHours(6);
+
+    /// <summary>
+    /// How long a failed read of them is kept: long enough that a page nobody may cache, read over and over,
+    /// does not ask IGDB again on every render, and short enough that the rail is soon back.
+    /// </summary>
+    private static readonly TimeSpan RelatedGamesFailureLifetime = TimeSpan.FromMinutes(1);
+
+    /// <summary>
+    /// The rest of a game's series, and its remakes, remasters and editions (#450, ADR 0084). Supplementary to
+    /// the page, so a failure degrades to null rather than taking the game down with it, and is deliberately
+    /// caught here: the page renders without them, and reads the null as a render to keep off the edge.
+    /// </summary>
+    /// <remarks>
+    /// Kept apart from the game's own entry, and a failure for a minute only: the game is kept for half an hour,
+    /// and a failure kept with it would degrade every render of the page for that long — the completion times'
+    /// way, which #352 records.
+    /// </remarks>
+    private async Task<RelatedGamesDto?> GetRelatedGamesAsync(
+        int id, int? editionOf, IReadOnlyCollection<int> seriesIds, CancellationToken cancellationToken)
+    {
+        var cacheKey = $"igdb_related|{id}";
+        if (cache.TryGetValue(cacheKey, out RelatedGamesDto? cached))
+            return cached;
+
+        try
+        {
+            var rows = await QueryAsync<IgdbCalendarGame>(
+                GamesEndpoint, RelatedGames.BuildQuery(id, editionOf, seriesIds), cancellationToken);
+
+            if (rows.Count >= RelatedGames.QueryLimit)
+            {
+                logger.LogWarning(
+                    "Related games for game {GameId} reached the {Limit}-row ceiling; the series is cut short.",
+                    id, RelatedGames.QueryLimit);
+            }
+
+            var related = RelatedGames.Fold(
+                id, rows.Select(row => new RelatedCandidate(MapToCalendarGame(row), row.FirstReleaseDate)).ToList());
+            cache.Set(cacheKey, related, RelatedGamesLifetime);
+            return related;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogWarning(ex, "Related games unavailable for game {GameId}.", id);
+            cache.Set<RelatedGamesDto?>(cacheKey, null, RelatedGamesFailureLifetime);
+            return null;
+        }
     }
 
     public async Task<IEnumerable<GameDto>> GetGamesByIdsAsync(

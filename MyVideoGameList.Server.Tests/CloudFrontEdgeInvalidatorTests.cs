@@ -198,6 +198,34 @@ public class CloudFrontEdgeInvalidatorTests
     }
 
     [Fact]
+    public void Invalidate_WaitedForItsAccountsPace_IsDatedByItsWrite()
+    {
+        // Its window opened at the write, not when its account's pace let it go: retried past
+        // sixty-five minutes after the write, it would be a path paid for to remove nothing.
+        var clock = new ManualClock(Midday);
+        var invalidator = Invalidator(Substitute.For<IAmazonCloudFront>(), clock);
+        var writtenAt = Midday - TimeSpan.FromMinutes(14);
+
+        invalidator.Invalidate(Withdrawal with { WrittenAt = writtenAt });
+
+        Assert.True(invalidator.TryTakeQueued(out var queued));
+        Assert.Equal(writtenAt, queued.QueuedAt);
+    }
+
+    [Fact]
+    public void Invalidate_SamePathsWaitingFromALaterWrite_KeepsTheLaterTime()
+    {
+        var clock = new ManualClock(Midday);
+        var invalidator = Invalidator(Substitute.For<IAmazonCloudFront>(), clock);
+
+        invalidator.Invalidate(Withdrawal);
+        invalidator.Invalidate(Withdrawal with { WrittenAt = Midday - TimeSpan.FromMinutes(5) });
+
+        Assert.True(invalidator.TryTakeQueued(out var queued));
+        Assert.Equal(Midday, queued.QueuedAt);
+    }
+
+    [Fact]
     public void Invalidate_SamePathsOnceTheFirstIsBeingSent_IsQueuedAgain()
     {
         // Once taken off the queue the first may reach CloudFront before the second write commits,
@@ -431,7 +459,7 @@ public class CloudFrontEdgeInvalidatorTests
     // ---------------------------------------------------------------------------------------
 
     [Fact]
-    public async Task ExecuteAsync_TwoWithdrawalsQueued_SendsThemInOrderOneRequestEach()
+    public async Task ExecuteAsync_TwoWithdrawalsQueued_SendsThemInOrderOneRequestEachAfterTheStart()
     {
         var cloudFront = Substitute.For<IAmazonCloudFront>();
         var sent = new List<IReadOnlyList<string>>();
@@ -442,7 +470,7 @@ public class CloudFrontEdgeInvalidatorTests
                 lock (sent)
                 {
                     sent.Add(call.Arg<CreateInvalidationRequest>().InvalidationBatch.Paths.Items);
-                    if (sent.Count == 2) both.TrySetResult();
+                    if (sent.Count == 3) both.TrySetResult();
                 }
                 return Accepted();
             });
@@ -454,9 +482,34 @@ public class CloudFrontEdgeInvalidatorTests
         await both.Task.WaitAsync(TimeSpan.FromSeconds(10));
         await invalidator.StopAsync(CancellationToken.None);
 
-        Assert.Equal(2, sent.Count);
-        Assert.Equal(new[] { "/u/alice*" }, sent[0]);
-        Assert.Equal(new[] { "/u/bob*" }, sent[1]);
+        Assert.Equal(3, sent.Count);
+        Assert.Equal(new[] { "/u/*", "/sitemaps/profiles-*" }, sent[0]);
+        Assert.Equal(new[] { "/u/alice*" }, sent[1]);
+        Assert.Equal(new[] { "/u/bob*" }, sent[2]);
+    }
+
+    [Fact]
+    public async Task StartAsync_ATaskStarting_InvalidatesEveryProfileAndTheSitemapsFirst()
+    {
+        // A task that died outright held its queue and its accounts' paced withdrawals in memory,
+        // all of them written before it died: every profile, sent by the next one to start, covers
+        // them, at two paths a start (ADR 0081 §2).
+        var cloudFront = Substitute.For<IAmazonCloudFront>();
+        var first = new TaskCompletionSource<CreateInvalidationRequest>();
+        cloudFront.CreateInvalidationAsync(Arg.Any<CreateInvalidationRequest>(), Arg.Any<CancellationToken>())
+            .Returns(call =>
+            {
+                first.TrySetResult(call.Arg<CreateInvalidationRequest>());
+                return Accepted();
+            });
+        using var invalidator = Invalidator(cloudFront);
+
+        await invalidator.StartAsync(CancellationToken.None);
+        var request = await first.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        await invalidator.StopAsync(CancellationToken.None);
+
+        Assert.Equal(["/u/*", "/sitemaps/profiles-*"], request.InvalidationBatch.Paths.Items);
+        Assert.Equal(2, request.InvalidationBatch.Paths.Quantity);
     }
 
     [Fact]
@@ -496,15 +549,16 @@ public class CloudFrontEdgeInvalidatorTests
         invalidator.Invalidate(Another);
         await invalidator.StopAsync(CancellationToken.None);
 
-        Assert.Equal(2, Requests(cloudFront).Count);
+        // The start's, then both of these.
+        Assert.Equal(3, Requests(cloudFront).Count);
         Assert.Empty(logger.At(LogLevel.Error));
     }
 
     [Fact]
     public async Task StopAsync_WorkStillUnsentAfterTheDrain_LogsEachOnesPathsAsAnError()
     {
-        // CloudFront hangs, so nothing is sent in the drain: the one in flight and the one behind it
-        // are each named, so they can be sent by hand.
+        // CloudFront hangs, so nothing is sent in the drain: the one in flight, the start's, and the
+        // two behind it are each named, so they can be sent by hand.
         var cloudFront = Substitute.For<IAmazonCloudFront>();
         var started = new TaskCompletionSource();
         cloudFront.CreateInvalidationAsync(Arg.Any<CreateInvalidationRequest>(), Arg.Any<CancellationToken>())
@@ -524,7 +578,8 @@ public class CloudFrontEdgeInvalidatorTests
         await invalidator.StopAsync(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(10));
 
         var unsent = logger.At(LogLevel.Error).Where(e => e.Message.StartsWith("Stopping with")).ToList();
-        Assert.Equal(2, unsent.Count);
+        Assert.Equal(3, unsent.Count);
+        Assert.Contains(unsent, e => e.Message.Contains("/u/*"));
         Assert.Contains(unsent, e => e.Message.Contains("/u/alice*"));
         Assert.Contains(unsent, e => e.Message.Contains("/u/bob*"));
     }
@@ -586,7 +641,9 @@ public class CloudFrontEdgeInvalidatorTests
         Assert.DoesNotContain(services, d => d.ServiceType == typeof(IAmazonCloudFront));
         Assert.DoesNotContain(services, d => d.ServiceType == typeof(IHostedService));
         using var provider = services.BuildServiceProvider();
-        Assert.IsType<LoggingEdgeInvalidator>(provider.GetRequiredService<IEdgeInvalidator>());
+        // Behind each account's pace, so Development waits a withdrawal as a deployment would.
+        var paced = Assert.IsType<WithdrawalHold>(provider.GetRequiredService<IEdgeInvalidator>());
+        Assert.IsType<LoggingEdgeInvalidator>(paced.Inner);
     }
 
     [Fact]
@@ -598,10 +655,44 @@ public class CloudFrontEdgeInvalidatorTests
         services.AddSingleton(Substitute.For<IAmazonCloudFront>());
         using var provider = services.BuildServiceProvider();
 
-        var invalidator = provider.GetRequiredService<IEdgeInvalidator>();
+        var paced = Assert.IsType<WithdrawalHold>(provider.GetRequiredService<IEdgeInvalidator>());
         var hosted = Assert.Single(provider.GetServices<IHostedService>());
 
-        Assert.IsType<CloudFrontEdgeInvalidator>(invalidator);
-        Assert.Same(invalidator, hosted);
+        Assert.IsType<CloudFrontEdgeInvalidator>(paced.Inner);
+        Assert.Same(paced.Inner, hosted);
+    }
+
+    [Fact]
+    public void AddEdgeInvalidation_HostStopping_SendsWhatWasWaitingForItsPaceBeforeTheQueueDrains()
+    {
+        // ApplicationStopping is raised before any hosted service stops, so what an account had
+        // waiting is in the queue before the queue spends its few seconds sending what it holds.
+        var services = Registered(DistributionId);
+        services.AddSingleton(Substitute.For<IAmazonCloudFront>());
+        var lifetime = new StoppingLifetime();
+        services.AddSingleton<IHostApplicationLifetime>(lifetime);
+        using var provider = services.BuildServiceProvider();
+        var paced = provider.GetRequiredService<IEdgeInvalidator>();
+        var queue = provider.GetRequiredService<CloudFrontEdgeInvalidator>();
+
+        paced.Invalidate(new EdgeInvalidation("review deleted", ["/u/alice*"]) { Account = "alice-id" });
+        paced.Invalidate(new EdgeInvalidation("entry deleted", ["/u/alice*"]) { Account = "alice-id" });
+        Assert.True(queue.TryTakeQueued(out _));
+        Assert.False(queue.TryTakeQueued(out _));
+
+        lifetime.Stop();
+
+        Assert.True(queue.TryTakeQueued(out var flushed));
+        Assert.Equal("entry deleted", flushed.Invalidation.Reason);
+    }
+
+    private sealed class StoppingLifetime : IHostApplicationLifetime
+    {
+        private readonly CancellationTokenSource stopping = new();
+        public CancellationToken ApplicationStarted => CancellationToken.None;
+        public CancellationToken ApplicationStopping => stopping.Token;
+        public CancellationToken ApplicationStopped => CancellationToken.None;
+        public void StopApplication() => Stop();
+        public void Stop() => stopping.Cancel();
     }
 }

@@ -387,6 +387,8 @@ describe('Navbar user menu', () => {
         const menu = screen.getByRole('menu');
         expect(within(menu).getByText('@alex')).toBeInTheDocument();
         expect(within(menu).getByRole('menuitem', { name: 'My Profile' })).toHaveAttribute('href', '/user');
+        // The profile's Settings tab, an address of its own (ADR 0084).
+        expect(within(menu).getByRole('menuitem', { name: 'Settings' })).toHaveAttribute('href', '/user/settings');
         expect(within(menu).getByRole('menuitem', { name: 'Sign Out' })).toBeInTheDocument();
     });
 

@@ -346,6 +346,14 @@ function locateAll(lists: Record<ListId, ListEntryDto[]>): ReadonlyMap<number, E
 }
 
 /**
+ * Whether which list each game is in is known: neither loading nor failed to load. A membership write
+ * is refused otherwise, since it would be decided from a game that only reads as in no list.
+ */
+function membershipKnown(state: ListsState): boolean {
+    return !state.loading && state.error === null;
+}
+
+/**
  * The actions a mutation raises about itself — its lock, its undo and its failure — every one stamped with
  * the session the mutation began under, never the one current when it lands (`ListsState.session`).
  */
@@ -620,10 +628,10 @@ export function ListsProvider({ children }: { children: ReactNode }) {
         }
     }, []);
 
-    const addToList = useCallback(async (listId: ListId, game: GameDto): Promise<void> => {
+    const addToList = useCallback(async (listId: ListId, game: GameDto): Promise<boolean> => {
         const { state, session } = committed.current;
         const { startPending, endPending, rollBack, restore } = stamped(dispatch, session);
-        if (state.pending.has(game.id)) return;
+        if (!membershipKnown(state) || state.pending.has(game.id)) return false;
         startPending(game.id);
 
         // Only this game's own row is remembered, never the whole set of lists — see
@@ -652,19 +660,24 @@ export function ListsProvider({ children }: { children: ReactNode }) {
                 body: JSON.stringify({ status: listId }),
             });
 
-            if (res.ok) dispatch({ type: 'CLEAR_MUTATION_ERROR', session });
-            else rollBack(undo, 'Failed to update list. Please try again.');
+            if (res.ok) {
+                dispatch({ type: 'CLEAR_MUTATION_ERROR', session });
+                return true;
+            }
+            rollBack(undo, 'Failed to update list. Please try again.');
+            return false;
         } catch {
             rollBack(undo, 'Failed to update list. Please try again.');
+            return false;
         } finally {
             endPending(game.id);
         }
     }, []);
 
-    const removeFromList = useCallback(async (listId: ListId, gameId: number): Promise<void> => {
+    const removeFromList = useCallback(async (listId: ListId, gameId: number): Promise<boolean> => {
         const { state, session } = committed.current;
         const { startPending, endPending, rollBack, restore } = stamped(dispatch, session);
-        if (state.pending.has(gameId)) return;
+        if (!membershipKnown(state) || state.pending.has(gameId)) return false;
         startPending(gameId);
 
         const found = state.lists[listId].find(entry => entry.game.id === gameId);
@@ -678,10 +691,15 @@ export function ListsProvider({ children }: { children: ReactNode }) {
                 method: 'DELETE',
             });
 
-            if (res.ok) dispatch({ type: 'CLEAR_MUTATION_ERROR', session });
-            else rollBack(undo, 'Failed to remove from list. Please try again.');
+            if (res.ok) {
+                dispatch({ type: 'CLEAR_MUTATION_ERROR', session });
+                return true;
+            }
+            rollBack(undo, 'Failed to remove from list. Please try again.');
+            return false;
         } catch {
             rollBack(undo, 'Failed to remove from list. Please try again.');
+            return false;
         } finally {
             endPending(gameId);
         }

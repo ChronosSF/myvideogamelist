@@ -33,8 +33,8 @@ function listsValue(overrides: Partial<ListsContextValue> = {}): ListsContextVal
         mutationError: null,
         reload: vi.fn(),
         isPending: () => false,
-        addToList: vi.fn(async () => {}),
-        removeFromList: vi.fn(async () => {}),
+        addToList: vi.fn(async () => true),
+        removeFromList: vi.fn(async () => true),
         isInList: () => false,
         getListFor: () => null,
         scoreFor: () => null,
@@ -332,8 +332,8 @@ describe('GameCard favourite mark', () => {
 
 describe('GameCard list buttons', () => {
     it('marks the list its game is in, takes it off that one, and moves it to any other', async () => {
-        const addToList = vi.fn(async () => {});
-        const removeFromList = vi.fn(async () => {});
+        const addToList = vi.fn(async () => true);
+        const removeFromList = vi.fn(async () => true);
         renderCard({}, { getListFor: id => (id === CELESTE.id ? 'playing' : null), addToList, removeFromList });
 
         expect(screen.getByRole('button', { name: 'Playing' })).toHaveAttribute('aria-pressed', 'true');

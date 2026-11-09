@@ -9,58 +9,117 @@
 /* ── Layout ──────────────────────────────────────────────────────────────── */
 
 /*
- * Three named areas rather than two columns. Stacked, they read in source order — who you are, what
- * you have done, then preferences — which is the order that matters on a phone. From lg up the
- * tracking takes the main column and both groups of settings share a sidebar, as the game page's
- * details and sidebar do.
+ * Two tabs (ADR 0084). Your tracking is one column at the page's width. Settings is one page of sections
+ * with an index beside them, held in view from lg up as the calendar's month is, and a row of links to
+ * jump along above them below that.
  */
-.user-page-grid {
+.user-page-tracking {
+    display: flex;
+    flex-direction: column;
+    gap: 4rem;
+}
+
+.user-settings {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
-    grid-template-areas:
-        'account'
-        'tracking'
-        'prefs';
-    gap: 3rem;
+    gap: 2.5rem;
 }
 
 @media (min-width: 64rem) {
-    .user-page-grid {
-        grid-template-columns: minmax(0, 1fr) 20rem;
-        /* The first row is as tall as the account cards. The tracking spans both rows, and any
-           height it has beyond the first goes to the second, so the preferences sit directly
-           under the account cards rather than halfway down the page. */
-        grid-template-rows: auto 1fr;
-        grid-template-areas:
-            'tracking account'
-            'tracking prefs';
+    .user-settings {
+        grid-template-columns: 12rem minmax(0, 1fr);
         column-gap: 4rem;
         align-items: start;
     }
 }
 
-.user-page-account {
-    grid-area: account;
+.user-settings-index {
+    @apply rule-heavy;
+    padding-top: 0.5rem;
 }
 
-.user-page-tracking {
-    grid-area: tracking;
+.user-settings-index ul {
+    display: flex;
+    gap: 0.5rem 1.25rem;
+    overflow-x: auto;
+    margin: 0;
+    padding: 0;
+    list-style: none;
 }
 
-.user-page-prefs {
-    grid-area: prefs;
+.user-settings-index a {
+    display: block;
+    padding: 0.5rem 0;
+    white-space: nowrap;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--color-fg-soft);
+    text-decoration: none;
 }
 
-.user-page-account,
-.user-page-tracking,
-.user-page-prefs {
+.user-settings-index a:hover {
+    color: var(--color-fg-strong);
+}
+
+.user-settings-index a:focus-visible {
+    outline: 2px solid var(--color-focus);
+    outline-offset: 2px;
+}
+
+@media (min-width: 64rem) {
+    /* Below the sticky navbar, which is 4rem tall, with the page's breathing room under it. */
+    .user-settings-index {
+        position: sticky;
+        top: 5.5rem;
+    }
+
+    .user-settings-index ul {
+        flex-direction: column;
+        gap: 0;
+        overflow: visible;
+    }
+
+    .user-settings-index li + li a {
+        border-top: 1px solid var(--color-line);
+    }
+}
+
+.user-settings-sections {
     display: flex;
     flex-direction: column;
-    gap: 2.25rem;
+    gap: 4rem;
+    min-width: 0;
 }
 
-.user-page-tracking {
-    gap: 4rem;
+/* Each section under the heavy rule a section opens with, and a jump to it stops below the sticky navbar. */
+.user-settings-section {
+    @apply rule-heavy;
+    padding-top: 1rem;
+    scroll-margin-top: 5.5rem;
+}
+
+/* Two settings to a row where both are short, so neither stretches across the column. */
+.user-settings-pair {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2.25rem;
+    align-items: start;
+}
+
+@media (min-width: 48rem) {
+    .user-settings-pair {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        column-gap: 3rem;
+    }
+}
+
+.user-settings-narrow {
+    max-width: 40rem;
+}
+
+.user-settings-signout {
+    margin-top: 2rem;
+    max-width: 20rem;
 }
 
 /* ── The parts ───────────────────────────────────────────────────────────── */

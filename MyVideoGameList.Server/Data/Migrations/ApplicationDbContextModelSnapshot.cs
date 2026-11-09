@@ -172,7 +172,7 @@ namespace MyVideoGameList.Server.Data.Migrations
                         .ValueGeneratedOnAdd()
                         .HasMaxLength(16)
                         .HasColumnType("character varying(16)")
-                        .HasDefaultValue("honeycomb");
+                        .HasDefaultValue("pixels");
 
                     b.Property<string>("Bio")
                         .HasMaxLength(500)
@@ -225,7 +225,7 @@ namespace MyVideoGameList.Server.Data.Migrations
                         .ValueGeneratedOnAdd()
                         .HasMaxLength(16)
                         .HasColumnType("character varying(16)")
-                        .HasDefaultValue("grey");
+                        .HasDefaultValue("accent");
 
                     b.Property<string>("PhoneNumber")
                         .HasColumnType("text");
@@ -281,9 +281,9 @@ namespace MyVideoGameList.Server.Data.Migrations
                         {
                             t.HasCheckConstraint("CK_AspNetUsers_AvatarUrl_Https", "\"AvatarUrl\" IS NULL OR \"AvatarUrl\" ILIKE 'https://%'");
 
-                            t.HasCheckConstraint("CK_AspNetUsers_BackgroundPattern", "\"BackgroundPattern\" IN ('honeycomb', 'isometric', 'perspective', 'pixels', 'none')");
+                            t.HasCheckConstraint("CK_AspNetUsers_BackgroundPattern", "\"BackgroundPattern\" IN ('pixels', 'honeycomb', 'isometric', 'perspective', 'none')");
 
-                            t.HasCheckConstraint("CK_AspNetUsers_PatternTint", "\"PatternTint\" IN ('grey', 'accent')");
+                            t.HasCheckConstraint("CK_AspNetUsers_PatternTint", "\"PatternTint\" IN ('accent', 'grey')");
 
                             t.HasCheckConstraint("CK_AspNetUsers_ProfileVisibility", "\"ProfileVisibility\" IN ('public', 'private')");
 
