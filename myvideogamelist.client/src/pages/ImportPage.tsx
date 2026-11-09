@@ -94,8 +94,9 @@ export function ImportPage() {
                                 A file saved with <span className="text-fg-soft">Download my data</span>{' '}
                                 on your profile works too, from this account or another. Your lists,
                                 scores, notes, playthroughs, wishlist and favourites come back, and a
-                                review comes back as a note. The history of your moves, your tags, your
-                                own orderings and your settings do not.
+                                review comes back as a note, cut where the two run past 2,000
+                                characters. The history of your moves, your tags, your own orderings
+                                and your settings do not.
                             </p>
 
                             {/* A label wrapping the input is what makes the whole panel a valid

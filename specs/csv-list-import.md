@@ -330,8 +330,9 @@ platform re-sync stay paid. Export stays paid, as the table already has it.
    lists, scores, notes, dates added, wishlist, favourites and each run's dates, minutes and type
    come back, and a run's platform by its id, the one field the canonical row gained for it; the event
    log, `ScoredAt`, `StatusChangedAt`, reviews (as reviews), tags, ownership, the hand orders, a run's
-   notes, and the account's settings do not. The rows carry no titles and are named from
-   `CachedGames` at upload, with no network call
+   notes, and the account's settings do not. The rows carry no titles and are named after their
+   game wherever they are shown, so the upload still makes no network call; a review appended to the
+   notes is cut with them to 2,000 characters, which the review screen marks before the commit
    ([0083](../docs/decisions/0083-our-own-export-is-imported-as-any-trackers-is.md)).
 
 ## 10. What is left, and in what order

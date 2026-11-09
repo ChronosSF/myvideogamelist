@@ -59,11 +59,16 @@ public class ExportRoundTripTests
         return db;
     }
 
-    private static ImportService NewImport(ApplicationDbContext db)
+    /// <param name="known">
+    /// What the game cache answers for an id, or null for a game it holds nothing for. Every id is
+    /// known when this is left out.
+    /// </param>
+    private static ImportService NewImport(ApplicationDbContext db, Func<int, GameDto?>? known = null)
     {
+        var lookup = known ?? (id => Game(id));
         var cache = Substitute.For<IGameCacheService>();
         cache.GetGamesAsync(Arg.Any<IEnumerable<int>>(), Arg.Any<CancellationToken>())
-            .Returns(call => call.Arg<IEnumerable<int>>().Select(id => Game(id)).ToList());
+            .Returns(call => call.Arg<IEnumerable<int>>().Select(lookup).OfType<GameDto>().ToList());
 
         return new ImportService(db, cache, Substitute.For<IImportMatcher>(), new FixedClock(Now));
     }
@@ -321,26 +326,92 @@ public class ExportRoundTripTests
     // ---------------------------------------------------------------- the upload
 
     [Fact]
-    public async Task CreateJobAsync_OurExport_IsReadAsOursAndNamedFromTheCache()
+    public async Task CreateJobAsync_OurExport_IsReadAsOursAndStoredWithTheEmptyTitlesItGave()
     {
         using var db = NewDb();
         RecordAliceEverything(db);
         AddAccount(db, Bob, "bob");
-        Cache(db, 100, "Bloodborne", new DateOnly(2015, 3, 24));
 
-        var import = NewImport(db);
-        var job = await import.CreateJobAsync(Bob, "renamed.json", await ExportJsonAsync(db, Alice));
+        var job = await NewImport(db).CreateJobAsync(Bob, "renamed.json", await ExportJsonAsync(db, Alice));
 
         Assert.Equal(ImportSources.MyVideoGameList, job.Source);
 
-        var rows = db.ImportRows.ToDictionary(r => r.GameId!.Value);
+        // Named where they are shown instead, so a name looked up later is not frozen as a stand-in.
+        Assert.All(db.ImportRows, row => Assert.Equal(string.Empty, row.Title));
+    }
+
+    [Fact]
+    public async Task GetReviewAsync_OurExport_NamesEachRowAfterItsGameAndAGameNothingHoldsByItsId()
+    {
+        using var db = NewDb();
+        RecordAliceEverything(db);
+        AddAccount(db, Bob, "bob");
+
+        var bloodborne = Game(100) with { Title = "Bloodborne", ReleaseDate = new DateOnly(2015, 3, 24) };
+        var import = NewImport(db, id => id == 100 ? bloodborne : null);
+        var job = await import.CreateJobAsync(Bob, "export.json", await ExportJsonAsync(db, Alice));
+
+        var rows = (await import.GetReviewAsync(Bob, job.Id))!.Rows.ToDictionary(r => r.GameId!.Value);
+
         Assert.Equal("Bloodborne", rows[100].Title);
-
-        // A game the cache has never held is named by its id: the upload asks IGDB for nothing.
+        Assert.Equal(2015, rows[100].ReleaseYear);
         Assert.Equal("IGDB game 200", rows[200].Title);
+        Assert.Null(rows[200].ReleaseYear);
+    }
 
-        var review = await import.GetReviewAsync(Bob, job.Id);
-        Assert.Equal(2015, review!.Rows.Single(r => r.GameId == 100).ReleaseYear);
+    [Fact]
+    public async Task CommitAsync_ASkippedRowOnlyAnIdNames_IsReportedByItsCachedNameOrItsId()
+    {
+        using var db = NewDb();
+        RecordAliceEverything(db);
+        AddAccount(db, Bob, "bob");
+
+        // Bob already has both games, so both rows default to skip and are in the report.
+        db.UserGameEntries.AddRange(
+            new UserGameEntry { UserId = Bob, GameId = 100, AddedAt = On(2025, 1, 1) },
+            new UserGameEntry { UserId = Bob, GameId = 200, AddedAt = On(2025, 1, 1) });
+        db.SaveChanges();
+        Cache(db, 100, "Bloodborne");
+
+        var import = NewImport(db);
+        var job = await import.CreateJobAsync(Bob, "export.json", await ExportJsonAsync(db, Alice));
+        var result = await import.CommitAsync(Bob, job.Id);
+
+        var titles = result!.Skipped.Select(s => s.Title).ToList();
+        Assert.Contains("Bloodborne", titles);
+        Assert.Contains("IGDB game 200", titles);
+    }
+
+    [Fact]
+    public async Task CommitAsync_NotesAndAReviewPastTheColumn_AreFlaggedOnTheReviewAndCutWithAnEllipsis()
+    {
+        using var db = NewDb();
+        AddAccount(db, Alice, "alice");
+        var entry = new UserGameEntry { UserId = Alice, GameId = 100, Notes = new string('n', 1500), AddedAt = On(2024, 1, 2) };
+        db.UserGameEntries.Add(entry);
+        db.Reviews.Add(new Review
+        {
+            UserId = Alice,
+            Entry = entry,
+            Body = new string('r', 1000),
+            Visibility = ReviewVisibility.Private,
+            CreatedAt = On(2024, 2, 2),
+            UpdatedAt = On(2024, 2, 2)
+        });
+        db.SaveChanges();
+        AddAccount(db, Bob, "bob");
+
+        var import = NewImport(db);
+        var job = await import.CreateJobAsync(Bob, "export.json", await ExportJsonAsync(db, Alice));
+
+        Assert.True(Assert.Single((await import.GetReviewAsync(Bob, job.Id))!.Rows).NotesCut);
+
+        await import.CommitAsync(Bob, job.Id);
+
+        var notes = db.UserGameEntries.Single(e => e.UserId == Bob).Notes!;
+        Assert.Equal(2000, notes.Length);
+        Assert.EndsWith("r…", notes, StringComparison.Ordinal);
+        Assert.StartsWith(new string('n', 1500) + "\n\n", notes, StringComparison.Ordinal);
     }
 
     [Fact]

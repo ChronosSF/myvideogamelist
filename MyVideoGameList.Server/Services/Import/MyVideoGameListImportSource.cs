@@ -1,6 +1,7 @@
 using System.Text.Json;
 using MyVideoGameList.Server.DTOs;
 using MyVideoGameList.Server.Models;
+using static MyVideoGameList.Server.Services.Import.ImportText;
 
 namespace MyVideoGameList.Server.Services.Import;
 
@@ -28,8 +29,8 @@ namespace MyVideoGameList.Server.Services.Import;
 /// </para>
 /// <para>
 /// <b>Every row comes out with an empty title.</b> The export names a game by its IGDB id and
-/// nothing else (ADR 0024), and this reader touches no database, so the upload names these rows from
-/// the local cache instead (<c>ImportService</c>).
+/// nothing else (ADR 0024), and this reader touches no database, so a row is named after its game
+/// wherever it is shown instead (<c>ImportService.ShownTitle</c>).
 /// </para>
 /// <para>
 /// The sections are read into the same records the exporter writes, so renaming a property renames
@@ -63,12 +64,6 @@ internal sealed class MyVideoGameListImportSource : IImportSource
         PlaythroughTypeKeys.Normally,
         PlaythroughTypeKeys.Completionist
     ];
-
-    /// <summary>
-    /// <c>CK_UserGamePlaythroughs_MinutesPlayed_Range</c>'s upper bound, which a run's duration is
-    /// held to here so that a hand-edited figure costs the run its minutes rather than the import.
-    /// </summary>
-    private const int MaxMinutes = 600_000;
 
     /// <summary>
     /// The first two properties of every export, in the order the document writes them. Both,
@@ -235,14 +230,11 @@ internal sealed class MyVideoGameListImportSource : IImportSource
         return new ImportPlaythroughPayload(
             StartedOn: started,
             FinishedOn: run.FinishedOn,
-            MinutesPlayed: run.MinutesPlayed is >= 1 and <= MaxMinutes ? run.MinutesPlayed : null,
+            MinutesPlayed: run.MinutesPlayed is >= 1 and <= UserGamePlaythrough.MaxMinutesPlayed ? run.MinutesPlayed : null,
             PlatformName: null,
             Type: Clean(run.Type) is { } type && TypeKeys.Contains(type) ? type : null,
             PlatformId: run.PlatformId is > 0 ? run.PlatformId : null);
     }
-
-    private static string? Clean(string? value) =>
-        string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
     /// <summary>
     /// The sections of the export this reads, and nothing it does not: the account, the event log,

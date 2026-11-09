@@ -484,13 +484,15 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
             .OnDelete(DeleteBehavior.Restrict);
 
         // Enforced by the database as well as by the input DTO, because the column outlives any
-        // one validation attribute. 600,000 minutes is ten thousand hours — comfortably past any
-        // honest figure and still short of a typo that would break a sum.
+        // one validation attribute. The bound is UserGamePlaythrough.MaxMinutesPlayed's, formatted
+        // in the invariant culture for the reason PositionInRange gives.
         playthroughs.ToTable(t =>
         {
             t.HasCheckConstraint(
                 "CK_UserGamePlaythroughs_MinutesPlayed_Range",
-                "\"MinutesPlayed\" IS NULL OR (\"MinutesPlayed\" >= 1 AND \"MinutesPlayed\" <= 600000)");
+                string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"\"MinutesPlayed\" IS NULL OR (\"MinutesPlayed\" >= 1 AND \"MinutesPlayed\" <= {UserGamePlaythrough.MaxMinutesPlayed})"));
             t.HasCheckConstraint(
                 "CK_UserGamePlaythroughs_Dates_Order",
                 "\"StartedOn\" IS NULL OR \"FinishedOn\" IS NULL OR \"FinishedOn\" >= \"StartedOn\"");

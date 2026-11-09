@@ -83,6 +83,16 @@ public record ImportReviewSummaryDto(
 /// app has not cached the game yet, or that IGDB is unreachable. The import needs the id, not the
 /// cover art, so a null here costs a thumbnail rather than a row.
 /// </param>
+/// <param name="Title">
+/// The title the file gave, or, for a file that named the game by id alone, as our own export does,
+/// that game's name — or <c>IGDB game</c> and the id while this app holds nothing for it (ADR 0083).
+/// </param>
+/// <param name="ReleaseYear">The file's, or the named game's beside its name.</param>
+/// <param name="NotesCut">
+/// The row's notes are longer than an entry's notes can be, so the import will cut them, ending the
+/// note in an ellipsis. Said before the commit rather than discovered after it, because the text cut
+/// is usually a review its owner wrote (ADR 0083).
+/// </param>
 /// <param name="Status">One of <c>ListStatusKeys</c>, or null for a row that will carry no status.</param>
 /// <param name="PlayedUnresolved">
 /// The file says this game was played and not how that ended, so its status is whatever list its
@@ -121,6 +131,7 @@ public record ImportReviewRowDto(
     bool Wishlist,
     bool Favourite,
     bool HasNotes,
+    bool NotesCut,
     int PlaythroughCount,
     int? MinutesPlayed,
     bool AlreadyTracked,

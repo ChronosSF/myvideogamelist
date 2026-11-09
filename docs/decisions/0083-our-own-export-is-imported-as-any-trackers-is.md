@@ -62,7 +62,12 @@ entries exactly as they read Grouvee's.
 A review comes back as notes for 0037's reason: putting somebody's prose in front of other people is
 not an import's decision, and on a new account it is two clicks to make it again. It is appended after
 the entry's own notes, and the pair is cut to the notes column's 2,000 characters as any imported note
-is, so a long review loses its end.
+is, so a long review loses its end. A review can run to ten thousand, so this is a loss our own file
+meets far more often than Grouvee's did, and it is said rather than discovered: the review screen marks
+a row whose notes will be cut, and the cut note ends in an ellipsis, so that read later it does not look
+as though its owner stopped there. The cut never falls between the two halves of a character outside
+the Basic Multilingual Plane, an emoji most often, which would leave half a character UTF-8 cannot
+carry; it ends one unit early instead (`ImportText`).
 
 ### 3. Nothing in the file is trusted for having come from here
 
@@ -73,14 +78,23 @@ asked about rather than guessed; a run type it does not know leaves the run unty
 with minutes feeds the community medians. A game id of nothing is skipped, and a game named twice is
 read from its first mention. A missing date reads as none rather than as the year 1.
 
-### 4. A row is named from the cache at upload
+### 4. A row is named after its game wherever it is shown
 
-The export names a game by its IGDB id and nothing else, deliberately (0024), and the review screen, a
-row's own search and the failure report all show a title. The reader produces rows with an empty title,
-and the upload names them from `CachedGames` with their release year. It reads the table directly rather
-than through `IGameCacheService`, which would refresh a stale row from IGDB, so the upload still makes
-no network call (0037). A game the cache has never held, or holds as a tombstone, is named `IGDB game
-<id>`; its cover still arrives with the review's own read. An empty title is allowed only beside an id.
+The export names a game by its IGDB id and nothing else, deliberately (0024), and the review screen and
+the failure report both show a title. The reader produces rows with an empty title, which is stored as
+the file gave it, and a row is named each time it is shown: on the review, after the game the review
+already reads for its cover, with that game's release year; in the failure report, after the game's
+row in `CachedGames`, read directly because the report is not worth an IGDB call and the review before
+it has already put the game there. A game nothing holds, or IGDB no longer has, is named `IGDB game
+<id>`. It is the game the file named, never one chosen for the row since, because the name stands in
+for the file's title; and a row whose game its file named offers no search (0078 §3), so the empty
+title is never a search term. An empty title is allowed only beside an id.
+
+Naming the rows at upload instead was tried and dropped. The upload makes no network call (0037), so it
+could read only what the cache held at that moment, and a game it did not hold kept the stand-in for the
+life of the job, beside the cover and the name the review's own read had fetched for it seconds later.
+That is the common case when an export from one deployment is imported into another whose cache is
+cold.
 
 ### 5. It is recognised by its first two properties, and asked first
 
