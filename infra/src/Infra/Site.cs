@@ -75,4 +75,55 @@ public sealed record Site(string Env)
 
     /// <summary>The namespace of the metrics the API's log feeds.</summary>
     public string MetricNamespace => $"MVGL/{Env}";
+
+    /// <summary>
+    /// The production account: the domain's zone, the SES identity, and production access (ADR 0044,
+    /// 0088).
+    /// </summary>
+    /// <remarks>
+    /// Named here, with <see cref="DevAccount"/>, because a role in one account trusts a role in the
+    /// other, and each side has to say which. An account id grants nothing by itself, and
+    /// <c>cdk.context.json</c> has named both since the first lookups, in its keys.
+    /// </remarks>
+    public const string ProductionAccount = "381466680659";
+
+    /// <summary>The dev environment's account.</summary>
+    public const string DevAccount = "334393515036";
+
+    /// <summary>The environment's account.</summary>
+    public string Account => IsProduction ? ProductionAccount : Env == "dev" ? DevAccount
+        : throw new InvalidOperationException($"No account is known for env={Env}.");
+
+    /// <summary>
+    /// The Region the domain is verified in with SES, where production access was granted (#418).
+    /// </summary>
+    /// <remarks>
+    /// Named rather than taken from the deploying profile, as no other Region here is but
+    /// CloudFront's: an SES identity and its production access belong to one Region, so the stack
+    /// that grants sending on it, and every API that sends, have to name that one, whatever Region a
+    /// profile defaults to (ADR 0088).
+    /// </remarks>
+    public const string EmailRegion = "eu-central-1";
+
+    /// <summary>
+    /// The address every email is from, and the only one the production account's email role lets
+    /// another account send from: the API's own constant, compiled into this app, so the role and the
+    /// API's default <c>Email:From</c> cannot drift (ADR 0088).
+    /// </summary>
+    public const string EmailFromAddress = MyVideoGameList.Server.Services.Email.EmailIdentity.FromAddress;
+
+    /// <summary>
+    /// The API task's role, by name rather than CloudFormation's generated one, because the
+    /// production account's email role trusts it by its ARN, and a park and a resume make it anew.
+    /// </summary>
+    public string ApiTaskRoleName => $"{Prefix}-api-task";
+
+    /// <summary>
+    /// The role in the production account that this environment's API sends email as, through
+    /// production's SES (ADR 0088). Production's own API will send as its task role, with no such role.
+    /// </summary>
+    public string EmailRoleName => $"{Prefix}-email";
+
+    /// <summary>The ARN of <see cref="EmailRoleName"/>, which is always in the production account.</summary>
+    public string EmailRoleArn => $"arn:aws:iam::{ProductionAccount}:role/{EmailRoleName}";
 }

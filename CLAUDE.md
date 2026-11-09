@@ -148,6 +148,18 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   Deployed: `Igdb__ClientId` / `Igdb__ClientSecret` environment variables. User secrets load
   only in the Development environment — running as Production locally will fail IGDB calls.
 
+- **Email leaves through `IEmailTransport` alone, and a deployment with no sender does not start.**
+  SES wherever `Email:Ses:Region` is set; in Development, `.eml` files in `mvgl-outbox` under the
+  system's temp folder, whose path the log names; anywhere else, a startup failure unless
+  `Email:OutboxPath` names a folder. That is why the migration bundle, the migration task and both
+  test hosts set one. Dev sends as `mvgl-dev-email`, a role in the production account, which has
+  SES production access. SES's own sending authorization would not do: a delegate's account has to
+  leave the sandbox itself. So every email dev sends counts against production's reputation. **No
+  log line or exception holds an address**: SES's refusal names the recipient, so
+  `EmailNotSentException` carries its text masked and no inner exception. The sender's address is
+  `EmailIdentity`, which the CDK app compiles too: the role allows that address and no other. See
+  `docs/decisions/0088-*`.
+
 - **The key ring is shared through Parameter Store, and a deployment that names no store does not
   start.** The Data Protection keys sign the Identity cookie and seal the review cursor, and a ring
   nobody persists is remade by every process — so a deploy signs everyone out, with a clean log.

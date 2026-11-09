@@ -148,13 +148,20 @@ public sealed class AppStack : Stack
     private (FargateTaskDefinition Task, ContainerDefinition Container) ApiTask(
         Site site, DataStack data, ISelectedSubnets albSubnets, string imageTag, LogGroup logs)
     {
-        var task = Task(site, "api");
+        // Named, because the production account's email role trusts it by its ARN, and a resume
+        // makes it anew (ADR 0088). Everything else about it is what the task definition would
+        // have made.
+        var task = Task(site, "api", new Role(this, "apiTaskRole", new RoleProps
+        {
+            RoleName = site.ApiTaskRoleName,
+            AssumedBy = new ServicePrincipal("ecs-tasks.amazonaws.com"),
+        }));
 
         // The ring that signs the cookie lives in Parameter Store under this path, and the task role
         // may read and write beneath it and nowhere else in the store (ADR 0043). The repository is
         // built on the first protect, not at boot, so a wrong policy fails the first sign-in. The
-        // one other thing the role may do is invalidate this stack's distribution, granted in the
-        // constructor once the distribution exists (ADR 0058).
+        // role may also invalidate this stack's distribution, granted in the constructor once the
+        // distribution exists (ADR 0058), and send email as the production account's role, below.
         var parameterArn = $"arn:{Aws.PARTITION}:ssm:{Region}:{Account}:parameter{site.DataProtectionPath}";
         task.TaskRole.AddToPrincipalPolicy(new PolicyStatement(new PolicyStatementProps
         {
@@ -190,6 +197,37 @@ public sealed class AppStack : Stack
             },
             Logging = Logging(logs, "api"),
         });
+
+        // Email goes through the production account's SES, which has production access (ADR 0088),
+        // in the one Region the domain is verified in, whichever this stack is deployed to. The API
+        // sends from EmailIdentity.FromAddress by default, the constant the grant below and the
+        // production account's email role are both conditioned on.
+        container.AddEnvironment("Email__Ses__Region", Site.EmailRegion);
+        if (site.IsProduction)
+        {
+            // Production sends as its own task role, on the same terms the dev role is held to.
+            task.TaskRole.AddToPrincipalPolicy(new PolicyStatement(new PolicyStatementProps
+            {
+                Sid = "SendFromNoReply",
+                Actions = ["ses:SendEmail"],
+                Resources = [$"arn:{Aws.PARTITION}:ses:{Site.EmailRegion}:{Account}:identity/{Site.Domain}"],
+                Conditions = new Dictionary<string, object>
+                {
+                    ["StringEquals"] = new Dictionary<string, object> { ["ses:FromAddress"] = Site.EmailFromAddress },
+                },
+            }));
+        }
+        else
+        {
+            // Every other environment sends as the production account's role.
+            container.AddEnvironment("Email__Ses__RoleArn", site.EmailRoleArn);
+            task.TaskRole.AddToPrincipalPolicy(new PolicyStatement(new PolicyStatementProps
+            {
+                Sid = "SendEmailAsProduction",
+                Actions = ["sts:AssumeRole"],
+                Resources = [site.EmailRoleArn],
+            }));
+        }
 
         return (task, container);
     }
@@ -231,13 +269,17 @@ public sealed class AppStack : Stack
             HealthCheck = new Amazon.CDK.AWS.ElasticLoadBalancingV2.HealthCheck { Path = healthPath },
         });
 
-    private FargateTaskDefinition Task(Site site, string name) =>
+    /// <summary>
+    /// A task definition; its role is <paramref name="taskRole"/>, or one the definition makes.
+    /// </summary>
+    private FargateTaskDefinition Task(Site site, string name, IRole? taskRole = null) =>
         // The smallest Fargate size; neither process has been measured (ADR 0044).
         new(this, $"{name}Task", new FargateTaskDefinitionProps
         {
             Family = $"{site.Prefix}-{name}",
             Cpu = 256,
             MemoryLimitMiB = 512,
+            TaskRole = taskRole,
         });
 
     private LogGroup LogGroup(Site site, string name) =>

@@ -69,6 +69,9 @@ public sealed class ApiPipelineTests
             // allows. Nothing here opens the connection; the key ring stays in memory.
             builder.UseSetting("ConnectionStrings:DefaultConnection", "Host=localhost;Database=unused");
             builder.UseSetting("DataProtection:AllowEphemeralKeys", "true");
+            // Outside Development the host refuses to start without an email sender (ADR 0088).
+            // Nothing these tests ask sends one, so the folder is never written to.
+            builder.UseSetting("Email:OutboxPath", Path.Combine(Path.GetTempPath(), "mvgl-tests-outbox"));
 
             builder.ConfigureAppConfiguration((_, configuration) => configuration.AddInMemoryCollection(Settings));
 
