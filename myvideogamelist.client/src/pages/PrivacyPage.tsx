@@ -14,12 +14,6 @@ const LIST = 'list-disc pl-5 space-y-1.5 text-fg-soft leading-relaxed mb-3';
 const LINK = 'text-link';
 const NAME = 'font-mono text-fg break-words';
 
-/**
- * What only the site's owner can say and has not said yet: the company's address. Marked on the page so
- * that it cannot go out looking finished. Remove this with the last placeholder.
- */
-const TO_FILL = 'rounded-sm bg-warning-900/40 px-1 text-warning-300';
-
 /** Where a reader writes about their data. Said four times, so written once. */
 const CONTACT_EMAIL = 'support@myvideogamelist.net';
 const CONTACT = <a href={`mailto:${CONTACT_EMAIL}`} className={LINK}>{CONTACT_EMAIL}</a>;
@@ -72,9 +66,9 @@ export default function PrivacyPage() {
 
                     <h2 className={H2}>Who we are</h2>
                     <p className={P}>
-                        &ldquo;We&rdquo; on this page means Pleiades Web LLC, of <mark className={TO_FILL}>[To fill:
-                        postal address, with the country]</mark>, which runs MyVideoGameList and decides what
-                        happens to the data described here. In data protection law, that makes us its controller.
+                        &ldquo;We&rdquo; on this page means Pleiades Web LLC, which runs MyVideoGameList and decides
+                        what happens to the data described here. In data protection law, that makes us its
+                        controller.
                     </p>
                     <p className={P}>
                         To ask about your data, or to use any of the rights below, write to {CONTACT}.
