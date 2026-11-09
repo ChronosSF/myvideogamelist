@@ -71,7 +71,9 @@ The dev API's task role assumes `mvgl-dev-email` in `mvgl-prod`, and SES sees pr
 - **Production will send as its own task role** when #98 builds it, with no role to assume. The App stack
   already grants that role `ses:SendEmail` on the same terms when it is synthesised for production.
 - **Deployed by hand, as `Mvgl-prod-Email`**, because no pipeline reaches the production account (0066). It is
-  long-lived and outlives the holding page.
+  long-lived and outlives the holding page. It is pinned to `Site.EmailRegion`, `eu-central-1`, never the
+  deploying profile's Region, and so is every API's `Email:Ses:Region`: an identity and its production access
+  belong to one Region, and a grant on the identity in any other would refuse every send.
 - **Both account ids are named in `Site.cs`**, because each side of a cross-account trust has to say which
   account the other is. An id grants nothing by itself, and `cdk.context.json` has named both since its first
   lookups. A parameter set by hand in each account, as the alarm address is

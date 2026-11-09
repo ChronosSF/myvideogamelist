@@ -95,6 +95,17 @@ public sealed record Site(string Env)
         : throw new InvalidOperationException($"No account is known for env={Env}.");
 
     /// <summary>
+    /// The Region the domain is verified in with SES, where production access was granted (#418).
+    /// </summary>
+    /// <remarks>
+    /// Named rather than taken from the deploying profile, as no other Region here is but
+    /// CloudFront's: an SES identity and its production access belong to one Region, so the stack
+    /// that grants sending on it, and every API that sends, have to name that one, whatever Region a
+    /// profile defaults to (ADR 0088).
+    /// </remarks>
+    public const string EmailRegion = "eu-central-1";
+
+    /// <summary>
     /// The address every email is from, and the only one the production account's email role lets
     /// another account send from: the API's own constant, compiled into this app, so the role and the
     /// API's default <c>Email:From</c> cannot drift (ADR 0088).
