@@ -58,12 +58,13 @@ test('a new account adds a game to a list, and it is still there after a reload'
     });
 
     await test.step('add the game to Playing', async () => {
-        // The button shows the move before the API has answered — the update is optimistic — so the
-        // answer is what is waited for. A reload before it would race the write.
+        // The hero's list control shows the move before the API has answered — the update is optimistic —
+        // so the answer is what is waited for. A reload before it would race the write. A game in no list
+        // offers the Backlog in one press and the other lists in a select beside it (ADR 0084).
         const saved = page.waitForResponse(response =>
             response.request().method() === 'PUT'
             && new URL(response.url()).pathname === `/api/lists/${gameId}`);
-        await page.getByRole('button', { name: 'Playing', exact: true }).click();
+        await page.getByLabel('Add to another list').selectOption('playing');
 
         // The status says which part broke: a 401 is a lost cookie, a 403 a lost X-MVGL-Request, and
         // a 404 or a 405 the SSR server answering for the API.
@@ -72,9 +73,9 @@ test('a new account adds a game to a list, and it is still there after a reload'
 
     await test.step('reload, and it is still there', async () => {
         // A new document, so nothing survives from the page that made the write but the session
-        // cookie: what the panel shows now is what the API stored.
+        // cookie: what the page shows now is what the API stored.
         await page.reload();
-        await expect(page.getByRole('button', { name: 'Playing', exact: true, pressed: true })).toBeVisible();
+        await expect(page.getByLabel('Your list')).toHaveValue('playing');
 
         // And on the list itself, which renders the game from the API's own copy of it, made when
         // the reload first asked for it.

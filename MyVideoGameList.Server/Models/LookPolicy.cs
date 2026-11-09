@@ -27,15 +27,17 @@ public static class LookPolicy
     /// <summary>The palettes, the default first. <c>custom</c> is the one that carries colours of its own.</summary>
     public static readonly IReadOnlyList<string> Palettes = [DefaultPalette, "slate", "dusk", "plum", "graphite", "onyx", CustomPalette];
 
-    public const string DefaultPattern = "honeycomb";
+    /// <summary>The pixel matrix, chosen by trying every look on the site itself (ADR 0085).</summary>
+    public const string DefaultPattern = "pixels";
 
     /// <summary>The background patterns, the default first, and <c>none</c>.</summary>
-    public static readonly IReadOnlyList<string> Patterns = [DefaultPattern, "isometric", "perspective", "pixels", "none"];
+    public static readonly IReadOnlyList<string> Patterns = [DefaultPattern, "honeycomb", "isometric", "perspective", "none"];
 
-    public const string DefaultTint = "grey";
+    /// <summary>The accent: the default's is the logo's lime (ADR 0085).</summary>
+    public const string DefaultTint = "accent";
 
-    /// <summary>What the pattern is drawn in: the page's own grey, or the palette's accent.</summary>
-    public static readonly IReadOnlyList<string> Tints = [DefaultTint, "accent"];
+    /// <summary>What the pattern is drawn in: the palette's accent, or the page's own grey.</summary>
+    public static readonly IReadOnlyList<string> Tints = [DefaultTint, "grey"];
 
     /// <summary>A colour as a colour picker writes one, and as it is stored: <c>#</c> and six hex digits.</summary>
     public const string ColourPattern = "^#[0-9a-fA-F]{6}$";

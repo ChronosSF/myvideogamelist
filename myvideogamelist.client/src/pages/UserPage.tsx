@@ -1,23 +1,18 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router';
+import { Link, Outlet, useNavigate } from 'react-router';
+import type { UserProfile } from '@/types/auth';
 import { useAuth } from '@/hooks/useAuth';
-import { ProfileStats } from '@/components/ProfileStats';
-import { ProfileHistory } from '@/components/ProfileHistory';
-import { FavouritesShowcase } from '@/components/FavouritesShowcase';
-import { AccountIdentityCard } from '@/components/AccountIdentityCard';
-import { AccountDataCard } from '@/components/AccountDataCard';
-import { ProfileDetailsCard } from '@/components/ProfileDetailsCard';
-import { ListNamesCard } from '@/components/ListNamesCard';
-import { LookCard } from '@/components/LookCard';
+import { Avatar } from '@/components/Avatar';
 import { LoadingState } from '@/components/LoadingState';
-import { TagsCard } from '@/components/TagsCard';
 import { PageHeader } from '@/components/PageHeader';
+import { type PageTab, PageTabs } from '@/components/PageTabs';
 import { Skeleton } from '@/components/Skeleton';
 import { PRIVATE_NO_STORE } from '@/lib/cache';
 import { NOINDEX } from '@/lib/seo';
+import type { UserPageOutlet } from '@/lib/userPage';
 import './UserPage.css';
 
-/** A card of the page before it can be filled: a label, a line, and the card's height. */
+/** A part of the page before it can be filled: a label, a line, and the part's height. */
 function CardSkeleton({ height }: { height: string }) {
     return (
         <div className={`user-card skeleton-sheen ${height}`}>
@@ -29,32 +24,23 @@ function CardSkeleton({ height }: { height: string }) {
 }
 
 /**
- * The page in its own three areas before auth has answered, each card as tall as it first renders at a
- * desktop's width: the two account cards, the favourites and the statistics while they load, and the
- * list names and the import. The cards then fill in on their own, as they do once signed in.
+ * Either tab before auth has answered: the parts as tall as they first render at a desktop's width — the
+ * favourites and the statistics while they load, or the account's first settings. They then fill in on
+ * their own, as they do once signed in.
  */
 function UserPageSkeleton() {
     return (
-        <div className="user-page-grid">
-            <div className="user-page-account">
-                <CardSkeleton height="min-h-[124px]" />
-                <CardSkeleton height="min-h-[319px]" />
-            </div>
-            <div className="user-page-tracking">
-                <CardSkeleton height="min-h-[177px]" />
-                <CardSkeleton height="min-h-[120px]" />
-            </div>
-            <div className="user-page-prefs">
-                <CardSkeleton height="min-h-[572px]" />
-                <CardSkeleton height="min-h-[184px]" />
-            </div>
+        <div className="flex flex-col gap-12">
+            <CardSkeleton height="min-h-[177px]" />
+            <CardSkeleton height="min-h-[240px]" />
         </div>
     );
 }
 
 /**
- * This route renders the signed-in user's own profile and settings. Stated explicitly rather than left to inherit the root default, so that changing the
- * root's policy later cannot silently make this page shared.
+ * This route renders the signed-in user's own profile and settings. Stated explicitly rather than left to
+ * inherit the root default, so that changing the root's policy later cannot silently make this page shared.
+ * Both tabs inherit it.
  */
 export function headers() {
     return { 'Cache-Control': PRIVATE_NO_STORE };
@@ -63,18 +49,46 @@ export function headers() {
 export function meta() {
     return [
         { title: 'My profile - MyVideoGameList' },
-        { name: 'description', content: 'Manage your account settings and preferences.' },
+        { name: 'description', content: 'Your tracking, and the settings for your account.' },
         // What a crawler is served here is the signed-out shell, which is a page about nothing.
         NOINDEX,
     ];
 }
 
+/** The page's two tabs (ADR 0084): what the reader has done, which is why they came, then the settings. */
+const TABS: PageTab[] = [
+    { to: '/user', label: 'Your tracking', end: true },
+    { to: '/user/settings', label: 'Settings' },
+];
+
 /**
- * The band the other pages open with, so this one reads as part of the same site rather than a
- * settings dialog floating in it.
+ * The band the other pages open with, so this one reads as part of the same site rather than a settings
+ * dialog floating in it — with, once somebody is signed in, who they are to everybody else: their picture,
+ * their handle, and whether anybody can read their profile.
  */
-function ProfileHeader() {
-    return <PageHeader title="My Profile" description="Your tracking, and the settings for your account." />;
+function ProfileHeader({ user }: { user: UserProfile | null }) {
+    return (
+        <PageHeader title="My Profile" description={user === null ? 'Your tracking, and the settings for your account.' : undefined}>
+            {user !== null && (
+                <div className="mt-5 flex items-center gap-3">
+                    <Avatar userName={user.userName} avatarUrl={user.avatarUrl} className="w-11 h-11 text-lg" />
+                    <div className="min-w-0">
+                        <p className="type-title text-lg text-fg-strong truncate">
+                            {user.displayName ?? `@${user.userName}`}
+                            {user.displayName !== null && <span className="ml-2 type-meta text-fg-faint">@{user.userName}</span>}
+                        </p>
+                        <p className="type-meta text-fg-faint">
+                            {user.profileVisibility === 'public' ? (
+                                <>Public profile · <Link to={`/u/${user.userName}`} className="text-link">See it as others do</Link></>
+                            ) : (
+                                <>Private profile · <Link to="/user/settings#account" className="text-link">Who can see it</Link></>
+                            )}
+                        </p>
+                    </div>
+                </div>
+            )}
+        </PageHeader>
+    );
 }
 
 export function UserPage() {
@@ -99,8 +113,9 @@ export function UserPage() {
     if (loading) {
         return (
             <div className="min-h-screen">
-                <ProfileHeader />
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+                <ProfileHeader user={null} />
+                <PageTabs label="My profile" tabs={TABS} />
+                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
                     <LoadingState label="Loading your profile…">
                         <UserPageSkeleton />
                     </LoadingState>
@@ -112,7 +127,7 @@ export function UserPage() {
     if (!user) {
         return (
             <div className="min-h-screen">
-                <ProfileHeader />
+                <ProfileHeader user={null} />
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
                     <div className="flex items-center justify-center py-24">
                         {accountDeleted ? (
@@ -175,96 +190,20 @@ export function UserPage() {
         }
     };
 
+    const outlet: UserPageOutlet = {
+        user,
+        signOut: () => void handleLogout(),
+        signingOut,
+        signOutError: logoutError,
+        deleteAccount: handleDeleteAccount,
+    };
+
     return (
         <div className="min-h-screen">
-            <ProfileHeader />
-
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-                {/* Three areas rather than two columns: stacked, they read in source order — who
-                    you are, what you have done, then preferences — and from lg up the tracking
-                    takes the main column while both groups of settings share a sidebar. */}
-                <div className="user-page-grid">
-                    <section className="user-page-account" aria-label="Account">
-                        {/* The email is here and nowhere else — it identifies the account to us
-                            and appears on nothing anybody else can read. */}
-                        <div className="user-card">
-                            <div className="user-card-label">Email</div>
-                            <div className="user-card-value">{user.email}</div>
-                            <p className="user-card-hint">Only you can see this.</p>
-                        </div>
-
-                        {/* Directly under it, because the two answer the same question from
-                            opposite sides: what we know you by, and what everybody else does. */}
-                        <AccountIdentityCard user={user} />
-
-                        {/* Then what that public page says about you, under the switch that decides
-                            whether anybody reads it. Keyed by the account, so drafts typed for one
-                            are never shown, or saved, under another. */}
-                        <ProfileDetailsCard key={user.id} user={user} />
-                    </section>
-
-                    {/* The main column, because what the user has done is the reason they came here
-                        and the preferences are not. The favourites open it, as they open the public
-                        profile: a showcase is the part of a profile chosen to be looked at. */}
-                    <div className="user-page-tracking">
-                        <div className="user-card">
-                            <FavouritesShowcase profileVisibility={user.profileVisibility} />
-                        </div>
-                        <div className="user-card">
-                            <ProfileStats userId={user.id} />
-                        </div>
-                        {/* Under the figures, as the records behind them: each move, score and run
-                            date as it was written, where the chart counts them by ADR 0047's rules.
-                            Here only — the public profile publishes counts, the month series and the
-                            reviews its owner chose to publish, and never this list. */}
-                        <div className="user-card">
-                            <ProfileHistory userId={user.id} />
-                        </div>
-                    </div>
-
-                    <section className="user-page-prefs" aria-label="Preferences">
-                        {/* First, because it changes how the whole site looks to this person and to
-                            nobody else, and the page around it is its preview. */}
-                        <LookCard key={user.id} look={user.look} canChoose={user.canChooseLook} />
-
-                        {/* Next, because it changes how the site reads to this person and to nobody
-                            else. */}
-                        <ListNamesCard />
-
-                        {/* Beside the list names: both are words the owner chose that only the owner
-                            sees. */}
-                        <TagsCard />
-
-                        {/* Here rather than beside the export in "Your data", which is the
-                            section holding the one thing that cannot be undone — an import is
-                            reviewed before it writes and belongs nowhere near that warning. */}
-                        <div className="user-card">
-                            <div className="user-card-label">Import from another tracker</div>
-                            <p className="user-card-hint">
-                                Bring your games across from Grouvee, or back from a MyVideoGameList
-                                export. You see every game, and what we made of it, before anything is
-                                saved.
-                            </p>
-                            <Link to="/import" className="user-btn user-card-action">Start an import</Link>
-                        </div>
-
-                        {/* aria-disabled rather than disabled while the request is out, so the
-                            button keeps its focus; the press guards itself. */}
-                        <button type="button" className="user-logout-btn" onClick={handleLogout} aria-disabled={signingOut}>
-                            {signingOut ? 'Signing out…' : 'Sign Out'}
-                        </button>
-                        {logoutError !== null && (
-                            <p className="-mt-2 text-sm text-danger-300 text-center" role="alert">{logoutError}</p>
-                        )}
-
-                        {/* Last, below Sign Out, where a settings page conventionally keeps the
-                            one thing on it that cannot be undone. A section of its own, since
-                            neither half of it is a preference. */}
-                        <section aria-label="Your data">
-                            <AccountDataCard userName={user.userName} onDeleteAccount={handleDeleteAccount} />
-                        </section>
-                    </section>
-                </div>
+            <ProfileHeader user={user} />
+            <PageTabs label="My profile" tabs={TABS} />
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+                <Outlet context={outlet} />
             </div>
         </div>
     );

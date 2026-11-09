@@ -101,6 +101,33 @@ export interface GameDetailsDto {
     languages: LanguageSupportDto[];
     /** One per store, in the order the page lists them; empty when IGDB names none. */
     stores: StoreLinkDto[];
+    /**
+     * The rest of the game's series and its remakes, remasters and editions (issue 450, ADR 0084). Null when
+     * IGDB could not be asked, which makes the render one to keep off the edge; missing from an API older
+     * than this build.
+     */
+    related?: RelatedGamesDto | null;
+}
+
+/** What a related game is to the page: a card's kind, or an edition's. */
+export type RelatedGameKind = 'game' | 'standalone' | 'remake' | 'remaster' | 'expanded' | 'port' | 'edition' | 'bundle';
+
+export interface RelatedGameDto {
+    id: number;
+    name: string;
+    coverImageUrl: string | null;
+    /** The year of its first release, which is right even where IGDB knows only the month, quarter or year. */
+    releaseYear: number | null;
+    kind: RelatedGameKind;
+}
+
+export interface RelatedGamesDto {
+    /** The game the page marks as its own: the game itself, or the game it is an edition of. */
+    anchorId: number;
+    /** The series and the anchor's remakes, remasters and ports, in release order, the anchor among them. */
+    games: RelatedGameDto[];
+    /** The anchor's editions and bundles, in release order. */
+    editions: RelatedGameDto[];
 }
 
 export interface GameDto {

@@ -224,7 +224,7 @@ export function EntryTagEditor({
 
     return (
         <div className="entry-tags">
-            <p className="game-user-panel-label" id={headingId}>Tags</p>
+            <p className="game-yours-label" id={headingId}>Tags</p>
 
             {tags.length > 0 ? (
                 <ul className="entry-tags-chips" aria-labelledby={headingId}>
@@ -248,7 +248,7 @@ export function EntryTagEditor({
                     ))}
                 </ul>
             ) : (
-                <p className="game-user-panel-hint">No tags on this game yet.</p>
+                <p className="game-yours-hint">No tags on this game yet.</p>
             )}
 
             <div className="entry-tags-combo">
@@ -323,7 +323,7 @@ export function EntryTagEditor({
                 </ul>
             </div>
 
-            <p id={hintId} className="game-user-panel-hint">
+            <p id={hintId} className="game-yours-hint">
                 {full
                     ? `A game can carry at most ${MAX_TAGS_PER_GAME} tags. Remove one to add another.`
                     : alreadyOn
@@ -334,7 +334,7 @@ export function EntryTagEditor({
             <p className="sr-only" role="status" aria-live="polite">{announcement}</p>
 
             {error !== null && (
-                <p className="game-user-panel-hint" role="alert">{error}</p>
+                <p className="game-yours-hint" role="alert">{error}</p>
             )}
         </div>
     );

@@ -9,7 +9,8 @@ interface PlaythroughFormProps {
     /** The playthrough being edited, or null when logging a new one. */
     editing: PlaythroughDto | null;
     onSubmit: (input: PlaythroughInputDto) => void;
-    onCancelEdit: () => void;
+    /** Closes the form, which the page opens only to log or edit a run (issue 222). */
+    onCancel: () => void;
     pending: boolean;
     /** What the server said, shown beside the form rather than as a page-level banner. */
     error: string | null;
@@ -51,12 +52,14 @@ export function PlaythroughForm({
     platforms,
     editing,
     onSubmit,
-    onCancelEdit,
+    onCancel,
     pending,
     error,
 }: PlaythroughFormProps) {
     const fieldId = useId();
-    const [draft, setDraft] = useState<Draft>(EMPTY);
+    // Seeded from the run when the form opens already editing one, as it does when a run's Edit opens
+    // it: started empty, it showed blank fields and saved them over the run (issue 222).
+    const [draft, setDraft] = useState<Draft>(() => (editing === null ? EMPTY : toDraft(editing)));
 
     // Load the playthrough being edited into the fields, and clear them again when the edit is
     // finished or abandoned. Adjusted during render rather than in an effect: from an effect this
@@ -77,8 +80,8 @@ export function PlaythroughForm({
     };
 
     return (
-        <form className="game-user-panel-playthrough-form" onSubmit={handleSubmit}>
-            <div className="game-user-panel-field">
+        <form className="game-yours-playthrough-form" onSubmit={handleSubmit}>
+            <div className="game-yours-field">
                 <label htmlFor={`${fieldId}-platform`}>Platform</label>
                 <select
                     id={`${fieldId}-platform`}
@@ -90,10 +93,16 @@ export function PlaythroughForm({
                     {platforms.map(platform => (
                         <option key={platform.id} value={platform.id}>{platform.name}</option>
                     ))}
+                    {/* A run on a platform the game no longer lists keeps it, and says so, rather than
+                        showing "Not recorded" while still sending the old id — as the browse filters'
+                        "Unlisted platform" does (ADR 0032 §3). */}
+                    {draft.platformId !== '' && !platforms.some(platform => String(platform.id) === draft.platformId) && (
+                        <option value={draft.platformId}>Unlisted platform</option>
+                    )}
                 </select>
             </div>
 
-            <div className="game-user-panel-field">
+            <div className="game-yours-field">
                 <label htmlFor={`${fieldId}-type`}>How you played it</label>
                 <select
                     id={`${fieldId}-type`}
@@ -107,14 +116,14 @@ export function PlaythroughForm({
                         <option key={tier.key} value={tier.key}>{tier.label}</option>
                     ))}
                 </select>
-                <p id={`${fieldId}-type-hint`} className="game-user-panel-hint">
+                <p id={`${fieldId}-type-hint`} className="game-yours-hint">
                     Leave this blank while you are still playing. Only playthroughs with both a
                     type and a time count towards the community figures.
                 </p>
             </div>
 
-            <div className="game-user-panel-field-pair">
-                <div className="game-user-panel-field">
+            <div className="game-yours-field-pair">
+                <div className="game-yours-field">
                     <label htmlFor={`${fieldId}-hours`}>Hours</label>
                     <input
                         id={`${fieldId}-hours`}
@@ -125,7 +134,7 @@ export function PlaythroughForm({
                         disabled={pending}
                     />
                 </div>
-                <div className="game-user-panel-field">
+                <div className="game-yours-field">
                     <label htmlFor={`${fieldId}-minutes`}>Minutes</label>
                     <input
                         id={`${fieldId}-minutes`}
@@ -139,8 +148,8 @@ export function PlaythroughForm({
                 </div>
             </div>
 
-            <div className="game-user-panel-field-pair">
-                <div className="game-user-panel-field">
+            <div className="game-yours-field-pair">
+                <div className="game-yours-field">
                     <label htmlFor={`${fieldId}-started`}>Started</label>
                     <input
                         id={`${fieldId}-started`}
@@ -150,7 +159,7 @@ export function PlaythroughForm({
                         disabled={pending}
                     />
                 </div>
-                <div className="game-user-panel-field">
+                <div className="game-yours-field">
                     <label htmlFor={`${fieldId}-finished`}>Finished</label>
                     <input
                         id={`${fieldId}-finished`}
@@ -162,7 +171,7 @@ export function PlaythroughForm({
                 </div>
             </div>
 
-            <div className="game-user-panel-field">
+            <div className="game-yours-field">
                 <label htmlFor={`${fieldId}-notes`}>Notes</label>
                 <textarea
                     id={`${fieldId}-notes`}
@@ -175,18 +184,16 @@ export function PlaythroughForm({
             </div>
 
             {error !== null && (
-                <p className="game-user-panel-hint" role="alert">{error}</p>
+                <p className="game-yours-hint" role="alert">{error}</p>
             )}
 
-            <div className="game-user-panel-confirm">
+            <div className="game-yours-confirm">
                 <button type="submit" className="primary" disabled={pending}>
                     {editing === null ? 'Log playthrough' : 'Save playthrough'}
                 </button>
-                {editing !== null && (
-                    <button type="button" onClick={onCancelEdit} disabled={pending}>
-                        Cancel
-                    </button>
-                )}
+                <button type="button" onClick={onCancel} disabled={pending}>
+                    Cancel
+                </button>
             </div>
         </form>
     );
