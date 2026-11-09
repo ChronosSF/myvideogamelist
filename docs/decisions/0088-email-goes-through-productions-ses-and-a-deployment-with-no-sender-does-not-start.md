@@ -85,7 +85,9 @@ The dev API's task role assumes `mvgl-dev-email` in `mvgl-prod`, and SES sees pr
 or the environment is Development. Anywhere else it throws, and the host does not start. An account that cannot
 be sent its confirmation can never be confirmed, so a deployment missing this would take sign-ups it could
 never finish, with a clean log until somebody wrote in. The key ring refuses the same way, for the same kind of
-reason ([0043](0043-where-the-key-ring-lives.md)).
+reason ([0043](0043-where-the-key-ring-lives.md)). For the same reason a deployment whose `Email:From` names an
+address other than `EmailIdentity.FromAddress` does not start where SES sends: the role would refuse every
+send. And the outbox, when its folder cannot be written, fails as SES does, with an `EmailNotSentException`.
 
 So everything that builds the host outside Development names an outbox it never writes to: the Dockerfile's
 bundle step, the migration task, the pipeline tests and the integration suite. Running the production image on

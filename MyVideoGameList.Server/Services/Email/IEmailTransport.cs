@@ -13,10 +13,11 @@ namespace MyVideoGameList.Server.Services.Email;
 /// confirmed (<c>EmailRegistration</c>).
 /// </para>
 /// <para>
-/// A message that could not be delivered is an <see cref="EmailNotSentException"/>. Its message
-/// says why in SES's words with every address masked, never the recipient's, because SES's own
-/// refusal names them. Cancellation through the token is the one other exception that leaves here.
-/// See <c>docs/decisions/0088-*</c>.
+/// A message that could not be delivered, by either implementation, is an
+/// <see cref="EmailNotSentException"/>. Its <see cref="EmailNotSentException.Reason"/> says why, in
+/// SES's words or the file system's, with every address masked, because SES's own refusal names the
+/// recipient; the transport has logged it already. Cancellation through the token is the one other
+/// exception that leaves here. See <c>docs/decisions/0088-*</c>.
 /// </para>
 /// </remarks>
 public interface IEmailTransport
