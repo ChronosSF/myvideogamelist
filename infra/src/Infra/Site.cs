@@ -96,10 +96,10 @@ public sealed record Site(string Env)
 
     /// <summary>
     /// The address every email is from, and the only one the production account's email role lets
-    /// another account send from. The API's <c>Email:From</c> has it too, and the App stack sets that
-    /// from here, so a change here is a change to both (ADR 0088).
+    /// another account send from: the API's own constant, compiled into this app, so the role and the
+    /// API's default <c>Email:From</c> cannot drift (ADR 0088).
     /// </summary>
-    public const string EmailFromAddress = "noreply@myvideogamelist.net";
+    public const string EmailFromAddress = MyVideoGameList.Server.Services.Email.EmailIdentity.FromAddress;
 
     /// <summary>
     /// The API task's role, by name rather than CloudFormation's generated one, because the

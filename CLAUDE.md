@@ -156,7 +156,8 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   SES production access. SES's own sending authorization would not do: a delegate's account has to
   leave the sandbox itself. So every email dev sends counts against production's reputation. **No
   log line or exception holds an address**: SES's refusal names the recipient, so
-  `EmailNotSentException` carries its text masked and no inner exception. See
+  `EmailNotSentException` carries its text masked and no inner exception. The sender's address is
+  `EmailIdentity`, which the CDK app compiles too: the role allows that address and no other. See
   `docs/decisions/0088-*`.
 
 - **An account signs in only once its address is confirmed, and "confirm first" needs the password.**

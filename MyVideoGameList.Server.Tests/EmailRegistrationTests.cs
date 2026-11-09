@@ -53,8 +53,10 @@ public class EmailRegistrationTests
             Configuration([.. Addresses, ("Email:Ses:Region", "eu-central-1"), ("Email:SiteUrl", "https://dev.myvideogamelist.net")]),
             Environment(Environments.Production));
 
-        Assert.Equal(typeof(SesEmailTransport), Transport(services));
         Assert.Contains(services, service => service.ServiceType == typeof(IAmazonSimpleEmailServiceV2));
+        // Resolved without making the client, which resolves credentials only on the first send.
+        using var provider = services.AddLogging().BuildServiceProvider();
+        Assert.IsType<SesEmailTransport>(provider.GetRequiredService<IEmailTransport>());
     }
 
     [Fact]
@@ -102,20 +104,31 @@ public class EmailRegistrationTests
             Configuration([.. Addresses, ("Email:Ses:Region", "eu-central-1"), ("Email:SiteUrl", "https://dev.myvideogamelist.net"), ("Email:OutboxPath", "/tmp/outbox")]),
             Environment(Environments.Production));
 
-        Assert.Equal(typeof(SesEmailTransport), Transport(services));
+        using var provider = services.AddLogging().AddSingleton(TimeProvider.System).BuildServiceProvider();
+        Assert.IsType<SesEmailTransport>(provider.GetRequiredService<IEmailTransport>());
     }
 
-    [Theory]
-    [InlineData("Email:From")]
-    [InlineData("Email:ReplyTo")]
-    public void AddEmail_AMissingAddress_RefusesToStart(string missing)
+    [Fact]
+    public void AddEmail_NoReplyTo_RefusesToStart()
     {
         var act = () => new ServiceCollection().AddEmail(
-            Configuration([.. Addresses.Where(pair => pair.Item1 != missing)]),
+            Configuration([.. Addresses.Where(pair => pair.Item1 != "Email:ReplyTo")]),
             Environment(Environments.Development));
 
-        var exception = Assert.Throws<InvalidOperationException>(act);
-        Assert.Contains(missing, exception.Message);
+        Assert.Contains("Email:ReplyTo", Assert.Throws<InvalidOperationException>(act).Message);
+    }
+
+    [Fact]
+    public void AddEmail_NoFrom_SendsFromTheAddressTheRoleAllows()
+    {
+        // The default is EmailIdentity's, the constant the CDK app conditions the sending role on.
+        using var provider = new ServiceCollection()
+            .AddEmail(Configuration([.. Addresses.Where(pair => pair.Item1 != "Email:From")]), Environment(Environments.Development))
+            .BuildServiceProvider();
+
+        var sender = provider.GetRequiredService<EmailSender>();
+        Assert.Equal(EmailIdentity.FromAddress, sender.From.Address);
+        Assert.Equal(EmailIdentity.FromName, sender.From.DisplayName);
     }
 
     [Fact]

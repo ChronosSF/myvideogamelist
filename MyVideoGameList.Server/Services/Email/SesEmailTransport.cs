@@ -16,24 +16,36 @@ namespace MyVideoGameList.Server.Services.Email;
 /// <para>
 /// <b>No log line holds an address.</b> A sent message is logged by its purpose and the id SES gave
 /// it, which is what a bounce or a complaint will name later. A refusal is logged by its error code
-/// and SES's text with every address masked, because that text names the recipient.
+/// and SES's text with every address masked, because that text names the recipient. It is logged
+/// here, once: the exception that follows carries the reason as a property, not in its message, so
+/// that a handler logging the exception does not say it again.
 /// </para>
 /// <para>
-/// <b>Cancelled only by the caller.</b> The client's own timeout ends an attempt as an
-/// <see cref="OperationCanceledException"/> as well, and that one is a failure to send, not a
-/// cancellation: it leaves as an <see cref="EmailNotSentException"/> like every other.
+/// <b>The client is made on the first send</b>, through <c>client</c>, because making it
+/// resolves credentials, and a failure there is a send that did not go like any other.
+/// </para>
+/// <para>
+/// <b>Bounded as a whole, and cancelled only by the caller.</b> The client's timeout is per attempt,
+/// and the SDK tries more than once, so the send is also given <see cref="Deadline"/>. That deadline,
+/// like the client's own timeout, ends an attempt as an <see cref="OperationCanceledException"/>, and
+/// either one is a failure to send, not a cancellation: it leaves as an
+/// <see cref="EmailNotSentException"/> like every other.
 /// </para>
 /// </remarks>
 internal sealed class SesEmailTransport(
-    IAmazonSimpleEmailServiceV2 ses,
+    Func<IAmazonSimpleEmailServiceV2> client,
     EmailSender sender,
-    ILogger<SesEmailTransport> logger) : IEmailTransport
+    ILogger<SesEmailTransport> logger,
+    TimeSpan? deadline = null) : IEmailTransport
 {
+    /// <summary>The longest one send may take, every attempt and backoff included.</summary>
+    public static readonly TimeSpan Deadline = TimeSpan.FromSeconds(15);
+
     public async Task SendAsync(EmailMessage message, CancellationToken cancellationToken)
     {
         var request = new SendEmailRequest
         {
-            FromEmailAddress = sender.From.ToString(),
+            FromEmailAddress = sender.FromHeader,
             ReplyToAddresses = [sender.ReplyTo.Address],
             Destination = new Destination { ToAddresses = [message.To] },
             Content = new EmailContent
@@ -50,10 +62,13 @@ internal sealed class SesEmailTransport(
             },
         };
 
+        using var bounded = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        bounded.CancelAfter(deadline ?? Deadline);
+
         SendEmailResponse response;
         try
         {
-            response = await ses.SendEmailAsync(request, cancellationToken);
+            response = await client().SendEmailAsync(request, bounded.Token);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -71,9 +86,9 @@ internal sealed class SesEmailTransport(
         catch (Exception exception) when (exception
             is AmazonClientException or HttpRequestException or IOException or OperationCanceledException)
         {
-            // No answer at all: the network, the client's timeout, or credentials that could not be
-            // had. The type says which; the text is masked like SES's, since it is not ours. Anything
-            // else is a bug of ours, and leaves as itself.
+            // No answer at all: the network, a timeout, or credentials that could not be had. The type
+            // says which; the text is masked like SES's, since it is not ours. Anything else is a bug of
+            // ours, and leaves as itself.
             var reason = $"{exception.GetType().Name}: {EmailLogText.Mask(exception.Message)}";
             logger.LogWarning("SES could not be reached for the {Purpose} email: {Reason}.", message.Purpose, reason);
             throw new EmailNotSentException(message.Purpose, reason);

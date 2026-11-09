@@ -41,11 +41,14 @@ What was already there, and what changed on 2026-11-09:
 one recipient, a subject, a text body and an optional HTML body. Composing the three account emails is
 #421's, #422's and #423's, beside the flows that send them. Who every message is from, and where a reply
 goes, is configuration (`Email:From`, `Email:ReplyTo`), so that nothing composing a message can choose it.
+The sender defaults to `EmailIdentity`'s `noreply@`, a constant the CDK app compiles too (§3).
 
 ### 2. SES's v2 API, simple content
 
 One `SendEmail` per message, with SES building the MIME and signing it with the domain's DKIM key. Each HTTP
-request has ten seconds, not the SDK's hundred, because somebody is waiting on a sign-up.
+request has ten seconds, not the SDK's hundred, and the whole send, the SDK's retries and backoff included,
+fifteen, because somebody is waiting on a sign-up. A display name outside ASCII goes as an RFC 2047 encoded
+word, which SES requires.
 
 ### 3. Dev sends as a role in the production account
 
@@ -63,9 +66,10 @@ The dev API's task role assumes `mvgl-dev-email` in `mvgl-prod`, and SES sees pr
   where CloudFormation used to make one up.
 - **Allowed one thing:** `ses:SendEmail` on the domain's identity, with `ses:FromAddress` equal to
   `noreply@myvideogamelist.net` (the SES developer guide's *Controlling access* lists that key for
-  `SendEmail`). The App stack sets the API's `Email:From` from the same constant, `Site.EmailFromAddress`, so
-  the two cannot drift.
-- **Production will send as its own task role** when #98 builds it, with no role to assume.
+  `SendEmail`). The address is `EmailIdentity.FromAddress`, a file of the API's that the CDK app compiles, as
+  it does `SessionLimits.cs`, and the API's default `Email:From`: the role and the sender cannot drift.
+- **Production will send as its own task role** when #98 builds it, with no role to assume. The App stack
+  already grants that role `ses:SendEmail` on the same terms when it is synthesised for production.
 - **Deployed by hand, as `Mvgl-prod-Email`**, because no pipeline reaches the production account (0066). It is
   long-lived and outlives the holding page.
 - **Both account ids are named in `Site.cs`**, because each side of a cross-account trust has to say which
@@ -98,15 +102,18 @@ recipient. The browser smoke test will read #421's link from these files, with n
 ### 6. No address in any log line or exception
 
 - A sent message is logged by its purpose and the id SES gave it, which a bounce or a complaint names later.
-- A refusal is `EmailNotSentException`, whose text is SES's error code, status and message with every address
-  masked, and which carries **no inner exception**, because the handler would log that one whole.
+- A refusal is logged once, by the transport, with SES's error code, status and message, every address
+  masked, and up to a thousand characters, since an `AccessDenied` names its resource last. It then leaves as
+  an `EmailNotSentException` carrying that text as `Reason`, not in its message, so a handler that logs it
+  does not say it twice, and with **no inner exception**, because the handler would log that one whole.
 - `EmailMessage.ToString()` is the purpose alone, because a record's own would print the address, and a link's
   token, into any log line it is interpolated into by mistake.
 
 ### 7. What a failure is
 
-Anything SES answers with, and anything that keeps it from answering (the network, the client's own timeout,
-credentials that could not be had), is an `EmailNotSentException`. The caller's cancellation passes through as
+Anything SES answers with, and anything that keeps it from answering (the network, a timeout, credentials
+that could not be had), is an `EmailNotSentException`. The client is made on the first send, inside the
+transport's handling, because making it resolves credentials. The caller's cancellation passes through as
 itself, and so does any other exception, which is a bug of ours. What a flow does when its email was not sent
 is that flow's decision, not the transport's.
 

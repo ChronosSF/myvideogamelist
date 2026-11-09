@@ -198,16 +198,30 @@ public sealed class AppStack : Stack
             Logging = Logging(logs, "api"),
         });
 
-        // Email goes through the production account's SES, which has production access, as that
-        // account's role (ADR 0088). The domain is verified there in the same Region as this stack's,
-        // which ADR 0044 put both accounts in. From is set from the one address the role allows, so
-        // the two cannot drift. Production will send as its own task role, with no role to assume.
-        container.AddEnvironment("Email__From", $"MyVideoGameList <{Site.EmailFromAddress}>");
+        // Email goes through the production account's SES, which has production access (ADR 0088).
+        // The domain is verified there in the same Region as this stack's, which ADR 0044 put both
+        // accounts in. The API sends from EmailIdentity.FromAddress by default, the constant the
+        // grant below and the production account's email role are both conditioned on.
         container.AddEnvironment("Email__Ses__Region", Region);
         // Where an email's links lead: the host the distribution answers, never the request's (ADR 0089).
         container.AddEnvironment("Email__SiteUrl", $"https://{site.Host}");
-        if (!site.IsProduction)
+        if (site.IsProduction)
         {
+            // Production sends as its own task role, on the same terms the dev role is held to.
+            task.TaskRole.AddToPrincipalPolicy(new PolicyStatement(new PolicyStatementProps
+            {
+                Sid = "SendFromNoReply",
+                Actions = ["ses:SendEmail"],
+                Resources = [$"arn:{Aws.PARTITION}:ses:{Region}:{Account}:identity/{Site.Domain}"],
+                Conditions = new Dictionary<string, object>
+                {
+                    ["StringEquals"] = new Dictionary<string, object> { ["ses:FromAddress"] = Site.EmailFromAddress },
+                },
+            }));
+        }
+        else
+        {
+            // Every other environment sends as the production account's role.
             container.AddEnvironment("Email__Ses__RoleArn", site.EmailRoleArn);
             task.TaskRole.AddToPrincipalPolicy(new PolicyStatement(new PolicyStatementProps
             {

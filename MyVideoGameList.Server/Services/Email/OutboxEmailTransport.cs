@@ -44,12 +44,12 @@ internal static class Eml
     /// <summary>UTF-8 without a byte-order mark, which would come before the first header.</summary>
     internal static readonly Encoding Encoding = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
 
-    private const string Boundary = "mvgl-alternative";
-
     internal static string Format(EmailMessage message, EmailSender sender, DateTimeOffset date)
     {
+        // A boundary of its own for each message, so that no body can contain it.
+        var boundary = $"mvgl-{Guid.NewGuid():N}";
         var eml = new StringBuilder();
-        Header(eml, "From", sender.From.ToString());
+        Header(eml, "From", sender.FromHeader);
         Header(eml, "Reply-To", sender.ReplyTo.Address);
         Header(eml, "To", message.To);
         Header(eml, "Subject", EncodedWord(message.Subject));
@@ -62,13 +62,13 @@ internal static class Eml
             return eml.ToString();
         }
 
-        Header(eml, "Content-Type", $"multipart/alternative; boundary=\"{Boundary}\"");
+        Header(eml, "Content-Type", $"multipart/alternative; boundary=\"{boundary}\"");
         eml.Append("\r\n");
-        eml.Append($"--{Boundary}\r\n");
+        eml.Append($"--{boundary}\r\n");
         Part(eml, "text/plain", message.Text);
-        eml.Append($"\r\n--{Boundary}\r\n");
+        eml.Append($"\r\n--{boundary}\r\n");
         Part(eml, "text/html", message.Html);
-        eml.Append($"\r\n--{Boundary}--\r\n");
+        eml.Append($"\r\n--{boundary}--\r\n");
         return eml.ToString();
     }
 
