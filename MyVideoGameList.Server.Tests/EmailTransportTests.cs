@@ -1,5 +1,7 @@
 using System.Net;
 using System.Net.Mail;
+using System.Text;
+using System.Text.RegularExpressions;
 using Amazon.Runtime;
 using Amazon.SimpleEmailV2;
 using Amazon.SimpleEmailV2.Model;
@@ -42,7 +44,7 @@ public class EmailTransportTests
         SendEmailRequest? sent = null;
         ses.SendEmailAsync(Arg.Do<SendEmailRequest>(request => sent = request), Arg.Any<CancellationToken>())
             .Returns(new SendEmailResponse { MessageId = "0107-abc" });
-        var transport = new SesEmailTransport(ses, Sender, Logger<SesEmailTransport>());
+        var transport = new SesEmailTransport(() => ses, Sender, Logger<SesEmailTransport>());
 
         await transport.SendAsync(Message with { Html = "<p>Open this link</p>" }, CancellationToken.None);
 
@@ -66,7 +68,7 @@ public class EmailTransportTests
         ses.SendEmailAsync(Arg.Do<SendEmailRequest>(request => sent = request), Arg.Any<CancellationToken>())
             .Returns(new SendEmailResponse { MessageId = "0107-abc" });
 
-        await new SesEmailTransport(ses, Sender, Logger<SesEmailTransport>()).SendAsync(Message, CancellationToken.None);
+        await new SesEmailTransport(() => ses, Sender, Logger<SesEmailTransport>()).SendAsync(Message, CancellationToken.None);
 
         Assert.NotNull(sent);
         Assert.Null(sent.Content.Simple.Body.Html);
@@ -79,7 +81,7 @@ public class EmailTransportTests
         ses.SendEmailAsync(Arg.Any<SendEmailRequest>(), Arg.Any<CancellationToken>())
             .Returns(new SendEmailResponse { MessageId = "0107-abc" });
 
-        await new SesEmailTransport(ses, Sender, Logger<SesEmailTransport>()).SendAsync(Message, CancellationToken.None);
+        await new SesEmailTransport(() => ses, Sender, Logger<SesEmailTransport>()).SendAsync(Message, CancellationToken.None);
 
         var line = Assert.Single(log.Entries);
         Assert.Equal("account confirmation", line.Value("Purpose"));
@@ -97,11 +99,14 @@ public class EmailTransportTests
                 ErrorType.Sender, "MessageRejected", "req-1", HttpStatusCode.BadRequest));
 
         var exception = await Assert.ThrowsAsync<EmailNotSentException>(() =>
-            new SesEmailTransport(ses, Sender, Logger<SesEmailTransport>()).SendAsync(Message, CancellationToken.None));
+            new SesEmailTransport(() => ses, Sender, Logger<SesEmailTransport>()).SendAsync(Message, CancellationToken.None));
 
         Assert.Null(exception.InnerException);
-        Assert.Contains("MessageRejected (400)", exception.Message);
-        Assert.Contains("EU-CENTRAL-1: <address>", exception.Message);
+        Assert.Contains("MessageRejected (400)", exception.Reason);
+        Assert.Contains("EU-CENTRAL-1: <address>", exception.Reason);
+        Assert.DoesNotContain(Recipient, exception.Reason);
+        // Logged once, by the transport: the message a handler would log says which email, not why.
+        Assert.DoesNotContain("MessageRejected", exception.Message);
         Assert.DoesNotContain(Recipient, exception.Message);
         var line = Assert.Single(log.Entries);
         Assert.Equal(LogLevel.Warning, line.Level);
@@ -117,7 +122,7 @@ public class EmailTransportTests
             .ThrowsAsync(new HttpRequestException("No such host is known."));
 
         var exception = await Assert.ThrowsAsync<EmailNotSentException>(() =>
-            new SesEmailTransport(ses, Sender, Logger<SesEmailTransport>()).SendAsync(Message, CancellationToken.None));
+            new SesEmailTransport(() => ses, Sender, Logger<SesEmailTransport>()).SendAsync(Message, CancellationToken.None));
 
         Assert.Contains("HttpRequestException", exception.Reason);
     }
@@ -131,7 +136,7 @@ public class EmailTransportTests
             .ThrowsAsync(new TaskCanceledException("The request was canceled due to the configured HttpClient.Timeout."));
 
         await Assert.ThrowsAsync<EmailNotSentException>(() =>
-            new SesEmailTransport(ses, Sender, Logger<SesEmailTransport>()).SendAsync(Message, CancellationToken.None));
+            new SesEmailTransport(() => ses, Sender, Logger<SesEmailTransport>()).SendAsync(Message, CancellationToken.None));
     }
 
     [Fact]
@@ -144,7 +149,7 @@ public class EmailTransportTests
             .ThrowsAsync(new OperationCanceledException(cancelled.Token));
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
-            new SesEmailTransport(ses, Sender, Logger<SesEmailTransport>()).SendAsync(Message, cancelled.Token));
+            new SesEmailTransport(() => ses, Sender, Logger<SesEmailTransport>()).SendAsync(Message, cancelled.Token));
     }
 
     [Fact]
@@ -155,7 +160,7 @@ public class EmailTransportTests
             .ThrowsAsync(new InvalidOperationException("ours"));
 
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            new SesEmailTransport(ses, Sender, Logger<SesEmailTransport>()).SendAsync(Message, CancellationToken.None));
+            new SesEmailTransport(() => ses, Sender, Logger<SesEmailTransport>()).SendAsync(Message, CancellationToken.None));
     }
 
     [Fact]
@@ -194,10 +199,79 @@ public class EmailTransportTests
     {
         var eml = Eml.Format(Message with { Html = "<p>Open</p>" }, Sender, DateTimeOffset.UnixEpoch);
 
-        Assert.Contains("Content-Type: multipart/alternative; boundary=\"mvgl-alternative\"\r\n", eml);
+        var boundary = Regex.Match(eml, "Content-Type: multipart/alternative; boundary=\"(mvgl-[0-9a-f]{32})\"\r\n").Groups[1].Value;
+        Assert.NotEmpty(boundary);
         Assert.Contains("Content-Type: text/plain; charset=utf-8\r\n", eml);
         Assert.Contains("Content-Type: text/html; charset=utf-8\r\n", eml);
-        Assert.EndsWith("<p>Open</p>\r\n--mvgl-alternative--\r\n", eml);
+        Assert.EndsWith($"<p>Open</p>\r\n--{boundary}--\r\n", eml);
+    }
+
+    [Fact]
+    public void Format_EachMessage_HasABoundaryOfItsOwn()
+    {
+        // A fixed boundary would end the message early inside any body that happened to contain it.
+        static string BoundaryOf(string eml) =>
+            Regex.Match(eml, "boundary=\"(mvgl-[0-9a-f]{32})\"").Groups[1].Value;
+        var html = Message with { Html = "<p>Open</p>" };
+
+        Assert.NotEqual(
+            BoundaryOf(Eml.Format(html, Sender, DateTimeOffset.UnixEpoch)),
+            BoundaryOf(Eml.Format(html, Sender, DateTimeOffset.UnixEpoch)));
+    }
+
+    [Fact]
+    public async Task SendAsync_TheClientCannotBeMade_ThrowsNotSent()
+    {
+        // Making the client resolves credentials, so a failure there is a send that did not go.
+        var transport = new SesEmailTransport(
+            () => throw new AmazonClientException("Failed to resolve AWS credentials."), Sender, Logger<SesEmailTransport>());
+
+        var exception = await Assert.ThrowsAsync<EmailNotSentException>(() => transport.SendAsync(Message, CancellationToken.None));
+
+        Assert.Contains("AmazonClientException", exception.Reason);
+    }
+
+    [Fact]
+    public async Task SendAsync_PastTheDeadline_ThrowsNotSent()
+    {
+        // The client's timeout is per attempt; the deadline bounds every attempt together.
+        var ses = Substitute.For<IAmazonSimpleEmailServiceV2>();
+        ses.SendEmailAsync(Arg.Any<SendEmailRequest>(), Arg.Any<CancellationToken>())
+            .Returns(async call =>
+            {
+                await Task.Delay(Timeout.Infinite, call.Arg<CancellationToken>());
+                return new SendEmailResponse();
+            });
+        var transport = new SesEmailTransport(() => ses, Sender, Logger<SesEmailTransport>(), TimeSpan.FromMilliseconds(50));
+
+        await Assert.ThrowsAsync<EmailNotSentException>(() => transport.SendAsync(Message, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task SendAsync_ADisplayNameOutsideAscii_IsAnEncodedWord()
+    {
+        // SES refuses a From whose display name is outside ASCII unless it is an RFC 2047 encoded word.
+        var ses = Substitute.For<IAmazonSimpleEmailServiceV2>();
+        SendEmailRequest? sent = null;
+        ses.SendEmailAsync(Arg.Do<SendEmailRequest>(request => sent = request), Arg.Any<CancellationToken>())
+            .Returns(new SendEmailResponse { MessageId = "0107-abc" });
+        var sender = Sender with { From = new MailAddress("noreply@myvideogamelist.net", "Моят списък") };
+
+        await new SesEmailTransport(() => ses, sender, Logger<SesEmailTransport>()).SendAsync(Message, CancellationToken.None);
+
+        Assert.NotNull(sent);
+        Assert.Equal(
+            $"=?utf-8?B?{Convert.ToBase64String(Encoding.UTF8.GetBytes("Моят списък"))}?= <noreply@myvideogamelist.net>",
+            sent.FromEmailAddress);
+    }
+
+    [Fact]
+    public void Mask_ALongRefusal_KeepsItsEnd()
+    {
+        // An AccessDenied names the resource it was refused on last, past LogText's usual two hundred.
+        var text = new string('x', 400) + " on resource arn:aws:ses:eu-central-1:111122223333:configuration-set/events";
+
+        Assert.EndsWith("configuration-set/events", EmailLogText.Mask(text));
     }
 
     [Fact]

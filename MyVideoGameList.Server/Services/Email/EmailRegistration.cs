@@ -11,8 +11,10 @@ public static class EmailRegistration
     public const string SectionName = "Email";
 
     /// <summary>
-    /// How long each HTTP request to SES or STS may take. The default is <see cref="HttpClient"/>'s
-    /// hundred seconds, which somebody waiting on a sign-up would sit out for each of the SDK's tries.
+    /// How long each HTTP request to SES may take. The default is <see cref="HttpClient"/>'s hundred
+    /// seconds, which somebody waiting on a sign-up would sit out for each of the SDK's tries. The SDK
+    /// tries more than once, so the whole send is bounded as well, by
+    /// <see cref="SesEmailTransport.Deadline"/>.
     /// </summary>
     private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(10);
 
@@ -51,7 +53,7 @@ public static class EmailRegistration
     {
         var section = configuration.GetSection(SectionName);
         var sender = new EmailSender(
-            Address(section, "From"),
+            Address(section, "From", $"{EmailIdentity.FromName} <{EmailIdentity.FromAddress}>"),
             Address(section, "ReplyTo"));
         services.AddSingleton(sender);
 
@@ -60,7 +62,13 @@ public static class EmailRegistration
         {
             var roleArn = Value(section, "Ses:RoleArn");
             services.AddSingleton<IAmazonSimpleEmailServiceV2>(_ => Client(region, roleArn));
-            services.AddSingleton<IEmailTransport, SesEmailTransport>();
+            // The client is asked for on each send rather than handed over at construction, because
+            // making it resolves credentials, and a failure there has to be a send that did not go,
+            // inside the transport's handling, not a request that cannot build its controller.
+            services.AddSingleton<IEmailTransport>(provider => new SesEmailTransport(
+                provider.GetRequiredService<IAmazonSimpleEmailServiceV2>,
+                sender,
+                provider.GetRequiredService<ILogger<SesEmailTransport>>()));
             return services;
         }
 
@@ -112,11 +120,10 @@ public static class EmailRegistration
         return new AmazonSimpleEmailServiceV2Client(credentials, config);
     }
 
-    private static MailAddress Address(IConfigurationSection section, string key) =>
-        MailAddress.TryCreate(Value(section, key), out var address)
+    private static MailAddress Address(IConfigurationSection section, string key, string? fallback = null) =>
+        MailAddress.TryCreate(Value(section, key) ?? fallback, out var address)
             ? address
-            : throw new InvalidOperationException(
-                $"{SectionName}:{key} must be an email address; appsettings.json has the default.");
+            : throw new InvalidOperationException($"{SectionName}:{key} must be an email address.");
 
     private static string? Value(IConfigurationSection section, string key) =>
         section[key]?.Trim() is { Length: > 0 } value ? value : null;
