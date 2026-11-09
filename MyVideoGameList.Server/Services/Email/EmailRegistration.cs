@@ -69,6 +69,16 @@ public static class EmailRegistration
 
         if (region is not null)
         {
+            // The sending role, production's and the one dev assumes, allows this one address and no
+            // other, so any other would start and then have every send refused (ADR 0088). The display
+            // name is free.
+            if (!string.Equals(sender.From.Address, EmailIdentity.FromAddress, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException(
+                    $"{SectionName}:From must be {EmailIdentity.FromAddress} wherever SES sends: the sending "
+                    + "role allows that address and no other. Change EmailIdentity, and the role with it.");
+            }
+
             var roleArn = Value(section, "Ses:RoleArn");
             services.AddSingleton<IAmazonSimpleEmailServiceV2>(_ => Client(region, roleArn));
             // The client is asked for on each send rather than handed over at construction, because

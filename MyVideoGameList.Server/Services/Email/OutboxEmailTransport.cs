@@ -26,11 +26,22 @@ internal sealed class OutboxEmailTransport(
     public async Task SendAsync(EmailMessage message, CancellationToken cancellationToken)
     {
         var now = clock.GetUtcNow();
-        Directory.CreateDirectory(directory);
-
         var path = Path.Combine(directory,
             $"{now.ToString("yyyyMMdd-HHmmss-fff", CultureInfo.InvariantCulture)}-{Guid.NewGuid():N}.eml");
-        await File.WriteAllTextAsync(path, Eml.Format(message, sender, now), Eml.Encoding, cancellationToken);
+
+        try
+        {
+            Directory.CreateDirectory(directory);
+            await File.WriteAllTextAsync(path, Eml.Format(message, sender, now), Eml.Encoding, cancellationToken);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            // A folder that cannot be written is an email that did not go, as a refusal from SES is, so
+            // a caller handles both one way. The text names the path, which names nobody; masked anyway.
+            var reason = $"{exception.GetType().Name}: {EmailLogText.Mask(exception.Message)}";
+            logger.LogWarning("The {Purpose} email could not be written to the outbox: {Reason}.", message.Purpose, reason);
+            throw new EmailNotSentException(message.Purpose, reason);
+        }
 
         logger.LogInformation("Wrote the {Purpose} email to {Path}. Nothing was sent.", message.Purpose, path);
     }

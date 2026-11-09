@@ -109,6 +109,38 @@ public class EmailRegistrationTests
     }
 
     [Fact]
+    public void AddEmail_SesFromAnAddressTheRoleDoesNotAllow_RefusesToStart()
+    {
+        // It would start, and then have every send refused by IAM.
+        var act = () => new ServiceCollection().AddEmail(
+            Configuration(
+                ("Email:From", "MyVideoGameList <hello@myvideogamelist.net>"),
+                ("Email:ReplyTo", "support@myvideogamelist.net"),
+                ("Email:Ses:Region", "eu-central-1"),
+                ("Email:SiteUrl", "https://dev.myvideogamelist.net")),
+            Environment(Environments.Production));
+
+        Assert.Contains(EmailIdentity.FromAddress, Assert.Throws<InvalidOperationException>(act).Message);
+    }
+
+    [Fact]
+    public void AddEmail_SesFromTheAllowedAddressUnderAnotherName_Starts()
+    {
+        using var provider = new ServiceCollection()
+            .AddEmail(
+                Configuration(
+                    ("Email:From", $"MVGL <{EmailIdentity.FromAddress}>"),
+                    ("Email:ReplyTo", "support@myvideogamelist.net"),
+                    ("Email:Ses:Region", "eu-central-1"),
+                    ("Email:SiteUrl", "https://dev.myvideogamelist.net")),
+                Environment(Environments.Production))
+            .AddLogging()
+            .BuildServiceProvider();
+
+        Assert.IsType<SesEmailTransport>(provider.GetRequiredService<IEmailTransport>());
+    }
+
+    [Fact]
     public void AddEmail_NoReplyTo_RefusesToStart()
     {
         var act = () => new ServiceCollection().AddEmail(

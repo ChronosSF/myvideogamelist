@@ -195,6 +195,28 @@ public class EmailTransportTests
     }
 
     [Fact]
+    public async Task SendAsync_AnOutboxThatCannotBeWritten_ThrowsNotSent()
+    {
+        // A file where the folder should be: no folder can be made there, on any platform.
+        var file = Path.GetTempFileName();
+        try
+        {
+            var transport = new OutboxEmailTransport(
+                Path.Combine(file, "outbox"), Sender, TimeProvider.System, Logger<OutboxEmailTransport>());
+
+            var exception = await Assert.ThrowsAsync<EmailNotSentException>(() => transport.SendAsync(Message, CancellationToken.None));
+
+            Assert.Null(exception.InnerException);
+            Assert.Equal(LogLevel.Warning, Assert.Single(log.Entries).Level);
+            AssertNoLineNames(Recipient);
+        }
+        finally
+        {
+            File.Delete(file);
+        }
+    }
+
+    [Fact]
     public void Format_WithHtml_WritesBothBodiesAsAlternatives()
     {
         var eml = Eml.Format(Message with { Html = "<p>Open</p>" }, Sender, DateTimeOffset.UnixEpoch);
