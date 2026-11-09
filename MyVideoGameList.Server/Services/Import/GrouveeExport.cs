@@ -59,7 +59,11 @@ internal sealed class GrouveeGame
     /// <summary>IGDB's own id, which is what makes this preset need no matcher. Null on a handful of rows.</summary>
     public int? IgdbId { get; set; }
 
-    /// <summary>Keyed by shelf name; the values are a URL and an ordinal we have no use for.</summary>
+    /// <summary>
+    /// Keyed by shelf name. Each value holds a URL, <c>date_added</c> — when the game went onto that
+    /// shelf, to the second — and <c>order</c>, the game's place in its owner's ranking of the shelf.
+    /// Only the first of those is read, through <c>GrouveeImportSource.ShelvedAt</c> (ADR 0087).
+    /// </summary>
     public Dictionary<string, JsonElement>? Shelves { get; set; }
 
     /// <summary>
@@ -80,7 +84,10 @@ internal sealed class GrouveeGame
 
     public string? ReleaseDate { get; set; }
 
-    /// <summary>A true <c>AddedAt</c> — see <see cref="ImportRowPayload.AddedAt"/> for why that matters.</summary>
+    /// <summary>
+    /// A true <c>AddedAt</c>, to the day — see <see cref="ImportRowPayload.AddedAt"/> for why that
+    /// matters, and <c>GrouveeImportSource.AddedAtOf</c> for where its time of day comes from.
+    /// </summary>
     public string? DateAddedToCollection { get; set; }
 }
 

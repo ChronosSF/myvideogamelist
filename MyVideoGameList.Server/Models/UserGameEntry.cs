@@ -129,9 +129,10 @@ public class UserGameEntry : IHandOrdered
     /// <b>Never backfilled</b>, because no row recorded when an existing score was given, and a
     /// migration stamping one would be inventing that moment for every score at once. <b>Never set
     /// by an import</b> either, for the reason <see cref="StatusChangedAt"/> is never stamped there
-    /// (ADR 0026 §5): the source says what somebody thought of a game, not when they decided it, and
-    /// the import's own clock would put the whole library at the top of the history as though it had
-    /// all been scored in one afternoon.
+    /// from the import's own clock (ADR 0026 §5): the source says what somebody thought of a game, not
+    /// when they decided it, and the import's own clock would put the whole library at the top of the
+    /// history as though it had all been scored in one afternoon. Where a source does date a status,
+    /// the date is when the game arrived on a shelf, which is no score's moment (ADR 0087).
     /// </para>
     /// <para>
     /// Current state, like the score: changing a score moves this, and the earlier score and its
@@ -204,6 +205,11 @@ public class UserGameEntry : IHandOrdered
     /// When <see cref="StatusId"/> last changed, including to null. The sort key behind
     /// "recently moved"; null for entries that have never been in a list.
     /// </summary>
+    /// <remarks>
+    /// An import writes the moment its source gives for the game reaching its shelf, and null where the
+    /// source gives none — never its own clock (ADR 0026 §5, ADR 0087). So a status with no event behind
+    /// it can carry a moment: like the status, it is <see cref="Origin"/> that says whether one is there.
+    /// </remarks>
     public DateTimeOffset? StatusChangedAt { get; set; }
 
     public ApplicationUser User { get; set; } = null!;

@@ -134,7 +134,7 @@ internal sealed class GrouveeImportSource : IImportSource
         var shelves = game.Shelves?.Keys.ToList() ?? [];
         var playthroughs = MapPlaythroughs(game.Dates, game.Platforms?.Keys.FirstOrDefault());
         var finished = playthroughs.Any(p => p.FinishedOn is not null);
-        var (status, unrecognised, unresolved) = MapShelves(shelves, finished);
+        var (status, unrecognised, unresolved, from) = MapShelves(shelves, finished);
 
         return new ImportRowPayload(
             Title: title,
@@ -149,8 +149,9 @@ internal sealed class GrouveeImportSource : IImportSource
             Wishlist: shelves.Any(IsWishlistShelf),
             Favourite: game.IgdbId is { } id && favourites.Contains(id),
             Notes: MapNotes(game.ReviewTitle, game.Review),
-            AddedAt: TimestampOf(game.DateAddedToCollection),
-            Playthroughs: playthroughs);
+            AddedAt: AddedAtOf(game),
+            Playthroughs: playthroughs,
+            StatusSince: from is not null && game.Shelves!.TryGetValue(from, out var shelf) ? ShelvedAt(shelf) : null);
     }
 
     /// <summary>
@@ -287,26 +288,35 @@ internal sealed class GrouveeImportSource : IImportSource
     /// wins, so Playing beats Played beats Backlog. A game on Played and Playing is one somebody is
     /// replaying, and Playing is the truer answer about now.
     /// </para>
+    /// <para>
+    /// <c>From</c> is the shelf the status is read from, or will be once the review screen has an
+    /// answer for it, so that the row can carry when the game went onto it (ADR 0087). A game on
+    /// several shelves none of which we know has no one shelf its owner's answer reads, and so none.
+    /// </para>
     /// </remarks>
-    private static (string? Status, bool Unrecognised, bool PlayedUnresolved) MapShelves(
+    private static (string? Status, bool Unrecognised, bool PlayedUnresolved, string? From) MapShelves(
         IReadOnlyList<string> shelves, bool finished)
     {
-        if (shelves.Count == 0) return (null, false, false);
+        if (shelves.Count == 0) return (null, false, false, null);
 
-        if (shelves.Any(s => Is(s, ShelfPlaying))) return (ListStatusKeys.Playing, false, false);
+        if (Find(shelves, ShelfPlaying) is { } playing) return (ListStatusKeys.Playing, false, false, playing);
 
-        if (shelves.Any(s => Is(s, ShelfPlayed)))
-            return finished ? (ListStatusKeys.Finished, false, false) : (null, false, true);
+        if (Find(shelves, ShelfPlayed) is { } played)
+            return finished ? (ListStatusKeys.Finished, false, false, played) : (null, false, true, played);
 
-        if (shelves.Any(s => Is(s, ShelfBacklog))) return (ListStatusKeys.Backlog, false, false);
+        if (Find(shelves, ShelfBacklog) is { } backlog) return (ListStatusKeys.Backlog, false, false, backlog);
 
         // The wishlist is an axis rather than a status (ADR 0022), so a game only wishlisted has no
         // status and nothing was misunderstood.
-        if (shelves.All(IsWishlistShelf)) return (null, false, false);
+        var invented = shelves.Where(s => !IsWishlistShelf(s)).ToList();
+        if (invented.Count == 0) return (null, false, false, null);
 
         // A shelf the user invented. Never defaulted to Backlog — the review screen asks.
-        return (null, true, false);
+        return (null, true, false, invented.Count == 1 ? invented[0] : null);
     }
+
+    private static string? Find(IReadOnlyList<string> shelves, string known) =>
+        shelves.FirstOrDefault(s => Is(s, known));
 
     private static bool IsWishlistShelf(string shelf) => Is(shelf, ShelfWishList);
 
@@ -413,17 +423,56 @@ internal sealed class GrouveeImportSource : IImportSource
     private static int? YearOf(string? value) => DateOf(value)?.Year;
 
     /// <summary>
-    /// A Grouvee calendar date as the instant the entry records being added.
+    /// When the game entered the collection, to the second wherever the file says the second.
     /// </summary>
     /// <remarks>
-    /// <c>date_added_to_collection</c> is a date with no time, so this is midnight UTC on it. The
-    /// alternative is the shelf's own <c>date_added</c>, which does carry a time — but a game can
-    /// be on several shelves with several of them, and "which shelf did they add it to first" is a
-    /// question this import does not otherwise have to answer. A day's precision is enough for
-    /// what the value is for, which is keeping "recently added" in the order the user remembers.
+    /// <para>
+    /// <c>date_added_to_collection</c> is the day the game first went onto any shelf, with no time,
+    /// and it is the day this keeps. A day alone is not enough: everything entered that day ties, and
+    /// a tie sorts by title, so the long sittings in which somebody enters their back catalogue come
+    /// out alphabetical — 255 games on one day in the export this was built from (ADR 0087).
+    /// </para>
+    /// <para>
+    /// The time comes from the shelves, each of which records when the game went onto it. The
+    /// earliest on that same day is the moment the game was first shelved; one on a later day is a
+    /// move made since, which is the shelf's moment and not the collection's, so a game whose every
+    /// shelf is later keeps midnight. The collection's day is UTC's: shelvings after nine in the
+    /// evening there, which were past midnight where that export was made, still carry the UTC day.
+    /// </para>
     /// </remarks>
-    private static DateTimeOffset? TimestampOf(string? value) =>
-        DateOf(value) is { } date ? new DateTimeOffset(date, TimeOnly.MinValue, TimeSpan.Zero) : null;
+    private static DateTimeOffset? AddedAtOf(GrouveeGame game)
+    {
+        if (DateOf(game.DateAddedToCollection) is not { } day) return null;
+
+        var sameDay = (game.Shelves?.Values ?? Enumerable.Empty<JsonElement>())
+            .Select(ShelvedAt)
+            .OfType<DateTimeOffset>()
+            .Where(at => DateOnly.FromDateTime(at.UtcDateTime) == day)
+            .ToList();
+
+        return sameDay.Count > 0 ? sameDay.Min() : new DateTimeOffset(day, TimeOnly.MinValue, TimeSpan.Zero);
+    }
+
+    /// <summary>
+    /// When the game went onto a shelf: the shelf's <c>date_added</c>, an instant in UTC.
+    /// </summary>
+    /// <remarks>
+    /// Read off the raw element, so a shelf that is not shaped as every real one has been costs its
+    /// moment and nothing else — never the upload. The shelf's <c>order</c> beside it, its owner's
+    /// hand ranking, is deliberately not read: a ranking may mean "when" or "how good", and only its
+    /// owner knows which (ADR 0087).
+    /// </remarks>
+    internal static DateTimeOffset? ShelvedAt(JsonElement shelf) =>
+        shelf.ValueKind == JsonValueKind.Object
+        && shelf.TryGetProperty("date_added", out var added)
+        && added.ValueKind == JsonValueKind.String
+        && DateTimeOffset.TryParse(
+            added.GetString(),
+            CultureInfo.InvariantCulture,
+            DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal,
+            out var at)
+            ? at
+            : null;
 
     private static string? Clean(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Trim();

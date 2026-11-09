@@ -580,9 +580,11 @@ public class ImportService(
     /// <b>No <see cref="UserGameEvent"/> is written here, and that is the point.</b> The source
     /// records a shelf, not a transition, so an event would carry the import's own timestamp and
     /// become permanent fabricated history in the one table no migration can reconstruct
-    /// (ADR 0018, ADR 0026). <see cref="UserGameEntry.Origin"/> is what marks the exemption, and
-    /// <c>StatusChangedAt</c> stays null so an imported library does not bury everything the user
-    /// actually touched at the top of "recently moved".
+    /// (ADR 0018, ADR 0026). <see cref="UserGameEntry.Origin"/> is what marks the exemption.
+    /// <c>StatusChangedAt</c> is the source's own moment for the game reaching its shelf, or null
+    /// where the source has none — never the import's clock, which would put an entire imported
+    /// library at the top of "recently moved" and bury everything the user actually touched
+    /// (ADR 0026 §5, as ADR 0087 amends it).
     /// </remarks>
     /// <returns>
     /// How many rows were written, how many games those rows went into — fewer whenever two of
@@ -631,9 +633,17 @@ public class ImportService(
 
             if (payload.Status is { } key && statuses.TryGetValue(key, out var statusId))
             {
-                // A game the import moves to another list leaves its place in the old one's hand
-                // order behind, as a move made by hand does; one it leaves where it was keeps it.
-                if (entry.StatusId != statusId) entry.Position = null;
+                if (entry.StatusId != statusId)
+                {
+                    // A game the import moves to another list leaves its place in the old one's hand
+                    // order behind, as a move made by hand does; one it leaves where it was keeps it.
+                    entry.Position = null;
+
+                    // When it arrived in this list is the source's to say, and null when it does not
+                    // say: a moment the entry already held dated a move into a list it has now left
+                    // (ADR 0087). One it leaves where it was keeps its owner's own moment.
+                    entry.StatusChangedAt = payload.StatusSince;
+                }
 
                 entry.StatusId = statusId;
 
@@ -644,11 +654,11 @@ public class ImportService(
             }
 
             // Only fills what is empty. An import is new information about a game, not a correction
-            // of what its owner already recorded by hand. Its `ScoredAt` stays null, as
-            // `StatusChangedAt` is never stamped here: the source says what the score is and not when
-            // it was given, so an imported score has no place in the history (ADR 0062). Written as
-            // a pair with that null, so a score given in another tab since this commit read the entry
-            // cannot leave its moment beside the imported score.
+            // of what its owner already recorded by hand. Its `ScoredAt` stays null: the source says
+            // what the score is and not when it was given, so an imported score has no place in the
+            // history (ADR 0062), and a shelf's moment is when the game arrived, which is no score's.
+            // Written as a pair with that null, so a score given in another tab since this commit
+            // read the entry cannot leave its moment beside the imported score.
             if (entry.Score is null && payload.Score is { } importedScore)
             {
                 entry.Score = importedScore;
