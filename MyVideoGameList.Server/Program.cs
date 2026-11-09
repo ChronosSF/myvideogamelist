@@ -10,6 +10,7 @@ using MyVideoGameList.Server.Observability;
 using MyVideoGameList.Server.Security;
 using MyVideoGameList.Server.Services;
 using MyVideoGameList.Server.Services.Edge;
+using MyVideoGameList.Server.Services.Email;
 using MyVideoGameList.Server.Services.Import;
 using Scalar.AspNetCore;
 
@@ -107,6 +108,10 @@ builder.Services.AddScheduledWork();
 // page's TTL runs out. CloudFront only where a distribution id is configured; everywhere else the
 // paths are logged and nothing reaches AWS. See docs/decisions/0058-*.
 builder.Services.AddEdgeInvalidation(builder.Configuration);
+
+// The one way the API sends email: through SES where a Region is configured, into a folder in
+// Development, and nowhere else at all, which stops the host here. See docs/decisions/0088-*.
+builder.Services.AddEmail(builder.Configuration, builder.Environment);
 
 // The clock, injected so the event log's timestamps are controllable in tests.
 builder.Services.AddSingleton(TimeProvider.System);

@@ -29,9 +29,10 @@ through the distribution, and no parameter that would open one.
 
 ## Production, until #98: the holding page
 
-`-c env=prod` synthesises one stack and none of the five above: `Mvgl-prod-Holding`, whole in
-`us-east-1`, in the production account. It serves `holding/site` at `myvideogamelist.net` from a
-private bucket through a distribution, and sends `www` to the apex (ADR 0066).
+`-c env=prod` synthesises none of the six above, but two of its own, in the production account:
+`Mvgl-prod-Email`, in the next section, and `Mvgl-prod-Holding`, whole in `us-east-1`. The holding
+stack serves `holding/site` at `myvideogamelist.net` from a private bucket through a distribution,
+and sends `www` to the apex (ADR 0066).
 
 ```bash
 cdk deploy Mvgl-prod-Holding --profile mvgl-prod -c env=prod
@@ -55,6 +56,33 @@ cdk deploy Mvgl-prod-Holding --profile mvgl-prod -c env=prod
 - **Production's App stack cannot deploy with the domain while this stack holds it.** CloudFront
   gives an alternate domain name to one distribution at a time, and the records would collide too:
   destroy this stack first. The destroy empties the bucket itself.
+
+## Production's SES, for dev's email
+
+`-c env=prod` also synthesises `Mvgl-prod-Email`, in the Region the domain is verified with SES
+(`eu-central-1`). It holds one role, `mvgl-dev-email`, which the dev API's task role
+(`mvgl-dev-api-task`) assumes to send through production's SES, because production has SES
+production access and dev is in the sandbox (ADR 0088). The role may call `ses:SendEmail` on the
+domain's identity from `noreply@myvideogamelist.net` and nothing else. Long-lived: it stays when the
+holding page goes.
+
+```bash
+cdk deploy Mvgl-prod-Email --profile mvgl-prod -c env=prod
+```
+
+- **The account needs a CDK bootstrap in `eu-central-1` first, once**, as the holding page needed one
+  in `us-east-1`. From the repository root:
+
+  ```bash
+  cdk bootstrap "aws://$(aws sts get-caller-identity --profile mvgl-prod --query Account --output text)/eu-central-1" --profile mvgl-prod
+  ```
+
+- **Its order against an App deploy does not matter.** The API assumes the role on its first send; until
+  the role exists, that send fails as not sent, with `AccessDenied` in the API's log.
+- **Every email dev sends counts against production's reputation**, bounces and complaints included. Send
+  tests to addresses you own, or to SES's mailbox simulator.
+- **The two account ids are in `Site.cs`**, because each side of the trust names the other. Neither is a
+  secret, and `cdk.context.json` already named both.
 
 ## The pipeline
 

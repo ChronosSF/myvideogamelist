@@ -37,14 +37,18 @@ internal static class Program
         var edge = new Amazon.CDK.Environment { Account = account, Region = "us-east-1" };
 
         // Production is a holding page until #98 builds the rest (ADR 0066): one stack, whole in
-        // us-east-1, in the account the domain's zone lives in, and nothing else. A Dns stack in
-        // particular must never be synthesised for it - it would create a second zone named for
-        // the domain beside the real one, which the production app looks up instead (ADR 0044).
-        // Not termination-protected: it is meant to be destroyed at #98, and holds nothing a deploy
-        // would not put back.
+        // us-east-1, in the account the domain's zone lives in. A Dns stack in particular must never
+        // be synthesised for it - it would create a second zone named for the domain beside the real
+        // one, which the production app looks up instead (ADR 0044). Not termination-protected: it is
+        // meant to be destroyed at #98, and holds nothing a deploy would not put back.
+        //
+        // Beside it, in the Region where the domain is verified with SES, the role the dev
+        // environment's API sends email as, through this account's production access (ADR 0088).
+        // Long-lived, and kept at #98. Each is deployed by hand, by name.
         if (site.IsProduction)
         {
             _ = new HoldingStack(app, site.StackName("Holding"), new StackProps { Env = edge }, site);
+            _ = new EmailStack(app, site.StackName("Email"), new StackProps { Env = regional }, new Site("dev"));
             app.Synth();
             return;
         }

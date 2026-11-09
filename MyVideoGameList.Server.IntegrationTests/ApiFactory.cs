@@ -115,6 +115,9 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
         // profile, so where the keys are kept is replaced below.
         builder.UseSetting("DataProtection:AllowEphemeralKeys", "true");
 
+        // And without an email sender (ADR 0088). The outbox writes to a folder and reaches no AWS.
+        builder.UseSetting("Email:OutboxPath", Path.Combine(Path.GetTempPath(), "mvgl-integration-outbox"));
+
         builder.ConfigureTestServices(services =>
         {
             services.RemoveAll<IIgdbService>();
