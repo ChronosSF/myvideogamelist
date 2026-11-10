@@ -38,7 +38,7 @@ internal static class Browsers
         this HttpClient browser, string userName)
     {
         var email = $"{userName}@test.local";
-        var registered = await browser.PostAsJsonAsync("/api/auth/register", new RegisterDto(email, Password, userName));
+        var registered = await browser.SignUpAsync(email, userName);
         var result = await registered.ReadAsync<RegisterResultDto>(HttpStatusCode.OK);
         if (!result.EmailSent) throw new InvalidOperationException($"No confirmation went to {email}.");
 
@@ -50,6 +50,14 @@ internal static class Browsers
         var login = await browser.PostAsJsonAsync("/api/auth/login", new LoginDto(email, Password, RememberMe: true));
         return (email, login);
     }
+
+    /// <summary>Makes an account with <see cref="Password"/>, and nothing more: unconfirmed, nobody signed in.</summary>
+    public static Task<HttpResponseMessage> SignUpAsync(this HttpClient browser, string email, string userName) =>
+        browser.PostAsJsonAsync("/api/auth/register", new RegisterDto(email, Password, userName));
+
+    /// <summary>Signs in by an address or a username, as the sign-in dialog does, not remembered.</summary>
+    public static Task<HttpResponseMessage> LoginAsync(this HttpClient browser, string emailOrUserName, string password) =>
+        browser.PostAsJsonAsync("/api/auth/login", new LoginDto(emailOrUserName, password));
 
     /// <summary>
     /// Uploads a Grouvee export with one shelved game per id, each naming its IGDB id, which makes

@@ -2,16 +2,15 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Options;
 using MyVideoGameList.Server.Data;
 using MyVideoGameList.Server.Models;
 
 namespace MyVideoGameList.Server.Security;
 
 /// <summary>
-/// Ends every session of a deleted account on the next request it makes, rather than at Identity's next
-/// security-stamp check, up to thirty minutes later (ADR 0077); and every session an account had when its
-/// password was reset, the same way (ADR 0090).
+/// Ends a session at its next request, rather than at Identity's next security-stamp check up to thirty
+/// minutes later, when its account has been deleted (ADR 0077) or has ended every session it had, as a
+/// password reset does (ADR 0090, <see cref="EndAll"/>).
 /// </summary>
 /// <remarks>
 /// <para>
@@ -31,10 +30,11 @@ namespace MyVideoGameList.Server.Security;
 /// which no stamp can say.
 /// </para>
 /// <para>
-/// <b>And whether the account has ended its sessions since this one began</b>, from the same row: a
-/// password reset does, through <see cref="ApplicationUser.SessionsEndedAt"/>, because somebody resetting a
-/// password may be doing it because somebody else has it, and half an hour is long enough to do harm. A
-/// session is over when it began at or before that moment and carries a stamp the account no longer has.
+/// <b>And whether the account has ended its sessions since this one began</b>, from the same row:
+/// <see cref="EndAll"/> records the moment in <see cref="ApplicationUser.SessionsEndedAt"/>, which a password
+/// reset does because somebody resetting a password may be doing it because somebody else has it, and half
+/// an hour is long enough to do harm. A session is over when it began at or before that moment and carries a
+/// stamp the account no longer has (<see cref="Ended"/>).
 /// Both halves are needed: a session's start is kept to the second, so the moment alone would end one
 /// signed in just after the reset, within the same second; and the stamp alone would end a renamed
 /// account's other sessions at once, which ADR 0077 §4 leaves to Identity's clock. Every session from
@@ -51,7 +51,7 @@ namespace MyVideoGameList.Server.Security;
 /// the wrap: an aged session for an account whose stamp has changed is refused, by it alone.
 /// </para>
 /// </remarks>
-public static class DeletedAccountSessions
+public static class AccountSessions
 {
     /// <summary>Checks the account after Identity's own check, on every request a session cookie authenticates.</summary>
     public static void EndAtOnce(CookieAuthenticationEvents events)
@@ -67,7 +67,8 @@ public static class DeletedAccountSessions
             if (context.Principal is not { } principal || context.ShouldRenew) return;
 
             var services = context.HttpContext.RequestServices;
-            var userId = services.GetRequiredService<UserManager<ApplicationUser>>().GetUserId(principal);
+            var users = services.GetRequiredService<UserManager<ApplicationUser>>();
+            var userId = users.GetUserId(principal);
             if (userId is null) return;
 
             var db = services.GetRequiredService<ApplicationDbContext>();
@@ -76,11 +77,10 @@ public static class DeletedAccountSessions
                 .Select(user => new { user.SecurityStamp, user.SessionsEndedAt })
                 .SingleOrDefaultAsync(context.HttpContext.RequestAborted);
 
-            var stampClaim = services.GetRequiredService<IOptions<IdentityOptions>>().Value.ClaimsIdentity.SecurityStampClaimType;
             if (account is not null && !Ended(
                     account.SessionsEndedAt,
                     account.SecurityStamp,
-                    principal.FindFirst(stampClaim)?.Value,
+                    principal.FindFirst(users.Options.ClaimsIdentity.SecurityStampClaimType)?.Value,
                     context.Properties.IssuedUtc))
             {
                 return;
@@ -93,6 +93,18 @@ public static class DeletedAccountSessions
             await context.HttpContext.SignOutAsync(IdentityConstants.TwoFactorRememberMeScheme);
         };
     }
+
+    /// <summary>
+    /// Ends every session the account has, each at its next request, from <paramref name="now"/>.
+    /// </summary>
+    /// <remarks>
+    /// <b>Only with a write that also changes the security stamp</b>, as a password reset's does: a session
+    /// ends when it began by this moment <em>and</em> carries a stamp the account no longer has
+    /// (<see cref="Ended"/>), so the moment alone ends nothing. A caller whose own write changes no stamp,
+    /// such as a "sign out everywhere", saves this through
+    /// <see cref="UserManager{TUser}.UpdateSecurityStampAsync"/>.
+    /// </remarks>
+    public static void EndAll(ApplicationUser user, DateTimeOffset now) => user.SessionsEndedAt = now;
 
     /// <summary>
     /// Whether the account ended its sessions after this one began: it has ended them, the session's

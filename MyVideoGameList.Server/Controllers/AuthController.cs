@@ -58,7 +58,7 @@ public class AuthController(
             return BadRequest(new { errors = result.Errors.Select(e => e.Description) });
 
         var sent = await confirmation.SendAsync(user);
-        return Ok(new RegisterResultDto(EmailSent: sent == ConfirmationSend.Sent));
+        return Ok(new RegisterResultDto(EmailSent: sent == EmailSend.Sent));
     }
 
     /// <summary>
@@ -132,7 +132,7 @@ public class AuthController(
         var sent = await confirmation.SendAsync(user);
         return StatusCode(StatusCodes.Status403Forbidden, new
         {
-            message = sent == ConfirmationSend.Failed
+            message = sent == EmailSend.Failed
                 ? "Confirm your email address first. We could not send you a new link just now, so ask for one again in a moment."
                 : "Confirm your email address first, with the link we have sent you. If it does not arrive, we can send another.",
             unconfirmed = true,
@@ -280,7 +280,7 @@ public class AuthController(
         if (result is null || result.Errors.Any(error => error.Code == nameof(IdentityErrorDescriber.InvalidToken)))
         {
             return BadRequest(new ResetLinkRefusedDto(
-                "This link has expired or has already been used. Ask for a new one."));
+                "This link has expired or has already been used. Ask for a new one.", InvalidLink: true));
         }
 
         if (!result.Succeeded)

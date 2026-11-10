@@ -1,6 +1,6 @@
 using Microsoft.AspNetCore.Identity;
-using Microsoft.Extensions.Caching.Memory;
 using MyVideoGameList.Server.Models;
+using MyVideoGameList.Server.Security;
 using MyVideoGameList.Server.Services.Email;
 
 namespace MyVideoGameList.Server.Services;
@@ -12,16 +12,10 @@ namespace MyVideoGameList.Server.Services;
 public sealed class PasswordReset(
     UserManager<ApplicationUser> users,
     AccountEmails emails,
-    IMemoryCache cache,
-    TimeProvider clock,
-    ILogger<PasswordReset> logger)
+    EmailPace pace,
+    TimeProvider clock)
 {
-    /// <summary>The reset's own pace, apart from the confirmation's (<see cref="EmailPace"/>).</summary>
-    private const string Kind = "password-reset";
-
-    /// <summary>
-    /// Sends the account its link, unless one went within the pace. True when an email went.
-    /// </summary>
+    /// <summary>Sends the account its link, unless one went within the pace.</summary>
     /// <remarks>
     /// <para>
     /// Every account is sent one, confirmed or not and locked out or not: a reset proves the address as a
@@ -33,34 +27,12 @@ public sealed class PasswordReset(
     /// calling, so nobody who has gone is sent one, and nobody still waiting loses one half-sent.
     /// </para>
     /// </remarks>
-    public async Task<bool> SendAsync(ApplicationUser user)
-    {
-        if (!EmailPace.TryClaim(cache, Kind, user.Id)) return false;
-
-        string token;
-        try
-        {
-            token = await users.GeneratePasswordResetTokenAsync(user);
-        }
-        catch (Exception exception) when (exception is not OperationCanceledException)
-        {
-            // The key ring, unreadable on a deployment that cannot reach its store (ADR 0043).
-            logger.LogError(exception, "The password reset's token could not be made.");
-            EmailPace.Release(cache, Kind, user.Id);
-            return false;
-        }
-
-        try
-        {
-            await emails.SendPasswordResetAsync(user, token, CancellationToken.None);
-            return true;
-        }
-        catch (EmailNotSentException)
-        {
-            EmailPace.Release(cache, Kind, user.Id);
-            return false;
-        }
-    }
+    public Task<EmailSend> SendAsync(ApplicationUser user) =>
+        pace.SendAsync(
+            "password-reset",
+            user.Id,
+            () => users.GeneratePasswordResetTokenAsync(user),
+            token => emails.SendPasswordResetAsync(user, token, CancellationToken.None));
 
     /// <summary>
     /// Sets a new password from a link's token, and with it confirms the address, ends any lockout, and
@@ -71,8 +43,8 @@ public sealed class PasswordReset(
     /// <b>One write, or none.</b> Identity's <see cref="UserManager{TUser}.ResetPasswordAsync"/> checks the
     /// token, then the password, and only then writes the account once, with a new hash and a new
     /// security stamp; a failure at either check writes nothing. The four fields set here before it are
-    /// carried by that one write, so a reset never half happens. Nothing else in the request writes the
-    /// account, so a refused reset leaves them unsaved.
+    /// carried by that one write, so a reset never half happens, and put back as they were when it is
+    /// refused, so that nothing saved later in the request can carry them for a token that was no good.
     /// </para>
     /// <para>
     /// <b>The address is confirmed</b>, because the token was sent to it and has come back: what a
@@ -85,18 +57,24 @@ public sealed class PasswordReset(
     /// have just set, told for fifteen minutes that it is wrong. The link proves more than a password.
     /// </para>
     /// <para>
-    /// <b>Every session ends at its next request</b>, through <see cref="ApplicationUser.SessionsEndedAt"/>,
-    /// rather than at Identity's check of the new stamp, up to half an hour later: somebody resetting a
-    /// password may be doing it because somebody else has it.
+    /// <b>Every session ends at its next request</b> (<see cref="AccountSessions.EndAll"/>), rather than at
+    /// Identity's check of the new stamp, up to half an hour later: somebody resetting a password may be
+    /// doing it because somebody else has it. The new stamp is the half of that the reset itself writes.
     /// </para>
     /// </remarks>
-    public Task<IdentityResult> ResetAsync(ApplicationUser user, string token, string newPassword)
+    public async Task<IdentityResult> ResetAsync(ApplicationUser user, string token, string newPassword)
     {
+        var before = (user.EmailConfirmed, user.AccessFailedCount, user.LockoutEnd, user.SessionsEndedAt);
+
         user.EmailConfirmed = true;
         user.AccessFailedCount = 0;
         user.LockoutEnd = null;
-        user.SessionsEndedAt = clock.GetUtcNow();
+        AccountSessions.EndAll(user, clock.GetUtcNow());
 
-        return users.ResetPasswordAsync(user, token, newPassword);
+        var result = await users.ResetPasswordAsync(user, token, newPassword);
+        if (!result.Succeeded)
+            (user.EmailConfirmed, user.AccessFailedCount, user.LockoutEnd, user.SessionsEndedAt) = before;
+
+        return result;
     }
 }

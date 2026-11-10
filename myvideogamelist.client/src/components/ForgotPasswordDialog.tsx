@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { useDismissOnOutsidePress } from '@/lib/useDismissOnOutsidePress';
+import { DialogClose } from './DialogClose';
 import './LoginDialog.css';
 
 interface Props {
@@ -52,11 +53,7 @@ export function ForgotPasswordDialog({ initialEmailOrUserName, onClose, onSwitch
     return (
         <div className="dialog-overlay" {...dismiss} role="dialog" aria-modal="true" aria-labelledby="forgot-title">
             <div className="dialog-panel dialog-panel-rel">
-                <button className="dialog-close" onClick={onClose} aria-label="Close">
-                    <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                </button>
+                <DialogClose onClose={onClose} />
 
                 {sentFor !== null ? (
                     <>

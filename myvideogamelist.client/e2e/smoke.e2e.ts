@@ -1,19 +1,10 @@
-import { randomBytes } from 'node:crypto';
 import { expect, test } from '@playwright/test';
+import { newUserName } from './accounts';
 import { confirmationLinkFor, outboxFor } from './outbox';
 import { GAMES, PORTS, SITE } from './stand-ins';
 
 /** A digit, lower case, eight or more: what `Program.cs` asks of a password. */
 const PASSWORD = 'smoke-test-1';
-
-/**
- * A username no earlier run has taken: the database keeps every account a run registers. `e2e_`, the
- * time in base 36 and four random hex digits is sixteen characters of the twenty allowed. From
- * `node:crypto` rather than `Math.random`, which CodeQL flags wherever its value meets a sign-up form.
- */
-function newUserName(): string {
-    return `e2e_${Date.now().toString(36)}${randomBytes(2).toString('hex')}`;
-}
 
 /**
  * A game no earlier run has looked at, among the stand-in's: the time in milliseconds, which repeats
@@ -34,7 +25,7 @@ test('a new account adds a game to a list, and it is still there after a reload'
     await page.goto(`/games/${gameId}`);
     await expect(page.getByRole('heading', { level: 1, name: GAMES.title })).toBeVisible();
 
-    const userName = newUserName();
+    const userName = newUserName('e2e_');
     const email = `${userName}@test.local`;
 
     await test.step('sign up', async () => {

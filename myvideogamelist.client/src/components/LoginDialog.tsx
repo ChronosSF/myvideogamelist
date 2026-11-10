@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { UnconfirmedEmailError } from '@/types/auth';
 import { useDismissOnOutsidePress } from '@/lib/useDismissOnOutsidePress';
+import { DialogClose } from './DialogClose';
 import { ResendConfirmation } from './ResendConfirmation';
 import './LoginDialog.css';
 
@@ -46,11 +47,7 @@ export function LoginDialog({ onClose, onSwitchToRegister, onForgotPassword }: P
     return (
         <div className="dialog-overlay" {...dismiss} role="dialog" aria-modal="true" aria-labelledby="login-title">
             <div className="dialog-panel dialog-panel-rel">
-                <button className="dialog-close" onClick={onClose} aria-label="Close">
-                    <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                </button>
+                <DialogClose onClose={onClose} />
 
                 <h2 id="login-title" className="dialog-title">Sign In</h2>
 

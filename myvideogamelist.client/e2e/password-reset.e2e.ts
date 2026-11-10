@@ -1,5 +1,5 @@
-import { randomBytes } from 'node:crypto';
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
+import { newUserName, WRITE } from './accounts';
 import { confirmationIn, confirmationLinkFor, outboxFor, resetLinkFor } from './outbox';
 import { PORTS, SITE } from './stand-ins';
 
@@ -7,12 +7,10 @@ import { PORTS, SITE } from './stand-ins';
 const PASSWORD = 'reset-test-1';
 const CHOSEN = 'reset-test-2';
 
-/** The header the API's write guard asks of a write (ADR 0033), as `apiFetch` sends it. */
-const WRITE = { 'X-MVGL-Request': '1' };
-
-/** A username no earlier run has taken, as the smoke test makes one: `pwr_`, the time and four hex digits. */
-function newUserName(): string {
-    return `pwr_${Date.now().toString(36)}${randomBytes(2).toString('hex')}`;
+/** The API's answer to the next `POST` to `path`, so that a step fails on what it said, not on a wait. */
+function answerTo(page: Page, path: string) {
+    return page.waitForResponse(response =>
+        response.request().method() === 'POST' && new URL(response.url()).pathname === path);
 }
 
 /**
@@ -26,7 +24,7 @@ function newUserName(): string {
 test('a forgotten password is reset from the email, and the new one signs in', async ({ page }) => {
     await page.context().route(url => url.origin !== SITE, route => route.abort('blockedbyclient'));
 
-    const userName = newUserName();
+    const userName = newUserName('pwr_');
     const email = `${userName}@test.local`;
     const outbox = outboxFor(PORTS);
 
@@ -57,9 +55,7 @@ test('a forgotten password is reset from the email, and the new one signs in', a
         const forgot = page.getByRole('dialog', { name: 'Forgot your password?' });
         await expect(forgot.getByLabel('Email or username')).toHaveValue(userName);
 
-        const requested = page.waitForResponse(response =>
-            response.request().method() === 'POST'
-            && new URL(response.url()).pathname === '/api/auth/forgot-password');
+        const requested = answerTo(page, '/api/auth/forgot-password');
         await forgot.getByRole('button', { name: 'Send the link' }).click();
         expect((await requested).status(), 'what the API answered the request').toBe(202);
         await expect(page.getByRole('dialog', { name: 'Check your inbox' })).toBeVisible();
@@ -74,9 +70,7 @@ test('a forgotten password is reset from the email, and the new one signs in', a
 
         await page.getByLabel('New password', { exact: true }).fill(CHOSEN);
         await page.getByLabel('Confirm new password', { exact: true }).fill(CHOSEN);
-        const reset = page.waitForResponse(response =>
-            response.request().method() === 'POST'
-            && new URL(response.url()).pathname === '/api/auth/reset-password');
+        const reset = answerTo(page, '/api/auth/reset-password');
         await page.getByRole('button', { name: 'Set the new password' }).click();
         expect((await reset).status(), 'what the API answered the reset').toBe(204);
         await expect(page.getByText(/your password is changed/i)).toBeVisible();
@@ -88,9 +82,7 @@ test('a forgotten password is reset from the email, and the new one signs in', a
         await login.getByLabel('Email or username').fill(userName);
         await login.getByLabel('Password', { exact: true }).fill(CHOSEN);
 
-        const signedIn = page.waitForResponse(response =>
-            response.request().method() === 'POST'
-            && new URL(response.url()).pathname === '/api/auth/login');
+        const signedIn = answerTo(page, '/api/auth/login');
         await login.getByRole('button', { name: 'Sign In', exact: true }).click();
         expect((await signedIn).status(), 'what the API answered the sign-in').toBe(200);
 

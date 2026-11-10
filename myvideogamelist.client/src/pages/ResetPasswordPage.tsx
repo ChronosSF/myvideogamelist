@@ -48,17 +48,15 @@ export default function ResetPasswordPage() {
     const [outcome, setOutcome] = useState<Outcome | null>(null);
 
     // A link in the address bar that the page does not hold yet, the first or a newer one opened in the
-    // same tab, is taken during render, React's pattern for state that follows something outside it.
-    if (inAddress !== null && (held === null || held.userId !== inAddress.userId || held.token !== inAddress.token))
-        setHeld(inAddress);
+    // same tab, is taken during render, React's pattern for state that follows something outside it. So
+    // every render React commits holds the link the address bar had, and nothing reads the address again.
+    if (inAddress !== null && inAddress.token !== held?.token) setHeld(inAddress);
+    const link = held;
 
-    const userId = inAddress?.userId;
-    const token = inAddress?.token;
+    // Out of the address bar whenever it carries a link, a second one opened in the same tab included.
     useEffect(() => {
-        if (userId !== undefined && token !== undefined) forgetFragment();
-    }, [userId, token]);
-
-    const link = inAddress ?? held;
+        if (fragment !== null && linkIn(fragment) !== null) forgetFragment();
+    }, [fragment]);
 
     const askAgain = (
         <button type="button" className="btn-primary px-5 py-2.5" onClick={() => authDialog.open('forgot-password')}>

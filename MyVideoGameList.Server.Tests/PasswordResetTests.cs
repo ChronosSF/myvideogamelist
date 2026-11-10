@@ -41,18 +41,21 @@ public class PasswordResetTests
             ? new PasswordResetTokenProviderOptions { TokenLifespan = lifespan }
             : new PasswordResetTokenProviderOptions()));
 
-    private PasswordReset Reset(IMemoryCache cache) =>
-        new(users, Emails(), cache, clock, NullLogger<PasswordReset>.Instance);
+    /// <summary>The pace, one per test as the application has one.</summary>
+    private static EmailPace Pace(IMemoryCache cache) => new(cache, NullLogger<EmailPace>.Instance);
+
+    private PasswordReset Reset(EmailPace pace) => new(users, Emails(), pace, clock);
 
     [Fact]
     public async Task SendAsync_WithinThePace_SendsNothingMore()
     {
         using var cache = new MemoryCache(new MemoryCacheOptions());
+        var pace = Pace(cache);
         var account = NewAccount();
         users.GeneratePasswordResetTokenAsync(account).Returns("token");
 
-        Assert.True(await Reset(cache).SendAsync(account));
-        Assert.False(await Reset(cache).SendAsync(account));
+        Assert.Equal(EmailSend.Sent, await Reset(pace).SendAsync(account));
+        Assert.Equal(EmailSend.Paced, await Reset(pace).SendAsync(account));
         await transport.Received(1).SendAsync(Arg.Any<EmailMessage>(), Arg.Any<CancellationToken>());
     }
 
@@ -61,39 +64,61 @@ public class PasswordResetTests
     {
         // A reset asked for a minute after signing up is the one email that lets that person in.
         using var cache = new MemoryCache(new MemoryCacheOptions());
+        var pace = Pace(cache);
         var account = NewAccount();
         users.GeneratePasswordResetTokenAsync(account).Returns("token");
-        Assert.True(EmailPace.TryClaim(cache, "confirmation", account.Id));
+        users.GenerateEmailConfirmationTokenAsync(account).Returns("token");
+        var emails = Emails();
+        Assert.Equal(EmailSend.Sent, await new AccountConfirmation(users, emails, pace).SendAsync(account));
 
-        Assert.True(await Reset(cache).SendAsync(account));
+        Assert.Equal(EmailSend.Sent, await Reset(pace).SendAsync(account));
     }
 
     [Fact]
-    public async Task SendAsync_TheEmailRefused_LiftsThePace()
+    public async Task SendAsync_TheEmailRefused_GivesThePaceBack()
     {
         using var cache = new MemoryCache(new MemoryCacheOptions());
+        var pace = Pace(cache);
         var account = NewAccount();
         users.GeneratePasswordResetTokenAsync(account).Returns("token");
         transport.SendAsync(Arg.Any<EmailMessage>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromException(new EmailNotSentException("password reset", "refused")), Task.CompletedTask);
 
-        Assert.False(await Reset(cache).SendAsync(account));
-        Assert.True(await Reset(cache).SendAsync(account));
+        Assert.Equal(EmailSend.Failed, await Reset(pace).SendAsync(account));
+        Assert.Equal(EmailSend.Sent, await Reset(pace).SendAsync(account));
     }
 
     [Fact]
-    public async Task SendAsync_TheTokenCannotBeMade_SendsNothingAndLiftsThePace()
+    public async Task SendAsync_TheTokenCannotBeMade_SendsNothingAndGivesThePaceBack()
     {
         // The key ring, unreadable on a deployment whose role cannot reach its store (ADR 0043).
         using var cache = new MemoryCache(new MemoryCacheOptions());
+        var pace = Pace(cache);
         var account = NewAccount();
         users.GeneratePasswordResetTokenAsync(account).ThrowsAsync(new CryptographicException("The key ring could not be read."));
 
-        Assert.False(await Reset(cache).SendAsync(account));
+        Assert.Equal(EmailSend.Failed, await Reset(pace).SendAsync(account));
         await transport.DidNotReceive().SendAsync(Arg.Any<EmailMessage>(), Arg.Any<CancellationToken>());
 
         users.GeneratePasswordResetTokenAsync(account).Returns("token");
-        Assert.True(await Reset(cache).SendAsync(account));
+        Assert.Equal(EmailSend.Sent, await Reset(pace).SendAsync(account));
+    }
+
+    [Fact]
+    public async Task SendAsync_AFailureOfOurOwn_IsThrownOnAndGivesThePaceBack()
+    {
+        // An account with no address, which the email refuses to compose: a bug, so it is not swallowed,
+        // but nothing went, so the account is not held for five minutes either.
+        using var cache = new MemoryCache(new MemoryCacheOptions());
+        var pace = Pace(cache);
+        var account = NewAccount();
+        account.Email = null;
+        users.GeneratePasswordResetTokenAsync(account).Returns("token");
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => Reset(pace).SendAsync(account));
+
+        account.Email = "alex@test.local";
+        Assert.Equal(EmailSend.Sent, await Reset(pace).SendAsync(account));
     }
 
     [Fact]
@@ -137,7 +162,8 @@ public class PasswordResetTests
             SessionsEndedAt = user.SessionsEndedAt,
         }), "token", "new-password-1").Returns(IdentityResult.Success);
 
-        var result = await Reset(new MemoryCache(new MemoryCacheOptions())).ResetAsync(account, "token", "new-password-1");
+        using var cache = new MemoryCache(new MemoryCacheOptions());
+        var result = await Reset(Pace(cache)).ResetAsync(account, "token", "new-password-1");
 
         Assert.True(result.Succeeded);
         Assert.NotNull(written);
@@ -145,6 +171,28 @@ public class PasswordResetTests
         Assert.Equal(0, written.AccessFailedCount);
         Assert.Null(written.LockoutEnd);
         Assert.Equal(clock.GetUtcNow(), written.SessionsEndedAt);
+    }
+
+    [Fact]
+    public async Task ResetAsync_Refused_PutsTheAccountBackAsItWas()
+    {
+        // Identity writes nothing for a refused token, and nothing saved later in the request may carry
+        // the four fields for it either.
+        var account = NewAccount();
+        account.AccessFailedCount = 5;
+        var lockedUntil = clock.GetUtcNow().AddMinutes(10);
+        account.LockoutEnd = lockedUntil;
+        users.ResetPasswordAsync(account, "not-the-token", "new-password-1")
+            .Returns(IdentityResult.Failed(new IdentityErrorDescriber().InvalidToken()));
+
+        using var cache = new MemoryCache(new MemoryCacheOptions());
+        var result = await Reset(Pace(cache)).ResetAsync(account, "not-the-token", "new-password-1");
+
+        Assert.False(result.Succeeded);
+        Assert.False(account.EmailConfirmed);
+        Assert.Equal(5, account.AccessFailedCount);
+        Assert.Equal(lockedUntil, account.LockoutEnd);
+        Assert.Null(account.SessionsEndedAt);
     }
 
     public static TheoryData<string, DateTimeOffset?, string?, string?, DateTimeOffset?, bool> Sessions()
@@ -170,7 +218,7 @@ public class PasswordResetTests
         DateTimeOffset? issuedUtc, bool ended)
     {
         Assert.True(
-            ended == DeletedAccountSessions.Ended(sessionsEndedAt, accountStamp, sessionStamp, issuedUtc),
+            ended == AccountSessions.Ended(sessionsEndedAt, accountStamp, sessionStamp, issuedUtc),
             $"A session {session} should {(ended ? "" : "not ")}have ended.");
     }
 }

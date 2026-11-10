@@ -24,25 +24,28 @@ public class AccountConfirmationTests
     private readonly UserManager<ApplicationUser> users = Substitute.For<UserManager<ApplicationUser>>(
         Substitute.For<IUserStore<ApplicationUser>>(), null, null, null, null, null, null, null, null);
 
-    private AccountConfirmation Confirmation(IMemoryCache cache) => new(
+    /// <summary>The pace, one per test as the application has one: its lock is what makes a claim one step.</summary>
+    private static EmailPace Pace(IMemoryCache cache) => new(cache, NullLogger<EmailPace>.Instance);
+
+    private AccountConfirmation Confirmation(EmailPace pace) => new(
         users,
         new AccountEmails(transport, new EmailLinks(new Uri("https://dev.myvideogamelist.net")),
             Options.Create(new DataProtectionTokenProviderOptions()),
             Options.Create(new PasswordResetTokenProviderOptions())),
-        cache,
-        NullLogger<AccountConfirmation>.Instance);
+        pace);
 
     [Fact]
     public async Task SendAsync_TheTokenCannotBeMade_FailsAndLiftsThePace()
     {
         // The key ring, unreadable on a deployment whose role cannot reach its store (ADR 0043).
         using var cache = new MemoryCache(new MemoryCacheOptions());
+        var pace = Pace(cache);
         users.GenerateEmailConfirmationTokenAsync(Account).ThrowsAsync(new CryptographicException("The key ring could not be read."));
 
-        Assert.Equal(ConfirmationSend.Failed, await Confirmation(cache).SendAsync(Account));
+        Assert.Equal(EmailSend.Failed, await Confirmation(pace).SendAsync(Account));
 
         users.GenerateEmailConfirmationTokenAsync(Account).Returns("token");
-        Assert.Equal(ConfirmationSend.Sent, await Confirmation(cache).SendAsync(Account));
+        Assert.Equal(EmailSend.Sent, await Confirmation(pace).SendAsync(Account));
         await transport.Received(1).SendAsync(Arg.Any<EmailMessage>(), Arg.Any<CancellationToken>());
     }
 
@@ -50,10 +53,11 @@ public class AccountConfirmationTests
     public async Task SendAsync_WithinThePace_SendsNothingMore()
     {
         using var cache = new MemoryCache(new MemoryCacheOptions());
+        var pace = Pace(cache);
         users.GenerateEmailConfirmationTokenAsync(Account).Returns("token");
 
-        Assert.Equal(ConfirmationSend.Sent, await Confirmation(cache).SendAsync(Account));
-        Assert.Equal(ConfirmationSend.Paced, await Confirmation(cache).SendAsync(Account));
+        Assert.Equal(EmailSend.Sent, await Confirmation(pace).SendAsync(Account));
+        Assert.Equal(EmailSend.Paced, await Confirmation(pace).SendAsync(Account));
         await transport.Received(1).SendAsync(Arg.Any<EmailMessage>(), Arg.Any<CancellationToken>());
     }
 
@@ -62,18 +66,19 @@ public class AccountConfirmationTests
     {
         // The claim is one step: the cache's own GetOrCreate would let simultaneous callers all send.
         using var cache = new MemoryCache(new MemoryCacheOptions());
+        var pace = Pace(cache);
         users.GenerateEmailConfirmationTokenAsync(Account).Returns("token");
         using var start = new ManualResetEventSlim();
 
         var callers = Enumerable.Range(0, 32).Select(_ => Task.Run(() =>
         {
             start.Wait();
-            return Confirmation(cache).SendAsync(Account);
+            return Confirmation(pace).SendAsync(Account);
         })).ToArray();
         start.Set();
         var sends = await Task.WhenAll(callers);
 
-        Assert.Single(sends, send => send == ConfirmationSend.Sent);
+        Assert.Single(sends, send => send == EmailSend.Sent);
         await transport.Received(1).SendAsync(Arg.Any<EmailMessage>(), Arg.Any<CancellationToken>());
     }
 

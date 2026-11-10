@@ -171,9 +171,10 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   is the same shape and signs nobody in either**: its link (`/reset-password#…`) works once, for an
   hour, from a token provider of its own whose lifespan the email reads (`PasswordResetTokens`); it
   confirms the address, ends the lockout, and ends every session at its next request through
-  `SessionsEndedAt`, which the session check reads beside the stamp. The request answers 202 whatever
-  it names. Each kind of email has its own pace per account, `EmailPace`: never two resets in five
-  minutes. See `docs/decisions/0090-*`.
+  `SessionsEndedAt`, which `AccountSessions` reads beside the stamp. Its writer, `AccountSessions.EndAll`,
+  ends nothing without a write that also changes the stamp. The request answers 202 whatever it names.
+  Every paced email goes through `EmailPace.SendAsync`, with a pace per kind and per account, so never
+  two resets in five minutes. See `docs/decisions/0090-*`.
 
 - **The key ring is shared through Parameter Store, and a deployment that names no store does not
   start.** The Data Protection keys sign the Identity cookie and seal the review cursor, and a ring

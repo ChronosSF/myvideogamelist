@@ -67,7 +67,8 @@ public static class EmailRegistration
         services.AddSingleton(new EmailLinks(Origin(site, httpsOnly: region is not null)));
         services.AddScoped<AccountEmails>();
         // Its consumers, beside it: an account's confirmation (ADR 0089) and its password reset (ADR 0090),
-        // each paced.
+        // each paced by the one EmailPace, whose lock guards the one cache for every request.
+        services.AddSingleton<EmailPace>();
         services.AddScoped<AccountConfirmation>();
         services.AddScoped<PasswordReset>();
 

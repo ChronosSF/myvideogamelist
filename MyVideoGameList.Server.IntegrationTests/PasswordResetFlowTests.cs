@@ -22,22 +22,20 @@ public class PasswordResetFlowTests(ApiFactory api) : IClassFixture<ApiFactory>
     private static Task<HttpResponseMessage> ForgotAsync(HttpClient browser, string emailOrUserName) =>
         browser.SendAsync(HttpMethod.Post, "/api/auth/forgot-password", new ForgotPasswordDto(emailOrUserName));
 
-    private static Task<HttpResponseMessage> ResetAsync(HttpClient browser, ResetPasswordLink link, string password) =>
+    private static Task<HttpResponseMessage> ResetAsync(HttpClient browser, EmailLink link, string password) =>
         browser.SendAsync(HttpMethod.Post, "/api/auth/reset-password", new ResetPasswordDto(link.UserId, link.Token, password));
 
-    private static Task<HttpResponseMessage> LoginAsync(HttpClient browser, string email, string password) =>
-        browser.PostAsJsonAsync("/api/auth/login", new LoginDto(email, password));
-
-    /// <summary>A confirmed account, signed in on the browser it was made in.</summary>
-    private static async Task<string> SignedUpAsync(HttpClient browser, string prefix)
+    /// <summary>A confirmed account, signed in on the browser it was made in, and the address it was made with.</summary>
+    private static async Task<(string Email, string UserName)> SignedUpAsync(HttpClient browser, string prefix)
     {
         var userName = Browsers.NewUserName(prefix);
-        await browser.RegisterAsync(userName);
-        return userName;
+        var (email, login) = await browser.RegisterAndSignInAsync(userName);
+        await login.ExpectAsync(HttpStatusCode.OK);
+        return (email, userName);
     }
 
     /// <summary>Asks for a reset on a browser of its own, and hands back the link the email carried.</summary>
-    private async Task<ResetPasswordLink> LinkForAsync(string emailOrUserName, string email)
+    private async Task<EmailLink> LinkForAsync(string emailOrUserName, string email)
     {
         using var browser = api.CreateBrowser();
         await (await ForgotAsync(browser, emailOrUserName)).ExpectAsync(HttpStatusCode.Accepted);
@@ -53,7 +51,8 @@ public class PasswordResetFlowTests(ApiFactory api) : IClassFixture<ApiFactory>
         Assert.Equal(
             typeof(PasswordResetTokenProvider),
             identity.Tokens.ProviderMap[identity.Tokens.PasswordResetTokenProvider].ProviderType);
-        Assert.NotEqual(identity.Tokens.EmailConfirmationTokenProvider, identity.Tokens.PasswordResetTokenProvider);
+        // And the confirmation's is still the default provider, whose options its email reads.
+        Assert.Equal(TokenOptions.DefaultProvider, identity.Tokens.EmailConfirmationTokenProvider);
         Assert.Equal(
             TimeSpan.FromHours(1),
             api.Services.GetRequiredService<IOptions<PasswordResetTokenProviderOptions>>().Value.TokenLifespan);
@@ -65,21 +64,20 @@ public class PasswordResetFlowTests(ApiFactory api) : IClassFixture<ApiFactory>
     public async Task ForgotPassword_ByEmailOrByUserName_SendsTheLinkToTheAddress(bool byEmail)
     {
         using var browser = api.CreateBrowser();
-        var userName = await SignedUpAsync(browser, byEmail ? "byemail" : "byname");
-        var email = $"{userName}@test.local";
+        var (email, userName) = await SignedUpAsync(browser, byEmail ? "byemail" : "byname");
 
         await (await ForgotAsync(browser, byEmail ? email : userName)).ExpectAsync(HttpStatusCode.Accepted);
 
         var sent = Assert.Single(api.Mail.SentTo(email), message => message.Purpose == "password reset");
         Assert.Contains("The link works for 1 hour, and only once.", sent.Text);
-        Assert.StartsWith("https://localhost:58546/reset-password#user=", ResetPasswordLink.In(sent.Text).Url);
+        Assert.StartsWith("https://localhost:58546/reset-password#user=", EmailLink.In(sent.Text, EmailLink.ResetPassword).Url);
     }
 
     [Fact]
     public async Task ForgotPassword_NoSuchAccount_AnswersAsARealOneAndSendsNothing()
     {
         using var browser = api.CreateBrowser();
-        var userName = await SignedUpAsync(browser, "real");
+        var (_, userName) = await SignedUpAsync(browser, "real");
         var before = api.Mail.Sent.Count;
 
         var real = await ForgotAsync(browser, userName);
@@ -95,8 +93,7 @@ public class PasswordResetFlowTests(ApiFactory api) : IClassFixture<ApiFactory>
     public async Task ForgotPassword_AskedAgainWithinTheFewMinutes_SendsNothingMore()
     {
         using var browser = api.CreateBrowser();
-        var userName = await SignedUpAsync(browser, "paced");
-        var email = $"{userName}@test.local";
+        var (email, userName) = await SignedUpAsync(browser, "paced");
 
         await (await ForgotAsync(browser, email)).ExpectAsync(HttpStatusCode.Accepted);
         await (await ForgotAsync(browser, userName)).ExpectAsync(HttpStatusCode.Accepted);
@@ -108,8 +105,7 @@ public class PasswordResetFlowTests(ApiFactory api) : IClassFixture<ApiFactory>
     public async Task ForgotPassword_TheEmailRefused_IsSentWhenAskedAgain()
     {
         using var browser = api.CreateBrowser();
-        var userName = await SignedUpAsync(browser, "refused");
-        var email = $"{userName}@test.local";
+        var (email, _) = await SignedUpAsync(browser, "refused");
         api.Mail.RefuseNext();
 
         await (await ForgotAsync(browser, email)).ExpectAsync(HttpStatusCode.Accepted);
@@ -123,8 +119,7 @@ public class PasswordResetFlowTests(ApiFactory api) : IClassFixture<ApiFactory>
     public async Task ResetPassword_ThenLogin_TheNewPasswordSignsInAndTheOldDoesNot()
     {
         using var browser = api.CreateBrowser();
-        var userName = await SignedUpAsync(browser, "renewed");
-        var email = $"{userName}@test.local";
+        var (email, userName) = await SignedUpAsync(browser, "renewed");
         var link = await LinkForAsync(email, email);
         using var resetting = api.CreateBrowser();
 
@@ -135,8 +130,8 @@ public class PasswordResetFlowTests(ApiFactory api) : IClassFixture<ApiFactory>
         Assert.False(reset.Headers.TryGetValues("Set-Cookie", out _));
         Assert.Equal(HttpStatusCode.NoContent, (await resetting.GetAsync("/api/auth/me")).StatusCode);
 
-        await (await LoginAsync(resetting, email, Browsers.Password)).ExpectAsync(HttpStatusCode.Unauthorized);
-        var login = await LoginAsync(resetting, userName, NewPassword);
+        await (await resetting.LoginAsync(email, Browsers.Password)).ExpectAsync(HttpStatusCode.Unauthorized);
+        var login = await resetting.LoginAsync(userName, NewPassword);
         Assert.Equal(userName, (await login.ReadAsync<UserProfileDto>(HttpStatusCode.OK)).UserName);
     }
 
@@ -145,8 +140,7 @@ public class PasswordResetFlowTests(ApiFactory api) : IClassFixture<ApiFactory>
     {
         // The reset changes the security stamp, which every reset token carries: a link works once.
         using var browser = api.CreateBrowser();
-        var userName = await SignedUpAsync(browser, "once");
-        var email = $"{userName}@test.local";
+        var (email, _) = await SignedUpAsync(browser, "once");
         var link = await LinkForAsync(email, email);
 
         await (await ResetAsync(browser, link, NewPassword)).ExpectAsync(HttpStatusCode.NoContent);
@@ -154,15 +148,14 @@ public class PasswordResetFlowTests(ApiFactory api) : IClassFixture<ApiFactory>
 
         var refusal = await again.ReadAsync<ResetLinkRefusedDto>(HttpStatusCode.BadRequest);
         Assert.True(refusal.InvalidLink);
-        await (await LoginAsync(browser, email, NewPassword)).ExpectAsync(HttpStatusCode.OK);
+        await (await browser.LoginAsync(email, NewPassword)).ExpectAsync(HttpStatusCode.OK);
     }
 
     [Fact]
     public async Task ResetPassword_AWrongTokenOrAccount_IsOneRefusalAndChangesNothing()
     {
         using var browser = api.CreateBrowser();
-        var userName = await SignedUpAsync(browser, "wrongtoken");
-        var email = $"{userName}@test.local";
+        var (email, _) = await SignedUpAsync(browser, "wrongtoken");
         var link = await LinkForAsync(email, email);
 
         var wrongToken = await ResetAsync(browser, link with { Token = "not-the-token" }, NewPassword);
@@ -171,15 +164,14 @@ public class PasswordResetFlowTests(ApiFactory api) : IClassFixture<ApiFactory>
         Assert.True((await wrongToken.ReadAsync<ResetLinkRefusedDto>(HttpStatusCode.BadRequest)).InvalidLink);
         await wrongAccount.ExpectAsync(HttpStatusCode.BadRequest);
         Assert.Equal(await wrongToken.Content.ReadAsStringAsync(), await wrongAccount.Content.ReadAsStringAsync());
-        await (await LoginAsync(browser, email, Browsers.Password)).ExpectAsync(HttpStatusCode.OK);
+        await (await browser.LoginAsync(email, Browsers.Password)).ExpectAsync(HttpStatusCode.OK);
     }
 
     [Fact]
     public async Task ResetPassword_APasswordTheRulesRefuse_SaysWhyAndLeavesTheLinkWorking()
     {
         using var browser = api.CreateBrowser();
-        var userName = await SignedUpAsync(browser, "weak");
-        var email = $"{userName}@test.local";
+        var (email, _) = await SignedUpAsync(browser, "weak");
         var link = await LinkForAsync(email, email);
 
         var weak = await ResetAsync(browser, link, "short");
@@ -200,14 +192,13 @@ public class PasswordResetFlowTests(ApiFactory api) : IClassFixture<ApiFactory>
         using var browser = api.CreateBrowser();
         var userName = Browsers.NewUserName("unconfirmed");
         var email = $"{userName}@test.local";
-        var registered = await browser.PostAsJsonAsync("/api/auth/register", new RegisterDto(email, Browsers.Password, userName));
-        await registered.ExpectAsync(HttpStatusCode.OK);
+        await (await browser.SignUpAsync(email, userName)).ExpectAsync(HttpStatusCode.OK);
 
         // Asked for straight after signing up, while the confirmation's pace still holds: a pace of its own.
         var link = await LinkForAsync(userName, email);
         await (await ResetAsync(browser, link, NewPassword)).ExpectAsync(HttpStatusCode.NoContent);
 
-        await (await LoginAsync(browser, email, NewPassword)).ExpectAsync(HttpStatusCode.OK);
+        await (await browser.LoginAsync(email, NewPassword)).ExpectAsync(HttpStatusCode.OK);
     }
 
     [Fact]
@@ -216,31 +207,29 @@ public class PasswordResetFlowTests(ApiFactory api) : IClassFixture<ApiFactory>
         // Identity leaves the lockout where it was, so without this its owner would be told for fifteen
         // minutes that the password they had just chosen is wrong.
         using var browser = api.CreateBrowser();
-        var userName = await SignedUpAsync(browser, "locked");
-        var email = $"{userName}@test.local";
+        var (email, _) = await SignedUpAsync(browser, "locked");
         using var guessing = api.CreateBrowser();
         for (var attempt = 0; attempt < 5; attempt++)
-            await (await LoginAsync(guessing, email, "wrong-password-1")).ExpectAsync(HttpStatusCode.Unauthorized);
-        await (await LoginAsync(guessing, email, Browsers.Password)).ExpectAsync(HttpStatusCode.Unauthorized);
+            await (await guessing.LoginAsync(email, "wrong-password-1")).ExpectAsync(HttpStatusCode.Unauthorized);
+        await (await guessing.LoginAsync(email, Browsers.Password)).ExpectAsync(HttpStatusCode.Unauthorized);
 
         var link = await LinkForAsync(email, email);
         await (await ResetAsync(browser, link, NewPassword)).ExpectAsync(HttpStatusCode.NoContent);
 
-        await (await LoginAsync(browser, email, NewPassword)).ExpectAsync(HttpStatusCode.OK);
+        await (await browser.LoginAsync(email, NewPassword)).ExpectAsync(HttpStatusCode.OK);
     }
 
     [Fact]
     public async Task ResetPassword_EndsEverySessionAtItsNextRequest_AndNotTheOneSignedInAfter()
     {
         using var before = api.CreateBrowser();
-        var userName = await SignedUpAsync(before, "everywhere");
-        var email = $"{userName}@test.local";
+        var (email, userName) = await SignedUpAsync(before, "everywhere");
         await (await before.GetAsync("/api/user/stats")).ExpectAsync(HttpStatusCode.OK);
 
         var link = await LinkForAsync(email, email);
         using var after = api.CreateBrowser();
         await (await ResetAsync(after, link, NewPassword)).ExpectAsync(HttpStatusCode.NoContent);
-        await (await LoginAsync(after, email, NewPassword)).ExpectAsync(HttpStatusCode.OK);
+        await (await after.LoginAsync(email, NewPassword)).ExpectAsync(HttpStatusCode.OK);
 
         // At once, not at Identity's check of the stamp half an hour on, and signed out as that check
         // signs a session out: the cookie and the signed-in flag go with it.

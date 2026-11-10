@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, render, screen } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 import ResetPasswordPage, { headers, meta } from '@/pages/ResetPasswordPage';
 import type { AuthContextValue } from '@/contexts/AuthContext';
 import type { AuthDialogContextValue } from '@/contexts/AuthDialogContext';
 import { InvalidResetLinkError } from '@/types/auth';
+import { type Actor, quickActor } from '@/test/actor';
 
 /** One module-level object, never a fresh literal per render (see the other page tests). */
 const auth: AuthContextValue = {
@@ -35,7 +35,7 @@ function openAt(fragment: string) {
     render(<ResetPasswordPage />);
 }
 
-async function choose(actor: ReturnType<typeof userEvent.setup>, password = CHOSEN, confirm = password) {
+async function choose(actor: Actor, password = CHOSEN, confirm = password) {
     await actor.type(screen.getByLabelText('New password'), password);
     await actor.type(screen.getByLabelText('Confirm new password'), confirm);
     await actor.click(screen.getByRole('button', { name: 'Set the new password' }));
@@ -52,7 +52,7 @@ afterEach(() => {
 describe('ResetPasswordPage', () => {
     it('takes the link out of the address bar before anything is typed, and keeps it', async () => {
         // A reset link left in the history is a new password for whoever uses the browser next (ADR 0090).
-        const actor = userEvent.setup();
+        const actor = quickActor();
         openAt('#user=0f8a-id&token=CfDJ8%2Ba%2Fb%3D');
 
         expect(await screen.findByLabelText('New password')).toBeInTheDocument();
@@ -64,7 +64,7 @@ describe('ResetPasswordPage', () => {
     });
 
     it('says the password is changed and everyone signed out, and offers the sign-in', async () => {
-        const actor = userEvent.setup();
+        const actor = quickActor();
         openAt('#user=0f8a-id&token=secret');
 
         await choose(actor);
@@ -75,7 +75,7 @@ describe('ResetPasswordPage', () => {
     });
 
     it('asks the API nothing while the two passwords differ', async () => {
-        const actor = userEvent.setup();
+        const actor = quickActor();
         openAt('#user=0f8a-id&token=secret');
 
         await choose(actor, CHOSEN, 'something-else-1');
@@ -86,7 +86,7 @@ describe('ResetPasswordPage', () => {
 
     it("shows the rules' sentences beside the form when the API refuses the password, and lets it be tried again", async () => {
         // The link still works: a refused password spends nothing.
-        const actor = userEvent.setup();
+        const actor = quickActor();
         vi.mocked(auth.resetPassword).mockRejectedValueOnce(new Error("Passwords must have at least one digit ('0'-'9')."));
         openAt('#user=0f8a-id&token=secret');
 
@@ -101,7 +101,7 @@ describe('ResetPasswordPage', () => {
     });
 
     it('offers a new link when the API says this one is no good', async () => {
-        const actor = userEvent.setup();
+        const actor = quickActor();
         vi.mocked(auth.resetPassword).mockRejectedValueOnce(
             new InvalidResetLinkError('This link has expired or has already been used. Ask for a new one.'));
         openAt('#user=0f8a-id&token=old');
@@ -117,7 +117,7 @@ describe('ResetPasswordPage', () => {
 
     it('takes a second link opened in the same tab in place of the first', async () => {
         // A browser follows a link that differs only after the `#` without loading the page again.
-        const actor = userEvent.setup();
+        const actor = quickActor();
         vi.mocked(auth.resetPassword).mockRejectedValueOnce(new InvalidResetLinkError('This link has expired.'));
         openAt('#user=0f8a-id&token=old');
         await choose(actor);
@@ -134,7 +134,7 @@ describe('ResetPasswordPage', () => {
     });
 
     it.each(['#user=0f8a-id', ''])('says a link without both halves (%j) is not complete, and offers a new one', async fragment => {
-        const actor = userEvent.setup();
+        const actor = quickActor();
         openAt(fragment);
 
         expect(await screen.findByText('This link is not complete')).toBeInTheDocument();

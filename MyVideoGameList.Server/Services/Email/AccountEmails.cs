@@ -22,12 +22,14 @@ namespace MyVideoGameList.Server.Services.Email;
 public sealed record EmailLinks(Uri Site)
 {
     /// <summary>The page that confirms an address, with the account and its token.</summary>
-    public string ConfirmEmail(string userId, string token) =>
-        $"{Site.GetLeftPart(UriPartial.Authority)}/confirm-email#user={Uri.EscapeDataString(userId)}&token={Uri.EscapeDataString(token)}";
+    public string ConfirmEmail(string userId, string token) => Link("confirm-email", userId, token);
 
     /// <summary>The page that sets a new password, with the account and its token (ADR 0090).</summary>
-    public string ResetPassword(string userId, string token) =>
-        $"{Site.GetLeftPart(UriPartial.Authority)}/reset-password#user={Uri.EscapeDataString(userId)}&token={Uri.EscapeDataString(token)}";
+    public string ResetPassword(string userId, string token) => Link("reset-password", userId, token);
+
+    /// <summary>A page of the site, with an account and its token after the <c>#</c>, as both pages read them.</summary>
+    private string Link(string page, string userId, string token) =>
+        $"{Site.GetLeftPart(UriPartial.Authority)}/{page}#user={Uri.EscapeDataString(userId)}&token={Uri.EscapeDataString(token)}";
 }
 
 /// <summary>

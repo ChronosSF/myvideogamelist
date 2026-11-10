@@ -5,7 +5,7 @@ import { AuthDialogProvider } from '@/contexts/AuthDialogProvider';
 import { useAuth } from '@/hooks/useAuth';
 import { useAuthDialog } from '@/hooks/useAuthDialog';
 import ResetPasswordPage from '@/pages/ResetPasswordPage';
-import { quickActor } from '@/test/actor';
+import { type Actor, quickActor } from '@/test/actor';
 import { userProfile } from '@/test/factories';
 import { type ApiRoutes, empty, expectSentThroughApiFetch, json, stubApi, tearDownApi } from '@/test/api';
 
@@ -44,7 +44,7 @@ function renderApp(routes: ApiRoutes, page = false) {
     return api;
 }
 
-async function chooseNewPassword(actor: ReturnType<typeof quickActor>) {
+async function chooseNewPassword(actor: Actor) {
     await actor.type(await screen.findByLabelText('New password'), CHOSEN);
     await actor.type(screen.getByLabelText('Confirm new password'), CHOSEN);
     await actor.click(screen.getByRole('button', { name: 'Set the new password' }));

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { PASSWORD_MIN_LENGTH } from '@/types/auth';
 import './LoginDialog.css';
 
 interface Props {
@@ -37,11 +38,11 @@ export function NewPasswordForm({ onSubmit }: Props) {
                     id="reset-password"
                     type="password"
                     className="dialog-input"
-                    placeholder="At least 8 characters"
+                    placeholder={`At least ${PASSWORD_MIN_LENGTH} characters`}
                     value={password}
                     onChange={e => setPassword(e.target.value)}
                     required
-                    minLength={8}
+                    minLength={PASSWORD_MIN_LENGTH}
                     autoFocus
                     autoComplete="new-password"
                 />

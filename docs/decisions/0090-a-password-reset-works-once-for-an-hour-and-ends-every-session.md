@@ -83,6 +83,10 @@ cookie authenticates already reads the account's row by its key. It now reads th
 stamp too, and refuses a session that began at or before the moment under a stamp the account no longer has.
 It refuses one exactly as Identity's own check does, clearing the cookie and the signed-in flag.
 
+The check's class, `DeletedAccountSessions` until now, is `AccountSessions`, since it no longer ends only a
+deleted account's sessions. Beside the check is the one writer of the column, `EndAll`. It ends nothing by
+itself: it has to be saved with a write that also changes the stamp, as the reset's does.
+
 - **At once, rather than in up to thirty minutes**, because somebody resetting a password may be doing it
   because somebody else has it.
 - **Both halves are needed.** A session's start is kept in its cookie to the second, so the moment alone would
@@ -94,8 +98,10 @@ It refuses one exactly as Identity's own check does, clearing the cookie and the
 
 ### 7. Paced per account and per kind, and the same answer whatever happened
 
-- **One reset email per account every five minutes**, claimed before the send and released if it fails. This
-  is the confirmation's mechanism, now `EmailPace`, shared by both.
+- **One reset email per account every five minutes**, claimed before the send and given back whenever nothing
+  went. That was the confirmation's mechanism, written inside it. It is now `EmailPace.SendAsync`, the whole
+  sequence, which both emails go through: claim, make the token, send, and give the claim back on any failure.
+  A token that could not be made, or a send SES refused, answers `Failed`, and anything else is thrown on.
 - **Each kind of email has its own pace.** A confirmation sent at sign-up must not hold back the reset somebody
   asks for a minute later, having mistyped the password they chose: the reset is what lets them in. One account
   can be sent one of each in five minutes, and never two resets.
@@ -129,7 +135,8 @@ can be ignored.
 - **The browser smoke test has a sibling**, `e2e/password-reset.e2e.ts`, that asks for a reset, reads the link
   from the outbox, sets a new password on the page and signs in with it.
 - **Left for later:**
-  - a "sign out everywhere" control, which would set the same column;
-  - whether a change of address ends sessions, which is #423's to decide and can use the same column;
+  - a "sign out everywhere" control, which would call `EndAll` and change the stamp in the same write;
+  - whether a change of address ends sessions, which is #423's to decide; its write changes the stamp already, so
+    `EndAll` is all it would add;
   - an exact count across tasks, which is #420's `EmailDeliveries`;
   - the privacy policy's sentence about email, which is #112's checklist, on #408.

@@ -56,7 +56,7 @@ public record ResetPasswordDto([Required] string UserId, [Required] string Token
 /// A reset that did not happen because its link was no good: expired, used, or not complete. A
 /// sentence for the page, and the flag that tells it to offer another link rather than another password.
 /// </summary>
-public record ResetLinkRefusedDto(string Message, bool InvalidLink = true);
+public record ResetLinkRefusedDto(string Message, bool InvalidLink);
 
 /// <summary>
 /// A sentence for the page to show, which is all an anonymous auth endpoint with no account to

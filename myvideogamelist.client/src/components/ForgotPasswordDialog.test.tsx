@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 import { ForgotPasswordDialog } from '@/components/ForgotPasswordDialog';
 import type { AuthContextValue } from '@/contexts/AuthContext';
+import { quickActor } from '@/test/actor';
 import { mousePress } from '@/test/press';
 
 /** One module-level object, never a fresh literal per render (see the LoginDialog suite). */
@@ -40,7 +40,7 @@ beforeEach(() => {
 
 describe('ForgotPasswordDialog', () => {
     it('starts from what the sign-in dialog held, asks for the link, and says where to look', async () => {
-        const actor = userEvent.setup();
+        const actor = quickActor();
         renderDialog('alex');
 
         expect(field()).toHaveValue('alex');
@@ -54,7 +54,7 @@ describe('ForgotPasswordDialog', () => {
     });
 
     it('sends what was typed without the spaces around it', async () => {
-        const actor = userEvent.setup();
+        const actor = quickActor();
         renderDialog();
 
         await actor.type(field(), '  alex@test.local ');
@@ -64,7 +64,7 @@ describe('ForgotPasswordDialog', () => {
     });
 
     it('asks the API nothing until something is typed', async () => {
-        const actor = userEvent.setup();
+        const actor = quickActor();
         renderDialog();
 
         await actor.click(screen.getByRole('button', { name: 'Send the link' }));
@@ -75,7 +75,7 @@ describe('ForgotPasswordDialog', () => {
 
     it("shows the API's own sentence when the request is refused, and stays on the form", async () => {
         // A rate-limited request, which is the refusal it can meet.
-        const actor = userEvent.setup();
+        const actor = quickActor();
         vi.mocked(auth.requestPasswordReset).mockRejectedValueOnce(
             new Error('Too many attempts from this device. Wait a few minutes and try again.'));
         renderDialog('alex');
@@ -87,7 +87,7 @@ describe('ForgotPasswordDialog', () => {
     });
 
     it('goes back to the sign-in', async () => {
-        const actor = userEvent.setup();
+        const actor = quickActor();
         renderDialog();
 
         await actor.click(screen.getByRole('button', { name: 'Sign In' }));

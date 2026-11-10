@@ -135,12 +135,13 @@ public class ApplicationUser : IdentityUser
 
     /// <summary>
     /// When the account last ended every session it had, or null if it never has: the moment its
-    /// password was reset (ADR 0090).
+    /// password was reset (ADR 0090). Written by <see cref="Security.AccountSessions.EndAll"/>, and only with
+    /// a write that changes the security stamp.
     /// </summary>
     /// <remarks>
     /// <para>
     /// A session that began at or before this moment, under a security stamp that is no longer the
-    /// account's, is refused at its next request (<see cref="Security.DeletedAccountSessions"/>). The
+    /// account's, is refused at its next request (<see cref="Security.AccountSessions"/>). The
     /// stamp alone cannot say that: a rename changes it too, and a rename leaves the account's other
     /// sessions to Identity's own check, half an hour later (ADR 0077 §4). The moment alone cannot
     /// either: a session's start is kept to the second, so one signed in just after a reset would read
