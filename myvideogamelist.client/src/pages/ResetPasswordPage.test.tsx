@@ -28,14 +28,14 @@ const dialog: AuthDialogContextValue = { open: vi.fn() };
 vi.mock('@/hooks/useAuth', () => ({ useAuth: () => auth }));
 vi.mock('@/hooks/useAuthDialog', () => ({ useAuthDialog: () => dialog }));
 
-const NEW_PASSWORD = 'new-passw0rd';
+const CHOSEN = 'new-passw0rd';
 
 function openAt(fragment: string) {
     window.history.replaceState(null, '', `/reset-password${fragment}`);
     render(<ResetPasswordPage />);
 }
 
-async function choose(actor: ReturnType<typeof userEvent.setup>, password = NEW_PASSWORD, confirm = password) {
+async function choose(actor: ReturnType<typeof userEvent.setup>, password = CHOSEN, confirm = password) {
     await actor.type(screen.getByLabelText('New password'), password);
     await actor.type(screen.getByLabelText('Confirm new password'), confirm);
     await actor.click(screen.getByRole('button', { name: 'Set the new password' }));
@@ -60,7 +60,7 @@ describe('ResetPasswordPage', () => {
         expect(window.location.pathname).toBe('/reset-password');
 
         await choose(actor);
-        expect(auth.resetPassword).toHaveBeenCalledWith('0f8a-id', 'CfDJ8+a/b=', NEW_PASSWORD);
+        expect(auth.resetPassword).toHaveBeenCalledWith('0f8a-id', 'CfDJ8+a/b=', CHOSEN);
     });
 
     it('says the password is changed and everyone signed out, and offers the sign-in', async () => {
@@ -78,7 +78,7 @@ describe('ResetPasswordPage', () => {
         const actor = userEvent.setup();
         openAt('#user=0f8a-id&token=secret');
 
-        await choose(actor, NEW_PASSWORD, 'something-else-1');
+        await choose(actor, CHOSEN, 'something-else-1');
 
         expect(screen.getByRole('alert')).toHaveTextContent('Passwords do not match.');
         expect(auth.resetPassword).not.toHaveBeenCalled();
@@ -97,7 +97,7 @@ describe('ResetPasswordPage', () => {
         await actor.clear(screen.getByLabelText('Confirm new password'));
         await choose(actor);
         expect(await screen.findByRole('status')).toHaveTextContent(/your password is changed/i);
-        expect(auth.resetPassword).toHaveBeenLastCalledWith('0f8a-id', 'secret', NEW_PASSWORD);
+        expect(auth.resetPassword).toHaveBeenLastCalledWith('0f8a-id', 'secret', CHOSEN);
     });
 
     it('offers a new link when the API says this one is no good', async () => {
@@ -130,7 +130,7 @@ describe('ResetPasswordPage', () => {
         expect(await screen.findByLabelText('New password')).toBeInTheDocument();
         expect(screen.queryByText('That link did not work')).toBeNull();
         await choose(actor);
-        expect(auth.resetPassword).toHaveBeenLastCalledWith('0f8a-id', 'new', NEW_PASSWORD);
+        expect(auth.resetPassword).toHaveBeenLastCalledWith('0f8a-id', 'new', CHOSEN);
     });
 
     it.each(['#user=0f8a-id', ''])('says a link without both halves (%j) is not complete, and offers a new one', async fragment => {

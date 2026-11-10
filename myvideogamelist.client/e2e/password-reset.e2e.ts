@@ -5,7 +5,7 @@ import { PORTS, SITE } from './stand-ins';
 
 /** What the account is made with, and what the reset replaces it with: a digit, lower case, eight or more. */
 const PASSWORD = 'reset-test-1';
-const NEW_PASSWORD = 'reset-test-2';
+const CHOSEN = 'reset-test-2';
 
 /** The header the API's write guard asks of a write (ADR 0033), as `apiFetch` sends it. */
 const WRITE = { 'X-MVGL-Request': '1' };
@@ -72,8 +72,8 @@ test('a forgotten password is reset from the email, and the new one signs in', a
         await expect(page.getByLabel('New password', { exact: true })).toBeVisible();
         await expect(page).toHaveURL(`${SITE}/reset-password`);
 
-        await page.getByLabel('New password', { exact: true }).fill(NEW_PASSWORD);
-        await page.getByLabel('Confirm new password', { exact: true }).fill(NEW_PASSWORD);
+        await page.getByLabel('New password', { exact: true }).fill(CHOSEN);
+        await page.getByLabel('Confirm new password', { exact: true }).fill(CHOSEN);
         const reset = page.waitForResponse(response =>
             response.request().method() === 'POST'
             && new URL(response.url()).pathname === '/api/auth/reset-password');
@@ -86,7 +86,7 @@ test('a forgotten password is reset from the email, and the new one signs in', a
         await page.getByRole('button', { name: 'Sign in', exact: true }).click();
         const login = page.getByRole('dialog', { name: 'Sign In' });
         await login.getByLabel('Email or username').fill(userName);
-        await login.getByLabel('Password', { exact: true }).fill(NEW_PASSWORD);
+        await login.getByLabel('Password', { exact: true }).fill(CHOSEN);
 
         const signedIn = page.waitForResponse(response =>
             response.request().method() === 'POST'

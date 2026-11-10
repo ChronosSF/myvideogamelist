@@ -15,7 +15,7 @@ import { type ApiRoutes, empty, expectSentThroughApiFetch, json, stubApi, tearDo
  * API answers with, in its own words, becomes what somebody reads.
  */
 const ALEX = userProfile({ id: 'user-1', email: 'alex@test.local', userName: 'alex' });
-const NEW_PASSWORD = 'new-passw0rd';
+const CHOSEN = 'new-passw0rd';
 const LINK_REFUSED = 'This link has expired or has already been used. Ask for a new one.';
 
 /** Who the provider has signed in, as the navbar would say it, and the way into the sign-in dialog. */
@@ -45,8 +45,8 @@ function renderApp(routes: ApiRoutes, page = false) {
 }
 
 async function chooseNewPassword(actor: ReturnType<typeof quickActor>) {
-    await actor.type(await screen.findByLabelText('New password'), NEW_PASSWORD);
-    await actor.type(screen.getByLabelText('Confirm new password'), NEW_PASSWORD);
+    await actor.type(await screen.findByLabelText('New password'), CHOSEN);
+    await actor.type(screen.getByLabelText('Confirm new password'), CHOSEN);
     await actor.click(screen.getByRole('button', { name: 'Set the new password' }));
 }
 
@@ -101,7 +101,7 @@ describe('Setting a new password, on the page the link opens', () => {
 
         expect(await screen.findByText(/your password is changed/i)).toBeInTheDocument();
         const [reset] = api.callsTo('POST', '/api/auth/reset-password');
-        expect(reset.body).toEqual({ userId: 'user-1', token: 'CfDJ8+a/b=', password: NEW_PASSWORD });
+        expect(reset.body).toEqual({ userId: 'user-1', token: 'CfDJ8+a/b=', password: CHOSEN });
         expectSentThroughApiFetch(reset);
 
         await actor.click(screen.getByRole('button', { name: 'Sign in' }));
