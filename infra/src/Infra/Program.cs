@@ -9,7 +9,8 @@ namespace Infra;
 /// deploy without one and nothing ever falls back to <c>latest</c>. The Region comes from the
 /// profile; nothing here names one except <c>us-east-1</c>, for CloudFront's certificates, and
 /// <see cref="Site.EmailRegion"/>, where the domain is verified with SES (ADR 0088). See ADR
-/// 0044. <c>env=prod</c> is, for now, the holding page and nothing else (ADR 0066).
+/// 0044. <c>env=prod</c> is, for now, the holding page (ADR 0066), and the email stack and its Alerts
+/// topic (ADR 0088, 0091).
 /// </summary>
 internal static class Program
 {

@@ -3,7 +3,9 @@
 **Status:** Implemented in the sender. Nothing calls it yet: the first email is
 [#421](https://github.com/ChronosSF/myvideogamelist/issues/421)'s confirmation. Proved only by a deploy, which
 waits for the owner (`infra/README.md`, "Production's SES, for dev's email"). Part of
-[#100](https://github.com/ChronosSF/myvideogamelist/issues/100).
+[#100](https://github.com/ChronosSF/myvideogamelist/issues/100). The configuration set #419 adds is
+[0091](0091-a-bounce-or-a-complaint-stops-all-mail-to-that-address.md): the role needs it among its resources,
+and the owner's deploys now have an order.
 
 ## Context
 
