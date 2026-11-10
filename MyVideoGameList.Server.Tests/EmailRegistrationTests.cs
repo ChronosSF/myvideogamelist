@@ -189,6 +189,29 @@ public class EmailRegistrationTests
     }
 
     [Fact]
+    public void AddEmail_SesWithAnHttpSiteUrl_RefusesToStart()
+    {
+        // The page the link opens reads the token, so over HTTP anybody on the network could be that page.
+        var act = () => new ServiceCollection().AddEmail(
+            Configuration([.. Addresses, ("Email:Ses:Region", "eu-central-1"), ("Email:SiteUrl", "http://dev.myvideogamelist.net")]),
+            Environment(Environments.Production));
+
+        Assert.Contains("HTTPS", Assert.Throws<InvalidOperationException>(act).Message);
+    }
+
+    [Fact]
+    public void AddEmail_TheOutboxWithAnHttpSiteUrl_LinksToIt()
+    {
+        // The browser smoke test's harness serves the site over HTTP and reads its mail from the outbox.
+        using var provider = new ServiceCollection()
+            .AddEmail(Configuration([.. Addresses, ("Email:OutboxPath", "/tmp/outbox"), ("Email:SiteUrl", "http://localhost:5180")]),
+                Environment(Environments.Production))
+            .BuildServiceProvider();
+
+        Assert.Equal(new Uri("http://localhost:5180"), provider.GetRequiredService<EmailLinks>().Site);
+    }
+
+    [Fact]
     public void AddEmail_TheOutboxWithNoSiteUrl_LinksToTheDevServer()
     {
         using var provider = new ServiceCollection()

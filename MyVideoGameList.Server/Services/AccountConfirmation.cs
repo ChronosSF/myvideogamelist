@@ -48,21 +48,22 @@ public sealed class AccountConfirmation(
     /// <summary>The least time between two confirmations to one account.</summary>
     public static readonly TimeSpan Pace = TimeSpan.FromMinutes(5);
 
+    /// <summary>Makes a claim on the pace one step. Static, because the service is scoped and the cache is not.</summary>
+    private static readonly Lock Claims = new();
+
     public async Task<ConfirmationSend> SendAsync(ApplicationUser user)
     {
         var key = $"confirmation-sent:{user.Id}";
 
         // Claimed before the send rather than after it, so a request arriving while the first is still
-        // out finds the claim. The cache does not make two exactly simultaneous claims one; that costs
-        // a second email, once.
-        var claimed = false;
-        cache.GetOrCreate(key, entry =>
+        // out finds the claim, and under a lock, because the cache's own GetOrCreate lets two
+        // simultaneous callers both find nothing and both send. The lock is held for a lookup and a
+        // write, never across the send.
+        lock (Claims)
         {
-            entry.AbsoluteExpirationRelativeToNow = Pace;
-            claimed = true;
-            return true;
-        });
-        if (!claimed) return ConfirmationSend.Paced;
+            if (cache.TryGetValue(key, out _)) return ConfirmationSend.Paced;
+            cache.Set(key, true, Pace);
+        }
 
         string token;
         try

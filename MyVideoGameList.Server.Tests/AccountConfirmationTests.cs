@@ -57,6 +57,26 @@ public class AccountConfirmationTests
     }
 
     [Fact]
+    public async Task SendAsync_ManyAtOnce_SendsOne()
+    {
+        // The claim is one step: the cache's own GetOrCreate would let simultaneous callers all send.
+        using var cache = new MemoryCache(new MemoryCacheOptions());
+        users.GenerateEmailConfirmationTokenAsync(Account).Returns("token");
+        using var start = new ManualResetEventSlim();
+
+        var callers = Enumerable.Range(0, 32).Select(_ => Task.Run(() =>
+        {
+            start.Wait();
+            return Confirmation(cache).SendAsync(Account);
+        })).ToArray();
+        start.Set();
+        var sends = await Task.WhenAll(callers);
+
+        Assert.Single(sends, send => send == ConfirmationSend.Sent);
+        await transport.Received(1).SendAsync(Arg.Any<EmailMessage>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public async Task SendConfirmationAsync_SaysHowLongTheTokenProviderKeepsTheLink()
     {
         // The email cannot promise longer than the link lasts.
