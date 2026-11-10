@@ -80,7 +80,7 @@ async function openSignIn(routes: ApiRoutes = {}) {
     render(
         <AuthProvider>
             <Session />
-            <LoginDialog onClose={onClose} onSwitchToRegister={vi.fn()} />
+            <LoginDialog onClose={onClose} onSwitchToRegister={vi.fn()} onForgotPassword={vi.fn()} />
         </AuthProvider>,
     );
     await screen.findByText('Nobody is signed in');

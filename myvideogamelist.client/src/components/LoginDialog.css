@@ -73,6 +73,17 @@
     color: var(--color-fg-dim);
 }
 
+/* A quiet way out of a field, under it at its end: "Forgot password?" under the password. */
+.dialog-inline-link {
+    @apply text-link;
+    align-self: flex-end;
+    background: none;
+    border: none;
+    padding: 0;
+    font-size: 0.8125rem;
+    cursor: pointer;
+}
+
 /* Guidance under a field, for the one input on the signup form whose consequences are not
    obvious from its label. Deliberately quieter than .dialog-error, which it sits above. */
 .dialog-hint {

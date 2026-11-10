@@ -8,9 +8,11 @@ import './LoginDialog.css';
 interface Props {
     onClose: () => void;
     onSwitchToRegister: () => void;
+    /** Opens the forgotten-password dialog, with whatever the identifier box holds (ADR 0090). */
+    onForgotPassword: (emailOrUserName: string) => void;
 }
 
-export function LoginDialog({ onClose, onSwitchToRegister }: Props) {
+export function LoginDialog({ onClose, onSwitchToRegister, onForgotPassword }: Props) {
     const { login } = useAuth();
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
@@ -87,6 +89,13 @@ export function LoginDialog({ onClose, onSwitchToRegister }: Props) {
                             required
                             autoComplete="current-password"
                         />
+                        <button
+                            type="button"
+                            className="dialog-inline-link"
+                            onClick={() => onForgotPassword(email.trim())}
+                        >
+                            Forgot password?
+                        </button>
                     </div>
 
                     <label className="dialog-checkbox-row">

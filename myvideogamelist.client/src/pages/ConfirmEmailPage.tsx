@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useEffectEvent, useState, useSyncExternalStore } from 'react';
+import { type ReactNode, useEffect, useEffectEvent, useState } from 'react';
 import { PageHeader } from '@/components/PageHeader';
 import { ErrorState } from '@/components/ErrorState';
 import { LoadingState } from '@/components/LoadingState';
@@ -6,7 +6,7 @@ import { SkeletonLine } from '@/components/SkeletonLine';
 import { useAuth } from '@/hooks/useAuth';
 import { useAuthDialog } from '@/hooks/useAuthDialog';
 import { PRIVATE_NO_STORE } from '@/lib/cache';
-import { linkIn } from '@/lib/confirmationLink';
+import { forgetFragment, linkIn, useFragment } from '@/lib/accountLink';
 import { NOINDEX } from '@/lib/seo';
 
 /** One person's link, so never cacheable. Declared rather than inherited from the root. */
@@ -20,23 +20,6 @@ export function meta() {
         { name: 'description', content: 'Confirm the email address of your MyVideoGameList account.' },
         NOINDEX,
     ];
-}
-
-/**
- * A new fragment on this same page: a second link opened in the tab, which a browser follows without
- * loading the page again. The page's own removal of the fragment raises no such event.
- */
-function subscribeToFragment(onChange: () => void) {
-    window.addEventListener('hashchange', onChange);
-    return () => window.removeEventListener('hashchange', onChange);
-}
-
-/**
- * The fragment as the browser has it, and null during the server render and hydration, which never
- * see it: a browser does not send what follows the `#`.
- */
-function useFragment(): string | null {
-    return useSyncExternalStore(subscribeToFragment, () => window.location.hash, () => null);
 }
 
 /** What became of one link, by its token, so that a newer link is never shown an older one's answer. */
@@ -90,7 +73,7 @@ export default function ConfirmEmailPage() {
             .finally(() => {
                 // Out of the address bar and the history, worked or not: the token has been used or
                 // is no good, and either way nothing should keep it.
-                if (wanted) window.history.replaceState(window.history.state, '', window.location.pathname);
+                if (wanted) forgetFragment();
             });
 
         return () => {

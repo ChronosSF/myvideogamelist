@@ -84,6 +84,18 @@ export class UnconfirmedEmailError extends Error {
     }
 }
 
+/**
+ * A password reset refused because its link is no good: expired, used already, or not the account's
+ * (ADR 0090). The page then offers a new link rather than another password, which would be refused the
+ * same way.
+ */
+export class InvalidResetLinkError extends Error {
+    constructor(message: string) {
+        super(message);
+        this.name = 'InvalidResetLinkError';
+    }
+}
+
 /** What a registration did: the account is made, and whether its confirmation went (ADR 0089). */
 export interface RegisterResult {
     emailSent: boolean;

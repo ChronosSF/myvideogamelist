@@ -19,6 +19,8 @@ const auth: AuthContextValue = {
     register: vi.fn(async () => ({ emailSent: true })),
     resendConfirmation: vi.fn(async () => {}),
     confirmEmail: vi.fn(async () => {}),
+    requestPasswordReset: vi.fn(async () => {}),
+    resetPassword: vi.fn(async () => {}),
     logout: vi.fn(async () => {}),
     updateUserName: vi.fn(async () => {}),
     updateProfileVisibility: vi.fn(async () => {}),
@@ -31,9 +33,10 @@ vi.mock('@/hooks/useAuth', () => ({ useAuth: () => auth }));
 
 const onClose = vi.fn();
 const onSwitchToRegister = vi.fn();
+const onForgotPassword = vi.fn();
 
 function renderDialog() {
-    render(<LoginDialog onClose={onClose} onSwitchToRegister={onSwitchToRegister} />);
+    render(<LoginDialog onClose={onClose} onSwitchToRegister={onSwitchToRegister} onForgotPassword={onForgotPassword} />);
 }
 
 /** The overlay, which is what carries the dialog role here. */
@@ -43,6 +46,7 @@ const emailField = () => screen.getByLabelText('Email or username');
 beforeEach(() => {
     onClose.mockReset();
     onSwitchToRegister.mockReset();
+    onForgotPassword.mockReset();
     vi.mocked(auth.login).mockResolvedValue(undefined);
 });
 
@@ -89,6 +93,17 @@ describe('LoginDialog', () => {
         await actor.click(screen.getByRole('button', { name: 'Send the link again' }));
         expect(auth.resendConfirmation).toHaveBeenCalledWith('alex');
         expect(onClose).not.toHaveBeenCalled();
+    });
+
+    it('hands what was typed to the forgotten-password dialog, and signs nobody in', async () => {
+        const actor = userEvent.setup();
+        renderDialog();
+
+        await actor.type(emailField(), ' alex@test.local ');
+        await actor.click(screen.getByRole('button', { name: 'Forgot password?' }));
+
+        expect(onForgotPassword).toHaveBeenCalledWith('alex@test.local');
+        expect(auth.login).not.toHaveBeenCalled();
     });
 });
 

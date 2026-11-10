@@ -25,6 +25,9 @@ export default [
     // request ever carries; the page reads them and posts them to the API (ADR 0089).
     route('confirm-email', 'pages/ConfirmEmailPage.tsx'),
 
+    // Where the link in a password reset email leads, built the same way (ADR 0090).
+    route('reset-password', 'pages/ResetPasswordPage.tsx'),
+
     // What is coming for the user's games, a month at a time. The month is a query parameter rather
     // than a path segment, so that `/calendar` is always the month it opens on.
     route('calendar', 'pages/CalendarPage.tsx'),

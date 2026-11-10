@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import {
+    InvalidResetLinkError,
     ProfileDetailsError,
     UnconfirmedEmailError,
     type ProfileDetails,
@@ -197,6 +198,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (!res.ok) throw new Error(await problem(res, 'Could not confirm your address. Please try again.'));
     };
 
+    const requestPasswordReset = async (emailOrUserName: string) => {
+        const res = await send('/api/auth/forgot-password', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: emailOrUserName }),
+        });
+        if (!res.ok) throw new Error(await problem(res, 'Could not send the link. Please try again.'));
+    };
+
+    /**
+     * Signs nobody in. The reset ends every session the account had, at each one's next request, so a
+     * browser signed in as that account, this one included, is signed out here at once rather than at its
+     * next request (ADR 0090).
+     */
+    const resetPassword = async (userId: string, token: string, password: string) => {
+        const res = await send('/api/auth/reset-password', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId, token, password }),
+        });
+        if (!res.ok) {
+            // A refused link says so in `invalidLink`; a refused password carries Identity's sentences.
+            const body = await bodyOf(res);
+            const invalidLink = res.status === 400
+                && typeof body === 'object' && body !== null
+                && (body as { invalidLink?: unknown }).invalidLink === true;
+            const message = messageIn(body, 'Could not set your new password. Please try again.');
+            throw invalidLink ? new InvalidResetLinkError(message) : new Error(message);
+        }
+
+        setUser(current => (current !== null && current.id === userId ? null : current));
+    };
+
     /**
      * Signed out on screen only once the server has said the session is over: its 204, or the 401 of
      * a session that had already ended, in another tab or by expiring. Any other answer — a 502 from
@@ -306,6 +340,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 register,
                 resendConfirmation,
                 confirmEmail,
+                requestPasswordReset,
+                resetPassword,
                 logout,
                 updateUserName,
                 updateProfileVisibility,
