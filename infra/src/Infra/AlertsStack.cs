@@ -49,11 +49,23 @@ public sealed class AlertsStack : Stack
         // are this account's (ADR 0091).
         if (site.IsProduction)
         {
-            topic.AddToResourcePolicy(Publisher("EmailEvents", "ses.amazonaws.com",
-                $"arn:{Aws.PARTITION}:ses:{Region}:{Account}:configuration-set/{Site.EmailConfigurationSet}", topic));
+            topic.AddToResourcePolicy(Publisher("EmailEvents", "ses.amazonaws.com", EmailStack.ConfigurationSetArn, topic));
         }
 
         _ = new CfnOutput(this, "TopicArn", new CfnOutputProps { Value = topic.TopicArn });
+    }
+
+    /// <summary>
+    /// The topic as another stack finds it: by its name, in that stack's own account and Region, never
+    /// by a reference. A reference would make every deploy of that stack, the pipeline's App deploys
+    /// included, wait on an output of a stack only the owner deploys, and fail until it exists (ADR
+    /// 0080).
+    /// </summary>
+    internal static ITopic TopicByName(Construct scope, string id, Site site)
+    {
+        var stack = Stack.Of(scope);
+        return Topic.FromTopicArn(scope, id,
+            $"arn:{Aws.PARTITION}:sns:{stack.Region}:{stack.Account}:{site.AlertsTopicName}");
     }
 
     private PolicyStatement Publisher(string sid, string service, string sourceArn, Topic topic) =>

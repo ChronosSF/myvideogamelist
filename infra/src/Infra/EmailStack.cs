@@ -1,7 +1,6 @@
 using Amazon.CDK;
 using Amazon.CDK.AWS.IAM;
 using Amazon.CDK.AWS.SES;
-using Amazon.CDK.AWS.SNS;
 using Constructs;
 
 namespace Infra;
@@ -31,10 +30,37 @@ namespace Infra;
 /// </remarks>
 public sealed class EmailStack : Stack
 {
-    public EmailStack(Construct scope, string id, IStackProps props, Site site, Site sender)
+    /// <summary>
+    /// The configuration set every email is sent under, which SES publishes its events as, and which a
+    /// sender is authorized against beside the identity (ADR 0091).
+    /// </summary>
+    internal static string ConfigurationSetArn =>
+        $"arn:{Aws.PARTITION}:ses:{Site.EmailRegion}:{Site.ProductionAccount}:configuration-set/{Site.EmailConfigurationSet}";
+
+    /// <summary>
+    /// What any role that sends email may do: SES's <c>SendEmail</c> on the domain's identity, under
+    /// the configuration set, from one address. Granted to the role here and to production's own task
+    /// role in the App stack, so that the two are held to the same terms by construction (ADR 0088).
+    /// </summary>
+    internal static PolicyStatement SendFromNoReply() => new(new PolicyStatementProps
+    {
+        Sid = "SendFromNoReply",
+        Actions = ["ses:SendEmail"],
+        Resources =
+        [
+            $"arn:{Aws.PARTITION}:ses:{Site.EmailRegion}:{Site.ProductionAccount}:identity/{Site.Domain}",
+            ConfigurationSetArn,
+        ],
+        Conditions = new Dictionary<string, object>
+        {
+            ["StringEquals"] = new Dictionary<string, object> { ["ses:FromAddress"] = Site.EmailFromAddress },
+        },
+    });
+
+    public EmailStack(Construct scope, string id, IStackProps props, Site sender)
         : base(scope, id, props)
     {
-        SendingConfiguration(site);
+        SendingConfiguration();
 
         var taskRole = $"arn:{Aws.PARTITION}:iam::{sender.Account}:role/{sender.ApiTaskRoleName}";
 
@@ -49,16 +75,7 @@ public sealed class EmailStack : Stack
             }),
         });
 
-        role.AddToPolicy(new PolicyStatement(new PolicyStatementProps
-        {
-            Sid = "SendFromNoReply",
-            Actions = ["ses:SendEmail"],
-            Resources = Site.EmailSendingResources(Aws.PARTITION),
-            Conditions = new Dictionary<string, object>
-            {
-                ["StringEquals"] = new Dictionary<string, object> { ["ses:FromAddress"] = Site.EmailFromAddress },
-            },
-        }));
+        role.AddToPolicy(SendFromNoReply());
 
         _ = new CfnOutput(this, "RoleArn", new CfnOutputProps { Value = role.RoleArn });
     }
@@ -81,7 +98,7 @@ public sealed class EmailStack : Stack
     /// and the topic's policy is what admits it.
     /// </para>
     /// </remarks>
-    private void SendingConfiguration(Site site)
+    private void SendingConfiguration()
     {
         var configurationSet = new ConfigurationSet(this, "ConfigurationSet", new ConfigurationSetProps
         {
@@ -89,12 +106,11 @@ public sealed class EmailStack : Stack
             SuppressionReasons = SuppressionReasons.BOUNCES_AND_COMPLAINTS,
         });
 
-        var alerts = Topic.FromTopicArn(this, "Alerts",
-            $"arn:{Aws.PARTITION}:sns:{Region}:{Account}:{site.AlertsTopicName}");
         configurationSet.AddEventDestination("BouncesAndComplaints", new ConfigurationSetEventDestinationOptions
         {
             ConfigurationSetEventDestinationName = "bounces-and-complaints",
-            Destination = EventDestination.SnsTopic(alerts),
+            Destination = EventDestination.SnsTopic(
+                AlertsStack.TopicByName(this, "Alerts", new Site(Site.Production))),
             Events = [EmailSendingEvent.BOUNCE, EmailSendingEvent.COMPLAINT],
         });
     }

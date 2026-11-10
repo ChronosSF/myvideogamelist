@@ -113,21 +113,10 @@ public sealed record Site(string Env)
     public const string EmailFromAddress = MyVideoGameList.Server.Services.Email.EmailIdentity.FromAddress;
 
     /// <summary>
-    /// The SES configuration set every email is sent under, made by the production account's email
-    /// stack: the API's own constant, which every send names (ADR 0091).
+    /// The SES configuration set every email is sent under, which the production account's email stack
+    /// makes: the API's own constant, which every send names (ADR 0091).
     /// </summary>
     public const string EmailConfigurationSet = MyVideoGameList.Server.Services.Email.EmailIdentity.ConfigurationSet;
-
-    /// <summary>
-    /// What a role that sends email may send on: the domain's identity, and the configuration set every
-    /// send names, which SES authorizes <c>SendEmail</c> against as well (ADR 0088, 0091). Always in the
-    /// production account and <see cref="EmailRegion"/>, whoever sends.
-    /// </summary>
-    public static string[] EmailSendingResources(string partition) =>
-    [
-        $"arn:{partition}:ses:{EmailRegion}:{ProductionAccount}:identity/{Domain}",
-        $"arn:{partition}:ses:{EmailRegion}:{ProductionAccount}:configuration-set/{EmailConfigurationSet}",
-    ];
 
     /// <summary>
     /// The API task's role, by name rather than CloudFormation's generated one, because the

@@ -56,7 +56,7 @@ internal static class Program
             var email = new Amazon.CDK.Environment { Account = account, Region = Site.EmailRegion };
             _ = new HoldingStack(app, site.StackName("Holding"), new StackProps { Env = edge }, site);
             _ = new AlertsStack(app, site.StackName("Alerts"), new StackProps { Env = email }, site);
-            _ = new EmailStack(app, site.StackName("Email"), new StackProps { Env = email }, site, new Site("dev"));
+            _ = new EmailStack(app, site.StackName("Email"), new StackProps { Env = email }, new Site("dev"));
             app.Synth();
             return;
         }

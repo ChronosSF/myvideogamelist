@@ -70,7 +70,8 @@ but now a template says it, so a change to it is a diff that somebody reviews.
 - **Named on each send, not made the identity's default set.** The identity was made by hand and is in no
   template, so a default set on it would be one more setting nobody reviews.
 - **The roles that send name it beside the identity**: `mvgl-dev-email` in `Mvgl-prod-Email`, and
-  production's own task role in the App stack. Both keep the condition on the From address.
+  production's own task role in the App stack. Both are given the one statement, `EmailStack.SendFromNoReply`,
+  which keeps the condition on the From address.
 - **Nothing else is set on it.** It has no reputation metrics of its own, no tracking (a tracking domain would
   have to be SES's HTTPS kind, #100), and no dedicated IPs.
 
@@ -107,10 +108,11 @@ identity of the SES user who sent the email", which is how dev's sends and produ
 ### 5. What somebody whose address is suppressed sees
 
 They see what everybody sees: "Check your inbox" and a button to send it again, and then nothing arrives. The
-API was told the email went. So the dialog now ends its spam-folder sentence by naming the support address,
-`SUPPORT_EMAIL` in `@/lib/links`. The owner has the `OnAccountSuppressionList` bounce for the attempt. Once
-the person says the mailbox works, the owner can lift it with `aws sesv2 delete-suppressed-destination`
-(`infra/README.md`), and the next resend arrives.
+API was told the email went. So that button, `ResendConfirmation`, is now followed by the support address,
+`SUPPORT_EMAIL` in `@/lib/links`. It shows in the sign-up dialog and in the sign-in dialog's "confirm first",
+which is where somebody who closed the first one arrives. The owner has the `OnAccountSuppressionList` bounce
+for the attempt. Once the person says the mailbox works, the owner can lift it with
+`aws sesv2 delete-suppressed-destination` (`infra/README.md`), and the next resend arrives.
 
 ## Consequences
 
