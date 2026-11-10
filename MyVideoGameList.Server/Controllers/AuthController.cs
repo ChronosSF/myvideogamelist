@@ -17,6 +17,7 @@ public class AuthController(
     SignInManager<ApplicationUser> signInManager,
     IUserNameClaimService claims,
     AccountConfirmation confirmation,
+    PasswordReset reset,
     AdminAccounts admins,
     TimeProvider clock) : ControllerBase
 {
@@ -140,7 +141,8 @@ public class AuthController(
 
     /// <summary>
     /// The account an identifier names: an address first, the unique-by-configuration column, then a
-    /// username. Signing in and asking for the confirmation again resolve it the same way, here.
+    /// username. Signing in, asking for the confirmation again and asking for a reset resolve it the same
+    /// way, here.
     /// </summary>
     private async Task<ApplicationUser?> FindByEmailOrNameAsync(string emailOrUserName) =>
         await userManager.FindByEmailAsync(emailOrUserName)
@@ -210,6 +212,81 @@ public class AuthController(
             await confirmation.SendAsync(user);
 
         return Accepted();
+    }
+
+    /// <summary>
+    /// Sends the link that sets a new password to the account an address or a username names.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Always a 202, whether or not anything was sent: no such account, and one sent a reset within the
+    /// last few minutes, answer as one that was just sent a link (ADR 0033, ADR 0090). The pace is per
+    /// account, in <see cref="PasswordReset"/>, which keeps this from filling an inbox; the rate limit is
+    /// per network address, which keeps it from asking about many accounts quickly. A send makes the
+    /// answer slower, but registration already says whether an address is taken, so the time tells
+    /// nothing that cannot be learned there (ADR 0089 §5).
+    /// </para>
+    /// <para>
+    /// An unconfirmed account is sent one too. The reset confirms the address, so it is what lets in
+    /// somebody who has neither confirmed nor kept the password they chose.
+    /// </para>
+    /// </remarks>
+    [HttpPost("forgot-password")]
+    [EnableRateLimiting(RateLimiting.AuthWrites)]
+    public async Task<ActionResult<AuthMessageDto>> ForgotPassword(
+        [FromBody] ForgotPasswordDto dto, CancellationToken cancellationToken)
+    {
+        var user = await FindByEmailOrNameAsync(dto.Email);
+
+        // As in ResendConfirmation: checked before the send, which ignores it once begun.
+        cancellationToken.ThrowIfCancellationRequested();
+
+        if (user is not null)
+            await reset.SendAsync(user);
+
+        return Accepted();
+    }
+
+    /// <summary>
+    /// Sets a new password from the two halves of the link in a reset email, and the password itself.
+    /// Signs nobody in.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The reset confirms the address, ends any lockout and ends every session the account had, at each
+    /// one's next request (see <see cref="PasswordReset.ResetAsync"/>). It does not sign in: signing in is
+    /// one way, the sign-in dialog's, with its lockout, its confirmation check and its choice to be
+    /// remembered, rather than a second way beside it that each of those would have to be kept in step
+    /// with. The page offers the sign-in at once.
+    /// </para>
+    /// <para>
+    /// No such account and a wrong, expired or used token are the same answer, as for a confirmation. A
+    /// password the rules refuse is answered as registration answers one, and spends nothing: the link
+    /// still works for another try.
+    /// </para>
+    /// </remarks>
+    [HttpPost("reset-password")]
+    [EnableRateLimiting(RateLimiting.AuthWrites)]
+    public async Task<ActionResult<ResetLinkRefusedDto>> ResetPassword(
+        [FromBody] ResetPasswordDto dto, CancellationToken cancellationToken)
+    {
+        var user = await userManager.FindByIdAsync(dto.UserId);
+
+        // UserManager takes no token of its own, so the request's is checked before the one write.
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var result = user is null ? null : await reset.ResetAsync(user, dto.Token, dto.Password);
+
+        if (result is null || result.Errors.Any(error => error.Code == nameof(IdentityErrorDescriber.InvalidToken)))
+        {
+            return BadRequest(new ResetLinkRefusedDto(
+                "This link has expired or has already been used. Ask for a new one."));
+        }
+
+        if (!result.Succeeded)
+            return BadRequest(new { errors = result.Errors.Select(e => e.Description) });
+
+        return NoContent();
     }
 
     [HttpPost("logout")]

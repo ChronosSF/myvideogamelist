@@ -167,7 +167,13 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   after the `#` (`EmailLinks`), never in a query string, which the SSR server's log would keep, and
   the page posts it: confirming signs nobody in, because the token outlives its use. Every account
   before the migration that turned this on was confirmed by it. A test that signs up goes through the
-  link: `Browsers.RegisterAsync`, `e2e/outbox.ts`. See `docs/decisions/0089-*`.
+  link: `Browsers.RegisterAsync`, `e2e/outbox.ts`. See `docs/decisions/0089-*`. **A password reset
+  is the same shape and signs nobody in either**: its link (`/reset-password#…`) works once, for an
+  hour, from a token provider of its own whose lifespan the email reads (`PasswordResetTokens`); it
+  confirms the address, ends the lockout, and ends every session at its next request through
+  `SessionsEndedAt`, which the session check reads beside the stamp. The request answers 202 whatever
+  it names. Each kind of email has its own pace per account, `EmailPace`: never two resets in five
+  minutes. See `docs/decisions/0090-*`.
 
 - **The key ring is shared through Parameter Store, and a deployment that names no store does not
   start.** The Data Protection keys sign the Identity cookie and seal the review cursor, and a ring
@@ -437,8 +443,8 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   `docs/decisions/0034-*`.
 
 - **The rate limiter is narrow on purpose, and the lockout says nothing.** Ten attempts per address
-  per five minutes on login, register and the confirmation's resend only, which share one budget (ADR
-  0089) — the SSR server calls this API for every visitor, so
+  per five minutes on login, register, the confirmation's resend and the password reset's two
+  endpoints only, which share one budget (ADR 0089, 0090) — the SSR server calls this API for every visitor, so
   a limit partitioned by address anywhere a loader reaches would throttle the whole site as one
   client. Identity locks an account after five failures but answers exactly as it answers a wrong
   password, because announcing a lockout tells an attacker the account exists. Forwarded headers

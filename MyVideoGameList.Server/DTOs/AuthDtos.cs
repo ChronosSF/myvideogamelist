@@ -39,6 +39,25 @@ public record ConfirmEmailDto([Required] string UserId, [Required] string Token)
 /// <param name="Email">The address or the username, as signing in accepts either.</param>
 public record ResendConfirmationDto([Required] string Email);
 
+/// <summary>A forgotten password: the account it belongs to, named as signing in names one (ADR 0090).</summary>
+/// <param name="Email">The address or the username, as signing in accepts either.</param>
+public record ForgotPasswordDto([Required] string Email);
+
+/// <summary>
+/// The two halves of a reset link, as the page read them from its fragment, and the new password.
+/// </summary>
+/// <remarks>
+/// The password's rules are Identity's, checked by the reset itself and answered as registration answers
+/// them, so they are stated once, in <c>Program.cs</c>.
+/// </remarks>
+public record ResetPasswordDto([Required] string UserId, [Required] string Token, [Required] string Password);
+
+/// <summary>
+/// A reset that did not happen because its link was no good: expired, used, or not complete. A
+/// sentence for the page, and the flag that tells it to offer another link rather than another password.
+/// </summary>
+public record ResetLinkRefusedDto(string Message, bool InvalidLink = true);
+
 /// <summary>
 /// A sentence for the page to show, which is all an anonymous auth endpoint with no account to
 /// answer with ever sends: declared, so that nothing else can be (<c>TagPrivacyTests</c>).

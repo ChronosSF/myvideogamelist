@@ -62,6 +62,16 @@ public sealed class RecordingEmail : IEmailTransport
             ?? throw new InvalidOperationException($"No confirmation was sent to {address}.");
         return ConfirmEmailLink.In(message.Text);
     }
+
+    /// <summary>The account and token in the latest reset link this host sent to <paramref name="address"/>.</summary>
+    public ResetPasswordLink LatestResetTo(string address)
+    {
+        var message = sent.LastOrDefault(message =>
+                string.Equals(message.To, address, StringComparison.OrdinalIgnoreCase)
+                && message.Purpose == "password reset")
+            ?? throw new InvalidOperationException($"No password reset was sent to {address}.");
+        return ResetPasswordLink.In(message.Text);
+    }
 }
 
 /// <summary>The two halves of a confirmation link, read from an email as a reader's page reads them.</summary>
@@ -69,12 +79,32 @@ public sealed record ConfirmEmailLink(string Url, string UserId, string Token)
 {
     public static ConfirmEmailLink In(string text)
     {
+        var (url, parts) = AccountLink.In(text, "/confirm-email#");
+        return new ConfirmEmailLink(url, parts["user"], parts["token"]);
+    }
+}
+
+/// <summary>The two halves of a reset link, read from an email as a reader's page reads them.</summary>
+public sealed record ResetPasswordLink(string Url, string UserId, string Token)
+{
+    public static ResetPasswordLink In(string text)
+    {
+        var (url, parts) = AccountLink.In(text, "/reset-password#");
+        return new ResetPasswordLink(url, parts["user"], parts["token"]);
+    }
+}
+
+/// <summary>The one link in an email's text that leads to <c>page</c>, and the decoded pairs after its <c>#</c>.</summary>
+internal static class AccountLink
+{
+    public static (string Url, Dictionary<string, string> Parts) In(string text, string page)
+    {
         var url = text.Split((char[])['\n', '\r', ' '], StringSplitOptions.RemoveEmptyEntries)
-            .Single(word => word.Contains("/confirm-email#", StringComparison.Ordinal));
+            .Single(word => word.Contains(page, StringComparison.Ordinal));
         var fragment = url[(url.IndexOf('#') + 1)..];
         var parts = fragment.Split('&')
             .Select(pair => pair.Split('=', 2))
             .ToDictionary(pair => pair[0], pair => Uri.UnescapeDataString(pair[1]));
-        return new ConfirmEmailLink(url, parts["user"], parts["token"]);
+        return (url, parts);
     }
 }

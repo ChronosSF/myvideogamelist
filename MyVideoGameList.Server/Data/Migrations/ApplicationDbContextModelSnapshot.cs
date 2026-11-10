@@ -243,6 +243,9 @@ namespace MyVideoGameList.Server.Data.Migrations
                     b.Property<string>("SecurityStamp")
                         .HasColumnType("text");
 
+                    b.Property<DateTimeOffset?>("SessionsEndedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<string>("Theme")
                         .IsRequired()
                         .ValueGeneratedOnAdd()

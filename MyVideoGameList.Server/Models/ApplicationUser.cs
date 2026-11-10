@@ -132,4 +132,24 @@ public class ApplicationUser : IdentityUser
     /// 0051), and in the account's data export.
     /// </remarks>
     public DateTimeOffset? LastSeenAt { get; set; }
+
+    /// <summary>
+    /// When the account last ended every session it had, or null if it never has: the moment its
+    /// password was reset (ADR 0090).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A session that began at or before this moment, under a security stamp that is no longer the
+    /// account's, is refused at its next request (<see cref="Security.DeletedAccountSessions"/>). The
+    /// stamp alone cannot say that: a rename changes it too, and a rename leaves the account's other
+    /// sessions to Identity's own check, half an hour later (ADR 0077 §4). The moment alone cannot
+    /// either: a session's start is kept to the second, so one signed in just after a reset would read
+    /// as one from before it.
+    /// </para>
+    /// <para>
+    /// Recorded about the account rather than entered by its owner, and in the account's data export for
+    /// the reason <see cref="LastSeenAt"/> is.
+    /// </para>
+    /// </remarks>
+    public DateTimeOffset? SessionsEndedAt { get; set; }
 }

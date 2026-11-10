@@ -24,6 +24,10 @@ public sealed record EmailLinks(Uri Site)
     /// <summary>The page that confirms an address, with the account and its token.</summary>
     public string ConfirmEmail(string userId, string token) =>
         $"{Site.GetLeftPart(UriPartial.Authority)}/confirm-email#user={Uri.EscapeDataString(userId)}&token={Uri.EscapeDataString(token)}";
+
+    /// <summary>The page that sets a new password, with the account and its token (ADR 0090).</summary>
+    public string ResetPassword(string userId, string token) =>
+        $"{Site.GetLeftPart(UriPartial.Authority)}/reset-password#user={Uri.EscapeDataString(userId)}&token={Uri.EscapeDataString(token)}";
 }
 
 /// <summary>
@@ -37,13 +41,20 @@ public sealed record EmailLinks(Uri Site)
 public sealed class AccountEmails(
     IEmailTransport transport,
     EmailLinks links,
-    IOptions<DataProtectionTokenProviderOptions> tokens)
+    IOptions<DataProtectionTokenProviderOptions> tokens,
+    IOptions<PasswordResetTokenProviderOptions> resetTokens)
 {
     /// <summary>
     /// How long a link works, in words: the token provider's lifespan, which is what decides it, so
     /// that the email cannot promise longer than the link lasts.
     /// </summary>
     private string ConfirmationLifetime => InWords(tokens.Value.TokenLifespan);
+
+    /// <summary>
+    /// The same for a reset's link, from the provider that issues a reset's token, which is not the
+    /// confirmation's (ADR 0090).
+    /// </summary>
+    private string ResetLifetime => InWords(resetTokens.Value.TokenLifespan);
 
     /// <summary>A lifespan as the email says it: in whole hours, or in minutes when it is not.</summary>
     internal static string InWords(TimeSpan lifespan) =>
@@ -64,6 +75,30 @@ public sealed class AccountEmails(
                 {links.ConfirmEmail(user.Id, token)}
 
                 The link works for {ConfirmationLifetime}. If you did not sign up, you can ignore this email: without the confirmation the account cannot be used.
+
+                MyVideoGameList
+                """), cancellationToken);
+
+    /// <summary>
+    /// The link that sets a new password, sent because somebody asked for it with this account's
+    /// address or username, who may not be its owner. So it says that nothing changes until the link is
+    /// used, and the owner can ignore it.
+    /// </summary>
+    public Task SendPasswordResetAsync(ApplicationUser user, string token, CancellationToken cancellationToken) =>
+        transport.SendAsync(new EmailMessage(
+            Purpose: "password reset",
+            To: user.Email ?? throw new InvalidOperationException("An account with no address cannot be sent a reset."),
+            Subject: "Reset your MyVideoGameList password",
+            Text: $"""
+                Hello {user.UserName},
+
+                Somebody asked to reset the password of your MyVideoGameList account. If it was you, choose a new password here:
+
+                {links.ResetPassword(user.Id, token)}
+
+                The link works for {ResetLifetime}, and only once. Setting a new password signs you out everywhere you are signed in.
+
+                If you did not ask, you can ignore this email: your password stays as it is.
 
                 MyVideoGameList
                 """), cancellationToken);

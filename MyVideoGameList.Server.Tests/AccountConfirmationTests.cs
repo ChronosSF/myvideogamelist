@@ -27,7 +27,8 @@ public class AccountConfirmationTests
     private AccountConfirmation Confirmation(IMemoryCache cache) => new(
         users,
         new AccountEmails(transport, new EmailLinks(new Uri("https://dev.myvideogamelist.net")),
-            Options.Create(new DataProtectionTokenProviderOptions())),
+            Options.Create(new DataProtectionTokenProviderOptions()),
+            Options.Create(new PasswordResetTokenProviderOptions())),
         cache,
         NullLogger<AccountConfirmation>.Instance);
 
@@ -83,7 +84,8 @@ public class AccountConfirmationTests
         EmailMessage? sent = null;
         await transport.SendAsync(Arg.Do<EmailMessage>(message => sent = message), Arg.Any<CancellationToken>());
         var emails = new AccountEmails(transport, new EmailLinks(new Uri("https://dev.myvideogamelist.net")),
-            Options.Create(new DataProtectionTokenProviderOptions { TokenLifespan = TimeSpan.FromHours(2) }));
+            Options.Create(new DataProtectionTokenProviderOptions { TokenLifespan = TimeSpan.FromHours(2) }),
+            Options.Create(new PasswordResetTokenProviderOptions()));
 
         await emails.SendConfirmationAsync(Account, "token", CancellationToken.None);
 

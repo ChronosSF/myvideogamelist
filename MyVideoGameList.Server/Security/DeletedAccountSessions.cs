@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using MyVideoGameList.Server.Data;
 using MyVideoGameList.Server.Models;
 
@@ -9,7 +10,8 @@ namespace MyVideoGameList.Server.Security;
 
 /// <summary>
 /// Ends every session of a deleted account on the next request it makes, rather than at Identity's next
-/// security-stamp check, up to thirty minutes later (ADR 0077).
+/// security-stamp check, up to thirty minutes later (ADR 0077); and every session an account had when its
+/// password was reset, the same way (ADR 0090).
 /// </summary>
 /// <remarks>
 /// <para>
@@ -27,6 +29,16 @@ namespace MyVideoGameList.Server.Security;
 /// one place rather than a lookup in each endpoint, which the next endpoint would forget. A changed stamp
 /// — a rename rotates it — is still Identity's, on its own clock: this is about the account having gone,
 /// which no stamp can say.
+/// </para>
+/// <para>
+/// <b>And whether the account has ended its sessions since this one began</b>, from the same row: a
+/// password reset does, through <see cref="ApplicationUser.SessionsEndedAt"/>, because somebody resetting a
+/// password may be doing it because somebody else has it, and half an hour is long enough to do harm. A
+/// session is over when it began at or before that moment and carries a stamp the account no longer has.
+/// Both halves are needed: a session's start is kept to the second, so the moment alone would end one
+/// signed in just after the reset, within the same second; and the stamp alone would end a renamed
+/// account's other sessions at once, which ADR 0077 §4 leaves to Identity's clock. Every session from
+/// before the reset carries the stamp the reset replaced, and every one since was issued after it.
 /// </para>
 /// <para>
 /// A refused session is signed out as Identity's own refusal signs one out, the two-factor remembrance
@@ -59,7 +71,20 @@ public static class DeletedAccountSessions
             if (userId is null) return;
 
             var db = services.GetRequiredService<ApplicationDbContext>();
-            if (await db.Users.AnyAsync(user => user.Id == userId, context.HttpContext.RequestAborted)) return;
+            var account = await db.Users
+                .Where(user => user.Id == userId)
+                .Select(user => new { user.SecurityStamp, user.SessionsEndedAt })
+                .SingleOrDefaultAsync(context.HttpContext.RequestAborted);
+
+            var stampClaim = services.GetRequiredService<IOptions<IdentityOptions>>().Value.ClaimsIdentity.SecurityStampClaimType;
+            if (account is not null && !Ended(
+                    account.SessionsEndedAt,
+                    account.SecurityStamp,
+                    principal.FindFirst(stampClaim)?.Value,
+                    context.Properties.IssuedUtc))
+            {
+                return;
+            }
 
             // Identity's own refusal, call for call (SecurityStampValidator.ValidateAsync). The two-factor
             // remembrance is a cookie nothing sets yet, and the account's must not outlive it once one does.
@@ -68,4 +93,15 @@ public static class DeletedAccountSessions
             await context.HttpContext.SignOutAsync(IdentityConstants.TwoFactorRememberMeScheme);
         };
     }
+
+    /// <summary>
+    /// Whether the account ended its sessions after this one began: it has ended them, the session's
+    /// stamp is not the account's, and the session began no later than the ending. A session that says
+    /// nothing of when it began is taken to be older.
+    /// </summary>
+    internal static bool Ended(
+        DateTimeOffset? sessionsEndedAt, string? accountStamp, string? sessionStamp, DateTimeOffset? issuedUtc) =>
+        sessionsEndedAt is { } ended
+        && !string.Equals(sessionStamp, accountStamp, StringComparison.Ordinal)
+        && (issuedUtc is not { } issued || issued <= ended);
 }
