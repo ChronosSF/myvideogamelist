@@ -11,7 +11,8 @@ namespace Infra;
 /// Where an alarm is sent: one topic, and the owner's subscription to it by email. Long-lived and
 /// apart from the alarms, because an email subscription is confirmed by a person clicking a link,
 /// and the application stack the alarms live in is destroyed and made again on every park and
-/// resume (ADR 0080). Deployed by hand, by name, as Data is; the pipeline never touches it.
+/// resume (ADR 0080). Deployed by hand, by name, as Data is; the pipeline never touches it. In the
+/// production account it is also where SES sends each bounce and complaint (ADR 0091).
 /// </summary>
 public sealed class AlertsStack : Stack
 {
@@ -42,6 +43,15 @@ public sealed class AlertsStack : Stack
             $"arn:{Aws.PARTITION}:cloudwatch:{Region}:{Account}:alarm:{site.Prefix}-*", topic));
         topic.AddToResourcePolicy(Publisher("TaskStoppedRule", "events.amazonaws.com",
             $"arn:{Aws.PARTITION}:events:{Region}:{Account}:rule/{site.Prefix}-*", topic));
+
+        // In the production account, SES as well: the configuration set every email is sent under
+        // publishes each bounce and complaint here, the dev environment's included, since its sends
+        // are this account's (ADR 0091).
+        if (site.IsProduction)
+        {
+            topic.AddToResourcePolicy(Publisher("EmailEvents", "ses.amazonaws.com",
+                $"arn:{Aws.PARTITION}:ses:{Region}:{Account}:configuration-set/{Site.EmailConfigurationSet}", topic));
+        }
 
         _ = new CfnOutput(this, "TopicArn", new CfnOutputProps { Value = topic.TopicArn });
     }

@@ -52,6 +52,8 @@ public class EmailTransportTests
         Assert.Equal("\"MyVideoGameList\" <noreply@myvideogamelist.net>", sent.FromEmailAddress);
         Assert.Equal(new[] { "support@myvideogamelist.net" }, sent.ReplyToAddresses);
         Assert.Equal(new[] { Recipient }, sent.Destination.ToAddresses);
+        // What keeps a bounced or complaining address from being sent anything again (ADR 0091).
+        Assert.Equal("mvgl-email", sent.ConfigurationSetName);
         Assert.Equal("Confirm your address", sent.Content.Simple.Subject.Data);
         Assert.Equal(Message.Text, sent.Content.Simple.Body.Text.Data);
         Assert.Equal("<p>Open this link</p>", sent.Content.Simple.Body.Html.Data);

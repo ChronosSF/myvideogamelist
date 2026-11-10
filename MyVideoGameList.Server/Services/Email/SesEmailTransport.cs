@@ -14,6 +14,12 @@ namespace MyVideoGameList.Server.Services.Email;
 /// otherwise write.
 /// </para>
 /// <para>
+/// <b>Every send names <see cref="EmailIdentity.ConfigurationSet"/>.</b> SES then sends nothing to an
+/// address that has bounced or complained, and tells the owner of each bounce and complaint (ADR
+/// 0091). A send to such an address is still a success here, with a message id: SES accepts it and
+/// drops it, so nothing the API is told says the email will never arrive.
+/// </para>
+/// <para>
 /// <b>No log line holds an address.</b> A sent message is logged by its purpose and the id SES gave
 /// it, which is what a bounce or a complaint will name later. A refusal is logged by its error code
 /// and SES's text with every address masked, because that text names the recipient. It is logged
@@ -47,6 +53,7 @@ internal sealed class SesEmailTransport(
         {
             FromEmailAddress = sender.FromHeader,
             ReplyToAddresses = [sender.ReplyTo.Address],
+            ConfigurationSetName = EmailIdentity.ConfigurationSet,
             Destination = new Destination { ToAddresses = [message.To] },
             Content = new EmailContent
             {

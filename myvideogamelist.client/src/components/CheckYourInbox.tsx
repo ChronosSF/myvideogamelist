@@ -1,3 +1,4 @@
+import { SUPPORT_EMAIL } from '@/lib/links';
 import { ResendConfirmation } from './ResendConfirmation';
 
 interface Props {
@@ -24,7 +25,11 @@ export function CheckYourInbox({ email, emailSent, titleId, onSwitchToLogin }: P
                         We sent a link to <strong>{email}</strong>. Open it to confirm your address, then
                         sign in.
                     </p>
-                    <p>It can take a minute to arrive. If it does not, look in your spam folder.</p>
+                    <p>
+                        It can take a minute to arrive. If it does not, look in your spam folder. Still nothing?
+                        Write to{' '}
+                        <a href={`mailto:${SUPPORT_EMAIL}`} className="text-link">{SUPPORT_EMAIL}</a>.
+                    </p>
                 </div>
             ) : (
                 <div className="dialog-error" role="alert">
