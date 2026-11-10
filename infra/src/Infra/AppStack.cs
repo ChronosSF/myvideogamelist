@@ -203,6 +203,8 @@ public sealed class AppStack : Stack
         // sends from EmailIdentity.FromAddress by default, the constant the grant below and the
         // production account's email role are both conditioned on.
         container.AddEnvironment("Email__Ses__Region", Site.EmailRegion);
+        // Where an email's links lead: the host the distribution answers, never the request's (ADR 0089).
+        container.AddEnvironment("Email__SiteUrl", $"https://{site.Host}");
         if (site.IsProduction)
         {
             // Production sends as its own task role, on the same terms the dev role is held to.

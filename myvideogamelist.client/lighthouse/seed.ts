@@ -1,5 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { request } from '@playwright/test';
+import { confirmationIn, confirmationLinkFor } from '../e2e/outbox';
 
 /** The run's throwaway account. */
 export interface Account {
@@ -85,11 +86,12 @@ function newUserName(): string {
 }
 
 /**
- * Registers the run's account through the distribution, as the sign-up dialog does, and gives it its
- * library and a public profile. Called from the global setup, once the servers and the stand-ins are
- * up, so that every test in the run audits the same account.
+ * Registers the run's account through the distribution, as the sign-up dialog does, confirms its address
+ * with the link the API wrote to `outbox`, signs in, and gives it its library and a public profile.
+ * Called from the global setup, once the servers and the stand-ins are up, so that every test in the run
+ * audits the same account.
  */
-export async function seedAccount(site: string): Promise<Account> {
+export async function seedAccount(site: string, outbox: string): Promise<Account> {
     const userName = newUserName();
     const account = { userName, email: `${userName}@test.local`, password: 'lighthouse-1' };
     const api = await request.newContext({ baseURL: site, extraHTTPHeaders: WRITE });
@@ -103,6 +105,9 @@ export async function seedAccount(site: string): Promise<Account> {
 
     try {
         await write('post', '/api/auth/register', account);
+        // An account signs in once its address is confirmed (ADR 0089), with the link its email carries.
+        await write('post', '/api/auth/confirm-email', confirmationIn(confirmationLinkFor(outbox, account.email)));
+        await write('post', '/api/auth/login', { email: account.email, password: account.password, rememberMe: true });
         try {
             await write('put', '/api/user/privacy', { profileVisibility: 'public' });
 

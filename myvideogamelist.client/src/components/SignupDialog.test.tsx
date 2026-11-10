@@ -15,7 +15,9 @@ const auth: AuthContextValue = {
     user: null,
     loading: false,
     login: vi.fn(async () => {}),
-    register: vi.fn(async () => {}),
+    register: vi.fn(async () => ({ emailSent: true })),
+    resendConfirmation: vi.fn(async () => {}),
+    confirmEmail: vi.fn(async () => {}),
     logout: vi.fn(async () => {}),
     updateUserName: vi.fn(async () => {}),
     updateProfileVisibility: vi.fn(async () => {}),
@@ -47,11 +49,12 @@ async function fillIn(actor: ReturnType<typeof userEvent.setup>) {
 beforeEach(() => {
     onClose.mockReset();
     onSwitchToLogin.mockReset();
-    vi.mocked(auth.register).mockResolvedValue(undefined);
+    vi.mocked(auth.register).mockResolvedValue({ emailSent: true });
+    vi.mocked(auth.resendConfirmation).mockReset().mockResolvedValue(undefined);
 });
 
 describe('SignupDialog', () => {
-    it('registers with what was typed and closes', async () => {
+    it('registers with what was typed and says where the link went, signing nobody in', async () => {
         const actor = userEvent.setup();
         renderDialog();
 
@@ -59,7 +62,45 @@ describe('SignupDialog', () => {
         await actor.click(screen.getByRole('button', { name: 'Create Account' }));
 
         expect(auth.register).toHaveBeenCalledWith('alex@test.local', 'Passw0rd1', 'alex');
-        await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+        // Named by what is on it now, and still open: the account waits for its confirmation.
+        const dialog = await screen.findByRole('dialog', { name: 'Check your inbox' });
+        expect(dialog).toHaveTextContent('alex@test.local');
+        expect(onClose).not.toHaveBeenCalled();
+    });
+
+    it('says so when the account was made and its email did not go', async () => {
+        vi.mocked(auth.register).mockResolvedValue({ emailSent: false });
+        const actor = userEvent.setup();
+        renderDialog();
+
+        await fillIn(actor);
+        await actor.click(screen.getByRole('button', { name: 'Create Account' }));
+
+        await screen.findByRole('dialog', { name: 'Your account is ready' });
+        expect(screen.getByRole('alert')).toHaveTextContent(/did not go/i);
+    });
+
+    it('sends the link again to the address it was made with', async () => {
+        const actor = userEvent.setup();
+        renderDialog();
+
+        await fillIn(actor);
+        await actor.click(screen.getByRole('button', { name: 'Create Account' }));
+        await actor.click(await screen.findByRole('button', { name: 'Send the link again' }));
+
+        expect(auth.resendConfirmation).toHaveBeenCalledWith('alex@test.local');
+        await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent(/new link is on its way/i));
+    });
+
+    it('offers to sign in from where the link went', async () => {
+        const actor = userEvent.setup();
+        renderDialog();
+
+        await fillIn(actor);
+        await actor.click(screen.getByRole('button', { name: 'Create Account' }));
+        await actor.click(await screen.findByRole('button', { name: 'Sign In' }));
+
+        expect(onSwitchToLogin).toHaveBeenCalledTimes(1);
     });
 
     it('answers a mistyped confirmation without a round trip', async () => {

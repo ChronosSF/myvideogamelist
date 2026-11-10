@@ -160,6 +160,15 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   `EmailIdentity`, which the CDK app compiles too: the role allows that address and no other. See
   `docs/decisions/0088-*`.
 
+- **An account signs in only once its address is confirmed, and "confirm first" needs the password.**
+  Identity refuses an unconfirmed account before it checks the password and counts nothing, so
+  `AuthController` checks it, counts a wrong one towards the lockout, and answers the 403 that offers
+  the link again only to the password's owner; anything else is the usual 401. A link's token goes
+  after the `#` (`EmailLinks`), never in a query string, which the SSR server's log would keep, and
+  the page posts it: confirming signs nobody in, because the token outlives its use. Every account
+  before the migration that turned this on was confirmed by it. A test that signs up goes through the
+  link: `Browsers.RegisterAsync`, `e2e/outbox.ts`. See `docs/decisions/0089-*`.
+
 - **The key ring is shared through Parameter Store, and a deployment that names no store does not
   start.** The Data Protection keys sign the Identity cookie and seal the review cursor, and a ring
   nobody persists is remade by every process — so a deploy signs everyone out, with a clean log.
@@ -428,7 +437,8 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   `docs/decisions/0034-*`.
 
 - **The rate limiter is narrow on purpose, and the lockout says nothing.** Ten attempts per address
-  per five minutes on login and register only — the SSR server calls this API for every visitor, so
+  per five minutes on login, register and the confirmation's resend only, which share one budget (ADR
+  0089) — the SSR server calls this API for every visitor, so
   a limit partitioned by address anywhere a loader reaches would throttle the whole site as one
   client. Identity locks an account after five failures but answers exactly as it answers a wrong
   password, because announcing a lockout tells an attacker the account exists. Forwarded headers

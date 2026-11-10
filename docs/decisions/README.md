@@ -103,6 +103,7 @@ grow a forward pointer when a later record or an issue closes something it left 
 | [0084](0084-the-readers-controls-in-the-hero-everything-else-in-tabs.md) | The reader's controls in the hero and everything else in tabs, on the game page and the profile; a game's series, remakes and editions beside it | Implemented |
 | [0085](0085-the-pixel-matrix-in-the-accent-is-the-default-look.md) | The pixel matrix in the accent is the default look, and every pattern's glow is a fifth fainter | Implemented |
 | [0088](0088-email-goes-through-productions-ses-and-a-deployment-with-no-sender-does-not-start.md) | Email goes through production's SES, as a role dev assumes, and a deployment with no sender does not start | Implemented; proved only by a deploy |
+| [0089](0089-an-account-signs-in-once-its-address-is-confirmed.md) | An account signs in once its address is confirmed, by a link whose token never reaches a server | Implemented |
 
 **Status** — *Accepted*: decided, not yet built. *Implemented*: decided and in the code.
 *Superseded*: replaced by a later record.

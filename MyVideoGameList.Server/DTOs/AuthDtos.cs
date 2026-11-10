@@ -24,6 +24,28 @@ public record RegisterDto(
 public record LoginDto(string Email, string Password, bool RememberMe = false);
 
 /// <summary>
+/// What a registration did: the account exists, and nobody is signed in until its address is
+/// confirmed (ADR 0089).
+/// </summary>
+/// <param name="EmailSent">
+/// Whether the confirmation went to the sending service. False means the account was made and the
+/// email was not, and the page offers to send it again.
+/// </param>
+public record RegisterResultDto(bool EmailSent);
+
+/// <summary>The two halves of a confirmation link, as the page read them from its fragment.</summary>
+public record ConfirmEmailDto([Required] string UserId, [Required] string Token);
+
+/// <param name="Email">The address or the username, as signing in accepts either.</param>
+public record ResendConfirmationDto([Required] string Email);
+
+/// <summary>
+/// A sentence for the page to show, which is all an anonymous auth endpoint with no account to
+/// answer with ever sends: declared, so that nothing else can be (<c>TagPrivacyTests</c>).
+/// </summary>
+public record AuthMessageDto(string Message);
+
+/// <summary>
 /// The signed-in user, as every page needs them.
 /// </summary>
 /// <remarks>

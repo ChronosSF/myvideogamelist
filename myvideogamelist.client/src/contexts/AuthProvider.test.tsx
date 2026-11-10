@@ -91,10 +91,8 @@ async function openSignIn(routes: ApiRoutes = {}) {
 async function openSignUp(routes: ApiRoutes = {}) {
     const api = stubApi({
         'GET /api/auth/me': () => empty(),
-        'POST /api/auth/register': call => json(userProfile({
-            ...ALEX,
-            ...(call.body as { email: string; userName: string }),
-        })),
+        // Signs nobody in: the account waits for its confirmation (ADR 0089).
+        'POST /api/auth/register': () => json({ emailSent: true }),
         ...routes,
     });
     render(
@@ -344,15 +342,50 @@ describe('AuthProvider signing in', () => {
     });
 });
 
+describe('AuthProvider and an unconfirmed address', () => {
+    const UNCONFIRMED = 'Confirm your email address first, with the link we sent you. If you cannot find it, we can send another.';
+
+    it("shows the API's sentence and offers the link again, signing nobody in", async () => {
+        // A 403 is said only to somebody who gave the right password (ADR 0089).
+        const actor = quickActor();
+        const api = await openSignIn({
+            'POST /api/auth/login': () => json({ message: UNCONFIRMED, unconfirmed: true }, 403),
+            'POST /api/auth/resend-confirmation': () => empty(202),
+        });
+
+        await signIn(actor, 'alex');
+        expect(await screen.findByRole('alert')).toHaveTextContent(UNCONFIRMED);
+        await actor.click(screen.getByRole('button', { name: 'Send the link again' }));
+
+        await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent(/new link is on its way/i));
+        const [resend] = api.callsTo('POST', '/api/auth/resend-confirmation');
+        expect(resend.body).toEqual({ email: 'alex' });
+        expectSentThroughApiFetch(resend);
+        expect(screen.getByText('Nobody is signed in')).toBeInTheDocument();
+        expect(onClose).not.toHaveBeenCalled();
+    });
+
+    it('reads any other 403 as a refusal, with no offer of the link', async () => {
+        const actor = quickActor();
+        await openSignIn({ 'POST /api/auth/login': () => json({ message: 'Forbidden.' }, 403) });
+
+        await signIn(actor, 'alex');
+
+        expect(await screen.findByRole('alert')).toHaveTextContent('Forbidden.');
+        expect(screen.queryByRole('button', { name: 'Send the link again' })).toBeNull();
+    });
+});
+
 describe('AuthProvider registering', () => {
-    it('registers through the write guard, and signs the new account in', async () => {
+    it('registers through the write guard, and signs nobody in until the address is confirmed', async () => {
         const actor = quickActor();
         const api = await openSignUp();
 
         await signUp(actor, 'alex');
 
-        expect(await screen.findByText('Signed in as alex')).toBeInTheDocument();
-        expect(onClose).toHaveBeenCalledTimes(1);
+        expect(await screen.findByRole('dialog', { name: 'Check your inbox' })).toBeInTheDocument();
+        expect(screen.getByText('Nobody is signed in')).toBeInTheDocument();
+        expect(onClose).not.toHaveBeenCalled();
 
         const [register] = api.callsTo('POST', '/api/auth/register');
         expect(register.body).toEqual({ email: 'alex@test.local', password: PASSWORD, userName: 'alex' });
@@ -386,7 +419,7 @@ describe('AuthProvider registering', () => {
                 .toHaveTextContent('A username can use letters, numbers and underscores only.');
         }
 
-        // None of them reached the API: a name let through would have been registered, and signed in.
+        // None of them reached the API: a name let through would have been registered.
         expect(api.callsTo('POST', '/api/auth/register')).toHaveLength(0);
     });
 
@@ -400,7 +433,7 @@ describe('AuthProvider registering', () => {
 
         await signUp(actor, userName);
 
-        expect(await screen.findByText(`Signed in as ${userName}`)).toBeInTheDocument();
+        expect(await screen.findByRole('dialog', { name: 'Check your inbox' })).toBeInTheDocument();
         expect(api.callsTo('POST', '/api/auth/register')[0].body).toMatchObject({ userName });
     });
 

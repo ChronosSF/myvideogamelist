@@ -3,6 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { LoginDialog } from '@/components/LoginDialog';
 import type { AuthContextValue } from '@/contexts/AuthContext';
+import { UnconfirmedEmailError } from '@/types/auth';
 import { mousePress } from '@/test/press';
 
 /**
@@ -15,7 +16,9 @@ const auth: AuthContextValue = {
     user: null,
     loading: false,
     login: vi.fn(async () => {}),
-    register: vi.fn(async () => {}),
+    register: vi.fn(async () => ({ emailSent: true })),
+    resendConfirmation: vi.fn(async () => {}),
+    confirmEmail: vi.fn(async () => {}),
     logout: vi.fn(async () => {}),
     updateUserName: vi.fn(async () => {}),
     updateProfileVisibility: vi.fn(async () => {}),
@@ -67,6 +70,24 @@ describe('LoginDialog', () => {
         await actor.click(screen.getByRole('button', { name: 'Sign In' }));
 
         expect(await screen.findByRole('alert')).toHaveTextContent('Too many attempts. Try again later.');
+        expect(onClose).not.toHaveBeenCalled();
+        expect(screen.queryByRole('button', { name: 'Send the link again' })).toBeNull();
+    });
+
+    it('offers to send the link again when the address waits for its confirmation', async () => {
+        const actor = userEvent.setup();
+        vi.mocked(auth.login).mockRejectedValueOnce(new UnconfirmedEmailError('Confirm your email address first.'));
+        vi.mocked(auth.resendConfirmation).mockResolvedValueOnce(undefined);
+        renderDialog();
+
+        await actor.type(emailField(), 'alex');
+        await actor.type(screen.getByLabelText('Password'), 'Passw0rd1');
+        await actor.click(screen.getByRole('button', { name: 'Sign In' }));
+
+        expect(await screen.findByRole('alert')).toHaveTextContent('Confirm your email address first.');
+        // To what was typed when the API said so, the username here, which the API accepts as well.
+        await actor.click(screen.getByRole('button', { name: 'Send the link again' }));
+        expect(auth.resendConfirmation).toHaveBeenCalledWith('alex');
         expect(onClose).not.toHaveBeenCalled();
     });
 });

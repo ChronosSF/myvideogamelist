@@ -21,6 +21,10 @@ export default [
     // The rules for using the site, linked from the footer on every page (issue 141).
     route('terms', 'pages/TermsPage.tsx'),
 
+    // Where the link in a confirmation email leads. The account and token follow the `#`, which no
+    // request ever carries; the page reads them and posts them to the API (ADR 0089).
+    route('confirm-email', 'pages/ConfirmEmailPage.tsx'),
+
     // What is coming for the user's games, a month at a time. The month is a query parameter rather
     // than a path segment, so that `/calendar` is always the month it opens on.
     route('calendar', 'pages/CalendarPage.tsx'),

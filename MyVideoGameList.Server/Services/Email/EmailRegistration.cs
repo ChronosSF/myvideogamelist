@@ -58,6 +58,17 @@ public static class EmailRegistration
         services.AddSingleton(sender);
 
         var region = Value(section, "Ses:Region");
+
+        // Where an email's links lead. Required where mail really leaves, because a link to the wrong
+        // host is a confirmation nobody can finish; on a developer machine it is the dev server.
+        var site = Value(section, "SiteUrl") ?? (region is null ? DevelopmentSite : null)
+            ?? throw new InvalidOperationException(
+                $"{SectionName}:SiteUrl must name the site an email's links lead to wherever SES sends.");
+        services.AddSingleton(new EmailLinks(Origin(site, httpsOnly: region is not null)));
+        services.AddScoped<AccountEmails>();
+        // Its one consumer, beside it: an account's confirmation, paced (ADR 0089).
+        services.AddScoped<AccountConfirmation>();
+
         if (region is not null)
         {
             // The sending role, production's and the one dev assumes, allows this one address and no
@@ -129,6 +140,24 @@ public static class EmailRegistration
             RoleSessionName);
         return new AmazonSimpleEmailServiceV2Client(credentials, config);
     }
+
+    /// <summary>The dev server's origin, which <c>npm run dev</c> serves the site from.</summary>
+    private const string DevelopmentSite = "https://localhost:58546";
+
+    /// <summary>
+    /// An origin and nothing else: a link is built by appending a path, so a path, a query or a
+    /// fragment here would land in the middle of every link. HTTPS wherever mail really leaves,
+    /// because the page the link opens is what reads the token: over HTTP, anybody on the reader's
+    /// network could answer in its place. Plain HTTP is for the local harnesses' outbox.
+    /// </summary>
+    private static Uri Origin(string value, bool httpsOnly) =>
+        Uri.TryCreate(value, UriKind.Absolute, out var uri)
+            && (uri.Scheme == "https" || (uri.Scheme == "http" && !httpsOnly))
+            && uri.AbsolutePath == "/" && uri.Query.Length == 0 && uri.Fragment.Length == 0
+                ? uri
+                : throw new InvalidOperationException(
+                    $"{SectionName}:SiteUrl must be an origin, such as https://dev.myvideogamelist.net"
+                    + (httpsOnly ? ", and HTTPS wherever SES sends." : "."));
 
     private static MailAddress Address(IConfigurationSection section, string key, string? fallback = null) =>
         MailAddress.TryCreate(Value(section, key) ?? fallback, out var address)

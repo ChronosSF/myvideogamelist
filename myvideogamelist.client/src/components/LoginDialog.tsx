@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { useAuth } from '@/hooks/useAuth';
+import { UnconfirmedEmailError } from '@/types/auth';
 import { useDismissOnOutsidePress } from '@/lib/useDismissOnOutsidePress';
+import { ResendConfirmation } from './ResendConfirmation';
 import './LoginDialog.css';
 
 interface Props {
@@ -15,6 +17,9 @@ export function LoginDialog({ onClose, onSwitchToRegister }: Props) {
     const [rememberMe, setRememberMe] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
+    // The address or name the API said waits for its confirmation, as it was typed when it said so:
+    // what the offer to send the link again sends it to (ADR 0089).
+    const [unconfirmed, setUnconfirmed] = useState<string | null>(null);
 
     // Both halves of the press have to land on the overlay. Selecting the contents of a field and
     // releasing past the dialog's edge is not a click beside it, whatever `click` reports.
@@ -23,12 +28,14 @@ export function LoginDialog({ onClose, onSwitchToRegister }: Props) {
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setError(null);
+        setUnconfirmed(null);
         setLoading(true);
         try {
             await login(email, password, rememberMe);
             onClose();
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Login failed');
+            if (err instanceof UnconfirmedEmailError) setUnconfirmed(email);
         } finally {
             setLoading(false);
         }
@@ -92,6 +99,7 @@ export function LoginDialog({ onClose, onSwitchToRegister }: Props) {
                     </label>
 
                     {error && <div className="dialog-error" role="alert">{error}</div>}
+                    {unconfirmed !== null && <ResendConfirmation emailOrUserName={unconfirmed} />}
 
                     <button type="submit" className="dialog-btn-primary" disabled={loading}>
                         {loading ? 'Signing in…' : 'Sign In'}

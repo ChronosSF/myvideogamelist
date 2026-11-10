@@ -74,6 +74,22 @@ export class ProfileDetailsError extends Error {
 }
 
 /**
+ * A sign-in refused because the account's address is not confirmed yet (ADR 0089). The API says so only
+ * to somebody who gave the right password, so the dialog can offer to send the link again.
+ */
+export class UnconfirmedEmailError extends Error {
+    constructor(message: string) {
+        super(message);
+        this.name = 'UnconfirmedEmailError';
+    }
+}
+
+/** What a registration did: the account is made, and whether its confirmation went (ADR 0089). */
+export interface RegisterResult {
+    emailSent: boolean;
+}
+
+/**
  * What a username may be, mirroring `UserNamePolicy` on the server.
  *
  * Here so the form can say what is wrong before a round trip, **never** as the enforcement: the

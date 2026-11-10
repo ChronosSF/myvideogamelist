@@ -136,7 +136,13 @@ builder.Services.AddIdentity<ApplicationUser, IdentityRole>(options =>
     options.Password.RequireLowercase = true;
     options.Password.RequireNonAlphanumeric = false;
     options.User.RequireUniqueEmail = true;
-    options.SignIn.RequireConfirmedAccount = false;
+
+    // An account signs in only once its address is confirmed, by the link registration sends.
+    // On from the first public account, because turning it on later would lock out everyone who
+    // registered before it: the migration that turned it on confirmed every account there was.
+    // Identity refuses an unconfirmed account before it checks the password, so AuthController
+    // checks it itself before saying why. See docs/decisions/0089-*.
+    options.SignIn.RequireConfirmedAccount = true;
 
     // Lockout after five wrong passwords, for fifteen minutes. Without it a password is
     // guessable at whatever rate a client can manage, and the per-IP limiter on /api/auth

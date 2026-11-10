@@ -1,8 +1,10 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import {
     ProfileDetailsError,
+    UnconfirmedEmailError,
     type ProfileDetails,
     type ProfileVisibility,
+    type RegisterResult,
     type UserProfile,
 } from '@/types/auth';
 import type { Look } from '@/types/look';
@@ -151,11 +153,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ email, password, rememberMe }),
         });
-        if (!res.ok) throw new Error(await problem(res, 'Login failed'));
+        if (!res.ok) {
+            // A 403 means the password was right and the address waits for its confirmation; the body
+            // says so in `unconfirmed`. Read once, since a body can only be read once.
+            const body = await bodyOf(res);
+            const unconfirmed = res.status === 403
+                && typeof body === 'object' && body !== null
+                && (body as { unconfirmed?: unknown }).unconfirmed === true;
+            const message = messageIn(body, 'Login failed');
+            throw unconfirmed ? new UnconfirmedEmailError(message) : new Error(message);
+        }
 
         setUser(await res.json() as UserProfile);
     };
 
+    /** Signs nobody in, so `user` is untouched: the account waits for its confirmation (ADR 0089). */
     const register = async (email: string, password: string, userName: string) => {
         const res = await send('/api/auth/register', {
             method: 'POST',
@@ -164,7 +176,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         });
         if (!res.ok) throw new Error(await problem(res, 'Registration failed'));
 
-        setUser(await res.json() as UserProfile);
+        return await res.json() as RegisterResult;
+    };
+
+    const resendConfirmation = async (emailOrUserName: string) => {
+        const res = await send('/api/auth/resend-confirmation', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: emailOrUserName }),
+        });
+        if (!res.ok) throw new Error(await problem(res, 'Could not send the link again. Please try again.'));
+    };
+
+    const confirmEmail = async (userId: string, token: string) => {
+        const res = await send('/api/auth/confirm-email', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId, token }),
+        });
+        if (!res.ok) throw new Error(await problem(res, 'Could not confirm your address. Please try again.'));
     };
 
     /**
@@ -274,6 +304,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 loading,
                 login,
                 register,
+                resendConfirmation,
+                confirmEmail,
                 logout,
                 updateUserName,
                 updateProfileVisibility,

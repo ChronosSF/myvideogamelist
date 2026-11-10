@@ -1,5 +1,6 @@
 import { fileURLToPath } from 'node:url';
 import type { PlaywrightTestConfig } from '@playwright/test';
+import { outboxFor } from './outbox';
 import { IGDB_CLIENT, loopback, type HarnessPorts } from './stand-ins';
 
 /** Resolved from this file, so that a config anywhere can start the servers. */
@@ -59,6 +60,10 @@ export function serversUnderTest(
                 Igdb__TokenUrl: `${igdb}/oauth2/token`,
                 Igdb__ClientId: IGDB_CLIENT.id,
                 Igdb__ClientSecret: IGDB_CLIENT.secret,
+                // Every email into a folder of this harness's own, which the tests read a confirmation
+                // link from, with links to the origin the browser opens (ADR 0088, 0089).
+                Email__OutboxPath: outboxFor(ports),
+                Email__SiteUrl: site ?? `http://localhost:${ports.distribution}`,
             },
         },
         {
