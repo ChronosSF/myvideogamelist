@@ -69,11 +69,11 @@ test('a forgotten password is reset from the email, and the new one signs in', a
         await page.goto(resetLinkFor(outbox, email));
 
         // Out of the address bar before anything is typed: a link left in the history sets the password.
-        await expect(page.getByLabel('New password')).toBeVisible();
+        await expect(page.getByLabel('New password', { exact: true })).toBeVisible();
         await expect(page).toHaveURL(`${SITE}/reset-password`);
 
-        await page.getByLabel('New password').fill(NEW_PASSWORD);
-        await page.getByLabel('Confirm new password').fill(NEW_PASSWORD);
+        await page.getByLabel('New password', { exact: true }).fill(NEW_PASSWORD);
+        await page.getByLabel('Confirm new password', { exact: true }).fill(NEW_PASSWORD);
         const reset = page.waitForResponse(response =>
             response.request().method() === 'POST'
             && new URL(response.url()).pathname === '/api/auth/reset-password');
