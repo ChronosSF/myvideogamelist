@@ -16,6 +16,13 @@ namespace MyVideoGameList.Server.Data.Migrations
     /// other people's.
     /// </para>
     /// <para>
+    /// <b>No cutoff, because the revision still serving during the release confirms nobody.</b> The
+    /// migration task runs before the new revision starts, so every row this can see was written by code
+    /// that sends no link, and is exactly the kind of account it exists for, whenever it committed. One
+    /// that commits after the update stays unconfirmed, and is sent its link the first time it signs in
+    /// with its password (ADR 0089 §4).
+    /// </para>
+    /// <para>
     /// The down migration does nothing. Which accounts were unconfirmed before is not recorded anywhere,
     /// and unconfirming every account would lock out the ones that have confirmed since.
     /// </para>

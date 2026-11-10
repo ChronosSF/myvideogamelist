@@ -95,6 +95,11 @@ says they did. It is the price of turning confirmation on now, while the account
 accounts and the owner's, rather than later, when they would be other people's. The down migration does
 nothing: which accounts were unconfirmed is recorded nowhere.
 
+It has no cutoff, although the old revision keeps taking sign-ups while it runs. That revision confirms
+nobody and sends no link, and the migration task runs before the new revision starts, so every row the update
+can see is the kind it exists for, whenever it committed. One committed after it stays unconfirmed and is sent
+its link at its first sign-in (§4).
+
 ### 7. The email is plain text
 
 It is plain text, from 0088's sender. It says what the email is, gives the link, says how long the link
