@@ -89,6 +89,9 @@ describe('LoginDialog', () => {
         await actor.click(screen.getByRole('button', { name: 'Send the link again' }));
         expect(auth.resendConfirmation).toHaveBeenCalledWith('alex');
         expect(onClose).not.toHaveBeenCalled();
+        // A suppressed address is sent nothing however often this is pressed, so a person is the way out (ADR 0091).
+        expect(screen.getByRole('link', { name: 'support@myvideogamelist.net' }))
+            .toHaveAttribute('href', 'mailto:support@myvideogamelist.net');
     });
 });
 

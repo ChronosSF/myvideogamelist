@@ -66,6 +66,9 @@ describe('SignupDialog', () => {
         const dialog = await screen.findByRole('dialog', { name: 'Check your inbox' });
         expect(dialog).toHaveTextContent('alex@test.local');
         expect(onClose).not.toHaveBeenCalled();
+        // An address SES has stopped sending to is told nothing by the API, so a person is the way out (ADR 0091).
+        expect(screen.getByRole('link', { name: 'support@myvideogamelist.net' }))
+            .toHaveAttribute('href', 'mailto:support@myvideogamelist.net');
     });
 
     it('says so when the account was made and its email did not go', async () => {

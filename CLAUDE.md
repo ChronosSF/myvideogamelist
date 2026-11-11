@@ -160,6 +160,16 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   `EmailIdentity`, which the CDK app compiles too: the role allows that address and no other. See
   `docs/decisions/0088-*`.
 
+- **A bounce or a complaint stops all mail to that address, in SES, and the API is never told.** Every
+  send names the configuration set `mvgl-email` (`EmailIdentity.ConfigurationSet`), which
+  `Mvgl-prod-Email` makes. The set sends nothing to an address on the production account's suppression
+  list, and publishes each bounce and complaint to the owner through `mvgl-prod-alerts`. SES accepts a send
+  to a suppressed address and drops it, with a message id, so no flow can tell that its email will never
+  arrive. Only the owner can lift an address (`infra/README.md`). Never keep a list of the application's
+  own, and never send without the set: the role would allow it, but the set is what the events come from.
+  An App deploy of a revision that names the set has to wait until `Mvgl-prod-Email` makes it. See
+  `docs/decisions/0091-*`.
+
 - **An account signs in only once its address is confirmed, and "confirm first" needs the password.**
   Identity refuses an unconfirmed account before it checks the password and counts nothing, so
   `AuthController` checks it, counts a wrong one towards the lockout, and answers the 403 that offers

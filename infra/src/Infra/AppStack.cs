@@ -207,17 +207,8 @@ public sealed class AppStack : Stack
         container.AddEnvironment("Email__SiteUrl", $"https://{site.Host}");
         if (site.IsProduction)
         {
-            // Production sends as its own task role, on the same terms the dev role is held to.
-            task.TaskRole.AddToPrincipalPolicy(new PolicyStatement(new PolicyStatementProps
-            {
-                Sid = "SendFromNoReply",
-                Actions = ["ses:SendEmail"],
-                Resources = [$"arn:{Aws.PARTITION}:ses:{Site.EmailRegion}:{Account}:identity/{Site.Domain}"],
-                Conditions = new Dictionary<string, object>
-                {
-                    ["StringEquals"] = new Dictionary<string, object> { ["ses:FromAddress"] = Site.EmailFromAddress },
-                },
-            }));
+            // Production sends as its own task role, with the statement the dev role is granted.
+            task.TaskRole.AddToPrincipalPolicy(EmailStack.SendFromNoReply());
         }
         else
         {

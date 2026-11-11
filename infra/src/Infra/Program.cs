@@ -9,7 +9,8 @@ namespace Infra;
 /// deploy without one and nothing ever falls back to <c>latest</c>. The Region comes from the
 /// profile; nothing here names one except <c>us-east-1</c>, for CloudFront's certificates, and
 /// <see cref="Site.EmailRegion"/>, where the domain is verified with SES (ADR 0088). See ADR
-/// 0044. <c>env=prod</c> is, for now, the holding page and nothing else (ADR 0066).
+/// 0044. <c>env=prod</c> is, for now, the holding page (ADR 0066), and the email stack and its Alerts
+/// topic (ADR 0088, 0091).
 /// </summary>
 internal static class Program
 {
@@ -43,14 +44,18 @@ internal static class Program
         // one, which the production app looks up instead (ADR 0044). Not termination-protected: it is
         // meant to be destroyed at #98, and holds nothing a deploy would not put back.
         //
-        // Beside it, in the Region where the domain is verified with SES, the role the dev
-        // environment's API sends email as, through this account's production access (ADR 0088).
-        // Pinned to that Region, never the profile's: a role granting the identity in another Region
-        // would refuse every send. Long-lived, and kept at #98. Each is deployed by hand, by name.
+        // Beside it, in the Region where the domain is verified with SES, the configuration set every
+        // email is sent under and the role the dev environment's API sends email as, through this
+        // account's production access (ADR 0088, 0091). Pinned to that Region, never the profile's: a
+        // role granting the identity in another Region would refuse every send. And the Alerts stack,
+        // in the same Region, which is production's own (ADR 0044): its topic is where SES sends each
+        // bounce and complaint, and #98's alarms will be sent. It goes before Email, whose events need
+        // its topic. Long-lived, and kept at #98. Each is deployed by hand, by name.
         if (site.IsProduction)
         {
             var email = new Amazon.CDK.Environment { Account = account, Region = Site.EmailRegion };
             _ = new HoldingStack(app, site.StackName("Holding"), new StackProps { Env = edge }, site);
+            _ = new AlertsStack(app, site.StackName("Alerts"), new StackProps { Env = email }, site);
             _ = new EmailStack(app, site.StackName("Email"), new StackProps { Env = email }, new Site("dev"));
             app.Synth();
             return;
