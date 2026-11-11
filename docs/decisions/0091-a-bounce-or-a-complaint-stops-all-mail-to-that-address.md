@@ -4,7 +4,8 @@
 (`infra/README.md`, "Production's SES, for dev's email").
 [#419](https://github.com/ChronosSF/myvideogamelist/issues/419), part of
 [#100](https://github.com/ChronosSF/myvideogamelist/issues/100) and
-[#112](https://github.com/ChronosSF/myvideogamelist/issues/112).
+[#112](https://github.com/ChronosSF/myvideogamelist/issues/112). §5's support address also follows the
+password reset's request ([0090](0090-a-password-reset-works-once-for-an-hour-and-ends-every-session.md) §7).
 
 ## Context
 

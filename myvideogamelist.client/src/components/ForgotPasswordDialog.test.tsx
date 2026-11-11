@@ -51,6 +51,10 @@ describe('ForgotPasswordDialog', () => {
         // Hedged, because the API answers the same whether or not an account goes by it (ADR 0090), and
         // naming only what was typed: a username's address is never shown.
         expect(screen.getByRole('status')).toHaveTextContent('If an account goes by alex, we have sent a link to its email address.');
+        // An address SES has stopped sending to is told the same, and sent nothing, so a person is the way
+        // out (ADR 0091).
+        expect(screen.getByRole('link', { name: 'support@myvideogamelist.net' }))
+            .toHaveAttribute('href', 'mailto:support@myvideogamelist.net');
     });
 
     it('sends what was typed without the spaces around it', async () => {

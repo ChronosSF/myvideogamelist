@@ -165,8 +165,9 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   `Mvgl-prod-Email` makes. The set sends nothing to an address on the production account's suppression
   list, and publishes each bounce and complaint to the owner through `mvgl-prod-alerts`. SES accepts a send
   to a suppressed address and drops it, with a message id, so no flow can tell that its email will never
-  arrive. Only the owner can lift an address (`infra/README.md`). Never keep a list of the application's
-  own, and never send without the set: the role would allow it, but the set is what the events come from.
+  arrive, and every place that says an email was sent ends with the support address (`StillNothing`). Only
+  the owner can lift an address (`infra/README.md`). Never keep a list of the application's own, and never
+  send without the set: the role would allow it, but the set is what the events come from.
   An App deploy of a revision that names the set has to wait until `Mvgl-prod-Email` makes it. See
   `docs/decisions/0091-*`.
 

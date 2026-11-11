@@ -110,6 +110,10 @@ itself: it has to be saved with a write that also changes the stamp, as the rese
 - **The time an answer takes still says whether an email went.** OWASP asks for a uniform time, which sending
   outside the request would give. Registration already says whether an address is taken (0089 §5), so it would
   hide nothing that can't be learned there.
+- **The dialog's "Check your inbox" ends with the support address**, as the confirmation's resend does
+  ([0091](0091-a-bounce-or-a-complaint-stops-all-mail-to-that-address.md) §5). SES drops a send to an address
+  that once bounced or complained and tells the API nothing, so the API answers that a link went and asking
+  again cannot help that person. The sentence is one component, `StillNothing`, for both.
 - **A refused link is one answer**: a 400 with `invalidLink`, for no such account and for a wrong, expired or
   spent token alike.
 - **A password the rules refuse** is answered as registration answers it, with Identity's sentences. It spends

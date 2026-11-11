@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { useDismissOnOutsidePress } from '@/lib/useDismissOnOutsidePress';
 import { DialogClose } from './DialogClose';
+import { StillNothing } from './StillNothing';
 import './LoginDialog.css';
 
 interface Props {
@@ -18,6 +19,9 @@ interface Props {
  * same, whether or not an account goes by what was typed and whether or not one was sent a link in the
  * last few minutes, so that nobody can use this to learn either. The sentence is true in every one of
  * those cases, and names the address only as it was typed: a username's address is never shown.
+ *
+ * It ends with the support address, as the confirmation's resend does (`StillNothing`): an address SES has
+ * stopped sending to is told that a link went, and is sent nothing however often it asks (ADR 0091).
  */
 export function ForgotPasswordDialog({ initialEmailOrUserName, onClose, onSwitchToLogin }: Props) {
     const { requestPasswordReset } = useAuth();
@@ -67,6 +71,7 @@ export function ForgotPasswordDialog({ initialEmailOrUserName, onClose, onSwitch
                                 It can take a minute to arrive. If it does not, look in your spam folder. We send
                                 one every few minutes at most.
                             </p>
+                            <p><StillNothing /></p>
                         </div>
                     </>
                 ) : (
