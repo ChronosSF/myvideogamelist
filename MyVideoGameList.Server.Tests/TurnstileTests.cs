@@ -3,6 +3,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
+using MyVideoGameList.Server.Errors;
 using MyVideoGameList.Server.Security;
 using NSubstitute;
 
@@ -70,8 +71,57 @@ public class TurnstileTests
         // Which UpstreamFailureHandler makes a 502, never a sign-up let through.
         var siteVerify = new SiteVerify("", HttpStatusCode.InternalServerError);
 
-        await Assert.ThrowsAsync<HttpRequestException>(
+        var failure = await Assert.ThrowsAsync<UpstreamUnavailableException>(
             () => Turnstile(siteVerify).VerifyAsync("token", null, CancellationToken.None));
+
+        // With a sentence of its own: the handler's is about game data.
+        Assert.Contains("person", failure.Detail);
+        Assert.IsType<HttpRequestException>(failure.InnerException);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("<html><body>Bad gateway</body></html>")]
+    [InlineData("null")]
+    public async Task VerifyAsync_A200ThatIsNotTheAnswer_IsAnUpstreamFailure(string body)
+    {
+        // A 200 from something in between, or an answer cut short: Cloudflare's failure, never a 500 of ours.
+        await Assert.ThrowsAsync<UpstreamUnavailableException>(
+            () => Turnstile(new SiteVerify(body)).VerifyAsync("token", null, CancellationToken.None));
+    }
+
+    /// <summary>Never answers: cancelled by <paramref name="timeout"/>, as a client's own timeout cancels a call.</summary>
+    private sealed class Silent(CancellationToken timeout) : HttpMessageHandler
+    {
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            using var either = CancellationTokenSource.CreateLinkedTokenSource(timeout, cancellationToken);
+            await Task.Delay(Timeout.Infinite, either.Token);
+            throw new InvalidOperationException("Unreachable: the delay only ends by cancellation.");
+        }
+    }
+
+    [Fact]
+    public async Task VerifyAsync_TheCallTimesOut_IsAnUpstreamFailure()
+    {
+        using var timeout = new CancellationTokenSource();
+        var asking = Turnstile(new Silent(timeout.Token)).VerifyAsync("token", null, CancellationToken.None);
+
+        await timeout.CancelAsync();
+
+        await Assert.ThrowsAsync<UpstreamUnavailableException>(() => asking);
+    }
+
+    [Fact]
+    public async Task VerifyAsync_TheReaderLeaves_IsACancellationNotAnUpstreamFailure()
+    {
+        // Which ClientDisconnectHandler makes a 499. Cloudflare did nothing wrong.
+        using var reader = new CancellationTokenSource();
+        var asking = Turnstile(new Silent(CancellationToken.None)).VerifyAsync("token", null, reader.Token);
+
+        await reader.CancelAsync();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => asking);
     }
 
     [Fact]
@@ -117,6 +167,20 @@ public class TurnstileTests
     {
         // Starts, because the migration task boots this host too; takes no sign-ups, because none is checked.
         Assert.Null(Registered(Configuration(), Environments.Production).SiteKey);
+    }
+
+    [Theory]
+    [InlineData("Production")]
+    [InlineData("Development")]
+    public void AddTurnstile_TheDataStacksPlaceholder_IsNoKeys(string environment)
+    {
+        // What the App stack hands the API until the owner sets the pair: a placeholder site key beside a
+        // generated secret. Deployed, no sign-ups; in Development, the test keys, as with nothing set.
+        var turnstile = Registered(
+            Configuration(("Turnstile:SiteKey", TurnstilePlaceholder.SiteKey), ("Turnstile:SecretKey", "Xq7generated")),
+            environment);
+
+        Assert.Equal(environment == "Development" ? TurnstileKeys.AlwaysPasses.SiteKey : null, turnstile.SiteKey);
     }
 
     [Fact]

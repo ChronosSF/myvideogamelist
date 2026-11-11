@@ -5,8 +5,9 @@ using MyVideoGameList.Server.Security;
 namespace MyVideoGameList.Server.IntegrationTests;
 
 /// <summary>
-/// Cloudflare's Turnstile, as far as the test host has one (ADR 0092): <see cref="Bot"/> is refused and
-/// any other token passes, so a test chooses its verdict by the token it sends.
+/// Cloudflare's Turnstile, as far as the test host has one (ADR 0092): <see cref="Bot"/> is refused,
+/// <see cref="Unreachable"/> and <see cref="NoKeys"/> are the two ways it cannot be asked at all, and any
+/// other token passes, so a test chooses its verdict by the token it sends.
 /// </summary>
 /// <remarks>
 /// The application's own asks Cloudflare over the network, which a test run must not depend on. What is
@@ -14,11 +15,17 @@ namespace MyVideoGameList.Server.IntegrationTests;
 /// </remarks>
 public sealed class JudgingTurnstile : ITurnstile
 {
-    /// <summary>What a person's browser hands over: any token but <see cref="Bot"/>.</summary>
+    /// <summary>What a person's browser hands over: any token but the three below.</summary>
     public const string Person = "integration-person";
 
     /// <summary>The one token Cloudflare will not vouch for.</summary>
     public const string Bot = "integration-bot";
+
+    /// <summary>The token Cloudflare does not answer about, failing as the application's own does then.</summary>
+    public const string Unreachable = "integration-unreachable";
+
+    /// <summary>The token a deployment with no keys is asked about: it can check nobody.</summary>
+    public const string NoKeys = "integration-no-keys";
 
     private readonly ConcurrentQueue<string> asked = new();
 
@@ -30,6 +37,12 @@ public sealed class JudgingTurnstile : ITurnstile
     public Task<TurnstileVerdict> VerifyAsync(string token, IPAddress? remoteIp, CancellationToken cancellationToken)
     {
         asked.Enqueue(token);
-        return Task.FromResult(token == Bot ? TurnstileVerdict.Refused : TurnstileVerdict.Passed);
+        return token switch
+        {
+            Bot => Task.FromResult(TurnstileVerdict.Refused),
+            NoKeys => Task.FromResult(TurnstileVerdict.NotConfigured),
+            Unreachable => Task.FromException<TurnstileVerdict>(Turnstile.DidNotAnswer()),
+            _ => Task.FromResult(TurnstileVerdict.Passed),
+        };
     }
 }

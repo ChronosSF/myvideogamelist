@@ -12,9 +12,9 @@ export interface AuthContextValue {
     login: (email: string, password: string, rememberMe: boolean) => Promise<void>;
     /**
      * Makes an account and asks for its confirmation to be sent. Signs nobody in: an account signs in
-     * once its address is confirmed (ADR 0089).
+     * once its address is confirmed (ADR 0089). `turnstileToken` is what Cloudflare's check handed the
+     * form, spent by this one attempt (ADR 0092).
      */
-    /** `turnstileToken` is what Cloudflare's check handed the form, spent by this one attempt (ADR 0092). */
     register: (email: string, password: string, userName: string, turnstileToken: string) => Promise<RegisterResult>;
     /**
      * Asks for the confirmation to be sent again to an account waiting for it, by its address or its

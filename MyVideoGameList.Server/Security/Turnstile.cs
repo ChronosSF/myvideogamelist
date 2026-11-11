@@ -1,5 +1,7 @@
 using System.Net;
+using System.Text.Json;
 using System.Text.Json.Serialization;
+using MyVideoGameList.Server.Errors;
 
 namespace MyVideoGameList.Server.Security;
 
@@ -29,9 +31,9 @@ public interface ITurnstile
     /// Asks Cloudflare whether <paramref name="token"/> is one it gave a person. A token is good once:
     /// asking spends it, whatever the answer.
     /// </summary>
-    /// <exception cref="HttpRequestException">
-    /// Cloudflare did not answer, which <c>UpstreamFailureHandler</c> makes a 502: sign-up waits for it
-    /// rather than letting an unchecked account through.
+    /// <exception cref="UpstreamUnavailableException">
+    /// Cloudflare did not answer, or not with anything readable, which <c>UpstreamFailureHandler</c> makes a
+    /// 502 that says so: sign-up waits for it rather than letting an unchecked account through.
     /// </exception>
     Task<TurnstileVerdict> VerifyAsync(string token, IPAddress? remoteIp, CancellationToken cancellationToken);
 }
@@ -69,6 +71,12 @@ public sealed record TurnstileKeys(string SiteKey, string SecretKey)
 /// <b>A refusal is logged without the token</b>, by Cloudflare's error codes alone, and a refusal for our
 /// own secret is an error, because then every sign-up is refused and nothing else says why.
 /// </para>
+/// <para>
+/// <b>Every way Cloudflare can fail to answer is one exception</b>, <see cref="DidNotAnswer"/>: no
+/// connection, an error status, this client's timeout, and a 200 whose body is not the answer. The last
+/// would otherwise be a 500, which says this app is broken, and the 502 for the others would carry the
+/// sentence written for IGDB.
+/// </para>
 /// </remarks>
 public sealed class Turnstile(
     IHttpClientFactory clients,
@@ -81,6 +89,21 @@ public sealed class Turnstile(
 
     /// <summary>Cloudflare's siteverify, which every deployment asks.</summary>
     public static readonly Uri CloudflareSiteVerify = new("https://challenges.cloudflare.com/turnstile/v0/siteverify");
+
+    /// <summary>
+    /// The longest token Cloudflare issues, by its documentation of siteverify. Anything longer is none of
+    /// its, and is refused before it is sent anywhere (<c>RegisterDto</c>).
+    /// </summary>
+    public const int MaxTokenLength = 2048;
+
+    /// <summary>
+    /// Cloudflare not answering, as the exception <c>UpstreamFailureHandler</c> makes a 502 of, with the
+    /// sentence somebody signing up is shown in place of the one about game data.
+    /// </summary>
+    public static UpstreamUnavailableException DidNotAnswer(Exception? innerException = null) => new(
+        "Cloudflare's siteverify did not answer a sign-up's check.",
+        "We could not check that you are a person just now, so no account was made. Please try again in a moment.",
+        innerException);
 
     public string? SiteKey => keys?.SiteKey;
 
@@ -97,12 +120,7 @@ public sealed class Turnstile(
         // fetched the widget from Cloudflare directly.
         if (remoteIp is not null) form["remoteip"] = remoteIp.ToString();
 
-        using var response = await clients.CreateClient(ClientName)
-            .PostAsync(siteVerify, new FormUrlEncodedContent(form), cancellationToken);
-        response.EnsureSuccessStatusCode();
-
-        var answer = await response.Content.ReadFromJsonAsync<SiteVerifyAnswer>(cancellationToken)
-            ?? throw new HttpRequestException("Cloudflare's siteverify answered with nothing.");
+        var answer = await AskAsync(form, cancellationToken);
 
         if (answer.Success) return TurnstileVerdict.Passed;
 
@@ -117,6 +135,28 @@ public sealed class Turnstile(
         }
 
         return TurnstileVerdict.Refused;
+    }
+
+    private async Task<SiteVerifyAnswer> AskAsync(Dictionary<string, string> form, CancellationToken cancellationToken)
+    {
+        SiteVerifyAnswer? answer;
+        try
+        {
+            using var response = await clients.CreateClient(ClientName)
+                .PostAsync(siteVerify, new FormUrlEncodedContent(form), cancellationToken);
+            response.EnsureSuccessStatusCode();
+
+            answer = await response.Content.ReadFromJsonAsync<SiteVerifyAnswer>(cancellationToken);
+        }
+        // A cancellation the reader did not ask for is this client's timeout. One they did ask for, by
+        // leaving, stays what it is: ClientDisconnectHandler's.
+        catch (Exception failure) when (failure is HttpRequestException or JsonException
+            || (failure is OperationCanceledException && !cancellationToken.IsCancellationRequested))
+        {
+            throw DidNotAnswer(failure);
+        }
+
+        return answer ?? throw DidNotAnswer();
     }
 
     /// <summary>The part of siteverify's answer this reads.</summary>
@@ -146,6 +186,12 @@ public static class TurnstileRegistration
     /// token whoever asks, so one in a deployment would take any sign-up a bot sent, with a clean log.
     /// </para>
     /// <para>
+    /// <b>The Data stack's placeholder is no keys.</b> It makes the secret before anybody has a
+    /// pair to put in it, with <see cref="TurnstilePlaceholder.SiteKey"/> beside a generated secret, and
+    /// the application stack hands the API both. Taken as a pair, the page would be given a site key
+    /// Cloudflare has never heard of, and Cloudflare asked with a secret nobody was given.
+    /// </para>
+    /// <para>
     /// <c>Turnstile:SiteVerifyUrl</c> is for the browser smoke test's stand-in, which answers as
     /// Cloudflare does so that a run reaches no third party, as its stand-in for IGDB does (ADR 0060).
     /// Nothing deployed sets it, and Development may only point it at this machine.
@@ -157,6 +203,9 @@ public static class TurnstileRegistration
         var section = configuration.GetSection(SectionName);
         var siteKey = Value(section, "SiteKey");
         var secretKey = Value(section, "SecretKey");
+
+        // What the Data stack made and nobody has set yet: no pair at all, whatever is beside it.
+        if (siteKey == TurnstilePlaceholder.SiteKey) (siteKey, secretKey) = (null, null);
 
         if ((siteKey is null) != (secretKey is null))
         {

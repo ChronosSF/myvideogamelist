@@ -477,21 +477,48 @@ describe('AuthProvider registering', () => {
             .toEqual(['turnstile-token-1', 'turnstile-token-2']);
     });
 
-    it("says Cloudflare is the trouble when it does not answer, not the API's sentence about IGDB", async () => {
-        // The 502 UpstreamFailureHandler writes, whose detail is about game data (ADR 0034).
+    it("shows the API's own sentence when Cloudflare does not answer it", async () => {
+        // The 502 UpstreamFailureHandler writes, with the detail the sign-up's check gives it (ADR 0092).
         const actor = quickActor();
         await openSignUp({
             'POST /api/auth/register': () => json({
                 title: 'A service this page depends on is unavailable',
                 status: 502,
-                detail: 'Game data comes from IGDB, which did not answer. Your own lists, scores and playthroughs are unaffected.',
+                detail: 'We could not check that you are a person just now, so no account was made. Please try again in a moment.',
             }, 502),
         });
 
         await signUp(actor, 'alex');
 
+        expect(await screen.findByRole('alert')).toHaveTextContent(
+            'We could not check that you are a person just now, so no account was made. Please try again in a moment.');
+    });
+
+    it("does not blame Cloudflare for a 502 that is the edge's, with the API away", async () => {
+        // No body of the API's: a balancer with no healthy target answers a page of its own.
+        const actor = quickActor();
+        await openSignUp({ 'POST /api/auth/register': () => empty(502) });
+
+        await signUp(actor, 'alex');
+
+        expect(await screen.findByRole('alert')).toHaveTextContent('Registration failed');
+    });
+
+    it('tells a page loaded before the check existed to reload, in the words the API chose for it', async () => {
+        // What such a page shows for the 400 its token-less sign-up gets: the field's own message.
+        const actor = quickActor();
+        await openSignUp({
+            'POST /api/auth/register': () => json({
+                title: 'One or more validation errors occurred.',
+                status: 400,
+                errors: { TurnstileToken: ['This page is out of date. Reload it, then sign up again.'] },
+            }, 400),
+        });
+
+        await signUp(actor, 'alex');
+
         expect(await screen.findByRole('alert'))
-            .toHaveTextContent('We could not check that you are a person just now. Please try again in a moment.');
+            .toHaveTextContent('This page is out of date. Reload it, then sign up again.');
     });
 
     it('shows the refusals only the API can make: a name that is taken, and one that is reserved', async () => {

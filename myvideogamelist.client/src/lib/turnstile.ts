@@ -17,8 +17,12 @@ export interface TurnstileOptions {
     size: 'flexible';
     callback: (token: string) => void;
     'expired-callback': () => void;
-    /** Returning true says the page has handled it, so Turnstile does not throw it into the console. */
-    'error-callback': (code: string) => boolean;
+    /**
+     * Returning true says the page has handled it, so Turnstile does not throw it into the console.
+     * Cloudflare's examples hand it the error's code, one of those its client-side error table lists;
+     * its reference does not promise one, so it may be missing.
+     */
+    'error-callback': (code?: string) => boolean;
 }
 
 /** The part of `window.turnstile` this site uses. */
@@ -69,9 +73,14 @@ let siteKey: Promise<string> | null = null;
  * This deployment's site key, from the API, asked for once per page. Not built into the page, because
  * one build serves every environment and each has its own widget. A failed answer is forgotten, so that
  * trying again asks again.
+ *
+ * Plain `fetch` with the default credentials, not `credentials: 'omit'`, though the answer is the same
+ * for everybody: `/api/auth/turnstile` is not one of the endpoints the dev site's basic auth lets
+ * through, and the browser sends that only with credentials. Omitted, the answer there is a 401, and
+ * nobody signs up.
  */
 export function turnstileSiteKey(): Promise<string> {
-    siteKey ??= fetch('/api/auth/turnstile', { credentials: 'omit' })
+    siteKey ??= fetch('/api/auth/turnstile')
         .then(async response => {
             const body: unknown = response.ok ? await response.json() : null;
             const key = typeof body === 'object' && body !== null ? (body as { siteKey?: unknown }).siteKey : undefined;

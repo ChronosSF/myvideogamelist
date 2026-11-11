@@ -29,8 +29,11 @@ export function SignupDialog({ onClose, onSwitchToLogin }: Props) {
     // Set once the account is made: whether its confirmation went. The dialog then says where to
     // look, rather than closing on somebody who is not signed in (ADR 0089).
     const [registered, setRegistered] = useState<RegisterResult | null>(null);
-    // What Cloudflare's check handed over (ADR 0092). A sign-up spends it, whatever the answer, so a
-    // failed one draws the widget again, under a new key, for the next.
+    // What Cloudflare's check handed over (ADR 0092). The API spends it by asking Cloudflare, whatever
+    // the answer, and the form cannot tell a failure that came after the asking from one that came
+    // before: a refused name is either, and a request that fails on the way may still have arrived. A
+    // spent token sent again is a certain refusal, and an unspent one drawn again is a second's wait, so
+    // every failed attempt draws the widget again, under a new key, for the next.
     const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
     const [turnstileRound, setTurnstileRound] = useState(0);
 

@@ -135,8 +135,9 @@ written (ADR 0091): `aws sesv2 get-account --query SuppressionAttributes`.
 
 Sign-up asks Cloudflare's Turnstile whether a person sent it (ADR 0092). Each environment has a widget of
 its own, and its pair of keys lives in the secret `mvgl/<env>/turnstile`, which the `Data` stack makes with a
-placeholder and the `App` stack hands to the API as `Turnstile__SiteKey` and `Turnstile__SecretKey`. Until
-the pair is set, every sign-up is refused, with an error in the API's log.
+placeholder and the `App` stack hands to the API as `Turnstile__SiteKey` and `Turnstile__SecretKey`. The API
+reads the placeholder as no keys at all: until the pair is set, `GET /api/auth/turnstile` and every sign-up
+answer 503, with an error in the API's log, and the sign-up form says signing up is not available.
 
 **Once per environment, before the first release that names the secret**, from `infra/` with the
 environment's profile signed in:
@@ -170,7 +171,8 @@ environment's profile signed in:
 - **Production** does the same with `-c env=prod` once #98 builds its `Data` stack, with a widget of its own
   for `myvideogamelist.net`.
 
-**Proving it**: the sign-up form draws the widget, and `GET /api/auth/turnstile` answers the site key.
+**Proving it**: the sign-up form draws the widget, and `GET /api/auth/turnstile` answers the site key. A 503
+there is the placeholder still in the secret, or a task started before the pair was set.
 
 ## The pipeline
 

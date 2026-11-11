@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using MyVideoGameList.Server.Models;
+using MyVideoGameList.Server.Security;
 
 namespace MyVideoGameList.Server.DTOs;
 
@@ -15,14 +16,19 @@ namespace MyVideoGameList.Server.DTOs;
 /// </para>
 /// <para>
 /// <paramref name="TurnstileToken"/> is what the page's Turnstile widget handed back, which Cloudflare is
-/// asked about before anything else is looked at (ADR 0092).
+/// asked about before anything else is looked at (ADR 0092). Two refusals are made here, before
+/// Cloudflare is asked anything. One with no token came from a page loaded before the check existed,
+/// which a release leaves open in somebody's tab, so its sentence is the one that page shows: what to do
+/// about it. One longer than any token Cloudflare issues is not relayed to it.
 /// </para>
 /// </remarks>
 public record RegisterDto(
     [Required] string Email,
     [Required] string Password,
     [Required][UserName] string UserName,
-    [Required] string TurnstileToken);
+    [Required(ErrorMessage = "This page is out of date. Reload it, then sign up again.")]
+    [MaxLength(Turnstile.MaxTokenLength)]
+    string TurnstileToken);
 
 /// <summary>What the sign-up page's Turnstile widget draws with: this deployment's site key, which is public.</summary>
 public record TurnstileSiteKeyDto(string SiteKey);

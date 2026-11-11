@@ -459,10 +459,15 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   address a stranger typed, from the SES account production's reputation lives in, so `Register` asks
   Cloudflare about the form's token before it looks at anything else: refused is a 400 that makes no
   account and sends nothing, Cloudflare unreachable is a 502, and asking spends the token, so the form
-  draws the widget again after any failed attempt and the server never retries. Each environment has its
+  draws the widget again after any failed attempt and the server never retries. That 502 carries a
+  sentence of its own: `UpstreamFailureHandler`'s detail is about IGDB, so a call to any other service
+  throws `UpstreamUnavailableException`. Each environment has its
   own widget, its pair in `mvgl/<env>/turnstile`, set by hand; the page asks `GET /api/auth/turnstile`
-  for the site key when the form opens. **A deployment with no keys starts and takes no sign-ups**, with
-  an error in the log, because the migration task boots the same host; **a Cloudflare test secret
+  for the site key when the form opens, **never with `credentials: 'omit'`**, which withholds the dev
+  site's basic auth from a path its door does not let through. **A deployment with no keys starts and
+  takes no sign-ups**, with a 503 and an error in the log, because the migration task boots the same host,
+  and the placeholder the Data stack makes the secret with is no keys (`TurnstilePlaceholder`, which the
+  CDK app compiles too); **a Cloudflare test secret
   outside Development does not start**, because it passes whoever asks. Development with no keys uses
   the always-passing test keys. Tests never reach Cloudflare: the integration suite's
   `JudgingTurnstile`, the client's `@/test/turnstile`, and the e2e stand-ins. See

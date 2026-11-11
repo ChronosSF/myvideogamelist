@@ -180,11 +180,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ email, password, userName, turnstileToken }),
         });
-        // A 502 is Cloudflare not answering the API's question about the token (ADR 0092). Its body is the
-        // API's sentence for a third party that is down, which is written for a game page.
-        if (res.status === 502) {
-            throw new Error('We could not check that you are a person just now. Please try again in a moment.');
-        }
+        // Cloudflare not answering the API's question about the token is a 502 whose detail says so (ADR
+        // 0092), read like any other refusal. A 502 with no such body is the edge's, with the API away.
         if (!res.ok) throw new Error(await problem(res, 'Registration failed'));
 
         return await res.json() as RegisterResult;

@@ -38,6 +38,7 @@ public class AuthController(
     /// next is send an email to whatever address it was given, from the account whose reputation the site's
     /// mail depends on. Before anything else, too, so that a bot learns nothing, not even whether a name is
     /// taken. Cloudflare unreachable is a 502, from <c>UpstreamFailureHandler</c>: nobody signs up unchecked.
+    /// A deployment with no keys is a 503, <see cref="SignUpUnavailable"/>.
     /// </para>
     /// <para>
     /// An email that did not go is not a failed registration: the account is written by then, and a
@@ -57,8 +58,7 @@ public class AuthController(
                 return BadRequest(new AuthMessageDto(
                     "We could not confirm that you are a person. Please complete the check again."));
             case TurnstileVerdict.NotConfigured:
-                return StatusCode(StatusCodes.Status503ServiceUnavailable, new AuthMessageDto(
-                    "Signing up is not available just now. Please try again later."));
+                return SignUpUnavailable();
         }
 
         // The shape of the username has already been checked by [UserName]; what is left is
@@ -94,10 +94,20 @@ public class AuthController(
     [HttpGet("turnstile")]
     [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
     public ActionResult<TurnstileSiteKeyDto> TurnstileSiteKey() =>
-        turnstile.SiteKey is { } siteKey
-            ? Ok(new TurnstileSiteKeyDto(siteKey))
-            : StatusCode(StatusCodes.Status503ServiceUnavailable, new AuthMessageDto(
-                "Signing up is not available just now. Please try again later."));
+        turnstile.SiteKey is { } siteKey ? Ok(new TurnstileSiteKeyDto(siteKey)) : SignUpUnavailable();
+
+    /// <summary>
+    /// What a deployment with no Turnstile keys answers, to a sign-up and to the page asking for the site
+    /// key: it can check nobody, so it takes no sign-ups (ADR 0092).
+    /// </summary>
+    /// <remarks>
+    /// A <c>ProblemDetails</c> from MVC's factory, so that it carries the trace id like every other failure
+    /// of ours (ADR 0034), where this controller's refusals of a person's input are a sentence alone.
+    /// </remarks>
+    private ObjectResult SignUpUnavailable() => Problem(
+        title: "Signing up is not available",
+        detail: "Signing up is not available just now. Please try again later.",
+        statusCode: StatusCodes.Status503ServiceUnavailable);
 
     /// <summary>
     /// Signs in with an email address or a username, and a password.
