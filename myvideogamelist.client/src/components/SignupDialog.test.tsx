@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { SignupDialog } from '@/components/SignupDialog';
 import type { AuthContextValue } from '@/contexts/AuthContext';
 import { mousePress } from '@/test/press';
+import { turnstileStub } from '@/test/turnstileStub';
 
 /**
  * Auth, mocked rather than provided: the real provider fetches, and this dialog only calls
@@ -29,6 +30,8 @@ const auth: AuthContextValue = {
 };
 
 vi.mock('@/hooks/useAuth', () => ({ useAuth: () => auth }));
+// Cloudflare's widget, which hands the form its token as it mounts (ADR 0092).
+vi.mock('@/components/TurnstileWidget', () => import('@/test/turnstile'));
 
 const onClose = vi.fn();
 const onSwitchToLogin = vi.fn();
@@ -53,6 +56,7 @@ beforeEach(() => {
     onSwitchToLogin.mockReset();
     vi.mocked(auth.register).mockResolvedValue({ emailSent: true });
     vi.mocked(auth.resendConfirmation).mockReset().mockResolvedValue(undefined);
+    turnstileStub.reset();
 });
 
 describe('SignupDialog', () => {
@@ -63,7 +67,7 @@ describe('SignupDialog', () => {
         await fillIn(actor);
         await actor.click(screen.getByRole('button', { name: 'Create Account' }));
 
-        expect(auth.register).toHaveBeenCalledWith('alex@test.local', 'Passw0rd1', 'alex');
+        expect(auth.register).toHaveBeenCalledWith('alex@test.local', 'Passw0rd1', 'alex', 'turnstile-token-1');
         // Named by what is on it now, and still open: the account waits for its confirmation.
         const dialog = await screen.findByRole('dialog', { name: 'Check your inbox' });
         expect(dialog).toHaveTextContent('alex@test.local');
@@ -106,6 +110,42 @@ describe('SignupDialog', () => {
         await actor.click(await screen.findByRole('button', { name: 'Sign In' }));
 
         expect(onSwitchToLogin).toHaveBeenCalledTimes(1);
+    });
+
+    it("waits for Cloudflare's check before sending anything", async () => {
+        turnstileStub.autoPass = false;
+        const actor = userEvent.setup();
+        renderDialog();
+
+        await fillIn(actor);
+        await actor.click(screen.getByRole('button', { name: 'Create Account' }));
+
+        expect(screen.getByRole('alert')).toHaveTextContent('Please wait for the check that you are a person to finish.');
+        expect(auth.register).not.toHaveBeenCalled();
+
+        await actor.click(screen.getByRole('button', { name: 'Pass the check' }));
+        await actor.click(screen.getByRole('button', { name: 'Create Account' }));
+
+        expect(auth.register).toHaveBeenCalledWith('alex@test.local', 'Passw0rd1', 'alex', 'turnstile-token-1');
+    });
+
+    it('draws the check again after a refusal, because the attempt spent its token', async () => {
+        vi.mocked(auth.register)
+            .mockRejectedValueOnce(new Error("Username 'alex' is already taken."))
+            .mockResolvedValueOnce({ emailSent: true });
+        const actor = userEvent.setup();
+        renderDialog();
+
+        await fillIn(actor);
+        await actor.click(screen.getByRole('button', { name: 'Create Account' }));
+        expect(await screen.findByRole('alert')).toHaveTextContent("Username 'alex' is already taken.");
+        // The check is drawn again, and passed again, before the second try.
+        await actor.click(screen.getByRole('button', { name: 'Pass the check' }));
+        await actor.click(screen.getByRole('button', { name: 'Create Account' }));
+
+        await screen.findByRole('dialog', { name: 'Check your inbox' });
+        expect(vi.mocked(auth.register).mock.calls.map(call => call[3]))
+            .toEqual(['turnstile-token-1', 'turnstile-token-2']);
     });
 
     it('answers a mistyped confirmation without a round trip', async () => {

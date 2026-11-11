@@ -43,8 +43,7 @@ public class SignedInFlagTests(ApiFactory api) : IClassFixture<ApiFactory>
         using var browser = api.CreateBrowser();
         var userName = Browsers.NewUserName("unflagged");
 
-        var registered = await browser.PostAsJsonAsync(
-            "/api/auth/register", new RegisterDto($"{userName}@test.local", Browsers.Password, userName));
+        var registered = await browser.SignUpAsync($"{userName}@test.local", userName);
 
         await registered.ExpectAsync(HttpStatusCode.OK);
         Assert.Null(Flag(registered));

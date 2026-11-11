@@ -113,6 +113,11 @@ builder.Services.AddEdgeInvalidation(builder.Configuration);
 // Development, and nowhere else at all, which stops the host here. See docs/decisions/0088-*.
 builder.Services.AddEmail(builder.Configuration, builder.Environment);
 
+// The check that a sign-up comes from a person, which Cloudflare's Turnstile answers: Cloudflare's
+// always-passing test keys in Development, a deployment's own pair from configuration, and with none,
+// no sign-ups at all. See Security/Turnstile.cs and docs/decisions/0092-*.
+builder.Services.AddTurnstile(builder.Configuration, builder.Environment);
+
 // The clock, injected so the event log's timestamps are controllable in tests.
 builder.Services.AddSingleton(TimeProvider.System);
 

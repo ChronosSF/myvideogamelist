@@ -19,6 +19,7 @@ public class AuthController(
     AccountConfirmation confirmation,
     PasswordReset reset,
     AdminAccounts admins,
+    ITurnstile turnstile,
     TimeProvider clock) : ControllerBase
 {
     /// <summary>
@@ -32,14 +33,34 @@ public class AuthController(
     /// can sign in only once its address is confirmed (ADR 0089).
     /// </summary>
     /// <remarks>
+    /// <para>
+    /// <b>Cloudflare is asked first</b> whether a person sent it (ADR 0092), because what registration does
+    /// next is send an email to whatever address it was given, from the account whose reputation the site's
+    /// mail depends on. Before anything else, too, so that a bot learns nothing, not even whether a name is
+    /// taken. Cloudflare unreachable is a 502, from <c>UpstreamFailureHandler</c>: nobody signs up unchecked.
+    /// </para>
+    /// <para>
     /// An email that did not go is not a failed registration: the account is written by then, and a
     /// second attempt would only be told the name is taken. So the answer says whether it went, and
     /// the page offers to send it again.
+    /// </para>
     /// </remarks>
     [HttpPost("register")]
     [EnableRateLimiting(RateLimiting.AuthWrites)]
-    public async Task<ActionResult<RegisterResultDto>> Register([FromBody] RegisterDto dto)
+    public async Task<ActionResult<RegisterResultDto>> Register(
+        [FromBody] RegisterDto dto, CancellationToken cancellationToken)
     {
+        // The only step the reader's leaving cancels: nothing is written until it has answered.
+        switch (await turnstile.VerifyAsync(dto.TurnstileToken, HttpContext.Connection.RemoteIpAddress, cancellationToken))
+        {
+            case TurnstileVerdict.Refused:
+                return BadRequest(new AuthMessageDto(
+                    "We could not confirm that you are a person. Please complete the check again."));
+            case TurnstileVerdict.NotConfigured:
+                return StatusCode(StatusCodes.Status503ServiceUnavailable, new AuthMessageDto(
+                    "Signing up is not available just now. Please try again later."));
+        }
+
         // The shape of the username has already been checked by [UserName]; what is left is
         // whether it is free. Identity answers that with a read before the write, which covers
         // everybody except two people claiming the same name at once — the unique index over
@@ -60,6 +81,23 @@ public class AuthController(
         var sent = await confirmation.SendAsync(user);
         return Ok(new RegisterResultDto(EmailSent: sent == EmailSend.Sent));
     }
+
+    /// <summary>
+    /// The site key the sign-up page's Turnstile widget draws with (ADR 0092).
+    /// </summary>
+    /// <remarks>
+    /// From here rather than built into the page, so that one build serves every environment and each
+    /// environment's pair of keys is set in one place, beside each other. The key is public, and the page
+    /// asks for it only when the sign-up form opens. A deployment with no keys answers 503, as its
+    /// registration would.
+    /// </remarks>
+    [HttpGet("turnstile")]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public ActionResult<TurnstileSiteKeyDto> TurnstileSiteKey() =>
+        turnstile.SiteKey is { } siteKey
+            ? Ok(new TurnstileSiteKeyDto(siteKey))
+            : StatusCode(StatusCodes.Status503ServiceUnavailable, new AuthMessageDto(
+                "Signing up is not available just now. Please try again later."));
 
     /// <summary>
     /// Signs in with an email address or a username, and a password.

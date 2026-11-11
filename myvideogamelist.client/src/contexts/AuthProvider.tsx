@@ -174,12 +174,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
 
     /** Signs nobody in, so `user` is untouched: the account waits for its confirmation (ADR 0089). */
-    const register = async (email: string, password: string, userName: string) => {
+    const register = async (email: string, password: string, userName: string, turnstileToken: string) => {
         const res = await send('/api/auth/register', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email, password, userName }),
+            body: JSON.stringify({ email, password, userName, turnstileToken }),
         });
+        // A 502 is Cloudflare not answering the API's question about the token (ADR 0092). Its body is the
+        // API's sentence for a third party that is down, which is written for a game page.
+        if (res.status === 502) {
+            throw new Error('We could not check that you are a person just now. Please try again in a moment.');
+        }
         if (!res.ok) throw new Error(await problem(res, 'Registration failed'));
 
         return await res.json() as RegisterResult;

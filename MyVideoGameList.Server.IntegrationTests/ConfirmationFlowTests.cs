@@ -41,6 +41,33 @@ public class ConfirmationFlowTests(ApiFactory api) : IClassFixture<ApiFactory>
     }
 
     [Fact]
+    public async Task Register_ABotsToken_MakesNoAccountAndSendsNothing()
+    {
+        // Cloudflare is asked first (ADR 0092), so a refused check spends no email and claims no name.
+        using var browser = api.CreateBrowser();
+        var (email, userName) = NewAccount("bot");
+
+        var refused = await browser.SignUpAsync(email, userName, JudgingTurnstile.Bot);
+
+        await refused.ExpectAsync(HttpStatusCode.BadRequest);
+        Assert.Contains("person", (await refused.ReadAsync<AuthMessageDto>(HttpStatusCode.BadRequest)).Message);
+        Assert.Empty(api.Mail.SentTo(email));
+        // The name is still free: a person's sign-up with it goes through.
+        await (await browser.SignUpAsync(email, userName)).ExpectAsync(HttpStatusCode.OK);
+    }
+
+    [Fact]
+    public async Task TurnstileSiteKey_IsTheDeploymentsOwn()
+    {
+        using var browser = api.CreateBrowser();
+
+        var answer = await browser.GetAsync("/api/auth/turnstile");
+
+        Assert.Equal("integration-site-key", (await answer.ReadAsync<TurnstileSiteKeyDto>(HttpStatusCode.OK)).SiteKey);
+        Assert.Contains("no-store", answer.Headers.CacheControl?.ToString());
+    }
+
+    [Fact]
     public async Task Login_Unconfirmed_WithThePassword_IsToldToConfirm()
     {
         using var browser = api.CreateBrowser();

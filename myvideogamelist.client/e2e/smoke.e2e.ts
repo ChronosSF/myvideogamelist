@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { newUserName } from './accounts';
 import { confirmationLinkFor, outboxFor } from './outbox';
-import { GAMES, PORTS, SITE } from './stand-ins';
+import { GAMES, PORTS, SITE, standInForTurnstile } from './stand-ins';
 
 /** A digit, lower case, eight or more: what `Program.cs` asks of a password. */
 const PASSWORD = 'smoke-test-1';
@@ -16,8 +16,10 @@ function newGameId(): number {
 
 test('a new account adds a game to a list, and it is still there after a reload', async ({ page }) => {
     // The browser talks to the stand-in for the edge and to nothing else, so no third party a page
-    // might one day load from can make this test slow or flaky. Nothing does today.
+    // loads from can make this test slow or flaky. The one that loads anything is Cloudflare, whose
+    // Turnstile script on the sign-up form is stood in for, after the refusal so that it goes first.
     await page.context().route(url => url.origin !== SITE, route => route.abort('blockedbyclient'));
+    await standInForTurnstile(page.context());
 
     const gameId = newGameId();
 
@@ -38,6 +40,8 @@ test('a new account adds a game to a list, and it is still there after a reload'
         await form.getByLabel('Email').fill(email);
         await form.getByLabel('Password', { exact: true }).fill(PASSWORD);
         await form.getByLabel('Confirm Password').fill(PASSWORD);
+        // Drawn with the site key the API handed the page, and passed (ADR 0092).
+        await expect(form.getByText('Turnstile stand-in: passed')).toBeVisible();
 
         // The answer, not only the screen: a 405 is the SSR server answering for the API, a 429 the
         // sign-up limit, a 400 a name refused, and each would otherwise be the same ten-second wait

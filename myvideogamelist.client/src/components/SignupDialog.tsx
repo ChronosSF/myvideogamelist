@@ -10,6 +10,7 @@ import {
 import { useDismissOnOutsidePress } from '@/lib/useDismissOnOutsidePress';
 import { DialogClose } from './DialogClose';
 import { CheckYourInbox } from './CheckYourInbox';
+import { TurnstileWidget } from './TurnstileWidget';
 import './LoginDialog.css';
 
 interface Props {
@@ -28,6 +29,10 @@ export function SignupDialog({ onClose, onSwitchToLogin }: Props) {
     // Set once the account is made: whether its confirmation went. The dialog then says where to
     // look, rather than closing on somebody who is not signed in (ADR 0089).
     const [registered, setRegistered] = useState<RegisterResult | null>(null);
+    // What Cloudflare's check handed over (ADR 0092). A sign-up spends it, whatever the answer, so a
+    // failed one draws the widget again, under a new key, for the next.
+    const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
+    const [turnstileRound, setTurnstileRound] = useState(0);
 
     // The same guard as the sign-in dialog, from the same place: this overlay is that one copied,
     // and a fix applied to one of them by hand is the drift ADR 0022 records.
@@ -50,11 +55,19 @@ export function SignupDialog({ onClose, onSwitchToLogin }: Props) {
             setError('Passwords do not match.');
             return;
         }
+
+        if (turnstileToken === null) {
+            setError('Please wait for the check that you are a person to finish.');
+            return;
+        }
+
         setLoading(true);
         try {
-            setRegistered(await register(email, password, userName));
+            setRegistered(await register(email, password, userName, turnstileToken));
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Registration failed');
+            setTurnstileToken(null);
+            setTurnstileRound(round => round + 1);
         } finally {
             setLoading(false);
         }
@@ -153,6 +166,8 @@ export function SignupDialog({ onClose, onSwitchToLogin }: Props) {
                             autoComplete="new-password"
                         />
                     </div>
+
+                    <TurnstileWidget key={turnstileRound} onToken={setTurnstileToken} />
 
                     {error && <div className="dialog-error" role="alert">{error}</div>}
 

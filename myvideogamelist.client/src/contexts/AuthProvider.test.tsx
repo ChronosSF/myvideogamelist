@@ -30,6 +30,10 @@ import {
     unreachable,
 } from '@/test/api';
 import { AppProviders } from '@/test/providers';
+import { turnstileStub } from '@/test/turnstileStub';
+
+// Cloudflare's widget, which hands the sign-up form its token as it mounts (ADR 0092).
+vi.mock('@/components/TurnstileWidget', () => import('@/test/turnstile'));
 
 /**
  * The sign-in and sign-up dialogs over the real `AuthProvider`, with only the network played by the
@@ -138,6 +142,7 @@ async function retryUserName(actor: Actor, userName: string) {
 
 beforeEach(() => {
     onClose.mockReset();
+    turnstileStub.reset();
 });
 
 afterEach(tearDownApi);
@@ -388,7 +393,12 @@ describe('AuthProvider registering', () => {
         expect(onClose).not.toHaveBeenCalled();
 
         const [register] = api.callsTo('POST', '/api/auth/register');
-        expect(register.body).toEqual({ email: 'alex@test.local', password: PASSWORD, userName: 'alex' });
+        expect(register.body).toEqual({
+            email: 'alex@test.local',
+            password: PASSWORD,
+            userName: 'alex',
+            turnstileToken: 'turnstile-token-1',
+        });
         expectSentThroughApiFetch(register);
     });
 
@@ -444,6 +454,44 @@ describe('AuthProvider registering', () => {
         await actor.type(screen.getByLabelText('Username'), 'abcdefghijklmnopqrstuvwxyz');
 
         expect(screen.getByLabelText('Username')).toHaveValue('abcdefghijklmnopqrstuvwxyz'.slice(0, USERNAME_MAX_LENGTH));
+    });
+
+    it('sends a fresh token after a refusal, since the API spent the last one asking Cloudflare', async () => {
+        const actor = quickActor();
+        const answers = [
+            json({ message: 'We could not confirm that you are a person. Please complete the check again.' }, 400),
+            json({ emailSent: true }),
+        ];
+        const api = await openSignUp({ 'POST /api/auth/register': () => answers.shift() ?? empty(500) });
+
+        await signUp(actor, 'alex');
+        expect(await screen.findByRole('alert'))
+            .toHaveTextContent('We could not confirm that you are a person. Please complete the check again.');
+
+        // The check is drawn again, and passed again, before the second try.
+        await actor.click(screen.getByRole('button', { name: 'Pass the check' }));
+        await actor.click(screen.getByRole('button', { name: 'Create Account' }));
+
+        expect(await screen.findByRole('dialog', { name: 'Check your inbox' })).toBeInTheDocument();
+        expect(api.callsTo('POST', '/api/auth/register').map(call => (call.body as { turnstileToken: string }).turnstileToken))
+            .toEqual(['turnstile-token-1', 'turnstile-token-2']);
+    });
+
+    it("says Cloudflare is the trouble when it does not answer, not the API's sentence about IGDB", async () => {
+        // The 502 UpstreamFailureHandler writes, whose detail is about game data (ADR 0034).
+        const actor = quickActor();
+        await openSignUp({
+            'POST /api/auth/register': () => json({
+                title: 'A service this page depends on is unavailable',
+                status: 502,
+                detail: 'Game data comes from IGDB, which did not answer. Your own lists, scores and playthroughs are unaffected.',
+            }, 502),
+        });
+
+        await signUp(actor, 'alex');
+
+        expect(await screen.findByRole('alert'))
+            .toHaveTextContent('We could not check that you are a person just now. Please try again in a moment.');
     });
 
     it('shows the refusals only the API can make: a name that is taken, and one that is reserved', async () => {

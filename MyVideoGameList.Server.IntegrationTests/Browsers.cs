@@ -51,9 +51,13 @@ internal static class Browsers
         return (email, login);
     }
 
-    /// <summary>Makes an account with <see cref="Password"/>, and nothing more: unconfirmed, nobody signed in.</summary>
-    public static Task<HttpResponseMessage> SignUpAsync(this HttpClient browser, string email, string userName) =>
-        browser.PostAsJsonAsync("/api/auth/register", new RegisterDto(email, Password, userName));
+    /// <summary>
+    /// Makes an account with <see cref="Password"/>, and nothing more: unconfirmed, nobody signed in. A
+    /// person's, unless <paramref name="turnstileToken"/> says otherwise (<see cref="JudgingTurnstile"/>).
+    /// </summary>
+    public static Task<HttpResponseMessage> SignUpAsync(
+        this HttpClient browser, string email, string userName, string turnstileToken = JudgingTurnstile.Person) =>
+        browser.PostAsJsonAsync("/api/auth/register", new RegisterDto(email, Password, userName, turnstileToken));
 
     /// <summary>Signs in by an address or a username, as the sign-in dialog does, not remembered.</summary>
     public static Task<HttpResponseMessage> LoginAsync(this HttpClient browser, string emailOrUserName, string password) =>

@@ -8,7 +8,7 @@ Six stacks, split by lifetime, named `Mvgl-<env>-<part>`:
 | Stack | Lifetime | Holds |
 |---|---|---|
 | `Dns` | permanent | the environment's public hosted zone |
-| `Data` | long-lived | VPC, security groups, RDS, secrets, ECR, the cluster, the regional certificate, the GitHub deploy role, the basic-auth store, the origin-verify secret |
+| `Data` | long-lived | VPC, security groups, RDS, secrets (IGDB's and Turnstile's set by hand), ECR, the cluster, the regional certificate, the GitHub deploy role, the basic-auth store, the origin-verify secret |
 | `EdgeCert` | long-lived, `us-east-1` | the certificate CloudFront uses |
 | `Alerts` | long-lived | the topic the alarms send to, and the owner's email subscription to it (ADR 0080) |
 | `Migrate` | each release | the task that runs the migration bundle |
@@ -130,6 +130,47 @@ aws sesv2 delete-suppressed-destination --email-address "<address>" --profile mv
 `aws sesv2 list-suppressed-destinations` lists every address on the list, with its reason and when it
 was added. The account's own suppression setting should name both reasons too, as it did when this was
 written (ADR 0091): `aws sesv2 get-account --query SuppressionAttributes`.
+
+## Turnstile, for sign-up
+
+Sign-up asks Cloudflare's Turnstile whether a person sent it (ADR 0092). Each environment has a widget of
+its own, and its pair of keys lives in the secret `mvgl/<env>/turnstile`, which the `Data` stack makes with a
+placeholder and the `App` stack hands to the API as `Turnstile__SiteKey` and `Turnstile__SecretKey`. Until
+the pair is set, every sign-up is refused, with an error in the API's log.
+
+**Once per environment, before the first release that names the secret**, from `infra/` with the
+environment's profile signed in:
+
+1. **In Cloudflare's dashboard**, under Turnstile, add a widget: named for the site and the environment,
+   with the environment's host (`dev.myvideogamelist.net`) and the mode **Managed**. It shows a site key
+   and a secret key.
+2. **Deploy the `Data` stack.** Its diff is one new secret and its output, and nothing else:
+
+   ```bash
+   cdk diff Mvgl-dev-Data --exclusively --profile mvgl-dev -c env=dev
+   ```
+
+   ```bash
+   cdk deploy Mvgl-dev-Data --exclusively --profile mvgl-dev -c env=dev
+   ```
+
+3. **Set the pair**, in the console (Secrets Manager, `eu-central-1`, `mvgl/dev/turnstile`, "Retrieve
+   secret value", then "Edit", one value for `SiteKey` and one for `SecretKey`), or from Git Bash:
+
+   ```bash
+   aws secretsmanager put-secret-value --profile mvgl-dev --region eu-central-1 --secret-id mvgl/dev/turnstile --secret-string '{"SiteKey":"<site key>","SecretKey":"<secret key>"}'
+   ```
+
+- **`Data` goes before the release.** The `App` stack reads the secret through the `Data` stack's new
+  output, so a release before the deploy fails, and the revision before it keeps serving.
+- **A task reads the pair when it starts.** A pair changed later reaches the API with the next release, or
+  at once with `aws ecs update-service --cluster mvgl-dev --service api --force-new-deployment`.
+- **Never one of Cloudflare's test keys.** A deployment given a test secret refuses to start, because it
+  passes whoever asks.
+- **Production** does the same with `-c env=prod` once #98 builds its `Data` stack, with a widget of its own
+  for `myvideogamelist.net`.
+
+**Proving it**: the sign-up form draws the widget, and `GET /api/auth/turnstile` answers the site key.
 
 ## The pipeline
 
