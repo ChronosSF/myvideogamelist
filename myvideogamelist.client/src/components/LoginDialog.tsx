@@ -86,10 +86,13 @@ export function LoginDialog({ onClose, onSwitchToRegister, onForgotPassword }: P
                             required
                             autoComplete="current-password"
                         />
+                        {/* Not while a sign-in is out: one that succeeds closes whatever dialog is open by then,
+                            and would close the forgotten-password dialog this had opened. */}
                         <button
                             type="button"
                             className="dialog-inline-link"
                             onClick={() => onForgotPassword(email.trim())}
+                            disabled={loading}
                         >
                             Forgot password?
                         </button>

@@ -108,6 +108,22 @@ describe('LoginDialog', () => {
         expect(onForgotPassword).toHaveBeenCalledWith('alex@test.local');
         expect(auth.login).not.toHaveBeenCalled();
     });
+
+    it('offers no way to the forgotten-password dialog while a sign-in is out', async () => {
+        // A sign-in that succeeds closes whatever dialog is open by then, the forgotten-password one included.
+        const actor = userEvent.setup();
+        let finish = () => {};
+        vi.mocked(auth.login).mockReturnValueOnce(new Promise<void>(resolve => { finish = resolve; }));
+        renderDialog();
+
+        await actor.type(emailField(), 'alex');
+        await actor.type(screen.getByLabelText('Password'), 'Passw0rd1');
+        await actor.click(screen.getByRole('button', { name: 'Sign In' }));
+
+        expect(screen.getByRole('button', { name: 'Forgot password?' })).toBeDisabled();
+        finish();
+        await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    });
 });
 
 /**
