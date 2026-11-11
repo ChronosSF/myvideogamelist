@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useState } from 'react';
+import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { PageHeader } from '@/components/PageHeader';
 import { ErrorState } from '@/components/ErrorState';
 import { LoadingState } from '@/components/LoadingState';
@@ -32,9 +32,10 @@ type Outcome = { token: string } & ({ kind: 'changed' } | { kind: 'refused'; mes
  *
  * The account and its token are in the fragment, as a confirmation's are (ADR 0089), and read once the
  * page runs in the browser. Unlike the confirmation page, this one takes them out of the address bar as
- * soon as it has read them, before anything is typed: a reset link left in the history sets the
- * password of the account, for its hour, for whoever uses that browser next. So a reload loses the
- * link, and opening it from the email again works, since only a reset spends it.
+ * soon as it has read them, before anything is typed: a reset link left in the address bar, or in the
+ * tab's back and forward entries, sets the password of the account, for its hour, for whoever uses that
+ * browser next. So a reload finds no link, and opening it from the email again works, since only a reset
+ * spends it.
  *
  * Resetting signs nobody in. It ends every session the account had, and the page offers the sign-in.
  */
@@ -65,6 +66,14 @@ export default function ResetPasswordPage() {
     );
 
     const settled = outcome !== null && link !== null && link.token === outcome.token ? outcome : null;
+
+    // The form's button gives way to the outcome, and focus would fall to the page's body with it. The
+    // outcome is where it goes instead, which is also what a screen reader then reads.
+    const outcomeRef = useRef<HTMLDivElement>(null);
+    const settledKind = settled?.kind;
+    useEffect(() => {
+        if (settledKind !== undefined) outcomeRef.current?.focus();
+    }, [settledKind]);
 
     let body: ReactNode;
     if (settled?.kind === 'changed') {
@@ -105,6 +114,25 @@ export default function ResetPasswordPage() {
                 }}
             />
         );
+    } else if (fragment === '' || fragment === '#') {
+        // No link at all: the page opened by hand, or reloaded or gone back to after it took its link out of
+        // the address bar, a successful reset included. Nothing here failed, so it says what the page is for.
+        body = (
+            <div className="space-y-5">
+                <p className="text-fg-soft leading-relaxed">
+                    This page sets a new password from the link in a reset email. Open the link from the email,
+                    or, if you have just set a new password here, sign in with it.
+                </p>
+                <div className="flex flex-wrap gap-3">
+                    <button type="button" className="btn-primary px-5 py-2.5" onClick={() => authDialog.open('login')}>
+                        Sign in
+                    </button>
+                    <button type="button" className="btn-outline px-5 py-2.5" onClick={() => authDialog.open('forgot-password')}>
+                        Ask for a new link
+                    </button>
+                </div>
+            </div>
+        );
     } else if (fragment !== null) {
         body = (
             <ErrorState title="This link is not complete" size="section">
@@ -127,7 +155,11 @@ export default function ResetPasswordPage() {
         <>
             <PageHeader title="Choose a new password" width="4xl" />
             <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
-                <div className="max-w-md">{body}</div>
+                <div className="max-w-md">
+                    {settled === null ? body : (
+                        <div ref={outcomeRef} tabIndex={-1} className="focus:outline-hidden">{body}</div>
+                    )}
+                </div>
             </div>
         </>
     );

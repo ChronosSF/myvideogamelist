@@ -205,6 +205,7 @@ public class PasswordResetTests
             { "from before the reset", reset, "new", "old", sameSecond.AddMinutes(-5), true },
             { "from the reset's own second, under the old stamp", reset, "new", "old", sameSecond, true },
             { "from the reset's own second, under the new stamp", reset, "new", "new", sameSecond, false },
+            { "issued just after the reset from an account read before it", reset, "new", "old", sameSecond.AddSeconds(2), true },
             { "from after the reset, under a later rename's stamp", reset, "renamed", "new", sameSecond.AddMinutes(5), false },
             { "from before the reset, under the stamp it still has", reset, "same", "same", sameSecond.AddMinutes(-5), false },
             { "saying nothing of when it began", reset, "new", "old", null, true },

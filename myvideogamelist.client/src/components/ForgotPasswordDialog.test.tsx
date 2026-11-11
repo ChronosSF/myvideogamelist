@@ -48,6 +48,8 @@ describe('ForgotPasswordDialog', () => {
 
         expect(auth.requestPasswordReset).toHaveBeenCalledWith('alex');
         expect(await screen.findByRole('dialog', { name: 'Check your inbox' })).toBeInTheDocument();
+        // The button that had focus is gone; the heading that replaced the form has it.
+        expect(screen.getByRole('heading', { name: 'Check your inbox' })).toHaveFocus();
         // Hedged, because the API answers the same whether or not an account goes by it (ADR 0090), and
         // naming only what was typed: a username's address is never shown.
         expect(screen.getByRole('status')).toHaveTextContent('If an account goes by alex, we have sent a link to its email address.');

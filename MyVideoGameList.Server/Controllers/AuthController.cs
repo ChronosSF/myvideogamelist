@@ -192,7 +192,7 @@ public class AuthController(
     /// <remarks>
     /// Always a 202, whether or not anything was sent: an account that does not exist, one already
     /// confirmed, and one sent a link within the last few minutes answer as one that was just sent
-    /// another. The pace is per account, in <see cref="AccountConfirmation"/>, which is what stops this
+    /// another. The pace is per account, in <see cref="EmailPace"/>, which is what stops this
     /// being a way to fill somebody's inbox; the rate limit is per network address, which stops it
     /// being a way to ask about many addresses quickly. Registration already says whether an address is
     /// taken, so the time this takes to answer tells nothing that cannot be learned there.
@@ -221,7 +221,7 @@ public class AuthController(
     /// <para>
     /// Always a 202, whether or not anything was sent: no such account, and one sent a reset within the
     /// last few minutes, answer as one that was just sent a link (ADR 0033, ADR 0090). The pace is per
-    /// account, in <see cref="PasswordReset"/>, which keeps this from filling an inbox; the rate limit is
+    /// account, in <see cref="EmailPace"/>, which keeps this from filling an inbox; the rate limit is
     /// per network address, which keeps it from asking about many accounts quickly. A send makes the
     /// answer slower, but registration already says whether an address is taken, so the time tells
     /// nothing that cannot be learned there (ADR 0089 §5).
@@ -282,6 +282,11 @@ public class AuthController(
             return BadRequest(new ResetLinkRefusedDto(
                 "This link has expired or has already been used. Ask for a new one.", InvalidLink: true));
         }
+
+        // Another write to the account landed first: nothing was saved and the link still works, so it is
+        // a moment to try again, not a password to change. Identity's own sentence is written for a log.
+        if (result.Errors.Any(error => error.Code == nameof(IdentityErrorDescriber.ConcurrencyFailure)))
+            return Conflict(new AuthMessageDto("Your account changed at the same moment. Please try again."));
 
         if (!result.Succeeded)
             return BadRequest(new { errors = result.Errors.Select(e => e.Description) });

@@ -107,13 +107,22 @@ public static class AccountSessions
     public static void EndAll(ApplicationUser user, DateTimeOffset now) => user.SessionsEndedAt = now;
 
     /// <summary>
+    /// How long after the ending a session under an old stamp still counts as from before it. A sign-in, or
+    /// Identity's renewal of a session, reads the account and then issues the cookie: one that read the row
+    /// just before the reset committed issues a cookie just after it, under the stamp the reset replaced.
+    /// Every session issued since under the new stamp is kept whatever its time, so the margin costs only a
+    /// rename made within it, whose other sessions end now rather than at Identity's check.
+    /// </summary>
+    internal static readonly TimeSpan Straddle = TimeSpan.FromMinutes(1);
+
+    /// <summary>
     /// Whether the account ended its sessions after this one began: it has ended them, the session's
-    /// stamp is not the account's, and the session began no later than the ending. A session that says
-    /// nothing of when it began is taken to be older.
+    /// stamp is not the account's, and the session began no later than the ending, give or take
+    /// <see cref="Straddle"/>. A session that says nothing of when it began is taken to be older.
     /// </summary>
     internal static bool Ended(
         DateTimeOffset? sessionsEndedAt, string? accountStamp, string? sessionStamp, DateTimeOffset? issuedUtc) =>
         sessionsEndedAt is { } ended
         && !string.Equals(sessionStamp, accountStamp, StringComparison.Ordinal)
-        && (issuedUtc is not { } issued || issued <= ended);
+        && (issuedUtc is not { } issued || issued <= ended + Straddle);
 }

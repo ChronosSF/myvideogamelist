@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, render, screen } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import ResetPasswordPage, { headers, meta } from '@/pages/ResetPasswordPage';
 import type { AuthContextValue } from '@/contexts/AuthContext';
 import type { AuthDialogContextValue } from '@/contexts/AuthDialogContext';
@@ -133,14 +133,36 @@ describe('ResetPasswordPage', () => {
         expect(auth.resetPassword).toHaveBeenLastCalledWith('0f8a-id', 'new', CHOSEN);
     });
 
-    it.each(['#user=0f8a-id', ''])('says a link without both halves (%j) is not complete, and offers a new one', async fragment => {
+    it('says a link without both halves is not complete, and offers a new one', async () => {
         const actor = quickActor();
-        openAt(fragment);
+        openAt('#user=0f8a-id');
 
         expect(await screen.findByText('This link is not complete')).toBeInTheDocument();
         expect(screen.queryByLabelText('New password')).toBeNull();
         await actor.click(screen.getByRole('button', { name: 'Ask for a new link' }));
         expect(dialog.open).toHaveBeenCalledWith('forgot-password');
+    });
+
+    it('says what the page is for when it has no link at all, as after a reload, without calling it broken', async () => {
+        const actor = quickActor();
+        openAt('');
+
+        expect(await screen.findByText(/sets a new password from the link in a reset email/i)).toBeInTheDocument();
+        expect(screen.queryByText('This link is not complete')).toBeNull();
+        await actor.click(screen.getByRole('button', { name: 'Sign in' }));
+        expect(dialog.open).toHaveBeenCalledWith('login');
+        await actor.click(screen.getByRole('button', { name: 'Ask for a new link' }));
+        expect(dialog.open).toHaveBeenCalledWith('forgot-password');
+    });
+
+    it('moves focus to the outcome, since the button that had it is gone', async () => {
+        const actor = quickActor();
+        openAt('#user=0f8a-id&token=secret');
+
+        await choose(actor);
+
+        const status = await screen.findByRole('status');
+        await waitFor(() => expect(status.parentElement).toHaveFocus());
     });
 
     it('is never cached and never indexed', () => {

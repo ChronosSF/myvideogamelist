@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { useDismissOnOutsidePress } from '@/lib/useDismissOnOutsidePress';
 import { DialogClose } from './DialogClose';
@@ -34,6 +34,13 @@ export function ForgotPasswordDialog({ initialEmailOrUserName, onClose, onSwitch
     // The same guard as the other two dialogs, from the same place.
     const dismiss = useDismissOnOutsidePress(onClose);
 
+    // The form's button gives way to "Check your inbox", and focus would leave the dialog with it. The new
+    // heading is where it goes instead.
+    const sentHeading = useRef<HTMLHeadingElement>(null);
+    useEffect(() => {
+        if (sentFor !== null) sentHeading.current?.focus();
+    }, [sentFor]);
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         const asked = emailOrUserName.trim();
@@ -61,7 +68,9 @@ export function ForgotPasswordDialog({ initialEmailOrUserName, onClose, onSwitch
 
                 {sentFor !== null ? (
                     <>
-                        <h2 id="forgot-title" className="dialog-title">Check your inbox</h2>
+                        <h2 id="forgot-title" ref={sentHeading} tabIndex={-1} className="dialog-title focus:outline-hidden">
+                            Check your inbox
+                        </h2>
                         <div className="dialog-text" role="status">
                             <p>
                                 If an account goes by <strong>{sentFor}</strong>, we have sent a link to its email

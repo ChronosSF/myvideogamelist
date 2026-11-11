@@ -3,7 +3,9 @@
 **Status:** Implemented. [#421](https://github.com/ChronosSF/myvideogamelist/issues/421), part of
 [#112](https://github.com/ChronosSF/myvideogamelist/issues/112). Sent through
 [0088](0088-email-goes-through-productions-ses-and-a-deployment-with-no-sender-does-not-start.md)'s sender; proved
-on a deployed environment only once that record's two owner steps are done.
+on a deployed environment only once that record's two owner steps are done. The password reset it left open is
+[0090](0090-a-password-reset-works-once-for-an-hour-and-ends-every-session.md), which also moves §5's pace into
+`EmailPace`, shared by both emails, each with a pace of its own.
 
 ## Context
 

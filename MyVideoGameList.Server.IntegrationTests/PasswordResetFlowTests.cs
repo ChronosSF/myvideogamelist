@@ -225,6 +225,8 @@ public class PasswordResetFlowTests(ApiFactory api) : IClassFixture<ApiFactory>
         using var before = api.CreateBrowser();
         var (email, userName) = await SignedUpAsync(before, "everywhere");
         await (await before.GetAsync("/api/user/stats")).ExpectAsync(HttpStatusCode.OK);
+        using var stale = api.CreateBrowser();
+        await (await stale.LoginAsync(email, Browsers.Password)).ExpectAsync(HttpStatusCode.OK);
 
         var link = await LinkForAsync(email, email);
         using var after = api.CreateBrowser();
@@ -242,6 +244,12 @@ public class PasswordResetFlowTests(ApiFactory api) : IClassFixture<ApiFactory>
         // The session begun since, very likely within the same second as the reset, is kept: it carries
         // the new stamp.
         await (await after.GetAsync("/api/user/stats")).ExpectAsync(HttpStatusCode.OK);
+
+        // And a sign-in sent with an ended session's cookie, as somebody changing their password in the
+        // browser they are signed in on sends one: that one response clears the old cookie and sets the
+        // new, and the browser is left signed in.
+        await (await stale.LoginAsync(email, NewPassword)).ExpectAsync(HttpStatusCode.OK);
+        await (await stale.GetAsync("/api/user/stats")).ExpectAsync(HttpStatusCode.OK);
 
         await using var db = api.Database();
         var account = db.Users.Single(user => user.UserName == userName);

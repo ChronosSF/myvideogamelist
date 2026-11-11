@@ -40,8 +40,11 @@ shape of [0089](0089-an-account-signs-in-once-its-address-is-confirmed.md)'s con
   request's host.
 - **The page** reads the fragment after hydration and takes it out of the address bar at once, before anybody
   types. The confirmation page waits until it has posted, but this page waits on a person, and a link left in
-  the history is, for its hour, a new password for whoever uses that browser next. Reloading the page then
-  loses the link; opening it from the email again works, since it is spent only by a reset.
+  the address bar or in the tab's back and forward entries is, for its hour, a new password for whoever uses
+  that browser next. `history.replaceState` rewrites only that entry: whether a browser's own history list
+  keeps the address the page was opened at is the browser's to decide, and nothing here checks it. Reloading
+  the page then finds no link, and says what the page is for rather than calling the link broken; opening it
+  from the email again works, since it is spent only by a reset.
 - **`POST /api/auth/reset-password`** takes the account, the token and the new password from the page.
 
 ### 2. The token has a provider of its own, and works for an hour
@@ -93,6 +96,11 @@ itself: it has to be saved with a write that also changes the stamp, as the rese
   also end a session signed in just after the reset, within the same second. The stamp alone would end a
   renamed account's other sessions at once, which 0077 §4 leaves on Identity's clock. Every session from before
   the reset carries a stamp the reset replaced, and every session since was issued after it.
+- **A minute's margin.** A sign-in, or Identity's renewal of a session, reads the account and then issues the
+  cookie, so one that read the row just before the reset committed issues a cookie just after it, under the
+  old stamp. A session under an old stamp issued up to a minute after the reset is therefore ended too. A
+  session under the new stamp is kept whatever its time, so the margin costs only a rename made within that
+  minute, whose other sessions end at once rather than at Identity's check.
 - **Not a lower `ValidationInterval`**, for 0077 §2's reason: Identity's check rebuilds the principal and
   reissues the cookie each time it runs.
 
@@ -117,7 +125,8 @@ itself: it has to be saved with a write that also changes the stamp, as the rese
 - **A refused link is one answer**: a 400 with `invalidLink`, for no such account and for a wrong, expired or
   spent token alike.
 - **A password the rules refuse** is answered as registration answers it, with Identity's sentences. It spends
-  nothing, so the same link works for the next try.
+  nothing, so the same link works for the next try. A reset that lost a race with another write to the account
+  is a 409 that says to try again, rather than Identity's sentence, which is written for a log.
 
 ### 8. The email is plain text
 
