@@ -105,6 +105,7 @@ grow a forward pointer when a later record or an issue closes something it left 
 | [0088](0088-email-goes-through-productions-ses-and-a-deployment-with-no-sender-does-not-start.md) | Email goes through production's SES, as a role dev assumes, and a deployment with no sender does not start | Implemented; proved only by a deploy |
 | [0089](0089-an-account-signs-in-once-its-address-is-confirmed.md) | An account signs in once its address is confirmed, by a link whose token never reaches a server | Implemented |
 | [0090](0090-a-password-reset-works-once-for-an-hour-and-ends-every-session.md) | A password reset is a link that works once, for an hour, confirms the address, ends the lockout and every session, and signs nobody in | Implemented |
+| [0091](0091-a-bounce-or-a-complaint-stops-all-mail-to-that-address.md) | A bounce or a complaint stops all mail to that address, in SES, and each one reaches the owner | Implemented; proved only by a deploy |
 
 **Status** — *Accepted*: decided, not yet built. *Implemented*: decided and in the code.
 *Superseded*: replaced by a later record.

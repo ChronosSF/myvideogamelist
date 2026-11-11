@@ -29,7 +29,7 @@ through the distribution, and no parameter that would open one.
 
 ## Production, until #98: the holding page
 
-`-c env=prod` synthesises none of the six above, but two of its own, in the production account:
+`-c env=prod` synthesises three stacks in the production account: `Mvgl-prod-Alerts` and
 `Mvgl-prod-Email`, in the next section, and `Mvgl-prod-Holding`, whole in `us-east-1`. The holding
 stack serves `holding/site` at `myvideogamelist.net` from a private bucket through a distribution,
 and sends `www` to the apex (ADR 0066).
@@ -59,12 +59,32 @@ cdk deploy Mvgl-prod-Holding --profile mvgl-prod -c env=prod
 
 ## Production's SES, for dev's email
 
-`-c env=prod` also synthesises `Mvgl-prod-Email`, in the Region the domain is verified with SES
-(`eu-central-1`). It holds one role, `mvgl-dev-email`, which the dev API's task role
-(`mvgl-dev-api-task`) assumes to send through production's SES, because production has SES
-production access and dev is in the sandbox (ADR 0088). The role may call `ses:SendEmail` on the
-domain's identity from `noreply@myvideogamelist.net` and nothing else. Long-lived: it stays when the
-holding page goes.
+`-c env=prod` also synthesises two stacks in the Region the domain is verified with SES
+(`eu-central-1`), which is production's own Region too. Both are long-lived, deployed by hand, and kept
+when the holding page goes.
+
+- **`Mvgl-prod-Email`** holds the configuration set every email is sent under, `mvgl-email`, and one role,
+  `mvgl-dev-email`. The dev API's task role (`mvgl-dev-api-task`) assumes the role to send through
+  production's SES, because production has SES production access and dev is in the sandbox (ADR 0088).
+  The role may call `ses:SendEmail` on the domain's identity and the configuration set, from
+  `noreply@myvideogamelist.net`, and nothing else. The configuration set sends nothing to an address
+  that has bounced or complained, and publishes each bounce and complaint to the Alerts topic (ADR 0091).
+- **`Mvgl-prod-Alerts`** is the Alerts stack as dev has it (see [Alarms](#alarms)): the topic
+  `mvgl-prod-alerts` and the owner's email subscription to it. For now only SES publishes to it;
+  production's alarms will, from #98.
+
+**Once, in this order**, from `infra/` with the `mvgl-prod` profile signed in. In Git Bash, put
+`MSYS_NO_PATHCONV=1` in front of the first command:
+
+```bash
+aws ssm put-parameter --profile mvgl-prod --region eu-central-1 --name /mvgl/prod/alarm-email --type String --value "<address>"
+```
+
+```bash
+cdk deploy Mvgl-prod-Alerts --profile mvgl-prod -c env=prod
+```
+
+Then click the link in the "AWS Notification - Subscription Confirmation" email, within two days.
 
 ```bash
 cdk deploy Mvgl-prod-Email --profile mvgl-prod -c env=prod
@@ -77,12 +97,39 @@ cdk deploy Mvgl-prod-Email --profile mvgl-prod -c env=prod
   cdk bootstrap "aws://$(aws sts get-caller-identity --profile mvgl-prod --query Account --output text)/eu-central-1" --profile mvgl-prod
   ```
 
-- **Its order against an App deploy does not matter.** The API assumes the role on its first send; until
-  the role exists, that send fails as not sent, with `AccessDenied` in the API's log.
+- **`Alerts` goes before `Email`.** SES publishes as itself, and the topic's policy is what admits it.
+- **`Email` goes before any `App` deploy of a revision that names the configuration set.** The API names
+  it on every send. Until the set exists and the role may use it, every send fails as not sent, with
+  `NotFoundException` or `AccessDenied` in the API's log.
 - **Every email dev sends counts against production's reputation**, bounces and complaints included. Send
   tests to addresses you own, or to SES's mailbox simulator.
 - **The two account ids are in `Site.cs`**, because each side of the trust names the other. Neither is a
   secret, and `cdk.context.json` already named both.
+
+**Proving it, after both deploys.** The set suppresses both reasons and has its destination:
+
+```bash
+aws sesv2 get-configuration-set --configuration-set-name mvgl-email --profile mvgl-prod --region eu-central-1 --query SuppressionOptions
+aws sesv2 get-configuration-set-event-destinations --configuration-set-name mvgl-email --profile mvgl-prod --region eu-central-1
+```
+
+Then, once dev is up, sign up there with `bounce@simulator.amazonses.com`, and again with
+`complaint@simulator.amazonses.com`. The inbox should receive a `Permanent` bounce and a complaint,
+each with `mvgl-email` in its `ses:configuration-set` tag and the IAM identity that sent it in
+`ses:caller-identity`. The mailbox simulator's mail does not count towards the account's rates, and
+its addresses are never put on the suppression list, so this can be run again.
+
+**When somebody's email never arrives**, the inbox will have had a bounce with the subtype
+`OnAccountSuppressionList` for it: an earlier email to that address bounced, or they reported one as
+spam. Once they say the mailbox works, lift it, and their next email goes:
+
+```bash
+aws sesv2 delete-suppressed-destination --email-address "<address>" --profile mvgl-prod --region eu-central-1
+```
+
+`aws sesv2 list-suppressed-destinations` lists every address on the list, with its reason and when it
+was added. The account's own suppression setting should name both reasons too, as it did when this was
+written (ADR 0091): `aws sesv2 get-account --query SuppressionAttributes`.
 
 ## The pipeline
 
