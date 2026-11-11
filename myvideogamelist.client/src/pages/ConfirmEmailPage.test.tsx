@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import ConfirmEmailPage, { headers, meta } from '@/pages/ConfirmEmailPage';
-import { linkIn } from '@/lib/confirmationLink';
+import { linkIn } from '@/lib/accountLink';
 import type { AuthContextValue } from '@/contexts/AuthContext';
 import type { AuthDialogContextValue } from '@/contexts/AuthDialogContext';
 
@@ -14,6 +14,8 @@ const auth: AuthContextValue = {
     register: vi.fn(async () => ({ emailSent: true })),
     resendConfirmation: vi.fn(async () => {}),
     confirmEmail: vi.fn(async () => {}),
+    requestPasswordReset: vi.fn(async () => {}),
+    resetPassword: vi.fn(async () => {}),
     logout: vi.fn(async () => {}),
     updateUserName: vi.fn(async () => {}),
     updateProfileVisibility: vi.fn(async () => {}),

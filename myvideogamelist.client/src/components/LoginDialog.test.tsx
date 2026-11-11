@@ -19,6 +19,8 @@ const auth: AuthContextValue = {
     register: vi.fn(async () => ({ emailSent: true })),
     resendConfirmation: vi.fn(async () => {}),
     confirmEmail: vi.fn(async () => {}),
+    requestPasswordReset: vi.fn(async () => {}),
+    resetPassword: vi.fn(async () => {}),
     logout: vi.fn(async () => {}),
     updateUserName: vi.fn(async () => {}),
     updateProfileVisibility: vi.fn(async () => {}),
@@ -31,9 +33,10 @@ vi.mock('@/hooks/useAuth', () => ({ useAuth: () => auth }));
 
 const onClose = vi.fn();
 const onSwitchToRegister = vi.fn();
+const onForgotPassword = vi.fn();
 
 function renderDialog() {
-    render(<LoginDialog onClose={onClose} onSwitchToRegister={onSwitchToRegister} />);
+    render(<LoginDialog onClose={onClose} onSwitchToRegister={onSwitchToRegister} onForgotPassword={onForgotPassword} />);
 }
 
 /** The overlay, which is what carries the dialog role here. */
@@ -43,6 +46,7 @@ const emailField = () => screen.getByLabelText('Email or username');
 beforeEach(() => {
     onClose.mockReset();
     onSwitchToRegister.mockReset();
+    onForgotPassword.mockReset();
     vi.mocked(auth.login).mockResolvedValue(undefined);
 });
 
@@ -92,6 +96,33 @@ describe('LoginDialog', () => {
         // A suppressed address is sent nothing however often this is pressed, so a person is the way out (ADR 0091).
         expect(screen.getByRole('link', { name: 'support@myvideogamelist.net' }))
             .toHaveAttribute('href', 'mailto:support@myvideogamelist.net');
+    });
+
+    it('hands what was typed to the forgotten-password dialog, and signs nobody in', async () => {
+        const actor = userEvent.setup();
+        renderDialog();
+
+        await actor.type(emailField(), ' alex@test.local ');
+        await actor.click(screen.getByRole('button', { name: 'Forgot password?' }));
+
+        expect(onForgotPassword).toHaveBeenCalledWith('alex@test.local');
+        expect(auth.login).not.toHaveBeenCalled();
+    });
+
+    it('offers no way to the forgotten-password dialog while a sign-in is out', async () => {
+        // A sign-in that succeeds closes whatever dialog is open by then, the forgotten-password one included.
+        const actor = userEvent.setup();
+        let finish = () => {};
+        vi.mocked(auth.login).mockReturnValueOnce(new Promise<void>(resolve => { finish = resolve; }));
+        renderDialog();
+
+        await actor.type(emailField(), 'alex');
+        await actor.type(screen.getByLabelText('Password'), 'Passw0rd1');
+        await actor.click(screen.getByRole('button', { name: 'Sign In' }));
+
+        expect(screen.getByRole('button', { name: 'Forgot password?' })).toBeDisabled();
+        finish();
+        await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
     });
 });
 

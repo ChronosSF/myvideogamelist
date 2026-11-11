@@ -17,21 +17,27 @@ function recipientOf(eml: string): string | undefined {
 }
 
 /**
- * The link in the latest confirmation the API wrote to `email`, as a reader would copy it from the
- * email: whole, with the account and token after its `#` (ADR 0089). The API writes the file before it
- * answers the registration, so it is there by the time anything asks.
+ * The link to `page` in the latest email the API wrote to `email`, as a reader would copy it: whole, with
+ * the account and token after its `#`. The API writes the file before it answers, so it is there by the
+ * time anything asks.
  */
-export function confirmationLinkFor(outbox: string, email: string): string {
+function latestLinkTo(outbox: string, email: string, page: string): string {
     const files = readdirSync(outbox).filter(name => name.endsWith('.eml')).sort();
     for (const name of files.reverse()) {
         const eml = readFileSync(join(outbox, name), 'utf8');
         if (recipientOf(eml)?.toLowerCase() !== email.toLowerCase()) continue;
 
-        const link = eml.split(/\s+/).find(word => word.includes('/confirm-email#'));
+        const link = eml.split(/\s+/).find(word => word.includes(`${page}#`));
         if (link !== undefined) return link;
     }
-    throw new Error(`No confirmation to ${email} in ${outbox}.`);
+    throw new Error(`No link to ${page} was sent to ${email} in ${outbox}.`);
 }
+
+/** The link in the latest confirmation the API wrote to `email` (ADR 0089). */
+export const confirmationLinkFor = (outbox: string, email: string) => latestLinkTo(outbox, email, '/confirm-email');
+
+/** The link in the latest password reset the API wrote to `email` (ADR 0090). */
+export const resetLinkFor = (outbox: string, email: string) => latestLinkTo(outbox, email, '/reset-password');
 
 /** The two halves of a confirmation link, decoded, as the page reads them from its fragment. */
 export function confirmationIn(link: string): { userId: string; token: string } {

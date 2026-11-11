@@ -165,7 +165,10 @@ builder.Services.AddIdentity<ApplicationUser, IdentityRole>(options =>
     options.User.AllowedUserNameCharacters = UserNamePolicy.AllowedCharacters;
 })
 .AddEntityFrameworkStores<ApplicationDbContext>()
-.AddDefaultTokenProviders();
+.AddDefaultTokenProviders()
+// A reset's link works for an hour, where a confirmation's works for the default's day: a provider of
+// its own, which the reset email reads its lifespan from. See docs/decisions/0090-*.
+.AddPasswordResetTokens();
 
 // Configure the Identity cookie to return HTTP status codes instead of redirects
 // (required for SPA / API usage)
@@ -192,7 +195,7 @@ builder.Services.ConfigureApplicationCookie(options =>
     SignedInFlag.FollowTheSession(options.Events);
     // A deleted account's other sessions end on their next request, not at the next stamp check
     // half an hour later (ADR 0077).
-    DeletedAccountSessions.EndAtOnce(options.Events);
+    AccountSessions.EndAtOnce(options.Events);
 });
 
 // The key ring that cookie above is signed with, and the review cursor sealed with. Shared through

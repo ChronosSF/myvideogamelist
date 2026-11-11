@@ -1,7 +1,14 @@
 import { useState } from 'react';
 import { useAuth } from '@/hooks/useAuth';
-import { USERNAME_MAX_LENGTH, USERNAME_MIN_LENGTH, userNameProblem, type RegisterResult } from '@/types/auth';
+import {
+    PASSWORD_MIN_LENGTH,
+    USERNAME_MAX_LENGTH,
+    USERNAME_MIN_LENGTH,
+    userNameProblem,
+    type RegisterResult,
+} from '@/types/auth';
 import { useDismissOnOutsidePress } from '@/lib/useDismissOnOutsidePress';
+import { DialogClose } from './DialogClose';
 import { CheckYourInbox } from './CheckYourInbox';
 import './LoginDialog.css';
 
@@ -53,13 +60,7 @@ export function SignupDialog({ onClose, onSwitchToLogin }: Props) {
         }
     };
 
-    const close = (
-        <button className="dialog-close" onClick={onClose} aria-label="Close">
-            <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-        </button>
-    );
+    const close = <DialogClose onClose={onClose} />;
 
     if (registered !== null) {
         return (
@@ -130,11 +131,11 @@ export function SignupDialog({ onClose, onSwitchToLogin }: Props) {
                             id="signup-password"
                             type="password"
                             className="dialog-input"
-                            placeholder="At least 8 characters"
+                            placeholder={`At least ${PASSWORD_MIN_LENGTH} characters`}
                             value={password}
                             onChange={e => setPassword(e.target.value)}
                             required
-                            minLength={8}
+                            minLength={PASSWORD_MIN_LENGTH}
                             autoComplete="new-password"
                         />
                     </div>

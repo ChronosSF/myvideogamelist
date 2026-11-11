@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import {
+    InvalidResetLinkError,
     ProfileDetailsError,
     UnconfirmedEmailError,
     type ProfileDetails,
@@ -66,6 +67,14 @@ function messageIn(body: unknown, fallback: string): string {
 
 async function problem(response: Response, fallback: string): Promise<string> {
     return messageIn(await bodyOf(response), fallback);
+}
+
+/**
+ * Whether a refusal's body sets `flag` to true: how the API says which refusal it is, where the status
+ * alone cannot, as `unconfirmed` on a sign-in's 403 and `invalidLink` on a reset's 400.
+ */
+function flagIn(body: unknown, flag: string): boolean {
+    return typeof body === 'object' && body !== null && (body as Record<string, unknown>)[flag] === true;
 }
 
 const DETAIL_FIELDS = ['displayName', 'avatarUrl', 'bio'] as const;
@@ -157,11 +166,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             // A 403 means the password was right and the address waits for its confirmation; the body
             // says so in `unconfirmed`. Read once, since a body can only be read once.
             const body = await bodyOf(res);
-            const unconfirmed = res.status === 403
-                && typeof body === 'object' && body !== null
-                && (body as { unconfirmed?: unknown }).unconfirmed === true;
             const message = messageIn(body, 'Login failed');
-            throw unconfirmed ? new UnconfirmedEmailError(message) : new Error(message);
+            throw res.status === 403 && flagIn(body, 'unconfirmed') ? new UnconfirmedEmailError(message) : new Error(message);
         }
 
         setUser(await res.json() as UserProfile);
@@ -195,6 +201,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             body: JSON.stringify({ userId, token }),
         });
         if (!res.ok) throw new Error(await problem(res, 'Could not confirm your address. Please try again.'));
+    };
+
+    const requestPasswordReset = async (emailOrUserName: string) => {
+        const res = await send('/api/auth/forgot-password', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: emailOrUserName }),
+        });
+        if (!res.ok) throw new Error(await problem(res, 'Could not send the link. Please try again.'));
+    };
+
+    /**
+     * Signs nobody in. The reset ends every session the account had, at each one's next request, so a
+     * browser signed in as that account, this one included, is signed out here at once rather than at its
+     * next request (ADR 0090).
+     */
+    const resetPassword = async (userId: string, token: string, password: string) => {
+        const res = await send('/api/auth/reset-password', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId, token, password }),
+        });
+        if (!res.ok) {
+            // A refused link says so in `invalidLink`; a refused password carries Identity's sentences.
+            const body = await bodyOf(res);
+            const message = messageIn(body, 'Could not set your new password. Please try again.');
+            throw res.status === 400 && flagIn(body, 'invalidLink') ? new InvalidResetLinkError(message) : new Error(message);
+        }
+
+        setUser(current => (current !== null && current.id === userId ? null : current));
     };
 
     /**
@@ -306,6 +342,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 register,
                 resendConfirmation,
                 confirmEmail,
+                requestPasswordReset,
+                resetPassword,
                 logout,
                 updateUserName,
                 updateProfileVisibility,

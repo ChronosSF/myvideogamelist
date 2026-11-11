@@ -84,6 +84,24 @@ export class UnconfirmedEmailError extends Error {
     }
 }
 
+/**
+ * A password reset refused because its link is no good: expired, used already, or not the account's
+ * (ADR 0090). The page then offers a new link rather than another password, which would be refused the
+ * same way.
+ */
+export class InvalidResetLinkError extends Error {
+    constructor(message: string) {
+        super(message);
+        this.name = 'InvalidResetLinkError';
+    }
+}
+
+/**
+ * The shortest password `Program.cs` lets Identity accept, for the two forms that ask for a new one to say
+ * so before a round trip. The server's rules are the enforcement, and its sentences replace this.
+ */
+export const PASSWORD_MIN_LENGTH = 8;
+
 /** What a registration did: the account is made, and whether its confirmation went (ADR 0089). */
 export interface RegisterResult {
     emailSent: boolean;

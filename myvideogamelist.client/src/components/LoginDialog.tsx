@@ -2,15 +2,18 @@ import { useState } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { UnconfirmedEmailError } from '@/types/auth';
 import { useDismissOnOutsidePress } from '@/lib/useDismissOnOutsidePress';
+import { DialogClose } from './DialogClose';
 import { ResendConfirmation } from './ResendConfirmation';
 import './LoginDialog.css';
 
 interface Props {
     onClose: () => void;
     onSwitchToRegister: () => void;
+    /** Opens the forgotten-password dialog, with whatever the identifier box holds (ADR 0090). */
+    onForgotPassword: (emailOrUserName: string) => void;
 }
 
-export function LoginDialog({ onClose, onSwitchToRegister }: Props) {
+export function LoginDialog({ onClose, onSwitchToRegister, onForgotPassword }: Props) {
     const { login } = useAuth();
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
@@ -44,11 +47,7 @@ export function LoginDialog({ onClose, onSwitchToRegister }: Props) {
     return (
         <div className="dialog-overlay" {...dismiss} role="dialog" aria-modal="true" aria-labelledby="login-title">
             <div className="dialog-panel dialog-panel-rel">
-                <button className="dialog-close" onClick={onClose} aria-label="Close">
-                    <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                </button>
+                <DialogClose onClose={onClose} />
 
                 <h2 id="login-title" className="dialog-title">Sign In</h2>
 
@@ -87,6 +86,16 @@ export function LoginDialog({ onClose, onSwitchToRegister }: Props) {
                             required
                             autoComplete="current-password"
                         />
+                        {/* Not while a sign-in is out: one that succeeds closes whatever dialog is open by then,
+                            and would close the forgotten-password dialog this had opened. */}
+                        <button
+                            type="button"
+                            className="dialog-inline-link"
+                            onClick={() => onForgotPassword(email.trim())}
+                            disabled={loading}
+                        >
+                            Forgot password?
+                        </button>
                     </div>
 
                     <label className="dialog-checkbox-row">

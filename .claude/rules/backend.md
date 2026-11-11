@@ -72,9 +72,11 @@ paths:
 - **A new endpoint that changes state needs no new guard**, but it does have to use a method that
   says so. The write guard exempts `GET`, `HEAD` and `OPTIONS`, so a state change behind a `GET` is
   both forgeable and cacheable.
-- Only `/api/auth/login`, `/api/auth/register` and `/api/auth/resend-confirmation` are rate-limited by
-  address, and adding a policy to anything a loader calls would throttle every visitor at once — see
-  `docs/decisions/0033-*` and `0089-*`. The one
+- Only `/api/auth/login`, `/api/auth/register`, `/api/auth/resend-confirmation` and
+  `/api/auth/forgot-password` are rate-limited by address, and adding a policy to anything a loader calls
+  would throttle every visitor at once — see `docs/decisions/0033-*`, `0089-*` and `0090-*`. The reset
+  itself, `/api/auth/reset-password`, is not: its token cannot be guessed, and a limit there only spent
+  the budget of somebody who had just failed to sign in. The one
   other limit is per account, in two actions: `RepublishLimits`, on making a profile public and on a
   public name's change of case. A withdrawal is never refused; it is paced (`docs/decisions/0081-*`).
 

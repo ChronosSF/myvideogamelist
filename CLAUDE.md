@@ -41,7 +41,7 @@ build behind a stand-in that does route `/api` (ADR 0060).
 | `npm run typecheck` | `react-router typegen && tsc -b` — use this, never bare `tsc` |
 | `npm run test` | Vitest, jsdom + Testing Library. `npm run test:watch` to iterate |
 | `npm run visual` | Before-and-after screenshots of the pages, compared pixel by pixel, for a change meant to look the same. Needs two dev servers and a local test account, whose email and password it reads from the shell or from `visual/.env` (ignored by git); `visual/playwright.config.ts` says how. Not run by CI |
-| `npm run e2e` | The browser smoke test, over the production shape: sign up, add a game to a list, reload, it is still there. Builds the front end and serves it with `react-router-serve` beside the API under `dotnet run`, with a stand-in in front that routes `/api/*` to the API as the balancer does, and one for IGDB behind, so it needs no IGDB credentials. Needs PostgreSQL up, ports 5180–5183 free, and once, `npx playwright install chromium`. Keeps a database of its own on the compose server, `mvgl_e2e`, never `myvideogamelist`, created on the first run; `E2E_CONNECTION_STRING` points it elsewhere. Run by CI. See ADR 0060 |
+| `npm run e2e` | The browser smoke test, over the production shape: sign up, add a game to a list, reload, it is still there; and beside it, a forgotten password reset from its email and signed in with (ADR 0090). Builds the front end and serves it with `react-router-serve` beside the API under `dotnet run`, with a stand-in in front that routes `/api/*` to the API as the balancer does, and one for IGDB behind, so it needs no IGDB credentials. Needs PostgreSQL up, ports 5180–5183 free, and once, `npx playwright install chromium`. Keeps a database of its own on the compose server, `mvgl_e2e`, never `myvideogamelist`, created on the first run; `E2E_CONNECTION_STRING` points it elsewhere. Run by CI. See ADR 0060 |
 | `npm run lighthouse` | Lighthouse CI on five pages of the `npm run e2e` shape, on a phone and a desktop, then axe-core on the same pages. Fails on an accessibility, best-practices or SEO score, or a count of console errors, that leaves `lighthouse/budgets.ts`'s baseline, on layout shift over 0.02 or script or page weight over budget, and on an axe rule or contrast pair a page did not already break; performance warns. Needs PostgreSQL up, ports 5190–5193 free, IGDB's image host reachable and, once, `npx playwright install chromium`. Keeps `mvgl_lighthouse` (or `LIGHTHOUSE_CONNECTION_STRING`); reports in `lighthouse/reports/`. Run by CI. See ADR 0068 |
 | `npm run build` | Production build |
 | `npm run audit` | `npm audit` over the lock file, devDependencies included, with no install: high and critical fail, lower ones are printed. `npm run audit:lighthouse` does the same over Lighthouse CI's lock file, and CI's Dependency audit job runs both. `scripts/audit.mjs` holds a list of accepted advisories for each, every entry with its reason and a date: the client's for want of any fix, Lighthouse CI's for want of one its dependents' ranges allow (ADR 0068 §9). See ADR 0061 |
@@ -165,8 +165,9 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   `Mvgl-prod-Email` makes. The set sends nothing to an address on the production account's suppression
   list, and publishes each bounce and complaint to the owner through `mvgl-prod-alerts`. SES accepts a send
   to a suppressed address and drops it, with a message id, so no flow can tell that its email will never
-  arrive. Only the owner can lift an address (`infra/README.md`). Never keep a list of the application's
-  own, and never send without the set: the role would allow it, but the set is what the events come from.
+  arrive, and every place that says an email was sent ends with the support address (`StillNothing`). Only
+  the owner can lift an address (`infra/README.md`). Never keep a list of the application's own, and never
+  send without the set: the role would allow it, but the set is what the events come from.
   An App deploy of a revision that names the set has to wait until `Mvgl-prod-Email` makes it. See
   `docs/decisions/0091-*`.
 
@@ -177,7 +178,14 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   after the `#` (`EmailLinks`), never in a query string, which the SSR server's log would keep, and
   the page posts it: confirming signs nobody in, because the token outlives its use. Every account
   before the migration that turned this on was confirmed by it. A test that signs up goes through the
-  link: `Browsers.RegisterAsync`, `e2e/outbox.ts`. See `docs/decisions/0089-*`.
+  link: `Browsers.RegisterAsync`, `e2e/outbox.ts`. See `docs/decisions/0089-*`. **A password reset
+  is the same shape and signs nobody in either**: its link (`/reset-password#…`) works once, for an
+  hour, from a token provider of its own whose lifespan the email reads (`PasswordResetTokens`); it
+  confirms the address, ends the lockout, and ends every session at its next request through
+  `SessionsEndedAt`, which `AccountSessions` reads beside the stamp. Its writer, `AccountSessions.EndAll`,
+  ends nothing without a write that also changes the stamp. The request answers 202 whatever it names.
+  Every paced email goes through `EmailPace.SendAsync`, with a pace per kind and per account, so never
+  two resets in five minutes. See `docs/decisions/0090-*`.
 
 - **The key ring is shared through Parameter Store, and a deployment that names no store does not
   start.** The Data Protection keys sign the Identity cookie and seal the review cursor, and a ring
@@ -447,8 +455,8 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   `docs/decisions/0034-*`.
 
 - **The rate limiter is narrow on purpose, and the lockout says nothing.** Ten attempts per address
-  per five minutes on login, register and the confirmation's resend only, which share one budget (ADR
-  0089) — the SSR server calls this API for every visitor, so
+  per five minutes on login, register, the confirmation's resend and the password reset's request
+  only, which share one budget (ADR 0089, 0090); not on the reset itself, whose token cannot be guessed — the SSR server calls this API for every visitor, so
   a limit partitioned by address anywhere a loader reaches would throttle the whole site as one
   client. Identity locks an account after five failures but answers exactly as it answers a wrong
   password, because announcing a lockout tells an attacker the account exists. Forwarded headers

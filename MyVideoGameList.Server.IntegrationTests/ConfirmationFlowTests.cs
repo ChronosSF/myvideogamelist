@@ -10,13 +10,7 @@ namespace MyVideoGameList.Server.IntegrationTests;
 /// </summary>
 public class ConfirmationFlowTests(ApiFactory api) : IClassFixture<ApiFactory>
 {
-    private static Task<HttpResponseMessage> RegisterAsync(HttpClient browser, string email, string userName) =>
-        browser.PostAsJsonAsync("/api/auth/register", new RegisterDto(email, Browsers.Password, userName));
-
-    private static Task<HttpResponseMessage> LoginAsync(HttpClient browser, string email, string password) =>
-        browser.PostAsJsonAsync("/api/auth/login", new LoginDto(email, password));
-
-    private static Task<HttpResponseMessage> ConfirmAsync(HttpClient browser, ConfirmEmailLink link) =>
+    private static Task<HttpResponseMessage> ConfirmAsync(HttpClient browser, EmailLink link) =>
         browser.SendAsync(HttpMethod.Post, "/api/auth/confirm-email", new ConfirmEmailDto(link.UserId, link.Token));
 
     private static Task<HttpResponseMessage> ResendAsync(HttpClient browser, string email) =>
@@ -34,7 +28,7 @@ public class ConfirmationFlowTests(ApiFactory api) : IClassFixture<ApiFactory>
         using var browser = api.CreateBrowser();
         var (email, userName) = NewAccount("fresh");
 
-        var registered = await RegisterAsync(browser, email, userName);
+        var registered = await browser.SignUpAsync(email, userName);
 
         Assert.True((await registered.ReadAsync<RegisterResultDto>(HttpStatusCode.OK)).EmailSent);
         Assert.False(registered.Headers.TryGetValues("Set-Cookie", out _));
@@ -42,7 +36,7 @@ public class ConfirmationFlowTests(ApiFactory api) : IClassFixture<ApiFactory>
 
         var sent = Assert.Single(api.Mail.SentTo(email));
         Assert.Equal("account confirmation", sent.Purpose);
-        var link = ConfirmEmailLink.In(sent.Text);
+        var link = EmailLink.In(sent.Text, EmailLink.ConfirmEmail);
         Assert.StartsWith("https://localhost:58546/confirm-email#user=", link.Url);
     }
 
@@ -51,9 +45,9 @@ public class ConfirmationFlowTests(ApiFactory api) : IClassFixture<ApiFactory>
     {
         using var browser = api.CreateBrowser();
         var (email, userName) = NewAccount("waiting");
-        await (await RegisterAsync(browser, email, userName)).ExpectAsync(HttpStatusCode.OK);
+        await (await browser.SignUpAsync(email, userName)).ExpectAsync(HttpStatusCode.OK);
 
-        var login = await LoginAsync(browser, userName, Browsers.Password);
+        var login = await browser.LoginAsync(userName, Browsers.Password);
 
         await login.ExpectAsync(HttpStatusCode.Forbidden);
         var body = await login.Content.ReadAsStringAsync();
@@ -67,9 +61,9 @@ public class ConfirmationFlowTests(ApiFactory api) : IClassFixture<ApiFactory>
         // Without the password, nobody learns that the address has an account waiting.
         using var browser = api.CreateBrowser();
         var (email, userName) = NewAccount("guessed");
-        await (await RegisterAsync(browser, email, userName)).ExpectAsync(HttpStatusCode.OK);
+        await (await browser.SignUpAsync(email, userName)).ExpectAsync(HttpStatusCode.OK);
 
-        var login = await LoginAsync(browser, email, "wrong-password-1");
+        var login = await browser.LoginAsync(email, "wrong-password-1");
 
         await login.ExpectAsync(HttpStatusCode.Unauthorized);
         Assert.DoesNotContain("unconfirmed", await login.Content.ReadAsStringAsync());
@@ -81,12 +75,12 @@ public class ConfirmationFlowTests(ApiFactory api) : IClassFixture<ApiFactory>
         // Identity refuses an unconfirmed account before it counts anything, so the controller counts.
         using var browser = api.CreateBrowser();
         var (email, userName) = NewAccount("locked");
-        await (await RegisterAsync(browser, email, userName)).ExpectAsync(HttpStatusCode.OK);
+        await (await browser.SignUpAsync(email, userName)).ExpectAsync(HttpStatusCode.OK);
 
         for (var attempt = 0; attempt < 5; attempt++)
-            await (await LoginAsync(browser, email, "wrong-password-1")).ExpectAsync(HttpStatusCode.Unauthorized);
+            await (await browser.LoginAsync(email, "wrong-password-1")).ExpectAsync(HttpStatusCode.Unauthorized);
 
-        var right = await LoginAsync(browser, email, Browsers.Password);
+        var right = await browser.LoginAsync(email, Browsers.Password);
 
         await right.ExpectAsync(HttpStatusCode.Unauthorized);
     }
@@ -96,15 +90,15 @@ public class ConfirmationFlowTests(ApiFactory api) : IClassFixture<ApiFactory>
     {
         using var browser = api.CreateBrowser();
         var (email, userName) = NewAccount("confirmed");
-        await (await RegisterAsync(browser, email, userName)).ExpectAsync(HttpStatusCode.OK);
-        var link = ConfirmEmailLink.In(Assert.Single(api.Mail.SentTo(email)).Text);
+        await (await browser.SignUpAsync(email, userName)).ExpectAsync(HttpStatusCode.OK);
+        var link = EmailLink.In(Assert.Single(api.Mail.SentTo(email)).Text, EmailLink.ConfirmEmail);
 
         await (await ConfirmAsync(browser, link)).ExpectAsync(HttpStatusCode.NoContent);
 
         // Confirming signs nobody in: the link outlives its use.
         Assert.Equal(HttpStatusCode.NoContent, (await browser.GetAsync("/api/auth/me")).StatusCode);
 
-        var login = await LoginAsync(browser, email, Browsers.Password);
+        var login = await browser.LoginAsync(email, Browsers.Password);
         Assert.Equal(userName, (await login.ReadAsync<UserProfileDto>(HttpStatusCode.OK)).UserName);
     }
 
@@ -113,8 +107,8 @@ public class ConfirmationFlowTests(ApiFactory api) : IClassFixture<ApiFactory>
     {
         using var browser = api.CreateBrowser();
         var (email, userName) = NewAccount("twice");
-        await (await RegisterAsync(browser, email, userName)).ExpectAsync(HttpStatusCode.OK);
-        var link = ConfirmEmailLink.In(Assert.Single(api.Mail.SentTo(email)).Text);
+        await (await browser.SignUpAsync(email, userName)).ExpectAsync(HttpStatusCode.OK);
+        var link = EmailLink.In(Assert.Single(api.Mail.SentTo(email)).Text, EmailLink.ConfirmEmail);
 
         await (await ConfirmAsync(browser, link)).ExpectAsync(HttpStatusCode.NoContent);
         await (await ConfirmAsync(browser, link)).ExpectAsync(HttpStatusCode.NoContent);
@@ -125,8 +119,8 @@ public class ConfirmationFlowTests(ApiFactory api) : IClassFixture<ApiFactory>
     {
         using var browser = api.CreateBrowser();
         var (email, userName) = NewAccount("wrongtoken");
-        await (await RegisterAsync(browser, email, userName)).ExpectAsync(HttpStatusCode.OK);
-        var link = ConfirmEmailLink.In(Assert.Single(api.Mail.SentTo(email)).Text);
+        await (await browser.SignUpAsync(email, userName)).ExpectAsync(HttpStatusCode.OK);
+        var link = EmailLink.In(Assert.Single(api.Mail.SentTo(email)).Text, EmailLink.ConfirmEmail);
 
         var wrongToken = await ConfirmAsync(browser, link with { Token = "not-the-token" });
         var wrongAccount = await ConfirmAsync(browser, link with { UserId = Guid.NewGuid().ToString() });
@@ -134,7 +128,7 @@ public class ConfirmationFlowTests(ApiFactory api) : IClassFixture<ApiFactory>
         await wrongToken.ExpectAsync(HttpStatusCode.BadRequest);
         await wrongAccount.ExpectAsync(HttpStatusCode.BadRequest);
         Assert.Equal(await wrongToken.Content.ReadAsStringAsync(), await wrongAccount.Content.ReadAsStringAsync());
-        await (await LoginAsync(browser, email, Browsers.Password)).ExpectAsync(HttpStatusCode.Forbidden);
+        await (await browser.LoginAsync(email, Browsers.Password)).ExpectAsync(HttpStatusCode.Forbidden);
     }
 
     [Fact]
@@ -145,11 +139,11 @@ public class ConfirmationFlowTests(ApiFactory api) : IClassFixture<ApiFactory>
         using var browser = api.CreateBrowser();
         var (email, userName) = NewAccount("unsent");
         api.Mail.RefuseNext();
-        await (await RegisterAsync(browser, email, userName)).ExpectAsync(HttpStatusCode.OK);
+        await (await browser.SignUpAsync(email, userName)).ExpectAsync(HttpStatusCode.OK);
         Assert.Empty(api.Mail.SentTo(email));
 
-        await (await LoginAsync(browser, email, Browsers.Password)).ExpectAsync(HttpStatusCode.Forbidden);
-        await (await LoginAsync(browser, email, Browsers.Password)).ExpectAsync(HttpStatusCode.Forbidden);
+        await (await browser.LoginAsync(email, Browsers.Password)).ExpectAsync(HttpStatusCode.Forbidden);
+        await (await browser.LoginAsync(email, Browsers.Password)).ExpectAsync(HttpStatusCode.Forbidden);
 
         Assert.Single(api.Mail.SentTo(email));
     }
@@ -161,7 +155,7 @@ public class ConfirmationFlowTests(ApiFactory api) : IClassFixture<ApiFactory>
         var (email, userName) = NewAccount("refused");
         api.Mail.RefuseNext();
 
-        var registered = await RegisterAsync(browser, email, userName);
+        var registered = await browser.SignUpAsync(email, userName);
 
         Assert.False((await registered.ReadAsync<RegisterResultDto>(HttpStatusCode.OK)).EmailSent);
         Assert.Empty(api.Mail.SentTo(email));
@@ -176,7 +170,7 @@ public class ConfirmationFlowTests(ApiFactory api) : IClassFixture<ApiFactory>
     {
         using var browser = api.CreateBrowser();
         var (email, userName) = NewAccount("paced");
-        await (await RegisterAsync(browser, email, userName)).ExpectAsync(HttpStatusCode.OK);
+        await (await browser.SignUpAsync(email, userName)).ExpectAsync(HttpStatusCode.OK);
 
         await (await ResendAsync(browser, email)).ExpectAsync(HttpStatusCode.Accepted);
         await (await ResendAsync(browser, email)).ExpectAsync(HttpStatusCode.Accepted);

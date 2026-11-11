@@ -1,7 +1,9 @@
 # 0077. A deleted account's sessions end with it
 
 **Status:** Implemented — #295. Amends [0024](0024-the-ownership-contract.md), whose deletion signed out
-only the browser it was made in.
+only the browser it was made in. §4's question is answered for a password reset by
+[0090](0090-a-password-reset-works-once-for-an-hour-and-ends-every-session.md): the same check also ends every
+session a reset left behind, while a rename stays on Identity's clock.
 
 ## Context
 

@@ -22,6 +22,18 @@ export interface AuthContextValue {
     resendConfirmation: (emailOrUserName: string) => Promise<void>;
     /** Confirms an address from the two halves of its link. Signs nobody in. */
     confirmEmail: (userId: string, token: string) => Promise<void>;
+    /**
+     * Asks for the link that sets a new password, for the account an address or a username names.
+     * Resolves the same whether or not an account goes by it, and whether or not one was sent a link in
+     * the last few minutes: the API says nothing more (ADR 0090).
+     */
+    requestPasswordReset: (emailOrUserName: string) => Promise<void>;
+    /**
+     * Sets a new password from the two halves of a reset link. Signs nobody in, and ends every session
+     * the account had, this browser's included. Rejects with an `InvalidResetLinkError` when the link is no
+     * good, and with the API's sentences when the password is refused, which leaves the link working.
+     */
+    resetPassword: (userId: string, token: string, password: string) => Promise<void>;
     logout: () => Promise<void>;
     /**
      * Claims a different username. Rejects with the server's message — taken, reserved, or too

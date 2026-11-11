@@ -53,28 +53,38 @@ public sealed class RecordingEmail : IEmailTransport
         return Task.CompletedTask;
     }
 
-    /// <summary>The account and token in the latest confirmation link this host sent to <paramref name="address"/>.</summary>
-    public ConfirmEmailLink LatestConfirmationTo(string address)
+    /// <summary>The account and token in the latest confirmation this host sent to <paramref name="address"/>.</summary>
+    public EmailLink LatestConfirmationTo(string address) => Latest(address, "account confirmation", EmailLink.ConfirmEmail);
+
+    /// <summary>The account and token in the latest password reset this host sent to <paramref name="address"/>.</summary>
+    public EmailLink LatestResetTo(string address) => Latest(address, "password reset", EmailLink.ResetPassword);
+
+    private EmailLink Latest(string address, string purpose, string page)
     {
         var message = sent.LastOrDefault(message =>
-                string.Equals(message.To, address, StringComparison.OrdinalIgnoreCase)
-                && message.Purpose == "account confirmation")
-            ?? throw new InvalidOperationException($"No confirmation was sent to {address}.");
-        return ConfirmEmailLink.In(message.Text);
+                string.Equals(message.To, address, StringComparison.OrdinalIgnoreCase) && message.Purpose == purpose)
+            ?? throw new InvalidOperationException($"No {purpose} was sent to {address}.");
+        return EmailLink.In(message.Text, page);
     }
 }
 
-/// <summary>The two halves of a confirmation link, read from an email as a reader's page reads them.</summary>
-public sealed record ConfirmEmailLink(string Url, string UserId, string Token)
+/// <summary>
+/// The two halves of an email's link, read from its text as a reader's page reads them: the confirmation's
+/// and the password reset's are built alike (<c>EmailLinks</c>).
+/// </summary>
+public sealed record EmailLink(string Url, string UserId, string Token)
 {
-    public static ConfirmEmailLink In(string text)
+    public const string ConfirmEmail = "/confirm-email";
+    public const string ResetPassword = "/reset-password";
+
+    /// <summary>The one link in <paramref name="text"/> that leads to <paramref name="page"/>.</summary>
+    public static EmailLink In(string text, string page)
     {
         var url = text.Split((char[])['\n', '\r', ' '], StringSplitOptions.RemoveEmptyEntries)
-            .Single(word => word.Contains("/confirm-email#", StringComparison.Ordinal));
-        var fragment = url[(url.IndexOf('#') + 1)..];
-        var parts = fragment.Split('&')
+            .Single(word => word.Contains($"{page}#", StringComparison.Ordinal));
+        var parts = url[(url.IndexOf('#') + 1)..].Split('&')
             .Select(pair => pair.Split('=', 2))
             .ToDictionary(pair => pair[0], pair => Uri.UnescapeDataString(pair[1]));
-        return new ConfirmEmailLink(url, parts["user"], parts["token"]);
+        return new EmailLink(url, parts["user"], parts["token"]);
     }
 }
