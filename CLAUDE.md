@@ -455,8 +455,8 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   `docs/decisions/0034-*`.
 
 - **The rate limiter is narrow on purpose, and the lockout says nothing.** Ten attempts per address
-  per five minutes on login, register, the confirmation's resend and the password reset's two
-  endpoints only, which share one budget (ADR 0089, 0090) — the SSR server calls this API for every visitor, so
+  per five minutes on login, register, the confirmation's resend and the password reset's request
+  only, which share one budget (ADR 0089, 0090); not on the reset itself, whose token cannot be guessed — the SSR server calls this API for every visitor, so
   a limit partitioned by address anywhere a loader reaches would throttle the whole site as one
   client. Identity locks an account after five failures but answers exactly as it answers a wrong
   password, because announcing a lockout tells an attacker the account exists. Forwarded headers

@@ -168,6 +168,22 @@ public class PasswordResetFlowTests(ApiFactory api) : IClassFixture<ApiFactory>
     }
 
     [Fact]
+    public async Task ResetPassword_IsNotRateLimited_SinceItsTokenCannotBeGuessed()
+    {
+        // More tries from one address than the limiter allows the endpoints around it, each refused for
+        // what it is, none as too many attempts: a limit here only spent the budget of somebody who had
+        // just failed to sign in, and then refused them the sign-in with their new password.
+        using var browser = api.CreateBrowser();
+        var (email, _) = await SignedUpAsync(browser, "unlimited");
+        var link = await LinkForAsync(email, email);
+
+        for (var attempt = 0; attempt < 11; attempt++)
+            await (await ResetAsync(browser, link, "short")).ExpectAsync(HttpStatusCode.BadRequest);
+
+        await (await ResetAsync(browser, link, NewPassword)).ExpectAsync(HttpStatusCode.NoContent);
+    }
+
+    [Fact]
     public async Task ResetPassword_APasswordTheRulesRefuse_SaysWhyAndLeavesTheLinkWorking()
     {
         using var browser = api.CreateBrowser();

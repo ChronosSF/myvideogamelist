@@ -264,9 +264,14 @@ public class AuthController(
     /// password the rules refuse is answered as registration answers one, and spends nothing: the link
     /// still works for another try.
     /// </para>
+    /// <para>
+    /// <b>Not rate-limited</b>, unlike the endpoints around it (ADR 0090 §7). The limit is there to stop
+    /// guessing and to stop sends; this guesses nothing, since it needs a token nobody can guess, and sends
+    /// nothing. Limited, it spent the budget somebody had just used up failing to sign in, and refused
+    /// them the sign-in with their new password.
+    /// </para>
     /// </remarks>
     [HttpPost("reset-password")]
-    [EnableRateLimiting(RateLimiting.AuthWrites)]
     public async Task<ActionResult<ResetLinkRefusedDto>> ResetPassword(
         [FromBody] ResetPasswordDto dto, CancellationToken cancellationToken)
     {

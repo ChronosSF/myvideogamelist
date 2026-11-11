@@ -19,7 +19,8 @@ function answerTo(page: Page, path: string) {
  *
  * Beside the smoke test rather than in it, so that each says which of the two broke. Every request
  * reaches the API from the edge stand-in's one address, so the two share the ten auth writes the limiter
- * allows it in five minutes (ADR 0033): the smoke test spends two, and this four.
+ * allows it in five minutes (ADR 0033): the smoke test spends two, and this three, since the reset itself
+ * is not limited (ADR 0090).
  */
 test('a forgotten password is reset from the email, and the new one signs in', async ({ page }) => {
     await page.context().route(url => url.origin !== SITE, route => route.abort('blockedbyclient'));

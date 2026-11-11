@@ -10,7 +10,8 @@ is no longer the only one: [0081](0081-a-withdrawal-is-never-refused-and-one-acc
 §4 limits two writes per account, making a profile public and changing a public name's letter case,
 partitioned by the account rather than the address and on nothing a loader calls. The last
 consequence's password reset is [0090](0090-a-password-reset-works-once-for-an-hour-and-ends-every-session.md):
-it ends the lockout rather than counting towards it, and is limited as login is.
+it ends the lockout rather than counting towards it; its request is limited as login is, and its
+completion, which needs a token nobody can guess, is not.
 
 ## Context
 

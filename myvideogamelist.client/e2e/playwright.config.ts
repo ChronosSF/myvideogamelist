@@ -28,7 +28,7 @@ export default defineConfig({
     // None. A test either works or names the step that did not, and a retry would hide the second.
     // Repeating them is no soak test either: one invocation is one API process, every request reaches it
     // from the stand-in's one address, and the auth writes are limited to ten an address in five minutes
-    // (ADR 0033), of which one pass of the smoke test and the reset test spends six (ADR 0090). A second
+    // (ADR 0033), of which one pass of the smoke test and the reset test spends five (ADR 0090). A third
     // pass in the same invocation runs out. Run it again instead.
     retries: 0,
     workers: 1,

@@ -115,6 +115,10 @@ itself: it has to be saved with a write that also changes the stamp, as the rese
   can be sent one of each in five minutes, and never two resets.
 - **The same 202** for no such account, one paced, and one just sent a link. The rate limit (`AuthWrites`) is
   per network address and stops a caller asking about many accounts quickly.
+- **The reset itself is not rate-limited.** The limit stops guessing and stops sends, and the reset guesses
+  nothing, since it needs a token nobody can guess, and sends nothing. It was limited at first, and so spent the
+  budget somebody had just used up failing to sign in: seven failures, the request, one password the rules
+  refused and the reset made ten, and the sign-in with the new password was refused as too many attempts.
 - **The time an answer takes still says whether an email went.** OWASP asks for a uniform time, which sending
   outside the request would give. Registration already says whether an address is taken (0089 §5), so it would
   hide nothing that can't be learned there.
@@ -141,8 +145,8 @@ can be ignored.
 - **The session check reads two columns of the row it already read.** Still one query by primary key.
 - **Any change of the stamp spends an outstanding reset link**, a rename's included. Somebody who renames while
   a reset email is on its way asks for another.
-- **The limiter's endpoints are now five**: login, register, the confirmation's resend, and the reset's request
-  and its completion. They are listed in `RateLimiting.cs`, the backend rules and `CLAUDE.md`.
+- **The limiter's endpoints are now four**: login, register, the confirmation's resend, and the reset's request.
+  They are listed in `RateLimiting.cs`, the backend rules and `CLAUDE.md`.
 - **A new route, `/reset-password`**, never cached and never indexed. The sign-in dialog gains "Forgot
   password?", which opens a third dialog.
 - **The browser smoke test has a sibling**, `e2e/password-reset.e2e.ts`, that asks for a reset, reads the link
