@@ -42,8 +42,10 @@ floors of 0028 §3 and [0025](0025-playthroughs-and-reviews.md) §2.
   `ScoreSummary`), so it cannot carry a game over a floor.
 - **Each tier of the times has its own floor.** Three runs of the main story say nothing about the one
   rushed run beside them.
-- **The times' cache keeps the floored answer.** A write still evicts it (0025 §6), so the run that carries a
-  tier over the floor brings its median with it.
+- **The times' cache keeps the floored answer.** A playthrough saved on the game page still evicts it
+  (0025 §6), so the run that carries a tier over the floor brings its median with it. An import's runs and a
+  game's record deleted whole do not evict it, as before. Those wait out the five minutes, which every other
+  instance does anyway.
 - **The values are the client's old ones**, and the distribution's bar is new (§3).
 
 ### 2. The count still travels, the figure does not: an exception to 0016

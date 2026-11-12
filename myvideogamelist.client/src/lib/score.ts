@@ -33,7 +33,8 @@ export const MIN_PLAYTHROUGH_SAMPLES = 3;
 
 /**
  * Members who must have scored a game before MVGL's own score for it is sent at all:
- * `CommunityFloors.MemberScores` on the server, restated here as `MIN_PLAYTHROUGH_SAMPLES` is.
+ * `CommunityFloors.MemberScores` on the server, restated here for the same reason as the playthrough
+ * floor above.
  *
  * The same argument again: a mean over two members is one person's opinion and a half, and a badge
  * reading "100 members" over one perfect score would be the exact failure ADR 0016 was written
