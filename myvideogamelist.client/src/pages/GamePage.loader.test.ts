@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { headers, loader } from '@/pages/GamePage';
 import { CACHE_GAME, CACHE_NOT_FOUND, PRIVATE_NO_STORE } from '@/lib/cache';
-import { MIN_PLAYTHROUGH_SAMPLES } from '@/lib/score';
+import { MIN_DISTRIBUTION_SCORES, MIN_MEMBER_SCORES, MIN_PLAYTHROUGH_SAMPLES } from '@/lib/score';
 import { communityScores, communityTimes, game, gameDetails } from '@/test/factories';
 import type { GameDetailsDto } from '@/types/game';
 import { cachePolicyOf, loaderArgs, onTheServer, thrownBy } from '@/test/loader';
@@ -227,10 +227,37 @@ describe('GamePage loader', () => {
         expect(cachePolicyOf(result)).toBe(PRIVATE_NO_STORE);
     });
 
-    it('keeps nothing the page would not show: under the floors, only the counts', async () => {
-        // The loader's data is in the shared HTML for as long as the page is kept. A lone member's
-        // score and a median from two runs are kept off the page by its floors, so they are kept out
-        // of the copy beside it too (ADR 0028's consequences, ADR 0069 §1).
+    it('keeps what the API sends under the floors as it is: the counts, and nothing else', async () => {
+        // The API withholds the figures under its floors (ADR 0094), so its answer is already what the
+        // page would show, and the copy is that answer.
+        const scores = communityScores({ scored: MIN_MEMBER_SCORES - 1, tracked: 6 });
+        const times = communityTimes({ normally: { samples: MIN_PLAYTHROUGH_SAMPLES - 1, medianMinutes: null } });
+        stubApi(routes({
+            'GET /api/games/1942/community-scores': () => json(scores),
+            'GET /api/games/1942/community-times': () => json(times),
+        }));
+
+        const result = await load('1942');
+
+        expect(result.data.scores).toEqual(scores);
+        expect(result.data.times).toEqual(times);
+        expect(cachePolicyOf(result)).toBe(CACHE_GAME);
+    });
+
+    it('keeps the mean and no columns between the two floors', async () => {
+        const between = communityScores({ scored: MIN_DISTRIBUTION_SCORES - 1, mean: 8.1, tracked: 40 });
+        stubApi(routes({ 'GET /api/games/1942/community-scores': () => json(between) }));
+
+        const result = await load('1942');
+
+        expect(result.data.scores).toEqual(between);
+        expect(cachePolicyOf(result)).toBe(CACHE_GAME);
+    });
+
+    it('keeps nothing the page would not show from an API older than its floors', async () => {
+        // The loader's data is in the shared HTML for as long as the page is kept. An API from before
+        // ADR 0094, answering mid-deploy, sends a lone member's score and a median from two runs, which
+        // the page's floors keep off it, so they are kept out of the copy beside it too (ADR 0069 §1).
         stubApi(routes({
             'GET /api/games/1942/community-scores': () =>
                 json(communityScores({ scored: 1, mean: 9, distribution: [0, 0, 0, 0, 0, 0, 0, 0, 1, 0], tracked: 2 })),
@@ -243,6 +270,18 @@ describe('GamePage loader', () => {
         expect(result.data.scores).toEqual(communityScores({ scored: 1, mean: null, tracked: 2 }));
         expect(result.data.times).toEqual(communityTimes({ normally: { samples: MIN_PLAYTHROUGH_SAMPLES - 1, medianMinutes: null } }));
         expect(cachePolicyOf(result)).toBe(CACHE_GAME);
+    });
+
+    it('keeps no columns an API older than the bar sends under it', async () => {
+        const count = MIN_DISTRIBUTION_SCORES - 1;
+        stubApi(routes({
+            'GET /api/games/1942/community-scores': () =>
+                json(communityScores({ scored: count, mean: 8, distribution: [0, 0, 0, 0, 0, 0, 0, count, 0, 0], tracked: count })),
+        }));
+
+        const result = await load('1942');
+
+        expect(result.data.scores).toEqual(communityScores({ scored: count, mean: 8, tracked: count }));
     });
 
     it('records the day it ran in UTC, whatever the server’s own zone', async () => {

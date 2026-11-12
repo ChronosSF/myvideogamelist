@@ -3,6 +3,9 @@
 **Status:** Implemented; amended by [0070](0070-nothing-shows-as-a-blank.md), which keeps the section on the page when there is nothing to show (§3) and shows its skeleton again for a retry after both halves failed (§6).
 §4 holds for the reviews; the scores are read by the loader as well since
 [0069](0069-a-crawler-is-told-what-is-ours.md), so the member score is in the server render.
+§3's floor is the server's since [0094](0094-the-community-figures-are-withheld-below-their-floors-by-the-api.md),
+which answers the question the consequences leave open: under it the API sends the count alone, and the
+distribution waits for a higher bar.
 
 ## Context
 
