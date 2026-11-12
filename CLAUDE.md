@@ -348,13 +348,18 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   what makes "the child's owner is the entry's owner" a database constraint rather than a promise a
   service has to keep. See `docs/decisions/0025-*`.
 
-- **No MVGL average is shown without its count, and the floor lives in the client.** The community
-  completion times are medians, never means — self-reported playtime has a long idle-hours tail —
-  and every bucket travels with `samples`. `MIN_PLAYTHROUGH_SAMPLES` in `@/lib/score` suppresses a
-  tier under the floor, showing a dash and the count rather than a number, exactly as
-  `MIN_CRITIC_REVIEWS` does for IGDB's critic score. Only playthroughs with *both* a type and a
-  duration are counted: the others would inflate a sample size behind a figure they did not help
-  produce. See `docs/decisions/0016-*` and `0025-*`.
+- **No MVGL average is shown without its count, and under its floor the API does not send it.** The
+  community completion times are medians, never means — self-reported playtime has a long idle-hours
+  tail — and every bucket travels with `samples`. Both community endpoints count every member, private
+  profiles included, so a figure over a handful of members is their own: the floors are the server's,
+  `CommunityFloors`. Under five scores `/community-scores` sends the count and no mean, under twenty no
+  distribution, and a tier of `/community-times` under three runs no median. `@/lib/score` restates
+  them (`MIN_MEMBER_SCORES`, `MIN_DISTRIBUTION_SCORES`, `MIN_PLAYTHROUGH_SAMPLES`) for the sentences that
+  say why a figure is missing, `serverMirrors.test.ts` holds them equal, and the client still checks
+  the counts, so an API from before mid-deploy is held to them. IGDB's critic score keeps its floor in
+  the client, `MIN_CRITIC_REVIEWS`. Only playthroughs with *both* a type and a duration are counted: the
+  others would inflate a sample size behind a figure they did not help produce. See
+  `docs/decisions/0016-*`, `0025-*` and `0094-*`.
 
 - **A game's member reviews are fetched after hydration, never in the route loader.** The game page
   is edge-cached for an hour and servable stale for a day, so review text rendered into it would
