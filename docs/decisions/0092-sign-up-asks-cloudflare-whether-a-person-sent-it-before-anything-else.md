@@ -40,7 +40,7 @@ on dev only once the owner has made the widget and set its pair (`infra/README.m
 - **What Cloudflare's documentation says**, read on 2026-11-11 and not seen live:
   - **A token is at most 2,048 characters**, and good for five minutes.
   - **The widget reports an error by a code**: `110100` and `400020` for an invalid site key,
-    `110200` for a host the widget is not for, `200500` for its frame not loading, `300…` and `600…` for a
+    `110200` for a host the widget is not for, `200500` for its frame not loading, codes beginning `300` and `600` for a
     challenge that failed. Its examples hand the code to `error-callback`; the reference does not promise it.
 - **The dev site's basic auth is a credential to a browser.** A request sent with `credentials: 'omit'` goes
   without it, and the door answers 401 to every path but the three it lets through
