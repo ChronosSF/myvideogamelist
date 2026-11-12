@@ -76,12 +76,17 @@ this record.
 - **Somebody polling a game's mean as scores arrive can work out each new one.** The mean goes out at full
   precision, so the scored count times the mean is the sum, and the difference between two answers is the
   score that arrived between them. The same holds for a column above twenty, without the arithmetic.
+- **The scores that are published can be subtracted out.** Every listed review shows its author's score. When
+  all but one of a game's scorers have published theirs, the mean minus those scores is the last one. Stopping
+  it would mean a floor on the unpublished scores alone, a rule nobody could guess from the page, and polling
+  would still work.
 - **A median of three is one member's run**, the middle one. That is what a median is, and 0025 §2 chose the
   median knowing it.
 
 These are opinions about games and times spent playing them. They are not sensitive data. 0025's
-private-by-default promise is about a person's record attached to their name. The floors keep any one figure
-from being one member's own on a single look, and that is what the promise asks of an aggregate.
+private-by-default promise is about a person's record attached to their name. The floors keep a figure from
+being one member's own as it stands, and that is what the promise asks of an aggregate; working one out
+takes somebody set on it, for a score of a game.
 
 ### 5. The client keeps its constants for its sentences, and still checks the counts
 

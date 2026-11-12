@@ -221,8 +221,9 @@ function MemberScore({ scores }: { scores: CommunityScores }) {
                 </p>
             </div>
 
-            {/* The columns wait for a higher bar than the badge: read one by one, a column going up
-                by one says what the newest score was (ADR 0094). The API sends none under it. */}
+            {/* The columns wait for a higher bar than the badge: near the member floor they are a
+                handful of people's scores laid out one by one (ADR 0094 §3). The API sends none
+                under it. */}
             {hasMemberDistribution(scores) ? (
                 <ScoreColumns
                     distribution={scores.distribution}
