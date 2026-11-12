@@ -108,7 +108,7 @@ dotnet format MyVideoGameList.slnx                                              
 
 ### Serving the production build
 
-`npm start` runs `react-router-serve` on port 3000. It renders pages correctly — server-side
+`npm start` runs the SSR server the image runs, `server/index.ts`, on port 3000. It renders pages correctly — server-side
 loaders call the API directly via `API_BASE_URL` — but it does **not** proxy `/api`, so any
 request the browser makes will 404.
 

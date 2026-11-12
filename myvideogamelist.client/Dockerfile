@@ -26,8 +26,10 @@ COPY package.json package-lock.json ./
 # @react-router/dev sits under dependencies, so this still installs the build toolchain; moving
 # it to devDependencies is a clean-up of its own and does not change what runs.
 RUN npm ci --omit=dev
-# Vite has already copied public/ into build/client, so build/ is all the runtime needs.
+# Vite has already copied public/ into build/client, so build/ and the server that serves it are all
+# the runtime needs. The server is TypeScript that Node runs as it is (ADR 0093).
 COPY --from=build /app/build ./build
+COPY --from=build /app/server ./server
 # Which commit this is and when it was built, for /version (ADR 0059). The deploy workflow passes
 # both; a build without them says "unknown". Declared here, after every RUN, because a build
 # argument that changes misses the cache for every RUN after its declaration, and these change on
@@ -40,6 +42,8 @@ LABEL org.opencontainers.image.revision=$GIT_SHA \
       org.opencontainers.image.created=$BUILD_TIME
 USER node
 EXPOSE 3000
-# The server directly, not through `npm start`: npm swallows SIGTERM, react-router-serve handles
-# it and closes the listener, which is what lets ECS stop a task promptly on a deploy.
-CMD ["./node_modules/.bin/react-router-serve", "./build/server/index.js"]
+# The server directly, not through `npm start`: npm swallows SIGTERM, the server handles it and
+# closes the listener and its connections, which is what lets ECS stop a task promptly on a deploy.
+# Not react-router-serve, whose keep-alive is Node's five seconds and ends idle connections before
+# the balancer does, which a viewer sees as a 502 (ADR 0093).
+CMD ["node", "server/index.ts"]

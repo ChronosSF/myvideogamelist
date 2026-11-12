@@ -432,6 +432,20 @@ jobs:
           docker logs ssr
           exit 1
 
+      # The keep-alive the image's server announces, against the balancer's idle timeout in the stack. The
+      # server has to keep an idle connection longer, or the balancer sends requests down connections the
+      # server is closing, and viewers get a 502 (ADR 0093).
+      - name: Check the SSR image's keep-alive
+        run: |
+          idle=$(grep -oP 'IdleTimeout = Duration\.Seconds\(\K[0-9]+' infra/src/Infra/AppStack.cs || true)
+          keep=$(curl --silent --fail --max-time 2 --output /dev/null --dump-header - http://127.0.0.1:3000/robots.txt \
+            | tr -d '\r' | sed -n 's/^keep-alive: *timeout=\([0-9]*\).*/\1/Ip')
+          echo "The balancer closes an idle connection after ${idle:-?} s, the SSR server after ${keep:-?} s."
+          if [ -z "$idle" ] || [ -z "$keep" ] || [ "$keep" -le "$idle" ]; then
+            echo "::error::The SSR server's keep-alive has to outlast the balancer's idle timeout (ADR 0093)."
+            exit 1
+          fi
+
   # The CDK app compiles, so a construct renamed by a library bump or a stack edited without
   # building is caught here rather than on the next deploy. Synthesis is not run: it needs
   # credentials for the context lookups, and the long-lived stacks are deployed from a developer

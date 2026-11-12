@@ -107,6 +107,7 @@ grow a forward pointer when a later record or an issue closes something it left 
 | [0090](0090-a-password-reset-works-once-for-an-hour-and-ends-every-session.md) | A password reset is a link that works once, for an hour, confirms the address, ends the lockout and every session, and signs nobody in | Implemented |
 | [0091](0091-a-bounce-or-a-complaint-stops-all-mail-to-that-address.md) | A bounce or a complaint stops all mail to that address, in SES, and each one reaches the owner | Implemented; proved only by a deploy |
 | [0092](0092-sign-up-asks-cloudflare-whether-a-person-sent-it-before-anything-else.md) | Sign-up asks Cloudflare's Turnstile whether a person sent it, before anything else | Implemented; proved only by a deploy |
+| [0093](0093-the-ssr-server-holds-an-idle-connection-longer-than-the-balancer.md) | The SSR server holds an idle connection longer than the balancer does: a server of our own, `react-router-serve`'s app with a 65-second keep-alive | Implemented; proved only by a deploy |
 
 **Status** — *Accepted*: decided, not yet built. *Implemented*: decided and in the code.
 *Superseded*: replaced by a later record.

@@ -43,6 +43,9 @@ public sealed class AppStack : Stack
             InternetFacing = true,
             SecurityGroup = data.AlbSecurityGroup,
             VpcSubnets = new SubnetSelection { SubnetGroupName = "alb" },
+            // The SSR server's keep-alive is worked out from this and has to stay longer, or the balancer
+            // sends requests down connections the server is closing and the viewer gets a 502. Change
+            // BALANCER_IDLE_TIMEOUT_MS in myvideogamelist.client/server/serve.ts with it (ADR 0093).
             IdleTimeout = Duration.Seconds(60),
             // The balancer preserves X-Forwarded-For rather than appending CloudFront's address to
             // it, so the right-most entry is the viewer and the API's ForwardLimit stays 1 (D-7).
