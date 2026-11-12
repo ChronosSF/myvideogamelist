@@ -1,6 +1,8 @@
 using System.Net;
 using System.Net.Http.Json;
+using Microsoft.AspNetCore.Mvc;
 using MyVideoGameList.Server.DTOs;
+using MyVideoGameList.Server.Security;
 
 namespace MyVideoGameList.Server.IntegrationTests;
 
@@ -38,6 +40,95 @@ public class ConfirmationFlowTests(ApiFactory api) : IClassFixture<ApiFactory>
         Assert.Equal("account confirmation", sent.Purpose);
         var link = EmailLink.In(sent.Text, EmailLink.ConfirmEmail);
         Assert.StartsWith("https://localhost:58546/confirm-email#user=", link.Url);
+    }
+
+    [Fact]
+    public async Task Register_ABotsToken_MakesNoAccountAndSendsNothing()
+    {
+        // Cloudflare is asked first (ADR 0092), so a refused check spends no email and claims no name.
+        using var browser = api.CreateBrowser();
+        var (email, userName) = NewAccount("bot");
+
+        var refused = await browser.SignUpAsync(email, userName, JudgingTurnstile.Bot);
+
+        await refused.ExpectAsync(HttpStatusCode.BadRequest);
+        Assert.Contains("person", (await refused.ReadAsync<AuthMessageDto>(HttpStatusCode.BadRequest)).Message);
+        Assert.Empty(api.Mail.SentTo(email));
+        // The name is still free: a person's sign-up with it goes through.
+        await (await browser.SignUpAsync(email, userName)).ExpectAsync(HttpStatusCode.OK);
+    }
+
+    [Fact]
+    public async Task Register_CloudflareDoesNotAnswer_IsA502ThatSaysSoAndMakesNoAccount()
+    {
+        // Nobody signs up unchecked, and the 502 is about the check, not the handler's sentence about game data.
+        using var browser = api.CreateBrowser();
+        var (email, userName) = NewAccount("unchecked");
+
+        var failed = await browser.SignUpAsync(email, userName, JudgingTurnstile.Unreachable);
+
+        var problem = await failed.ReadAsync<ProblemDetails>(HttpStatusCode.BadGateway);
+        Assert.Contains("person", problem.Detail);
+        Assert.DoesNotContain("IGDB", problem.Detail);
+        Assert.True(problem.Extensions.ContainsKey("traceId"));
+        Assert.Empty(api.Mail.SentTo(email));
+        await (await browser.SignUpAsync(email, userName)).ExpectAsync(HttpStatusCode.OK);
+    }
+
+    [Fact]
+    public async Task Register_ADeploymentWithNoKeys_IsA503InTheShapeOfEveryOtherFailure()
+    {
+        using var browser = api.CreateBrowser();
+        var (email, userName) = NewAccount("nokeys");
+
+        var unavailable = await browser.SignUpAsync(email, userName, JudgingTurnstile.NoKeys);
+
+        var problem = await unavailable.ReadAsync<ProblemDetails>(HttpStatusCode.ServiceUnavailable);
+        Assert.Contains("not available", problem.Detail);
+        Assert.True(problem.Extensions.ContainsKey("traceId"));
+        Assert.Empty(api.Mail.SentTo(email));
+    }
+
+    [Fact]
+    public async Task Register_NoToken_IsToldToReloadAndCloudflareIsNotAsked()
+    {
+        // A page loaded before the check existed sends none. The sentence is the one that page shows.
+        using var browser = api.CreateBrowser();
+        var (email, userName) = NewAccount("stale");
+        var asked = api.Turnstile.Asked.Count;
+
+        var refused = await browser.PostAsJsonAsync(
+            "/api/auth/register", new { email, password = Browsers.Password, userName });
+
+        var problem = await refused.ReadAsync<ValidationProblemDetails>(HttpStatusCode.BadRequest);
+        Assert.Equal(
+            "This page is out of date. Reload it, then sign up again.", Assert.Single(problem.Errors["TurnstileToken"]));
+        Assert.Equal(asked, api.Turnstile.Asked.Count);
+    }
+
+    [Fact]
+    public async Task Register_ATokenLongerThanAnyOfCloudflares_IsRefusedUnasked()
+    {
+        using var browser = api.CreateBrowser();
+        var (email, userName) = NewAccount("long");
+        var token = new string('x', Turnstile.MaxTokenLength + 1);
+
+        var refused = await browser.SignUpAsync(email, userName, token);
+
+        await refused.ExpectAsync(HttpStatusCode.BadRequest);
+        Assert.DoesNotContain(token, api.Turnstile.Asked);
+        Assert.Empty(api.Mail.SentTo(email));
+    }
+
+    [Fact]
+    public async Task TurnstileSiteKey_IsTheDeploymentsOwn()
+    {
+        using var browser = api.CreateBrowser();
+
+        var answer = await browser.GetAsync("/api/auth/turnstile");
+
+        Assert.Equal("integration-site-key", (await answer.ReadAsync<TurnstileSiteKeyDto>(HttpStatusCode.OK)).SiteKey);
+        Assert.Contains("no-store", answer.Headers.CacheControl?.ToString());
     }
 
     [Fact]

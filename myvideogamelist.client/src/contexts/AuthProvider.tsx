@@ -174,12 +174,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
 
     /** Signs nobody in, so `user` is untouched: the account waits for its confirmation (ADR 0089). */
-    const register = async (email: string, password: string, userName: string) => {
+    const register = async (email: string, password: string, userName: string, turnstileToken: string) => {
         const res = await send('/api/auth/register', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email, password, userName }),
+            body: JSON.stringify({ email, password, userName, turnstileToken }),
         });
+        // Cloudflare not answering the API's question about the token is a 502 whose detail says so (ADR
+        // 0092), read like any other refusal. A 502 with no such body is the edge's, with the API away.
         if (!res.ok) throw new Error(await problem(res, 'Registration failed'));
 
         return await res.json() as RegisterResult;

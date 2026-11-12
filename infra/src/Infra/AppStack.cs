@@ -194,6 +194,10 @@ public sealed class AppStack : Stack
                 ["PGPASSWORD"] = Amazon.CDK.AWS.ECS.Secret.FromSecretsManager(data.DbSecret, "password"),
                 ["Igdb__ClientId"] = Amazon.CDK.AWS.ECS.Secret.FromSecretsManager(data.IgdbSecret, "ClientId"),
                 ["Igdb__ClientSecret"] = Amazon.CDK.AWS.ECS.Secret.FromSecretsManager(data.IgdbSecret, "ClientSecret"),
+                // Both halves of the sign-up's check (ADR 0092). The site key is public, and the API hands it to
+                // the page; it lives beside the secret so that one widget's pair is set in one place.
+                ["Turnstile__SiteKey"] = Amazon.CDK.AWS.ECS.Secret.FromSecretsManager(data.TurnstileSecret, "SiteKey"),
+                ["Turnstile__SecretKey"] = Amazon.CDK.AWS.ECS.Secret.FromSecretsManager(data.TurnstileSecret, "SecretKey"),
             },
             Logging = Logging(logs, "api"),
         });

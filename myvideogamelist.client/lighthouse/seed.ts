@@ -1,6 +1,7 @@
 import { request } from '@playwright/test';
 import { newUserName, WRITE } from '../e2e/accounts';
 import { confirmationIn, confirmationLinkFor } from '../e2e/outbox';
+import { TURNSTILE } from '../e2e/stand-ins';
 
 /** The run's throwaway account. */
 export interface Account {
@@ -92,7 +93,8 @@ export async function seedAccount(site: string, outbox: string): Promise<Account
     };
 
     try {
-        await write('post', '/api/auth/register', account);
+        // With the token Cloudflare's test widget hands over, which the stand-in for siteverify passes (ADR 0092).
+        await write('post', '/api/auth/register', { ...account, turnstileToken: TURNSTILE.token });
         // An account signs in once its address is confirmed (ADR 0089), with the link its email carries.
         await write('post', '/api/auth/confirm-email', confirmationIn(confirmationLinkFor(outbox, account.email)));
         await write('post', '/api/auth/login', { email: account.email, password: account.password, rememberMe: true });

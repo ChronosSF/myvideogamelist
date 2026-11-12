@@ -43,7 +43,8 @@ namespace MyVideoGameList.Server.IntegrationTests;
 /// no sweep deletes rows from under a test that did not ask for one; and the edge, by
 /// <see cref="RecordingEdge"/>, since with no distribution the application's own only logs what it
 /// would have invalidated (ADR 0058); and the email transport, by <see cref="RecordingEmail"/>, so that
-/// a test can read the link it would have sent (ADR 0089). And one thing is added ahead of
+/// a test can read the link it would have sent (ADR 0089); and Cloudflare's Turnstile, by
+/// <see cref="JudgingTurnstile"/>, which judges a sign-up by its token (ADR 0092). And one thing is added ahead of
 /// the pipeline: <see cref="ClientAddress"/>, which gives each test browser the address a
 /// connection would have given it. Every other middleware, every service and every policy is the
 /// application's own. See <c>docs/decisions/0057-*</c>.
@@ -72,6 +73,9 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
 
     /// <summary>Who is an admin, named by a test once the account has an id.</summary>
     public NamedAdmins Admins { get; } = new();
+
+    /// <summary>Cloudflare's check on a sign-up, judged by the token a test sends (ADR 0092).</summary>
+    public JudgingTurnstile Turnstile { get; } = new();
 
     /// <summary>This class's own database, for seeding and reading behind the API's back.</summary>
     public string ConnectionString { get; private set; } = "";
@@ -134,6 +138,11 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
 
             services.RemoveAll<IEmailTransport>();
             services.AddSingleton<IEmailTransport>(Mail);
+
+            // Outside Development a deployment with no keys takes no sign-ups, and the real one would
+            // ask Cloudflare over the network. Replaced, so that the token a test sends is the verdict.
+            services.RemoveAll<ITurnstile>();
+            services.AddSingleton<ITurnstile>(Turnstile);
 
             // A closed registration, which the container prefers to the open one Options makes.
             services.AddSingleton<IOptionsMonitor<AdminOptions>>(Admins);

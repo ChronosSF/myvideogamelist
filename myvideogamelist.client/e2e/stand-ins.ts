@@ -7,11 +7,13 @@ import {
     type Server,
     type ServerResponse,
 } from 'node:http';
+import type { BrowserContext } from '@playwright/test';
 
 /**
  * What surrounds the stack under test: the two things a runner cannot have, stood in for. In front of
  * the two processes, what routes between them when deployed, the distribution and the balancer behind
- * it; behind the API, IGDB. Both run in the test runner's own process as its global setup, which
+ * it; behind the API, IGDB, and Cloudflare's siteverify for the sign-up's check (ADR 0092), on the same
+ * port. Both run in the test runner's own process as its global setup, which
  * Playwright starts once the two servers are answering and stops before it stops them. The API and the
  * SSR server are processes of their own, as they are deployed (ADR 0060). The Lighthouse audit runs
  * the same two on ports of its own, with an IGDB that knows real games (`lighthouse/harness.ts`, ADR
@@ -50,6 +52,42 @@ export const SITE = `http://localhost:${PORTS.distribution}`;
 export const IGDB_CLIENT = { id: 'smoke-test', secret: 'smoke-test-secret' } as const;
 
 const TOKEN = 'smoke-test-token';
+
+/**
+ * Cloudflare's published Turnstile test keys that always pass, and the token their widget hands over
+ * (ADR 0092). The API is given the keys; the stand-in for siteverify passes this token with this secret
+ * and refuses anything else, as Cloudflare's test secret would not, so a page that sent no token, or an
+ * API that asked with the wrong secret, fails the run.
+ */
+export const TURNSTILE = {
+    siteKey: '1x00000000000000000000AA',
+    secret: '1x0000000000000000000000000000000AA',
+    token: 'XXXX.DUMMY.TOKEN.XXXX',
+} as const;
+
+/**
+ * Turnstile's script as a run's browser is served it, in place of Cloudflare's, which the run never
+ * reaches: a widget that, drawn with the site key the API hands the page, says so in the form and hands
+ * over the test token at once. Any other site key is an error, as Cloudflare's would be.
+ */
+const TURNSTILE_SCRIPT = `window.turnstile = {
+    render(container, options) {
+        const passed = options.sitekey === ${JSON.stringify(TURNSTILE.siteKey)};
+        container.textContent = passed ? 'Turnstile stand-in: passed' : 'Turnstile stand-in: wrong site key';
+        setTimeout(() => passed ? options.callback(${JSON.stringify(TURNSTILE.token)}) : options['error-callback']('400020'));
+        return 'stand-in';
+    },
+    remove() {},
+};`;
+
+/**
+ * Serves `TURNSTILE_SCRIPT` at the address the sign-up form loads Turnstile's script from. Call it after
+ * any route that refuses third parties: Playwright tries the most recently added route first.
+ */
+export async function standInForTurnstile(context: BrowserContext): Promise<void> {
+    await context.route('https://challenges.cloudflare.com/turnstile/v0/api.js*', route =>
+        route.fulfill({ contentType: 'text/javascript', body: TURNSTILE_SCRIPT }));
+}
 
 /**
  * The games this IGDB knows: every id from two billion up, each with the same title. That is far past
@@ -155,6 +193,9 @@ function gamesLookedUp(query: string): object[] {
     return idsIn(query).filter(id => id >= GAMES.firstId).map(gameRow);
 }
 
+/** Where the API is told siteverify is, on the IGDB stand-in's port. */
+export const TURNSTILE_SITEVERIFY = '/turnstile/v0/siteverify';
+
 /** What a stand-in for IGDB answers a query with, given the endpoint it was sent to. */
 export type IgdbAnswer = (endpoint: string, query: string) => unknown[];
 
@@ -171,6 +212,16 @@ async function answerAsIgdb(asked: IncomingMessage, reply: ServerResponse, answe
         console.warn(`[IGDB stand-in] ${asked.method} ${path}: ${status} ${message}`);
         json(reply, status, { message });
     };
+
+    // Cloudflare's siteverify, in the shapes it answered live for its test secrets (ADR 0092).
+    if (asked.method === 'POST' && path === TURNSTILE_SITEVERIFY) {
+        const form = new URLSearchParams(body);
+        const passed = form.get('secret') === TURNSTILE.secret && form.get('response') === TURNSTILE.token;
+        if (!passed) console.warn(`[Turnstile stand-in] refused a token: ${form.get('response') ?? 'none'}`);
+        return json(reply, 200, passed
+            ? { success: true, 'error-codes': [], hostname: 'example.com' }
+            : { success: false, 'error-codes': ['invalid-input-response'], messages: [] });
+    }
 
     if (asked.method === 'POST' && path === '/oauth2/token') {
         const form = new URLSearchParams(body);

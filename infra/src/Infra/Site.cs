@@ -44,6 +44,9 @@ public sealed record Site(string Env)
 
     public string IgdbSecretName => $"mvgl/{Env}/igdb";
 
+    /// <summary>The pair of keys this environment's Turnstile widget has, set by hand (ADR 0092).</summary>
+    public string TurnstileSecretName => $"mvgl/{Env}/turnstile";
+
     /// <summary>
     /// The only GitHub Actions identity allowed to assume the deploy role: a job in this repository
     /// that declares this environment. Matched with StringEquals, never a wildcard (ADR 0044).

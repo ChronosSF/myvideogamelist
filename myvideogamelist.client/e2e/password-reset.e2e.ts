@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { newUserName, WRITE } from './accounts';
 import { confirmationIn, confirmationLinkFor, outboxFor, resetLinkFor } from './outbox';
-import { PORTS, SITE } from './stand-ins';
+import { PORTS, SITE, TURNSTILE } from './stand-ins';
 
 /** What the account is made with, and what the reset replaces it with: a digit, lower case, eight or more. */
 const PASSWORD = 'reset-test-1';
@@ -33,7 +33,8 @@ test('a forgotten password is reset from the email, and the new one signs in', a
         // The sign-up dialog is the smoke test's. This one starts from an account that already exists.
         const registered = await page.request.post('/api/auth/register', {
             headers: WRITE,
-            data: { email, password: PASSWORD, userName },
+            // The token Cloudflare's test widget hands over, which the stand-in for siteverify passes.
+            data: { email, password: PASSWORD, userName, turnstileToken: TURNSTILE.token },
         });
         expect(registered.status(), 'what the API answered the sign-up').toBe(200);
 

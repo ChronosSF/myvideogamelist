@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using MyVideoGameList.Server.Models;
+using MyVideoGameList.Server.Security;
 
 namespace MyVideoGameList.Server.DTOs;
 
@@ -7,15 +8,30 @@ namespace MyVideoGameList.Server.DTOs;
 /// A new account: an address to sign in with, a password, and a name to be known by.
 /// </summary>
 /// <remarks>
+/// <para>
 /// The username is asked for at registration rather than derived from the email and offered as a
 /// change later. A derived one leaks the local part of somebody's address into a public URL, and —
 /// more to the point — a name nobody chose is a name nobody notices until it is already on
 /// everything they have written. See <c>docs/decisions/0027-usernames-and-public-profiles.md</c>.
+/// </para>
+/// <para>
+/// <paramref name="TurnstileToken"/> is what the page's Turnstile widget handed back, which Cloudflare is
+/// asked about before anything else is looked at (ADR 0092). Two refusals are made here, before
+/// Cloudflare is asked anything. One with no token came from a page loaded before the check existed,
+/// which a release leaves open in somebody's tab, so its sentence is the one that page shows: what to do
+/// about it. One longer than any token Cloudflare issues is not relayed to it.
+/// </para>
 /// </remarks>
 public record RegisterDto(
     [Required] string Email,
     [Required] string Password,
-    [Required][UserName] string UserName);
+    [Required][UserName] string UserName,
+    [Required(ErrorMessage = "This page is out of date. Reload it, then sign up again.")]
+    [MaxLength(Turnstile.MaxTokenLength)]
+    string TurnstileToken);
+
+/// <summary>What the sign-up page's Turnstile widget draws with: this deployment's site key, which is public.</summary>
+public record TurnstileSiteKeyDto(string SiteKey);
 
 /// <param name="Email">
 /// The address, or the username — both are accepted, because a person who has one memorised has

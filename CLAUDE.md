@@ -41,7 +41,7 @@ build behind a stand-in that does route `/api` (ADR 0060).
 | `npm run typecheck` | `react-router typegen && tsc -b` — use this, never bare `tsc` |
 | `npm run test` | Vitest, jsdom + Testing Library. `npm run test:watch` to iterate |
 | `npm run visual` | Before-and-after screenshots of the pages, compared pixel by pixel, for a change meant to look the same. Needs two dev servers and a local test account, whose email and password it reads from the shell or from `visual/.env` (ignored by git); `visual/playwright.config.ts` says how. Not run by CI |
-| `npm run e2e` | The browser smoke test, over the production shape: sign up, add a game to a list, reload, it is still there; and beside it, a forgotten password reset from its email and signed in with (ADR 0090). Builds the front end and serves it with `react-router-serve` beside the API under `dotnet run`, with a stand-in in front that routes `/api/*` to the API as the balancer does, and one for IGDB behind, so it needs no IGDB credentials. Needs PostgreSQL up, ports 5180–5183 free, and once, `npx playwright install chromium`. Keeps a database of its own on the compose server, `mvgl_e2e`, never `myvideogamelist`, created on the first run; `E2E_CONNECTION_STRING` points it elsewhere. Run by CI. See ADR 0060 |
+| `npm run e2e` | The browser smoke test, over the production shape: sign up, add a game to a list, reload, it is still there; and beside it, a forgotten password reset from its email and signed in with (ADR 0090). Builds the front end and serves it with `react-router-serve` beside the API under `dotnet run`, with a stand-in in front that routes `/api/*` to the API as the balancer does, and one for IGDB behind, so it needs no IGDB credentials, and stand-ins for Cloudflare's Turnstile script in the browser and its siteverify beside IGDB's (ADR 0092), so a run reaches no third party. Needs PostgreSQL up, ports 5180–5183 free, and once, `npx playwright install chromium`. Keeps a database of its own on the compose server, `mvgl_e2e`, never `myvideogamelist`, created on the first run; `E2E_CONNECTION_STRING` points it elsewhere. Run by CI. See ADR 0060 |
 | `npm run lighthouse` | Lighthouse CI on five pages of the `npm run e2e` shape, on a phone and a desktop, then axe-core on the same pages. Fails on an accessibility, best-practices or SEO score, or a count of console errors, that leaves `lighthouse/budgets.ts`'s baseline, on layout shift over 0.02 or script or page weight over budget, and on an axe rule or contrast pair a page did not already break; performance warns. Needs PostgreSQL up, ports 5190–5193 free, IGDB's image host reachable and, once, `npx playwright install chromium`. Keeps `mvgl_lighthouse` (or `LIGHTHOUSE_CONNECTION_STRING`); reports in `lighthouse/reports/`. Run by CI. See ADR 0068 |
 | `npm run build` | Production build |
 | `npm run audit` | `npm audit` over the lock file, devDependencies included, with no install: high and critical fail, lower ones are printed. `npm run audit:lighthouse` does the same over Lighthouse CI's lock file, and CI's Dependency audit job runs both. `scripts/audit.mjs` holds a list of accepted advisories for each, every entry with its reason and a date: the client's for want of any fix, Lighthouse CI's for want of one its dependents' ranges allow (ADR 0068 §9). See ADR 0061 |
@@ -432,8 +432,9 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   once per render in `entry.server.tsx` and handed to `<ServerRouter>` and to the stream; an inline
   script without it never runs, and a page whose hydration scripts never run is dead. A new inline
   script of ours goes in by its hash in `documentPolicy`, as the look script does, and
-  a script from another host is refused until a record decides its hosts or `'strict-dynamic'`
-  (Google's tag, #242, is the first). A shared cache keeps the nonce whole only because header and
+  a script from another host is refused until a record decides its hosts or `'strict-dynamic'`:
+  Cloudflare's, for Turnstile on the sign-up form, is the one so far (ADR 0092), and Google's tag (#242)
+  will be the next. A shared cache keeps the nonce whole only because header and
   body are stored together, so **nothing at the edge may set, rewrite or remove
   `Content-Security-Policy` on a document** — a response headers policy replacing it names no nonce
   and every page dies — **and no document may carry an `ETag` or `Last-Modified`**, because a 304
@@ -453,6 +454,24 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   included in Development only. That `traceId` is the request's W3C trace id, so it is the id the page
   that made the call names (see "One id names a request" below). `/readyz` still answers 200 while IGDB is down, deliberately. See
   `docs/decisions/0034-*`.
+
+- **Sign-up asks Cloudflare's Turnstile first, and only sign-up does.** It is the one form that mails an
+  address a stranger typed, from the SES account production's reputation lives in, so `Register` asks
+  Cloudflare about the form's token before it looks at anything else: refused is a 400 that makes no
+  account and sends nothing, Cloudflare unreachable is a 502, and asking spends the token, so the form
+  draws the widget again after any failed attempt and the server never retries. That 502 carries a
+  sentence of its own: `UpstreamFailureHandler`'s detail is about IGDB, so a call to any other service
+  throws `UpstreamUnavailableException`. Each environment has its
+  own widget, its pair in `mvgl/<env>/turnstile`, set by hand; the page asks `GET /api/auth/turnstile`
+  for the site key when the form opens, **never with `credentials: 'omit'`**, which withholds the dev
+  site's basic auth from a path its door does not let through. **A deployment with no keys starts and
+  takes no sign-ups**, with a 503 and an error in the log, because the migration task boots the same host,
+  and the placeholder the Data stack makes the secret with is no keys (`TurnstilePlaceholder`, which the
+  CDK app compiles too); **a Cloudflare test secret
+  outside Development does not start**, because it passes whoever asks. Development with no keys uses
+  the always-passing test keys. Tests never reach Cloudflare: the integration suite's
+  `JudgingTurnstile`, the client's `@/test/turnstile`, and the e2e stand-ins. See
+  `docs/decisions/0092-*`.
 
 - **The rate limiter is narrow on purpose, and the lockout says nothing.** Ten attempts per address
   per five minutes on login, register, the confirmation's resend and the password reset's request
