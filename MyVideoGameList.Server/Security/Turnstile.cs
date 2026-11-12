@@ -122,7 +122,7 @@ public sealed class Turnstile(
 
         var answer = await AskAsync(form, cancellationToken);
 
-        if (answer.Success) return TurnstileVerdict.Passed;
+        if (answer.Success == true) return TurnstileVerdict.Passed;
 
         var codes = answer.ErrorCodes ?? [];
         if (codes.Any(code => code is "missing-input-secret" or "invalid-input-secret"))
@@ -156,12 +156,15 @@ public sealed class Turnstile(
             throw DidNotAnswer(failure);
         }
 
-        return answer ?? throw DidNotAnswer();
+        // An answer says whether the token passed. JSON that does not, such as `{}`, is no answer, which
+        // read as a refusal would tell a person to do a check that can never pass, with nothing in the
+        // log above Information.
+        return answer is { Success: not null } ? answer : throw DidNotAnswer();
     }
 
-    /// <summary>The part of siteverify's answer this reads.</summary>
+    /// <summary>The part of siteverify's answer this reads. <see cref="Success"/> is null when it is missing.</summary>
     private sealed record SiteVerifyAnswer(
-        [property: JsonPropertyName("success")] bool Success,
+        [property: JsonPropertyName("success")] bool? Success,
         [property: JsonPropertyName("error-codes")] string[]? ErrorCodes);
 }
 

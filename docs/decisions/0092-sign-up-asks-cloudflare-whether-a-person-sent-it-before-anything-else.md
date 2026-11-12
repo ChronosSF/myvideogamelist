@@ -77,7 +77,9 @@ account, and signing in has the lockout. A check there would cost every person a
 - **The call has eight seconds.** A failure is `UpstreamFailureHandler`'s 502
   ([0034](0034-failing-in-one-shape.md)).
 - **Every way of not answering is that 502:** no connection, an error status, the timeout, and a 200 whose
-  body is not the answer, which would otherwise leave as a 500.
+  body is not the answer, which would otherwise leave as a 500. JSON that does not say whether the token
+  passed, such as `{}`, is not the answer either. Read as a refusal, it would tell a person to do a check that
+  can never pass, and log nothing above Information.
 - **The 502 says so itself.** The handler's detail is written about IGDB, for game pages, so a call to anything
   else throws `UpstreamUnavailableException`, which carries its own sentence, and the page shows it as it
   shows any refusal.

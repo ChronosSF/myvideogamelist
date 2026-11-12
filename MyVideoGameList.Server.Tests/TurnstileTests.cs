@@ -83,9 +83,15 @@ public class TurnstileTests
     [InlineData("")]
     [InlineData("<html><body>Bad gateway</body></html>")]
     [InlineData("null")]
+    [InlineData("{}")]
+    [InlineData("""{"error-codes":[]}""")]
+    [InlineData("""{"success":null}""")]
+    [InlineData("""{"success":"true"}""")]
     public async Task VerifyAsync_A200ThatIsNotTheAnswer_IsAnUpstreamFailure(string body)
     {
         // A 200 from something in between, or an answer cut short: Cloudflare's failure, never a 500 of ours.
+        // JSON that does not say whether the token passed is no answer either, never a refused token, which
+        // would tell a person to do a check that cannot pass (Copilot, #468).
         await Assert.ThrowsAsync<UpstreamUnavailableException>(
             () => Turnstile(new SiteVerify(body)).VerifyAsync("token", null, CancellationToken.None));
     }
