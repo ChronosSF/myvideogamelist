@@ -35,7 +35,7 @@ grow a forward pointer when a later record or an issue closes something it left 
 | [0013](0013-http-caching-policy.md) | Every route declares its own `Cache-Control` | Implemented; a `.data` gap closed by 0070 |
 | [0014](0014-rds-postgresql-over-aurora.md) | Managed PostgreSQL on RDS, not Aurora Serverless v2 | Accepted |
 | [0015](0015-fargate-confirmed-and-nat-less-networking.md) | ECS Fargate confirmed, with NAT-less networking | Accepted |
-| [0016](0016-scores-carry-their-sample-size.md) | A score is never shown without its sample size | Implemented |
+| [0016](0016-scores-carry-their-sample-size.md) | A score is never shown without its sample size | Implemented; the community endpoints' floors are the server's since 0094 |
 | [0017](0017-detail-data-off-the-listing.md) | Detail-only game data stays out of the listing payload | Implemented |
 | [0018](0018-append-only-status-event-log.md) | Status changes are recorded in an append-only event log | Amended by 0019 |
 | [0019](0019-entry-survives-leaving-every-list.md) | A user's entry survives the game leaving every list | Implemented |
@@ -44,10 +44,10 @@ grow a forward pointer when a later record or an issue closes something it left 
 | [0022](0022-entry-surrogate-key-and-the-wishlist-axis.md) | The entry gets a surrogate key, and the wishlist is an axis rather than a status | Implemented |
 | [0023](0023-profile-statistics-derived-at-read-time.md) | Profile statistics are derived at read time, and split by what they depend on | Implemented; §4's chart amended by 0047 |
 | [0024](0024-the-ownership-contract.md) | One export manifest for every user-owned table, guarded in both directions | Implemented; one snapshot since #95; its cascades and its snapshot tested against PostgreSQL by 0057; every session ended with the account by 0077 |
-| [0025](0025-playthroughs-and-reviews.md) | Playthroughs and reviews: what a user records about actually playing a game | Implemented; §6 amended for the description by 0069 |
+| [0025](0025-playthroughs-and-reviews.md) | Playthroughs and reviews: what a user records about actually playing a game | Implemented; §6 amended for the description by 0069, §2's floor made the server's by 0094 |
 | [0026](0026-a-library-import-records-ownership-not-history.md) | A library import records ownership, not history | Accepted; its framework shipped in 0037, the Steam source is an open issue; §3 amended by 0047 |
 | [0027](0027-usernames-and-public-profiles.md) | Usernames are a namespace, and a profile is published only when asked | Implemented; the sitemap is 0036, D14 is 0058 |
-| [0028](0028-a-games-community-view.md) | A game's community view: every score counts, only published reviews are listed, and neither is server-rendered | Implemented; decision 4 amended for the scores by 0069, and §3 and §6 by 0070 |
+| [0028](0028-a-games-community-view.md) | A game's community view: every score counts, only published reviews are listed, and neither is server-rendered | Implemented; decision 4 amended for the scores by 0069, §3 and §6 by 0070, and §3's floor made the server's by 0094 |
 | [0029](0029-favourites-are-an-axis-and-a-showcase.md) | Favourites are an axis like the wishlist, share its code, and are shown on the profile | Implemented; §4's mark on cards and §6's order amended by 0064 |
 | [0030](0030-ownership-and-notes-belong-to-the-entry.md) | Ownership and notes belong to the entry, stay private, and are written under the game's lock | Implemented |
 | [0031](0031-a-list-rename-is-a-label-its-owner-sees.md) | A list rename is a label, checked as a set, and seen only by its owner | Implemented |
@@ -108,6 +108,8 @@ grow a forward pointer when a later record or an issue closes something it left 
 | [0090](0090-a-password-reset-works-once-for-an-hour-and-ends-every-session.md) | A password reset is a link that works once, for an hour, confirms the address, ends the lockout and every session, and signs nobody in | Implemented |
 | [0091](0091-a-bounce-or-a-complaint-stops-all-mail-to-that-address.md) | A bounce or a complaint stops all mail to that address, in SES, and each one reaches the owner | Implemented; proved only by a deploy |
 | [0092](0092-sign-up-asks-cloudflare-whether-a-person-sent-it-before-anything-else.md) | Sign-up asks Cloudflare's Turnstile whether a person sent it, before anything else | Implemented; proved only by a deploy |
+| [0093](0093-the-ssr-server-holds-an-idle-connection-longer-than-the-balancer.md) | The SSR server holds an idle connection longer than the balancer does: a server of our own, `react-router-serve`'s app, told the balancer's timeout by the stack and refusing to start without it | Implemented; proved only by a deploy |
+| [0094](0094-the-community-figures-are-withheld-below-their-floors-by-the-api.md) | The community figures are withheld below their floors, by the API: the count travels, the figure does not, and the distribution waits for a higher bar | Implemented |
 
 **Status** — *Accepted*: decided, not yet built. *Implemented*: decided and in the code.
 *Superseded*: replaced by a later record.

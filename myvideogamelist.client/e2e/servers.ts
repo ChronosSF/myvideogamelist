@@ -18,8 +18,8 @@ const QUIETER = ['Microsoft.EntityFrameworkCore.Database.Command', 'System.Net.H
 
 /**
  * The two servers under test, started as they are deployed (ADR 0060 §1): the API under `dotnet run`,
- * and the front end's production build under `react-router-serve`, two processes that know nothing of
- * each other. Playwright starts both, waits until each answers, and stops both afterwards. The smoke
+ * and the front end's production build under `server/index.ts`, the server the image runs (ADR 0093),
+ * two processes that know nothing of each other. Playwright starts both, waits until each answers, and stops both afterwards. The smoke
  * test and the Lighthouse audit (ADR 0068) start them the same way, each on its own ports and database.
  *
  * `site` is the origin the browser opens, given to the front end as `SITE_URL` with `SITE_INDEXABLE`
@@ -73,7 +73,7 @@ export function serversUnderTest(
         },
         {
             name: 'SSR',
-            command: 'npx react-router-serve ./build/server/index.js',
+            command: 'node server/index.ts',
             cwd: CLIENT,
             // A static file, so that being ready asks nothing of the API.
             url: `${loopback(ports.ssr)}/favicon.svg`,
@@ -86,6 +86,9 @@ export function serversUnderTest(
                 // Where the loaders reach the API: directly, as they do deployed, not through the
                 // stand-in in front.
                 API_BASE_URL: api,
+                // Required, and here only so that the server starts: no balancer stands in front of it in
+                // this harness, so the value need not be the App stack's, only a valid one (ADR 0093).
+                BALANCER_IDLE_TIMEOUT_SECONDS: '60',
                 ...(site === undefined ? {} : { SITE_URL: site, SITE_INDEXABLE: 'true' }),
             },
         },

@@ -25,7 +25,7 @@ export const IMAGE_SOURCES: readonly string[] = [
 
 /**
  * Headers every server-rendered document carries, whatever it renders, and the resource routes and
- * `.data` responses with them. The static files `react-router-serve` sends itself, and React
+ * `.data` responses with them. The static files `server/serve.ts` sends itself, and React
  * Router's last-resort plain-text 500, carry none of them.
  *
  * The API states its own set (`MyVideoGameList.Server/Security/SecurityHeaders.cs`), and the two

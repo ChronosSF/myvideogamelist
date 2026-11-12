@@ -6,16 +6,24 @@
  * public, on a public profile. See `docs/decisions/0028-*`.
  */
 
-/** Every member's score for one game, mirroring `CommunityScoresDto`. */
+/**
+ * Every member's score for one game, mirroring `CommunityScoresDto`. The count always comes; the
+ * figures only once enough members have scored the game that neither is one member's score
+ * (ADR 0094).
+ */
 export interface CommunityScores {
-    /** How many members have scored the game. */
+    /** How many members have scored the game, at any count. */
     scored: number;
     /**
-     * On the 1–10 scale scores are entered on, and null when nobody has scored the game. Shown out
-     * of 100 through `ratingPercent`, because it is an average of other people (ADR 0021).
+     * On the 1–10 scale scores are entered on, and null under `MIN_MEMBER_SCORES`, nobody at all
+     * included. Shown out of 100 through `ratingPercent`, because it is an average of other people
+     * (ADR 0021).
      */
     mean: number | null;
-    /** Ten buckets; index 0 is the count of 1s. */
+    /**
+     * Ten buckets, index 0 the count of 1s, from `MIN_DISTRIBUTION_SCORES`; empty under it, whatever
+     * the count. `hasMemberDistribution` says which.
+     */
     distribution: number[];
     /**
      * How many members have the game in one of their five lists. Not the same pool as `scored`: a
