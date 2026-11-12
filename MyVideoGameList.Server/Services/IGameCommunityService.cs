@@ -15,7 +15,9 @@ public interface IGameCommunityService
 {
     /// <summary>
     /// Every member's score for the game, and how many members have it in a list, whatever their
-    /// profile visibility: neither names anybody.
+    /// profile visibility: neither names anybody. The mean and the distribution are sent only once
+    /// enough members have scored it for neither to be one member's score
+    /// (<see cref="Models.CommunityFloors"/>).
     /// </summary>
     Task<CommunityScoresDto> GetScoresAsync(int gameId, CancellationToken cancellationToken = default);
 
