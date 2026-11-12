@@ -833,4 +833,8 @@ cite, to where each item lives now. See `docs/decisions/0041-*`.
 `docs/decisions/` records architectural decisions and the reasoning behind them. Read the
 relevant record before changing anything it covers, and add one when you make a call that
 future work would otherwise have to reverse-engineer. The ADRs are why the code is the way it
-is; the issues are what is still to do.
+is; the issues are what is still to do. **A new record takes its pull request's number**, so open the pull
+request before naming the file: `0471-….md` comes from #471. "The next free number" handed
+sessions working in parallel the same one. Records up to 0094 keep theirs, and CI fails on two
+records with one number or one missing from the index (`scripts/check-decisions.mjs`). See
+`docs/decisions/README.md`, "Numbering".

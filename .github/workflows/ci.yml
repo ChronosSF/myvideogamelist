@@ -367,6 +367,12 @@ jobs:
             exit 1
           fi
 
+      # Not a secret, but the other check here that reads the repository rather than building it, in a
+      # job the ruleset already requires: two decision records with one number, which branches written at
+      # the same time used to produce, or a record missing from the index (docs/decisions/README.md).
+      - name: Decision records
+        run: node scripts/check-decisions.mjs
+
   # Both images, built as Deploy dev builds them, less the two build arguments that name the commit
   # (ADR 0059), and pushed nowhere, so that what breaks only an image fails before a merge rather than
   # at the next deploy. vite.config.ts once needed the .NET SDK to build, which GitHub's runners have

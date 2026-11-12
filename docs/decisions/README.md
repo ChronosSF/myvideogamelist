@@ -16,6 +16,22 @@ especially when you rejected a plausible alternative. Records are append-only: t
 decision, write a new record and mark the old one superseded. A record's **Status** line may
 grow a forward pointer when a later record or an issue closes something it left open.
 
+### Numbering
+
+**A new record takes the number of the pull request that adds it**, four digits or more:
+`0471-….md` comes from #471.
+- **Open the pull request first,** a draft if it is not ready, then name the file and anything
+  that cites it.
+- **One record per pull request.** Two decisions made together are two sections of one record.
+- **Why:** a pull request's number is unique and known from the first push, so two branches
+  written at the same time cannot take the same one. "The next free number" let every session
+  started in parallel take the same number, and one of them had to renumber at merge.
+- **What it costs:** the index has gaps, and stays in number order.
+- **Records up to 0094 were numbered in sequence and keep their numbers.**
+- **CI's check:** `node scripts/check-decisions.mjs` fails, in the Secret scan job, on two
+  records with one number, a record missing from the index below, or an index row whose file is
+  gone.
+
 ## Index
 
 | # | Decision | Status |
