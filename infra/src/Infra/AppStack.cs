@@ -1,3 +1,4 @@
+using System.Globalization;
 using Amazon.CDK;
 using Amazon.CDK.AWS.CertificateManager;
 using Amazon.CDK.AWS.EC2;
@@ -23,6 +24,14 @@ public sealed class AppStack : Stack
 {
     private const string Production = "Production";
 
+    /// <summary>
+    /// How long the balancer keeps an idle connection to a target open. The SSR task is given it as
+    /// <c>BALANCER_IDLE_TIMEOUT_SECONDS</c> and keeps its own idle connections longer, so that the
+    /// balancer never sends a request down one the server is closing, which the viewer gets as a 502.
+    /// The server refuses to start without it (ADR 0093).
+    /// </summary>
+    private const int BalancerIdleTimeoutSeconds = 60;
+
     public AppStack(Construct scope, string id, IStackProps props, Site site, IHostedZone zone, DataStack data,
         ICertificate edgeCertificate, string imageTag)
         : base(scope, id, props)
@@ -43,7 +52,7 @@ public sealed class AppStack : Stack
             InternetFacing = true,
             SecurityGroup = data.AlbSecurityGroup,
             VpcSubnets = new SubnetSelection { SubnetGroupName = "alb" },
-            IdleTimeout = Duration.Seconds(60),
+            IdleTimeout = Duration.Seconds(BalancerIdleTimeoutSeconds),
             // The balancer preserves X-Forwarded-For rather than appending CloudFront's address to
             // it, so the right-most entry is the viewer and the API's ForwardLimit stays 1 (D-7).
             // Trustworthy only because nothing but CloudFront reaches the balancer: the prefix list
@@ -243,6 +252,7 @@ public sealed class AppStack : Stack
                 ["API_BASE_URL"] = $"http://api.{site.InternalDomain}:8080",
                 ["SITE_URL"] = $"https://{site.Host}",
                 ["PORT"] = "3000",
+                ["BALANCER_IDLE_TIMEOUT_SECONDS"] = BalancerIdleTimeoutSeconds.ToString(CultureInfo.InvariantCulture),
                 // SITE_INDEXABLE stays unset: every response then says noindex (ADR 0036). HOST
                 // stays unset so the server listens on every interface, which the balancer needs.
             },

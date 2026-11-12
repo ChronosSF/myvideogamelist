@@ -5,7 +5,7 @@ import { PORTS, SITE } from './stand-ins';
 /**
  * The browser smoke test (#105, ADR 0060): sign up, add a game to a list, reload, and it is still
  * there. It runs the two-process shape that is deployed — the front end's production build under
- * `react-router-serve` and the API under `dotnet run`, processes that know nothing of each other — with
+ * `server/index.ts` and the API under `dotnet run`, processes that know nothing of each other — with
  * a stand-in in front of both for what routes between them, and one behind the API for IGDB.
  *
  * `npm run e2e` builds the front end and then runs this; `dotnet run` builds the API. PostgreSQL has
