@@ -441,10 +441,12 @@ jobs:
           keep=$(curl --silent --fail --max-time 2 --output /dev/null --dump-header - http://127.0.0.1:3000/robots.txt \
             | tr -d '\r' | sed -n 's/^keep-alive: *timeout=\([0-9]*\).*/\1/Ip')
           echo "The balancer closes an idle connection after ${idle:-?} s, the SSR server after ${keep:-?} s."
-          if [ -z "$idle" ] || [ -z "$keep" ] || [ "$keep" -le "$idle" ]; then
-            echo "::error::The SSR server's keep-alive has to outlast the balancer's idle timeout (ADR 0093)."
-            exit 1
+          # Passes only on two numbers in the right order: a missing or unreadable one fails.
+          if [ -n "$idle" ] && [ -n "$keep" ] && [ "$keep" -gt "$idle" ]; then
+            exit 0
           fi
+          echo "::error::The SSR server's keep-alive has to outlast the balancer's idle timeout (ADR 0093)."
+          exit 1
 
   # The CDK app compiles, so a construct renamed by a library bump or a stack edited without
   # building is caught here rather than on the next deploy. Synthesis is not run: it needs
