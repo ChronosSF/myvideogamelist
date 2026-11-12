@@ -48,8 +48,8 @@ test and the Lighthouse audit share. `server/serve.ts` sets two numbers on the s
 `BALANCER_IDLE_TIMEOUT_MS` restates the stack's 60, and the keep-alive is derived from it. Two checks keep
 the two files in agreement. `server/serve.test.ts` reads `AppStack.cs` and fails when the numbers differ.
 CI's Images job starts the built image and reads the `Keep-Alive: timeout=` it sends. The job fails unless
-that value is above the stack's `IdleTimeout`. Raise the balancer's timeout alone and both fail. Lower the
-server's alone and CI fails.
+that value is above the stack's `IdleTimeout`. Raise the balancer's timeout alone, or lower the server's,
+and both fail.
 
 ### 2. It is `react-router-serve`'s app, put together from the same packages
 
