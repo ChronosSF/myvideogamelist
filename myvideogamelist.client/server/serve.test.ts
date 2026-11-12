@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { request, type IncomingMessage, type Server } from 'node:http';
 import { connect, type AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -8,18 +8,22 @@ import express from 'express';
 import type { ServerBuild } from 'react-router';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
-    BALANCER_IDLE_TIMEOUT_MS,
+    balancerIdleTimeoutMs,
     close,
     createApp,
-    HEADERS_TIMEOUT_MS,
-    KEEP_ALIVE_TIMEOUT_MS,
+    headersTimeoutMs,
+    keepAliveTimeoutMs,
     listen,
 } from './serve.ts';
 
 /**
  * The SSR server's keep-alive against the balancer's idle timeout (ADR 0093). CI's Images job asks the
- * built image the same question over the wire.
+ * built image the same questions over the wire: whether it refuses to start without the timeout, and
+ * what keep-alive it announces with one.
  */
+
+/** The balancer's idle timeout the tests give the server: the App stack's today, though any would do. */
+const BALANCER = 60_000;
 
 let running: Server | undefined;
 
@@ -32,7 +36,7 @@ afterEach(async () => {
 });
 
 async function serve(app: express.Express): Promise<string> {
-    running = await listen(app, 0, '127.0.0.1');
+    running = await listen(app, { port: 0, host: '127.0.0.1', balancerIdleTimeout: BALANCER });
     return `http://127.0.0.1:${(running.address() as AddressInfo).port}`;
 }
 
@@ -45,18 +49,33 @@ function get(url: string, headers: Record<string, string> = {}): Promise<Incomin
     });
 }
 
-describe('the keep-alive', () => {
-    it('assumes the balancer idle timeout infra/src/Infra/AppStack.cs gives it', () => {
-        const stack = readFileSync(new URL('../../infra/src/Infra/AppStack.cs', import.meta.url), 'utf8');
-        const seconds = /IdleTimeout = Duration\.Seconds\((\d+)\)/.exec(stack)?.[1];
-
-        expect(seconds, 'no IdleTimeout in AppStack.cs').toBeDefined();
-        expect(Number(seconds) * 1_000).toBe(BALANCER_IDLE_TIMEOUT_MS);
+describe('the balancer idle timeout', () => {
+    it('is read as a whole number of seconds', () => {
+        expect(balancerIdleTimeoutMs('60')).toBe(60_000);
+        expect(balancerIdleTimeoutMs('1')).toBe(1_000);
+        expect(balancerIdleTimeoutMs('4000')).toBe(4_000_000);
     });
 
-    it('outlasts the balancer, and the headers timeout outlasts the keep-alive', () => {
-        expect(KEEP_ALIVE_TIMEOUT_MS).toBeGreaterThan(BALANCER_IDLE_TIMEOUT_MS);
-        expect(HEADERS_TIMEOUT_MS).toBeGreaterThan(KEEP_ALIVE_TIMEOUT_MS);
+    it.each([
+        ['unset', undefined],
+        ['empty', ''],
+        ['blank', '  '],
+        ['not a number', 'sixty'],
+        ['not whole', '60.5'],
+        ['zero', '0'],
+        ['negative', '-60'],
+        ['past what a balancer allows', '4001'],
+    ])('stops the server starting when %s', (_case, value) => {
+        expect(() => balancerIdleTimeoutMs(value)).toThrow(/BALANCER_IDLE_TIMEOUT_SECONDS/);
+    });
+});
+
+describe('the keep-alive', () => {
+    it.each([1_000, 60_000, 4_000_000])('outlasts a balancer of %i ms, and the headers timeout outlasts it', balancer => {
+        const keepAlive = keepAliveTimeoutMs(balancer);
+
+        expect(keepAlive).toBeGreaterThan(balancer);
+        expect(headersTimeoutMs(keepAlive)).toBeGreaterThan(keepAlive);
     });
 
     it('is what a listening server keeps, and what it tells the client', async () => {
@@ -66,12 +85,12 @@ describe('the keep-alive', () => {
         });
         const origin = await serve(app);
 
-        expect(running?.keepAliveTimeout).toBe(KEEP_ALIVE_TIMEOUT_MS);
-        expect(running?.headersTimeout).toBe(HEADERS_TIMEOUT_MS);
+        expect(running?.keepAliveTimeout).toBe(keepAliveTimeoutMs(BALANCER));
+        expect(running?.headersTimeout).toBe(headersTimeoutMs(keepAliveTimeoutMs(BALANCER)));
 
         const response = await get(origin);
         expect(response.headers.connection).toBe('keep-alive');
-        expect(response.headers['keep-alive']).toBe(`timeout=${KEEP_ALIVE_TIMEOUT_MS / 1_000}`);
+        expect(response.headers['keep-alive']).toBe(`timeout=${keepAliveTimeoutMs(BALANCER) / 1_000}`);
     });
 });
 

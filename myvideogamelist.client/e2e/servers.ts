@@ -86,6 +86,9 @@ export function serversUnderTest(
                 // Where the loaders reach the API: directly, as they do deployed, not through the
                 // stand-in in front.
                 API_BASE_URL: api,
+                // Required, and here only so that the server starts: no balancer stands in front of it in
+                // this harness, so the value need not be the App stack's, only a valid one (ADR 0093).
+                BALANCER_IDLE_TIMEOUT_SECONDS: '60',
                 ...(site === undefined ? {} : { SITE_URL: site, SITE_INDEXABLE: 'true' }),
             },
         },

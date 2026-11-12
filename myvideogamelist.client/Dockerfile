@@ -8,8 +8,9 @@
 #
 # Two stages: a full `node:24` to build, and `node:24-slim` to run. Nothing environment-specific
 # is baked in: API_BASE_URL, SITE_URL and SITE_INDEXABLE come from the task definition (ADR 0036,
-# 0044). The build needs no .NET SDK and no dev certificate, because vite.config.ts does its
-# certificate work only when Vite's command is `serve`.
+# 0044), and so does BALANCER_IDLE_TIMEOUT_SECONDS, which has no default here on purpose: without it
+# the server does not start (ADR 0093). The build needs no .NET SDK and no dev certificate, because
+# vite.config.ts does its certificate work only when Vite's command is `serve`.
 
 FROM node:24 AS build
 WORKDIR /app

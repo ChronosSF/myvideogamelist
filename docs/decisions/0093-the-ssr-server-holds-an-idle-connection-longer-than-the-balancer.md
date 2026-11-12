@@ -7,7 +7,7 @@ of [#109](https://github.com/ChronosSF/myvideogamelist/issues/109).
 ## Context
 
 - **The balancer reuses its connections to a target.** Between requests it keeps each one open for up to its
-  idle timeout. Ours is 60 seconds (`IdleTimeout` in `infra/src/Infra/AppStack.cs`), which is also AWS's
+  idle timeout. Ours is 60 seconds (`BalancerIdleTimeoutSeconds` in `infra/src/Infra/AppStack.cs`), which is also AWS's
   default.
 - **The SSR server closed them after five.** The image ran `react-router-serve`, which builds its Express app
   and its Node HTTP server inside its own `run()` and returns neither. In `@react-router/serve` 8.5.0's
@@ -29,29 +29,55 @@ of [#109](https://github.com/ChronosSF/myvideogamelist/issues/109).
 
 ## Decision
 
-### 1. A server of our own keeps an idle connection for 65 seconds
+### 1. A server of our own keeps an idle connection 5 seconds longer than the balancer
 
 `server/index.ts` is the SSR server. The image runs it, and so do `npm start` and the harness that the smoke
-test and the Lighthouse audit share. `server/serve.ts` sets two numbers on the server before it listens:
+test and the Lighthouse audit share. `server/serve.ts` sets two numbers on the server before it listens,
+both worked out from the balancer's idle timeout, 60 seconds today:
 
-- **`keepAliveTimeout` is the balancer's 60 seconds plus 5.** The balancer is then always the side that
-  closes an idle connection, so it never sends a request down one that is closing. Any value over 60 closes
-  the gap. The 5 is a margin, not a measurement. Node also adds `keepAliveTimeoutBuffer` (one second by
-  default, since 24.6) to the socket's own timeout. The `Keep-Alive` header still says 65.
-- **`headersTimeout` is 66 seconds.** Node 24 times only a request whose headers have started to arrive, so
-  an idle connection never meets this. Seen on 24.22.1: with `headersTimeout` at one second and the
-  keep-alive at ten, an idle connection stayed open, while one that had sent half its headers got a 408 after
-  a second. The value stays above the keep-alive anyway, as #439 asks, in case Node ever times it from
-  somewhere else. Node's default, 60 seconds, would sit below the keep-alive. The cost is that a client
+- **`keepAliveTimeout` is the balancer's timeout plus 5 seconds, 65 today.** The balancer is then always the
+  side that closes an idle connection, so it never sends a request down one that is closing. Anything over
+  the balancer's closes the gap. The 5 is a margin, not a measurement. Node also adds
+  `keepAliveTimeoutBuffer` (one second by default, since 24.6) to the socket's own timeout. The `Keep-Alive`
+  header still says 65.
+- **`headersTimeout` is one second more, 66 today.** Node 24 times only a request whose headers have started
+  to arrive, so an idle connection never meets this. Seen on 24.22.1: with `headersTimeout` at one second
+  and the keep-alive at ten, an idle connection stayed open, while one that had sent half its headers got a
+  408 after a second. The value stays above the keep-alive anyway, as #439 asks, in case Node ever times it
+  from somewhere else. Node's default, 60 seconds, would sit below the keep-alive. The cost is that a client
   sending its headers slowly is cut off at 66 seconds, not 60.
 
-`BALANCER_IDLE_TIMEOUT_MS` restates the stack's 60, and the keep-alive is derived from it. Two checks keep
-the two files in agreement. `server/serve.test.ts` reads `AppStack.cs` and fails when the numbers differ.
-CI's Images job starts the built image and reads the `Keep-Alive: timeout=` it sends. The job fails unless
-that value is above the stack's `IdleTimeout`. Raise the balancer's timeout alone, or lower the server's,
-and both fail.
+### 2. The stack tells the server the balancer's timeout, and the server will not start without it
 
-### 2. It is `react-router-serve`'s app, put together from the same packages
+`BalancerIdleTimeoutSeconds` in `AppStack.cs` is the one place the number is written. The stack gives it to
+the balancer as `IdleTimeout` and to the SSR task as `BALANCER_IDLE_TIMEOUT_SECONDS`, beside `PORT` and
+`API_BASE_URL`. So a deployed server's keep-alive follows the balancer by construction: raise one and the
+next deploy raises the other. The variable carries the balancer's fact rather than the keep-alive, so the
+stack says only what is true of the balancer, and the server keeps its own rule of 5 seconds more.
+
+**It has no default.** A server started without it, or with anything but a whole number of seconds in the
+balancer's range (1 to 4000, as AWS states it), logs why and exits 1. CI cannot see the variable is set:
+it never synthesizes the stacks, and the CDK app has no tests of its own. So a misspelt name would pass every
+check. With a default, that server would serve on the default: harmless at today's 60, and this ADR's 502
+again the day the balancer outgrows it, with nothing failing. Without one, the misspelt name fails the deploy
+that brought it. The new task never passes its health check, and the circuit breaker rolls it back while the
+old task keeps serving. That is the repository's rule for a setting a deployment cannot do without, as for
+the email sender (0088) and the key ring (0043).
+
+Everything that starts the server sets the variable. The harness and CI's image job give it 60, which need
+not match the stack, since no balancer stands in front of either; `npm start` needs it in the shell. CI's
+Images job checks the built image twice: started with none of a task definition's configuration, it has to
+exit with an error that names the variable; started with the variable, the `Keep-Alive: timeout=` it sends
+has to be above the value it was given. `serve.test.ts` checks what the variable may hold, and that a
+listening server keeps and announces the keep-alive worked out from it.
+
+**Rejected: the number restated in TypeScript.** The first version of this change kept
+`BALANCER_IDLE_TIMEOUT_MS = 60_000` in `serve.ts`. A unit test and a CI step each read
+`IdleTimeout = Duration.Seconds(…)` out of `AppStack.cs` as text and failed when the two differed. That caught
+drift before a merge, but the number still lived in two languages, and both checks would fail on a harmless
+rewrite of that line.
+
+### 3. It is `react-router-serve`'s app, put together from the same packages
 
 This changes nothing else the server does. `createApp` builds the Express app `react-router-serve` 8.5 built,
 piece by piece and in the same order:
@@ -82,7 +108,7 @@ Four things it does differently, on purpose:
 - **The build is found from the server's own location**, not from the working directory. In the image and
   in both harnesses the two are the same directory.
 
-### 3. Node runs it as TypeScript
+### 4. Node runs it as TypeScript
 
 Nothing compiles the server, and it is not part of the build: the image copies `server/` beside `build/`, and
 leaves out its test. `tsconfig.server.json` keeps the code to what Node can strip. It turns on
@@ -90,7 +116,7 @@ leaves out its test. `tsconfig.server.json` keeps the code to what Node can stri
 checks it. `index.ts` sets `NODE_ENV` to `production` when it is unset, before anything loads React, as
 `react-router-serve`'s own entry did. That is why it imports `serve.ts` dynamically.
 
-### 4. Stopping ends the connections the long keep-alive would hold
+### 5. Stopping ends the connections the long keep-alive would hold
 
 On a stop signal, `server.close()` ends the connections that are idle and leaves the busy ones alone. A
 connection that was busy goes idle once it has answered. It would then stay open for the whole 65 seconds:
@@ -98,13 +124,16 @@ seen on 24.22.1, with nothing ending it. ECS kills a Fargate container 30 second
 unless the task definition's `stopTimeout` says otherwise, and ours does not. Five seconds of keep-alive hid
 this. So `close` also ends idle connections every second until the last one has gone. `serve.test.ts` holds
 this: a connection that is mid-response when the server closes ends within two seconds of its answer. The
-image built from this stops in under a second while the balancer would still be holding a connection, and
-exits 0.
+image stops in under a second while a connection is held open as the balancer would hold it, and exits 0.
 
 ## Consequences
 
-- **Neither timeout moves alone.** The balancer's idle timeout and the server's keep-alive are one decision.
-  CLAUDE.md says so, and both checks fail when the two drift apart.
+- **The balancer's timeout is changed in one place, and the server follows it.** But not at once: a deploy
+  that raises it changes the balancer while the old task still serves with its old keep-alive, until the
+  rollout replaces it. For those few minutes the 502 this ADR removes can come back. Lowering it is always
+  safe.
+- **Every way of starting the server has to say the balancer's timeout**, `npm start` included. That is the
+  price of a missing variable failing a deploy instead of passing one.
 - **A React Router major means re-reading `react-router-serve`'s `cli.ts`.** Anything it starts doing then
   does not reach this server on its own. This is the same kind of duty as re-diffing `entry.server.tsx`
   against `react-router reveal`'s output ([0053](0053-a-documents-scripts-carry-its-renders-nonce.md)).

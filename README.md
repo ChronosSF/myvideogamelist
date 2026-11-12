@@ -108,9 +108,11 @@ dotnet format MyVideoGameList.slnx                                              
 
 ### Serving the production build
 
-`npm start` runs the SSR server the image runs, `server/index.ts`, on port 3000. It renders pages correctly — server-side
-loaders call the API directly via `API_BASE_URL` — but it does **not** proxy `/api`, so any
-request the browser makes will 404.
+`npm start` runs the SSR server the image runs, `server/index.ts`, on port 3000. It will not start
+without `BALANCER_IDLE_TIMEOUT_SECONDS`, which a deployment's task definition sets from the
+balancer's own setting (ADR 0093); locally any whole number of seconds will do, such as `60`. It
+renders pages correctly — server-side loaders call the API directly via `API_BASE_URL` — but it
+does **not** proxy `/api`, so any request the browser makes will 404.
 
 That is the correct production shape: the SSR server is not meant to be the API gateway. To
 exercise the built app end to end locally you need something in front of both, for example

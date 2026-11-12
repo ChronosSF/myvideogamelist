@@ -4,7 +4,8 @@
  * compiled for it and it sits outside the build (ADR 0093).
  *
  * `PORT` is the port, 3000 when it is unset. `HOST` is the address to listen on, every interface when
- * it is unset, which is what the balancer needs.
+ * it is unset, which is what the balancer needs. `BALANCER_IDLE_TIMEOUT_SECONDS` is the balancer's idle
+ * timeout, which the App stack sets and nothing defaults: without it the server does not start.
  */
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -14,7 +15,10 @@ import type { ServerBuild } from 'react-router';
 // react-router-serve's own entry does. The image and both harnesses set it already; `npm start` may not.
 process.env.NODE_ENV ??= 'production';
 
-const { close, createApp, listen } = await import('./serve.ts');
+const { BALANCER_IDLE_TIMEOUT_VARIABLE, balancerIdleTimeoutMs, close, createApp, listen } = await import('./serve.ts');
+
+// First, before anything slower: a deployment that does not say it fails here, at startup (ADR 0093).
+const balancerIdleTimeout = balancerIdleTimeoutMs(process.env[BALANCER_IDLE_TIMEOUT_VARIABLE]);
 
 /** The client's directory, which the build's own paths are relative to, wherever this is started from. */
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
@@ -26,8 +30,11 @@ const port = process.env.PORT === undefined ? 3000 : Number(process.env.PORT);
 if (!Number.isInteger(port)) throw new Error(`PORT is not a port number: ${process.env.PORT}`);
 const host = process.env.HOST || undefined;
 
-const server = await listen(app, port, host);
-console.log(`[ssr] listening on http://${host ?? 'localhost'}:${port}`);
+const server = await listen(app, { port, host, balancerIdleTimeout });
+console.log(
+    `[ssr] listening on http://${host ?? 'localhost'}:${port}, keeping an idle connection ${server.keepAliveTimeout / 1_000} s ` +
+        `against the balancer's ${balancerIdleTimeout / 1_000} s`,
+);
 
 // ECS stops a task with SIGTERM, and Ctrl+C is SIGINT. Closing the listener lets the process end on its
 // own once its connections have, rather than at the kill that follows thirty seconds later.

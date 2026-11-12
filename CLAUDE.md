@@ -130,15 +130,18 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   sends the origin-verify header; the site is behind basic auth at the edge, with three public
   aggregate endpoints exempt. See `docs/decisions/0044-*`, `0046-*` and `infra/README.md`.
 
-- **The SSR server holds an idle connection 65 seconds because the balancer holds one 60, and neither
-  number moves alone.** The server has to be the side that holds on longer. When Node closes first, the
-  balancer can send a request down a connection that is closing, and the viewer gets a 502 that no log of
-  ours records. Node's default is five seconds, and `react-router-serve` had no way to change it. So the
-  server is our own, `server/index.ts`, which Node runs as TypeScript, in the image, `npm start` and both
-  harnesses. `BALANCER_IDLE_TIMEOUT_MS` in `server/serve.ts` restates `IdleTimeout` in `AppStack.cs`, and
-  the keep-alive is worked out from it: change one with the other, or `serve.test.ts` and CI's Images job
-  fail. `createApp` is `react-router-serve`'s app, piece by piece, so a React Router major means re-reading
-  that package's `cli.ts`. See `docs/decisions/0093-*`.
+- **The SSR server holds an idle connection 5 seconds longer than the balancer, which the stack tells it,
+  and it does not start without being told.** The server has to be the side that holds on longer. When Node
+  closes first, the balancer can send a request down a connection that is closing, and the viewer gets a 502
+  that no log of ours records. Node's default is five seconds, and `react-router-serve` had no way to change
+  it. So the server is our own, `server/index.ts`, which Node runs as TypeScript, in the image, `npm start`
+  and both harnesses. `BalancerIdleTimeoutSeconds` in `AppStack.cs` is the one place the number is written:
+  the stack gives it to the balancer and to the SSR task as `BALANCER_IDLE_TIMEOUT_SECONDS`. **Never give
+  that variable a default**, in the server or the Dockerfile. CI never sees the task definition, so a
+  default would let a misspelt name deploy a server on a guess; without one, that deploy fails and rolls
+  back. Raising the timeout is a deploy whose old task keeps its old keep-alive until it is replaced; lowering
+  it is always safe. `createApp` is `react-router-serve`'s app, piece by piece, so a React Router major means
+  re-reading that package's `cli.ts`. See `docs/decisions/0093-*`.
 
 - **CI gates every pull request, whatever branch it targets, and an advisory can turn it red
   overnight.** Beside the builds and tests it checks the formatting, audits every package (NuGet's at
