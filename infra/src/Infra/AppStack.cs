@@ -148,13 +148,20 @@ public sealed class AppStack : Stack
     private (FargateTaskDefinition Task, ContainerDefinition Container) ApiTask(
         Site site, DataStack data, ISelectedSubnets albSubnets, string imageTag, LogGroup logs)
     {
-        var task = Task(site, "api");
+        // Named, because the production account's email role trusts it by its ARN, and a resume
+        // makes it anew (ADR 0088). Everything else about it is what the task definition would
+        // have made.
+        var task = Task(site, "api", new Role(this, "apiTaskRole", new RoleProps
+        {
+            RoleName = site.ApiTaskRoleName,
+            AssumedBy = new ServicePrincipal("ecs-tasks.amazonaws.com"),
+        }));
 
         // The ring that signs the cookie lives in Parameter Store under this path, and the task role
         // may read and write beneath it and nowhere else in the store (ADR 0043). The repository is
         // built on the first protect, not at boot, so a wrong policy fails the first sign-in. The
-        // one other thing the role may do is invalidate this stack's distribution, granted in the
-        // constructor once the distribution exists (ADR 0058).
+        // role may also invalidate this stack's distribution, granted in the constructor once the
+        // distribution exists (ADR 0058), and send email as the production account's role, below.
         var parameterArn = $"arn:{Aws.PARTITION}:ssm:{Region}:{Account}:parameter{site.DataProtectionPath}";
         task.TaskRole.AddToPrincipalPolicy(new PolicyStatement(new PolicyStatementProps
         {
@@ -187,9 +194,37 @@ public sealed class AppStack : Stack
                 ["PGPASSWORD"] = Amazon.CDK.AWS.ECS.Secret.FromSecretsManager(data.DbSecret, "password"),
                 ["Igdb__ClientId"] = Amazon.CDK.AWS.ECS.Secret.FromSecretsManager(data.IgdbSecret, "ClientId"),
                 ["Igdb__ClientSecret"] = Amazon.CDK.AWS.ECS.Secret.FromSecretsManager(data.IgdbSecret, "ClientSecret"),
+                // Both halves of the sign-up's check (ADR 0092). The site key is public, and the API hands it to
+                // the page; it lives beside the secret so that one widget's pair is set in one place.
+                ["Turnstile__SiteKey"] = Amazon.CDK.AWS.ECS.Secret.FromSecretsManager(data.TurnstileSecret, "SiteKey"),
+                ["Turnstile__SecretKey"] = Amazon.CDK.AWS.ECS.Secret.FromSecretsManager(data.TurnstileSecret, "SecretKey"),
             },
             Logging = Logging(logs, "api"),
         });
+
+        // Email goes through the production account's SES, which has production access (ADR 0088),
+        // in the one Region the domain is verified in, whichever this stack is deployed to. The API
+        // sends from EmailIdentity.FromAddress by default, the constant the grant below and the
+        // production account's email role are both conditioned on.
+        container.AddEnvironment("Email__Ses__Region", Site.EmailRegion);
+        // Where an email's links lead: the host the distribution answers, never the request's (ADR 0089).
+        container.AddEnvironment("Email__SiteUrl", $"https://{site.Host}");
+        if (site.IsProduction)
+        {
+            // Production sends as its own task role, with the statement the dev role is granted.
+            task.TaskRole.AddToPrincipalPolicy(EmailStack.SendFromNoReply());
+        }
+        else
+        {
+            // Every other environment sends as the production account's role.
+            container.AddEnvironment("Email__Ses__RoleArn", site.EmailRoleArn);
+            task.TaskRole.AddToPrincipalPolicy(new PolicyStatement(new PolicyStatementProps
+            {
+                Sid = "SendEmailAsProduction",
+                Actions = ["sts:AssumeRole"],
+                Resources = [site.EmailRoleArn],
+            }));
+        }
 
         return (task, container);
     }
@@ -231,13 +266,17 @@ public sealed class AppStack : Stack
             HealthCheck = new Amazon.CDK.AWS.ElasticLoadBalancingV2.HealthCheck { Path = healthPath },
         });
 
-    private FargateTaskDefinition Task(Site site, string name) =>
+    /// <summary>
+    /// A task definition; its role is <paramref name="taskRole"/>, or one the definition makes.
+    /// </summary>
+    private FargateTaskDefinition Task(Site site, string name, IRole? taskRole = null) =>
         // The smallest Fargate size; neither process has been measured (ADR 0044).
         new(this, $"{name}Task", new FargateTaskDefinitionProps
         {
             Family = $"{site.Prefix}-{name}",
             Cpu = 256,
             MemoryLimitMiB = 512,
+            TaskRole = taskRole,
         });
 
     private LogGroup LogGroup(Site site, string name) =>

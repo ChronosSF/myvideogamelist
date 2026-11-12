@@ -131,8 +131,9 @@ that are easy to get wrong and were got wrong once (`docs/decisions/0022-*`):
   with `useListPending`, or `usePendingIn` in a memoised row or tile that must not read the lists
   context. It reaches a component one render after the lists, so draw a lock and refuse a press by it,
   but never set state from it: a component that keeps a game on screen while its own write is out keeps
-  its own record of that write, as the play-next picker does. The layout and the sorts are `useListView`, read only by the lists page, so a change of order
-  reaches no card. See `docs/decisions/0086-*`.
+  its own record of that write, as the play-next picker does. The layout and the sorts are
+  `useListView`, read only by the lists page, so a change of order reaches no card. See
+  `docs/decisions/0086-*`.
 
 ## State & effects
 

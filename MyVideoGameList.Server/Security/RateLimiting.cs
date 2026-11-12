@@ -9,13 +9,15 @@ namespace MyVideoGameList.Server.Security;
 /// </summary>
 /// <remarks>
 /// <para>
-/// Only the endpoints that accept a password are limited, and the limit partitions by client
-/// address. That is deliberately narrow: the front end renders on a server of its own
+/// Only the endpoints that accept a password are limited, and the two that send an email to whatever
+/// account they are given, the confirmation's resend (ADR 0089) and the password reset's request (ADR
+/// 0090); the limit partitions by client address. Not the reset itself, which takes a password but needs a
+/// token nobody can guess, so there is nothing for a limit to stop (ADR 0090 §7). That is deliberately narrow: the front end renders on a server of its own
 /// (<c>docs/decisions/0003-two-process-deployment.md</c>), so every loader fetch reaches this API
 /// from that one process. A limit applied to the whole API and partitioned by address would put
 /// every visitor's server render into a single bucket and throttle the site as though it were one
-/// abusive client. Browsers call <c>/api/auth/login</c> and <c>/api/auth/register</c> directly and
-/// nothing else does, which is what makes the address a meaningful partition here and nowhere
+/// abusive client. Browsers call <c>/api/auth/login</c>, <c>/api/auth/register</c>,
+/// <c>/api/auth/resend-confirmation</c> and <c>/api/auth/forgot-password</c> directly and nothing else does, which is what makes the address a meaningful partition here and nowhere
 /// else yet. Volume control for the rest belongs at the edge, with the CDN in front of it.
 /// </para>
 /// <para>

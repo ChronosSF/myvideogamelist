@@ -72,7 +72,7 @@ grow a forward pointer when a later record or an issue closes something it left 
 | [0050](0050-an-imported-run-takes-its-type-from-the-source.md) | An imported run takes its type from the source's completion level | Implemented |
 | [0051](0051-admin-statistics-are-counted-never-listed.md) | Admin statistics are counted, never listed | Implemented |
 | [0052](0052-a-background-refresh-ahead-of-the-reader.md) | A background refresh: cached games an hour before a reader would, Steam feeds before they expire | Implemented; its wait across IGDB sizes 0079's idle limit |
-| [0053](0053-a-documents-scripts-carry-its-renders-nonce.md) | A document's scripts carry its render's nonce, and a shared cache keeps the pair whole | Implemented |
+| [0053](0053-a-documents-scripts-carry-its-renders-nonce.md) | A document's scripts carry its render's nonce, and a shared cache keeps the pair whole | Implemented; the first host its `script-src` names is 0092 |
 | [0054](0054-a-hand-arranged-order-is-a-sparse-position.md) | A hand-arranged order is a sparse position the client computes, and a change of list clears it | Implemented; §9 answered for the favourites by 0064; steady handles by 0086 §5 |
 | [0056](0056-an-avatar-is-an-address-on-a-short-list-of-hosts.md) | An avatar is an address on a short list of hosts, which the document policy's `img-src` names too; a display name stands beside the handle; a bio is plain text | Implemented; the navbar's avatar is #370, the member reviews' #371 |
 | [0057](0057-the-api-is-tested-over-a-real-postgresql.md) | The API is tested over a real PostgreSQL: one container a run, a database a class, and IGDB out of reach | Implemented; the export-snapshot test went in skipped and runs since #263; the front end it left to #105 is 0060 |
@@ -103,6 +103,11 @@ grow a forward pointer when a later record or an issue closes something it left 
 | [0084](0084-the-readers-controls-in-the-hero-everything-else-in-tabs.md) | The reader's controls in the hero and everything else in tabs, on the game page and the profile; a game's series, remakes and editions beside it | Implemented |
 | [0085](0085-the-pixel-matrix-in-the-accent-is-the-default-look.md) | The pixel matrix in the accent is the default look, and every pattern's glow is a fifth fainter | Implemented |
 | [0086](0086-the-lists-context-is-held-steady-and-its-writes-read-the-last-commit.md) | The lists context is held steady: the layout and the sorts in a context of their own, every write one function that reads the render last committed and commits its answer before it resolves, and the locks a store each row reads for its own game, so a sort or a save draws only what changed | Implemented |
+| [0088](0088-email-goes-through-productions-ses-and-a-deployment-with-no-sender-does-not-start.md) | Email goes through production's SES, as a role dev assumes, and a deployment with no sender does not start | Implemented; proved only by a deploy |
+| [0089](0089-an-account-signs-in-once-its-address-is-confirmed.md) | An account signs in once its address is confirmed, by a link whose token never reaches a server | Implemented |
+| [0090](0090-a-password-reset-works-once-for-an-hour-and-ends-every-session.md) | A password reset is a link that works once, for an hour, confirms the address, ends the lockout and every session, and signs nobody in | Implemented |
+| [0091](0091-a-bounce-or-a-complaint-stops-all-mail-to-that-address.md) | A bounce or a complaint stops all mail to that address, in SES, and each one reaches the owner | Implemented; proved only by a deploy |
+| [0092](0092-sign-up-asks-cloudflare-whether-a-person-sent-it-before-anything-else.md) | Sign-up asks Cloudflare's Turnstile whether a person sent it, before anything else | Implemented; proved only by a deploy |
 
 **Status** — *Accepted*: decided, not yet built. *Implemented*: decided and in the code.
 *Superseded*: replaced by a later record.

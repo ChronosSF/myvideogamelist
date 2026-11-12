@@ -1,6 +1,7 @@
 import { fileURLToPath } from 'node:url';
 import type { PlaywrightTestConfig } from '@playwright/test';
-import { IGDB_CLIENT, loopback, type HarnessPorts } from './stand-ins';
+import { outboxFor } from './outbox';
+import { IGDB_CLIENT, loopback, TURNSTILE, TURNSTILE_SITEVERIFY, type HarnessPorts } from './stand-ins';
 
 /** Resolved from this file, so that a config anywhere can start the servers. */
 const API_PROJECT = fileURLToPath(new URL('../../MyVideoGameList.Server', import.meta.url));
@@ -59,6 +60,15 @@ export function serversUnderTest(
                 Igdb__TokenUrl: `${igdb}/oauth2/token`,
                 Igdb__ClientId: IGDB_CLIENT.id,
                 Igdb__ClientSecret: IGDB_CLIENT.secret,
+                // Every email into a folder of this harness's own, which the tests read a confirmation
+                // link from, with links to the origin the browser opens (ADR 0088, 0089).
+                Email__OutboxPath: outboxFor(ports),
+                Email__SiteUrl: site ?? `http://localhost:${ports.distribution}`,
+                // Cloudflare's test keys, over any a developer's user secrets hold, and its siteverify
+                // stood in for beside IGDB's, so the sign-up's check reaches no third party (ADR 0092).
+                Turnstile__SiteKey: TURNSTILE.siteKey,
+                Turnstile__SecretKey: TURNSTILE.secret,
+                Turnstile__SiteVerifyUrl: `${igdb}${TURNSTILE_SITEVERIFY}`,
             },
         },
         {

@@ -88,7 +88,8 @@ public class UserDataExporterTests
         string? avatarUrl = null,
         string? bio = null,
         DateTimeOffset? createdAt = null,
-        DateTimeOffset? lastSeenAt = null)
+        DateTimeOffset? lastSeenAt = null,
+        DateTimeOffset? sessionsEndedAt = null)
     {
         db.Users.Add(new ApplicationUser
         {
@@ -106,7 +107,8 @@ public class UserDataExporterTests
             AvatarUrl = avatarUrl,
             Bio = bio,
             CreatedAt = createdAt,
-            LastSeenAt = lastSeenAt
+            LastSeenAt = lastSeenAt,
+            SessionsEndedAt = sessionsEndedAt
         });
         db.SaveChanges();
     }
@@ -364,14 +366,15 @@ public class UserDataExporterTests
     }
 
     [Fact]
-    public async Task ExportAsync_Account_CarriesWhenItWasCreatedAndLastSeen()
+    public async Task ExportAsync_Account_CarriesWhenItWasCreatedLastSeenAndLastReset()
     {
         // Recorded about the user rather than entered by them, which is the stronger reason the export
-        // owes them (ADR 0051). An account from before they were recorded exports them as null.
+        // owes them (ADR 0051, ADR 0090). An account from before they were recorded exports them as null.
         using var db = NewDb();
         var createdAt = new DateTimeOffset(2026, 3, 1, 9, 0, 0, TimeSpan.Zero);
         var lastSeenAt = new DateTimeOffset(2026, 6, 14, 18, 30, 0, TimeSpan.Zero);
-        AddAccount(db, UserId, "mine@test.local", createdAt: createdAt, lastSeenAt: lastSeenAt);
+        var sessionsEndedAt = new DateTimeOffset(2026, 6, 2, 7, 15, 0, TimeSpan.Zero);
+        AddAccount(db, UserId, "mine@test.local", createdAt: createdAt, lastSeenAt: lastSeenAt, sessionsEndedAt: sessionsEndedAt);
         AddAccount(db, OtherUserId, "older@test.local", userName: "older");
 
         var export = await NewExporter(db).ExportAsync(UserId, default);
@@ -379,8 +382,10 @@ public class UserDataExporterTests
 
         Assert.Equal(createdAt, export.Account.CreatedAt);
         Assert.Equal(lastSeenAt, export.Account.LastSeenAt);
+        Assert.Equal(sessionsEndedAt, export.Account.SessionsEndedAt);
         Assert.Null(older.Account.CreatedAt);
         Assert.Null(older.Account.LastSeenAt);
+        Assert.Null(older.Account.SessionsEndedAt);
     }
 
     [Fact]
