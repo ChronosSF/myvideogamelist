@@ -2,7 +2,10 @@
 
 **Status:** Implemented. OpenTelemetry and the alarms are still
 [#103](https://github.com/ChronosSF/myvideogamelist/issues/103); this is the part of it that needs no
-change to the environment.
+change to the environment. The alarms are
+[0080](0080-an-alarm-watches-what-a-reader-sees-and-mails-an-address-nobody-commits.md), which takes the
+5xx rate and latency from the balancer rather than from §4's request line, and IGDB's failures from a
+line of their own.
 **Amends:** [0034](0034-failing-in-one-shape.md) §5, whose `traceId` was ASP.NET's request identifier
 
 ## Context

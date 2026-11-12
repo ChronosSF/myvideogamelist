@@ -9,6 +9,7 @@ using Amazon.CDK.AWS.Route53;
 using Amazon.CDK.AWS.SecretsManager;
 using Amazon.CDK.AWS.ServiceDiscovery;
 using Constructs;
+using MyVideoGameList.Server.Security;
 
 namespace Infra;
 
@@ -28,6 +29,7 @@ public sealed class DataStack : Stack
     public DatabaseInstance Database { get; }
     public DatabaseSecret DbSecret { get; }
     public Secret IgdbSecret { get; }
+    public Secret TurnstileSecret { get; }
     public Repository ApiRepository { get; }
     public Repository SsrRepository { get; }
     public Amazon.CDK.AWS.ECS.Cluster Cluster { get; }
@@ -93,7 +95,7 @@ public sealed class DataStack : Stack
         {
             Engine = DatabaseInstanceEngine.Postgres(new PostgresInstanceEngineProps { Version = PostgresEngineVersion.VER_18 }),
             InstanceType = Amazon.CDK.AWS.EC2.InstanceType.Of(InstanceClass.BURSTABLE4_GRAVITON, InstanceSize.MICRO),
-            InstanceIdentifier = $"{site.Prefix}-db",
+            InstanceIdentifier = site.DatabaseIdentifier,
             DatabaseName = "myvideogamelist",
             Credentials = Credentials.FromSecret(DbSecret),
             Vpc = Vpc,
@@ -123,6 +125,22 @@ public sealed class DataStack : Stack
             },
         });
 
+        // This environment's Turnstile widget: the site key the sign-up page draws with and the secret
+        // the API asks Cloudflare with (ADR 0092). A placeholder, as IGDB's is, and both halves are set
+        // by hand from Cloudflare's dashboard. The placeholder site key is the API's own constant, which
+        // it reads as no keys at all: until the pair is set it takes no sign-ups, answers 503 to the page
+        // asking for the site key, and logs why.
+        TurnstileSecret = new Secret(this, "TurnstileSecret", new SecretProps
+        {
+            SecretName = site.TurnstileSecretName,
+            Description = "Cloudflare Turnstile's site key and secret key. Set the real SiteKey and SecretKey by hand.",
+            GenerateSecretString = new SecretStringGenerator
+            {
+                SecretStringTemplate = $"{{\"SiteKey\":\"{TurnstilePlaceholder.SiteKey}\"}}",
+                GenerateStringKey = "SecretKey",
+            },
+        });
+
         // What the distribution sends in its origin-verify header and the balancer's listener
         // requires (ADR 0046). Generated here and read by the application stack as a dynamic
         // reference, so the value is in no template; letters and digits only, because it travels
@@ -146,7 +164,7 @@ public sealed class DataStack : Stack
         // unless deleted within twelve hours, which is why it lives here and not with the services.
         Cluster = new Amazon.CDK.AWS.ECS.Cluster(this, "Cluster", new Amazon.CDK.AWS.ECS.ClusterProps
         {
-            ClusterName = site.Prefix,
+            ClusterName = site.ClusterName,
             Vpc = Vpc,
             EnableFargateCapacityProviders = true,
             DefaultCloudMapNamespace = new Amazon.CDK.AWS.ECS.CloudMapNamespaceOptions

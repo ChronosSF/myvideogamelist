@@ -67,9 +67,10 @@ public record UserDataExportDto(
 /// whether they agreed to it being read would be missing the more consequential of the two.
 /// </para>
 /// <para>
-/// <paramref name="CreatedAt"/> and <paramref name="LastSeenAt"/> are not data the user entered but
-/// data recorded about them, which is the stronger reason to hand them over: what the site keeps
-/// about somebody is theirs to see (ADR 0051).
+/// <paramref name="CreatedAt"/>, <paramref name="LastSeenAt"/> and <paramref name="SessionsEndedAt"/> are
+/// not data the user entered but data recorded about them, which is the stronger reason to hand them
+/// over: what the site keeps about somebody is theirs to see (ADR 0051). The last is when a password
+/// reset last signed the account out everywhere (ADR 0090).
 /// </para>
 /// </remarks>
 public record AccountExportDto(
@@ -79,10 +80,15 @@ public record AccountExportDto(
     string? AvatarUrl,
     string? Bio,
     string Theme,
+    string? ThemeBackground,
+    string? ThemeAccent,
+    string BackgroundPattern,
+    string PatternTint,
     string ListView,
     string ProfileVisibility,
     DateTimeOffset? CreatedAt,
-    DateTimeOffset? LastSeenAt);
+    DateTimeOffset? LastSeenAt,
+    DateTimeOffset? SessionsEndedAt);
 
 /// <summary>
 /// One game the user has recorded something about.

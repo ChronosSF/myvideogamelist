@@ -557,8 +557,14 @@ export function ListsProvider({ children }: { children: ReactNode }) {
         }
     };
 
-    const addToList = async (listId: ListId, game: GameDto): Promise<void> => {
-        if (state.pending.has(game.id)) return;
+    /**
+     * Whether which list each game is in is known: neither loading nor failed to load. A membership write
+     * is refused otherwise, since it would be decided from a game that only reads as in no list.
+     */
+    const membershipKnown = !state.loading && state.error === null;
+
+    const addToList = async (listId: ListId, game: GameDto): Promise<boolean> => {
+        if (!membershipKnown || state.pending.has(game.id)) return false;
         startPending(game.id);
 
         // Only this game's own row is remembered, never the whole set of lists — see
@@ -587,17 +593,22 @@ export function ListsProvider({ children }: { children: ReactNode }) {
                 body: JSON.stringify({ status: listId }),
             });
 
-            if (res.ok) dispatch({ type: 'CLEAR_MUTATION_ERROR', session });
-            else rollBack(undo, 'Failed to update list. Please try again.');
+            if (res.ok) {
+                dispatch({ type: 'CLEAR_MUTATION_ERROR', session });
+                return true;
+            }
+            rollBack(undo, 'Failed to update list. Please try again.');
+            return false;
         } catch {
             rollBack(undo, 'Failed to update list. Please try again.');
+            return false;
         } finally {
             endPending(game.id);
         }
     };
 
-    const removeFromList = async (listId: ListId, gameId: number): Promise<void> => {
-        if (state.pending.has(gameId)) return;
+    const removeFromList = async (listId: ListId, gameId: number): Promise<boolean> => {
+        if (!membershipKnown || state.pending.has(gameId)) return false;
         startPending(gameId);
 
         const found = state.lists[listId].find(entry => entry.game.id === gameId);
@@ -611,10 +622,15 @@ export function ListsProvider({ children }: { children: ReactNode }) {
                 method: 'DELETE',
             });
 
-            if (res.ok) dispatch({ type: 'CLEAR_MUTATION_ERROR', session });
-            else rollBack(undo, 'Failed to remove from list. Please try again.');
+            if (res.ok) {
+                dispatch({ type: 'CLEAR_MUTATION_ERROR', session });
+                return true;
+            }
+            rollBack(undo, 'Failed to remove from list. Please try again.');
+            return false;
         } catch {
             rollBack(undo, 'Failed to remove from list. Please try again.');
+            return false;
         } finally {
             endPending(gameId);
         }

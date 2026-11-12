@@ -6,6 +6,7 @@ import { AVATAR_HOSTS, AVATAR_SERVICES } from '@/lib/avatar';
 import { IGDB_IMAGE_HOST } from '@/lib/securityHeaders';
 import { SIGNED_IN_FLAG } from '@/lib/signedInFlag';
 import { AVATAR_URL_MAX_LENGTH, BIO_MAX_LENGTH, DISPLAY_NAME_MAX_LENGTH } from '@/types/auth';
+import { DEFAULT_LOOK, PALETTE_IDS, PATTERN_IDS, TINT_IDS } from '@/types/look';
 
 /**
  * Values the client restates from the server, each read out of the server's own source and compared.
@@ -57,6 +58,24 @@ function serverAvatarHosts(): string[] {
     return hosts;
 }
 
+/**
+ * One of `LookPolicy`'s lists, each entry a string or one of the class's string constants, in order. An
+ * entry written any other way fails here rather than being left out.
+ */
+function lookList(name: string): string[] {
+    const source = serverSource('Models/LookPolicy.cs');
+    const constants = new Map([...source.matchAll(/public const string (\w+) = "([^"\\]*)";/g)].map(match => [match[1], match[2]]));
+    const list = new RegExp(`IReadOnlyList<string> ${name} =\\s*\\[([^\\]]*)\\];`).exec(source);
+    if (list === null) throw new Error(`LookPolicy.${name} was not found`);
+
+    return list[1].split(',').map(entry => entry.trim()).map(entry => {
+        const literal = /^"([^"\\]*)"$/.exec(entry);
+        const value = literal ? literal[1] : constants.get(entry);
+        if (value === undefined) throw new Error(`LookPolicy.${name} holds something other than a string: ${entry}`);
+        return value;
+    });
+}
+
 describe('what the client restates from the server', () => {
     it('lets a page load exactly the avatar hosts the server lets an avatar be saved from', () => {
         const server = serverAvatarHosts();
@@ -82,6 +101,19 @@ describe('what the client restates from the server', () => {
         if (base === null) throw new Error('IgdbService.ImageBaseUrl was not found');
 
         expect(new URL(base[1]).host).toBe(IGDB_IMAGE_HOST);
+    });
+
+    it('knows the palettes, patterns and tints the server keeps, in its order, with its defaults', () => {
+        // A name only the server knows is drawn as the default; one only the client knows is refused on
+        // save, and the head script would draw a stored name the server would never have written (ADR 0082).
+        expect([...PALETTE_IDS]).toEqual(lookList('Palettes'));
+        expect([...PATTERN_IDS]).toEqual(lookList('Patterns'));
+        expect([...TINT_IDS]).toEqual(lookList('Tints'));
+
+        const source = serverSource('Models/LookPolicy.cs');
+        expect(source).toContain(`public const string DefaultPalette = "${DEFAULT_LOOK.palette}";`);
+        expect(source).toContain(`public const string DefaultPattern = "${DEFAULT_LOOK.pattern}";`);
+        expect(source).toContain(`public const string DefaultTint = "${DEFAULT_LOOK.tint}";`);
     });
 
     it('reads the signed-in flag by the name the server sets it under', () => {

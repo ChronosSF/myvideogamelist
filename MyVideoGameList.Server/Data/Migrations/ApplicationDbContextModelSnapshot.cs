@@ -18,7 +18,7 @@ namespace MyVideoGameList.Server.Data.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "10.0.13")
+                .HasAnnotation("ProductVersion", "10.0.14")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
@@ -167,6 +167,13 @@ namespace MyVideoGameList.Server.Data.Migrations
                         .HasMaxLength(512)
                         .HasColumnType("character varying(512)");
 
+                    b.Property<string>("BackgroundPattern")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasDefaultValue("pixels");
+
                     b.Property<string>("Bio")
                         .HasMaxLength(500)
                         .HasColumnType("character varying(500)");
@@ -213,6 +220,13 @@ namespace MyVideoGameList.Server.Data.Migrations
                     b.Property<string>("PasswordHash")
                         .HasColumnType("text");
 
+                    b.Property<string>("PatternTint")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasDefaultValue("accent");
+
                     b.Property<string>("PhoneNumber")
                         .HasColumnType("text");
 
@@ -229,9 +243,23 @@ namespace MyVideoGameList.Server.Data.Migrations
                     b.Property<string>("SecurityStamp")
                         .HasColumnType("text");
 
+                    b.Property<DateTimeOffset?>("SessionsEndedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<string>("Theme")
                         .IsRequired()
-                        .HasColumnType("text");
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasDefaultValue("ink");
+
+                    b.Property<string>("ThemeAccent")
+                        .HasMaxLength(7)
+                        .HasColumnType("character varying(7)");
+
+                    b.Property<string>("ThemeBackground")
+                        .HasMaxLength(7)
+                        .HasColumnType("character varying(7)");
 
                     b.Property<bool>("TwoFactorEnabled")
                         .HasColumnType("boolean");
@@ -256,7 +284,15 @@ namespace MyVideoGameList.Server.Data.Migrations
                         {
                             t.HasCheckConstraint("CK_AspNetUsers_AvatarUrl_Https", "\"AvatarUrl\" IS NULL OR \"AvatarUrl\" ILIKE 'https://%'");
 
+                            t.HasCheckConstraint("CK_AspNetUsers_BackgroundPattern", "\"BackgroundPattern\" IN ('pixels', 'honeycomb', 'isometric', 'perspective', 'none')");
+
+                            t.HasCheckConstraint("CK_AspNetUsers_PatternTint", "\"PatternTint\" IN ('accent', 'grey')");
+
                             t.HasCheckConstraint("CK_AspNetUsers_ProfileVisibility", "\"ProfileVisibility\" IN ('public', 'private')");
+
+                            t.HasCheckConstraint("CK_AspNetUsers_Theme", "\"Theme\" IN ('ink', 'slate', 'dusk', 'plum', 'graphite', 'onyx', 'custom')");
+
+                            t.HasCheckConstraint("CK_AspNetUsers_ThemeColours", "(\"Theme\" = 'custom') = (\"ThemeBackground\" IS NOT NULL AND \"ThemeAccent\" IS NOT NULL) AND (\"ThemeBackground\" IS NULL OR \"ThemeBackground\" ~ '^#[0-9a-f]{6}$') AND (\"ThemeAccent\" IS NULL OR \"ThemeAccent\" ~ '^#[0-9a-f]{6}$')");
                         });
                 });
 

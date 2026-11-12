@@ -1,6 +1,6 @@
 # 0052. A background refresh: cached games an hour before a reader would, Steam feeds before they expire
 
-**Status:** Implemented
+**Status:** Implemented. §4's fifteen seconds across IGDB is the one idle stretch [0079](0079-a-migration-waits-five-seconds-for-a-lock-and-no-transaction-idles-past-a-minute.md)'s idle limit is sized against.
 **Extends:** [0038](0038-where-scheduled-work-lives.md), whose shape both jobs copy;
 [0035](0035-a-local-copy-of-what-igdb-said.md) §2, whose refresh on read becomes the fallback; and
 [0012](0012-steam-news-without-a-database.md), whose deferred N3 this is

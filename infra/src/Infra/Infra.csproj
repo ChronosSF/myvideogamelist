@@ -29,4 +29,17 @@
     <None Include="..\..\..\holding\site\**" LinkBase="holding" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- What the migration task's sessions are told to wait for (ADR 0079), compiled from the API's
+         own source rather than copied, so that the integration suite proves the string this app
+         deploys. Only that file: its other half needs Npgsql, which this app does not have. -->
+    <Compile Include="..\..\..\MyVideoGameList.Server\Data\SessionLimits.cs" Link="SessionLimits.cs" />
+    <!-- The address every email is from, which the production account's sending role allows and no
+         other (ADR 0088): the API's own constant, so the two cannot drift. -->
+    <Compile Include="..\..\..\MyVideoGameList.Server\Services\Email\EmailIdentity.cs" Link="EmailIdentity.cs" />
+    <!-- What the Turnstile secret holds until its pair is set by hand, which the API reads as no keys
+         (ADR 0092): the API's own constant, so the placeholder it recognises is the one written here. -->
+    <Compile Include="..\..\..\MyVideoGameList.Server\Security\TurnstilePlaceholder.cs" Link="TurnstilePlaceholder.cs" />
+  </ItemGroup>
+
 </Project>

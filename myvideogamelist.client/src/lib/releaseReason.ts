@@ -107,12 +107,16 @@ function capitalise(text: string): string {
 }
 
 /**
- * "From the God of War series". IGDB names some series with their article — "The Witcher" — and
- * "the The Witcher series" is what prefixing one regardless would say.
+ * "the God of War series", as a sentence names a series. IGDB names some with their article — "The Witcher"
+ * — and "the The Witcher series" is what prefixing one regardless would say.
  */
+export function theSeries(series: string): string {
+    return /^the\s/i.test(series) ? `${series} series` : `the ${series} series`;
+}
+
+/** "From the God of War series". */
 function fromSeries(series: string | null): string {
-    if (series === null) return 'From the same series';
-    return /^the\s/i.test(series) ? `From ${series} series` : `From the ${series} series`;
+    return series === null ? 'From the same series' : `From ${theSeries(series)}`;
 }
 
 /** Where a release arrives, as the line names platforms: "PS5, Switch 2". Empty when IGDB did not say. */

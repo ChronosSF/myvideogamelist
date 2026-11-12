@@ -3,16 +3,32 @@ import { type RouteConfig, index, route } from '@react-router/dev/routes';
 export default [
     index('pages/HomePage.tsx'),
     route('games', 'pages/GamesPage.tsx'),
-    route('games/:id', 'pages/GamePage.tsx'),
+    // The game, and the reader's own record of it, as two tabs under one hero (ADR 0084). The second is
+    // an address of its own so that the lists, and a hint anywhere, can link straight to it.
+    route('games/:id', 'pages/GamePage.tsx', [
+        index('pages/GameOverviewPage.tsx'),
+        route('yours', 'pages/GameYoursPage.tsx'),
+    ]),
     route('lists', 'pages/ListsPage.tsx'),
     route('wishlist', 'pages/WishlistPage.tsx'),
     route('news', 'pages/NewsPage.tsx'),
-    route('user', 'pages/UserPage.tsx'),
+    // The reader's tracking and their settings, as two tabs (ADR 0084).
+    route('user', 'pages/UserPage.tsx', [
+        index('pages/UserTrackingPage.tsx'),
+        route('settings', 'pages/UserSettingsPage.tsx'),
+    ]),
 
     // The rules for using the site, linked from the footer on every page (issue 141).
     route('terms', 'pages/TermsPage.tsx'),
     // What the site keeps about a person and why, and its two cookies, linked beside the terms.
     route('privacy', 'pages/PrivacyPage.tsx'),
+
+    // Where the link in a confirmation email leads. The account and token follow the `#`, which no
+    // request ever carries; the page reads them and posts them to the API (ADR 0089).
+    route('confirm-email', 'pages/ConfirmEmailPage.tsx'),
+
+    // Where the link in a password reset email leads, built the same way (ADR 0090).
+    route('reset-password', 'pages/ResetPasswordPage.tsx'),
 
     // What is coming for the user's games, a month at a time. The month is a query parameter rather
     // than a path segment, so that `/calendar` is always the month it opens on.

@@ -1,4 +1,6 @@
 import { AVATAR_HOSTS } from '@/lib/avatar';
+import { LOOK_SCRIPT_HASH } from '@/lib/look';
+import { TURNSTILE_ORIGIN } from '@/lib/turnstile';
 
 /** IGDB's image CDN, which every cover, screenshot and piece of key art on the site comes from. */
 export const IGDB_IMAGE_HOST = 'images.igdb.com';
@@ -75,9 +77,13 @@ export function createNonce(): string {
  *   `entry.server.tsx` hands both of them this one value. Inline event handlers and `javascript:`
  *   URLs match neither, so they never run. Nothing else on this origin answers with script: the
  *   `.data` responses, which React Router labels `text/x-script`, carry `nosniff`.
- *   A script whose text never changes, such as the palette script issue 208 plans, may be admitted
- *   by its hash instead: add a `'sha256-…'` source here, computed from the same constant the page
- *   renders.
+ *   A script whose text never changes is admitted by its hash instead, computed from the same
+ *   constant the page renders: the look script in the document's head (`LOOK_SCRIPT`, ADR 0082),
+ *   which runs before React does, and so before there is anything for a nonce to be handed to.
+ *   And one other host, by name: Cloudflare's, for Turnstile's script, which the sign-up form loads
+ *   when it opens (`TURNSTILE_ORIGIN`, ADR 0092). Its widget is a frame from the same host, which
+ *   needs nothing here, since the policy restricts no frame. No `'strict-dynamic'`, which would
+ *   ignore every host named here.
  * - **`base-uri`**, because a `<base>` injected above the scripts would re-point the relative URLs
  *   React Router's inline module imports, and a module's imports carry its nonce — the nonce check
  *   comes before the URL check, so `'self'` would not stop them.
@@ -94,7 +100,7 @@ export function createNonce(): string {
  */
 export function documentPolicy(nonce: string): string {
     return [
-        `script-src 'self' 'nonce-${nonce}'`,
+        `script-src 'self' 'nonce-${nonce}' '${LOOK_SCRIPT_HASH}' ${TURNSTILE_ORIGIN}`,
         "object-src 'none'",
         "base-uri 'none'",
         "frame-ancestors 'none'",

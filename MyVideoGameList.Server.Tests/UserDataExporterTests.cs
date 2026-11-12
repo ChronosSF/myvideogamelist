@@ -76,7 +76,11 @@ public class UserDataExporterTests
         ApplicationDbContext db,
         string userId,
         string email,
-        string theme = "dark",
+        string theme = LookPolicy.DefaultPalette,
+        string? themeBackground = null,
+        string? themeAccent = null,
+        string backgroundPattern = LookPolicy.DefaultPattern,
+        string patternTint = LookPolicy.DefaultTint,
         string listView = ListViewModes.Tiles,
         string userName = "someone",
         string profileVisibility = ProfileVisibility.Private,
@@ -84,7 +88,8 @@ public class UserDataExporterTests
         string? avatarUrl = null,
         string? bio = null,
         DateTimeOffset? createdAt = null,
-        DateTimeOffset? lastSeenAt = null)
+        DateTimeOffset? lastSeenAt = null,
+        DateTimeOffset? sessionsEndedAt = null)
     {
         db.Users.Add(new ApplicationUser
         {
@@ -92,13 +97,18 @@ public class UserDataExporterTests
             UserName = userName,
             Email = email,
             Theme = theme,
+            ThemeBackground = themeBackground,
+            ThemeAccent = themeAccent,
+            BackgroundPattern = backgroundPattern,
+            PatternTint = patternTint,
             ListView = listView,
             ProfileVisibility = profileVisibility,
             DisplayName = displayName,
             AvatarUrl = avatarUrl,
             Bio = bio,
             CreatedAt = createdAt,
-            LastSeenAt = lastSeenAt
+            LastSeenAt = lastSeenAt,
+            SessionsEndedAt = sessionsEndedAt
         });
         db.SaveChanges();
     }
@@ -273,10 +283,11 @@ public class UserDataExporterTests
         // as somebody else's game id rather than as a subtly wrong count.
         using var db = NewDb();
 
-        AddAccount(db, UserId, "mine@test.local", theme: "light", listView: ListViewModes.Table,
+        AddAccount(db, UserId, "mine@test.local", theme: LookPolicy.CustomPalette, themeBackground: "#101820",
+            themeAccent: "#c8f560", backgroundPattern: "pixels", patternTint: "accent", listView: ListViewModes.Table,
             userName: "mine", profileVisibility: ProfileVisibility.Public,
             displayName: "Mine Truly", avatarUrl: "https://i.imgur.com/mine.png", bio: "My bio.");
-        AddAccount(db, OtherUserId, "theirs@test.local", theme: "dark", listView: ListViewModes.Tiles,
+        AddAccount(db, OtherUserId, "theirs@test.local", theme: "slate", listView: ListViewModes.Tiles,
             userName: "theirs",
             displayName: "Theirs", avatarUrl: "https://i.imgur.com/theirs.png", bio: "Their bio.");
 
@@ -302,7 +313,11 @@ public class UserDataExporterTests
 
         Assert.Equal("mine@test.local", export.Account.Email);
         Assert.Equal("mine", export.Account.UserName);
-        Assert.Equal("light", export.Account.Theme);
+        // The look as stored, by name and with a custom palette's two colours (ADR 0082).
+        Assert.Equal(
+            (LookPolicy.CustomPalette, "#101820", "#c8f560", "pixels", "accent"),
+            (export.Account.Theme, export.Account.ThemeBackground, export.Account.ThemeAccent,
+                export.Account.BackgroundPattern, export.Account.PatternTint));
         Assert.Equal(ListViewModes.Table, export.Account.ListView);
 
         // The name the user chose and the answer they gave about publishing are both data they
@@ -351,14 +366,15 @@ public class UserDataExporterTests
     }
 
     [Fact]
-    public async Task ExportAsync_Account_CarriesWhenItWasCreatedAndLastSeen()
+    public async Task ExportAsync_Account_CarriesWhenItWasCreatedLastSeenAndLastReset()
     {
         // Recorded about the user rather than entered by them, which is the stronger reason the export
-        // owes them (ADR 0051). An account from before they were recorded exports them as null.
+        // owes them (ADR 0051, ADR 0090). An account from before they were recorded exports them as null.
         using var db = NewDb();
         var createdAt = new DateTimeOffset(2026, 3, 1, 9, 0, 0, TimeSpan.Zero);
         var lastSeenAt = new DateTimeOffset(2026, 6, 14, 18, 30, 0, TimeSpan.Zero);
-        AddAccount(db, UserId, "mine@test.local", createdAt: createdAt, lastSeenAt: lastSeenAt);
+        var sessionsEndedAt = new DateTimeOffset(2026, 6, 2, 7, 15, 0, TimeSpan.Zero);
+        AddAccount(db, UserId, "mine@test.local", createdAt: createdAt, lastSeenAt: lastSeenAt, sessionsEndedAt: sessionsEndedAt);
         AddAccount(db, OtherUserId, "older@test.local", userName: "older");
 
         var export = await NewExporter(db).ExportAsync(UserId, default);
@@ -366,8 +382,10 @@ public class UserDataExporterTests
 
         Assert.Equal(createdAt, export.Account.CreatedAt);
         Assert.Equal(lastSeenAt, export.Account.LastSeenAt);
+        Assert.Equal(sessionsEndedAt, export.Account.SessionsEndedAt);
         Assert.Null(older.Account.CreatedAt);
         Assert.Null(older.Account.LastSeenAt);
+        Assert.Null(older.Account.SessionsEndedAt);
     }
 
     [Fact]

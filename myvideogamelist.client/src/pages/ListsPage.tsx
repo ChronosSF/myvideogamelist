@@ -1,22 +1,23 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router';
 import { EmptyState } from '@/components/EmptyState';
 import { ErrorState } from '@/components/ErrorState';
-import { GameCard } from '@/components/GameCard';
 import { GameGridSkeleton } from '@/components/GameGridSkeleton';
 import { ListTable } from '@/components/ListTable';
 import { ListTableSkeleton } from '@/components/ListTableSkeleton';
 import { ListToolbar } from '@/components/ListToolbar';
 import { LoadingState } from '@/components/LoadingState';
 import { ListTagFilter } from '@/components/ListTagFilter';
-import { TagChips } from '@/components/TagChips';
+import { ListTile } from '@/components/ListTile';
 import { useListTagFilter } from '@/hooks/useListTagFilter';
 import { PageHeader } from '@/components/PageHeader';
 import { ReorderAnnouncer } from '@/components/ReorderAnnouncer';
 import { ReorderHandle } from '@/components/ReorderHandle';
+import { ShowMoreGames } from '@/components/ShowMoreGames';
 import { Skeleton } from '@/components/Skeleton';
 import { useLists } from '@/hooks/useLists';
 import { useAuth } from '@/hooks/useAuth';
+import { useDrawLimit } from '@/hooks/useDrawLimit';
 import { useFavourites } from '@/hooks/useFavourites';
 import { useReorder } from '@/hooks/useReorder';
 import { type ListEntryDto, type ListId, HAND_ORDERED_LISTS, LIST_IDS } from '@/types/list';
@@ -164,6 +165,40 @@ export function ListsPage() {
         ? reorder.order.flatMap(id => byId.get(id) ?? [])
         : visible;
 
+    // Drawn a chunk at a time from the top, the next one as the reader scrolls near the end of what is
+    // drawn, so that a change of order redraws one chunk rather than every game on the list. A new tab,
+    // order or filter starts again at one chunk. The order is still the whole list's, and a hand order is
+    // still rearranged across all of it: the game being moved is always drawn.
+    const drawKey = [activeTab, sort.key, sort.descending, platformIds.join(','), tagFilter.selected.join(',')].join('|');
+    const movingRank = arranging && reorder.movingId !== null ? reorder.order.indexOf(reorder.movingId) + 1 : 0;
+    const { limit, showMore } = useDrawLimit(drawKey, movingRank);
+    const drawn = shown.length > limit ? shown.slice(0, limit) : shown;
+
+    // A list that starts again starts at its top, and so does the reader if they were below it. Mostly
+    // they are at the top already, since that is where the sort and the filters are; this is for the
+    // change they did not make there — a ticked tag no longer offered, a saved sort arriving late —
+    // which would otherwise drop them at the foot of a page sixty games long, where the next chunk is
+    // drawn and drawn again until it fills the screen, somewhere in a list that changed under them.
+    const panel = useRef<HTMLDivElement>(null);
+    const drewKey = useRef(drawKey);
+    useEffect(() => {
+        if (drewKey.current === drawKey) return;
+        drewKey.current = drawKey;
+        const element = panel.current;
+        if (element && element.getBoundingClientRect().top < 0) element.scrollIntoView({ block: 'start' });
+    }, [drawKey]);
+
+    // Steady while the provider's functions are, so that the rows already drawn are not drawn again
+    // when another chunk joins them (`ListTableRow`).
+    const changeScore = useCallback(
+        (gameId: number, score: number | null) => void setScore(gameId, score),
+        [setScore],
+    );
+    const remove = useCallback(
+        (gameId: number) => void removeFromList(activeTab, gameId),
+        [removeFromList, activeTab],
+    );
+
     return (
         <div className="min-h-screen">
             <PageHeader title="My Lists" description="Track your games across different stages.">
@@ -199,6 +234,7 @@ export function ListsPage() {
 
             {/* Content */}
             <div
+                ref={panel}
                 id="lists-tabpanel"
                 className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8"
                 role="tabpanel"
@@ -326,7 +362,7 @@ export function ListsPage() {
                         // A list while it is an order, so assistive technology hears each game's place.
                         {...(arranging ? { ...reorder.listProps(), role: 'list' } : {})}
                     >
-                        {shown.map((entry, index) => arranging ? (
+                        {drawn.map((entry, index) => arranging ? (
                             <div
                                 key={entry.game.id}
                                 className="reorder-tile"
@@ -338,31 +374,36 @@ export function ListsPage() {
                                     rank={index + 1}
                                     variant="overlay"
                                 />
-                                <GameCard game={entry.game} eager={index < GAME_GRID_FIRST_ROW}>
-                                    <TagChips tags={tagFilter.tagsOf(entry)} max={3} />
-                                </GameCard>
+                                <ListTile entry={entry} eager={index < GAME_GRID_FIRST_ROW} tagsOf={tagFilter.tagsOf} />
                             </div>
                         ) : (
-                            <GameCard key={entry.game.id} game={entry.game} eager={index < GAME_GRID_FIRST_ROW}>
-                                <TagChips tags={tagFilter.tagsOf(entry)} max={3} />
-                            </GameCard>
+                            <ListTile
+                                key={entry.game.id}
+                                entry={entry}
+                                eager={index < GAME_GRID_FIRST_ROW}
+                                tagsOf={tagFilter.tagsOf}
+                            />
                         ))}
                     </div>
                 )}
 
                 {signedIn && !loading && !error && visible.length > 0 && view === 'table' && (
                     <ListTable
-                        entries={shown}
+                        entries={drawn}
                         sort={sort}
                         listName={nameFor(activeTab)}
                         isPending={isPending}
                         isFavourite={isFavourite}
                         onSortChange={next => setSort(activeTab, next)}
-                        onScoreChange={(gameId, score) => void setScore(gameId, score)}
-                        onRemove={gameId => void removeFromList(activeTab, gameId)}
+                        onScoreChange={changeScore}
+                        onRemove={remove}
                         reorder={arranging ? reorder : undefined}
                         tagsFor={tagFilter.tagsOf}
                     />
+                )}
+
+                {signedIn && !loading && !error && drawn.length < shown.length && (
+                    <ShowMoreGames shown={drawn.length} left={shown.length - drawn.length} onShowMore={showMore} />
                 )}
             </div>
         </div>

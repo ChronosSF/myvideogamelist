@@ -90,8 +90,18 @@
     overflow: hidden;
 }
 
-.release-card-link:hover .release-card-title {
+/* The title's own link, inside it, so that a favourite's mark can follow the link without being named by it. */
+.release-card-title-link {
+    border-radius: var(--radius-sm);
+}
+
+.release-card-title-link:hover {
     @apply underline-quiet;
+}
+
+.release-card-title-link:focus-visible {
+    outline: 2px solid var(--color-focus);
+    outline-offset: 2px;
 }
 
 .release-card-count,

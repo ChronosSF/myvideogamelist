@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import type { PlatformDto } from '@/types/game';
 import type { PlaythroughDto } from '@/types/playthrough';
 import { playthroughLabel } from '@/types/playthrough';
@@ -30,9 +31,13 @@ export function PlaythroughList({
     busyId,
     disabled,
 }: PlaythroughListProps) {
+    // The run whose Delete was pressed, which asks before it deletes: a run is a record of something
+    // that happened, with nothing to undo its loss (issue 245).
+    const [confirmingId, setConfirmingId] = useState<number | null>(null);
+
     if (playthroughs.length === 0) {
         return (
-            <p className="game-user-panel-hint">
+            <p className="game-yours-hint">
                 Nothing logged yet. A playthrough records how long a game took you and on what —
                 and a replay is a second one rather than an overwrite.
             </p>
@@ -40,53 +45,73 @@ export function PlaythroughList({
     }
 
     return (
-        <ul className="game-user-panel-playthroughs">
+        <ul className="game-yours-playthroughs">
             {playthroughs.map((playthrough, index) => (
-                <li key={playthrough.id} className="game-user-panel-playthrough">
-                    <p className="game-user-panel-playthrough-head">
-                        <span className="game-user-panel-playthrough-type">
+                <li key={playthrough.id} className="game-yours-playthrough">
+                    <p className="game-yours-playthrough-head">
+                        <span className="game-yours-playthrough-type">
                             {playthroughLabel(playthrough)}
                         </span>
-                        <span className="game-user-panel-playthrough-meta">
+                        <span className="game-yours-playthrough-meta">
                             {platformName(playthrough.platformId, platforms)}
                         </span>
                     </p>
 
                     {formatExactMinutes(playthrough.minutesPlayed) !== null && (
-                        <p className="game-user-panel-playthrough-hours">
+                        <p className="game-yours-playthrough-hours">
                             {formatExactMinutes(playthrough.minutesPlayed)}
                         </p>
                     )}
 
                     {dateRange(playthrough) !== null && (
-                        <p className="game-user-panel-hint">{dateRange(playthrough)}</p>
+                        <p className="game-yours-hint">{dateRange(playthrough)}</p>
                     )}
 
                     {playthrough.notes !== null && (
-                        <p className="game-user-panel-playthrough-notes">{playthrough.notes}</p>
+                        <p className="game-yours-playthrough-notes">{playthrough.notes}</p>
                     )}
 
                     {/* Named by position rather than by content: two runs of the same game on the
                         same platform are a perfectly ordinary thing to log, and identical
                         accessible names on two buttons help nobody. */}
-                    <div className="game-user-panel-playthrough-actions">
-                        <button
-                            type="button"
-                            onClick={() => onEdit(playthrough)}
-                            disabled={disabled || busyId === playthrough.id}
-                        >
-                            {`Edit playthrough ${index + 1}`}
-                        </button>
-                        <button
-                            type="button"
-                            onClick={() => onDelete(playthrough)}
-                            disabled={disabled || busyId === playthrough.id}
-                        >
-                            {busyId === playthrough.id
-                                ? `Deleting playthrough ${index + 1}`
-                                : `Delete playthrough ${index + 1}`}
-                        </button>
-                    </div>
+                    {confirmingId === playthrough.id ? (
+                        <div className="game-yours-playthrough-actions" role="group" aria-label={`Delete playthrough ${index + 1}?`}>
+                            <span className="game-yours-hint">Delete this playthrough?</span>
+                            <button
+                                type="button"
+                                className="danger"
+                                onClick={() => {
+                                    setConfirmingId(null);
+                                    onDelete(playthrough);
+                                }}
+                                disabled={disabled}
+                            >
+                                {`Delete playthrough ${index + 1}`}
+                            </button>
+                            <button type="button" onClick={() => setConfirmingId(null)}>
+                                Keep it
+                            </button>
+                        </div>
+                    ) : (
+                        <div className="game-yours-playthrough-actions">
+                            <button
+                                type="button"
+                                onClick={() => onEdit(playthrough)}
+                                disabled={disabled || busyId === playthrough.id}
+                            >
+                                {`Edit playthrough ${index + 1}`}
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setConfirmingId(playthrough.id)}
+                                disabled={disabled || busyId === playthrough.id}
+                            >
+                                {busyId === playthrough.id
+                                    ? `Deleting playthrough ${index + 1}`
+                                    : `Delete playthrough ${index + 1}…`}
+                            </button>
+                        </div>
+                    )}
                 </li>
             ))}
         </ul>

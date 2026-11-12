@@ -1,33 +1,44 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter } from 'react-router';
+import { createRoutesStub } from 'react-router';
 import { UserPage } from '@/pages/UserPage';
-import type { AuthContextValue } from '@/contexts/AuthContext';
+import UserSettingsPage from '@/pages/UserSettingsPage';
+import UserTrackingPage from '@/pages/UserTrackingPage';
+import { AuthContext, type AuthContextValue } from '@/contexts/AuthContext';
 import type { UserProfile } from '@/types/auth';
 import { userProfile } from '@/test/factories';
 
 /**
- * Auth, mocked rather than provided: the real provider fetches, and this page only reads what it
- * holds.
+ * Auth, supplied through its context rather than by `AuthProvider`: the real provider fetches, and this
+ * page only reads what it holds. The context rather than a mock of `useAuth`, because the router stub
+ * memoises its routes — a rerender from outside it never reaches the page, while a new context value
+ * does, which is how a change of account reaches it in the app too.
  *
- * One module-level object handed back on every call, never a fresh literal — a new object per
- * render re-runs any effect depending on it, which ends in a heap crash rather than an assertion
- * failure.
+ * The functions are module-level, so a test can assert on them whichever value it rendered with.
  */
-const auth: AuthContextValue = {
-    user: null,
-    loading: true,
+const actions = {
     login: vi.fn(async () => {}),
-    register: vi.fn(async () => {}),
+    register: vi.fn(async () => ({ emailSent: true })),
+    resendConfirmation: vi.fn(async () => {}),
+    confirmEmail: vi.fn(async () => {}),
+    requestPasswordReset: vi.fn(async () => {}),
+    resetPassword: vi.fn(async () => {}),
     logout: vi.fn(async () => {}),
     updateUserName: vi.fn(async () => {}),
     updateProfileVisibility: vi.fn(async () => {}),
     updateProfileDetails: vi.fn(async () => {}),
-    deleteAccount: vi.fn(async () => {}),
-};
+    updateLook: vi.fn(async () => {}),
+    deleteAccount: vi.fn(async (_password: string) => {}),
+} satisfies Omit<AuthContextValue, 'user' | 'loading'>;
 
-vi.mock('@/hooks/useAuth', () => ({ useAuth: () => auth }));
+/** `/api/auth/me` has come back, with an account or with nobody. */
+function answered(user: UserProfile | null): AuthContextValue {
+    return { user, loading: false, ...actions };
+}
+
+/** Where every visit starts, the server render included: nobody known yet. */
+const UNANSWERED: AuthContextValue = { user: null, loading: true, ...actions };
 
 /**
  * The tracking block has its own test file and three requests of its own. These tests are about
@@ -45,6 +56,10 @@ vi.mock('@/components/ProfileHistory', () => ({
 /** Likewise the favourites and the list names, which read providers this page does not mount. */
 vi.mock('@/components/FavouritesShowcase', () => ({
     FavouritesShowcase: () => <div>favourites</div>,
+}));
+
+vi.mock('@/components/LookCard', () => ({
+    LookCard: () => <div>look</div>,
 }));
 
 vi.mock('@/components/ListNamesCard', () => ({
@@ -68,21 +83,32 @@ function stubFetch() {
     return fetchMock;
 }
 
-/** `/api/auth/me` has come back, with an account or with nobody. */
-function authAnswered(user: UserProfile | null) {
-    auth.user = user;
-    auth.loading = false;
-}
+/** The page and its two tabs as `routes.ts` nests them, and a home page for the sign-out to land on. */
+const Stub = createRoutesStub([
+    { path: '/', Component: () => <h1>Home</h1> },
+    {
+        path: '/user',
+        Component: UserPage,
+        children: [
+            { index: true, Component: UserTrackingPage },
+            { path: 'settings', Component: UserSettingsPage },
+        ],
+    },
+]);
 
-function renderPage() {
-    return render(<MemoryRouter><UserPage /></MemoryRouter>);
+/** The page at one of its tabs' addresses, and a way to hand it what auth says next. */
+function renderAt(path: '/user' | '/user/settings', auth: AuthContextValue) {
+    const page = (value: AuthContextValue) => (
+        <AuthContext.Provider value={value}>
+            <Stub initialEntries={[path]} />
+        </AuthContext.Provider>
+    );
+    const view = render(page(auth));
+    return { ...view, authSays: (next: AuthContextValue) => view.rerender(page(next)) };
 }
 
 beforeEach(() => {
     vi.unstubAllGlobals();
-    // Where every visit starts, the server render included: nobody known yet.
-    auth.user = null;
-    auth.loading = true;
 });
 
 describe('UserPage before the account is known', () => {
@@ -90,64 +116,128 @@ describe('UserPage before the account is known', () => {
         // The server render never knows who is signed in and neither does the first client render,
         // so without this every visit opened on the signed-out page and then replaced it.
         stubFetch();
-        renderPage();
+        renderAt('/user', UNANSWERED);
 
         expect(screen.getByRole('status')).toHaveTextContent(/loading your profile/i);
         expect(screen.queryByText(/sign in to see your profile/i)).not.toBeInTheDocument();
     });
 
-    it('asks a signed-out visitor to sign in once that is settled', () => {
-        authAnswered(null);
+    it('shows the tabs while it loads, so they do not arrive with the account', () => {
         stubFetch();
-        renderPage();
+        renderAt('/user/settings', UNANSWERED);
+
+        const tabs = screen.getByRole('navigation', { name: 'My profile' });
+        expect(within(tabs).getByRole('link', { name: 'Your tracking' })).toHaveAttribute('href', '/user');
+        expect(within(tabs).getByRole('link', { name: 'Settings' })).toHaveAttribute('aria-current', 'page');
+    });
+
+    it('asks a signed-out visitor to sign in once that is settled', () => {
+        stubFetch();
+        renderAt('/user', answered(null));
 
         expect(screen.getByText(/sign in to see your profile/i)).toBeInTheDocument();
         expect(screen.queryByRole('status')).not.toBeInTheDocument();
     });
 
+    it('asks a signed-out visitor to sign in on the Settings tab too, and shows none of it', () => {
+        stubFetch();
+        renderAt('/user/settings', answered(null));
+
+        expect(screen.getByText(/sign in to see your profile/i)).toBeInTheDocument();
+        expect(screen.queryByRole('navigation', { name: 'Settings' })).not.toBeInTheDocument();
+    });
+
     it('asks for nothing while nobody is signed in', () => {
-        authAnswered(null);
         const fetchMock = stubFetch();
-        renderPage();
+        renderAt('/user', answered(null));
 
         expect(fetchMock).not.toHaveBeenCalled();
     });
 });
 
-describe('UserPage once the account is known', () => {
-    it('shows the history under the figures, for the signed-in account', () => {
-        const user = userProfile();
-        authAnswered(user);
+describe('UserPage header', () => {
+    it('names the reader by their handle, and says a private profile is private and where that is decided', () => {
         stubFetch();
-        renderPage();
+        renderAt('/user', answered(userProfile({ userName: 'alex', profileVisibility: 'private' })));
 
-        const tracking = screen.getByText(`tracking for ${user.id}`);
-        const history = screen.getByText(`history for ${user.id}`);
-        expect(tracking.compareDocumentPosition(history) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+        expect(screen.getByRole('heading', { level: 1, name: 'My Profile' })).toBeInTheDocument();
+        expect(screen.getByText('@alex')).toBeInTheDocument();
+
+        const where = screen.getByRole('link', { name: 'Who can see it' });
+        expect(where).toHaveAttribute('href', '/user/settings#account');
+        expect(where.parentElement).toHaveTextContent('Private profile · Who can see it');
+        expect(screen.queryByRole('link', { name: 'See it as others do' })).not.toBeInTheDocument();
+    });
+
+    it('names a reader with a display name by it, keeps the handle beside it, and links a public profile', () => {
+        stubFetch();
+        renderAt('/user', answered(userProfile({
+            userName: 'alex',
+            displayName: 'Alex Smith',
+            profileVisibility: 'public',
+        })));
+
+        expect(screen.getByText('Alex Smith')).toBeInTheDocument();
+        expect(screen.getByText('@alex')).toBeInTheDocument();
+
+        const asOthers = screen.getByRole('link', { name: 'See it as others do' });
+        expect(asOthers).toHaveAttribute('href', '/u/alex');
+        expect(asOthers.parentElement).toHaveTextContent('Public profile · See it as others do');
+        expect(screen.queryByRole('link', { name: 'Who can see it' })).not.toBeInTheDocument();
     });
 });
 
-describe('UserPage profile details', () => {
-    it('never shows one account\'s half-typed details under another', async () => {
-        // Both accounts have nothing stored, so only the card's key tells their drafts apart: without
-        // it, a display name typed by one would sit, ready to save, under the other's name.
+describe('UserPage tabs', () => {
+    it('marks Your tracking as the page at /user, and links to the Settings tab', () => {
+        stubFetch();
+        renderAt('/user', answered(userProfile()));
+
+        const tabs = screen.getByRole('navigation', { name: 'My profile' });
+        const tracking = within(tabs).getByRole('link', { name: 'Your tracking' });
+        const settings = within(tabs).getByRole('link', { name: 'Settings' });
+
+        expect(tracking).toHaveAttribute('href', '/user');
+        expect(tracking).toHaveAttribute('aria-current', 'page');
+        expect(settings).toHaveAttribute('href', '/user/settings');
+        expect(settings).not.toHaveAttribute('aria-current');
+    });
+
+    it('marks Settings as the page at /user/settings, and not Your tracking, whose address it extends', () => {
+        stubFetch();
+        renderAt('/user/settings', answered(userProfile()));
+
+        const tabs = screen.getByRole('navigation', { name: 'My profile' });
+        expect(within(tabs).getByRole('link', { name: 'Settings' })).toHaveAttribute('aria-current', 'page');
+        expect(within(tabs).getByRole('link', { name: 'Your tracking' })).not.toHaveAttribute('aria-current');
+    });
+
+    it('moves between the two under the same header', async () => {
+        const user = userProfile();
         const actor = userEvent.setup();
         stubFetch();
-        authAnswered(userProfile({ id: 'user-1', userName: 'alex' }));
-        const view = renderPage();
+        renderAt('/user', answered(user));
 
-        await actor.type(screen.getByLabelText('Display name'), 'Alex Smith');
-        authAnswered(userProfile({ id: 'user-2', userName: 'sam', email: 'sam@test.local' }));
-        view.rerender(<MemoryRouter><UserPage /></MemoryRouter>);
+        const tabs = screen.getByRole('navigation', { name: 'My profile' });
+        await actor.click(within(tabs).getByRole('link', { name: 'Settings' }));
 
-        expect(screen.getByLabelText('Display name')).toHaveValue('');
+        expect(await screen.findByRole('navigation', { name: 'Settings' })).toBeInTheDocument();
+        expect(screen.queryByText(`history for ${user.id}`)).not.toBeInTheDocument();
+        expect(screen.getByRole('heading', { level: 1, name: 'My Profile' })).toBeInTheDocument();
+
+        await actor.click(within(tabs).getByRole('link', { name: 'Your tracking' }));
+
+        expect(await screen.findByText(`history for ${user.id}`)).toBeInTheDocument();
+        expect(screen.queryByRole('navigation', { name: 'Settings' })).not.toBeInTheDocument();
     });
 });
 
+/**
+ * Deleting and signing out are pressed on the Settings tab but owned by the page, because the render in
+ * which the account disappears is the page's — so they are tested here, from that tab.
+ */
 describe('UserPage account deletion', () => {
     beforeEach(() => {
-        authAnswered(userProfile());
-        vi.mocked(auth.deleteAccount).mockReset();
+        vi.mocked(actions.deleteAccount).mockReset();
     });
 
     /**
@@ -166,12 +256,11 @@ describe('UserPage account deletion', () => {
         // the render that follows would ask somebody who has just deleted their account to sign in.
         const actor = userEvent.setup();
         stubFetch();
-        vi.mocked(auth.deleteAccount).mockImplementation(async () => { auth.user = null; });
-        const view = renderPage();
+        const view = renderAt('/user/settings', answered(userProfile()));
 
         await deleteThroughDialog(actor);
-        await waitFor(() => expect(auth.deleteAccount).toHaveBeenCalledWith('Passw0rd1'));
-        view.rerender(<MemoryRouter><UserPage /></MemoryRouter>);
+        await waitFor(() => expect(actions.deleteAccount).toHaveBeenCalledWith('Passw0rd1'));
+        view.authSays(answered(null));
 
         expect(await screen.findByText('Your account has been deleted.')).toBeInTheDocument();
         expect(screen.queryByText(/sign in to see your profile/i)).not.toBeInTheDocument();
@@ -180,8 +269,8 @@ describe('UserPage account deletion', () => {
     it('keeps the profile when the deletion is refused', async () => {
         const actor = userEvent.setup();
         stubFetch();
-        vi.mocked(auth.deleteAccount).mockRejectedValue(new Error('Password is incorrect.'));
-        renderPage();
+        vi.mocked(actions.deleteAccount).mockRejectedValue(new Error('Password is incorrect.'));
+        renderAt('/user/settings', answered(userProfile()));
 
         await deleteThroughDialog(actor);
 
@@ -194,15 +283,46 @@ describe('UserPage account deletion', () => {
 describe('UserPage signing out', () => {
     it('says why under the button when the sign-out does not happen', async () => {
         // The account is still signed in, so the page stays as it is and says so.
-        authAnswered(userProfile());
-        vi.mocked(auth.logout).mockRejectedValueOnce(new Error('Could not sign you out. Please try again.'));
+        vi.mocked(actions.logout).mockRejectedValueOnce(new Error('Could not sign you out. Please try again.'));
         const actor = userEvent.setup();
         stubFetch();
-        renderPage();
+        renderAt('/user/settings', answered(userProfile()));
 
         await actor.click(screen.getByRole('button', { name: 'Sign Out' }));
 
         expect(await screen.findByRole('alert')).toHaveTextContent('Could not sign you out. Please try again.');
         expect(screen.getByRole('button', { name: 'Sign Out' })).toBeInTheDocument();
+    });
+
+    it('holds the button while the request is out, without taking its focus, and asks only once', async () => {
+        let finish = () => {};
+        vi.mocked(actions.logout).mockImplementationOnce(() => new Promise<void>(resolve => { finish = resolve; }));
+        const actor = userEvent.setup();
+        stubFetch();
+        renderAt('/user/settings', answered(userProfile()));
+
+        await actor.click(screen.getByRole('button', { name: 'Sign Out' }));
+        const held = screen.getByRole('button', { name: 'Signing out…' });
+
+        expect(held).toHaveAttribute('aria-disabled', 'true');
+        expect(held).not.toBeDisabled();
+        expect(held).toHaveFocus();
+
+        await actor.click(held);
+        expect(actions.logout).toHaveBeenCalledTimes(1);
+
+        finish();
+        expect(await screen.findByRole('heading', { name: 'Home' })).toBeInTheDocument();
+    });
+
+    it('goes home once the server agrees', async () => {
+        const actor = userEvent.setup();
+        stubFetch();
+        renderAt('/user/settings', answered(userProfile()));
+
+        await actor.click(screen.getByRole('button', { name: 'Sign Out' }));
+
+        expect(await screen.findByRole('heading', { name: 'Home' })).toBeInTheDocument();
+        expect(actions.logout).toHaveBeenCalledTimes(1);
     });
 });

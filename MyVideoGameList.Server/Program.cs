@@ -10,6 +10,7 @@ using MyVideoGameList.Server.Observability;
 using MyVideoGameList.Server.Security;
 using MyVideoGameList.Server.Services;
 using MyVideoGameList.Server.Services.Edge;
+using MyVideoGameList.Server.Services.Email;
 using MyVideoGameList.Server.Services.Import;
 using Scalar.AspNetCore;
 
@@ -48,9 +49,10 @@ builder.Services.AddHsts(options =>
     options.IncludeSubDomains = true;
 });
 builder.Services.AddMemoryCache();
-// Retry, a circuit breaker, a per-attempt timeout and IGDB's four-a-second limit.
-// See Services/IgdbResilience.cs.
-builder.Services.AddHttpClient("Igdb").AddIgdbResilience();
+// Retry, a circuit breaker, a per-attempt timeout and IGDB's four-a-second limit, and outside all of
+// it one line per call, which the alarm on IGDB's failure rate counts: added first, so that it is
+// outermost. See Services/IgdbResilience.cs and Observability/IgdbCallLog.cs.
+builder.Services.AddHttpClient("Igdb").AddIgdbCallLog().AddIgdbResilience();
 
 // Steam's news API is public and needs no key, but it is a third party on the home page's
 // critical path, so it gets a short timeout of its own rather than the 100s default.
@@ -107,11 +109,22 @@ builder.Services.AddScheduledWork();
 // paths are logged and nothing reaches AWS. See docs/decisions/0058-*.
 builder.Services.AddEdgeInvalidation(builder.Configuration);
 
+// The one way the API sends email: through SES where a Region is configured, into a folder in
+// Development, and nowhere else at all, which stops the host here. See docs/decisions/0088-*.
+builder.Services.AddEmail(builder.Configuration, builder.Environment);
+
+// The check that a sign-up comes from a person, which Cloudflare's Turnstile answers: Cloudflare's
+// always-passing test keys in Development, a deployment's own pair from configuration, and with none,
+// no sign-ups at all. See Security/Turnstile.cs and docs/decisions/0092-*.
+builder.Services.AddTurnstile(builder.Configuration, builder.Environment);
+
 // The clock, injected so the event log's timestamps are controllable in tests.
 builder.Services.AddSingleton(TimeProvider.System);
 
+// Every session the API opens ends if it sits idle in a transaction for a minute, so a transaction
+// nobody finishes cannot hold its locks for as long as the process lives. See docs/decisions/0079-*.
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
-    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
+    options.UseNpgsql(SessionLimits.ForApi(builder.Configuration.GetConnectionString("DefaultConnection"))));
 
 // Readiness checks. Liveness (/healthz) deliberately runs no checks - it answers
 // "is the process up", not "are its dependencies well".
@@ -128,7 +141,13 @@ builder.Services.AddIdentity<ApplicationUser, IdentityRole>(options =>
     options.Password.RequireLowercase = true;
     options.Password.RequireNonAlphanumeric = false;
     options.User.RequireUniqueEmail = true;
-    options.SignIn.RequireConfirmedAccount = false;
+
+    // An account signs in only once its address is confirmed, by the link registration sends.
+    // On from the first public account, because turning it on later would lock out everyone who
+    // registered before it: the migration that turned it on confirmed every account there was.
+    // Identity refuses an unconfirmed account before it checks the password, so AuthController
+    // checks it itself before saying why. See docs/decisions/0089-*.
+    options.SignIn.RequireConfirmedAccount = true;
 
     // Lockout after five wrong passwords, for fifteen minutes. Without it a password is
     // guessable at whatever rate a client can manage, and the per-IP limiter on /api/auth
@@ -151,7 +170,10 @@ builder.Services.AddIdentity<ApplicationUser, IdentityRole>(options =>
     options.User.AllowedUserNameCharacters = UserNamePolicy.AllowedCharacters;
 })
 .AddEntityFrameworkStores<ApplicationDbContext>()
-.AddDefaultTokenProviders();
+.AddDefaultTokenProviders()
+// A reset's link works for an hour, where a confirmation's works for the default's day: a provider of
+// its own, which the reset email reads its lifespan from. See docs/decisions/0090-*.
+.AddPasswordResetTokens();
 
 // Configure the Identity cookie to return HTTP status codes instead of redirects
 // (required for SPA / API usage)
@@ -176,6 +198,9 @@ builder.Services.ConfigureApplicationCookie(options =>
     // The cookie that says, to the edge and the home page's server render, that a browser is signed in
     // and nothing about who (ADR 0074).
     SignedInFlag.FollowTheSession(options.Events);
+    // A deleted account's other sessions end on their next request, not at the next stamp check
+    // half an hour later (ADR 0077).
+    AccountSessions.EndAtOnce(options.Events);
 });
 
 // The key ring that cookie above is signed with, and the review cursor sealed with. Shared through

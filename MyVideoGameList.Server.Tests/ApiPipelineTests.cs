@@ -28,7 +28,7 @@ public sealed class ProcessWideActivityFormat;
 /// The application's own pipeline, as <c>Program.cs</c> builds it, with IGDB stood in for and no
 /// database: the request's trace from the caller's <c>traceparent</c> to the error body, the header
 /// and every line logged, the request line's place above the exception handler, what a line may not
-/// carry, and <c>/api/version</c>.
+/// carry, the IGDB client's call line outside its retries, and <c>/api/version</c>.
 /// </summary>
 /// <remarks>
 /// Through the real hosting layer, because that is what reads <c>traceparent</c> and starts the
@@ -69,6 +69,9 @@ public sealed class ApiPipelineTests
             // allows. Nothing here opens the connection; the key ring stays in memory.
             builder.UseSetting("ConnectionStrings:DefaultConnection", "Host=localhost;Database=unused");
             builder.UseSetting("DataProtection:AllowEphemeralKeys", "true");
+            // Outside Development the host refuses to start without an email sender (ADR 0088).
+            // Nothing these tests ask sends one, so the folder is never written to.
+            builder.UseSetting("Email:OutboxPath", Path.Combine(Path.GetTempPath(), "mvgl-tests-outbox"));
 
             builder.ConfigureAppConfiguration((_, configuration) => configuration.AddInMemoryCollection(Settings));
 
@@ -255,6 +258,26 @@ public sealed class ApiPipelineTests
         var version = JsonDocument.Parse(body).RootElement;
         Assert.Equal(BuildVersion.Unknown, version.GetProperty("sha").GetString());
         Assert.Equal(BuildVersion.Unknown, version.GetProperty("builtAt").GetString());
+    }
+
+    [Fact]
+    public async Task IgdbClient_AsProgramBuildsIt_WritesItsCallLineOutsideTheRetries()
+    {
+        // The line counts calls, so it has to see each one where IgdbService does. Inside the
+        // resilience handler it would count attempts, three to every call that failed.
+        await using var api = new Api();
+
+        var handlers = new List<DelegatingHandler>();
+        for (var handler = api.Services.GetRequiredService<IHttpMessageHandlerFactory>().CreateHandler("Igdb");
+             handler is DelegatingHandler delegating;
+             handler = delegating.InnerHandler)
+        {
+            handlers.Add(delegating);
+        }
+
+        var callLine = handlers.FindIndex(handler => handler is IgdbCallLogHandler);
+        var resilience = handlers.FindIndex(handler => handler is Microsoft.Extensions.Http.Resilience.ResilienceHandler);
+        Assert.InRange(callLine, 0, resilience - 1);
     }
 
     [Fact]

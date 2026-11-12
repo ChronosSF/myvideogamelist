@@ -41,7 +41,7 @@ build behind a stand-in that does route `/api` (ADR 0060).
 | `npm run typecheck` | `react-router typegen && tsc -b` — use this, never bare `tsc` |
 | `npm run test` | Vitest, jsdom + Testing Library. `npm run test:watch` to iterate |
 | `npm run visual` | Before-and-after screenshots of the pages, compared pixel by pixel, for a change meant to look the same. Needs two dev servers and a local test account, whose email and password it reads from the shell or from `visual/.env` (ignored by git); `visual/playwright.config.ts` says how. Not run by CI |
-| `npm run e2e` | The browser smoke test, over the production shape: sign up, add a game to a list, reload, it is still there. Builds the front end and serves it with `react-router-serve` beside the API under `dotnet run`, with a stand-in in front that routes `/api/*` to the API as the balancer does, and one for IGDB behind, so it needs no IGDB credentials. Needs PostgreSQL up, ports 5180–5183 free, and once, `npx playwright install chromium`. Keeps a database of its own on the compose server, `mvgl_e2e`, never `myvideogamelist`, created on the first run; `E2E_CONNECTION_STRING` points it elsewhere. Run by CI. See ADR 0060 |
+| `npm run e2e` | The browser smoke test, over the production shape: sign up, add a game to a list, reload, it is still there; and beside it, a forgotten password reset from its email and signed in with (ADR 0090). Builds the front end and serves it with `react-router-serve` beside the API under `dotnet run`, with a stand-in in front that routes `/api/*` to the API as the balancer does, and one for IGDB behind, so it needs no IGDB credentials, and stand-ins for Cloudflare's Turnstile script in the browser and its siteverify beside IGDB's (ADR 0092), so a run reaches no third party. Needs PostgreSQL up, ports 5180–5183 free, and once, `npx playwright install chromium`. Keeps a database of its own on the compose server, `mvgl_e2e`, never `myvideogamelist`, created on the first run; `E2E_CONNECTION_STRING` points it elsewhere. Run by CI. See ADR 0060 |
 | `npm run lighthouse` | Lighthouse CI on five pages of the `npm run e2e` shape, on a phone and a desktop, then axe-core on the same pages. Fails on an accessibility, best-practices or SEO score, or a count of console errors, that leaves `lighthouse/budgets.ts`'s baseline, on layout shift over 0.02 or script or page weight over budget, and on an axe rule or contrast pair a page did not already break; performance warns. Needs PostgreSQL up, ports 5190–5193 free, IGDB's image host reachable and, once, `npx playwright install chromium`. Keeps `mvgl_lighthouse` (or `LIGHTHOUSE_CONNECTION_STRING`); reports in `lighthouse/reports/`. Run by CI. See ADR 0068 |
 | `npm run build` | Production build |
 | `npm run audit` | `npm audit` over the lock file, devDependencies included, with no install: high and critical fail, lower ones are printed. `npm run audit:lighthouse` does the same over Lighthouse CI's lock file, and CI's Dependency audit job runs both. `scripts/audit.mjs` holds a list of accepted advisories for each, every entry with its reason and a date: the client's for want of any fix, Lighthouse CI's for want of one its dependents' ranges allow (ADR 0068 §9). See ADR 0061 |
@@ -61,7 +61,11 @@ build behind a stand-in that does route `/api` (ADR 0060).
 Health endpoints: `/healthz` (liveness, no dependency checks) and `/readyz` (database and
 IGDB reachability). A degraded IGDB returns 200, not 503 — browsing breaks but stored lists
 still work, so the instance should stay in rotation. Which commit is running: `/api/version` on the
-API and `/version` on the SSR server, each `{ sha, builtAt }`, `unknown` locally (ADR 0059).
+API and `/version` on the SSR server, each `{ sha, builtAt }`, `unknown` locally (ADR 0059). What
+says a deployed site is failing: five alarms and a rule in the `App` stack, emailed through the
+hand-deployed `Alerts` stack to the address in the `/mvgl/<env>/alarm-email` parameter, which the
+repository never holds; the IGDB one counts the API's Information line per IGDB call
+(`Observability/IgdbCallLog.cs`, ADR 0080, `infra/README.md`).
 
 ## Layout
 
@@ -70,7 +74,7 @@ MyVideoGameList.Server/         ASP.NET Core 10 API
   Controllers/  Services/  Models/  DTOs/  Data/  HealthChecks/
   Security/                     Rate limits, forwarded headers, security headers, the write guard, the admin policy
   Errors/                       What each kind of failure leaves as
-  Observability/                The trace id, the request log, the JSON console, /api/version
+  Observability/                The trace id, the request log, the IGDB call line, the JSON console, /api/version
 MyVideoGameList.Server.Tests/   xUnit tests
 MyVideoGameList.Server.IntegrationTests/  The API over PostgreSQL in a container, for what InMemory cannot do
 myvideogamelist.client/
@@ -104,7 +108,14 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   same migration. A deployed instance will start against an un-migrated database and fail on
   first query rather than silently migrating. Deployed, that step is the migration task the
   `Deploy dev` workflow runs before the application stack, from the bundle baked into the API
-  image; a non-zero exit stops the release.
+  image; a non-zero exit stops the release. **It waits five seconds for a lock and then gives up**
+  (`lock_timeout` on its connection string), because the old revision is still serving and every
+  reader of a table queues behind a DDL waiting for that table. So a release failed with `55P03` is
+  re-run, not debugged. And **no API session may sit idle in a transaction for a minute**:
+  PostgreSQL ends it (`idle_in_transaction_session_timeout`, set in `Program.cs`, so locally too).
+  The cache refresh's fifteen seconds across IGDB is the one idle stretch designed in. Never await
+  anything unbounded inside a transaction. Both limits are `Data/SessionLimits.cs`, which the CDK
+  app compiles too, so it may use nothing past the base class library. See `docs/decisions/0079-*`.
 
 - **A merge to master builds and pushes dev's images, and deploys only when the environment is
   awake.** `DEV_DEPLOY_ENABLED` on the `dev` GitHub environment is the gate, set by
@@ -136,6 +147,45 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
 - **Secrets never go in `appsettings.json`.** Local: `dotnet user-secrets set "Igdb:ClientId" "…"`.
   Deployed: `Igdb__ClientId` / `Igdb__ClientSecret` environment variables. User secrets load
   only in the Development environment — running as Production locally will fail IGDB calls.
+
+- **Email leaves through `IEmailTransport` alone, and a deployment with no sender does not start.**
+  SES wherever `Email:Ses:Region` is set; in Development, `.eml` files in `mvgl-outbox` under the
+  system's temp folder, whose path the log names; anywhere else, a startup failure unless
+  `Email:OutboxPath` names a folder. That is why the migration bundle, the migration task and both
+  test hosts set one. Dev sends as `mvgl-dev-email`, a role in the production account, which has
+  SES production access. SES's own sending authorization would not do: a delegate's account has to
+  leave the sandbox itself. So every email dev sends counts against production's reputation. **No
+  log line or exception holds an address**: SES's refusal names the recipient, so
+  `EmailNotSentException` carries its text masked and no inner exception. The sender's address is
+  `EmailIdentity`, which the CDK app compiles too: the role allows that address and no other. See
+  `docs/decisions/0088-*`.
+
+- **A bounce or a complaint stops all mail to that address, in SES, and the API is never told.** Every
+  send names the configuration set `mvgl-email` (`EmailIdentity.ConfigurationSet`), which
+  `Mvgl-prod-Email` makes. The set sends nothing to an address on the production account's suppression
+  list, and publishes each bounce and complaint to the owner through `mvgl-prod-alerts`. SES accepts a send
+  to a suppressed address and drops it, with a message id, so no flow can tell that its email will never
+  arrive, and every place that says an email was sent ends with the support address (`StillNothing`). Only
+  the owner can lift an address (`infra/README.md`). Never keep a list of the application's own, and never
+  send without the set: the role would allow it, but the set is what the events come from.
+  An App deploy of a revision that names the set has to wait until `Mvgl-prod-Email` makes it. See
+  `docs/decisions/0091-*`.
+
+- **An account signs in only once its address is confirmed, and "confirm first" needs the password.**
+  Identity refuses an unconfirmed account before it checks the password and counts nothing, so
+  `AuthController` checks it, counts a wrong one towards the lockout, and answers the 403 that offers
+  the link again only to the password's owner; anything else is the usual 401. A link's token goes
+  after the `#` (`EmailLinks`), never in a query string, which the SSR server's log would keep, and
+  the page posts it: confirming signs nobody in, because the token outlives its use. Every account
+  before the migration that turned this on was confirmed by it. A test that signs up goes through the
+  link: `Browsers.RegisterAsync`, `e2e/outbox.ts`. See `docs/decisions/0089-*`. **A password reset
+  is the same shape and signs nobody in either**: its link (`/reset-password#…`) works once, for an
+  hour, from a token provider of its own whose lifespan the email reads (`PasswordResetTokens`); it
+  confirms the address, ends the lockout, and ends every session at its next request through
+  `SessionsEndedAt`, which `AccountSessions` reads beside the stamp. Its writer, `AccountSessions.EndAll`,
+  ends nothing without a write that also changes the stamp. The request answers 202 whatever it names.
+  Every paced email goes through `EmailPace.SendAsync`, with a pace per kind and per account, so never
+  two resets in five minutes. See `docs/decisions/0090-*`.
 
 - **The key ring is shared through Parameter Store, and a deployment that names no store does not
   start.** The Data Protection keys sign the Identity cookie and seal the review cursor, and a ring
@@ -314,7 +364,7 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   an aggregate names nobody; the reviews list only those public on a public profile. The reviews page
   by an encrypted cursor over `CreatedAt` then the review id, **never by offset** — rows move while
   somebody reads, and an offset then skips a review for good — and never on a key that can change,
-  such as the author's name. `GameUserPanel` calls the hook's `reload` after the reader's own
+  such as the author's name. `GameEntryProvider` calls the hook's `reload` after the reader's own
   score or review changes, or the section beside it shows the write as though it had failed. See
   `docs/decisions/0028-*`. **The scores are the exception, because they name nobody**: the loader
   reads `/community-scores` and `/community-times` beside the game, so the member score is in the
@@ -322,6 +372,16 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   read has a one-second deadline, a render missing either is `no-store`, and under the floors the
   loader keeps only the counts, since its copy sits in the shared HTML for up to a day. Review text
   never enters the loader (ADR 0069).
+
+- **The game page and the profile are each two tabs, and the reader's own record of a game is one provider.**
+  `/games/:id` (Overview) and `/games/:id/yours` (Your game) are child routes of `GamePage`, which keeps the
+  loader, the headers, the meta and the boundary; `/user` and `/user/settings` are `UserPage`'s. The list, the
+  score, the wishlist and the favourite are `GameTrackingRow` in the hero, drawn the same size in the server
+  render, signed out and signed in, so keep any change to it the same height in all three. Both it and the Your
+  game tab read `useGameEntry()`, from `GameEntryProvider`, keyed on the account and the game; the Overview
+  tab sits outside it on purpose, so a signed-in reader's arrival remounts only the hero. Your game is
+  `noindex` and `no-store`. A game's related games are `GameDetailsDto.Related`, one more IGDB query cached
+  apart, and a null there makes the render `no-store`. See `docs/decisions/0084-*`.
 
 - **A change of list clears the entry's hand-arranged position, and every writer of a status owes
   that.** `UserGameEntries.Position` is the backlog's "My order": a sparse number, null for a game never
@@ -371,9 +431,10 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
 - **A document runs only the scripts its own render wrote.** Its `script-src` names a nonce drawn
   once per render in `entry.server.tsx` and handed to `<ServerRouter>` and to the stream; an inline
   script without it never runs, and a page whose hydration scripts never run is dead. A new inline
-  script of ours, such as the palette script #208 plans, goes in by its hash in `documentPolicy`, and
-  a script from another host is refused until a record decides its hosts or `'strict-dynamic'`
-  (Google's tag, #242, is the first). A shared cache keeps the nonce whole only because header and
+  script of ours goes in by its hash in `documentPolicy`, as the look script does, and
+  a script from another host is refused until a record decides its hosts or `'strict-dynamic'`:
+  Cloudflare's, for Turnstile on the sign-up form, is the one so far (ADR 0092), and Google's tag (#242)
+  will be the next. A shared cache keeps the nonce whole only because header and
   body are stored together, so **nothing at the edge may set, rewrite or remove
   `Content-Security-Policy` on a document** — a response headers policy replacing it names no nonce
   and every page dies — **and no document may carry an `ETag` or `Last-Modified`**, because a 304
@@ -394,8 +455,27 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   that made the call names (see "One id names a request" below). `/readyz` still answers 200 while IGDB is down, deliberately. See
   `docs/decisions/0034-*`.
 
+- **Sign-up asks Cloudflare's Turnstile first, and only sign-up does.** It is the one form that mails an
+  address a stranger typed, from the SES account production's reputation lives in, so `Register` asks
+  Cloudflare about the form's token before it looks at anything else: refused is a 400 that makes no
+  account and sends nothing, Cloudflare unreachable is a 502, and asking spends the token, so the form
+  draws the widget again after any failed attempt and the server never retries. That 502 carries a
+  sentence of its own: `UpstreamFailureHandler`'s detail is about IGDB, so a call to any other service
+  throws `UpstreamUnavailableException`. Each environment has its
+  own widget, its pair in `mvgl/<env>/turnstile`, set by hand; the page asks `GET /api/auth/turnstile`
+  for the site key when the form opens, **never with `credentials: 'omit'`**, which withholds the dev
+  site's basic auth from a path its door does not let through. **A deployment with no keys starts and
+  takes no sign-ups**, with a 503 and an error in the log, because the migration task boots the same host,
+  and the placeholder the Data stack makes the secret with is no keys (`TurnstilePlaceholder`, which the
+  CDK app compiles too); **a Cloudflare test secret
+  outside Development does not start**, because it passes whoever asks. Development with no keys uses
+  the always-passing test keys. Tests never reach Cloudflare: the integration suite's
+  `JudgingTurnstile`, the client's `@/test/turnstile`, and the e2e stand-ins. See
+  `docs/decisions/0092-*`.
+
 - **The rate limiter is narrow on purpose, and the lockout says nothing.** Ten attempts per address
-  per five minutes on login and register only — the SSR server calls this API for every visitor, so
+  per five minutes on login, register, the confirmation's resend and the password reset's request
+  only, which share one budget (ADR 0089, 0090); not on the reset itself, whose token cannot be guessed — the SSR server calls this API for every visitor, so
   a limit partitioned by address anywhere a loader reaches would throttle the whole site as one
   client. Identity locks an account after five failures but answers exactly as it answers a wrong
   password, because announcing a lockout tells an attacker the account exists. Forwarded headers
@@ -404,7 +484,12 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   middleware checks each hop against the trust list, and the CDN's address is never in the
   balancer's subnets, so raising it to 2 quietly leaves the limiter partitioned by edge server. The
   balancer preserves the header instead, which is safe only while nothing but CloudFront can reach
-  it. See `docs/decisions/0044-*`.
+  it. See `docs/decisions/0044-*`. **The one other limit is per account, and never on a withdrawal**:
+  making a profile public and changing a public name's letter case, ten and three a day, because each
+  lets a withdrawal that goes to the edge at once be repeated; the rest of an account's withdrawals are
+  paced by `WithdrawalHold` instead, a minute apart and twenty before one every fifteen minutes, so one
+  account cannot spend the day's invalidations. A moderator's withdrawal goes at once. See
+  `docs/decisions/0081-*`.
 
 - **Never change a game's status without recording an event.** `UserGameEvents` is append-only
   and is the only record that a transition happened — `UserGameLists` holds current state and is
@@ -600,6 +685,25 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   There is one theme, dark, and no `light:` variant (ADR 0048). A change meant to look the same is
   checked with `npm run visual`. See `docs/decisions/0049-*`.
 
+- **The site is drawn in the reader's look, and every palette but the default is worked out.** A look is a
+  palette, a background pattern and its tint, stored on the account by name (`LookPolicy`) and carried on
+  the profile as `look`. A palette is two colours in `theme.css`, a page and an accent, and the surfaces,
+  lines, text and primary are worked out from them in its `@supports` block, so **a new token of those kinds
+  needs its line there too**, or every palette but the default keeps the default's value; a colour that
+  carries meaning, or the brand's, stays out of it. `LOOK_SCRIPT` puts the browser's copy of the look on
+  `<html>` before the first paint and is admitted by its hash, `LOOK_SCRIPT_HASH`: change the script, or a
+  list it is built from, and the hash with it (`look.test.ts` says what it should be). A palette or pattern
+  added is a name in `LookPolicy`, in `@/types/look` (`serverMirrors.test.ts` compares them) and in a
+  migration's check constraint. The server checks only the shape; whether a custom palette reads is the
+  settings page's check, measured off the page (`@/lib/lookChecks`): **only a background the body text
+  cannot be read on is held back**, drawn and not saved, and the other checks are advice shown beside a
+  palette that is saved. The logo's badge and wordmark read `logo-badge`, `logo-tick` and `logo-word`,
+  which follow the accent; the `brand-*` tokens stay the brand's. The patterns are `PagePattern`, one element at each end whatever the drawing. **Only admins may
+  choose a look for now** (`LookPolicy.CanChoose`, and the admin policy on `PUT /api/user/look`); the
+  profile carries the look an account is *drawn* in, the default for everybody else, and the card shows
+  them Coming soon. A paywall replaces that function and that policy and nothing else. The browser's copy
+  outlives a sign-out and is forgotten only with the account. See `docs/decisions/0082-*`.
+
 - **Text is set by its role, in one of three self-hosted families, and corners are tokens too.**
   `type-display` and `type-title` (Archivo), `type-kicker` and `type-meta` (DM Mono), and Schibsted
   Grotesk for everything else, as the default (`src/type.css`). The fonts are served from this origin
@@ -663,7 +767,9 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   success policy stated by the loader through `data()`. A client-side navigation's `.data` request
   reaches the throwing route's `headers` whether or not it has a boundary, so a route that answers
   one policy unconditionally, or falls back to a shared one, caches its failures there. A page that
-  throws while rendering is not covered by any of this yet (#337). See `docs/decisions/0070-*`.
+  throws while rendering, after its loader answered, gets none of this: its `headers` answered for
+  a page that worked, and only the entry's 5xx rule above keeps its 500 off the edge (#337). See
+  `docs/decisions/0070-*`.
 
 - **`fetch` rejects when the API is unreachable** — it does not return `!response.ok`. A loader
   that only checks `response.ok` turns a dead upstream into an unhandled 500. Wrap it and throw

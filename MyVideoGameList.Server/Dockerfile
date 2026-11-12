@@ -27,15 +27,17 @@ RUN dotnet publish MyVideoGameList.Server/MyVideoGameList.Server.csproj \
     -c Release --no-restore -o /app/publish
 
 FROM build AS bundle
-# Generating the bundle runs Program.cs as far as building the host, which is why these three
+# Generating the bundle runs Program.cs as far as building the host, which is why these four
 # are set. EF's tooling assumes Development unless told otherwise, and the deployed bundle runs
 # as Production, so it is generated as Production too. The host refuses to build with an empty
-# connection string, and refuses to build as Production without a Data Protection key store
-# (ADR 0043) - both are right for a running service and both are meaningless here, where no
-# connection is opened and nothing is protected. The connection string below reaches nothing.
+# connection string, as Production without a Data Protection key store (ADR 0043), and without
+# an email sender (ADR 0088) - all right for a running service and all meaningless here, where no
+# connection is opened, nothing is protected and nothing is sent. The connection string below
+# reaches nothing, and the outbox is never written to.
 ENV ASPNETCORE_ENVIRONMENT=Production \
     ConnectionStrings__DefaultConnection="Host=localhost;Database=bundle" \
-    DataProtection__AllowEphemeralKeys=true
+    DataProtection__AllowEphemeralKeys=true \
+    Email__OutboxPath=/tmp/outbox
 RUN dotnet tool install --global dotnet-ef --version "10.0.*"
 ENV PATH="$PATH:/root/.dotnet/tools"
 RUN dotnet ef migrations bundle \
