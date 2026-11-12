@@ -14,6 +14,7 @@ import {
     headersTimeoutMs,
     keepAliveTimeoutMs,
     listen,
+    requestLog,
 } from './serve.ts';
 
 /**
@@ -95,28 +96,90 @@ describe('the keep-alive', () => {
 });
 
 describe('close', () => {
-    it('ends a connection that was answering a request once it has answered, not a keep-alive later', async () => {
+    /**
+     * Well inside the second the fallback sweep waits, so that passing proves the connection was ended by
+     * the response itself rather than by the sweep.
+     */
+    const PROMPTLY = 500;
+
+    /**
+     * Sends one request down a connection of its own and closes the server 50 ms later, while it is still
+     * being answered. Resolves with what came back, and how long after the last of it the connection ended.
+     */
+    async function closeWhileAnswering(app: express.Express, path: string) {
+        await serve(app);
+        const server = running as Server;
+        const socket = connect((server.address() as AddressInfo).port, '127.0.0.1');
+        let text = '';
+        let lastDataAt = 0;
+        socket.on('data', chunk => {
+            text += chunk.toString();
+            lastDataAt = Date.now();
+        });
+        const ended = new Promise<number>(resolve => socket.once('close', () => resolve(Date.now())));
+        await new Promise<void>(resolve => socket.once('connect', resolve));
+        socket.write(`GET ${path} HTTP/1.1\r\nHost: localhost\r\n\r\n`);
+
+        await new Promise(resolve => setTimeout(resolve, 50));
+        const closed = close(server);
+        const endedAt = await ended;
+        await closed;
+
+        return { text, endedAfter: endedAt - lastDataAt };
+    }
+
+    it('answers a response not yet started as the last on its connection, and ends the connection with it', async () => {
         const app = express();
         app.get('/slow', (_req, res) => {
             setTimeout(() => res.send('done'), 200);
         });
-        const origin = await serve(app);
-        const server = running as Server;
-        const { port } = new URL(origin);
 
-        const socket = connect(Number(port), '127.0.0.1');
-        const answered = new Promise<number>(resolve => socket.once('data', () => resolve(Date.now())));
-        const ended = new Promise<number>(resolve => socket.once('close', () => resolve(Date.now())));
-        await new Promise<void>(resolve => socket.once('connect', resolve));
-        socket.write('GET /slow HTTP/1.1\r\nHost: localhost\r\n\r\n');
+        const { text, endedAfter } = await closeWhileAnswering(app, '/slow');
 
-        // Mid-response: close() leaves this connection alone, and it is still open when the answer comes.
-        await new Promise(resolve => setTimeout(resolve, 50));
-        const closed = close(server);
+        expect(text).toMatch(/^HTTP\/1\.1 200/);
+        expect(text).toMatch(/\r\nConnection: close\r\n/i);
+        expect(text.endsWith('done')).toBe(true);
+        expect(endedAfter).toBeLessThan(PROMPTLY);
+    });
 
-        const [answeredAt, endedAt] = await Promise.all([answered, ended]);
-        await closed;
-        expect(endedAt - answeredAt).toBeLessThan(2_000);
+    it('ends the connection of a response that had promised to keep it the moment it finishes', async () => {
+        const app = express();
+        app.get('/streamed', (_req, res) => {
+            res.writeHead(200, { 'Content-Type': 'text/plain' });
+            res.write('first ');
+            setTimeout(() => res.end('last'), 200);
+        });
+
+        const { text, endedAfter } = await closeWhileAnswering(app, '/streamed');
+
+        expect(text).toMatch(/\r\nConnection: keep-alive\r\n/i);
+        expect(text).toContain('last');
+        expect(endedAfter).toBeLessThan(PROMPTLY);
+    });
+});
+
+describe('requestLog', () => {
+    it('logs the path a request asked for, never its query string', async () => {
+        const lines: string[] = [];
+        const logged = new Promise<void>(resolve => {
+            const app = express();
+            app.use(requestLog({
+                write: line => {
+                    lines.push(line);
+                    resolve();
+                },
+            }));
+            app.get('/games', (_req, res) => {
+                res.send('ok');
+            });
+            void serve(app).then(origin => get(`${origin}/games?search=someone%40example.com&sort=new`));
+        });
+        await logged;
+
+        expect(lines).toHaveLength(1);
+        expect(lines[0]).toMatch(/^GET \/games 200 2 - [\d.]+ ms\n$/);
+        expect(lines[0]).not.toContain('someone');
+        expect(lines[0]).not.toContain('?');
     });
 });
 

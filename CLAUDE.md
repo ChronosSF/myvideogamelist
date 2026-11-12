@@ -190,7 +190,7 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   Identity refuses an unconfirmed account before it checks the password and counts nothing, so
   `AuthController` checks it, counts a wrong one towards the lockout, and answers the 403 that offers
   the link again only to the password's owner; anything else is the usual 401. A link's token goes
-  after the `#` (`EmailLinks`), never in a query string, which the SSR server's log would keep, and
+  after the `#` (`EmailLinks`), never in a query string, which reaches request logs, cache keys and the `Referer`, and
   the page posts it: confirming signs nobody in, because the token outlives its use. Every account
   before the migration that turned this on was confirmed by it. A test that signs up goes through the
   link: `Browsers.RegisterAsync`, `e2e/outbox.ts`. See `docs/decisions/0089-*`. **A password reset

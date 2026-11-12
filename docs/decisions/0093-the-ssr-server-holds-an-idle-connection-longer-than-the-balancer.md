@@ -2,7 +2,8 @@
 
 **Status:** Implemented. Whether the sporadic 502s are gone shows only on a deployed site, in the
 balancer's `HTTPCode_ELB_502_Count`. [#439](https://github.com/ChronosSF/myvideogamelist/issues/439), part
-of [#109](https://github.com/ChronosSF/myvideogamelist/issues/109).
+of [#109](https://github.com/ChronosSF/myvideogamelist/issues/109). Being our own server, it also closes
+[#407](https://github.com/ChronosSF/myvideogamelist/issues/407): its request log drops the query string (§3).
 
 ## Context
 
@@ -87,7 +88,7 @@ piece by piece and in the same order:
 3. `/assets` immutable for a year, which `Edge.cs`'s cache behaviour for the bundles relies on.
 4. The rest of `build/client` with Express's default policy.
 5. `/.well-known` mounted as a root of its own.
-6. Morgan's `tiny` line for each request that reaches the application.
+6. Morgan's `tiny` line for each request that reaches the application, with the path in place of the URL.
 7. `@react-router/express`'s handler for everything else.
 
 `@react-router/serve` leaves the dependencies. The four packages it brought in join them instead:
@@ -95,9 +96,16 @@ piece by piece and in the same order:
 types are devDependencies. One build was served both ways, and every response header compared on eleven
 paths: the home page, `/robots.txt`, `/version`, a bundle, a stylesheet, the favicon, three 404s, a 502 and
 the route manifest. Apart from the date, the nonce and the trace id, they matched. The one difference was
-`Keep-Alive: timeout=5` against `timeout=65`. The log lines matched too.
+`Keep-Alive: timeout=5` against `timeout=65`. The log lines matched too, before the query string came out
+of them.
 
-Four things it does differently, on purpose:
+Five things it does differently, on purpose:
+
+- **The log line has the path, never the whole URL.** `tiny` prints `:url`, query string included, so a
+  search on `/games?search=…` sat in the SSR task's log for two weeks, and a search can be an email address.
+  ADR 0059 says no log line carries a query string, and #407 found that this one did. `requestLog` is `tiny`
+  with a `:path` token in place of `:url`, from `originalUrl` cut at the `?`. Method, status, length and
+  time are as they were.
 
 - **No `./public` served for an hour after `build/client`.** That path is relative to the working directory.
   The image has no `public/`, and Vite copies every file in it into `build/client`, which is served first.
@@ -119,12 +127,30 @@ checks it. `index.ts` sets `NODE_ENV` to `production` when it is unset, before a
 ### 5. Stopping ends the connections the long keep-alive would hold
 
 On a stop signal, `server.close()` ends the connections that are idle and leaves the busy ones alone. A
-connection that was busy goes idle once it has answered. It would then stay open for the whole 65 seconds:
-seen on 24.22.1, with nothing ending it. ECS kills a Fargate container 30 seconds after asking it to stop,
-unless the task definition's `stopTimeout` says otherwise, and ours does not. Five seconds of keep-alive hid
-this. So `close` also ends idle connections every second until the last one has gone. `serve.test.ts` holds
-this: a connection that is mid-response when the server closes ends within two seconds of its answer. The
-image stops in under a second while a connection is held open as the balancer would hold it, and exits 0.
+connection that was busy answers with `Connection: keep-alive`, goes idle, and would then stay open for the
+whole 65 seconds: seen on 24.22.1, with nothing ending it. ECS kills a Fargate container 30 seconds after
+asking it to stop, unless the task definition's `stopTimeout` says otherwise, and ours does not. Five seconds
+of keep-alive hid this.
+
+Simply ending such a connection once it has gone idle is the race this ADR is about, moved to shutdown: the
+answer told the client it could send again, and an end that crosses its next request is a 502. So `close`
+works in three steps, from the most graceful:
+
+1. **A response not yet started is the last on its connection.** Its headers say `Connection: close`, so the
+   client sends nothing more, and Node ends the connection once it has answered. So does any request that
+   reaches the server while it closes. `listen` keeps the set of responses under way so that `close` can
+   reach them.
+2. **A response whose headers already promised the connection** has its connection ended the moment it
+   finishes, from the response's own `close` event. That is the least that can be done once the header is
+   out, and it leaves the client the smallest gap to send in.
+3. **Every second until the last connection has gone**, whatever has gone idle any other way is ended.
+
+`serve.test.ts` holds the first two: each connection ends within half a second of its last byte, well
+before the sweep's second. Each test fails when its step is taken out. When deployed, ECS first takes the
+task out of the target group and waits for the balancer to drain it, up to the group's 30-second
+deregistration delay, and only then sends SIGTERM (the ECS guide's task lifecycle and connection draining
+pages). So little should still be under way by then. The image stops in under a second while a connection is held open as the
+balancer would hold it, and exits 0.
 
 ## Consequences
 

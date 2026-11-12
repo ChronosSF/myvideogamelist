@@ -1,8 +1,8 @@
-import { createServer, type Server } from 'node:http';
+import { createServer, type Server, type ServerResponse } from 'node:http';
 import path from 'node:path';
 import { createRequestHandler } from '@react-router/express';
 import compression from 'compression';
-import express, { type Express } from 'express';
+import express, { type Express, type Request, type Response } from 'express';
 import morgan from 'morgan';
 import type { ServerBuild } from 'react-router';
 
@@ -87,10 +87,24 @@ export function createApp(build: ServerBuild, assetsDirectory: string): Express 
     app.use('/.well-known', express.static(path.join(assetsDirectory, '.well-known')));
 
     // One line per request that reaches the application. The static files above are not logged.
-    app.use(morgan('tiny'));
+    app.use(requestLog());
     app.all('/{*splat}', createRequestHandler({ build, mode: process.env.NODE_ENV }));
 
     return app;
+}
+
+/**
+ * A request's path, for the log, and never its query string: that holds whatever somebody typed into a
+ * search, an email address included (ADR 0059). `originalUrl`, because Express rewrites `url` under a mount.
+ */
+morgan.token<Request, Response>('path', request => request.originalUrl.split('?', 1)[0]);
+
+/**
+ * One line per request: morgan's `tiny`, which `react-router-serve` logged, with the path where `tiny` has
+ * the whole URL (ADR 0093).
+ */
+export function requestLog(stream: { write(line: string): void } = process.stdout) {
+    return morgan<Request, Response>(':method :path :status :res[content-length] - :response-time ms', { stream });
 }
 
 /** Where the server listens, and the balancer in front of it. */
@@ -102,11 +116,45 @@ export interface ListenOptions {
     balancerIdleTimeout: number;
 }
 
+/** What `close` needs to know of a server `listen` started. */
+interface Shutdown {
+    closing: boolean;
+    /** The responses not yet closed, so that closing can reach the ones whose headers are not out. */
+    underWay: Set<ServerResponse>;
+}
+
+const shutdowns = new WeakMap<Server, Shutdown>();
+
+/**
+ * Makes a response the last on its connection, if its headers are not out yet: Node then ends the
+ * connection once it has answered, and the client, told so, sends nothing more down it. Once the headers
+ * are out, they have already promised the client the connection.
+ */
+function lastOnItsConnection(response: ServerResponse): void {
+    if (!response.headersSent) response.setHeader('Connection', 'close');
+}
+
 /** An HTTP server for the application with the timeouts above, listening. */
 export function listen(app: Express, { port, host, balancerIdleTimeout }: ListenOptions): Promise<Server> {
-    const server = createServer(app);
+    const server = createServer();
     server.keepAliveTimeout = keepAliveTimeoutMs(balancerIdleTimeout);
     server.headersTimeout = headersTimeoutMs(server.keepAliveTimeout);
+
+    const shutdown: Shutdown = { closing: false, underWay: new Set() };
+    shutdowns.set(server, shutdown);
+    // Before the application, so that a request reaching a closing server is answered as the last on its
+    // connection whatever the application writes first.
+    server.on('request', (_request, response: ServerResponse) => {
+        if (shutdown.closing) lastOnItsConnection(response);
+        shutdown.underWay.add(response);
+        response.once('close', () => {
+            shutdown.underWay.delete(response);
+            // Its connection has just gone idle. Ended now, not at the next sweep: a response whose
+            // headers promised the client the connection leaves it free to send on it at any moment.
+            if (shutdown.closing) server.closeIdleConnections();
+        });
+    });
+    server.on('request', app);
 
     return new Promise((resolve, reject) => {
         server.once('error', reject);
@@ -121,11 +169,24 @@ export function listen(app: Express, { port, host, balancerIdleTimeout }: Listen
  * Stops listening, and settles once every connection has ended.
  *
  * `server.close()` ends the connections that are idle at that moment, and leaves alone any still
- * answering a request. Such a connection goes idle when it has answered, and would then stay open for
- * the whole keep-alive, which is longer than ECS waits after `SIGTERM` before it kills the task. So
- * every second until the last one has gone, the connections that have gone idle are ended too.
+ * answering a request. Left at that, such a connection would answer with a promise to stay open, go idle,
+ * and then either stay open for the whole keep-alive, which is longer than ECS waits after `SIGTERM`
+ * before it kills the task, or be ended by a sweep just as the client sends its next request down it,
+ * which is the 502 this server's keep-alive exists to prevent (ADR 0093). So:
+ *
+ * - a response whose headers are not out yet, or that starts after this, says `Connection: close`, and
+ *   Node ends its connection once it has answered;
+ * - a response whose headers are already out has its connection ended the moment it finishes (in
+ *   `listen`), the least that can be done once a header has promised otherwise;
+ * - and every second until the last connection has gone, whatever has gone idle any other way is ended.
  */
 export function close(server: Server): Promise<void> {
+    const shutdown = shutdowns.get(server);
+    if (shutdown !== undefined) {
+        shutdown.closing = true;
+        for (const response of shutdown.underWay) lastOnItsConnection(response);
+    }
+
     return new Promise((resolve, reject) => {
         const sweep = setInterval(() => server.closeIdleConnections(), CLOSE_SWEEP_MS);
         server.close(error => {
