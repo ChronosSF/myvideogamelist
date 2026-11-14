@@ -33,6 +33,7 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
 {
     public DbSet<CachedGame> CachedGames { get; set; }
     public DbSet<ComingSoonPick> ComingSoonPicks { get; set; }
+    public DbSet<ContentReport> ContentReports { get; set; }
     public DbSet<CuratedEvent> CuratedEvents { get; set; }
     public DbSet<ImportJob> ImportJobs { get; set; }
     public DbSet<ImportRow> ImportRows { get; set; }
@@ -138,6 +139,7 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
         ConfigureUserGameEvents(modelBuilder);
         ConfigureUserGamePlaythroughs(modelBuilder);
         ConfigureReviews(modelBuilder);
+        ConfigureContentReports(modelBuilder);
         ConfigureImports(modelBuilder);
         ConfigureTags(modelBuilder);
 
@@ -549,6 +551,65 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
         reviews.ToTable(t => t.HasCheckConstraint(
             "CK_Reviews_Visibility",
             "\"Visibility\" IN ('public', 'private')"));
+
+        // The admin page's list of hidden reviews, newest hidden first. Partial, so the index holds only
+        // the few an admin has hidden rather than a null for every review there is.
+        reviews.HasIndex(r => r.HiddenAt).HasFilter("\"HiddenAt\" IS NOT NULL");
+    }
+
+    /// <summary>
+    /// What readers reported, until an admin answers it (ADR 0076).
+    /// </summary>
+    /// <remarks>
+    /// The reporter's own rows, by <c>UserId</c>, so they cascade from the reporter's account and are in
+    /// the reporter's export, as the guard requires. What is reported is one of two optional pointers,
+    /// both cascading: a review its author deletes, or an account deleted, leaves nothing to moderate.
+    /// </remarks>
+    private static void ConfigureContentReports(ModelBuilder modelBuilder)
+    {
+        var reports = modelBuilder.Entity<ContentReport>();
+
+        reports.HasKey(r => r.Id);
+        reports.Property(r => r.Reason).HasMaxLength(16);
+        reports.Property(r => r.Note).HasMaxLength(ContentReport.NoteMaxLength);
+
+        reports.HasOne(r => r.User)
+            .WithMany()
+            .HasForeignKey(r => r.UserId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        reports.HasOne(r => r.Review)
+            .WithMany()
+            .HasForeignKey(r => r.ReviewId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        reports.HasOne(r => r.ProfileUser)
+            .WithMany()
+            .HasForeignKey(r => r.ProfileUserId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // One report of each thing per reader: reporting it again replaces the reason and the note.
+        // Two partial indexes rather than one over both pointers, because PostgreSQL holds two nulls
+        // distinct, so a single index would let a reader report one profile any number of times. The
+        // admin's reads, every report of one review or one profile, go through the indexes each
+        // pointer's foreign key has of its own.
+        reports.HasIndex(r => new { r.UserId, r.ReviewId })
+            .IsUnique()
+            .HasFilter("\"ReviewId\" IS NOT NULL");
+        reports.HasIndex(r => new { r.UserId, r.ProfileUserId })
+            .IsUnique()
+            .HasFilter("\"ProfileUserId\" IS NOT NULL");
+
+        reports.ToTable(t =>
+        {
+            // About one thing: a review, or a profile, and never both or neither.
+            t.HasCheckConstraint(
+                "CK_ContentReports_OneSubject",
+                "(\"ReviewId\" IS NULL) <> (\"ProfileUserId\" IS NULL)");
+            t.HasCheckConstraint(
+                "CK_ContentReports_Reason",
+                $"\"Reason\" IN ({string.Join(", ", ReportReason.All.Select(reason => $"'{reason}'"))})");
+        });
     }
 
     /// <summary>

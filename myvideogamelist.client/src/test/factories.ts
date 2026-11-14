@@ -158,6 +158,7 @@ export function review(overrides: Partial<ReviewDto> = {}): ReviewDto {
         playthroughId: null,
         createdAt: '2026-01-01T00:00:00+00:00',
         updatedAt: '2026-01-01T00:00:00+00:00',
+        hiddenAt: null,
         ...overrides,
     };
 }

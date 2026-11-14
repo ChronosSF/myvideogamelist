@@ -106,6 +106,13 @@
     overflow-wrap: anywhere;
 }
 
+/* Under the text, and under a spoiler's control too: the report control is for what is hidden as well. */
+.review-card-actions {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 0.5rem;
+}
+
 /*
  * A full-width control rather than a small "show" link, so it is obvious what is being revealed
  * and hard to hit by accident while scrolling.

@@ -121,6 +121,7 @@ export default function GameOverviewPage() {
                         nothing to read. Handed the scores the hero shows, so that a request that failed
                         leaves the two agreeing on the loader's figure. */}
                     <GameCommunity
+                        gameId={game.id}
                         community={{ ...community, scores: memberScores }}
                         viewer={user?.userName ?? null}
                     />

@@ -11,7 +11,9 @@ name, avatar or bio rewritten or cleared. §6's open question, who spends the ce
 are paced on their way to the queue, so §4's request now carries one account's over a minute rather
 than one event's, and the privacy switch, a rename and a deletion still go at once. §5's task that
 dies outright and loses its queue is covered there too: every task starts by invalidating `/u/*` and
-the profile sitemap files.
+the profile sitemap files. §1's table gains a ninth event in
+[0076](0076-a-reader-reports-and-an-admin-withdraws.md) §5, a review an admin hid, which also makes
+the eighth from a second place, an admin's clear; both go at once, as 0081 §3 asks of a moderator's.
 
 ## Context
 

@@ -14,6 +14,8 @@ interface ReviewCardProps {
      * say which review it reveals — a page of buttons all reading "Show review" says nothing.
      */
     revealLabel: string;
+    /** What sits under the text, such as the control that reports it (ADR 0076). */
+    actions?: ReactNode;
 }
 
 /**
@@ -28,7 +30,7 @@ interface ReviewCardProps {
  * above cannot be kept in one list and forgotten in the other. The card is the list item, so it
  * belongs inside a `review-list`.
  */
-export function ReviewCard({ head, body, hasSpoilers, revealLabel }: ReviewCardProps) {
+export function ReviewCard({ head, body, hasSpoilers, revealLabel, actions }: ReviewCardProps) {
     const [revealed, setRevealed] = useState(false);
 
     return (
@@ -48,6 +50,8 @@ export function ReviewCard({ head, body, hasSpoilers, revealLabel }: ReviewCardP
             ) : (
                 <p className="review-body">{body}</p>
             )}
+
+            {actions && <div className="review-card-actions">{actions}</div>}
         </li>
     );
 }

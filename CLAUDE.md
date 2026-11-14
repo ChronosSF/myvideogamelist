@@ -221,7 +221,11 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   policy that reads account ids from `Admin:AccountIds`, so name your own:
   `dotnet user-secrets set "Admin:AccountIds:0" "<account id>"`. An id, never a username — a name
   can be given up and claimed by somebody else. A later admin page goes behind the same policy, on
-  the controller's class, and edits reference data only, never a user's. See `docs/decisions/0042-*`.
+  the controller's class, and edits reference data only, never a user's — with one exception, the
+  moderation card: on a reader's report it hides a review (`Reviews.HiddenAt`, a third gate every
+  public read of a review must draw) or clears a display name, picture or bio, and never writes a
+  member's words. A report is the reporter's row in `ContentReports`, deleted once an admin answers
+  it. See `docs/decisions/0042-*` and `0076-*`.
   Its statistics count and never list: totals across every account, nothing that selects one. The
   `LastSeenAt` they read is written by `GET /api/auth/me`, once a UTC day, the one write behind a
   `GET`, so keep that endpoint uncached. See `docs/decisions/0051-*`.

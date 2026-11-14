@@ -69,6 +69,24 @@ public class Review
 
     public DateTimeOffset UpdatedAt { get; set; }
 
+    /// <summary>
+    /// When an admin hid the review from every reader but its author, on a report, or null when it is
+    /// not hidden.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A third gate beside <see cref="Visibility"/> and the profile's, and the narrowest wins: a hidden
+    /// review is published nowhere and counted nowhere, whatever its author chose. Its author still reads,
+    /// edits and deletes it, and an edit does not bring it back; an admin does, by clearing this.
+    /// </para>
+    /// <para>
+    /// When, never who: an admin page records no account on what it changes (ADR 0042). Hidden rather
+    /// than deleted, because the words are the author's and an admin withdraws their publication, never
+    /// the words themselves. See <c>docs/decisions/0076-*</c>.
+    /// </para>
+    /// </remarks>
+    public DateTimeOffset? HiddenAt { get; set; }
+
     public ApplicationUser User { get; set; } = null!;
     public UserGameEntry Entry { get; set; } = null!;
     public UserGamePlaythrough? Playthrough { get; set; }

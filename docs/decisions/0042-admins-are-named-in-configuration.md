@@ -1,6 +1,8 @@
 # 0042. Admins are account ids in configuration, behind one server-side policy
 
-**Status:** Implemented — the first admin page is #163
+**Status:** Implemented — the first admin page is #163. Amended by
+[0076](0076-a-reader-reports-and-an-admin-withdraws.md): on a reader's report, an admin page also
+withdraws what a member published, by hiding a review or clearing a display name, picture or bio.
 
 Records the admin model [`specs/release-timeline-and-calendar.md`](../../specs/release-timeline-and-calendar.md)
 §7 specified, because it is not the calendar's alone: the next thing an operator has to change

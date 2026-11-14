@@ -59,6 +59,11 @@ export interface ReviewDto {
     playthroughId: number | null;
     createdAt: string;
     updatedAt: string;
+    /**
+     * When an admin hid it from every reader but its author, on a report, or null. Only its author is
+     * told, so the form can say why nobody else sees it (ADR 0076).
+     */
+    hiddenAt: string | null;
 }
 
 /** What a review write sends. A PUT: one per game, so writing again replaces it. */

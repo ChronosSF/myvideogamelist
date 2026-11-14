@@ -16,6 +16,7 @@ import { ScoreHistogram } from '@/components/ScoreHistogram';
 import { StatTile } from '@/components/StatTile';
 import { StatusBreakdown } from '@/components/StatusBreakdown';
 import { PublicReviewList } from '@/components/PublicReviewList';
+import { ReportButton } from '@/components/ReportButton';
 import type { Route } from './+types/ProfilePage';
 import '@/components/ProfileStats.css';
 import './ProfilePage.css';
@@ -263,6 +264,17 @@ export function ProfilePage({ loaderData }: Route.ComponentProps) {
                     {profile.bio ? (
                         <p className="public-profile-bio" dir="auto">{profile.bio}</p>
                     ) : null}
+
+                    {/* For the three things above that the owner wrote about themselves: the name, the
+                        picture and the bio (ADR 0076). The same for every reader, so the page stays one
+                        document at the edge; taken off the owner's own page after hydration. */}
+                    <div className="public-profile-report">
+                        <ReportButton
+                            target={{ userName: profile.userName }}
+                            subject={`@${profile.userName}'s profile`}
+                            label={`Report @${profile.userName}'s profile`}
+                        />
+                    </div>
                 </header>
 
                 {/* In the lists page's voice: what is not here, and what would put something here.

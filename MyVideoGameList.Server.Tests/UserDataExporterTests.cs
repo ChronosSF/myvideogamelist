@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Storage;
 using MyVideoGameList.Server.Data;
+using MyVideoGameList.Server.DTOs;
 using MyVideoGameList.Server.Models;
 using MyVideoGameList.Server.Services;
 
@@ -363,6 +364,7 @@ public class UserDataExporterTests
         Assert.Empty(export.Favourites);
         Assert.Empty(export.ListSortPreferences);
         Assert.Empty(export.ListNames);
+        Assert.Empty(export.Reports);
     }
 
     [Fact]
@@ -720,6 +722,98 @@ public class UserDataExporterTests
         Assert.Equal("The best side quests in the genre.", review.Body);
         Assert.True(review.HasSpoilers);
         Assert.Equal(ReviewVisibility.Public, review.Visibility);
+        Assert.Null(review.HiddenAt);
+    }
+
+    [Fact]
+    public async Task ExportAsync_AReviewAnAdminHid_CarriesWhenItWasHidden()
+    {
+        // What was done to the user's own words is theirs to know (ADR 0076 §2).
+        using var db = NewDb();
+        AddAccount(db, UserId, "mine@test.local");
+        AddReview(db, gameId: 11, visibility: ReviewVisibility.Public);
+        db.Reviews.Single().HiddenAt = Now.AddDays(-1);
+        db.SaveChanges();
+
+        var export = await NewExporter(db).ExportAsync(UserId, default);
+
+        Assert.Equal(Now.AddDays(-1), Assert.Single(export.Reviews).HiddenAt);
+    }
+
+    // ---------------------------------------------------------------- reports (ADR 0076)
+
+    private static void AddReport(
+        ApplicationDbContext db,
+        string reporterId,
+        int? reviewId = null,
+        string? profileUserId = null,
+        string reason = ReportReason.Spam,
+        string? note = null,
+        DateTimeOffset? createdAt = null)
+    {
+        db.ContentReports.Add(new ContentReport
+        {
+            UserId = reporterId,
+            ReviewId = reviewId,
+            ProfileUserId = profileUserId,
+            Reason = reason,
+            Note = note,
+            CreatedAt = createdAt ?? Now,
+        });
+        db.SaveChanges();
+    }
+
+    [Fact]
+    public async Task ExportAsync_Reports_CarryWhatTheUserReportedOldestFirst()
+    {
+        using var db = NewDb();
+        AddAccount(db, UserId, "mine@test.local");
+        AddAccount(db, OtherUserId, "theirs@test.local", userName: "alex", profileVisibility: ProfileVisibility.Public);
+        AddReview(db, gameId: 21, visibility: ReviewVisibility.Public, userId: OtherUserId);
+        var reviewId = db.Reviews.Single().Id;
+        AddReport(db, UserId, profileUserId: OtherUserId, reason: ReportReason.Impersonation, note: "Not them.", createdAt: Now);
+        AddReport(db, UserId, reviewId: reviewId, createdAt: Now.AddDays(-1));
+
+        var export = await NewExporter(db).ExportAsync(UserId, default);
+
+        Assert.Equal(
+            [
+                new ContentReportExportDto("alex", 21, ReportReason.Spam, null, Now.AddDays(-1)),
+                new ContentReportExportDto("alex", null, ReportReason.Impersonation, "Not them.", Now),
+            ],
+            export.Reports);
+    }
+
+    [Fact]
+    public async Task ExportAsync_AReportOfAProfileThatIsPrivateNow_DoesNotNameIt()
+    {
+        // The reader reported it while it was published; private since, it says no more to them than to
+        // anybody else, its name since a rename included (ADR 0027 §7).
+        using var db = NewDb();
+        AddAccount(db, UserId, "mine@test.local");
+        AddAccount(db, OtherUserId, "theirs@test.local", userName: "renamed", profileVisibility: ProfileVisibility.Private);
+        AddReview(db, gameId: 21, visibility: ReviewVisibility.Public, userId: OtherUserId);
+        AddReport(db, UserId, profileUserId: OtherUserId);
+        AddReport(db, UserId, reviewId: db.Reviews.Single().Id);
+
+        var export = await NewExporter(db).ExportAsync(UserId, default);
+
+        Assert.All(export.Reports, report => Assert.Null(report.UserName));
+        Assert.Equal([null, 21], export.Reports.Select(r => r.GameId).Order());
+    }
+
+    [Fact]
+    public async Task ExportAsync_ReportsAboutTheUser_AreNotTheirs()
+    {
+        // Another member's words, and their export carries them; this one carries what was done.
+        using var db = NewDb();
+        AddAccount(db, UserId, "mine@test.local", profileVisibility: ProfileVisibility.Public);
+        AddAccount(db, OtherUserId, "theirs@test.local", userName: "reporter");
+        AddReport(db, OtherUserId, profileUserId: UserId);
+
+        var export = await NewExporter(db).ExportAsync(UserId, default);
+
+        Assert.Empty(export.Reports);
     }
 
     [Fact]

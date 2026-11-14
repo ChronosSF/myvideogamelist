@@ -23,6 +23,12 @@ public enum ReviewWithdrawal
     /// requests can publish it between that read and the delete (ADR 0058 §1).
     /// </summary>
     Deleted,
+
+    /// <summary>
+    /// Hidden by an admin, on a report, whether or not it was public when the hide read it, for the
+    /// reason a delete gives (ADR 0076 §5).
+    /// </summary>
+    Hidden,
 }
 
 /// <summary>
@@ -38,7 +44,8 @@ public enum ReviewWithdrawal
 /// edited or deleted, should stop being served when its owner says so. Those six are the events,
 /// with a seventh that can be one of them: everything recorded about a game deleted, which takes
 /// its review with it. ADR 0056 adds an eighth on the same argument as an edited review: a display
-/// name, an avatar or a bio rewritten or cleared. Nothing else is. A favourite removed, a score
+/// name, an avatar or a bio rewritten or cleared, by its owner or, since ADR 0076, by an admin. And
+/// 0076 adds a ninth, a review an admin hid. Nothing else is. A favourite removed, a score
 /// changed, a statistic that moved: those are a profile's content changing, and they keep the
 /// window (ADR 0029).
 /// </para>
@@ -52,8 +59,8 @@ public enum ReviewWithdrawal
 /// <para>
 /// Each event is one <see cref="EdgeInvalidation"/>, the account's: the page, its <c>.data</c> URL
 /// and, for the three events that change who is listed, the profile sitemap files. The privacy
-/// switch, a rename and a deletion are sent at once; the rest are paced per account, and one
-/// CloudFront request may carry several of an account's together. See
+/// switch, a rename, a deletion and an admin's hide or clear are sent at once; the rest are paced
+/// per account, and one CloudFront request may carry several of an account's together. See
 /// <c>docs/decisions/0058-a-withdrawal-leaves-the-edge-when-it-is-made.md</c> and <c>0081-*</c>.
 /// </para>
 /// <para>
@@ -146,16 +153,33 @@ public sealed class ProfileWithdrawals(
         Send(userId, atOnce: false, "profile details changed", Profile(userName));
 
     /// <summary>
-    /// A review made private or edited while it was public, or deleted whatever it was.
-    /// Invalidates the author's profile if that profile is public now.
+    /// The same event made by an admin: a display name, picture or bio cleared on a report (ADR 0076).
+    /// Sent at once, as ADR 0081 §3 asks of a moderator's withdrawal: the owner cannot repeat an
+    /// admin's clear, and what an admin takes down should not wait behind its owner's own loop.
     /// </summary>
+    public void ProfileDetailsCleared(string userId, string userName) =>
+        Send(userId, atOnce: true, "profile details cleared by an admin", Profile(userName));
+
+    /// <summary>
+    /// A review made private or edited while it was public, or deleted or hidden by an admin
+    /// whatever it was. Invalidates the author's profile if that profile is public now.
+    /// </summary>
+    /// <remarks>
+    /// Paced with the author's other withdrawals, all but the admin's hide, which goes at once
+    /// (ADR 0081 §3): the author cannot repeat it, and an abusive review should not wait behind its
+    /// author's own loop.
+    /// </remarks>
     public Task ReviewWithdrawnAsync(string userId, ReviewWithdrawal withdrawal) =>
-        ProfileChangedAsync(userId, withdrawal switch
-        {
-            ReviewWithdrawal.MadePrivate => "review made private",
-            ReviewWithdrawal.Edited => "review edited",
-            _ => "review deleted",
-        });
+        ProfileChangedAsync(
+            userId,
+            withdrawal switch
+            {
+                ReviewWithdrawal.MadePrivate => "review made private",
+                ReviewWithdrawal.Edited => "review edited",
+                ReviewWithdrawal.Hidden => "review hidden by an admin",
+                _ => "review deleted",
+            },
+            atOnce: withdrawal == ReviewWithdrawal.Hidden);
 
     /// <summary>
     /// Everything recorded about a game deleted, whatever it held. Invalidates the owner's profile
@@ -168,7 +192,7 @@ public sealed class ProfileWithdrawals(
     /// itself; afterwards there is nothing left to ask. So a game with no review costs a path too
     /// (ADR 0058 §1).
     /// </remarks>
-    public Task EntryDeletedAsync(string userId) => ProfileChangedAsync(userId, "entry deleted");
+    public Task EntryDeletedAsync(string userId) => ProfileChangedAsync(userId, "entry deleted", atOnce: false);
 
     /// <summary>
     /// Invalidates the profile of the account a write has just changed, if that profile is public
@@ -188,7 +212,7 @@ public sealed class ProfileWithdrawals(
     /// already holds it — an invalidation is owed whether or not anybody waits for the response.
     /// </para>
     /// </remarks>
-    private async Task ProfileChangedAsync(string userId, string reason)
+    private async Task ProfileChangedAsync(string userId, string reason, bool atOnce)
     {
         try
         {
@@ -204,7 +228,7 @@ public sealed class ProfileWithdrawals(
                 return;
             }
 
-            Send(userId, atOnce: false, reason, Profile(userName));
+            Send(userId, atOnce, reason, Profile(userName));
         }
         catch (Exception e)
         {

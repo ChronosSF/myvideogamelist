@@ -94,6 +94,8 @@ builder.Services.AddScoped<IComingSoonService, ComingSoonService>();
 builder.Services.AddScoped<IComingSoonCurationService, ComingSoonCurationService>();
 builder.Services.AddScoped<IJustOutService, JustOutService>();
 builder.Services.AddScoped<IAdminStatsService, AdminStatsService>();
+builder.Services.AddScoped<IContentReportService, ContentReportService>();
+builder.Services.AddScoped<IModerationService, ModerationService>();
 // What is coming for a user's games. Asks IGDB directly rather than through the game cache: what it
 // finds is mostly games nobody tracks yet — a sequel, a DLC — which is catalogue, not somebody's shelf.
 builder.Services.AddScoped<IConnectedReleaseService, ConnectedReleaseService>();
