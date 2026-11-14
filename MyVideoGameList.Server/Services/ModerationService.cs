@@ -43,6 +43,13 @@ public class ModerationService(
     /// </summary>
     internal const int PageSize = 50;
 
+    /// <summary>
+    /// How many times a hide or an answer to reports is tried when a report it read goes before it saves.
+    /// Each try reads again, so the second finds what the first could not; a third that still fails is
+    /// something else, and is let fail.
+    /// </summary>
+    internal const int Attempts = 3;
+
     public async Task<ModerationQueueDto> GetQueueAsync(CancellationToken cancellationToken = default)
     {
         var (reviews, reviewsTotal) = await ReportedReviewsAsync(cancellationToken);
@@ -199,36 +206,46 @@ public class ModerationService(
 
     public async Task<bool> HideReviewAsync(int reviewId, CancellationToken cancellationToken = default)
     {
-        var review = await db.Reviews.FirstOrDefaultAsync(r => r.Id == reviewId, cancellationToken);
-        if (review is null) return false;
-
-        var hiding = review.HiddenAt is null;
-        if (hiding) review.HiddenAt = clock.GetUtcNow();
-
-        // Answered by the act, in the same save.
-        db.ContentReports.RemoveRange(
-            await db.ContentReports.Where(r => r.ReviewId == reviewId).ToListAsync(cancellationToken));
-
-        try
+        for (var attempt = 1; ; attempt++)
         {
-            await db.SaveChangesAsync(cancellationToken);
-        }
-        catch (DbUpdateConcurrencyException)
-        {
-            // A row this read is gone: its author deleted the review, which took its reports with it, or a
-            // second tab dismissed one of them. The admin is told the review is not there and reads the
-            // queue again. Only the columns this changed are written, so an edit by its author in between
-            // is not a conflict, and keeps its words with the hide.
-            return false;
-        }
+            var review = await db.Reviews.FirstOrDefaultAsync(r => r.Id == reviewId, cancellationToken);
+            if (review is null) return false;
 
-        // Decided by nothing else it read, as the deletes are (0058 §1): its author can publish it between
-        // the read above and the save, and a review has no stamp to refuse the save on. A hide is rare, so
-        // the cost is a path where it was private. Asked of the profile after the commit, without the
-        // request's token.
-        if (hiding) await withdrawals.ReviewWithdrawnAsync(review.UserId, ReviewWithdrawal.Hidden);
+            var reports = await db.ContentReports.Where(r => r.ReviewId == reviewId).ToListAsync(cancellationToken);
+            var hiding = review.HiddenAt is null;
 
-        return true;
+            // An admin acts from a report (ADR 0076 §3), and the endpoint holds that, not only the page that
+            // lists nothing else: a review nobody has an open report of is not hidden. One already hidden is
+            // hidden again, which changes nothing and answers whatever was reported since.
+            if (hiding && reports.Count == 0) return false;
+
+            if (hiding) review.HiddenAt = clock.GetUtcNow();
+
+            // Answered by the act, in the same save.
+            db.ContentReports.RemoveRange(reports);
+
+            try
+            {
+                await db.SaveChangesAsync(cancellationToken);
+            }
+            catch (DbUpdateConcurrencyException) when (attempt < Attempts)
+            {
+                // A row this read went before the save, which rolled the whole save back: its author deleted
+                // the review, which took its reports with it, or a report went with its reporter's account
+                // or to a second tab. Read again and decide again. Only the columns this changes are written,
+                // so an edit by its author in between is not a conflict, and keeps its words with the hide.
+                db.ChangeTracker.Clear();
+                continue;
+            }
+
+            // Decided by nothing else it read, as the deletes are (0058 §1): its author can publish it
+            // between the read above and the save, and a review has no stamp to refuse the save on. A hide is
+            // rare, so the cost is a path where it was private. Asked of the profile after the commit,
+            // without the request's token.
+            if (hiding) await withdrawals.ReviewWithdrawnAsync(review.UserId, ReviewWithdrawal.Hidden);
+
+            return true;
+        }
     }
 
     public async Task<bool> ShowReviewAsync(int reviewId, CancellationToken cancellationToken = default)
@@ -261,6 +278,10 @@ public class ModerationService(
         var account = await users.FindByIdAsync(accountId);
         if (account is null) return ProfileClear.NotFound;
 
+        // From a report, as a hide is: the endpoint clears nothing nobody has an open report of.
+        if (!await db.ContentReports.AnyAsync(r => r.ProfileUserId == accountId, cancellationToken))
+            return ProfileClear.NotFound;
+
         // Decided from the state before the save, as the owner's own save decides it (ADR 0056 §8): only a
         // value the page has shown can be taken back.
         var takesBack = (fields.DisplayName && account.DisplayName is not null)
@@ -271,14 +292,10 @@ public class ModerationService(
         if (fields.AvatarUrl) account.AvatarUrl = null;
         if (fields.Bio) account.Bio = null;
 
-        // Tracked before Identity saves, on the context its store shares, so that the clear and the
-        // answer to the reports commit together or not at all.
-        db.ContentReports.RemoveRange(
-            await db.ContentReports.Where(r => r.ProfileUserId == accountId).ToListAsync(cancellationToken));
-
         // Through UserManager, as the owner's save goes, so the account's concurrency stamp refuses a clear
         // over a row its owner saved since it was read (0058 §3) rather than writing their old values back
-        // over their new ones. The stamp moves; the security stamp does not, so nobody is signed out.
+        // over their new ones. The stamp moves; the security stamp does not, so nobody is signed out. The
+        // account alone is in this save, so a concurrency failure means the owner saved, and nothing else.
         var saved = await users.UpdateAsync(account);
         if (!saved.Succeeded)
         {
@@ -289,8 +306,14 @@ public class ModerationService(
                     $"Clearing account {accountId}'s profile failed: {string.Join(" ", saved.Errors.Select(e => e.Code))}");
         }
 
+        // Sent once the clear has committed, and before the reports are answered, so that a failure answering
+        // them cannot keep what was cleared at the edge.
         if (takesBack && account.ProfileVisibility == ProfileVisibility.Public && account.UserName is { } name)
             withdrawals.ProfileDetailsCleared(account.Id, name);
+
+        // Answered by the act, in a save of their own after it, with the dismissal's retry: a report that
+        // went with its reporter's account would otherwise roll the clear back and pass for the owner's save.
+        await DeleteAsync(db.ContentReports.Where(r => r.ProfileUserId == accountId), cancellationToken);
 
         return ProfileClear.Cleared;
     }
@@ -302,19 +325,29 @@ public class ModerationService(
     /// Deletes the reports a dismissal answers. Loaded and removed rather than deleted by one statement,
     /// because there are a handful and the tests run on a provider that has no set-based delete.
     /// </summary>
+    /// <remarks>
+    /// A report that went before the save, with its reporter's account or to a second tab, rolls the whole
+    /// save back and leaves the others open, so the dismissal reads them again and deletes what is left
+    /// rather than answering a success it did not have.
+    /// </remarks>
     private async Task DeleteAsync(IQueryable<ContentReport> reports, CancellationToken cancellationToken)
     {
-        db.ContentReports.RemoveRange(await reports.ToListAsync(cancellationToken));
+        for (var attempt = 1; ; attempt++)
+        {
+            var open = await reports.ToListAsync(cancellationToken);
+            if (open.Count == 0) return;
 
-        try
-        {
-            await db.SaveChangesAsync(cancellationToken);
-        }
-        catch (DbUpdateConcurrencyException)
-        {
-            // Another request answered some of them first, an act or a dismissal in a second tab, or their
-            // subject went and took them. Either way they are answered, which is what this was for.
-            db.ChangeTracker.Clear();
+            db.ContentReports.RemoveRange(open);
+
+            try
+            {
+                await db.SaveChangesAsync(cancellationToken);
+                return;
+            }
+            catch (DbUpdateConcurrencyException) when (attempt < Attempts)
+            {
+                db.ChangeTracker.Clear();
+            }
         }
     }
 }

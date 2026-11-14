@@ -199,6 +199,30 @@ describe('ModerationCard', () => {
         expect(await screen.findByText(/showing 1 of 51/i)).toBeInTheDocument();
     });
 
+    it('says so above what it kept when the queue cannot be read again after an act, and tries again', async () => {
+        // What the act took off is right; what a failed re-read leaves out is not, so it is said rather
+        // than shown as though it were the queue.
+        let reads = 0;
+        stubApi({
+            'GET /api/admin/moderation': () => {
+                reads++;
+                if (reads === 1) return json(queue({ reviews: [reportedReview()] }));
+                if (reads === 2) return empty(500);
+                return json(queue({ hidden: [hiddenReview({ reviewId: 7, userName: 'alex', gameTitle: 'Halo' })] }));
+            },
+            'PUT /api/admin/moderation/reviews/7/hidden': () => empty(204),
+        });
+        render(<MemoryRouter><Harness /></MemoryRouter>);
+
+        await userEvent.click(await screen.findByRole('button', { name: "Hide @alex's review of Halo" }));
+
+        expect(await screen.findByRole('alert')).toHaveTextContent(/could not be read again just now/i);
+        await userEvent.click(screen.getByRole('button', { name: 'Try again' }));
+
+        expect(await screen.findByRole('button', { name: "Show @alex's review of Halo again" })).toBeInTheDocument();
+        expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    });
+
     it('offers to try again when the reports cannot be read', async () => {
         stubApi({ 'GET /api/admin/moderation': () => empty(500) });
         render(<MemoryRouter><Harness /></MemoryRouter>);

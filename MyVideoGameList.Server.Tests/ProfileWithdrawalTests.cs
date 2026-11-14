@@ -462,8 +462,28 @@ public class ProfileWithdrawalTests
     // An admin's withdrawals (ADR 0076 §5)
     // ---------------------------------------------------------------------------------------
 
-    private static async Task<int> PublishedReviewAsync(Site site, ApplicationUser author, string visibility = ReviewVisibility.Public) =>
-        (await site.Get<ReviewService>().UpsertAsync(author.Id, GameId, Review(visibility))).Id;
+    /// <summary>A review of the game by this author, with a reader's open report of it, which a hide needs.</summary>
+    private static async Task<int> PublishedReviewAsync(Site site, ApplicationUser author, string visibility = ReviewVisibility.Public)
+    {
+        var reviewId = (await site.Get<ReviewService>().UpsertAsync(author.Id, GameId, Review(visibility))).Id;
+        Reported(site, reviewId: reviewId);
+        return reviewId;
+    }
+
+    /// <summary>A reader's open report of a review or of a profile: an admin acts from one (ADR 0076 §3).</summary>
+    private static void Reported(Site site, int? reviewId = null, string? profileUserId = null)
+    {
+        var db = site.Get<ApplicationDbContext>();
+        db.ContentReports.Add(new ContentReport
+        {
+            UserId = "a-reader",
+            ReviewId = reviewId,
+            ProfileUserId = profileUserId,
+            Reason = ReportReason.Spam,
+            CreatedAt = Midday,
+        });
+        db.SaveChanges();
+    }
 
     [Fact]
     public async Task HideReviewAsync_PublicReview_InvalidatesTheProfileOnlyOnceStored()
@@ -587,6 +607,8 @@ public class ProfileWithdrawalTests
         string? bioWhenSent = "unread";
         edge.OnInvalidate = _ => bioWhenSent = site.StoredUser(alice.Id)?.Bio;
 
+        Reported(site, profileUserId: alice.Id);
+
         var result = await site.Get<ModerationService>().ClearProfileAsync(alice.Id, new ClearProfileDto(false, false, Bio: true));
 
         Assert.Equal(ProfileClear.Cleared, result);
@@ -601,6 +623,8 @@ public class ProfileWithdrawalTests
         using var site = new Site(edge);
         var alice = await site.AccountAsync("alice", ProfileVisibility.Public);
 
+        Reported(site, profileUserId: alice.Id);
+
         await site.Get<ModerationService>().ClearProfileAsync(alice.Id, new ClearProfileDto(true, true, true));
 
         Assert.Empty(edge.Sent);
@@ -613,6 +637,8 @@ public class ProfileWithdrawalTests
         using var site = new Site(edge);
         var alice = await site.AccountAsync("alice", ProfileVisibility.Private);
         await site.Controller(alice).UpdateProfileDetails(Shown);
+
+        Reported(site, profileUserId: alice.Id);
 
         await site.Get<ModerationService>().ClearProfileAsync(alice.Id, new ClearProfileDto(true, true, true));
 
@@ -627,6 +653,8 @@ public class ProfileWithdrawalTests
         using var site = new Site(edge);
         var alice = await site.AccountAsync("alice", ProfileVisibility.Public);
         await site.Controller(alice).UpdateProfileDetails(Shown);
+
+        Reported(site, profileUserId: alice.Id);
 
         var result = await site.Get<ModerationService>().ClearProfileAsync(alice.Id, new ClearProfileDto(true, false, false));
 

@@ -55,6 +55,20 @@ export function ModerationCard({ moderation }: ModerationCardProps) {
         const nothing = data.reviews.length === 0 && data.profiles.length === 0;
         body = (
             <>
+                {/* A read that failed after one that answered keeps what that one showed, so it says so above it:
+                    otherwise "Nothing reported" could stand over reports still waiting, and a review just
+                    hidden be missing from the list below with no way to ask again. */}
+                {error !== null && (
+                    <div className="mt-4 flex flex-wrap items-center gap-3">
+                        <p className="admin-error" role="alert">
+                            The reports could not be read again just now, so what is below may be out of date.
+                        </p>
+                        <button type="button" className="admin-btn" onClick={reload} disabled={loading}>
+                            {loading ? 'Trying again…' : 'Try again'}
+                        </button>
+                    </div>
+                )}
+
                 {nothing ? (
                     <p className="admin-hint mt-5">
                         Nothing reported. What readers report shows here, the one reported longest ago first.

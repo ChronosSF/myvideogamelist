@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
 using MyVideoGameList.Server.Data;
 using MyVideoGameList.Server.DTOs;
@@ -31,13 +32,40 @@ public class ModerationServiceTests : IDisposable
     private readonly ServiceProvider root;
     private readonly IServiceScope scope;
     private readonly IGameCacheService games = Substitute.For<IGameCacheService>();
+    private readonly BeforeTheNextSave beforeTheNextSave = new();
+
+    /// <summary>
+    /// Runs a write of somebody else's, through a context of its own, just before the act's next save: what
+    /// a second request committing between the act's read and its save looks like from the act.
+    /// </summary>
+    private sealed class BeforeTheNextSave : SaveChangesInterceptor
+    {
+        public Action? Then { get; set; }
+
+        public override ValueTask<InterceptionResult<int>> SavingChangesAsync(
+            DbContextEventData eventData, InterceptionResult<int> result, CancellationToken cancellationToken = default)
+        {
+            var then = Then;
+            Then = null;
+            then?.Invoke();
+            return base.SavingChangesAsync(eventData, result, cancellationToken);
+        }
+    }
+
+    private void Meanwhile(Action<ApplicationDbContext> write) => beforeTheNextSave.Then = () =>
+    {
+        using var other = root.CreateScope();
+        var db = other.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        write(db);
+        db.SaveChanges();
+    };
 
     public ModerationServiceTests()
     {
         var store = Guid.NewGuid().ToString();
         var services = new ServiceCollection();
         services.AddLogging();
-        services.AddDbContext<ApplicationDbContext>(options => options.UseInMemoryDatabase(store));
+        services.AddDbContext<ApplicationDbContext>(options => options.UseInMemoryDatabase(store).AddInterceptors(beforeTheNextSave));
         services
             .AddIdentityCore<ApplicationUser>(options =>
                 options.User.AllowedUserNameCharacters = UserNamePolicy.AllowedCharacters)
@@ -304,11 +332,41 @@ public class ModerationServiceTests : IDisposable
         // An admin withdraws publication and writes nothing of the member's (ADR 0076 §3).
         var alex = await AccountAsync("alex");
         var reviewId = AddReview(alex.Id, "Their words.");
+        AddReport("r1", reviewId);
 
-        await Moderation.HideReviewAsync(reviewId);
+        Assert.True(await Moderation.HideReviewAsync(reviewId));
 
         var stored = Stored(db => db.Reviews.Single());
         Assert.Equal(("Their words.", ReviewVisibility.Public, Midday), (stored.Body, stored.Visibility, stored.UpdatedAt));
+    }
+
+    [Fact]
+    public async Task HideReviewAsync_AReviewNobodyReported_IsFalseAndStaysShown()
+    {
+        // An admin acts from a report, and the endpoint holds that, not only the page (ADR 0076 §3).
+        var alex = await AccountAsync("alex");
+        var reviewId = AddReview(alex.Id);
+
+        Assert.False(await Moderation.HideReviewAsync(reviewId));
+
+        Assert.Null(Stored(db => db.Reviews.Single().HiddenAt));
+    }
+
+    [Fact]
+    public async Task HideReviewAsync_AReportThatGoesBeforeTheSave_IsReadAgainAndTheReviewHidden()
+    {
+        // One reporter deletes their account between the hide's read and its save, which takes their report
+        // and rolls the hide's save back: the hide reads again and answers the report still open.
+        var alex = await AccountAsync("alex");
+        var reviewId = AddReview(alex.Id);
+        AddReport("r1", reviewId);
+        AddReport("r2", reviewId);
+        Meanwhile(db => db.ContentReports.Remove(db.ContentReports.Single(r => r.UserId == "r1")));
+
+        Assert.True(await Moderation.HideReviewAsync(reviewId));
+
+        Assert.NotNull(Stored(db => db.Reviews.Single().HiddenAt));
+        Assert.Equal(0, Stored(db => db.ContentReports.Count()));
     }
 
     [Fact]
@@ -339,6 +397,7 @@ public class ModerationServiceTests : IDisposable
     public async Task ClearProfileAsync_TheChosenFields_AreClearedAndTheOthersKept()
     {
         var alex = await AccountAsync("alex");
+        AddReport("r1", profileUserId: alex.Id);
 
         var result = await Moderation.ClearProfileAsync(alex.Id, new ClearProfileDto(DisplayName: false, AvatarUrl: true, Bio: true));
 
@@ -367,11 +426,61 @@ public class ModerationServiceTests : IDisposable
         // The security stamp is what Identity compares a cookie against; a clear is not a reason to end
         // the owner's session.
         var alex = await AccountAsync("alex");
+        AddReport("r1", profileUserId: alex.Id);
         var stamp = alex.SecurityStamp;
 
         await Moderation.ClearProfileAsync(alex.Id, new ClearProfileDto(true, true, true));
 
         Assert.Equal(stamp, Stored(db => db.Users.Single(u => u.Id == alex.Id).SecurityStamp));
+    }
+
+    [Fact]
+    public async Task ClearProfileAsync_AProfileNobodyReported_IsNotFoundAndKeepsItsWords()
+    {
+        var alex = await AccountAsync("alex");
+
+        Assert.Equal(ProfileClear.NotFound,
+            await Moderation.ClearProfileAsync(alex.Id, new ClearProfileDto(true, true, true)));
+
+        Assert.Equal("A bio.", Stored(db => db.Users.Single(u => u.Id == alex.Id).Bio));
+    }
+
+    [Fact]
+    public async Task ClearProfileAsync_AReportThatGoesMeanwhile_ClearsAndAnswersTheRest()
+    {
+        // A report gone with its reporter's account is not the owner's save: the clear stands, and the reports
+        // still open are answered after it.
+        var alex = await AccountAsync("alex");
+        AddReport("r1", profileUserId: alex.Id);
+        AddReport("r2", profileUserId: alex.Id);
+        Meanwhile(db => db.ContentReports.Remove(db.ContentReports.Single(r => r.UserId == "r1")));
+
+        Assert.Equal(ProfileClear.Cleared,
+            await Moderation.ClearProfileAsync(alex.Id, new ClearProfileDto(false, false, Bio: true)));
+
+        Assert.Null(Stored(db => db.Users.Single(u => u.Id == alex.Id).Bio));
+        Assert.Equal(0, Stored(db => db.ContentReports.Count()));
+    }
+
+    [Fact]
+    public async Task ClearProfileAsync_TheOwnerSavesBeforeTheClear_IsAConflictAndClearsNothing()
+    {
+        // Moved, the stamp says the owner saved: the admin sees what they saved before choosing again,
+        // rather than having it cleared unseen (ADR 0076 §5).
+        var alex = await AccountAsync("alex");
+        AddReport("r1", profileUserId: alex.Id);
+        Meanwhile(db =>
+        {
+            var owner = db.Users.Single(u => u.Id == alex.Id);
+            owner.Bio = "Rewritten just now.";
+            owner.ConcurrencyStamp = Guid.NewGuid().ToString();
+        });
+
+        Assert.Equal(ProfileClear.Conflict,
+            await Moderation.ClearProfileAsync(alex.Id, new ClearProfileDto(false, false, Bio: true)));
+
+        Assert.Equal("Rewritten just now.", Stored(db => db.Users.Single(u => u.Id == alex.Id).Bio));
+        Assert.Equal(1, Stored(db => db.ContentReports.Count()));
     }
 
     [Fact]
@@ -420,6 +529,23 @@ public class ModerationServiceTests : IDisposable
 
         Assert.Equal([reviewId], Stored(db => db.ContentReports.Select(r => r.ReviewId).ToList()));
         Assert.Equal("A bio.", Stored(db => db.Users.Single(u => u.Id == alex.Id).Bio));
+    }
+
+    [Fact]
+    public async Task DismissReviewReportsAsync_AReportThatGoesBeforeTheSave_DeletesTheRest()
+    {
+        // The save that met the gone report rolled back with the others in it, so the dismissal reads again
+        // rather than answering a success it did not have.
+        var alex = await AccountAsync("alex");
+        var reviewId = AddReview(alex.Id);
+        AddReport("r1", reviewId);
+        AddReport("r2", reviewId);
+        AddReport("r3", reviewId);
+        Meanwhile(db => db.ContentReports.Remove(db.ContentReports.Single(r => r.UserId == "r2")));
+
+        await Moderation.DismissReviewReportsAsync(reviewId);
+
+        Assert.Equal(0, Stored(db => db.ContentReports.Count()));
     }
 
     [Fact]

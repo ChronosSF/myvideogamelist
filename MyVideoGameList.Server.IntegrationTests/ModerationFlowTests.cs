@@ -156,6 +156,30 @@ public class ModerationFlowTests(ApiFactory api) : IClassFixture<ApiFactory>
     }
 
     [Fact]
+    public async Task HideAndClear_WhatNobodyReported_AreNotFoundAndChangeNothing()
+    {
+        // An admin acts from a report, and the endpoints hold that, not only the page that lists nothing else
+        // (ADR 0076 §3): the ids are taken from the database here, as the page never sends one.
+        var (author, account) = await PublishedAsync("unreported");
+        using var _ = author;
+        using var admin = api.CreateBrowser();
+        api.Admins.Name((await admin.RegisterAsync(Browsers.NewUserName("admin"))).Id);
+        await using var db = api.Database();
+        var reviewId = await db.Reviews.Where(r => r.UserId == account.Id).Select(r => r.Id).SingleAsync();
+        var sent = api.Edge.Sent.Count;
+
+        await (await admin.SendAsync(HttpMethod.Put, $"/api/admin/moderation/reviews/{reviewId}/hidden"))
+            .ExpectAsync(HttpStatusCode.NotFound);
+        await (await admin.SendAsync(HttpMethod.Post, $"/api/admin/moderation/profiles/{account.Id}/clear",
+            new ClearProfileDto(DisplayName: true, AvatarUrl: true, Bio: true))).ExpectAsync(HttpStatusCode.NotFound);
+
+        Assert.Single((await author.GetJsonAsync<PublicReviewsDto>($"/api/users/{account.UserName}/reviews")).Reviews);
+        var profile = await author.GetJsonAsync<PublicProfileDto>($"/api/users/{account.UserName}");
+        Assert.Equal(("Shown Name", "A bio."), (profile.DisplayName, profile.Bio));
+        Assert.Empty(api.Edge.SentSince(sent));
+    }
+
+    [Fact]
     public async Task HideAndShowAgain_AReportedReview_LeavesBothPublicReadsAndComesBack()
     {
         var (author, account) = await PublishedAsync("hidden");

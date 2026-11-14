@@ -141,6 +141,12 @@ selects an account": the page still has no list of members, no search and no dri
 moderation card selects only what somebody asked it to look at. An admin who comes across something
 while reading the site reports it like anybody else.
 
+**The endpoints hold that, not only the page.** A first hide of a review, and a clear of a profile, are
+refused with the 404 a review or an account that has gone gets unless somebody has an open report of it.
+The page never sends the id of anything nobody reported, so this changes nothing an admin can do from
+it; what it closes is an admin's own request, written by hand, turning the exception into one that
+reaches every member's words. Hiding a review already hidden needs no report, since it changes nothing.
+
 **One action closes every report on its subject.** Hiding a review deletes its reports; clearing any
 of a profile's three fields deletes the reports about that profile; dismissing deletes them and changes
 nothing else.
@@ -187,7 +193,15 @@ published to take back. The profile is still asked about, after the commit, thro
 
 **A clear is decided by the before-state**, as the owner's own save is, and through `UserManager`, whose
 concurrency stamp refuses a save whose row changed since it was read (0058 §3). A clear that loses that
-race is a 409, and the admin presses the button again over what the owner saved.
+race is a 409, and the admin presses the button again over what the owner saved. The account is alone in
+that save, and the reports the clear answers are deleted in one of their own after it, so a 409 means
+the owner's save and nothing else.
+
+**A report that goes from under an act is read again.** A reporter deleting their account takes their
+reports with it, and a second tab can answer them first. A save that meets a report already gone is
+rolled back whole, so a hide, a dismissal and the clear's answer to its reports each read again and try
+again, three times at most, rather than answering a success they did not have or a refusal that is not
+the reason.
 
 Showing a hidden review again publishes, and waits out the window like a new review. The game page
 holds no review text (0028 §4) and has nothing to send. The sitemap lists names, which neither act

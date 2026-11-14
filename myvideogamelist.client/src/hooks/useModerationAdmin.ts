@@ -90,7 +90,7 @@ export function useModerationAdmin(accountId: string | null) {
         (reviewId: number) => act(
             `/api/admin/moderation/reviews/${reviewId}/hidden`,
             { method: 'PUT' },
-            'That review is not there any more: its author has deleted it.',
+            'That review is not there any more, or nobody has an open report of it now: its author may have deleted it, or every report gone with its reporter.',
             withoutReview(reviewId),
         ),
         [act],
@@ -124,7 +124,7 @@ export function useModerationAdmin(accountId: string | null) {
         (accountId: string, fields: ProfileFields) => act(
             `/api/admin/moderation/profiles/${encodeURIComponent(accountId)}/clear`,
             { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(fields) },
-            'That account is not there any more.',
+            'That account is not there any more, or nobody has an open report of its profile now.',
             withoutProfile(accountId),
         ),
         [act],
