@@ -5,7 +5,7 @@ import { MemoryRouter } from 'react-router';
 import { ListTable } from '@/components/ListTable';
 import { DEFAULT_SORT, type SortState } from '@/lib/listSort';
 import { MIN_CRITIC_REVIEWS } from '@/lib/score';
-import { entry, platform } from '@/test/factories';
+import { entry, listPending, platform } from '@/test/factories';
 
 function renderTable(overrides: {
     entries?: ReturnType<typeof entry>[];
@@ -27,7 +27,7 @@ function renderTable(overrides: {
                 entries={overrides.entries ?? [entry({ game: { id: 1, title: 'Celeste' } })]}
                 sort={overrides.sort ?? DEFAULT_SORT}
                 listName="Playing"
-                isPending={id => pending.includes(id)}
+                locks={listPending(pending)}
                 isFavourite={id => favourites.includes(id)}
                 {...handlers}
             />

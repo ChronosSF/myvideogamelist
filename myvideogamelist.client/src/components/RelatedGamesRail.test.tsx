@@ -9,7 +9,7 @@ import type { WishlistContextValue } from '@/contexts/WishlistContext';
 import type { GameDto, RelatedGameDto, RelatedGameKind, RelatedGamesDto } from '@/types/game';
 import { LIST_NAMES, type ListId } from '@/types/list';
 import { quickActor } from '@/test/actor';
-import { userProfile } from '@/test/factories';
+import { listPending, userProfile } from '@/test/factories';
 
 /**
  * The game page's related games (issue 450, ADR 0084): what the rail draws from what it is handed, and
@@ -24,7 +24,7 @@ const lists = {
     loading: false,
     error: null as string | null,
     getListFor: (gameId: number) => listed.get(gameId) ?? null,
-    isPending: () => false,
+    pending: listPending(),
     nameFor: (id: ListId) => LIST_NAMES[id],
     addToList: vi.fn(),
 } as unknown as ListsContextValue;

@@ -9,19 +9,23 @@ import { ScoreBadge } from '@/components/ScoreBadge';
 import { ScoreInput } from '@/components/ScoreInput';
 import { ReorderHandle } from '@/components/ReorderHandle';
 import { FavouriteMark } from '@/components/FavouriteMark';
-import type { Reorder } from '@/hooks/useReorder';
+import type { ReorderHandles } from '@/hooks/useReorder';
+import type { ListsPending } from '@/contexts/ListsContext';
+import { usePendingIn } from '@/hooks/useListPending';
 import { TagChips } from '@/components/TagChips';
 
 interface ListTableRowProps {
     entry: ListEntryDto;
-    /** Whether a save for this game is out, which greys the row and holds its controls. */
-    pending: boolean;
+    /** The lists' per-game locks: the row's game's greys the row and holds its controls. */
+    locks: ListsPending;
     /** Whether the game is one of the reader's favourites, marked after its title. */
     favourite: boolean;
     onScoreChange: (gameId: number, score: number | null) => void;
     onRemove: (gameId: number) => void;
     /** Given while the list can be rearranged by hand: the row gets a handle, numbered `rank`. */
-    reorder?: Reorder;
+    handles?: ReorderHandles;
+    /** Whether the game is the one being moved. */
+    lifted: boolean;
     rank: number;
     tagsFor?: (entry: ListEntryDto) => TagDto[];
 }
@@ -49,31 +53,35 @@ function shortDate(date: string | null): string {
  * sixty more is what made the foot of a long table slow to reach. A row whose game changed — its score,
  * its tags, a save going out — is a new `entry` or a new flag, and is drawn again.
  *
- * What the memo saves is the chunks, and nothing more. A save redraws every row drawn, because the
- * provider hands out a new `setScore` and `removeFromList` with every change of its state; so does every
- * render of a hand order, whose `reorder` is new each time.
+ * The provider's writes are the same functions for as long as it is mounted, the row reads its game's lock
+ * itself, from the locks it is handed rather than the lists context, which every save changes, and a hand
+ * order's handle is built from `useReorder`'s steady `handles` (`docs/decisions/0086-*`).
+ * So a save draws again the row of the game saved and no other, as its lock is taken and as it is released,
+ * a change of order draws none, and neither does any render of the page that changed nothing in a row.
  */
 export const ListTableRow = memo(function ListTableRow({
     entry,
-    pending,
+    locks,
     favourite,
     onScoreChange,
     onRemove,
-    reorder,
+    handles,
+    lifted,
     rank,
     tagsFor,
 }: ListTableRowProps) {
     const { game } = entry;
+    const pending = usePendingIn(locks, game.id);
 
     return (
         <tr
             className={pending ? 'pending' : undefined}
-            {...reorder?.itemProps(game.id)}
+            {...handles?.item(game.id, lifted)}
         >
-            {reorder && (
+            {handles && (
                 <td className="col-order">
                     <ReorderHandle
-                        handle={reorder.handleProps(game.id)}
+                        handle={handles.handle(game.id, game.title, { lifted, movable: !pending })}
                         rank={rank}
                         variant="inline"
                     />

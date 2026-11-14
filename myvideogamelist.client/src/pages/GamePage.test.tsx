@@ -20,7 +20,7 @@ import { MIN_DISTRIBUTION_SCORES, MIN_MEMBER_SCORES, MIN_PLAYTHROUGH_SAMPLES } f
 import type { UserProfile } from '@/types/auth';
 import type { CommunityScores } from '@/types/community';
 import { LIST_NAMES, type ListId } from '@/types/list';
-import { communityScores, communityTimes, game, gameDetails, platform, userProfile } from '@/test/factories';
+import { communityScores, communityTimes, game, gameDetails, listPending, platform, userProfile } from '@/test/factories';
 import type { GameDetailsDto, GameDto, RelatedGameDto, RelatedGamesDto } from '@/types/game';
 import type { Route } from './+types/GamePage';
 
@@ -93,7 +93,7 @@ const lists = {
     error: null,
     nameFor: (listId: ListId) => LIST_NAMES[listId],
     getListFor: () => null,
-    isPending: () => false,
+    pending: listPending(),
     addToList: vi.fn(async () => {}),
 } as unknown as ListsContextValue;
 

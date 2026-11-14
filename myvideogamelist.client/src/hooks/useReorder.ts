@@ -2,7 +2,9 @@ import {
     useEffect,
     useEffectEvent,
     useId,
+    useInsertionEffect,
     useLayoutEffect,
+    useMemo,
     useRef,
     useState,
     type FocusEvent,
@@ -83,6 +85,24 @@ export interface ReorderHandleProps {
     onBlur: (event: FocusEvent<HTMLButtonElement>) => void;
 }
 
+/**
+ * The props of an item and of its handle, built from what the item says of itself, for an item drawn by a
+ * memoised component of its own. The same object for as long as the hook is mounted, and so are the
+ * handlers it hands out, in effect: each calls the gesture as the list last committed it. So an item is
+ * drawn again when its own place or state changes and not on every render of the list, as it is when it
+ * is handed `itemProps` and `handleProps`, which are new each time (`docs/decisions/0086-*`).
+ */
+export interface ReorderHandles {
+    /** The item's props; `lifted` while it is the one being moved (`Reorder.movingId`). */
+    item: (id: number, lifted: boolean) => ReorderItemProps;
+    /**
+     * The handle's props. `name` is what the list's `nameOf` says of the item. `movable` is false while
+     * the item cannot be picked up, which the handle shows and which a press on it then honours, whatever
+     * `canMove` says.
+     */
+    handle: (id: number, name: string, state: { lifted: boolean; movable: boolean }) => ReorderHandleProps;
+}
+
 export interface Reorder {
     /** The ids in the order to draw them: as given, but with an item being moved where it would land. */
     order: readonly number[];
@@ -100,6 +120,16 @@ export interface Reorder {
     listProps: () => ReorderListProps;
     itemProps: (id: number) => ReorderItemProps;
     handleProps: (id: number) => ReorderHandleProps;
+    /** The same props, for an item that draws its own (`ReorderHandles`). */
+    handles: ReorderHandles;
+}
+
+/** What a handle does, as the render the list last committed would do it. */
+interface HandleGesture {
+    onClick: (id: number, event: MouseEvent<HTMLButtonElement>) => void;
+    onKeyDown: (id: number, event: KeyboardEvent<HTMLButtonElement>) => void;
+    onKeyUp: (event: KeyboardEvent<HTMLButtonElement>) => void;
+    onBlur: (id: number, event: FocusEvent<HTMLButtonElement>) => void;
 }
 
 interface Moving {
@@ -181,7 +211,13 @@ export function useReorder({ ids, nameOf, onMove, canMove, disabled = false }: R
 
     const say = (text: string) => setAnnouncement(previous => announce(previous, text));
 
-    const movable = (id: number) => !disabled && (canMove?.(id) ?? true);
+    /**
+     * Whether an item can be picked up. Pressed, the handle as drawn decides as well: an item drawing its
+     * own (`handles`) says there whether it can move, from a render of its own that the list's last may
+     * not have seen.
+     */
+    const movable = (id: number, handle?: Element | null) =>
+        !disabled && (canMove?.(id) ?? true) && handle?.getAttribute('aria-disabled') !== 'true';
 
     const update = (next: Moving | null) => {
         movingRef.current = next;
@@ -467,10 +503,9 @@ export function useReorder({ ids, nameOf, onMove, canMove, disabled = false }: R
     }, [drawn]);
 
     /** The handle a pointer event started on, if it is one of this list's. */
-    const handleUnder = (event: PointerEvent<HTMLElement>): number | null => {
+    const handleUnder = (event: PointerEvent<HTMLElement>): HTMLElement | null => {
         const target = event.target instanceof Element ? event.target.closest<HTMLElement>('[data-reorder-handle]') : null;
-        if (!target || !event.currentTarget.contains(target)) return null;
-        return Number(target.dataset.reorderHandle);
+        return target && event.currentTarget.contains(target) ? target : null;
     };
 
     const listProps = (): ReorderListProps => ({
@@ -479,8 +514,9 @@ export function useReorder({ ids, nameOf, onMove, canMove, disabled = false }: R
         ...(holding ? { 'data-reorder-holding': true as const } : {}),
 
         onPointerDown: event => {
-            const id = handleUnder(event);
-            if (id === null || event.button !== 0) return;
+            const handle = handleUnder(event);
+            if (handle === null || event.button !== 0) return;
+            const id = Number(handle.dataset.reorderHandle);
 
             // No text selection, and no focus moving to the handle pressed. A press that turns out
             // to be a tap still clicks, and the click is where a tap is handled — but a held game's
@@ -489,7 +525,7 @@ export function useReorder({ ids, nameOf, onMove, canMove, disabled = false }: R
 
             // A held game is put down by the click this press becomes; a drag already under way
             // takes no second pointer; and a game whose save is out cannot be dragged.
-            if (live() !== null || !movable(id)) return;
+            if (live() !== null || !movable(id, handle)) return;
             press.current = { id, pointerId: event.pointerId, x: event.clientX, y: event.clientY };
         },
         onPointerMove: event => {
@@ -553,24 +589,14 @@ export function useReorder({ ids, nameOf, onMove, canMove, disabled = false }: R
         },
     });
 
-    const itemProps = (id: number): ReorderItemProps => ({
-        'data-reorder-item': id,
-        ...(moving?.id === id ? { 'data-reorder-state': 'lifted' as const } : {}),
-    });
-
-    const handleProps = (id: number): ReorderHandleProps => ({
-        'data-reorder-handle': id,
-        'aria-label': `Move ${nameOf(id)}`,
-        'aria-describedby': instructionsId,
-        // Only while it is held, so the handle reads as a plain button the rest of the time rather
-        // than as a toggle that is always off.
-        ...(moving?.id === id ? { 'aria-pressed': true as const } : {}),
-        // Not `disabled`: a disabled button loses focus, and the moment after a keyboard user puts a
-        // game down is exactly when its save is out and the handle cannot take another move.
-        ...(movable(id) ? {} : { 'aria-disabled': true as const }),
-
+    /**
+     * What a handle does, as this render would do it, which every handle calls through `gesture` — the
+     * render the list last committed. A handle drawn by an item of its own may have been drawn several of
+     * the list's renders ago, and must not act on the list as it was then.
+     */
+    const handleGesture: HandleGesture = {
         // A tap, a click, or a screen reader's "activate": pick the game up, or put the held one here.
-        onClick: event => {
+        onClick: (id, event) => {
             if (dragEnded.current) {
                 dragEnded.current = false;
                 return;
@@ -578,7 +604,7 @@ export function useReorder({ ids, nameOf, onMove, canMove, disabled = false }: R
 
             const current = live();
             if (current === null) {
-                if (!movable(id)) {
+                if (!movable(id, event.currentTarget)) {
                     say(`${nameOf(id)} cannot be moved right now.`);
                     return;
                 }
@@ -595,7 +621,7 @@ export function useReorder({ ids, nameOf, onMove, canMove, disabled = false }: R
             drop();
         },
 
-        onKeyDown: event => {
+        onKeyDown: (id, event) => {
             const current = live();
             const pickOrPutDown = event.key === ' ' || event.key === 'Enter';
 
@@ -609,7 +635,7 @@ export function useReorder({ ids, nameOf, onMove, canMove, disabled = false }: R
             if (current === null) {
                 if (!pickOrPutDown) return;
                 event.preventDefault();
-                if (movable(id)) lift(id, 'keyboard');
+                if (movable(id, event.currentTarget)) lift(id, 'keyboard');
                 else say(`${nameOf(id)} cannot be moved right now.`);
                 return;
             }
@@ -659,7 +685,7 @@ export function useReorder({ ids, nameOf, onMove, canMove, disabled = false }: R
         onKeyUp: event => {
             if (event.key === ' ') event.preventDefault();
         },
-        onBlur: event => {
+        onBlur: (id, event) => {
             // Focus going to another element is the user moving on, and a game still in the air goes
             // back where it was. Focus going nowhere is a browser dropping it from an element React
             // has just moved, which React gives back once its commit is done.
@@ -668,7 +694,43 @@ export function useReorder({ ids, nameOf, onMove, canMove, disabled = false }: R
             const current = live();
             if (current?.id === id && current.via !== 'pointer') cancel();
         },
+    };
+
+    /**
+     * Written as each commit is made, never during render, for the reason the lists provider's writes read
+     * theirs so (`docs/decisions/0086-*`): a render React throws away must not be the one a press acts on.
+     */
+    const gesture = useRef(handleGesture);
+    useInsertionEffect(() => {
+        gesture.current = handleGesture;
     });
+
+    const handles = useMemo<ReorderHandles>(() => ({
+        item: (id, lifted) => ({
+            'data-reorder-item': id,
+            ...(lifted ? { 'data-reorder-state': 'lifted' as const } : {}),
+        }),
+        handle: (id, name, { lifted, movable: canPickUp }) => ({
+            'data-reorder-handle': id,
+            'aria-label': `Move ${name}`,
+            'aria-describedby': instructionsId,
+            // Only while it is held, so the handle reads as a plain button the rest of the time rather
+            // than as a toggle that is always off.
+            ...(lifted ? { 'aria-pressed': true as const } : {}),
+            // Not `disabled`: a disabled button loses focus, and the moment after a keyboard user puts a
+            // game down is exactly when its save is out and the handle cannot take another move.
+            ...(canPickUp ? {} : { 'aria-disabled': true as const }),
+            onClick: event => gesture.current.onClick(id, event),
+            onKeyDown: event => gesture.current.onKeyDown(id, event),
+            onKeyUp: event => gesture.current.onKeyUp(event),
+            onBlur: event => gesture.current.onBlur(id, event),
+        }),
+    }), [instructionsId]);
+
+    const itemProps = (id: number): ReorderItemProps => handles.item(id, moving?.id === id);
+
+    const handleProps = (id: number): ReorderHandleProps =>
+        handles.handle(id, nameOf(id), { lifted: moving?.id === id, movable: movable(id) });
 
     return {
         order,
@@ -678,5 +740,6 @@ export function useReorder({ ids, nameOf, onMove, canMove, disabled = false }: R
         listProps,
         itemProps,
         handleProps,
+        handles,
     };
 }
