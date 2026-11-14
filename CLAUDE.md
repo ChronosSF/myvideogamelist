@@ -41,7 +41,7 @@ build behind a stand-in that does route `/api` (ADR 0060).
 | `npm run typecheck` | `react-router typegen && tsc -b` — use this, never bare `tsc` |
 | `npm run test` | Vitest, jsdom + Testing Library. `npm run test:watch` to iterate |
 | `npm run visual` | Before-and-after screenshots of the pages, compared pixel by pixel, for a change meant to look the same. Needs two dev servers and a local test account, whose email and password it reads from the shell or from `visual/.env` (ignored by git); `visual/playwright.config.ts` says how. Not run by CI |
-| `npm run e2e` | The browser smoke test, over the production shape: sign up, add a game to a list, reload, it is still there; and beside it, a forgotten password reset from its email and signed in with (ADR 0090). Builds the front end and serves it with `react-router-serve` beside the API under `dotnet run`, with a stand-in in front that routes `/api/*` to the API as the balancer does, and one for IGDB behind, so it needs no IGDB credentials, and stand-ins for Cloudflare's Turnstile script in the browser and its siteverify beside IGDB's (ADR 0092), so a run reaches no third party. Needs PostgreSQL up, ports 5180–5183 free, and once, `npx playwright install chromium`. Keeps a database of its own on the compose server, `mvgl_e2e`, never `myvideogamelist`, created on the first run; `E2E_CONNECTION_STRING` points it elsewhere. Run by CI. See ADR 0060 |
+| `npm run e2e` | The browser smoke test, over the production shape: sign up, add a game to a list, reload, it is still there; and beside it, a forgotten password reset from its email and signed in with (ADR 0090). Builds the front end and serves it with `server/index.ts`, as the image does, beside the API under `dotnet run`, with a stand-in in front that routes `/api/*` to the API as the balancer does, and one for IGDB behind, so it needs no IGDB credentials, and stand-ins for Cloudflare's Turnstile script in the browser and its siteverify beside IGDB's (ADR 0092), so a run reaches no third party. Needs PostgreSQL up, ports 5180–5183 free, and once, `npx playwright install chromium`. Keeps a database of its own on the compose server, `mvgl_e2e`, never `myvideogamelist`, created on the first run; `E2E_CONNECTION_STRING` points it elsewhere. Run by CI. See ADR 0060 |
 | `npm run lighthouse` | Lighthouse CI on five pages of the `npm run e2e` shape, on a phone and a desktop, then axe-core on the same pages. Fails on an accessibility, best-practices or SEO score, or a count of console errors, that leaves `lighthouse/budgets.ts`'s baseline, on layout shift over 0.02 or script or page weight over budget, and on an axe rule or contrast pair a page did not already break; performance warns. Needs PostgreSQL up, ports 5190–5193 free, IGDB's image host reachable and, once, `npx playwright install chromium`. Keeps `mvgl_lighthouse` (or `LIGHTHOUSE_CONNECTION_STRING`); reports in `lighthouse/reports/`. Run by CI. See ADR 0068 |
 | `npm run build` | Production build |
 | `npm run audit` | `npm audit` over the lock file, devDependencies included, with no install: high and critical fail, lower ones are printed. `npm run audit:lighthouse` does the same over Lighthouse CI's lock file, and CI's Dependency audit job runs both. `scripts/audit.mjs` holds a list of accepted advisories for each, every entry with its reason and a date: the client's for want of any fix, Lighthouse CI's for want of one its dependents' ranges allow (ADR 0068 §9). See ADR 0061 |
@@ -84,6 +84,8 @@ myvideogamelist.client/
   src/pages/                    Route modules (default export + optional loader/meta)
   src/resources/                Resource routes: robots.txt, the sitemaps and /version. A loader, no component
   src/lib/                      apiUrl(), useHydrated(), pageMeta(); loaderFetch() in trace.server.ts
+  server/                       The SSR server the image runs, `node server/index.ts`: react-router-serve's
+                                app with a keep-alive longer than the balancer's (ADR 0093)
   e2e/                          The browser smoke test, and its stand-ins for the edge and for IGDB
   lighthouse/                   The Lighthouse audit on the same harness: its pages, budgets and package
   share/                        The default share image's source, drawn into src/assets/share.png by
@@ -127,6 +129,19 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   CloudFront's prefix list and nothing else, and its listener answers only the distribution that
   sends the origin-verify header; the site is behind basic auth at the edge, with three public
   aggregate endpoints exempt. See `docs/decisions/0044-*`, `0046-*` and `infra/README.md`.
+
+- **The SSR server holds an idle connection 5 seconds longer than the balancer, which the stack tells it,
+  and it does not start without being told.** The server has to be the side that holds on longer. When Node
+  closes first, the balancer can send a request down a connection that is closing, and the viewer gets a 502
+  that no log of ours records. Node's default is five seconds, and `react-router-serve` had no way to change
+  it. So the server is our own, `server/index.ts`, which Node runs as TypeScript, in the image, `npm start`
+  and both harnesses. `BalancerIdleTimeoutSeconds` in `AppStack.cs` is the one place the number is written:
+  the stack gives it to the balancer and to the SSR task as `BALANCER_IDLE_TIMEOUT_SECONDS`. **Never give
+  that variable a default**, in the server or the Dockerfile. CI never sees the task definition, so a
+  default would let a misspelt name deploy a server on a guess; without one, that deploy fails and rolls
+  back. Raising the timeout is a deploy whose old task keeps its old keep-alive until it is replaced; lowering
+  it is always safe. `createApp` is `react-router-serve`'s app, piece by piece, so a React Router major means
+  re-reading that package's `cli.ts`. See `docs/decisions/0093-*`.
 
 - **CI gates every pull request, whatever branch it targets, and an advisory can turn it red
   overnight.** Beside the builds and tests it checks the formatting, audits every package (NuGet's at
@@ -175,7 +190,7 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   Identity refuses an unconfirmed account before it checks the password and counts nothing, so
   `AuthController` checks it, counts a wrong one towards the lockout, and answers the 403 that offers
   the link again only to the password's owner; anything else is the usual 401. A link's token goes
-  after the `#` (`EmailLinks`), never in a query string, which the SSR server's log would keep, and
+  after the `#` (`EmailLinks`), never in a query string, which reaches request logs, cache keys and the `Referer`, and
   the page posts it: confirming signs nobody in, because the token outlives its use. Every account
   before the migration that turned this on was confirmed by it. A test that signs up goes through the
   link: `Browsers.RegisterAsync`, `e2e/outbox.ts`. See `docs/decisions/0089-*`. **A password reset
@@ -206,7 +221,11 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   policy that reads account ids from `Admin:AccountIds`, so name your own:
   `dotnet user-secrets set "Admin:AccountIds:0" "<account id>"`. An id, never a username — a name
   can be given up and claimed by somebody else. A later admin page goes behind the same policy, on
-  the controller's class, and edits reference data only, never a user's. See `docs/decisions/0042-*`.
+  the controller's class, and edits reference data only, never a user's — with one exception, the
+  moderation card: on a reader's report it hides a review (`Reviews.HiddenAt`, a third gate every
+  public read of a review must draw) or clears a display name, picture or bio, and never writes a
+  member's words. A report is the reporter's row in `ContentReports`, deleted once an admin answers
+  it. See `docs/decisions/0042-*` and `0076-*`.
   Its statistics count and never list: totals across every account, nothing that selects one. The
   `LastSeenAt` they read is written by `GET /api/auth/me`, once a UTC day, the one write behind a
   `GET`, so keep that endpoint uncached. See `docs/decisions/0051-*`.
@@ -337,7 +356,10 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   `REPEATABLE READ` transaction, so a new section must read through the context it is handed — a
   service or scope with its own context reads outside the snapshot. InMemory has no isolation and
   cannot see it; the integration suite's `ExportSnapshotTests` shows it holding against PostgreSQL,
-  over the import's two sections only. See `docs/decisions/0024-*` and `0057-*`.
+  over the import's two sections only. **And the import reads it back**: `MyVideoGameListImportSource`
+  reads the exporter's own records under every import rule, so a renamed property is renamed for both,
+  but a file saved before the rename loses that field silently. `ExportRoundTripTests` asserts what
+  comes back and what is meant to stay behind. See `docs/decisions/0024-*`, `0057-*` and `0083-*`.
 
 - **A child table of the entry carries its own `UserId`, because the ownership guard keys on it.**
   `UserOwnedDataTests` selects user-owned entities by the *presence of a `UserId` property* and then
@@ -348,13 +370,18 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   what makes "the child's owner is the entry's owner" a database constraint rather than a promise a
   service has to keep. See `docs/decisions/0025-*`.
 
-- **No MVGL average is shown without its count, and the floor lives in the client.** The community
-  completion times are medians, never means — self-reported playtime has a long idle-hours tail —
-  and every bucket travels with `samples`. `MIN_PLAYTHROUGH_SAMPLES` in `@/lib/score` suppresses a
-  tier under the floor, showing a dash and the count rather than a number, exactly as
-  `MIN_CRITIC_REVIEWS` does for IGDB's critic score. Only playthroughs with *both* a type and a
-  duration are counted: the others would inflate a sample size behind a figure they did not help
-  produce. See `docs/decisions/0016-*` and `0025-*`.
+- **No MVGL average is shown without its count, and under its floor the API does not send it.** The
+  community completion times are medians, never means — self-reported playtime has a long idle-hours
+  tail — and every bucket travels with `samples`. Both community endpoints count every member, private
+  profiles included, so a figure over a handful of members is their own: the floors are the server's,
+  `CommunityFloors`. Under five scores `/community-scores` sends the count and no mean, under twenty no
+  distribution, and a tier of `/community-times` under three runs no median. `@/lib/score` restates
+  them (`MIN_MEMBER_SCORES`, `MIN_DISTRIBUTION_SCORES`, `MIN_PLAYTHROUGH_SAMPLES`) for the sentences that
+  say why a figure is missing, `serverMirrors.test.ts` holds them equal, and the client still checks
+  the counts, so an API from before mid-deploy is held to them. IGDB's critic score keeps its floor in
+  the client, `MIN_CRITIC_REVIEWS`. Only playthroughs with *both* a type and a duration are counted: the
+  others would inflate a sample size behind a figure they did not help produce. See
+  `docs/decisions/0016-*`, `0025-*` and `0094-*`.
 
 - **A game's member reviews are fetched after hydration, never in the route loader.** The game page
   is edge-cached for an hour and servable stale for a day, so review text rendered into it would

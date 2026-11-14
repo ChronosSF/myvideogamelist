@@ -4,9 +4,8 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { PlayNextPicker } from '@/components/PlayNextPicker';
 import type { FavouritesContextValue } from '@/contexts/FavouritesContext';
-import { DEFAULT_SORT } from '@/lib/listSort';
 import { emptyLists, LIST_NAMES, type ListEntryDto, type ListId } from '@/types/list';
-import { entry } from '@/test/factories';
+import { entry, listPending } from '@/test/factories';
 
 /**
  * The lists context, mocked rather than provided: the real one fetches, and this component only
@@ -20,8 +19,7 @@ const listsValue = {
     loading: false,
     error: null as string | null,
     mutationError: null as string | null,
-    pending: new Set<number>(),
-    isPending: (gameId: number) => listsValue.pending.has(gameId),
+    pending: listPending(),
     addToList: vi.fn(async () => {}),
     removeFromList: vi.fn(async () => {}),
     isInList: () => false,
@@ -32,10 +30,6 @@ const listsValue = {
     setNotes: vi.fn(async () => true),
     setTags: vi.fn(async () => ({ ok: true as const })),
     deleteEntry: vi.fn(async () => true),
-    view: 'tiles' as const,
-    setView: vi.fn(),
-    sortFor: () => DEFAULT_SORT,
-    setSort: vi.fn(),
     names: {},
     nameFor: (id: ListId) => LIST_NAMES[id],
     namesStatus: 'ready',
@@ -69,7 +63,7 @@ beforeEach(() => {
     listsValue.lists = emptyLists();
     listsValue.loading = false;
     listsValue.error = null;
-    listsValue.pending = new Set();
+    listsValue.pending = listPending();
     listsValue.addToList.mockReset();
     listsValue.addToList.mockResolvedValue(undefined);
     // The first draw lands on the first game unless a test says otherwise.
@@ -148,19 +142,32 @@ describe('PlayNextPicker starting the pick', () => {
         await waitFor(() => expect(listsValue.addToList).toHaveBeenCalledWith('playing', HADES.game));
     });
 
-    it('stays on the game while its start is in flight', () => {
+    it('stays on the game while its start is in flight', async () => {
         // The provider takes the game out of the backlog before the request answers. The card must
-        // not jump to another game in the meantime, and jump back if the request fails.
+        // not jump to another game in the meantime, and jump back if the request fails — and it
+        // knows by its own start, not the lock, which reaches it a render late
+        // (`PlayNextPicker.start.test.tsx` has the provider).
+        const actor = userEvent.setup();
+        listsValue.addToList.mockReturnValue(new Promise(() => {}));
         backlog([HADES, CELESTE]);
         const view = render(picker());
 
+        await actor.click(screen.getByRole('button', { name: 'Start playing' }));
         backlog([CELESTE]);
-        listsValue.pending = new Set([HADES.game.id]);
         view.rerender(picker());
 
         expect(pickedTitle()).toBe('Hades');
         expect(screen.getByRole('button', { name: 'Starting…' })).toBeDisabled();
         expect(screen.getByRole('button', { name: 'Pick another' })).toBeDisabled();
+    });
+
+    it('cannot be started while another write of the game is out', () => {
+        // Sent from another control: the card shows its lock, and holds no pick for it.
+        backlog([HADES, CELESTE]);
+        listsValue.pending = listPending([HADES.game.id]);
+        render(picker());
+
+        expect(screen.getByRole('button', { name: 'Starting…' })).toBeDisabled();
     });
 
     it('moves on to another game once the pick has left the backlog', () => {

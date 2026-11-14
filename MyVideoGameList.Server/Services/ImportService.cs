@@ -26,7 +26,12 @@ public class ImportService(
     /// a new service is a new <see cref="IImportSource"/> and this line, with nothing downstream
     /// of it changing.
     /// </summary>
-    private static readonly IImportSource[] Sources = [new GrouveeImportSource()];
+    /// <remarks>
+    /// Asked in this order, and ours first because its fingerprint is exact where Grouvee's is a
+    /// word anywhere in the head: an export of ours whose bio says "moved here from Grouvee" would
+    /// otherwise be handed to Grouvee's reader and refused as a bad Grouvee file.
+    /// </remarks>
+    private static readonly IImportSource[] Sources = [new MyVideoGameListImportSource(), new GrouveeImportSource()];
 
     /// <summary>
     /// Five thousand rows (§S7). Generous against a real export — the one this was built from has
@@ -94,7 +99,7 @@ public class ImportService(
         var name = SafeFileName(fileName);
         var source = Detect(name, content)
             ?? throw new ImportRejectedException(
-                "That file is not an export MyVideoGameList recognises. Grouvee's JSON or CSV export is supported.");
+                "That file is not an export MyVideoGameList recognises. Grouvee's JSON or CSV export and MyVideoGameList's own are supported.");
 
         // Parsing is the only thing that can reject the file on its contents, and it happens before
         // a row is written: a file that fails here leaves no job behind to clean up.
@@ -157,8 +162,8 @@ public class ImportService(
             {
                 UserId = userId,
                 Job = job,
-                SourceRef = payload.SourceRef is { } reference ? Truncate(reference, 64) : null,
-                Title = Truncate(payload.Title, 512),
+                SourceRef = payload.SourceRef is { } reference ? ImportText.Truncate(reference, 64) : null,
+                Title = ImportText.Truncate(payload.Title, 512),
                 GameId = payload.GameId,
 
                 // Not `unmatched` — nothing has looked yet, and saying otherwise would put this
@@ -231,8 +236,9 @@ public class ImportService(
         // Every game the user has, not only these rows': the screen checks a game chosen for a row
         // against it, and a row's own search can choose any game at all (§S8).
         var tracked = await LibraryGameIdsAsync(userId, cancellationToken);
+        var noted = await NotedGameIdsAsync(userId, [.. rows.Select(r => r.GameId).OfType<int>()], cancellationToken);
 
-        var dtos = rows.Select(row => ToReviewDto(row, games, tracked)).ToList();
+        var dtos = rows.Select(row => ToReviewDto(row, games, tracked, noted)).ToList();
 
         var summary = new ImportReviewSummaryDto(
             Total: dtos.Count,
@@ -293,6 +299,7 @@ public class ImportService(
 
         var games = (await gameCache.GetGamesAsync(named, cancellationToken)).ToDictionary(g => g.Id);
         var tracked = await TrackedGameIdsAsync(userId, named, cancellationToken);
+        var noted = await NotedGameIdsAsync(userId, named, cancellationToken);
 
         var examined = new List<ImportRow>(rows.Count);
 
@@ -320,7 +327,7 @@ public class ImportService(
         if (!await SaveTouchingAsync(job, clock.GetUtcNow(), cancellationToken)) return null;
 
         return new ImportMatchPassDto(
-            ToDto(job), examined.Select(row => ToReviewDto(row, games, tracked)).ToList());
+            ToDto(job), examined.Select(row => ToReviewDto(row, games, tracked, noted)).ToList());
     }
 
     public async Task<bool> SetDecisionsAsync(
@@ -422,7 +429,7 @@ public class ImportService(
             .OrderBy(r => r.Id)
             .ToListAsync(cancellationToken);
 
-        var skipped = new List<ImportSkippedRowDto>();
+        var passedOver = new List<(ImportRow Row, ImportRowPayload Payload, string Reason)>();
         var wanted = new List<(ImportRow Row, ImportRowPayload Payload)>();
 
         foreach (var row in rows)
@@ -431,18 +438,31 @@ public class ImportService(
 
             if (row.Decision != ImportDecisions.Import)
             {
-                skipped.Add(new ImportSkippedRowDto(row.Title, payload.SourceStatus, "You chose not to import it."));
+                passedOver.Add((row, payload, "You chose not to import it."));
                 continue;
             }
 
             if (row.GameId is null)
             {
-                skipped.Add(new ImportSkippedRowDto(row.Title, payload.SourceStatus, "No game was matched to it."));
+                passedOver.Add((row, payload, "No game was matched to it."));
                 continue;
             }
 
             wanted.Add((row, payload));
         }
+
+        // The report names a row as the review did, so a row skipped there under a game's name is not
+        // listed here under its id (ShownTitle).
+        var names = await CachedTitlesAsync(
+            passedOver.Where(p => p.Row.Title.Length == 0).Select(p => p.Payload.GameId).OfType<int>().ToHashSet(),
+            cancellationToken);
+
+        var skipped = passedOver
+            .Select(p => new ImportSkippedRowDto(
+                ShownTitle(p.Row, p.Payload, p.Payload.GameId is { } id ? names.GetValueOrDefault(id) : null),
+                p.Payload.SourceStatus,
+                p.Reason))
+            .ToList();
 
         var (imported, games, unlisted, wishlistOnly) = await WriteAsync(userId, job.Source, wanted, cancellationToken);
 
@@ -656,10 +676,12 @@ public class ImportService(
             }
 
             // Truncated to the column's length rather than left to fail. A Grouvee review can run
-            // past 2,000 characters, and a note that long would abort the whole commit on the final
-            // save — losing several hundred games over the tail of one note is the worse trade, and
-            // the source file is still in the user's hands.
-            entry.Notes ??= payload.Notes is { } notes ? Truncate(notes, MaxNotesLength) : null;
+            // past 2,000 characters, and so can one of ours appended to its notes (ADR 0083); a note
+            // that long would abort the whole commit on the final save — losing several hundred games
+            // over the tail of one note is the worse trade, and the source file is still in the
+            // user's hands. The review screen says which rows this cuts (NotesCut), and the cut note
+            // ends in an ellipsis, so it does not read later as though its owner stopped there.
+            entry.Notes ??= payload.Notes is { } notes ? ImportText.TruncateMarked(notes, MaxNotesLength) : null;
 
             foreach (var run in payload.Playthroughs)
             {
@@ -675,7 +697,9 @@ public class ImportService(
                     // run carrying minutes feeds the community medians, so this is the one field
                     // here that other members read.
                     TypeId = run.Type is { } typeKey && types.TryGetValue(typeKey, out var typeId) ? typeId : null,
-                    PlatformId = ResolvePlatform(run.PlatformName, games.GetValueOrDefault(gameId)),
+                    // An id the source already holds wins; otherwise the name is looked for in the
+                    // game's own platforms (ADR 0083).
+                    PlatformId = run.PlatformId ?? ResolvePlatform(run.PlatformName, games.GetValueOrDefault(gameId)),
                     MinutesPlayed = run.MinutesPlayed,
                     StartedOn = run.StartedOn,
                     FinishedOn = run.FinishedOn,
@@ -734,6 +758,50 @@ public class ImportService(
     }
 
     /// <summary>
+    /// What a row is called wherever it is shown: the title its file gave, or, for a file that named
+    /// the game by id alone, that game's name.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Our own export names a game by its IGDB id and nothing else (ADR 0024), so its rows are stored
+    /// with the empty title the file gave them and named here, each time one is shown, from whatever
+    /// the caller already holds for the game. Not at upload: the upload makes no network call (ADR
+    /// 0037), so a game the cache did not hold then would keep a stand-in for the life of the job,
+    /// although the review's own read fetches that game for its cover moments later (ADR 0083).
+    /// </para>
+    /// <para>
+    /// The game the <em>file</em> named, never one chosen for the row since, because the name stands
+    /// in for the file's title. A game nothing here holds, or IGDB has no longer, is named by its id.
+    /// </para>
+    /// </remarks>
+    private static string ShownTitle(ImportRow row, ImportRowPayload payload, string? fileGameName) =>
+        row.Title.Length > 0
+            ? row.Title
+            : fileGameName ?? (payload.GameId is { } id
+                ? string.Create(CultureInfo.InvariantCulture, $"IGDB game {id}")
+                : string.Empty);
+
+    /// <summary>
+    /// The cached names of these games, for the rows of a closing import that only an id names.
+    /// </summary>
+    /// <remarks>
+    /// From the table directly rather than through <see cref="IGameCacheService"/>: the failure report
+    /// is not worth an IGDB call, and the review that came before it has already fetched these games
+    /// into the cache for their covers.
+    /// </remarks>
+    private async Task<Dictionary<int, string>> CachedTitlesAsync(
+        IReadOnlyCollection<int> gameIds, CancellationToken cancellationToken)
+    {
+        if (gameIds.Count == 0) return [];
+
+        return await db.CachedGames
+            .AsNoTracking()
+            .Where(c => gameIds.Contains(c.GameId) && c.Title != null)
+            .Select(c => new { c.GameId, Title = c.Title ?? string.Empty })
+            .ToDictionaryAsync(c => c.GameId, c => c.Title, cancellationToken);
+    }
+
+    /// <summary>
     /// Which of these games the user already has an entry for, so the review screen can mark them
     /// and default them to skip (§S8).
     /// </summary>
@@ -744,6 +812,21 @@ public class ImportService(
             .Where(e => e.UserId == userId)
             .Select(e => e.GameId)
             .ToListAsync(cancellationToken)];
+
+    /// <summary>
+    /// Which of these games already have notes of their owner's. The commit fills notes only where
+    /// there are none, so a row's notes are never written to such a game, cut or whole, and the
+    /// review must not say they will be cut.
+    /// </summary>
+    private async Task<HashSet<int>> NotedGameIdsAsync(
+        string userId, IReadOnlyCollection<int> gameIds, CancellationToken cancellationToken) =>
+        gameIds.Count == 0
+            ? []
+            : [.. await db.UserGameEntries
+                .AsNoTracking()
+                .Where(e => e.UserId == userId && e.Notes != null && gameIds.Contains(e.GameId))
+                .Select(e => e.GameId)
+                .ToListAsync(cancellationToken)];
 
     private async Task<HashSet<int>> TrackedGameIdsAsync(
         string userId, IReadOnlyCollection<int> gameIds, CancellationToken cancellationToken) =>
@@ -852,21 +935,21 @@ public class ImportService(
         var cut = trimmed.LastIndexOfAny(['/', '\\']);
         var name = cut >= 0 ? trimmed[(cut + 1)..] : trimmed;
 
-        return string.IsNullOrWhiteSpace(name) ? "import" : Truncate(name, 260);
+        return string.IsNullOrWhiteSpace(name) ? "import" : ImportText.Truncate(name, 260);
     }
 
-    private static string Truncate(string value, int length) =>
-        value.Length <= length ? value : value[..length];
-
     private static ImportReviewRowDto ToReviewDto(
-        ImportRow row, IReadOnlyDictionary<int, GameDto> games, IReadOnlySet<int> tracked)
+        ImportRow row, IReadOnlyDictionary<int, GameDto> games, IReadOnlySet<int> tracked, IReadOnlySet<int> noted)
     {
         var payload = ImportPayloadJson.Read(row.Payload);
 
+        // Only for a row its file named by id alone, whose year is the game's as its name is.
+        var fileGame = row.Title.Length == 0 && payload.GameId is { } fileId ? games.GetValueOrDefault(fileId) : null;
+
         return new ImportReviewRowDto(
             Id: row.Id,
-            Title: row.Title,
-            ReleaseYear: payload.ReleaseYear,
+            Title: ShownTitle(row, payload, fileGame?.Title),
+            ReleaseYear: payload.ReleaseYear ?? fileGame?.ReleaseDate?.Year,
             GameId: row.GameId,
             Game: row.GameId is { } id ? games.GetValueOrDefault(id) : null,
 
@@ -887,6 +970,8 @@ public class ImportService(
             Wishlist: payload.Wishlist,
             Favourite: payload.Favourite,
             HasNotes: payload.Notes is not null,
+            // Only where the notes would be written: a game that has notes already keeps them.
+            NotesCut: payload.Notes is { Length: > MaxNotesLength } && !(row.GameId is { } notedId && noted.Contains(notedId)),
             PlaythroughCount: payload.Playthroughs.Count,
             MinutesPlayed: payload.Playthroughs.Sum(p => p.MinutesPlayed ?? 0) is var minutes and > 0 ? minutes : null,
             AlreadyTracked: row.GameId is { } gameId && tracked.Contains(gameId),

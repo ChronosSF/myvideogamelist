@@ -53,7 +53,8 @@ export function AccountDataCard({ userName, onDeleteAccount }: Props) {
             <p className="user-card-hint">
                 Everything you have entered — lists, scores, playthroughs, reviews, your wishlist
                 and the history behind your stats — as one JSON file. Games are identified by their
-                IGDB id.
+                IGDB id. It can be imported back, here or into another account, though only your
+                games come back with it, not their history, tags or settings.
             </p>
 
             {/* A live region, because the button beside it just goes back to how it was. Not while

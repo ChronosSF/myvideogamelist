@@ -91,6 +91,12 @@ export default function TermsPage() {
                         Don&rsquo;t post anything illegal, hateful or harassing, anything you have no right to post,
                         or spam. We may remove what breaks these rules, and suspend the account that posted it.
                     </p>
+                    <p className={P}>
+                        If you see something that breaks them, press <strong className="text-fg">Report</strong>{' '}
+                        beside it. An admin reads every report and nobody else does, the person reported included.
+                        An admin can hide a review from everybody but its author, and clear a display name, picture
+                        or bio; a hidden review is still its author&rsquo;s to edit, delete or download.
+                    </p>
 
                     <h2 className={H2}>Your data, and keeping a copy</h2>
                     <p className={P}>

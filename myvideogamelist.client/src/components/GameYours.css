@@ -24,6 +24,18 @@
     color: var(--color-danger-300);
 }
 
+/* A review an admin hid (ADR 0076): something its author has to read before going on, in the warning's
+   words over its tint, rather than a hint they could take for one more beside the others. */
+.game-yours-hidden {
+    margin: 0;
+    padding: 0.625rem 0.75rem;
+    border-radius: var(--radius-md);
+    background: color-mix(in srgb, var(--color-warning-900) 35%, transparent);
+    color: var(--color-warning-300);
+    font-size: 0.8125rem;
+    line-height: 1.5;
+}
+
 /* A row of chips that wrap, for how the reader has the game. */
 .game-yours-lists {
     display: flex;

@@ -1,6 +1,8 @@
 # 0016. A score is never shown without its sample size
 
-**Status:** Implemented
+**Status:** Implemented. For the two community endpoints, whose figures are our members' own, the floors
+are the server's since [0094](0094-the-community-figures-are-withheld-below-their-floors-by-the-api.md): the
+count still travels, and the figure does not below its floor.
 
 ## Context
 

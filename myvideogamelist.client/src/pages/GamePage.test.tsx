@@ -16,11 +16,11 @@ import type { WishlistContextValue } from '@/contexts/WishlistContext';
 import type { UseGameCommunityResult } from '@/hooks/useGameCommunity';
 import { useGameEntry } from '@/hooks/useGameEntry';
 import { CACHE_GAME, CACHE_NOT_FOUND, PRIVATE_NO_STORE } from '@/lib/cache';
-import { MIN_MEMBER_SCORES, MIN_PLAYTHROUGH_SAMPLES } from '@/lib/score';
+import { MIN_DISTRIBUTION_SCORES, MIN_MEMBER_SCORES, MIN_PLAYTHROUGH_SAMPLES } from '@/lib/score';
 import type { UserProfile } from '@/types/auth';
 import type { CommunityScores } from '@/types/community';
 import { LIST_NAMES, type ListId } from '@/types/list';
-import { communityScores, communityTimes, game, gameDetails, platform, userProfile } from '@/test/factories';
+import { communityScores, communityTimes, game, gameDetails, listPending, platform, userProfile } from '@/test/factories';
 import type { GameDetailsDto, GameDto, RelatedGameDto, RelatedGamesDto } from '@/types/game';
 import type { Route } from './+types/GamePage';
 
@@ -93,7 +93,7 @@ const lists = {
     error: null,
     nameFor: (listId: ListId) => LIST_NAMES[listId],
     getListFor: () => null,
-    isPending: () => false,
+    pending: listPending(),
     addToList: vi.fn(async () => {}),
 } as unknown as ListsContextValue;
 
@@ -376,9 +376,18 @@ describe('GamePage tabs', () => {
     });
 });
 
-/** A scores document: how many members scored the game, averaging `mean` on the 1–10 scale. */
+/**
+ * A scores document as the API sends it: how many members scored the game, averaging `mean` on the
+ * 1–10 scale, with the mean only from the member floor and the columns only from the distribution's
+ * bar (ADR 0094).
+ */
 function memberScores(members: number, mean = 8.4): CommunityScores {
-    return communityScores({ scored: members, mean, distribution: [0, 0, 0, 0, 0, 0, 0, members, 0, 0], tracked: members });
+    return communityScores({
+        scored: members,
+        mean: members >= MIN_MEMBER_SCORES ? mean : null,
+        distribution: members >= MIN_DISTRIBUTION_SCORES ? [0, 0, 0, 0, 0, 0, 0, members, 0, 0] : [],
+        tracked: members,
+    });
 }
 
 /** The route, with the scores the loader read beside the game already in hand. */
@@ -435,13 +444,26 @@ describe("GamePage hero's member score", () => {
     });
 
     it('is absent until enough members have scored the game', () => {
-        // A mean over a handful of members is a handful of opinions presented as a verdict.
+        // A mean over a handful of members is a handful of opinions presented as a verdict, and the
+        // API sends none (ADR 0094).
         scored(MIN_MEMBER_SCORES - 1);
         render(withLoaded(memberScores(MIN_MEMBER_SCORES - 1, 10)));
 
         expect(hero()).toBeInTheDocument();
         expect(screen.queryByText(/^Member score:/)).not.toBeInTheDocument();
         expect(screen.queryByText('Member Score')).not.toBeInTheDocument();
+    });
+
+    it('is drawn under the floors exactly as from the copy the loader used to keep', () => {
+        // Before the API withheld the figures, the loader's copy under the floor kept ten empty columns;
+        // now the API sends none and the copy is the API's answer. Nothing the server renders reads
+        // either, so the HTML a crawler indexes is the same (ADR 0069 §1, ADR 0094).
+        const count = MIN_MEMBER_SCORES - 1;
+        const now = renderToString(withLoaded(memberScores(count)));
+        const before = renderToString(withLoaded({ ...memberScores(count), distribution: Array<number>(10).fill(0) }));
+
+        expect(now).toBe(before);
+        expect(now).not.toMatch(/Member score/i);
     });
 
     it('is absent when neither the loader nor the browser has scores', () => {

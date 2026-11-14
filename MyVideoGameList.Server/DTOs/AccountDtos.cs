@@ -41,7 +41,8 @@ public record UserDataExportDto(
     IReadOnlyList<ListSortExportDto> ListSortPreferences,
     IReadOnlyList<ListNameExportDto> ListNames,
     IReadOnlyList<ImportJobExportDto> ImportJobs,
-    IReadOnlyList<ImportRowExportDto> ImportRows);
+    IReadOnlyList<ImportRowExportDto> ImportRows,
+    IReadOnlyList<ContentReportExportDto> Reports);
 
 /// <summary>
 /// The account row itself — the columns MVGL added to Identity's user, plus the address and the
@@ -187,13 +188,39 @@ public record PlaythroughExportDto(
 /// id with no meaning outside this database, the same reason the entry's own <c>Id</c> is left out.
 /// The score is absent because it is not on the review — it travels with the entry.
 /// </remarks>
+/// <param name="HiddenAt">
+/// When an admin hid it from every reader but its author, or null. What was done to the user's own
+/// words is theirs to know; who reported them is not, so the reports are not here (ADR 0076 §2).
+/// </param>
 public record ReviewExportDto(
     int GameId,
     string Body,
     bool HasSpoilers,
     string Visibility,
     DateTimeOffset CreatedAt,
-    DateTimeOffset UpdatedAt);
+    DateTimeOffset UpdatedAt,
+    DateTimeOffset? HiddenAt);
+
+/// <summary>
+/// Something the user reported to the admins, that no admin has answered yet (ADR 0076).
+/// </summary>
+/// <remarks>
+/// An answered report is deleted, so only the open ones are here. No id, for the reason no row here
+/// carries one.
+/// </remarks>
+/// <param name="UserName">
+/// Whose review or profile it is, while their profile is public; null once it is not. The user reported
+/// it while it was published, and a private profile says no more to them than to anybody else, its name
+/// since a rename included (ADR 0027 §7).
+/// </param>
+/// <param name="GameId">The game the reported review is about, or null for a profile.</param>
+/// <param name="Reason">The reason's permanent key, such as <c>spam</c>.</param>
+public record ContentReportExportDto(
+    string? UserName,
+    int? GameId,
+    string Reason,
+    string? Note,
+    DateTimeOffset CreatedAt);
 
 /// <summary>
 /// One tag the user made, whether or not any game carries it now.
