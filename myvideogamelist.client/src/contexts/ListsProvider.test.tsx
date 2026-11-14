@@ -4,6 +4,9 @@ import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ListsProvider } from '@/contexts/ListsProvider';
 import { useLists } from '@/hooks/useLists';
+import { useListsPending } from '@/hooks/useListPending';
+import { useListView } from '@/hooks/useListView';
+import type { ListsContextValue } from '@/contexts/ListsContext';
 import type { ListId, ListEntryDto } from '@/types/list';
 import { MANUAL_SORT, sortEntries } from '@/lib/listSort';
 import { entry, game } from '@/test/factories';
@@ -73,17 +76,19 @@ function stubFetch(routes: Routes) {
 /** Surfaces the parts of the context the assertions need, as plain text and buttons. */
 function Probe({ listId = 'playing' as ListId }: { listId?: ListId }) {
     const lists = useLists();
+    const isPending = useListsPending();
+    const listView = useListView();
     const [deleted, setDeleted] = useState('');
 
     return (
         <div>
-            <span data-testid="view">{lists.view}</span>
-            <span data-testid="sort">{`${lists.sortFor(listId).key}:${lists.sortFor(listId).descending}`}</span>
+            <span data-testid="view">{listView.view}</span>
+            <span data-testid="sort">{`${listView.sortFor(listId).key}:${listView.sortFor(listId).descending}`}</span>
             <span data-testid="loading">{String(lists.loading)}</span>
             <span data-testid="error">{lists.mutationError ?? ''}</span>
             <span data-testid="score">{String(lists.scoreFor(1))}</span>
             <span data-testid="found-in">{String(lists.getListFor(1))}</span>
-            <span data-testid="pending">{String(lists.isPending(1))}</span>
+            <span data-testid="pending">{String(isPending(1))}</span>
             <span data-testid="deleted">{deleted}</span>
             {(['backlog', 'playing', 'on_hold', 'finished', 'dropped'] as ListId[]).map(id => (
                 <span key={id} data-testid={`list-${id}`}>
@@ -96,8 +101,8 @@ function Probe({ listId = 'playing' as ListId }: { listId?: ListId }) {
             <button onClick={() => void lists.removeFromList('playing', 1)}>remove</button>
             <button onClick={() => void lists.setScore(1, 9)}>score 9</button>
             <button onClick={() => void lists.deleteEntry(1).then(ok => setDeleted(String(ok)))}>delete entry</button>
-            <button onClick={() => lists.setView('table')}>use table</button>
-            <button onClick={() => lists.setSort(listId, { key: 'score', descending: true })}>sort by score</button>
+            <button onClick={() => listView.setView('table')}>use table</button>
+            <button onClick={() => listView.setSort(listId, { key: 'score', descending: true })}>sort by score</button>
             <button onClick={() => lists.reload()}>reload</button>
         </div>
     );
@@ -204,6 +209,47 @@ describe('moving between lists', () => {
         await waitFor(() => expect(screen.getByTestId('list-playing')).toHaveTextContent('Celeste(7)'));
         expect(screen.getByTestId('list-finished')).toBeEmptyDOMElement();
         expect(screen.getByTestId('error')).toHaveTextContent('Failed to update list');
+    });
+});
+
+describe('while the lists are unknown', () => {
+    /** The lists' read answered as `answer` says, and every write recorded, answering 204. */
+    function stubLists(answer: () => Promise<Response>) {
+        const writes: string[] = [];
+        vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+            const url = String(input);
+            const method = init?.method ?? 'GET';
+            if (method === 'GET' && url === '/api/lists') return answer();
+            if (method === 'GET') return new Response(JSON.stringify({ view: 'tiles', sorts: {} }), { status: 200 });
+            writes.push(`${method} ${url}`);
+            return new Response(null, { status: 204 });
+        }));
+        return writes;
+    }
+
+    it('moves nothing while they load, since a game in one reads as in none until they come', async () => {
+        // A game in Finished would otherwise be moved to Backlog by a press meant to add it there.
+        const writes = stubLists(() => new Promise<Response>(() => {}));
+        render(<ListsProvider><Probe /></ListsProvider>);
+        expect(screen.getByTestId('loading')).toHaveTextContent('true');
+
+        await userEvent.click(screen.getByRole('button', { name: 'move to finished' }));
+        await userEvent.click(screen.getByRole('button', { name: 'remove' }));
+
+        expect(writes).toEqual([]);
+        expect(screen.getByTestId('list-finished')).toBeEmptyDOMElement();
+    });
+
+    it('moves nothing after they failed to load', async () => {
+        const writes = stubLists(async () => new Response('nope', { status: 500 }));
+        render(<ListsProvider><Probe /></ListsProvider>);
+        await waitFor(() => expect(screen.getByTestId('loading')).toHaveTextContent('false'));
+
+        await userEvent.click(screen.getByRole('button', { name: 'move to finished' }));
+        await userEvent.click(screen.getByRole('button', { name: 'remove' }));
+
+        expect(writes).toEqual([]);
+        expect(screen.getByTestId('list-finished')).toBeEmptyDOMElement();
     });
 });
 
@@ -1090,13 +1136,14 @@ describe("the entry's own fields", () => {
 
     function FieldsProbe() {
         const lists = useLists();
+        const isPending = useListsPending();
         const [result, setResult] = useState('');
 
         return (
             <div>
                 <span data-testid="loading">{String(lists.loading)}</span>
                 <span data-testid="error">{lists.mutationError ?? ''}</span>
-                <span data-testid="pending">{String(lists.isPending(1))}</span>
+                <span data-testid="pending">{String(isPending(1))}</span>
                 <span data-testid="result">{result}</span>
                 <span data-testid="list-playing">{lists.lists.playing.map(e => `${e.game.title}(${e.score ?? '-'})`).join(',')}</span>
                 <button onClick={() => void lists.setOwnership(1, 'owned').then(ok => setResult(String(ok)))}>own it</button>
@@ -1487,6 +1534,8 @@ describe('the hand order', () => {
     /** The backlog in its hand order, each game with its position, and a button per move tried. */
     function OrderProbe() {
         const lists = useLists();
+        const isPending = useListsPending();
+        const listView = useListView();
         const [result, setResult] = useState('');
         const backlog = sortEntries(lists.lists.backlog, MANUAL_SORT);
         const move = (gameId: number, afterId: number | null) =>
@@ -1498,9 +1547,9 @@ describe('the hand order', () => {
                 <span data-testid="error">{lists.mutationError ?? ''}</span>
                 <span data-testid="result">{result}</span>
                 <span data-testid="order">{backlog.map(e => `${e.game.title}@${e.position ?? '-'}`).join(',')}</span>
-                <span data-testid="pending">{[1, 2, 3, 4].filter(id => lists.isPending(id)).join(',')}</span>
-                <span data-testid="sort-backlog">{lists.sortFor('backlog').key}</span>
-                <span data-testid="sort-finished">{lists.sortFor('finished').key}</span>
+                <span data-testid="pending">{[1, 2, 3, 4].filter(id => isPending(id)).join(',')}</span>
+                <span data-testid="sort-backlog">{listView.sortFor('backlog').key}</span>
+                <span data-testid="sort-finished">{listView.sortFor('finished').key}</span>
                 <button onClick={() => move(4, null)}>outer wilds first</button>
                 <button onClick={() => move(2, 3)}>hades after cuphead</button>
                 <button onClick={() => move(4, 2)}>outer wilds after hades</button>
@@ -1795,6 +1844,7 @@ describe("an entry's tags", () => {
 
     function TagsProbe() {
         const lists = useLists();
+        const isPending = useListsPending();
         const [result, setResult] = useState('');
         const row = (gameId: number) => lists.lists.playing.find(e => e.game.id === gameId);
 
@@ -1802,7 +1852,7 @@ describe("an entry's tags", () => {
             <div>
                 <span data-testid="loading">{String(lists.loading)}</span>
                 <span data-testid="error">{lists.mutationError ?? ''}</span>
-                <span data-testid="pending">{String(lists.isPending(1))}</span>
+                <span data-testid="pending">{String(isPending(1))}</span>
                 <span data-testid="result">{result}</span>
                 <span data-testid="celeste-tags">{row(1)?.tagIds.join(',') ?? 'gone'}</span>
                 <span data-testid="hades-tags">{row(2)?.tagIds.join(',') ?? 'gone'}</span>
@@ -1960,5 +2010,119 @@ describe("an entry's tags", () => {
 
         expect(celeste()).toHaveTextContent(/^9$/);
         expect(screen.getByTestId('error')).toBeEmptyDOMElement();
+    });
+});
+
+describe('a steady context', () => {
+    // What a page memoises against: the lists context is the same object until something in it changes,
+    // and a write is the same function for as long as the provider is mounted (ADR 0086).
+
+    /** Every lists context a consumer of nothing else was handed, one for each time it was drawn. */
+    function recorded() {
+        const seen: ListsContextValue[] = [];
+        function Recorder() {
+            seen.push(useLists());
+            return null;
+        }
+        return { seen, Recorder };
+    }
+
+    const WRITES = [
+        'reload', 'addToList', 'removeFromList', 'setScore', 'moveInOrder', 'setOwnership', 'setNotes',
+        'setTags', 'deleteEntry', 'saveListNames',
+    ] as const;
+
+    it('draws none of its readers again for a change of sort or of layout', async () => {
+        stubFetch({ lists: { playing: [CELESTE] } });
+        const { seen, Recorder } = recorded();
+        render(<ListsProvider><Recorder /><Probe /></ListsProvider>);
+        await waitFor(() => expect(screen.getByTestId('loading')).toHaveTextContent('false'));
+        const drawn = seen.length;
+
+        await userEvent.click(screen.getByRole('button', { name: 'sort by score' }));
+        await userEvent.click(screen.getByRole('button', { name: 'use table' }));
+
+        expect(screen.getByTestId('sort')).toHaveTextContent('score:true');
+        expect(screen.getByTestId('view')).toHaveTextContent('table');
+        expect(seen).toHaveLength(drawn);
+    });
+
+    it('hands out the same writes after a save as before it, beside the lists it changed', async () => {
+        stubFetch({ lists: { playing: [CELESTE] } });
+        const { seen, Recorder } = recorded();
+        render(<ListsProvider><Recorder /><Probe /></ListsProvider>);
+        await waitFor(() => expect(screen.getByTestId('loading')).toHaveTextContent('false'));
+        const before = seen.at(-1)!;
+
+        await userEvent.click(screen.getByRole('button', { name: 'score 9' }));
+        await waitFor(() => expect(screen.getByTestId('pending')).toHaveTextContent('false'));
+
+        const after = seen.at(-1)!;
+        expect(after.lists.playing[0].score).toBe(9);
+        for (const write of WRITES) expect(after[write], write).toBe(before[write]);
+    });
+
+    it('reads the lists as they stand when a write is called, not as they stood when it was handed out', async () => {
+        // A write kept from the render before the lists arrived. Had it read that render, it would know of
+        // no Celeste to put back, and a failed score would stay on screen as though it had been saved.
+        stubFetch({ lists: { playing: [CELESTE] }, failing: ['/score'] });
+        const { seen, Recorder } = recorded();
+        render(<ListsProvider><Recorder /><Probe /></ListsProvider>);
+        const kept = seen[0].setScore;
+        await waitFor(() => expect(screen.getByTestId('score')).toHaveTextContent('7'));
+
+        let saved: boolean | undefined;
+        await act(async () => {
+            saved = await kept(1, 9);
+        });
+
+        expect(saved).toBe(false);
+        expect(screen.getByTestId('score')).toHaveTextContent('7');
+        expect(screen.getByTestId('error')).toHaveTextContent('Failed to save your score. Please try again.');
+    });
+
+    /** Moves Celeste to Finished and, the moment that resolves, scores it: two writes of one game in a row. */
+    function Chain() {
+        const lists = useLists();
+        const [result, setResult] = useState('');
+        const chain = async () => {
+            const moved = await lists.addToList('finished', CELESTE.game);
+            const scored = await lists.setScore(1, 9);
+            setResult(`moved ${moved}, scored ${scored}`);
+        };
+        return (
+            <div>
+                <button onClick={() => void chain()}>finish and score</button>
+                <span data-testid="chained">{result}</span>
+            </div>
+        );
+    }
+
+    it('takes a write made the moment the last one for the same game resolved', async () => {
+        // The first write's lock is released as it resolves, not in a render React gets to later: the
+        // second reads the render last committed, and would otherwise find the game still saving.
+        const calls = stubFetch({ lists: { playing: [CELESTE] } });
+        render(<ListsProvider><Chain /><Probe /></ListsProvider>);
+        await waitFor(() => expect(screen.getByTestId('loading')).toHaveTextContent('false'));
+
+        await userEvent.click(screen.getByRole('button', { name: 'finish and score' }));
+
+        await waitFor(() => expect(screen.getByTestId('chained')).toHaveTextContent('moved true, scored true'));
+        expect(calls.map(call => `${call.method} ${call.url}`)).toContain('PUT /api/entries/1/score');
+        expect(screen.getByTestId('list-finished')).toHaveTextContent('Celeste');
+        expect(screen.getByTestId('score')).toHaveTextContent('9');
+    });
+
+    it('takes it after a write that failed, from the row the failure put back', async () => {
+        stubFetch({ lists: { playing: [CELESTE] }, failing: ['/api/lists/1'] });
+        render(<ListsProvider><Chain /><Probe /></ListsProvider>);
+        await waitFor(() => expect(screen.getByTestId('loading')).toHaveTextContent('false'));
+
+        await userEvent.click(screen.getByRole('button', { name: 'finish and score' }));
+
+        await waitFor(() => expect(screen.getByTestId('chained')).toHaveTextContent('moved false, scored true'));
+        expect(screen.getByTestId('list-playing')).toHaveTextContent('Celeste');
+        expect(screen.getByTestId('list-finished')).toBeEmptyDOMElement();
+        expect(screen.getByTestId('score')).toHaveTextContent('9');
     });
 });

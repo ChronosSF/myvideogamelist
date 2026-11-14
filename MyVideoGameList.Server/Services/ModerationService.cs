@@ -290,7 +290,7 @@ public class ModerationService(
         }
 
         if (takesBack && account.ProfileVisibility == ProfileVisibility.Public && account.UserName is { } name)
-            withdrawals.ProfileDetailsChanged(name);
+            withdrawals.ProfileDetailsCleared(account.Id, name);
 
         return ProfileClear.Cleared;
     }

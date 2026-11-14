@@ -44,7 +44,10 @@ public record ImportReviewDto(
 /// stored, because the answer is about their library and can change between the upload and the
 /// commit.
 /// </param>
-/// <param name="Selected">How many rows are currently set to import — what the commit button says.</param>
+/// <param name="Selected">
+/// How many rows are currently set to import. Rows, like every count here: the screen counts the games
+/// those rows name for itself, since two rows can name one game and the commit makes one entry of them.
+/// </param>
 /// <param name="Ambiguous">
 /// Rows the matcher found candidates for but would not choose between. What the review screen
 /// counts to say how much is left to resolve by hand.
@@ -80,6 +83,17 @@ public record ImportReviewSummaryDto(
 /// app has not cached the game yet, or that IGDB is unreachable. The import needs the id, not the
 /// cover art, so a null here costs a thumbnail rather than a row.
 /// </param>
+/// <param name="Title">
+/// The title the file gave, or, for a file that named the game by id alone, as our own export does,
+/// that game's name — or <c>IGDB game</c> and the id while this app holds nothing for it (ADR 0083).
+/// </param>
+/// <param name="ReleaseYear">The file's, or the named game's beside its name.</param>
+/// <param name="NotesCut">
+/// The row's notes are longer than an entry's notes can be, so the import will cut them, ending the
+/// note in an ellipsis. Said before the commit rather than discovered after it, because the text cut
+/// is usually a review its owner wrote (ADR 0083). False for a game whose entry has notes already:
+/// the import fills notes only where there are none, so nothing of the row's would be written there.
+/// </param>
 /// <param name="Status">One of <c>ListStatusKeys</c>, or null for a row that will carry no status.</param>
 /// <param name="PlayedUnresolved">
 /// The file says this game was played and not how that ended, so its status is whatever list its
@@ -94,6 +108,12 @@ public record ImportReviewSummaryDto(
 /// <param name="AlreadyTracked">
 /// The user already has an entry for this game. Such a row defaults to <c>skip</c>, and importing
 /// it overwrites what is there — which is why it is opt-in per row.
+/// </param>
+/// <param name="GameFromFile">
+/// The row's game is the one its file named, rather than one the matcher found or its owner chose on
+/// the review. The screen offers to change a row's game only when this is false (issue 324): a game
+/// the file named is the owner's own record, where a game found by title is a guess or a click that
+/// can be wrong.
 /// </param>
 public record ImportReviewRowDto(
     int Id,
@@ -112,9 +132,11 @@ public record ImportReviewRowDto(
     bool Wishlist,
     bool Favourite,
     bool HasNotes,
+    bool NotesCut,
     int PlaythroughCount,
     int? MinutesPlayed,
-    bool AlreadyTracked);
+    bool AlreadyTracked,
+    bool GameFromFile);
 
 /// <summary>
 /// What one matching pass did.
@@ -226,11 +248,21 @@ public record ImportPlayedStatusDto(
 /// keeps.
 /// </param>
 /// <param name="Unlisted">
-/// How many of those <paramref name="Games"/> are in no list afterwards. The result screen says so,
-/// because "now in your lists" is false of them: an entry with no status appears in no list
-/// (ADR 0019), and only the game's own page shows it.
+/// How many of those <paramref name="Games"/> are in no list afterwards, and not on the wishlist
+/// either. The result screen says so, because "now in your lists" is false of them: an entry with no
+/// status appears in no list (ADR 0019), and only the game's own page shows it.
+/// </param>
+/// <param name="WishlistOnly">
+/// How many of those <paramref name="Games"/> are in no list afterwards but on the wishlist, which is
+/// where somebody who shelved a game only as wanted put it. Counted apart from
+/// <paramref name="Unlisted"/>, since <c>/wishlist</c> shows these, and the result screen says where
+/// they are rather than that only their own pages show them (issue 301).
 /// </param>
 public record ImportResultDto(
-    ImportJobDto Job, IReadOnlyList<ImportSkippedRowDto> Skipped, int Games, int Unlisted);
+    ImportJobDto Job,
+    IReadOnlyList<ImportSkippedRowDto> Skipped,
+    int Games,
+    int Unlisted,
+    int WishlistOnly);
 
 public record ImportSkippedRowDto(string Title, string? SourceStatus, string Reason);

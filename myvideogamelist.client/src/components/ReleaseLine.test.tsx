@@ -8,7 +8,7 @@ import type { FavouritesContextValue } from '@/contexts/FavouritesContext';
 import type { ListsContextValue } from '@/contexts/ListsContext';
 import type { WishlistContextValue } from '@/contexts/WishlistContext';
 import type { UseReleaseLineResult } from '@/hooks/useReleaseLine';
-import { calendarEvents, connectedRelease, platform, releaseEntry, userProfile } from '@/test/factories';
+import { calendarEvents, connectedRelease, listPending, platform, releaseEntry, userProfile } from '@/test/factories';
 import { LIST_NAMES, type ListId } from '@/types/list';
 
 /**
@@ -33,7 +33,7 @@ const lists = {
     loading: false,
     error: null as string | null,
     getListFor: (gameId: number) => listed.get(gameId) ?? null,
-    isPending: () => false,
+    pending: listPending(),
     nameFor: (id: ListId) => LIST_NAMES[id],
     addToList: vi.fn(async () => {}),
 } as unknown as ListsContextValue;
@@ -297,6 +297,7 @@ describe('ReleaseLine, adding a release to the Backlog', () => {
         line.releases.data = [SEPARATE_WAYS];
         lists.addToList = vi.fn(async (_list: ListId, game: { id: number }) => {
             listed.set(game.id, 'backlog');
+            return true;
         });
         renderLine();
 
@@ -423,5 +424,7 @@ describe('ReleaseLine, favourites', () => {
 
         expect(screen.getByRole('img', { name: 'One of your favourites' })).toBeInTheDocument();
         expect(screen.queryByRole('button', { name: /favourite/i })).not.toBeInTheDocument();
+        // After the title's link rather than in it, so the link is named by the title alone.
+        expect(screen.getByRole('link', { name: 'Resident Evil 2' })).toHaveAttribute('href', '/games/19686');
     });
 });

@@ -1,3 +1,4 @@
+using System.Globalization;
 using Amazon.CDK;
 using Amazon.CDK.AWS.CertificateManager;
 using Amazon.CDK.AWS.EC2;
@@ -14,7 +15,7 @@ namespace Infra;
 
 /// <summary>
 /// The disposable stack: the balancer, both services, their log groups, the distribution in front of
-/// the balancer, and the DNS alias. Destroying it is the pause lever that matters, because the
+/// the balancer, the DNS alias, and the alarms on all of it (ADR 0080). Destroying it is the pause lever that matters, because the
 /// balancer, not the containers, is what an idle environment pays for (ADR 0044). The distribution
 /// lives here because its origin is the balancer this stack creates and destroys, which is also why
 /// a park and a resume take several minutes longer than they did before it (ADR 0046).
@@ -23,6 +24,14 @@ public sealed class AppStack : Stack
 {
     private const string Production = "Production";
 
+    /// <summary>
+    /// How long the balancer keeps an idle connection to a target open. The SSR task is given it as
+    /// <c>BALANCER_IDLE_TIMEOUT_SECONDS</c> and keeps its own idle connections longer, so that the
+    /// balancer never sends a request down one the server is closing, which the viewer gets as a 502.
+    /// The server refuses to start without it (ADR 0093).
+    /// </summary>
+    private const int BalancerIdleTimeoutSeconds = 60;
+
     public AppStack(Construct scope, string id, IStackProps props, Site site, IHostedZone zone, DataStack data,
         ICertificate edgeCertificate, string imageTag)
         : base(scope, id, props)
@@ -30,7 +39,9 @@ public sealed class AppStack : Stack
         var albSubnets = data.Vpc.SelectSubnets(new SubnetSelection { SubnetGroupName = "alb" });
         var taskSubnets = new SubnetSelection { SubnetGroupName = "tasks" };
 
-        var (apiTask, apiContainer) = ApiTask(site, data, albSubnets, imageTag);
+        // Kept, because the alarms count lines in it.
+        var apiLogs = LogGroup(site, "api");
+        var (apiTask, apiContainer) = ApiTask(site, data, albSubnets, imageTag, apiLogs);
         var apiService = Service(site, data, "api", apiTask, data.ApiSecurityGroup, taskSubnets, registerInNamespace: true);
         var ssrService = Service(site, data, "ssr", SsrTask(site, data, imageTag), data.SsrSecurityGroup, taskSubnets, registerInNamespace: false);
 
@@ -41,7 +52,7 @@ public sealed class AppStack : Stack
             InternetFacing = true,
             SecurityGroup = data.AlbSecurityGroup,
             VpcSubnets = new SubnetSelection { SubnetGroupName = "alb" },
-            IdleTimeout = Duration.Seconds(60),
+            IdleTimeout = Duration.Seconds(BalancerIdleTimeoutSeconds),
             // The balancer preserves X-Forwarded-For rather than appending CloudFront's address to
             // it, so the right-most entry is the viewer and the API's ForwardLimit stays 1 (D-7).
             // Trustworthy only because nothing but CloudFront reaches the balancer: the prefix list
@@ -127,6 +138,10 @@ public sealed class AppStack : Stack
         _ = new ARecord(this, "Alias", new ARecordProps { Zone = zone, Target = target });
         _ = new AaaaRecord(this, "AliasV6", new AaaaRecordProps { Zone = zone, Target = target });
 
+        // Here rather than in a stack of their own, because what they watch is named by this stack's
+        // balancer and log group, which a resume makes anew (ADR 0080).
+        _ = new Alarms(this, "Alarms", site, alb, [apiTargets, ssrTargets], apiLogs);
+
         _ = new CfnOutput(this, "LoadBalancerDnsName", new CfnOutputProps { Value = alb.LoadBalancerDnsName });
         _ = new CfnOutput(this, "ApiTargetGroupArn", new CfnOutputProps { Value = apiTargets.TargetGroupArn });
         _ = new CfnOutput(this, "SsrTargetGroupArn", new CfnOutputProps { Value = ssrTargets.TargetGroupArn });
@@ -140,15 +155,22 @@ public sealed class AppStack : Stack
     /// id can join its environment once the distribution exists.
     /// </summary>
     private (FargateTaskDefinition Task, ContainerDefinition Container) ApiTask(
-        Site site, DataStack data, ISelectedSubnets albSubnets, string imageTag)
+        Site site, DataStack data, ISelectedSubnets albSubnets, string imageTag, LogGroup logs)
     {
-        var task = Task(site, "api");
+        // Named, because the production account's email role trusts it by its ARN, and a resume
+        // makes it anew (ADR 0088). Everything else about it is what the task definition would
+        // have made.
+        var task = Task(site, "api", new Role(this, "apiTaskRole", new RoleProps
+        {
+            RoleName = site.ApiTaskRoleName,
+            AssumedBy = new ServicePrincipal("ecs-tasks.amazonaws.com"),
+        }));
 
         // The ring that signs the cookie lives in Parameter Store under this path, and the task role
         // may read and write beneath it and nowhere else in the store (ADR 0043). The repository is
         // built on the first protect, not at boot, so a wrong policy fails the first sign-in. The
-        // one other thing the role may do is invalidate this stack's distribution, granted in the
-        // constructor once the distribution exists (ADR 0058).
+        // role may also invalidate this stack's distribution, granted in the constructor once the
+        // distribution exists (ADR 0058), and send email as the production account's role, below.
         var parameterArn = $"arn:{Aws.PARTITION}:ssm:{Region}:{Account}:parameter{site.DataProtectionPath}";
         task.TaskRole.AddToPrincipalPolicy(new PolicyStatement(new PolicyStatementProps
         {
@@ -181,9 +203,37 @@ public sealed class AppStack : Stack
                 ["PGPASSWORD"] = Amazon.CDK.AWS.ECS.Secret.FromSecretsManager(data.DbSecret, "password"),
                 ["Igdb__ClientId"] = Amazon.CDK.AWS.ECS.Secret.FromSecretsManager(data.IgdbSecret, "ClientId"),
                 ["Igdb__ClientSecret"] = Amazon.CDK.AWS.ECS.Secret.FromSecretsManager(data.IgdbSecret, "ClientSecret"),
+                // Both halves of the sign-up's check (ADR 0092). The site key is public, and the API hands it to
+                // the page; it lives beside the secret so that one widget's pair is set in one place.
+                ["Turnstile__SiteKey"] = Amazon.CDK.AWS.ECS.Secret.FromSecretsManager(data.TurnstileSecret, "SiteKey"),
+                ["Turnstile__SecretKey"] = Amazon.CDK.AWS.ECS.Secret.FromSecretsManager(data.TurnstileSecret, "SecretKey"),
             },
-            Logging = Logging(site, "api"),
+            Logging = Logging(logs, "api"),
         });
+
+        // Email goes through the production account's SES, which has production access (ADR 0088),
+        // in the one Region the domain is verified in, whichever this stack is deployed to. The API
+        // sends from EmailIdentity.FromAddress by default, the constant the grant below and the
+        // production account's email role are both conditioned on.
+        container.AddEnvironment("Email__Ses__Region", Site.EmailRegion);
+        // Where an email's links lead: the host the distribution answers, never the request's (ADR 0089).
+        container.AddEnvironment("Email__SiteUrl", $"https://{site.Host}");
+        if (site.IsProduction)
+        {
+            // Production sends as its own task role, with the statement the dev role is granted.
+            task.TaskRole.AddToPrincipalPolicy(EmailStack.SendFromNoReply());
+        }
+        else
+        {
+            // Every other environment sends as the production account's role.
+            container.AddEnvironment("Email__Ses__RoleArn", site.EmailRoleArn);
+            task.TaskRole.AddToPrincipalPolicy(new PolicyStatement(new PolicyStatementProps
+            {
+                Sid = "SendEmailAsProduction",
+                Actions = ["sts:AssumeRole"],
+                Resources = [site.EmailRoleArn],
+            }));
+        }
 
         return (task, container);
     }
@@ -202,10 +252,11 @@ public sealed class AppStack : Stack
                 ["API_BASE_URL"] = $"http://api.{site.InternalDomain}:8080",
                 ["SITE_URL"] = $"https://{site.Host}",
                 ["PORT"] = "3000",
+                ["BALANCER_IDLE_TIMEOUT_SECONDS"] = BalancerIdleTimeoutSeconds.ToString(CultureInfo.InvariantCulture),
                 // SITE_INDEXABLE stays unset: every response then says noindex (ADR 0036). HOST
                 // stays unset so the server listens on every interface, which the balancer needs.
             },
-            Logging = Logging(site, "ssr"),
+            Logging = Logging(LogGroup(site, "ssr"), "ssr"),
         });
 
         return task;
@@ -225,26 +276,29 @@ public sealed class AppStack : Stack
             HealthCheck = new Amazon.CDK.AWS.ElasticLoadBalancingV2.HealthCheck { Path = healthPath },
         });
 
-    private FargateTaskDefinition Task(Site site, string name) =>
+    /// <summary>
+    /// A task definition; its role is <paramref name="taskRole"/>, or one the definition makes.
+    /// </summary>
+    private FargateTaskDefinition Task(Site site, string name, IRole? taskRole = null) =>
         // The smallest Fargate size; neither process has been measured (ADR 0044).
         new(this, $"{name}Task", new FargateTaskDefinitionProps
         {
             Family = $"{site.Prefix}-{name}",
             Cpu = 256,
             MemoryLimitMiB = 512,
+            TaskRole = taskRole,
         });
 
-    private LogDriver Logging(Site site, string name) =>
-        LogDrivers.AwsLogs(new AwsLogDriverProps
+    private LogGroup LogGroup(Site site, string name) =>
+        new(this, $"{name}Logs", new LogGroupProps
         {
-            LogGroup = new LogGroup(this, $"{name}Logs", new LogGroupProps
-            {
-                LogGroupName = site.LogGroup(name),
-                Retention = RetentionDays.TWO_WEEKS,
-                RemovalPolicy = RemovalPolicy.DESTROY,
-            }),
-            StreamPrefix = name,
+            LogGroupName = site.LogGroup(name),
+            Retention = RetentionDays.TWO_WEEKS,
+            RemovalPolicy = RemovalPolicy.DESTROY,
         });
+
+    private static LogDriver Logging(ILogGroup logs, string name) =>
+        LogDrivers.AwsLogs(new AwsLogDriverProps { LogGroup = logs, StreamPrefix = name });
 
     private FargateService Service(Site site, DataStack data, string name, FargateTaskDefinition task,
         ISecurityGroup securityGroup, SubnetSelection subnets, bool registerInNamespace) =>

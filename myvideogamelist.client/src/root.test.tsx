@@ -16,6 +16,7 @@ vi.mock('@/contexts/ListsProvider', () => ({ ListsProvider: ({ children }: { chi
 vi.mock('@/contexts/WishlistProvider', () => ({ WishlistProvider: ({ children }: { children: ReactNode }) => children }));
 vi.mock('@/contexts/FavouritesProvider', () => ({ FavouritesProvider: ({ children }: { children: ReactNode }) => children }));
 vi.mock('@/contexts/TagsProvider', () => ({ TagsProvider: ({ children }: { children: ReactNode }) => children }));
+vi.mock('@/contexts/LookProvider', () => ({ LookProvider: ({ children }: { children: ReactNode }) => children }));
 vi.mock('@/components/Navbar', async () => {
     const { useContext: read } = await import('react');
     const { SearchPacerContext: context } = await import('@/contexts/SearchPacerContext');

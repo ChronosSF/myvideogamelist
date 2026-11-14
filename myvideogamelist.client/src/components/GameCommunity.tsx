@@ -5,7 +5,14 @@ import type { UseGameCommunityResult } from '@/hooks/useGameCommunity';
 import type { CommunityScores, GameReview } from '@/types/community';
 import { formatCount } from '@/lib/format';
 import { formatDate } from '@/lib/stats';
-import { hasMemberScore, MAX_SCORE, MIN_MEMBER_SCORES, ratingPercent } from '@/lib/score';
+import {
+    hasMemberDistribution,
+    hasMemberScore,
+    MAX_SCORE,
+    MIN_DISTRIBUTION_SCORES,
+    MIN_MEMBER_SCORES,
+    ratingPercent,
+} from '@/lib/score';
 import { Avatar } from '@/components/Avatar';
 import { EmptyState } from '@/components/EmptyState';
 import { ErrorState } from '@/components/ErrorState';
@@ -48,8 +55,9 @@ const BODY_HEIGHT = 'min-h-[13rem]';
  * crosses — every score, but only a review marked public on a public profile — and this component
  * never sees a row that failed either gate. See `docs/decisions/0028-*`.
  *
- * **Every figure carries its sample size**, and ours go behind a floor (ADR 0016): under
- * `MIN_MEMBER_SCORES` there is a count and no number, and no distribution either.
+ * **Every figure carries its sample size**, and ours go behind floors, which the server applies
+ * (ADR 0016, ADR 0094): under `MIN_MEMBER_SCORES` there is a count and no number, and the columns
+ * wait for `MIN_DISTRIBUTION_SCORES`. Either figure missing is said in words, never left a gap.
  *
  * Always there, in the lists page's pattern (issue 127): a skeleton until both requests have
  * answered, so the section appears once rather than growing twice; then what members have said, or
@@ -186,7 +194,10 @@ function CommunitySkeleton() {
     );
 }
 
-/** The members' score out of 100 and its distribution — or, under the floor, only how many. */
+/**
+ * The members' score out of 100 and its distribution — or, under the floors, how many there are and
+ * what would show the rest.
+ */
 function MemberScore({ scores }: { scores: CommunityScores }) {
     if (!hasMemberScore(scores)) {
         return (
@@ -213,11 +224,20 @@ function MemberScore({ scores }: { scores: CommunityScores }) {
                 </p>
             </div>
 
-            <ScoreColumns
-                distribution={scores.distribution}
-                label={`Member scores, from 1 to ${MAX_SCORE}`}
-                unit={{ one: 'member', other: 'members' }}
-            />
+            {/* The columns wait for a higher bar than the badge: near the member floor they are a
+                handful of people's scores laid out one by one (ADR 0094 §3). The API sends none
+                under it. */}
+            {hasMemberDistribution(scores) ? (
+                <ScoreColumns
+                    distribution={scores.distribution}
+                    label={`Member scores, from 1 to ${MAX_SCORE}`}
+                    unit={{ one: 'member', other: 'members' }}
+                />
+            ) : (
+                <p className="text-sm text-fg-muted">
+                    {`How the scores spread is shown once ${MIN_DISTRIBUTION_SCORES} members have scored this.`}
+                </p>
+            )}
         </div>
     );
 }

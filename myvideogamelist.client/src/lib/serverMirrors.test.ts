@@ -3,9 +3,11 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { AVATAR_HOSTS, AVATAR_SERVICES } from '@/lib/avatar';
+import { MIN_DISTRIBUTION_SCORES, MIN_MEMBER_SCORES, MIN_PLAYTHROUGH_SAMPLES } from '@/lib/score';
 import { IGDB_IMAGE_HOST } from '@/lib/securityHeaders';
 import { SIGNED_IN_FLAG } from '@/lib/signedInFlag';
 import { AVATAR_URL_MAX_LENGTH, BIO_MAX_LENGTH, DISPLAY_NAME_MAX_LENGTH } from '@/types/auth';
+import { DEFAULT_LOOK, PALETTE_IDS, PATTERN_IDS, TINT_IDS } from '@/types/look';
 
 /**
  * Values the client restates from the server, each read out of the server's own source and compared.
@@ -14,7 +16,9 @@ import { AVATAR_URL_MAX_LENGTH, BIO_MAX_LENGTH, DISPLAY_NAME_MAX_LENGTH } from '
  * is saved and then refused by every reader's browser; a host on the client's and not the server's
  * is one readers can be sent to that nobody can name; IGDB's image host changing on the server
  * without the page's policy following it blocks every cover on the site; and an input's `maxLength`
- * longer than the server's limit is a refusal the form could have prevented. `@/types/auth.test.ts`
+ * longer than the server's limit is a refusal the form could have prevented; and a community floor
+ * the page states differently from the server's says "shown once 5 have" over a game whose fifth
+ * score the API still withholds, or hides a figure it sent. `@/types/auth.test.ts`
  * holds the username's rules to `UserNamePolicy` the same way.
  */
 
@@ -57,6 +61,24 @@ function serverAvatarHosts(): string[] {
     return hosts;
 }
 
+/**
+ * One of `LookPolicy`'s lists, each entry a string or one of the class's string constants, in order. An
+ * entry written any other way fails here rather than being left out.
+ */
+function lookList(name: string): string[] {
+    const source = serverSource('Models/LookPolicy.cs');
+    const constants = new Map([...source.matchAll(/public const string (\w+) = "([^"\\]*)";/g)].map(match => [match[1], match[2]]));
+    const list = new RegExp(`IReadOnlyList<string> ${name} =\\s*\\[([^\\]]*)\\];`).exec(source);
+    if (list === null) throw new Error(`LookPolicy.${name} was not found`);
+
+    return list[1].split(',').map(entry => entry.trim()).map(entry => {
+        const literal = /^"([^"\\]*)"$/.exec(entry);
+        const value = literal ? literal[1] : constants.get(entry);
+        if (value === undefined) throw new Error(`LookPolicy.${name} holds something other than a string: ${entry}`);
+        return value;
+    });
+}
+
 describe('what the client restates from the server', () => {
     it('lets a page load exactly the avatar hosts the server lets an avatar be saved from', () => {
         const server = serverAvatarHosts();
@@ -77,11 +99,34 @@ describe('what the client restates from the server', () => {
         expect(BIO_MAX_LENGTH).toBe(intConstant(serverSource('Models/BioPolicy.cs'), 'MaxLength'));
     });
 
+    it('says a figure is withheld under exactly the floors the server withholds it under', () => {
+        // The floors are the server's (ADR 0094); the page restates them in the sentences that say why
+        // a figure is missing, and in its own check of an answer from an API built before them.
+        const floors = serverSource('Models/CommunityFloors.cs');
+
+        expect(MIN_MEMBER_SCORES).toBe(intConstant(floors, 'MemberScores'));
+        expect(MIN_DISTRIBUTION_SCORES).toBe(intConstant(floors, 'ScoreDistribution'));
+        expect(MIN_PLAYTHROUGH_SAMPLES).toBe(intConstant(floors, 'PlaythroughSamples'));
+    });
+
     it('lets a page load images from the host the server builds every IGDB image address on', () => {
         const base = /ImageBaseUrl = "([^"]+)"/.exec(serverSource('Services/IgdbService.cs'));
         if (base === null) throw new Error('IgdbService.ImageBaseUrl was not found');
 
         expect(new URL(base[1]).host).toBe(IGDB_IMAGE_HOST);
+    });
+
+    it('knows the palettes, patterns and tints the server keeps, in its order, with its defaults', () => {
+        // A name only the server knows is drawn as the default; one only the client knows is refused on
+        // save, and the head script would draw a stored name the server would never have written (ADR 0082).
+        expect([...PALETTE_IDS]).toEqual(lookList('Palettes'));
+        expect([...PATTERN_IDS]).toEqual(lookList('Patterns'));
+        expect([...TINT_IDS]).toEqual(lookList('Tints'));
+
+        const source = serverSource('Models/LookPolicy.cs');
+        expect(source).toContain(`public const string DefaultPalette = "${DEFAULT_LOOK.palette}";`);
+        expect(source).toContain(`public const string DefaultPattern = "${DEFAULT_LOOK.pattern}";`);
+        expect(source).toContain(`public const string DefaultTint = "${DEFAULT_LOOK.tint}";`);
     });
 
     it('reads the signed-in flag by the name the server sets it under', () => {

@@ -172,6 +172,12 @@ ninth row, and its eighth row a second writer:
 | Review hidden by an admin | `ModerationService.HideReviewAsync` | `/u/{name}*` | it was already hidden, or the profile is not public now |
 | Profile details rewritten or cleared (0056 §8) | also `ModerationService.ClearProfileAsync` | `/u/{name}*` | every field it clears was already empty, or the profile is not public |
 
+**Both go at once**, past the account's pace, as
+[0081](0081-a-withdrawal-is-never-refused-and-one-accounts-are-paced.md) §3 asks of a moderator's
+withdrawal: the account cannot repeat an admin's act, so pacing it protects nothing, and what an
+admin takes down should not wait behind its owner's own loop. The owner's own clear stays paced;
+the admin's is `ProfileWithdrawals.ProfileDetailsCleared`, an event of its own in the log.
+
 **A hide is decided by nothing else it read**, as the deletes are (0058 §1). Whether the review was
 public when the admin's request read it is not asked: its author can publish it between that read and
 the save, a render between the two can put it at the edge, and a review has no stamp to refuse the

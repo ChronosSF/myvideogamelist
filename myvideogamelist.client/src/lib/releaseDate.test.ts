@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseReleaseDate, releaseYear } from '@/lib/releaseDate';
+import { parseReleaseDate, releaseYear, titleAndYear } from '@/lib/releaseDate';
 
 describe('parseReleaseDate', () => {
     it('is the local calendar day, not UTC midnight', () => {
@@ -22,5 +22,16 @@ describe('releaseYear', () => {
     it('is the year of the day named, wherever the reader is', () => {
         // New Year's Day at UTC midnight is still the old year west of Greenwich.
         expect(releaseYear('2027-01-01')).toBe(2027);
+    });
+});
+
+describe('titleAndYear', () => {
+    it("puts the year a game came out after its title, New Year's Day included", () => {
+        expect(titleAndYear({ title: 'Resident Evil 2', releaseDate: '1998-01-21' })).toBe('Resident Evil 2 (1998)');
+        expect(titleAndYear({ title: 'A Game', releaseDate: '2017-01-01' })).toBe('A Game (2017)');
+    });
+
+    it('is the title alone for a game with no date', () => {
+        expect(titleAndYear({ title: 'Untitled Sequel', releaseDate: null })).toBe('Untitled Sequel');
     });
 });

@@ -6,7 +6,7 @@ import type { AuthContextValue } from '@/contexts/AuthContext';
 import type { WishlistContextValue } from '@/contexts/WishlistContext';
 import type { UserProfile } from '@/types/auth';
 import { LIST_NAMES, type ListId } from '@/types/list';
-import { game, userProfile } from '@/test/factories';
+import { game, listPending, userProfile } from '@/test/factories';
 
 /**
  * Auth and the wishlist, mocked rather than provided: both real providers fetch, and the page only
@@ -20,11 +20,16 @@ const auth: AuthContextValue = {
     user: null,
     loading: true,
     login: vi.fn(async () => {}),
-    register: vi.fn(async () => {}),
+    register: vi.fn(async () => ({ emailSent: true })),
+    resendConfirmation: vi.fn(async () => {}),
+    confirmEmail: vi.fn(async () => {}),
+    requestPasswordReset: vi.fn(async () => {}),
+    resetPassword: vi.fn(async () => {}),
     logout: vi.fn(async () => {}),
     updateUserName: vi.fn(async () => {}),
     updateProfileVisibility: vi.fn(async () => {}),
     updateProfileDetails: vi.fn(async () => {}),
+    updateLook: vi.fn(async () => {}),
     deleteAccount: vi.fn(async () => {}),
 };
 
@@ -44,8 +49,8 @@ const wishlist: WishlistContextValue = {
 const lists = {
     addToList: vi.fn(async () => {}),
     removeFromList: vi.fn(async () => {}),
-    isInList: () => false,
-    isPending: () => false,
+    getListFor: () => null,
+    pending: listPending(),
     nameFor: (id: ListId) => LIST_NAMES[id],
 };
 

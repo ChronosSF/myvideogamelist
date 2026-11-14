@@ -14,3 +14,8 @@ const COUNT_FORMAT = new Intl.NumberFormat('en-US');
 export function formatCount(count: number): string {
     return COUNT_FORMAT.format(count);
 }
+
+/** A count and the words for it, one for one and the other for any other count: "1 row", "5,001 rows". */
+export function formatCountOf(count: number, one: string, many: string): string {
+    return `${formatCount(count)} ${count === 1 ? one : many}`;
+}

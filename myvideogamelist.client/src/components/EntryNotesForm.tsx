@@ -46,8 +46,8 @@ export function EntryNotesForm({ notes, onSave, pending, error }: EntryNotesForm
     };
 
     return (
-        <form className="game-user-panel-review-form" onSubmit={handleSubmit}>
-            <div className="game-user-panel-field">
+        <form className="game-yours-review-form" onSubmit={handleSubmit}>
+            <div className="game-yours-field">
                 <label htmlFor={`${fieldId}-notes`}>Your notes</label>
                 <textarea
                     id={`${fieldId}-notes`}
@@ -58,16 +58,16 @@ export function EntryNotesForm({ notes, onSave, pending, error }: EntryNotesForm
                     disabled={pending}
                     aria-describedby={`${fieldId}-notes-hint`}
                 />
-                <p id={`${fieldId}-notes-hint`} className="game-user-panel-hint">
+                <p id={`${fieldId}-notes-hint`} className="game-yours-hint">
                     Only you can see these. They are not part of your review, and no profile shows them.
                 </p>
             </div>
 
             {error !== null && (
-                <p className="game-user-panel-hint" role="alert">{error}</p>
+                <p className="game-yours-hint" role="alert">{error}</p>
             )}
 
-            <div className="game-user-panel-confirm">
+            <div className="game-yours-confirm">
                 <button type="submit" className={clearing ? undefined : 'primary'} disabled={pending || unchanged}>
                     {clearing ? 'Clear notes' : 'Save notes'}
                 </button>

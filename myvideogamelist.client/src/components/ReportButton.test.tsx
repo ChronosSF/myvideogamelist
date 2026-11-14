@@ -13,11 +13,16 @@ const signedIn: AuthContextValue = {
     user: userProfile({ userName: 'reader' }),
     loading: false,
     login: vi.fn(async () => {}),
-    register: vi.fn(async () => {}),
+    register: vi.fn(async () => ({ emailSent: true })),
+    resendConfirmation: vi.fn(async () => {}),
+    confirmEmail: vi.fn(async () => {}),
+    requestPasswordReset: vi.fn(async () => {}),
+    resetPassword: vi.fn(async () => {}),
     logout: vi.fn(async () => {}),
     updateUserName: vi.fn(async () => {}),
     updateProfileVisibility: vi.fn(async () => {}),
     updateProfileDetails: vi.fn(async () => {}),
+    updateLook: vi.fn(async () => {}),
     deleteAccount: vi.fn(async () => {}),
 };
 const signedOut: AuthContextValue = { ...signedIn, user: null };

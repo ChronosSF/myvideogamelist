@@ -7,8 +7,10 @@ namespace Infra;
 /// <c>imageTag</c> is the git SHA the two images were pushed under, and without it the application
 /// and migration stacks carry an error the CLI refuses to deploy over, so the long-lived stacks
 /// deploy without one and nothing ever falls back to <c>latest</c>. The Region comes from the
-/// profile; nothing here names one except <c>us-east-1</c>, for CloudFront's certificates. See ADR
-/// 0044. <c>env=prod</c> is, for now, the holding page and nothing else (ADR 0066).
+/// profile; nothing here names one except <c>us-east-1</c>, for CloudFront's certificates, and
+/// <see cref="Site.EmailRegion"/>, where the domain is verified with SES (ADR 0088). See ADR
+/// 0044. <c>env=prod</c> is, for now, the holding page (ADR 0066), and the email stack and its Alerts
+/// topic (ADR 0088, 0091).
 /// </summary>
 internal static class Program
 {
@@ -37,19 +39,29 @@ internal static class Program
         var edge = new Amazon.CDK.Environment { Account = account, Region = "us-east-1" };
 
         // Production is a holding page until #98 builds the rest (ADR 0066): one stack, whole in
-        // us-east-1, in the account the domain's zone lives in, and nothing else. A Dns stack in
-        // particular must never be synthesised for it - it would create a second zone named for
-        // the domain beside the real one, which the production app looks up instead (ADR 0044).
-        // Not termination-protected: it is meant to be destroyed at #98, and holds nothing a deploy
-        // would not put back.
+        // us-east-1, in the account the domain's zone lives in. A Dns stack in particular must never
+        // be synthesised for it - it would create a second zone named for the domain beside the real
+        // one, which the production app looks up instead (ADR 0044). Not termination-protected: it is
+        // meant to be destroyed at #98, and holds nothing a deploy would not put back.
+        //
+        // Beside it, in the Region where the domain is verified with SES, the configuration set every
+        // email is sent under and the role the dev environment's API sends email as, through this
+        // account's production access (ADR 0088, 0091). Pinned to that Region, never the profile's: a
+        // role granting the identity in another Region would refuse every send. And the Alerts stack,
+        // in the same Region, which is production's own (ADR 0044): its topic is where SES sends each
+        // bounce and complaint, and #98's alarms will be sent. It goes before Email, whose events need
+        // its topic. Long-lived, and kept at #98. Each is deployed by hand, by name.
         if (site.IsProduction)
         {
+            var email = new Amazon.CDK.Environment { Account = account, Region = Site.EmailRegion };
             _ = new HoldingStack(app, site.StackName("Holding"), new StackProps { Env = edge }, site);
+            _ = new AlertsStack(app, site.StackName("Alerts"), new StackProps { Env = email }, site);
+            _ = new EmailStack(app, site.StackName("Email"), new StackProps { Env = email }, new Site("dev"));
             app.Synth();
             return;
         }
 
-        // The three long-lived stacks refuse deletion: a mistake in one of them is a zone whose
+        // Three of the long-lived stacks refuse deletion: a mistake in one of them is a zone whose
         // name servers are delegated to, or a database. The two per-release stacks stay disposable.
         // The zone is referenced from the certificate stack in another Region, which CDK carries
         // over with a parameter rather than a CloudFormation export; both sides must opt in.
@@ -59,6 +71,11 @@ internal static class Program
             new StackProps { Env = edge, CrossRegionReferences = true, TerminationProtection = true }, site, dns.Zone);
         var data = new DataStack(app, site.StackName("Data"),
             new StackProps { Env = regional, TerminationProtection = true }, site, dns.Zone);
+        // Where the alarms send, long-lived because an email subscription is confirmed by a person.
+        // The fourth long-lived stack, and not protected: destroying it loses that confirmation and
+        // nothing else, and destroying and redeploying it is how a lost subscription is made again.
+        // Nothing refers to it; the alarms in App name its topic (ADR 0080).
+        _ = new AlertsStack(app, site.StackName("Alerts"), new StackProps { Env = regional }, site);
 
         // The two per-release stacks exist in every synthesis, tag or no tag, because the Data
         // stack's cross-stack outputs are derived from what consumes them. Cross-stack references

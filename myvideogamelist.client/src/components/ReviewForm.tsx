@@ -51,6 +51,7 @@ export function ReviewForm({
 }: ReviewFormProps) {
     const fieldId = useId();
     const [draft, setDraft] = useState<Draft>(review === null ? EMPTY : toDraft(review));
+    const [confirmingDelete, setConfirmingDelete] = useState(false);
 
     // Load a review that arrived after the first render, and clear the fields when it is deleted.
     // Adjusted during render rather than in an effect, which would show the wrong text for a
@@ -83,18 +84,18 @@ export function ReviewForm({
     };
 
     return (
-        <form className="game-user-panel-review-form" onSubmit={handleSubmit}>
+        <form className="game-yours-review-form" onSubmit={handleSubmit}>
             {review?.hiddenAt && (
                 // Above everything, because it makes the visibility hint below untrue for now: whatever
                 // "Who can see it" says, nobody but its author does (ADR 0076). Said once, as it stands.
-                <p className="game-user-panel-hidden">
+                <p className="game-yours-hidden">
                     An admin has hidden this review from other readers, because it was reported as breaking
                     the site&rsquo;s rules. It is still yours to edit or delete, and only you can see it;
                     editing it does not show it again.
                 </p>
             )}
 
-            <div className="game-user-panel-field">
+            <div className="game-yours-field">
                 <label htmlFor={`${fieldId}-body`}>What you thought</label>
                 <textarea
                     id={`${fieldId}-body`}
@@ -106,7 +107,7 @@ export function ReviewForm({
                 />
             </div>
 
-            <div className="game-user-panel-check">
+            <div className="game-yours-check">
                 <input
                     id={`${fieldId}-spoilers`}
                     type="checkbox"
@@ -117,7 +118,7 @@ export function ReviewForm({
                 <label htmlFor={`${fieldId}-spoilers`}>This review contains spoilers</label>
             </div>
 
-            <div className="game-user-panel-field">
+            <div className="game-yours-field">
                 <label htmlFor={`${fieldId}-visibility`}>Who can see it</label>
                 <select
                     id={`${fieldId}-visibility`}
@@ -129,7 +130,7 @@ export function ReviewForm({
                     <option value="private">Only me</option>
                     <option value="public">Anyone</option>
                 </select>
-                <p id={`${fieldId}-visibility-hint`} className="game-user-panel-hint">
+                <p id={`${fieldId}-visibility-hint`} className="game-yours-hint">
                     {/* Both gates, in the author's own terms: the narrower one wins, and it is the
                         one that is easy to forget is there. */}
                     {profileVisibility === 'public'
@@ -140,7 +141,7 @@ export function ReviewForm({
             </div>
 
             {playthroughs.length > 0 && (
-                <div className="game-user-panel-field">
+                <div className="game-yours-field">
                     <label htmlFor={`${fieldId}-playthrough`}>About which playthrough</label>
                     <select
                         id={`${fieldId}-playthrough`}
@@ -159,19 +160,40 @@ export function ReviewForm({
             )}
 
             {error !== null && (
-                <p className="game-user-panel-hint" role="alert">{error}</p>
+                <p className="game-yours-hint" role="alert">{error}</p>
             )}
 
-            <div className="game-user-panel-confirm">
-                <button type="submit" className="primary" disabled={pending}>
-                    {review === null ? 'Save review' : 'Update review'}
-                </button>
-                {review !== null && (
-                    <button type="button" onClick={onDelete} disabled={pending}>
+            {confirmingDelete && review !== null ? (
+                // Asked first, in red, because nothing brings a review back (issue 245).
+                <div className="game-yours-confirm" role="group" aria-label="Delete your review?">
+                    <span className="game-yours-hint">Delete your review? It cannot be brought back.</span>
+                    <button
+                        type="button"
+                        className="danger"
+                        onClick={() => {
+                            setConfirmingDelete(false);
+                            onDelete();
+                        }}
+                        disabled={pending}
+                    >
                         Delete review
                     </button>
-                )}
-            </div>
+                    <button type="button" onClick={() => setConfirmingDelete(false)}>
+                        Keep it
+                    </button>
+                </div>
+            ) : (
+                <div className="game-yours-confirm">
+                    <button type="submit" className="primary" disabled={pending}>
+                        {review === null ? 'Save review' : 'Update review'}
+                    </button>
+                    {review !== null && (
+                        <button type="button" onClick={() => setConfirmingDelete(true)} disabled={pending}>
+                            Delete review…
+                        </button>
+                    )}
+                </div>
+            )}
         </form>
     );
 }

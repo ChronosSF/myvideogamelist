@@ -54,12 +54,11 @@ function SingleRelease({ entry, release, undated }: Required<ReleaseCardProps> &
                 </Link>
             </div>
             <div className="release-card-text">
-                <Link to={`/games/${release.gameId}`} className="release-card-link">
-                    <p className="release-card-title">
-                        {release.title}
-                        {state.favourite && <FavouriteMark variant="inline" />}
-                    </p>
-                </Link>
+                {/* The mark after the link rather than in it, so that the link is named by the title alone. */}
+                <p className="release-card-title">
+                    <Link to={`/games/${release.gameId}`} className="release-card-title-link">{release.title}</Link>
+                    {state.favourite && <FavouriteMark variant="inline" />}
+                </p>
                 {release.earlyAccess && <p className="release-card-badge">Early access</p>}
                 {showsPlatformsApart(release) && (
                     <p className="release-card-platforms">{platformNames(release.platforms)}</p>

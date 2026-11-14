@@ -3,6 +3,7 @@ using Amazon.CDK.AWS.ECS;
 using Amazon.CDK.AWS.IAM;
 using Amazon.CDK.AWS.Logs;
 using Constructs;
+using MyVideoGameList.Server.Data;
 
 namespace Infra;
 
@@ -59,12 +60,19 @@ public sealed class MigrateStack : Stack
             Environment = new Dictionary<string, string>
             {
                 ["ASPNETCORE_ENVIRONMENT"] = "Production",
-                ["ConnectionStrings__DefaultConnection"] = Connection.String(data, site),
+                // The API's string, with a lock_timeout: the old revision is still serving while
+                // this runs, and a DDL statement waiting for its lock queues every later reader of
+                // its table behind it. Past the limit the statement is cancelled and the task exits
+                // non-zero, which fails the release, and a re-run fixes it (ADR 0079).
+                ["ConnectionStrings__DefaultConnection"] = SessionLimits.ForMigration(Connection.String(data, site)),
                 // The bundle builds the application's host before migrating, and as Production the
                 // host refuses to start without a key store (ADR 0043). Naming the path satisfies
                 // that; nothing is protected during a migration, so Parameter Store is never read
                 // and this role needs no permission on it.
                 ["DataProtection__ParameterPath"] = site.DataProtectionPath,
+                // And without an email sender (ADR 0088). Nothing is sent during a migration, so a
+                // folder the task never writes to satisfies it, and this role needs no SES at all.
+                ["Email__OutboxPath"] = "/tmp/outbox",
             },
             Secrets = new Dictionary<string, Amazon.CDK.AWS.ECS.Secret>
             {

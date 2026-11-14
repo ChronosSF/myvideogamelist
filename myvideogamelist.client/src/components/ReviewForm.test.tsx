@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import { ReviewForm } from '@/components/ReviewForm';
 import type { ReviewDto } from '@/types/playthrough';
 import { quickActor } from '@/test/actor';
@@ -118,11 +118,52 @@ describe('ReviewForm', () => {
 
     it('offers to delete a review only once there is one', () => {
         const { reviewIs } = renderForm();
-        expect(screen.queryByRole('button', { name: 'Delete review' })).not.toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: /^Delete review/ })).not.toBeInTheDocument();
 
         reviewIs(review({ id: 3 }));
 
-        expect(screen.getByRole('button', { name: 'Delete review' })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Delete review…' })).toBeInTheDocument();
+    });
+
+    it('asks before it deletes, since nothing brings a review back', async () => {
+        // issue 245: the press used to delete at once.
+        const actor = quickActor();
+        const { onDelete } = renderForm(review({ id: 3 }));
+
+        await actor.click(screen.getByRole('button', { name: 'Delete review…' }));
+
+        expect(onDelete).not.toHaveBeenCalled();
+        const asking = screen.getByRole('group', { name: 'Delete your review?' });
+        expect(asking).toHaveTextContent('It cannot be brought back.');
+        expect(within(asking).getByRole('button', { name: 'Delete review' })).toHaveClass('danger');
+        expect(within(asking).getByRole('button', { name: 'Keep it' })).toBeInTheDocument();
+        // Saving is not on offer while it asks.
+        expect(screen.queryByRole('button', { name: 'Update review' })).not.toBeInTheDocument();
+    });
+
+    it('deletes once that is confirmed, and asks no more', async () => {
+        const actor = quickActor();
+        const { onDelete } = renderForm(review({ id: 3 }));
+
+        await actor.click(screen.getByRole('button', { name: 'Delete review…' }));
+        await actor.click(screen.getByRole('button', { name: 'Delete review' }));
+
+        expect(onDelete).toHaveBeenCalledTimes(1);
+        expect(screen.queryByRole('group', { name: 'Delete your review?' })).not.toBeInTheDocument();
+    });
+
+    it('backs out on Keep it, deleting nothing and leaving the review as it was', async () => {
+        const actor = quickActor();
+        const { onDelete } = renderForm(review({ id: 3, body: 'Second time round.' }));
+
+        await actor.click(screen.getByRole('button', { name: 'Delete review…' }));
+        await actor.click(screen.getByRole('button', { name: 'Keep it' }));
+
+        expect(onDelete).not.toHaveBeenCalled();
+        expect(screen.queryByRole('group', { name: 'Delete your review?' })).not.toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Update review' })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Delete review…' })).toBeInTheDocument();
+        expect(field('What you thought')).toHaveValue('Second time round.');
     });
 
     it('holds every field while it saves, and shows next to them what the API refused', () => {
@@ -133,6 +174,7 @@ describe('ReviewForm', () => {
         }
         expect(field(/contains spoilers/i)).toBeDisabled();
         expect(screen.getByRole('button', { name: 'Update review' })).toBeDisabled();
+        expect(screen.getByRole('button', { name: 'Delete review…' })).toBeDisabled();
         expect(screen.getByRole('alert')).toHaveTextContent('That playthrough is not one of yours for this game.');
     });
 });

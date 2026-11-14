@@ -57,9 +57,11 @@ public enum ReviewWithdrawal
 /// cannot be withdrawn at all.
 /// </para>
 /// <para>
-/// Each event is one <see cref="EdgeInvalidation"/>, and so one CloudFront request: the page, its
-/// <c>.data</c> URL and, for the three events that change who is listed, the profile sitemap files.
-/// See <c>docs/decisions/0058-a-withdrawal-leaves-the-edge-when-it-is-made.md</c>.
+/// Each event is one <see cref="EdgeInvalidation"/>, the account's: the page, its <c>.data</c> URL
+/// and, for the three events that change who is listed, the profile sitemap files. The privacy
+/// switch, a rename, a deletion and an admin's hide or clear are sent at once; the rest are paced
+/// per account, and one CloudFront request may carry several of an account's together. See
+/// <c>docs/decisions/0058-a-withdrawal-leaves-the-edge-when-it-is-made.md</c> and <c>0081-*</c>.
 /// </para>
 /// <para>
 /// <b>A class rather than an interface, on purpose.</b> This is where the guarantee that a
@@ -82,6 +84,12 @@ public sealed class ProfileWithdrawals(
     /// invalidate nothing and say nothing about it.
     /// </remarks>
     internal const string ProfileSitemaps = "/sitemaps/profiles-*";
+
+    /// <summary>
+    /// Every profile at once, for the one invalidation that is nobody's: the one a task sends as it
+    /// starts, to cover whatever a task that died was still holding (ADR 0081 §2).
+    /// </summary>
+    internal const string EveryProfile = "/u/*";
 
     /// <summary>
     /// Everything the edge can hold for one profile: <c>/u/{name}</c>, <c>/u/{name}.data</c>, and
@@ -114,44 +122,64 @@ public sealed class ProfileWithdrawals(
     /// </remarks>
     internal static string Profile(string userName) => $"/u/{Uri.EscapeDataString(userName)}*";
 
-    /// <summary>A public profile switched to anything that is not public.</summary>
-    public void ProfileMadePrivate(string userName) =>
-        Send("profile made private", Profile(userName), ProfileSitemaps);
+    /// <summary>
+    /// A public profile switched to anything that is not public. Sent at once, whatever its account
+    /// has waiting: the consent act the window was closed for (ADR 0081 §3).
+    /// </summary>
+    public void ProfileMadePrivate(string userId, string userName) =>
+        Send(userId, atOnce: true, "profile made private", Profile(userName), ProfileSitemaps);
 
     /// <summary>
     /// A public profile moved to a different name: the old one, which is released for somebody else
     /// to claim, and the new one, whose edge may hold a 404 from before it was taken. Also a change
     /// of letter case only, which releases nothing but leaves the old spelling's copies where no
-    /// later withdrawal, naming the new one, would reach them.
+    /// later withdrawal, naming the new one, would reach them. Sent at once, since the old name is
+    /// free for somebody else to claim.
     /// </summary>
-    public void ProfileRenamed(string from, string to) =>
-        Send("profile renamed", Profile(from), Profile(to), ProfileSitemaps);
+    public void ProfileRenamed(string userId, string from, string to) =>
+        Send(userId, atOnce: true, "profile renamed", Profile(from), Profile(to), ProfileSitemaps);
 
-    /// <summary>An account whose profile was public, deleted.</summary>
-    public void AccountDeleted(string userName) =>
-        Send("account deleted", Profile(userName), ProfileSitemaps);
+    /// <summary>An account whose profile was public, deleted. Sent at once.</summary>
+    public void AccountDeleted(string userId, string userName) =>
+        Send(userId, atOnce: true, "account deleted", Profile(userName), ProfileSitemaps);
 
     /// <summary>
     /// A public profile's display name, avatar or bio rewritten or cleared: what its owner wrote
-    /// about themselves for the page, taken back as an edited review's words are (ADR 0056), by
-    /// its owner or by an admin (ADR 0076). The sitemap lists names, not what the page says, so it
-    /// is left alone.
+    /// about themselves for the page, taken back as an edited review's words are (ADR 0056). The
+    /// sitemap lists names, not what the page says, so it is left alone. Paced with the account's
+    /// other withdrawals, since setting a detail and clearing it again can be repeated freely.
     /// </summary>
-    public void ProfileDetailsChanged(string userName) =>
-        Send("profile details changed", Profile(userName));
+    public void ProfileDetailsChanged(string userId, string userName) =>
+        Send(userId, atOnce: false, "profile details changed", Profile(userName));
+
+    /// <summary>
+    /// The same event made by an admin: a display name, picture or bio cleared on a report (ADR 0076).
+    /// Sent at once, as ADR 0081 §3 asks of a moderator's withdrawal: the owner cannot repeat an
+    /// admin's clear, and what an admin takes down should not wait behind its owner's own loop.
+    /// </summary>
+    public void ProfileDetailsCleared(string userId, string userName) =>
+        Send(userId, atOnce: true, "profile details cleared by an admin", Profile(userName));
 
     /// <summary>
     /// A review made private or edited while it was public, or deleted or hidden by an admin
     /// whatever it was. Invalidates the author's profile if that profile is public now.
     /// </summary>
+    /// <remarks>
+    /// Paced with the author's other withdrawals, all but the admin's hide, which goes at once
+    /// (ADR 0081 §3): the author cannot repeat it, and an abusive review should not wait behind its
+    /// author's own loop.
+    /// </remarks>
     public Task ReviewWithdrawnAsync(string userId, ReviewWithdrawal withdrawal) =>
-        ProfileChangedAsync(userId, withdrawal switch
-        {
-            ReviewWithdrawal.MadePrivate => "review made private",
-            ReviewWithdrawal.Edited => "review edited",
-            ReviewWithdrawal.Hidden => "review hidden by an admin",
-            _ => "review deleted",
-        });
+        ProfileChangedAsync(
+            userId,
+            withdrawal switch
+            {
+                ReviewWithdrawal.MadePrivate => "review made private",
+                ReviewWithdrawal.Edited => "review edited",
+                ReviewWithdrawal.Hidden => "review hidden by an admin",
+                _ => "review deleted",
+            },
+            atOnce: withdrawal == ReviewWithdrawal.Hidden);
 
     /// <summary>
     /// Everything recorded about a game deleted, whatever it held. Invalidates the owner's profile
@@ -164,7 +192,7 @@ public sealed class ProfileWithdrawals(
     /// itself; afterwards there is nothing left to ask. So a game with no review costs a path too
     /// (ADR 0058 §1).
     /// </remarks>
-    public Task EntryDeletedAsync(string userId) => ProfileChangedAsync(userId, "entry deleted");
+    public Task EntryDeletedAsync(string userId) => ProfileChangedAsync(userId, "entry deleted", atOnce: false);
 
     /// <summary>
     /// Invalidates the profile of the account a write has just changed, if that profile is public
@@ -184,7 +212,7 @@ public sealed class ProfileWithdrawals(
     /// already holds it — an invalidation is owed whether or not anybody waits for the response.
     /// </para>
     /// </remarks>
-    private async Task ProfileChangedAsync(string userId, string reason)
+    private async Task ProfileChangedAsync(string userId, string reason, bool atOnce)
     {
         try
         {
@@ -200,7 +228,7 @@ public sealed class ProfileWithdrawals(
                 return;
             }
 
-            Send(reason, Profile(userName));
+            Send(userId, atOnce, reason, Profile(userName));
         }
         catch (Exception e)
         {
@@ -214,9 +242,19 @@ public sealed class ProfileWithdrawals(
         }
     }
 
-    private void Send(string reason, params string[] paths)
+    /// <summary>
+    /// Hands one event's paths on, as the account's: at once, or at the pace each account's
+    /// withdrawals reach the edge (ADR 0081).
+    /// </summary>
+    /// <remarks>
+    /// Only the three the account cannot repeat without something limited in between go at once: the
+    /// privacy switch, a rename and a deletion. Everything a review, an entry or a profile detail
+    /// withdraws can be repeated freely — write a private review and delete it, add a game and delete
+    /// it — so it waits its turn, and joins whatever else the account has waiting.
+    /// </remarks>
+    private void Send(string userId, bool atOnce, string reason, params string[] paths)
     {
-        var invalidation = new EdgeInvalidation(reason, paths);
+        var invalidation = new EdgeInvalidation(reason, paths) { Account = userId, AtOnce = atOnce };
         try
         {
             edge.Invalidate(invalidation);

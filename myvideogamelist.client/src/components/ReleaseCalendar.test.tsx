@@ -8,7 +8,7 @@ import type { FavouritesContextValue } from '@/contexts/FavouritesContext';
 import type { ListsContextValue } from '@/contexts/ListsContext';
 import type { WishlistContextValue } from '@/contexts/WishlistContext';
 import type { UseReleaseCalendarResult } from '@/hooks/useReleaseCalendar';
-import { calendarEvents, connectedRelease, platform, releaseEntry, userProfile } from '@/test/factories';
+import { calendarEvents, connectedRelease, listPending, platform, releaseEntry, userProfile } from '@/test/factories';
 import { LIST_NAMES, type ListId } from '@/types/list';
 import type { ReleaseEntry, UndatedEntry } from '@/types/releases';
 
@@ -32,7 +32,7 @@ const lists = {
     loading: false,
     error: null as string | null,
     getListFor: (gameId: number) => listed.get(gameId) ?? null,
-    isPending: () => false,
+    pending: listPending(),
     nameFor: (id: ListId) => LIST_NAMES[id],
     addToList: vi.fn(async () => {}),
 } as unknown as ListsContextValue;
@@ -172,6 +172,15 @@ describe('ReleaseCalendar, a month', () => {
         expect(within(due).getByRole('link', { name: 'God of War Laufey' })).toHaveAttribute('href', '/games/389000');
         expect(within(due).getByText('From the God of War series — you finished God of War')).toBeInTheDocument();
         expect(within(due).getByText('PS5')).toBeInTheDocument();
+    });
+
+    it('lists a day gone as out on it, not due', () => {
+        // Today is the 8th: the 5th's release is already out, as the line beside it says.
+        calendar.releases.data = [releaseEntry('2026-10-05', [connectedRelease({ gameId: 7, title: 'Earlier' })])];
+        renderCalendar();
+
+        expect(screen.getByRole('list', { name: 'Out on Monday, October 5' })).toBeInTheDocument();
+        expect(screen.queryByRole('list', { name: /^Due on Monday, October 5/ })).not.toBeInTheDocument();
     });
 
     it("puts what is known only to its quarter in the quarter's band, on no day", () => {

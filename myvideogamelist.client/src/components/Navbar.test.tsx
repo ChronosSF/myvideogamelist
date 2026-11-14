@@ -20,11 +20,16 @@ const auth: AuthContextValue = {
     user: null,
     loading: true,
     login: vi.fn(async () => {}),
-    register: vi.fn(async () => {}),
+    register: vi.fn(async () => ({ emailSent: true })),
+    resendConfirmation: vi.fn(async () => {}),
+    confirmEmail: vi.fn(async () => {}),
+    requestPasswordReset: vi.fn(async () => {}),
+    resetPassword: vi.fn(async () => {}),
     logout: vi.fn(async () => {}),
     updateUserName: vi.fn(async () => {}),
     updateProfileVisibility: vi.fn(async () => {}),
     updateProfileDetails: vi.fn(async () => {}),
+    updateLook: vi.fn(async () => {}),
     deleteAccount: vi.fn(async () => {}),
 };
 
@@ -386,6 +391,8 @@ describe('Navbar user menu', () => {
         const menu = screen.getByRole('menu');
         expect(within(menu).getByText('@alex')).toBeInTheDocument();
         expect(within(menu).getByRole('menuitem', { name: 'My Profile' })).toHaveAttribute('href', '/user');
+        // The profile's Settings tab, an address of its own (ADR 0084).
+        expect(within(menu).getByRole('menuitem', { name: 'Settings' })).toHaveAttribute('href', '/user/settings');
         expect(within(menu).getByRole('menuitem', { name: 'Sign Out' })).toBeInTheDocument();
     });
 

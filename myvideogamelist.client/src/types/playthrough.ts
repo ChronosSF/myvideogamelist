@@ -93,6 +93,7 @@ export interface EntryDetailDto {
 export interface CommunityTimeBucket {
     type: PlaythroughTypeKey;
     samples: number;
+    /** Null under `MIN_PLAYTHROUGH_SAMPLES`, which the API applies itself (ADR 0094). */
     medianMinutes: number | null;
 }
 

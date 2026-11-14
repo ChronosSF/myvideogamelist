@@ -163,7 +163,7 @@ public class ModerationFlowTests(ApiFactory api) : IClassFixture<ApiFactory>
         using var reader = await ReaderAsync("reader");
         await (await ReportAsync(reader, account.UserName, GameId, ReportReason.Abuse)).ExpectAsync(HttpStatusCode.NoContent);
         using var admin = api.CreateBrowser();
-        api.NameAdmins((await admin.RegisterAsync(Browsers.NewUserName("admin"))).Id);
+        api.Admins.Name((await admin.RegisterAsync(Browsers.NewUserName("admin"))).Id);
 
         var queue = await admin.GetJsonAsync<ModerationQueueDto>("/api/admin/moderation");
         var item = Assert.Single(queue.Reviews, r => r.UserName == account.UserName);
@@ -177,6 +177,7 @@ public class ModerationFlowTests(ApiFactory api) : IClassFixture<ApiFactory>
         // Off the edge, off the profile and off the game page, with its reports answered.
         var invalidation = Assert.Single(api.Edge.SentSince(sent));
         Assert.Equal(("review hidden by an admin", $"/u/{account.UserName}*"), (invalidation.Reason, Assert.Single(invalidation.Paths)));
+        Assert.True(invalidation.AtOnce);
         Assert.Empty((await reader.GetJsonAsync<PublicReviewsDto>($"/api/users/{account.UserName}/reviews")).Reviews);
         Assert.Equal(0, (await reader.GetJsonAsync<GameReviewsDto>($"/api/games/{GameId}/reviews")).Reviews
             .Count(r => r.UserName == account.UserName));
@@ -200,7 +201,7 @@ public class ModerationFlowTests(ApiFactory api) : IClassFixture<ApiFactory>
         using var reader = await ReaderAsync("reader");
         await (await ReportAsync(reader, account.UserName, null, ReportReason.Impersonation)).ExpectAsync(HttpStatusCode.NoContent);
         using var admin = api.CreateBrowser();
-        api.NameAdmins((await admin.RegisterAsync(Browsers.NewUserName("admin"))).Id);
+        api.Admins.Name((await admin.RegisterAsync(Browsers.NewUserName("admin"))).Id);
 
         var queue = await admin.GetJsonAsync<ModerationQueueDto>("/api/admin/moderation");
         var item = Assert.Single(queue.Profiles, p => p.UserName == account.UserName);
@@ -211,7 +212,8 @@ public class ModerationFlowTests(ApiFactory api) : IClassFixture<ApiFactory>
             new ClearProfileDto(DisplayName: true, AvatarUrl: false, Bio: false))).ExpectAsync(HttpStatusCode.NoContent);
 
         var invalidation = Assert.Single(api.Edge.SentSince(sent));
-        Assert.Equal(("profile details changed", $"/u/{account.UserName}*"), (invalidation.Reason, Assert.Single(invalidation.Paths)));
+        Assert.Equal(("profile details cleared by an admin", $"/u/{account.UserName}*"), (invalidation.Reason, Assert.Single(invalidation.Paths)));
+        Assert.True(invalidation.AtOnce);
         var profile = await reader.GetJsonAsync<PublicProfileDto>($"/api/users/{account.UserName}");
         Assert.Equal((null, "A bio."), (profile.DisplayName, profile.Bio));
         Assert.Equal(0, await ReportsAboutAsync(account.Id));

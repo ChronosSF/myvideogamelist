@@ -20,6 +20,7 @@ using MyVideoGameList.Server.DTOs;
 using MyVideoGameList.Server.Security;
 using MyVideoGameList.Server.Services;
 using MyVideoGameList.Server.Services.Edge;
+using MyVideoGameList.Server.Services.Email;
 
 namespace MyVideoGameList.Server.IntegrationTests;
 
@@ -41,7 +42,9 @@ namespace MyVideoGameList.Server.IntegrationTests;
 /// is kept, in memory; our own scheduled work, which a test runs by hand when it wants it, so that
 /// no sweep deletes rows from under a test that did not ask for one; and the edge, by
 /// <see cref="RecordingEdge"/>, since with no distribution the application's own only logs what it
-/// would have invalidated (ADR 0058). And one thing is added ahead of
+/// would have invalidated (ADR 0058); and the email transport, by <see cref="RecordingEmail"/>, so that
+/// a test can read the link it would have sent (ADR 0089); and Cloudflare's Turnstile, by
+/// <see cref="JudgingTurnstile"/>, which judges a sign-up by its token (ADR 0092). And one thing is added ahead of
 /// the pipeline: <see cref="ClientAddress"/>, which gives each test browser the address a
 /// connection would have given it. Every other middleware, every service and every policy is the
 /// application's own. See <c>docs/decisions/0057-*</c>.
@@ -64,6 +67,15 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
 
     /// <summary>The CDN, for asserting what the API asked it to forget.</summary>
     public RecordingEdge Edge { get; } = new();
+
+    /// <summary>Every email the API composed, in place of the outbox, which only writes files.</summary>
+    public RecordingEmail Mail { get; } = new();
+
+    /// <summary>Who is an admin, named by a test once the account has an id.</summary>
+    public NamedAdmins Admins { get; } = new();
+
+    /// <summary>Cloudflare's check on a sign-up, judged by the token a test sends (ADR 0092).</summary>
+    public JudgingTurnstile Turnstile { get; } = new();
 
     /// <summary>This class's own database, for seeding and reading behind the API's back.</summary>
     public string ConnectionString { get; private set; } = "";
@@ -112,6 +124,10 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
         // profile, so where the keys are kept is replaced below.
         builder.UseSetting("DataProtection:AllowEphemeralKeys", "true");
 
+        // And without an email sender (ADR 0088). Named so that the host starts; replaced below by
+        // RecordingEmail, so nothing is ever written there.
+        builder.UseSetting("Email:OutboxPath", Path.Combine(Path.GetTempPath(), "mvgl-integration-outbox"));
+
         builder.ConfigureTestServices(services =>
         {
             services.RemoveAll<IIgdbService>();
@@ -119,6 +135,17 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
 
             services.RemoveAll<IEdgeInvalidator>();
             services.AddSingleton<IEdgeInvalidator>(Edge);
+
+            services.RemoveAll<IEmailTransport>();
+            services.AddSingleton<IEmailTransport>(Mail);
+
+            // Outside Development a deployment with no keys takes no sign-ups, and the real one would
+            // ask Cloudflare over the network. Replaced, so that the token a test sends is the verdict.
+            services.RemoveAll<ITurnstile>();
+            services.AddSingleton<ITurnstile>(Turnstile);
+
+            // A closed registration, which the container prefers to the open one Options makes.
+            services.AddSingleton<IOptionsMonitor<AdminOptions>>(Admins);
 
             // Where the keys are kept, which is all that changes: the provider, the application name
             // and the key manager stay the application's own. Data Protection falls back to the
@@ -158,26 +185,14 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
 
         // HTTPS because the sign-in cookie is Secure, and a cookie jar sends a Secure cookie over
         // HTTPS only. No redirects followed, so a test sees exactly what the API answered.
-        return CreateDefaultClient(
+        var browser = CreateDefaultClient(
             new Uri("https://localhost"),
             new CookieContainerHandler(),
             new BrowserHeaders(new IPAddress([10, 0, (byte)(address >> 8), (byte)address])));
-    }
 
-    /// <summary>
-    /// Names these accounts, and only these, as the admins (ADR 0042), from now until it is called again.
-    /// </summary>
-    /// <remarks>
-    /// An account's id is Identity's to choose when it registers, so it cannot be in the configuration the
-    /// host starts with. What <see cref="AdminAccounts"/> reads is the options monitor's current value, and
-    /// that is the monitor's cache, so the cache is what is replaced; the policy, its handler and every
-    /// admin controller stay the application's own.
-    /// </remarks>
-    public void NameAdmins(params string[] accountIds)
-    {
-        var cache = Services.GetRequiredService<IOptionsMonitorCache<AdminOptions>>();
-        cache.TryRemove(Options.DefaultName);
-        cache.TryAdd(Options.DefaultName, new AdminOptions { AccountIds = accountIds });
+        // So that a sign-up through it reads its link from this host's emails (Browsers.RegisterAsync).
+        Mail.Serves(browser);
+        return browser;
     }
 
     /// <summary>

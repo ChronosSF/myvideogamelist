@@ -25,6 +25,13 @@ namespace MyVideoGameList.Server.Services;
 /// as it does on the profile (ADR 0027).
 /// </para>
 /// <para>
+/// <b>Counting everybody is why the scores' figures sit behind floors.</b> A mean over one score is
+/// that member's score, published in JSON anybody can read, so under
+/// <see cref="CommunityFloors.MemberScores"/> the answer is the count alone, and the distribution,
+/// which near that floor is a handful of people's scores laid out one by one, waits for
+/// <see cref="CommunityFloors.ScoreDistribution"/>. See <c>docs/decisions/0094-*</c>.
+/// </para>
+/// <para>
 /// <b>No cache</b>, unlike the community times, which are cached for five minutes and evicted by the
 /// playthrough writes beside them. A review withdrawn — made private, deleted, or hidden by its
 /// author's profile going private — has to stop being listed when it is withdrawn, and an eviction
@@ -72,8 +79,15 @@ public class GameCommunityService(
             .AsNoTracking()
             .CountAsync(e => e.GameId == gameId && e.StatusId != null, cancellationToken);
 
+        // The floors are where a figure stops being somebody's own score (ADR 0094). The count is
+        // taken over the valid scores, as the figures are, so a corrupt row cannot carry a game
+        // over a floor that its real scores do not reach.
         var (scored, mean, distribution) = ScoreSummary.Of(scores);
-        return new CommunityScoresDto(scored, mean, distribution, tracked);
+        return new CommunityScoresDto(
+            scored,
+            scored >= CommunityFloors.MemberScores ? mean : null,
+            scored >= CommunityFloors.ScoreDistribution ? distribution : [],
+            tracked);
     }
 
     public async Task<GameReviewsDto> GetReviewsAsync(

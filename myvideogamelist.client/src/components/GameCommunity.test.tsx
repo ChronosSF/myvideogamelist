@@ -4,10 +4,10 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { GameCommunity } from '@/components/GameCommunity';
 import type { UseGameCommunityResult } from '@/hooks/useGameCommunity';
-import { MIN_MEMBER_SCORES } from '@/lib/score';
+import { MIN_DISTRIBUTION_SCORES, MIN_MEMBER_SCORES } from '@/lib/score';
 import type { CommunityScores, GameReview } from '@/types/community';
 
-/** Enough members to clear the floor, averaging 8.4, most of them on an 8. */
+/** Enough members to clear both floors, averaging 8.4, most of them on an 8. */
 const SCORED: CommunityScores = {
     scored: 23,
     mean: 8.4,
@@ -15,7 +15,18 @@ const SCORED: CommunityScores = {
     tracked: 31,
 };
 
-const NOBODY: CommunityScores = { scored: 0, mean: null, distribution: Array<number>(10).fill(0), tracked: 0 };
+const NOBODY: CommunityScores = { scored: 0, mean: null, distribution: [], tracked: 0 };
+
+/**
+ * Enough members for a score and too few for its columns: the API sends the mean and an empty
+ * distribution (ADR 0094).
+ */
+const BETWEEN: CommunityScores = { scored: MIN_DISTRIBUTION_SCORES - 1, mean: 7.9, distribution: [], tracked: 25 };
+
+/** What the API sends under the member floor: the count, and neither figure (ADR 0094). */
+function under(scored: number): CommunityScores {
+    return { scored, mean: null, distribution: [], tracked: scored };
+}
 
 /** A picture on one of the avatar hosts, as the API carries it. */
 const PICTURE = 'https://avatars.githubusercontent.com/u/9919?v=4';
@@ -122,7 +133,7 @@ describe('GameCommunity when there is nothing to show yet', () => {
     it('counts the members who have scored it, while there are too few for a score', () => {
         // Under the floor a score is a count and never a number (ADR 0016), and the count is part of
         // what tells the reader how far off one is.
-        renderSection(community({ scores: { ...SCORED, scored: MIN_MEMBER_SCORES - 1 }, total: 0 }));
+        renderSection(community({ scores: under(MIN_MEMBER_SCORES - 1), total: 0 }));
 
         expect(screen.getByText('No member score or reviews yet.')).toBeInTheDocument();
         expect(screen.getByText(
@@ -232,6 +243,16 @@ describe("GameCommunity members' score", () => {
 
     it('shows neither a number nor a distribution below the floor, only how many there are', () => {
         // The section is here for the review; the score is not ready to be one.
+        renderSection(community({ scores: under(2), reviews: [review()], total: 1 }));
+
+        expect(screen.queryByText(/^Member score:/)).not.toBeInTheDocument();
+        expect(screen.queryByRole('list', { name: /member scores/i })).not.toBeInTheDocument();
+        expect(screen.getByText(/only 2 members have scored this so far/i)).toBeInTheDocument();
+        expect(screen.getByText(new RegExp(`shown once ${MIN_MEMBER_SCORES} have`))).toBeInTheDocument();
+    });
+
+    it('holds figures from an API older than the floors to them, as the page always has', () => {
+        // Mid-deploy, an API from before ADR 0094 still sends a lone member's 9 and its column.
         renderSection(community({
             scores: { scored: 2, mean: 9, distribution: [0, 0, 0, 0, 0, 0, 0, 0, 2, 0], tracked: 2 },
             reviews: [review()],
@@ -241,7 +262,33 @@ describe("GameCommunity members' score", () => {
         expect(screen.queryByText(/^Member score:/)).not.toBeInTheDocument();
         expect(screen.queryByRole('list', { name: /member scores/i })).not.toBeInTheDocument();
         expect(screen.getByText(/only 2 members have scored this so far/i)).toBeInTheDocument();
-        expect(screen.getByText(new RegExp(`shown once ${MIN_MEMBER_SCORES} have`))).toBeInTheDocument();
+    });
+
+    it('shows the score without columns between the two floors, and says when they show', () => {
+        renderSection(community({ scores: BETWEEN }));
+
+        expect(screen.getByText(`Member score: 79 out of 100, from ${MIN_DISTRIBUTION_SCORES - 1} scores`)).toBeInTheDocument();
+        expect(screen.queryByRole('list', { name: /member scores/i })).not.toBeInTheDocument();
+        expect(screen.getByText(
+            `How the scores spread is shown once ${MIN_DISTRIBUTION_SCORES} members have scored this.`,
+        )).toBeInTheDocument();
+    });
+
+    it('copes with no columns at any count, drawing the score and saying why', () => {
+        // The bar is the server's: whatever the count, an empty distribution is drawn as none.
+        renderSection(community({ scores: { ...BETWEEN, scored: MIN_DISTRIBUTION_SCORES * 5 } }));
+
+        expect(screen.getByText(`Member score: 79 out of 100, from ${MIN_DISTRIBUTION_SCORES * 5} scores`)).toBeInTheDocument();
+        expect(screen.queryByRole('list', { name: /member scores/i })).not.toBeInTheDocument();
+        expect(screen.getByText(/how the scores spread is shown once/i)).toBeInTheDocument();
+    });
+
+    it('draws no columns an API older than the bar sends under it', () => {
+        const count = MIN_DISTRIBUTION_SCORES - 1;
+        renderSection(community({ scores: { ...BETWEEN, distribution: [0, 0, 0, 0, 0, 0, 0, count, 0, 0] } }));
+
+        expect(screen.queryByRole('list', { name: /member scores/i })).not.toBeInTheDocument();
+        expect(screen.getByText(/how the scores spread is shown once/i)).toBeInTheDocument();
     });
 
     it('says nothing about scores when nobody has scored the game but somebody reviewed it', () => {

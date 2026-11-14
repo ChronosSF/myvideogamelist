@@ -16,6 +16,28 @@ namespace MyVideoGameList.Server.Services.Edge;
 public sealed record EdgeInvalidation(string Reason, IReadOnlyList<string> Paths)
 {
     /// <summary>
+    /// The id of the account whose profile the paths are, or null for paths that are nobody's. What
+    /// <see cref="WithdrawalHold"/> paces by, and never written to a log.
+    /// </summary>
+    /// <remarks>
+    /// By id rather than by path, so that a rename does not hand an account a fresh allowance.
+    /// </remarks>
+    public string? Account { get; init; }
+
+    /// <summary>
+    /// Sent without waiting for the account's pace, carrying whatever the account had waiting: the
+    /// privacy switch, a rename and a deletion (ADR 0081 §3). Everything else from an account waits
+    /// its turn.
+    /// </summary>
+    public bool AtOnce { get; init; }
+
+    /// <summary>
+    /// When the latest write this covers was made, for one that waited for its account's pace; null
+    /// means now. The retries stop sixty-five minutes after the write, not after the wait.
+    /// </summary>
+    public DateTimeOffset? WrittenAt { get; init; }
+
+    /// <summary>
     /// The paths as one line of a log, which is the only form any log line here gives them.
     /// </summary>
     /// <remarks>

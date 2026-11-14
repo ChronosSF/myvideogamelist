@@ -1,25 +1,31 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { act, render, screen, waitFor, within } from '@testing-library/react';
 import { createRoutesStub, Link, Outlet } from 'react-router';
+import { AuthDialogProvider } from '@/contexts/AuthDialogProvider';
 import { GamePage } from '@/pages/GamePage';
-import { MIN_MEMBER_SCORES, ratingPercent } from '@/lib/score';
+import GameOverviewPage from '@/pages/GameOverviewPage';
+import GameYoursPage from '@/pages/GameYoursPage';
+import { MIN_DISTRIBUTION_SCORES, MIN_MEMBER_SCORES, ratingPercent } from '@/lib/score';
 import type { CommunityScores, GameReviews } from '@/types/community';
 import type { GameDto } from '@/types/game';
 import type { ReviewDto, ReviewInputDto } from '@/types/playthrough';
-import { quickActor } from '@/test/actor';
+import { type Actor, quickActor } from '@/test/actor';
 import { entryDetail, game, review, userProfile } from '@/test/factories';
 import { AppProviders } from '@/test/providers';
 import { type ApiCall, type ApiRoutes, empty, held, json, settle, signedInRoutes, stubApi, tearDownApi } from '@/test/api';
 
 /**
- * The game page around the reader's own panel, with the panel, the members' section and the
- * providers all real, and the API played by a small model of the server: the members' score counts
- * the reader's own, and the reviews list theirs once it is for anyone on a public profile.
+ * The game page around the reader's own entry, with the entry, the hero's row, the Your game tab, the
+ * members' section and the providers all real, and the API played by a small model of the server: the
+ * members' score counts the reader's own, behind the server's floors (ADR 0094), and the reviews list
+ * theirs once it is for anyone on a public profile.
  *
  * The page fetches the members' view once, after hydration, and never caches it (ADR 0028). So a
- * reader's own score or review shows beside the panel only if the page asks again once it has saved,
- * or the section goes on showing the game as it was, which reads as the write having failed. The
- * panel's suite asserts that it calls back; this asserts that the page is listening.
+ * reader's own score or review shows on the page only if the page asks again once it has saved, or the
+ * section goes on showing the game as it was, which reads as the write having failed. The entry's suite
+ * asserts that it calls back; this asserts that the page is listening — across its two tabs, since the
+ * score is set in the hero, the review and the delete on the Your game tab, and the members' reviews are
+ * read on the Overview (ADR 0084).
  */
 
 const ALEX = userProfile({ userName: 'alex', profileVisibility: 'public' });
@@ -36,10 +42,13 @@ function theApi(): ApiRoutes {
 
     const scores = (): CommunityScores => {
         const all = score === null ? OTHERS : [...OTHERS, score];
+        // The count always; the mean from the floor, and the columns from the higher bar.
         return {
             scored: all.length,
-            mean: all.reduce((sum, each) => sum + each, 0) / all.length,
-            distribution: Array.from({ length: 10 }, (_, i) => all.filter(each => each === i + 1).length),
+            mean: all.length >= MIN_MEMBER_SCORES ? all.reduce((sum, each) => sum + each, 0) / all.length : null,
+            distribution: all.length >= MIN_DISTRIBUTION_SCORES
+                ? Array.from({ length: 10 }, (_, i) => all.filter(each => each === i + 1).length)
+                : [],
             tracked: all.length,
         };
     };
@@ -77,26 +86,36 @@ function theApi(): ApiRoutes {
     };
 }
 
+/** Where the page opens: the Overview, at the game's own address, or the Your game tab under it. */
+type Tab = '' | '/yours';
+
 /**
- * The page for `first`, its loader's answer in hand as on the server, with a link to Hades outside
- * it — so the page stays mounted when it is followed, as it does from one game's page to the next —
- * once the reader's panel can take a write and the members' view has answered.
+ * The page for `first` at `tab`, its loader's answer in hand as on the server, with a link to Hades's
+ * same tab outside it — so the page stays mounted when it is followed, as it does from one game's page
+ * to the next — once the reader's entry can take a write and the members' view has answered. The page
+ * and its two tabs are as `routes.ts` has them, and the sign-in dialog is the root's.
  */
-async function openGamePage(routes: ApiRoutes = theApi(), first: GameDto = CELESTE) {
+async function openGamePage(routes: ApiRoutes = theApi(), { first = CELESTE, tab = '' }: { first?: GameDto; tab?: Tab } = {}) {
     const api = stubApi(routes);
     const Stub = createRoutesStub([{
         id: 'shell',
-        Component: () => <><Link to="/games/2">Next game</Link><Outlet /></>,
+        Component: () => <><Link to={`/games/2${tab}`}>Next game</Link><Outlet /></>,
         children: [{
-            id: 'game',
+            id: 'pages/GamePage',
             path: '/games/:id',
             Component: GamePage,
             loader: ({ params }) => ({ game: params.id === '2' ? HADES : CELESTE }),
+            children: [
+                { index: true, Component: GameOverviewPage },
+                { path: 'yours', Component: GameYoursPage },
+            ],
         }],
     }]);
     render(
         <AppProviders>
-            <Stub initialEntries={[`/games/${first.id}`]} hydrationData={{ loaderData: { game: { game: first } } }} />
+            <AuthDialogProvider>
+                <Stub initialEntries={[`/games/${first.id}${tab}`]} hydrationData={{ loaderData: { 'pages/GamePage': { game: first } } }} />
+            </AuthDialogProvider>
         </AppProviders>,
     );
 
@@ -115,8 +134,8 @@ async function openGamePage(routes: ApiRoutes = theApi(), first: GameDto = CELES
 }
 
 /**
- * The badges under the title. They have no landmark or name of their own; they are the row beside
- * the title, inside the element that holds it.
+ * The badges under the title, and the reader's row under them. They have no landmark or name of their
+ * own; they are the rows beside the title, inside the element that holds it.
  */
 const hero = () => within(screen.getByRole('heading', { level: 1, name: 'Celeste' }).parentElement!);
 
@@ -126,8 +145,15 @@ const memberScore = (scores: number[]) => {
     return `Member score: ${ratingPercent(mean)} out of 100, from ${scores.length} scores`;
 };
 
-/** Writes a review for anyone, as the reader would. */
-async function publishReview(actor: ReturnType<typeof quickActor>, body: string) {
+/** Follows one of the page's two tabs, as the reader would, and waits for it to be the one shown. */
+async function openTab(actor: Actor, name: 'Overview' | 'Your game') {
+    const tabs = within(screen.getByRole('navigation', { name: 'This game' }));
+    await actor.click(tabs.getByRole('link', { name }));
+    await waitFor(() => expect(tabs.getByRole('link', { name })).toHaveAttribute('aria-current', 'page'));
+}
+
+/** Writes a review for anyone, as the reader would, on the Your game tab. */
+async function publishReview(actor: Actor, body: string) {
     await actor.type(screen.getByLabelText('What you thought'), body);
     await actor.selectOptions(screen.getByLabelText('Who can see it'), 'Anyone');
     await actor.click(screen.getByRole('button', { name: 'Save review' }));
@@ -151,11 +177,16 @@ describe("GamePage after the reader's own write", () => {
     });
 
     it("lists the reader's review among the members' once it is saved for anyone", async () => {
+        // Written on the Your game tab and read on the Overview: the page, which holds the members'
+        // view for both, is what has to have asked again in between.
         const actor = quickActor();
-        await openGamePage();
+        const { communityReads } = await openGamePage();
         expect(screen.queryByRole('list', { name: 'Member reviews' })).not.toBeInTheDocument();
 
+        await openTab(actor, 'Your game');
         await publishReview(actor, 'The B-sides are the game.');
+        await waitFor(() => expect(communityReads()).toEqual({ scores: 2, reviews: 2 }));
+        await openTab(actor, 'Overview');
 
         const listed = within(await screen.findByRole('list', { name: 'Member reviews' }));
         expect(listed.getByText('The B-sides are the game.')).toBeInTheDocument();
@@ -164,17 +195,24 @@ describe("GamePage after the reader's own write", () => {
     });
 
     it("takes the reader's score and review back out once they delete everything they recorded", async () => {
+        // The score in the hero, the review and the delete on the Your game tab, and the reviews on the
+        // Overview: the hero's badge says the delete was heard on the tab it was made from, and the
+        // Overview's list when the reader goes back to it.
         const actor = quickActor();
-        await openGamePage();
+        await openGamePage(theApi(), { tab: '/yours' });
         await actor.click(screen.getByRole('radio', { name: '9 out of 10' }));
         await hero().findByText(memberScore([...OTHERS, 9]));
         await publishReview(actor, 'Gone soon.');
+        await openTab(actor, 'Overview');
         await screen.findByRole('list', { name: 'Member reviews' });
 
+        await openTab(actor, 'Your game');
         await actor.click(screen.getByRole('button', { name: /delete my data/i }));
         await actor.click(screen.getByRole('button', { name: 'Delete' }));
 
         await waitFor(() => expect(hero().queryByText(/^Member score:/)).not.toBeInTheDocument());
+        await openTab(actor, 'Overview');
+        expect(screen.getByRole('region', { name: 'Member scores & reviews' })).toBeInTheDocument();
         expect(screen.queryByRole('list', { name: 'Member reviews' })).not.toBeInTheDocument();
     });
 
@@ -182,7 +220,8 @@ describe("GamePage after the reader's own write", () => {
         const actor = quickActor();
         const { api, communityReads } = await openGamePage();
 
-        await actor.click(screen.getByRole('button', { name: 'Playing' }));
+        // The hero's select of the lists besides the Backlog, for a game in none of them.
+        await actor.selectOptions(hero().getByLabelText('Add to another list'), 'Playing');
         await waitFor(() => expect(api.callsTo('PUT', '/api/lists/1')).toHaveLength(1));
         await settle();
 
@@ -191,8 +230,8 @@ describe("GamePage after the reader's own write", () => {
 });
 
 describe('GamePage from one game to the next', () => {
-    it("does not let a save still out for one game land in the next game's panel", async () => {
-        // The page stays mounted when a link goes to another game, and the panel is keyed on the
+    it("does not let a save still out for one game land in the next game's entry", async () => {
+        // The page stays mounted when a link goes to another game, and the entry is keyed on the
         // game so that it does not: kept, it would write the first game's notes into the second's.
         const actor = quickActor();
         const save = held();
@@ -201,7 +240,7 @@ describe('GamePage from one game to the next', () => {
             'GET /api/entries/1': () => empty(404),
             'GET /api/entries/2': () => empty(404),
             'PUT /api/entries/1/notes': () => save.answer,
-        });
+        }, { tab: '/yours' });
 
         await actor.type(screen.getByLabelText('Your notes'), 'Strawberries first.');
         await actor.click(screen.getByRole('button', { name: 'Save notes' }));

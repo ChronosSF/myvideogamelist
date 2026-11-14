@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using MyVideoGameList.Server.Data;
 using MyVideoGameList.Server.DTOs;
+using MyVideoGameList.Server.Observability;
 using Npgsql;
 using Polly.CircuitBreaker;
 using Polly.RateLimiting;
@@ -70,9 +71,12 @@ internal sealed class GameCacheRefreshService(
     /// of the table queued behind the migration. The resilience pipeline bounds a call at thirty
     /// seconds, and a process's first batch makes two, the token and the query, so a slow IGDB could
     /// otherwise hold that lock for a minute. Fifteen seconds is five times the slowest batch
-    /// measured (five hundred ids, 2.9 seconds) and leaves room for one retry.
+    /// measured (five hundred ids, 2.9 seconds) and leaves room for one retry. The wait is the one
+    /// stretch any transaction of ours spends idle by design, so it has to stay well inside
+    /// <see cref="SessionLimits.IdleInTransaction"/>, past which PostgreSQL ends the session;
+    /// internal so that <c>SessionLimitsTests</c> can hold the two apart (ADR 0079).
     /// </remarks>
-    private static readonly TimeSpan IgdbWaitLimit = TimeSpan.FromSeconds(15);
+    internal static readonly TimeSpan IgdbWaitLimit = TimeSpan.FromSeconds(15);
 
     /// <summary>
     /// How long a batch is kept out of the queue when IGDB answered it in a shape this code cannot
@@ -309,6 +313,10 @@ internal sealed class GameCacheRefreshService(
             // Bounded on its own as well as by the stopping token: see IgdbWaitLimit.
             using var limit = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             limit.CancelAfter(IgdbWaitLimit);
+
+            // The limit is this job's, so IGDB running past it is IGDB not answering, and the call
+            // line counts it failed rather than as a caller that left (ADR 0080 §4).
+            using var deadline = IgdbCallLog.UnderDeadline(cancellationToken);
 
             games = await igdb.GetGamesByIdsUncachedAsync(ids, limit.Token);
         }

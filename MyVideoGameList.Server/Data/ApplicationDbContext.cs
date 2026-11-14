@@ -263,8 +263,26 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
         users.Property(u => u.AvatarUrl).HasMaxLength(AvatarUrlPolicy.MaxLength);
         users.Property(u => u.Bio).HasMaxLength(BioPolicy.MaxLength);
 
+        // The look (ADR 0082): names the stylesheet knows, and a custom palette's two colours, which are
+        // there exactly when the palette is custom. The lists are LookPolicy's, so a palette or a pattern
+        // added there is added here by the migration that carries it.
+        users.Property(u => u.Theme).HasMaxLength(LookPolicy.NameMaxLength).HasDefaultValue(LookPolicy.DefaultPalette);
+        users.Property(u => u.ThemeBackground).HasMaxLength(LookPolicy.ColourLength);
+        users.Property(u => u.ThemeAccent).HasMaxLength(LookPolicy.ColourLength);
+        users.Property(u => u.BackgroundPattern).HasMaxLength(LookPolicy.NameMaxLength).HasDefaultValue(LookPolicy.DefaultPattern);
+        users.Property(u => u.PatternTint).HasMaxLength(LookPolicy.NameMaxLength).HasDefaultValue(LookPolicy.DefaultTint);
+
         users.ToTable(t =>
         {
+            t.HasCheckConstraint("CK_AspNetUsers_Theme", $"\"Theme\" IN ({SqlList(LookPolicy.Palettes)})");
+            t.HasCheckConstraint("CK_AspNetUsers_BackgroundPattern", $"\"BackgroundPattern\" IN ({SqlList(LookPolicy.Patterns)})");
+            t.HasCheckConstraint("CK_AspNetUsers_PatternTint", $"\"PatternTint\" IN ({SqlList(LookPolicy.Tints)})");
+            t.HasCheckConstraint(
+                "CK_AspNetUsers_ThemeColours",
+                $"(\"Theme\" = '{LookPolicy.CustomPalette}') = (\"ThemeBackground\" IS NOT NULL AND \"ThemeAccent\" IS NOT NULL)"
+                + " AND (\"ThemeBackground\" IS NULL OR \"ThemeBackground\" ~ '^#[0-9a-f]{6}$')"
+                + " AND (\"ThemeAccent\" IS NULL OR \"ThemeAccent\" ~ '^#[0-9a-f]{6}$')");
+
             t.HasCheckConstraint(
                 "CK_AspNetUsers_ProfileVisibility",
                 "\"ProfileVisibility\" IN ('public', 'private')");
@@ -275,6 +293,9 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
                 "\"AvatarUrl\" IS NULL OR \"AvatarUrl\" ILIKE 'https://%'");
         });
     }
+
+    /// <summary>A list of names as an SQL <c>IN</c> list: <c>'ink', 'slate'</c>. The names are LookPolicy's constants.</summary>
+    private static string SqlList(IEnumerable<string> names) => string.Join(", ", names.Select(name => $"'{name}'"));
 
     private static void ConfigureListStatuses(ModelBuilder modelBuilder)
     {
@@ -465,13 +486,15 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
             .OnDelete(DeleteBehavior.Restrict);
 
         // Enforced by the database as well as by the input DTO, because the column outlives any
-        // one validation attribute. 600,000 minutes is ten thousand hours — comfortably past any
-        // honest figure and still short of a typo that would break a sum.
+        // one validation attribute. The bound is UserGamePlaythrough.MaxMinutesPlayed's, formatted
+        // in the invariant culture for the reason PositionInRange gives.
         playthroughs.ToTable(t =>
         {
             t.HasCheckConstraint(
                 "CK_UserGamePlaythroughs_MinutesPlayed_Range",
-                "\"MinutesPlayed\" IS NULL OR (\"MinutesPlayed\" >= 1 AND \"MinutesPlayed\" <= 600000)");
+                string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"\"MinutesPlayed\" IS NULL OR (\"MinutesPlayed\" >= 1 AND \"MinutesPlayed\" <= {UserGamePlaythrough.MaxMinutesPlayed})"));
             t.HasCheckConstraint(
                 "CK_UserGamePlaythroughs_Dates_Order",
                 "\"StartedOn\" IS NULL OR \"FinishedOn\" IS NULL OR \"FinishedOn\" >= \"StartedOn\"");

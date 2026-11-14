@@ -33,7 +33,7 @@ public record PlaythroughInputDto(
         PlaythroughTypeKeys.Completionist)]
     string? Type,
     [Range(1, int.MaxValue)] int? PlatformId,
-    [Range(1, 600000)] int? MinutesPlayed,
+    [Range(1, UserGamePlaythrough.MaxMinutesPlayed)] int? MinutesPlayed,
     DateOnly? StartedOn,
     DateOnly? FinishedOn,
     [MaxLength(2000)] string? Notes) : IValidatableObject
@@ -86,9 +86,10 @@ public record CommunityTimesDto(IReadOnlyList<CommunityTimeBucketDto> Buckets);
 /// <para>
 /// The count travels with the median for the reason ADR 0016 gives about scores: an average over
 /// two members is exactly as uninformative as a critic score from one review, and a bare number
-/// reads as a measured fact. The display floor lives in the client, as
-/// <c>MIN_CRITIC_REVIEWS</c> does — the API's job is to report the sample size faithfully and let
-/// each caller set its own bar.
+/// reads as a measured fact. The count always travels; the median waits for
+/// <see cref="Models.CommunityFloors.PlaythroughSamples"/>, on the server, because every member's
+/// runs count, private profiles included, and a median over one run is that member's time
+/// (ADR 0094).
 /// </para>
 /// <para>
 /// A median rather than a mean: self-reported playtime has a long idle-hours tail, and one person
@@ -99,5 +100,7 @@ public record CommunityTimesDto(IReadOnlyList<CommunityTimeBucketDto> Buckets);
 /// Playthroughs with both a type and a recorded duration. Untyped or minute-less rows are counted
 /// nowhere, because they would inflate a figure they cannot contribute to.
 /// </param>
-/// <param name="MedianMinutes">Null when nothing has been logged for this tier.</param>
+/// <param name="MedianMinutes">
+/// Null under <see cref="Models.CommunityFloors.PlaythroughSamples"/>, nothing logged included.
+/// </param>
 public record CommunityTimeBucketDto(string Type, int Samples, int? MedianMinutes);

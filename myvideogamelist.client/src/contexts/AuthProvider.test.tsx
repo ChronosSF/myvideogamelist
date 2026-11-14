@@ -14,6 +14,8 @@ import {
 } from '@/types/auth';
 import { type Actor, quickActor } from '@/test/actor';
 import { userProfile } from '@/test/factories';
+import { LOOK_STORAGE_KEY } from '@/lib/look';
+import { DEFAULT_LOOK } from '@/types/look';
 import {
     type ApiCall,
     type ApiRoutes,
@@ -28,6 +30,10 @@ import {
     unreachable,
 } from '@/test/api';
 import { AppProviders } from '@/test/providers';
+import { turnstileStub } from '@/test/turnstileStub';
+
+// Cloudflare's widget, which hands the sign-up form its token as it mounts (ADR 0092).
+vi.mock('@/components/TurnstileWidget', () => import('@/test/turnstile'));
 
 /**
  * The sign-in and sign-up dialogs over the real `AuthProvider`, with only the network played by the
@@ -78,7 +84,7 @@ async function openSignIn(routes: ApiRoutes = {}) {
     render(
         <AuthProvider>
             <Session />
-            <LoginDialog onClose={onClose} onSwitchToRegister={vi.fn()} />
+            <LoginDialog onClose={onClose} onSwitchToRegister={vi.fn()} onForgotPassword={vi.fn()} />
         </AuthProvider>,
     );
     await screen.findByText('Nobody is signed in');
@@ -89,10 +95,8 @@ async function openSignIn(routes: ApiRoutes = {}) {
 async function openSignUp(routes: ApiRoutes = {}) {
     const api = stubApi({
         'GET /api/auth/me': () => empty(),
-        'POST /api/auth/register': call => json(userProfile({
-            ...ALEX,
-            ...(call.body as { email: string; userName: string }),
-        })),
+        // Signs nobody in: the account waits for its confirmation (ADR 0089).
+        'POST /api/auth/register': () => json({ emailSent: true }),
         ...routes,
     });
     render(
@@ -138,6 +142,7 @@ async function retryUserName(actor: Actor, userName: string) {
 
 beforeEach(() => {
     onClose.mockReset();
+    turnstileStub.reset();
 });
 
 afterEach(tearDownApi);
@@ -342,18 +347,58 @@ describe('AuthProvider signing in', () => {
     });
 });
 
+describe('AuthProvider and an unconfirmed address', () => {
+    const UNCONFIRMED = 'Confirm your email address first, with the link we sent you. If you cannot find it, we can send another.';
+
+    it("shows the API's sentence and offers the link again, signing nobody in", async () => {
+        // A 403 is said only to somebody who gave the right password (ADR 0089).
+        const actor = quickActor();
+        const api = await openSignIn({
+            'POST /api/auth/login': () => json({ message: UNCONFIRMED, unconfirmed: true }, 403),
+            'POST /api/auth/resend-confirmation': () => empty(202),
+        });
+
+        await signIn(actor, 'alex');
+        expect(await screen.findByRole('alert')).toHaveTextContent(UNCONFIRMED);
+        await actor.click(screen.getByRole('button', { name: 'Send the link again' }));
+
+        await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent(/new link is on its way/i));
+        const [resend] = api.callsTo('POST', '/api/auth/resend-confirmation');
+        expect(resend.body).toEqual({ email: 'alex' });
+        expectSentThroughApiFetch(resend);
+        expect(screen.getByText('Nobody is signed in')).toBeInTheDocument();
+        expect(onClose).not.toHaveBeenCalled();
+    });
+
+    it('reads any other 403 as a refusal, with no offer of the link', async () => {
+        const actor = quickActor();
+        await openSignIn({ 'POST /api/auth/login': () => json({ message: 'Forbidden.' }, 403) });
+
+        await signIn(actor, 'alex');
+
+        expect(await screen.findByRole('alert')).toHaveTextContent('Forbidden.');
+        expect(screen.queryByRole('button', { name: 'Send the link again' })).toBeNull();
+    });
+});
+
 describe('AuthProvider registering', () => {
-    it('registers through the write guard, and signs the new account in', async () => {
+    it('registers through the write guard, and signs nobody in until the address is confirmed', async () => {
         const actor = quickActor();
         const api = await openSignUp();
 
         await signUp(actor, 'alex');
 
-        expect(await screen.findByText('Signed in as alex')).toBeInTheDocument();
-        expect(onClose).toHaveBeenCalledTimes(1);
+        expect(await screen.findByRole('dialog', { name: 'Check your inbox' })).toBeInTheDocument();
+        expect(screen.getByText('Nobody is signed in')).toBeInTheDocument();
+        expect(onClose).not.toHaveBeenCalled();
 
         const [register] = api.callsTo('POST', '/api/auth/register');
-        expect(register.body).toEqual({ email: 'alex@test.local', password: PASSWORD, userName: 'alex' });
+        expect(register.body).toEqual({
+            email: 'alex@test.local',
+            password: PASSWORD,
+            userName: 'alex',
+            turnstileToken: 'turnstile-token-1',
+        });
         expectSentThroughApiFetch(register);
     });
 
@@ -384,7 +429,7 @@ describe('AuthProvider registering', () => {
                 .toHaveTextContent('A username can use letters, numbers and underscores only.');
         }
 
-        // None of them reached the API: a name let through would have been registered, and signed in.
+        // None of them reached the API: a name let through would have been registered.
         expect(api.callsTo('POST', '/api/auth/register')).toHaveLength(0);
     });
 
@@ -398,7 +443,7 @@ describe('AuthProvider registering', () => {
 
         await signUp(actor, userName);
 
-        expect(await screen.findByText(`Signed in as ${userName}`)).toBeInTheDocument();
+        expect(await screen.findByRole('dialog', { name: 'Check your inbox' })).toBeInTheDocument();
         expect(api.callsTo('POST', '/api/auth/register')[0].body).toMatchObject({ userName });
     });
 
@@ -409,6 +454,71 @@ describe('AuthProvider registering', () => {
         await actor.type(screen.getByLabelText('Username'), 'abcdefghijklmnopqrstuvwxyz');
 
         expect(screen.getByLabelText('Username')).toHaveValue('abcdefghijklmnopqrstuvwxyz'.slice(0, USERNAME_MAX_LENGTH));
+    });
+
+    it('sends a fresh token after a refusal, since the API spent the last one asking Cloudflare', async () => {
+        const actor = quickActor();
+        const answers = [
+            json({ message: 'We could not confirm that you are a person. Please complete the check again.' }, 400),
+            json({ emailSent: true }),
+        ];
+        const api = await openSignUp({ 'POST /api/auth/register': () => answers.shift() ?? empty(500) });
+
+        await signUp(actor, 'alex');
+        expect(await screen.findByRole('alert'))
+            .toHaveTextContent('We could not confirm that you are a person. Please complete the check again.');
+
+        // The check is drawn again, and passed again, before the second try.
+        await actor.click(screen.getByRole('button', { name: 'Pass the check' }));
+        await actor.click(screen.getByRole('button', { name: 'Create Account' }));
+
+        expect(await screen.findByRole('dialog', { name: 'Check your inbox' })).toBeInTheDocument();
+        expect(api.callsTo('POST', '/api/auth/register').map(call => (call.body as { turnstileToken: string }).turnstileToken))
+            .toEqual(['turnstile-token-1', 'turnstile-token-2']);
+    });
+
+    it("shows the API's own sentence when Cloudflare does not answer it", async () => {
+        // The 502 UpstreamFailureHandler writes, with the detail the sign-up's check gives it (ADR 0092).
+        const actor = quickActor();
+        await openSignUp({
+            'POST /api/auth/register': () => json({
+                title: 'A service this page depends on is unavailable',
+                status: 502,
+                detail: 'We could not check that you are a person just now, so no account was made. Please try again in a moment.',
+            }, 502),
+        });
+
+        await signUp(actor, 'alex');
+
+        expect(await screen.findByRole('alert')).toHaveTextContent(
+            'We could not check that you are a person just now, so no account was made. Please try again in a moment.');
+    });
+
+    it("does not blame Cloudflare for a 502 that is the edge's, with the API away", async () => {
+        // No body of the API's: a balancer with no healthy target answers a page of its own.
+        const actor = quickActor();
+        await openSignUp({ 'POST /api/auth/register': () => empty(502) });
+
+        await signUp(actor, 'alex');
+
+        expect(await screen.findByRole('alert')).toHaveTextContent('Registration failed');
+    });
+
+    it('tells a page loaded before the check existed to reload, in the words the API chose for it', async () => {
+        // What such a page shows for the 400 its token-less sign-up gets: the field's own message.
+        const actor = quickActor();
+        await openSignUp({
+            'POST /api/auth/register': () => json({
+                title: 'One or more validation errors occurred.',
+                status: 400,
+                errors: { TurnstileToken: ['This page is out of date. Reload it, then sign up again.'] },
+            }, 400),
+        });
+
+        await signUp(actor, 'alex');
+
+        expect(await screen.findByRole('alert'))
+            .toHaveTextContent('This page is out of date. Reload it, then sign up again.');
     });
 
     it('shows the refusals only the API can make: a name that is taken, and one that is reserved', async () => {
@@ -542,13 +652,56 @@ describe('AuthProvider account writes', () => {
         expect(screen.getByText('Signed in as alex')).toBeInTheDocument();
     });
 
+    it('reads a refused publication by the sentence the limit wrote, which says when and that private is never refused', async () => {
+        // Making a profile public is limited per account (ADR 0081); the 429 is a ProblemDetails
+        // whose detail is written for the person at the switch.
+        const actor = quickActor();
+        const sentence = 'A profile can be made public 10 times a day, and yours has been. You can make it '
+            + 'public again in about 3 hours. Making it private is never limited.';
+        await renderSignedIn({
+            'PUT /api/user/privacy': () => json({
+                type: 'https://tools.ietf.org/html/rfc6585#section-4',
+                title: 'Too many requests',
+                status: 429,
+                detail: sentence,
+                traceId: '00-abc-def-00',
+            }, 429),
+        });
+
+        await actor.click(screen.getByRole('button', { name: 'Publish profile' }));
+
+        expect(await screen.findByRole('alert')).toHaveTextContent(sentence);
+    });
+
+    it('reads a refused change of letter case by the sentence the limit wrote, and keeps the name it had', async () => {
+        const actor = quickActor();
+        const sentence = "The letter case of a public profile's username can be changed 3 times a day, and yours "
+            + 'has been. You can change it again in 40 minutes.';
+        await renderSignedIn({
+            'PUT /api/user/username': () => json({
+                title: 'Too many requests',
+                status: 429,
+                detail: sentence,
+                traceId: '00-abc-def-00',
+            }, 429),
+        });
+
+        await actor.click(screen.getByRole('button', { name: 'Rename' }));
+
+        expect(await screen.findByRole('alert')).toHaveTextContent(sentence);
+        expect(screen.getByText('Signed in as alex')).toBeInTheDocument();
+    });
+
     it('leaves nobody signed in after deleting the account, without a sign-out the API would refuse', async () => {
         const actor = quickActor();
         const api = await renderSignedIn({ 'DELETE /api/user': () => empty() });
+        localStorage.setItem(LOOK_STORAGE_KEY, JSON.stringify({ ...DEFAULT_LOOK, palette: 'plum' }));
 
         await actor.click(screen.getByRole('button', { name: 'Delete account' }));
 
         expect(await screen.findByText('Nobody is signed in')).toBeInTheDocument();
+        // Signing out keeps the browser's copy of the look; an account that is gone has none (ADR 0082).
+        expect(localStorage.getItem(LOOK_STORAGE_KEY)).toBeNull();
         const [deletion] = api.callsTo('DELETE', '/api/user');
         expect(deletion.body).toEqual({ password: PASSWORD });
         expectSentThroughApiFetch(deletion);
@@ -558,11 +711,13 @@ describe('AuthProvider account writes', () => {
     it('keeps the session when the password does not confirm the deletion', async () => {
         const actor = quickActor();
         await renderSignedIn({ 'DELETE /api/user': () => json({ message: 'Password is incorrect.' }, 401) });
+        localStorage.setItem(LOOK_STORAGE_KEY, JSON.stringify({ ...DEFAULT_LOOK, palette: 'plum' }));
 
         await actor.click(screen.getByRole('button', { name: 'Delete account' }));
 
         expect(await screen.findByRole('alert')).toHaveTextContent('Password is incorrect.');
         expect(screen.getByText('Signed in as alex')).toBeInTheDocument();
+        expect(localStorage.getItem(LOOK_STORAGE_KEY)).not.toBeNull();
     });
 
     it('saves exactly the three profile details, and shows them as the API stored them', async () => {

@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { SignupDialog } from '@/components/SignupDialog';
 import type { AuthContextValue } from '@/contexts/AuthContext';
 import { mousePress } from '@/test/press';
+import { turnstileStub } from '@/test/turnstileStub';
 
 /**
  * Auth, mocked rather than provided: the real provider fetches, and this dialog only calls
@@ -15,15 +16,22 @@ const auth: AuthContextValue = {
     user: null,
     loading: false,
     login: vi.fn(async () => {}),
-    register: vi.fn(async () => {}),
+    register: vi.fn(async () => ({ emailSent: true })),
+    resendConfirmation: vi.fn(async () => {}),
+    confirmEmail: vi.fn(async () => {}),
+    requestPasswordReset: vi.fn(async () => {}),
+    resetPassword: vi.fn(async () => {}),
     logout: vi.fn(async () => {}),
     updateUserName: vi.fn(async () => {}),
     updateProfileVisibility: vi.fn(async () => {}),
     updateProfileDetails: vi.fn(async () => {}),
+    updateLook: vi.fn(async () => {}),
     deleteAccount: vi.fn(async () => {}),
 };
 
 vi.mock('@/hooks/useAuth', () => ({ useAuth: () => auth }));
+// Cloudflare's widget, which hands the form its token as it mounts (ADR 0092).
+vi.mock('@/components/TurnstileWidget', () => import('@/test/turnstile'));
 
 const onClose = vi.fn();
 const onSwitchToLogin = vi.fn();
@@ -46,19 +54,98 @@ async function fillIn(actor: ReturnType<typeof userEvent.setup>) {
 beforeEach(() => {
     onClose.mockReset();
     onSwitchToLogin.mockReset();
-    vi.mocked(auth.register).mockResolvedValue(undefined);
+    vi.mocked(auth.register).mockResolvedValue({ emailSent: true });
+    vi.mocked(auth.resendConfirmation).mockReset().mockResolvedValue(undefined);
+    turnstileStub.reset();
 });
 
 describe('SignupDialog', () => {
-    it('registers with what was typed and closes', async () => {
+    it('registers with what was typed and says where the link went, signing nobody in', async () => {
         const actor = userEvent.setup();
         renderDialog();
 
         await fillIn(actor);
         await actor.click(screen.getByRole('button', { name: 'Create Account' }));
 
-        expect(auth.register).toHaveBeenCalledWith('alex@test.local', 'Passw0rd1', 'alex');
-        await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+        expect(auth.register).toHaveBeenCalledWith('alex@test.local', 'Passw0rd1', 'alex', 'turnstile-token-1');
+        // Named by what is on it now, and still open: the account waits for its confirmation.
+        const dialog = await screen.findByRole('dialog', { name: 'Check your inbox' });
+        expect(dialog).toHaveTextContent('alex@test.local');
+        expect(onClose).not.toHaveBeenCalled();
+        // An address SES has stopped sending to is told nothing by the API, so a person is the way out (ADR 0091).
+        expect(screen.getByRole('link', { name: 'support@myvideogamelist.net' }))
+            .toHaveAttribute('href', 'mailto:support@myvideogamelist.net');
+    });
+
+    it('says so when the account was made and its email did not go', async () => {
+        vi.mocked(auth.register).mockResolvedValue({ emailSent: false });
+        const actor = userEvent.setup();
+        renderDialog();
+
+        await fillIn(actor);
+        await actor.click(screen.getByRole('button', { name: 'Create Account' }));
+
+        await screen.findByRole('dialog', { name: 'Your account is ready' });
+        expect(screen.getByRole('alert')).toHaveTextContent(/did not go/i);
+    });
+
+    it('sends the link again to the address it was made with', async () => {
+        const actor = userEvent.setup();
+        renderDialog();
+
+        await fillIn(actor);
+        await actor.click(screen.getByRole('button', { name: 'Create Account' }));
+        await actor.click(await screen.findByRole('button', { name: 'Send the link again' }));
+
+        expect(auth.resendConfirmation).toHaveBeenCalledWith('alex@test.local');
+        await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent(/new link is on its way/i));
+    });
+
+    it('offers to sign in from where the link went', async () => {
+        const actor = userEvent.setup();
+        renderDialog();
+
+        await fillIn(actor);
+        await actor.click(screen.getByRole('button', { name: 'Create Account' }));
+        await actor.click(await screen.findByRole('button', { name: 'Sign In' }));
+
+        expect(onSwitchToLogin).toHaveBeenCalledTimes(1);
+    });
+
+    it("waits for Cloudflare's check before sending anything", async () => {
+        turnstileStub.autoPass = false;
+        const actor = userEvent.setup();
+        renderDialog();
+
+        await fillIn(actor);
+        await actor.click(screen.getByRole('button', { name: 'Create Account' }));
+
+        expect(screen.getByRole('alert')).toHaveTextContent('Please wait for the check that you are a person to finish.');
+        expect(auth.register).not.toHaveBeenCalled();
+
+        await actor.click(screen.getByRole('button', { name: 'Pass the check' }));
+        await actor.click(screen.getByRole('button', { name: 'Create Account' }));
+
+        expect(auth.register).toHaveBeenCalledWith('alex@test.local', 'Passw0rd1', 'alex', 'turnstile-token-1');
+    });
+
+    it('draws the check again after a refusal, because the attempt spent its token', async () => {
+        vi.mocked(auth.register)
+            .mockRejectedValueOnce(new Error("Username 'alex' is already taken."))
+            .mockResolvedValueOnce({ emailSent: true });
+        const actor = userEvent.setup();
+        renderDialog();
+
+        await fillIn(actor);
+        await actor.click(screen.getByRole('button', { name: 'Create Account' }));
+        expect(await screen.findByRole('alert')).toHaveTextContent("Username 'alex' is already taken.");
+        // The check is drawn again, and passed again, before the second try.
+        await actor.click(screen.getByRole('button', { name: 'Pass the check' }));
+        await actor.click(screen.getByRole('button', { name: 'Create Account' }));
+
+        await screen.findByRole('dialog', { name: 'Check your inbox' });
+        expect(vi.mocked(auth.register).mock.calls.map(call => call[3]))
+            .toEqual(['turnstile-token-1', 'turnstile-token-2']);
     });
 
     it('answers a mistyped confirmation without a round trip', async () => {

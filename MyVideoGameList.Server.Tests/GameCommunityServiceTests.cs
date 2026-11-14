@@ -143,51 +143,65 @@ public class GameCommunityServiceTests
         throw new InvalidOperationException("The cursor never reached the end.");
     }
 
+    /// <summary>
+    /// One member per score, each with the game in a list. Every account is public, since the
+    /// scores count whatever the profile; the tests that care say otherwise.
+    /// </summary>
+    private static void AddScores(ApplicationDbContext db, params short[] scores)
+    {
+        // Numbered from however many accounts there are already, so a test can call this twice.
+        var first = db.Users.Count();
+        for (var i = 0; i < scores.Length; i++)
+            AddEntry(db, AddAccount(db, $"scorer{first + i}"), score: scores[i]);
+    }
+
+    /// <summary><paramref name="count"/> members who each gave the game <paramref name="score"/>.</summary>
+    private static void AddScores(ApplicationDbContext db, int count, short score) =>
+        AddScores(db, Enumerable.Repeat(score, count).ToArray());
+
     // ── The scores ────────────────────────────────────────────────────────────────────
 
     [Fact]
-    public async Task GetScoresAsync_NobodyHasScored_IsTenEmptyBucketsAndNoMean()
+    public async Task GetScoresAsync_NobodyHasScored_IsNoneWithNoMeanAndNoDistribution()
     {
         using var db = NewDb();
 
         var scores = await NewService(db).GetScoresAsync(GameId);
 
-        // An answer, not an absence: the client never has to guard a missing bucket, and a mean
-        // over nothing is unknown rather than zero.
+        // An answer, not an absence: a mean over nothing is unknown rather than zero, and nothing
+        // under the floors has a distribution to send.
         Assert.Equal(0, scores.Scored);
         Assert.Null(scores.Mean);
-        Assert.Equal(10, scores.Distribution.Count);
-        Assert.All(scores.Distribution, count => Assert.Equal(0, count));
+        Assert.Empty(scores.Distribution);
     }
 
     [Fact]
     public async Task GetScoresAsync_EveryMembersScore_IsCountedIntoItsBucket()
     {
         using var db = NewDb();
-        AddEntry(db, AddAccount(db, "alex"), score: 8);
-        AddEntry(db, AddAccount(db, "sam"), score: 8);
-        AddEntry(db, AddAccount(db, "nadia"), score: 5);
+        AddScores(db, CommunityFloors.ScoreDistribution - 4, 8);
+        AddScores(db, 4, 5);
 
         var scores = await NewService(db).GetScoresAsync(GameId);
 
-        Assert.Equal(3, scores.Scored);
-        Assert.Equal(7, scores.Mean);
-        Assert.Equal(2, scores.Distribution[7]);
-        Assert.Equal(1, scores.Distribution[4]);
-        Assert.Equal(3, scores.Distribution.Sum());
+        Assert.Equal(CommunityFloors.ScoreDistribution, scores.Scored);
+        Assert.Equal(7.4, scores.Mean!.Value, precision: 10);
+        Assert.Equal(10, scores.Distribution.Count);
+        Assert.Equal(CommunityFloors.ScoreDistribution - 4, scores.Distribution[7]);
+        Assert.Equal(4, scores.Distribution[4]);
+        Assert.Equal(CommunityFloors.ScoreDistribution, scores.Distribution.Sum());
     }
 
     [Fact]
     public async Task GetScoresAsync_AnotherGame_IsNotCounted()
     {
         using var db = NewDb();
-        var alex = AddAccount(db, "alex");
-        AddEntry(db, alex, score: 9);
-        AddEntry(db, alex, gameId: OtherGameId, score: 2);
+        AddScores(db, CommunityFloors.MemberScores, 9);
+        AddEntry(db, db.Users.First().Id, gameId: OtherGameId, score: 2);
 
         var scores = await NewService(db).GetScoresAsync(GameId);
 
-        Assert.Equal(1, scores.Scored);
+        Assert.Equal(CommunityFloors.MemberScores, scores.Scored);
         Assert.Equal(9, scores.Mean);
     }
 
@@ -197,12 +211,12 @@ public class GameCommunityServiceTests
         // Tracking a game is not scoring it. Counting the entry would put a zero in nobody's
         // opinion and drag the mean with it.
         using var db = NewDb();
-        AddEntry(db, AddAccount(db, "alex"), score: 6);
+        AddScores(db, CommunityFloors.MemberScores, 6);
         AddEntry(db, AddAccount(db, "sam"), status: ListStatusKeys.Playing);
 
         var scores = await NewService(db).GetScoresAsync(GameId);
 
-        Assert.Equal(1, scores.Scored);
+        Assert.Equal(CommunityFloors.MemberScores, scores.Scored);
         Assert.Equal(6, scores.Mean);
     }
 
@@ -224,15 +238,16 @@ public class GameCommunityServiceTests
     {
         // The aggregate names nobody, so it is not publishing anybody's library — the same basis
         // the community times have always been counted on. Only the reviews, which do name their
-        // authors, are held behind the profile gate.
+        // authors, are held behind the profile gate. The floors are what keep the aggregate from
+        // naming somebody after all.
         using var db = NewDb();
         AddEntry(db, AddAccount(db, "alex", ProfileVisibility.Private), score: 10);
-        AddEntry(db, AddAccount(db, "sam"), score: 6);
+        AddScores(db, CommunityFloors.MemberScores - 1, 5);
 
         var scores = await NewService(db).GetScoresAsync(GameId);
 
-        Assert.Equal(2, scores.Scored);
-        Assert.Equal(8, scores.Mean);
+        Assert.Equal(CommunityFloors.MemberScores, scores.Scored);
+        Assert.Equal(6, scores.Mean);
     }
 
     [Fact]
@@ -242,13 +257,90 @@ public class GameCommunityServiceTests
         // the arithmetic is shared with the profile, which already pins the same rule.
         using var db = NewDb();
         AddEntry(db, AddAccount(db, "alex"), score: 42);
-        AddEntry(db, AddAccount(db, "sam"), score: 6);
+        AddScores(db, CommunityFloors.ScoreDistribution, 6);
 
         var scores = await NewService(db).GetScoresAsync(GameId);
 
-        Assert.Equal(1, scores.Scored);
+        Assert.Equal(CommunityFloors.ScoreDistribution, scores.Scored);
         Assert.Equal(6, scores.Mean);
-        Assert.Equal(1, scores.Distribution.Sum());
+        Assert.Equal(CommunityFloors.ScoreDistribution, scores.Distribution.Sum());
+    }
+
+    // ── The floors (ADR 0094) ─────────────────────────────────────────────────────────
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(CommunityFloors.MemberScores - 1)]
+    public async Task GetScoresAsync_UnderTheMemberFloor_IsTheCountAlone(int count)
+    {
+        // A mean over one score is that member's score, and the JSON is public. The count still
+        // travels (ADR 0016); the figure does not.
+        using var db = NewDb();
+        AddScores(db, count, 10);
+
+        var scores = await NewService(db).GetScoresAsync(GameId);
+
+        Assert.Equal(count, scores.Scored);
+        Assert.Equal(count, scores.Tracked);
+        Assert.Null(scores.Mean);
+        Assert.Empty(scores.Distribution);
+    }
+
+    [Theory]
+    [InlineData(CommunityFloors.MemberScores)]
+    [InlineData(CommunityFloors.MemberScores + 1)]
+    [InlineData(CommunityFloors.ScoreDistribution - 1)]
+    public async Task GetScoresAsync_FromTheMemberFloorToTheDistributionBar_IsTheMeanWithNoDistribution(int count)
+    {
+        // Published bucket by bucket, the columns would say what each new score was, so they wait
+        // for a higher bar than the mean.
+        using var db = NewDb();
+        AddScores(db, count, 7);
+
+        var scores = await NewService(db).GetScoresAsync(GameId);
+
+        Assert.Equal(count, scores.Scored);
+        Assert.Equal(7, scores.Mean);
+        Assert.Empty(scores.Distribution);
+    }
+
+    [Theory]
+    [InlineData(CommunityFloors.ScoreDistribution)]
+    [InlineData(CommunityFloors.ScoreDistribution + 1)]
+    public async Task GetScoresAsync_AtOrOverTheDistributionBar_IsEveryFigure(int count)
+    {
+        using var db = NewDb();
+        AddScores(db, count, 7);
+
+        var scores = await NewService(db).GetScoresAsync(GameId);
+
+        Assert.Equal(count, scores.Scored);
+        Assert.Equal(7, scores.Mean);
+        Assert.Equal(10, scores.Distribution.Count);
+        Assert.Equal(count, scores.Distribution[6]);
+    }
+
+    [Fact]
+    public async Task GetScoresAsync_CorruptScore_DoesNotCarryTheGameOverTheFloor()
+    {
+        // The floor counts what the figures are made of. A row the check constraint would refuse
+        // is in no figure, so it cannot make four real scores look like five.
+        using var db = NewDb();
+        AddScores(db, CommunityFloors.MemberScores - 1, 9);
+        AddEntry(db, AddAccount(db, "alex"), score: 42);
+
+        var scores = await NewService(db).GetScoresAsync(GameId);
+
+        Assert.Equal(CommunityFloors.MemberScores - 1, scores.Scored);
+        Assert.Null(scores.Mean);
+    }
+
+    [Fact]
+    public void CommunityFloors_DistributionBar_IsNoLowerThanTheMeansFloor()
+    {
+        // A distribution sent under the mean's floor would say every score while the mean was
+        // withheld.
+        Assert.True(CommunityFloors.ScoreDistribution >= CommunityFloors.MemberScores);
     }
 
     // ── How many track it ─────────────────────────────────────────────────────────────
