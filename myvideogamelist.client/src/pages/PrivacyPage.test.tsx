@@ -1,0 +1,66 @@
+import { render, screen } from '@testing-library/react';
+import { createMemoryRouter, RouterProvider } from 'react-router';
+import { describe, expect, it } from 'vitest';
+import PrivacyPage, { headers, meta } from '@/pages/PrivacyPage';
+import { CACHE_STATIC_PAGE } from '@/lib/cache';
+import { DISCORD_INVITE_URL, SUPPORT_EMAIL } from '@/lib/links';
+import { LOOK_STORAGE_KEY } from '@/lib/look';
+import { IGDB_IMAGE_HOST } from '@/lib/securityHeaders';
+import { TURNSTILE_ORIGIN } from '@/lib/turnstile';
+import type { Route } from './+types/PrivacyPage';
+
+const SITE = { siteUrl: 'https://myvideogamelist.net', indexable: true };
+
+type Tag = Record<string, string>;
+
+function renderPage() {
+    const router = createMemoryRouter([{ path: '*', element: <PrivacyPage /> }]);
+    render(<RouterProvider router={router} />);
+}
+
+describe('PrivacyPage', () => {
+    it('is one indexable page with its own canonical URL, cached at the edge', () => {
+        const tags = meta({ loaderData: { site: SITE } } as unknown as Route.MetaArgs) as Tag[];
+
+        expect(tags).toContainEqual({ title: 'Privacy policy - MyVideoGameList' });
+        expect(tags).toContainEqual({ tagName: 'link', rel: 'canonical', href: 'https://myvideogamelist.net/privacy' });
+        expect(headers()).toEqual({ 'Cache-Control': CACHE_STATIC_PAGE });
+    });
+
+    it('names the two cookies and the one stored item the site keeps, by the names the code gives them', () => {
+        renderPage();
+
+        expect(screen.getByRole('heading', { level: 1, name: 'Privacy policy' })).toBeInTheDocument();
+        expect(screen.getByRole('heading', { name: 'Cookies, and what else is kept in your browser' })).toBeInTheDocument();
+        // `SignedInFlag.CookieName` on the server, and Identity's own name for the session's.
+        expect(screen.getByText('.AspNetCore.Identity.Application')).toBeInTheDocument();
+        expect(screen.getByText('mvgl_signed_in')).toBeInTheDocument();
+        expect(screen.getByText(LOOK_STORAGE_KEY)).toBeInTheDocument();
+    });
+
+    it('names the hosts a page sends the browser to', () => {
+        renderPage();
+
+        expect(screen.getByText(IGDB_IMAGE_HOST)).toBeInTheDocument();
+        expect(screen.getByText(new URL(TURNSTILE_ORIGIN).host)).toBeInTheDocument();
+    });
+
+    it('links the terms, the place that exports and deletes an account, where to write and where to complain', () => {
+        renderPage();
+
+        expect(screen.getByRole('link', { name: 'terms of use' })).toHaveAttribute('href', '/terms');
+        expect(screen.getByRole('heading', { name: 'Your rights' })).toBeInTheDocument();
+        expect(screen.getByRole('link', { name: 'Your data in your settings' }))
+            .toHaveAttribute('href', '/user/settings#your-data');
+        // Every place that says where to write about your data says the same address.
+        const contacts = screen.getAllByRole('link', { name: SUPPORT_EMAIL });
+        expect(contacts).toHaveLength(5);
+        for (const contact of contacts) expect(contact).toHaveAttribute('href', `mailto:${SUPPORT_EMAIL}`);
+        expect(screen.getByRole('link', { name: /^Commission for Personal Data Protection ?\(opens in a new tab\)$/ }))
+            .toHaveAttribute('href', 'https://cpdp.bg/en/');
+        // The words that say it opens a new tab keep their space inside the hidden text, ahead of the
+        // full stop, as on the terms page.
+        expect(screen.getByRole('link', { name: /^our Discord server ?\(opens in a new tab\)$/ }))
+            .toHaveAttribute('href', DISCORD_INVITE_URL);
+    });
+});

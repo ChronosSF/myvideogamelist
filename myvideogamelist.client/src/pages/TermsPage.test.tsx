@@ -19,13 +19,14 @@ describe('TermsPage', () => {
         expect(headers()).toEqual({ 'Cache-Control': CACHE_STATIC_PAGE });
     });
 
-    it('says how to keep a copy of your data, and where to ask', () => {
+    it('says how to keep a copy of your data, what is kept about you, and where to ask', () => {
         const router = createMemoryRouter([{ path: '*', element: <TermsPage /> }]);
         render(<RouterProvider router={router} />);
 
         expect(screen.getByRole('heading', { level: 1, name: 'Terms of use' })).toBeInTheDocument();
         expect(screen.getByRole('heading', { name: 'Your data, and keeping a copy' })).toBeInTheDocument();
-        expect(screen.getByRole('link', { name: 'your profile page' })).toHaveAttribute('href', '/user');
+        expect(screen.getByRole('link', { name: 'Your data in your settings' })).toHaveAttribute('href', '/user/settings#your-data');
+        expect(screen.getByRole('link', { name: 'privacy policy' })).toHaveAttribute('href', '/privacy');
         // The words that say it opens a new tab keep their space inside the hidden text, ahead of the
         // full stop. Testing Library's name computation trims it, and jsdom does no layout to separate
         // the hidden text as a browser does.
