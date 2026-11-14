@@ -33,7 +33,7 @@ public record PlaythroughInputDto(
         PlaythroughTypeKeys.Completionist)]
     string? Type,
     [Range(1, int.MaxValue)] int? PlatformId,
-    [Range(1, 600000)] int? MinutesPlayed,
+    [Range(1, UserGamePlaythrough.MaxMinutesPlayed)] int? MinutesPlayed,
     DateOnly? StartedOn,
     DateOnly? FinishedOn,
     [MaxLength(2000)] string? Notes) : IValidatableObject

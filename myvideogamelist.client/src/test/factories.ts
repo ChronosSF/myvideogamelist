@@ -198,6 +198,7 @@ export function importRow(overrides: Partial<ImportReviewRow> = {}): ImportRevie
         wishlist: false,
         favourite: false,
         hasNotes: false,
+        notesCut: false,
         playthroughCount: 0,
         minutesPlayed: null,
         alreadyTracked: false,

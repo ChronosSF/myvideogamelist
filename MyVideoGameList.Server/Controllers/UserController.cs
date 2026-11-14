@@ -490,8 +490,9 @@ public class UserController(
     /// <remarks>
     /// Free, and it stays free — data portability is a right rather than a feature, so it must not
     /// sit behind a subscription. The paid export in the monetisation table is a nicer
-    /// <em>format</em> on top of this one (CSV, re-importable), not access to the data itself. See
-    /// <c>docs/decisions/0024-the-ownership-contract.md</c>.
+    /// <em>format</em> on top of this one (CSV, column selection, a schedule), not access to the data
+    /// itself. Importing this document back is free too, as the other half of leaving with your data.
+    /// See <c>docs/decisions/0024-the-ownership-contract.md</c> and <c>0083-*</c>.
     /// </remarks>
     [HttpGet("export")]
     public async Task<ActionResult<UserDataExportDto>> Export(CancellationToken cancellationToken)

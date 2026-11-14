@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.Json;
 using MyVideoGameList.Server.Models;
+using static MyVideoGameList.Server.Services.Import.ImportText;
 
 namespace MyVideoGameList.Server.Services.Import;
 
@@ -424,9 +425,6 @@ internal sealed class GrouveeImportSource : IImportSource
     /// </remarks>
     private static DateTimeOffset? TimestampOf(string? value) =>
         DateOf(value) is { } date ? new DateTimeOffset(date, TimeOnly.MinValue, TimeSpan.Zero) : null;
-
-    private static string? Clean(string? value) =>
-        string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
     /// <summary>
     /// The account's favourite games, read defensively.
