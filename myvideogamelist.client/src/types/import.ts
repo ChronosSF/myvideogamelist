@@ -110,7 +110,8 @@ export interface ImportReviewRow {
     hasNotes: boolean;
     /**
      * The notes are longer than an entry's can be, so the import cuts them and ends them in an
-     * ellipsis. Usually a review that came back as a note (ADR 0083).
+     * ellipsis. Usually a review that came back as a note (ADR 0083). False where the game's entry
+     * has notes already, since the import never writes over those.
      */
     notesCut: boolean;
     playthroughCount: number;

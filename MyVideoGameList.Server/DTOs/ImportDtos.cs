@@ -91,7 +91,8 @@ public record ImportReviewSummaryDto(
 /// <param name="NotesCut">
 /// The row's notes are longer than an entry's notes can be, so the import will cut them, ending the
 /// note in an ellipsis. Said before the commit rather than discovered after it, because the text cut
-/// is usually a review its owner wrote (ADR 0083).
+/// is usually a review its owner wrote (ADR 0083). False for a game whose entry has notes already:
+/// the import fills notes only where there are none, so nothing of the row's would be written there.
 /// </param>
 /// <param name="Status">One of <c>ListStatusKeys</c>, or null for a row that will carry no status.</param>
 /// <param name="PlayedUnresolved">

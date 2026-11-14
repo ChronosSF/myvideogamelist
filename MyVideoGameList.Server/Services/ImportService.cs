@@ -236,8 +236,9 @@ public class ImportService(
         // Every game the user has, not only these rows': the screen checks a game chosen for a row
         // against it, and a row's own search can choose any game at all (§S8).
         var tracked = await LibraryGameIdsAsync(userId, cancellationToken);
+        var noted = await NotedGameIdsAsync(userId, [.. rows.Select(r => r.GameId).OfType<int>()], cancellationToken);
 
-        var dtos = rows.Select(row => ToReviewDto(row, games, tracked)).ToList();
+        var dtos = rows.Select(row => ToReviewDto(row, games, tracked, noted)).ToList();
 
         var summary = new ImportReviewSummaryDto(
             Total: dtos.Count,
@@ -298,6 +299,7 @@ public class ImportService(
 
         var games = (await gameCache.GetGamesAsync(named, cancellationToken)).ToDictionary(g => g.Id);
         var tracked = await TrackedGameIdsAsync(userId, named, cancellationToken);
+        var noted = await NotedGameIdsAsync(userId, named, cancellationToken);
 
         var examined = new List<ImportRow>(rows.Count);
 
@@ -325,7 +327,7 @@ public class ImportService(
         if (!await SaveTouchingAsync(job, clock.GetUtcNow(), cancellationToken)) return null;
 
         return new ImportMatchPassDto(
-            ToDto(job), examined.Select(row => ToReviewDto(row, games, tracked)).ToList());
+            ToDto(job), examined.Select(row => ToReviewDto(row, games, tracked, noted)).ToList());
     }
 
     public async Task<bool> SetDecisionsAsync(
@@ -811,6 +813,21 @@ public class ImportService(
             .Select(e => e.GameId)
             .ToListAsync(cancellationToken)];
 
+    /// <summary>
+    /// Which of these games already have notes of their owner's. The commit fills notes only where
+    /// there are none, so a row's notes are never written to such a game, cut or whole, and the
+    /// review must not say they will be cut.
+    /// </summary>
+    private async Task<HashSet<int>> NotedGameIdsAsync(
+        string userId, IReadOnlyCollection<int> gameIds, CancellationToken cancellationToken) =>
+        gameIds.Count == 0
+            ? []
+            : [.. await db.UserGameEntries
+                .AsNoTracking()
+                .Where(e => e.UserId == userId && e.Notes != null && gameIds.Contains(e.GameId))
+                .Select(e => e.GameId)
+                .ToListAsync(cancellationToken)];
+
     private async Task<HashSet<int>> TrackedGameIdsAsync(
         string userId, IReadOnlyCollection<int> gameIds, CancellationToken cancellationToken) =>
         gameIds.Count == 0
@@ -922,7 +939,7 @@ public class ImportService(
     }
 
     private static ImportReviewRowDto ToReviewDto(
-        ImportRow row, IReadOnlyDictionary<int, GameDto> games, IReadOnlySet<int> tracked)
+        ImportRow row, IReadOnlyDictionary<int, GameDto> games, IReadOnlySet<int> tracked, IReadOnlySet<int> noted)
     {
         var payload = ImportPayloadJson.Read(row.Payload);
 
@@ -953,7 +970,8 @@ public class ImportService(
             Wishlist: payload.Wishlist,
             Favourite: payload.Favourite,
             HasNotes: payload.Notes is not null,
-            NotesCut: payload.Notes is { Length: > MaxNotesLength },
+            // Only where the notes would be written: a game that has notes already keeps them.
+            NotesCut: payload.Notes is { Length: > MaxNotesLength } && !(row.GameId is { } notedId && noted.Contains(notedId)),
             PlaythroughCount: payload.Playthroughs.Count,
             MinutesPlayed: payload.Playthroughs.Sum(p => p.MinutesPlayed ?? 0) is var minutes and > 0 ? minutes : null,
             AlreadyTracked: row.GameId is { } gameId && tracked.Contains(gameId),

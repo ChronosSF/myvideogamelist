@@ -105,6 +105,21 @@ public class MyVideoGameListImportSourceTests
         Assert.Contains("MyVideoGameList export", refused.Message);
     }
 
+    [Theory]
+    [InlineData("score", "99999999999")]
+    [InlineData("score", "\"eight\"")]
+    [InlineData("addedAt", "\"last spring\"")]
+    public void Read_AValueOfTheWrongType_RefusesTheFileAndSaysWhere(string field, string value)
+    {
+        // Not a value the exporter can write, so not one to drop quietly: the owner of an edited
+        // file is told which field to put right, and the file is still in their hands.
+        var entry = field == "score" ? Entry(score: value) : Entry(addedAt: value);
+
+        var refused = Assert.Throws<ImportParseException>(() => Source.Read(Export(entries: entry)));
+
+        Assert.Contains($"$.entries[0].{field}", refused.Message, StringComparison.Ordinal);
+    }
+
     [Fact]
     public void Read_ADocumentWithNoEntriesSection_IsRefusedRatherThanReadAsEmpty()
     {

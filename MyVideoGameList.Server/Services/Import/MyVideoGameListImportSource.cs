@@ -25,7 +25,11 @@ namespace MyVideoGameList.Server.Services.Import;
 /// <b>Nothing in the file is trusted for having come from here.</b> It is a file its owner holds
 /// and can edit, so every value the database checks is checked first and dropped on its own when it
 /// fails — a score out of range, a run finishing before it started, a duration of no minutes —
-/// rather than left to fail the whole commit on its final save, as Grouvee's bad dates are.
+/// rather than left to fail the whole commit on its final save, as Grouvee's bad dates are. A value
+/// of the wrong type is another matter: text where a number goes, a number past what an <c>int</c>
+/// holds, a date that is not one. No export this site wrote holds one, so it refuses the file at
+/// upload, with the deserialiser's path to the field in the message, as Grouvee's reader refuses a
+/// mistyped id; nothing has been written by then, and the file is still in its owner's hands.
 /// </para>
 /// <para>
 /// <b>Every row comes out with an empty title.</b> The export names a game by its IGDB id and

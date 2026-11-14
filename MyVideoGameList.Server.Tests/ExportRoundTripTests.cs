@@ -386,19 +386,7 @@ public class ExportRoundTripTests
     public async Task CommitAsync_NotesAndAReviewPastTheColumn_AreFlaggedOnTheReviewAndCutWithAnEllipsis()
     {
         using var db = NewDb();
-        AddAccount(db, Alice, "alice");
-        var entry = new UserGameEntry { UserId = Alice, GameId = 100, Notes = new string('n', 1500), AddedAt = On(2024, 1, 2) };
-        db.UserGameEntries.Add(entry);
-        db.Reviews.Add(new Review
-        {
-            UserId = Alice,
-            Entry = entry,
-            Body = new string('r', 1000),
-            Visibility = ReviewVisibility.Private,
-            CreatedAt = On(2024, 2, 2),
-            UpdatedAt = On(2024, 2, 2)
-        });
-        db.SaveChanges();
+        RecordAliceNotesAndAReviewPastTheColumn(db);
         AddAccount(db, Bob, "bob");
 
         var import = NewImport(db);
@@ -412,6 +400,46 @@ public class ExportRoundTripTests
         Assert.Equal(2000, notes.Length);
         Assert.EndsWith("r…", notes, StringComparison.Ordinal);
         Assert.StartsWith(new string('n', 1500) + "\n\n", notes, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData(null, true)]
+    [InlineData("Mine", false)]
+    public async Task GetReviewAsync_NotesPastTheColumnForAGameAlreadyTracked_AreFlaggedOnlyWhereTheyWouldBeWritten(
+        string? bobsNotes, bool flagged)
+    {
+        // The commit fills notes only where there are none, so a game whose entry has notes keeps
+        // them, and the row's are neither cut nor written.
+        using var db = NewDb();
+        RecordAliceNotesAndAReviewPastTheColumn(db);
+        AddAccount(db, Bob, "bob");
+        db.UserGameEntries.Add(new UserGameEntry { UserId = Bob, GameId = 100, Notes = bobsNotes, AddedAt = On(2025, 1, 1) });
+        db.SaveChanges();
+
+        var import = NewImport(db);
+        var job = await import.CreateJobAsync(Bob, "export.json", await ExportJsonAsync(db, Alice));
+
+        var row = Assert.Single((await import.GetReviewAsync(Bob, job.Id))!.Rows);
+        Assert.True(row.AlreadyTracked);
+        Assert.Equal(flagged, row.NotesCut);
+    }
+
+    /// <summary>Game 100 with 1,500 characters of notes and a review of 1,000, which together do not fit.</summary>
+    private static void RecordAliceNotesAndAReviewPastTheColumn(ApplicationDbContext db)
+    {
+        AddAccount(db, Alice, "alice");
+        var entry = new UserGameEntry { UserId = Alice, GameId = 100, Notes = new string('n', 1500), AddedAt = On(2024, 1, 2) };
+        db.UserGameEntries.Add(entry);
+        db.Reviews.Add(new Review
+        {
+            UserId = Alice,
+            Entry = entry,
+            Body = new string('r', 1000),
+            Visibility = ReviewVisibility.Private,
+            CreatedAt = On(2024, 2, 2),
+            UpdatedAt = On(2024, 2, 2)
+        });
+        db.SaveChanges();
     }
 
     [Fact]
