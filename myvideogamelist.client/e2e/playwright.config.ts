@@ -5,7 +5,7 @@ import { PORTS, SITE } from './stand-ins';
 /**
  * The browser smoke test (#105, ADR 0060): sign up, add a game to a list, reload, and it is still
  * there. It runs the two-process shape that is deployed — the front end's production build under
- * `react-router-serve` and the API under `dotnet run`, processes that know nothing of each other — with
+ * `server/index.ts` and the API under `dotnet run`, processes that know nothing of each other — with
  * a stand-in in front of both for what routes between them, and one behind the API for IGDB.
  *
  * `npm run e2e` builds the front end and then runs this; `dotnet run` builds the API. PostgreSQL has
@@ -25,10 +25,11 @@ export default defineConfig({
     // Starts the two stand-ins, once both servers below are answering.
     globalSetup: './stand-ins.ts',
     forbidOnly: !!process.env.CI,
-    // None. The test either works or names the step that did not, and a retry would hide the second.
-    // Repeating it is no soak test either, past ten: one invocation is one API process, every sign-up
-    // reaches it from the stand-in's one address, and signing up is limited to ten an address in five
-    // minutes (ADR 0033). Run it again instead.
+    // None. A test either works or names the step that did not, and a retry would hide the second.
+    // Repeating them is no soak test either: one invocation is one API process, every request reaches it
+    // from the stand-in's one address, and the auth writes are limited to ten an address in five minutes
+    // (ADR 0033), of which one pass of the smoke test and the reset test spends five (ADR 0090). A third
+    // pass in the same invocation runs out. Run it again instead.
     retries: 0,
     workers: 1,
     timeout: 60_000,

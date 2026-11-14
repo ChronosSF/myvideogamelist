@@ -2,6 +2,7 @@ import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test } from '@playwright/test';
 import { KNOWN_CONTRAST, KNOWN_VIOLATIONS, PAGES, urlsFor } from './budgets';
+import { WRITE } from '../e2e/accounts';
 import { REPORTS } from './harness';
 import { seededAccount } from './seed';
 
@@ -53,7 +54,7 @@ test('every audited page breaks the axe rules of its baseline and no others', as
             if ('signedIn' in audited) {
                 // As the sign-in dialog does, with the header every write carries (ADR 0033).
                 const signedIn = await page.request.post('/api/auth/login', {
-                    headers: { 'X-MVGL-Request': '1' },
+                    headers: WRITE,
                     data: { email: account.email, password: account.password },
                 });
                 expect(signedIn.status(), 'signing in').toBe(200);

@@ -1,11 +1,12 @@
 import { readFileSync, rmSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { outboxFor } from '../e2e/outbox';
 import { idsIn, startStandIns, type HarnessPorts, type IgdbAnswer } from '../e2e/stand-ins';
 import { deleteAccount, seedAccount, shareAccount } from './seed';
 
 /**
  * The Lighthouse audit's harness (ADR 0068) is the smoke test's (ADR 0060): the front end's production
- * build under `react-router-serve` and the API under `dotnet run`, with a stand-in for the distribution
+ * build under `server/index.ts` and the API under `dotnet run`, with a stand-in for the distribution
  * in front of both and one for IGDB behind the API. Two things differ. It listens on ports of its own,
  * so the two can run side by side, and its IGDB knows enough real games for the audited pages to look
  * as they do deployed: covers in every grid, a hero image on the home page, a game page with all of
@@ -118,7 +119,7 @@ export default async function setUp(): Promise<() => Promise<void>> {
     }
     const stop = await startStandIns(PORTS, answer);
     try {
-        const account = await seedAccount(SITE);
+        const account = await seedAccount(SITE, outboxFor(PORTS));
         shareAccount(account);
         return async () => {
             try {

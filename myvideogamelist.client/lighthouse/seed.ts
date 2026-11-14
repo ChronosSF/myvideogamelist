@@ -1,5 +1,7 @@
-import { randomBytes } from 'node:crypto';
 import { request } from '@playwright/test';
+import { newUserName, WRITE } from '../e2e/accounts';
+import { confirmationIn, confirmationLinkFor } from '../e2e/outbox';
+import { TURNSTILE } from '../e2e/stand-ins';
 
 /** The run's throwaway account. */
 export interface Account {
@@ -72,25 +74,14 @@ const REVIEWS = [
     },
 ];
 
-/** The header `apiFetch` adds to every write. The API refuses a write without it (ADR 0033). */
-const WRITE = { 'X-MVGL-Request': '1' };
-
 /**
- * A username no other run has taken: `lh_`, the time in base 36 and four random hex digits, fifteen
- * characters of the twenty allowed. From `node:crypto`, as the smoke test's is, because CodeQL flags
- * `Math.random` wherever its value meets a sign-up form.
+ * Registers the run's account through the distribution, as the sign-up dialog does, confirms its address
+ * with the link the API wrote to `outbox`, signs in, and gives it its library and a public profile.
+ * Called from the global setup, once the servers and the stand-ins are up, so that every test in the run
+ * audits the same account.
  */
-function newUserName(): string {
-    return `lh_${Date.now().toString(36)}${randomBytes(2).toString('hex')}`;
-}
-
-/**
- * Registers the run's account through the distribution, as the sign-up dialog does, and gives it its
- * library and a public profile. Called from the global setup, once the servers and the stand-ins are
- * up, so that every test in the run audits the same account.
- */
-export async function seedAccount(site: string): Promise<Account> {
-    const userName = newUserName();
+export async function seedAccount(site: string, outbox: string): Promise<Account> {
+    const userName = newUserName('lh_');
     const account = { userName, email: `${userName}@test.local`, password: 'lighthouse-1' };
     const api = await request.newContext({ baseURL: site, extraHTTPHeaders: WRITE });
 
@@ -102,7 +93,11 @@ export async function seedAccount(site: string): Promise<Account> {
     };
 
     try {
-        await write('post', '/api/auth/register', account);
+        // With the token Cloudflare's test widget hands over, which the stand-in for siteverify passes (ADR 0092).
+        await write('post', '/api/auth/register', { ...account, turnstileToken: TURNSTILE.token });
+        // An account signs in once its address is confirmed (ADR 0089), with the link its email carries.
+        await write('post', '/api/auth/confirm-email', confirmationIn(confirmationLinkFor(outbox, account.email)));
+        await write('post', '/api/auth/login', { email: account.email, password: account.password, rememberMe: true });
         try {
             await write('put', '/api/user/privacy', { profileVisibility: 'public' });
 

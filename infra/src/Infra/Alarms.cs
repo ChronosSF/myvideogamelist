@@ -45,10 +45,7 @@ internal sealed class Alarms : Construct
         this.site = site;
         var stack = Stack.Of(this);
 
-        // By name rather than by reference: a reference would make every App deploy, the pipeline's
-        // included, wait on an output of a stack only the owner deploys, and fail until it exists.
-        var topic = Topic.FromTopicArn(this, "Topic",
-            $"arn:{Aws.PARTITION}:sns:{stack.Region}:{stack.Account}:{site.AlertsTopicName}");
+        var topic = AlertsStack.TopicByName(this, "Topic", site);
         notify = new SnsAction(topic);
 
         ErrorRate(alb);

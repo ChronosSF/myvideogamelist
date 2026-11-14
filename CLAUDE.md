@@ -41,7 +41,7 @@ build behind a stand-in that does route `/api` (ADR 0060).
 | `npm run typecheck` | `react-router typegen && tsc -b` — use this, never bare `tsc` |
 | `npm run test` | Vitest, jsdom + Testing Library. `npm run test:watch` to iterate |
 | `npm run visual` | Before-and-after screenshots of the pages, compared pixel by pixel, for a change meant to look the same. Needs two dev servers and a local test account, whose email and password it reads from the shell or from `visual/.env` (ignored by git); `visual/playwright.config.ts` says how. Not run by CI |
-| `npm run e2e` | The browser smoke test, over the production shape: sign up, add a game to a list, reload, it is still there. Builds the front end and serves it with `react-router-serve` beside the API under `dotnet run`, with a stand-in in front that routes `/api/*` to the API as the balancer does, and one for IGDB behind, so it needs no IGDB credentials. Needs PostgreSQL up, ports 5180–5183 free, and once, `npx playwright install chromium`. Keeps a database of its own on the compose server, `mvgl_e2e`, never `myvideogamelist`, created on the first run; `E2E_CONNECTION_STRING` points it elsewhere. Run by CI. See ADR 0060 |
+| `npm run e2e` | The browser smoke test, over the production shape: sign up, add a game to a list, reload, it is still there; and beside it, a forgotten password reset from its email and signed in with (ADR 0090). Builds the front end and serves it with `server/index.ts`, as the image does, beside the API under `dotnet run`, with a stand-in in front that routes `/api/*` to the API as the balancer does, and one for IGDB behind, so it needs no IGDB credentials, and stand-ins for Cloudflare's Turnstile script in the browser and its siteverify beside IGDB's (ADR 0092), so a run reaches no third party. Needs PostgreSQL up, ports 5180–5183 free, and once, `npx playwright install chromium`. Keeps a database of its own on the compose server, `mvgl_e2e`, never `myvideogamelist`, created on the first run; `E2E_CONNECTION_STRING` points it elsewhere. Run by CI. See ADR 0060 |
 | `npm run lighthouse` | Lighthouse CI on five pages of the `npm run e2e` shape, on a phone and a desktop, then axe-core on the same pages. Fails on an accessibility, best-practices or SEO score, or a count of console errors, that leaves `lighthouse/budgets.ts`'s baseline, on layout shift over 0.02 or script or page weight over budget, and on an axe rule or contrast pair a page did not already break; performance warns. Needs PostgreSQL up, ports 5190–5193 free, IGDB's image host reachable and, once, `npx playwright install chromium`. Keeps `mvgl_lighthouse` (or `LIGHTHOUSE_CONNECTION_STRING`); reports in `lighthouse/reports/`. Run by CI. See ADR 0068 |
 | `npm run build` | Production build |
 | `npm run audit` | `npm audit` over the lock file, devDependencies included, with no install: high and critical fail, lower ones are printed. `npm run audit:lighthouse` does the same over Lighthouse CI's lock file, and CI's Dependency audit job runs both. `scripts/audit.mjs` holds a list of accepted advisories for each, every entry with its reason and a date: the client's for want of any fix, Lighthouse CI's for want of one its dependents' ranges allow (ADR 0068 §9). See ADR 0061 |
@@ -84,6 +84,8 @@ myvideogamelist.client/
   src/pages/                    Route modules (default export + optional loader/meta)
   src/resources/                Resource routes: robots.txt, the sitemaps and /version. A loader, no component
   src/lib/                      apiUrl(), useHydrated(), pageMeta(); loaderFetch() in trace.server.ts
+  server/                       The SSR server the image runs, `node server/index.ts`: react-router-serve's
+                                app with a keep-alive longer than the balancer's (ADR 0093)
   e2e/                          The browser smoke test, and its stand-ins for the edge and for IGDB
   lighthouse/                   The Lighthouse audit on the same harness: its pages, budgets and package
   share/                        The default share image's source, drawn into src/assets/share.png by
@@ -128,6 +130,19 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   sends the origin-verify header; the site is behind basic auth at the edge, with three public
   aggregate endpoints exempt. See `docs/decisions/0044-*`, `0046-*` and `infra/README.md`.
 
+- **The SSR server holds an idle connection 5 seconds longer than the balancer, which the stack tells it,
+  and it does not start without being told.** The server has to be the side that holds on longer. When Node
+  closes first, the balancer can send a request down a connection that is closing, and the viewer gets a 502
+  that no log of ours records. Node's default is five seconds, and `react-router-serve` had no way to change
+  it. So the server is our own, `server/index.ts`, which Node runs as TypeScript, in the image, `npm start`
+  and both harnesses. `BalancerIdleTimeoutSeconds` in `AppStack.cs` is the one place the number is written:
+  the stack gives it to the balancer and to the SSR task as `BALANCER_IDLE_TIMEOUT_SECONDS`. **Never give
+  that variable a default**, in the server or the Dockerfile. CI never sees the task definition, so a
+  default would let a misspelt name deploy a server on a guess; without one, that deploy fails and rolls
+  back. Raising the timeout is a deploy whose old task keeps its old keep-alive until it is replaced; lowering
+  it is always safe. `createApp` is `react-router-serve`'s app, piece by piece, so a React Router major means
+  re-reading that package's `cli.ts`. See `docs/decisions/0093-*`.
+
 - **CI gates every pull request, whatever branch it targets, and an advisory can turn it red
   overnight.** Beside the builds and tests it checks the formatting, audits every package (NuGet's at
   every severity, npm's at high and critical), scans every commit for secrets, and builds both images,
@@ -147,6 +162,45 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
 - **Secrets never go in `appsettings.json`.** Local: `dotnet user-secrets set "Igdb:ClientId" "…"`.
   Deployed: `Igdb__ClientId` / `Igdb__ClientSecret` environment variables. User secrets load
   only in the Development environment — running as Production locally will fail IGDB calls.
+
+- **Email leaves through `IEmailTransport` alone, and a deployment with no sender does not start.**
+  SES wherever `Email:Ses:Region` is set; in Development, `.eml` files in `mvgl-outbox` under the
+  system's temp folder, whose path the log names; anywhere else, a startup failure unless
+  `Email:OutboxPath` names a folder. That is why the migration bundle, the migration task and both
+  test hosts set one. Dev sends as `mvgl-dev-email`, a role in the production account, which has
+  SES production access. SES's own sending authorization would not do: a delegate's account has to
+  leave the sandbox itself. So every email dev sends counts against production's reputation. **No
+  log line or exception holds an address**: SES's refusal names the recipient, so
+  `EmailNotSentException` carries its text masked and no inner exception. The sender's address is
+  `EmailIdentity`, which the CDK app compiles too: the role allows that address and no other. See
+  `docs/decisions/0088-*`.
+
+- **A bounce or a complaint stops all mail to that address, in SES, and the API is never told.** Every
+  send names the configuration set `mvgl-email` (`EmailIdentity.ConfigurationSet`), which
+  `Mvgl-prod-Email` makes. The set sends nothing to an address on the production account's suppression
+  list, and publishes each bounce and complaint to the owner through `mvgl-prod-alerts`. SES accepts a send
+  to a suppressed address and drops it, with a message id, so no flow can tell that its email will never
+  arrive, and every place that says an email was sent ends with the support address (`StillNothing`). Only
+  the owner can lift an address (`infra/README.md`). Never keep a list of the application's own, and never
+  send without the set: the role would allow it, but the set is what the events come from.
+  An App deploy of a revision that names the set has to wait until `Mvgl-prod-Email` makes it. See
+  `docs/decisions/0091-*`.
+
+- **An account signs in only once its address is confirmed, and "confirm first" needs the password.**
+  Identity refuses an unconfirmed account before it checks the password and counts nothing, so
+  `AuthController` checks it, counts a wrong one towards the lockout, and answers the 403 that offers
+  the link again only to the password's owner; anything else is the usual 401. A link's token goes
+  after the `#` (`EmailLinks`), never in a query string, which reaches request logs, cache keys and the `Referer`, and
+  the page posts it: confirming signs nobody in, because the token outlives its use. Every account
+  before the migration that turned this on was confirmed by it. A test that signs up goes through the
+  link: `Browsers.RegisterAsync`, `e2e/outbox.ts`. See `docs/decisions/0089-*`. **A password reset
+  is the same shape and signs nobody in either**: its link (`/reset-password#…`) works once, for an
+  hour, from a token provider of its own whose lifespan the email reads (`PasswordResetTokens`); it
+  confirms the address, ends the lockout, and ends every session at its next request through
+  `SessionsEndedAt`, which `AccountSessions` reads beside the stamp. Its writer, `AccountSessions.EndAll`,
+  ends nothing without a write that also changes the stamp. The request answers 202 whatever it names.
+  Every paced email goes through `EmailPace.SendAsync`, with a pace per kind and per account, so never
+  two resets in five minutes. See `docs/decisions/0090-*`.
 
 - **The key ring is shared through Parameter Store, and a deployment that names no store does not
   start.** The Data Protection keys sign the Identity cookie and seal the review cursor, and a ring
@@ -312,13 +366,18 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   what makes "the child's owner is the entry's owner" a database constraint rather than a promise a
   service has to keep. See `docs/decisions/0025-*`.
 
-- **No MVGL average is shown without its count, and the floor lives in the client.** The community
-  completion times are medians, never means — self-reported playtime has a long idle-hours tail —
-  and every bucket travels with `samples`. `MIN_PLAYTHROUGH_SAMPLES` in `@/lib/score` suppresses a
-  tier under the floor, showing a dash and the count rather than a number, exactly as
-  `MIN_CRITIC_REVIEWS` does for IGDB's critic score. Only playthroughs with *both* a type and a
-  duration are counted: the others would inflate a sample size behind a figure they did not help
-  produce. See `docs/decisions/0016-*` and `0025-*`.
+- **No MVGL average is shown without its count, and under its floor the API does not send it.** The
+  community completion times are medians, never means — self-reported playtime has a long idle-hours
+  tail — and every bucket travels with `samples`. Both community endpoints count every member, private
+  profiles included, so a figure over a handful of members is their own: the floors are the server's,
+  `CommunityFloors`. Under five scores `/community-scores` sends the count and no mean, under twenty no
+  distribution, and a tier of `/community-times` under three runs no median. `@/lib/score` restates
+  them (`MIN_MEMBER_SCORES`, `MIN_DISTRIBUTION_SCORES`, `MIN_PLAYTHROUGH_SAMPLES`) for the sentences that
+  say why a figure is missing, `serverMirrors.test.ts` holds them equal, and the client still checks
+  the counts, so an API from before mid-deploy is held to them. IGDB's critic score keeps its floor in
+  the client, `MIN_CRITIC_REVIEWS`. Only playthroughs with *both* a type and a duration are counted: the
+  others would inflate a sample size behind a figure they did not help produce. See
+  `docs/decisions/0016-*`, `0025-*` and `0094-*`.
 
 - **A game's member reviews are fetched after hydration, never in the route loader.** The game page
   is edge-cached for an hour and servable stale for a day, so review text rendered into it would
@@ -396,8 +455,9 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   once per render in `entry.server.tsx` and handed to `<ServerRouter>` and to the stream; an inline
   script without it never runs, and a page whose hydration scripts never run is dead. A new inline
   script of ours goes in by its hash in `documentPolicy`, as the look script does, and
-  a script from another host is refused until a record decides its hosts or `'strict-dynamic'`
-  (Google's tag, #242, is the first). A shared cache keeps the nonce whole only because header and
+  a script from another host is refused until a record decides its hosts or `'strict-dynamic'`:
+  Cloudflare's, for Turnstile on the sign-up form, is the one so far (ADR 0092), and Google's tag (#242)
+  will be the next. A shared cache keeps the nonce whole only because header and
   body are stored together, so **nothing at the edge may set, rewrite or remove
   `Content-Security-Policy` on a document** — a response headers policy replacing it names no nonce
   and every page dies — **and no document may carry an `ETag` or `Last-Modified`**, because a 304
@@ -418,8 +478,27 @@ ROADMAP.md                      Not the plan any more: where it lives (GitHub is
   that made the call names (see "One id names a request" below). `/readyz` still answers 200 while IGDB is down, deliberately. See
   `docs/decisions/0034-*`.
 
+- **Sign-up asks Cloudflare's Turnstile first, and only sign-up does.** It is the one form that mails an
+  address a stranger typed, from the SES account production's reputation lives in, so `Register` asks
+  Cloudflare about the form's token before it looks at anything else: refused is a 400 that makes no
+  account and sends nothing, Cloudflare unreachable is a 502, and asking spends the token, so the form
+  draws the widget again after any failed attempt and the server never retries. That 502 carries a
+  sentence of its own: `UpstreamFailureHandler`'s detail is about IGDB, so a call to any other service
+  throws `UpstreamUnavailableException`. Each environment has its
+  own widget, its pair in `mvgl/<env>/turnstile`, set by hand; the page asks `GET /api/auth/turnstile`
+  for the site key when the form opens, **never with `credentials: 'omit'`**, which withholds the dev
+  site's basic auth from a path its door does not let through. **A deployment with no keys starts and
+  takes no sign-ups**, with a 503 and an error in the log, because the migration task boots the same host,
+  and the placeholder the Data stack makes the secret with is no keys (`TurnstilePlaceholder`, which the
+  CDK app compiles too); **a Cloudflare test secret
+  outside Development does not start**, because it passes whoever asks. Development with no keys uses
+  the always-passing test keys. Tests never reach Cloudflare: the integration suite's
+  `JudgingTurnstile`, the client's `@/test/turnstile`, and the e2e stand-ins. See
+  `docs/decisions/0092-*`.
+
 - **The rate limiter is narrow on purpose, and the lockout says nothing.** Ten attempts per address
-  per five minutes on login and register only — the SSR server calls this API for every visitor, so
+  per five minutes on login, register, the confirmation's resend and the password reset's request
+  only, which share one budget (ADR 0089, 0090); not on the reset itself, whose token cannot be guessed — the SSR server calls this API for every visitor, so
   a limit partitioned by address anywhere a loader reaches would throttle the whole site as one
   client. Identity locks an account after five failures but answers exactly as it answers a wrong
   password, because announcing a lockout tells an attacker the account exists. Forwarded headers

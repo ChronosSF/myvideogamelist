@@ -1,4 +1,8 @@
-import { useEffect, useReducer, useState, type ReactNode } from 'react';
+import {
+    useCallback, useEffect, useInsertionEffect, useLayoutEffect, useMemo, useReducer, useRef, useState,
+    type Dispatch, type ReactNode,
+} from 'react';
+import { flushSync } from 'react-dom';
 import type { GameDto } from '@/types/game';
 import {
     type ListId, type ListEntryDto, type ListNames, type Ownership, type ViewMode,
@@ -8,7 +12,10 @@ import { type SortState, DEFAULT_SORT, MANUAL_SORT, sortEntries } from '@/lib/li
 import { moveInHandOrder } from '@/lib/handOrderMove';
 import { useAuth } from '@/hooks/useAuth';
 import { apiFetch } from '@/lib/api';
-import { ListsContext, type SaveListNamesResult, type SaveResult } from './ListsContext';
+import {
+    ListsContext, type ListsContextValue, type ListsPending, type SaveListNamesResult, type SaveResult,
+} from './ListsContext';
+import { ListViewContext, type ListViewContextValue } from './ListViewContext';
 
 interface ApiListsResponse {
     lists: Record<ListId, ListEntryDto[]>;
@@ -258,8 +265,11 @@ function reducer(state: ListsState, action: ListsAction): ListsState {
             };
         case 'MUTATION_ERROR':
             return ifCurrent(state, action.session, () => ({ ...state, mutationError: action.error }));
+        // Every save that lands raises this, and there is mostly nothing to clear: the same state, so that
+        // React has nothing to draw.
         case 'CLEAR_MUTATION_ERROR':
-            return ifCurrent(state, action.session, () => ({ ...state, mutationError: null }));
+            return ifCurrent(state, action.session, () =>
+                (state.mutationError === null ? state : { ...state, mutationError: null }));
         case 'START_PENDING':
             return ifCurrent(state, action.session, () =>
                 ({ ...state, pending: new Set(state.pending).add(action.gameId) }));
@@ -315,12 +325,136 @@ interface EntryOrigin {
     entry: ListEntryDto;
 }
 
-function locate(lists: Record<ListId, ListEntryDto[]>, gameId: number): EntryOrigin | null {
+/**
+ * Where every game is, by id: the first list to hold it wins, though `PLACE_ENTRY` leaves a game in one.
+ * The one way a game is found, built once for each change of the lists — for the readers a card calls on
+ * every render, hundreds of cards on the lists page each asking after its own game, and for the writes,
+ * which find it in the render last committed (`Committed`).
+ */
+function locateAll(lists: Record<ListId, ListEntryDto[]>): ReadonlyMap<number, EntryOrigin> {
+    const found = new Map<number, EntryOrigin>();
     for (const listId of LIST_IDS) {
-        const found = lists[listId].find(entry => entry.game.id === gameId);
-        if (found) return { listId, entry: found };
+        for (const entry of lists[listId]) {
+            if (!found.has(entry.game.id)) found.set(entry.game.id, { listId, entry });
+        }
     }
-    return null;
+    return found;
+}
+
+/**
+ * Whether which list each game is in is known: neither loading nor failed to load. A membership write
+ * is refused otherwise, since it would be decided from a game that only reads as in no list.
+ */
+function membershipKnown(state: ListsState): boolean {
+    return !state.loading && state.error === null;
+}
+
+/**
+ * The actions a mutation raises about itself — its lock, its undo and its failure — every one stamped with
+ * the session the mutation began under, never the one current when it lands (`ListsState.session`).
+ */
+function stamped(dispatch: Dispatch<ListsAction>, session: string | null) {
+    return {
+        startPending: (gameId: number) => dispatch({ type: 'START_PENDING', session, gameId }),
+        endPending: (gameId: number) => dispatch({ type: 'END_PENDING', session, gameId }),
+
+        /** Undoes one game's optimistic change and says why, for whichever way the request failed (`answer`). */
+        rollBack: (undo: () => void, error: string) => {
+            undo();
+            dispatch({ type: 'MUTATION_ERROR', session, error });
+        },
+
+        /** Puts one game back in the list it came from, or off the lists if it was in none. */
+        restore: (origin: EntryOrigin | null, gameId: number) => () => {
+            if (origin) {
+                dispatch({ type: 'PLACE_ENTRY', session, listId: origin.listId, entry: origin.entry });
+            } else {
+                dispatch({ type: 'DROP_ENTRY', session, gameId });
+            }
+        },
+    };
+}
+
+/** Sends the whole preference set, matching the endpoint's replace-wholesale contract. */
+function persistPreferences(view: ViewMode, sorts: Partial<Record<ListId, SortState>>) {
+    void apiFetch('/api/user/list-preferences', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            view,
+            sorts: Object.entries(sorts).map(([status, sort]) => ({
+                status,
+                sortKey: sort.key,
+                descending: sort.descending,
+            })),
+        }),
+    }).catch(() => {
+        // A preference that fails to save is not worth interrupting anyone over. The UI keeps
+        // the new setting and the next page load reconciles with whatever the server has.
+    });
+}
+
+/**
+ * A write's request, answered: the response, or null for a request that never arrived.
+ *
+ * The two ways a request fails are not interchangeable, and only one of them used to be handled: a request
+ * that arrives and is refused returns `!res.ok`, but a request that never arrives — the API down, the
+ * connection dropped — makes `fetch` *reject*. Without a `catch`, that left the optimistic change standing
+ * as though it had been saved, and escaped as an unhandled rejection, since every caller fires these with
+ * `void`.
+ */
+async function answer(send: () => Promise<Response>): Promise<Response | null> {
+    try {
+        return await send();
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * Commits what a write raises once its request has answered — its all-clear or its undo, and its lock
+ * released — in one render, before the write resolves, and answers what `complete` answers.
+ *
+ * A write reads the render last committed (`Committed`). Raised as they were, outside any event, the
+ * answer's actions waited for a render React schedules for later, and a write its caller made as soon as
+ * this one resolved — another save of the same game, once the first had landed — found the first's lock
+ * still held and was refused, or found its row as the first had left it before the answer.
+ * `docs/decisions/0086-*`.
+ */
+function settle<T>(complete: () => T): T {
+    return flushSync(complete);
+}
+
+/**
+ * Which games have a write out, as the store `useListPending` subscribes to: the set the provider last
+ * committed, published as that commit is laid out, so that a lock taken or released draws again only the
+ * components that show that game's (`ListsPending`).
+ */
+function createPendingStore(): ListsPending & { publish: (next: ReadonlySet<number>) => void } {
+    let current: ReadonlySet<number> = new Set();
+    const listeners = new Set<() => void>();
+    return {
+        subscribe: listener => {
+            listeners.add(listener);
+            return () => listeners.delete(listener);
+        },
+        current: () => current,
+        publish: next => {
+            if (next === current) return;
+            current = next;
+            for (const listener of listeners) listener();
+        },
+    };
+}
+
+/**
+ * The render React last committed, as far as an action reads it: the provider's state, the account, and
+ * where each game was in it.
+ */
+interface Committed {
+    state: ListsState;
+    session: string | null;
+    located: ReadonlyMap<number, EntryOrigin>;
 }
 
 /**
@@ -337,9 +471,11 @@ function reconciled(
     loaded: Record<ListId, ListEntryDto[]>,
     state: ListsState,
 ): Record<ListId, ListEntryDto[]> {
+    if (state.pending.size === 0) return loaded;
+    const located = locateAll(state.lists);
     let lists = loaded;
     for (const gameId of state.pending) {
-        const held = locate(state.lists, gameId);
+        const held = located.get(gameId);
         lists = without(lists, gameId);
         if (held) lists[held.listId] = [...lists[held.listId], held.entry];
     }
@@ -355,10 +491,10 @@ export function ListsProvider({ children }: { children: ReactNode }) {
      * The account every mutation below stamps its actions with — see `ListsState.session` for what
      * that protects against.
      *
-     * Read from this render rather than from a ref at completion time. A ref has to be written
-     * somewhere and both options are wrong: from an effect it lags the commit, leaving a window
-     * where the new account is on screen while the marker still names the old one, and during
-     * render it can be moved by a render React then throws away.
+     * A mutation reads it once, as it starts, from the render React last committed (`committed`, below),
+     * and stamps everything it raises with that, its completion and its undo included. Never at
+     * completion time: by then it may name the account that replaced the one the mutation was for, and
+     * the reducer's guard would let the undo through.
      */
     const session = user?.id ?? null;
 
@@ -438,48 +574,65 @@ export function ListsProvider({ children }: { children: ReactNode }) {
         return () => controller.abort();
     }, [user, authLoading, reloadToken]);
 
+    /**
+     * The state and the account of the render React last committed, which is what every action below
+     * reads when it is called. That is what lets each action be the same function for as long as the
+     * provider is mounted, so that a memoised row or card handed one is not drawn again because some
+     * other game changed (`docs/decisions/0086-*`).
+     *
+     * Written as the commit is made, never during render: React can throw away a render it never
+     * commits, and a marker moved by one would name an account that never arrived (ADR 0022 §8). In an
+     * insertion effect, because those run while the commit is applied, before any layout or passive
+     * effect of it, every component's. So no effect can call an action in between and read the render
+     * before. The one exception is the insertion effects of the components below this one, which React
+     * runs first; none may call a write.
+     *
+     * It is not a ref standing in for the state. The account is still in the reducer, every action a
+     * mutation raises still carries the session the mutation began under, and the reducer still drops one
+     * that no longer matches. What an action used to find in the closure of the render that drew its
+     * button, it now reads when the button is pressed, from that same render.
+     */
+    const located = useMemo(() => locateAll(state.lists), [state.lists]);
+    const committed = useRef<Committed>({ state, session, located });
+    useInsertionEffect(() => {
+        committed.current = { state, session, located };
+    }, [state, session, located]);
+
+    // The locks, published for whoever shows one as this commit is laid out, which is the first moment a
+    // store may tell a component to draw again. The same store for as long as the provider is mounted.
+    const [pending] = useState(createPendingStore);
+    useLayoutEffect(() => {
+        pending.publish(state.pending);
+    }, [pending, state.pending]);
+
     // The same account asking again: `FETCH_START` keeps the lists on screen, and the answer goes
     // through `reconciled` so a write still on its way is not undone by it.
-    const reload = () => setReloadToken(token => token + 1);
+    const reload = useCallback(() => setReloadToken(token => token + 1), []);
 
-    /** Sends the whole preference set, matching the endpoint's replace-wholesale contract. */
-    const persistPreferences = (view: ViewMode, sorts: Partial<Record<ListId, SortState>>) => {
-        void apiFetch('/api/user/list-preferences', {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                view,
-                sorts: Object.entries(sorts).map(([status, sort]) => ({
-                    status,
-                    sortKey: sort.key,
-                    descending: sort.descending,
-                })),
-            }),
-        }).catch(() => {
-            // A preference that fails to save is not worth interrupting anyone over. The UI keeps
-            // the new setting and the next page load reconciles with whatever the server has.
-        });
-    };
-
-    const setView = (view: ViewMode) => {
+    const setView = useCallback((view: ViewMode) => {
+        const { state } = committed.current;
         dispatch({ type: 'SET_VIEW', view });
         persistPreferences(view, state.sorts);
-    };
+    }, []);
 
-    const setSort = (listId: ListId, sort: SortState) => {
+    const setSort = useCallback((listId: ListId, sort: SortState) => {
+        const { state } = committed.current;
         dispatch({ type: 'SET_SORT', listId, sort });
         persistPreferences(state.view, { ...state.sorts, [listId]: sort });
-    };
+    }, []);
 
     // A hand order stored for a list that does not offer one — written by hand against the API, or
     // left behind if a list stops offering it — reads as the default rather than as a sort the
     // toolbar has no option for.
-    const sortFor = (listId: ListId): SortState => {
+    const sortFor = useCallback((listId: ListId): SortState => {
         const sort = state.sorts[listId] ?? DEFAULT_SORT;
         return sort.key === MANUAL_SORT.key && !HAND_ORDERED_LISTS.includes(listId) ? DEFAULT_SORT : sort;
-    };
+    }, [state.sorts]);
 
-    const nameFor = (listId: ListId): string => state.names[listId] ?? LIST_NAMES[listId];
+    const nameFor = useCallback(
+        (listId: ListId): string => state.names[listId] ?? LIST_NAMES[listId],
+        [state.names],
+    );
 
     /**
      * Saves every name at once, and adopts the names the server says it stored — normalised there,
@@ -489,7 +642,8 @@ export function ListsProvider({ children }: { children: ReactNode }) {
      * leave the form as the user typed it with a message beside the field, which a name already
      * applied across the site would contradict.
      */
-    const saveListNames = async (names: ListNames): Promise<SaveListNamesResult> => {
+    const saveListNames = useCallback(async (names: ListNames): Promise<SaveListNamesResult> => {
+        const { session } = committed.current;
         const failed: SaveListNamesResult = {
             ok: false,
             fieldErrors: {},
@@ -529,49 +683,19 @@ export function ListsProvider({ children }: { children: ReactNode }) {
             // Unreachable, or a body that was not the JSON it claimed to be.
             return failed;
         }
-    };
+    }, []);
 
-    const startPending = (gameId: number) => dispatch({ type: 'START_PENDING', session, gameId });
-    const endPending = (gameId: number) => dispatch({ type: 'END_PENDING', session, gameId });
-
-    /**
-     * Undoes one game's optimistic change and says why, for whichever way the request failed.
-     *
-     * The two ways are not interchangeable and only one of them used to be handled: a request
-     * that arrives and is refused returns `!res.ok`, but a request that never arrives — the API
-     * down, the connection dropped — makes `fetch` *reject*. Without a `catch`, that left the
-     * optimistic change standing as though it had been saved and escaped as an unhandled
-     * rejection, since every caller fires these with `void`.
-     */
-    const rollBack = (undo: () => void, error: string) => {
-        undo();
-        dispatch({ type: 'MUTATION_ERROR', session, error });
-    };
-
-    /** Puts one game back in the list it came from, or off the lists if it was in none. */
-    const restore = (origin: EntryOrigin | null, gameId: number) => () => {
-        if (origin) {
-            dispatch({ type: 'PLACE_ENTRY', session, listId: origin.listId, entry: origin.entry });
-        } else {
-            dispatch({ type: 'DROP_ENTRY', session, gameId });
-        }
-    };
-
-    /**
-     * Whether which list each game is in is known: neither loading nor failed to load. A membership write
-     * is refused otherwise, since it would be decided from a game that only reads as in no list.
-     */
-    const membershipKnown = !state.loading && state.error === null;
-
-    const addToList = async (listId: ListId, game: GameDto): Promise<boolean> => {
-        if (!membershipKnown || state.pending.has(game.id)) return false;
+    const addToList = useCallback(async (listId: ListId, game: GameDto): Promise<boolean> => {
+        const { state, session, located } = committed.current;
+        const { startPending, endPending, rollBack, restore } = stamped(dispatch, session);
+        if (!membershipKnown(state) || state.pending.has(game.id)) return false;
         startPending(game.id);
 
         // Only this game's own row is remembered, never the whole set of lists — see
         // docs/decisions/0022-*, decision 6. Its correctness rests on the pending set: no other
         // mutation can be moving this game while this one holds its id, so what is captured here
         // stays true for as long as it takes to undo.
-        const origin = locate(state.lists, game.id);
+        const origin = located.get(game.id) ?? null;
 
         // A move carries the existing entry across so the score does not blink out and back. Not its
         // place in a hand order, which the server clears on any change of list: the game arrives at
@@ -586,29 +710,25 @@ export function ListsProvider({ children }: { children: ReactNode }) {
 
         const undo = restore(origin, game.id);
 
-        try {
-            const res = await apiFetch(`/api/lists/${game.id}`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ status: listId }),
-            });
+        const res = await answer(() => apiFetch(`/api/lists/${game.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: listId }),
+        }));
 
-            if (res.ok) {
-                dispatch({ type: 'CLEAR_MUTATION_ERROR', session });
-                return true;
-            }
-            rollBack(undo, 'Failed to update list. Please try again.');
-            return false;
-        } catch {
-            rollBack(undo, 'Failed to update list. Please try again.');
-            return false;
-        } finally {
+        return settle(() => {
+            const saved = res !== null && res.ok;
+            if (saved) dispatch({ type: 'CLEAR_MUTATION_ERROR', session });
+            else rollBack(undo, 'Failed to update list. Please try again.');
             endPending(game.id);
-        }
-    };
+            return saved;
+        });
+    }, []);
 
-    const removeFromList = async (listId: ListId, gameId: number): Promise<boolean> => {
-        if (!membershipKnown || state.pending.has(gameId)) return false;
+    const removeFromList = useCallback(async (listId: ListId, gameId: number): Promise<boolean> => {
+        const { state, session } = committed.current;
+        const { startPending, endPending, rollBack, restore } = stamped(dispatch, session);
+        if (!membershipKnown(state) || state.pending.has(gameId)) return false;
         startPending(gameId);
 
         const found = state.lists[listId].find(entry => entry.game.id === gameId);
@@ -617,24 +737,16 @@ export function ListsProvider({ children }: { children: ReactNode }) {
 
         const undo = restore(removed, gameId);
 
-        try {
-            const res = await apiFetch(`/api/lists/${gameId}`, {
-                method: 'DELETE',
-            });
+        const res = await answer(() => apiFetch(`/api/lists/${gameId}`, { method: 'DELETE' }));
 
-            if (res.ok) {
-                dispatch({ type: 'CLEAR_MUTATION_ERROR', session });
-                return true;
-            }
-            rollBack(undo, 'Failed to remove from list. Please try again.');
-            return false;
-        } catch {
-            rollBack(undo, 'Failed to remove from list. Please try again.');
-            return false;
-        } finally {
+        return settle(() => {
+            const saved = res !== null && res.ok;
+            if (saved) dispatch({ type: 'CLEAR_MUTATION_ERROR', session });
+            else rollBack(undo, 'Failed to remove from list. Please try again.');
             endPending(gameId);
-        }
-    };
+            return saved;
+        });
+    }, []);
 
     /**
      * Writes fields of a game's row through its entry — its score, its tags — shown at once wherever the
@@ -652,18 +764,20 @@ export function ListsProvider({ children }: { children: ReactNode }) {
      * A refusal is answered with the server's own sentence where it gave one (`errors` in its
      * `ValidationProblemDetails`), which is the one worth showing; otherwise with `failure`.
      */
-    const writeRowFields = async (
+    const writeRowFields = useCallback(async (
         gameId: number,
         fields: RowFields,
         send: () => Promise<Response>,
         failure: string,
     ): Promise<SaveResult> => {
+        const { state, session, located } = committed.current;
+        const { startPending, endPending, rollBack } = stamped(dispatch, session);
         if (state.pending.has(gameId)) {
             return { ok: false, error: 'Another change to this game is still saving. Please try again.' };
         }
         startPending(gameId);
 
-        const row = locate(state.lists, gameId)?.entry;
+        const row = located.get(gameId)?.entry;
         const previous: RowFields | null = row === undefined
             ? null
             : Object.fromEntries(Object.keys(fields).map(key => [key, row[key as keyof RowFields]]));
@@ -673,26 +787,20 @@ export function ListsProvider({ children }: { children: ReactNode }) {
             if (previous !== null) dispatch({ type: 'SET_ENTRY_FIELDS', session, gameId, fields: previous });
         };
 
-        try {
-            const res = await send();
+        const res = await answer(send);
+        // The refusal's own sentence is read before anything is put back, so that the undo, the sentence
+        // and the lock released are one render.
+        const error = res === null ? failure : res.ok ? null : await refusal(res, failure);
 
-            if (!res.ok) {
-                const error = await refusal(res, failure);
-                rollBack(undo, error);
-                return { ok: false, error };
-            }
-            dispatch({ type: 'CLEAR_MUTATION_ERROR', session });
-            return { ok: true };
-        } catch {
-            // A rejection is the unreachable-API case, which `!res.ok` never sees.
-            rollBack(undo, failure);
-            return { ok: false, error: failure };
-        } finally {
+        return settle((): SaveResult => {
+            if (error === null) dispatch({ type: 'CLEAR_MUTATION_ERROR', session });
+            else rollBack(undo, error);
             endPending(gameId);
-        }
-    };
+            return error === null ? { ok: true } : { ok: false, error };
+        });
+    }, []);
 
-    const setScore = async (gameId: number, score: number | null): Promise<boolean> => {
+    const setScore = useCallback(async (gameId: number, score: number | null): Promise<boolean> => {
         const result = await writeRowFields(
             gameId,
             { score },
@@ -704,7 +812,7 @@ export function ListsProvider({ children }: { children: ReactNode }) {
             'Failed to save your score. Please try again.',
         );
         return result.ok;
-    };
+    }, [writeRowFields]);
 
     /**
      * Moves a game in a list's hand order to sit right after another, or first when that is null.
@@ -722,8 +830,10 @@ export function ListsProvider({ children }: { children: ReactNode }) {
      * The steps are `moveInHandOrder`'s, which the favourites' move runs too; what is this provider's is
      * the list's hand order, its locks, and its actions — a refusal or a failure in the page's banner.
      */
-    const moveInOrder = (listId: ListId, gameId: number, afterGameId: number | null): Promise<boolean> =>
-        moveInHandOrder({
+    const moveInOrder = useCallback((listId: ListId, gameId: number, afterGameId: number | null): Promise<boolean> => {
+        const { state, session } = committed.current;
+        const { startPending, endPending } = stamped(dispatch, session);
+        return moveInHandOrder({
             ordered: sortEntries(state.lists[listId], MANUAL_SORT)
                 .map(entry => ({ id: entry.game.id, position: entry.position })),
             gameId,
@@ -736,7 +846,9 @@ export function ListsProvider({ children }: { children: ReactNode }) {
             fail: error => dispatch({ type: 'MUTATION_ERROR', session, error }),
             saved: () => dispatch({ type: 'CLEAR_MUTATION_ERROR', session }),
             failed: 'Failed to save your order. Please try again.',
+            settle,
         });
+    }, []);
 
     /**
      * Writes one of the entry's own fields — how the user has the game, or their notes on it.
@@ -746,125 +858,141 @@ export function ListsProvider({ children }: { children: ReactNode }) {
      * write could have the write recreate the row it just removed. Nothing optimistic happens here —
      * no list shows either field — so the caller keeps the value on screen and reverts it on false.
      */
-    const writeEntryField = async (
+    const writeEntryField = useCallback(async (
         gameId: number,
         field: 'ownership' | 'notes',
         body: Record<string, unknown>,
         failure: string,
     ): Promise<boolean> => {
+        const { state, session } = committed.current;
+        const { startPending, endPending } = stamped(dispatch, session);
         if (state.pending.has(gameId)) return false;
         startPending(gameId);
 
-        try {
-            const res = await apiFetch(`/api/entries/${gameId}/${field}`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(body),
-            });
+        const res = await answer(() => apiFetch(`/api/entries/${gameId}/${field}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+        }));
 
-            if (!res.ok) {
-                dispatch({ type: 'MUTATION_ERROR', session, error: failure });
-                return false;
-            }
-            dispatch({ type: 'CLEAR_MUTATION_ERROR', session });
-            return true;
-        } catch {
-            // A rejection is the unreachable-API case, which `!res.ok` never sees.
-            dispatch({ type: 'MUTATION_ERROR', session, error: failure });
-            return false;
-        } finally {
+        return settle(() => {
+            const saved = res !== null && res.ok;
+            if (saved) dispatch({ type: 'CLEAR_MUTATION_ERROR', session });
+            else dispatch({ type: 'MUTATION_ERROR', session, error: failure });
             endPending(gameId);
-        }
-    };
+            return saved;
+        });
+    }, []);
 
-    const setOwnership = (gameId: number, ownership: Ownership | null): Promise<boolean> =>
-        writeEntryField(gameId, 'ownership', { ownership }, 'Failed to save how you have this game. Please try again.');
+    const setOwnership = useCallback(
+        (gameId: number, ownership: Ownership | null): Promise<boolean> =>
+            writeEntryField(gameId, 'ownership', { ownership }, 'Failed to save how you have this game. Please try again.'),
+        [writeEntryField],
+    );
 
-    const setNotes = (gameId: number, notes: string | null): Promise<boolean> =>
-        writeEntryField(gameId, 'notes', { notes }, 'Failed to save your notes. Please try again.');
+    const setNotes = useCallback(
+        (gameId: number, notes: string | null): Promise<boolean> =>
+            writeEntryField(gameId, 'notes', { notes }, 'Failed to save your notes. Please try again.'),
+        [writeEntryField],
+    );
 
     /** Replaces the game's tags with this set — the whole set, in one request (ADR 0065). */
-    const setTags = (gameId: number, tagIds: number[]): Promise<SaveResult> =>
-        writeRowFields(
-            gameId,
-            { tagIds },
-            () => apiFetch(`/api/entries/${gameId}/tags`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ tagIds }),
-            }),
-            'Failed to save your tags. Please try again.',
-        );
+    const setTags = useCallback(
+        (gameId: number, tagIds: number[]): Promise<SaveResult> =>
+            writeRowFields(
+                gameId,
+                { tagIds },
+                () => apiFetch(`/api/entries/${gameId}/tags`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ tagIds }),
+                }),
+                'Failed to save your tags. Please try again.',
+            ),
+        [writeRowFields],
+    );
 
-    const deleteEntry = async (gameId: number): Promise<boolean> => {
+    const deleteEntry = useCallback(async (gameId: number): Promise<boolean> => {
+        const { state, session, located } = committed.current;
+        const { startPending, endPending, rollBack, restore } = stamped(dispatch, session);
         if (state.pending.has(gameId)) return false;
         startPending(gameId);
 
-        const origin = locate(state.lists, gameId);
+        const origin = located.get(gameId) ?? null;
         dispatch({ type: 'DROP_ENTRY', session, gameId });
 
         const undo = restore(origin, gameId);
 
-        try {
-            const res = await apiFetch(`/api/entries/${gameId}`, {
-                method: 'DELETE',
-            });
+        const res = await answer(() => apiFetch(`/api/entries/${gameId}`, { method: 'DELETE' }));
 
+        return settle(() => {
             // 404 means there was nothing recorded, which is the state the caller wanted anyway.
-            if (res.ok || res.status === 404) {
-                dispatch({ type: 'CLEAR_MUTATION_ERROR', session });
-                return true;
-            }
-            rollBack(undo, 'Failed to remove your data. Please try again.');
-            return false;
-        } catch {
-            rollBack(undo, 'Failed to remove your data. Please try again.');
-            return false;
-        } finally {
+            const deleted = res !== null && (res.ok || res.status === 404);
+            if (deleted) dispatch({ type: 'CLEAR_MUTATION_ERROR', session });
+            else rollBack(undo, 'Failed to remove your data. Please try again.');
             endPending(gameId);
-        }
-    };
+            return deleted;
+        });
+    }, []);
 
-    const isInList = (listId: ListId, gameId: number): boolean =>
-        state.lists[listId].some(entry => entry.game.id === gameId);
+    // The readers are called during render, so they read the state of the render calling them, and change
+    // with it: a card that asks after its game is drawn again when the answer can have changed.
 
-    const getListFor = (gameId: number): ListId | null =>
-        LIST_IDS.find(id => state.lists[id].some(entry => entry.game.id === gameId)) ?? null;
+    const isInList = useCallback(
+        (listId: ListId, gameId: number): boolean => located.get(gameId)?.listId === listId,
+        [located],
+    );
 
-    const scoreFor = (gameId: number): number | null =>
-        locate(state.lists, gameId)?.entry.score ?? null;
+    const getListFor = useCallback(
+        (gameId: number): ListId | null => located.get(gameId)?.listId ?? null,
+        [located],
+    );
 
-    const isPending = (gameId: number): boolean => state.pending.has(gameId);
+    const scoreFor = useCallback(
+        (gameId: number): number | null => located.get(gameId)?.entry.score ?? null,
+        [located],
+    );
+
+    // The same object until something in it changes, so that a change of sort or of layout, or a save
+    // that changes nothing a reader shows, draws none of the readers again.
+    const lists = useMemo<ListsContextValue>(() => ({
+        lists: state.lists,
+        loading: state.loading,
+        error: state.error,
+        mutationError: state.mutationError,
+        reload,
+        pending,
+        addToList,
+        removeFromList,
+        isInList,
+        getListFor,
+        scoreFor,
+        setScore,
+        moveInOrder,
+        setOwnership,
+        setNotes,
+        setTags,
+        deleteEntry,
+        names: state.names,
+        nameFor,
+        namesStatus: state.namesStatus,
+        saveListNames,
+    }), [
+        state.lists, state.loading, state.error, state.mutationError, state.names, state.namesStatus,
+        reload, pending, addToList, removeFromList, isInList, getListFor, scoreFor, setScore, moveInOrder,
+        setOwnership, setNotes, setTags, deleteEntry, nameFor, saveListNames,
+    ]);
+
+    const listView = useMemo<ListViewContextValue>(
+        () => ({ view: state.view, setView, sortFor, setSort }),
+        [state.view, setView, sortFor, setSort],
+    );
 
     return (
-        <ListsContext.Provider value={{
-            lists: state.lists,
-            loading: state.loading,
-            error: state.error,
-            mutationError: state.mutationError,
-            reload,
-            isPending,
-            addToList,
-            removeFromList,
-            isInList,
-            getListFor,
-            scoreFor,
-            setScore,
-            moveInOrder,
-            setOwnership,
-            setNotes,
-            setTags,
-            deleteEntry,
-            view: state.view,
-            setView,
-            sortFor,
-            setSort,
-            names: state.names,
-            nameFor,
-            namesStatus: state.namesStatus,
-            saveListNames,
-        }}>
-            {children}
+        <ListsContext.Provider value={lists}>
+            <ListViewContext.Provider value={listView}>
+                {children}
+            </ListViewContext.Provider>
         </ListsContext.Provider>
     );
 }

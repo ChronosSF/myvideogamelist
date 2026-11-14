@@ -6,12 +6,13 @@ import { ListsPage } from '@/pages/ListsPage';
 import type { AuthContextValue } from '@/contexts/AuthContext';
 import type { FavouritesContextValue } from '@/contexts/FavouritesContext';
 import type { ListsContextValue } from '@/contexts/ListsContext';
+import type { ListViewContextValue } from '@/contexts/ListViewContext';
 import type { TagsContextValue } from '@/contexts/TagsContext';
 import type { WishlistContextValue } from '@/contexts/WishlistContext';
 import { DEFAULT_SORT, MANUAL_SORT } from '@/lib/listSort';
 import type { UserProfile } from '@/types/auth';
 import { emptyLists, LIST_NAMES, type ListId } from '@/types/list';
-import { entry, platform, tag, userProfile } from '@/test/factories';
+import { entry, listPending, platform, tag, userProfile } from '@/test/factories';
 
 /**
  * Auth and the lists, mocked rather than provided: both real providers fetch, and the page only
@@ -26,7 +27,11 @@ const auth: AuthContextValue = {
     user: null,
     loading: true,
     login: vi.fn(async () => {}),
-    register: vi.fn(async () => {}),
+    register: vi.fn(async () => ({ emailSent: true })),
+    resendConfirmation: vi.fn(async () => {}),
+    confirmEmail: vi.fn(async () => {}),
+    requestPasswordReset: vi.fn(async () => {}),
+    resetPassword: vi.fn(async () => {}),
     logout: vi.fn(async () => {}),
     updateUserName: vi.fn(async () => {}),
     updateProfileVisibility: vi.fn(async () => {}),
@@ -41,7 +46,7 @@ const lists: ListsContextValue = {
     error: null,
     mutationError: null,
     reload: vi.fn(),
-    isPending: () => false,
+    pending: listPending(),
     addToList: vi.fn(async () => true),
     removeFromList: vi.fn(async () => true),
     isInList: () => false,
@@ -53,14 +58,18 @@ const lists: ListsContextValue = {
     setNotes: vi.fn(async () => true),
     setTags: vi.fn(async () => ({ ok: true as const })),
     deleteEntry: vi.fn(async () => true),
-    view: 'tiles',
-    setView: vi.fn(),
-    sortFor: () => DEFAULT_SORT,
-    setSort: vi.fn(),
     names: {},
     nameFor: (id: ListId) => LIST_NAMES[id],
     namesStatus: 'ready',
     saveListNames: vi.fn(async () => ({ ok: true as const })),
+};
+
+/** How the page draws the lists: in a context of its own, which only this page reads (ADR 0086). */
+const listView: ListViewContextValue = {
+    view: 'tiles',
+    setView: vi.fn(),
+    sortFor: () => DEFAULT_SORT,
+    setSort: vi.fn(),
 };
 
 const wishlist: WishlistContextValue = {
@@ -90,6 +99,7 @@ const tags: TagsContextValue = {
 
 vi.mock('@/hooks/useAuth', () => ({ useAuth: () => auth }));
 vi.mock('@/hooks/useLists', () => ({ useLists: () => lists }));
+vi.mock('@/hooks/useListView', () => ({ useListView: () => listView }));
 /** How many times a card read the wishlist: once a render, and nothing else on the page reads it. */
 let wishlistReads = 0;
 vi.mock('@/hooks/useWishlist', () => ({
@@ -139,7 +149,7 @@ beforeEach(() => {
     lists.lists = emptyLists();
     lists.loading = false;
     lists.error = null;
-    lists.view = 'tiles';
+    listView.view = 'tiles';
     lists.reload = vi.fn();
     lists.nameFor = (id: ListId) => LIST_NAMES[id];
     favoured.clear();
@@ -191,7 +201,7 @@ describe('ListsPage while the lists load', () => {
     it('draws the lists as shapes in the layout the reader keeps them in, not a spinner', () => {
         authAnswered(userProfile());
         lists.loading = true;
-        lists.view = 'table';
+        listView.view = 'table';
         const { container } = renderPage();
 
         const loading = screen.getByRole('status').parentElement;
@@ -308,12 +318,12 @@ describe('ListsPage and a long list', () => {
     beforeEach(() => {
         authAnswered(userProfile());
         lists.lists = { ...emptyLists(), playing: games(65) };
-        lists.sortFor = () => BY_TITLE;
+        listView.sortFor = () => BY_TITLE;
     });
 
     afterEach(() => {
-        lists.sortFor = () => DEFAULT_SORT;
-        lists.view = 'tiles';
+        listView.sortFor = () => DEFAULT_SORT;
+        listView.view = 'tiles';
     });
 
     it('draws the first sixty games in the list’s order, and the rest when asked', () => {
@@ -327,7 +337,7 @@ describe('ListsPage and a long list', () => {
     });
 
     it('draws the table a chunk at a time as well', () => {
-        lists.view = 'table';
+        listView.view = 'table';
         lists.lists = { ...emptyLists(), playing: games(61) };
         renderPage();
 
@@ -339,7 +349,7 @@ describe('ListsPage and a long list', () => {
     });
 
     it('draws only the rows it adds when another chunk joins them, and again a row whose game changed', () => {
-        lists.view = 'table';
+        listView.view = 'table';
         lists.lists = { ...emptyLists(), playing: games(61) };
         const { rerender } = renderPage();
 
@@ -366,7 +376,7 @@ describe('ListsPage and a long list', () => {
     });
 
     it('scores a game from the table through the provider', async () => {
-        lists.view = 'table';
+        listView.view = 'table';
         lists.setScore = vi.fn(async () => true);
         renderPage();
 
@@ -391,7 +401,7 @@ describe('ListsPage and a long list', () => {
             const { rerender } = renderPage();
             expect(scrolled).not.toHaveBeenCalled();
 
-            lists.sortFor = () => ({ key: 'title', descending: true });
+            listView.sortFor = () => ({ key: 'title', descending: true });
             rerender(<MemoryRouter><ListsPage /></MemoryRouter>);
 
             expect(scrolled).toHaveBeenCalledExactlyOnceWith({ block: 'start' });
@@ -413,7 +423,7 @@ describe('ListsPage and a long list', () => {
         const { rerender } = renderPage();
         showMore(5);
 
-        lists.sortFor = () => ({ key: 'title', descending: true });
+        listView.sortFor = () => ({ key: 'title', descending: true });
         rerender(<MemoryRouter><ListsPage /></MemoryRouter>);
 
         expect(titles()).toEqual(numbered(6, 65).reverse());
@@ -445,7 +455,7 @@ describe('ListsPage and a long list', () => {
 
     it('draws a game moved by hand past the last one drawn where it lands, under its own handle', async () => {
         lists.lists = { ...emptyLists(), backlog: games(61, n => ({ position: n * 10 })) };
-        lists.sortFor = (id: ListId) => (id === 'backlog' ? MANUAL_SORT : DEFAULT_SORT);
+        listView.sortFor = (id: ListId) => (id === 'backlog' ? MANUAL_SORT : DEFAULT_SORT);
         renderPage();
         await userEvent.click(screen.getByRole('tab', { name: /Backlog/ }));
 
@@ -505,15 +515,15 @@ describe('ListsPage and the hand order', () => {
     beforeEach(() => {
         authAnswered(userProfile());
         lists.lists = { ...emptyLists(), backlog: BACKLOG, playing: [entry({ game: { id: 9, title: 'Tunic' } })] };
-        lists.sortFor = (id: ListId) => (id === 'backlog' ? MANUAL_SORT : DEFAULT_SORT);
-        lists.view = 'tiles';
+        listView.sortFor = (id: ListId) => (id === 'backlog' ? MANUAL_SORT : DEFAULT_SORT);
+        listView.view = 'tiles';
         lists.moveInOrder = vi.fn(async () => true);
     });
 
     afterEach(() => {
-        lists.sortFor = () => DEFAULT_SORT;
-        lists.view = 'tiles';
-        lists.isPending = () => false;
+        listView.sortFor = () => DEFAULT_SORT;
+        listView.view = 'tiles';
+        lists.pending = listPending();
         vi.restoreAllMocks();
     });
 
@@ -569,7 +579,7 @@ describe('ListsPage and the hand order', () => {
     });
 
     it('drags a row to a new place in the table through the provider', async () => {
-        lists.view = 'table';
+        listView.view = 'table';
         layOutDownThePage();
         renderPage();
         await openBacklog();
@@ -580,7 +590,7 @@ describe('ListsPage and the hand order', () => {
     });
 
     it('leaves the grip of a game whose save is out unable to move it', async () => {
-        lists.isPending = id => id === 2;
+        lists.pending = listPending([2]);
         renderPage();
         await openBacklog();
 
@@ -599,7 +609,7 @@ describe('ListsPage and the hand order', () => {
     });
 
     it('has no handles in any other order', async () => {
-        lists.sortFor = () => DEFAULT_SORT;
+        listView.sortFor = () => DEFAULT_SORT;
         renderPage();
         await openBacklog();
 
@@ -657,7 +667,7 @@ describe('ListsPage and the hand order', () => {
     });
 
     it('puts the handles in a column of their own in the table', async () => {
-        lists.view = 'table';
+        listView.view = 'table';
         renderPage();
         await openBacklog();
 
@@ -677,7 +687,7 @@ describe('ListsPage favourites', () => {
     });
 
     afterEach(() => {
-        lists.view = 'tiles';
+        listView.view = 'tiles';
     });
 
     it('marks a favourite on its card', async () => {
@@ -689,7 +699,7 @@ describe('ListsPage favourites', () => {
     });
 
     it('marks a favourite in the table as well', async () => {
-        lists.view = 'table';
+        listView.view = 'table';
         favoured.add(7);
         renderPage();
         await userEvent.click(screen.getByRole('tab', { name: /Playing/ }));
@@ -720,7 +730,7 @@ describe('ListsPage and tags', () => {
     beforeEach(() => {
         authAnswered(userProfile());
         withTags([COOP, SHORT, UNUSED]);
-        lists.view = 'tiles';
+        listView.view = 'tiles';
         lists.lists = { ...emptyLists(), playing: [HADES, CELESTE, INSIDE], finished: [PORTAL] };
     });
 
@@ -735,7 +745,7 @@ describe('ListsPage and tags', () => {
     });
 
     it('draws them under the title in the table', () => {
-        lists.view = 'table';
+        listView.view = 'table';
         renderPage();
 
         const row = screen.getByRole('link', { name: 'Hades' }).closest('tr')!;

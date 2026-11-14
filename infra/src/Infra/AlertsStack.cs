@@ -11,7 +11,8 @@ namespace Infra;
 /// Where an alarm is sent: one topic, and the owner's subscription to it by email. Long-lived and
 /// apart from the alarms, because an email subscription is confirmed by a person clicking a link,
 /// and the application stack the alarms live in is destroyed and made again on every park and
-/// resume (ADR 0080). Deployed by hand, by name, as Data is; the pipeline never touches it.
+/// resume (ADR 0080). Deployed by hand, by name, as Data is; the pipeline never touches it. In the
+/// production account it is also where SES sends each bounce and complaint (ADR 0091).
 /// </summary>
 public sealed class AlertsStack : Stack
 {
@@ -43,7 +44,28 @@ public sealed class AlertsStack : Stack
         topic.AddToResourcePolicy(Publisher("TaskStoppedRule", "events.amazonaws.com",
             $"arn:{Aws.PARTITION}:events:{Region}:{Account}:rule/{site.Prefix}-*", topic));
 
+        // In the production account, SES as well: the configuration set every email is sent under
+        // publishes each bounce and complaint here, the dev environment's included, since its sends
+        // are this account's (ADR 0091).
+        if (site.IsProduction)
+        {
+            topic.AddToResourcePolicy(Publisher("EmailEvents", "ses.amazonaws.com", EmailStack.ConfigurationSetArn, topic));
+        }
+
         _ = new CfnOutput(this, "TopicArn", new CfnOutputProps { Value = topic.TopicArn });
+    }
+
+    /// <summary>
+    /// The topic as another stack finds it: by its name, in that stack's own account and Region, never
+    /// by a reference. A reference would make every deploy of that stack, the pipeline's App deploys
+    /// included, wait on an output of a stack only the owner deploys, and fail until it exists (ADR
+    /// 0080).
+    /// </summary>
+    internal static ITopic TopicByName(Construct scope, string id, Site site)
+    {
+        var stack = Stack.Of(scope);
+        return Topic.FromTopicArn(scope, id,
+            $"arn:{Aws.PARTITION}:sns:{stack.Region}:{stack.Account}:{site.AlertsTopicName}");
     }
 
     private PolicyStatement Publisher(string sid, string service, string sourceArn, Topic topic) =>

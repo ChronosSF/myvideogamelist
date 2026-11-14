@@ -70,6 +70,9 @@ public sealed class MigrateStack : Stack
                 // that; nothing is protected during a migration, so Parameter Store is never read
                 // and this role needs no permission on it.
                 ["DataProtection__ParameterPath"] = site.DataProtectionPath,
+                // And without an email sender (ADR 0088). Nothing is sent during a migration, so a
+                // folder the task never writes to satisfies it, and this role needs no SES at all.
+                ["Email__OutboxPath"] = "/tmp/outbox",
             },
             Secrets = new Dictionary<string, Amazon.CDK.AWS.ECS.Secret>
             {

@@ -1,0 +1,100 @@
+using System.Globalization;
+using System.Text;
+
+namespace MyVideoGameList.Server.Services.Email;
+
+/// <summary>
+/// Writes each message to a folder as an <c>.eml</c> file, and sends nothing.
+/// </summary>
+/// <remarks>
+/// <para>
+/// Development's sender, so that signing up on a developer machine needs no AWS: the log line says
+/// which file to open, and any mail program opens it, or any editor, since the text body is written
+/// as it is. The browser smoke test reads its links from these files (ADR 0060's harness, ADR 0088).
+/// </para>
+/// <para>
+/// The file name is a time and a random suffix, never the recipient, so the log line that names it
+/// names nobody. Files are never removed: the folder is the developer's.
+/// </para>
+/// </remarks>
+internal sealed class OutboxEmailTransport(
+    string directory,
+    EmailSender sender,
+    TimeProvider clock,
+    ILogger<OutboxEmailTransport> logger) : IEmailTransport
+{
+    public async Task SendAsync(EmailMessage message, CancellationToken cancellationToken)
+    {
+        var now = clock.GetUtcNow();
+        var path = Path.Combine(directory,
+            $"{now.ToString("yyyyMMdd-HHmmss-fff", CultureInfo.InvariantCulture)}-{Guid.NewGuid():N}.eml");
+
+        try
+        {
+            Directory.CreateDirectory(directory);
+            await File.WriteAllTextAsync(path, Eml.Format(message, sender, now), Eml.Encoding, cancellationToken);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            // A folder that cannot be written is an email that did not go, as a refusal from SES is, so
+            // a caller handles both one way. The text names the path, which names nobody; masked anyway.
+            var reason = $"{exception.GetType().Name}: {EmailLogText.Mask(exception.Message)}";
+            logger.LogWarning("The {Purpose} email could not be written to the outbox: {Reason}.", message.Purpose, reason);
+            throw new EmailNotSentException(message.Purpose, reason);
+        }
+
+        logger.LogInformation("Wrote the {Purpose} email to {Path}. Nothing was sent.", message.Purpose, path);
+    }
+}
+
+/// <summary>
+/// A message as an <c>.eml</c> file: enough of RFC 5322 and MIME for a mail program to open it.
+/// </summary>
+internal static class Eml
+{
+    /// <summary>UTF-8 without a byte-order mark, which would come before the first header.</summary>
+    internal static readonly Encoding Encoding = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
+
+    internal static string Format(EmailMessage message, EmailSender sender, DateTimeOffset date)
+    {
+        // A boundary of its own for each message, so that no body can contain it.
+        var boundary = $"mvgl-{Guid.NewGuid():N}";
+        var eml = new StringBuilder();
+        Header(eml, "From", sender.FromHeader);
+        Header(eml, "Reply-To", sender.ReplyTo.Address);
+        Header(eml, "To", message.To);
+        Header(eml, "Subject", EncodedWord(message.Subject));
+        Header(eml, "Date", date.ToString("r", CultureInfo.InvariantCulture));
+        Header(eml, "MIME-Version", "1.0");
+
+        if (message.Html is null)
+        {
+            Part(eml, "text/plain", message.Text);
+            return eml.ToString();
+        }
+
+        Header(eml, "Content-Type", $"multipart/alternative; boundary=\"{boundary}\"");
+        eml.Append("\r\n");
+        eml.Append($"--{boundary}\r\n");
+        Part(eml, "text/plain", message.Text);
+        eml.Append($"\r\n--{boundary}\r\n");
+        Part(eml, "text/html", message.Html);
+        eml.Append($"\r\n--{boundary}--\r\n");
+        return eml.ToString();
+    }
+
+    private static void Part(StringBuilder eml, string type, string body)
+    {
+        Header(eml, "Content-Type", $"{type}; charset=utf-8");
+        Header(eml, "Content-Transfer-Encoding", "8bit");
+        eml.Append("\r\n");
+        eml.Append(body.ReplaceLineEndings("\r\n"));
+    }
+
+    private static void Header(StringBuilder eml, string name, string value) =>
+        eml.Append(name).Append(": ").Append(value.ReplaceLineEndings(" ")).Append("\r\n");
+
+    /// <summary>A subject as RFC 2047 asks for anything outside ASCII, and as it is otherwise.</summary>
+    private static string EncodedWord(string text) =>
+        text.All(char.IsAscii) ? text : $"=?utf-8?B?{Convert.ToBase64String(Encoding.GetBytes(text))}?=";
+}

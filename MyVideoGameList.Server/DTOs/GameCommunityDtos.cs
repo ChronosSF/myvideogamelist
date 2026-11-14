@@ -22,18 +22,25 @@ namespace MyVideoGameList.Server.DTOs;
 /// decision.
 /// </para>
 /// <para>
-/// The count travels with the figures for the reason ADR 0016 gives. The display floor lives in the
-/// client, as <c>MIN_CRITIC_REVIEWS</c> does — the API reports the sample size faithfully and each
-/// caller sets its own bar.
+/// The count travels with the figures for the reason ADR 0016 gives, and it always travels. The
+/// figures do not: because every member counts, a mean over one score is that member's score, so
+/// the floors in <see cref="Models.CommunityFloors"/> are the server's and hold the figures back.
+/// With the community times, this is the deliberate exception to ADR 0016's "report faithfully and
+/// let each caller set its bar". See <c>docs/decisions/0094-*</c>.
 /// </para>
 /// </remarks>
-/// <param name="Scored">How many members have scored the game.</param>
+/// <param name="Scored">How many members have scored the game, at any count.</param>
 /// <param name="Mean">
-/// On the 1-10 scale scores are entered on, and null when nobody has scored the game. The client
-/// shows it out of 100: it is an average of other people's opinions, which is what a percentage
-/// means in this app (ADR 0021) — the conversion is the client's, as it is for IGDB's player rating.
+/// On the 1-10 scale scores are entered on, and null under
+/// <see cref="Models.CommunityFloors.MemberScores"/>, nobody at all included. The client shows it
+/// out of 100: it is an average of other people's opinions, which is what a percentage means in
+/// this app (ADR 0021) — the conversion is the client's, as it is for IGDB's player rating.
 /// </param>
-/// <param name="Distribution">Ten buckets, index 0 holding the count of 1s.</param>
+/// <param name="Distribution">
+/// Ten buckets, index 0 holding the count of 1s; empty under
+/// <see cref="Models.CommunityFloors.ScoreDistribution"/>, a higher bar than the mean's, because near
+/// the mean's floor the buckets are a handful of people's scores laid out one by one.
+/// </param>
 /// <param name="Tracked">
 /// How many members have the game in one of their five lists right now: what a profile's statistics
 /// call tracking (<see cref="LibraryStatsDto"/>), counted over everybody. An entry that has left

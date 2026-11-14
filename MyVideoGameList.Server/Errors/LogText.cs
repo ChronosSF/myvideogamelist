@@ -25,7 +25,9 @@ internal static class LogText
     /// </summary>
     private const int MaxLength = 200;
 
-    public static string OneLine(string? value)
+    /// <param name="value">The text, as it arrived.</param>
+    /// <param name="maxLength">How much of it to keep; two hundred unless the caller has reason for more.</param>
+    public static string OneLine(string? value, int maxLength = MaxLength)
     {
         if (string.IsNullOrEmpty(value)) return string.Empty;
 
@@ -35,7 +37,7 @@ internal static class LogText
         var flattened = value.Replace("\r", string.Empty).Replace("\n", string.Empty);
         var printable = string.Concat(flattened.Where(character => !BreaksALine(character)));
 
-        return printable.Length <= MaxLength ? printable : printable[..MaxLength] + "...";
+        return printable.Length <= maxLength ? printable : printable[..maxLength] + "...";
     }
 
     private static bool BreaksALine(char character) =>

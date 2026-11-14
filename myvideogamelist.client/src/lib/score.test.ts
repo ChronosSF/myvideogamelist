@@ -2,12 +2,14 @@ import { describe, expect, it } from 'vitest';
 import {
     MAX_SCORE,
     MIN_CRITIC_REVIEWS,
+    MIN_DISTRIBUTION_SCORES,
     MIN_MEMBER_SCORES,
     MIN_PLAYTHROUGH_SAMPLES,
     STAR_COUNT,
     aggregateTitle,
     criticScoreWords,
     hasCriticScore,
+    hasMemberDistribution,
     hasMemberScore,
     ratingPercent,
     scoreBandSolid,
@@ -105,6 +107,35 @@ describe('hasMemberScore', () => {
 
     it('sits above the playthrough floor, since a score is far cheaper to give than a logged run', () => {
         expect(MIN_MEMBER_SCORES).toBeGreaterThan(MIN_PLAYTHROUGH_SAMPLES);
+    });
+});
+
+describe('hasMemberDistribution', () => {
+    const columns = (scored: number) => [0, 0, 0, 0, 0, 0, 0, scored, 0, 0];
+
+    it('accepts ten columns from the distribution bar', () => {
+        expect(hasMemberDistribution(communityScores({ scored: MIN_DISTRIBUTION_SCORES, mean: 8, distribution: columns(MIN_DISTRIBUTION_SCORES) }))).toBe(true);
+    });
+
+    it('rejects the empty distribution the API sends under the bar, whatever the count says', () => {
+        // Between the two floors the API sends the mean and no columns (ADR 0094).
+        expect(hasMemberDistribution(communityScores({ scored: MIN_DISTRIBUTION_SCORES - 1, mean: 8 }))).toBe(false);
+        expect(hasMemberDistribution(communityScores({ scored: MIN_DISTRIBUTION_SCORES + 10, mean: 8 }))).toBe(false);
+    });
+
+    it('rejects columns under the bar, as an API from before it would send them', () => {
+        const count = MIN_DISTRIBUTION_SCORES - 1;
+
+        expect(hasMemberDistribution(communityScores({ scored: count, mean: 8, distribution: columns(count) }))).toBe(false);
+    });
+
+    it('rejects columns where there is no mean, and scores that failed to load', () => {
+        expect(hasMemberDistribution(communityScores({ scored: MIN_DISTRIBUTION_SCORES, distribution: columns(MIN_DISTRIBUTION_SCORES) }))).toBe(false);
+        expect(hasMemberDistribution(null)).toBe(false);
+    });
+
+    it('sits above the member floor, where the columns would be a handful of people’s scores one by one', () => {
+        expect(MIN_DISTRIBUTION_SCORES).toBeGreaterThan(MIN_MEMBER_SCORES);
     });
 });
 
@@ -206,10 +237,20 @@ describe('scoresWithinFloor', () => {
         expect(scoresWithinFloor(one)).toEqual(communityScores({ scored: 1, mean: null, tracked: 4 }));
     });
 
-    it('leaves scores that clear the floor as they are', () => {
+    it('keeps the mean and drops the columns between the two floors', () => {
         const enough = communityScores({ scored: MIN_MEMBER_SCORES, mean: 8, distribution: [0, 0, 0, 0, 0, 0, 0, 5, 0, 0], tracked: 9 });
 
-        expect(scoresWithinFloor(enough)).toEqual(enough);
+        expect(scoresWithinFloor(enough)).toEqual(communityScores({ scored: MIN_MEMBER_SCORES, mean: 8, tracked: 9 }));
+    });
+
+    it('leaves what the API sends now as it is, under the floors and over them', () => {
+        const under = communityScores({ scored: MIN_MEMBER_SCORES - 1, tracked: 6 });
+        const between = communityScores({ scored: MIN_DISTRIBUTION_SCORES - 1, mean: 7.2, tracked: 30 });
+        const over = communityScores({ scored: MIN_DISTRIBUTION_SCORES, mean: 8, distribution: [0, 0, 0, 0, 0, 0, 0, 20, 0, 0], tracked: 30 });
+
+        expect(scoresWithinFloor(under)).toEqual(under);
+        expect(scoresWithinFloor(between)).toEqual(between);
+        expect(scoresWithinFloor(over)).toEqual(over);
     });
 });
 
