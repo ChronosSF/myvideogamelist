@@ -5,8 +5,6 @@ import PrivacyPage, { headers, meta } from '@/pages/PrivacyPage';
 import { CACHE_STATIC_PAGE } from '@/lib/cache';
 import { DISCORD_INVITE_URL, SUPPORT_EMAIL } from '@/lib/links';
 import { LOOK_STORAGE_KEY } from '@/lib/look';
-import { IGDB_IMAGE_HOST } from '@/lib/securityHeaders';
-import { TURNSTILE_ORIGIN } from '@/lib/turnstile';
 import type { Route } from './+types/PrivacyPage';
 
 const SITE = { siteUrl: 'https://myvideogamelist.net', indexable: true };
@@ -31,18 +29,17 @@ describe('PrivacyPage', () => {
         renderPage();
 
         expect(screen.getByRole('heading', { level: 1, name: 'Privacy policy' })).toBeInTheDocument();
-        expect(screen.getByRole('heading', { name: 'Cookies, and what else is kept in your browser' })).toBeInTheDocument();
+        expect(screen.getByRole('heading', { name: 'Cookies' })).toBeInTheDocument();
         // `SignedInFlag.CookieName` on the server, and Identity's own name for the session's.
         expect(screen.getByText('.AspNetCore.Identity.Application')).toBeInTheDocument();
         expect(screen.getByText('mvgl_signed_in')).toBeInTheDocument();
         expect(screen.getByText(LOOK_STORAGE_KEY)).toBeInTheDocument();
     });
 
-    it('names the hosts a page sends the browser to', () => {
+    it('opens with the short version, before any of the detail', () => {
         renderPage();
 
-        expect(screen.getByText(IGDB_IMAGE_HOST)).toBeInTheDocument();
-        expect(screen.getByText(new URL(TURNSTILE_ORIGIN).host)).toBeInTheDocument();
+        expect(screen.getAllByRole('heading', { level: 2 })[0]).toHaveTextContent('In short');
     });
 
     it('links the terms, the place that exports and deletes an account, where to write and where to complain', () => {
