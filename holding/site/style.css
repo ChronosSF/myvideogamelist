@@ -1,59 +1,129 @@
 /*
- * The holding page's stylesheet, shared by the page and its 404 (ADR 0066).
+ * The holding page's stylesheet, shared by the page, its 404 and the share image's source (ADR 0066,
+ * ADR 0100). It draws the site as the app draws it since ADR 0075: ink and paper with the logo's lime as
+ * the one accent, Archivo, Schibsted Grotesk and DM Mono, corners of a pixel or two, and sections that
+ * open with a heavy rule rather than sitting in boxes.
  *
- * The colours are the app's tokens, copied by value from myvideogamelist.client/src/theme.css,
- * because a static file cannot import that one. The names are the app's too, so the two can be
- * compared line by line; a value changed there is worth changing here. Only the tokens this page
- * uses are copied, and nothing below writes a colour any other way.
+ * A static file cannot import anything, so four things here are copies of the app's, by value, under
+ * the app's own names so that the two can be compared line by line. holding/README.md lists them:
+ *   - the colour tokens, from myvideogamelist.client/src/theme.css, the default palette's;
+ *   - the corner tokens, from myvideogamelist.client/src/index.css;
+ *   - the four font faces, from myvideogamelist.client/src/type.css, and their files in fonts/;
+ *   - the type roles, the heavy rule, the link and the two buttons, from type.css and index.css,
+ *     written out here as classes where the app has Tailwind utilities.
+ * Only what these pages use is copied, and nothing below writes a colour any other way.
  *
- * No web font, no script and nothing from another origin: the content policy the distribution sends
- * allows this stylesheet and the favicon, and nothing else.
+ * Everything is served from this origin. The distribution's content policy admits this stylesheet, the
+ * images and the fonts from 'self' and nothing else, and no script at all (HoldingStack.cs). Every URL in
+ * this file is relative, so it resolves against the stylesheet - /fonts/..., wherever the page that loaded
+ * it is served - and against ../site/ for the share image's source, opened from disk.
  */
+
+/* -- The fonts -----------------------------------------------------------------------------------------
+ * Latin only, as each file's unicode-range says: the page's text is English, so the Latin Extended files
+ * the app also serves would never be fetched, and are not copied. A character outside the range falls
+ * back to the system's font. No italic and no second weight of the mono: these pages use neither.
+ * `swap`, with all four preloaded by each page, since each of them draws part of its first screen.
+ */
+
+/* Archivo, display: 125% wide and 800. A page's title, a section's, and the big figures. */
+@font-face {
+    font-family: 'Archivo';
+    font-style: normal;
+    font-display: swap;
+    font-weight: 800;
+    font-stretch: 125%;
+    src: url('fonts/archivo-display-latin.woff2') format('woff2');
+    unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+/* Archivo, title: normal width and 700. The name of a thing, and the wordmark in the header. */
+@font-face {
+    font-family: 'Archivo';
+    font-style: normal;
+    font-display: swap;
+    font-weight: 700;
+    font-stretch: 100%;
+    src: url('fonts/archivo-title-latin.woff2') format('woff2');
+    unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+    font-family: 'Schibsted Grotesk Variable';
+    font-style: normal;
+    font-display: swap;
+    font-weight: 400 900;
+    src: url('fonts/schibsted-grotesk-latin-wght-normal.woff2') format('woff2-variations');
+    unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+    font-family: 'DM Mono';
+    font-style: normal;
+    font-display: swap;
+    font-weight: 400;
+    src: url('fonts/dm-mono-latin-400-normal.woff2') format('woff2');
+    unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+/* -- The tokens ---------------------------------------------------------------------------------------- */
 
 :root {
     /* Surfaces, deepest first */
-    --color-sunken: oklch(12.9% 0.042 264.695);
-    --color-page: oklch(20.8% 0.042 265.755);
-    --color-surface: oklch(27.9% 0.041 260.031);
+    --color-sunken: oklch(18.7% 0.003 67.5);
+    --color-page: oklch(21.5% 0.003 67.7);
+    --color-surface: oklch(25.5% 0.006 91.6);
+    --color-raised: oklch(29.4% 0.008 84.6);
 
     /* Lines */
-    --color-line: oklch(37.2% 0.044 257.287 / 0.6);
-    --color-line-strong: oklch(44.6% 0.043 257.281 / 0.7);
+    --color-line: oklch(95.3% 0.013 86.8 / 0.13);
+    --color-line-strong: oklch(95.3% 0.013 86.8 / 0.26);
+    --color-rule: var(--color-fg-strong);
 
-    /* Text, strongest first */
-    --color-fg-strong: #fff;
-    --color-fg: oklch(96.8% 0.007 247.896);
-    --color-fg-soft: oklch(86.9% 0.022 252.894);
-    --color-fg-muted: oklch(70.4% 0.04 256.788);
+    /* Text, strongest first. Every one is 4.5:1 or more on the page, a surface and a raised surface. */
+    --color-fg-strong: oklch(95.3% 0.013 86.8);
+    --color-fg: oklch(88.3% 0.016 86.4);
+    --color-fg-soft: oklch(81.9% 0.018 84.6);
+    --color-fg-muted: oklch(70.7% 0.018 84.6);
+    --color-fg-faint: oklch(67% 0.019 84.6);
 
     /* The primary */
-    --color-primary-300: oklch(80.9% 0.105 251.813);
-    --color-primary-400: oklch(70.7% 0.165 254.624);
-    --color-primary-500: oklch(62.3% 0.214 259.815);
-    --color-primary-600: oklch(54.6% 0.245 262.881);
-    --color-primary-700: oklch(48.8% 0.243 264.376);
-    --color-primary-900: oklch(37.9% 0.146 265.522);
-    --color-primary-950: oklch(28.2% 0.091 267.935);
-    --color-on-primary: #fff;
+    --color-primary-400: oklch(89.7% 0.196 126.665);
+    --color-primary-500: oklch(84.1% 0.238 128.85);
+    --color-primary-600: oklch(76.8% 0.233 130.85);
+    --color-primary-950: oklch(27.4% 0.072 132.109);
+    --color-on-primary: var(--color-page);
     --color-focus: var(--color-primary-500);
 
-    /* The five statuses, in the lifecycle's own colours */
-    --color-status-backlog: oklch(55.4% 0.046 257.417);
-    --color-status-playing: oklch(62.3% 0.214 259.815);
-    --color-status-on-hold: oklch(76.9% 0.188 70.08);
-    --color-status-finished: oklch(72.3% 0.219 149.579);
-    --color-status-dropped: oklch(63.7% 0.237 25.331);
+    /* The user's own score, and only that: the stars that are filled (ADR 0021) */
+    --color-star: oklch(85.2% 0.199 91.936);
+
+    /* The three playthrough types, lightest the quickest */
+    --color-playthrough-rushed: oklch(70.7% 0.165 254.624);
+    --color-playthrough-normally: oklch(62.3% 0.214 259.815);
 
     /* The brand: the logo's colours */
     --color-brand-navy: #182b4d;
     --color-brand-lime: #a3e635;
     --color-brand-light: #f8fafc;
+    --color-logo-badge: var(--color-brand-lime);
+    --color-logo-tick: var(--color-brand-navy);
+    --color-logo-word: var(--color-brand-lime);
+
+    /* Corners: nearly square */
+    --radius-sm: 2px;
+    --radius-lg: 3px;
+
+    /* The families, as type.css names them */
+    --font-sans: 'Schibsted Grotesk Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+    --font-display: 'Archivo', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+    --font-mono: 'DM Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 
     color-scheme: dark;
+    accent-color: var(--color-primary-600);
     background-color: var(--color-page);
     color: var(--color-fg);
-    /* Tailwind's sans stack, which is what the app sets its text in. */
-    font-family: ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+    font-family: var(--font-sans);
     line-height: 1.5;
     -webkit-text-size-adjust: 100%;
     text-size-adjust: 100%;
@@ -70,6 +140,7 @@
 }
 
 body {
+    position: relative;
     margin: 0;
     min-height: 100vh;
     display: flex;
@@ -84,12 +155,16 @@ h1,
 h2,
 h3,
 p,
-ul {
+ol,
+ul,
+dl,
+dd {
     margin: 0;
 }
 
-/* Without bullets, Safari's VoiceOver stops announcing a list as one, so every list on these pages
+/* Without markers, Safari's VoiceOver stops announcing a list as one, so every list on these pages
    says role="list" in the markup. */
+ol,
 ul {
     padding: 0;
     list-style: none;
@@ -100,26 +175,130 @@ svg {
     flex-shrink: 0;
 }
 
+/* -- The roles and shapes, as the app writes them once ------------------------------------------------- */
+
+.type-display {
+    font-family: var(--font-display);
+    font-stretch: 125%;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    line-height: 0.95;
+}
+
+.type-title {
+    font-family: var(--font-display);
+    font-stretch: 100%;
+    font-weight: 700;
+    letter-spacing: -0.005em;
+}
+
+.type-kicker {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    line-height: 1.4;
+    font-weight: 400;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+}
+
+.type-meta {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    line-height: 1.5;
+    letter-spacing: 0;
+}
+
+.rule-heavy {
+    border-top: 2px solid var(--color-rule);
+}
+
 a {
-    color: var(--color-primary-400);
-    text-underline-offset: 2px;
+    color: var(--color-fg-strong);
 }
 
-a:hover {
-    color: var(--color-primary-300);
+/* A link in running text: the strong text colour, underlined in a hairline that darkens to it under the
+   pointer. */
+.text-link {
+    color: var(--color-fg-strong);
+    text-decoration-line: underline;
+    text-decoration-color: var(--color-line-strong);
+    text-underline-offset: 4px;
+    transition: text-decoration-color 150ms;
 }
 
+@media (hover: hover) {
+    .text-link:hover {
+        text-decoration-color: var(--color-fg-strong);
+    }
+}
+
+/* The keyboard's ring: the accent, clear of whatever it rings. On the lime button the gap between them is
+   the page's ink, so the ring still reads as a ring. */
 a:focus-visible {
     outline: 2px solid var(--color-focus);
-    outline-offset: 2px;
-    border-radius: 2px;
+    outline-offset: 3px;
+    border-radius: var(--radius-sm);
 }
 
-/* -- Frame ---------------------------------------------------------------- */
+/* Both buttons are 44px tall at the least, as every target on these pages is. */
+.btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.625rem;
+    min-height: 2.75rem;
+    padding: 0.75rem 1.5rem;
+    border-radius: var(--radius-sm);
+    font-size: 1rem;
+    line-height: 1.25;
+    text-decoration: none;
+}
 
+.btn svg {
+    width: 1.125rem;
+    height: 1.125rem;
+}
+
+/* One filled button a place, for what the place is for: lime, with the page's ink on it, 11:1. */
+.btn-primary {
+    background-color: var(--color-primary-500);
+    color: var(--color-on-primary);
+    font-weight: 700;
+    transition: background-color 150ms;
+}
+
+.btn-outline {
+    border: 1px solid var(--color-line-strong);
+    color: var(--color-fg-strong);
+    font-weight: 600;
+    transition: border-color 150ms;
+}
+
+@media (hover: hover) {
+    .btn-primary:hover {
+        background-color: var(--color-primary-600);
+    }
+
+    .btn-outline:hover {
+        border-color: var(--color-fg-muted);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        transition: none !important;
+        animation: none !important;
+    }
+}
+
+/* -- The frame ----------------------------------------------------------------------------------------- */
+
+/* The app's page width and gutters: 80rem, and 1, 1.5 or 2rem a side. */
 .wrap {
     width: 100%;
-    max-width: 64rem;
+    max-width: 80rem;
     margin-inline: auto;
     padding-inline: 1rem;
 }
@@ -127,6 +306,12 @@ a:focus-visible {
 @media (min-width: 40rem) {
     .wrap {
         padding-inline: 1.5rem;
+    }
+}
+
+@media (min-width: 64rem) {
+    .wrap {
+        padding-inline: 2rem;
     }
 }
 
@@ -141,18 +326,19 @@ a:focus-visible {
     min-height: 4rem;
 }
 
+/* The wordmark as the navbar sets it: Archivo bold beside the mark, "List" in the logo's lime. */
 .brand {
     display: inline-flex;
     align-items: center;
     gap: 0.625rem;
-    color: var(--color-fg);
-    font-size: 1.125rem;
-    font-weight: 700;
-    text-decoration: none;
-}
-
-a.brand:hover {
+    min-height: 2.75rem;
     color: var(--color-fg-strong);
+    font-family: var(--font-display);
+    font-stretch: 100%;
+    font-weight: 700;
+    font-size: 1.25rem;
+    letter-spacing: -0.025em;
+    text-decoration: none;
 }
 
 .brand-mark {
@@ -161,11 +347,11 @@ a.brand:hover {
 }
 
 .brand-accent {
-    color: var(--color-brand-lime);
+    color: var(--color-logo-word);
 }
 
-/* The logo's own colours, as the app draws it. The mask's white and black are not colours anybody
-   sees: white keeps what is under it, black cuts the badge's gap out of the tile. */
+/* The logo's own colours, as the app draws it. The mask's white and black are not colours anybody sees:
+   white keeps what is under it, black cuts the badge's gap out of the tile. */
 .logo-tile {
     fill: var(--color-brand-navy);
 }
@@ -176,281 +362,541 @@ a.brand:hover {
 }
 
 .logo-badge {
-    fill: var(--color-brand-lime);
+    fill: var(--color-logo-badge);
 }
 
 .logo-check {
-    stroke: var(--color-brand-navy);
+    stroke: var(--color-logo-tick);
 }
 
-/* -- The pitch ------------------------------------------------------------ */
-
-.hero {
-    border-bottom: 1px solid var(--color-line);
-    /* The app's landing hero without a game's art behind it: the primary's deep tint, fading into
-       the page. */
-    background: linear-gradient(to bottom right, var(--color-primary-950), var(--color-page) 55%);
-    background-clip: padding-box;
+/* -- The pixel matrix ----------------------------------------------------------------------------------
+ * The app's default look (ADR 0085), copied from PagePattern.css: a dot-matrix panel in the lime behind the
+ * top of the page, fading out by half a screen, its glow up at the right, and a few cells lit that breathe.
+ * The top one only; the app's second, at the foot of a long page, would sit behind this short page's
+ * footer. Two drawings in pattern/, copies of the app's, used as masks, so the colour is the token's.
+ * Still under prefers-reduced-motion, by the rule above.
+ */
+.page-pattern {
+    position: absolute;
+    inset: 0 0 auto;
+    height: 100svh;
+    z-index: -1;
+    pointer-events: none;
 }
 
+.page-pattern::before,
+.page-pattern::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-repeat: no-repeat;
+    background-position: top;
+    background-size: 100% 100svh;
+    mask-repeat: repeat, no-repeat;
+    mask-position: 0 0, top;
+    mask-composite: intersect;
+}
+
+/* Each layer's flat colour is a gradient from the colour to itself, never a background-color, which
+   Chromium can flash across the whole box while a fast scroll outruns its painting (PagePattern.css). */
+.page-pattern::before {
+    --flat: color-mix(in srgb, var(--color-primary-500) 9%, transparent);
+    background-image:
+        radial-gradient(ellipse 55% 70% at 78% 0%, color-mix(in srgb, var(--color-primary-500) 32%, transparent), transparent 75%),
+        linear-gradient(var(--flat), var(--flat));
+    mask-image:
+        url('pattern/dot-matrix.svg'),
+        linear-gradient(to bottom, black 15%, rgb(0 0 0 / 0.85) 30%, rgb(0 0 0 / 0.6) 40%, rgb(0 0 0 / 0.35) 46%, transparent 50%);
+    mask-size: 8px 8px, 100% 100svh;
+}
+
+.page-pattern::after {
+    --flat: color-mix(in srgb, var(--color-primary-500) 40%, transparent);
+    background-image:
+        radial-gradient(ellipse 50% 65% at 78% 0%, color-mix(in srgb, var(--color-primary-500) 31%, transparent), transparent 80%),
+        linear-gradient(var(--flat), var(--flat));
+    mask-image: url('pattern/dot-matrix-lit.svg'), linear-gradient(to bottom, black 10%, transparent 50%);
+    mask-size: 640px 480px, 100% 100svh;
+    animation: page-pattern-breathe 6s steps(5, jump-none) infinite alternate;
+}
+
+@keyframes page-pattern-breathe {
+    from { opacity: 0.45; }
+    to { opacity: 1; }
+}
+
+/* -- The welcome --------------------------------------------------------------------------------------- */
+
+/* One column below a desktop's width, held to the page's: an implicit column would grow to the drawing's
+   one-line tabs and scroll the whole page sideways on a phone. */
 .hero .wrap {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    align-items: center;
+    gap: 3.5rem 5rem;
     padding-block: 3.5rem;
 }
 
 @media (min-width: 40rem) {
     .hero .wrap {
-        padding-block: 5rem;
+        padding-block: 6rem 5rem;
     }
 }
 
-.badge {
-    display: inline-block;
+@media (min-width: 64rem) {
+    .hero .wrap {
+        grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+    }
+}
+
+.kicker {
     margin-bottom: 1.25rem;
-    padding: 0.25rem 0.75rem;
-    border: 1px solid color-mix(in srgb, var(--color-primary-500) 45%, transparent);
-    border-radius: 999px;
-    background: color-mix(in srgb, var(--color-primary-900) 45%, transparent);
-    color: var(--color-primary-300);
-    font-size: 0.75rem;
-    font-weight: 600;
-    letter-spacing: 0.05em;
-    text-transform: uppercase;
+    color: var(--color-fg-muted);
 }
 
 h1 {
-    max-width: 42rem;
     color: var(--color-fg-strong);
-    font-size: 1.875rem;
-    font-weight: 700;
-    line-height: 1.2;
-    letter-spacing: -0.01em;
+    font-size: 2.25rem;
+    text-wrap: balance;
 }
 
 @media (min-width: 40rem) {
     h1 {
-        font-size: 2.25rem;
+        font-size: 3.375rem;
     }
 }
 
 @media (min-width: 64rem) {
     h1 {
-        font-size: 3rem;
+        font-size: 3.5rem;
     }
 }
 
 .accent {
     color: var(--color-primary-400);
-    /* "in one list" is one phrase, and short enough to fit a phone on one line. */
-    white-space: nowrap;
 }
 
 .lead {
-    max-width: 40rem;
-    margin-top: 1rem;
+    max-width: 36rem;
+    margin-top: 2rem;
     color: var(--color-fg-soft);
-    font-size: 1rem;
+    font-size: 1.125rem;
     line-height: 1.625;
 }
 
 @media (min-width: 40rem) {
     .lead {
-        font-size: 1.125rem;
+        font-size: 1.25rem;
     }
 }
 
-.actions {
-    margin-top: 2rem;
-}
-
-/* The one filled button. White on the primary's 600 is 5.3 to 1, and on 500 only 3.8 (#246), so the
-   pointer darkens it to 700, at 6.8, rather than lightening it the way the app's buttons still do. */
-.button {
-    display: inline-flex;
+/* The ways in, side by side where they fit and under each other where they do not. The test run's block is
+   one element in the markup, so that it comes off whole, but lays its flag and its button out as items of
+   this row: the flag on a line of its own, the button beside the Discord's. */
+.ways-in {
+    display: flex;
+    flex-wrap: wrap;
     align-items: center;
-    min-height: 2.75rem;
-    padding: 0.625rem 1.25rem;
-    border-radius: 0.75rem;
-    background: var(--color-primary-600);
-    color: var(--color-on-primary);
-    font-weight: 600;
-    text-decoration: none;
-    box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.3);
+    gap: 0.875rem 1.25rem;
+    margin-top: 2.25rem;
 }
 
-.button:hover {
-    background: var(--color-primary-700);
-    color: var(--color-on-primary);
+.trial-way-in {
+    display: contents;
 }
 
-.button:focus-visible {
-    outline: 2px solid var(--color-fg-strong);
-    outline-offset: 3px;
-    border-radius: 0.75rem;
+/* The flag over the way in: a lit pixel, as the matrix behind the page lights its own, and the words. */
+.trial-flag {
+    flex-basis: 100%;
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+    color: var(--color-primary-400);
 }
 
-/* -- Sections ------------------------------------------------------------- */
-
-.section .wrap {
-    padding-block: 3rem;
+.trial-flag::before {
+    content: '';
+    width: 0.5rem;
+    height: 0.5rem;
+    background: var(--color-primary-500);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary-500) 25%, transparent);
 }
 
-.section + .section .wrap {
-    padding-top: 0;
-}
-
-h2 {
-    margin-bottom: 1.25rem;
-    color: var(--color-fg-strong);
-    font-size: 1.25rem;
-    font-weight: 700;
-}
-
-.features {
-    display: grid;
-    gap: 1rem;
+/* -- The drawing of the lists --------------------------------------------------------------------------
+ * The product drawn in the page's own markup, never photographed: a screenshot would bring a game's
+ * cover art onto a site that hosts nothing of anybody else's. The games are made up, and their covers
+ * are tints. A box with a ground of its own, as what floats keeps in the app, opened by the heavy rule.
+ */
+.demo {
+    padding: 1.25rem 1.25rem 1.5rem;
+    border-top: 2px solid var(--color-rule);
+    border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+    background: var(--color-surface);
+    box-shadow: 0 30px 60px -20px rgb(0 0 0 / 0.6);
 }
 
 @media (min-width: 40rem) {
-    .features {
+    .demo {
+        padding: 1.5rem 1.75rem 1.75rem;
+    }
+}
+
+/* One line, as the lists page's tabs are, cut off under a fade where the panel is too narrow for all five. */
+.demo-tabs {
+    display: flex;
+    gap: 1.25rem;
+    overflow: hidden;
+    border-bottom: 1px solid var(--color-line);
+    color: var(--color-fg-muted);
+    font-size: 0.875rem;
+    mask-image: linear-gradient(to right, black calc(100% - 2.5rem), transparent);
+}
+
+.demo-tab {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.375rem;
+    padding-block: 0.625rem;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+    white-space: nowrap;
+}
+
+.demo-tab.is-current {
+    border-bottom-color: var(--color-primary-500);
+    color: var(--color-fg-strong);
+    font-weight: 600;
+}
+
+.demo-tab .type-meta {
+    color: var(--color-fg-faint);
+}
+
+.demo-row {
+    display: grid;
+    grid-template-columns: 2.5rem minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 1rem;
+    padding-block: 0.875rem;
+    border-bottom: 1px solid var(--color-line);
+}
+
+/* A cover with no art: a tint of the page, darker at its foot, as a sleeve would be. */
+.demo-cover {
+    aspect-ratio: 3 / 4;
+    border-radius: var(--radius-sm);
+    background: linear-gradient(160deg, var(--tint), var(--color-sunken));
+    box-shadow: inset 0 0 0 1px var(--color-line);
+}
+
+.demo-cover.is-a { --tint: var(--color-primary-950); }
+.demo-cover.is-b { --tint: var(--color-raised); }
+.demo-cover.is-c { --tint: color-mix(in srgb, var(--color-playthrough-normally) 35%, var(--color-sunken)); }
+
+.demo-name {
+    display: grid;
+    gap: 0.125rem;
+    min-width: 0;
+}
+
+.demo-name .type-title {
+    color: var(--color-fg-strong);
+    font-size: 1rem;
+    line-height: 1.3;
+}
+
+.demo-name .type-meta {
+    color: var(--color-fg-faint);
+}
+
+/* The user's score in half stars, the one control the app gives it (ADR 0021): five, filled in the star's
+   colour, the rest a hairline's. Under the game's line on a phone, where beside it there is no room. */
+.demo-stars {
+    width: 5rem;
+    height: auto;
+}
+
+@media (max-width: 29.99rem) {
+    .demo-row {
+        grid-template-columns: 2.5rem minmax(0, 1fr);
+        row-gap: 0.5rem;
+    }
+
+    .demo-cover {
+        grid-row: span 2;
+    }
+
+    .demo-stars {
+        grid-column: 2;
+    }
+}
+
+.star-on {
+    fill: var(--color-star);
+}
+
+.star-off {
+    fill: var(--color-line-strong);
+}
+
+.demo-runs {
+    margin-top: 1.25rem;
+}
+
+.demo-runs .type-kicker {
+    color: var(--color-fg-muted);
+}
+
+.demo-run {
+    display: grid;
+    grid-template-columns: 0.25rem minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 0.875rem;
+    margin-top: 0.75rem;
+}
+
+/* The run's type, in its colour, as a bar of the completion times draws it. */
+.demo-run::before {
+    content: '';
+    align-self: stretch;
+    border-radius: var(--radius-sm);
+    background: var(--run);
+}
+
+.demo-run.is-normally { --run: var(--color-playthrough-normally); }
+.demo-run.is-rushed { --run: var(--color-playthrough-rushed); }
+
+.demo-run-what {
+    display: grid;
+    min-width: 0;
+}
+
+.demo-run-what .type-title {
+    color: var(--color-fg-strong);
+    font-size: 0.9375rem;
+}
+
+.demo-run-what .type-meta {
+    color: var(--color-fg-faint);
+}
+
+.demo-hours {
+    color: var(--color-fg-strong);
+    font-size: 1.5rem;
+}
+
+/* -- The sections -------------------------------------------------------------------------------------- */
+
+.section .wrap {
+    padding-block: 2rem 4rem;
+}
+
+@media (min-width: 40rem) {
+    .section .wrap {
+        padding-bottom: 5rem;
+    }
+}
+
+/* A section's head, as the home page's: the heavy rule, the title set large under it, and the line about
+   it across from the title. */
+.section-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.5rem 2rem;
+    padding-top: 1rem;
+    margin-bottom: 2rem;
+}
+
+h2 {
+    color: var(--color-fg-strong);
+    font-size: 2.25rem;
+}
+
+@media (min-width: 40rem) {
+    h2 {
+        font-size: 3rem;
+    }
+}
+
+.section-head p {
+    color: var(--color-fg-muted);
+    font-size: 0.875rem;
+}
+
+/* The test run, as the settings set their parts: each under a hairline, its label as a kicker beside it
+   from a tablet's width, over it below. */
+.trial-facts > div {
+    display: grid;
+    gap: 0.375rem 2rem;
+    padding-block: 1.25rem;
+    border-bottom: 1px solid var(--color-line);
+}
+
+.trial-facts > div:first-child {
+    padding-top: 0;
+}
+
+@media (min-width: 48rem) {
+    .trial-facts > div {
+        grid-template-columns: 12rem minmax(0, 44rem);
+        align-items: baseline;
+    }
+}
+
+.trial-facts dt {
+    color: var(--color-fg-muted);
+}
+
+.trial-facts dd {
+    color: var(--color-fg);
+    font-size: 1.0625rem;
+    line-height: 1.6;
+}
+
+.trial-facts dd strong {
+    color: var(--color-fg-strong);
+    font-weight: 600;
+}
+
+.trial-end {
+    margin-top: 2rem;
+}
+
+/* What it keeps, as the welcome's contents list: a number in the accent, the title, a line under it. */
+.contents {
+    display: grid;
+    column-gap: 3rem;
+}
+
+@media (min-width: 48rem) {
+    .contents {
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 }
 
-@media (min-width: 64rem) {
-    .features {
+@media (min-width: 72rem) {
+    .contents {
         grid-template-columns: repeat(3, minmax(0, 1fr));
     }
 }
 
-.feature {
-    padding: 1.25rem;
-    border: 1px solid var(--color-line);
-    border-radius: 1rem;
-    background: color-mix(in srgb, var(--color-surface) 60%, transparent);
+.contents li {
+    display: grid;
+    grid-template-columns: 3.5rem minmax(0, 1fr);
+    gap: 1rem;
+    padding-block: 1.25rem;
+    border-bottom: 1px solid var(--color-line);
 }
 
-.feature-icon {
-    width: 1.5rem;
-    height: 1.5rem;
-    margin-bottom: 0.75rem;
-    color: var(--color-primary-400);
+.contents .number {
+    color: var(--color-primary-500);
+    font-size: 2.25rem;
+    line-height: 1;
 }
 
-h3 {
+.contents h3 {
     color: var(--color-fg-strong);
-    font-size: 1rem;
-    font-weight: 600;
+    font-size: 1.25rem;
+    line-height: 1.25;
 }
 
-.feature p {
+.contents p {
     margin-top: 0.375rem;
     color: var(--color-fg-muted);
     font-size: 0.9375rem;
 }
 
-/* The five lists, each with its status's colour, as the profile's breakdown draws them. */
-.statuses {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.375rem;
-    margin-top: 0.75rem;
-}
-
-.status {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.375rem;
-    padding: 0.125rem 0.5rem;
-    border: 1px solid var(--color-line-strong);
-    border-radius: 999px;
-    color: var(--color-fg-soft);
-    font-size: 0.8125rem;
-}
-
-.status::before {
-    content: "";
-    width: 0.5rem;
-    height: 0.5rem;
-    border-radius: 50%;
-    background: var(--dot);
-}
-
-.status-backlog { --dot: var(--color-status-backlog); }
-.status-playing { --dot: var(--color-status-playing); }
-.status-on-hold { --dot: var(--color-status-on-hold); }
-.status-finished { --dot: var(--color-status-finished); }
-.status-dropped { --dot: var(--color-status-dropped); }
-
-.next {
-    display: grid;
-    gap: 0.75rem;
-    max-width: 44rem;
-}
-
-.next li {
-    position: relative;
-    padding-left: 1.5rem;
-    color: var(--color-fg-soft);
-}
-
-.next li::before {
-    content: "";
-    position: absolute;
-    left: 0.25rem;
-    top: 0.6em;
-    width: 0.5rem;
-    height: 0.5rem;
-    border-radius: 2px;
-    background: var(--color-primary-500);
-}
-
-.after-list {
-    max-width: 44rem;
-    margin-top: 1.5rem;
-    color: var(--color-fg-muted);
-}
-
-/* -- Not found ------------------------------------------------------------ */
+/* -- Not found ----------------------------------------------------------------------------------------- */
 
 .not-found .wrap {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    padding-block: 6rem;
-    text-align: center;
+    padding-block: 4rem 6rem;
 }
 
-.not-found h1 {
-    font-size: 1.875rem;
+@media (min-width: 40rem) {
+    .not-found .wrap {
+        padding-block: 7rem 9rem;
+    }
 }
 
 .not-found .lead {
-    margin-inline: auto;
-    color: var(--color-fg-muted);
-    font-size: 1rem;
+    max-width: 32rem;
 }
 
-/* -- Foot ----------------------------------------------------------------- */
+.not-found .ways-in {
+    margin-top: 2.5rem;
+}
 
-.site-footer {
-    border-top: 1px solid var(--color-line);
-    background: color-mix(in srgb, var(--color-sunken) 40%, transparent);
+/* -- The foot ------------------------------------------------------------------------------------------ */
+
+.site-footer .wrap {
+    padding-block: 2.5rem 2rem;
+}
+
+.foot-brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.75rem;
+    color: var(--color-fg-strong);
+    font-size: 1.25rem;
+}
+
+@media (min-width: 40rem) {
+    .foot-brand {
+        font-size: 1.5rem;
+    }
+}
+
+.foot-brand .brand-mark {
+    width: 2rem;
+    height: 2rem;
+}
+
+.foot-line {
+    max-width: 24rem;
+    margin-top: 1rem;
     color: var(--color-fg-muted);
     font-size: 0.875rem;
 }
 
-.site-footer .wrap {
+.foot-meta {
     display: flex;
     flex-wrap: wrap;
+    align-items: center;
     justify-content: space-between;
-    gap: 0.5rem 1.5rem;
-    padding-block: 1.5rem;
+    gap: 0.5rem 2rem;
+    margin-top: 2.5rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid var(--color-line);
+    color: var(--color-fg-muted);
 }
 
-.site-footer a {
+.foot-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0 1.5rem;
+}
+
+/* A link on its own line is a 44px target, though its words are small. */
+.foot-links a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 2.75rem;
     color: var(--color-fg-soft);
+    text-decoration: none;
+    transition: color 150ms;
 }
 
-.site-footer a:hover {
-    color: var(--color-fg-strong);
+@media (hover: hover) {
+    .foot-links a:hover {
+        color: var(--color-fg-strong);
+    }
+}
+
+/* The 404's foot has no wordmark over its line, so the line starts under the heavy rule. */
+.foot-meta:first-child {
+    margin-top: 0;
+    padding-top: 0;
+    border-top: 0;
 }
