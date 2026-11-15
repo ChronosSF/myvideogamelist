@@ -29,8 +29,10 @@ can be compared side by side. A change to the original does not reach the page b
   faces from `myvideogamelist.client/src/assets/fonts/` (`npm run fonts` cuts them), Schibsted
   Grotesk's and DM Mono's Latin files from the client's `@fontsource` packages. Each family's
   licence, the SIL Open Font License, is beside its files and goes with them;
-- the pixel matrix, from `myvideogamelist.client/src/components/PagePattern.css`, and its two
-  drawings in `site/pattern/`, from `myvideogamelist.client/src/assets/`;
+- the pixel matrix, from `myvideogamelist.client/src/components/PagePattern.css`: its two layers,
+  their masks and glows, and the lit cells' breathing, the steps and the ramp that replaces them where
+  `linear()` is supported (#484); and its two drawings in `site/pattern/`, from
+  `myvideogamelist.client/src/assets/`;
 - the logo, from `myvideogamelist.client/src/components/Logo.tsx`: its mask, tile, triangle, badge
   and tick, drawn inline in `site/index.html` (twice), `site/404.html` and `share/share.html`, with
   its colours as classes in `site/style.css`;

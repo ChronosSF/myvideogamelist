@@ -375,7 +375,8 @@ a:focus-visible {
 
 /* -- The pixel matrix ----------------------------------------------------------------------------------
  * The app's default look (ADR 0085), copied from PagePattern.css: a dot-matrix panel in the lime behind the
- * top of the page, fading out by half a screen, its glow up at the right, and a few cells lit that breathe.
+ * top of the page, fading out by half a screen, its glow up at the right, and a few cells lit that breathe
+ * through five levels.
  * The top one only; the app's second, at the foot of a long page, would sit behind this short page's
  * footer. Two drawings in pattern/, copies of the app's, used as masks, so the colour is the token's.
  * Still under prefers-reduced-motion, by the rule above.
@@ -422,6 +423,16 @@ a:focus-visible {
     mask-image: url('pattern/dot-matrix-lit.svg'), linear-gradient(to bottom, black 10%, transparent 50%);
     mask-size: 640px 480px, 100% 100svh;
     animation: page-pattern-breathe 6s steps(5, jump-none) infinite alternate;
+}
+
+/* The same five levels, with a short ramp from each to the next where the steps above jump, as the app has
+   them since #484: of the six seconds one way, each level is held for 16%, about a second, and the next is
+   reached over 5%. A jump read as a stutter. `linear()` is the easing that can hold a level, and a browser
+   without it keeps the steps, which is why they are the declared value and this is behind @supports. */
+@supports (animation-timing-function: linear(0, 1)) {
+    .page-pattern::after {
+        animation-timing-function: linear(0 0% 16%, 0.25 21% 37%, 0.5 42% 58%, 0.75 63% 79%, 1 84% 100%);
+    }
 }
 
 @keyframes page-pattern-breathe {
