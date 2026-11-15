@@ -2,7 +2,8 @@
 
 **Status:** Accepted; deployed by hand once dev is open (`infra/README.md`, "Production, until #98"). Amends
 [0066](0066-a-holding-page-until-production-takes-the-domain.md) §1, §5 and §6, and its list of what is not
-on the page. The call to action comes off when the test run ends (§5).
+on the page, and [0085](0085-the-pixel-matrix-in-the-accent-is-the-default-look.md)'s note that the holding
+page keeps no pattern. The call to action comes off when the test run ends (§5).
 
 ## Context
 
@@ -26,8 +27,8 @@ on the page. The call to action comes off when the test run ends (§5).
 
 ### 1. The page leads with the test run, and says only what is true of it
 
-The welcome is the home page's: the same headline and lead, the drawing of the lists beside them. Under the
-lead are two ways in, a lime **Try the test run** to `https://dev.myvideogamelist.net/` and the Discord,
+The welcome is the home page's headline, and its lead with the playthroughs added; beside them, where the
+home page has its contents list, is the drawing of the lists (§2). Under the lead are two ways in, a lime **Try the test run** to `https://dev.myvideogamelist.net/` and the Discord,
 outlined beside it. A section, **The test run**, then says five things and no more:
 
 - what it is: the real application, at that address, open for about two weeks while it is tested;
@@ -36,7 +37,8 @@ outlined beside it. A section, **The test run**, then says five things and no mo
 - that it is a test and things may break, and that the Discord and the support address are where to say so;
 - that one reason for it is to collect exports from other trackers to build the importer on
   ([#125](https://github.com/ChronosSF/myvideogamelist/issues/125)), that the importer reads Grouvee's today,
-  and that an export goes to the Discord;
+  and that an export goes to the support address or to the Discord. The address comes first, and the page
+  says why: an export holds somebody's whole library, and a file posted to a public server is public;
 - that signing up asks for an email address, confirmed by a link
   ([0089](0089-an-account-signs-in-once-its-address-is-confirmed.md)), with links to dev's privacy policy and
   terms.
@@ -53,8 +55,9 @@ section, so it comes off with it.
 ### 2. The product is drawn, never photographed
 
 The page shows what the tracker keeps in its own markup and stylesheet: the lists' tabs, three games in
-Playing with their hours and the reader's own score in half stars, and one game's two playthroughs, each
-with its type's colour. The games are made up and their covers are tints of the page.
+Playing with their hours, two of them with the reader's own score in half stars, and one game's two
+playthroughs, each with its type's colour. The tabs are in the app's order, `LIST_IDS`'s. The games are made up
+and their covers are tints of the page.
 
 A screenshot would be quicker and would date the moment the app changed, but above all it would carry game
 covers, and the holding page's bucket holds nothing of anybody else's (0066 §1). Drawn, the picture is in the
@@ -107,12 +110,18 @@ the same on any machine. It leaves out the pixel matrix: Chromium fetches a mask
 page opened from disk cannot satisfy (seen: "blocked by CORS policy" for both drawings), and the glow then
 draws unmasked over the whole top.
 
+Its address carries a version, `/share.png?v=2`, so that nothing that kept the "Coming soon" image under the
+old address can serve it for the new one. The distribution keeps no query string in its cache key and sends
+none to the bucket (`HoldingStack.cs`, 0066 §4), so every version is the same file. The next image is `v=3`.
+
 ### 5. The call to action comes off when the test run ends
 
 The trial ends before production launches, and the page then goes back to having no way in. **The button and
-the section are one block each in `index.html`, between `TEST RUN` comments, and so is the share image's
-flag**, so that taking them off is deleting them. `holding/README.md` lists the rest: the Discord becomes the
-filled button, the head's title and descriptions lose "open for testing", the share image is drawn again.
+the section are one block each in `index.html`, opened and closed by `TEST RUN` comments, and so is the share
+image's flag**, so that taking them off is deleting them. `holding/README.md` lists the rest: the Discord
+becomes the filled button, the head's title and descriptions lose "open for testing", the share image is drawn
+again under the next version, and this record's status and its row in the index say the call to action is
+off.
 
 It has to come off **no later than dev closes to the public**: when its basic auth goes back on, the button
 leads to a 401, and when dev is parked, to nothing. Until then, removing it is the same hand deploy as any

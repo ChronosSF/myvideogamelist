@@ -17,7 +17,8 @@
         draws unmasked over the whole top.
 
         The flag between the "TEST RUN" comments is the test run's (ADR 0100). When the test ends it
-        comes off, the image is drawn again, and the page's og:image:alt loses "Open for testing".
+        comes off with its two rules below, the image is drawn again, the page's og:image:alt loses "Open
+        for testing", and its og:image address takes the next version.
     -->
     <link rel="stylesheet" href="../site/style.css">
     <style>
@@ -62,6 +63,7 @@
             line-height: 0.98;
         }
 
+        /* The test run's flag (ADR 0100), which goes with it. */
         .flag {
             margin-top: 40px;
             gap: 14px;
@@ -111,16 +113,16 @@
         <p class="headline type-display">Every game you&rsquo;ve played, <span class="accent">in one list</span></p>
         <!-- TEST RUN (ADR 0100): from here... -->
         <p class="flag type-kicker trial-flag">Open for testing</p>
-        <!-- ...to here. -->
+        <!-- TEST RUN: ...to here. -->
         <p class="domain type-meta">myvideogamelist.net</p>
     </div>
 
     <div class="demo" aria-hidden="true">
         <div class="demo-tabs">
-            <span class="demo-tab is-current">Playing <span class="type-meta">3</span></span>
             <span class="demo-tab">Backlog <span class="type-meta">41</span></span>
-            <span class="demo-tab">Finished <span class="type-meta">128</span></span>
+            <span class="demo-tab is-current">Playing <span class="type-meta">3</span></span>
             <span class="demo-tab">On Hold <span class="type-meta">2</span></span>
+            <span class="demo-tab">Finished <span class="type-meta">128</span></span>
         </div>
 
         <div class="demo-row">

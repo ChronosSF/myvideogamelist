@@ -4,13 +4,16 @@
  * the one accent, Archivo, Schibsted Grotesk and DM Mono, corners of a pixel or two, and sections that
  * open with a heavy rule rather than sitting in boxes.
  *
- * A static file cannot import anything, so four things here are copies of the app's, by value, under
- * the app's own names so that the two can be compared line by line. holding/README.md lists them:
+ * A static file cannot import anything, so six things here are copies of the app's, by value, under
+ * the app's own names so that the two can be compared line by line. holding/README.md lists them, with
+ * the copies in the pages themselves:
  *   - the colour tokens, from myvideogamelist.client/src/theme.css, the default palette's;
  *   - the corner tokens, from myvideogamelist.client/src/index.css;
  *   - the four font faces, from myvideogamelist.client/src/type.css, and their files in fonts/;
  *   - the type roles, the heavy rule, the link and the two buttons, from type.css and index.css,
- *     written out here as classes where the app has Tailwind utilities.
+ *     written out here as classes where the app has Tailwind utilities;
+ *   - the logo's colours, as components/Logo.tsx gives them;
+ *   - the pixel matrix, from components/PagePattern.css, and its two drawings in pattern/.
  * Only what these pages use is copied, and nothing below writes a colour any other way.
  *
  * Everything is served from this origin. The distribution's content policy admits this stylesheet, the
@@ -240,7 +243,8 @@ a:focus-visible {
     border-radius: var(--radius-sm);
 }
 
-/* Both buttons are 44px tall at the least, as every target on these pages is. */
+/* Both buttons are 44px tall at the least, as every link that stands on its own is on these pages. A link
+   inside a sentence is as tall as its line, which WCAG 2.5.8 allows an inline target. */
 .btn {
     display: inline-flex;
     align-items: center;
@@ -541,7 +545,12 @@ h1 {
     }
 }
 
-/* One line, as the lists page's tabs are, cut off under a fade where the panel is too narrow for all five. */
+/* One line, cut off under a fade where the panel is too narrow for all five tabs: from 28rem of the panel's
+   own width they fit, at the page's type and at the share image's, and the fade goes. */
+.demo {
+    container: demo / inline-size;
+}
+
 .demo-tabs {
     display: flex;
     gap: 1.25rem;
@@ -550,6 +559,12 @@ h1 {
     color: var(--color-fg-muted);
     font-size: 0.875rem;
     mask-image: linear-gradient(to right, black calc(100% - 2.5rem), transparent);
+}
+
+@container demo (min-width: 28rem) {
+    .demo-tabs {
+        mask-image: none;
+    }
 }
 
 .demo-tab {

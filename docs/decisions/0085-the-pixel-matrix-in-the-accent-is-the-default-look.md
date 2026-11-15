@@ -79,5 +79,8 @@ they are.
   until somebody signs in there.
 - **The favicon, the share image and the holding page are unchanged.** They are drawn in the brand's colours
   with no pattern, and 0082 redraws them once #208 settles.
+
+  > **Amended by [0100](0100-the-holding-page-points-at-the-test-run.md)** for the holding page, which is
+  > now drawn in the default look, the pixel matrix included. Its share image still has no pattern.
 - **Choosing a look stays for admins only.** The settings card still shows everybody else the choices as
   Coming soon, with Pixel matrix and Accent now the ones marked.

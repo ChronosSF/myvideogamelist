@@ -16,9 +16,9 @@
         the image is wide. Added to it: the image's size, which a page with one fixed image can state,
         so that an unfurler can lay the image out before it has fetched it.
 
-        Two blocks are the test run's, each between a "TEST RUN" comment and its end: the way in, in the
-        welcome, and the section about it. They come off when the test run ends; holding/README.md says
-        what goes with them.
+        Two blocks are the test run's, each opened by a "TEST RUN ... from here" comment and closed by a
+        "TEST RUN ... to here" one: the way in, in the welcome, and the section about it. They come off
+        when the test run ends; holding/README.md says what goes with them, this paragraph included.
     -->
     <title>MyVideoGameList - A video game tracker, open for testing</title>
     <meta name="description" content="A video game tracker for your lists, scores, reviews and playthroughs, and the release dates of the games you want. Open for testing for about two weeks.">
@@ -28,7 +28,11 @@
     <meta property="og:title" content="MyVideoGameList - A video game tracker, open for testing">
     <meta property="og:description" content="A video game tracker for your lists, scores, reviews and playthroughs, and the release dates of the games you want. Open for testing for about two weeks.">
     <meta property="og:url" content="https://myvideogamelist.net/">
-    <meta property="og:image" content="https://myvideogamelist.net/share.png">
+    <!-- The image's address carries its version, so that whatever kept the "Coming soon" image under
+         the old address cannot serve it for this one. The distribution keeps no query string in its
+         cache key and sends none to the bucket (HoldingStack.cs), so every version is the same file.
+         A new image is a new number. -->
+    <meta property="og:image" content="https://myvideogamelist.net/share.png?v=2">
     <meta property="og:image:alt" content="MyVideoGameList: every game you've played, in one list. Open for testing.">
     <meta property="og:image:width" content="1200">
     <meta property="og:image:height" content="630">
@@ -88,8 +92,8 @@
                                 </svg>
                             </a>
                         </div>
-                        <!-- ...to here. Once it is gone, the Discord below is the one way in: give it
-                             btn-primary in place of btn-outline. -->
+                        <!-- TEST RUN, the way in: ...to here. Once it is gone, the Discord below is
+                             the one way in: give it btn-primary in place of btn-outline. -->
 
                         <!-- The invite is DISCORD_INVITE_URL in myvideogamelist.client/src/lib/links.ts,
                              which is its source of truth: a static page cannot import it, so a new invite
@@ -100,12 +104,12 @@
 
                 <!-- The product, drawn rather than photographed (style.css says why). One picture to
                      assistive technology, which reads its label; the sections below say the same in words. -->
-                <div class="demo" role="img" aria-label="A drawing of the lists: three games in Playing, with their hours and your score in stars, and the two playthroughs of one of them.">
+                <div class="demo" role="img" aria-label="A drawing of the lists: three games in Playing with their hours, two of them scored in stars, and the two playthroughs of one of them.">
                     <div class="demo-tabs">
-                        <span class="demo-tab is-current">Playing <span class="type-meta">3</span></span>
                         <span class="demo-tab">Backlog <span class="type-meta">41</span></span>
-                        <span class="demo-tab">Finished <span class="type-meta">128</span></span>
+                        <span class="demo-tab is-current">Playing <span class="type-meta">3</span></span>
                         <span class="demo-tab">On Hold <span class="type-meta">2</span></span>
+                        <span class="demo-tab">Finished <span class="type-meta">128</span></span>
                         <span class="demo-tab">Dropped <span class="type-meta">6</span></span>
                     </div>
 
@@ -150,7 +154,7 @@
                         <span class="demo-cover is-c"></span>
                         <span class="demo-name">
                             <span class="type-title">The Long Archive</span>
-                            <span class="type-meta">PlayStation 5 &middot; started this week</span>
+                            <span class="type-meta">PS5 &middot; 2 h played</span>
                         </span>
                         <svg class="demo-stars" viewBox="0 0 128 24" width="80" height="15" aria-hidden="true" focusable="false">
                             <use href="#star" class="star-off"/>
@@ -222,7 +226,10 @@
                         <dd>
                             It imports a library from Grouvee today. One reason for the test is to collect
                             exports from other trackers to build the importer on, so if you keep your games
-                            somewhere else, bring an export from there to the Discord.
+                            somewhere else, send an export from there to
+                            <a class="text-link" href="mailto:support@myvideogamelist.net">support@myvideogamelist.net</a>
+                            or bring it to the Discord. An export holds your whole library, so the email is the
+                            private way to send one.
                         </dd>
                     </div>
                     <div>
@@ -240,7 +247,7 @@
                 </p>
             </div>
         </section>
-        <!-- ...to here. -->
+        <!-- TEST RUN, the section: ...to here. -->
 
         <section class="section" aria-labelledby="what-it-keeps">
             <div class="wrap">
@@ -255,7 +262,7 @@
                         <div>
                             <h3 class="type-title">Your lists</h3>
                             <p>
-                                Playing, Backlog, On Hold, Finished and Dropped. A game sits in one at a
+                                Backlog, Playing, On Hold, Finished and Dropped. A game sits in one at a
                                 time and moves as you play, and the backlog keeps the order you&rsquo;ll
                                 play it in.
                             </p>
@@ -276,8 +283,8 @@
                         <div>
                             <h3 class="type-title">Scores and reviews</h3>
                             <p>
-                                Your own score, in half stars, and a review you keep to yourself or publish
-                                on your profile and the game&rsquo;s page.
+                                Your own score, in half stars, and a review you keep to yourself or, once your
+                                profile is public, share on it and on the game&rsquo;s page.
                             </p>
                         </div>
                     </li>
