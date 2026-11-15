@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Caching.Memory;
 using MyVideoGameList.Server.Data;
 using MyVideoGameList.Server.DTOs;
@@ -36,11 +37,17 @@ public class PlaythroughServiceTests
     /// context's own <c>HasData</c>, so these tests resolve the three keys the migration seeds
     /// rather than a local copy that could drift from them.
     /// </summary>
+    /// <remarks>
+    /// A start and a finish run in a transaction under the entry's row lock, which the in-memory
+    /// provider has neither of: the warning it raises for the transaction is ignored, so these tests run
+    /// the decisions on the service's real path, and <c>PlaythroughStartFlowTests</c> runs the lock.
+    /// </remarks>
     private static ApplicationDbContext NewDb()
     {
         var db = new ApplicationDbContext(
             new DbContextOptionsBuilder<ApplicationDbContext>()
                 .UseInMemoryDatabase(Guid.NewGuid().ToString())
+                .ConfigureWarnings(warnings => warnings.Ignore(InMemoryEventId.TransactionIgnoredWarning))
                 .Options);
         db.Database.EnsureCreated();
         return db;
@@ -117,6 +124,231 @@ public class PlaythroughServiceTests
         var updated = await NewService(db).UpdateAsync(UserId, GameId, other.Id, Input());
 
         Assert.Null(updated);
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // Starting and finishing, as the yes to a move's question (ADR 0097)
+    // ---------------------------------------------------------------------------------------
+
+    private static readonly DateOnly Today = new(2026, 11, 15);
+
+    private static ListService NewListService(ApplicationDbContext db) =>
+        new(db, NSubstitute.Substitute.For<IGameCacheService>(), new FixedClock(Midday), EdgeFakes.Withdrawals(db));
+
+    [Fact]
+    public async Task StartAsync_GameWithNoUnfinishedRun_StartsAnUntypedRunOnThatDayAndNothingElse()
+    {
+        using var db = NewDb();
+        await NewListService(db).SetListEntryAsync(UserId, GameId, ListStatusKeys.Playing);
+
+        var step = await NewService(db).StartAsync(UserId, GameId, Today);
+
+        Assert.Null(step.Refusal);
+        var run = db.UserGamePlaythroughs.Single();
+        Assert.Equal(step.Playthrough!.Id, run.Id);
+        Assert.Equal(Today, run.StartedOn);
+        Assert.Null(run.FinishedOn);
+        Assert.Null(run.TypeId);
+        Assert.Null(run.PlatformId);
+        Assert.Null(run.MinutesPlayed);
+        Assert.Null(run.Notes);
+
+        // The move's event and nothing more: a run writes no event and moves no status (ADR 0025 §4).
+        Assert.Single(db.UserGameEvents);
+        Assert.Equal(db.ListStatuses.Single(s => s.Key == ListStatusKeys.Playing).Id, db.UserGameEntries.Single().StatusId);
+    }
+
+    [Fact]
+    public async Task StartAsync_GameWithAnUnfinishedRun_RefusesAndWritesNothing()
+    {
+        // A yes that arrives after another tab answered, or after a run was started by hand.
+        using var db = NewDb();
+        await AddFor(db, UserId, input: Input(startedOn: new DateOnly(2026, 8, 2), finishedOn: null));
+
+        var step = await NewService(db).StartAsync(UserId, GameId, Today);
+
+        Assert.Equal(PlaythroughStepRefusal.AlreadyUnfinished, step.Refusal);
+        Assert.Null(step.Playthrough);
+        Assert.Single(db.UserGamePlaythroughs);
+    }
+
+    [Fact]
+    public async Task StartAsync_UnfinishedRunWithNoDates_StillCountsAsUnfinished()
+    {
+        using var db = NewDb();
+        await AddFor(db, UserId, input: Input(startedOn: null, finishedOn: null));
+
+        var step = await NewService(db).StartAsync(UserId, GameId, Today);
+
+        Assert.Equal(PlaythroughStepRefusal.AlreadyUnfinished, step.Refusal);
+    }
+
+    [Fact]
+    public async Task StartAsync_EveryRunFinished_StartsAReplay()
+    {
+        using var db = NewDb();
+        await AddFor(db, UserId, input: Input(startedOn: new DateOnly(2025, 1, 2), finishedOn: new DateOnly(2025, 2, 3)));
+
+        var step = await NewService(db).StartAsync(UserId, GameId, Today);
+
+        Assert.Null(step.Refusal);
+        Assert.Equal(2, db.UserGamePlaythroughs.Count());
+    }
+
+    [Fact]
+    public async Task StartAsync_AnotherUsersUnfinishedRun_DoesNotStopIt()
+    {
+        using var db = NewDb();
+        await AddFor(db, OtherUserId, input: Input(finishedOn: null));
+
+        var step = await NewService(db).StartAsync(UserId, GameId, Today);
+
+        Assert.Null(step.Refusal);
+        Assert.Single(db.UserGamePlaythroughs, p => p.UserId == UserId);
+    }
+
+    [Fact]
+    public async Task StartAsync_AnUnfinishedRunOfAnotherGame_DoesNotStopIt()
+    {
+        using var db = NewDb();
+        await AddFor(db, UserId, gameId: 99, input: Input(finishedOn: null));
+
+        var step = await NewService(db).StartAsync(UserId, GameId, Today);
+
+        Assert.Null(step.Refusal);
+    }
+
+    [Fact]
+    public async Task StartAsync_GameWhoseDataWasDeleted_CreatesTheEntryWithNoStatus()
+    {
+        // The move created the entry, and "delete my data" took it away before the yes arrived. A run
+        // of a game in no list is legitimate (ADR 0025 §4), and the yes was the reader's.
+        using var db = NewDb();
+
+        var step = await NewService(db).StartAsync(UserId, GameId, Today);
+
+        Assert.Null(step.Refusal);
+        Assert.Null(db.UserGameEntries.Single().StatusId);
+        Assert.Empty(db.UserGameEvents);
+    }
+
+    [Fact]
+    public async Task FinishAsync_UnfinishedRun_PutsTheDayOnItAndChangesNothingElse()
+    {
+        using var db = NewDb();
+        var run = await AddFor(db, UserId, input: Input(startedOn: new DateOnly(2026, 8, 2), finishedOn: null, minutesPlayed: 600));
+
+        var step = await NewService(db).FinishAsync(UserId, GameId, run.Id, Today);
+
+        Assert.Null(step.Refusal);
+        Assert.Equal(Today, step.Playthrough!.FinishedOn);
+        var stored = db.UserGamePlaythroughs.Single();
+        Assert.Equal(Today, stored.FinishedOn);
+        Assert.Equal(new DateOnly(2026, 8, 2), stored.StartedOn);
+        Assert.Equal(600, stored.MinutesPlayed);
+        Assert.Empty(db.UserGameEvents);
+    }
+
+    [Fact]
+    public async Task FinishAsync_RunWithNoStartDate_Finishes()
+    {
+        using var db = NewDb();
+        var run = await AddFor(db, UserId, input: Input(startedOn: null, finishedOn: null));
+
+        var step = await NewService(db).FinishAsync(UserId, GameId, run.Id, Today);
+
+        Assert.Null(step.Refusal);
+        Assert.Equal(Today, db.UserGamePlaythroughs.Single().FinishedOn);
+    }
+
+    [Fact]
+    public async Task FinishAsync_RunStartedThatSameDay_Finishes()
+    {
+        using var db = NewDb();
+        var run = await AddFor(db, UserId, input: Input(startedOn: Today, finishedOn: null));
+
+        var step = await NewService(db).FinishAsync(UserId, GameId, run.Id, Today);
+
+        Assert.Null(step.Refusal);
+    }
+
+    [Fact]
+    public async Task FinishAsync_RunFinishedAlready_RefusesAndLeavesItsDate()
+    {
+        // Another tab said yes first, or the reader finished it by hand on another day.
+        using var db = NewDb();
+        var run = await AddFor(db, UserId, input: Input(startedOn: new DateOnly(2026, 8, 2), finishedOn: new DateOnly(2026, 11, 1)));
+
+        var step = await NewService(db).FinishAsync(UserId, GameId, run.Id, Today);
+
+        Assert.Equal(PlaythroughStepRefusal.AlreadyFinished, step.Refusal);
+        Assert.Equal(new DateOnly(2026, 11, 1), db.UserGamePlaythroughs.Single().FinishedOn);
+    }
+
+    [Fact]
+    public async Task FinishAsync_RunStartingAfterTheDay_RefusesRatherThanBreakTheDateOrder()
+    {
+        // The client does not ask about such a run, but it may have been edited since it asked.
+        using var db = NewDb();
+        var run = await AddFor(db, UserId, input: Input(startedOn: new DateOnly(2026, 11, 20), finishedOn: null));
+
+        var step = await NewService(db).FinishAsync(UserId, GameId, run.Id, Today);
+
+        Assert.Equal(PlaythroughStepRefusal.StartsLater, step.Refusal);
+        Assert.Null(db.UserGamePlaythroughs.Single().FinishedOn);
+    }
+
+    [Fact]
+    public async Task FinishAsync_AnotherUsersRun_IsNotFoundAndLeftAlone()
+    {
+        using var db = NewDb();
+        var theirs = await AddFor(db, OtherUserId, input: Input(finishedOn: null));
+
+        var step = await NewService(db).FinishAsync(UserId, GameId, theirs.Id, Today);
+
+        Assert.Equal(PlaythroughStepRefusal.NotFound, step.Refusal);
+        Assert.Null(db.UserGamePlaythroughs.Single().FinishedOn);
+    }
+
+    [Fact]
+    public async Task FinishAsync_RunOfAnotherGame_IsNotFound()
+    {
+        using var db = NewDb();
+        var other = await AddFor(db, UserId, gameId: 99, input: Input(finishedOn: null));
+
+        var step = await NewService(db).FinishAsync(UserId, GameId, other.Id, Today);
+
+        Assert.Equal(PlaythroughStepRefusal.NotFound, step.Refusal);
+    }
+
+    [Fact]
+    public async Task FinishAsync_OneOfTwoUnfinishedRuns_FinishesThatOneOnly()
+    {
+        // Runs logged by hand may overlap. The yes is to the run the move named, and to no other.
+        using var db = NewDb();
+        var older = await AddFor(db, UserId, input: Input(startedOn: new DateOnly(2026, 1, 5), finishedOn: null));
+        var newer = await AddFor(db, UserId, input: Input(startedOn: new DateOnly(2026, 8, 2), finishedOn: null));
+
+        await NewService(db).FinishAsync(UserId, GameId, newer.Id, Today);
+
+        Assert.Equal(Today, db.UserGamePlaythroughs.Single(p => p.Id == newer.Id).FinishedOn);
+        Assert.Null(db.UserGamePlaythroughs.Single(p => p.Id == older.Id).FinishedOn);
+    }
+
+    [Fact]
+    public async Task StartAsync_AndFinishAsync_DropTheGamesCachedMedians()
+    {
+        using var db = NewDb();
+        var cache = NewCache();
+        var service = NewService(db, cache);
+        cache.Set(PlaythroughService.CommunityTimesKey(GameId), new CommunityTimesDto([]));
+
+        var started = await service.StartAsync(UserId, GameId, Today);
+        Assert.False(cache.TryGetValue(PlaythroughService.CommunityTimesKey(GameId), out _));
+
+        cache.Set(PlaythroughService.CommunityTimesKey(GameId), new CommunityTimesDto([]));
+        await service.FinishAsync(UserId, GameId, started.Playthrough!.Id, Today);
+        Assert.False(cache.TryGetValue(PlaythroughService.CommunityTimesKey(GameId), out _));
     }
 
     // ---------------------------------------------------------------------------------------

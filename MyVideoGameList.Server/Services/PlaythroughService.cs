@@ -152,6 +152,134 @@ public class PlaythroughService(
         return ToDto(playthrough, typeKeys);
     }
 
+    public async Task<PlaythroughStep> StartAsync(
+        string userId, int gameId, DateOnly startedOn, CancellationToken cancellationToken = default)
+    {
+        var step = await UnderEntryLockAsync(userId, gameId, async token =>
+        {
+            // The guard this exists for: a yes that arrives late, or twice from two tabs, starts nothing
+            // while a run is going. Checked under the entry's lock, so a second request waits for the
+            // first's commit and then finds its run.
+            if (await UnfinishedPlaythroughs.AnyAsync(db, userId, gameId, token))
+                return PlaythroughStep.Refused(PlaythroughStepRefusal.AlreadyUnfinished);
+
+            var typeKeys = await TypeKeysByIdAsync(token);
+
+            // The move that asked created the entry, but the reader may have deleted the game's data
+            // since; a run of a game in no list is legitimate either way (ADR 0025 §4).
+            var entry = await EntryStore.FindOrCreateAsync(db, clock, userId, gameId, token);
+
+            var now = clock.GetUtcNow();
+            var playthrough = new UserGamePlaythrough
+            {
+                UserId = userId,
+                Entry = entry,
+                // Untyped, and with nothing but the day: how thoroughly, on what and for how long are
+                // the reader's to add, which the form the question opens asks for.
+                StartedOn = startedOn,
+                CreatedAt = now,
+                UpdatedAt = now
+            };
+
+            db.UserGamePlaythroughs.Add(playthrough);
+            await db.SaveChangesAsync(token);
+            return PlaythroughStep.Done(ToDto(playthrough, typeKeys));
+        }, cancellationToken);
+
+        if (step.Refusal is null) EvictCommunityTimes(gameId);
+        return step;
+    }
+
+    public async Task<PlaythroughStep> FinishAsync(
+        string userId,
+        int gameId,
+        int playthroughId,
+        DateOnly finishedOn,
+        CancellationToken cancellationToken = default)
+    {
+        var step = await UnderEntryLockAsync(userId, gameId, async token =>
+        {
+            var playthrough = await FindOwnedAsync(userId, gameId, playthroughId, token);
+            if (playthrough is null) return PlaythroughStep.Refused(PlaythroughStepRefusal.NotFound);
+
+            // That run, and only while it is unfinished: a finish date already on it was put there by
+            // its owner, in another tab or by an earlier yes, and is not this question's to replace.
+            if (playthrough.FinishedOn is not null)
+                return PlaythroughStep.Refused(PlaythroughStepRefusal.AlreadyFinished);
+
+            // The client does not ask about a run that starts after the reader's today, but the run may
+            // have been edited since it asked. Refused here rather than left to
+            // CK_UserGamePlaythroughs_Dates_Order, which would answer a 500.
+            if (playthrough.StartedOn is DateOnly started && started > finishedOn)
+                return PlaythroughStep.Refused(PlaythroughStepRefusal.StartsLater);
+
+            playthrough.FinishedOn = finishedOn;
+            playthrough.UpdatedAt = clock.GetUtcNow();
+            await db.SaveChangesAsync(token);
+            return PlaythroughStep.Done(ToDto(playthrough, await TypeKeysByIdAsync(token)));
+        }, cancellationToken);
+
+        if (step.Refusal is null) EvictCommunityTimes(gameId);
+        return step;
+    }
+
+    /// <summary>
+    /// Runs a start or a finish in a transaction that holds the game's entry row, so that two of them for
+    /// one game take turns.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The entry is the row every run of a game hangs off, so its lock is the game's. <c>SELECT … FOR
+    /// UPDATE</c> blocks another transaction's until this one ends (PostgreSQL 18 §13.3.2), and at Read
+    /// Committed every statement after the wait reads a snapshot of its own (§13.2.1), so the second
+    /// request's check finds the run the first committed. A guard rather than a unique index, because runs
+    /// logged by hand may overlap and a constraint would refuse those too. The integration suite's
+    /// <c>PlaythroughStartFlowTests</c> shows two starts at once making one run.
+    /// </para>
+    /// <para>
+    /// An entry that does not exist yet locks nothing. Then two starts at once both create it, and the
+    /// unique index over <c>(UserId, GameId)</c> refuses the second one's entry and its run with it: still
+    /// one run. It takes a game whose data was deleted between the move and the yes.
+    /// </para>
+    /// <para>
+    /// The in-memory provider the unit tests run on has no row locks and no transactions, so the lock is
+    /// taken on a relational database only. Through the execution strategy, which never retries today,
+    /// because EF refuses a transaction the application begins under one that does (ADR 0038). If it ever
+    /// retries, an attempt reads the database afresh, and what an earlier one added stays tracked as saved,
+    /// so it is not written twice.
+    /// </para>
+    /// <para>
+    /// The commit is on <see cref="CancellationToken.None"/>, as every commit that keeps finished work is
+    /// (ADR 0038 §4): once the write has returned, a token cancelled now would only roll it back unasked.
+    /// </para>
+    /// </remarks>
+    private async Task<PlaythroughStep> UnderEntryLockAsync(
+        string userId,
+        int gameId,
+        Func<CancellationToken, Task<PlaythroughStep>> work,
+        CancellationToken cancellationToken)
+    {
+        var strategy = db.Database.CreateExecutionStrategy();
+
+        return await strategy.ExecuteAsync(async token =>
+        {
+            await using var transaction = await db.Database.BeginTransactionAsync(token);
+
+            if (db.Database.IsRelational())
+            {
+                await db.Database.ExecuteSqlAsync(
+                    $"""SELECT 1 FROM "UserGameEntries" WHERE "UserId" = {userId} AND "GameId" = {gameId} FOR UPDATE""",
+                    token);
+            }
+
+            var step = await work(token);
+
+            // A refusal wrote nothing, and the commit only ends the transaction and its lock.
+            await transaction.CommitAsync(CancellationToken.None);
+            return step;
+        }, cancellationToken);
+    }
+
     public async Task<bool> DeleteAsync(
         string userId, int gameId, int playthroughId, CancellationToken cancellationToken = default)
     {

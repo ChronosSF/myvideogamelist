@@ -30,8 +30,17 @@ public class ListsController(
         return Ok(lists);
     }
 
+    /// <summary>
+    /// Moves a game to a list, and says whether that changed anything and which of its playthroughs is
+    /// unfinished.
+    /// </summary>
+    /// <remarks>
+    /// The answer is what the client asks its question from, after the move has saved, whether to start
+    /// a playthrough or finish one (ADR 0097). It used to be a 204. A client from before it ignores the
+    /// body, and one from after it asks nothing of a 204 from an API still mid-deploy.
+    /// </remarks>
     [HttpPut("{gameId:int}")]
-    public async Task<IActionResult> SetListEntry(
+    public async Task<ActionResult<ListMoveDto>> SetListEntry(
         [Range(1, int.MaxValue)] int gameId,
         [FromBody] SetListEntryDto dto,
         CancellationToken cancellationToken)
@@ -41,8 +50,7 @@ public class ListsController(
         var user = await userManager.GetUserAsync(User);
         if (user is null) return Unauthorized();
 
-        await listService.SetListEntryAsync(user.Id, gameId, dto.Status, cancellationToken);
-        return NoContent();
+        return Ok(await listService.SetListEntryAsync(user.Id, gameId, dto.Status, cancellationToken));
     }
 
     /// <summary>
