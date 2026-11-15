@@ -255,6 +255,12 @@ jobs:
             ABSENT|DELETE_*)
               echo "::warning::The environment was parked while this run was in flight. Images $TAG are pushed; nothing is deployed."
               echo "present=false" >> "$GITHUB_OUTPUT" ;;
+            # A creation that failed and rolled back (UPDATE_ROLLBACK_* is an update's, and does not match).
+            # The CLI deletes a stack in ROLLBACK_COMPLETE or ROLLBACK_FAILED and creates it again, which
+            # is creating it, and that is resume's alone.
+            ROLLBACK_*)
+              echo "::warning::Mvgl-dev-App never finished being created ($STATUS), and creating it is resume's job. Images $TAG are pushed; nothing is deployed."
+              echo "present=false" >> "$GITHUB_OUTPUT" ;;
             *) echo "present=true" >> "$GITHUB_OUTPUT" ;;
           esac
 
