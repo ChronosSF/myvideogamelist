@@ -148,6 +148,9 @@ public class MyVideoGameListImportSourceTests
         Assert.Equal("Loved it", row.Notes);
         Assert.Equal(new DateTimeOffset(2024, 1, 2, 3, 4, 5, TimeSpan.Zero), row.AddedAt);
 
+        // When it arrived in its list, the source's own moment, as a Grouvee shelf's is (ADR 0087).
+        Assert.Equal(new DateTimeOffset(2024, 2, 1, 0, 0, 0, TimeSpan.Zero), row.StatusSince);
+
         // Named at upload from the cache, since the export carries no titles (ADR 0024).
         Assert.Equal(string.Empty, row.Title);
         Assert.Null(row.ReleaseYear);
@@ -339,5 +342,16 @@ public class MyVideoGameListImportSourceTests
         var row = Assert.Single(Source.Read(Export(entries: Entry().Replace("\"addedAt\": \"2024-01-02T03:04:05+00:00\",", ""))));
 
         Assert.Null(row.AddedAt);
+    }
+
+    [Fact]
+    public void Read_AnEntryWithNoStatusChangedAt_HasNoMoment()
+    {
+        // Null in a file this site wrote for a game that has never been in a list, and missing from
+        // an edited one; neither is the year 1, and neither is the import's clock (ADR 0087).
+        Assert.Null(Assert.Single(Source.Read(Export(entries: Entry().Replace(
+            "\"statusChangedAt\": \"2024-02-01T00:00:00+00:00\",", "\"statusChangedAt\": null,")))).StatusSince);
+        Assert.Null(Assert.Single(Source.Read(Export(entries: Entry().Replace(
+            "\"statusChangedAt\": \"2024-02-01T00:00:00+00:00\",", "")))).StatusSince);
     }
 }

@@ -1,7 +1,8 @@
 # 0087. An imported game arrives when its source says it did
 
 **Status:** Implemented. It amends [0026](0026-a-library-import-records-ownership-not-history.md) §5,
-which [0037](0037-a-tracker-import-carries-history.md) decision 5 applied to Grouvee: an imported status
+which [0037](0037-a-tracker-import-carries-history.md) decision 5 applied to Grouvee and
+[0083](0083-our-own-export-is-imported-as-any-trackers-is.md) §2 to our own export: an imported status
 now takes the moment its source gives for it, and stays null only where the source gives none.
 
 ## Context
@@ -63,7 +64,16 @@ When the import moves a game its owner already has into another list, the moment
 or null if the source has none: the moment the entry held dated its arrival in a list it has now left.
 When the import leaves the game in the list it was in, its owner's own moment stays.
 
-### 3. The ranking is not read
+### 3. Our own export brings its moment back too
+
+[0083](0083-our-own-export-is-imported-as-any-trackers-is.md) §2 held our export to every rule a
+tracker's file meets, "whatever wrote the file", and that is why this reaches it. Each entry in our
+export carries `statusChangedAt`, the moment it arrived in its list, and the import now reads it as it
+reads a Grouvee shelf's `date_added`. A file somebody edited can say anything there, as a Grouvee file
+can; a moment is a date on the entry, and nothing that counts or tells a history reads it. The event log
+still stays behind, as 0083 decided.
+
+### 4. The ranking is not read
 
 Left alone, Grouvee's ranking is the order the games were shelved, which the shelf times already give.
 Only somebody who reordered the shelf adds anything to it, and what they added may be when they played
@@ -72,7 +82,7 @@ agrees with all 159 finish dates in the file, and the shelf times disagree with 
 its owner moved by hand. Somebody else's could be "best first", and turned into dates it would be a
 history nobody lived. An owner whose ranking is a history can edit the file.
 
-### 4. What does not change
+### 5. What does not change
 
 No event is written ([0026](0026-a-library-import-records-ownership-not-history.md) §2), and `Origin`
 still says whether a status has one behind it. `ScoredAt` is never set by an import
