@@ -11,7 +11,7 @@ const UPDATED = '13 October 2026';
 const H2 = 'type-title text-xl text-fg-strong mt-10 mb-3';
 const P = 'text-fg-soft leading-relaxed mb-3';
 const LIST = 'list-disc pl-5 space-y-1.5 text-fg-soft leading-relaxed mb-3';
-const LINK = 'text-primary-400 hover:text-primary-300 underline underline-offset-2';
+const LINK = 'text-link';
 
 export function loader() {
     return { site: siteConfig() };
@@ -105,10 +105,14 @@ export default function TermsPage() {
                         backup service.
                     </p>
                     <p className={P}>
+                        What we keep about you, why, and for how long is in our{' '}
+                        <Link to="/privacy" className={LINK}>privacy policy</Link>.
+                    </p>
+                    <p className={P}>
                         You can download everything you have entered, at any time and for free, with
-                        {' '}<strong className="text-fg">Download my data</strong> on{' '}
-                        <Link to="/user" className={LINK}>your profile page</Link>. If your lists matter to you,
-                        keep a copy of your own.
+                        {' '}<strong className="text-fg">Download my data</strong> under{' '}
+                        <Link to="/user/settings#your-data" className={LINK}>Your data in your settings</Link>. If
+                        your lists matter to you, keep a copy of your own.
                     </p>
                     <p className={P}>
                         As far as the law allows, we are not responsible for data that is lost, or for anything
@@ -136,7 +140,7 @@ export default function TermsPage() {
                     <h2 className={H2}>Ending things</h2>
                     <p className={P}>
                         You can delete your account at any time with <strong className="text-fg">Delete my
-                        account</strong> on your profile page. That deletes everything in it for good, so download
+                        account</strong> in the same place. That deletes everything in it for good, so download
                         your data first if you want to keep it.
                     </p>
                     <p className={P}>

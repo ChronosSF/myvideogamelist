@@ -20,6 +20,8 @@ export default [
 
     // The rules for using the site, linked from the footer on every page (issue 141).
     route('terms', 'pages/TermsPage.tsx'),
+    // What the site keeps about a person and why, and its two cookies, linked beside the terms.
+    route('privacy', 'pages/PrivacyPage.tsx'),
 
     // Where the link in a confirmation email leads. The account and token follow the `#`, which no
     // request ever carries; the page reads them and posts them to the API (ADR 0089).

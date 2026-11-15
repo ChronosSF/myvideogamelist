@@ -24,7 +24,8 @@ const HEADING = 'type-kicker text-fg-muted mb-3';
  * that link `nofollow`, and forbid anything implying that Valve endorses the site. Both credits are
  * in `fg-muted` or brighter, because a credit nobody can read is not one.
  *
- * A link joins when its page exists: the privacy policy and the cookie settings come with issue 141.
+ * A link joins when its page exists: cookie settings come with a consent banner, which the site needs
+ * only once it sets a cookie that is not strictly necessary (issue 141).
  */
 export function SiteFooter() {
     return (
@@ -60,6 +61,7 @@ export function SiteFooter() {
                             <h2 className={HEADING}>Legal</h2>
                             <ul className="space-y-2">
                                 <li><Link to="/terms" className={LINK}>Terms of use</Link></li>
+                                <li><Link to="/privacy" className={LINK}>Privacy policy</Link></li>
                             </ul>
                         </div>
                     </nav>
