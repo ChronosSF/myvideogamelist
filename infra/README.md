@@ -259,7 +259,7 @@ CloudFront section, and `Edge.cs` says it again beside each one. Three things ar
   alone:
 
   ```bash
-  aws cloudfront create-invalidation --profile mvgl-dev --distribution-id <DistributionId output> --paths "/u/<name>*" "/sitemaps/profiles-*"
+  aws cloudfront create-invalidation --profile mvgl-dev --distribution-id <DistributionId output> --paths "/u/<publicId>*" "/sitemaps/profiles-*"
   ```
 
 ## The rate rule

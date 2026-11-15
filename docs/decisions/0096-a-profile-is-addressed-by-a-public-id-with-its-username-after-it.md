@@ -225,6 +225,6 @@ cooldown keeps its place. A change of letter case still skips it.
 - **Not proved here:** what CloudFront does with the 301 and its policy, and that the one path takes a renamed
   profile's copies under both names off the edge. Only a deploy shows it, as
   [#319](https://github.com/ChronosSF/myvideogamelist/issues/319) does for 0058.
-- **`infra/README.md` still gives `/u/<name>*`** as the path to invalidate a profile by hand. It reads
-  `/u/<publicId>*` now, and is left for after the edge's other change in flight
-  ([#438](https://github.com/ChronosSF/myvideogamelist/issues/438)), which edits that directory.
+- **`infra/README.md` gives `/u/<publicId>*`** as the path to invalidate a profile by hand, corrected once
+  the edge's other change in flight ([#438](https://github.com/ChronosSF/myvideogamelist/issues/438)), which
+  edits that directory, had merged.
