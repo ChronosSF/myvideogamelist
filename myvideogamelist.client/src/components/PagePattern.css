@@ -141,6 +141,14 @@
     --page-pattern-breathe: steps(5, jump-none);
 }
 
+/*
+ * Each layer's flat colour is an image, a gradient from the colour to itself, never a background-color.
+ * Chromium draws a tile it has not rasterised yet, which a fast scroll outruns, in a colour it picks for the
+ * layer from the plain fills painted across enough of it, and a gradient is not one. A background-color here
+ * was such a fill, the whole box and so the whole page for the bottom one, and the pick does not see the
+ * mask: a long page scrolled fast flashed the screen in the accent at the lit layer's strength, two fifths of
+ * it for the pixel matrix. The image is sized as the glow is, a screen at the end, all the mask ever leaves.
+ */
 .page-pattern::before,
 .page-pattern::after {
     content: '';
@@ -155,8 +163,10 @@
 }
 
 .page-pattern::before {
-    background-color: color-mix(in srgb, var(--page-pattern-ink) var(--page-pattern-lines), transparent);
-    background-image: radial-gradient(ellipse 55% 70% at var(--page-pattern-glow-at), color-mix(in srgb, var(--page-pattern-ink) var(--page-pattern-lines-glow), transparent), transparent 75%);
+    --page-pattern-flat: color-mix(in srgb, var(--page-pattern-ink) var(--page-pattern-lines), transparent);
+    background-image:
+        radial-gradient(ellipse 55% 70% at var(--page-pattern-glow-at), color-mix(in srgb, var(--page-pattern-ink) var(--page-pattern-lines-glow), transparent), transparent 75%),
+        linear-gradient(var(--page-pattern-flat), var(--page-pattern-flat));
     /* Eased rather than linear: slow at first, then quickly through the last few shades. A hairline this faint
        has a score of shades above the page, and as it fades the in-between ones that smooth its diagonals
        round away, so the tail is kept short rather than drawn out in stairs. */
@@ -167,8 +177,10 @@
 }
 
 .page-pattern::after {
-    background-color: color-mix(in srgb, var(--page-pattern-ink) var(--page-pattern-lit), transparent);
-    background-image: radial-gradient(ellipse 50% 65% at var(--page-pattern-glow-at), color-mix(in srgb, var(--page-pattern-ink) var(--page-pattern-lit-glow), transparent), transparent 80%);
+    --page-pattern-flat: color-mix(in srgb, var(--page-pattern-ink) var(--page-pattern-lit), transparent);
+    background-image:
+        radial-gradient(ellipse 50% 65% at var(--page-pattern-glow-at), color-mix(in srgb, var(--page-pattern-ink) var(--page-pattern-lit-glow), transparent), transparent 80%),
+        linear-gradient(var(--page-pattern-flat), var(--page-pattern-flat));
     mask-image: var(--page-pattern-lit-image), linear-gradient(var(--page-pattern-fade), black 10%, transparent 50%);
     mask-size: var(--page-pattern-lit-size), 100% 100svh;
     animation: page-pattern-breathe 6s var(--page-pattern-breathe) infinite alternate;
