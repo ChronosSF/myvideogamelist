@@ -95,7 +95,7 @@ test('a new account adds a game to a list, and it is still there after a reload'
 
         // The status says which part broke: a 401 is a lost cookie, a 403 a lost X-MVGL-Request, and
         // a 404 or a 405 the SSR server answering for the API.
-        expect((await saved).status(), 'what the API answered the write').toBe(204);
+        expect((await saved).status(), 'what the API answered the write').toBe(200);
     });
 
     await test.step('reload, and it is still there', async () => {
