@@ -5,7 +5,7 @@ import {
 import { flushSync } from 'react-dom';
 import type { GameDto } from '@/types/game';
 import {
-    type ListId, type ListEntryDto, type ListNames, type Ownership, type ViewMode,
+    type ListId, type ListEntryDto, type ListMoveDto, type ListNames, type Ownership, type ViewMode,
     HAND_ORDERED_LISTS, LIST_IDS, LIST_NAMES, emptyLists,
 } from '@/types/list';
 import { type SortState, DEFAULT_SORT, MANUAL_SORT, sortEntries } from '@/lib/listSort';
@@ -13,7 +13,8 @@ import { moveInHandOrder } from '@/lib/handOrderMove';
 import { useAuth } from '@/hooks/useAuth';
 import { apiFetch } from '@/lib/api';
 import {
-    ListsContext, type ListsContextValue, type ListsPending, type SaveListNamesResult, type SaveResult,
+    ListsContext, type ListMoves, type ListsContextValue, type ListsPending, type SavedMove, type SaveListNamesResult,
+    type SaveResult,
 } from './ListsContext';
 import { ListViewContext, type ListViewContextValue } from './ListViewContext';
 
@@ -448,6 +449,43 @@ function createPendingStore(): ListsPending & { publish: (next: ReadonlySet<numb
 }
 
 /**
+ * The moves the provider has saved, for whoever asks something after one (`ListMoves`). A plain list of
+ * listeners: a move is told once, as it happens, and nothing is kept to be read back.
+ */
+function createMovesStore(): ListMoves & { publish: (move: SavedMove) => void } {
+    const listeners = new Set<(move: SavedMove) => void>();
+    return {
+        subscribe: listener => {
+            listeners.add(listener);
+            return () => listeners.delete(listener);
+        },
+        publish: move => {
+            for (const listener of listeners) listener(move);
+        },
+    };
+}
+
+/**
+ * What a saved move answered, or null for an answer with nothing to read: an API from before ADR 0097,
+ * mid-deploy, answers a 204, and a body that is not the shape asks nothing rather than breaking the move.
+ */
+async function moveAnswer(res: Response): Promise<ListMoveDto | null> {
+    try {
+        const body = (await res.json()) as Partial<ListMoveDto> | null;
+        if (typeof body?.moved !== 'boolean') return null;
+        const run = body.unfinishedPlaythrough;
+        return {
+            moved: body.moved,
+            unfinishedPlaythrough: run && typeof run.id === 'number'
+                ? { id: run.id, startedOn: typeof run.startedOn === 'string' ? run.startedOn : null }
+                : null,
+        };
+    } catch {
+        return null;
+    }
+}
+
+/**
  * The render React last committed, as far as an action reads it: the provider's state, the account, and
  * where each game was in it.
  */
@@ -605,6 +643,10 @@ export function ListsProvider({ children }: { children: ReactNode }) {
         pending.publish(state.pending);
     }, [pending, state.pending]);
 
+    // Each saved move, told to whoever asks something after one. The same store for as long as the
+    // provider is mounted, so `addToList` stays the same function.
+    const [moves] = useState(createMovesStore);
+
     // The same account asking again: `FETCH_START` keeps the lists on screen, and the answer goes
     // through `reconciled` so a write still on its way is not undone by it.
     const reload = useCallback(() => setReloadToken(token => token + 1), []);
@@ -715,15 +757,23 @@ export function ListsProvider({ children }: { children: ReactNode }) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ status: listId }),
         }));
+        // Read before anything is settled, as a refusal's sentence is, so that the move's commit is one render.
+        const moveAnswered = res !== null && res.ok ? await moveAnswer(res) : null;
 
-        return settle(() => {
+        const saved = settle(() => {
             const saved = res !== null && res.ok;
             if (saved) dispatch({ type: 'CLEAR_MUTATION_ERROR', session });
             else rollBack(undo, 'Failed to update list. Please try again.');
             endPending(game.id);
             return saved;
         });
-    }, []);
+
+        // Told once the move is committed, and only a move the server saved: never the optimistic step,
+        // and never one rolled back (ADR 0097). Stamped with the session it began under, which is what the
+        // prompt drops it by when the account has changed since.
+        if (saved && moveAnswered !== null) moves.publish({ session, listId, game, answer: moveAnswered });
+        return saved;
+    }, [moves]);
 
     const removeFromList = useCallback(async (listId: ListId, gameId: number): Promise<boolean> => {
         const { state, session } = committed.current;
@@ -962,6 +1012,7 @@ export function ListsProvider({ children }: { children: ReactNode }) {
         mutationError: state.mutationError,
         reload,
         pending,
+        moves,
         addToList,
         removeFromList,
         isInList,
@@ -979,7 +1030,7 @@ export function ListsProvider({ children }: { children: ReactNode }) {
         saveListNames,
     }), [
         state.lists, state.loading, state.error, state.mutationError, state.names, state.namesStatus,
-        reload, pending, addToList, removeFromList, isInList, getListFor, scoreFor, setScore, moveInOrder,
+        reload, pending, moves, addToList, removeFromList, isInList, getListFor, scoreFor, setScore, moveInOrder,
         setOwnership, setNotes, setTags, deleteEntry, nameFor, saveListNames,
     ]);
 

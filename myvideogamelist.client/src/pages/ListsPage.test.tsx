@@ -12,7 +12,7 @@ import type { WishlistContextValue } from '@/contexts/WishlistContext';
 import { DEFAULT_SORT, MANUAL_SORT } from '@/lib/listSort';
 import type { UserProfile } from '@/types/auth';
 import { emptyLists, LIST_NAMES, type ListId } from '@/types/list';
-import { entry, listPending, platform, tag, userProfile } from '@/test/factories';
+import { entry, listMoves, listPending, platform, tag, userProfile } from '@/test/factories';
 
 /**
  * Auth and the lists, mocked rather than provided: both real providers fetch, and the page only
@@ -47,6 +47,7 @@ const lists: ListsContextValue = {
     mutationError: null,
     reload: vi.fn(),
     pending: listPending(),
+    moves: listMoves(),
     addToList: vi.fn(async () => true),
     removeFromList: vi.fn(async () => true),
     isInList: () => false,

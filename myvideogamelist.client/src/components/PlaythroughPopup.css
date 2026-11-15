@@ -1,0 +1,130 @@
+/* The playthrough form in a dialog, after a yes to the question a move asks (ADR 0097). The form is the
+   Your game tab's, whose classes are `game-yours-*` and sized for a sidebar; these size it for a dialog,
+   and on a phone make the dialog a sheet across the bottom. */
+
+@reference "../index.css";
+
+.playthrough-popup {
+    max-width: 480px;
+}
+
+/* A box over the page, opened by the heavy rule a section on the page is (ADR 0075). */
+.playthrough-popup-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    max-height: calc(100dvh - 2rem);
+    overflow-y: auto;
+    padding: 22px 24px 24px;
+    background: var(--color-surface);
+    border: 1px solid var(--color-line-strong);
+    border-top: 2px solid var(--color-rule);
+    border-radius: var(--radius-sm);
+    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.55);
+}
+
+.playthrough-popup .game-yours-playthrough-form {
+    gap: 16px;
+    padding-top: 0;
+    border-top: 0;
+}
+
+.playthrough-popup .game-yours-field {
+    gap: 6px;
+}
+
+.playthrough-popup .game-yours-field label {
+    font-size: 0.8125rem;
+    font-weight: 500;
+    letter-spacing: 0;
+    text-transform: none;
+    color: var(--color-fg-soft);
+}
+
+.playthrough-popup .game-yours-field select,
+.playthrough-popup .game-yours-field input {
+    height: 40px;
+    padding: 0 12px;
+    font-size: 0.875rem;
+    background: var(--color-page);
+    border-radius: var(--radius-sm);
+}
+
+.playthrough-popup .game-yours-field textarea {
+    padding: 10px 12px;
+    font-size: 0.875rem;
+    line-height: 1.45;
+    background: var(--color-page);
+    border-radius: var(--radius-sm);
+}
+
+.playthrough-popup .game-yours-field-pair {
+    gap: 14px;
+}
+
+.playthrough-popup .game-yours-hint {
+    font-size: 0.8125rem;
+    color: var(--color-fg-muted);
+}
+
+.playthrough-popup .game-yours-confirm {
+    gap: 10px;
+    padding-top: 2px;
+}
+
+.playthrough-popup .game-yours-confirm button {
+    height: 40px;
+    padding: 0 18px;
+    font-size: 0.875rem;
+}
+
+.playthrough-popup .game-yours-confirm button.primary {
+    @apply btn-primary;
+}
+
+.playthrough-popup .game-yours-confirm button:not(.primary) {
+    @apply btn-outline;
+    background: transparent;
+    font-weight: 400;
+}
+
+/* On a phone, a sheet across the bottom, its fields and buttons the height a thumb wants, and its text at
+   16px, under which a phone's browser zooms the page to a field it focuses. */
+@media (max-width: 639px) {
+    .playthrough-popup {
+        width: 100%;
+        max-width: none;
+        margin: auto 0 0;
+    }
+
+    .playthrough-popup-panel {
+        gap: 14px;
+        max-height: 92dvh;
+        padding: 20px 16px;
+        border-right: 0;
+        border-bottom: 0;
+        border-left: 0;
+        border-radius: 0;
+        box-shadow: 0 -18px 48px rgba(0, 0, 0, 0.5);
+    }
+
+    .playthrough-popup .game-yours-playthrough-form {
+        gap: 14px;
+    }
+
+    .playthrough-popup .game-yours-field select,
+    .playthrough-popup .game-yours-field input {
+        height: 44px;
+        font-size: 1rem;
+    }
+
+    .playthrough-popup .game-yours-field textarea {
+        font-size: 1rem;
+    }
+
+    .playthrough-popup .game-yours-confirm button {
+        flex: 1;
+        height: 44px;
+        font-size: 0.9375rem;
+    }
+}

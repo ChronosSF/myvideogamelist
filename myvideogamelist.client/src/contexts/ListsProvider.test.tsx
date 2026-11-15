@@ -1,12 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ListsProvider } from '@/contexts/ListsProvider';
 import { useLists } from '@/hooks/useLists';
 import { useListsPending } from '@/hooks/useListPending';
 import { useListView } from '@/hooks/useListView';
-import type { ListsContextValue } from '@/contexts/ListsContext';
+import type { ListsContextValue, SavedMove } from '@/contexts/ListsContext';
 import type { ListId, ListEntryDto } from '@/types/list';
 import { MANUAL_SORT, sortEntries } from '@/lib/listSort';
 import { entry, game } from '@/test/factories';
@@ -2124,5 +2124,109 @@ describe('a steady context', () => {
         expect(screen.getByTestId('list-playing')).toHaveTextContent('Celeste');
         expect(screen.getByTestId('list-finished')).toBeEmptyDOMElement();
         expect(screen.getByTestId('score')).toHaveTextContent('9');
+    });
+});
+
+describe('telling a saved move (ADR 0097)', () => {
+    /** Records every move the provider tells, as the playthrough prompt hears them. */
+    function MoveListener({ heard }: { heard: SavedMove[] }) {
+        const { moves } = useLists();
+        useEffect(() => moves.subscribe(move => heard.push(move)), [moves, heard]);
+        return null;
+    }
+
+    /** The provider's routes, with the move answering `answer`, or failing, or answering with no body. */
+    function stubMove(move: { answer?: unknown; status?: number; reject?: boolean }, release?: Promise<void>) {
+        vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+            const url = String(input);
+            const method = init?.method ?? 'GET';
+            if (method === 'GET' && url === '/api/lists') {
+                return new Response(JSON.stringify({ lists: { playing: [CELESTE] } }), { status: 200 });
+            }
+            if (method === 'GET') return new Response(JSON.stringify({ view: 'tiles', sorts: {}, names: {} }), { status: 200 });
+            if (method === 'PUT' && url === '/api/lists/1') {
+                await release;
+                if (move.reject) throw new TypeError('Failed to fetch');
+                return move.answer === undefined
+                    ? new Response(null, { status: move.status ?? 204 })
+                    : new Response(JSON.stringify(move.answer), { status: move.status ?? 200 });
+            }
+            return new Response(null, { status: 204 });
+        }));
+    }
+
+    async function renderListening(heard: SavedMove[]) {
+        render(<ListsProvider><Probe /><MoveListener heard={heard} /></ListsProvider>);
+        await waitFor(() => expect(screen.getByTestId('loading')).toHaveTextContent('false'));
+    }
+
+    it('tells the move once the server has saved it, with its answer and the account', async () => {
+        const answer = { moved: true, unfinishedPlaythrough: { id: 9, startedOn: '2026-08-02' } };
+        let release!: () => void;
+        stubMove({ answer }, new Promise<void>(resolve => { release = resolve; }));
+        const heard: SavedMove[] = [];
+        await renderListening(heard);
+
+        await userEvent.click(screen.getByRole('button', { name: 'move to finished' }));
+
+        // Moved on screen, and not yet told: the optimistic step asks nothing.
+        expect(screen.getByTestId('list-finished')).toHaveTextContent('Celeste');
+        expect(heard).toEqual([]);
+
+        await act(async () => release());
+        await waitFor(() => expect(heard).toHaveLength(1));
+        expect(heard[0]).toMatchObject({ session: ALICE.id, listId: 'finished', answer });
+        expect(heard[0].game.id).toBe(1);
+    });
+
+    it('tells nothing of a move that failed and was put back', async () => {
+        stubMove({ status: 500, answer: { title: 'nope' } });
+        const heard: SavedMove[] = [];
+        await renderListening(heard);
+
+        await userEvent.click(screen.getByRole('button', { name: 'move to finished' }));
+
+        await waitFor(() => expect(screen.getByTestId('list-playing')).toHaveTextContent('Celeste'));
+        expect(heard).toEqual([]);
+    });
+
+    it('tells nothing of a move whose request never arrived', async () => {
+        stubMove({ reject: true });
+        const heard: SavedMove[] = [];
+        await renderListening(heard);
+
+        await userEvent.click(screen.getByRole('button', { name: 'move to finished' }));
+
+        await waitFor(() => expect(screen.getByTestId('error')).toHaveTextContent('Failed to update list'));
+        expect(heard).toEqual([]);
+    });
+
+    it('tells nothing of a move answered with no body, as an API from before the answer does', async () => {
+        stubMove({ status: 204 });
+        const heard: SavedMove[] = [];
+        await renderListening(heard);
+
+        await userEvent.click(screen.getByRole('button', { name: 'move to finished' }));
+
+        await waitFor(() => expect(screen.getByTestId('pending')).toHaveTextContent('false'));
+        expect(screen.getByTestId('list-finished')).toHaveTextContent('Celeste');
+        expect(heard).toEqual([]);
+    });
+
+    it('keeps the move the same function across a save, as every write is (ADR 0086)', async () => {
+        stubMove({ answer: { moved: true, unfinishedPlaythrough: null } });
+        const seen: ListsContextValue['addToList'][] = [];
+        function Keeper() {
+            const lists = useLists();
+            seen.push(lists.addToList);
+            return null;
+        }
+        render(<ListsProvider><Probe /><Keeper /></ListsProvider>);
+        await waitFor(() => expect(screen.getByTestId('loading')).toHaveTextContent('false'));
+
+        await userEvent.click(screen.getByRole('button', { name: 'move to finished' }));
+        await waitFor(() => expect(screen.getByTestId('pending')).toHaveTextContent('false'));
+
+        expect(new Set(seen).size).toBe(1);
     });
 });

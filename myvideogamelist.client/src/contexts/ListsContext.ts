@@ -1,5 +1,5 @@
 import { createContext } from 'react';
-import type { ListId, ListEntryDto, ListNames, Ownership } from '@/types/list';
+import type { ListId, ListEntryDto, ListMoveDto, ListNames, Ownership } from '@/types/list';
 import type { GameDto } from '@/types/game';
 
 /**
@@ -34,6 +34,26 @@ export interface ListsPending {
 }
 
 /**
+ * A move the server has saved, with what it answered: the account it was made for, the list, the game,
+ * and whether it changed anything and which run is unfinished (ADR 0097).
+ */
+export interface SavedMove {
+    session: string | null;
+    listId: ListId;
+    game: GameDto;
+    answer: ListMoveDto;
+}
+
+/**
+ * Every move as it is saved, for whoever asks something after one: the playthrough prompt. Told once the
+ * move's answer is committed, and never about a move that failed and was put back. The same object for as
+ * long as the provider is mounted, as `pending` is, so that it changes nothing in the value.
+ */
+export interface ListMoves {
+    subscribe: (listener: (move: SavedMove) => void) => () => void;
+}
+
+/**
  * The lists, and everything that reads or writes them.
  *
  * Held steady (`docs/decisions/0086-*`): the value is the same object until something in it changes, and
@@ -57,6 +77,8 @@ export interface ListsContextValue {
     reload: () => void;
     /** The per-game locks. Read through the hooks in `@/hooks/useListPending`, never `current` while drawing. */
     pending: ListsPending;
+    /** Each move as it is saved, with the server's answer: what the playthrough prompt asks from (ADR 0097). */
+    moves: ListMoves;
 
     /**
      * Puts the game in a list, or moves it there. False when it is not there afterwards: the save failed and

@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useRef, useState } from 'react';
+import { type ReactNode, useContext, useEffect, useRef, useState } from 'react';
 import type { ProfileVisibility } from '@/types/auth';
 import type { GameDto } from '@/types/game';
 import type { ListId, Ownership } from '@/types/list';
@@ -17,9 +17,12 @@ import { useTags } from '@/hooks/useTags';
 import { type TagDto, tagsFor } from '@/types/tag';
 import { apiFetch } from '@/lib/api';
 import { type EntryStatus, GameEntryContext, type GameEntryContextValue } from '@/contexts/GameEntryContext';
+import { PlaythroughPromptContext } from '@/contexts/PlaythroughPromptContext';
 
 interface GameEntryProviderProps {
     game: GameDto;
+    /** Whose entry this is, as the user id: the account the page keys the provider on. */
+    account: string;
     /**
      * Whether the signed-in user's profile is public, which decides what marking their review for
      * anyone actually publishes. Passed in by the page, which already reads the account.
@@ -58,7 +61,7 @@ interface GameEntryProviderProps {
  * React applies during the commit itself. The page keeps the Overview tab outside it, so that the
  * remount when auth answers costs only the hero.
  */
-export function GameEntryProvider({ game, profileVisibility, onCommunityChange, children }: GameEntryProviderProps) {
+export function GameEntryProvider({ game, account, profileVisibility, onCommunityChange, children }: GameEntryProviderProps) {
     const {
         getListFor, addToList, removeFromList, setScore, setOwnership, setNotes, setTags, deleteEntry,
         nameFor, loading: listsLoading, error: listsError,
@@ -159,6 +162,39 @@ export function GameEntryProvider({ game, profileVisibility, onCommunityChange, 
 
         return () => controller.abort();
     }, [game.id, entryAttempt]);
+
+    // A run the playthrough prompt wrote for this game, from the toast or its popup (ADR 0097): shown here
+    // at once, so the Your game tab's list and the hero's line agree with it without a reload. A refusal
+    // carries no run, because something else wrote the runs since; they are read again. Only this
+    // account's: the provider is mounted per account, and a write told late for the previous one is not
+    // its own.
+    const { written } = useContext(PlaythroughPromptContext);
+    useEffect(() => {
+        let reread: AbortController | null = null;
+        const unsubscribe = written.subscribe(({ session, gameId, playthrough }) => {
+            if (gameId !== game.id || session !== account) return;
+
+            if (playthrough !== null) {
+                setPlaythroughs(current => sorted([...current.filter(p => p.id !== playthrough.id), playthrough]));
+                return;
+            }
+
+            reread?.abort();
+            const controller = new AbortController();
+            reread = controller;
+            fetch(`/api/entries/${game.id}/playthroughs`, { credentials: 'include', signal: controller.signal })
+                .then(res => (res.ok ? (res.json() as Promise<PlaythroughDto[]>) : null))
+                .then(runs => {
+                    if (runs !== null && !controller.signal.aborted) setPlaythroughs(sorted(runs));
+                })
+                // What is shown stays: it is only older than it might be, and the next read puts it right.
+                .catch(() => {});
+        });
+        return () => {
+            unsubscribe();
+            reread?.abort();
+        };
+    }, [written, game.id, account]);
 
     // A tag on this game that the account's tags do not know was made after they were read — in another
     // tab. Asked for again once, so its chip can be drawn; never more than once a mount, because a read

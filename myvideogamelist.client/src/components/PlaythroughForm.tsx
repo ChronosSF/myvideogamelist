@@ -14,6 +14,11 @@ interface PlaythroughFormProps {
     pending: boolean;
     /** What the server said, shown beside the form rather than as a page-level banner. */
     error: string | null;
+    /**
+     * The field a dialog focuses first, marked for it with `data-focus-first`: the hours, when the popup is
+     * opened to add them after a finish (ADR 0097). Without it, the first field is focused.
+     */
+    focusField?: 'hours';
 }
 
 /** Everything the form holds, as strings, which is what the inputs deal in. */
@@ -55,6 +60,7 @@ export function PlaythroughForm({
     onCancel,
     pending,
     error,
+    focusField,
 }: PlaythroughFormProps) {
     const fieldId = useId();
     // Seeded from the run when the form opens already editing one, as it does when a run's Edit opens
@@ -128,6 +134,8 @@ export function PlaythroughForm({
                     <input
                         id={`${fieldId}-hours`}
                         type="number"
+                        inputMode="numeric"
+                        data-focus-first={focusField === 'hours' || undefined}
                         min={0}
                         value={draft.hours}
                         onChange={event => set('hours', event.target.value)}
@@ -139,6 +147,7 @@ export function PlaythroughForm({
                     <input
                         id={`${fieldId}-minutes`}
                         type="number"
+                        inputMode="numeric"
                         min={0}
                         max={59}
                         value={draft.minutes}

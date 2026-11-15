@@ -291,6 +291,7 @@ export function GamePage() {
                 <GameEntryProvider
                     key={`${user.id}:${game.id}`}
                     game={game}
+                    account={user.id}
                     profileVisibility={user.profileVisibility}
                     onCommunityChange={community.reload}
                 >

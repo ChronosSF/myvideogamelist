@@ -14,6 +14,7 @@ import { AuthDialogProvider } from '@/contexts/AuthDialogProvider';
 import { ListsProvider } from '@/contexts/ListsProvider';
 import { WishlistProvider } from '@/contexts/WishlistProvider';
 import { FavouritesProvider } from '@/contexts/FavouritesProvider';
+import { PlaythroughPromptProvider } from '@/contexts/PlaythroughPromptProvider';
 import { TagsProvider } from '@/contexts/TagsProvider';
 import { SearchPacerProvider } from '@/contexts/SearchPacerProvider';
 import { LookProvider } from '@/contexts/LookProvider';
@@ -136,21 +137,28 @@ export default function Root() {
                         <FavouritesProvider>
                             {/* Around the navbar and the pages both: their searches spend one budget. */}
                             <SearchPacerProvider>
-                                <div className="app-root">
-                                    {topPattern && <PagePattern at="top" />}
-                                    <PagePattern at="bottom" />
-                                    {/* Around the navbar and the pages both: either may ask somebody to sign in. */}
-                                    <AuthDialogProvider>
-                                        <Navbar />
-                                        <main className="flex-1">
-                                            {/* Around the pages alone: the navbar and the footer draw no tag. */}
-                                            <TagsProvider>
-                                                <Outlet />
-                                            </TagsProvider>
-                                        </main>
-                                        <SiteFooter />
-                                    </AuthDialogProvider>
-                                </div>
+                                {/*
+                                  Inside the lists, whose saved moves it asks about, and around the pages, whose
+                                  game page shows the runs a yes writes. It draws the toast and the popup after
+                                  the pages, and neither is in the server render (ADR 0097).
+                                */}
+                                <PlaythroughPromptProvider>
+                                    <div className="app-root">
+                                        {topPattern && <PagePattern at="top" />}
+                                        <PagePattern at="bottom" />
+                                        {/* Around the navbar and the pages both: either may ask somebody to sign in. */}
+                                        <AuthDialogProvider>
+                                            <Navbar />
+                                            <main className="flex-1">
+                                                {/* Around the pages alone: the navbar and the footer draw no tag. */}
+                                                <TagsProvider>
+                                                    <Outlet />
+                                                </TagsProvider>
+                                            </main>
+                                            <SiteFooter />
+                                        </AuthDialogProvider>
+                                    </div>
+                                </PlaythroughPromptProvider>
                             </SearchPacerProvider>
                         </FavouritesProvider>
                     </WishlistProvider>

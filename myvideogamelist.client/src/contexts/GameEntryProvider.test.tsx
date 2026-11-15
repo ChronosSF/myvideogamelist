@@ -10,10 +10,11 @@ import { ListsContext, type ListsContextValue } from '@/contexts/ListsContext';
 import { WishlistContext, type WishlistContextValue } from '@/contexts/WishlistContext';
 import { FavouritesContext, type FavouritesContextValue } from '@/contexts/FavouritesContext';
 import { TagsContext, type TagsContextValue } from '@/contexts/TagsContext';
+import { PlaythroughPromptContext, type PlaythroughWritten } from '@/contexts/PlaythroughPromptContext';
 import type { ProfileVisibility } from '@/types/auth';
 import { LIST_NAMES, type ListId } from '@/types/list';
 import type { PlaythroughDto, ReviewDto } from '@/types/playthrough';
-import { entryDetail, game, listPending, platform, playthrough, review, tag } from '@/test/factories';
+import { entryDetail, game, listMoves, listPending, platform, playthrough, review, tag } from '@/test/factories';
 import type { TagDto } from '@/types/tag';
 
 // The row's sign-in prompts open the dialog through this. One object for every call: a mock handing back
@@ -36,7 +37,7 @@ function Controls({ profileVisibility, onCommunityChange }: {
     onCommunityChange: () => void;
 }) {
     return (
-        <GameEntryProvider game={CELESTE} profileVisibility={profileVisibility} onCommunityChange={onCommunityChange}>
+        <GameEntryProvider game={CELESTE} account="user-1" profileVisibility={profileVisibility} onCommunityChange={onCommunityChange}>
             <GameTrackingRow game={CELESTE} authLoading={false} linkToYours={false} />
             <GameYours authLoading={false} />
         </GameEntryProvider>
@@ -52,6 +53,7 @@ function contextValue(overrides: Partial<ListsContextValue> = {}): ListsContextV
         mutationError: null,
         reload: vi.fn(),
         pending: listPending(),
+        moves: listMoves(),
         addToList: vi.fn(async () => true),
         removeFromList: vi.fn(async () => true),
         isInList: () => false,
@@ -2027,5 +2029,95 @@ describe('GameEntryProvider tags', () => {
         await waitFor(() => expect(ctx.tags.adjustCounts).toHaveBeenCalledWith([1, 2], []));
         expect(chips()).toEqual([]);
         expect(screen.getByText('No tags on this game yet.')).toBeInTheDocument();
+    });
+});
+
+describe('a run the playthrough prompt wrote (ADR 0097)', () => {
+    /** The prompt's writes, as a store a test publishes to. */
+    function promptWrites() {
+        const listeners = new Set<(written: PlaythroughWritten) => void>();
+        return {
+            written: {
+                subscribe: (listener: (written: PlaythroughWritten) => void) => {
+                    listeners.add(listener);
+                    return () => { listeners.delete(listener); };
+                },
+            },
+            publish: (written: PlaythroughWritten) => act(() => {
+                for (const listener of listeners) listener(written);
+            }),
+        };
+    }
+
+    function renderWithPrompt(prompt: ReturnType<typeof promptWrites>) {
+        render(
+            <PlaythroughPromptContext.Provider value={{ written: prompt.written }}>
+                {tree(
+                    { lists: contextValue(), wishlist: wishlistValue(), favourites: favouritesValue(), tags: tagsValue() },
+                    'private',
+                    vi.fn(),
+                )}
+            </PlaythroughPromptContext.Provider>,
+        );
+    }
+
+    it("shows a run started from the toast in the list and the hero's line, without a reload", async () => {
+        stubEntryFetch(null, 200, []);
+        const prompt = promptWrites();
+        renderWithPrompt(prompt);
+        await settled();
+        expect(screen.getByText(/No playthroughs or review yet/)).toBeInTheDocument();
+
+        await prompt.publish({
+            session: 'user-1',
+            gameId: 1,
+            playthrough: playthrough({ id: 7, startedOn: '2026-11-15', finishedOn: null, type: null }),
+        });
+
+        expect(screen.getByText(/1 playthrough/)).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Edit playthrough 1' })).toBeInTheDocument();
+        expect(screen.getByText('In progress')).toBeInTheDocument();
+    });
+
+    it('replaces a run it already shows, as a finish or a save in the popup changes it', async () => {
+        stubEntryFetch(null, 200, [playthrough({ id: 7, startedOn: '2026-08-02', finishedOn: null, type: null })]);
+        const prompt = promptWrites();
+        renderWithPrompt(prompt);
+        await settled();
+
+        await prompt.publish({
+            session: 'user-1',
+            gameId: 1,
+            playthrough: playthrough({ id: 7, startedOn: '2026-08-02', finishedOn: '2026-11-15', type: null }),
+        });
+
+        expect(screen.getAllByRole('button', { name: /^Edit playthrough/ })).toHaveLength(1);
+        expect(screen.getByText(/finished 15 November 2026/)).toBeInTheDocument();
+    });
+
+    it("leaves another game's run, and one written for another account, alone", async () => {
+        stubEntryFetch(null, 200, []);
+        const prompt = promptWrites();
+        renderWithPrompt(prompt);
+        await settled();
+
+        await prompt.publish({ session: 'user-1', gameId: 2, playthrough: playthrough({ id: 8 }) });
+        await prompt.publish({ session: 'user-2', gameId: 1, playthrough: playthrough({ id: 9 }) });
+
+        expect(screen.queryByRole('button', { name: /^Edit playthrough/ })).not.toBeInTheDocument();
+    });
+
+    it('reads the runs again when the server refused, because something else wrote them', async () => {
+        const fetchMock = stubEntryFetch(null, 200, [], url => (url === '/api/entries/1/playthroughs'
+            ? new Response(JSON.stringify([playthrough({ id: 4, startedOn: '2026-11-14', finishedOn: null })]), { status: 200 })
+            : new Response(null, { status: 204 })));
+        const prompt = promptWrites();
+        renderWithPrompt(prompt);
+        await settled();
+
+        await prompt.publish({ session: 'user-1', gameId: 1, playthrough: null });
+
+        expect(await screen.findByRole('button', { name: 'Edit playthrough 1' })).toBeInTheDocument();
+        expect(fetchMock.mock.calls.some(([input]) => String(input) === '/api/entries/1/playthroughs')).toBe(true);
     });
 });
