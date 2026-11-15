@@ -3,6 +3,7 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, RouterContextProvider, createRoutesStub, type LoaderFunction } from 'react-router';
 import { ErrorBoundary, ProfilePage, headers, loader, meta } from '@/pages/ProfilePage';
+import { RATE_LIMITED } from '@/lib/api';
 import { CACHE_NOT_FOUND, CACHE_PROFILE, PRIVATE_NO_STORE } from '@/lib/cache';
 import type { PublicActivity, PublicProfile } from '@/types/profile';
 import type { Route } from './+types/ProfilePage';
@@ -291,6 +292,21 @@ describe('ProfilePage when there is no profile to show', () => {
 
         expect(await screen.findByRole('heading', { level: 1, name: 'There is no such page of reviews' })).toBeInTheDocument();
         expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it("says the edge refused this reader's address for the rate, and blames nobody on our side", async () => {
+        // What React Router throws when the rate rule answers a navigation's .data (ADR 0098).
+        const Stub = createRoutesStub([{
+            id: 'profile',
+            path: '/u/:userName',
+            Component: ProfilePage as unknown as React.ComponentType,
+            ErrorBoundary,
+            loader: () => { throw new Response('<!doctype html><h1>Too many requests</h1>', { status: 429 }); },
+        }]);
+        render(<Stub initialEntries={['/u/ChronosSF']} />);
+
+        expect(await screen.findByText(RATE_LIMITED)).toBeInTheDocument();
+        expect(screen.queryByText(/our side|doctype/)).not.toBeInTheDocument();
     });
 
     it('says a failure as the lists page does, and asks again when told to', async () => {

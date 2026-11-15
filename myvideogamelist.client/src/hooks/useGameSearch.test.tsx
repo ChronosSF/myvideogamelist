@@ -12,6 +12,7 @@ import {
     TYPEAHEAD_SIZE,
     useGameSearch,
 } from '@/hooks/useGameSearch';
+import { RATE_LIMITED } from '@/lib/api';
 import { game } from '@/test/factories';
 import type { GameDto } from '@/types/game';
 
@@ -50,7 +51,8 @@ function stubApi({ honourAbort = true } = {}) {
         ok: status >= 200 && status < 300,
         status,
         headers: new Headers(headers),
-        json: () => Promise.resolve(body),
+        // A string is a body that is not JSON, which a real response refuses to parse.
+        json: () => (typeof body === 'string' ? Promise.reject(new SyntaxError('Unexpected token')) : Promise.resolve(body)),
     }) as unknown as Response;
 
     vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, init?: RequestInit) =>
@@ -472,6 +474,17 @@ describe('useGameSearch', () => {
         expect(result.current).toMatchObject({ status: 'failed', canRetry: false, busy: true });
         await pause(2000);
         expect(result.current).toMatchObject({ status: 'failed', canRetry: true, busy: true });
+    });
+
+    it("says the edge's 429 is this address's, not the search's", async () => {
+        // The rate rule's own page, which is not a ProblemDetails (ADR 0098).
+        const requests = stubApi();
+        const { result } = renderSearch('resident evil');
+
+        await pause(SEARCH_DEBOUNCE_MS);
+        await requests[0].respond(429, '<!doctype html><h1>Too many requests</h1>');
+
+        expect(result.current).toMatchObject({ status: 'failed', message: RATE_LIMITED, busy: true });
     });
 
     it("waits out no more than thirty seconds of a 503's Retry-After", async () => {

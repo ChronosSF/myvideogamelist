@@ -2,6 +2,7 @@ import { useContext, useEffect, useReducer, useState, useSyncExternalStore } fro
 import { SearchPacerContext } from '@/contexts/SearchPacerContext';
 import type { GameDto } from '@/types/game';
 import { searchApiPath } from '@/lib/gameBrowse';
+import { RATE_LIMITED } from '@/lib/api';
 
 /**
  * How a search for a game spends IGDB's budget: the navbar's typeahead, and the search an import's
@@ -219,7 +220,9 @@ async function problem(response: Response): Promise<string> {
             if (typeof title === 'string' && title !== '') return title;
         }
     } catch {
-        // Not a ProblemDetails — a balancer's 503 has no body — which leaves the plain sentence.
+        // Not a ProblemDetails — a balancer's 503 has no body — which leaves the plain sentence. A 429
+        // that is not one is the edge's rate rule, and says so (ADR 0098).
+        if (response.status === 429) return RATE_LIMITED;
     }
     return SEARCH_UNREACHABLE;
 }

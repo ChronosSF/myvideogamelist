@@ -15,6 +15,7 @@ import type { ListsContextValue } from '@/contexts/ListsContext';
 import type { WishlistContextValue } from '@/contexts/WishlistContext';
 import type { UseGameCommunityResult } from '@/hooks/useGameCommunity';
 import { useGameEntry } from '@/hooks/useGameEntry';
+import { RATE_LIMITED } from '@/lib/api';
 import { CACHE_GAME, CACHE_NOT_FOUND, PRIVATE_NO_STORE } from '@/lib/cache';
 import { MIN_DISTRIBUTION_SCORES, MIN_MEMBER_SCORES, MIN_PLAYTHROUGH_SAMPLES } from '@/lib/score';
 import type { UserProfile } from '@/types/auth';
@@ -852,6 +853,19 @@ describe('GamePage when there is no game to show', () => {
             'Too many people are browsing games at once. Try again in a moment; lists and profiles are unaffected.',
         )).toBeInTheDocument();
         expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument();
+    });
+
+    it("says the edge refused this reader's address for the rate, and blames nobody on our side", async () => {
+        // What React Router throws when the rate rule answers a navigation's .data: the status, and the
+        // rule's page as text, which is for a browser tab and not for this one (ADR 0098).
+        const Stub = createRoutesStub([gameRoute({
+            ErrorBoundary,
+            loader: () => { throw new Response('<!doctype html><h1>Too many requests</h1>', { status: 429 }); },
+        })]);
+        render(<Stub initialEntries={['/games/1']} />);
+
+        expect(await screen.findByText(RATE_LIMITED)).toBeInTheDocument();
+        expect(screen.queryByText(/our side|doctype/)).not.toBeInTheDocument();
     });
 
     it('says there is no game at this address and offers browsing, because asking again will not help', async () => {

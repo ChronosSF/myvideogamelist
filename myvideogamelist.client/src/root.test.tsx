@@ -3,6 +3,7 @@ import { render, screen } from '@testing-library/react';
 import { createMemoryRouter, MemoryRouter, RouterProvider, UNSAFE_ErrorResponseImpl } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
 import { SearchPacerContext } from '@/contexts/SearchPacerContext';
+import { RATE_LIMITED } from '@/lib/api';
 import Root, { ErrorBoundary } from '@/root';
 import type { Route } from './+types/root';
 
@@ -81,6 +82,17 @@ describe('the error page', () => {
         renderBoundary(new UNSAFE_ErrorResponseImpl(500, 'Internal Server Error', data));
 
         expect(screen.getByText('An unexpected error occurred. Please try again.')).toBeInTheDocument();
+        expect(reference()).not.toBeInTheDocument();
+    });
+
+    it("says the edge refused this reader's address for the rate, and shows none of the page it sent", () => {
+        // A navigation's .data refused by the rate rule: React Router hands over its status and its body
+        // as text, and over HTTP/2 no status text at all (ADR 0098).
+        renderBoundary(new UNSAFE_ErrorResponseImpl(429, '', '<!doctype html><h1>Too many requests</h1>'));
+
+        expect(screen.getByRole('heading', { level: 1, name: 'Too many requests' })).toBeInTheDocument();
+        expect(screen.getByText(RATE_LIMITED)).toBeInTheDocument();
+        expect(screen.queryByText(/doctype/)).not.toBeInTheDocument();
         expect(reference()).not.toBeInTheDocument();
     });
 
