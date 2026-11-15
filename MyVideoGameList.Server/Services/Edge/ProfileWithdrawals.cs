@@ -93,9 +93,9 @@ public sealed class ProfileWithdrawals(
     internal const string EveryProfile = "/u/*";
 
     /// <summary>
-    /// Everything the edge can hold for one profile, under every name: <c>/u/{id}/{name}</c>, its
-    /// <c>.data</c> URL, both again with any query string, and the redirects that every other name and
-    /// the bare id answer with (ADR 0096).
+    /// Everything the edge can hold for one profile, under every name it has had:
+    /// <c>/u/{id}/{name}</c>, its <c>.data</c> URL, and both again with any query string (ADR 0096). The
+    /// redirect every other name answers with is kept by nobody, so there is none to take back.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -109,9 +109,9 @@ public sealed class ProfileWithdrawals(
     /// </para>
     /// <para>
     /// <b>The name is not in the path, so no name escapes it.</b> Every address of this profile starts
-    /// with its id: the page under its current name, a redirect cached under an old name, a wrong one,
-    /// a name in other letter case, or none. So a rename and a change of case are one path, where they
-    /// were one for each spelling, and the copies an old name left at the edge are always within reach.
+    /// with its id, whatever name follows it: the page under its current name, and under every name it
+    /// had before a rename or a change of case. So those are one path, where they were one for each
+    /// spelling, and the copies an old name left at the edge are always within reach.
     /// And it covers no other profile: every id is <see cref="PublicIdPolicy.Length"/> characters, which
     /// the column's check holds, so no id is the start of another.
     /// </para>
@@ -127,10 +127,9 @@ public sealed class ProfileWithdrawals(
 
     /// <summary>
     /// A public profile moved to a different name, or to the same name in other letter case. The edge
-    /// holds the page under the old name, which has to become a redirect, and may hold a redirect
-    /// under the new one from before, which has to become the page; and the sitemap names the old
-    /// address. The profile's one path covers every name (<see cref="Profile"/>). Sent at once, since
-    /// the old name is free for somebody else to claim.
+    /// holds the page under the old name, where the origin now answers with a redirect to the new one,
+    /// and the sitemap names the old address. The profile's one path covers every name
+    /// (<see cref="Profile"/>). Sent at once, since the old name is free for somebody else to claim.
     /// </summary>
     public void ProfileRenamed(string userId, string publicId) =>
         Send(userId, atOnce: true, "profile renamed", Profile(publicId), ProfileSitemaps);

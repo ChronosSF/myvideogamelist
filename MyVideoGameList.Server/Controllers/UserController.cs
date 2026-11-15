@@ -95,9 +95,9 @@ public class UserController(
                 if (!saved.Succeeded) return NotSaved(saved);
                 permit?.Keep();
 
-                // It still invalidates, though it releases no name: the page the edge holds under
-                // the old spelling has to become the redirect to the new one, and the sitemap lists
-                // the old one (ADR 0096).
+                // It still invalidates, though it releases no name: the edge holds the page under the
+                // old spelling, which is a redirect to the new one now, and the sitemap lists the old
+                // one (ADR 0096).
                 if (user.ProfileVisibility == ProfileVisibility.Public)
                     withdrawals.ProfileRenamed(user.Id, user.PublicId);
             }
@@ -142,9 +142,9 @@ public class UserController(
         }
 
         // The edge would go on serving this profile's page under the old name, which is released
-        // for anybody to claim, rather than the redirect to the new one, and may hold a redirect
-        // under the new name from before. The profile's one path takes both, with the sitemap that
-        // lists the old address. A private profile has nothing at the edge to take.
+        // for anybody to claim, where the origin now answers with a redirect to the new one. The
+        // profile's one path takes it, with the sitemap that lists the old address. A private profile
+        // has nothing at the edge to take.
         if (user.ProfileVisibility == ProfileVisibility.Public)
             withdrawals.ProfileRenamed(user.Id, user.PublicId);
 

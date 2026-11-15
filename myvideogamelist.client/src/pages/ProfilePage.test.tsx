@@ -362,15 +362,28 @@ describe('ProfilePage caching', () => {
         expect((await redirectFor('?page=2', 'OldName')).headers.get('Location')).toBe(`/u/${CHRONOS}/ChronosSF?page=2`);
     });
 
-    it("gives the redirect the profile's own window, never a permanent one with no policy", async () => {
-        // The edge clears it with the page on every withdrawal (`/u/{id}*`); a browser that kept a 301
-        // for good would, after a rename and back, send two old names round in a loop.
+    it('lets nobody keep the redirect, neither a browser nor the edge', async () => {
+        // A 301 kept anywhere could meet a page rendered under the other name after a rename, and the
+        // two would send a reader round in a loop (ADR 0096 §4).
         stubProfileApi({ profile: [200] });
 
         const redirect = await redirectFor('', 'OldName');
 
-        expect(redirect.headers.get('Cache-Control')).toBe(CACHE_PROFILE);
+        expect(redirect.headers.get('Cache-Control')).toBe(PRIVATE_NO_STORE);
         expect(redirect.headers.get('X-Content-Type-Options')).toBe('nosniff');
+    });
+
+    it('calls off the reviews and favourites when it redirects, so the API does no work for nobody', async () => {
+        const fetchMock = stubProfileApi({ profile: [200] });
+
+        await redirectFor('', 'OldName');
+
+        const signals = fetchMock.mock.calls
+            .filter(([input]) => /\/(reviews|favourites)/.test(String(input)))
+            // The stub is typed with one parameter; the loader passes the init beside it.
+            .map(call => ((call as unknown[])[1] as RequestInit | undefined)?.signal);
+        expect(signals).toHaveLength(2);
+        expect(signals.every(signal => signal?.aborted)).toBe(true);
     });
 
     it('does not redirect the name the profile has, as its owner spells it', async () => {

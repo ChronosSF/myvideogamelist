@@ -274,8 +274,8 @@ public class ProfileWithdrawalTests
         var result = await site.Controller(alice).UpdateUserName(new UpdateUserNameDto("alicia"));
 
         Assert.IsType<OkObjectResult>(result.Result);
-        // One path for both names: the page under the old one has to become the redirect, and a
-        // redirect cached under the new one has to become the page, and both start with the id.
+        // One path, whatever the names: the page cached under the old one has to go, since the origin
+        // answers there with a redirect now, and every address of the profile starts with its id.
         AssertSent(edge, "profile renamed", ProfileOf(alice), Sitemaps);
         Assert.Equal("alicia", storedWhenSent);
     }
@@ -298,7 +298,7 @@ public class ProfileWithdrawalTests
     public async Task UpdateUserName_ChangeOfCaseOnPublicProfile_InvalidatesTheProfileAndTheSitemaps()
     {
         // The page cached under the old spelling — the one the site linked to until now — has to
-        // become the redirect to the new one, and it is under the same id as every other spelling.
+        // go, since the origin answers there with a redirect now, under the same id as every spelling.
         var edge = new RecordingEdgeInvalidator();
         using var site = new Site(edge);
         var alice = await site.AccountAsync("alice", ProfileVisibility.Public);
@@ -1251,7 +1251,7 @@ public class ProfileWithdrawalTests
     public void Profile_AnId_EndsInOneWildcardCoveringEveryNameItsDataUrlAndQueryStrings()
     {
         // The page is /u/{id}/{name}, React Router 8 asks for its data at /u/{id}/{name}.data, the
-        // cache key holds ?page= and ?_routes=, and every other name and the bare id are redirects
+        // cache key holds ?page= and ?_routes=, and every name the profile has had is under the id
         // cached under the same id. CloudFront reads a `*` as a wildcard only when it is the last
         // character. No name is in the path, so no rename can leave a copy out of its reach.
         Assert.Equal("/u/b4kz9q2mxw7c*", ProfileWithdrawals.Profile("b4kz9q2mxw7c"));

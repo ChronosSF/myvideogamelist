@@ -86,7 +86,7 @@ public class ProfileDetailsFlowTests(ApiFactory api) : IClassFixture<ApiFactory>
         using var stranger = api.CreateBrowser();
         var page = await stranger.GetAsync($"/api/users/{account.PublicId}");
 
-        // The same 404 as a name nobody has claimed (ADR 0027 §7), with nothing of the three in it.
+        // The same 404 as an id nobody holds (ADR 0027 §7, 0096), with nothing of the three in it.
         await page.ExpectAsync(HttpStatusCode.NotFound);
         var body = await page.Content.ReadAsStringAsync();
         Assert.DoesNotContain("Alex Smith", body);

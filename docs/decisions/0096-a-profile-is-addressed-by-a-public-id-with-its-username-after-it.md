@@ -118,14 +118,17 @@ holds every reader of the table for as long as rewriting a few hundred rows take
 `55P03` is re-run, as any is. A collision in the backfill would refuse the unique index and roll the whole
 migration back for a re-run to draw again; at a few hundred accounts the odds are below one in a million million.
 
-### 4. The 301, and what is kept of it
+### 4. The 301 is kept by nobody
 
-**It carries `CACHE_PROFILE`.** A permanent redirect with no policy is one a browser may keep for good, and the
-two old names of a profile renamed and renamed back would then send a browser round in a loop between them.
-`CACHE_PROFILE`'s `max-age=0` keeps a browser asking. At the edge it is the profile's own five minutes and hour,
-with `stale-if-error=0`, and every withdrawal clears it with the page (§5). That matters beyond freshness: the
-redirect names the profile's current name, so a profile made private must take its redirects off the edge as it
-takes its page.
+**It carries `private, no-store`.** A permanent redirect with no policy is one a browser may keep for good, and
+the two old names of a profile renamed and renamed back would then send a browser round in a loop between them.
+The edge has the same loop to offer for a few seconds after a rename: a redirect it kept under one name can meet
+a page it rendered under the other after the rename and before the invalidation landed, the review found, and
+for as long as a failed invalidation leaves both there. A redirect nobody keeps can meet neither. It costs one
+request to the origin for each old link followed, which is few, and the redirect names the profile's current
+name, so with nothing kept there is nothing for a withdrawal to take back. The first cut gave it
+`CACHE_PROFILE`, on the argument that every withdrawal would clear it with the page; that answered the browser's
+loop and not the edge's.
 
 **It goes out exactly as the loader throws it.** React Router 8.5 returns a loader's redirect as it was thrown
 for a document request, so the route's `headers` export is not asked and `entry.server.tsx` never sees it; for a
@@ -138,14 +141,15 @@ resource route.
 ### 5. A withdrawal clears one path per profile, under every name
 
 Every path in 0058 §1 that read `/u/{name}*` reads `/u/{publicId}*`, and so do 0056 §8's, 0076 §5's and 0095's.
-Every address of a profile starts with its id: the page under its current name, its `.data` URL and every query
-string on either, the redirect cached under an old name, a wrong one, another spelling, and the bare id. So:
+Every address of a profile starts with its id, whatever name follows: its page, its `.data` URL and every query
+string on either, under its current name and under every name it had before. So:
 
 - **A rename, or a change of letter case, is one profile path, not one for each spelling**, with the sitemap
-  files beside it, since they list the old address until the rename. Two paths where there were three. The old
-  name's page becomes its redirect, and a redirect cached under the new name becomes the page, by the one path.
+  files beside it, since they list the old address until the rename. Two paths where there were three. The page
+  cached under the old name goes, and the next request there is answered with the redirect.
 - **No copy escapes it.** 0058 §2's gap, a copy cached under a spelling the site never linked to and out of reach
-  of every invalidation, is gone: every spelling redirects, and the redirect is under the id.
+  of every invalidation, is gone: a page is rendered under one spelling only, every other redirects, and every
+  spelling is under the id.
 - **It covers no other profile.** 0058 §2 accepted that `/u/alice*` also took `/u/alice_2`. Every id is twelve
   characters, which the column's check holds, so no id is the start of another.
 - **The paths no longer name the account.** 0058's consequences note that CloudFront keeps every invalidation in
@@ -205,6 +209,13 @@ cooldown keeps its place. A change of letter case still skips it.
 
 - **The address is longer by thirteen characters**, and the name after them is decoration as far as the server is
   concerned. A link shared with the id alone works.
+- **The release that brings this does not survive a mixed window.** While the API and the front end roll
+  separately, a front end of either release paired with the other's API answers every profile with a 404 for a
+  minute at a time, and an old front end writes a profile sitemap file of nonsense, cached for the profile's
+  window; the report button is drawn for every reader rather than hidden from all of them. It is one deploy, to
+  dev, before the testers arrive, and every API task's start invalidates `/u/*` and the sitemap files (0081 §2),
+  so it is not worth a compatibility layer. A later change to either side should keep to the old shape for one
+  release, as the rest of the site does.
 - **A rename moves nothing**: the page, its links, its reviews' links on game pages and its place in the sitemap
   file stay where they were, and the old name's links follow it.
 - **The migration runs on dev against testers' accounts**, under the lock timeout, with the old revision serving.

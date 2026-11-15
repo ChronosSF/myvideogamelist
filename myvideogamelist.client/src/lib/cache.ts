@@ -83,7 +83,7 @@ export const CACHE_GAMES_LIST = sharedCache(600, 3600);
  * Shared-cacheable at all, which is worth stating because the page is about one person: it is
  * identical for every reader, signed in or not, because the API behind it varies on nothing but
  * the public id in the URL. The owner's own private figures are a different route. The 301 that
- * sends any other name to the profile's own carries this policy too (ADR 0096).
+ * sends any other name to the profile's own does not use this: nobody keeps it (ADR 0096).
  *
  * It also varies on `?page=`, which pages the reviews. **The CloudFront cache policy must include
  * `page` in the cache key** for this route, exactly as `search` for the listing above.

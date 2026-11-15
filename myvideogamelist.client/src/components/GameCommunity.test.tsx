@@ -357,10 +357,17 @@ describe('GameCommunity reviews', () => {
         expect(screen.getByText('9/10')).toBeInTheDocument();
     });
 
-    it("marks the reader's own review as theirs, and nobody else's", () => {
+    it("marks the reader's own review as theirs, by the id, and nobody else's", () => {
+        // By the id rather than the name, which can change while the list is on screen (ADR 0096).
         renderSection(
-            community({ reviews: [review({ userName: 'alex' }), review({ userName: 'sam' })], total: 2 }),
-            'alex',
+            community({
+                reviews: [
+                    review({ publicId: 'b4kz9q2mxw7c', userName: 'alex' }),
+                    review({ publicId: '7tn3vjh8p0sd', userName: 'sam' }),
+                ],
+                total: 2,
+            }),
+            'b4kz9q2mxw7c',
         );
 
         const list = screen.getByRole('list', { name: 'Member reviews' });

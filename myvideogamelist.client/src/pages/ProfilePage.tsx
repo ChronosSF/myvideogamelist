@@ -165,28 +165,39 @@ export async function loader({ params, request, context }: Route.LoaderArgs) {
     const page = pageFrom(new URL(request.url).searchParams.get('page'));
     if (page === null) throw notFound(NO_SUCH_PAGE);
 
-    // `allSettled` rather than `all`: a rejection from the reviews or the favourites request must not
-    // take the profile down with it, and `all` rejects on the first of any.
-    const [profileResult, reviewsResult, favouritesResult] = await Promise.allSettled([
-        loaderFetch(context, `/api/users/${publicId}`),
-        loaderFetch(context, `/api/users/${publicId}/reviews?page=${page}`),
-        loaderFetch(context, `/api/users/${publicId}/favourites`),
+    // The two that need IGDB are asked beside the profile rather than after it, so a page waits for the
+    // slowest of three rather than for two in a row, and are called off when the page turns out to be a
+    // 404, a failure or a redirect, so that neither keeps the API working for nobody. `allSettled` rather
+    // than `all`: a rejection from either must not take the profile down with it, and the rejections an
+    // abort causes land there too rather than unhandled. `loaderFetch` logs none of those.
+    const unneeded = new AbortController();
+    const extras = Promise.allSettled([
+        loaderFetch(context, `/api/users/${publicId}/reviews?page=${page}`, { signal: unneeded.signal }),
+        loaderFetch(context, `/api/users/${publicId}/favourites`, { signal: unneeded.signal }),
     ]);
+    const [profileResult] = await Promise.allSettled([loaderFetch(context, `/api/users/${publicId}`)]);
+    const callOff = (answer: Response) => {
+        unneeded.abort();
+        return answer;
+    };
 
     // A rejection is the unreachable-API case, which `!response.ok` never reports.
-    if (profileResult.status === 'rejected') throw badGateway();
-    if (profileResult.value.status === 404) throw notFound();
-    if (!profileResult.value.ok) throw badGateway();
+    if (profileResult.status === 'rejected') throw callOff(badGateway());
+    if (profileResult.value.status === 404) throw callOff(notFound());
+    if (!profileResult.value.ok) throw callOff(badGateway());
 
     const profile = await profileResult.value.json() as PublicProfile;
 
     // The name the profile has now, spelt as its owner spelt it, is the page's one address. Anything
     // else is sent there for good: a link from before a rename, a name typed in capitals, the bare id.
-    // The redirect names the profile, so it keeps the profile's own window at the edge, which every
-    // withdrawal clears with the page (`/u/{id}*`, ADR 0058), and a browser keeps it no longer than
-    // that, since a permanent redirect with no policy is one it may keep for good: after a second
-    // rename back, the two old names would send each other round in a loop.
-    if (params.userName !== profile.userName) throw redirectResponse(profilePath(profile, page), CACHE_PROFILE);
+    // **Kept by nobody** (ADR 0096 §4). A permanent redirect with no policy is one a browser may keep for
+    // good, and a redirect the edge kept could meet a page the edge rendered after a rename and before
+    // its invalidation landed, under the other name: either way two names would send a reader round in a
+    // loop. It costs a request to the origin for each old link followed, and it names the profile, so
+    // nothing has to take it back from anywhere.
+    if (params.userName !== profile.userName) throw callOff(redirectResponse(profilePath(profile, page), PRIVATE_NO_STORE));
+
+    const [reviewsResult, favouritesResult] = await extras;
 
     // Anything short of a 200 here costs the review list and nothing else.
     const reviews = reviewsResult.status === 'fulfilled' && reviewsResult.value.ok

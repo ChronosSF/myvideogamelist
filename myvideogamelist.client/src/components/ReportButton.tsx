@@ -33,8 +33,10 @@ export function ReportButton({ target, subject, label }: ReportButtonProps) {
     const [open, setOpen] = useState(false);
 
     const user = auth?.user ?? null;
-    // By the profile's public id, which is what the page names it by and never changes (ADR 0096).
-    if (user !== null && user.publicId === target.publicId) return null;
+    // By the profile's public id, which is what the page names it by and never changes (ADR 0096). Only
+    // an id that is there: during a deploy an API a release behind sends none on either side, and the
+    // button is then drawn for everybody rather than hidden from everybody.
+    if (user !== null && user.publicId && user.publicId === target.publicId) return null;
 
     const press = () => {
         // Until auth answers, a press could open the sign-in dialog over somebody already signed in.
