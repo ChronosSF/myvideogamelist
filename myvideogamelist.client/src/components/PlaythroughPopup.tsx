@@ -55,12 +55,17 @@ export function PlaythroughPopup({ game, kind, playthrough, saving, error, onSub
             ref={dialog}
             className="dialog-modal playthrough-popup"
             aria-labelledby={titleId}
-            // Escape: prevented, and the dialog closed by unmounting, so the page and the browser agree.
+            // Escape: prevented, and the dialog closed by unmounting, so the page and the browser agree. While a
+            // save is out the provider keeps it open, and should the browser close it all the same, it is
+            // opened again, so that what the save answers is seen.
             onCancel={event => {
                 event.preventDefault();
                 onClose();
             }}
-            onClose={onClose}
+            onClose={() => {
+                if (saving) dialog.current?.showModal();
+                else onClose();
+            }}
         >
             <div className="playthrough-popup-panel">
                 <div className="flex flex-col gap-2 min-w-0">

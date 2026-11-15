@@ -95,6 +95,8 @@ export const PROMPT_WORDS = {
         finish: 'Playthrough finished today.',
     },
     details: { start: 'Add details', finish: 'Add your hours' },
+    /** The confirmation's line when the popup's code could not be fetched: the run is saved all the same. */
+    detailsFailed: 'Your playthrough is saved, but its form could not be opened. Reload the page to add to it.',
     popupTitle: 'Your playthrough',
     /** The popup's failure when the server gave no sentence of its own, or could not be reached. */
     popupFailed: 'Your playthrough could not be saved. Please try again.',

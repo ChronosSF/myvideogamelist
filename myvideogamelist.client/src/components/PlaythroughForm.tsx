@@ -70,10 +70,13 @@ export function PlaythroughForm({
     // Load the playthrough being edited into the fields, and clear them again when the edit is
     // finished or abandoned. Adjusted during render rather than in an effect: from an effect this
     // would show the previous row's values under the new heading for one commit, and it trips
-    // react-hooks/set-state-in-effect.
-    const [lastEditingId, setLastEditingId] = useState<number | null>(editing?.id ?? null);
-    if (lastEditingId !== (editing?.id ?? null)) {
-        setLastEditingId(editing?.id ?? null);
+    // react-hooks/set-state-in-effect. Loaded again when the run itself changes underneath the form —
+    // a finish from the playthrough question (ADR 0097) — so that saving the form does not write its
+    // older copy back over it.
+    const editingKey = editing === null ? null : `${editing.id}:${editing.updatedAt}`;
+    const [lastEditing, setLastEditing] = useState<string | null>(editingKey);
+    if (lastEditing !== editingKey) {
+        setLastEditing(editingKey);
         setDraft(editing === null ? EMPTY : toDraft(editing));
     }
 

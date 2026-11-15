@@ -19,6 +19,8 @@ export interface ToastView {
     refusal: PromptRefusal | null;
     /** The run the yes wrote, once it has. */
     saved: PlaythroughDto | null;
+    /** The popup's code could not be fetched, so the confirmation says so in place of its line. */
+    detailsFailed: boolean;
 }
 
 interface PlaythroughToastProps {
@@ -103,15 +105,20 @@ export function PlaythroughToast({
         if (id !== undefined) onDismiss(id);
     }, [id, onDismiss]);
 
-    // Remembered as focus comes in from the page, and only then: a move inside the toast, to the button a new
-    // state draws after the pressed one has gone, comes from an element no longer in it.
+    // Remembered as focus comes in from somewhere on the page, and only then: a move inside the toast, to the
+    // button a new state draws after the pressed one has gone, comes from an element no longer in it, and a
+    // return to the window from another comes from nowhere, which is no way back.
     const onFocus = (event: FocusEvent<HTMLDivElement>) => {
-        if (!focused) rememberReturn(returnable(event.relatedTarget));
+        const from = returnable(event.relatedTarget);
+        if (!focused && from !== null) rememberReturn(from);
         setFocused(true);
     };
 
+    // A blur to nowhere that leaves the document's focused element inside the toast has not left it, so the
+    // pause and the way back both stay.
     const onBlur = (event: FocusEvent<HTMLDivElement>) => {
         const to = event.relatedTarget;
+        if (to === null && event.currentTarget.contains(document.activeElement)) return;
         if (!(to instanceof Node) || !event.currentTarget.contains(to)) setFocused(false);
     };
 
@@ -203,7 +210,11 @@ function ToastBox({ toast, onAccept, onClose, onDetails, onHover }: ToastBoxProp
     let line: { text: string; tone: 'meta' | 'danger' | 'muted' } | null;
     if (phase === 'failed') line = { text: PROMPT_WORDS.failedDetail, tone: 'danger' };
     else if (phase === 'refused') line = { text: PROMPT_WORDS.refused[toast.refusal ?? 'changed'], tone: 'muted' };
-    else if (phase === 'confirmed') line = { text: confirmedMeta(ask), tone: 'meta' };
+    else if (phase === 'confirmed') {
+        line = toast.detailsFailed
+            ? { text: PROMPT_WORDS.detailsFailed, tone: 'danger' }
+            : { text: confirmedMeta(ask), tone: 'meta' };
+    }
     else {
         const meta = askMeta(ask);
         line = meta === null ? null : { text: meta, tone: 'meta' };

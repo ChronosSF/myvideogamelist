@@ -1,5 +1,4 @@
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Caching.Memory;
 using MyVideoGameList.Server.Data;
 using MyVideoGameList.Server.DTOs;
@@ -38,16 +37,15 @@ public class PlaythroughServiceTests
     /// rather than a local copy that could drift from them.
     /// </summary>
     /// <remarks>
-    /// A start and a finish run in a transaction under the entry's row lock, which the in-memory
-    /// provider has neither of: the warning it raises for the transaction is ignored, so these tests run
-    /// the decisions on the service's real path, and <c>PlaythroughStartFlowTests</c> runs the lock.
+    /// Every write of a game's runs takes the entry's row lock in a transaction, which the in-memory
+    /// provider has neither of, so here the service runs its decisions without them and
+    /// <c>PlaythroughStartFlowTests</c> runs the lock against PostgreSQL.
     /// </remarks>
     private static ApplicationDbContext NewDb()
     {
         var db = new ApplicationDbContext(
             new DbContextOptionsBuilder<ApplicationDbContext>()
                 .UseInMemoryDatabase(Guid.NewGuid().ToString())
-                .ConfigureWarnings(warnings => warnings.Ignore(InMemoryEventId.TransactionIgnoredWarning))
                 .Options);
         db.Database.EnsureCreated();
         return db;

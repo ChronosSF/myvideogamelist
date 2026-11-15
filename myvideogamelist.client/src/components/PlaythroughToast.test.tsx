@@ -12,6 +12,7 @@ const ASKING: ToastView = {
     phase: 'asking',
     refusal: null,
     saved: null,
+    detailsFailed: false,
 };
 
 function renderToast(view: ToastView | null, onDismiss = vi.fn()) {
@@ -120,5 +121,14 @@ describe('what it is to a screen reader', () => {
     it('is not in the server render at all, regions included', () => {
         const props = { onAccept: vi.fn(), onDismiss: vi.fn(), onDetails: vi.fn(), rememberReturn: vi.fn(), restoreFocus: vi.fn() };
         expect(renderToString(<PlaythroughToast toast={ASKING} {...props} />)).toBe('');
+    });
+});
+
+describe('the confirmation when the form cannot be fetched', () => {
+    it('says the run is saved and the form could not be opened, in an error\'s words', () => {
+        renderToast({ ...ASKING, phase: 'confirmed', saved: playthrough({ id: 7 }), detailsFailed: true });
+
+        expect(screen.getByText(/Your playthrough is saved, but its form could not be opened/)).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Add details' })).toBeInTheDocument();
     });
 });

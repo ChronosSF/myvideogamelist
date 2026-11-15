@@ -176,6 +176,9 @@ export function GameEntryProvider({ game, account, profileVisibility, onCommunit
 
             if (playthrough !== null) {
                 setPlaythroughs(current => sorted([...current.filter(p => p.id !== playthrough.id), playthrough]));
+                // A form open on the same run takes the run as it is now, or saving it would write its older
+                // copy back over the finish.
+                setEditing(current => (current !== null && current.id === playthrough.id ? playthrough : current));
                 return;
             }
 

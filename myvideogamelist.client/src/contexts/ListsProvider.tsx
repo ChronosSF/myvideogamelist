@@ -789,14 +789,18 @@ export function ListsProvider({ children }: { children: ReactNode }) {
 
         const res = await answer(() => apiFetch(`/api/lists/${gameId}`, { method: 'DELETE' }));
 
-        return settle(() => {
+        const saved = settle(() => {
             const saved = res !== null && res.ok;
             if (saved) dispatch({ type: 'CLEAR_MUTATION_ERROR', session });
             else rollBack(undo, 'Failed to remove from list. Please try again.');
             endPending(gameId);
             return saved;
         });
-    }, []);
+
+        // Out of every list: a question still up about the game is stale (ADR 0097).
+        if (saved) moves.publish({ session, listId: null, gameId });
+        return saved;
+    }, [moves]);
 
     /**
      * Writes fields of a game's row through its entry — its score, its tags — shown at once wherever the
@@ -975,7 +979,7 @@ export function ListsProvider({ children }: { children: ReactNode }) {
 
         const res = await answer(() => apiFetch(`/api/entries/${gameId}`, { method: 'DELETE' }));
 
-        return settle(() => {
+        const deleted = settle(() => {
             // 404 means there was nothing recorded, which is the state the caller wanted anyway.
             const deleted = res !== null && (res.ok || res.status === 404);
             if (deleted) dispatch({ type: 'CLEAR_MUTATION_ERROR', session });
@@ -983,7 +987,11 @@ export function ListsProvider({ children }: { children: ReactNode }) {
             endPending(gameId);
             return deleted;
         });
-    }, []);
+
+        // Nothing is recorded about the game now, so a question still up about it is stale.
+        if (deleted) moves.publish({ session, listId: null, gameId });
+        return deleted;
+    }, [moves]);
 
     // The readers are called during render, so they read the state of the render calling them, and change
     // with it: a card that asks after its game is drawn again when the answer can have changed.

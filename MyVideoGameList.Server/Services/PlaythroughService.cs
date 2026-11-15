@@ -95,29 +95,35 @@ public class PlaythroughService(
         var typeKeys = await TypeKeysByIdAsync(cancellationToken);
         var typeId = ResolveTypeId(typeKeys, input.Type);
 
-        // Logging a playthrough of a game the user has never listed is legitimate and creates the
-        // entry with no status, exactly as scoring one does (ADR 0019).
-        var entry = await EntryStore.FindOrCreateAsync(db, clock, userId, gameId, cancellationToken);
-
-        var now = clock.GetUtcNow();
-        var playthrough = new UserGamePlaythrough
+        // Under the game's lock, as every write of its runs is, so that a run logged by hand cannot land
+        // between a start's check and its write and leave two unfinished (ADR 0097).
+        var playthrough = await UnderEntryLockAsync(userId, gameId, async token =>
         {
-            UserId = userId,
-            // Through the navigation rather than by copying the key: a newly created entry has no
-            // Id until SaveChanges, and EF fills both halves of the composite foreign key in.
-            Entry = entry,
-            TypeId = typeId,
-            PlatformId = input.PlatformId,
-            MinutesPlayed = input.MinutesPlayed,
-            StartedOn = input.StartedOn,
-            FinishedOn = input.FinishedOn,
-            Notes = Trimmed(input.Notes),
-            CreatedAt = now,
-            UpdatedAt = now
-        };
+            // Logging a playthrough of a game the user has never listed is legitimate and creates the
+            // entry with no status, exactly as scoring one does (ADR 0019).
+            var entry = await EntryStore.FindOrCreateAsync(db, clock, userId, gameId, token);
 
-        db.UserGamePlaythroughs.Add(playthrough);
-        await db.SaveChangesAsync(cancellationToken);
+            var now = clock.GetUtcNow();
+            var added = new UserGamePlaythrough
+            {
+                UserId = userId,
+                // Through the navigation rather than by copying the key: a newly created entry has no
+                // Id until SaveChanges, and EF fills both halves of the composite foreign key in.
+                Entry = entry,
+                TypeId = typeId,
+                PlatformId = input.PlatformId,
+                MinutesPlayed = input.MinutesPlayed,
+                StartedOn = input.StartedOn,
+                FinishedOn = input.FinishedOn,
+                Notes = Trimmed(input.Notes),
+                CreatedAt = now,
+                UpdatedAt = now
+            };
+
+            db.UserGamePlaythroughs.Add(added);
+            await db.SaveChangesAsync(token);
+            return added;
+        }, cancellationToken);
 
         EvictCommunityTimes(gameId);
 
@@ -134,18 +140,26 @@ public class PlaythroughService(
         var typeKeys = await TypeKeysByIdAsync(cancellationToken);
         var typeId = ResolveTypeId(typeKeys, input.Type);
 
-        var playthrough = await FindOwnedAsync(userId, gameId, playthroughId, cancellationToken);
+        // Under the game's lock, so that a finish reading this run as unfinished cannot write over a finish
+        // date this edit has just put on it, and an edit taking one off cannot slip past a start's check.
+        var playthrough = await UnderEntryLockAsync(userId, gameId, async token =>
+        {
+            var found = await FindOwnedAsync(userId, gameId, playthroughId, token);
+            if (found is null) return null;
+
+            found.TypeId = typeId;
+            found.PlatformId = input.PlatformId;
+            found.MinutesPlayed = input.MinutesPlayed;
+            found.StartedOn = input.StartedOn;
+            found.FinishedOn = input.FinishedOn;
+            found.Notes = Trimmed(input.Notes);
+            found.UpdatedAt = clock.GetUtcNow();
+
+            await db.SaveChangesAsync(token);
+            return found;
+        }, cancellationToken);
+
         if (playthrough is null) return null;
-
-        playthrough.TypeId = typeId;
-        playthrough.PlatformId = input.PlatformId;
-        playthrough.MinutesPlayed = input.MinutesPlayed;
-        playthrough.StartedOn = input.StartedOn;
-        playthrough.FinishedOn = input.FinishedOn;
-        playthrough.Notes = Trimmed(input.Notes);
-        playthrough.UpdatedAt = clock.GetUtcNow();
-
-        await db.SaveChangesAsync(cancellationToken);
 
         EvictCommunityTimes(gameId);
 
@@ -224,8 +238,8 @@ public class PlaythroughService(
     }
 
     /// <summary>
-    /// Runs a start or a finish in a transaction that holds the game's entry row, so that two of them for
-    /// one game take turns.
+    /// Runs a write of a game's runs in a transaction that holds the game's entry row, so that two of them
+    /// for one game take turns: a start, a finish, and a run added or edited by hand.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -237,13 +251,19 @@ public class PlaythroughService(
     /// <c>PlaythroughStartFlowTests</c> shows two starts at once making one run.
     /// </para>
     /// <para>
+    /// The hand's writes take it too, though they check nothing, because a start and a finish check: a run
+    /// logged by hand landing between a start's check and its commit would leave two unfinished, and an edit
+    /// putting a finish date on a run between a finish's read and its write would be written over. Only the
+    /// import's commit writes runs without it, all at once and from a file.
+    /// </para>
+    /// <para>
     /// An entry that does not exist yet locks nothing. Then two starts at once both create it, and the
     /// unique index over <c>(UserId, GameId)</c> refuses the second one's entry and its run with it: still
     /// one run. It takes a game whose data was deleted between the move and the yes.
     /// </para>
     /// <para>
-    /// The in-memory provider the unit tests run on has no row locks and no transactions, so the lock is
-    /// taken on a relational database only. Through the execution strategy, which never retries today,
+    /// The in-memory provider the unit tests run on has no row locks and no transactions, so there the work
+    /// runs as it is. Through the execution strategy, which never retries today,
     /// because EF refuses a transaction the application begins under one that does (ADR 0038). If it ever
     /// retries, an attempt reads the database afresh, and what an earlier one added stays tracked as saved,
     /// so it is not written twice.
@@ -253,30 +273,29 @@ public class PlaythroughService(
     /// (ADR 0038 §4): once the write has returned, a token cancelled now would only roll it back unasked.
     /// </para>
     /// </remarks>
-    private async Task<PlaythroughStep> UnderEntryLockAsync(
+    private async Task<T> UnderEntryLockAsync<T>(
         string userId,
         int gameId,
-        Func<CancellationToken, Task<PlaythroughStep>> work,
+        Func<CancellationToken, Task<T>> work,
         CancellationToken cancellationToken)
     {
+        if (!db.Database.IsRelational()) return await work(cancellationToken);
+
         var strategy = db.Database.CreateExecutionStrategy();
 
         return await strategy.ExecuteAsync(async token =>
         {
             await using var transaction = await db.Database.BeginTransactionAsync(token);
 
-            if (db.Database.IsRelational())
-            {
-                await db.Database.ExecuteSqlAsync(
-                    $"""SELECT 1 FROM "UserGameEntries" WHERE "UserId" = {userId} AND "GameId" = {gameId} FOR UPDATE""",
-                    token);
-            }
+            await db.Database.ExecuteSqlAsync(
+                $"""SELECT 1 FROM "UserGameEntries" WHERE "UserId" = {userId} AND "GameId" = {gameId} FOR UPDATE""",
+                token);
 
-            var step = await work(token);
+            var result = await work(token);
 
             // A refusal wrote nothing, and the commit only ends the transaction and its lock.
             await transaction.CommitAsync(CancellationToken.None);
-            return step;
+            return result;
         }, cancellationToken);
     }
 

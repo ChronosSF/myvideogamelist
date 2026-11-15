@@ -2175,8 +2175,7 @@ describe('telling a saved move (ADR 0097)', () => {
 
         await act(async () => release());
         await waitFor(() => expect(heard).toHaveLength(1));
-        expect(heard[0]).toMatchObject({ session: ALICE.id, listId: 'finished', answer });
-        expect(heard[0].game.id).toBe(1);
+        expect(heard[0]).toMatchObject({ session: ALICE.id, listId: 'finished', game: { id: 1 }, answer });
     });
 
     it('tells nothing of a move that failed and was put back', async () => {

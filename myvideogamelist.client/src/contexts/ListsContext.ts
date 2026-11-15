@@ -35,14 +35,12 @@ export interface ListsPending {
 
 /**
  * A move the server has saved, with what it answered: the account it was made for, the list, the game,
- * and whether it changed anything and which run is unfinished (ADR 0097).
+ * and whether it changed anything and which run is unfinished (ADR 0097). Or a game taken out of every
+ * list, or everything about it deleted, which asks nothing and takes away a question still up about it.
  */
-export interface SavedMove {
-    session: string | null;
-    listId: ListId;
-    game: GameDto;
-    answer: ListMoveDto;
-}
+export type SavedMove =
+    | { session: string | null; listId: ListId; game: GameDto; answer: ListMoveDto }
+    | { session: string | null; listId: null; gameId: number };
 
 /**
  * Every move as it is saved, for whoever asks something after one: the playthrough prompt. Told once the

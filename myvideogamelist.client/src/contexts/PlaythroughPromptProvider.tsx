@@ -1,4 +1,4 @@
-import { type ReactNode, Suspense, lazy, useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
+import { type ReactNode, useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import type { GameDto } from '@/types/game';
 import type { PlaythroughDto, PlaythroughInputDto } from '@/types/playthrough';
@@ -12,15 +12,24 @@ import {
     PlaythroughPromptContext, type PlaythroughPromptContextValue, type PlaythroughWritten,
 } from './PlaythroughPromptContext';
 
+type PopupModule = typeof import('@/components/PlaythroughPopup');
+
 /**
  * The popup's code, which nobody needs until a yes has been said: the playthrough form and its styles are
- * fetched then, and not with every page (ADR 0097).
+ * fetched then, and not with every page (ADR 0097). Loaded by hand rather than through `React.lazy`, whose
+ * failed load is thrown while rendering: from here that is the root's boundary, and a download that failed
+ * — a tab open across a deploy, a flaky connection — would replace the whole page with the error page. A
+ * failed load here is the toast's to say, and the next press tries again.
  */
-const loadPopup = () => import('@/components/PlaythroughPopup');
-const PlaythroughPopup = lazy(() => loadPopup().then(module => ({ default: module.PlaythroughPopup })));
+let popupModule: PopupModule | null = null;
+function loadPopup(): Promise<PopupModule> {
+    return import('@/components/PlaythroughPopup').then(module => (popupModule = module));
+}
 
 /** The form opened in place after a yes, on the run the yes wrote. */
 interface Popup {
+    /** The toast it was opened from, which keys it: each opening is a dialog of its own. */
+    id: number;
     game: GameDto;
     kind: PromptKind;
     playthrough: PlaythroughDto;
@@ -51,6 +60,7 @@ type PromptAction =
     | { type: 'FAILED'; session: string | null; id: number }
     | { type: 'REFUSED'; session: string | null; id: number; refusal: PromptRefusal }
     | { type: 'CONFIRMED'; session: string | null; id: number; playthrough: PlaythroughDto }
+    | { type: 'DETAILS_FAILED'; session: string | null; id: number }
     | { type: 'OPEN_POPUP'; session: string | null; id: number }
     | { type: 'POPUP_SAVING'; session: string | null }
     | { type: 'POPUP_FAILED'; session: string | null; error: string }
@@ -81,7 +91,13 @@ function reducer(state: PromptState, action: PromptAction): PromptState {
                 ...state,
                 nextId: state.nextId + 1,
                 toast: {
-                    id: state.nextId, game: action.game, ask: action.ask, phase: 'asking', refusal: null, saved: null,
+                    id: state.nextId,
+                    game: action.game,
+                    ask: action.ask,
+                    phase: 'asking',
+                    refusal: null,
+                    saved: null,
+                    detailsFailed: false,
                 },
             };
         case 'STALE':
@@ -100,6 +116,8 @@ function reducer(state: PromptState, action: PromptAction): PromptState {
             return withToast(state, action.id, toast => ({ ...toast, phase: 'refused', refusal: action.refusal }));
         case 'CONFIRMED':
             return withToast(state, action.id, toast => ({ ...toast, phase: 'confirmed', saved: action.playthrough }));
+        case 'DETAILS_FAILED':
+            return withToast(state, action.id, toast => ({ ...toast, detailsFailed: true }));
         case 'OPEN_POPUP': {
             // The toast's work is done once the form it offered is open; the popup takes its place.
             const toast = state.toast;
@@ -107,7 +125,9 @@ function reducer(state: PromptState, action: PromptAction): PromptState {
             return {
                 ...state,
                 toast: null,
-                popup: { game: toast.game, kind: toast.ask.kind, playthrough: toast.saved, saving: false, error: null },
+                popup: {
+                    id: toast.id, game: toast.game, kind: toast.ask.kind, playthrough: toast.saved, saving: false, error: null,
+                },
             };
         }
         case 'POPUP_SAVING':
@@ -135,6 +155,25 @@ async function playthroughIn(res: Response): Promise<PlaythroughDto | null> {
     try {
         const body = (await res.json()) as PlaythroughDto | null;
         return body !== null && typeof body.id === 'number' ? body : null;
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * The run a yes would have written, read back from the game's runs, or null when there is none or the read
+ * failed. For a refusal of "Try again": the first attempt may have been written with its answer lost, and the
+ * second is then refused for the first one's run, which is no reason to say nothing changed.
+ */
+async function writtenByAnEarlierTry(gameId: number, ask: PromptAsk): Promise<PlaythroughDto | null> {
+    try {
+        const res = await fetch(`/api/entries/${gameId}/playthroughs`, { credentials: 'include' });
+        if (!res.ok) return null;
+        const runs = (await res.json()) as PlaythroughDto[];
+        const match = ask.kind === 'start'
+            ? runs.filter(run => run.finishedOn === null && run.startedOn === ask.day).at(-1)
+            : runs.find(run => run.id === ask.run.id && run.finishedOn === ask.day);
+        return match ?? null;
     } catch {
         return null;
     }
@@ -217,11 +256,21 @@ export function PlaythroughPromptProvider({ children }: { children: ReactNode })
     }, []);
 
     // Each saved move, asked about on the reader's day as it is when the move is saved. Stamped with the
-    // session the move began under, so one that lands after the account changed is dropped.
+    // session the move began under, so one that lands after the account changed is dropped. A game taken out
+    // of every list, or deleted, is a move that asks nothing.
     useEffect(() => moves.subscribe(move => {
+        if (move.listId === null) {
+            dispatch({ type: 'STALE', session: move.session, gameId: move.gameId });
+            return;
+        }
         const ask = askFor(move.listId, move.answer, localToday());
-        if (ask !== null) dispatch({ type: 'ASK', session: move.session, game: move.game, ask });
-        else if (move.answer.moved) dispatch({ type: 'STALE', session: move.session, gameId: move.game.id });
+        if (ask !== null) {
+            // A new question: where focus came from last time is no way back from this one.
+            returnFocus.current = null;
+            dispatch({ type: 'ASK', session: move.session, game: move.game, ask });
+        } else if (move.answer.moved) {
+            dispatch({ type: 'STALE', session: move.session, gameId: move.game.id });
+        }
     }), [moves]);
 
     const toast = state.toast;
@@ -231,6 +280,7 @@ export function PlaythroughPromptProvider({ children }: { children: ReactNode })
     const accept = useCallback(async (view: ToastView) => {
         const at = state.session;
         const { id, game, ask } = view;
+        const retried = view.phase === 'failed';
         dispatch({ type: 'SAVING', session: at, id });
 
         const res = await send(() => apiFetch(
@@ -269,6 +319,13 @@ export function PlaythroughPromptProvider({ children }: { children: ReactNode })
             return;
         }
 
+        const earlier = retried ? await writtenByAnEarlierTry(game.id, ask) : null;
+        if (earlier !== null) {
+            written.publish({ session: at, gameId: game.id, playthrough: earlier });
+            dispatch({ type: 'CONFIRMED', session: at, id, playthrough: earlier });
+            return;
+        }
+
         // Something else wrote the game's runs since the question; the game page reads them again.
         written.publish({ session: at, gameId: game.id, playthrough: null });
         dispatch({ type: 'REFUSED', session: at, id, refusal });
@@ -278,8 +335,17 @@ export function PlaythroughPromptProvider({ children }: { children: ReactNode })
         dispatch({ type: 'DISMISS', session: state.session, id });
     }, [state.session]);
 
-    const openDetails = useCallback((id: number) => {
-        dispatch({ type: 'OPEN_POPUP', session: state.session, id });
+    const openDetails = useCallback(async (id: number) => {
+        const at = state.session;
+        if (popupModule === null) {
+            try {
+                await loadPopup();
+            } catch {
+                dispatch({ type: 'DETAILS_FAILED', session: at, id });
+                return;
+            }
+        }
+        dispatch({ type: 'OPEN_POPUP', session: at, id });
     }, [state.session]);
 
     const closePopup = useCallback(() => {
@@ -316,6 +382,9 @@ export function PlaythroughPromptProvider({ children }: { children: ReactNode })
 
     const value = useMemo<PlaythroughPromptContextValue>(() => ({ written }), [written]);
 
+    // Loaded before the popup is ever opened (`openDetails`), so this is set whenever there is one to draw.
+    const Popup = popupModule?.PlaythroughPopup ?? null;
+
     return (
         <PlaythroughPromptContext.Provider value={value}>
             {children}
@@ -323,22 +392,21 @@ export function PlaythroughPromptProvider({ children }: { children: ReactNode })
                 toast={toast}
                 onAccept={accept}
                 onDismiss={dismiss}
-                onDetails={openDetails}
+                onDetails={id => void openDetails(id)}
                 rememberReturn={rememberReturn}
                 restoreFocus={restoreFocus}
             />
-            {popup !== null && (
-                <Suspense fallback={null}>
-                    <PlaythroughPopup
-                        game={popup.game}
-                        kind={popup.kind}
-                        playthrough={popup.playthrough}
-                        saving={popup.saving}
-                        error={popup.error}
-                        onSubmit={input => void savePopup(input)}
-                        onClose={closePopup}
-                    />
-                </Suspense>
+            {popup !== null && Popup !== null && (
+                <Popup
+                    key={popup.id}
+                    game={popup.game}
+                    kind={popup.kind}
+                    playthrough={popup.playthrough}
+                    saving={popup.saving}
+                    error={popup.error}
+                    onSubmit={input => void savePopup(input)}
+                    onClose={closePopup}
+                />
             )}
         </PlaythroughPromptContext.Provider>
     );

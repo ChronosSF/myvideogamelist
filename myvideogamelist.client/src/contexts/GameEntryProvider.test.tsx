@@ -2095,6 +2095,25 @@ describe('a run the playthrough prompt wrote (ADR 0097)', () => {
         expect(screen.getByText(/finished 15 November 2026/)).toBeInTheDocument();
     });
 
+    it('loads a finish into the form open on that run, so saving it does not undo the finish', async () => {
+        stubEntryFetch(null, 200, [playthrough({ id: 7, startedOn: '2026-08-02', finishedOn: null, type: null })]);
+        const prompt = promptWrites();
+        renderWithPrompt(prompt);
+        await settled();
+        await userEvent.click(screen.getByRole('button', { name: 'Edit playthrough 1' }));
+        expect(screen.getByLabelText('Finished')).toHaveValue('');
+
+        await prompt.publish({
+            session: 'user-1',
+            gameId: 1,
+            playthrough: playthrough({
+                id: 7, startedOn: '2026-08-02', finishedOn: '2026-11-15', type: null, updatedAt: '2026-11-15T10:00:00Z',
+            }),
+        });
+
+        expect(screen.getByLabelText('Finished')).toHaveValue('2026-11-15');
+    });
+
     it("leaves another game's run, and one written for another account, alone", async () => {
         stubEntryFetch(null, 200, []);
         const prompt = promptWrites();

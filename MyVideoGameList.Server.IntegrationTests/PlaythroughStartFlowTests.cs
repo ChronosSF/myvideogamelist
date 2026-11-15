@@ -100,6 +100,50 @@ public class PlaythroughStartFlowTests(ApiFactory api) : IClassFixture<ApiFactor
     }
 
     [Fact]
+    public async Task AddAndUpdatePlaythrough_ByHand_WaitForTheEntryAsAStartOrAFinishDoes()
+    {
+        // A run logged or edited by hand checks nothing, but it must not land between a start's check and
+        // its commit, or between a finish's read and its write, so it takes the same lock.
+        const int gameId = 3104;
+        await api.CacheGamesAsync(gameId);
+
+        using var browser = api.CreateBrowser();
+        var account = await browser.RegisterAsync(Browsers.NewUserName("byhand"));
+        await (await browser.SendAsync(HttpMethod.Put, $"/api/lists/{gameId}",
+            new SetListEntryDto(ListStatusKeys.Playing))).ExpectAsync(HttpStatusCode.OK);
+        var run = await (await browser.SendAsync(HttpMethod.Post, $"/api/entries/{gameId}/playthroughs/start",
+            new StartPlaythroughDto(Day))).ReadAsync<PlaythroughDto>(HttpStatusCode.Created);
+
+        foreach (var write in new Func<Task<HttpResponseMessage>>[]
+                 {
+                     () => browser.SendAsync(HttpMethod.Post, $"/api/entries/{gameId}/playthroughs",
+                         new PlaythroughInputDto(null, null, null, Day, Day, null)),
+                     () => browser.SendAsync(HttpMethod.Put, $"/api/entries/{gameId}/playthroughs/{run.Id}",
+                         new PlaythroughInputDto(null, null, 60, Day, Day, null)),
+                 })
+        {
+            await using var holder = await OpenAsync(api.ConnectionString);
+            await using var held = await holder.BeginTransactionAsync();
+            await using (var lockEntry = new NpgsqlCommand(
+                """SELECT 1 FROM "UserGameEntries" WHERE "UserId" = @user AND "GameId" = @game FOR UPDATE""",
+                holder, held))
+            {
+                lockEntry.Parameters.AddWithValue("user", account.Id);
+                lockEntry.Parameters.AddWithValue("game", gameId);
+                await lockEntry.ExecuteNonQueryAsync();
+            }
+
+            var writing = write();
+            await SessionsWaitingForALockAsync(api.ConnectionString, 1);
+            Assert.False(writing.IsCompleted);
+
+            await held.CommitAsync();
+            var answer = await writing.WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.True(answer.IsSuccessStatusCode, $"{answer.StatusCode}: {await answer.Content.ReadAsStringAsync()}");
+        }
+    }
+
+    [Fact]
     public async Task FinishPlaythrough_AfterAMoveToFinished_FinishesTheRunTheMoveNamedOnce()
     {
         const int gameId = 3103;

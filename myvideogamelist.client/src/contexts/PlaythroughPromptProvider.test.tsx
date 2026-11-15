@@ -34,6 +34,8 @@ interface Api {
     finish: { status: number; body?: unknown } | 'reject';
     holdYes: Promise<void> | null;
     save: { status: number; body?: unknown };
+    /** What the game's runs read back as, for a refused retry that checks whether its first try was written. */
+    runs: unknown[];
 }
 
 interface Call {
@@ -60,6 +62,7 @@ function stubApi() {
         if (method === 'GET' && url === '/api/lists') {
             return json({ lists: { backlog: [entry({ game: CELESTE }), entry({ game: HADES })] } });
         }
+        if (method === 'GET' && url === '/api/entries/1/playthroughs') return json(api.runs);
         if (method === 'GET') return json({ view: 'tiles', sorts: {}, names: {} });
 
         const moved = url.match(/^\/api\/lists\/(\d+)$/);
@@ -86,7 +89,7 @@ function stubApi() {
 
 /** Buttons that move a game, as any card or the game page's row would, through the one `addToList`. */
 function Mover() {
-    const { addToList, loading } = useLists();
+    const { addToList, removeFromList, loading } = useLists();
     if (loading) return <p>Loading</p>;
     const move = (listId: ListId, which = CELESTE) => () => void addToList(listId, which);
     return (
@@ -98,6 +101,7 @@ function Mover() {
             <button type="button" onClick={move('backlog')}>Celeste to backlog</button>
             <button type="button" onClick={move('playing', HADES)}>Hades to playing</button>
             <button type="button" onClick={move('dropped', HADES)}>Hades to dropped</button>
+            <button type="button" onClick={() => void removeFromList('playing', CELESTE.id)}>Celeste out of playing</button>
         </div>
     );
 }
@@ -139,6 +143,7 @@ beforeEach(() => {
         finish: { status: 200, body: { ...STARTED, startedOn: '2026-08-02', finishedOn: '2026-11-15' } },
         holdYes: null,
         save: { status: 200, body: { ...STARTED, minutesPlayed: 600 } },
+        runs: [],
     };
     stubApi();
 });
@@ -251,6 +256,18 @@ describe('one toast at a time', () => {
         await waitFor(() => expect(toast()).not.toBeInTheDocument());
     });
 
+    it('takes the question away when the game is taken out of every list', async () => {
+        // A move to Playing made by mistake and undone at once: a yes now would make a run of a game the
+        // reader has just taken off their lists.
+        await renderPrompt();
+
+        await userEvent.click(screen.getByRole('button', { name: 'Celeste to playing' }));
+        await screen.findByText('Playthrough · Celeste');
+        await userEvent.click(screen.getByRole('button', { name: 'Celeste out of playing' }));
+
+        await waitFor(() => expect(toast()).not.toBeInTheDocument());
+    });
+
     it('leaves the question up when another game moves and asks nothing', async () => {
         await renderPrompt();
 
@@ -339,6 +356,37 @@ describe('the answer', () => {
 
         expect(await screen.findByText('Playthrough started today.')).toBeInTheDocument();
         expect(posts().map(call => call.body)).toEqual([{ startedOn: '2026-11-15' }, { startedOn: '2026-11-15' }]);
+    });
+
+    it('confirms a retry refused for the run its own lost first try wrote, rather than say nothing changed', async () => {
+        // The first try reached the server and its answer was lost: the second is refused for that run.
+        api.start = 'reject';
+        await renderPrompt();
+        await userEvent.click(screen.getByRole('button', { name: 'Celeste to playing' }));
+        await userEvent.click(await screen.findByRole('button', { name: 'Start it' }));
+        await screen.findByRole('alert');
+
+        api.start = { status: 409, body: { detail: 'This game already has an unfinished playthrough.' } };
+        api.runs = [STARTED];
+        await userEvent.click(screen.getByRole('button', { name: 'Try again' }));
+
+        expect(await screen.findByText('Playthrough started today.')).toBeInTheDocument();
+        expect(screen.queryByText(/nothing has changed/)).not.toBeInTheDocument();
+    });
+
+    it('still says nothing changed when a retry is refused for a run it did not write', async () => {
+        api.start = 'reject';
+        await renderPrompt();
+        await userEvent.click(screen.getByRole('button', { name: 'Celeste to playing' }));
+        await userEvent.click(await screen.findByRole('button', { name: 'Start it' }));
+        await screen.findByRole('alert');
+
+        api.start = { status: 409 };
+        api.runs = [{ ...STARTED, startedOn: '2026-08-02' }];
+        await userEvent.click(screen.getByRole('button', { name: 'Try again' }));
+
+        expect(await screen.findByText('A playthrough of this game is already under way, so nothing has changed.'))
+            .toBeInTheDocument();
     });
 
     it('says a failure when the request never arrives, too', async () => {
