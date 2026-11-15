@@ -191,16 +191,19 @@ jobs:
         with:
           node-version: '24.x'
 
+      # The version infra/package-lock.json pins, which the Dependency audit reads and the Infrastructure
+      # job synthesises with, rather than whatever is newest on the day (#339). No install script runs, so
+      # a later version that adds one cannot run it in the job that holds the deploy role.
       - name: Install the CDK CLI
         if: steps.deploy.outputs.go == 'true'
-        run: npm install -g aws-cdk
+        run: npm ci --prefix infra --ignore-scripts
 
       - name: Deploy the migration task definition
         if: steps.deploy.outputs.go == 'true'
         working-directory: infra
         env:
           TAG: ${{ steps.release.outputs.tag }}
-        run: cdk deploy Mvgl-dev-Migrate --exclusively -c env=dev -c "imageTag=$TAG" --require-approval never
+        run: node_modules/.bin/cdk deploy Mvgl-dev-Migrate --exclusively -c env=dev -c "imageTag=$TAG" --require-approval never
 
       # Before anything serves traffic: outside Development the application never migrates by
       # itself, and a deployed API against an un-migrated database passes /healthz and fails on
@@ -257,7 +260,7 @@ jobs:
         working-directory: infra
         env:
           TAG: ${{ steps.release.outputs.tag }}
-        run: cdk deploy Mvgl-dev-App --exclusively -c env=dev -c "imageTag=$TAG" --require-approval never
+        run: node_modules/.bin/cdk deploy Mvgl-dev-App --exclusively -c env=dev -c "imageTag=$TAG" --require-approval never
 
       - name: Wait for both services
         if: steps.deploy.outputs.go == 'true' && steps.app.outputs.present == 'true'

@@ -125,8 +125,15 @@ function aws(args, { allowFailure = false, raw = false } = {}) {
  * The CDK CLI is a Node program behind an npm shim - on Windows a .cmd that only a shell can
  * start. Rather than build a command line for a shell out of arguments, which is a thing nobody
  * should have to trust, find the program the shim points at and run it with this Node directly.
+ *
+ * The one infra/package-lock.json pins, which Deploy dev runs and CI audits, once `npm ci --prefix
+ * infra` has installed it (#339). Until then whatever is on the PATH, said so, so that a park never
+ * stops halfway, after the gate and before the destroy, for want of an install.
  */
 function cdkEntry() {
+    const pinned = path.join(INFRA, 'node_modules', 'aws-cdk', 'bin', 'cdk');
+    if (existsSync(pinned)) return pinned;
+    note('The pinned CDK CLI is not installed, so this runs the one on the PATH: npm ci --prefix infra');
     for (const dir of (process.env.PATH ?? '').split(path.delimiter)) {
         for (const shim of ['cdk', 'cdk.cmd']) {
             if (!existsSync(path.join(dir, shim))) continue;
@@ -139,7 +146,7 @@ function cdkEntry() {
             }
         }
     }
-    fail('The CDK CLI is not on the PATH: npm install -g aws-cdk');
+    fail('The CDK CLI is not installed: npm ci --prefix infra');
 }
 
 function cdk(args) {

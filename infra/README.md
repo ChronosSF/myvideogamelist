@@ -22,6 +22,10 @@ cdk synth --profile mvgl-dev -c env=dev -c imageTag=<sha>
 cdk deploy Mvgl-dev-Data --profile mvgl-dev -c env=dev
 ```
 
+The CLI the pipeline runs is the one `package-lock.json` here pins, which CI audits and synthesises
+with: `npm ci` here installs it, `npx cdk …` runs it, and `scripts/dev-env.mjs` runs it once it is
+installed (#339). A `cdk` installed globally is whatever version it was when installed.
+
 The long-lived stacks are deployed from a developer machine; the pipeline deploys `Migrate` and
 `App` only, as the deploy role the `Data` stack creates. The balancer admits CloudFront's
 origin-facing prefix list and nothing else, so there is no way to reach the environment except
