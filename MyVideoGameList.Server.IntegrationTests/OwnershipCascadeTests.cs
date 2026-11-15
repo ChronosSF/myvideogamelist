@@ -303,7 +303,7 @@ public class OwnershipCascadeTests(ApiFactory api) : IClassFixture<ApiFactory>
 
     /// <summary>
     /// An account of its own with a public profile and a public review of the played game, for an account
-    /// being recorded to report. Its handle.
+    /// being recorded to report. Its public id, which a report names it by (ADR 0096).
     /// </summary>
     private async Task<string> PublishedReviewerAsync()
     {
@@ -315,7 +315,7 @@ public class OwnershipCascadeTests(ApiFactory api) : IClassFixture<ApiFactory>
         await (await browser.SendAsync(HttpMethod.Put, $"/api/entries/{Played}/review",
             new ReviewInputDto("Published.", false, ReviewVisibility.Public, null))).ExpectAsync(HttpStatusCode.OK);
 
-        return account.UserName;
+        return account.PublicId;
     }
 
     private static void Succeeded(IdentityResult result) =>

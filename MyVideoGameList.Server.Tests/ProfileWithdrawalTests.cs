@@ -190,6 +190,12 @@ public class ProfileWithdrawalTests
     private static ReviewInputDto Review(string visibility, string body = "Worth every hour.", bool hasSpoilers = false) =>
         new(body, hasSpoilers, visibility, PlaythroughId: null);
 
+    /// <summary>
+    /// The one path for everything the edge holds of an account's profile, under any name: its public
+    /// id, which a new account draws for itself, and the wildcard (ADR 0096).
+    /// </summary>
+    private static string ProfileOf(ApplicationUser user) => $"/u/{user.PublicId}*";
+
     private static void AssertSent(RecordingEdgeInvalidator edge, string reason, params string[] paths)
     {
         var sent = Assert.Single(edge.Sent);
@@ -221,7 +227,7 @@ public class ProfileWithdrawalTests
             .UpdatePrivacy(new UpdateProfileVisibilityDto(ProfileVisibility.Private));
 
         Assert.IsType<OkObjectResult>(result.Result);
-        AssertSent(edge, "profile made private", "/u/alice*", Sitemaps);
+        AssertSent(edge, "profile made private", ProfileOf(alice), Sitemaps);
     }
 
     [Fact]
@@ -257,7 +263,7 @@ public class ProfileWithdrawalTests
     }
 
     [Fact]
-    public async Task UpdateUserName_PublicProfile_InvalidatesBothNamesAndTheSitemaps()
+    public async Task UpdateUserName_PublicProfile_InvalidatesTheProfileUnderEveryNameAndTheSitemaps()
     {
         var edge = new RecordingEdgeInvalidator();
         using var site = new Site(edge);
@@ -268,7 +274,9 @@ public class ProfileWithdrawalTests
         var result = await site.Controller(alice).UpdateUserName(new UpdateUserNameDto("alicia"));
 
         Assert.IsType<OkObjectResult>(result.Result);
-        AssertSent(edge, "profile renamed", "/u/alice*", "/u/alicia*", Sitemaps);
+        // One path for both names: the page under the old one has to become the redirect, and a
+        // redirect cached under the new one has to become the page, and both start with the id.
+        AssertSent(edge, "profile renamed", ProfileOf(alice), Sitemaps);
         Assert.Equal("alicia", storedWhenSent);
     }
 
@@ -287,10 +295,10 @@ public class ProfileWithdrawalTests
     }
 
     [Fact]
-    public async Task UpdateUserName_ChangeOfCaseOnPublicProfile_InvalidatesBothSpellingsAndTheSitemaps()
+    public async Task UpdateUserName_ChangeOfCaseOnPublicProfile_InvalidatesTheProfileAndTheSitemaps()
     {
-        // Paths are case-sensitive and every later withdrawal names the new spelling, so the copies
-        // under the old one — the spelling the site linked to until now — must go with this change.
+        // The page cached under the old spelling — the one the site linked to until now — has to
+        // become the redirect to the new one, and it is under the same id as every other spelling.
         var edge = new RecordingEdgeInvalidator();
         using var site = new Site(edge);
         var alice = await site.AccountAsync("alice", ProfileVisibility.Public);
@@ -299,7 +307,7 @@ public class ProfileWithdrawalTests
 
         await site.Controller(alice).UpdateUserName(new UpdateUserNameDto("Alice"));
 
-        AssertSent(edge, "profile renamed", "/u/alice*", "/u/Alice*", Sitemaps);
+        AssertSent(edge, "profile renamed", ProfileOf(alice), Sitemaps);
         Assert.Equal("Alice", storedWhenSent);
     }
 
@@ -342,7 +350,7 @@ public class ProfileWithdrawalTests
         var result = await site.Controller(alice).DeleteAccount(new PasswordConfirmationDto(Password));
 
         Assert.IsType<NoContentResult>(result);
-        AssertSent(edge, "account deleted", "/u/alice*", Sitemaps);
+        AssertSent(edge, "account deleted", ProfileOf(alice), Sitemaps);
         Assert.True(goneWhenSent);
     }
 
@@ -422,7 +430,7 @@ public class ProfileWithdrawalTests
         var result = await site.Controller(alice).UpdateProfileDetails(rewrite);
 
         Assert.IsType<OkObjectResult>(result.Result);
-        AssertSent(edge, "profile details changed", "/u/alice*");
+        AssertSent(edge, "profile details changed", ProfileOf(alice));
         Assert.NotNull(storedWhenSent);
         Assert.Equal(DisplayNamePolicy.Normalise(rewrite.DisplayName), storedWhenSent.DisplayName);
         Assert.Equal(AvatarUrlPolicy.Normalise(rewrite.AvatarUrl), storedWhenSent.AvatarUrl);
@@ -499,7 +507,7 @@ public class ProfileWithdrawalTests
 
         Assert.True(await site.Get<ModerationService>().HideReviewAsync(reviewId));
 
-        AssertSent(edge, "review hidden by an admin", "/u/alice*");
+        AssertSent(edge, "review hidden by an admin", ProfileOf(alice));
         Assert.Equal(Midday, storedWhenSent);
     }
 
@@ -515,7 +523,7 @@ public class ProfileWithdrawalTests
 
         await site.Get<ModerationService>().HideReviewAsync(reviewId);
 
-        AssertSent(edge, "review hidden by an admin", "/u/alice*");
+        AssertSent(edge, "review hidden by an admin", ProfileOf(alice));
     }
 
     [Fact]
@@ -614,7 +622,7 @@ public class ProfileWithdrawalTests
         var result = await site.Get<ModerationService>().ClearProfileAsync(alice.Id, new ClearProfileDto(false, false, Bio: true));
 
         Assert.Equal(ProfileClear.Cleared, result);
-        AssertSent(edge, "profile details cleared by an admin", "/u/alice*");
+        AssertSent(edge, "profile details cleared by an admin", ProfileOf(alice));
         Assert.Null(bioWhenSent);
     }
 
@@ -683,7 +691,7 @@ public class ProfileWithdrawalTests
         await reviews.UpsertAsync(alice.Id, GameId, Review(ReviewVisibility.Private));
 
         // No sitemap: a review changes nobody's place in it.
-        AssertSent(edge, "review made private", "/u/alice*");
+        AssertSent(edge, "review made private", ProfileOf(alice));
         Assert.Equal(ReviewVisibility.Private, storedWhenSent);
     }
 
@@ -700,7 +708,7 @@ public class ProfileWithdrawalTests
 
         await reviews.UpsertAsync(alice.Id, GameId, Review(ReviewVisibility.Public, "Second thoughts."));
 
-        AssertSent(edge, "review edited", "/u/alice*");
+        AssertSent(edge, "review edited", ProfileOf(alice));
         Assert.Equal("Second thoughts.", storedWhenSent);
     }
 
@@ -716,7 +724,7 @@ public class ProfileWithdrawalTests
 
         await reviews.UpsertAsync(alice.Id, GameId, Review(ReviewVisibility.Public, hasSpoilers: true));
 
-        AssertSent(edge, "review edited", "/u/alice*");
+        AssertSent(edge, "review edited", ProfileOf(alice));
     }
 
     [Fact]
@@ -793,7 +801,7 @@ public class ProfileWithdrawalTests
 
         Assert.True(await reviews.DeleteAsync(alice.Id, GameId));
 
-        AssertSent(edge, "review deleted", "/u/alice*");
+        AssertSent(edge, "review deleted", ProfileOf(alice));
         Assert.True(goneWhenSent);
     }
 
@@ -812,7 +820,7 @@ public class ProfileWithdrawalTests
 
         Assert.True(await reviews.DeleteAsync(alice.Id, GameId, request.Token));
 
-        AssertSent(edge, "review deleted", "/u/alice*");
+        AssertSent(edge, "review deleted", ProfileOf(alice));
     }
 
     [Fact]
@@ -829,7 +837,7 @@ public class ProfileWithdrawalTests
 
         Assert.True(await reviews.DeleteAsync(alice.Id, GameId));
 
-        AssertSent(edge, "review deleted", "/u/alice*");
+        AssertSent(edge, "review deleted", ProfileOf(alice));
     }
 
     [Fact]
@@ -861,7 +869,7 @@ public class ProfileWithdrawalTests
 
         Assert.True(await site.Get<ListService>().DeleteEntryAsync(alice.Id, GameId));
 
-        AssertSent(edge, "entry deleted", "/u/alice*");
+        AssertSent(edge, "entry deleted", ProfileOf(alice));
         Assert.True(goneWhenSent);
     }
 
@@ -882,7 +890,7 @@ public class ProfileWithdrawalTests
 
         Assert.True(await site.Get<ListService>().DeleteEntryAsync(alice.Id, GameId));
 
-        AssertSent(edge, "entry deleted", "/u/alice*");
+        AssertSent(edge, "entry deleted", ProfileOf(alice));
     }
 
     [Fact]
@@ -913,7 +921,7 @@ public class ProfileWithdrawalTests
 
         await site.Get<ProfileWithdrawals>().LibraryEmptiedAsync(alice.Id);
 
-        AssertSent(edge, "library emptied", "/u/alice*");
+        AssertSent(edge, "library emptied", ProfileOf(alice));
     }
 
     [Fact]
@@ -941,7 +949,7 @@ public class ProfileWithdrawalTests
 
         Assert.True(await site.Get<ListService>().DeleteEntryAsync(alice.Id, GameId));
 
-        AssertSent(edge, "entry deleted", "/u/alice*");
+        AssertSent(edge, "entry deleted", ProfileOf(alice));
     }
 
     // ---------------------------------------------------------------------------------------
@@ -1049,10 +1057,10 @@ public class ProfileWithdrawalTests
             new DbContextOptionsBuilder<ApplicationDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
         var withdrawals = new ProfileWithdrawals(db, new ThrowingEdgeInvalidator(), logger);
 
-        withdrawals.ProfileMadePrivate("user-1", "alice");
+        withdrawals.ProfileMadePrivate("user-1", "b4kz9q2mxw7c");
 
         var error = Assert.Single(logger.At(LogLevel.Error));
-        Assert.Contains("/u/alice*, /sitemaps/profiles-*", error.Message);
+        Assert.Contains("/u/b4kz9q2mxw7c*, /sitemaps/profiles-*", error.Message);
     }
 
     [Fact]
@@ -1182,7 +1190,7 @@ public class ProfileWithdrawalTests
 
         Assert.IsType<OkObjectResult>(result.Result);
         Assert.Equal(ProfileVisibility.Private, site.StoredUser(alice.Id)?.ProfileVisibility);
-        AssertSent(edge, "profile made private", "/u/alice*", Sitemaps);
+        AssertSent(edge, "profile made private", ProfileOf(alice), Sitemaps);
     }
 
     [Fact]
@@ -1240,17 +1248,19 @@ public class ProfileWithdrawalTests
     // ---------------------------------------------------------------------------------------
 
     [Fact]
-    public void Profile_AnyName_EndsInOneWildcardCoveringItsDataUrlAndQueryStrings()
+    public void Profile_AnId_EndsInOneWildcardCoveringEveryNameItsDataUrlAndQueryStrings()
     {
-        // React Router 8 asks for /u/alice.data, and the cache key holds ?page= and ?_routes=;
-        // CloudFront reads a `*` as a wildcard only when it is the last character.
-        Assert.Equal("/u/alice*", ProfileWithdrawals.Profile("alice"));
+        // The page is /u/{id}/{name}, React Router 8 asks for its data at /u/{id}/{name}.data, the
+        // cache key holds ?page= and ?_routes=, and every other name and the bare id are redirects
+        // cached under the same id. CloudFront reads a `*` as a wildcard only when it is the last
+        // character. No name is in the path, so no rename can leave a copy out of its reach.
+        Assert.Equal("/u/b4kz9q2mxw7c*", ProfileWithdrawals.Profile("b4kz9q2mxw7c"));
     }
 
     [Fact]
     public void PathsForLog_PathWithALineBreak_IsOneLine()
     {
-        // A path carries a username from a request; whatever the alphabet allows today, the log
+        // A path carries a value from the database; whatever its alphabet allows today, the log
         // does not take its word for it.
         var invalidation = new EdgeInvalidation("profile renamed", ["/u/alice\r\nINFO: all clear*", "/sitemaps/profiles-*"]);
 

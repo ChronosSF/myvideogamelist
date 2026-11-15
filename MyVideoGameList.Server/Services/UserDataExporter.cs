@@ -193,6 +193,7 @@ public class UserDataExporter(ApplicationDbContext db, TimeProvider clock) : IUs
             .Select(u => new AccountExportDto(
                 u.Email,
                 u.UserName,
+                u.PublicId,
                 u.DisplayName,
                 u.AvatarUrl,
                 u.Bio,

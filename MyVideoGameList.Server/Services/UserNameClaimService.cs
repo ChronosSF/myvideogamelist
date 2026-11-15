@@ -27,17 +27,49 @@ namespace MyVideoGameList.Server.Services;
 /// </para>
 /// <para>
 /// Every account is created here, so this is also where one is dated: when it was created, and when
-/// its owner was first seen, which is the same moment (ADR 0051).
+/// its owner was first seen, which is the same moment (ADR 0051). And where its public id is made sure
+/// of: a new <see cref="ApplicationUser"/> draws one, and one a live account already holds is drawn
+/// again before the write, so that a collision is a second draw rather than a refused sign-up (ADR 0096).
 /// </para>
 /// </remarks>
 public class UserNameClaimService(UserManager<ApplicationUser> userManager, TimeProvider clock) : IUserNameClaimService
 {
-    public Task<IdentityResult> RegisterAsync(ApplicationUser user, string password)
+    /// <summary>
+    /// How many ids registration tries before it gives up. Out of 30^12, with a million accounts, a draw
+    /// meets a live account's id about twice in a million million, so meeting five in a row means the
+    /// generator is broken, and an exception says so where a loop would hide it.
+    /// </summary>
+    internal const int PublicIdDraws = 5;
+
+    public async Task<IdentityResult> RegisterAsync(ApplicationUser user, string password)
     {
         var now = clock.GetUtcNow();
         user.CreatedAt = now;
         user.LastSeenAt = now;
-        return TranslatingTheRace(user, () => userManager.CreateAsync(user, password));
+        await DrawFreePublicIdAsync(user);
+        return await TranslatingTheRace(user, () => userManager.CreateAsync(user, password));
+    }
+
+    /// <summary>
+    /// Keeps the account's public id if no account holds it, and otherwise draws until one is free.
+    /// </summary>
+    /// <remarks>
+    /// A read before the write, which leaves the gap a username's availability check would: two
+    /// registrations drawing the same id between this read and their inserts. That pair has odds of
+    /// one in 30^12 and is left to the unique index, which refuses the second as a 500; a draw that
+    /// meets a live id is the case worth handling, and is handled here.
+    /// </remarks>
+    private async Task DrawFreePublicIdAsync(ApplicationUser user)
+    {
+        for (var draw = 1; draw <= PublicIdDraws; draw++)
+        {
+            var candidate = user.PublicId;
+            if (!await userManager.Users.AnyAsync(u => u.PublicId == candidate)) return;
+            user.PublicId = PublicIdPolicy.New();
+        }
+
+        throw new InvalidOperationException(
+            $"Drew {PublicIdDraws} public ids for a new account and every one was taken; the generator is not random.");
     }
 
     public Task<IdentityResult> RenameAsync(ApplicationUser user, string userName) =>

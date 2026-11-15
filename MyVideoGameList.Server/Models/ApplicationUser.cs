@@ -58,7 +58,26 @@ public class ApplicationUser : IdentityUser
     public string ListView { get; set; } = ListViewModes.Tiles;
 
     /// <summary>
-    /// Whether this account has a public page at <c>/u/{UserName}</c>. One of
+    /// The profile's address: <c>/u/{PublicId}/{UserName}</c>, where only this half is looked up
+    /// (ADR 0096). See <see cref="PublicIdPolicy"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Made when the account is: a new account draws one here, as Identity's own constructor draws
+    /// the account id and the security stamp, and <see cref="Services.UserNameClaimService"/> draws
+    /// again before the account is saved if this one is taken. It never changes after that, so a rename
+    /// breaks no link and hands none to whoever claims the old name next.
+    /// </para>
+    /// <para>
+    /// Public by design, and so never the account id, which is half of every confirmation and reset
+    /// link (ADR 0089). It is in the account's export and is not imported: an id names an account, and
+    /// a file imported into another account is that account's data under that account's id.
+    /// </para>
+    /// </remarks>
+    public string PublicId { get; set; } = PublicIdPolicy.New();
+
+    /// <summary>
+    /// Whether this account has a public page at <c>/u/{PublicId}/{UserName}</c>. One of
     /// <see cref="Models.ProfileVisibility"/>.
     /// </summary>
     /// <remarks>
@@ -102,11 +121,11 @@ public class ApplicationUser : IdentityUser
     /// When <see cref="IdentityUser.UserName"/> was last changed, or null if it never has been.
     /// </summary>
     /// <remarks>
-    /// A username is a public address that other people link to, so renaming one breaks every link
-    /// to it and frees the old name for somebody else to claim. Neither is a reason to forbid a
-    /// rename — people outgrow a name they picked in a hurry — but both are reasons not to allow an
-    /// unbounded stream of them, which is how a namespace gets churned for squatting. This column
-    /// is what the cooldown in <c>UserController</c> is measured from.
+    /// A rename frees the old name for somebody else to claim. Since the profile's address is its
+    /// <see cref="PublicId"/>, a rename no longer breaks a link to it (ADR 0096), but an unbounded stream
+    /// of renames is still how a namespace gets churned by somebody cycling names to squat them, the
+    /// second of ADR 0027's two reasons. This column is what the cooldown in <c>UserController</c> is
+    /// measured from.
     /// </remarks>
     public DateTimeOffset? UserNameChangedAt { get; set; }
 
