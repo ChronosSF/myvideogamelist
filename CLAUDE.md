@@ -57,6 +57,7 @@ build behind a stand-in that does route `/api` (ADR 0060).
 | `node scripts/seed-demo-history.mjs --email <account>` | Months of demo tracking history, so the profile stats have something to show. Prints SQL — pipe it to psql. `--email` is mandatory and **replaces that account's lists**, so use a `@test.local` one |
 | `node scripts/dev-env.mjs status\|park\|resume` | The AWS dev environment, through the signed-in `mvgl-dev` profile: `park` destroys the App stack (the distribution with it), stops the database and gates the pipeline off; `resume` is the reverse at the newest pushed tag, migrating the database at that tag first, since a parked environment skips the pipeline's migrations, and proving the site answers through the door. Every deploy is `--exclusively`, so the Data stack is never touched by accident. See ADR 0044, 0046 |
 | `node scripts/dev-check.mjs` | The dev environment's acceptance test, through the distribution. Run it after any stack change and after every resume; with `MVGL_DEV_BASIC_AUTH` set to the basic-auth pair it checks everything, without it only the door |
+| `node scripts/discord/setup.mjs` | The Discord server's layout for the open test: its channels, roles, emojis, the test's event, the welcome card and the pinned texts, through a bot that is an administrator for the run and whose token it asks for with the typing hidden. A dry run unless given `--apply`, and it never deletes or renames: an invite dies with the channel it was made in, and the site's own is `DISCORD_INVITE_URL`. A second run changes nothing. `node scripts/discord/setup.test.mjs` runs it against a stand-in for Discord, by hand, and `node scripts/discord/draw.mjs` redraws its pictures, which needs what `npm run visual` needs. Not run by CI |
 
 Health endpoints: `/healthz` (liveness, no dependency checks) and `/readyz` (database and
 IGDB reachability). A degraded IGDB returns 200, not 503 — browsing breaks but stored lists
@@ -97,7 +98,9 @@ docs/data-model-plan.md         The tables not built yet, and the two constraint
 scripts/                        Dev-only tools. The seeding tools print SQL to stdout and never open
                                 a database connection — piping to psql stays a deliberate act.
                                 dev-env.mjs is the exception: it acts on AWS, through a signed-in
-                                CLI profile, and prints every command before running it
+                                CLI profile, and prints every command before running it. discord/
+                                is the other: setup.mjs acts on the Discord server, through a bot's
+                                token, and only when given --apply
 ROADMAP.md                      Not the plan any more: where it lives (GitHub issues), and the old IDs' map
 .editorconfig  Directory.Build.props  .gitleaks.toml
                                 The house style, NuGet's audit, and what the secret scan allows (ADR 0061)

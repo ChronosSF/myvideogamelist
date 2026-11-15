@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<!--
+    The source of assets/welcome.jpg: the picture on the Discord server's welcome card, and the one the
+    posts announcing the open test carry. 1200 by 900, drawn at twice that by draw.mjs, which puts the
+    app's colour tokens on :root first, so every colour here is a token (ADR 0049), and gives each
+    <img data-shot> the page of the site it shows. The type is the app's own, from the client's files.
+    Four to three, the shape a feed shows whole on a phone and on a desktop alike.
+-->
+<style>
+    @font-face {
+        font-family: 'Archivo Display';
+        font-weight: 800;
+        src: url('../../myvideogamelist.client/src/assets/fonts/archivo-display-latin.woff2') format('woff2');
+    }
+    @font-face {
+        font-family: 'Archivo Title';
+        font-weight: 700;
+        src: url('../../myvideogamelist.client/src/assets/fonts/archivo-title-latin.woff2') format('woff2');
+    }
+    @font-face {
+        font-family: 'Schibsted Grotesk Variable';
+        font-weight: 400 900;
+        src: url('../../myvideogamelist.client/node_modules/@fontsource-variable/schibsted-grotesk/files/schibsted-grotesk-latin-wght-normal.woff2') format('woff2-variations');
+    }
+    @font-face {
+        font-family: 'DM Mono';
+        font-weight: 400;
+        src: url('../../myvideogamelist.client/node_modules/@fontsource/dm-mono/files/dm-mono-latin-400-normal.woff2') format('woff2');
+    }
+    @font-face {
+        font-family: 'DM Mono';
+        font-weight: 500;
+        src: url('../../myvideogamelist.client/node_modules/@fontsource/dm-mono/files/dm-mono-latin-500-normal.woff2') format('woff2');
+    }
+
+    :root {
+        --W: 1200px;
+        --H: 900px;
+    }
+
+    * { box-sizing: border-box; }
+    p, h1 { margin: 0; }
+
+    html, body {
+        width: var(--W);
+        height: var(--H);
+        margin: 0;
+        overflow: hidden;
+    }
+
+    body {
+        position: relative;
+        padding: 44px 56px 40px;
+        background: var(--color-page);
+        color: var(--color-fg);
+        font-family: 'Schibsted Grotesk Variable', sans-serif;
+    }
+
+    /* The page's pixel matrix, as PagePattern draws it: the ink cut out by the drawing, brighter at a glow. */
+    .pattern, .pattern-lit {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+    }
+    .pattern {
+        background:
+            radial-gradient(70% 90% at 78% 0%, color-mix(in srgb, var(--color-primary-500) 34%, transparent), transparent 70%),
+            color-mix(in srgb, var(--color-primary-500) 9%, transparent);
+        -webkit-mask-image: url('../../myvideogamelist.client/src/assets/dot-matrix.svg'), linear-gradient(to bottom, #000 0%, #000 30%, transparent 78%);
+        -webkit-mask-size: 8px 8px, 100% 100%;
+        -webkit-mask-repeat: repeat, no-repeat;
+        -webkit-mask-composite: source-in;
+        mask-composite: intersect;
+    }
+    .pattern-lit {
+        background: color-mix(in srgb, var(--color-primary-500) 55%, transparent);
+        -webkit-mask-image: url('../../myvideogamelist.client/src/assets/dot-matrix-lit.svg'), linear-gradient(to bottom, #000 0%, #000 30%, transparent 78%);
+        -webkit-mask-size: 640px 480px, 100% 100%;
+        -webkit-mask-repeat: repeat, no-repeat;
+        -webkit-mask-composite: source-in;
+        mask-composite: intersect;
+    }
+
+    .content { position: relative; height: 100%; }
+
+    /* The top line: the mark, and where the test is. */
+    .bar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        height: 44px;
+    }
+    .lockup {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        color: var(--color-fg-strong);
+        font-family: 'Archivo Title', sans-serif;
+        font-size: 28px;
+        font-weight: 700;
+        letter-spacing: -0.01em;
+    }
+    .lockup svg { width: 44px; height: 44px; }
+    .logo-tile { fill: var(--color-brand-navy); }
+    .logo-play { fill: var(--color-brand-light); stroke: var(--color-brand-light); }
+    .logo-badge { fill: var(--color-brand-lime); }
+    .logo-check { stroke: var(--color-brand-navy); }
+    .brand-accent { color: var(--color-brand-lime); }
+
+    .where {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        font-family: 'DM Mono', monospace;
+        font-size: 17px;
+        letter-spacing: 0.04em;
+        color: var(--color-fg-strong);
+    }
+    .tag {
+        padding: 7px 12px 6px;
+        background: var(--color-primary-500);
+        color: var(--color-page);
+        font-weight: 500;
+        font-size: 14px;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        border-radius: 2px;
+    }
+
+    h1 {
+        margin-top: 30px;
+        color: var(--color-fg-strong);
+        font-family: 'Archivo Display', sans-serif;
+        font-size: 60px;
+        font-weight: 800;
+        line-height: 0.98;
+        letter-spacing: -0.02em;
+    }
+    h1 .accent { color: var(--color-primary-400); }
+
+    .lead {
+        margin-top: 16px;
+        white-space: nowrap;
+        color: var(--color-fg-soft);
+        font-size: 21px;
+        line-height: 1.35;
+    }
+
+    /* The pages, one over the next. */
+    .screens { position: absolute; left: 0; right: 0; top: 258px; height: 440px; }
+    .screen {
+        position: absolute;
+        width: 584px;
+        aspect-ratio: 1200 / 750;
+        border: 1px solid var(--color-line-strong);
+        border-radius: 3px;
+        overflow: hidden;
+        background: var(--color-page);
+        box-shadow: 0 28px 70px rgb(0 0 0 / 0.62), 0 4px 14px rgb(0 0 0 / 0.5);
+    }
+    .screen img, .phone img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: top left; }
+    .s1 { left: 0; top: 0; }
+    .s2 { left: 238px; top: 26px; }
+    .s3 { left: 476px; top: 52px; }
+    .phone {
+        position: absolute;
+        right: -8px;
+        top: 92px;
+        width: 162px;
+        aspect-ratio: 390 / 800;
+        padding: 5px;
+        border: 1px solid var(--color-line-strong);
+        border-radius: 16px;
+        background: var(--color-sunken);
+        box-shadow: 0 28px 70px rgb(0 0 0 / 0.7), 0 4px 14px rgb(0 0 0 / 0.55);
+    }
+    .phone img { border-radius: 11px; }
+
+    /* What the post asks for, under a heavy rule, as a section of the site opens. */
+    .asks {
+        position: absolute;
+        left: 0; right: 0; bottom: 0;
+        border-top: 3px solid var(--color-fg-strong);
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 36px;
+        padding-top: 18px;
+    }
+    .ask { display: grid; grid-template-columns: auto 1fr; column-gap: 16px; align-items: start; }
+    .number {
+        color: var(--color-primary-500);
+        font-family: 'Archivo Display', sans-serif;
+        font-size: 44px;
+        font-weight: 800;
+        line-height: 0.95;
+    }
+    .ask-title {
+        color: var(--color-fg-strong);
+        font-family: 'Archivo Title', sans-serif;
+        font-size: 25px;
+        font-weight: 700;
+        line-height: 1.1;
+    }
+    .ask-note {
+        margin-top: 7px;
+        color: var(--color-fg-muted);
+        font-family: 'DM Mono', monospace;
+        font-size: 13.5px;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        line-height: 1.35;
+    }
+</style>
+</head>
+<body>
+    <div class="pattern"></div>
+    <div class="pattern-lit"></div>
+
+    <div class="content">
+        <div class="bar">
+            <div class="lockup">
+                <svg viewBox="0 0 64 64" aria-hidden="true">
+                    <mask id="logo-gap">
+                        <rect width="64" height="64" fill="white"/>
+                        <rect x="37" y="-3" width="30" height="30" rx="11" fill="black"/>
+                    </mask>
+                    <g mask="url(#logo-gap)">
+                        <rect class="logo-tile" y="8" width="56" height="56" rx="15"/>
+                        <path class="logo-play" d="M21 26 40 36 21 46Z" stroke-width="6" stroke-linejoin="round"/>
+                    </g>
+                    <rect class="logo-badge" x="40" width="24" height="24" rx="8"/>
+                    <path class="logo-check" d="M45.5 12 49.5 16 58 7" fill="none" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                <span>MyVideoGame<span class="brand-accent">List</span></span>
+            </div>
+            <div class="where">
+                <span class="tag">Open test</span>
+                <span>dev.myvideogamelist.net</span>
+            </div>
+        </div>
+
+        <h1>Every game you&rsquo;ve played,<br><span class="accent">in one list</span></h1>
+        <p class="lead">A video game tracker: lists, scores, playthroughs with hours, your stats and a release calendar.</p>
+
+        <div class="screens">
+            <div class="screen s1"><img data-shot="lists" alt=""></div>
+            <div class="screen s2"><img data-shot="stats" alt=""></div>
+            <div class="screen s3"><img data-shot="game" alt=""></div>
+            <div class="phone"><img data-shot="phone" alt=""></div>
+        </div>
+
+        <div class="asks">
+            <div class="ask">
+                <span class="number">01</span>
+                <div>
+                    <p class="ask-title">Break it</p>
+                    <p class="ask-note">Stability test: use it<br>like you mean it</p>
+                </div>
+            </div>
+            <div class="ask">
+                <span class="number">02</span>
+                <div>
+                    <p class="ask-title">Ask for features</p>
+                    <p class="ask-note">Tell us what your<br>tracker is missing</p>
+                </div>
+            </div>
+            <div class="ask">
+                <span class="number">03</span>
+                <div>
+                    <p class="ask-title">Send your export</p>
+                    <p class="ask-note">From any other tracker,<br>on our Discord</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
