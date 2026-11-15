@@ -66,6 +66,9 @@ jobs:
       AWS_REGION: ${{ vars.AWS_REGION }}
       REGISTRY: ${{ vars.AWS_ACCOUNT_ID }}.dkr.ecr.${{ vars.AWS_REGION }}.amazonaws.com
       AWAKE: ${{ vars.DEV_DEPLOY_ENABLED }}
+      # No build record uploaded as an artifact, as in CI's Images job: nobody reads it, anyone signed in
+      # can download one from a public repository, and the build holds a token that can write the cache.
+      DOCKER_BUILD_RECORD_UPLOAD: false
     steps:
       - uses: actions/checkout@v7
         with:
