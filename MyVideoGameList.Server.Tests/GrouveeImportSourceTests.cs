@@ -41,7 +41,8 @@ public class GrouveeImportSourceTests
         string igdbId = "379",
         string reviewTitle = "",
         string review = "",
-        string platforms = """{"PlayStation 2": {"url": "https://www.grouvee.com/games/platform/55-playstation-2/"}}""") =>
+        string platforms = """{"PlayStation 2": {"url": "https://www.grouvee.com/games/platform/55-playstation-2/"}}""",
+        string addedToCollection = "2021-10-02") =>
         $$"""
           {
             "id": 116524,
@@ -53,10 +54,13 @@ public class GrouveeImportSourceTests
             "review": "{{review}}",
             "dates": {{dates}},
             "release_date": "2004-11-17",
-            "date_added_to_collection": "2021-10-02",
+            "date_added_to_collection": "{{addedToCollection}}",
             "igdb_id": {{igdbId}}
           }
           """;
+
+    private static DateTimeOffset Utc(int year, int month, int day, int hour = 0, int minute = 0, int second = 0) =>
+        new(year, month, day, hour, minute, second, TimeSpan.Zero);
 
     private static ImportRowPayload Single(string collection, string extra = "") =>
         Assert.Single(Source.Read(Document(collection, extra)));
@@ -312,13 +316,122 @@ public class GrouveeImportSourceTests
     }
 
     [Fact]
-    public void Read_DateAddedToCollection_BecomesTheEntrysAddedAt()
+    public void Read_DateAddedToCollection_BecomesTheEntrysAddedAt_AtTheTimeTheGameWasShelvedThatDay()
     {
-        // Otherwise an imported library lands at the top of "recently added" all at once and
-        // buries everything the user actually touched.
-        Assert.Equal(
-            new DateTimeOffset(2021, 10, 2, 0, 0, 0, TimeSpan.Zero),
-            Single(Game()).AddedAt);
+        // The day, so an imported library does not land at the top of "recently added" all at once
+        // and bury everything the user actually touched. The time, so the games entered that day are
+        // in the order they were entered rather than alphabetical (ADR 0087).
+        Assert.Equal(Utc(2021, 10, 2, 6, 54, 47), Single(Game()).AddedAt);
+    }
+
+    [Fact]
+    public void Read_SeveralShelvingsOnTheDayAdded_TakeTheEarliest()
+    {
+        var row = Single(Game(shelves: """
+            {"Played": {"date_added": "2021-10-02T09:00:00Z"}, "Wish List": {"date_added": "2021-10-02T07:30:00Z"}}
+            """));
+
+        Assert.Equal(Utc(2021, 10, 2, 7, 30), row.AddedAt);
+    }
+
+    [Fact]
+    public void Read_AGameMovedToItsShelfOnALaterDay_IsAddedAtMidnightOnTheDayItArrived()
+    {
+        // From a real export: added on the account's first day while still being played, and moved
+        // to Played six weeks later. That move is the shelf's moment, not the collection's.
+        var row = Single(Game(
+            addedToCollection: "2021-08-18",
+            shelves: """{"Played": {"date_added": "2021-10-02T08:55:37Z"}}"""));
+
+        Assert.Equal(Utc(2021, 8, 18), row.AddedAt);
+    }
+
+    [Fact]
+    public void Read_ACollectionDayIsUtcs_SoAShelvingLateThatEveningIsStillOnIt()
+    {
+        // Past midnight where the export this was built from was made, and the export still names the
+        // UTC day — which is what makes this shelving the moment the game was added.
+        var row = Single(Game(
+            addedToCollection: "2021-09-25",
+            shelves: """{"Played": {"date_added": "2021-09-25T21:09:28Z"}}"""));
+
+        Assert.Equal(Utc(2021, 9, 25, 21, 9, 28), row.AddedAt);
+    }
+
+    [Fact]
+    public void Read_TheShelfTheStatusIsReadFrom_SaysWhenTheGameTookIt()
+    {
+        var row = Single(Game(
+            shelves: """{"Played": {"date_added": "2021-10-02T06:54:47Z"}, "Playing": {"date_added": "2025-11-28T18:02:00Z"}}"""));
+
+        Assert.Equal(ListStatusKeys.Playing, row.Status);
+        Assert.Equal(Utc(2025, 11, 28, 18, 2), row.StatusSince);
+    }
+
+    [Fact]
+    public void Read_APlayedGameWithAFinishDate_IsFinishedSinceItWentOntoPlayed()
+    {
+        var row = Single(Game(
+            shelves: """{"Played": {"date_added": "2026-09-06T07:27:04Z"}}""",
+            dates: """[{"date_started": "None", "date_finished": "2026-09-06", "seconds_played": 0, "level_of_completion": "Main Story", "platform": ""}]"""));
+
+        Assert.Equal(ListStatusKeys.Finished, row.Status);
+        Assert.Equal(Utc(2026, 9, 6, 7, 27, 4), row.StatusSince);
+    }
+
+    [Fact]
+    public void Read_APlayedGameWithNoFinishDate_CarriesTheMomentForTheListItsOwnerWillChoose()
+    {
+        // No status yet, but whichever list the review screen's one answer names, it is a reading of
+        // the Played shelf, so the shelf's moment is the moment of that list too.
+        var row = Single(Game());
+
+        Assert.True(row.PlayedUnresolved);
+        Assert.Null(row.Status);
+        Assert.Equal(Utc(2021, 10, 2, 6, 54, 47), row.StatusSince);
+    }
+
+    [Fact]
+    public void Read_ACustomShelf_CarriesItsMomentForTheListItsOwnerNamesForIt()
+    {
+        var row = Single(Game(shelves: """{"Abandoned Forever": {"date_added": "2025-11-28T00:00:00Z"}}"""));
+
+        Assert.True(row.StatusUnrecognised);
+        Assert.Equal(Utc(2025, 11, 28), row.StatusSince);
+    }
+
+    [Fact]
+    public void Read_TwoCustomShelves_CarryNoMoment()
+    {
+        // The owner names one list for the row, and nothing says which of the two shelves it reads.
+        var row = Single(Game(shelves: """
+            {"Abandoned Forever": {"date_added": "2025-11-28T00:00:00Z"}, "Gave Up On": {"date_added": "2024-01-01T00:00:00Z"}}
+            """));
+
+        Assert.True(row.StatusUnrecognised);
+        Assert.Null(row.StatusSince);
+    }
+
+    [Fact]
+    public void Read_OnlyTheWishList_CarriesNoMoment()
+    {
+        // The wishlist is an axis, not a list (ADR 0022), so there is no status for a moment to date.
+        var row = Single(Game(shelves: """{"Wish List": {"date_added": "2025-11-28T00:00:00Z"}}"""));
+
+        Assert.Null(row.StatusSince);
+    }
+
+    [Theory]
+    [InlineData("""{"Played": {"date_added": "None", "order": 3}}""")]
+    [InlineData("""{"Played": {"order": 3}}""")]
+    [InlineData("""{"Played": "https://www.grouvee.com/user/1-somebody/shelves/2-played/"}""")]
+    public void Read_AShelfWithNoReadableMoment_CostsTheMomentAndNotTheGame(string shelves)
+    {
+        var row = Single(Game(shelves: shelves));
+
+        Assert.True(row.PlayedUnresolved);
+        Assert.Null(row.StatusSince);
+        Assert.Equal(Utc(2021, 10, 2), row.AddedAt);
     }
 
     [Fact]

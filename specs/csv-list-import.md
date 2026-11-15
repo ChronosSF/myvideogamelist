@@ -94,6 +94,11 @@ Everything maps into this shape before anything touches the database:
 | `playthroughType` | | A run's completion level, mapped through the preset's own vocabulary onto `rushed` / `normally` / `completionist`. Only values seen in a real export are mapped — anything else is no type, because a typed run with hours feeds the community medians. A level on its own is not a run ([0050](../docs/decisions/0050-an-imported-run-takes-its-type-from-the-source.md)) |
 | `notes` / `review` | | Long text, may contain newlines and commas — the parser must handle quoted multi-line fields |
 | `isFavourite` / `isWishlist` | | Some services model these as a shelf, some as a flag |
+| `addedAt` | | When the user first recorded the game, to the second wherever the source knows the second: a day alone ties every game entered that day, and the lists break a tie by title ([0087](../docs/decisions/0087-an-imported-game-arrives-when-its-source-says-it-did.md)) |
+| `statusSince` | | When the game reached the place in the source its status is read from — a Grouvee shelf's `date_added`. It becomes the date "Recently moved" sorts by. Never the import's own clock: a source that does not say leaves it empty ([0087](../docs/decisions/0087-an-imported-game-arrives-when-its-source-says-it-did.md)) |
+
+A source's own hand ranking of a shelf is not imported: it may say when, or how good, and only its
+owner knows which ([0087](../docs/decisions/0087-an-imported-game-arrives-when-its-source-says-it-did.md) §4).
 
 ### 3.2 Status vocabulary
 
@@ -327,10 +332,11 @@ platform re-sync stay paid. Export stays paid, as the table already has it.
 4. ~~Do we want to be an import target for someone else — that is, should our own export (Tier 2)
    round-trip through this importer? Cheap to guarantee, worth doing.~~ **Answered: yes, free, and
    lossy by design.** Our export is an `IImportSource` like Grouvee's, under every rule here: the
-   lists, scores, notes, dates added, wishlist, favourites and each run's dates, minutes and type
-   come back, and a run's platform by its id, the one field the canonical row gained for it; the event
-   log, `ScoredAt`, `StatusChangedAt`, reviews (as reviews), tags, ownership, the hand orders, a run's
-   notes, and the account's settings do not. The rows carry no titles and are named after their
+   lists, scores, notes, dates added, when each game arrived in its list (`StatusChangedAt`, as a
+   Grouvee shelf's date does, [0087](../docs/decisions/0087-an-imported-game-arrives-when-its-source-says-it-did.md)),
+   wishlist, favourites and each run's dates, minutes and type come back, and a run's platform by its
+   id, the one field the canonical row gained for it; the event log, `ScoredAt`, reviews (as reviews),
+   tags, ownership, the hand orders, a run's notes, and the account's settings do not. The rows carry no titles and are named after their
    game wherever they are shown, so the upload still makes no network call; a review appended to the
    notes is cut with them to 2,000 characters, which the review screen marks before the commit
    ([0083](../docs/decisions/0083-our-own-export-is-imported-as-any-trackers-is.md)).

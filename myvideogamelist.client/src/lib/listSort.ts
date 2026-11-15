@@ -133,7 +133,8 @@ function byTitle(left: ListEntryDto, right: ListEntryDto, collator: Intl.Collato
  * broken the same way every time.
  *
  * A game joins a list when its status changes, which `statusChangedAt` records; an import leaves that
- * null (ADR 0026), and `addedAt` is then the best date there is. Title and then the game's id break
+ * null when its source does not say when (ADR 0026, ADR 0087), and `addedAt` is then the best date
+ * there is. Title and then the game's id break
  * what is left, which is two games placed at the same number by two tabs at once, or two that arrived
  * in one import.
  *
